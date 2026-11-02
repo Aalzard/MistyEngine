@@ -75,6 +75,20 @@ pub enum Action {
         entity: Entity,
         name: String,
     },
+    /// Attach a script asset ("Assets/…/Name.lua") to an object.
+    AddScript {
+        entity: Entity,
+        path: String,
+    },
+    RemoveScript {
+        entity: Entity,
+        slot: usize,
+    },
+    /// Clear a script's Inspector overrides (back to the script defaults).
+    ResetScript {
+        entity: Entity,
+        slot: usize,
+    },
     /// Component > Add... (opens the Inspector's search popup).
     OpenAddComponent,
     TogglePlay,

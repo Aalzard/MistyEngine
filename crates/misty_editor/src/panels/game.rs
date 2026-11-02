@@ -32,6 +32,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         Some(aspect) => fit_aspect(area, aspect),
         None => area,
     };
+    state.game_view.view_rect = view;
 
     let camera = game_camera(state);
     match (camera, gpu) {
@@ -104,11 +105,18 @@ fn stats_overlay(
             "Play time: {:.2}s   Frame: {}",
             state.time.time, state.time.frame
         ),
+        match state.runtime.as_ref().map(|r| r.stats()) {
+            Some(r) => format!(
+                "Physics: {} bodies, {} colliders   Scripts: {}",
+                r.bodies, r.colliders, r.scripts
+            ),
+            None => "Physics: -   Scripts: -".to_owned(),
+        },
     ];
     let font = FontId::monospace(11.0);
     let rect = egui::Rect::from_min_size(
         view.right_top() + egui::vec2(-300.0, 8.0),
-        egui::vec2(292.0, 96.0),
+        egui::vec2(292.0, 110.0),
     );
     let painter = ui.painter().with_clip_rect(view);
     painter.rect_filled(rect, 4.0, Color32::from_rgba_unmultiplied(20, 20, 20, 200));

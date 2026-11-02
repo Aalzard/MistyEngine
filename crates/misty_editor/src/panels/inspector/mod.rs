@@ -64,7 +64,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             }
             ui.separator();
             for name in shared_components(state, &targets) {
-                component_section(ui, state, &targets, &name);
+                if name == "Scripts" {
+                    editors::script_sections(ui, state, e);
+                } else {
+                    component_section(ui, state, &targets, &name);
+                }
             }
             material_previews(ui, state, e);
             ui.add_space(8.0);

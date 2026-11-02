@@ -212,10 +212,8 @@ fn row(
         state.selection.set(e);
     }
     resp.context_menu(|ui| row_menu(ui, state, e));
-    if let Some(payload) = resp.dnd_release_payload::<super::AssetPayload>()
-        && payload.0.ends_with(".mat")
-    {
-        state.assign_material(e, &payload.0);
+    if let Some(payload) = resp.dnd_release_payload::<super::AssetPayload>() {
+        drop_asset(state, e, &payload.0);
     }
 
     // Start dragging: carry the selection (or just this row).
@@ -250,6 +248,18 @@ fn row(
         return Some(target);
     }
     None
+}
+
+/// An asset dropped on an object: materials are assigned, scripts attached.
+pub fn drop_asset(state: &mut EditorState, e: Entity, path: &str) {
+    if path.ends_with(".mat") {
+        state.assign_material(e, path);
+    } else if path.ends_with(".lua") {
+        state.push(Action::AddScript {
+            entity: e,
+            path: path.to_owned(),
+        });
+    }
 }
 
 fn rename_field(ui: &mut Ui, state: &mut EditorState, e: Entity, rect: Rect) {

@@ -108,11 +108,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
 
     // Drop a material from the Project window onto an object.
     if let Some(payload) = response.dnd_release_payload::<AssetPayload>()
-        && payload.0.ends_with(".mat")
         && let Some(at) = ui.input(|i| i.pointer.hover_pos())
         && let Some(e) = picking::pick(&state.scene, &camera, rect, at)
     {
-        state.assign_material(e, &payload.0);
+        super::hierarchy::drop_asset(state, e, &payload.0);
     }
 
     tools_overlay(ui, rect, state);

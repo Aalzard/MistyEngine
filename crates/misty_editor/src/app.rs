@@ -13,7 +13,7 @@ use crate::panels::PanelViewer;
 use crate::project::ProjectBrowser;
 use crate::state::{EditorState, PlayState, Tool};
 use crate::viewport::Gpu;
-use crate::{commands, menu_bar, play, status_bar, theme, toolbar};
+use crate::{commands, game_input, menu_bar, play, status_bar, theme, toolbar};
 
 pub struct EditorApp {
     state: EditorState,
@@ -90,7 +90,9 @@ impl EditorApp {
         // Most specific modifiers first so Ctrl+Shift+P is not eaten by Ctrl+P.
         let mut sorted: Vec<_> = bindings.into_iter().collect();
         sorted.sort_by_key(|(m, _, _)| std::cmp::Reverse(m.shift as u8 + m.alt as u8));
-        let typing = ctx.egui_wants_keyboard_input();
+        // Plain keys belong to text fields while typing, and to the game while it has focus.
+        let typing = ctx.egui_wants_keyboard_input()
+            || (self.state.play.in_play_mode() && self.state.game_view.focused);
         for (mods, key, action) in sorted {
             // While typing, text fields own plain keys, Shift+keys and their own undo.
             let text_key = mods == Modifiers::NONE
@@ -188,8 +190,22 @@ impl EditorApp {
     fn game_frame(&mut self, ctx: &egui::Context) {
         let s = &mut self.state;
         if !s.play.in_play_mode() {
+            // Scripts reload when their files change; syntax errors go to the Console.
+            for err in s.assets.poll_scripts() {
+                s.console.log(LogLevel::Error, err);
+            }
             return;
         }
+        // Clicking outside the Game view gives keyboard/mouse back to the editor.
+        if let Some(p) = ctx.input(|i| i.pointer.press_origin().filter(|_| i.pointer.any_pressed()))
+        {
+            s.game_view.focused = s.game_view.view_rect.contains(p);
+        }
+        s.game_input = if s.game_view.focused && !ctx.egui_wants_keyboard_input() {
+            game_input::capture(ctx)
+        } else {
+            Default::default()
+        };
         play::tick(s, ctx.input(|i| i.stable_dt));
         let errors = s.console.count(LogLevel::Error);
         if s.console.error_pause && errors > self.errors_seen && s.play == PlayState::Playing {

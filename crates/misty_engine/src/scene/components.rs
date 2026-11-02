@@ -516,3 +516,52 @@ pub enum ColliderKind {
     Capsule,
     Mesh,
 }
+
+// ---- scripting -----------------------------------------------------------------------------
+
+/// A public script field value shown in the Inspector.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ScriptValue {
+    Bool(bool),
+    Number(f64),
+    Vector3([f32; 3]),
+    Text(String),
+}
+
+/// One script attached to an object, with the field values set in the Inspector.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScriptRef {
+    /// Project-relative path ("Assets/Scripts/Rotator.lua").
+    pub path: String,
+    pub enabled: bool,
+    /// Overrides of the script's public fields (missing = script default).
+    pub fields: std::collections::BTreeMap<String, ScriptValue>,
+}
+
+impl Default for ScriptRef {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            enabled: true,
+            fields: Default::default(),
+        }
+    }
+}
+
+impl ScriptRef {
+    /// Script name from its file ("Rotator").
+    pub fn name(&self) -> String {
+        std::path::Path::new(&self.path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+}
+
+/// All scripts on an object (each shows as its own "Name (Script)" section).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Scripts {
+    pub list: Vec<ScriptRef>,
+}

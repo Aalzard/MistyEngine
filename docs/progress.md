@@ -140,6 +140,25 @@
 - Green collider gizmos for selected objects.
 
 ### Not matching Unity yet
-- No collision/trigger events for scripts yet (step 8), no joints, no physics materials as assets, no layer matrix.
+- No joints, no physics materials as assets, no layer collision matrix.
 - Physics settings (gravity, fixed timestep) aren't editable in a Project Settings window yet.
 - No "Edit Collider" handles; Mesh Collider only works with built-in meshes.
+
+## Step 8 — Scripting ✅
+
+### Done
+- Lua scripts as assets: Project ▸ + ▸ Script, Add Component ▸ Scripts / New script, drag onto objects in the Scene
+  view, Hierarchy, or Inspector; double-click to edit in the default editor; hot reload of fields in Edit mode.
+- Inspector "Name (Script)" sections: enable toggle, Script field, public fields (number, bool, string, Vector3)
+  with readable labels; ⋮ Reset / Remove Component / Edit Script; several scripts per object.
+- Lifecycle: Awake, Start, Update, FixedUpdate, LateUpdate, OnCollisionEnter/Exit, OnTriggerEnter/Exit.
+- API: GameObject, Transform, Rigidbody, Vector3, Time, Input (keys, mouse, axes), Debug.Log/Warning/Error, print,
+  GameObject.Find, Destroy, Mathf, ForceMode (see docs/scripting.md).
+- Script logs and errors (with script name, callback and line) go to the Console; Error Pause works.
+- Game view gets keyboard/mouse while focused; Stats show bodies, colliders and script count.
+- Samples: Rotator.lua, PlayerController.lua.
+
+### Not matching Unity yet
+- Lua instead of C#; no coroutines, Instantiate/prefabs, raycasts, GetComponent for scripts or other components.
+- No script execution order settings; no "Edit Script" opening at the error line.
+- Hot reload only applies in Edit mode.

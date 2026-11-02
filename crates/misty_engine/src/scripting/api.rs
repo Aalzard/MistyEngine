@@ -1,0 +1,642 @@
+//! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody and global tables
+//! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Destroy).
+//!
+//! Userdata only hold an entity id; they reach the scene through the [`World`] stored in the
+//! Lua state's app data while a game frame runs.
+
+use glam::Vec3;
+use hecs::Entity;
+use mlua::{
+    FromLua, Lua, MetaMethod, Result, Table, UserData, UserDataFields, UserDataMethods, Value,
+    Variadic,
+};
+
+use super::{LogKind, World};
+use crate::camera::{euler_to_quat, quat_to_euler};
+use crate::scene::Rigidbody;
+
+/// Run `f` with the live game world, or fail if no frame is running.
+pub fn with_world<R>(lua: &Lua, f: impl FnOnce(&mut World) -> R) -> Result<R> {
+    let mut world = lua
+        .app_data_mut::<World>()
+        .ok_or_else(|| mlua::Error::runtime("the game is not running"))?;
+    Ok(f(&mut world))
+}
+
+fn missing() -> mlua::Error {
+    mlua::Error::runtime("object was destroyed")
+}
+
+// ---- Vector3 ---------------------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LVec3(pub Vec3);
+
+impl FromLua for LVec3 {
+    fn from_lua(value: Value, _: &Lua) -> Result<Self> {
+        match value {
+            Value::UserData(ud) => Ok(*ud.borrow::<LVec3>()?),
+            Value::Table(t) => Ok(LVec3(Vec3::new(t.get("x")?, t.get("y")?, t.get("z")?))),
+            other => Err(mlua::Error::runtime(format!(
+                "expected Vector3, got {}",
+                other.type_name()
+            ))),
+        }
+    }
+}
+
+fn number(v: &Value) -> Option<f32> {
+    match v {
+        Value::Integer(i) => Some(*i as f32),
+        Value::Number(n) => Some(*n as f32),
+        _ => None,
+    }
+}
+
+/// Accept either one Vector3 or three numbers.
+pub fn vec_args(lua: &Lua, args: &[Value]) -> Result<Vec3> {
+    match args {
+        [a, b, c, ..] if number(a).is_some() => Ok(Vec3::new(
+            number(a).unwrap_or(0.0),
+            number(b).unwrap_or(0.0),
+            number(c).unwrap_or(0.0),
+        )),
+        [v, ..] => Ok(LVec3::from_lua(v.clone(), lua)?.0),
+        [] => Err(mlua::Error::runtime("expected a Vector3 or x, y, z")),
+    }
+}
+
+impl UserData for LVec3 {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("x", |_, v| Ok(v.0.x));
+        f.add_field_method_get("y", |_, v| Ok(v.0.y));
+        f.add_field_method_get("z", |_, v| Ok(v.0.z));
+        f.add_field_method_set("x", |_, v, x: f32| {
+            v.0.x = x;
+            Ok(())
+        });
+        f.add_field_method_set("y", |_, v, y: f32| {
+            v.0.y = y;
+            Ok(())
+        });
+        f.add_field_method_set("z", |_, v, z: f32| {
+            v.0.z = z;
+            Ok(())
+        });
+        f.add_field_method_get("magnitude", |_, v| Ok(v.0.length()));
+        f.add_field_method_get("sqrMagnitude", |_, v| Ok(v.0.length_squared()));
+        f.add_field_method_get("normalized", |_, v| Ok(LVec3(v.0.normalize_or_zero())));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_meta_function(MetaMethod::Add, |_, (a, b): (LVec3, LVec3)| {
+            Ok(LVec3(a.0 + b.0))
+        });
+        m.add_meta_function(MetaMethod::Sub, |_, (a, b): (LVec3, LVec3)| {
+            Ok(LVec3(a.0 - b.0))
+        });
+        m.add_meta_function(MetaMethod::Unm, |_, a: LVec3| Ok(LVec3(-a.0)));
+        m.add_meta_function(MetaMethod::Mul, |lua, (a, b): (Value, Value)| {
+            match (number(&a), number(&b)) {
+                (Some(k), None) => Ok(LVec3(LVec3::from_lua(b, lua)?.0 * k)),
+                (None, Some(k)) => Ok(LVec3(LVec3::from_lua(a, lua)?.0 * k)),
+                _ => Ok(LVec3(
+                    LVec3::from_lua(a, lua)?.0 * LVec3::from_lua(b, lua)?.0,
+                )),
+            }
+        });
+        m.add_meta_function(MetaMethod::Div, |_, (a, k): (LVec3, f32)| {
+            Ok(LVec3(a.0 / k))
+        });
+        m.add_meta_function(MetaMethod::Eq, |_, (a, b): (LVec3, LVec3)| Ok(a.0 == b.0));
+        m.add_meta_method(MetaMethod::ToString, |_, v, ()| {
+            Ok(format!("({:.2}, {:.2}, {:.2})", v.0.x, v.0.y, v.0.z))
+        });
+    }
+}
+
+// ---- Transform -----------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+pub struct LTransform(pub Entity);
+
+/// After a script moves an object with a Rigidbody, move its body too.
+fn sync_body(w: &mut World, e: Entity) {
+    if w.physics.has_body(e) {
+        let (_, rot, pos) = w.scene.world_matrix(e).to_scale_rotation_translation();
+        w.physics.teleport(e, pos, rot);
+    }
+}
+
+fn alive(w: &World, e: Entity) -> Result<()> {
+    if w.scene.contains(e) {
+        Ok(())
+    } else {
+        Err(missing())
+    }
+}
+
+impl UserData for LTransform {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("position", |lua, t| {
+            with_world(lua, |w| {
+                alive(w, t.0).map(|_| LVec3(w.scene.world_position(t.0)))
+            })?
+        });
+        f.add_field_method_set("position", |lua, t, v: LVec3| {
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                w.scene.set_world_position(t.0, v.0);
+                sync_body(w, t.0);
+                Ok(())
+            })?
+        });
+        f.add_field_method_get("localPosition", |lua, t| {
+            with_world(lua, |w| {
+                alive(w, t.0).map(|_| LVec3(w.scene.transform(t.0).position))
+            })?
+        });
+        f.add_field_method_set("localPosition", |lua, t, v: LVec3| {
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                let mut tr = w.scene.transform(t.0);
+                tr.position = v.0;
+                w.scene.set_transform(t.0, tr);
+                sync_body(w, t.0);
+                Ok(())
+            })?
+        });
+        f.add_field_method_get("eulerAngles", |lua, t| {
+            with_world(lua, |w| {
+                alive(w, t.0).map(|_| LVec3(quat_to_euler(w.scene.world_rotation(t.0))))
+            })?
+        });
+        f.add_field_method_set("eulerAngles", |lua, t, v: LVec3| {
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                w.scene.set_world_rotation(t.0, euler_to_quat(v.0));
+                sync_body(w, t.0);
+                Ok(())
+            })?
+        });
+        f.add_field_method_get("localEulerAngles", |lua, t| {
+            with_world(lua, |w| {
+                alive(w, t.0).map(|_| LVec3(w.scene.transform(t.0).euler()))
+            })?
+        });
+        f.add_field_method_set("localEulerAngles", |lua, t, v: LVec3| {
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                let mut tr = w.scene.transform(t.0);
+                tr.set_euler(v.0);
+                w.scene.set_transform(t.0, tr);
+                sync_body(w, t.0);
+                Ok(())
+            })?
+        });
+        f.add_field_method_get("localScale", |lua, t| {
+            with_world(lua, |w| {
+                alive(w, t.0).map(|_| LVec3(w.scene.transform(t.0).scale))
+            })?
+        });
+        f.add_field_method_set("localScale", |lua, t, v: LVec3| {
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                let mut tr = w.scene.transform(t.0);
+                tr.scale = v.0;
+                w.scene.set_transform(t.0, tr);
+                Ok(())
+            })?
+        });
+        for (name, axis) in [("forward", Vec3::Z), ("right", Vec3::X), ("up", Vec3::Y)] {
+            f.add_field_method_get(name, move |lua, t| {
+                with_world(lua, |w| {
+                    alive(w, t.0).map(|_| LVec3(w.scene.world_rotation(t.0) * axis))
+                })?
+            });
+        }
+        f.add_field_method_get("parent", |lua, t| {
+            with_world(lua, |w| {
+                w.scene
+                    .contains(t.0)
+                    .then(|| w.scene.parent(t.0).map(LTransform))
+                    .flatten()
+            })
+        });
+        f.add_field_method_get("gameObject", |_, t| Ok(LGameObject(t.0)));
+        f.add_field_method_get("name", |lua, t| {
+            with_world(lua, |w| alive(w, t.0).map(|_| w.scene.name(t.0)))?
+        });
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        // Translate in the object's own axes (Space.Self).
+        m.add_method("Translate", |lua, t, args: Variadic<Value>| {
+            let v = vec_args(lua, &args)?;
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                let rot = w.scene.world_rotation(t.0);
+                let p = w.scene.world_position(t.0) + rot * v;
+                w.scene.set_world_position(t.0, p);
+                sync_body(w, t.0);
+                Ok(())
+            })?
+        });
+        // Rotate by Euler degrees around the object's own axes.
+        m.add_method("Rotate", |lua, t, args: Variadic<Value>| {
+            let v = vec_args(lua, &args)?;
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                let mut tr = w.scene.transform(t.0);
+                tr.set_rotation(tr.rotation * euler_to_quat(v));
+                w.scene.set_transform(t.0, tr);
+                sync_body(w, t.0);
+                Ok(())
+            })?
+        });
+        m.add_method("LookAt", |lua, t, target: Value| {
+            let point = match &target {
+                Value::UserData(ud) if ud.is::<LTransform>() => {
+                    let other = ud.borrow::<LTransform>()?.0;
+                    with_world(lua, |w| w.scene.world_position(other))?
+                }
+                _ => LVec3::from_lua(target, lua)?.0,
+            };
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                let from = w.scene.world_position(t.0);
+                let dir = (point - from).normalize_or_zero();
+                if dir != Vec3::ZERO {
+                    let up = if dir.y.abs() > 0.999 {
+                        Vec3::Z
+                    } else {
+                        Vec3::Y
+                    };
+                    let q = glam::camera::lh::view::look_to_quat(dir, up).inverse();
+                    w.scene.set_world_rotation(t.0, q);
+                    sync_body(w, t.0);
+                }
+                Ok(())
+            })?
+        });
+    }
+}
+
+// ---- GameObject ------------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+pub struct LGameObject(pub Entity);
+
+impl UserData for LGameObject {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("name", |lua, g| {
+            with_world(lua, |w| alive(w, g.0).map(|_| w.scene.name(g.0)))?
+        });
+        f.add_field_method_set("name", |lua, g, name: String| {
+            with_world(lua, |w| {
+                alive(w, g.0)?;
+                w.scene.game_object_mut(g.0).name = name;
+                Ok(())
+            })?
+        });
+        f.add_field_method_get("tag", |lua, g| {
+            with_world(lua, |w| {
+                alive(w, g.0).map(|_| w.scene.game_object(g.0).tag.clone())
+            })?
+        });
+        f.add_field_method_get("activeSelf", |lua, g| {
+            with_world(lua, |w| {
+                alive(w, g.0).map(|_| w.scene.game_object(g.0).active)
+            })?
+        });
+        f.add_field_method_get("transform", |_, g| Ok(LTransform(g.0)));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("SetActive", |lua, g, on: bool| {
+            with_world(lua, |w| {
+                alive(w, g.0)?;
+                w.scene.game_object_mut(g.0).active = on;
+                Ok(())
+            })?
+        });
+        m.add_method("CompareTag", |lua, g, tag: String| {
+            with_world(lua, |w| {
+                alive(w, g.0).map(|_| w.scene.game_object(g.0).tag == tag)
+            })?
+        });
+        m.add_method("GetComponent", |lua, g, name: String| {
+            let e = g.0;
+            let kind = with_world(lua, |w| {
+                alive(w, e)?;
+                Ok::<_, mlua::Error>(match name.as_str() {
+                    "Transform" => Some(0),
+                    "Rigidbody" if w.scene.world.get::<&Rigidbody>(e).is_ok() => Some(1),
+                    _ => None,
+                })
+            })??;
+            match kind {
+                Some(0) => lua.create_userdata(LTransform(e)).map(Value::UserData),
+                Some(_) => lua.create_userdata(LRigidbody(e)).map(Value::UserData),
+                None => Ok(Value::Nil),
+            }
+        });
+        m.add_meta_method(MetaMethod::Eq, |_, a, b: LGameObjectArg| Ok(a.0 == b.0));
+        m.add_meta_method(MetaMethod::ToString, |lua, g, ()| {
+            with_world(lua, |w| {
+                if w.scene.contains(g.0) {
+                    w.scene.name(g.0)
+                } else {
+                    "null".into()
+                }
+            })
+        });
+    }
+}
+
+/// Helper to compare GameObjects with `==`.
+pub struct LGameObjectArg(Entity);
+
+impl FromLua for LGameObjectArg {
+    fn from_lua(value: Value, _: &Lua) -> Result<Self> {
+        match value {
+            Value::UserData(ud) => Ok(LGameObjectArg(ud.borrow::<LGameObject>()?.0)),
+            _ => Err(mlua::Error::runtime("expected GameObject")),
+        }
+    }
+}
+
+// ---- Rigidbody --------------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+pub struct LRigidbody(pub Entity);
+
+/// Force modes as a velocity change for one fixed step (mass from the Rigidbody component,
+/// so forces work before the physics engine has computed mass properties).
+fn delta_velocity(w: &World, e: Entity, v: Vec3, mode: &str) -> Vec3 {
+    let dt = w.physics.fixed_dt;
+    let mass = w
+        .scene
+        .world
+        .get::<&Rigidbody>(e)
+        .map(|r| r.mass.max(1e-4))
+        .unwrap_or(1.0);
+    match mode {
+        "Impulse" => v / mass,
+        "VelocityChange" => v,
+        "Acceleration" => v * dt,
+        _ => v * dt / mass, // Force
+    }
+}
+
+fn force_args(lua: &Lua, args: &Variadic<Value>) -> Result<(Vec3, String)> {
+    let mode = match args.last() {
+        Some(Value::String(s)) => s.to_str()?.to_owned(),
+        _ => "Force".to_owned(),
+    };
+    Ok((vec_args(lua, args)?, mode))
+}
+
+impl UserData for LRigidbody {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("velocity", |lua, r| {
+            with_world(lua, |w| LVec3(w.physics.velocity(r.0).unwrap_or_default()))
+        });
+        f.add_field_method_set("velocity", |lua, r, v: LVec3| {
+            with_world(lua, |w| w.physics.set_velocity(r.0, v.0))
+        });
+        f.add_field_method_get("angularVelocity", |lua, r| {
+            with_world(lua, |w| {
+                LVec3(w.physics.angular_velocity(r.0).unwrap_or_default())
+            })
+        });
+        f.add_field_method_set("angularVelocity", |lua, r, v: LVec3| {
+            with_world(lua, |w| w.physics.set_angular_velocity(r.0, v.0))
+        });
+        f.add_field_method_get("mass", |lua, r| {
+            with_world(lua, |w| {
+                w.scene
+                    .world
+                    .get::<&Rigidbody>(r.0)
+                    .map(|b| b.mass)
+                    .unwrap_or(0.0)
+            })
+        });
+        f.add_field_method_get("gameObject", |_, r| Ok(LGameObject(r.0)));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("AddForce", |lua, r, args: Variadic<Value>| {
+            let (v, mode) = force_args(lua, &args)?;
+            with_world(lua, |w| {
+                let dv = delta_velocity(w, r.0, v, &mode);
+                let vel = w.physics.velocity(r.0).unwrap_or_default();
+                w.physics.set_velocity(r.0, vel + dv);
+            })
+        });
+        m.add_method("AddTorque", |lua, r, args: Variadic<Value>| {
+            let (v, mode) = force_args(lua, &args)?;
+            with_world(lua, |w| {
+                let dw = delta_velocity(w, r.0, v, &mode);
+                let ang = w.physics.angular_velocity(r.0).unwrap_or_default();
+                w.physics.set_angular_velocity(r.0, ang + dw);
+            })
+        });
+    }
+}
+
+// ---- globals ----------------------------------------------------------------------------------
+
+fn log(lua: &Lua, kind: LogKind, args: Variadic<Value>) -> Result<()> {
+    let text = args
+        .iter()
+        .map(|v| match v {
+            Value::String(s) => s.to_string_lossy(),
+            other => other.to_string().unwrap_or_else(|_| format!("{other:?}")),
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    // Logging must never fail, even outside a running frame.
+    let _ = with_world(lua, |w| w.logs.push((kind, text)));
+    Ok(())
+}
+
+/// Register the global API tables in `lua`.
+pub fn register(lua: &Lua) -> Result<()> {
+    let g = lua.globals();
+
+    // Vector3
+    let v3 = lua.create_table()?;
+    v3.set(
+        "new",
+        lua.create_function(|_, (x, y, z): (Option<f32>, Option<f32>, Option<f32>)| {
+            Ok(LVec3(Vec3::new(
+                x.unwrap_or(0.0),
+                y.unwrap_or(0.0),
+                z.unwrap_or(0.0),
+            )))
+        })?,
+    )?;
+    for (name, v) in [
+        ("zero", Vec3::ZERO),
+        ("one", Vec3::ONE),
+        ("up", Vec3::Y),
+        ("down", Vec3::NEG_Y),
+        ("right", Vec3::X),
+        ("left", Vec3::NEG_X),
+        ("forward", Vec3::Z),
+        ("back", Vec3::NEG_Z),
+    ] {
+        v3.set(name, LVec3(v))?;
+    }
+    v3.set(
+        "Distance",
+        lua.create_function(|_, (a, b): (LVec3, LVec3)| Ok(a.0.distance(b.0)))?,
+    )?;
+    v3.set(
+        "Dot",
+        lua.create_function(|_, (a, b): (LVec3, LVec3)| Ok(a.0.dot(b.0)))?,
+    )?;
+    v3.set(
+        "Cross",
+        lua.create_function(|_, (a, b): (LVec3, LVec3)| Ok(LVec3(a.0.cross(b.0))))?,
+    )?;
+    v3.set(
+        "Lerp",
+        lua.create_function(|_, (a, b, t): (LVec3, LVec3, f32)| {
+            Ok(LVec3(a.0.lerp(b.0, t.clamp(0.0, 1.0))))
+        })?,
+    )?;
+    g.set("Vector3", v3)?;
+
+    // Debug / print
+    let debug = lua.create_table()?;
+    debug.set(
+        "Log",
+        lua.create_function(|lua, a: Variadic<Value>| log(lua, LogKind::Info, a))?,
+    )?;
+    debug.set(
+        "LogWarning",
+        lua.create_function(|lua, a: Variadic<Value>| log(lua, LogKind::Warning, a))?,
+    )?;
+    debug.set(
+        "LogError",
+        lua.create_function(|lua, a: Variadic<Value>| log(lua, LogKind::Error, a))?,
+    )?;
+    g.set("Debug", debug)?;
+    g.set(
+        "print",
+        lua.create_function(|lua, a: Variadic<Value>| log(lua, LogKind::Info, a))?,
+    )?;
+
+    // Mathf
+    let mathf = lua.create_table()?;
+    mathf.set("PI", std::f64::consts::PI)?;
+    mathf.set("Deg2Rad", std::f64::consts::PI / 180.0)?;
+    mathf.set("Rad2Deg", 180.0 / std::f64::consts::PI)?;
+    mathf.set(
+        "Clamp",
+        lua.create_function(|_, (v, lo, hi): (f64, f64, f64)| Ok(v.clamp(lo.min(hi), hi.max(lo))))?,
+    )?;
+    mathf.set(
+        "Clamp01",
+        lua.create_function(|_, v: f64| Ok(v.clamp(0.0, 1.0)))?,
+    )?;
+    mathf.set(
+        "Lerp",
+        lua.create_function(|_, (a, b, t): (f64, f64, f64)| Ok(a + (b - a) * t.clamp(0.0, 1.0)))?,
+    )?;
+    mathf.set("Abs", lua.create_function(|_, v: f64| Ok(v.abs()))?)?;
+    mathf.set("Sin", lua.create_function(|_, v: f64| Ok(v.sin()))?)?;
+    mathf.set("Cos", lua.create_function(|_, v: f64| Ok(v.cos()))?)?;
+    mathf.set("Sqrt", lua.create_function(|_, v: f64| Ok(v.sqrt()))?)?;
+    mathf.set(
+        "Min",
+        lua.create_function(|_, (a, b): (f64, f64)| Ok(a.min(b)))?,
+    )?;
+    mathf.set(
+        "Max",
+        lua.create_function(|_, (a, b): (f64, f64)| Ok(a.max(b)))?,
+    )?;
+    g.set("Mathf", mathf)?;
+
+    // ForceMode
+    let fm = lua.create_table()?;
+    for m in ["Force", "Impulse", "VelocityChange", "Acceleration"] {
+        fm.set(m, m)?;
+    }
+    g.set("ForceMode", fm)?;
+
+    // Time (values refreshed every frame by `refresh_time`)
+    g.set("Time", lua.create_table()?)?;
+
+    // Input
+    let input = lua.create_table()?;
+    input.set(
+        "GetKey",
+        lua.create_function(|lua, k: String| with_world(lua, |w| w.input.key(&k)))?,
+    )?;
+    input.set(
+        "GetKeyDown",
+        lua.create_function(|lua, k: String| with_world(lua, |w| w.input.key_down(&k)))?,
+    )?;
+    input.set(
+        "GetKeyUp",
+        lua.create_function(|lua, k: String| with_world(lua, |w| w.input.key_up(&k)))?,
+    )?;
+    input.set(
+        "GetMouseButton",
+        lua.create_function(|lua, b: usize| with_world(lua, |w| w.input.mouse(b)))?,
+    )?;
+    input.set(
+        "GetMouseButtonDown",
+        lua.create_function(|lua, b: usize| with_world(lua, |w| w.input.mouse_down(b)))?,
+    )?;
+    input.set(
+        "GetMouseButtonUp",
+        lua.create_function(|lua, b: usize| with_world(lua, |w| w.input.mouse_up(b)))?,
+    )?;
+    input.set(
+        "GetAxis",
+        lua.create_function(|lua, a: String| with_world(lua, |w| w.input.axis(&a)))?,
+    )?;
+    input.set(
+        "GetAxisRaw",
+        lua.create_function(|lua, a: String| with_world(lua, |w| w.input.axis(&a)))?,
+    )?;
+    g.set("Input", input)?;
+
+    // GameObject.Find / Destroy
+    let go = lua.create_table()?;
+    go.set(
+        "Find",
+        lua.create_function(|lua, name: String| {
+            with_world(lua, |w| w.scene.find_by_name(&name).map(LGameObject))
+        })?,
+    )?;
+    g.set("GameObject", go)?;
+    g.set(
+        "Destroy",
+        lua.create_function(|lua, target: Value| {
+            let e = match &target {
+                Value::UserData(ud) if ud.is::<LGameObject>() => ud.borrow::<LGameObject>()?.0,
+                Value::UserData(ud) if ud.is::<LTransform>() => ud.borrow::<LTransform>()?.0,
+                _ => return Err(mlua::Error::runtime("Destroy expects a GameObject")),
+            };
+            with_world(lua, |w| w.destroy.push(e))
+        })?,
+    )?;
+    Ok(())
+}
+
+/// Copy the current frame's time into the `Time` table.
+pub fn refresh_time(lua: &Lua, w: &World) -> Result<()> {
+    let t: Table = lua.globals().get("Time")?;
+    t.set("deltaTime", w.time.delta)?;
+    t.set("unscaledDeltaTime", w.time.unscaled_delta)?;
+    t.set("time", w.time.time)?;
+    t.set("frameCount", w.time.frame)?;
+    t.set("timeScale", w.time.time_scale)?;
+    t.set("fixedDeltaTime", w.physics.fixed_dt)?;
+    Ok(())
+}

@@ -13,3 +13,4 @@ hecs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rapier3d.workspace = true
+mlua.workspace = true

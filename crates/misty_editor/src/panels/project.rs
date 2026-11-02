@@ -14,6 +14,7 @@ use super::hierarchy::row_simple as row;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let selected_before = state.project.selected.clone();
+    let mut opened_file: Option<PathBuf> = None;
     panel_toolbar(ui, |ui| {
         ui.menu_button("➕ ⏷", |ui| create_menu(ui, state));
     });
@@ -103,10 +104,22 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 }
             });
         if let Some(path) = open {
-            browser.search.clear();
-            browser.open_folder(path);
+            if path.is_dir() {
+                browser.search.clear();
+                browser.open_folder(path);
+            } else {
+                opened_file = Some(path);
+            }
         }
     });
+    // Double-clicked file: scripts open in the external editor.
+    if let Some(path) = opened_file
+        && let Err(err) = crate::assets::open_external(&path)
+    {
+        state
+            .console
+            .warn(format!("Could not open {}: {err}", path.display()));
+    }
 
     // Selecting an asset shows it in the Inspector (and deselects scene objects).
     if state.project.selected != selected_before
@@ -158,7 +171,18 @@ pub fn create_menu(ui: &mut Ui, state: &mut EditorState) {
         ui.close();
     }
     ui.add_enabled(false, egui::Button::new("Scene (step 9)"));
-    ui.add_enabled(false, egui::Button::new("Script (step 8)"));
+    if ui.button("Script").clicked() {
+        let dir = state.project.current.clone();
+        match state.assets.create_script(&dir) {
+            Ok(rel) => {
+                state.project.refresh();
+                state.project.selected = Some(state.assets.absolute(&rel));
+                state.console.info(format!("Created {rel}"));
+            }
+            Err(e) => state.console.warn(format!("Could not create script: {e}")),
+        }
+        ui.close();
+    }
 }
 
 fn folder_tree(
@@ -253,7 +277,7 @@ fn handle_click(
     if resp.clicked() {
         *selected = Some(e.path.clone());
     }
-    if resp.double_clicked() && e.is_dir {
+    if resp.double_clicked() {
         *open = Some(e.path.clone());
     }
     // Assets can be dragged onto objects (Scene view, Hierarchy, Inspector slots).

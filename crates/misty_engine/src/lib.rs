@@ -9,6 +9,7 @@ pub mod physics;
 pub mod render;
 pub mod runtime;
 pub mod scene;
+pub mod scripting;
 
 pub use hecs;
 

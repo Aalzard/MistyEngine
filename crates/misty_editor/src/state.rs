@@ -15,6 +15,7 @@ use crate::scene_camera::SceneCamera;
 use crate::selection::Selection;
 use crate::undo::UndoStack;
 use misty_engine::runtime::{Runtime, Time};
+use misty_engine::scripting::Input;
 
 /// Active transform tool (Q W E R T Y).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -131,6 +132,10 @@ pub struct SceneViewSettings {
 
 /// Game view toolbar settings.
 pub struct GameViewSettings {
+    /// Keyboard/mouse go to scripts (click the Game view to focus it).
+    pub focused: bool,
+    /// Screen rect of the game image last frame.
+    pub view_rect: egui::Rect,
     pub aspect: usize,
     pub scale: f32,
     pub play_mode_target: usize,
@@ -152,6 +157,8 @@ pub struct EditorState {
     pub time: Time,
     /// Physics/scripts state while playing.
     pub runtime: Option<Runtime>,
+    /// Keyboard/mouse for scripts this frame (filled while the Game view has focus).
+    pub game_input: Input,
     /// Pause toggled before Play: Play starts paused.
     pub pause_on_play: bool,
     /// Step pressed while paused.
@@ -197,6 +204,7 @@ impl EditorState {
             play_session: None,
             time: Time::default(),
             runtime: None,
+            game_input: Input::default(),
             pause_on_play: false,
             step_requested: false,
             scene: Scene::default_3d("SampleScene"),
@@ -226,6 +234,8 @@ impl EditorState {
                 view_rect: egui::Rect::NOTHING,
             },
             game_view: GameViewSettings {
+                focused: false,
+                view_rect: egui::Rect::NOTHING,
                 aspect: 0,
                 scale: 1.0,
                 play_mode_target: 0,

@@ -6,6 +6,7 @@ mod assets;
 mod capture;
 mod commands;
 mod console;
+mod game_input;
 mod gizmos;
 mod handles;
 mod layout;

@@ -63,6 +63,10 @@ impl SceneComponent for CapsuleCollider {
     const NAME: &'static str = "Capsule Collider";
     const CATEGORY: &'static str = "Physics";
 }
+impl SceneComponent for Scripts {
+    const NAME: &'static str = "Scripts";
+    const CATEGORY: &'static str = "";
+}
 impl SceneComponent for MeshCollider {
     const NAME: &'static str = "Mesh Collider";
     const CATEGORY: &'static str = "Physics";
@@ -134,6 +138,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<SphereCollider>(),
             ComponentInfo::of::<CapsuleCollider>(),
             ComponentInfo::of::<MeshCollider>(),
+            ComponentInfo::of::<Scripts>(),
         ]
     })
 }

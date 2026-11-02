@@ -1,6 +1,9 @@
 //! Play mode: snapshot on Play, run the game loop, restore everything on Stop.
 
 use misty_engine::runtime::{Runtime, Time};
+use misty_engine::scripting::LogKind;
+
+use crate::console::LogLevel;
 use misty_engine::scene::Scene;
 
 use crate::selection::Selection;
@@ -30,11 +33,9 @@ pub fn start(s: &mut EditorState) {
         dirty: s.scene_dirty,
     });
     s.time = Time::default();
-    let mut runtime = Runtime::start(&s.scene);
-    for w in runtime.take_warnings() {
-        s.console.warn(w);
-    }
-    s.runtime = Some(runtime);
+    s.runtime = Some(Runtime::start(&mut s.scene, s.project.root.clone()));
+    flush_logs(s);
+    s.game_view.focused = s.game_view.play_mode_target != 2;
     s.play = if s.pause_on_play {
         PlayState::Paused
     } else {
@@ -75,8 +76,25 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
         real_dt
     };
     s.time.advance(dt);
+    let input = std::mem::take(&mut s.game_input);
     if let Some(runtime) = s.runtime.as_mut() {
-        runtime.update(&mut s.scene, &s.time);
+        runtime.update(&mut s.scene, &s.time, input);
+    }
+    flush_logs(s);
+}
+
+/// Script output and runtime problems go to the Console.
+fn flush_logs(s: &mut EditorState) {
+    let Some(runtime) = s.runtime.as_mut() else {
+        return;
+    };
+    for (kind, text) in runtime.take_logs() {
+        let level = match kind {
+            LogKind::Info => LogLevel::Info,
+            LogKind::Warning => LogLevel::Warning,
+            LogKind::Error => LogLevel::Error,
+        };
+        s.console.log(level, text);
     }
 }
 
@@ -144,11 +162,17 @@ mod tests {
         use crate::actions::{Action, Create};
         use misty_engine::scene::PrimitiveMesh;
         let mut s = state();
-        for what in [Create::Primitive(PrimitiveMesh::Plane), Create::Primitive(PrimitiveMesh::Cube)] {
+        for what in [
+            Create::Primitive(PrimitiveMesh::Plane),
+            Create::Primitive(PrimitiveMesh::Cube),
+        ] {
             crate::commands::apply(&mut s, Action::Create { what, parent: None });
         }
         let cube = s.scene.find_by_name("Cube").unwrap();
-        assert_eq!(s.scene.component_names(cube), ["Transform", "Mesh Filter", "Mesh Renderer", "Box Collider"]);
+        assert_eq!(
+            s.scene.component_names(cube),
+            ["Transform", "Mesh Filter", "Mesh Renderer", "Box Collider"]
+        );
         let mut t = s.scene.transform(cube);
         t.position.y = 4.0;
         s.scene.set_transform(cube, t);

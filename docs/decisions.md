@@ -129,3 +129,25 @@ Record of choices made without asking, and why.
     That's simpler for now; an asset can replace it later.
 45. **Primitives get colliders like the reference editor:** Cube→Box, Sphere→Sphere, Capsule/Cylinder→Capsule,
     Plane/Quad→Mesh. A non-convex Mesh Collider on a dynamic Rigidbody falls back to convex, with a Console warning.
+
+## 2026-11-03 — Step 8
+
+46. **Scripting language = Lua 5.4 (mlua, vendored).** C# isn't available, and Lua is the most widely used
+    embedded game-scripting language: fast, small, hot-reloadable, with good editor tooling. A script returns a
+    class table; plain values are Inspector fields and functions are lifecycle callbacks, mirroring
+    MonoBehaviour. (Rhai was the pure-Rust alternative; Lua won on familiarity and speed.)
+47. **Safe engine access from scripts:** for one game frame the scene and physics are moved into the Lua state's
+    app data (`World`), and userdata (Transform, GameObject, Rigidbody) hold only entity ids and borrow the world
+    per call. No raw pointers, and a destroyed object gives a Lua error instead of a crash.
+48. **Frame order:** Start (first frame) → for each fixed step: FixedUpdate, physics step, collision/trigger
+    callbacks → Update → LateUpdate → Destroy queue.
+49. **Forces are applied as velocity changes** using the Rigidbody component's mass and the fixed timestep
+    (ForceMode Force/Impulse/VelocityChange/Acceleration). This works from `Start`, before the physics engine has
+    computed mass properties.
+50. **Several scripts per object** live in one `Scripts` component (a list); the Inspector shows each as its own
+    "Name (Script)" section. Field overrides are stored per script; missing values use the script's default.
+51. **Hot reload in Edit mode:** script files are polled for changes twice a second; fields are re-read and
+    syntax errors go to the Console. While playing, scripts keep the version they started with (like the
+    default "recompile after finished playing").
+52. **Game input only while the Game view has focus** (click it; Play Focused gives focus on Play). Plain-key editor
+    shortcuts are suspended then, so WASD don't switch tools during play.

@@ -4,7 +4,7 @@ use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
     BoxCollider, Camera, CapsuleCollider, ColliderKind, Light, LightType, MeshCollider, MeshFilter,
-    MeshRenderer, Scene, SphereCollider, Transform, registry,
+    MeshRenderer, Scene, ScriptRef, Scripts, SphereCollider, Transform, registry,
 };
 
 use crate::actions::{Action, Create};
@@ -149,6 +149,45 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
                 if let Err(err) = (info.from_json)(&mut s.scene.world, entity, value) {
                     s.console.warn(format!("Paste failed: {err}"));
                 }
+            }
+        }
+        Action::AddScript { entity, path } => {
+            if s.scene.contains(entity) {
+                s.record("Add Script");
+                let mut scripts = s
+                    .scene
+                    .world
+                    .get::<&Scripts>(entity)
+                    .map(|x| (*x).clone())
+                    .unwrap_or_default();
+                scripts.list.push(ScriptRef {
+                    path,
+                    ..Default::default()
+                });
+                s.scene.add(entity, scripts);
+            }
+        }
+        Action::RemoveScript { entity, slot } => {
+            s.record("Remove Script");
+            let empty = match s.scene.world.get::<&mut Scripts>(entity) {
+                Ok(mut scripts) => {
+                    if slot < scripts.list.len() {
+                        scripts.list.remove(slot);
+                    }
+                    scripts.list.is_empty()
+                }
+                Err(_) => false,
+            };
+            if empty {
+                s.scene.remove_by_name(entity, "Scripts");
+            }
+        }
+        Action::ResetScript { entity, slot } => {
+            s.record("Reset Script");
+            if let Ok(mut scripts) = s.scene.world.get::<&mut Scripts>(entity)
+                && let Some(r) = scripts.list.get_mut(slot)
+            {
+                r.fields.clear();
             }
         }
         Action::OpenAddComponent => s.inspector_add_open = true,

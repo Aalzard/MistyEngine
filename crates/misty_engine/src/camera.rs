@@ -104,7 +104,9 @@ pub fn euler_to_quat(degrees: Vec3) -> Quat {
 /// Inverse of [`euler_to_quat`], in degrees.
 pub fn quat_to_euler(q: Quat) -> Vec3 {
     let (y, x, z) = q.to_euler(EulerRot::YXZ);
-    Vec3::new(x, y, z) * (180.0 / std::f32::consts::PI)
+    let deg = Vec3::new(x, y, z) * (180.0 / std::f32::consts::PI);
+    // Snap float noise to 0 and drop negative zero so the Inspector shows "0", not "-0".
+    deg.map(|a| if a.abs() < 1e-4 { 0.0 } else { a }) + Vec3::ZERO
 }
 
 #[cfg(test)]

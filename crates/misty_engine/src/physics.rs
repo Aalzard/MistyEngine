@@ -43,9 +43,57 @@ struct Body {
     kinematic: bool,
 }
 
+/// A collision or trigger contact between two objects' colliders.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Contact {
+    pub a: Entity,
+    pub b: Entity,
+    /// true = began touching, false = stopped.
+    pub started: bool,
+    /// One of the colliders is a trigger.
+    pub trigger: bool,
+}
+
+/// Collects rapier collision events during a step.
+#[derive(Default)]
+struct EventLog(std::sync::Mutex<Vec<rp::CollisionEvent>>);
+
+impl rp::EventHandler for EventLog {
+    fn handle_collision_event(
+        &self,
+        _bodies: &rp::RigidBodySet,
+        _colliders: &rp::ColliderSet,
+        event: rp::CollisionEvent,
+        _contact_pair: Option<&rp::ContactPair>,
+    ) {
+        if let Ok(mut v) = self.0.lock() {
+            v.push(event);
+        }
+    }
+
+    fn handle_contact_force_event(
+        &self,
+        _dt: rp::Real,
+        _bodies: &rp::RigidBodySet,
+        _colliders: &rp::ColliderSet,
+        _contact_pair: &rp::ContactPair,
+        _total_force_magnitude: rp::Real,
+    ) {
+    }
+
+    fn handle_soft_body_tear_event(
+        &self,
+        _bodies: &rp::SoftBodySet,
+        _event: &rp::SoftBodyTearEvent,
+    ) {
+    }
+}
+
 pub struct Physics {
     world: rp::PhysicsWorld,
     bodies: HashMap<Entity, Body>,
+    /// Which object each collider belongs to.
+    colliders: HashMap<rp::ColliderHandle, Entity>,
     accumulator: f32,
     pub fixed_dt: f32,
     /// Problems found while building (shown in the Console).
@@ -66,6 +114,7 @@ impl Physics {
         let mut physics = Self {
             world,
             bodies: HashMap::new(),
+            colliders: HashMap::new(),
             accumulator: 0.0,
             fixed_dt: FIXED_DT,
             warnings: Vec::new(),
@@ -142,7 +191,9 @@ impl Physics {
             };
             for collider in physics.colliders_for(scene, e) {
                 // Mass comes from the Rigidbody, not collider density.
-                let collider = collider.density(0.0);
+                let collider = collider
+                    .density(0.0)
+                    .active_events(rp::ActiveEvents::COLLISION_EVENTS);
                 match owner {
                     Some(o) => {
                         // Pose relative to the owning body.
@@ -152,12 +203,14 @@ impl Physics {
                         let rel_pos = br.inverse() * (cp - bp);
                         let c = collider.position(pose(rel_pos, rel_rot)).build();
                         let parent = physics.bodies[&o].handle;
-                        physics.world.insert_collider(c, Some(parent));
+                        let h = physics.world.insert_collider(c, Some(parent));
+                        physics.colliders.insert(h, e);
                     }
                     None => {
                         let (cp, cr, _) = world_pose(scene, e);
                         let c = collider.position(pose(cp, cr)).build();
-                        physics.world.insert_collider(c, None);
+                        let h = physics.world.insert_collider(c, None);
+                        physics.colliders.insert(h, e);
                     }
                 }
             }
@@ -270,18 +323,128 @@ impl Physics {
 
     /// Advance by `dt` seconds of game time in fixed steps, then write dynamic poses back.
     pub fn update(&mut self, scene: &mut Scene, dt: f32) {
-        self.accumulator += dt;
-        let mut steps = 0;
-        while self.accumulator >= self.fixed_dt && steps < MAX_STEPS {
-            self.push_kinematic(scene);
-            self.world.step();
-            self.accumulator -= self.fixed_dt;
-            steps += 1;
+        for _ in 0..self.steps_due(dt) {
+            self.step(scene);
         }
-        if steps == MAX_STEPS {
+        self.sync_out(scene);
+    }
+
+    /// Add `dt` to the accumulator and return how many fixed steps to run now.
+    pub fn steps_due(&mut self, dt: f32) -> u32 {
+        self.accumulator += dt;
+        let steps = (self.accumulator / self.fixed_dt).floor() as u32;
+        self.accumulator -= steps as f32 * self.fixed_dt;
+        if steps > MAX_STEPS {
             self.accumulator = 0.0;
         }
+        steps.min(MAX_STEPS)
+    }
+
+    /// One fixed step; returns the contacts that began or ended.
+    pub fn step(&mut self, scene: &Scene) -> Vec<Contact> {
+        self.push_kinematic(scene);
+        let events = EventLog::default();
+        self.world.step_with_events(&(), &events);
+        let raw = events.0.into_inner().unwrap_or_default();
+        raw.into_iter()
+            .filter_map(|ev| {
+                let (h1, h2, started) = match ev {
+                    rp::CollisionEvent::Started(a, b, _) => (a, b, true),
+                    rp::CollisionEvent::Stopped(a, b, _) => (a, b, false),
+                };
+                Some(Contact {
+                    a: *self.colliders.get(&h1)?,
+                    b: *self.colliders.get(&h2)?,
+                    started,
+                    trigger: ev.sensor(),
+                })
+            })
+            .collect()
+    }
+
+    /// Dynamic bodies drive their Transform.
+    pub fn sync_out(&self, scene: &mut Scene) {
         self.pull_dynamic(scene);
+    }
+
+    fn body_mut(&mut self, e: Entity) -> Option<&mut rp::RigidBody> {
+        let h = self.bodies.get(&e)?.handle;
+        self.world.bodies.get_mut(h)
+    }
+
+    fn body(&self, e: Entity) -> Option<&rp::RigidBody> {
+        self.world.bodies.get(self.bodies.get(&e)?.handle)
+    }
+
+    pub fn has_body(&self, e: Entity) -> bool {
+        self.bodies.contains_key(&e)
+    }
+
+    pub fn velocity(&self, e: Entity) -> Option<Vec3> {
+        self.body(e).map(|b| gv(b.linvel()))
+    }
+
+    pub fn set_velocity(&mut self, e: Entity, v: Vec3) {
+        if let Some(b) = self.body_mut(e) {
+            b.set_linvel(rv(v), true);
+        }
+    }
+
+    pub fn angular_velocity(&self, e: Entity) -> Option<Vec3> {
+        self.body(e).map(|b| gv(b.angvel()))
+    }
+
+    pub fn set_angular_velocity(&mut self, e: Entity, v: Vec3) {
+        if let Some(b) = self.body_mut(e) {
+            b.set_angvel(rv(v), true);
+        }
+    }
+
+    pub fn mass(&self, e: Entity) -> Option<f32> {
+        self.body(e).map(|b| b.mass())
+    }
+
+    pub fn apply_impulse(&mut self, e: Entity, impulse: Vec3) {
+        if let Some(b) = self.body_mut(e) {
+            b.apply_impulse(rv(impulse), true);
+        }
+    }
+
+    pub fn apply_torque_impulse(&mut self, e: Entity, impulse: Vec3) {
+        if let Some(b) = self.body_mut(e) {
+            b.apply_torque_impulse(rv(impulse), true);
+        }
+    }
+
+    /// Move a body to a pose immediately (script set its Transform).
+    pub fn teleport(&mut self, e: Entity, position: Vec3, rotation: Quat) {
+        let kinematic = self.bodies.get(&e).is_some_and(|b| b.kinematic);
+        if let Some(b) = self.body_mut(e) {
+            if kinematic {
+                b.set_next_kinematic_position(pose(position, rotation));
+            } else {
+                b.set_position(pose(position, rotation), true);
+            }
+        }
+    }
+
+    /// Remove an object's body and colliders (Destroy).
+    pub fn remove(&mut self, e: Entity) {
+        if let Some(b) = self.bodies.remove(&e) {
+            self.world.remove_body_with_colliders(b.handle, true);
+        }
+        let handles: Vec<_> = self
+            .colliders
+            .iter()
+            .filter(|(_, o)| **o == e)
+            .map(|(h, _)| *h)
+            .collect();
+        for h in handles {
+            self.world.remove_collider(h);
+            self.colliders.remove(&h);
+        }
+        self.colliders
+            .retain(|h, _| self.world.colliders.get(*h).is_some());
     }
 
     /// Kinematic bodies follow their Transform.
@@ -418,5 +581,32 @@ mod tests {
             "{}",
             scene.world_position(c).y
         );
+    }
+
+    #[test]
+    fn landing_reports_a_collision_and_triggers_are_flagged() {
+        let mut scene = Scene::new("t");
+        let ground = cube(&mut scene, "Ground", Vec3::ZERO, false);
+        let c = cube(&mut scene, "Cube", Vec3::new(0.0, 2.0, 0.0), true);
+        let zone = cube(&mut scene, "Zone", Vec3::new(0.0, 1.2, 0.0), false);
+        scene
+            .world
+            .get::<&mut BoxCollider>(zone)
+            .unwrap()
+            .is_trigger = true;
+        let mut physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+        let mut contacts = Vec::new();
+        for _ in 0..120 {
+            contacts.extend(physics.step(&scene));
+            physics.sync_out(&mut scene);
+        }
+        let hit = |x: Entity, y: Entity| {
+            contacts
+                .iter()
+                .find(|k| (k.a == x && k.b == y) || (k.a == y && k.b == x))
+        };
+        let landing = hit(c, ground).expect("cube hits the ground");
+        assert!(landing.started && !landing.trigger);
+        assert!(hit(c, zone).expect("cube passes the trigger").trigger);
     }
 }

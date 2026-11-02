@@ -10,6 +10,7 @@ use misty_engine::scene::{
 };
 
 use misty_engine::assets::Material;
+use misty_engine::scene::{ScriptValue, Scripts};
 
 use crate::actions::Action;
 use crate::assets::AssetDatabase;
@@ -709,6 +710,8 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     let mut search: String = ui.data(|d| d.get_temp(search_id)).unwrap_or_default();
     let present = state.scene.component_names(e);
     let mut chosen = None;
+    let mut chosen_script: Option<String> = None;
+    let mut new_script = false;
     let area = egui::Area::new(egui::Id::new("add_component_popup"))
         .order(egui::Order::Foreground)
         .fixed_pos(resp.rect.left_bottom() + egui::vec2(0.0, 2.0))
@@ -739,10 +742,27 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                         chosen = Some(info.name);
                     }
                 }
-                ui.add_enabled(
-                    false,
-                    egui::Button::new("New script… (step 8)").frame(false),
-                );
+                // Project scripts, then "New script".
+                let scripts: Vec<String> = state
+                    .assets
+                    .scripts
+                    .keys()
+                    .filter(|p| needle.is_empty() || p.to_lowercase().contains(&needle))
+                    .cloned()
+                    .collect();
+                ui.label(RichText::new("Scripts").color(theme::TEXT_DIM).small());
+                for path in scripts {
+                    let label = format!("📜 {}", AssetDatabase::material_name(Some(&path)));
+                    if ui.add(egui::Button::new(label).frame(false)).clicked() {
+                        chosen_script = Some(path);
+                    }
+                }
+                if ui
+                    .add(egui::Button::new("➕ New script").frame(false))
+                    .clicked()
+                {
+                    new_script = true;
+                }
             });
         });
 
@@ -752,9 +772,192 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     if let Some(name) = chosen {
         state.push(Action::AddComponent(name));
     }
-    if chosen.is_some() || clicked_outside || ui.input(|i| i.key_pressed(Key::Escape)) {
+    if new_script {
+        let folder = state.project.root.join("Assets").join("Scripts");
+        let _ = std::fs::create_dir_all(&folder);
+        match state.assets.create_script(&folder) {
+            Ok(path) => {
+                state.console.info(format!("Created {path}"));
+                state.project.refresh();
+                chosen_script = Some(path);
+            }
+            Err(err) => state
+                .console
+                .warn(format!("Could not create script: {err}")),
+        }
+    }
+    let picked = chosen.is_some() || chosen_script.is_some();
+    if let Some(path) = chosen_script {
+        state.push(Action::AddScript { entity: e, path });
+    }
+    if picked || clicked_outside || ui.input(|i| i.key_pressed(Key::Escape)) {
         state.inspector_add_open = false;
         search.clear();
     }
     ui.data_mut(|d| d.insert_temp(search_id, search));
+}
+
+/// "moveSpeed" / "move_speed" → "Move Speed".
+pub fn nicify(name: &str) -> String {
+    let mut out = String::new();
+    let mut prev_lower = false;
+    for c in name.chars() {
+        if c == '_' {
+            out.push(' ');
+            prev_lower = false;
+            continue;
+        }
+        if c.is_uppercase() && prev_lower {
+            out.push(' ');
+        }
+        if out.is_empty() || out.ends_with(' ') {
+            out.extend(c.to_uppercase());
+        } else {
+            out.push(c);
+        }
+        prev_lower = c.is_lowercase() || c.is_ascii_digit();
+    }
+    out
+}
+
+/// Inspector sections for every script on `e`: "Name (Script)" with its public fields.
+pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
+    let Ok(scripts) = state.scene.world.get::<&Scripts>(e).map(|s| (*s).clone()) else {
+        return;
+    };
+    for (slot, script) in scripts.list.iter().enumerate() {
+        let id = ui.make_persistent_id(("script", slot, &script.path));
+        let open =
+            egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
+        let header = open.show_header(ui, |ui| {
+            let mut on = script.enabled;
+            if ui.checkbox(&mut on, "").changed() {
+                if let Ok(mut s) = state.scene.world.get::<&mut Scripts>(e) {
+                    s.list[slot].enabled = on;
+                }
+                state.mark_edited("Script");
+            }
+            ui.label(RichText::new(format!("📜 {} (Script)", nicify(&script.name()))).strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.menu_button("⋮", |ui| {
+                    if ui.button("Reset").clicked() {
+                        state.push(Action::ResetScript { entity: e, slot });
+                        ui.close();
+                    }
+                    if ui.button("Remove Component").clicked() {
+                        state.push(Action::RemoveScript { entity: e, slot });
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Edit Script").clicked() {
+                        open_script(state, &script.path);
+                        ui.close();
+                    }
+                });
+            });
+        });
+        header.body(|ui| script_fields(ui, state, e, slot, &script.path));
+        ui.separator();
+    }
+}
+
+fn script_fields(ui: &mut Ui, state: &mut EditorState, e: Entity, slot: usize, path: &str) {
+    let meta = state.assets.scripts.get(path).cloned();
+    let overrides = state
+        .scene
+        .world
+        .get::<&Scripts>(e)
+        .ok()
+        .and_then(|s| s.list.get(slot).map(|r| r.fields.clone()))
+        .unwrap_or_default();
+    let mut edits: Vec<(String, ScriptValue)> = Vec::new();
+    grid(ui, &format!("script_grid_{slot}"), |ui| {
+        ui.label("Script");
+        if ui
+            .add(
+                egui::Button::new(format!("📜 {}", AssetDatabase::material_name(Some(path))))
+                    .frame(false),
+            )
+            .on_hover_text("Double-click to edit")
+            .double_clicked()
+        {
+            open_script(state, path);
+        }
+        ui.end_row();
+        match meta.as_ref().map(|m| &m.fields) {
+            None => {
+                ui.label(RichText::new("Missing script file").color(LogLevelColor::ERROR));
+                ui.end_row();
+            }
+            Some(Err(err)) => {
+                ui.label(RichText::new("Error").color(LogLevelColor::ERROR));
+                ui.label(RichText::new(err).color(LogLevelColor::ERROR).small());
+                ui.end_row();
+            }
+            Some(Ok(fields)) => {
+                for (name, default) in fields {
+                    let mut value = overrides
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| default.clone());
+                    ui.label(nicify(name));
+                    if script_value_ui(ui, &format!("{slot}_{name}"), &mut value) {
+                        edits.push((name.clone(), value));
+                    }
+                    ui.end_row();
+                }
+            }
+        }
+        false
+    });
+    if !edits.is_empty() {
+        if let Ok(mut s) = state.scene.world.get::<&mut Scripts>(e) {
+            for (k, v) in edits {
+                s.list[slot].fields.insert(k, v);
+            }
+        }
+        state.mark_edited("Script");
+    }
+}
+
+/// Widget for one script field value.
+fn script_value_ui(ui: &mut Ui, id: &str, v: &mut ScriptValue) -> bool {
+    match v {
+        ScriptValue::Bool(b) => ui.checkbox(b, "").changed(),
+        ScriptValue::Number(n) => ui.add(egui::DragValue::new(n).speed(0.1)).changed(),
+        ScriptValue::Text(t) => ui
+            .add(egui::TextEdit::singleline(t).desired_width(150.0))
+            .changed(),
+        ScriptValue::Vector3(a) => {
+            ui.push_id(id, |ui| {
+                ui.horizontal(|ui| {
+                    let mut ch = false;
+                    for (i, axis) in ["X", "Y", "Z"].iter().enumerate() {
+                        ui.label(*axis);
+                        ch |= ui
+                            .add(egui::DragValue::new(&mut a[i]).speed(0.05))
+                            .changed();
+                    }
+                    ch
+                })
+                .inner
+            })
+            .inner
+        }
+    }
+}
+
+/// Open a script in the system's default editor for `.lua` files.
+pub fn open_script(state: &mut EditorState, rel: &str) {
+    let abs = state.assets.absolute(rel);
+    if let Err(err) = crate::assets::open_external(&abs) {
+        state.console.warn(format!("Could not open {rel}: {err}"));
+    }
+}
+
+/// Error colour for inline messages.
+struct LogLevelColor;
+
+impl LogLevelColor {
+    const ERROR: egui::Color32 = egui::Color32::from_rgb(255, 110, 100);
 }
