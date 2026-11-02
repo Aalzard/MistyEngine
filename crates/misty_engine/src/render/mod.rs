@@ -2,6 +2,7 @@
 
 pub mod mesh;
 mod pipelines;
+mod shadows;
 mod target;
 
 pub use target::RenderTarget;
@@ -11,14 +12,13 @@ use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 use crate::camera::{Camera, Projection};
-use crate::scene::{LightType, PrimitiveMesh};
+use crate::scene::{LightType, PrimitiveMesh, Shadows};
 
 pub const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 pub const SAMPLE_COUNT: u32 = 4;
-const SHADOW_SIZE: u32 = 2048;
 const MAX_LIGHTS: usize = 8;
 
 /// World plane the editor grid lies on.
@@ -95,7 +95,7 @@ pub struct LightData {
     pub range: f32,
     /// Full cone angle in degrees.
     pub spot_angle: f32,
-    pub shadows: bool,
+    pub shadows: Shadows,
 }
 
 /// Everything needed to draw one view.
@@ -140,6 +140,7 @@ struct LightItem {
     dir_type: [f32; 4],
     color: [f32; 4],
     spot: [f32; 4],
+    shadow: [f32; 4],
 }
 
 #[repr(C)]
@@ -151,6 +152,7 @@ struct LightsUniform {
     equator: [f32; 4],
     ground: [f32; 4],
     items: [LightItem; MAX_LIGHTS],
+    local_view_proj: [[[f32; 4]; 4]; shadows::MAX_LOCAL_LAYERS],
 }
 
 struct GpuMesh {
@@ -163,15 +165,12 @@ pub struct Renderer {
     pipelines: pipelines::Pipelines,
     view_buffer: wgpu::Buffer,
     view_bind_group: wgpu::BindGroup,
-    shadow_view_buffer: wgpu::Buffer,
-    shadow_view_bind_group: wgpu::BindGroup,
+    shadows: shadows::ShadowMaps,
     lights_buffer: wgpu::Buffer,
     draws_buffer: wgpu::Buffer,
     draws_capacity: usize,
     mesh_bind_group: wgpu::BindGroup,
     draws_bind_group: wgpu::BindGroup,
-    shadow_view: wgpu::TextureView,
-    shadow_sampler: wgpu::Sampler,
     line_buffer: wgpu::Buffer,
     line_capacity: usize,
     meshes: Vec<GpuMesh>,
@@ -189,7 +188,6 @@ impl Renderer {
             })
         };
         let view_buffer = uniform("misty view", std::mem::size_of::<ViewUniform>());
-        let shadow_view_buffer = uniform("misty shadow view", std::mem::size_of::<ViewUniform>());
         let lights_buffer = uniform("misty lights", std::mem::size_of::<LightsUniform>());
         let view_group = |buffer: &wgpu::Buffer| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -202,43 +200,12 @@ impl Renderer {
             })
         };
         let view_bind_group = view_group(&view_buffer);
-        let shadow_view_bind_group = view_group(&shadow_view_buffer);
-
-        let shadow_view = device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("misty shadow map"),
-                size: wgpu::Extent3d {
-                    width: SHADOW_SIZE,
-                    height: SHADOW_SIZE,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: SHADOW_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            })
-            .create_view(&Default::default());
-        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("misty shadow sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            compare: Some(wgpu::CompareFunction::LessEqual),
-            ..Default::default()
-        });
+        let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
 
         let draws_capacity = 256;
         let draws_buffer = draws_buffer(device, draws_capacity);
-        let (mesh_bind_group, draws_bind_group) = draw_groups(
-            device,
-            &pipelines,
-            &lights_buffer,
-            &draws_buffer,
-            &shadow_view,
-            &shadow_sampler,
-        );
+        let (mesh_bind_group, draws_bind_group) =
+            draw_groups(device, &pipelines, &lights_buffer, &draws_buffer, &shadows);
 
         let meshes = PrimitiveMesh::ALL
             .iter()
@@ -264,15 +231,12 @@ impl Renderer {
         Self {
             view_buffer,
             view_bind_group,
-            shadow_view_buffer,
-            shadow_view_bind_group,
+            shadows,
             lights_buffer,
             draws_buffer,
             draws_capacity,
             mesh_bind_group,
             draws_bind_group,
-            shadow_view,
-            shadow_sampler,
             line_buffer: line_buffer(device, line_capacity),
             line_capacity,
             meshes,
@@ -313,8 +277,7 @@ impl Renderer {
                 &self.pipelines,
                 &self.lights_buffer,
                 &self.draws_buffer,
-                &self.shadow_view,
-                &self.shadow_sampler,
+                &self.shadows,
             );
         }
         let draws: Vec<DrawUniform> = frame.meshes.iter().map(draw_uniform).collect();
@@ -322,14 +285,23 @@ impl Renderer {
             queue.write_buffer(&self.draws_buffer, 0, bytemuck::cast_slice(&draws));
         }
 
-        // Lights and the directional shadow caster.
-        let shadow_vp = shadow_matrix(frame);
-        let lights = lights_uniform(frame, shadow_vp);
+        // Lights and their shadow maps (slot 0 = directional, 1.. = local layers).
+        let plan = shadows::plan(frame);
+        let lights = lights_uniform(frame, &plan);
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
-        if let Some(vp) = shadow_vp {
+        let slots = plan
+            .directional
+            .iter()
+            .map(|m| (0, *m))
+            .chain(plan.local.iter().enumerate().map(|(i, m)| (i + 1, *m)));
+        for (slot, m) in slots {
             let mut v = ViewUniform::zeroed();
-            v.view_proj = vp.to_cols_array_2d();
-            queue.write_buffer(&self.shadow_view_buffer, 0, bytemuck::bytes_of(&v));
+            v.view_proj = m.to_cols_array_2d();
+            queue.write_buffer(
+                &self.shadows.view_buffer,
+                slot as u64 * shadows::VIEW_STRIDE,
+                bytemuck::bytes_of(&v),
+            );
         }
 
         if frame.lines.len() > self.line_capacity {
@@ -343,8 +315,16 @@ impl Renderer {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("misty frame"),
         });
-        if shadow_vp.is_some() {
-            self.shadow_pass(&mut encoder, frame);
+        if plan.directional.is_some() {
+            self.shadow_pass(&mut encoder, frame, &self.shadows.directional_view, 0);
+        }
+        for layer in 0..plan.local.len() {
+            self.shadow_pass(
+                &mut encoder,
+                frame,
+                &self.shadows.local_layer_views[layer],
+                layer + 1,
+            );
         }
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         self.mask_pass(&mut encoder, target, frame);
@@ -369,12 +349,18 @@ impl Renderer {
         }
     }
 
-    fn shadow_pass(&self, encoder: &mut wgpu::CommandEncoder, frame: &Frame) {
+    fn shadow_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        frame: &Frame,
+        target: &wgpu::TextureView,
+        slot: usize,
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty shadow pass"),
             color_attachments: &[],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &self.shadow_view,
+                view: target,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
                     store: wgpu::StoreOp::Store,
@@ -386,7 +372,8 @@ impl Renderer {
             multiview_mask: None,
         });
         pass.set_pipeline(&self.pipelines.shadow);
-        pass.set_bind_group(0, &self.shadow_view_bind_group, &[]);
+        let offset = (slot as u64 * shadows::VIEW_STRIDE) as u32;
+        pass.set_bind_group(0, &self.shadows.view_bind_group, &[offset]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
         self.draw_meshes(&mut pass, frame, |d| d.cast_shadows);
     }
@@ -488,8 +475,7 @@ fn draw_groups(
     p: &pipelines::Pipelines,
     lights: &wgpu::Buffer,
     draws: &wgpu::Buffer,
-    shadow: &wgpu::TextureView,
-    sampler: &wgpu::Sampler,
+    shadows: &shadows::ShadowMaps,
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let mesh = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("misty mesh group"),
@@ -505,11 +491,15 @@ fn draw_groups(
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: wgpu::BindingResource::TextureView(shadow),
+                resource: wgpu::BindingResource::TextureView(&shadows.directional_view),
             },
             wgpu::BindGroupEntry {
                 binding: 3,
-                resource: wgpu::BindingResource::Sampler(sampler),
+                resource: wgpu::BindingResource::Sampler(&shadows.sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: wgpu::BindingResource::TextureView(&shadows.local_array_view),
             },
         ],
     });
@@ -553,54 +543,11 @@ fn draw_uniform(d: &MeshDraw) -> DrawUniform {
     }
 }
 
-/// Orthographic light matrix around all shadow casters, for the first shadowed directional light.
-fn shadow_matrix(frame: &Frame) -> Option<Mat4> {
-    let light = frame
-        .lights
-        .iter()
-        .find(|l| l.kind == LightType::Directional && l.shadows && l.intensity > 0.0)?;
-    let casters: Vec<&MeshDraw> = frame.meshes.iter().filter(|m| m.cast_shadows).collect();
-    if casters.is_empty() || !frame.shaded {
-        return None;
-    }
-    // Bounding sphere of the casters' world bounds.
-    let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
-    for m in &casters {
-        let half = m.mesh.half_extents();
-        for corner in 0..8 {
-            let s = Vec3::new(
-                if corner & 1 == 0 { -1.0 } else { 1.0 },
-                if corner & 2 == 0 { -1.0 } else { 1.0 },
-                if corner & 4 == 0 { -1.0 } else { 1.0 },
-            );
-            let p = m.model.transform_point3(half * s);
-            lo = lo.min(p);
-            hi = hi.max(p);
-        }
-    }
-    let center = (lo + hi) * 0.5;
-    let radius = ((hi - lo).length() * 0.5).max(1.0);
-    let dir = light.direction.normalize_or(Vec3::NEG_Y);
-    let up = if dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
-    let eye = center - dir * radius * 2.0;
-    let view = glam::camera::lh::view::look_to_mat4(eye, dir, up);
-    let proj = glam::camera::lh::proj::directx::orthographic(
-        -radius,
-        radius,
-        -radius,
-        radius,
-        0.0,
-        radius * 4.0,
-    );
-    Some(proj * view)
-}
-
-fn lights_uniform(frame: &Frame, shadow_vp: Option<Mat4>) -> LightsUniform {
+fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
     let mut u = LightsUniform::zeroed();
-    let mut shadow_taken = false;
     let mut n = 0;
-    for l in frame.lights.iter().take(MAX_LIGHTS) {
-        if l.intensity <= 0.0 {
+    for (i, l) in frame.lights.iter().enumerate() {
+        if n == MAX_LIGHTS || l.intensity <= 0.0 {
             continue;
         }
         let c = srgb_to_linear(l.color);
@@ -609,11 +556,18 @@ fn lights_uniform(frame: &Frame, shadow_vp: Option<Mat4>) -> LightsUniform {
             LightType::Point => 1.0,
             LightType::Spot => 2.0,
         };
-        // Only the first shadowed directional light owns the shadow map.
-        let casts =
-            l.kind == LightType::Directional && l.shadows && !shadow_taken && shadow_vp.is_some();
-        shadow_taken |= casts;
         let half = (l.spot_angle * 0.5).to_radians();
+        let (mode, layer) = match plan.light_layers.get(i).copied().flatten() {
+            Some(layer) => (
+                match l.shadows {
+                    Shadows::None => 0.0,
+                    Shadows::Hard => 1.0,
+                    Shadows::Soft => 2.0,
+                },
+                layer as f32,
+            ),
+            None => (0.0, -1.0),
+        };
         u.items[n] = LightItem {
             pos_range: l.position.extend(l.range).to_array(),
             dir_type: l.direction.normalize_or(Vec3::Z).extend(kind).to_array(),
@@ -621,19 +575,21 @@ fn lights_uniform(frame: &Frame, shadow_vp: Option<Mat4>) -> LightsUniform {
                 c[0] * l.intensity,
                 c[1] * l.intensity,
                 c[2] * l.intensity,
-                casts as u8 as f32,
+                0.0,
             ],
             spot: [half.cos(), (half * 0.8).cos(), 0.0, 0.0],
+            shadow: [mode, layer, 0.0, 0.0],
         };
         n += 1;
     }
-    u.info = [
-        n as f32,
-        shadow_vp.is_some() as u8 as f32,
-        frame.ambient_intensity,
-        0.0,
-    ];
-    u.shadow_view_proj = shadow_vp.unwrap_or(Mat4::IDENTITY).to_cols_array_2d();
+    u.info = [n as f32, 0.0, frame.ambient_intensity, 0.0];
+    u.shadow_view_proj = plan
+        .directional
+        .unwrap_or(Mat4::IDENTITY)
+        .to_cols_array_2d();
+    for (i, m) in plan.local.iter().enumerate() {
+        u.local_view_proj[i] = m.to_cols_array_2d();
+    }
     // Ambient matches the procedural sky gradient (sky / horizon / ground).
     let amb = |c: [f32; 3], k: f32| {
         let l = srgb_to_linear(c);
@@ -691,10 +647,11 @@ mod tests {
     #[test]
     fn gpu_struct_sizes_match_wgsl() {
         assert_eq!(std::mem::size_of::<DrawUniform>(), 176);
-        assert_eq!(std::mem::size_of::<LightItem>(), 64);
+        assert_eq!(std::mem::size_of::<LightItem>(), 80);
         assert_eq!(
             std::mem::size_of::<LightsUniform>(),
-            16 + 64 + 48 + 64 * MAX_LIGHTS
+            16 + 64 + 48 + 80 * MAX_LIGHTS + 64 * shadows::MAX_LOCAL_LAYERS
         );
+        assert!(std::mem::size_of::<ViewUniform>() as u64 <= shadows::VIEW_STRIDE);
     }
 }

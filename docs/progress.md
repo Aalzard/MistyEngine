@@ -96,7 +96,8 @@
 ### Done
 - Primitive meshes at the familiar sizes: Cube, Sphere, Capsule, Cylinder, Plane (10×10), Quad.
 - Lit rendering (4x MSAA): directional / point / spot lights with range falloff and spot cone, colour + intensity,
-  hemisphere ambient, soft directional shadows (Cast/Receive Shadows respected, Shadow Type None disables).
+  hemisphere ambient, GGX specular + sky reflections (Smoothness / Metallic visible), shadows for directional,
+  spot and point lights with Shadow Type Hard (crisp) / Soft (filtered) / None.
 - Orange selection outline around selected objects (children included).
 - Scene view draw modes: Shaded, Wireframe, Shaded Wireframe. Lighting toggle off = headlight from the camera.
 - Material assets: Project ▸ + ▸ Material / Assets ▸ Create ▸ Material, Folder; select a material in the Project
@@ -108,7 +109,7 @@
 
 ### Not matching Unity yet
 - No textures, normal maps or transparency (Rendering Mode); no shader selection.
-- No point/spot light shadows; no lightmapping, reflection probes or fog.
+- No lightmapping, reflection probes or fog; local-light shadows are limited to 16 layers (e.g. 2 point + 4 spot).
 - Material changes are not undoable; assets can't be renamed/deleted from the Project window yet.
 - No material preview sphere in the Inspector; no drag-hover preview in the Scene view.
 

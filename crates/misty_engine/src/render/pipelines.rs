@@ -7,6 +7,8 @@ const COMMON: &str = include_str!("shaders/common.wgsl");
 
 pub struct Pipelines {
     pub view_layout: wgpu::BindGroupLayout,
+    /// View uniform with a dynamic offset (one slot per shadow map).
+    pub shadow_view_layout: wgpu::BindGroupLayout,
     /// Lights + draws + shadow map (lit mesh pass).
     pub mesh_layout: wgpu::BindGroupLayout,
     /// Draws only (shadow and mask passes).
@@ -135,9 +137,30 @@ impl Pipelines {
                     S::FRAGMENT,
                     wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                 ),
+                entry(
+                    4,
+                    S::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                ),
             ],
         );
         let draws_layout = layout("misty draws", &[entry(1, S::VERTEX, storage())]);
+        let shadow_view_layout = layout(
+            "misty shadow view",
+            &[entry(
+                0,
+                S::VERTEX_FRAGMENT,
+                wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: true,
+                    min_binding_size: None,
+                },
+            )],
+        );
         let mask_layout = layout(
             "misty mask",
             &[entry(
@@ -219,7 +242,7 @@ impl Pipelines {
                 }),
                 color: None,
                 samples: 1,
-                ..Spec::new("shadow", depth_src, &[&view_layout, &draws_layout])
+                ..Spec::new("shadow", depth_src, &[&shadow_view_layout, &draws_layout])
             },
         );
         let mask = build(
@@ -248,6 +271,7 @@ impl Pipelines {
 
         Self {
             view_layout,
+            shadow_view_layout,
             mesh_layout,
             draws_layout,
             mask_layout,

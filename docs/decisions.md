@@ -104,3 +104,14 @@ Record of choices made without asking, and why.
     1/60 s frame while paused, and Step in Edit mode enters Play paused. Pause before Play starts paused.
 37. **Play Maximized** swaps the dock layout for a single Game tab until Stop; Play Focused focuses the Game tab;
     Play Unfocused leaves the layout alone.
+
+## 2026-11-03 — Fixes after checkpoint 3
+
+38. **Hard vs Soft shadows:** Hard = one bilinear depth compare (crisp edge); Soft = 5×5 PCF over a 1.5-texel
+    footprint. Both are per light, following the Light's Shadow Type.
+39. **Spot and point shadows** use a shared 16-layer 1024² depth array: a spot light takes 1 layer (perspective
+    frustum = cone angle), a point light takes 6 (one 92° frustum per cube face, picked by the major axis in the
+    shader). Lights beyond the 16-layer budget render without shadows. One directional light keeps the 2048² map.
+40. **Shading moved to GGX specular + sky reflections** (Fresnel with roughness-based blur and surface reduction,
+    like the Standard shader's approximation), so Smoothness and Metallic now have a clearly visible effect. The sky
+    gradient is shared with the skybox shader so reflections match the background.

@@ -17,6 +17,18 @@ fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     return pow(c, vec3<f32>(2.2));
 }
 
+// Linear sky colour for a direction: zenith blue, light horizon, dark ground.
+// Used by the skybox and for reflections on smooth surfaces.
+fn sky_gradient(dir: vec3<f32>) -> vec3<f32> {
+    let zenith = srgb_to_linear(vec3<f32>(0.40, 0.55, 0.76));
+    let horizon = srgb_to_linear(vec3<f32>(0.76, 0.79, 0.83));
+    let ground = srgb_to_linear(vec3<f32>(0.32, 0.30, 0.29));
+    if (dir.y >= 0.0) {
+        return mix(horizon, zenith, pow(dir.y, 0.6));
+    }
+    return mix(horizon, ground, pow(min(-dir.y * 6.0, 1.0), 0.5));
+}
+
 // World position on the near (z = 0) or far (z = 1) plane under an NDC point.
 fn unproject(ndc: vec2<f32>, z: f32) -> vec3<f32> {
     let p = view.inv_view_proj * vec4<f32>(ndc, z, 1.0);
