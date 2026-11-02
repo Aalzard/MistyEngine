@@ -4,8 +4,9 @@ use egui::{Grid, Key, RichText, Ui};
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    Camera, ClearFlags, Light, LightType, MeshFilter, MeshRenderer, PrimitiveMesh, SceneComponent,
-    Shadows, registry,
+    BoxCollider, Camera, CapsuleCollider, ClearFlags, Light, LightType, MeshCollider, MeshFilter,
+    MeshRenderer, PhysicsSurface, PrimitiveMesh, Rigidbody, SceneComponent, Shadows,
+    SphereCollider, registry,
 };
 
 use misty_engine::assets::Material;
@@ -23,6 +24,8 @@ pub fn icon(name: &str) -> &'static str {
         "Light" => "💡",
         "Mesh Filter" => "▦",
         "Mesh Renderer" => "◈",
+        "Rigidbody" => "⚛",
+        "Box Collider" | "Sphere Collider" | "Capsule Collider" | "Mesh Collider" => "⬡",
         _ => "▣",
     }
 }
@@ -34,6 +37,10 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
         "Light" => w.get::<&Light>(e).ok().map(|c| c.enabled),
         "Mesh Renderer" => w.get::<&MeshRenderer>(e).ok().map(|c| c.enabled),
+        "Box Collider" => w.get::<&BoxCollider>(e).ok().map(|c| c.enabled),
+        "Sphere Collider" => w.get::<&SphereCollider>(e).ok().map(|c| c.enabled),
+        "Capsule Collider" => w.get::<&CapsuleCollider>(e).ok().map(|c| c.enabled),
+        "Mesh Collider" => w.get::<&MeshCollider>(e).ok().map(|c| c.enabled),
         _ => None,
     }
 }
@@ -45,6 +52,22 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
         "Light" => w.get::<&mut Light>(e).map(|mut c| c.enabled = on).ok(),
         "Mesh Renderer" => w
             .get::<&mut MeshRenderer>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
+        "Box Collider" => w
+            .get::<&mut BoxCollider>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
+        "Sphere Collider" => w
+            .get::<&mut SphereCollider>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
+        "Capsule Collider" => w
+            .get::<&mut CapsuleCollider>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
+        "Mesh Collider" => w
+            .get::<&mut MeshCollider>(e)
             .map(|mut c| c.enabled = on)
             .ok(),
         _ => None,
@@ -60,6 +83,11 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Light" => with::<Light>(ui, state, e, light),
         "Mesh Filter" => with::<MeshFilter>(ui, state, e, mesh_filter),
         "Mesh Renderer" => mesh_renderer(ui, state, e),
+        "Rigidbody" => with::<Rigidbody>(ui, state, e, rigidbody),
+        "Box Collider" => with::<BoxCollider>(ui, state, e, box_collider),
+        "Sphere Collider" => with::<SphereCollider>(ui, state, e, sphere_collider),
+        "Capsule Collider" => with::<CapsuleCollider>(ui, state, e, capsule_collider),
+        "Mesh Collider" => with::<MeshCollider>(ui, state, e, mesh_collider),
         _ => {
             ui.weak("No editor for this component.");
             false
@@ -417,6 +445,194 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         let _ = state.scene.world.insert_one(e, r);
     }
     changed
+}
+
+fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
+    let mut ch = grid(ui, "rigidbody_grid", |ui| {
+        let mut ch = false;
+        ui.label("Mass");
+        ch |= ui
+            .add(
+                egui::DragValue::new(&mut r.mass)
+                    .speed(0.05)
+                    .range(1e-4..=1e6),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Drag");
+        ch |= ui
+            .add(
+                egui::DragValue::new(&mut r.drag)
+                    .speed(0.01)
+                    .range(0.0..=1e4),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Angular Drag");
+        ch |= ui
+            .add(
+                egui::DragValue::new(&mut r.angular_drag)
+                    .speed(0.01)
+                    .range(0.0..=1e4),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Use Gravity");
+        ch |= ui.checkbox(&mut r.use_gravity, "").changed();
+        ui.end_row();
+        ui.label("Is Kinematic");
+        ch |= ui.checkbox(&mut r.is_kinematic, "").changed();
+        ui.end_row();
+        ui.label("Collision Detection");
+        egui::ComboBox::from_id_salt("rb_ccd")
+            .selected_text(if r.continuous {
+                "Continuous"
+            } else {
+                "Discrete"
+            })
+            .width(150.0)
+            .show_ui(ui, |ui| {
+                ch |= ui
+                    .selectable_value(&mut r.continuous, false, "Discrete")
+                    .changed();
+                ch |= ui
+                    .selectable_value(&mut r.continuous, true, "Continuous")
+                    .changed();
+            });
+        ui.end_row();
+        ch
+    });
+    egui::CollapsingHeader::new("Constraints")
+        .id_salt("rb_constraints")
+        .default_open(false)
+        .show(ui, |ui| {
+            for (label, flags) in [
+                ("Freeze Position", &mut r.freeze_position),
+                ("Freeze Rotation", &mut r.freeze_rotation),
+            ] {
+                ui.horizontal(|ui| {
+                    ui.add_sized([110.0, 18.0], egui::Label::new(label));
+                    for (i, axis) in ["X", "Y", "Z"].iter().enumerate() {
+                        ch |= ui.checkbox(&mut flags[i], *axis).changed();
+                    }
+                });
+            }
+        });
+    ch
+}
+
+/// Is Trigger + friction/bounciness rows shared by every collider.
+fn collider_common(
+    ui: &mut Ui,
+    id: &str,
+    trigger: &mut bool,
+    surface: &mut PhysicsSurface,
+) -> bool {
+    grid(ui, id, |ui| {
+        let mut ch = false;
+        ui.label("Is Trigger");
+        ch |= ui.checkbox(trigger, "").changed();
+        ui.end_row();
+        ui.label("Friction");
+        ch |= ui
+            .add(egui::Slider::new(&mut surface.friction, 0.0..=2.0))
+            .changed();
+        ui.end_row();
+        ui.label("Bounciness");
+        ch |= ui
+            .add(egui::Slider::new(&mut surface.bounciness, 0.0..=1.0))
+            .changed();
+        ui.end_row();
+        ch
+    })
+}
+
+fn vec3_field(ui: &mut Ui, label: &str, v: &mut Vec3, speed: f32) -> bool {
+    let mut a = v.to_array();
+    let ch = vec3_row(ui, label, &mut a, speed);
+    if ch {
+        *v = Vec3::from(a);
+    }
+    ch
+}
+
+fn box_collider(ui: &mut Ui, c: &mut BoxCollider) -> bool {
+    let mut ch = collider_common(ui, "box_col", &mut c.is_trigger, &mut c.surface);
+    ch |= vec3_field(ui, "Center", &mut c.center, 0.01);
+    if vec3_field(ui, "Size", &mut c.size, 0.01) {
+        c.size = c.size.max(Vec3::ZERO);
+        ch = true;
+    }
+    ch
+}
+
+fn sphere_collider(ui: &mut Ui, c: &mut SphereCollider) -> bool {
+    let mut ch = collider_common(ui, "sphere_col", &mut c.is_trigger, &mut c.surface);
+    ch |= vec3_field(ui, "Center", &mut c.center, 0.01);
+    ch |= grid(ui, "sphere_col_r", |ui| {
+        ui.label("Radius");
+        let r = ui
+            .add(
+                egui::DragValue::new(&mut c.radius)
+                    .speed(0.01)
+                    .range(0.0..=1e5),
+            )
+            .changed();
+        ui.end_row();
+        r
+    });
+    ch
+}
+
+fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
+    let mut ch = collider_common(ui, "capsule_col", &mut c.is_trigger, &mut c.surface);
+    ch |= vec3_field(ui, "Center", &mut c.center, 0.01);
+    ch |= grid(ui, "capsule_col_dims", |ui| {
+        let mut ch = false;
+        ui.label("Radius");
+        ch |= ui
+            .add(
+                egui::DragValue::new(&mut c.radius)
+                    .speed(0.01)
+                    .range(0.0..=1e5),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Height");
+        ch |= ui
+            .add(
+                egui::DragValue::new(&mut c.height)
+                    .speed(0.01)
+                    .range(0.0..=1e5),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Direction");
+        let names = ["X-Axis", "Y-Axis", "Z-Axis"];
+        egui::ComboBox::from_id_salt("capsule_dir")
+            .selected_text(names[c.direction.min(2) as usize])
+            .width(150.0)
+            .show_ui(ui, |ui| {
+                for (i, n) in names.iter().enumerate() {
+                    ch |= ui.selectable_value(&mut c.direction, i as u8, *n).changed();
+                }
+            });
+        ui.end_row();
+        ch
+    });
+    ch
+}
+
+fn mesh_collider(ui: &mut Ui, c: &mut MeshCollider) -> bool {
+    let mut ch = grid(ui, "mesh_col_convex", |ui| {
+        ui.label("Convex");
+        let r = ui.checkbox(&mut c.convex, "").changed();
+        ui.end_row();
+        r
+    });
+    ch |= collider_common(ui, "mesh_col", &mut c.is_trigger, &mut c.surface);
+    ui.weak("Uses the Mesh Filter's mesh.");
+    ch
 }
 
 /// Standard material fields. Returns true when changed.

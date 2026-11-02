@@ -353,3 +353,166 @@ impl Default for MeshRenderer {
         }
     }
 }
+
+// ---- physics -------------------------------------------------------------------------------
+
+/// Rigidbody: the object is simulated by physics while playing.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Rigidbody {
+    pub mass: f32,
+    /// Linear damping.
+    pub drag: f32,
+    pub angular_drag: f32,
+    pub use_gravity: bool,
+    /// Moved by its Transform (animation/scripts), pushes dynamic bodies.
+    pub is_kinematic: bool,
+    /// Continuous collision detection for fast objects.
+    pub continuous: bool,
+    pub freeze_position: [bool; 3],
+    pub freeze_rotation: [bool; 3],
+}
+
+impl Default for Rigidbody {
+    fn default() -> Self {
+        Self {
+            mass: 1.0,
+            drag: 0.0,
+            angular_drag: 0.05,
+            use_gravity: true,
+            is_kinematic: false,
+            continuous: false,
+            freeze_position: [false; 3],
+            freeze_rotation: [false; 3],
+        }
+    }
+}
+
+/// Surface response shared by all colliders (stands in for a physics material asset).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct PhysicsSurface {
+    pub friction: f32,
+    pub bounciness: f32,
+}
+
+impl Default for PhysicsSurface {
+    fn default() -> Self {
+        Self {
+            friction: 0.6,
+            bounciness: 0.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BoxCollider {
+    pub enabled: bool,
+    pub is_trigger: bool,
+    pub surface: PhysicsSurface,
+    pub center: Vec3,
+    pub size: Vec3,
+}
+
+impl Default for BoxCollider {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            is_trigger: false,
+            surface: PhysicsSurface::default(),
+            center: Vec3::ZERO,
+            size: Vec3::ONE,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SphereCollider {
+    pub enabled: bool,
+    pub is_trigger: bool,
+    pub surface: PhysicsSurface,
+    pub center: Vec3,
+    pub radius: f32,
+}
+
+impl Default for SphereCollider {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            is_trigger: false,
+            surface: PhysicsSurface::default(),
+            center: Vec3::ZERO,
+            radius: 0.5,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CapsuleCollider {
+    pub enabled: bool,
+    pub is_trigger: bool,
+    pub surface: PhysicsSurface,
+    pub center: Vec3,
+    pub radius: f32,
+    pub height: f32,
+    /// 0 = X, 1 = Y, 2 = Z.
+    pub direction: u8,
+}
+
+impl Default for CapsuleCollider {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            is_trigger: false,
+            surface: PhysicsSurface::default(),
+            center: Vec3::ZERO,
+            radius: 0.5,
+            height: 2.0,
+            direction: 1,
+        }
+    }
+}
+
+/// Collider using the object's Mesh Filter mesh (convex hull when `convex`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MeshCollider {
+    pub enabled: bool,
+    pub is_trigger: bool,
+    pub surface: PhysicsSurface,
+    pub convex: bool,
+}
+
+impl Default for MeshCollider {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            is_trigger: false,
+            surface: PhysicsSurface::default(),
+            convex: false,
+        }
+    }
+}
+
+impl PrimitiveMesh {
+    /// The collider created together with this primitive.
+    pub fn default_collider(self) -> ColliderKind {
+        match self {
+            Self::Cube => ColliderKind::Box,
+            Self::Sphere => ColliderKind::Sphere,
+            Self::Capsule | Self::Cylinder => ColliderKind::Capsule,
+            Self::Plane | Self::Quad => ColliderKind::Mesh,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColliderKind {
+    Box,
+    Sphere,
+    Capsule,
+    Mesh,
+}

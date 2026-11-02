@@ -14,7 +14,7 @@ use crate::project::ProjectBrowser;
 use crate::scene_camera::SceneCamera;
 use crate::selection::Selection;
 use crate::undo::UndoStack;
-use misty_engine::runtime::Time;
+use misty_engine::runtime::{Runtime, Time};
 
 /// Active transform tool (Q W E R T Y).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,6 +150,8 @@ pub struct EditorState {
     /// Edit-mode snapshot while in Play mode.
     pub play_session: Option<PlaySession>,
     pub time: Time,
+    /// Physics/scripts state while playing.
+    pub runtime: Option<Runtime>,
     /// Pause toggled before Play: Play starts paused.
     pub pause_on_play: bool,
     /// Step pressed while paused.
@@ -194,6 +196,7 @@ impl EditorState {
             play: PlayState::Edit,
             play_session: None,
             time: Time::default(),
+            runtime: None,
             pause_on_play: false,
             step_requested: false,
             scene: Scene::default_3d("SampleScene"),

@@ -125,6 +125,21 @@
 - Game loop with Time (time, delta, frame, timeScale) ready for physics and scripts.
 
 ### Not matching Unity yet
-- Nothing moves on its own yet: physics (step 7) and scripts (step 8) plug into the game loop.
 - No whole-editor colour tint (only the tab strip turns blue); Inspector edits during Play are not highlighted.
 - No "Enter Play Mode Options", no Game-view input capture yet (arrives with scripting input).
+
+## Step 7 — Physics ✅
+
+### Done
+- Components (Component ▸ Physics / Add Component): Rigidbody (Mass, Drag, Angular Drag, Use Gravity, Is Kinematic,
+  Collision Detection Discrete/Continuous, Constraints Freeze Position/Rotation XYZ), Box / Sphere / Capsule (X/Y/Z
+  direction) / Mesh (Convex) colliders with Is Trigger, Friction, Bounciness, Center, Size/Radius/Height.
+- 3D Objects are created with their matching collider.
+- Play mode simulates: gravity, collisions between dynamic/static/kinematic bodies, compound colliders on parents,
+  collider sizes follow object scale; Stop restores the pre-Play scene.
+- Green collider gizmos for selected objects.
+
+### Not matching Unity yet
+- No collision/trigger events for scripts yet (step 8), no joints, no physics materials as assets, no layer matrix.
+- Physics settings (gravity, fixed timestep) aren't editable in a Project Settings window yet.
+- No "Edit Collider" handles; Mesh Collider only works with built-in meshes.

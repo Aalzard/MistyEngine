@@ -115,3 +115,17 @@ Record of choices made without asking, and why.
 40. **Shading moved to GGX specular + sky reflections** (Fresnel with roughness-based blur and surface reduction,
     like the Standard shader's approximation), so Smoothness and Metallic now have a clearly visible effect. The sky
     gradient is shared with the skybox shader so reflections match the background.
+
+## 2026-11-03 — Step 7
+
+41. **Physics = rapier3d 0.36** (pure Rust, deterministic, CCD, trimesh/convex). rapier uses glam 0.33 through
+    glamx while we use 0.34, so values cross the boundary as plain arrays in `physics.rs`.
+42. **The physics world is built when Play starts** from active objects. A Rigidbody gives a dynamic or kinematic
+    body; colliders attach to the nearest Rigidbody on themselves or a parent (compound colliders), and colliders
+    without one are static. Sizes include world scale. Mass comes from Rigidbody.mass (collider density 0).
+43. **Fixed timestep 0.02 s** (the usual default) with an accumulator, max 8 steps per frame. Kinematic bodies follow
+    their Transform before each step; dynamic bodies write their pose back after.
+44. **Friction/Bounciness live on each collider** (default 0.6 / 0) instead of a separate physics-material asset.
+    That's simpler for now; an asset can replace it later.
+45. **Primitives get colliders like the reference editor:** Cube→Box, Sphere→Sphere, Capsule/Cylinder→Capsule,
+    Plane/Quad→Mesh. A non-convex Mesh Collider on a dynamic Rigidbody falls back to convex, with a Console warning.

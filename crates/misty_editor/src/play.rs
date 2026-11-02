@@ -1,6 +1,6 @@
 //! Play mode: snapshot on Play, run the game loop, restore everything on Stop.
 
-use misty_engine::runtime::{self, Time};
+use misty_engine::runtime::{Runtime, Time};
 use misty_engine::scene::Scene;
 
 use crate::selection::Selection;
@@ -30,6 +30,11 @@ pub fn start(s: &mut EditorState) {
         dirty: s.scene_dirty,
     });
     s.time = Time::default();
+    let mut runtime = Runtime::start(&s.scene);
+    for w in runtime.take_warnings() {
+        s.console.warn(w);
+    }
+    s.runtime = Some(runtime);
     s.play = if s.pause_on_play {
         PlayState::Paused
     } else {
@@ -43,6 +48,7 @@ pub fn stop(s: &mut EditorState) {
     let Some(session) = s.play_session.take() else {
         return;
     };
+    s.runtime = None;
     s.scene = session.scene;
     s.selection = session.selection;
     s.selection.retain_existing(&s.scene);
@@ -69,7 +75,9 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
         real_dt
     };
     s.time.advance(dt);
-    runtime::update(&mut s.scene, &s.time);
+    if let Some(runtime) = s.runtime.as_mut() {
+        runtime.update(&mut s.scene, &s.time);
+    }
 }
 
 #[cfg(test)]
@@ -129,5 +137,30 @@ mod tests {
         s.pause_on_play = true;
         start(&mut s);
         assert_eq!(s.play, PlayState::Paused);
+    }
+
+    #[test]
+    fn rigidbody_falls_in_play_and_returns_on_stop() {
+        use crate::actions::{Action, Create};
+        use misty_engine::scene::PrimitiveMesh;
+        let mut s = state();
+        for what in [Create::Primitive(PrimitiveMesh::Plane), Create::Primitive(PrimitiveMesh::Cube)] {
+            crate::commands::apply(&mut s, Action::Create { what, parent: None });
+        }
+        let cube = s.scene.find_by_name("Cube").unwrap();
+        assert_eq!(s.scene.component_names(cube), ["Transform", "Mesh Filter", "Mesh Renderer", "Box Collider"]);
+        let mut t = s.scene.transform(cube);
+        t.position.y = 4.0;
+        s.scene.set_transform(cube, t);
+        s.scene.add_by_name(cube, "Rigidbody");
+
+        start(&mut s);
+        for _ in 0..240 {
+            tick(&mut s, 1.0 / 60.0);
+        }
+        let y = s.scene.world_position(cube).y;
+        assert!((y - 0.5).abs() < 0.05, "landed on the plane: {y}");
+        stop(&mut s);
+        assert_eq!(s.scene.world_position(cube).y, 4.0);
     }
 }

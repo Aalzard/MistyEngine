@@ -3,7 +3,8 @@
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    Camera, Light, LightType, MeshFilter, MeshRenderer, Scene, Transform, registry,
+    BoxCollider, Camera, CapsuleCollider, ColliderKind, Light, LightType, MeshCollider, MeshFilter,
+    MeshRenderer, Scene, SphereCollider, Transform, registry,
 };
 
 use crate::actions::{Action, Create};
@@ -179,6 +180,13 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
         Create::Primitive(mesh) => {
             s.scene.add(e, MeshFilter { mesh: Some(mesh) });
             s.scene.add(e, MeshRenderer::default());
+            // Primitives come with a matching collider.
+            match mesh.default_collider() {
+                ColliderKind::Box => s.scene.add(e, BoxCollider::default()),
+                ColliderKind::Sphere => s.scene.add(e, SphereCollider::default()),
+                ColliderKind::Capsule => s.scene.add(e, CapsuleCollider::default()),
+                ColliderKind::Mesh => s.scene.add(e, MeshCollider::default()),
+            }
         }
         Create::Light(kind) => {
             let light = if kind == LightType::Directional {

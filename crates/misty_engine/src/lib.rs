@@ -5,6 +5,7 @@
 
 pub mod assets;
 pub mod camera;
+pub mod physics;
 pub mod render;
 pub mod runtime;
 pub mod scene;

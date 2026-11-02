@@ -1,13 +1,18 @@
 //! Scene-view gizmo lines: camera frustum, light ranges, and mesh wireframes.
 
 use glam::{Mat4, Vec3};
+use misty_engine::physics::collider_matrix;
 use misty_engine::render::LineVertex;
 use misty_engine::render::MeshDraw;
 use misty_engine::render::mesh::primitive_edges;
-use misty_engine::scene::{Camera, Light, LightType, Scene};
+use misty_engine::scene::{
+    BoxCollider, Camera, CapsuleCollider, Light, LightType, MeshCollider, MeshFilter, Scene,
+    SphereCollider,
+};
 
 use crate::selection::Selection;
 
+const COLLIDER: [f32; 4] = [0.57, 0.96, 0.55, 0.9];
 /// Wireframe draw-mode colour (dark lines).
 pub const WIREFRAME: [f32; 4] = [0.05, 0.05, 0.05, 0.9];
 const CAMERA: [f32; 4] = [0.85, 0.85, 0.85, 0.8];
@@ -56,6 +61,101 @@ impl Lines {
             })
             .collect();
         self.polyline(m, &pts, true, color);
+    }
+
+    /// Box from its centre and half extents, in the frame of `m`.
+    fn wire_box(&mut self, m: &Mat4, center: Vec3, half: Vec3, color: [f32; 4]) {
+        let c = |x: f32, y: f32, z: f32| center + Vec3::new(x, y, z) * half;
+        let corners = [
+            c(-1., -1., -1.),
+            c(1., -1., -1.),
+            c(1., 1., -1.),
+            c(-1., 1., -1.),
+            c(-1., -1., 1.),
+            c(1., -1., 1.),
+            c(1., 1., 1.),
+            c(-1., 1., 1.),
+        ];
+        for (a, b) in [
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 0),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 4),
+            (0, 4),
+            (1, 5),
+            (2, 6),
+            (3, 7),
+        ] {
+            self.line(
+                m.transform_point3(corners[a]),
+                m.transform_point3(corners[b]),
+                color,
+            );
+        }
+    }
+
+    /// Green collider outlines (shown for selected objects), sized with the object's scale.
+    fn colliders(&mut self, scene: &Scene, e: misty_engine::hecs::Entity) {
+        let w = &scene.world;
+        let s = scene
+            .world_matrix(e)
+            .to_scale_rotation_translation()
+            .0
+            .abs();
+        if let Ok(c) = w.get::<&BoxCollider>(e)
+            && c.enabled
+        {
+            let m = collider_matrix(scene, e, c.center);
+            self.wire_box(&m, Vec3::ZERO, c.size * s * 0.5, COLLIDER);
+        }
+        if let Ok(c) = w.get::<&SphereCollider>(e)
+            && c.enabled
+        {
+            let m = collider_matrix(scene, e, c.center);
+            for axis in 0..3 {
+                self.circle(&m, Vec3::ZERO, c.radius * s.max_element(), axis, COLLIDER);
+            }
+        }
+        if let Ok(c) = w.get::<&CapsuleCollider>(e)
+            && c.enabled
+        {
+            let m = collider_matrix(scene, e, c.center);
+            let axis = c.direction.min(2) as usize;
+            let (a, b) = ((axis + 1) % 3, (axis + 2) % 3);
+            let r = c.radius * s[a].max(s[b]);
+            let half = (c.height * s[axis] * 0.5 - r).max(0.0);
+            let mut up = Vec3::ZERO;
+            up[axis] = half;
+            for end in [up, -up] {
+                for k in 0..3 {
+                    self.circle(&m, end, r, k, COLLIDER);
+                }
+            }
+            for side in [a, b] {
+                for sign in [-1.0, 1.0] {
+                    let mut off = Vec3::ZERO;
+                    off[side] = r * sign;
+                    self.line(
+                        m.transform_point3(up + off),
+                        m.transform_point3(-up + off),
+                        COLLIDER,
+                    );
+                }
+            }
+        }
+        if let Ok(c) = w.get::<&MeshCollider>(e)
+            && c.enabled
+            && let Some(mesh) = w.get::<&MeshFilter>(e).ok().and_then(|f| f.mesh)
+        {
+            let m = scene.world_matrix(e);
+            for [p, q] in primitive_edges(mesh) {
+                self.line(m.transform_point3(*p), m.transform_point3(*q), COLLIDER);
+            }
+        }
     }
 
     /// Camera frustum (shown when the camera is selected). The far plane is capped for readability.
@@ -142,6 +242,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         if let Ok(light) = w.get::<&Light>(e) {
             lines.light_rays(&rigid, &light, LIGHT);
         }
+        lines.colliders(scene, e);
     }
     lines
 }

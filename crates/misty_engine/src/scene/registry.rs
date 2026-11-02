@@ -47,6 +47,26 @@ impl SceneComponent for MeshRenderer {
     const NAME: &'static str = "Mesh Renderer";
     const CATEGORY: &'static str = "Mesh";
 }
+impl SceneComponent for Rigidbody {
+    const NAME: &'static str = "Rigidbody";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for BoxCollider {
+    const NAME: &'static str = "Box Collider";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for SphereCollider {
+    const NAME: &'static str = "Sphere Collider";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for CapsuleCollider {
+    const NAME: &'static str = "Capsule Collider";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for MeshCollider {
+    const NAME: &'static str = "Mesh Collider";
+    const CATEGORY: &'static str = "Physics";
+}
 
 /// Type-erased operations for one component type.
 pub struct ComponentInfo {
@@ -109,6 +129,11 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<Light>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
+            ComponentInfo::of::<Rigidbody>(),
+            ComponentInfo::of::<BoxCollider>(),
+            ComponentInfo::of::<SphereCollider>(),
+            ComponentInfo::of::<CapsuleCollider>(),
+            ComponentInfo::of::<MeshCollider>(),
         ]
     })
 }
