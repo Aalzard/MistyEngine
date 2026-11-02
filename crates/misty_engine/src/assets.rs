@@ -37,16 +37,16 @@ impl Default for Material {
 
 impl Material {
     pub fn params(&self) -> MaterialParams {
-        let e = if self.emission_enabled {
-            self.emission.map(|c| c * self.emission_intensity)
-        } else {
-            [0.0; 3]
-        };
         MaterialParams {
             color: self.color,
             metallic: self.metallic,
             smoothness: self.smoothness,
-            emission: e,
+            emission: self.emission,
+            emission_intensity: if self.emission_enabled {
+                self.emission_intensity
+            } else {
+                0.0
+            },
         }
     }
 
@@ -91,8 +91,9 @@ mod tests {
             emission_intensity: 2.0,
             ..Default::default()
         };
-        assert_eq!(m.params().emission, [0.0; 3]);
+        assert_eq!(m.params().emission_intensity, 0.0);
         m.emission_enabled = true;
-        assert_eq!(m.params().emission, [2.0, 1.0, 0.0]);
+        assert_eq!(m.params().emission, [1.0, 0.5, 0.0]);
+        assert_eq!(m.params().emission_intensity, 2.0);
     }
 }

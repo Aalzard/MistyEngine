@@ -6,6 +6,7 @@ mod shadows;
 mod target;
 
 pub use target::RenderTarget;
+use target::TargetLayouts;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -14,7 +15,10 @@ use wgpu::util::DeviceExt;
 use crate::camera::{Camera, Projection};
 use crate::scene::{LightType, PrimitiveMesh, Shadows};
 
+/// Final image shown in the editor.
 pub const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+/// Scene rendering format: values above 1 survive for bloom.
+pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
@@ -57,8 +61,10 @@ pub struct MaterialParams {
     pub color: [f32; 4],
     pub metallic: f32,
     pub smoothness: f32,
-    /// sRGB emission colour (already multiplied by intensity).
+    /// sRGB emission colour.
     pub emission: [f32; 3],
+    /// Linear multiplier on the emission colour (HDR: values above 1 glow through bloom).
+    pub emission_intensity: f32,
 }
 
 impl Default for MaterialParams {
@@ -68,6 +74,7 @@ impl Default for MaterialParams {
             metallic: 0.0,
             smoothness: 0.5,
             emission: [0.0; 3],
+            emission_intensity: 0.0,
         }
     }
 }
@@ -174,6 +181,8 @@ pub struct Renderer {
     line_buffer: wgpu::Buffer,
     line_capacity: usize,
     meshes: Vec<GpuMesh>,
+    /// Linear clamp sampler for post-processing.
+    post_sampler: wgpu::Sampler,
 }
 
 impl Renderer {
@@ -228,7 +237,14 @@ impl Renderer {
             .collect();
 
         let line_capacity = 1024;
+        let post_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("misty post sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         Self {
+            post_sampler,
             view_buffer,
             view_bind_group,
             shadows,
@@ -246,7 +262,13 @@ impl Renderer {
 
     /// New offscreen target for a view.
     pub fn create_target(&self, device: &wgpu::Device, width: u32, height: u32) -> RenderTarget {
-        RenderTarget::new(device, width, height, &self.pipelines.mask_layout)
+        let layouts = TargetLayouts {
+            mask: &self.pipelines.mask_layout,
+            post: &self.pipelines.post_layout,
+            composite: &self.pipelines.composite_layout,
+            sampler: &self.post_sampler,
+        };
+        RenderTarget::new(device, width, height, &layouts)
     }
 
     fn gpu_mesh(&self, p: PrimitiveMesh) -> &GpuMesh {
@@ -329,7 +351,81 @@ impl Renderer {
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         self.mask_pass(&mut encoder, target, frame);
         self.main_pass(&mut encoder, target, frame, any_outline);
+        self.bloom_passes(&mut encoder, target);
         queue.submit([encoder.finish()]);
+    }
+
+    /// Fullscreen pass into `view` (clear or load), sampling `group`.
+    fn fullscreen(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        pipeline: &wgpu::RenderPipeline,
+        group: &wgpu::BindGroup,
+        clear: bool,
+    ) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("misty post pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: if clear {
+                        wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+                    } else {
+                        wgpu::LoadOp::Load
+                    },
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, &self.view_bind_group, &[]);
+        pass.set_bind_group(1, group, &[]);
+        pass.draw(0..3, 0..1);
+    }
+
+    /// Bright-pass → downsample chain → additive upsample chain → composite into the output image.
+    fn bloom_passes(&self, encoder: &mut wgpu::CommandEncoder, target: &RenderTarget) {
+        let levels = &target.bloom;
+        let p = &self.pipelines;
+        self.fullscreen(
+            encoder,
+            &levels[0].view,
+            &p.bloom_prefilter,
+            &target.hdr_group,
+            true,
+        );
+        for i in 1..levels.len() {
+            self.fullscreen(
+                encoder,
+                &levels[i].view,
+                &p.bloom_down,
+                &levels[i - 1].group,
+                true,
+            );
+        }
+        for i in (1..levels.len()).rev() {
+            self.fullscreen(
+                encoder,
+                &levels[i - 1].view,
+                &p.bloom_up,
+                &levels[i].group,
+                false,
+            );
+        }
+        self.fullscreen(
+            encoder,
+            target.output_view(),
+            &p.composite,
+            &target.composite_group,
+            true,
+        );
     }
 
     fn draw_meshes(
@@ -410,15 +506,27 @@ impl Renderer {
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty main pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target.msaa_view(),
-                depth_slice: None,
-                resolve_target: Some(target.resolve_view()),
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Discard,
-                },
-            })],
+            color_attachments: &[
+                Some(wgpu::RenderPassColorAttachment {
+                    view: target.msaa_view(),
+                    depth_slice: None,
+                    resolve_target: Some(target.hdr_view()),
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Discard,
+                    },
+                }),
+                // Emission only; drives bloom.
+                Some(wgpu::RenderPassColorAttachment {
+                    view: target.glow_msaa_view(),
+                    depth_slice: None,
+                    resolve_target: Some(target.glow_view()),
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Discard,
+                    },
+                }),
+            ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: target.depth_view(),
                 depth_ops: Some(wgpu::Operations {
@@ -528,7 +636,8 @@ fn srgb_to_linear(c: [f32; 3]) -> [f32; 3] {
 }
 
 fn draw_uniform(d: &MeshDraw) -> DrawUniform {
-    let e = srgb_to_linear(d.material.emission);
+    // Colour to linear first, then scale: intensity is linear brightness.
+    let e = srgb_to_linear(d.material.emission).map(|c| c * d.material.emission_intensity);
     DrawUniform {
         model: d.model.to_cols_array_2d(),
         normal: d.model.inverse().transpose().to_cols_array_2d(),

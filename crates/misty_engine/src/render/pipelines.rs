@@ -1,7 +1,9 @@
 //! Bind group layouts, shader modules and render pipelines.
 
 use super::mesh::Vertex;
-use super::{COLOR_FORMAT, DEPTH_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT, SHADOW_FORMAT};
+use super::{
+    COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT, SHADOW_FORMAT,
+};
 
 const COMMON: &str = include_str!("shaders/common.wgsl");
 
@@ -15,6 +17,10 @@ pub struct Pipelines {
     pub draws_layout: wgpu::BindGroupLayout,
     /// Selection mask texture (outline pass).
     pub mask_layout: wgpu::BindGroupLayout,
+    /// One sampled texture + sampler (bloom passes).
+    pub post_layout: wgpu::BindGroupLayout,
+    /// HDR image + sampler + bloom (final composite).
+    pub composite_layout: wgpu::BindGroupLayout,
     pub sky: wgpu::RenderPipeline,
     pub grid: wgpu::RenderPipeline,
     pub lines: wgpu::RenderPipeline,
@@ -22,6 +28,10 @@ pub struct Pipelines {
     pub shadow: wgpu::RenderPipeline,
     pub mask: wgpu::RenderPipeline,
     pub outline: wgpu::RenderPipeline,
+    pub bloom_prefilter: wgpu::RenderPipeline,
+    pub bloom_down: wgpu::RenderPipeline,
+    pub bloom_up: wgpu::RenderPipeline,
+    pub composite: wgpu::RenderPipeline,
 }
 
 /// Depth state; `None` in [`Spec::depth`] means the pass has no depth attachment.
@@ -57,6 +67,8 @@ struct Spec<'a> {
     color: Option<wgpu::TextureFormat>,
     blend: Option<wgpu::BlendState>,
     samples: u32,
+    /// Main-pass glow target: None = not in the main pass, Some(true) = writes emission.
+    glow: Option<bool>,
 }
 
 impl<'a> Spec<'a> {
@@ -72,9 +84,10 @@ impl<'a> Spec<'a> {
             topology: wgpu::PrimitiveTopology::TriangleList,
             cull: None,
             depth: Depth::main(false, wgpu::CompareFunction::Always),
-            color: Some(COLOR_FORMAT),
+            color: Some(HDR_FORMAT),
             blend: None,
             samples: SAMPLE_COUNT,
+            glow: Some(false),
         }
     }
 }
@@ -174,6 +187,28 @@ impl Pipelines {
             )],
         );
 
+        let filtered = wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        };
+        let filtering = wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering);
+        let post_layout = layout(
+            "misty post",
+            &[
+                entry(0, S::FRAGMENT, filtered),
+                entry(1, S::FRAGMENT, filtering),
+            ],
+        );
+        let composite_layout = layout(
+            "misty composite",
+            &[
+                entry(0, S::FRAGMENT, filtered),
+                entry(1, S::FRAGMENT, filtering),
+                entry(2, S::FRAGMENT, filtered),
+            ],
+        );
+
         let sky = build(
             device,
             Spec::new("sky", include_str!("shaders/sky.wgsl"), &[&view_layout]),
@@ -214,6 +249,7 @@ impl Pipelines {
                 buffers: &mesh_buffers,
                 cull: Some(wgpu::Face::Back),
                 depth: Depth::main(true, wgpu::CompareFunction::Less),
+                glow: Some(true),
                 ..Spec::new(
                     "mesh",
                     include_str!("shaders/mesh.wgsl"),
@@ -243,6 +279,7 @@ impl Pipelines {
                 }),
                 color: None,
                 samples: 1,
+                glow: None,
                 ..Spec::new("shadow", depth_src, &[&shadow_view_layout, &draws_layout])
             },
         );
@@ -255,6 +292,7 @@ impl Pipelines {
                 depth: None,
                 color: Some(MASK_FORMAT),
                 samples: 1,
+                glow: None,
                 ..Spec::new("mask", depth_src, &[&view_layout, &draws_layout])
             },
         );
@@ -270,8 +308,61 @@ impl Pipelines {
             },
         );
 
+        // Post-processing: single-sample, no depth.
+        let bloom_src = include_str!("shaders/bloom.wgsl");
+        let post_layouts = [&view_layout, &post_layout];
+        let post = |name, fs, blend, color| Spec {
+            fs: Some(fs),
+            depth: None,
+            samples: 1,
+            blend,
+            color: Some(color),
+            glow: None,
+            ..Spec::new(name, bloom_src, &post_layouts)
+        };
+        let bloom_prefilter = build(
+            device,
+            post("bloom prefilter", "fs_prefilter", None, HDR_FORMAT),
+        );
+        let bloom_down = build(
+            device,
+            post("bloom down", "fs_downsample", None, HDR_FORMAT),
+        );
+        let additive = wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent::REPLACE,
+        };
+        let bloom_up = build(
+            device,
+            post("bloom up", "fs_upsample", Some(additive), HDR_FORMAT),
+        );
+        let composite = build(
+            device,
+            Spec {
+                depth: None,
+                samples: 1,
+                color: Some(COLOR_FORMAT),
+                glow: None,
+                ..Spec::new(
+                    "composite",
+                    include_str!("shaders/composite.wgsl"),
+                    &[&view_layout, &composite_layout],
+                )
+            },
+        );
+
         Self {
             view_layout,
+            post_layout,
+            composite_layout,
+            bloom_prefilter,
+            bloom_down,
+            bloom_up,
+            composite,
             shadow_view_layout,
             mesh_layout,
             draws_layout,
@@ -299,7 +390,7 @@ fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
         bind_group_layouts: &layouts,
         immediate_size: 0,
     });
-    let targets: Vec<Option<wgpu::ColorTargetState>> = spec
+    let mut targets: Vec<Option<wgpu::ColorTargetState>> = spec
         .color
         .map(|format| {
             vec![Some(wgpu::ColorTargetState {
@@ -309,6 +400,17 @@ fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
             })]
         })
         .unwrap_or_default();
+    if let Some(writes) = spec.glow {
+        targets.push(Some(wgpu::ColorTargetState {
+            format: HDR_FORMAT,
+            blend: None,
+            write_mask: if writes {
+                wgpu::ColorWrites::ALL
+            } else {
+                wgpu::ColorWrites::empty()
+            },
+        }));
+    }
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(spec.name),
         layout: Some(&layout),
@@ -361,6 +463,8 @@ mod tests {
             ("mesh", include_str!("shaders/mesh.wgsl")),
             ("depth", include_str!("shaders/depth.wgsl")),
             ("outline", include_str!("shaders/outline.wgsl")),
+            ("bloom", include_str!("shaders/bloom.wgsl")),
+            ("composite", include_str!("shaders/composite.wgsl")),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));

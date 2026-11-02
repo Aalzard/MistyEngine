@@ -165,8 +165,14 @@ fn d_ggx(n_dot_h: f32, a: f32) -> f32 {
     return a2 / (PI * d * d);
 }
 
+struct MeshTargets {
+    @location(0) color: vec4<f32>,
+    // Emission only, the bloom source.
+    @location(1) glow: vec4<f32>,
+};
+
 @fragment
-fn fs_main(in: MeshOut) -> @location(0) vec4<f32> {
+fn fs_main(in: MeshOut) -> MeshTargets {
     let d = draws[in.draw];
     let albedo = srgb_to_linear(d.color.rgb);
     let metallic = clamp(d.params.x, 0.0, 1.0);
@@ -239,5 +245,8 @@ fn fs_main(in: MeshOut) -> @location(0) vec4<f32> {
         color += (diffuse_color + spec) * li.color.rgb * n_dot_l * atten;
     }
     color += d.emission.rgb;
-    return vec4<f32>(color, d.color.a);
+    var out: MeshTargets;
+    out.color = vec4<f32>(color, d.color.a);
+    out.glow = vec4<f32>(d.emission.rgb, 1.0);
+    return out;
 }

@@ -169,3 +169,14 @@ Record of choices made without asking, and why.
 57. **Per-user editor state in `<Project>/Library/EditorSettings.json`** (recent scenes), git-ignored like a Library
     folder. The editor reopens the most recent scene on startup, falling back to `Assets/Scenes/SampleScene.scene`.
 58. **Window title** shows "Project - Scene* - Misty Engine", with `*` while unsaved.
+
+## 2026-11-03 — Emission fix
+
+59. **HDR rendering + bloom.** Scenes render into an `Rgba16Float` MSAA buffer (values above 1 survive), then
+    bloom and a composite pass write the 8-bit display image. Emission Intensity is now a linear multiplier applied
+    after converting the colour to linear (it used to go through the gamma curve and clip at 1).
+60. **Bloom only from emission:** meshes write their emission into a second "glow" render target in the same pass,
+    and bloom (13-tap downsample + tent upsample chain) uses only that buffer. Brightly lit white surfaces don't
+    bloom, and Intensity directly controls how far an object glows.
+61. **Hue-preserving highlight compression** in the composite instead of per-channel clipping: over-bright orange
+    stays orange and whitens gradually. There's no global tonemapper, so normal scenes look the same as before.
