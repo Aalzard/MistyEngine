@@ -192,7 +192,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
             Some(label) => s.console.info(format!("Redo {label}")),
             None => s.console.info("Nothing to redo."),
         },
-        other => return Some(other),
+        other => return crate::prefabs::apply(s, other),
     }
     s.selection.retain_existing(&s.scene);
     None

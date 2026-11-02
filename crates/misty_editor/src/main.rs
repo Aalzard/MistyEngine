@@ -14,6 +14,7 @@ mod menu_bar;
 mod panels;
 mod picking;
 mod play;
+mod prefabs;
 mod project;
 mod render_scene;
 mod scene_camera;

@@ -32,9 +32,26 @@ return Rotator                     -- a script must return its class table
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")`, `GetMouseButton(0)`, `GetAxis("Horizontal"/"Vertical"/"Mouse X"/"Mouse Y")` — the Game view must have focus (click it) |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
+| `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
 | Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
 
 Key names: letters/digits (`"a"`, `"1"`), `"space"`, `"return"`, `"escape"`, `"tab"`, `"up"`, `"down"`, `"left"`,
 `"right"`, `"left shift"`, `"left ctrl"`, `"left alt"`, `"f1"`…
 
 Samples: `Assets/Scripts/Rotator.lua`, `Assets/Scripts/PlayerController.lua`.
+
+### Spawning objects
+
+```lua
+local Spawner = { interval = 1 }
+function Spawner:Start() self._t = 0 end
+function Spawner:Update()
+    self._t = self._t + Time.deltaTime
+    if self._t > self.interval then
+        self._t = 0
+        Instantiate("Assets/Prefabs/Ball.prefab", self.transform.position + Vector3.up * 2)
+    end
+end
+return Spawner
+```
+Create the prefab by dragging an object from the Hierarchy into the Project window.

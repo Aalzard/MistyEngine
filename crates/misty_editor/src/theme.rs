@@ -13,6 +13,9 @@ pub const HOVER_BG: Color32 = Color32::from_rgb(103, 103, 103);
 pub const SELECTION: Color32 = Color32::from_rgb(44, 93, 135);
 pub const TEXT: Color32 = Color32::from_rgb(210, 210, 210);
 pub const TEXT_DIM: Color32 = Color32::from_rgb(130, 130, 130);
+/// Names of prefab instances in the Hierarchy (and the prefab icon).
+pub const PREFAB: Color32 = Color32::from_rgb(123, 174, 250);
+pub const PREFAB_DIM: Color32 = Color32::from_rgb(78, 108, 155);
 pub const PLAY_TINT: Color32 = Color32::from_rgb(70, 110, 170);
 pub const AXIS_X: Color32 = Color32::from_rgb(219, 62, 29);
 pub const AXIS_Y: Color32 = Color32::from_rgb(139, 220, 0);

@@ -169,3 +169,27 @@ Record of choices made without asking, and why.
 57. **Per-user editor state in `<Project>/Library/EditorSettings.json`** (recent scenes), git-ignored like a Library
     folder. The editor reopens the most recent scene on startup, falling back to `Assets/Scenes/SampleScene.scene`.
 58. **Window title** shows "Project - Scene* - Misty Engine", with `*` while unsaved.
+
+## 2026-11-03 — Prefabs
+
+59. **Prefab = scene file format with one root** (`.prefab`, pretty JSON). Scenes and prefabs share the object list
+    code (`scene/file.rs`), so a prefab is readable, diffable and loads with the same tolerant warnings.
+60. **Instance = full copy + `PrefabLink { path }` on the root** (registry name "Prefab", not in Add Component or the
+    Inspector list). The link is an ordinary component, so it is saved in scenes and undo snapshots for free.
+    Children aren't linked; "part of an instance" = has a linked ancestor.
+61. **Overrides = whatever differs from the asset**, computed by comparing the instance's serialised subtree with the
+    asset (both canonicalised through a scene round-trip). The root's name, position and rotation are per-instance
+    and never count, matching the default overrides users expect. Revert/Apply All are disabled without overrides.
+62. **Revert and Apply All rebuild instances** from the asset (keeping place in the Hierarchy, name, position,
+    rotation). Simple and correct for the instance being applied; other instances lose their own overrides, which
+    is noted as a mismatch until per-property overrides exist.
+63. **Prefab assets are cached in the AssetDatabase** keyed by path and file time, because the Inspector compares the
+    selected instance with its asset every frame.
+64. **New prefabs never overwrite**: dragging "Crate" into a folder that has `Crate.prefab` creates `Crate 1.prefab`
+    (no modal Replace dialog in nonstop mode; data is never lost).
+65. **Dropped prefabs are placed at the Scene view pivot** (like GameObject ▸ Create), also for Hierarchy drops at
+    the root; dropping onto a Hierarchy row parents the instance under it at the prefab's own local position.
+66. **Lua `Instantiate` copies are unlinked "Name(Clone)" objects** (runtime instances aren't prefab-connected).
+    Their physics bodies are added with `Physics::add_subtree`; scripts get `Awake` right after the callback that
+    called `Instantiate` (not inside it, since the host can't be re-entered from Lua), and `Start` before their
+    first `Update`. A chain of more than 64 nested Awake→Instantiate rounds is stopped with a Console error.

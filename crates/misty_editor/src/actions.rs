@@ -95,6 +95,21 @@ pub enum Action {
         entity: Entity,
         slot: usize,
     },
+    /// Save an object as a prefab asset in `folder` and link it (Hierarchy → Project drag).
+    CreatePrefab {
+        entity: Entity,
+        folder: std::path::PathBuf,
+    },
+    /// Instantiate a prefab asset under `parent`, or at the Scene view pivot.
+    InstantiatePrefab {
+        path: String,
+        parent: Option<Entity>,
+    },
+    /// Instance root actions (Inspector Prefab row, Hierarchy menu).
+    SelectPrefabAsset(Entity),
+    RevertPrefab(Entity),
+    ApplyPrefab(Entity),
+    UnpackPrefab(Entity),
     /// Component > Add... (opens the Inspector's search popup).
     OpenAddComponent,
     TogglePlay,

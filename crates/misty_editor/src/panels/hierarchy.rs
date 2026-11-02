@@ -7,6 +7,7 @@ use crate::actions::Action;
 use crate::menu_bar::create_menu_items;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
+use crate::theme::{PREFAB, PREFAB_DIM};
 use crate::widgets::{panel_toolbar, search_field};
 
 const ROW_H: f32 = 18.0;
@@ -31,7 +32,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     });
 
     let rows = visible_rows(state);
-    let drag_id = Id::new("hierarchy_drag");
+    let drag_id = drag_id();
     let dragging: Option<Vec<Entity>> = ui.data(|d| d.get_temp(drag_id));
     let mut drop: Option<Drop> = None;
 
@@ -53,6 +54,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 state.selection.clear();
             }
             rest.context_menu(|ui| create_menu_items(ui, state, None));
+            if let Some(payload) = rest.dnd_release_payload::<super::AssetPayload>() {
+                drop_prefab(state, &payload.0, None);
+            }
             if dragging.is_some() && rest.contains_pointer() {
                 drop = Some(Drop::Root);
             }
@@ -60,6 +64,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
     drag_and_drop(ui, state, &rows, drag_id, dragging, drop);
     keyboard(ui, state, &rows);
+}
+
+/// Temp-data key of the Hierarchy's own drag (the dragged objects).
+pub fn drag_id() -> Id {
+    Id::new("hierarchy_drag")
 }
 
 /// The Hierarchy owns keyboard navigation after a click inside it.
@@ -132,6 +141,10 @@ fn row(
     let (rect, resp) =
         ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
     let selected = state.selection.contains(e);
+    let name = state.scene.name(e);
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &name)
+    });
     let painter = ui.painter();
     if selected {
         let fill = if state.hierarchy.focused {
@@ -169,10 +182,14 @@ fn row(
     // Icon + name, or the inline rename field.
     let text_x = x + 16.0;
     let active = state.scene.active_in_hierarchy(e);
-    let color = match (selected && state.hierarchy.focused, active) {
-        (true, _) => Color32::WHITE,
-        (false, true) => theme::TEXT,
-        (false, false) => theme::TEXT_DIM,
+    // Prefab instances (root and children) have blue names.
+    let prefab = state.scene.prefab_root(e).is_some();
+    let color = match (selected && state.hierarchy.focused, active, prefab) {
+        (true, _, _) => Color32::WHITE,
+        (false, true, true) => PREFAB,
+        (false, false, true) => PREFAB_DIM,
+        (false, true, false) => theme::TEXT,
+        (false, false, false) => theme::TEXT_DIM,
     };
     let renaming = state
         .hierarchy
@@ -190,7 +207,7 @@ fn row(
         ui.painter().text(
             pos2(text_x, rect.center().y),
             Align2::LEFT_CENTER,
-            format!("{} {}", object_icon(&state.scene, e), state.scene.name(e)),
+            format!("{} {name}", object_icon(&state.scene, e)),
             FontId::proportional(13.0),
             color,
         );
@@ -218,6 +235,7 @@ fn row(
     resp.context_menu(|ui| row_menu(ui, state, e));
     if let Some(payload) = resp.dnd_release_payload::<super::AssetPayload>() {
         drop_asset(state, e, &payload.0);
+        drop_prefab(state, &payload.0, Some(e));
     }
 
     // Start dragging: carry the selection (or just this row).
@@ -226,7 +244,7 @@ fn row(
             state.selection.set(e);
         }
         let list = state.selection.top_level(&state.scene);
-        ui.data_mut(|d| d.insert_temp(Id::new("hierarchy_drag"), list));
+        ui.data_mut(|d| d.insert_temp(drag_id(), list));
     }
 
     // Drop zone under the pointer: top/bottom quarter = between rows, middle = make child.
@@ -252,6 +270,16 @@ fn row(
         return Some(target);
     }
     None
+}
+
+/// A prefab dropped in the Hierarchy: instantiate under `parent` (None = scene root).
+fn drop_prefab(state: &mut EditorState, path: &str, parent: Option<Entity>) {
+    if path.ends_with(".prefab") {
+        state.push(Action::InstantiatePrefab {
+            path: path.to_owned(),
+            parent,
+        });
+    }
 }
 
 /// An asset dropped on an object: materials are assigned, scripts attached.
@@ -300,6 +328,19 @@ fn row_menu(ui: &mut Ui, state: &mut EditorState, e: Entity) {
             state.push(action);
             ui.close();
         }
+    }
+    if let Some(root) = state.scene.prefab_root(e) {
+        ui.separator();
+        ui.menu_button("Prefab", |ui| {
+            if ui.button("Select Asset").clicked() {
+                state.push(Action::SelectPrefabAsset(root));
+                ui.close();
+            }
+            if ui.button("Unpack Prefab").clicked() {
+                state.push(Action::UnpackPrefab(root));
+                ui.close();
+            }
+        });
     }
     ui.separator();
     if ui.button("Select Children").clicked() {
@@ -362,6 +403,21 @@ fn drag_and_drop(
         return;
     }
     ui.data_mut(|d| d.remove::<Vec<Entity>>(drag_id));
+    // Released over the Project window: save each dragged object as a prefab there.
+    if drop.is_none()
+        && ui
+            .input(|i| i.pointer.hover_pos())
+            .is_some_and(|p| state.project.drop_rect.contains(p))
+    {
+        let folder = state.project.current.clone();
+        for entity in dragged {
+            state.push(Action::CreatePrefab {
+                entity,
+                folder: folder.clone(),
+            });
+        }
+        return;
+    }
     let Some(drop) = drop else { return };
     apply_drop(state, &dragged, drop);
 }
@@ -512,6 +568,74 @@ mod tests {
         apply_drop(&mut s, &[light], Drop::Into(cam));
         assert_eq!(s.scene.parent(cam), Some(light), "cycle drop ignored");
         assert_eq!(s.scene.parent(light), None);
+    }
+
+    /// Hierarchy on the left, Project window on the right, like the default layout.
+    fn hierarchy_and_project(s: EditorState) -> egui_kittest::Harness<'static, EditorState> {
+        let mut h = egui_kittest::Harness::builder()
+            .with_size([900.0, 500.0])
+            .build_ui_state(
+                |ui, s: &mut EditorState| {
+                    let full = ui.max_rect();
+                    let (left, right) = full.split_left_right_at_x(300.0);
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| show(ui, s));
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
+                        super::super::project::show(ui, s)
+                    });
+                },
+                s,
+            );
+        h.run_steps(2);
+        h
+    }
+
+    #[test]
+    fn dragging_a_row_onto_the_project_window_creates_a_prefab() {
+        use egui::{Event, Modifiers, PointerButton};
+        use egui_kittest::kittest::Queryable;
+
+        let root = std::env::temp_dir().join(format!("misty_hier_prefab_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut s = EditorState::new(ProjectBrowser::open(root.clone()));
+        let crate_e = s.scene.spawn("Crate", None);
+        s.scene.spawn("Lid", Some(crate_e));
+        let mut h = hierarchy_and_project(s);
+
+        let from = h.get_by_label("Crate").rect().center();
+        let to = egui::pos2(600.0, 250.0);
+        let press = |h: &mut egui_kittest::Harness<'_, EditorState>, pos, pressed| {
+            h.event(Event::PointerMoved(pos));
+            h.event(Event::PointerButton {
+                pos,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            });
+            h.step();
+        };
+        press(&mut h, from, true);
+        for i in 1..=6 {
+            h.event(Event::PointerMoved(from + (to - from) * (i as f32 / 6.0)));
+            h.step();
+        }
+        press(&mut h, to, false);
+        h.run_steps(2);
+
+        let s = h.state_mut();
+        for a in std::mem::take(&mut s.actions) {
+            crate::commands::apply(s, a);
+        }
+        assert!(root.join("Assets/Crate.prefab").exists());
+        assert_eq!(
+            s.scene.prefab_link(crate_e).as_deref(),
+            Some("Assets/Crate.prefab")
+        );
+        assert_eq!(s.scene.parent(crate_e), None, "not re-parented by the drop");
+        assert_eq!(
+            crate::state::object_icon(&s.scene, crate_e),
+            crate::state::PREFAB_ICON
+        );
+        std::fs::remove_dir_all(root).ok();
     }
 
     #[test]

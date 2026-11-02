@@ -60,7 +60,20 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 });
         });
 
+    let dragging_objects = ui
+        .data(|d| d.get_temp::<Vec<misty_engine::hecs::Entity>>(super::hierarchy::drag_id()))
+        .is_some();
     egui::CentralPanel::default().show(ui, |ui| {
+        browser.drop_rect = ui.max_rect();
+        // Hierarchy rows dragged here become prefabs in this folder.
+        if dragging_objects && ui.rect_contains_pointer(ui.max_rect()) {
+            ui.painter().rect_stroke(
+                ui.max_rect().shrink(1.0),
+                2.0,
+                egui::Stroke::new(2.0, Color32::from_rgb(90, 150, 230)),
+                egui::StrokeKind::Inside,
+            );
+        }
         // Breadcrumb.
         let mut jump = None;
         ui.horizontal(|ui| {
@@ -114,6 +127,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     });
     // Double-clicked file: scenes open in the editor, other files in their default app.
     if let Some(path) = opened_file.as_ref()
+        && path
+            .extension()
+            .is_some_and(|e| e == misty_engine::scene::prefab::EXTENSION)
+    {
+        state
+            .console
+            .info("Prefab Mode is not available yet: edit an instance and use Apply All.");
+    } else if let Some(path) = opened_file.as_ref()
         && path
             .extension()
             .is_some_and(|e| e == misty_engine::scene::file::EXTENSION)
@@ -269,7 +290,7 @@ fn grid_view(
                 Align2::CENTER_CENTER,
                 e.icon(),
                 FontId::proportional(cell * 0.6),
-                Color32::from_gray(200),
+                e.icon_color(),
             );
             ui.painter().text(
                 rect.center_bottom() - egui::vec2(0.0, 9.0),
