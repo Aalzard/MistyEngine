@@ -37,6 +37,8 @@ pub struct ShadowMaps {
 #[derive(Default, Debug)]
 pub struct ShadowPlan {
     pub directional: Option<Mat4>,
+    /// World size of one directional shadow-map texel (for the normal offset).
+    pub directional_texel: f32,
     /// View-projection per local layer.
     pub local: Vec<Mat4>,
     /// Per light (same order as `Frame::lights`): -1 = directional map, n = first local layer, None = no shadows.
@@ -125,7 +127,9 @@ pub fn plan(frame: &Frame) -> ShadowPlan {
         let layer = match l.kind {
             _ if !wants => None,
             LightType::Directional if plan.directional.is_none() => {
-                plan.directional = Some(directional_matrix(l, &casters));
+                let (m, radius) = directional_matrix(l, &casters);
+                plan.directional = Some(m);
+                plan.directional_texel = 2.0 * radius / DIRECTIONAL_SIZE as f32;
                 Some(-1)
             }
             LightType::Directional => None,
@@ -146,8 +150,8 @@ pub fn plan(frame: &Frame) -> ShadowPlan {
     plan
 }
 
-/// Orthographic box around all casters, looking along the light.
-fn directional_matrix(light: &LightData, casters: &[&MeshDraw]) -> Mat4 {
+/// Orthographic box around all casters, looking along the light (and its half size).
+fn directional_matrix(light: &LightData, casters: &[&MeshDraw]) -> (Mat4, f32) {
     let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
     for m in casters {
         let half = m.mesh.half_extents();
@@ -175,7 +179,7 @@ fn directional_matrix(light: &LightData, casters: &[&MeshDraw]) -> Mat4 {
         0.0,
         radius * 4.0,
     );
-    proj * view
+    (proj * view, radius)
 }
 
 fn local_projection(fov_deg: f32, range: f32) -> Mat4 {

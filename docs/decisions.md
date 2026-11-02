@@ -151,3 +151,6 @@ Record of choices made without asking, and why.
     default "recompile after finished playing").
 52. **Game input only while the Game view has focus** (click it; Play Focused gives focus on Play). Plain-key editor
     shortcuts are suspended then, so WASD don't switch tools during play.
+53. **Shadow gap fix:** the shadow pass now renders light-facing faces (back-face culling) instead of front-face
+    culling, which left contact points unshadowed. Acne is avoided with a normal offset of ~1.5–3 shadow texels
+    (world-size texel computed per light) plus a small slope/constant depth bias.

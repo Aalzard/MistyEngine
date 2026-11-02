@@ -228,15 +228,16 @@ impl Pipelines {
                 vs: "vs_main",
                 fs: None,
                 buffers: &mesh_buffers,
-                // Cull front faces in the shadow pass to reduce acne on lit faces.
-                cull: Some(wgpu::Face::Front),
+                // Light-facing faces, so shadows start right at contact points (no gap).
+                // Acne is handled by a small slope bias plus a texel-sized normal offset in the shader.
+                cull: Some(wgpu::Face::Back),
                 depth: Some(Depth {
                     format: SHADOW_FORMAT,
                     write: true,
                     compare: wgpu::CompareFunction::LessEqual,
                     bias: wgpu::DepthBiasState {
-                        constant: 2,
-                        slope_scale: 2.0,
+                        constant: 1,
+                        slope_scale: 1.0,
                         clamp: 0.0,
                     },
                 }),

@@ -30,7 +30,7 @@ struct LightItem {
 };
 
 struct Lights {
-    // x = light count, y unused, z = ambient intensity, w unused.
+    // x = light count, y = directional shadow texel size (world), z = ambient intensity, w unused.
     info: vec4<f32>,
     shadow_view_proj: mat4x4<f32>,
     sky: vec4<f32>,
@@ -131,8 +131,9 @@ fn shadow_factor(li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) ->
     let slope = 1.0 - max(dot(n, l), 0.0);
     let kind = u32(li.dir_type.w);
     if (kind == 0u) {
-        let p = world + n * 0.02 * slope;
-        return filter_directional(shadow_coords(lights.shadow_view_proj, p), mode, 0.0015);
+        // Push the lookup out along the normal by about one shadow texel (more on slopes).
+        let p = world + n * lights.info.y * (1.5 + 3.0 * slope);
+        return filter_directional(shadow_coords(lights.shadow_view_proj, p), mode, 0.0003);
     }
     var layer = i32(li.shadow.y);
     if (layer < 0) {
@@ -150,9 +151,11 @@ fn shadow_factor(li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) ->
             layer += select(5, 4, to_point.z > 0.0);
         }
     }
-    let offset = n * (0.01 + 0.03 * slope) * max(length(to_point) * 0.1, 0.2);
+    // One 1024² texel of a ~92° frustum at this distance is about 0.002 × distance.
+    let texel = length(to_point) * 0.002;
+    let offset = n * texel * (2.0 + 4.0 * slope);
     let sc = shadow_coords(lights.local_view_proj[layer], world + offset);
-    return filter_local(sc, layer, mode, 0.0005);
+    return filter_local(sc, layer, mode, 0.0002);
 }
 
 // GGX normal distribution.
