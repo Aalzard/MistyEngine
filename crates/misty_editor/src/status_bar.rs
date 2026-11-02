@@ -1,0 +1,25 @@
+//! Bottom status bar: mirrors the latest console message; click opens the Console.
+
+use egui::{RichText, Sense, Ui};
+
+use crate::actions::Action;
+use crate::layout::Tab;
+use crate::state::EditorState;
+
+pub fn show(ui: &mut Ui, state: &mut EditorState) {
+    ui.horizontal(|ui| {
+        let text = match state.console.last() {
+            Some(e) => RichText::new(format!("{} {}", e.level.icon(), first_line(&e.message)))
+                .color(e.level.color()),
+            None => RichText::new(""),
+        };
+        let resp = ui.add(egui::Label::new(text).truncate().sense(Sense::click()));
+        if resp.clicked() {
+            state.push(Action::FocusTab(Tab::Console));
+        }
+    });
+}
+
+fn first_line(s: &str) -> &str {
+    s.lines().next().unwrap_or("")
+}

@@ -1,0 +1,18 @@
+[package]
+name = "misty_editor"
+description = "Misty Engine editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "misty"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+egui-wgpu.workspace = true
+egui_dock.workspace = true
+glam.workspace = true
+bytemuck.workspace = true
