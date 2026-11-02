@@ -4,6 +4,7 @@ use misty_engine::hecs::Entity;
 use misty_engine::scene::{LightType, PrimitiveMesh};
 
 use crate::layout::Tab;
+use crate::layouts::LayoutRef;
 
 /// What a create command makes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,7 +32,13 @@ impl Create {
 #[derive(Clone, Debug)]
 pub enum Action {
     FocusTab(Tab),
-    ResetLayout,
+    /// Window ▸ Layouts: apply a built-in or saved layout.
+    LoadLayout(LayoutRef),
+    /// Save the current arrangement under a name.
+    SaveLayout(String),
+    DeleteLayout(String),
+    /// Delete user layouts and go back to Default.
+    ResetAllLayouts,
     Quit,
     NewScene,
     /// File ▸ Open Scene (file dialog).

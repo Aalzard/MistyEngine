@@ -10,6 +10,7 @@ mod game_input;
 mod gizmos;
 mod handles;
 mod layout;
+mod layouts;
 mod menu_bar;
 mod panels;
 mod picking;

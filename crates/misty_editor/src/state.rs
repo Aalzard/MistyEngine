@@ -187,6 +187,8 @@ pub struct EditorState {
     pub inspector_asset: Option<String>,
     pub scene_view: SceneViewSettings,
     pub game_view: GameViewSettings,
+    /// Saved window layouts and the Save Layout prompt.
+    pub layouts: crate::layouts::Layouts,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
 }
@@ -247,6 +249,7 @@ impl EditorState {
                 stats: false,
                 gizmos: false,
             },
+            layouts: Default::default(),
             actions: Vec::new(),
         }
     }

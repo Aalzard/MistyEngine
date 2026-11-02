@@ -169,3 +169,23 @@ Record of choices made without asking, and why.
 57. **Per-user editor state in `<Project>/Library/EditorSettings.json`** (recent scenes), git-ignored like a Library
     folder. The editor reopens the most recent scene on startup, falling back to `Assets/Scenes/SampleScene.scene`.
 58. **Window title** shows "Project - Scene* - Misty Engine", with `*` while unsaved.
+
+## 2026-11-03 — Window layouts
+
+59. **Layouts live in their own `<Project>/Library/Layouts.json`** (current arrangement, its name, named user
+    layouts) instead of a field in `EditorSettings.json`. Dock trees are large and change often; a separate file
+    keeps the recent-scenes file small and lets the two be written independently. It is git-ignored with the rest
+    of `Library/`.
+60. **Saving is change-driven and debounced:** once a second the layout is serialized and written only if the text
+    differs from what is on disk; exit and user-layout edits write immediately. Screen rects are zeroed before
+    serializing (egui recomputes them every frame), so resizing the window doesn't rewrite the file and fresh
+    layouts don't contain infinities that JSON can't store.
+61. **Built-in layouts** approximate the same panel arrangements: 2 by 3 (Scene over Game, then Hierarchy,
+    Project+Console and Inspector columns), 4 Split (2×2 grid of Scene/Game/Hierarchy/Project, Inspector right),
+    Tall (full-height Scene+Game, Hierarchy over Project+Console, Inspector), Wide (Scene+Game on top with
+    Hierarchy | Project+Console below, full-height Inspector). Every built-in contains all six tabs once. User
+    layouts may not reuse a built-in name; saving an existing name replaces it.
+62. **Main window size/position via eframe's `persistence` feature** (stored by eframe in the OS app-data folder,
+    since window placement is per machine, not per project). It restores the maximized flag too, so it works
+    with `with_maximized(true)` on first run. egui's own memory isn't persisted (`persist_egui_memory = false`):
+    editor state belongs in the project.

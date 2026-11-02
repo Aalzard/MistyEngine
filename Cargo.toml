@@ -8,10 +8,10 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-eframe = "0.36"
+eframe = { version = "0.36", features = ["persistence"] }
 egui = "0.36"
 egui-wgpu = "0.36"
-egui_dock = "0.21"
+egui_dock = { version = "0.21", features = ["serde"] }
 glam = { version = "0.34", features = ["serde", "bytemuck"] }
 bytemuck = { version = "1", features = ["derive"] }
 wgpu = "30"

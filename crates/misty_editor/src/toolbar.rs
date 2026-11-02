@@ -14,13 +14,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         ui.label(RichText::new("◆ Misty").strong());
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             egui::ComboBox::from_id_salt("layout_dropdown")
-                .selected_text("Layout")
+                .selected_text(state.layouts.current_name.clone())
                 .width(80.0)
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(false, "Default").clicked() {
-                        state.push(Action::ResetLayout);
-                    }
-                });
+                .show_ui(ui, |ui| crate::menu_bar::layouts_menu(ui, state));
             egui::ComboBox::from_id_salt("layers_dropdown")
                 .selected_text("Layers")
                 .width(80.0)

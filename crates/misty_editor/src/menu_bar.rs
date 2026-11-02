@@ -7,7 +7,8 @@ use misty_engine::scene::registry;
 use misty_engine::scene::{LightType, PrimitiveMesh};
 
 use crate::actions::{Action, Create};
-use crate::layout::Tab;
+use crate::layout::{BuiltinLayout, Tab};
+use crate::layouts::LayoutRef;
 use crate::state::EditorState;
 
 /// Menu entry with a right-aligned shortcut hint; pushes `action` when clicked.
@@ -239,9 +240,7 @@ fn component_menu(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn window_menu(ui: &mut Ui, s: &mut EditorState) {
-    ui.menu_button("Layouts", |ui| {
-        item(ui, s, "Default", "", Action::ResetLayout);
-    });
+    ui.menu_button("Layouts", |ui| layouts_menu(ui, s));
     ui.separator();
     ui.menu_button("General", |ui| {
         for tab in Tab::ALL {
@@ -249,6 +248,40 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         }
     });
     todo(ui, s, "Package Manager", "");
+}
+
+/// Window ▸ Layouts, also used by the toolbar's Layout dropdown.
+pub fn layouts_menu(ui: &mut Ui, s: &mut EditorState) {
+    let current = s.layouts.current_name.clone();
+    let entry = |ui: &mut Ui, s: &mut EditorState, name: &str, layout: LayoutRef| {
+        if ui.selectable_label(name == current, name).clicked() {
+            s.push(Action::LoadLayout(layout));
+            ui.close();
+        }
+    };
+    for b in BuiltinLayout::ALL {
+        entry(ui, s, b.name(), LayoutRef::Builtin(b));
+    }
+    let names: Vec<String> = s.layouts.user.keys().cloned().collect();
+    if !names.is_empty() {
+        ui.separator();
+    }
+    for name in &names {
+        entry(ui, s, name, LayoutRef::User(name.clone()));
+    }
+    ui.separator();
+    if ui.button("Save Layout...").clicked() {
+        s.layouts.save_prompt = Some(String::new());
+        ui.close();
+    }
+    ui.add_enabled_ui(!names.is_empty(), |ui| {
+        ui.menu_button("Delete Layout", |ui| {
+            for name in &names {
+                item(ui, s, name, "", Action::DeleteLayout(name.clone()));
+            }
+        });
+    });
+    item(ui, s, "Reset All Layouts", "", Action::ResetAllLayouts);
 }
 
 fn help_menu(ui: &mut Ui, s: &mut EditorState) {

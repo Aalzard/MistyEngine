@@ -1,8 +1,9 @@
-//! Dockable panel tabs and the default layout.
+//! Dockable panel tabs and the built-in layouts.
 
 use egui_dock::{DockState, NodeIndex, NodePath};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Tab {
     Scene,
     Game,
@@ -57,6 +58,50 @@ impl Tab {
     }
 }
 
+/// Layouts that ship with the editor (Window ▸ Layouts).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuiltinLayout {
+    Default,
+    TwoByThree,
+    FourSplit,
+    Tall,
+    Wide,
+}
+
+impl BuiltinLayout {
+    pub const ALL: [BuiltinLayout; 5] = [
+        BuiltinLayout::TwoByThree,
+        BuiltinLayout::FourSplit,
+        BuiltinLayout::Default,
+        BuiltinLayout::Tall,
+        BuiltinLayout::Wide,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            BuiltinLayout::Default => "Default",
+            BuiltinLayout::TwoByThree => "2 by 3",
+            BuiltinLayout::FourSplit => "4 Split",
+            BuiltinLayout::Tall => "Tall",
+            BuiltinLayout::Wide => "Wide",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|b| b.name() == name)
+    }
+
+    pub fn build(self) -> DockState<Tab> {
+        match self {
+            BuiltinLayout::Default => default_layout(),
+            BuiltinLayout::TwoByThree => two_by_three(),
+            BuiltinLayout::FourSplit => four_split(),
+            BuiltinLayout::Tall => tall(),
+            BuiltinLayout::Wide => wide(),
+        }
+    }
+}
+
 /// Default layout: Hierarchy | Scene+Game over Project+Console, Inspector on the right.
 pub fn default_layout() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
@@ -64,6 +109,48 @@ pub fn default_layout() -> DockState<Tab> {
     let [left, _inspector] = tree.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector]);
     let [top, _bottom] = tree.split_below(left, 0.66, vec![Tab::Project, Tab::Console]);
     let [_scene, _hierarchy] = tree.split_left(top, 0.24, vec![Tab::Hierarchy]);
+    dock
+}
+
+/// Scene over Game on the left, then Hierarchy, Project+Console and Inspector columns.
+fn two_by_three() -> DockState<Tab> {
+    let mut dock = DockState::new(vec![Tab::Scene]);
+    let tree = dock.main_surface_mut();
+    let [views, rest] = tree.split_right(NodeIndex::root(), 0.5, vec![Tab::Hierarchy]);
+    let [_scene, _game] = tree.split_below(views, 0.5, vec![Tab::Game]);
+    let [_hierarchy, rest] = tree.split_right(rest, 0.33, vec![Tab::Project, Tab::Console]);
+    let [_project, _inspector] = tree.split_right(rest, 0.5, vec![Tab::Inspector]);
+    dock
+}
+
+/// A 2×2 grid (Scene, Game / Hierarchy, Project+Console) with the Inspector on the right.
+fn four_split() -> DockState<Tab> {
+    let mut dock = DockState::new(vec![Tab::Scene]);
+    let tree = dock.main_surface_mut();
+    let [grid, _inspector] = tree.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector]);
+    let [top, bottom] = tree.split_below(grid, 0.5, vec![Tab::Hierarchy]);
+    let [_scene, _game] = tree.split_right(top, 0.5, vec![Tab::Game]);
+    let [_hierarchy, _project] = tree.split_right(bottom, 0.5, vec![Tab::Project, Tab::Console]);
+    dock
+}
+
+/// Full-height Scene+Game, then Hierarchy over Project+Console, Inspector on the right.
+fn tall() -> DockState<Tab> {
+    let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
+    let tree = dock.main_surface_mut();
+    let [_views, rest] = tree.split_right(NodeIndex::root(), 0.55, vec![Tab::Hierarchy]);
+    let [column, _inspector] = tree.split_right(rest, 0.5, vec![Tab::Inspector]);
+    let [_hierarchy, _project] = tree.split_below(column, 0.5, vec![Tab::Project, Tab::Console]);
+    dock
+}
+
+/// Wide Scene+Game on top, Hierarchy | Project+Console below, Inspector full height on the right.
+fn wide() -> DockState<Tab> {
+    let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
+    let tree = dock.main_surface_mut();
+    let [left, _inspector] = tree.split_right(NodeIndex::root(), 0.8, vec![Tab::Inspector]);
+    let [_views, bottom] = tree.split_below(left, 0.62, vec![Tab::Hierarchy]);
+    let [_hierarchy, _project] = tree.split_right(bottom, 0.3, vec![Tab::Project, Tab::Console]);
     dock
 }
 
@@ -77,5 +164,24 @@ pub fn focus_or_open(dock: &mut DockState<Tab>, tab: Tab) {
         });
     } else {
         dock.push_to_focused_leaf(tab);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_builtin_layout_has_each_tab_once() {
+        for layout in BuiltinLayout::ALL {
+            let dock = layout.build();
+            let mut tabs: Vec<Tab> = dock.iter_all_tabs().map(|(_, t)| *t).collect();
+            assert_eq!(tabs.len(), Tab::ALL.len(), "{}", layout.name());
+            for tab in Tab::ALL {
+                tabs.retain(|t| *t != tab);
+            }
+            assert!(tabs.is_empty(), "{}", layout.name());
+            assert_eq!(BuiltinLayout::from_name(layout.name()), Some(layout));
+        }
     }
 }
