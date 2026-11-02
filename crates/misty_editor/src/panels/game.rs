@@ -1,11 +1,11 @@
 //! Game view: display/aspect/scale toolbar and the camera output.
 
 use egui::{Align2, Color32, FontId, Ui};
-use glam::Vec3;
-use misty_engine::camera::{Camera, Projection, euler_to_quat};
+use misty_engine::camera::{Camera, Projection};
 use misty_engine::render::Frame;
+use misty_engine::scene::{Camera as CameraComponent, ClearFlags};
 
-use crate::state::{EditorState, ObjectKind};
+use crate::state::EditorState;
 use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, toggle_button};
 
@@ -32,25 +32,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         None => area,
     };
 
-    // The first active camera in the scene renders the game.
-    let camera = state
-        .objects
-        .iter()
-        .find(|o| o.active && o.kind == ObjectKind::Camera)
-        .map(|o| Camera {
-            position: Vec3::from(o.position),
-            rotation: euler_to_quat(Vec3::from(o.rotation)),
-            projection: Projection::Perspective { fov_y: 60.0 },
-            near: 0.3,
-            far: 1000.0,
-        });
+    let camera = game_camera(state);
     match (camera, gpu) {
-        (Some(camera), Some(gpu)) => {
+        (Some((camera, settings)), Some(gpu)) => {
+            let bg = settings.background;
             let frame = Frame {
                 camera: &camera,
                 grid: None,
-                skybox: true,
-                background: [0.19, 0.30, 0.47],
+                skybox: settings.clear_flags == ClearFlags::Skybox,
+                background: [bg[0], bg[1], bg[2]],
                 lines: &[],
             };
             let ppp = ui.ctx().pixels_per_point();
@@ -70,6 +60,36 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             );
         }
     }
+}
+
+/// The enabled, active camera with the highest Depth renders the game.
+fn game_camera(state: &EditorState) -> Option<(Camera, CameraComponent)> {
+    let scene = &state.scene;
+    scene
+        .walk()
+        .into_iter()
+        .filter(|(e, _)| scene.active_in_hierarchy(*e))
+        .filter_map(|(e, _)| {
+            let c = scene.world.get::<&CameraComponent>(e).ok()?;
+            c.enabled.then(|| (e, (*c).clone()))
+        })
+        .max_by(|a, b| a.1.depth.total_cmp(&b.1.depth))
+        .map(|(e, c)| {
+            let (_, rotation, position) = scene.world_matrix(e).to_scale_rotation_translation();
+            let projection = if c.orthographic {
+                Projection::Orthographic { size: c.ortho_size }
+            } else {
+                Projection::Perspective { fov_y: c.fov }
+            };
+            let camera = Camera {
+                position,
+                rotation,
+                projection,
+                near: c.near,
+                far: c.far,
+            };
+            (camera, c)
+        })
 }
 
 fn fit_aspect(area: egui::Rect, aspect: f32) -> egui::Rect {

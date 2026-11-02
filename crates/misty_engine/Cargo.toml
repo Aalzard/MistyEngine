@@ -9,3 +9,6 @@ license.workspace = true
 wgpu.workspace = true
 glam.workspace = true
 bytemuck.workspace = true
+hecs.workspace = true
+serde.workspace = true
+serde_json.workspace = true

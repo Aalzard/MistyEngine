@@ -5,6 +5,9 @@
 
 pub mod camera;
 pub mod render;
+pub mod scene;
+
+pub use hecs;
 
 pub use glam;
 pub use wgpu;

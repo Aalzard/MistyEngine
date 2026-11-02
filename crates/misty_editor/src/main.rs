@@ -3,17 +3,21 @@
 mod actions;
 mod app;
 mod capture;
+mod commands;
 mod console;
 mod gizmos;
 mod layout;
 mod menu_bar;
 mod panels;
+mod picking;
 mod project;
 mod scene_camera;
+mod selection;
 mod state;
 mod status_bar;
 mod theme;
 mod toolbar;
+mod undo;
 mod viewport;
 mod widgets;
 

@@ -343,6 +343,19 @@ impl SceneCamera {
         self.animate_to(target);
     }
 
+    /// Put the eye at `position` looking along `rotation` (Align View to Selected).
+    pub fn align_to(&mut self, position: Vec3, rotation: Quat) {
+        let (yaw, pitch) = yaw_pitch_from_forward(rotation * Vec3::Z);
+        let mut target = Pose {
+            yaw,
+            pitch,
+            ..self.pose
+        };
+        target.pivot = position + rotation * Vec3::Z * self.pose.distance;
+        self.leave_snapped_view();
+        self.animate_to(target);
+    }
+
     /// Snap to an axis view (scene gizmo cone): orthographic, looking at the pivot.
     pub fn snap_to_axis(&mut self, axis: AxisView) {
         if self.in_2d {

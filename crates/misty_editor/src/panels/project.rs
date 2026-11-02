@@ -9,7 +9,7 @@ use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::{panel_toolbar, search_field};
 
-use super::hierarchy::row;
+use super::hierarchy::row_simple as row;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let browser = &mut state.project;

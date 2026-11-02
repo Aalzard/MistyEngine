@@ -20,10 +20,8 @@
 
 ### Not matching Unity yet
 - No tab ⋮ menu (Maximize / Add Tab), no double-click-to-maximize.
-- Hierarchy has no parent/child tree, drag-reparenting, rename (F2) or multi-select. (step 3)
-- Inspector edits placeholder data, not real components. (steps 3–4)
 - Layouts are not saved between sessions.
-- Undo/Redo, Cut/Copy/Paste not implemented.
+- Cut/Copy/Paste not implemented.
 
 ## Step 2 — Scene view with camera movement ✅
 
@@ -50,3 +48,27 @@
 - Scene-view search, draw modes (wireframe), lighting/audio toggles have no effect yet.
 - No "Move to View" / "Align With View".
 - Icons do not scale with distance (Unity's 3D icons option).
+
+## Step 3 — GameObjects, Transform, Hierarchy ✅
+
+### Done
+- Engine `scene` module on hecs: GameObject/Transform/Node + Camera, Light, Mesh Filter, Mesh Renderer components,
+  component registry, hierarchy ops (re-parent with keep-world, reorder, deep duplicate, recursive delete), world
+  matrices, active-in-hierarchy, Unity-style "(1)" naming.
+- Hierarchy: tree with foldouts (Alt+click = whole subtree), click / Ctrl / Shift multi-select, drag to re-parent or
+  reorder (blue line / box drop indicator, drag label), drop on empty space = root, inline rename (F2, Enter, Esc),
+  arrow keys (Up/Down select, Left/Right fold), search (flat results), inactive objects greyed, grey selection when
+  the panel is unfocused, scene ⋮ menu, per-row context menu (Rename, Duplicate, Delete, Select Children, Create …
+  as child).
+- GameObject menu: Create Empty / Empty Child / Empty Parent, 3D Objects, Lights, Camera, Clear Parent, sibling
+  order, Move To View, Align With View, Align View to Selected, Toggle Active State. Edit: Undo/Redo (with action
+  names), Select All, Duplicate, Rename, Delete, Frame Selected.
+- Undo/Redo for every command and Inspector edit (Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z).
+- Scene view: picking by ray vs mesh bounds and camera/light icons; Ctrl/Shift-click multi-select; selected meshes
+  orange; frame selection fits all selected bounds. Game view renders from the highest-Depth enabled camera with its
+  FOV/ortho/clipping and clear flags.
+
+### Not matching Unity yet
+- No Copy/Paste of objects; no Hierarchy auto-scroll while dragging; no "pinging" of selected objects.
+- Multi-object editing in the Inspector only edits the active object.
+- Hierarchy does not scroll to the selection when it is picked in the Scene view (it does expand the parents).

@@ -2,7 +2,11 @@
 
 use egui::Ui;
 
-use crate::actions::{Action, LightKind, Primitive};
+use misty_engine::hecs::Entity;
+use misty_engine::scene::registry;
+use misty_engine::scene::{LightType, PrimitiveMesh};
+
+use crate::actions::{Action, Create};
 use crate::layout::Tab;
 use crate::state::EditorState;
 
@@ -55,17 +59,35 @@ fn file_menu(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn edit_menu(ui: &mut Ui, s: &mut EditorState) {
-    todo(ui, s, "Undo", "Ctrl+Z");
-    todo(ui, s, "Redo", "Ctrl+Y");
+    let undo = s.undo.undo_label().map(|l| format!("Undo {l}"));
+    let redo = s.undo.redo_label().map(|l| format!("Redo {l}"));
+    ui.add_enabled_ui(undo.is_some(), |ui| {
+        item(
+            ui,
+            s,
+            undo.as_deref().unwrap_or("Undo"),
+            "Ctrl+Z",
+            Action::Undo,
+        )
+    });
+    ui.add_enabled_ui(redo.is_some(), |ui| {
+        item(
+            ui,
+            s,
+            redo.as_deref().unwrap_or("Redo"),
+            "Ctrl+Y",
+            Action::Redo,
+        )
+    });
     ui.separator();
-    todo(ui, s, "Select All", "Ctrl+A");
+    item(ui, s, "Select All", "Ctrl+A", Action::SelectAll);
     item(ui, s, "Deselect All", "Shift+D", Action::DeselectAll);
     ui.separator();
     todo(ui, s, "Cut", "Ctrl+X");
     todo(ui, s, "Copy", "Ctrl+C");
     todo(ui, s, "Paste", "Ctrl+V");
     item(ui, s, "Duplicate", "Ctrl+D", Action::DuplicateSelected);
-    todo(ui, s, "Rename", "F2");
+    item(ui, s, "Rename", "F2", Action::RenameSelected);
     item(ui, s, "Delete", "Del", Action::DeleteSelected);
     ui.separator();
     item(ui, s, "Frame Selected", "F", Action::FrameSelected);
@@ -105,39 +127,91 @@ fn assets_menu(ui: &mut Ui, s: &mut EditorState) {
     }
 }
 
-/// Shared by the GameObject menu, the Hierarchy "+" button and its context menu.
-pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState) {
-    item(ui, s, "Create Empty", "Ctrl+Shift+N", Action::CreateEmpty);
+/// Shared by the GameObject menu, the Hierarchy "+" button and its context menus.
+/// `parent` = create as a child of this object.
+pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity>) {
+    let create = |what| Action::Create { what, parent };
+    let shortcut = if parent.is_none() { "Ctrl+Shift+N" } else { "" };
+    item(ui, s, "Create Empty", shortcut, create(Create::Empty));
     ui.menu_button("3D Object", |ui| {
-        for p in Primitive::ALL {
-            item(ui, s, p.name(), "", Action::CreatePrimitive(p));
+        for p in PrimitiveMesh::ALL {
+            item(ui, s, p.name(), "", create(Create::Primitive(p)));
         }
     });
     ui.menu_button("Light", |ui| {
-        for l in LightKind::ALL {
-            item(ui, s, l.name(), "", Action::CreateLight(l));
+        for l in LightType::ALL {
+            let what = Create::Light(l);
+            item(ui, s, what.default_name(), "", create(what));
         }
     });
     ui.menu_button("Audio", |ui| todo(ui, s, "Audio Source", ""));
     ui.menu_button("UI", |ui| todo(ui, s, "Canvas", ""));
-    item(ui, s, "Camera", "", Action::CreateCamera);
+    item(ui, s, "Camera", "", create(Create::Camera));
 }
 
 fn gameobject_menu(ui: &mut Ui, s: &mut EditorState) {
-    create_menu_items(ui, s);
+    create_menu_items(ui, s, None);
+    let child_parent = s.selection.active();
+    ui.add_enabled_ui(child_parent.is_some(), |ui| {
+        let action = Action::Create {
+            what: Create::Empty,
+            parent: child_parent,
+        };
+        item(ui, s, "Create Empty Child", "Alt+Shift+N", action);
+    });
+    item(
+        ui,
+        s,
+        "Create Empty Parent",
+        "Ctrl+Shift+G",
+        Action::CreateEmptyParent,
+    );
     ui.separator();
-    todo(ui, s, "Make Parent", "");
-    todo(ui, s, "Clear Parent", "");
+    item(ui, s, "Clear Parent", "", Action::ClearParent);
+    item(
+        ui,
+        s,
+        "Set as first sibling",
+        "",
+        Action::SetSibling { first: true },
+    );
+    item(
+        ui,
+        s,
+        "Set as last sibling",
+        "",
+        Action::SetSibling { first: false },
+    );
     ui.separator();
-    todo(ui, s, "Move To View", "Ctrl+Alt+F");
-    todo(ui, s, "Align With View", "Ctrl+Shift+F");
+    item(ui, s, "Move To View", "Ctrl+Alt+F", Action::MoveToView);
+    item(
+        ui,
+        s,
+        "Align With View",
+        "Ctrl+Shift+F",
+        Action::AlignWithView,
+    );
+    item(
+        ui,
+        s,
+        "Align View to Selected",
+        "",
+        Action::AlignViewToSelected,
+    );
     ui.separator();
-    todo(ui, s, "Toggle Active State", "Alt+Shift+A");
+    item(
+        ui,
+        s,
+        "Toggle Active State",
+        "Alt+Shift+A",
+        Action::ToggleActive,
+    );
 }
 
 fn component_menu(ui: &mut Ui, s: &mut EditorState) {
-    todo(ui, s, "Add...", "Ctrl+Shift+A");
+    item(ui, s, "Add...", "Ctrl+Shift+A", Action::OpenAddComponent);
     ui.separator();
+    let has_selection = !s.selection.is_empty();
     for cat in [
         "Mesh",
         "Effects",
@@ -148,7 +222,18 @@ fn component_menu(ui: &mut Ui, s: &mut EditorState) {
         "UI",
     ] {
         ui.menu_button(cat, |ui| {
-            ui.weak("(coming soon)");
+            let entries: Vec<_> = registry::components()
+                .iter()
+                .filter(|c| c.category == cat)
+                .collect();
+            if entries.is_empty() {
+                ui.weak("(coming soon)");
+            }
+            for info in entries {
+                ui.add_enabled_ui(has_selection, |ui| {
+                    item(ui, s, info.name, "", Action::AddComponent(info.name))
+                });
+            }
         });
     }
 }

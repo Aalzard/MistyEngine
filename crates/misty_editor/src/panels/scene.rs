@@ -4,12 +4,12 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Ui, pos2, vec2};
 use glam::Vec3;
 use misty_engine::render::{Frame, GridPlane};
 
-use crate::gizmos;
 use crate::scene_camera::{AxisView, SceneCamera};
-use crate::state::{EditorState, ObjectKind, Tool};
+use crate::state::{EditorState, Tool, object_icon};
 use crate::theme;
 use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
+use crate::{gizmos, picking};
 
 const DRAW_MODES: [&str; 3] = ["Shaded", "Wireframe", "Shaded Wireframe"];
 
@@ -30,11 +30,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     }
 
     let camera = cam.camera();
-    let aspect = rect.width() / rect.height().max(1.0);
     match gpu {
         Some(gpu) => {
             let lines = if state.scene_view.gizmos {
-                gizmos::scene_lines(&state.objects, state.selected)
+                gizmos::scene_lines(&state.scene, &state.selection)
             } else {
                 gizmos::Lines::default()
             };
@@ -61,22 +60,28 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         }
     }
 
-    // Object icons and click-to-select.
-    let screen = |p: Vec3| {
-        camera.world_to_screen(aspect, p).map(|(uv, _)| {
-            pos2(
-                rect.left() + uv.x * rect.width(),
-                rect.top() + uv.y * rect.height(),
-            )
-        })
-    };
+    // Object icons and click-to-select (Ctrl toggles, Shift adds).
     if state.scene_view.gizmos {
-        draw_icons(ui, rect, state, &screen);
+        draw_icons(ui, rect, state, &camera);
     }
-    if response.clicked() && !view_tool && !ui.input(|i| i.modifiers.alt) {
-        state.selected = response
-            .interact_pointer_pos()
-            .and_then(|click| pick(state, &screen, click));
+    if response.clicked()
+        && !view_tool
+        && !ui.input(|i| i.modifiers.alt)
+        && let Some(click) = response.interact_pointer_pos()
+    {
+        let hit = picking::pick(&state.scene, &camera, rect, click);
+        let mods = ui.input(|i| i.modifiers);
+        match hit {
+            Some(e) if mods.command => state.selection.toggle(e),
+            Some(e) if mods.shift => {
+                if !state.selection.contains(e) {
+                    state.selection.toggle(e);
+                }
+            }
+            Some(e) => state.select(e),
+            None if mods.command || mods.shift => {}
+            None => state.selection.clear(),
+        }
     }
 
     tools_overlay(ui, rect, state);
@@ -103,16 +108,14 @@ fn grid_plane(cam: &SceneCamera) -> GridPlane {
     GridPlane::XZ
 }
 
-fn draw_icons(ui: &Ui, rect: Rect, state: &EditorState, screen: &dyn Fn(Vec3) -> Option<Pos2>) {
+/// Billboard icons for cameras and lights (objects without a mesh).
+fn draw_icons(ui: &Ui, rect: Rect, state: &EditorState, camera: &misty_engine::camera::Camera) {
     let painter = ui.painter().with_clip_rect(rect);
-    for (i, o) in state.objects.iter().enumerate() {
-        if !o.active || matches!(o.kind, ObjectKind::Primitive(_)) {
-            continue;
-        }
-        let Some(p) = screen(Vec3::from(o.position)) else {
+    for e in picking::icon_objects(&state.scene) {
+        let Some(p) = picking::to_screen(camera, rect, state.scene.world_position(e)) else {
             continue;
         };
-        let color = if state.selected == Some(i) {
+        let color = if state.selection.contains(e) {
             Color32::from_rgb(255, 160, 40)
         } else {
             Color32::from_gray(235)
@@ -120,24 +123,11 @@ fn draw_icons(ui: &Ui, rect: Rect, state: &EditorState, screen: &dyn Fn(Vec3) ->
         painter.text(
             p,
             Align2::CENTER_CENTER,
-            o.icon,
+            object_icon(&state.scene, e),
             FontId::proportional(22.0),
             color,
         );
     }
-}
-
-/// Nearest object whose icon/centre is under the click.
-fn pick(state: &EditorState, screen: &dyn Fn(Vec3) -> Option<Pos2>, click: Pos2) -> Option<usize> {
-    state
-        .objects
-        .iter()
-        .enumerate()
-        .filter(|(_, o)| o.active)
-        .filter_map(|(i, o)| screen(Vec3::from(o.position)).map(|p| (i, p.distance(click))))
-        .filter(|(_, d)| *d < 22.0)
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(i, _)| i)
 }
 
 /// Vertical tool strip in the top-left corner of the view.
@@ -547,13 +537,8 @@ mod tests {
     fn clicking_an_icon_selects_and_empty_space_deselects() {
         let mut h = harness();
         let cam_now = cam(&h).camera();
-        let light = h
-            .state()
-            .objects
-            .iter()
-            .position(|o| o.name == "Directional Light")
-            .unwrap();
-        let p = Vec3::from(h.state().objects[light].position);
+        let light = h.state().scene.find_by_name("Directional Light").unwrap();
+        let p = h.state().scene.world_position(light);
         let view = h.state().scene_view.view_rect;
         let (uv, _) = cam_now
             .world_to_screen(view.width() / view.height(), p)
@@ -564,7 +549,7 @@ mod tests {
         );
         button(&mut h, at, PointerButton::Primary, true, Modifiers::NONE);
         button(&mut h, at, PointerButton::Primary, false, Modifiers::NONE);
-        assert_eq!(h.state().selected, Some(light));
+        assert_eq!(h.state().selection.active(), Some(light));
 
         button(
             &mut h,
@@ -580,7 +565,7 @@ mod tests {
             false,
             Modifiers::NONE,
         );
-        assert_eq!(h.state().selected, None);
+        assert!(h.state().selection.is_empty());
     }
 
     fn gizmo_center(h: &Harness<'_, EditorState>) -> Pos2 {

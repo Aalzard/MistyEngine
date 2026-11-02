@@ -1,24 +1,17 @@
 //! Scene-view gizmo lines: wire shapes for placeholder objects, camera frustum, light rays.
 
 use glam::{Mat4, Vec3};
-use misty_engine::camera::euler_to_quat;
 use misty_engine::render::LineVertex;
+use misty_engine::scene::{
+    Camera, Light, LightType, MeshFilter, PrimitiveMesh as Primitive, Scene,
+};
 
-use crate::actions::{LightKind, Primitive};
-use crate::state::{ObjectKind, PlaceholderObject};
+use crate::selection::Selection;
 
 pub const SELECTED: [f32; 4] = [0.96, 0.54, 0.0, 1.0];
 const WIRE: [f32; 4] = [0.75, 0.75, 0.75, 0.9];
 const CAMERA: [f32; 4] = [0.85, 0.85, 0.85, 0.8];
 const LIGHT: [f32; 4] = [1.0, 0.92, 0.45, 0.9];
-
-pub fn object_matrix(o: &PlaceholderObject) -> Mat4 {
-    Mat4::from_scale_rotation_translation(
-        Vec3::from(o.scale),
-        euler_to_quat(Vec3::from(o.rotation)),
-        Vec3::from(o.position),
-    )
-}
 
 /// Collects line segments in world space.
 #[derive(Default)]
@@ -128,11 +121,16 @@ impl Lines {
         }
     }
 
-    /// Camera frustum pyramid (shown when the camera is selected).
-    fn frustum(&mut self, m: &Mat4, color: [f32; 4]) {
-        let (near, far, fov, aspect) = (0.3_f32, 5.0_f32, 60.0_f32, 16.0 / 9.0);
+    /// Camera frustum (shown when the camera is selected). The far plane is capped for readability.
+    fn frustum(&mut self, m: &Mat4, cam: &Camera, color: [f32; 4]) {
+        let aspect = 16.0 / 9.0;
+        let (near, far) = (cam.near, cam.far.min(cam.near + 20.0));
         let corners = |d: f32| {
-            let h = d * (fov.to_radians() * 0.5).tan();
+            let h = if cam.orthographic {
+                cam.ortho_size
+            } else {
+                d * (cam.fov.to_radians() * 0.5).tan()
+            };
             let w = h * aspect;
             [
                 Vec3::new(-w, -h, d),
@@ -149,10 +147,10 @@ impl Lines {
         }
     }
 
-    /// Directional light: disc with parallel rays along +Z.
-    fn light_rays(&mut self, m: &Mat4, kind: LightKind, color: [f32; 4]) {
-        match kind {
-            LightKind::Directional => {
+    /// Directional: disc with parallel rays; Point: range spheres; Spot: cone.
+    fn light_rays(&mut self, m: &Mat4, light: &Light, color: [f32; 4]) {
+        match light.kind {
+            LightType::Directional => {
                 self.circle(m, Vec3::ZERO, 0.5, 2, color);
                 for i in 0..8 {
                     let a = i as f32 / 8.0 * std::f32::consts::TAU;
@@ -164,18 +162,19 @@ impl Lines {
                     );
                 }
             }
-            LightKind::Point => {
+            LightType::Point => {
                 for axis in 0..3 {
-                    self.circle(m, Vec3::ZERO, 10.0, axis, color);
+                    self.circle(m, Vec3::ZERO, light.range, axis, color);
                 }
             }
-            LightKind::Spot => {
-                let r = 10.0 * (15.0_f32).to_radians().tan();
-                self.circle(m, Vec3::Z * 10.0, r, 2, color);
+            LightType::Spot => {
+                let d = light.range;
+                let r = d * (light.spot_angle.to_radians() * 0.5).tan();
+                self.circle(m, Vec3::Z * d, r, 2, color);
                 for (x, y) in [(r, 0.0), (-r, 0.0), (0.0, r), (0.0, -r)] {
                     self.line(
                         m.transform_point3(Vec3::ZERO),
-                        m.transform_point3(Vec3::new(x, y, 10.0)),
+                        m.transform_point3(Vec3::new(x, y, d)),
                         color,
                     );
                 }
@@ -184,27 +183,32 @@ impl Lines {
     }
 }
 
-/// Lines for every object; selected ones are highlighted.
-pub fn scene_lines(objects: &[PlaceholderObject], selected: Option<usize>) -> Lines {
+/// Lines for every active object; selected ones are highlighted.
+pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
     let mut lines = Lines::default();
-    for (i, o) in objects.iter().enumerate() {
-        if !o.active {
+    for (e, _) in scene.walk() {
+        if !scene.active_in_hierarchy(e) {
             continue;
         }
-        let is_sel = selected == Some(i);
-        let m = object_matrix(o);
-        // Unscaled matrix for icon-like gizmos.
-        let rigid = Mat4::from_rotation_translation(
-            euler_to_quat(Vec3::from(o.rotation)),
-            Vec3::from(o.position),
-        );
-        match o.kind {
-            ObjectKind::Primitive(p) => {
-                lines.primitive(&m, p, if is_sel { SELECTED } else { WIRE })
-            }
-            ObjectKind::Camera if is_sel => lines.frustum(&rigid, CAMERA),
-            ObjectKind::Light(kind) if is_sel => lines.light_rays(&rigid, kind, LIGHT),
-            _ => {}
+        let is_sel = selection.contains(e);
+        let m = scene.world_matrix(e);
+        // Unscaled matrix for camera/light gizmos.
+        let (_, rot, pos) = m.to_scale_rotation_translation();
+        let rigid = Mat4::from_rotation_translation(rot, pos);
+        let w = &scene.world;
+        if let Ok(mesh) = w.get::<&MeshFilter>(e)
+            && let Some(p) = mesh.mesh
+        {
+            lines.primitive(&m, p, if is_sel { SELECTED } else { WIRE });
+        }
+        if !is_sel {
+            continue;
+        }
+        if let Ok(cam) = w.get::<&Camera>(e) {
+            lines.frustum(&rigid, &cam, CAMERA);
+        }
+        if let Ok(light) = w.get::<&Light>(e) {
+            lines.light_rays(&rigid, &light, LIGHT);
         }
     }
     lines

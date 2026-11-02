@@ -58,6 +58,15 @@ impl Camera {
         self.projection(aspect) * self.view()
     }
 
+    /// World-space ray through normalized screen coords (0..1, y down): origin and unit direction.
+    pub fn screen_ray(&self, aspect: f32, uv: glam::Vec2) -> (Vec3, Vec3) {
+        let ndc = glam::vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+        let inv = self.view_projection(aspect).inverse();
+        let near = inv.project_point3(ndc.extend(0.0));
+        let far = inv.project_point3(ndc.extend(1.0));
+        (near, (far - near).normalize())
+    }
+
     /// Project a world point to normalized screen coords (0..1, y down) and view depth.
     /// Returns `None` when the point is behind the camera.
     pub fn world_to_screen(&self, aspect: f32, p: Vec3) -> Option<(glam::Vec2, f32)> {

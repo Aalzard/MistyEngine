@@ -48,3 +48,21 @@ Record of choices made without asking, and why.
     possible on this machine.
 18. **`MISTY_SCREENSHOT=path`** makes the editor save a PNG of its own window after ~45 frames and exit. It is used
     for visual checks.
+
+## 2026-11-03 — Step 3
+
+19. **ECS = hecs.** Lightweight and stable, and needs no reflection framework. A small component registry
+    (`scene::registry`) gives each component type-erased add/remove/clone/JSON functions, looked up by name. That
+    powers Add Component, undo snapshots and (step 9) scene files.
+20. **GameObject semantics on top of the ECS.** Every object has `GameObject` (name, active, static, tag, layer,
+    *component order*), `Transform` (local TRS + Euler hint) and `Node` (parent + ordered children). The Inspector
+    lists components in the order they were added, like Unity, which a plain ECS would not preserve.
+21. **Undo = whole-scene snapshots.** Scenes are small, so cloning is cheap and always correct. Commands snapshot
+    before they change anything; Inspector drags and typing are grouped from mouse-down/focus to release into one
+    "Modify X" step, like Unity's undo groups. Limit is 200 steps.
+22. **Re-parenting keeps the world transform** (Unity's default when dragging in the Hierarchy). Drop zones are
+    top/bottom quarter = before/after, middle = make child, empty area = scene root.
+23. **New objects** are created at the Scene view pivot (rounded), or at the parent's origin when created from a
+    Hierarchy row's context menu. Names follow the "Cube (1)" numbering, unique among siblings.
+24. **Replaced the step-1 `inspector.rs` with an `inspector/` module** (header + per-component editors). Reason:
+    the placeholder object it edited no longer exists; the panel now works on real components.

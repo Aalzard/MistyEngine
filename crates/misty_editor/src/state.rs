@@ -1,9 +1,16 @@
 //! Editor-wide state shared by every panel.
 
-use crate::actions::{Action, LightKind, Primitive};
+use std::collections::HashSet;
+
+use misty_engine::hecs::Entity;
+use misty_engine::scene::{Camera, Light, LightType, MeshFilter, Scene};
+
+use crate::actions::Action;
 use crate::console::Console;
 use crate::project::ProjectBrowser;
 use crate::scene_camera::SceneCamera;
+use crate::selection::Selection;
+use crate::undo::UndoStack;
 
 /// Active transform tool (Q W E R T Y).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,57 +80,34 @@ impl PlayState {
     }
 }
 
-/// What a placeholder object represents (drives icons and gizmos).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ObjectKind {
-    Empty,
-    Camera,
-    Light(LightKind),
-    Primitive(Primitive),
+/// Hierarchy panel UI state.
+#[derive(Default)]
+pub struct HierarchyState {
+    pub search: String,
+    pub expanded: HashSet<Entity>,
+    /// Object being renamed inline and the text typed so far.
+    pub renaming: Option<(Entity, String)>,
+    /// Keyboard focus: last click landed in the Hierarchy.
+    pub focused: bool,
 }
 
-impl ObjectKind {
-    pub fn icon(self) -> &'static str {
-        match self {
-            ObjectKind::Empty => "⬚",
-            ObjectKind::Camera => "🎥",
-            ObjectKind::Light(LightKind::Directional) => "☀",
-            ObjectKind::Light(_) => "💡",
-            ObjectKind::Primitive(_) => "⬛",
-        }
+/// Icon for an object, based on its components.
+pub fn object_icon(scene: &Scene, e: Entity) -> &'static str {
+    let w = &scene.world;
+    if let Ok(light) = w.get::<&Light>(e) {
+        return if light.kind == LightType::Directional {
+            "☀"
+        } else {
+            "💡"
+        };
     }
-}
-
-/// Stand-in scene object until the ECS lands in step 3.
-#[derive(Clone, Debug)]
-pub struct PlaceholderObject {
-    pub name: String,
-    pub kind: ObjectKind,
-    pub icon: &'static str,
-    pub active: bool,
-    pub is_static: bool,
-    pub tag: String,
-    pub layer: String,
-    pub position: [f32; 3],
-    pub rotation: [f32; 3],
-    pub scale: [f32; 3],
-}
-
-impl PlaceholderObject {
-    pub fn new(name: &str, kind: ObjectKind, position: [f32; 3], rotation: [f32; 3]) -> Self {
-        Self {
-            name: name.to_owned(),
-            kind,
-            icon: kind.icon(),
-            active: true,
-            is_static: false,
-            tag: "Untagged".to_owned(),
-            layer: "Default".to_owned(),
-            position,
-            rotation,
-            scale: [1.0; 3],
-        }
+    if w.get::<&Camera>(e).is_ok() {
+        return "🎥";
     }
+    if w.get::<&MeshFilter>(e).is_ok_and(|m| m.mesh.is_some()) {
+        return "⬛";
+    }
+    "⬚"
 }
 
 /// Scene view toolbar toggles.
@@ -159,12 +143,16 @@ pub struct EditorState {
     /// false = Local, true = Global.
     pub global_space: bool,
     pub play: PlayState,
-    pub scene_name: String,
+    pub scene: Scene,
     pub scene_dirty: bool,
-    pub objects: Vec<PlaceholderObject>,
-    pub selected: Option<usize>,
-    pub hierarchy_search: String,
+    pub selection: Selection,
+    pub undo: UndoStack,
+    pub hierarchy: HierarchyState,
     pub inspector_locked: bool,
+    /// Add Component popup is open.
+    pub inspector_add_open: bool,
+    /// Object the Inspector shows (sticks while locked).
+    pub inspector_target: Option<Entity>,
     pub project: ProjectBrowser,
     pub scene_view: SceneViewSettings,
     pub game_view: GameViewSettings,
@@ -185,12 +173,14 @@ impl EditorState {
             pivot_center: false,
             global_space: true,
             play: PlayState::Edit,
-            scene_name: "SampleScene".to_owned(),
+            scene: Scene::default_3d("SampleScene"),
             scene_dirty: false,
-            objects: default_scene(),
-            selected: None,
-            hierarchy_search: String::new(),
+            selection: Selection::default(),
+            undo: UndoStack::default(),
+            hierarchy: HierarchyState::default(),
             inspector_locked: false,
+            inspector_add_open: false,
+            inspector_target: None,
             project,
             scene_view: SceneViewSettings {
                 draw_mode: 0,
@@ -219,22 +209,31 @@ impl EditorState {
     pub fn push(&mut self, action: Action) {
         self.actions.push(action);
     }
-}
 
-/// A new scene holds a camera and a directional light.
-pub fn default_scene() -> Vec<PlaceholderObject> {
-    vec![
-        PlaceholderObject::new(
-            "Main Camera",
-            ObjectKind::Camera,
-            [0.0, 1.0, -10.0],
-            [0.0; 3],
-        ),
-        PlaceholderObject::new(
-            "Directional Light",
-            ObjectKind::Light(LightKind::Directional),
-            [0.0, 3.0, 0.0],
-            [50.0, -30.0, 0.0],
-        ),
-    ]
+    /// Snapshot for undo before a structural change, and mark the scene dirty.
+    pub fn record(&mut self, label: &str) {
+        self.undo.push(label, &self.scene, &self.selection);
+        self.scene_dirty = true;
+    }
+
+    /// Note a continuous edit (Inspector drag, typing) for grouped undo.
+    pub fn mark_edited(&mut self, what: &str) {
+        self.undo.mark_edited(what);
+        self.scene_dirty = true;
+    }
+
+    /// Select one object and reveal it in the Hierarchy.
+    pub fn select(&mut self, e: Entity) {
+        self.selection.set(e);
+        self.reveal(e);
+    }
+
+    /// Expand all parents of `e`.
+    pub fn reveal(&mut self, e: Entity) {
+        let mut cur = self.scene.parent(e);
+        while let Some(p) = cur {
+            self.hierarchy.expanded.insert(p);
+            cur = self.scene.parent(p);
+        }
+    }
 }

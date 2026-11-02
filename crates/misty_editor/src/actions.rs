@@ -1,56 +1,28 @@
 //! Editor commands queued by menus, toolbar and shortcuts, applied once per frame.
 
+use misty_engine::hecs::Entity;
+use misty_engine::scene::{LightType, PrimitiveMesh};
+
 use crate::layout::Tab;
 
-/// Primitive shapes offered by GameObject ▸ 3D Object.
+/// What a create command makes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Primitive {
-    Cube,
-    Sphere,
-    Capsule,
-    Cylinder,
-    Plane,
-    Quad,
+pub enum Create {
+    Empty,
+    Primitive(PrimitiveMesh),
+    Light(LightType),
+    Camera,
 }
 
-impl Primitive {
-    pub const ALL: [Primitive; 6] = [
-        Primitive::Cube,
-        Primitive::Sphere,
-        Primitive::Capsule,
-        Primitive::Cylinder,
-        Primitive::Plane,
-        Primitive::Quad,
-    ];
-
-    pub fn name(self) -> &'static str {
+impl Create {
+    pub fn default_name(self) -> &'static str {
         match self {
-            Primitive::Cube => "Cube",
-            Primitive::Sphere => "Sphere",
-            Primitive::Capsule => "Capsule",
-            Primitive::Cylinder => "Cylinder",
-            Primitive::Plane => "Plane",
-            Primitive::Quad => "Quad",
-        }
-    }
-}
-
-/// Light types offered by GameObject ▸ Light.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LightKind {
-    Directional,
-    Point,
-    Spot,
-}
-
-impl LightKind {
-    pub const ALL: [LightKind; 3] = [LightKind::Directional, LightKind::Point, LightKind::Spot];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            LightKind::Directional => "Directional Light",
-            LightKind::Point => "Point Light",
-            LightKind::Spot => "Spot Light",
+            Create::Empty => "GameObject",
+            Create::Primitive(p) => p.name(),
+            Create::Light(LightType::Directional) => "Directional Light",
+            Create::Light(LightType::Point) => "Point Light",
+            Create::Light(LightType::Spot) => "Spot Light",
+            Create::Camera => "Camera",
         }
     }
 }
@@ -62,14 +34,45 @@ pub enum Action {
     ResetLayout,
     Quit,
     NewScene,
-    CreateEmpty,
-    CreatePrimitive(Primitive),
-    CreateLight(LightKind),
-    CreateCamera,
+    /// Create an object; `parent` = Hierarchy row it was created from (None = scene root).
+    Create {
+        what: Create,
+        parent: Option<Entity>,
+    },
+    CreateEmptyParent,
     DeleteSelected,
     DuplicateSelected,
+    RenameSelected,
+    SelectAll,
     DeselectAll,
     FrameSelected,
+    ToggleActive,
+    ClearParent,
+    SetSibling {
+        first: bool,
+    },
+    MoveToView,
+    AlignWithView,
+    AlignViewToSelected,
+    Undo,
+    Redo,
+    /// Add a component (registry name) to every selected object.
+    AddComponent(&'static str),
+    RemoveComponent {
+        entity: Entity,
+        name: String,
+    },
+    ResetComponent {
+        entity: Entity,
+        name: String,
+    },
+    MoveComponent {
+        entity: Entity,
+        name: String,
+        dir: i32,
+    },
+    /// Component > Add... (opens the Inspector's search popup).
+    OpenAddComponent,
     TogglePlay,
     TogglePause,
     Step,
