@@ -2,15 +2,19 @@
 
 mod actions;
 mod app;
+mod capture;
 mod console;
+mod gizmos;
 mod layout;
 mod menu_bar;
 mod panels;
 mod project;
+mod scene_camera;
 mod state;
 mod status_bar;
 mod theme;
 mod toolbar;
+mod viewport;
 mod widgets;
 
 use std::path::PathBuf;
@@ -26,7 +30,8 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("Misty Engine")
             .with_inner_size([1600.0, 900.0])
-            .with_min_inner_size([960.0, 540.0]),
+            .with_min_inner_size([960.0, 540.0])
+            .with_maximized(true),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };

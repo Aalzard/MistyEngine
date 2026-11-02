@@ -12,9 +12,12 @@ use egui_dock::TabViewer;
 
 use crate::layout::Tab;
 use crate::state::EditorState;
+use crate::viewport::Gpu;
 
 pub struct PanelViewer<'a> {
     pub state: &'a mut EditorState,
+    /// `None` when the renderer is not wgpu (views then show a placeholder).
+    pub gpu: Option<&'a mut Gpu>,
 }
 
 impl TabViewer for PanelViewer<'_> {
@@ -30,8 +33,8 @@ impl TabViewer for PanelViewer<'_> {
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {
         match tab {
-            Tab::Scene => scene::show(ui, self.state),
-            Tab::Game => game::show(ui, self.state),
+            Tab::Scene => scene::show(ui, self.state, self.gpu.as_deref_mut()),
+            Tab::Game => game::show(ui, self.state, self.gpu.as_deref_mut()),
             Tab::Hierarchy => hierarchy::show(ui, self.state),
             Tab::Inspector => inspector::show(ui, self.state),
             Tab::Project => project::show(ui, self.state),

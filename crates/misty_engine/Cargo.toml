@@ -1,0 +1,11 @@
+[package]
+name = "misty_engine"
+description = "Misty Engine runtime: math, rendering, scene"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+wgpu.workspace = true
+glam.workspace = true
+bytemuck.workspace = true

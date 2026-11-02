@@ -20,3 +20,31 @@ Record of choices made without asking, and why.
    and always visible; an overlay can come later.
 8. **Sample project folder.** The editor opens `SampleProject/` by default (or a path passed on the command
    line) and the Project window lists the real files under `SampleProject/Assets`.
+9. **Unity studied from screenshots only.** Unity 6.3 is installed on `E:`, but simulated mouse/keyboard input is
+   blocked by Windows UIPI (most likely the anti-cheat of a game that was running). The notes combine screenshots
+   with the manual.
+
+## 2026-11-03 — Step 2
+
+10. **Left-handed, Y-up, Z-forward world; Euler order Z→X→Y.** Matches what Unity users expect: a camera at
+    z = -10 looks at the origin, and positive X rotation looks down.
+11. **Engine crate `misty_engine`.** Holds camera math and the wgpu renderer so games can later run without the editor.
+12. **Offscreen views.** Scene and Game views each render into a 4x MSAA `Rgba8UnormSrgb` target. egui samples it
+    through a non-sRGB *view* of the same texture, so lighting maths stays linear and the picture is not
+    gamma-corrected twice.
+13. **Grid as a full-screen ray–plane shader** with 1/10/100-unit LOD blending, anti-aliased lines and a distance
+    fade (turned off in orthographic views, where the eye sits far behind the pivot). The grid plane follows the
+    view: XZ normally, YZ/XY in side/front views and 2D.
+14. **Scene camera = pivot + yaw/pitch + distance**, like Unity's scene view. RMB looks around a fixed eye; Alt+LMB
+    orbits a fixed pivot. Axis snaps switch to orthographic and restore the previous projection when you rotate
+    away, with 0.25 s eased animations.
+15. **Tools moved into a Scene-view overlay and Pivot/Global into the Scene toolbar**, matching what Unity 6.3 shows.
+    The main toolbar keeps Play/Pause/Step plus Layers/Layout.
+16. **Placeholder objects drawn as wire gizmos** (cube, sphere, capsule…) until real meshes arrive in step 5. Camera
+    and light objects show billboard icons, and the camera frustum or light rays when selected. Picking is by
+    screen distance to the icon or centre.
+17. **Headless UI tests with egui_kittest.** Scene navigation is exercised with synthetic mouse/keyboard events
+    (look, fly, pan, orbit, zoom, view tool, gizmo snapping, click-select) because live input injection is not
+    possible on this machine.
+18. **`MISTY_SCREENSHOT=path`** makes the editor save a PNG of its own window after ~45 frames and exit. It is used
+    for visual checks.

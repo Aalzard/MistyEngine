@@ -1,8 +1,12 @@
 //! Game view: display/aspect/scale toolbar and the camera output.
 
 use egui::{Align2, Color32, FontId, Ui};
+use glam::Vec3;
+use misty_engine::camera::{Camera, Projection, euler_to_quat};
+use misty_engine::render::Frame;
 
-use crate::state::EditorState;
+use crate::state::{EditorState, ObjectKind};
+use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, toggle_button};
 
 const ASPECTS: [(&str, Option<f32>); 5] = [
@@ -14,7 +18,7 @@ const ASPECTS: [(&str, Option<f32>); 5] = [
 ];
 const PLAY_TARGETS: [&str; 3] = ["Play Focused", "Play Maximized", "Play Unfocused"];
 
-pub fn show(ui: &mut Ui, state: &mut EditorState) {
+pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
 
     let area = ui.available_rect_before_wrap();
@@ -27,14 +31,45 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         Some(aspect) => fit_aspect(area, aspect),
         None => area,
     };
-    ui.painter().rect_filled(view, 0.0, Color32::BLACK);
-    ui.painter().text(
-        view.center(),
-        Align2::CENTER_CENTER,
-        "Display 1\nNo cameras rendering",
-        FontId::proportional(16.0),
-        Color32::from_gray(200),
-    );
+
+    // The first active camera in the scene renders the game.
+    let camera = state
+        .objects
+        .iter()
+        .find(|o| o.active && o.kind == ObjectKind::Camera)
+        .map(|o| Camera {
+            position: Vec3::from(o.position),
+            rotation: euler_to_quat(Vec3::from(o.rotation)),
+            projection: Projection::Perspective { fov_y: 60.0 },
+            near: 0.3,
+            far: 1000.0,
+        });
+    match (camera, gpu) {
+        (Some(camera), Some(gpu)) => {
+            let frame = Frame {
+                camera: &camera,
+                grid: None,
+                skybox: true,
+                background: [0.19, 0.30, 0.47],
+                lines: &[],
+            };
+            let ppp = ui.ctx().pixels_per_point();
+            let size = [(view.width() * ppp) as u32, (view.height() * ppp) as u32];
+            let texture = gpu.render(ViewId::Game, size, &frame);
+            let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+            ui.painter().image(texture, view, uv, Color32::WHITE);
+        }
+        _ => {
+            ui.painter().rect_filled(view, 0.0, Color32::BLACK);
+            ui.painter().text(
+                view.center(),
+                Align2::CENTER_CENTER,
+                "Display 1\nNo cameras rendering",
+                FontId::proportional(16.0),
+                Color32::from_gray(200),
+            );
+        }
+    }
 }
 
 fn fit_aspect(area: egui::Rect, aspect: f32) -> egui::Rect {

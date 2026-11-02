@@ -1,8 +1,9 @@
 //! Editor-wide state shared by every panel.
 
-use crate::actions::Action;
+use crate::actions::{Action, LightKind, Primitive};
 use crate::console::Console;
 use crate::project::ProjectBrowser;
+use crate::scene_camera::SceneCamera;
 
 /// Active transform tool (Q W E R T Y).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,10 +73,32 @@ impl PlayState {
     }
 }
 
+/// What a placeholder object represents (drives icons and gizmos).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ObjectKind {
+    Empty,
+    Camera,
+    Light(LightKind),
+    Primitive(Primitive),
+}
+
+impl ObjectKind {
+    pub fn icon(self) -> &'static str {
+        match self {
+            ObjectKind::Empty => "⬚",
+            ObjectKind::Camera => "🎥",
+            ObjectKind::Light(LightKind::Directional) => "☀",
+            ObjectKind::Light(_) => "💡",
+            ObjectKind::Primitive(_) => "⬛",
+        }
+    }
+}
+
 /// Stand-in scene object until the ECS lands in step 3.
 #[derive(Clone, Debug)]
 pub struct PlaceholderObject {
     pub name: String,
+    pub kind: ObjectKind,
     pub icon: &'static str,
     pub active: bool,
     pub is_static: bool,
@@ -87,10 +110,11 @@ pub struct PlaceholderObject {
 }
 
 impl PlaceholderObject {
-    pub fn new(name: &str, icon: &'static str, position: [f32; 3], rotation: [f32; 3]) -> Self {
+    pub fn new(name: &str, kind: ObjectKind, position: [f32; 3], rotation: [f32; 3]) -> Self {
         Self {
             name: name.to_owned(),
-            icon,
+            kind,
+            icon: kind.icon(),
             active: true,
             is_static: false,
             tag: "Untagged".to_owned(),
@@ -109,6 +133,12 @@ pub struct SceneViewSettings {
     pub lighting: bool,
     pub audio: bool,
     pub gizmos: bool,
+    pub grid: bool,
+    pub skybox: bool,
+    pub search: String,
+    pub camera: SceneCamera,
+    /// Screen rect of the 3D view last frame.
+    pub view_rect: egui::Rect,
 }
 
 /// Game view toolbar settings.
@@ -168,6 +198,11 @@ impl EditorState {
                 lighting: true,
                 audio: false,
                 gizmos: true,
+                grid: true,
+                skybox: true,
+                search: String::new(),
+                camera: SceneCamera::default(),
+                view_rect: egui::Rect::NOTHING,
             },
             game_view: GameViewSettings {
                 aspect: 0,
@@ -189,10 +224,15 @@ impl EditorState {
 /// A new scene holds a camera and a directional light.
 pub fn default_scene() -> Vec<PlaceholderObject> {
     vec![
-        PlaceholderObject::new("Main Camera", "🎥", [0.0, 1.0, -10.0], [0.0; 3]),
+        PlaceholderObject::new(
+            "Main Camera",
+            ObjectKind::Camera,
+            [0.0, 1.0, -10.0],
+            [0.0; 3],
+        ),
         PlaceholderObject::new(
             "Directional Light",
-            "☀",
+            ObjectKind::Light(LightKind::Directional),
             [0.0, 3.0, 0.0],
             [50.0, -30.0, 0.0],
         ),

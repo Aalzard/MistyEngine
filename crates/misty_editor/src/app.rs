@@ -6,23 +6,42 @@ use egui::{Key, KeyboardShortcut, Modifiers};
 use egui_dock::{DockArea, DockState};
 
 use crate::actions::Action;
+use crate::capture::Capture;
 use crate::layout::{self, Tab};
 use crate::panels::PanelViewer;
 use crate::project::ProjectBrowser;
-use crate::state::{self, EditorState, PlaceholderObject, PlayState, Tool};
+use crate::state::{self, EditorState, ObjectKind, PlaceholderObject, PlayState, Tool};
+use crate::viewport::Gpu;
 use crate::{menu_bar, status_bar, theme, toolbar};
 
 pub struct EditorApp {
     state: EditorState,
     dock: DockState<Tab>,
+    gpu: Option<Gpu>,
+    capture: Option<Capture>,
 }
 
 impl EditorApp {
     pub fn new(cc: &eframe::CreationContext<'_>, project: PathBuf) -> Self {
         theme::apply(&cc.egui_ctx);
+        let mut state = EditorState::new(ProjectBrowser::open(project));
+        let gpu = cc.wgpu_render_state.clone().map(Gpu::new);
+        match &gpu {
+            Some(g) => {
+                let info = g.state.adapter.get_info();
+                state
+                    .console
+                    .info(format!("Renderer: {} ({:?})", info.name, info.backend));
+            }
+            None => state
+                .console
+                .warn("wgpu renderer unavailable; 3D views are disabled."),
+        }
         Self {
-            state: EditorState::new(ProjectBrowser::open(project)),
+            state,
             dock: layout::default_layout(),
+            gpu,
+            capture: Capture::from_env(),
         }
     }
 
@@ -100,22 +119,40 @@ impl EditorApp {
                 s.scene_dirty = false;
                 s.console.info("Created new scene.");
             }
-            Action::CreateEmpty => add_object(
-                s,
-                PlaceholderObject::new("GameObject", "⬚", [0.0; 3], [0.0; 3]),
-            ),
-            Action::CreatePrimitive(p) => add_object(
-                s,
-                PlaceholderObject::new(p.name(), "⬛", [0.0; 3], [0.0; 3]),
-            ),
-            Action::CreateLight(l) => add_object(
-                s,
-                PlaceholderObject::new(l.name(), "💡", [0.0; 3], [0.0; 3]),
-            ),
-            Action::CreateCamera => add_object(
-                s,
-                PlaceholderObject::new("Camera", "🎥", [0.0; 3], [0.0; 3]),
-            ),
+            // New objects appear at the Scene view pivot, like "create in front of the view".
+            Action::CreateEmpty => {
+                let p = spawn_point(s);
+                add_object(
+                    s,
+                    PlaceholderObject::new("GameObject", ObjectKind::Empty, p, [0.0; 3]),
+                )
+            }
+            Action::CreatePrimitive(prim) => {
+                let p = spawn_point(s);
+                add_object(
+                    s,
+                    PlaceholderObject::new(prim.name(), ObjectKind::Primitive(prim), p, [0.0; 3]),
+                )
+            }
+            Action::CreateLight(l) => {
+                let p = spawn_point(s);
+                let rot = if l == crate::actions::LightKind::Point {
+                    [0.0; 3]
+                } else {
+                    [50.0, -30.0, 0.0]
+                };
+                add_object(
+                    s,
+                    PlaceholderObject::new(l.name(), ObjectKind::Light(l), p, rot),
+                )
+            }
+            Action::CreateCamera => {
+                let p = spawn_point(s);
+                add_object(
+                    s,
+                    PlaceholderObject::new("Camera", ObjectKind::Camera, p, [0.0; 3]),
+                )
+            }
             Action::DeleteSelected => {
                 if let Some(i) = s.selected.take() {
                     let obj = s.objects.remove(i);
@@ -133,7 +170,15 @@ impl EditorApp {
                 }
             }
             Action::DeselectAll => s.selected = None,
-            Action::FrameSelected => {}
+            Action::FrameSelected => {
+                if let Some(o) = s.selected.and_then(|i| s.objects.get(i)) {
+                    let radius = o.scale.iter().fold(0.5_f32, |m, v| m.max(v.abs() * 0.5));
+                    s.scene_view
+                        .camera
+                        .frame(glam::Vec3::from(o.position), radius);
+                    ctx.request_repaint();
+                }
+            }
             Action::TogglePlay => {
                 s.play = if s.play.in_play_mode() {
                     s.console.info("Exited Play mode.");
@@ -160,6 +205,11 @@ impl EditorApp {
             }
         }
     }
+}
+
+/// Where new objects are placed: the Scene camera pivot, snapped to whole units.
+fn spawn_point(s: &EditorState) -> [f32; 3] {
+    s.scene_view.camera.pivot().round().to_array()
 }
 
 fn add_object(s: &mut EditorState, mut obj: PlaceholderObject) {
@@ -218,10 +268,14 @@ impl eframe::App for EditorApp {
                         ui,
                         &mut PanelViewer {
                             state: &mut self.state,
+                            gpu: self.gpu.as_mut(),
                         },
                     );
             });
 
         self.apply_actions(&ctx);
+        if let Some(capture) = &mut self.capture {
+            capture.update(&ctx);
+        }
     }
 }
