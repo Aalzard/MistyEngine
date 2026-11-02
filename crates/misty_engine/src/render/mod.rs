@@ -582,7 +582,12 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
         };
         n += 1;
     }
-    u.info = [n as f32, plan.directional_texel, frame.ambient_intensity, 0.0];
+    u.info = [
+        n as f32,
+        plan.directional_texel,
+        frame.ambient_intensity,
+        0.0,
+    ];
     u.shadow_view_proj = plan
         .directional
         .unwrap_or(Mat4::IDENTITY)

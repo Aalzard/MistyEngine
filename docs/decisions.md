@@ -154,3 +154,18 @@ Record of choices made without asking, and why.
 53. **Shadow gap fix:** the shadow pass now renders light-facing faces (back-face culling) instead of front-face
     culling, which left contact points unshadowed. Acne is avoided with a normal offset of ~1.5–3 shadow texels
     (world-size texel computed per light) plus a small slope/constant depth bias.
+
+## 2026-11-03 — Step 9
+
+54. **Scene format = pretty JSON (`.scene`)**, chosen for git-friendly diffs, like text-serialised scenes.
+    Objects are listed depth-first in Hierarchy order with a parent index; every component goes through the
+    registry (Node links are rebuilt). Keys are sorted and floats are written in their shortest f32 form, so saving
+    an unchanged scene is byte-identical. Unknown components and missing fields load with warnings instead of
+    failing, and a `version` field guards against files from newer builds.
+55. **Native file dialogs (rfd)** for Open / Save As, limited to the project's `Assets` folder. Saving is blocked
+    in Play mode, as are New/Open.
+56. **"Scene Has Been Modified" prompt** (Save / Don't Save / Cancel) before New Scene, Open Scene and quitting;
+    closing the window is intercepted the same way. Loading a scene clears selection and undo history.
+57. **Per-user editor state in `<Project>/Library/EditorSettings.json`** (recent scenes), git-ignored like a Library
+    folder. The editor reopens the most recent scene on startup, falling back to `Assets/Scenes/SampleScene.scene`.
+58. **Window title** shows "Project - Scene* - Misty Engine", with `*` while unsaved.

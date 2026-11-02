@@ -34,6 +34,12 @@ pub enum Action {
     ResetLayout,
     Quit,
     NewScene,
+    /// File ▸ Open Scene (file dialog).
+    OpenScene,
+    /// Open a scene by project-relative path (Project window, Open Recent).
+    OpenScenePath(String),
+    SaveScene,
+    SaveSceneAs,
     /// Create an object; `parent` = Hierarchy row it was created from (None = scene root).
     Create {
         what: Create,

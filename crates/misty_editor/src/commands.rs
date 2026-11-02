@@ -4,7 +4,7 @@ use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
     BoxCollider, Camera, CapsuleCollider, ColliderKind, Light, LightType, MeshCollider, MeshFilter,
-    MeshRenderer, Scene, ScriptRef, Scripts, SphereCollider, Transform, registry,
+    MeshRenderer, ScriptRef, Scripts, SphereCollider, Transform, registry,
 };
 
 use crate::actions::{Action, Create};
@@ -13,13 +13,6 @@ use crate::state::EditorState;
 /// Apply a scene command. Returns the action back if it is not a scene command.
 pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
     match action {
-        Action::NewScene => {
-            s.record("New Scene");
-            s.scene = Scene::default_3d("Untitled");
-            s.selection.clear();
-            s.scene_dirty = false;
-            s.console.info("Created new scene.");
-        }
         Action::Create { what, parent } => create(s, what, parent),
         Action::CreateEmptyParent => create_empty_parent(s),
         Action::DeleteSelected => {

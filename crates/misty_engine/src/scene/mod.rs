@@ -1,6 +1,7 @@
 //! Scene: an ECS world of GameObjects with an ordered parent/child hierarchy.
 
 pub mod components;
+pub mod file;
 pub mod registry;
 
 use glam::{Mat4, Vec3};

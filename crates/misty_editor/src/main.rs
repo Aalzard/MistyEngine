@@ -17,6 +17,7 @@ mod play;
 mod project;
 mod render_scene;
 mod scene_camera;
+mod scene_files;
 mod selection;
 mod state;
 mod status_bar;

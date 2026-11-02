@@ -12,6 +12,7 @@ use crate::handles::HandleState;
 use crate::play::PlaySession;
 use crate::project::ProjectBrowser;
 use crate::scene_camera::SceneCamera;
+use crate::scene_files::SceneFiles;
 use crate::selection::Selection;
 use crate::undo::UndoStack;
 use misty_engine::runtime::{Runtime, Time};
@@ -165,6 +166,8 @@ pub struct EditorState {
     pub step_requested: bool,
     pub scene: Scene,
     pub scene_dirty: bool,
+    /// Open scene file, recent scenes, save prompt.
+    pub files: SceneFiles,
     pub selection: Selection,
     pub undo: UndoStack,
     pub hierarchy: HierarchyState,
@@ -209,6 +212,7 @@ impl EditorState {
             step_requested: false,
             scene: Scene::default_3d("SampleScene"),
             scene_dirty: false,
+            files: SceneFiles::default(),
             selection: Selection::default(),
             undo: UndoStack::default(),
             hierarchy: HierarchyState::default(),

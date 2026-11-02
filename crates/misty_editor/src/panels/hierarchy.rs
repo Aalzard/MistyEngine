@@ -104,7 +104,11 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.menu_button("⋮", |ui| {
                 if ui.button("Save Scene").clicked() {
-                    state.push(Action::NotImplemented("Save Scene"));
+                    state.push(Action::SaveScene);
+                    ui.close();
+                }
+                if ui.button("Save Scene As").clicked() {
+                    state.push(Action::SaveSceneAs);
                     ui.close();
                 }
                 if ui.button("Select All").clicked() {

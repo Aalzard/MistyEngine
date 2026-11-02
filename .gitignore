@@ -1,2 +1,4 @@
 /target
 *.pdb
+# Per-user editor state
+SampleProject/Library/

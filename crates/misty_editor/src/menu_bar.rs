@@ -41,13 +41,19 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
 fn file_menu(ui: &mut Ui, s: &mut EditorState) {
     item(ui, s, "New Scene", "Ctrl+N", Action::NewScene);
-    todo(ui, s, "Open Scene", "Ctrl+O");
+    item(ui, s, "Open Scene", "Ctrl+O", Action::OpenScene);
     ui.menu_button("Open Recent Scene", |ui| {
-        ui.weak("(none)");
+        let recent = s.files.settings.recent_scenes.clone();
+        if recent.is_empty() {
+            ui.weak("(none)");
+        }
+        for rel in recent {
+            item(ui, s, &rel, "", Action::OpenScenePath(rel.clone()));
+        }
     });
     ui.separator();
-    todo(ui, s, "Save", "Ctrl+S");
-    todo(ui, s, "Save As...", "Ctrl+Shift+S");
+    item(ui, s, "Save", "Ctrl+S", Action::SaveScene);
+    item(ui, s, "Save As...", "Ctrl+Shift+S", Action::SaveSceneAs);
     ui.separator();
     todo(ui, s, "New Project...", "");
     todo(ui, s, "Open Project...", "");

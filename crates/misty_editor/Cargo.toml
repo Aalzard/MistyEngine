@@ -19,6 +19,8 @@ bytemuck.workspace = true
 misty_engine = { path = "../misty_engine" }
 png = "0.18"
 serde_json.workspace = true
+serde.workspace = true
+rfd = "0.17"
 
 [dev-dependencies]
 egui_kittest = "0.36"

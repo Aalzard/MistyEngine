@@ -7,6 +7,7 @@ use crate::camera::{euler_to_quat, quat_to_euler};
 
 /// Name, active flag, tag, layer and component order: what the Inspector header shows.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GameObject {
     pub name: String,
     pub active: bool,
@@ -32,6 +33,7 @@ impl Default for GameObject {
 
 /// Local position/rotation/scale relative to the parent.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct Transform {
     pub position: Vec3,
     pub rotation: Quat,
@@ -172,6 +174,7 @@ impl ClearFlags {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Camera {
     pub enabled: bool,
     pub clear_flags: ClearFlags,
@@ -246,6 +249,7 @@ impl Shadows {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Light {
     pub enabled: bool,
     pub kind: LightType,
@@ -329,6 +333,7 @@ impl PrimitiveMesh {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MeshFilter {
     pub mesh: Option<PrimitiveMesh>,
 }

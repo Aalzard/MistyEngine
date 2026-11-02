@@ -112,8 +112,16 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             }
         }
     });
-    // Double-clicked file: scripts open in the external editor.
-    if let Some(path) = opened_file
+    // Double-clicked file: scenes open in the editor, other files in their default app.
+    if let Some(path) = opened_file.as_ref()
+        && path
+            .extension()
+            .is_some_and(|e| e == misty_engine::scene::file::EXTENSION)
+    {
+        state.push(crate::actions::Action::OpenScenePath(
+            state.assets.relative(path),
+        ));
+    } else if let Some(path) = opened_file
         && let Err(err) = crate::assets::open_external(&path)
     {
         state
@@ -170,7 +178,14 @@ pub fn create_menu(ui: &mut Ui, state: &mut EditorState) {
         }
         ui.close();
     }
-    ui.add_enabled(false, egui::Button::new("Scene (step 9)"));
+    if ui.button("Scene").clicked() {
+        let dir = state.project.current.clone();
+        match crate::scene_files::create_scene_asset(state, &dir) {
+            Ok(rel) => state.console.info(format!("Created {rel}")),
+            Err(e) => state.console.warn(format!("Could not create scene: {e}")),
+        }
+        ui.close();
+    }
     if ui.button("Script").clicked() {
         let dir = state.project.current.clone();
         match state.assets.create_script(&dir) {

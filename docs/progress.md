@@ -20,7 +20,7 @@
 
 ### Not matching Unity yet
 - No tab ⋮ menu (Maximize / Add Tab), no double-click-to-maximize.
-- Layouts are not saved between sessions.
+- Layouts are not saved between sessions (scenes are).
 - Cut/Copy/Paste not implemented.
 
 ## Step 2 — Scene view with camera movement ✅
@@ -162,3 +162,20 @@
 - Lua instead of C#; no coroutines, Instantiate/prefabs, raycasts, GetComponent for scripts or other components.
 - No script execution order settings; no "Edit Script" opening at the error line.
 - Hot reload only applies in Edit mode.
+
+## Step 9 — Save and load scenes ✅
+
+### Done
+- `.scene` files (readable JSON): every object, hierarchy, component and Inspector value, material/script references,
+  script field overrides; stable output for version control; tolerant loading with Console warnings.
+- File ▸ New Scene (Ctrl+N), Open Scene (Ctrl+O, native dialog), Open Recent Scene, Save (Ctrl+S), Save As
+  (Ctrl+Shift+S); Hierarchy scene ⋮ ▸ Save Scene / Save Scene As.
+- Project window: + ▸ Scene creates a scene asset; double-click a scene to open it.
+- "Scene Has Been Modified" prompt before New / Open / quit (window close included); `*` in the Hierarchy and the
+  window title while unsaved; reopens the last scene on startup.
+- Sample project ships `Assets/Scenes/SampleScene.scene` (spinning cube, rollable player, crate stack, lights).
+
+### Not matching Unity yet
+- One scene at a time (no additive multi-scene editing); no prefabs; no Build Settings scene list.
+- Asset references are paths, so moving/renaming an asset outside the editor breaks references (no GUIDs/.meta yet).
+- Window layout isn't persisted.

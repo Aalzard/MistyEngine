@@ -11,6 +11,7 @@ use crate::console::LogLevel;
 use crate::layout::{self, Tab};
 use crate::panels::PanelViewer;
 use crate::project::ProjectBrowser;
+use crate::scene_files::{self, AfterPrompt};
 use crate::state::{EditorState, PlayState, Tool};
 use crate::viewport::Gpu;
 use crate::{commands, game_input, menu_bar, play, status_bar, theme, toolbar};
@@ -24,12 +25,15 @@ pub struct EditorApp {
     saved_dock: Option<DockState<Tab>>,
     /// Error count seen so far (for Error Pause).
     errors_seen: usize,
+    /// Last window title sent.
+    title: String,
 }
 
 impl EditorApp {
     pub fn new(cc: &eframe::CreationContext<'_>, project: PathBuf) -> Self {
         theme::apply(&cc.egui_ctx);
         let mut state = EditorState::new(ProjectBrowser::open(project));
+        scene_files::open_initial(&mut state);
         let gpu = cc.wgpu_render_state.clone().map(Gpu::new);
         match &gpu {
             Some(g) => {
@@ -49,6 +53,7 @@ impl EditorApp {
             capture: Capture::from_env(),
             saved_dock: None,
             errors_seen: 0,
+            title: String::new(),
         }
     }
 
@@ -67,6 +72,9 @@ impl EditorApp {
             (ctrl_shift, Key::P, Action::TogglePause),
             (ctrl_alt, Key::P, Action::Step),
             (ctrl, Key::N, Action::NewScene),
+            (ctrl, Key::O, Action::OpenScene),
+            (ctrl, Key::S, Action::SaveScene),
+            (ctrl_shift, Key::S, Action::SaveSceneAs),
             (ctrl_shift, Key::N, create_empty),
             (ctrl_shift, Key::G, Action::CreateEmptyParent),
             (ctrl, Key::D, Action::DuplicateSelected),
@@ -139,7 +147,36 @@ impl EditorApp {
         match action {
             Action::FocusTab(tab) => layout::focus_or_open(&mut self.dock, tab),
             Action::ResetLayout => self.dock = layout::default_layout(),
-            Action::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Action::Quit => {
+                if let Some(a) = scene_files::guard(s, AfterPrompt::Quit)
+                    && scene_files::perform(s, a)
+                {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+            Action::NewScene => {
+                if let Some(a) = scene_files::guard(s, AfterPrompt::NewScene) {
+                    scene_files::perform(s, a);
+                }
+            }
+            Action::OpenScene => {
+                if let Some(rel) = scene_files::pick_scene(s)
+                    && let Some(a) = scene_files::guard(s, AfterPrompt::Open(rel))
+                {
+                    scene_files::perform(s, a);
+                }
+            }
+            Action::OpenScenePath(rel) => {
+                if let Some(a) = scene_files::guard(s, AfterPrompt::Open(rel)) {
+                    scene_files::perform(s, a);
+                }
+            }
+            Action::SaveScene => {
+                scene_files::save(s);
+            }
+            Action::SaveSceneAs => {
+                scene_files::save_as(s);
+            }
             Action::TogglePlay => {
                 if s.play.in_play_mode() {
                     play::stop(s);
@@ -217,6 +254,31 @@ impl EditorApp {
         }
     }
 
+    /// Save prompt, window-close interception and the window title.
+    fn scene_file_frame(&mut self, ctx: &egui::Context) {
+        let s = &mut self.state;
+        // Closing the window with unsaved changes asks first.
+        if ctx.input(|i| i.viewport().close_requested()) && !s.files.quit_confirmed {
+            if s.play.in_play_mode() {
+                play::stop(s);
+            }
+            if s.scene_dirty {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                s.files.prompt = Some(AfterPrompt::Quit);
+            }
+        }
+        if let Some(action) = scene_files::prompt_ui(ctx, s)
+            && scene_files::perform(s, action)
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        let title = scene_files::window_title(s);
+        if title != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = title;
+        }
+    }
+
     /// The user is mid-interaction: a mouse button is down or a text field has focus.
     fn interacting(ctx: &egui::Context) -> bool {
         ctx.input(|i| i.pointer.any_down()) || ctx.egui_wants_keyboard_input()
@@ -267,6 +329,7 @@ impl eframe::App for EditorApp {
 
         self.apply_actions(&ctx);
         self.state.undo.end_frame(Self::interacting(&ctx));
+        self.scene_file_frame(&ctx);
         if let Some(capture) = &mut self.capture {
             capture.update(&ctx);
         }
