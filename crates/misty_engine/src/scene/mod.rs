@@ -394,6 +394,21 @@ impl Scene {
         self.set_transform(e, t);
     }
 
+    pub fn world_rotation(&self, e: Entity) -> glam::Quat {
+        self.world_matrix(e).to_scale_rotation_translation().1
+    }
+
+    /// Set the world-space rotation (keeps position and scale).
+    pub fn set_world_rotation(&mut self, e: Entity, q: glam::Quat) {
+        let parent = self
+            .parent(e)
+            .map(|p| self.world_rotation(p))
+            .unwrap_or_default();
+        let mut t = self.transform(e);
+        t.set_rotation(parent.inverse() * q);
+        self.set_transform(e, t);
+    }
+
     /// "Cube", then "Cube (1)", "Cube (2)"… unique among the siblings under `parent`.
     pub fn unique_name(&self, base: &str, parent: Option<Entity>) -> String {
         let base = strip_number_suffix(base);

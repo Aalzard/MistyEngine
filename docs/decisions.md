@@ -66,3 +66,15 @@ Record of choices made without asking, and why.
     Hierarchy row's context menu. Names follow the "Cube (1)" numbering, unique among siblings.
 24. **Replaced the step-1 `inspector.rs` with an `inspector/` module** (header + per-component editors). Reason:
     the placeholder object it edited no longer exists; the panel now works on real components.
+
+## 2026-11-03 — Step 4
+
+25. **Transform handles are drawn and hit-tested in screen space** with the egui painter (no extra GPU pipeline).
+    Handle size is a constant 90 px, like Unity's. Move: axes + plane squares (placed in the quadrant facing the
+    camera) + free centre. Rotate: axis rings (back halves faded) + outer view ring. Scale: axes with cube tips +
+    uniform centre. Transform tool = move + smaller rotate rings + scale centre. The Rect tool shows no handles yet.
+26. **Snapping with Ctrl** uses Unity's default increments: 0.25 units, 15°, 0.1 scale.
+27. **Multi-object editing:** the Inspector shows components shared by all selected objects, with the active
+    object's values. Transform edits apply per changed axis; other components copy only the fields that changed
+    (JSON diff through the registry). Name is not multi-editable (shown as "—").
+28. **Constrain Proportions (scale lock) is an editor-wide toggle** instead of a per-object flag, until scene files exist.

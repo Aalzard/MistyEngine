@@ -58,6 +58,18 @@ impl Camera {
         self.projection(aspect) * self.view()
     }
 
+    /// World units covered by one pixel at point `p`, for a view `view_height` pixels tall.
+    pub fn world_per_pixel(&self, p: Vec3, view_height: f32) -> f32 {
+        let h = match self.projection {
+            Projection::Perspective { fov_y } => {
+                let depth = (p - self.position).dot(self.forward()).max(self.near);
+                2.0 * depth * (fov_y.to_radians() * 0.5).tan()
+            }
+            Projection::Orthographic { size } => 2.0 * size,
+        };
+        h / view_height.max(1.0)
+    }
+
     /// World-space ray through normalized screen coords (0..1, y down): origin and unit direction.
     pub fn screen_ray(&self, aspect: f32, uv: glam::Vec2) -> (Vec3, Vec3) {
         let ndc = glam::vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);

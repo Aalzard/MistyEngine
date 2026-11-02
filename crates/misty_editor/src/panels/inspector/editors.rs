@@ -49,9 +49,10 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
 }
 
 /// Draw the fields for component `name`. Returns true when a value changed.
-pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool {
+pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str) -> bool {
+    let e = targets[0];
     match name {
-        "Transform" => transform(ui, state, e),
+        "Transform" => transform(ui, state, targets),
         "Camera" => with::<Camera>(ui, state, e, camera),
         "Light" => with::<Light>(ui, state, e, light),
         "Mesh Filter" => with::<MeshFilter>(ui, state, e, mesh_filter),
@@ -80,28 +81,66 @@ fn with<T: SceneComponent>(
     changed
 }
 
-fn transform(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
-    let mut t = state.scene.transform(e);
-    let mut pos = t.position.to_array();
-    let mut rot = t.euler().to_array();
-    let mut scale = t.scale.to_array();
-    let mut changed = false;
-    if vec3_row(ui, "Position", &mut pos, 0.1) {
-        t.position = Vec3::from(pos);
-        changed = true;
+/// Local position / Euler rotation / scale. Changed axes are applied to every target.
+fn transform(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) -> bool {
+    let t0 = state.scene.transform(targets[0]);
+    let old = [
+        t0.position.to_array(),
+        t0.euler().to_array(),
+        t0.scale.to_array(),
+    ];
+    let mut new = old;
+    let mut changed = vec3_row(ui, "Position", &mut new[0], 0.1);
+    changed |= vec3_row(ui, "Rotation", &mut new[1], 1.0);
+    ui.horizontal(|ui| {
+        let lock = if state.scale_locked { "🔗" } else { "⛓" };
+        if ui
+            .add(
+                egui::Button::new(lock)
+                    .frame(false)
+                    .selected(state.scale_locked),
+            )
+            .on_hover_text("Constrain Proportions")
+            .clicked()
+        {
+            state.scale_locked = !state.scale_locked;
+        }
+        changed |= vec3_row(ui, "Scale", &mut new[2], 0.01);
+    });
+    if !changed {
+        return false;
     }
-    if vec3_row(ui, "Rotation", &mut rot, 1.0) {
-        t.set_euler(Vec3::from(rot));
-        changed = true;
-    }
-    if vec3_row(ui, "Scale", &mut scale, 0.01) {
-        t.scale = Vec3::from(scale);
-        changed = true;
-    }
-    if changed {
+    // Constrained scale: the edited axis scales the other two by the same ratio.
+    let scale_ratio = (0..3)
+        .find(|&i| new[2][i] != old[2][i] && old[2][i].abs() > 1e-6)
+        .map(|i| new[2][i] / old[2][i]);
+    for &e in targets {
+        let mut t = state.scene.transform(e);
+        let mut cur = [
+            t.position.to_array(),
+            t.euler().to_array(),
+            t.scale.to_array(),
+        ];
+        for field in 0..3 {
+            for axis in 0..3 {
+                if new[field][axis] != old[field][axis] {
+                    cur[field][axis] = new[field][axis];
+                }
+            }
+        }
+        if state.scale_locked
+            && let Some(r) = scale_ratio
+        {
+            cur[2] = (Vec3::from(t.scale.to_array()) * r).to_array();
+        }
+        t.position = Vec3::from(cur[0]);
+        if new[1] != old[1] {
+            t.set_euler(Vec3::from(cur[1]));
+        }
+        t.scale = Vec3::from(cur[2]);
         state.scene.set_transform(e, t);
     }
-    changed
+    true
 }
 
 /// Two-column property grid like the Inspector's label/value layout.

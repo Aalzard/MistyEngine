@@ -71,6 +71,10 @@ pub enum Action {
         name: String,
         dir: i32,
     },
+    PasteComponentValues {
+        entity: Entity,
+        name: String,
+    },
     /// Component > Add... (opens the Inspector's search popup).
     OpenAddComponent,
     TogglePlay,

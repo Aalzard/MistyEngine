@@ -140,6 +140,16 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
             s.record("Move Component");
             s.scene.move_component(entity, &name, dir);
         }
+        Action::PasteComponentValues { entity, name } => {
+            if let (Some(info), Some((_, value))) =
+                (registry::find(&name), s.component_clipboard.clone())
+            {
+                s.record(&format!("Paste {name} Values"));
+                if let Err(err) = (info.from_json)(&mut s.scene.world, entity, value) {
+                    s.console.warn(format!("Paste failed: {err}"));
+                }
+            }
+        }
         Action::OpenAddComponent => s.inspector_add_open = true,
         Action::Undo => match s.undo.undo(&mut s.scene, &mut s.selection) {
             Some(label) => s.console.info(format!("Undo {label}")),

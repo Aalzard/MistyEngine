@@ -7,6 +7,7 @@ use misty_engine::scene::{Camera, Light, LightType, MeshFilter, Scene};
 
 use crate::actions::Action;
 use crate::console::Console;
+use crate::handles::HandleState;
 use crate::project::ProjectBrowser;
 use crate::scene_camera::SceneCamera;
 use crate::selection::Selection;
@@ -148,11 +149,16 @@ pub struct EditorState {
     pub selection: Selection,
     pub undo: UndoStack,
     pub hierarchy: HierarchyState,
+    pub handles: HandleState,
     pub inspector_locked: bool,
     /// Add Component popup is open.
     pub inspector_add_open: bool,
-    /// Object the Inspector shows (sticks while locked).
-    pub inspector_target: Option<Entity>,
+    /// Objects the Inspector edits, active first (sticks while locked).
+    pub inspector_targets: Vec<Entity>,
+    /// Copy Component clipboard: component name and its values.
+    pub component_clipboard: Option<(String, serde_json::Value)>,
+    /// Scale fields keep their proportions.
+    pub scale_locked: bool,
     pub project: ProjectBrowser,
     pub scene_view: SceneViewSettings,
     pub game_view: GameViewSettings,
@@ -178,9 +184,12 @@ impl EditorState {
             selection: Selection::default(),
             undo: UndoStack::default(),
             hierarchy: HierarchyState::default(),
+            handles: HandleState::default(),
             inspector_locked: false,
             inspector_add_open: false,
-            inspector_target: None,
+            inspector_targets: Vec::new(),
+            component_clipboard: None,
+            scale_locked: false,
             project,
             scene_view: SceneViewSettings {
                 draw_mode: 0,

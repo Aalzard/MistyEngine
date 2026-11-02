@@ -1840,6 +1840,7 @@ dependencies = [
  "glam",
  "misty_engine",
  "png",
+ "serde_json",
 ]
 
 [[package]]

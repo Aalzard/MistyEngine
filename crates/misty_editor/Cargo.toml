@@ -18,6 +18,7 @@ glam.workspace = true
 bytemuck.workspace = true
 misty_engine = { path = "../misty_engine" }
 png = "0.18"
+serde_json.workspace = true
 
 [dev-dependencies]
 egui_kittest = "0.36"

@@ -42,7 +42,6 @@
 
 ### Not matching Unity yet
 - No real meshes/lighting yet: primitives are wireframes. (step 5)
-- Move/rotate/scale handles are not drawn or draggable. (step 4)
 - No rectangle (marquee) selection; picking uses icon/centre distance, not mesh raycasts.
 - No Persp↔Iso blend animation (it switches instantly); the camera does not slide when the projection changes.
 - Scene-view search, draw modes (wireframe), lighting/audio toggles have no effect yet.
@@ -70,5 +69,26 @@
 
 ### Not matching Unity yet
 - No Copy/Paste of objects; no Hierarchy auto-scroll while dragging; no "pinging" of selected objects.
-- Multi-object editing in the Inspector only edits the active object.
 - Hierarchy does not scroll to the selection when it is picked in the Scene view (it does expand the parents).
+
+## Step 4 — Inspector (edit values live) ✅
+
+### Done
+- Inspector header: icon, active, name, Static, Tag, Layer. Foldout per component with enable checkbox and ⋮ menu
+  (Reset, Remove Component, Move Up/Down, Copy Component, Paste Component Values).
+- Editors: Transform (draggable X/Y/Z labels, Constrain Proportions lock), Camera (Clear Flags, Background,
+  Projection, FOV/Size, Clipping Planes, Viewport Rect, Depth), Light (Type, Range, Spot Angle, Color, Intensity,
+  Shadow Type), Mesh Filter (Mesh), Mesh Renderer (Color, Cast/Receive Shadows).
+- Add Component button with search popup grouped by category; Component menu lists addable components; Ctrl+Shift+A.
+- Multi-object editing (shared components only), Inspector lock.
+- Every edit is live in the Scene and Game views and undoable as one step per drag/typing session.
+- Scene-view Move / Rotate / Scale / Transform handles: hover highlight (yellow), axis / plane / free move, axis and
+  view-ring rotation, axis and uniform scale, Pivot/Center and Global/Local, Ctrl snapping, works on multi-selection;
+  pressing a handle never changes the selection.
+- 42 automated tests, including headless drags of the move/rotate/scale handles and the Add Component popup.
+
+### Not matching Unity yet
+- Mixed values ("—") are not shown when multi-selected objects differ; the active object's values are displayed.
+- Rect tool has no handles; no vertex snapping (V), no Shift+drag screen-space move, no surface snapping.
+- No material assets yet (Mesh Renderer has a colour field until step 5).
+- No Debug Inspector mode, no component help (?) icon, no presets.

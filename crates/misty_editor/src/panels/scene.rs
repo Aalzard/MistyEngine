@@ -9,7 +9,7 @@ use crate::state::{EditorState, Tool, object_icon};
 use crate::theme;
 use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
-use crate::{gizmos, picking};
+use crate::{gizmos, handles, picking};
 
 const DRAW_MODES: [&str; 3] = ["Shaded", "Wireframe", "Shaded Wireframe"];
 
@@ -64,7 +64,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     if state.scene_view.gizmos {
         draw_icons(ui, rect, state, &camera);
     }
+    handles::show(ui, state, &camera, rect, response.hovered());
+    let suppressed = state.handles.click_suppressed();
     if response.clicked()
+        && !suppressed
         && !view_tool
         && !ui.input(|i| i.modifiers.alt)
         && let Some(click) = response.interact_pointer_pos()
@@ -596,5 +599,106 @@ mod tests {
             (forward + Vec3::Y).length() < 1e-3,
             "looking straight down: {forward:?}"
         );
+    }
+
+    /// A cube at the origin, selected, and the screen points of its handle origin and +X/+Y tips.
+    fn cube_setup(
+        h: &mut Harness<'_, EditorState>,
+    ) -> (misty_engine::hecs::Entity, Pos2, Pos2, Pos2) {
+        use misty_engine::scene::{MeshFilter, PrimitiveMesh};
+        let s = h.state_mut();
+        let cube = s.scene.spawn("Cube", None);
+        s.scene.add(
+            cube,
+            MeshFilter {
+                mesh: Some(PrimitiveMesh::Cube),
+            },
+        );
+        s.selection.set(cube);
+        h.run_steps(2);
+        let cam = cam(h).camera();
+        let rect = h.state().scene_view.view_rect;
+        let len = cam.world_per_pixel(Vec3::ZERO, rect.height()) * 90.0;
+        let at = |p: Vec3| crate::picking::to_screen(&cam, rect, p).unwrap();
+        (cube, at(Vec3::ZERO), at(Vec3::X * len), at(Vec3::Y * len))
+    }
+
+    #[test]
+    fn dragging_move_handle_x_axis_moves_along_x_only() {
+        let mut h = harness();
+        let (cube, origin, x_tip, _) = cube_setup(&mut h);
+        let grab = origin + (x_tip - origin) * 0.6;
+        let dir = (x_tip - origin).normalized();
+        button(&mut h, grab, PointerButton::Primary, true, Modifiers::NONE);
+        for i in 1..=5 {
+            h.event(Event::PointerMoved(grab + dir * (12.0 * i as f32)));
+            h.step();
+        }
+        button(
+            &mut h,
+            grab + dir * 60.0,
+            PointerButton::Primary,
+            false,
+            Modifiers::NONE,
+        );
+        let p = h.state().scene.transform(cube).position;
+        assert!(p.x > 0.3, "moved along +X: {p:?}");
+        assert!(
+            p.y.abs() < 1e-3 && p.z.abs() < 1e-3,
+            "other axes untouched: {p:?}"
+        );
+        assert_eq!(
+            h.state().selection.active(),
+            Some(cube),
+            "handle click must not change selection"
+        );
+    }
+
+    #[test]
+    fn scale_handle_y_axis_scales_y() {
+        let mut h = harness();
+        h.state_mut().tool = crate::state::Tool::Scale;
+        let (cube, origin, _, y_tip) = cube_setup(&mut h);
+        let dir = (y_tip - origin).normalized();
+        let grab = origin + (y_tip - origin) * 0.6;
+        button(&mut h, grab, PointerButton::Primary, true, Modifiers::NONE);
+        for i in 1..=5 {
+            h.event(Event::PointerMoved(grab + dir * (9.0 * i as f32)));
+            h.step();
+        }
+        button(
+            &mut h,
+            grab + dir * 45.0,
+            PointerButton::Primary,
+            false,
+            Modifiers::NONE,
+        );
+        let sc = h.state().scene.transform(cube).scale;
+        assert!(sc.y > 1.3 && (sc.x - 1.0).abs() < 1e-4, "{sc:?}");
+    }
+
+    #[test]
+    fn rotate_ring_y_rotates_about_y() {
+        let mut h = harness();
+        h.state_mut().tool = crate::state::Tool::Rotate;
+        let (cube, origin, x_tip, _) = cube_setup(&mut h);
+        // The Y ring passes through the +X tip; drag across it.
+        let along = (x_tip - origin).normalized();
+        let across = egui::vec2(-along.y, along.x);
+        button(&mut h, x_tip, PointerButton::Primary, true, Modifiers::NONE);
+        for i in 1..=5 {
+            h.event(Event::PointerMoved(x_tip + across * (10.0 * i as f32)));
+            h.step();
+        }
+        button(
+            &mut h,
+            x_tip + across * 50.0,
+            PointerButton::Primary,
+            false,
+            Modifiers::NONE,
+        );
+        let e = h.state().scene.transform(cube).euler();
+        assert!(e.y.abs() > 5.0, "rotated about Y: {e:?}");
+        assert!(e.x.abs() < 0.1 && e.z.abs() < 0.1, "only Y: {e:?}");
     }
 }

@@ -6,6 +6,7 @@ mod capture;
 mod commands;
 mod console;
 mod gizmos;
+mod handles;
 mod layout;
 mod menu_bar;
 mod panels;
