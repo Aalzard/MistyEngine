@@ -169,3 +169,19 @@ Record of choices made without asking, and why.
 57. **Per-user editor state in `<Project>/Library/EditorSettings.json`** (recent scenes), git-ignored like a Library
     folder. The editor reopens the most recent scene on startup, falling back to `Assets/Scenes/SampleScene.scene`.
 58. **Window title** shows "Project - Scene* - Misty Engine", with `*` while unsaved.
+
+## 2026-11-03 — Project Settings
+
+59. **Project Settings live in `<Project>/ProjectSettings/ProjectSettings.json`**, one pretty JSON file with
+    `physics` and `time` sections, committed with the project (unlike `Library/`). Every field has a default
+    (`serde(default)`), so older or hand-trimmed files keep loading; invalid values (zero timestep, NaN) are clamped.
+    A missing file means defaults and isn't written until something changes.
+60. **A floating egui window instead of a dock tab**, like the reference editor's utility window, and so the
+    dock layout/persistence code doesn't need a new tab kind. Changes save immediately (no Apply button).
+61. **Fixed Timestep is stored in `physics` but shown under Time**, where users expect it; physics is the only
+    thing that consumes it. "Max Steps Per Frame" (no direct equivalent) sits under Physics.
+62. **No project-wide default friction/bounciness:** colliders already own theirs (decision 44), so a second
+    default would be confusing until physics-material assets exist.
+63. **Settings are read when Play starts** (physics world, fixed step). Time Scale and Maximum Allowed Timestep also
+    update the running clock immediately; gravity/fixed-step edits apply on the next Play.
+

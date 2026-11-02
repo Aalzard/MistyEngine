@@ -18,7 +18,7 @@ pub mod api;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use hecs::Entity;
 use mlua::{Function, Lua, RegistryKey, Table, Value};
 
@@ -343,6 +343,10 @@ impl ScriptHost {
     /// Physics counters for the Stats overlay.
     pub fn physics_counts(&self) -> (usize, usize) {
         self.with_world(|w| (w.physics.body_count(), w.physics.collider_count()))
+    }
+
+    pub fn physics_config(&self) -> (Vec3, f32) {
+        self.with_world(|w| (w.physics.gravity(), w.physics.fixed_dt))
     }
 
     pub fn instance_count(&self) -> usize {

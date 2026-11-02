@@ -15,6 +15,7 @@ mod panels;
 mod picking;
 mod play;
 mod project;
+mod project_settings;
 mod render_scene;
 mod scene_camera;
 mod scene_files;

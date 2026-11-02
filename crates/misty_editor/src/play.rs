@@ -32,8 +32,12 @@ pub fn start(s: &mut EditorState) {
         undo: std::mem::take(&mut s.undo),
         dirty: s.scene_dirty,
     });
-    s.time = Time::default();
-    s.runtime = Some(Runtime::start(&mut s.scene, s.project.root.clone()));
+    s.time = Time::new(&s.project_settings.time);
+    s.runtime = Some(Runtime::start(
+        &mut s.scene,
+        s.project.root.clone(),
+        &s.project_settings,
+    ));
     flush_logs(s);
     s.game_view.focused = s.game_view.play_mode_target != 2;
     s.play = if s.pause_on_play {

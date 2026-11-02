@@ -31,6 +31,8 @@ impl Create {
 #[derive(Clone, Debug)]
 pub enum Action {
     FocusTab(Tab),
+    /// Edit ▸ Project Settings.
+    OpenProjectSettings,
     ResetLayout,
     Quit,
     NewScene,

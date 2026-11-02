@@ -184,6 +184,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
             }
         }
         Action::OpenAddComponent => s.inspector_add_open = true,
+        Action::OpenProjectSettings => s.project_settings_window.open = true,
         Action::Undo => match s.undo.undo(&mut s.scene, &mut s.selection) {
             Some(label) => s.console.info(format!("Undo {label}")),
             None => s.console.info("Nothing to undo."),

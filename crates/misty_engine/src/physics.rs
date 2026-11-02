@@ -15,11 +15,7 @@ use crate::scene::{
     BoxCollider, CapsuleCollider, MeshCollider, MeshFilter, PhysicsSurface, Rigidbody, Scene,
     SphereCollider,
 };
-
-/// Default fixed timestep (seconds).
-pub const FIXED_DT: f32 = 0.02;
-/// Upper bound of fixed steps per frame, so a slow frame can't spiral.
-const MAX_STEPS: u32 = 8;
+use crate::settings::PhysicsSettings;
 
 // rapier uses its own glam version: convert through arrays.
 fn rv(v: Vec3) -> rp::Vector {
@@ -96,6 +92,8 @@ pub struct Physics {
     colliders: HashMap<rp::ColliderHandle, Entity>,
     accumulator: f32,
     pub fixed_dt: f32,
+    /// Upper bound of fixed steps per frame, so a slow frame can't spiral.
+    pub max_steps: u32,
     /// Problems found while building (shown in the Console).
     pub warnings: Vec<String>,
 }
@@ -107,16 +105,27 @@ fn world_pose(scene: &Scene, e: Entity) -> (Vec3, Quat, Vec3) {
 }
 
 impl Physics {
+    /// Build with default settings and the given gravity.
     pub fn build(scene: &Scene, gravity: Vec3) -> Self {
+        let settings = PhysicsSettings {
+            gravity,
+            ..Default::default()
+        };
+        Self::build_with(scene, &settings)
+    }
+
+    /// Build from the scene using Project Settings ▸ Physics.
+    pub fn build_with(scene: &Scene, settings: &PhysicsSettings) -> Self {
         let mut world = rp::PhysicsWorld::new();
-        world.gravity = rv(gravity);
-        world.integration_parameters.dt = FIXED_DT;
+        world.gravity = rv(settings.gravity);
+        world.integration_parameters.dt = settings.fixed_timestep;
         let mut physics = Self {
             world,
             bodies: HashMap::new(),
             colliders: HashMap::new(),
             accumulator: 0.0,
-            fixed_dt: FIXED_DT,
+            fixed_dt: settings.fixed_timestep,
+            max_steps: settings.max_steps_per_frame,
             warnings: Vec::new(),
         };
         let objects: Vec<Entity> = scene
@@ -334,10 +343,14 @@ impl Physics {
         self.accumulator += dt;
         let steps = (self.accumulator / self.fixed_dt).floor() as u32;
         self.accumulator -= steps as f32 * self.fixed_dt;
-        if steps > MAX_STEPS {
+        if steps > self.max_steps {
             self.accumulator = 0.0;
         }
-        steps.min(MAX_STEPS)
+        steps.min(self.max_steps)
+    }
+
+    pub fn gravity(&self) -> Vec3 {
+        gv(self.world.gravity)
     }
 
     /// One fixed step; returns the contacts that began or ended.
@@ -561,6 +574,37 @@ mod tests {
         }
         assert!((scene.world_position(floating).y - 5.0).abs() < 1e-3);
         assert!((scene.world_position(frozen).y - 5.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn zero_gravity_keeps_a_body_still() {
+        let mut scene = Scene::new("t");
+        let c = cube(&mut scene, "Cube", Vec3::new(0.0, 5.0, 0.0), true);
+        let settings = PhysicsSettings {
+            gravity: Vec3::ZERO,
+            ..Default::default()
+        };
+        let mut physics = Physics::build_with(&scene, &settings);
+        assert_eq!(physics.gravity(), Vec3::ZERO);
+        for _ in 0..60 {
+            physics.update(&mut scene, 1.0 / 60.0);
+        }
+        assert!((scene.world_position(c).y - 5.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn fixed_timestep_and_max_steps_come_from_settings() {
+        let scene = Scene::new("t");
+        let mut fine = Physics::build_with(&scene, &PhysicsSettings::default());
+        let coarse_settings = PhysicsSettings {
+            fixed_timestep: 0.1,
+            max_steps_per_frame: 2,
+            ..Default::default()
+        };
+        let mut coarse = Physics::build_with(&scene, &coarse_settings);
+        assert_eq!(fine.steps_due(0.1), 5, "0.1 s at 0.02 s per step");
+        assert_eq!(coarse.steps_due(0.1), 1, "0.1 s at 0.1 s per step");
+        assert_eq!(coarse.steps_due(1.0), 2, "capped at max steps per frame");
     }
 
     #[test]
