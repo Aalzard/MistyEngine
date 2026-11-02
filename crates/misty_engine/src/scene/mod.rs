@@ -2,6 +2,7 @@
 
 pub mod components;
 pub mod file;
+pub mod prefab;
 pub mod registry;
 
 use glam::{Mat4, Vec3};
@@ -330,7 +331,8 @@ impl Scene {
         copy
     }
 
-    fn copy_subtree(&mut self, e: Entity, parent: Option<Entity>) -> Entity {
+    /// Deep copy of `e` appended under `parent` (keeps the name).
+    pub fn copy_subtree(&mut self, e: Entity, parent: Option<Entity>) -> Entity {
         let mut b = EntityBuilder::new();
         for info in registry::components() {
             (info.clone_into)(&self.world, e, &mut b);

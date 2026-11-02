@@ -119,10 +119,28 @@ impl Physics {
             fixed_dt: FIXED_DT,
             warnings: Vec::new(),
         };
+        let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
+        physics.add_objects(scene, &objects);
+        physics
+    }
+
+    /// Add bodies and colliders for `root` and its children (objects created while playing).
+    pub fn add_subtree(&mut self, scene: &Scene, root: Entity) {
         let objects: Vec<Entity> = scene
             .walk()
             .into_iter()
             .map(|(e, _)| e)
+            .filter(|e| scene.is_ancestor(root, *e))
+            .collect();
+        self.add_objects(scene, &objects);
+    }
+
+    /// Bodies and colliders for the active objects in `objects` (Hierarchy order).
+    fn add_objects(&mut self, scene: &Scene, objects: &[Entity]) {
+        let physics = self;
+        let objects: Vec<Entity> = objects
+            .iter()
+            .copied()
             .filter(|e| scene.active_in_hierarchy(*e))
             .collect();
 
@@ -215,7 +233,6 @@ impl Physics {
                 }
             }
         }
-        physics
     }
 
     /// Collider builders for `e`'s collider components (in the object's local frame, scaled).

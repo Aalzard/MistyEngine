@@ -67,6 +67,11 @@ impl SceneComponent for Scripts {
     const NAME: &'static str = "Scripts";
     const CATEGORY: &'static str = "";
 }
+impl SceneComponent for PrefabLink {
+    const NAME: &'static str = "Prefab";
+    const CATEGORY: &'static str = "";
+    const REMOVABLE: bool = false;
+}
 impl SceneComponent for MeshCollider {
     const NAME: &'static str = "Mesh Collider";
     const CATEGORY: &'static str = "Physics";
@@ -117,7 +122,7 @@ impl ComponentInfo {
 
     /// Shown in the Inspector / Add Component menu (not GameObject or Node).
     pub fn user_visible(&self) -> bool {
-        self.name != "GameObject" && self.name != "Node"
+        !matches!(self.name, "GameObject" | "Node" | "Prefab")
     }
 }
 
@@ -139,6 +144,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<CapsuleCollider>(),
             ComponentInfo::of::<MeshCollider>(),
             ComponentInfo::of::<Scripts>(),
+            ComponentInfo::of::<PrefabLink>(),
         ]
     })
 }
