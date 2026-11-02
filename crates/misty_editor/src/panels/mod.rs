@@ -4,7 +4,7 @@ mod console;
 mod game;
 mod hierarchy;
 mod inspector;
-mod project;
+pub mod project;
 mod scene;
 
 use egui::{Id, Ui, WidgetText};
@@ -13,6 +13,10 @@ use egui_dock::TabViewer;
 use crate::layout::Tab;
 use crate::state::EditorState;
 use crate::viewport::Gpu;
+
+/// Drag-and-drop payload: a project-relative asset path ("Assets/…").
+#[derive(Clone, Debug)]
+pub struct AssetPayload(pub String);
 
 pub struct PanelViewer<'a> {
     pub state: &'a mut EditorState,

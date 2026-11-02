@@ -78,3 +78,19 @@ Record of choices made without asking, and why.
     object's values. Transform edits apply per changed axis; other components copy only the fields that changed
     (JSON diff through the registry). Name is not multi-editable (shown as "—").
 28. **Constrain Proportions (scale lock) is an editor-wide toggle** instead of a per-object flag, until scene files exist.
+
+## 2026-11-03 — Step 5
+
+29. **Forward renderer, one pass per view.** Lambert diffuse + normalised Blinn-Phong specular (smoothness →
+    exponent, metallic tints specular), hemisphere ambient taken from the sky gradient. Up to 8 lights. It is not
+    full PBR, but it is close enough to the Standard shader's look and cheap.
+30. **One directional shadow map** (2048², 3×3 PCF, slope bias + normal offset, front-face culling) for the first
+    directional light with shadows. It is fitted to the shadow casters' bounds. Point/spot shadows: not yet.
+31. **Selection outline via a mask pass.** Selected meshes (and their children) are rendered into an R8 mask, and a
+    fullscreen pass draws a ~2 px orange edge. Like the reference editor, the outline shows through occluders.
+32. **Materials are JSON `.mat` assets** in `Assets/` (Standard: Albedo, Metallic, Smoothness, Emission). Edits
+    save immediately. Mesh Renderer stores the asset path; `None` = Default-Material. Material edits are not in
+    the undo history yet.
+33. **Line endings normalised to LF** with `.gitattributes`. Python edit scripts on Windows had been writing CRLF.
+34. **Mesh winding:** outward `cross(b-a, c-a)`, which is clockwise on screen in our left-handed setup, so all
+    pipelines use `FrontFace::Cw` (covered by a unit test).

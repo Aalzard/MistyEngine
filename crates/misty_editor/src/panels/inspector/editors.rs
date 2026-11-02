@@ -8,7 +8,10 @@ use misty_engine::scene::{
     Shadows, registry,
 };
 
+use misty_engine::assets::Material;
+
 use crate::actions::Action;
+use crate::assets::AssetDatabase;
 use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::vec3_row;
@@ -56,7 +59,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Camera" => with::<Camera>(ui, state, e, camera),
         "Light" => with::<Light>(ui, state, e, light),
         "Mesh Filter" => with::<MeshFilter>(ui, state, e, mesh_filter),
-        "Mesh Renderer" => with::<MeshRenderer>(ui, state, e, mesh_renderer),
+        "Mesh Renderer" => mesh_renderer(ui, state, e),
         _ => {
             ui.weak("No editor for this component.");
             false
@@ -352,13 +355,43 @@ fn mesh_filter(ui: &mut Ui, f: &mut MeshFilter) -> bool {
     })
 }
 
-fn mesh_renderer(ui: &mut Ui, r: &mut MeshRenderer) -> bool {
-    grid(ui, "meshrenderer_grid", |ui| {
+/// Mesh Renderer: material slot (pick from project materials, or drop one from the Project window).
+fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
+    let Ok(mut r) = state
+        .scene
+        .world
+        .get::<&MeshRenderer>(e)
+        .map(|c| (*c).clone())
+    else {
+        return false;
+    };
+    let names: Vec<String> = state.assets.materials.keys().cloned().collect();
+    let changed = grid(ui, "meshrenderer_grid", |ui| {
         let mut ch = false;
-        ui.label("Color");
-        let mut rgb = [r.color[0], r.color[1], r.color[2]];
-        if color_rgb(ui, &mut rgb) {
-            r.color[..3].copy_from_slice(&rgb);
+        ui.label("Materials");
+        ui.label(RichText::new("Size 1").color(theme::TEXT_DIM));
+        ui.end_row();
+        ui.label("    Element 0");
+        let current = AssetDatabase::material_name(r.material.as_deref());
+        let slot = egui::ComboBox::from_id_salt("mr_material")
+            .selected_text(format!("◍ {current}"))
+            .width(150.0)
+            .show_ui(ui, |ui| {
+                ch |= ui
+                    .selectable_value(&mut r.material, None, crate::assets::DEFAULT_MATERIAL)
+                    .changed();
+                for n in &names {
+                    let label = AssetDatabase::material_name(Some(n));
+                    ch |= ui
+                        .selectable_value(&mut r.material, Some(n.clone()), label)
+                        .changed();
+                }
+            })
+            .response;
+        if let Some(path) = slot.dnd_release_payload::<crate::panels::AssetPayload>()
+            && path.0.ends_with(".mat")
+        {
+            r.material = Some(path.0.clone());
             ch = true;
         }
         ui.end_row();
@@ -379,7 +412,69 @@ fn mesh_renderer(ui: &mut Ui, r: &mut MeshRenderer) -> bool {
         ch |= ui.checkbox(&mut r.receive_shadows, "").changed();
         ui.end_row();
         ch
+    });
+    if changed {
+        let _ = state.scene.world.insert_one(e, r);
+    }
+    changed
+}
+
+/// Standard material fields. Returns true when changed.
+pub fn material_fields(ui: &mut Ui, id: &str, m: &mut Material) -> bool {
+    grid(ui, id, |ui| {
+        let mut ch = false;
+        ui.label("Shader");
+        ui.label(&m.shader);
+        ui.end_row();
+        ui.label("Albedo");
+        let mut rgb = [m.color[0], m.color[1], m.color[2]];
+        if color_rgb(ui, &mut rgb) {
+            m.color[..3].copy_from_slice(&rgb);
+            ch = true;
+        }
+        ui.end_row();
+        ui.label("Metallic");
+        ch |= ui
+            .add(egui::Slider::new(&mut m.metallic, 0.0..=1.0))
+            .changed();
+        ui.end_row();
+        ui.label("Smoothness");
+        ch |= ui
+            .add(egui::Slider::new(&mut m.smoothness, 0.0..=1.0))
+            .changed();
+        ui.end_row();
+        ui.label("Emission");
+        ch |= ui.checkbox(&mut m.emission_enabled, "").changed();
+        ui.end_row();
+        if m.emission_enabled {
+            ui.label("    Color");
+            ch |= color_rgb(ui, &mut m.emission);
+            ui.end_row();
+            ui.label("    Intensity");
+            ch |= ui
+                .add(
+                    egui::DragValue::new(&mut m.emission_intensity)
+                        .speed(0.05)
+                        .range(0.0..=100.0),
+                )
+                .changed();
+            ui.end_row();
+        }
+        ch
     })
+}
+
+/// Edit a material asset in place and save it. Used inline under Mesh Renderer and for Project selection.
+pub fn material_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    let Some(mut m) = state.assets.materials.get(rel).cloned() else {
+        ui.weak(format!("Missing material: {rel}"));
+        return;
+    };
+    if material_fields(ui, &format!("mat_{rel}"), &mut m)
+        && let Err(err) = state.assets.update_material(rel, m)
+    {
+        state.console.warn(format!("Could not save {rel}: {err}"));
+    }
 }
 
 /// Wide "Add Component" button with a searchable popup of addable components.

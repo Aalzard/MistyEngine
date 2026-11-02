@@ -6,6 +6,7 @@ use misty_engine::hecs::Entity;
 use misty_engine::scene::{Camera, Light, LightType, MeshFilter, Scene};
 
 use crate::actions::Action;
+use crate::assets::AssetDatabase;
 use crate::console::Console;
 use crate::handles::HandleState;
 use crate::project::ProjectBrowser;
@@ -160,6 +161,9 @@ pub struct EditorState {
     /// Scale fields keep their proportions.
     pub scale_locked: bool,
     pub project: ProjectBrowser,
+    pub assets: AssetDatabase,
+    /// Asset shown in the Inspector when no scene object is selected.
+    pub inspector_asset: Option<String>,
     pub scene_view: SceneViewSettings,
     pub game_view: GameViewSettings,
     /// Commands to apply after the UI pass.
@@ -190,6 +194,8 @@ impl EditorState {
             inspector_targets: Vec::new(),
             component_clipboard: None,
             scale_locked: false,
+            assets: AssetDatabase::open(&project.root),
+            inspector_asset: None,
             project,
             scene_view: SceneViewSettings {
                 draw_mode: 0,
@@ -235,6 +241,28 @@ impl EditorState {
     pub fn select(&mut self, e: Entity) {
         self.selection.set(e);
         self.reveal(e);
+    }
+
+    /// Give `e`'s Mesh Renderer a material (drag-and-drop from the Project window).
+    pub fn assign_material(&mut self, e: Entity, rel: &str) {
+        if self
+            .scene
+            .world
+            .get::<&misty_engine::scene::MeshRenderer>(e)
+            .is_err()
+        {
+            self.console
+                .warn(format!("'{}' has no Mesh Renderer.", self.scene.name(e)));
+            return;
+        }
+        self.record("Assign Material");
+        if let Ok(mut r) = self
+            .scene
+            .world
+            .get::<&mut misty_engine::scene::MeshRenderer>(e)
+        {
+            r.material = Some(rel.to_owned());
+        }
     }
 
     /// Expand all parents of `e`.

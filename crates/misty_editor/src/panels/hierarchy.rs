@@ -212,6 +212,11 @@ fn row(
         state.selection.set(e);
     }
     resp.context_menu(|ui| row_menu(ui, state, e));
+    if let Some(payload) = resp.dnd_release_payload::<super::AssetPayload>()
+        && payload.0.ends_with(".mat")
+    {
+        state.assign_material(e, &payload.0);
+    }
 
     // Start dragging: carry the selection (or just this row).
     if resp.drag_started() {
@@ -439,7 +444,8 @@ pub fn row_simple(
     color: Color32,
     depth: usize,
 ) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
+    let (rect, resp) =
+        ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
     if selected {
         ui.painter().rect_filled(rect, 0.0, theme::SELECTION);
     } else if resp.hovered() {

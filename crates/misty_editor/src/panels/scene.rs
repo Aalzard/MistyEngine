@@ -4,12 +4,13 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Ui, pos2, vec2};
 use glam::Vec3;
 use misty_engine::render::{Frame, GridPlane};
 
+use super::AssetPayload;
 use crate::scene_camera::{AxisView, SceneCamera};
 use crate::state::{EditorState, Tool, object_icon};
 use crate::theme;
 use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
-use crate::{gizmos, handles, picking};
+use crate::{gizmos, handles, picking, render_scene};
 
 const DRAW_MODES: [&str; 3] = ["Shaded", "Wireframe", "Shaded Wireframe"];
 
@@ -32,18 +33,36 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let camera = cam.camera();
     match gpu {
         Some(gpu) => {
-            let lines = if state.scene_view.gizmos {
+            let sv = &state.scene_view;
+            let meshes =
+                render_scene::mesh_draws(&state.scene, &state.assets, Some(&state.selection));
+            let mut lines = if sv.gizmos {
                 gizmos::scene_lines(&state.scene, &state.selection)
             } else {
                 gizmos::Lines::default()
             };
+            // Draw modes: 0 Shaded, 1 Wireframe, 2 Shaded Wireframe.
+            match sv.draw_mode {
+                1 => gizmos::wireframe(&mut lines, &meshes, gizmos::WIREFRAME),
+                2 => gizmos::wireframe(&mut lines, &meshes, [0.0, 0.0, 0.0, 0.35]),
+                _ => {}
+            }
+            let lights = if sv.lighting {
+                render_scene::lights(&state.scene)
+            } else {
+                render_scene::headlight(&camera)
+            };
             let frame = Frame {
                 camera: &camera,
-                grid: state.scene_view.grid.then(|| grid_plane(cam)),
+                grid: sv.grid.then(|| grid_plane(&sv.camera)),
                 // 2D mode uses a flat editor background instead of the sky.
-                skybox: state.scene_view.skybox && !cam.is_2d(),
+                skybox: sv.skybox && !sv.camera.is_2d(),
                 background: [0.28, 0.28, 0.28],
                 lines: &lines.0,
+                meshes: &meshes,
+                shaded: sv.draw_mode != 1,
+                lights: &lights,
+                ambient_intensity: 1.0,
             };
             let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
             let texture = gpu.render(ViewId::Scene, size, &frame);
@@ -85,6 +104,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             None if mods.command || mods.shift => {}
             None => state.selection.clear(),
         }
+    }
+
+    // Drop a material from the Project window onto an object.
+    if let Some(payload) = response.dnd_release_payload::<AssetPayload>()
+        && payload.0.ends_with(".mat")
+        && let Some(at) = ui.input(|i| i.pointer.hover_pos())
+        && let Some(e) = picking::pick(&state.scene, &camera, rect, at)
+    {
+        state.assign_material(e, &payload.0);
     }
 
     tools_overlay(ui, rect, state);

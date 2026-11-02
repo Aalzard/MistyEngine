@@ -44,7 +44,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let scene = &state.scene;
     state.inspector_targets.retain(|e| scene.contains(*e));
     let targets = state.inspector_targets.clone();
-    let Some(&e) = targets.first() else { return };
+    let Some(&e) = targets.first() else {
+        // Nothing in the scene selected: show the selected asset, if any.
+        if let Some(rel) = state.inspector_asset.clone() {
+            asset_inspector(ui, state, &rel);
+        }
+        return;
+    };
 
     egui::ScrollArea::vertical()
         .auto_shrink(false)
@@ -60,6 +66,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             for name in shared_components(state, &targets) {
                 component_section(ui, state, &targets, &name);
             }
+            material_previews(ui, state, e);
             ui.add_space(8.0);
             editors::add_component_button(ui, state, e);
         });
@@ -306,6 +313,41 @@ fn propagate(
     }
 }
 
+/// Inline editors for the materials the object renders with (like the material section under the components).
+fn material_previews(ui: &mut Ui, state: &mut EditorState, e: Entity) {
+    let Some(rel) = state
+        .scene
+        .world
+        .get::<&misty_engine::scene::MeshRenderer>(e)
+        .ok()
+        .and_then(|r| r.material.clone())
+    else {
+        return;
+    };
+    let name = crate::assets::AssetDatabase::material_name(Some(&rel));
+    egui::CollapsingHeader::new(RichText::new(format!("◍ {name} (Material)")).strong())
+        .id_salt(("inline_material", &rel))
+        .default_open(true)
+        .show(ui, |ui| editors::material_asset(ui, state, &rel));
+    ui.separator();
+}
+
+/// Inspector for a Project asset (materials for now).
+fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    let name = crate::assets::AssetDatabase::material_name(Some(rel));
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("◍").size(22.0));
+        ui.label(RichText::new(format!("{name} (Material)")).strong());
+    });
+    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    ui.separator();
+    if rel.ends_with(".mat") {
+        editors::material_asset(ui, state, rel);
+    } else {
+        ui.weak("No import settings for this asset.");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use egui_kittest::Harness;
@@ -317,7 +359,9 @@ mod tests {
     use crate::project::ProjectBrowser;
 
     fn state() -> EditorState {
-        EditorState::new(ProjectBrowser::open(std::env::temp_dir().join("misty_insp_test")))
+        EditorState::new(ProjectBrowser::open(
+            std::env::temp_dir().join("misty_insp_test"),
+        ))
     }
 
     fn apply_actions(s: &mut EditorState) {
@@ -340,7 +384,10 @@ mod tests {
         h.get_by_label("Light").click();
         h.run();
         apply_actions(h.state_mut());
-        assert_eq!(h.state().scene.component_names(cam), ["Transform", "Camera", "Light"]);
+        assert_eq!(
+            h.state().scene.component_names(cam),
+            ["Transform", "Camera", "Light"]
+        );
         assert!(!h.state().inspector_add_open, "popup closes after choosing");
     }
 
@@ -350,7 +397,13 @@ mod tests {
         let a = s.scene.spawn("A", None);
         let b = s.scene.spawn("B", None);
         s.scene.add(a, Camera::default());
-        s.scene.add(b, Camera { near: 2.0, ..Default::default() });
+        s.scene.add(
+            b,
+            Camera {
+                near: 2.0,
+                ..Default::default()
+            },
+        );
         let before = to_json(&s, a, "Camera");
         s.scene.world.get::<&mut Camera>(a).unwrap().fov = 90.0;
         propagate(&mut s, &[a, b], "Camera", before);
@@ -363,10 +416,19 @@ mod tests {
     fn copy_paste_component_values() {
         let mut s = state();
         let (a, b) = (s.scene.spawn("A", None), s.scene.spawn("B", None));
-        s.scene.add(a, Camera { fov: 30.0, ..Default::default() });
+        s.scene.add(
+            a,
+            Camera {
+                fov: 30.0,
+                ..Default::default()
+            },
+        );
         s.scene.add(b, Camera::default());
         s.component_clipboard = to_json(&s, a, "Camera").map(|v| ("Camera".into(), v));
-        s.push(Action::PasteComponentValues { entity: b, name: "Camera".into() });
+        s.push(Action::PasteComponentValues {
+            entity: b,
+            name: "Camera".into(),
+        });
         apply_actions(&mut s);
         assert_eq!(s.scene.world.get::<&Camera>(b).unwrap().fov, 30.0);
         s.push(Action::Undo);

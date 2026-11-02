@@ -334,12 +334,13 @@ pub struct MeshFilter {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MeshRenderer {
     pub enabled: bool,
     pub cast_shadows: bool,
     pub receive_shadows: bool,
-    /// sRGB base colour until materials exist.
-    pub color: [f32; 4],
+    /// Material asset path ("Assets/…/Name.mat"); `None` = Default-Material.
+    pub material: Option<String>,
 }
 
 impl Default for MeshRenderer {
@@ -348,7 +349,7 @@ impl Default for MeshRenderer {
             enabled: true,
             cast_shadows: true,
             receive_shadows: true,
-            color: [1.0, 1.0, 1.0, 1.0],
+            material: None,
         }
     }
 }

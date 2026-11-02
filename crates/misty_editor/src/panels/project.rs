@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use egui::{Align2, Color32, FontId, Sense, Ui};
 
+use super::AssetPayload;
 use crate::project::{AssetEntry, FolderNode};
 use crate::state::EditorState;
 use crate::theme;
@@ -12,11 +13,12 @@ use crate::widgets::{panel_toolbar, search_field};
 use super::hierarchy::row_simple as row;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
+    let selected_before = state.project.selected.clone();
+    panel_toolbar(ui, |ui| {
+        ui.menu_button("➕ ⏷", |ui| create_menu(ui, state));
+    });
     let browser = &mut state.project;
     panel_toolbar(ui, |ui| {
-        ui.menu_button("➕ ⏷", |ui| {
-            ui.weak("Create menu arrives with assets (step 5)");
-        });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("⟳").on_hover_text("Refresh (Ctrl+R)").clicked() {
                 browser.refresh();
@@ -105,6 +107,58 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             browser.open_folder(path);
         }
     });
+
+    // Selecting an asset shows it in the Inspector (and deselects scene objects).
+    if state.project.selected != selected_before
+        && let Some(sel) = state.project.selected.clone()
+    {
+        state.selection.clear();
+        state.inspector_asset = Some(state.assets.relative(&sel));
+    }
+}
+
+/// Project "+" menu and Assets ▸ Create.
+pub fn create_menu(ui: &mut Ui, state: &mut EditorState) {
+    if ui.button("Folder").clicked() {
+        let dir = state.project.current.clone();
+        let path = (0..)
+            .map(|n| {
+                dir.join(if n == 0 {
+                    "New Folder".to_owned()
+                } else {
+                    format!("New Folder {n}")
+                })
+            })
+            .find(|p| !p.exists())
+            .expect("free name");
+        match std::fs::create_dir(&path) {
+            Ok(()) => state
+                .console
+                .info(format!("Created {}", state.assets.relative(&path))),
+            Err(e) => state.console.warn(format!("Could not create folder: {e}")),
+        }
+        state.project.refresh();
+        ui.close();
+    }
+    ui.separator();
+    if ui.button("Material").clicked() {
+        let dir = state.project.current.clone();
+        match state.assets.create_material(&dir) {
+            Ok(rel) => {
+                state.project.refresh();
+                state.project.selected = Some(state.assets.absolute(&rel));
+                state.selection.clear();
+                state.inspector_asset = Some(rel.clone());
+                state.console.info(format!("Created {rel}"));
+            }
+            Err(e) => state
+                .console
+                .warn(format!("Could not create material: {e}")),
+        }
+        ui.close();
+    }
+    ui.add_enabled(false, egui::Button::new("Scene (step 9)"));
+    ui.add_enabled(false, egui::Button::new("Script (step 8)"));
 }
 
 fn folder_tree(
@@ -163,7 +217,7 @@ fn grid_view(
         ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
         for e in entries {
             let (rect, resp) =
-                ui.allocate_exact_size(egui::vec2(cell, cell + 18.0), Sense::click());
+                ui.allocate_exact_size(egui::vec2(cell, cell + 18.0), Sense::click_and_drag());
             let is_sel = selected.as_ref() == Some(&e.path);
             if is_sel {
                 ui.painter().rect_filled(rect, 3.0, theme::SELECTION);
@@ -202,6 +256,18 @@ fn handle_click(
     if resp.double_clicked() && e.is_dir {
         *open = Some(e.path.clone());
     }
+    // Assets can be dragged onto objects (Scene view, Hierarchy, Inspector slots).
+    if !e.is_dir
+        && let Some(rel) = asset_relative(&e.path)
+    {
+        resp.dnd_set_drag_payload(AssetPayload(rel));
+    }
+}
+
+/// "Assets/…" for a path inside the project's Assets folder.
+fn asset_relative(path: &std::path::Path) -> Option<String> {
+    let s = path.to_string_lossy().replace('\\', "/");
+    s.find("Assets/").map(|i| s[i..].to_owned())
 }
 
 fn truncate(s: &str, max: usize) -> String {

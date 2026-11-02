@@ -2,6 +2,7 @@
 
 mod actions;
 mod app;
+mod assets;
 mod capture;
 mod commands;
 mod console;
@@ -12,6 +13,7 @@ mod menu_bar;
 mod panels;
 mod picking;
 mod project;
+mod render_scene;
 mod scene_camera;
 mod selection;
 mod state;

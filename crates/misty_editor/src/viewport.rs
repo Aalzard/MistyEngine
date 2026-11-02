@@ -46,7 +46,9 @@ impl Gpu {
         };
         let size = (size_px[0].max(1), size_px[1].max(1));
         if vp.target.as_ref().map(|t| t.size()) != Some(size) {
-            let target = RenderTarget::new(&self.state.device, size.0, size.1);
+            let target = self
+                .renderer
+                .create_target(&self.state.device, size.0, size.1);
             let mut egui_renderer = self.state.renderer.write();
             let filter = wgpu::FilterMode::Linear;
             vp.texture = Some(match vp.texture {

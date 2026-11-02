@@ -103,13 +103,7 @@ fn edit_menu(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn assets_menu(ui: &mut Ui, s: &mut EditorState) {
-    ui.menu_button("Create", |ui| {
-        todo(ui, s, "Folder", "");
-        ui.separator();
-        todo(ui, s, "Script", "");
-        todo(ui, s, "Scene", "");
-        todo(ui, s, "Material", "");
-    });
+    ui.menu_button("Create", |ui| crate::panels::project::create_menu(ui, s));
     todo(ui, s, "Show in Explorer", "");
     todo(ui, s, "Open", "");
     todo(ui, s, "Delete", "");

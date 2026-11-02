@@ -5,6 +5,7 @@ use misty_engine::camera::{Camera, Projection};
 use misty_engine::render::Frame;
 use misty_engine::scene::{Camera as CameraComponent, ClearFlags};
 
+use crate::render_scene;
 use crate::state::EditorState;
 use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, toggle_button};
@@ -36,12 +37,18 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     match (camera, gpu) {
         (Some((camera, settings)), Some(gpu)) => {
             let bg = settings.background;
+            let meshes = render_scene::mesh_draws(&state.scene, &state.assets, None);
+            let lights = render_scene::lights(&state.scene);
             let frame = Frame {
                 camera: &camera,
                 grid: None,
                 skybox: settings.clear_flags == ClearFlags::Skybox,
                 background: [bg[0], bg[1], bg[2]],
                 lines: &[],
+                meshes: &meshes,
+                shaded: true,
+                lights: &lights,
+                ambient_intensity: 1.0,
             };
             let ppp = ui.ctx().pixels_per_point();
             let size = [(view.width() * ppp) as u32, (view.height() * ppp) as u32];

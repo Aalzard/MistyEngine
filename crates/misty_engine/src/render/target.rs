@@ -1,6 +1,6 @@
 //! Offscreen render target: MSAA colour + depth, resolved into a sampleable texture.
 
-use super::{COLOR_FORMAT, DEPTH_FORMAT, SAMPLE_COUNT};
+use super::{COLOR_FORMAT, DEPTH_FORMAT, MASK_FORMAT, SAMPLE_COUNT};
 
 /// Non-sRGB view of the resolved image: samplers return the stored (gamma-encoded) bytes,
 /// which is what the egui compositor expects.
@@ -13,10 +13,18 @@ pub struct RenderTarget {
     depth_view: wgpu::TextureView,
     resolve_view: wgpu::TextureView,
     display_view: wgpu::TextureView,
+    mask_view: wgpu::TextureView,
+    /// Outline pass input (selection mask).
+    pub(crate) mask_bind_group: wgpu::BindGroup,
 }
 
 impl RenderTarget {
-    pub fn new(device: &wgpu::Device, width: u32, height: u32) -> Self {
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        mask_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
         let (width, height) = (width.max(1), height.max(1));
         let make = |label, format, samples, usage, view_formats: &[wgpu::TextureFormat]| {
             device.create_texture(&wgpu::TextureDescriptor {
@@ -46,6 +54,22 @@ impl RenderTarget {
             attach | wgpu::TextureUsages::TEXTURE_BINDING,
             &[DISPLAY_FORMAT],
         );
+        let mask = make(
+            "misty selection mask",
+            MASK_FORMAT,
+            1,
+            attach | wgpu::TextureUsages::TEXTURE_BINDING,
+            &[],
+        );
+        let mask_view = view(&mask);
+        let mask_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty mask bind group"),
+            layout: mask_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&mask_view),
+            }],
+        });
         let display_view = resolve.create_view(&wgpu::TextureViewDescriptor {
             label: Some("misty display view"),
             format: Some(DISPLAY_FORMAT),
@@ -58,6 +82,8 @@ impl RenderTarget {
             depth_view: view(&depth),
             resolve_view: view(&resolve),
             display_view,
+            mask_view,
+            mask_bind_group,
         }
     }
 
@@ -76,6 +102,10 @@ impl RenderTarget {
 
     pub(crate) fn resolve_view(&self) -> &wgpu::TextureView {
         &self.resolve_view
+    }
+
+    pub(crate) fn mask_view(&self) -> &wgpu::TextureView {
+        &self.mask_view
     }
 
     pub(crate) fn msaa_view(&self) -> &wgpu::TextureView {

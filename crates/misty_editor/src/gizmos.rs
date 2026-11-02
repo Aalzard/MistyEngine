@@ -1,15 +1,15 @@
-//! Scene-view gizmo lines: wire shapes for placeholder objects, camera frustum, light rays.
+//! Scene-view gizmo lines: camera frustum, light ranges, and mesh wireframes.
 
 use glam::{Mat4, Vec3};
 use misty_engine::render::LineVertex;
-use misty_engine::scene::{
-    Camera, Light, LightType, MeshFilter, PrimitiveMesh as Primitive, Scene,
-};
+use misty_engine::render::MeshDraw;
+use misty_engine::render::mesh::primitive_edges;
+use misty_engine::scene::{Camera, Light, LightType, Scene};
 
 use crate::selection::Selection;
 
-pub const SELECTED: [f32; 4] = [0.96, 0.54, 0.0, 1.0];
-const WIRE: [f32; 4] = [0.75, 0.75, 0.75, 0.9];
+/// Wireframe draw-mode colour (dark lines).
+pub const WIREFRAME: [f32; 4] = [0.05, 0.05, 0.05, 0.9];
 const CAMERA: [f32; 4] = [0.85, 0.85, 0.85, 0.8];
 const LIGHT: [f32; 4] = [1.0, 0.92, 0.45, 0.9];
 
@@ -56,69 +56,6 @@ impl Lines {
             })
             .collect();
         self.polyline(m, &pts, true, color);
-    }
-
-    fn wire_box(&mut self, m: &Mat4, half: Vec3, color: [f32; 4]) {
-        let c = |x: f32, y: f32, z: f32| Vec3::new(x, y, z) * half;
-        let corners = [
-            c(-1., -1., -1.),
-            c(1., -1., -1.),
-            c(1., 1., -1.),
-            c(-1., 1., -1.),
-            c(-1., -1., 1.),
-            c(1., -1., 1.),
-            c(1., 1., 1.),
-            c(-1., 1., 1.),
-        ];
-        for (a, b) in [
-            (0, 1),
-            (1, 2),
-            (2, 3),
-            (3, 0),
-            (4, 5),
-            (5, 6),
-            (6, 7),
-            (7, 4),
-            (0, 4),
-            (1, 5),
-            (2, 6),
-            (3, 7),
-        ] {
-            self.line(
-                m.transform_point3(corners[a]),
-                m.transform_point3(corners[b]),
-                color,
-            );
-        }
-    }
-
-    fn primitive(&mut self, m: &Mat4, p: Primitive, color: [f32; 4]) {
-        match p {
-            Primitive::Cube => self.wire_box(m, Vec3::splat(0.5), color),
-            Primitive::Sphere => {
-                for axis in 0..3 {
-                    self.circle(m, Vec3::ZERO, 0.5, axis, color);
-                }
-            }
-            Primitive::Capsule | Primitive::Cylinder => {
-                let h = if p == Primitive::Capsule { 0.5 } else { 1.0 };
-                self.circle(m, Vec3::Y * h, 0.5, 1, color);
-                self.circle(m, -Vec3::Y * h, 0.5, 1, color);
-                for (x, z) in [(0.5, 0.0), (-0.5, 0.0), (0.0, 0.5), (0.0, -0.5)] {
-                    self.line(
-                        m.transform_point3(Vec3::new(x, h, z)),
-                        m.transform_point3(Vec3::new(x, -h, z)),
-                        color,
-                    );
-                }
-                if p == Primitive::Capsule {
-                    self.circle(m, Vec3::Y * h, 0.5, 0, color);
-                    self.circle(m, -Vec3::Y * h, 0.5, 0, color);
-                }
-            }
-            Primitive::Plane => self.wire_box(m, Vec3::new(5.0, 0.0, 5.0), color),
-            Primitive::Quad => self.wire_box(m, Vec3::new(0.5, 0.5, 0.0), color),
-        }
     }
 
     /// Camera frustum (shown when the camera is selected). The far plane is capped for readability.
@@ -196,11 +133,6 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         let (_, rot, pos) = m.to_scale_rotation_translation();
         let rigid = Mat4::from_rotation_translation(rot, pos);
         let w = &scene.world;
-        if let Ok(mesh) = w.get::<&MeshFilter>(e)
-            && let Some(p) = mesh.mesh
-        {
-            lines.primitive(&m, p, if is_sel { SELECTED } else { WIRE });
-        }
         if !is_sel {
             continue;
         }
@@ -212,4 +144,17 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         }
     }
     lines
+}
+
+/// Mesh triangle edges for the Wireframe / Shaded Wireframe draw modes.
+pub fn wireframe(lines: &mut Lines, meshes: &[MeshDraw], color: [f32; 4]) {
+    for d in meshes {
+        for [a, b] in primitive_edges(d.mesh) {
+            lines.line(
+                d.model.transform_point3(*a),
+                d.model.transform_point3(*b),
+                color,
+            );
+        }
+    }
 }

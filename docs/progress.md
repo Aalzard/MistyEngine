@@ -41,10 +41,9 @@
 - 18 automated tests (camera maths, shader validation, headless scene-view input).
 
 ### Not matching Unity yet
-- No real meshes/lighting yet: primitives are wireframes. (step 5)
 - No rectangle (marquee) selection; picking uses icon/centre distance, not mesh raycasts.
 - No Persp↔Iso blend animation (it switches instantly); the camera does not slide when the projection changes.
-- Scene-view search, draw modes (wireframe), lighting/audio toggles have no effect yet.
+- Scene-view search and the audio toggle have no effect yet.
 - No "Move to View" / "Align With View".
 - Icons do not scale with distance (Unity's 3D icons option).
 
@@ -90,5 +89,25 @@
 ### Not matching Unity yet
 - Mixed values ("—") are not shown when multi-selected objects differ; the active object's values are displayed.
 - Rect tool has no handles; no vertex snapping (V), no Shift+drag screen-space move, no surface snapping.
-- No material assets yet (Mesh Renderer has a colour field until step 5).
 - No Debug Inspector mode, no component help (?) icon, no presets.
+
+## Step 5 — Meshes, materials, lights ✅
+
+### Done
+- Primitive meshes at the familiar sizes: Cube, Sphere, Capsule, Cylinder, Plane (10×10), Quad.
+- Lit rendering (4x MSAA): directional / point / spot lights with range falloff and spot cone, colour + intensity,
+  hemisphere ambient, soft directional shadows (Cast/Receive Shadows respected, Shadow Type None disables).
+- Orange selection outline around selected objects (children included).
+- Scene view draw modes: Shaded, Wireframe, Shaded Wireframe. Lighting toggle off = headlight from the camera.
+- Material assets: Project ▸ + ▸ Material / Assets ▸ Create ▸ Material, Folder; select a material in the Project
+  window to edit it in the Inspector (Albedo, Metallic, Smoothness, Emission); changes save to disk and show live.
+- Mesh Renderer: Materials ▸ Element 0 picker; inline material editor under the components; drag a material from
+  the Project window onto an object in the Scene view, a Hierarchy row, or the Element 0 slot.
+- Game view renders the same lit scene from the game camera.
+- Sample materials: `Assets/Materials/Red.mat`, `Blue Metal.mat`.
+
+### Not matching Unity yet
+- No textures, normal maps or transparency (Rendering Mode); no shader selection.
+- No point/spot light shadows; no lightmapping, reflection probes or fog.
+- Material changes are not undoable; assets can't be renamed/deleted from the Project window yet.
+- No material preview sphere in the Inspector; no drag-hover preview in the Scene view.

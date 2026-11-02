@@ -1,149 +1,320 @@
-//! Shader modules and render pipelines.
+//! Bind group layouts, shader modules and render pipelines.
 
-use super::{COLOR_FORMAT, DEPTH_FORMAT, LineVertex, SAMPLE_COUNT};
+use super::mesh::Vertex;
+use super::{COLOR_FORMAT, DEPTH_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT, SHADOW_FORMAT};
 
 const COMMON: &str = include_str!("shaders/common.wgsl");
 
 pub struct Pipelines {
     pub view_layout: wgpu::BindGroupLayout,
+    /// Lights + draws + shadow map (lit mesh pass).
+    pub mesh_layout: wgpu::BindGroupLayout,
+    /// Draws only (shadow and mask passes).
+    pub draws_layout: wgpu::BindGroupLayout,
+    /// Selection mask texture (outline pass).
+    pub mask_layout: wgpu::BindGroupLayout,
     pub sky: wgpu::RenderPipeline,
     pub grid: wgpu::RenderPipeline,
     pub lines: wgpu::RenderPipeline,
+    pub mesh: wgpu::RenderPipeline,
+    pub shadow: wgpu::RenderPipeline,
+    pub mask: wgpu::RenderPipeline,
+    pub outline: wgpu::RenderPipeline,
 }
 
-/// Depth behaviour per pipeline.
-struct DepthMode {
+/// Depth state; `None` in [`Spec::depth`] means the pass has no depth attachment.
+struct Depth {
+    format: wgpu::TextureFormat,
     write: bool,
     compare: wgpu::CompareFunction,
+    bias: wgpu::DepthBiasState,
 }
 
-impl Pipelines {
-    pub fn new(device: &wgpu::Device) -> Self {
-        let view_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("misty view layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("misty pipeline layout"),
-            bind_group_layouts: &[Some(&view_layout)],
-            immediate_size: 0,
-        });
+impl Depth {
+    fn main(write: bool, compare: wgpu::CompareFunction) -> Option<Self> {
+        Some(Self {
+            format: DEPTH_FORMAT,
+            write,
+            compare,
+            bias: Default::default(),
+        })
+    }
+}
 
-        let sky = build(
-            device,
-            &layout,
-            "sky",
-            include_str!("shaders/sky.wgsl"),
-            "vs_fullscreen",
-            &[],
-            wgpu::PrimitiveTopology::TriangleList,
-            DepthMode {
-                write: false,
-                compare: wgpu::CompareFunction::Always,
-            },
-            None,
-        );
-        let grid = build(
-            device,
-            &layout,
-            "grid",
-            include_str!("shaders/grid.wgsl"),
-            "vs_fullscreen",
-            &[],
-            wgpu::PrimitiveTopology::TriangleList,
-            DepthMode {
-                write: false,
-                compare: wgpu::CompareFunction::LessEqual,
-            },
-            Some(wgpu::BlendState::ALPHA_BLENDING),
-        );
-        let line_layout = wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<LineVertex>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
-        };
-        let lines = build(
-            device,
-            &layout,
-            "lines",
-            include_str!("shaders/lines.wgsl"),
-            "vs_main",
-            &[line_layout],
-            wgpu::PrimitiveTopology::LineList,
-            DepthMode {
-                write: true,
-                compare: wgpu::CompareFunction::LessEqual,
-            },
-            Some(wgpu::BlendState::ALPHA_BLENDING),
-        );
+/// Everything that differs between pipelines.
+struct Spec<'a> {
+    name: &'a str,
+    source: &'a str,
+    layouts: &'a [&'a wgpu::BindGroupLayout],
+    vs: &'a str,
+    fs: Option<&'a str>,
+    buffers: &'a [wgpu::VertexBufferLayout<'a>],
+    topology: wgpu::PrimitiveTopology,
+    cull: Option<wgpu::Face>,
+    depth: Option<Depth>,
+    color: Option<wgpu::TextureFormat>,
+    blend: Option<wgpu::BlendState>,
+    samples: u32,
+}
 
+impl<'a> Spec<'a> {
+    /// Defaults for a fullscreen/main-pass pipeline.
+    fn new(name: &'a str, source: &'a str, layouts: &'a [&'a wgpu::BindGroupLayout]) -> Self {
         Self {
-            view_layout,
-            sky,
-            grid,
-            lines,
+            name,
+            source,
+            layouts,
+            vs: "vs_fullscreen",
+            fs: Some("fs_main"),
+            buffers: &[],
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            cull: None,
+            depth: Depth::main(false, wgpu::CompareFunction::Always),
+            color: Some(COLOR_FORMAT),
+            blend: None,
+            samples: SAMPLE_COUNT,
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build(
-    device: &wgpu::Device,
-    layout: &wgpu::PipelineLayout,
-    name: &str,
-    source: &str,
-    vs_entry: &str,
-    buffers: &[wgpu::VertexBufferLayout],
-    topology: wgpu::PrimitiveTopology,
-    depth: DepthMode,
-    blend: Option<wgpu::BlendState>,
-) -> wgpu::RenderPipeline {
+fn entry(
+    binding: u32,
+    visibility: wgpu::ShaderStages,
+    ty: wgpu::BindingType,
+) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility,
+        ty,
+        count: None,
+    }
+}
+
+fn uniform() -> wgpu::BindingType {
+    wgpu::BindingType::Buffer {
+        ty: wgpu::BufferBindingType::Uniform,
+        has_dynamic_offset: false,
+        min_binding_size: None,
+    }
+}
+
+fn storage() -> wgpu::BindingType {
+    wgpu::BindingType::Buffer {
+        ty: wgpu::BufferBindingType::Storage { read_only: true },
+        has_dynamic_offset: false,
+        min_binding_size: None,
+    }
+}
+
+impl Pipelines {
+    pub fn new(device: &wgpu::Device) -> Self {
+        use wgpu::ShaderStages as S;
+        let layout = |label, entries: &[wgpu::BindGroupLayoutEntry]| {
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some(label),
+                entries,
+            })
+        };
+        let view_layout = layout("misty view", &[entry(0, S::VERTEX_FRAGMENT, uniform())]);
+        let mesh_layout = layout(
+            "misty mesh",
+            &[
+                entry(0, S::FRAGMENT, uniform()),
+                entry(1, S::VERTEX_FRAGMENT, storage()),
+                entry(
+                    2,
+                    S::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
+                entry(
+                    3,
+                    S::FRAGMENT,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                ),
+            ],
+        );
+        let draws_layout = layout("misty draws", &[entry(1, S::VERTEX, storage())]);
+        let mask_layout = layout(
+            "misty mask",
+            &[entry(
+                0,
+                S::FRAGMENT,
+                wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+            )],
+        );
+
+        let sky = build(
+            device,
+            Spec::new("sky", include_str!("shaders/sky.wgsl"), &[&view_layout]),
+        );
+        let grid = build(
+            device,
+            Spec {
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new("grid", include_str!("shaders/grid.wgsl"), &[&view_layout])
+            },
+        );
+        let line_buffers = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<LineVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4],
+        }];
+        let lines = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                buffers: &line_buffers,
+                topology: wgpu::PrimitiveTopology::LineList,
+                depth: Depth::main(true, wgpu::CompareFunction::LessEqual),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new("lines", include_str!("shaders/lines.wgsl"), &[&view_layout])
+            },
+        );
+        let mesh_buffers = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
+        }];
+        let mesh = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                buffers: &mesh_buffers,
+                cull: Some(wgpu::Face::Back),
+                depth: Depth::main(true, wgpu::CompareFunction::Less),
+                ..Spec::new(
+                    "mesh",
+                    include_str!("shaders/mesh.wgsl"),
+                    &[&view_layout, &mesh_layout],
+                )
+            },
+        );
+        let depth_src = include_str!("shaders/depth.wgsl");
+        let shadow = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                fs: None,
+                buffers: &mesh_buffers,
+                // Cull front faces in the shadow pass to reduce acne on lit faces.
+                cull: Some(wgpu::Face::Front),
+                depth: Some(Depth {
+                    format: SHADOW_FORMAT,
+                    write: true,
+                    compare: wgpu::CompareFunction::LessEqual,
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.0,
+                        clamp: 0.0,
+                    },
+                }),
+                color: None,
+                samples: 1,
+                ..Spec::new("shadow", depth_src, &[&view_layout, &draws_layout])
+            },
+        );
+        let mask = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                fs: Some("fs_mask"),
+                buffers: &mesh_buffers,
+                depth: None,
+                color: Some(MASK_FORMAT),
+                samples: 1,
+                ..Spec::new("mask", depth_src, &[&view_layout, &draws_layout])
+            },
+        );
+        let outline = build(
+            device,
+            Spec {
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new(
+                    "outline",
+                    include_str!("shaders/outline.wgsl"),
+                    &[&view_layout, &mask_layout],
+                )
+            },
+        );
+
+        Self {
+            view_layout,
+            mesh_layout,
+            draws_layout,
+            mask_layout,
+            sky,
+            grid,
+            lines,
+            mesh,
+            shadow,
+            mask,
+            outline,
+        }
+    }
+}
+
+fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(name),
-        source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{source}").into()),
+        label: Some(spec.name),
+        source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{}", spec.source).into()),
     });
+    let layouts: Vec<Option<&wgpu::BindGroupLayout>> =
+        spec.layouts.iter().map(|l| Some(*l)).collect();
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(spec.name),
+        bind_group_layouts: &layouts,
+        immediate_size: 0,
+    });
+    let targets: Vec<Option<wgpu::ColorTargetState>> = spec
+        .color
+        .map(|format| {
+            vec![Some(wgpu::ColorTargetState {
+                format,
+                blend: spec.blend,
+                write_mask: wgpu::ColorWrites::ALL,
+            })]
+        })
+        .unwrap_or_default();
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some(name),
-        layout: Some(layout),
+        label: Some(spec.name),
+        layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &module,
-            entry_point: Some(vs_entry),
+            entry_point: Some(spec.vs),
             compilation_options: Default::default(),
-            buffers: &buffers.iter().cloned().map(Some).collect::<Vec<_>>(),
+            buffers: &spec.buffers.iter().cloned().map(Some).collect::<Vec<_>>(),
         },
         primitive: wgpu::PrimitiveState {
-            topology,
+            topology: spec.topology,
+            front_face: wgpu::FrontFace::Cw,
+            cull_mode: spec.cull,
             ..Default::default()
         },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: DEPTH_FORMAT,
-            depth_write_enabled: Some(depth.write),
-            depth_compare: Some(depth.compare),
+        depth_stencil: spec.depth.map(|d| wgpu::DepthStencilState {
+            format: d.format,
+            depth_write_enabled: Some(d.write),
+            depth_compare: Some(d.compare),
             stencil: Default::default(),
-            bias: Default::default(),
+            bias: d.bias,
         }),
         multisample: wgpu::MultisampleState {
-            count: SAMPLE_COUNT,
+            count: spec.samples,
             ..Default::default()
         },
-        fragment: Some(wgpu::FragmentState {
+        fragment: spec.fs.map(|fs| wgpu::FragmentState {
             module: &module,
-            entry_point: Some("fs_main"),
+            entry_point: Some(fs),
             compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: COLOR_FORMAT,
-                blend,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &targets,
         }),
         multiview_mask: None,
         cache: None,
@@ -162,9 +333,12 @@ mod tests {
             ("sky", include_str!("shaders/sky.wgsl")),
             ("grid", include_str!("shaders/grid.wgsl")),
             ("lines", include_str!("shaders/lines.wgsl")),
+            ("mesh", include_str!("shaders/mesh.wgsl")),
+            ("depth", include_str!("shaders/depth.wgsl")),
+            ("outline", include_str!("shaders/outline.wgsl")),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
-                .unwrap_or_else(|e| panic!("{name}: {e}"));
+                .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));
             naga::valid::Validator::new(
                 naga::valid::ValidationFlags::all(),
                 naga::valid::Capabilities::all(),
