@@ -7,18 +7,23 @@ use egui_dock::{DockArea, DockState};
 
 use crate::actions::{Action, Create};
 use crate::capture::Capture;
+use crate::console::LogLevel;
 use crate::layout::{self, Tab};
 use crate::panels::PanelViewer;
 use crate::project::ProjectBrowser;
 use crate::state::{EditorState, PlayState, Tool};
 use crate::viewport::Gpu;
-use crate::{commands, menu_bar, status_bar, theme, toolbar};
+use crate::{commands, menu_bar, play, status_bar, theme, toolbar};
 
 pub struct EditorApp {
     state: EditorState,
     dock: DockState<Tab>,
     gpu: Option<Gpu>,
     capture: Option<Capture>,
+    /// Layout to restore after "Play Maximized".
+    saved_dock: Option<DockState<Tab>>,
+    /// Error count seen so far (for Error Pause).
+    errors_seen: usize,
 }
 
 impl EditorApp {
@@ -42,6 +47,8 @@ impl EditorApp {
             dock: layout::default_layout(),
             gpu,
             capture: Capture::from_env(),
+            saved_dock: None,
+            errors_seen: 0,
         }
     }
 
@@ -132,31 +139,65 @@ impl EditorApp {
             Action::ResetLayout => self.dock = layout::default_layout(),
             Action::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Action::TogglePlay => {
-                s.play = if s.play.in_play_mode() {
-                    s.console.info("Exited Play mode.");
-                    PlayState::Edit
-                } else {
-                    if s.console.clear_on_play {
-                        s.console.clear();
+                if s.play.in_play_mode() {
+                    play::stop(s);
+                    if let Some(dock) = self.saved_dock.take() {
+                        self.dock = dock;
                     }
-                    s.console.info("Entered Play mode.");
-                    layout::focus_or_open(&mut self.dock, Tab::Game);
-                    PlayState::Playing
-                };
+                } else {
+                    play::start(s);
+                    self.errors_seen = s.console.count(LogLevel::Error);
+                    // Play Maximized: the Game view fills the window until Stop.
+                    if s.game_view.play_mode_target == 1 {
+                        self.saved_dock = Some(self.dock.clone());
+                        self.dock = DockState::new(vec![Tab::Game]);
+                    } else if s.game_view.play_mode_target == 0 {
+                        layout::focus_or_open(&mut self.dock, Tab::Game);
+                    }
+                }
             }
             Action::TogglePause => {
                 s.play = match s.play {
                     PlayState::Playing => PlayState::Paused,
                     PlayState::Paused => PlayState::Playing,
-                    PlayState::Edit => PlayState::Edit,
+                    PlayState::Edit => {
+                        s.pause_on_play = !s.pause_on_play;
+                        PlayState::Edit
+                    }
                 };
             }
-            Action::Step => {}
+            Action::Step => {
+                // Step in Edit mode enters Play mode paused.
+                if !s.play.in_play_mode() {
+                    s.pause_on_play = true;
+                    play::start(s);
+                    s.pause_on_play = false;
+                }
+                s.play = PlayState::Paused;
+                s.step_requested = true;
+            }
             Action::NotImplemented(what) => {
                 s.console.warn(format!("'{what}' is not implemented yet."))
             }
             // Scene commands are handled in `commands`.
             _ => {}
+        }
+    }
+
+    /// Advance the game while in Play mode; Error Pause stops on new errors.
+    fn game_frame(&mut self, ctx: &egui::Context) {
+        let s = &mut self.state;
+        if !s.play.in_play_mode() {
+            return;
+        }
+        play::tick(s, ctx.input(|i| i.stable_dt));
+        let errors = s.console.count(LogLevel::Error);
+        if s.console.error_pause && errors > self.errors_seen && s.play == PlayState::Playing {
+            s.play = PlayState::Paused;
+        }
+        self.errors_seen = errors;
+        if s.play == PlayState::Playing {
+            ctx.request_repaint();
         }
     }
 
@@ -173,6 +214,7 @@ impl eframe::App for EditorApp {
         s.undo
             .begin_frame(Self::interacting(&ctx), &s.scene, &s.selection);
         self.shortcuts(&ctx);
+        self.game_frame(&ctx);
 
         let bar_frame = egui::Frame::new()
             .fill(theme::TAB_BAR_BG)

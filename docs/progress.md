@@ -111,3 +111,19 @@
 - No point/spot light shadows; no lightmapping, reflection probes or fog.
 - Material changes are not undoable; assets can't be renamed/deleted from the Project window yet.
 - No material preview sphere in the Inspector; no drag-hover preview in the Scene view.
+
+## Step 6 — Play / Pause / Stop ✅
+
+### Done
+- Play (Ctrl+P / ▶): snapshot of scene + selection + undo history; editor tint (blue tab strip, highlighted ▶);
+  focuses the Game view (Play Focused), maximises it (Play Maximized) or leaves the layout (Play Unfocused).
+- Stop: everything changed during Play is reverted; edit-mode undo history comes back.
+- Pause (Ctrl+Shift+P): freezes time; can be armed before Play to start paused. Step (Ctrl+Alt+P): one frame.
+- Console: Clear on Play, Error Pause.
+- Game view Stats overlay: FPS / frame ms, render time, batches, tris, verts, screen size, play time, frame.
+- Game loop with Time (time, delta, frame, timeScale) ready for physics and scripts.
+
+### Not matching Unity yet
+- Nothing moves on its own yet: physics (step 7) and scripts (step 8) plug into the game loop.
+- No whole-editor colour tint (only the tab strip turns blue); Inspector edits during Play are not highlighted.
+- No "Enter Play Mode Options", no Game-view input capture yet (arrives with scripting input).

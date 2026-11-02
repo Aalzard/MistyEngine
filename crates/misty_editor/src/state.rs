@@ -9,10 +9,12 @@ use crate::actions::Action;
 use crate::assets::AssetDatabase;
 use crate::console::Console;
 use crate::handles::HandleState;
+use crate::play::PlaySession;
 use crate::project::ProjectBrowser;
 use crate::scene_camera::SceneCamera;
 use crate::selection::Selection;
 use crate::undo::UndoStack;
+use misty_engine::runtime::Time;
 
 /// Active transform tool (Q W E R T Y).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,6 +147,13 @@ pub struct EditorState {
     /// false = Local, true = Global.
     pub global_space: bool,
     pub play: PlayState,
+    /// Edit-mode snapshot while in Play mode.
+    pub play_session: Option<PlaySession>,
+    pub time: Time,
+    /// Pause toggled before Play: Play starts paused.
+    pub pause_on_play: bool,
+    /// Step pressed while paused.
+    pub step_requested: bool,
     pub scene: Scene,
     pub scene_dirty: bool,
     pub selection: Selection,
@@ -183,6 +192,10 @@ impl EditorState {
             pivot_center: false,
             global_space: true,
             play: PlayState::Edit,
+            play_session: None,
+            time: Time::default(),
+            pause_on_play: false,
+            step_requested: false,
             scene: Scene::default_3d("SampleScene"),
             scene_dirty: false,
             selection: Selection::default(),

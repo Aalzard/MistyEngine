@@ -41,7 +41,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
 fn play_controls(ui: &mut Ui, state: &mut EditorState) {
     let playing = state.play.in_play_mode();
-    let paused = state.play == PlayState::Paused;
+    let paused = state.play == PlayState::Paused || (!playing && state.pause_on_play);
     let play_text = RichText::new("▶").color(if playing {
         theme::PLAY_TINT
     } else {

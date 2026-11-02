@@ -12,6 +12,7 @@ mod layout;
 mod menu_bar;
 mod panels;
 mod picking;
+mod play;
 mod project;
 mod render_scene;
 mod scene_camera;

@@ -94,3 +94,13 @@ Record of choices made without asking, and why.
 33. **Line endings normalised to LF** with `.gitattributes`. Python edit scripts on Windows had been writing CRLF.
 34. **Mesh winding:** outward `cross(b-a, c-a)`, which is clockwise on screen in our left-handed setup, so all
     pipelines use `FrontFace::Cw` (covered by a unit test).
+
+## 2026-11-03 — Step 6
+
+35. **Play = scene snapshot.** Play clones the scene, selection and undo history. Stop restores them, so any change
+    made while playing is reverted and the undo history is the edit-mode one, as you'd expect from Play mode.
+36. **Game loop:** `runtime::update(scene, time)` runs once per editor frame while playing. `Time` follows the
+    familiar Time API (time, deltaTime, unscaled, frameCount, timeScale) with deltas capped at 1/3 s. Step = one
+    1/60 s frame while paused, and Step in Edit mode enters Play paused. Pause before Play starts paused.
+37. **Play Maximized** swaps the dock layout for a single Game tab until Stop; Play Focused focuses the Game tab;
+    Play Unfocused leaves the layout alone.
