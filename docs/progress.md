@@ -672,3 +672,41 @@
   rotation, spacing or scatter; strengths are our own rates.
 - Wireframe draw modes don't draw the terrain's wires; terrains have no selection outline.
 - No `TerrainData` API in Lua beyond the read-only table (no `GetHeights`/`SetHeights`, `GetInterpolatedNormal`).
+
+## Navigation ✅
+
+### Done
+- Window ▸ AI ▸ Navigation (on-demand tab next to the Inspector): Agents (radius, height, step height, max
+  slope, with a side-view diagram), Bake (Manual Voxel Size, Min Region Area, Clear / Bake, progress bar and
+  status line) and Object (Navigation Static of the selection) pages, Show NavMesh toggle.
+- Bake from active Static objects: Mesh Renderers (primitives and imported models) and Terrains; voxel
+  heightfield, slope/clearance/step filters, erosion by the agent radius, small islands dropped, planar
+  rectangle polygons with portal links. Runs on a worker thread; saved as `<Scene>/NavMesh.navmesh` next to the
+  scene and referenced from the scene file (`"navigation"` block).
+- Scene view: translucent blue nav mesh while the Navigation window is open, agent cylinder and obstacle
+  gizmos for the selection, yellow path of selected agents in Play mode. `.navmesh` assets show a 🚶 icon.
+- `Nav Mesh Agent` (Component ▸ Navigation): base offset, speed, angular speed, acceleration, stopping
+  distance, auto braking, radius, height, avoidance quality and priority. A* + funnel paths, partial paths to
+  unreachable targets, height following on ramps and steps, separation between agents, warps when scripts move
+  the Transform.
+- `Nav Mesh Obstacle`: box/capsule footprint agents steer around (no carving).
+- Lua: agent `SetDestination`, `destination`, `remainingDistance`, `hasPath`, `pathPending`, `pathStatus`,
+  `isStopped`, `velocity`, `speed`…, `ResetPath`, `Warp`; `NavMesh.SamplePosition`, `NavMesh.CalculatePath`;
+  `Camera.main:ScreenPointToRay` / `WorldToScreenPoint`, `Input.mousePosition`.
+- Sample: `Scenes/NavigationDemo.scene` (maze, ramp to a platform, stepped terrace, patrols, chasers, click to
+  move their target) with `Patrol.lua`, `Chaser.lua`, `ClickMarker.lua`.
+- Tests: bake area/erosion, slope limit, holes and dropped tops, step height, paths around walls (on the mesh,
+  shortest), partial/invalid paths, file round trip and validation, scene settings round trip, agents reaching
+  destinations around walls and up ramps, separation and stopping distance, warp/reset/teleport, obstacle
+  avoidance, Lua agent/NavMesh/Camera API, Navigation window menu + bake/clear, sample generator check and a
+  headless play of the demo (including a simulated click).
+
+### Not matching Unity yet
+- Polygons are grid-aligned rectangles (stair-stepped edges, more polygons than a contour-traced mesh); no
+  detail/height mesh, no tiles, no runtime or partial rebakes, no NavMeshSurface/Modifier/Link components.
+- One agent type (Humanoid) whose settings live in the scene; no areas, area costs or area masks (mask
+  arguments are accepted and ignored), no off-mesh links or generated jump/drop links.
+- Obstacles don't carve; avoidance is simple separation (no velocity obstacles), all qualities behave alike.
+- Agents: no auto repath, `updatePosition`/`updateRotation` switches, `Move`, agent `CalculatePath`,
+  `nextPosition` setter or `isPathStale`; paths are computed immediately.
+- No `NavMesh.Raycast` / `FindClosestEdge` and no NavMeshPath object (CalculatePath returns a corner list).

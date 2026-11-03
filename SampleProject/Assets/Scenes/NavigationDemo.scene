@@ -1,0 +1,1921 @@
+{
+  "navigation": {
+    "agent": {
+      "height": 2.0,
+      "max_slope": 45.0,
+      "radius": 0.5,
+      "step_height": 0.75
+    },
+    "manual_voxel_size": false,
+    "min_region_area": 2.0,
+    "nav_mesh": "Assets/Scenes/NavigationDemo/NavMesh.navmesh",
+    "voxel_size": 0.1667
+  },
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            21.0,
+            -19.0
+          ],
+          "rotation": [
+            0.42261827,
+            0.0,
+            0.0,
+            0.90630776
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            55.0,
+            -35.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "rotation": [
+            0.44037747,
+            -0.2667293,
+            0.13885048,
+            0.8459572
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Floor",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Checker.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            24.0,
+            1.0,
+            24.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Wall North",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Sandstone.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.75,
+            12.25
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            25.0,
+            1.5,
+            0.5
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Wall South",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Sandstone.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.75,
+            -12.25
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            25.0,
+            1.5,
+            0.5
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Wall East",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Sandstone.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            12.25,
+            0.75,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            1.5,
+            24.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Wall West",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Sandstone.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -12.25,
+            0.75,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            1.5,
+            24.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Maze Wall 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Sandstone.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -5.0,
+            0.75,
+            -3.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            14.0,
+            1.5,
+            0.5
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Maze Wall 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Sandstone.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            5.0,
+            0.75,
+            3.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            14.0,
+            1.5,
+            0.5
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Maze Wall 3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Sandstone.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -3.0,
+            0.75,
+            7.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.5,
+            1.5,
+            9.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Platform",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Bumpy Tiles.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            8.0,
+            0.75,
+            -8.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            6.0,
+            1.5,
+            6.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Ramp",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            20.0
+          ],
+          "position": [
+            2.9393919,
+            0.65,
+            -8.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.17364818,
+            0.9848077
+          ],
+          "scale": [
+            4.685707,
+            0.2,
+            3.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Terrace",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Bumpy Tiles.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -8.0,
+            0.375,
+            9.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            6.0,
+            0.75,
+            5.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Step 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -8.0,
+            0.125,
+            5.375
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.0,
+            0.25,
+            0.75
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Step 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -8.0,
+            0.25,
+            6.125
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.0,
+            0.5,
+            0.75
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Crate 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -7.0,
+            0.6,
+            -8.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.2,
+            1.2,
+            1.2
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Crate 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            15.0,
+            0.0
+          ],
+          "position": [
+            2.0,
+            0.75,
+            8.5
+          ],
+          "rotation": [
+            0.0,
+            0.1305262,
+            0.0,
+            0.9914449
+          ],
+          "scale": [
+            1.5,
+            1.5,
+            1.5
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Crate 3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            30.0,
+            0.0
+          ],
+          "position": [
+            -1.0,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.25881904,
+            0.0,
+            0.9659258
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Crate 4",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            45.0,
+            0.0
+          ],
+          "position": [
+            6.0,
+            0.5,
+            -1.0
+          ],
+          "rotation": [
+            0.0,
+            0.38268346,
+            0.0,
+            0.9238795
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Waypoint 1",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -9.5,
+            0.0,
+            -9.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Waypoint 2",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            9.5,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Waypoint 3",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -8.0,
+            0.75,
+            10.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Waypoint 4",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            9.5,
+            0.0,
+            9.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Waypoint 5",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            8.0,
+            1.5,
+            -8.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Nav Mesh Agent",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Patrol A",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Blue Steel.mat",
+          "receive_shadows": true
+        },
+        "Nav Mesh Agent": {
+          "acceleration": 8.0,
+          "angular_speed": 120.0,
+          "auto_braking": true,
+          "base_offset": 1.0,
+          "enabled": true,
+          "height": 2.0,
+          "obstacle_avoidance": "HighQuality",
+          "priority": 50,
+          "radius": 0.5,
+          "speed": 3.5,
+          "stopping_distance": 0.0
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "wait": 0.5,
+                "waypoints": "Waypoint 1, Waypoint 2, Waypoint 4, Waypoint 3"
+              },
+              "path": "Assets/Scripts/Patrol.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -9.0,
+            1.0,
+            -6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Nav Mesh Agent",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Patrol B",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Blue Steel.mat",
+          "receive_shadows": true
+        },
+        "Nav Mesh Agent": {
+          "acceleration": 8.0,
+          "angular_speed": 120.0,
+          "auto_braking": true,
+          "base_offset": 1.0,
+          "enabled": true,
+          "height": 2.0,
+          "obstacle_avoidance": "HighQuality",
+          "priority": 50,
+          "radius": 0.5,
+          "speed": 3.5,
+          "stopping_distance": 0.0
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "wait": 0.5,
+                "waypoints": "Waypoint 4, Waypoint 5, Waypoint 1"
+              },
+              "path": "Assets/Scripts/Patrol.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            9.0,
+            1.0,
+            6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Click Marker",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Laser.mat",
+          "receive_shadows": true
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "hover": 0.25
+              },
+              "path": "Assets/Scripts/ClickMarker.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            9.0,
+            1.75,
+            -9.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.4,
+            0.4,
+            0.4
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Nav Mesh Agent",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Chaser 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Red.mat",
+          "receive_shadows": true
+        },
+        "Nav Mesh Agent": {
+          "acceleration": 8.0,
+          "angular_speed": 120.0,
+          "auto_braking": true,
+          "base_offset": 1.0,
+          "enabled": true,
+          "height": 2.0,
+          "obstacle_avoidance": "HighQuality",
+          "priority": 40,
+          "radius": 0.5,
+          "speed": 3.0,
+          "stopping_distance": 1.0
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "repath": 0.25,
+                "target": "Click Marker"
+              },
+              "path": "Assets/Scripts/Chaser.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -6.0,
+            1.0,
+            -10.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Nav Mesh Agent",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Chaser 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Red.mat",
+          "receive_shadows": true
+        },
+        "Nav Mesh Agent": {
+          "acceleration": 8.0,
+          "angular_speed": 120.0,
+          "auto_braking": true,
+          "base_offset": 1.0,
+          "enabled": true,
+          "height": 2.0,
+          "obstacle_avoidance": "HighQuality",
+          "priority": 50,
+          "radius": 0.5,
+          "speed": 3.5,
+          "stopping_distance": 1.0
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "repath": 0.25,
+                "target": "Click Marker"
+              },
+              "path": "Assets/Scripts/Chaser.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -4.0,
+            1.0,
+            -10.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Nav Mesh Agent",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Chaser 3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Red.mat",
+          "receive_shadows": true
+        },
+        "Nav Mesh Agent": {
+          "acceleration": 8.0,
+          "angular_speed": 120.0,
+          "auto_braking": true,
+          "base_offset": 1.0,
+          "enabled": true,
+          "height": 2.0,
+          "obstacle_avoidance": "HighQuality",
+          "priority": 60,
+          "radius": 0.5,
+          "speed": 4.0,
+          "stopping_distance": 1.0
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "repath": 0.25,
+                "target": "Click Marker"
+              },
+              "path": "Assets/Scripts/Chaser.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -2.0,
+            1.0,
+            -10.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

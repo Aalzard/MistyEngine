@@ -27,7 +27,7 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"CharacterController"/…)` (nil if the object has none) |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none) |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
 | `Physics` | `Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere` (see Physics queries), `DefaultRaycastLayers`, `AllLayers`, `IgnoreRaycastLayer` |
@@ -50,7 +50,7 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 | `Color` | `new(r,g,b [,a])` (0..1), `white black red green blue yellow cyan magenta gray clear`, `Lerp(a,b,t)`; `.r .g .b .a`, `* number/Color`, `==` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
-| `Input` | `GetKey/GetKeyDown/GetKeyUp("w")`, `GetMouseButton(0)`, `GetAxis("Horizontal"/"Vertical"/"Mouse X"/"Mouse Y")` — the Game view must have focus (click it) |
+| `Input` | `GetKey/GetKeyDown/GetKeyUp("w")`, `GetMouseButton(0)`, `mousePosition`, `GetAxis("Horizontal"/"Vertical"/"Mouse X"/"Mouse Y")` — the Game view must have focus (click it) |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
 | `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name` |
@@ -296,3 +296,56 @@ p.y = t:SampleHeight(p) + t:GetPosition().y + 1.5
 self.transform.position = p
 ```
 Sample: `Scenes/TerrainDemo.scene` with `Assets/Scripts/TerrainHover.lua`.
+
+### Navigation
+
+Bake a nav mesh first (Window ▸ AI ▸ Navigation ▸ Bake; floors and walls need the Static flag). Objects with a
+Nav Mesh Agent then walk paths on it: `GetComponent("NavMeshAgent")`.
+
+| Member | Meaning |
+| --- | --- |
+| `SetDestination(v)` | Plan a path to the nav mesh point nearest `v`; false when the agent isn't on the mesh. |
+| `destination` | Where the current path ends (setting it calls `SetDestination`). |
+| `remainingDistance` | Distance left along the path (0 without a path). |
+| `hasPath`, `pathPending`, `pathStatus` | Path state. Paths are computed at once, so `pathPending` is always false; `pathStatus` is `"PathComplete"`, `"PathPartial"` (target unreachable: the path ends as close as possible) or `"PathInvalid"`. |
+| `isStopped` | true = brake and stay, keeping the path. |
+| `velocity` | Current velocity (settable). |
+| `isOnNavMesh`, `nextPosition`, `steeringTarget` | Placed on the mesh, position on the mesh, next corner. |
+| `speed`, `angularSpeed`, `acceleration`, `stoppingDistance`, `autoBraking`, `radius`, `height`, `baseOffset`, `avoidancePriority`, `enabled` | The component's settings. |
+| `ResetPath()` | Drop the path. |
+| `Warp(position)` | Jump to the nav mesh point nearest `position` (false if none is close). |
+
+An agent arriving with a Stopping Distance of 0 drops its path (`hasPath` false, `remainingDistance` 0).
+Moving an agent's Transform from a script places the agent there.
+
+```lua
+-- Patrol between two points.
+function Guard:Update()
+    if not self.agent.pathPending and self.agent.remainingDistance < 0.3 then
+        self.toA = not self.toA
+        self.agent:SetDestination(self.toA and self.a or self.b)
+    end
+end
+```
+
+`NavMesh.SamplePosition(position, maxDistance)` returns `{ position, distance, hit = true }` for the nearest nav
+mesh point within `maxDistance`, or nil. `NavMesh.CalculatePath(from, to)` returns the path's corners (a list of
+Vector3, so `#path` is the corner count) with `path.status`. Area-mask arguments are accepted and ignored.
+
+### Camera and mouse
+
+`Camera.main` is the first enabled camera tagged MainCamera (nil without one): `ScreenPointToRay(screenPoint)`
+returns `{ origin, direction }`, `WorldToScreenPoint(v)` returns pixels (from the bottom-left) and the depth.
+`Input.mousePosition` is the pointer in Game view pixels from the bottom-left (z = 0).
+
+```lua
+-- Click to move.
+if Input.GetMouseButtonDown(0) then
+    local ray = Camera.main:ScreenPointToRay(Input.mousePosition)
+    local hit = Physics.Raycast(ray.origin, ray.direction, 200)
+    if hit ~= nil then
+        self.agent:SetDestination(hit.point)
+    end
+end
+```
+Sample: `Scenes/NavigationDemo.scene` with `Patrol.lua`, `Chaser.lua` and `ClickMarker.lua`.

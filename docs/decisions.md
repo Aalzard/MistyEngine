@@ -863,3 +863,66 @@ Record of choices made without asking, and why.
      buttons (Vertical Layout Group + Content Size Fitter), and `SettingsMenu.lua` updating a summary Text from
      listeners plus an On End Edit call. Its Canvas Scaler uses a 1280×720 reference matched to height so the
      panel fits any window.
+
+
+## 2026-11-03 — Navigation (nav mesh, agents)
+
+220. **Our own nav mesh bake, no crate.** The Rust options were Recast bindings (C++ build, unclear maintenance),
+     engine-bound crates (Bevy) or path followers that need a mesh as input, so `navigation` implements a small
+     voxel bake in the same spirit: rasterise static triangles into span columns (cell = radius / 3 unless Manual
+     Voxel Size), mark tops walkable by slope, merge overlapping spans (flags merge within the step height), make
+     kerbs up to a step walkable, keep tops with Agent Height of clearance, link neighbours within the step height,
+     erode by the radius (2/3 chamfer distance, like the usual bakers), drop islands under Min Region Area. Closed
+     primitives (cube, sphere, capsule, cylinder) are rasterised as solids (lowest to highest point per column)
+     so nothing walkable appears inside hollow boxes; planes, quads and imported meshes are surfaces. Huge levels
+     get coarser voxels (at most 4 M columns).
+221. **Polygons are planar rectangles of cells**, grown greedily in scan order (each seed tries its neighbours'
+     slope and flat, rows along x and along z, the biggest wins), then neighbours sharing a whole edge on the
+     same plane are joined. Edges are grid-aligned (stair-stepped diagonals) and there are T-junctions; links
+     between polygons store the shared edge segment (the portal) instead of shared vertices. Vertex heights come
+     from the rectangle's plane, so ramps are exact and terrains are approximated within 8 cm. No detail mesh.
+222. **Asset and settings.** The bake writes `<scene folder>/<Scene>/NavMesh.navmesh` (JSON: a header with the
+     agent and voxel size, then one polygon per line with its vertices and links). The scene file gets a
+     `"navigation"` block (agent radius/height/step/slope, advanced settings, the asset path), left out at its
+     defaults so older scenes save unchanged; agent settings are per scene (no project-wide agent types, only
+     "Humanoid"). Baking an unsaved scene asks to save it first. Bakes run on a worker thread with a progress
+     line; Clear moves the asset to the Recycle Bin. Loaded meshes are cached by path + modification time.
+223. **Static = Navigation Static.** Objects take part when they're active and have the GameObject Static flag
+     with an enabled Mesh Renderer + mesh or a Terrain; the Navigation window's Object tab edits the same flag.
+     No areas/costs (everything is Walkable), no Nav Mesh Modifier, no off-mesh links, no NavMeshSurface
+     component (a legacy-style per-scene bake from Window ▸ AI ▸ Navigation).
+224. **Paths:** A* over polygons through portal midpoints (the last step goes straight to the target), then the
+     simple stupid funnel on x/z with the portal points' heights. Start/end snap to the nearest mesh point within
+     the agent height (or 4 cells); unreachable targets give a partial path to the explored polygon closest to
+     the target. Paths are computed at once (`pathPending` is always false).
+225. **Agents** update after `Update` (before animations and LateUpdate): drop reached corners (10 cm), steer to
+     the next corner (with Auto Braking the speed is limited to √(2·a·d) before the end), accelerate towards the
+     desired velocity by Acceleration, never overshoot the destination, move along the mesh (the polygon under
+     the target among the nearby connected ones, else the closest point on them = sliding along edges) and
+     follow its height; the Transform is the mesh position + Base Offset, turned (yaw only) at Angular Speed.
+     Arriving with Stopping Distance 0 snaps to the destination and drops the path; a stopping distance keeps
+     the path (`remainingDistance` ≤ it). A script moving the Transform warps the agent there. Agents farther
+     than the agent height from the mesh at start log "not close enough to the NavMesh" and don't move.
+226. **Avoidance is separation, not velocity obstacles.** Every quality except None steers away from agents
+     within 2× the radius sum (1.1× while standing at the goal) and from obstacles, with a sideways part for
+     things ahead so head-on meetings pass; afterwards overlaps are pushed apart. The agent with the lower
+     Priority number moves less (0.2/0.8 split, equal priorities 0.5/0.5).
+227. **Nav Mesh Obstacle doesn't carve.** Box or capsule footprint (scaled, yaw from the object); agents steer
+     around it and are pushed out of it, paths don't change (Carve is shown disabled).
+228. **Scene view overlay:** while the Navigation window is shown (and Show NavMesh is on) the baked mesh is drawn
+     as translucent blue triangles 3 cm above the surface, with lighter polygon edges, through a new depth-tested,
+     non-writing overlay pass that shares the gizmo line buffer (`Frame::overlay`). Selected agents show their
+     cylinder (radius/height from the surface), obstacles their shape, and in Play mode the selected agents'
+     remaining path in yellow.
+229. **Lua:** `GetComponent("NavMeshAgent")` with `SetDestination`, `destination` (the snapped end; setting it
+     calls SetDestination), `remainingDistance`, `hasPath`, `pathPending`, `pathStatus`, `isOnNavMesh`,
+     `isStopped`, `velocity` (settable), `nextPosition`, `steeringTarget`, the steering settings, `ResetPath`,
+     `Warp`; `NavMesh.SamplePosition(pos, maxDistance)` → `{position, distance, hit}` or nil;
+     `NavMesh.CalculatePath(a, b)` → list of corners with a `status` field. For click-to-move, `Camera.main`
+     (first enabled camera tagged MainCamera) with `ScreenPointToRay` (→ `{origin, direction}`) and
+     `WorldToScreenPoint`, and `Input.mousePosition` (pixels from the bottom-left) were added.
+230. **NavigationDemo is generated by code** (`sample_navigation`, ignored writer + check + headless play test):
+     a walled yard with maze walls, a 1.5 m platform with a 20° ramp, a stepped terrace and crates; two patrols
+     (`Patrol.lua`) and three chasers (`Chaser.lua`) following a marker that clicks move (`ClickMarker.lua`).
+     Reuses the Checker, Sandstone, Wood, Bumpy Tiles, Blue Steel, Red and Laser materials unchanged. The editor
+     capture also accepts `MISTY_PLAY=1` to screenshot Play mode.
