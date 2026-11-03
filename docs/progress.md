@@ -333,3 +333,54 @@
 - Only Albedo and Normal Map slots: no metallic/smoothness, occlusion, height, emission or detail maps; glTF
   metallic-roughness/occlusion/emissive textures, texture transforms and vertex colours are ignored.
 - No skinning, animation, blend shapes, cameras or lights from glTF.
+
+## Animation ✅
+
+### Done
+- **Animation clips** (`.anim`, JSON in `Assets/`): length, Loop, sample rate, curves and events. A curve animates
+  one property of the animated object or of a child found by name path: Transform Position / Rotation (Euler) /
+  Scale x/y/z, Light Intensity / Range / Color r/g/b, GameObject Is Active. Keys have Auto (smooth, no
+  overshoot), Linear or Constant tangents; evaluation is cubic Hermite. Assets ▸ Create ▸ Animation makes an
+  empty clip; clips show with a ⏵ icon in the Project window.
+- **Animation component** (Add Component ▸ Miscellaneous ▸ Animation): default Animation clip, Animations list
+  (slots accept clips dragged from the Project window), Play Automatically, Wrap Mode (Default / Once / Loop /
+  Ping Pong / Clamp Forever), enable checkbox.
+- Play mode and the standalone player: Play Automatically clips start after `Awake` (also for instantiated
+  objects); animations are sampled after `Update`, before `LateUpdate`; animation events call script functions
+  by name. Lua: `GetComponent("Animation")` with `Play([name])`, `Stop()`, `IsPlaying(name)`, `isPlaying`,
+  `time`, `speed`, `clip`, `enabled`.
+- **Animation window** (Window ▸ Animation ▸ Animation, Ctrl+6; a tab next to Project/Console in every built-in
+  layout): animates the selected object or its nearest parent with an Animation.
+  - "To begin animating X, create an Animation Clip" + Create (→ `Assets/Animations/X.anim`, component added).
+  - Toolbar: Preview, Record (red), first / previous key / Play / next key / last, frame field; clip dropdown
+    with Create New Clip..., Add Keyframe (◆+), Samples.
+  - Property list grouped like "Cube : Position" (foldable, with x/y/z rows), current values (editing one keys
+    it at the playhead; red underline while recording), missing objects in yellow "(Missing!)", right-click Add
+    Key / Remove Properties, Add Property menu listing the object's and its children's animatable properties.
+  - Dopesheet: seconds:frames ruler (click/drag to scrub), summary row, diamonds per row; click / Shift+click /
+    box select, drag to move (snapped to frames), double-click a row to add a key, Delete or right-click Delete
+    Key, right-click tangent mode (Auto / Linear / Constant). Wheel zooms, Shift+wheel scrolls; event flags on
+    the ruler; time past the clip end is shaded.
+  - Curves view: the curves (all, or the rows clicked in the list) with value grid; keys can be selected, box
+    selected and dragged in time and value.
+  - Preview poses the scene at the playhead and restores every touched value when the preview ends (also before
+    Play, Save and scene changes). Record mode turns any Inspector / gizmo change of the animated objects into
+    keys (plus a key at 0 with the old value for newly recorded properties).
+  - Key edits are undoable with Ctrl+Z / Ctrl+Y in the normal history; clips are saved automatically.
+- Sample: `Scenes/AnimationDemo.scene` — a bobbing parent whose child cube spins (`Animations/Bob.anim`, path
+  binding) and a blinking, colour-changing point light (`Animations/Blink.anim`, Constant keys);
+  `Scripts/AnimationControl.lua` pauses/resumes with Space and changes speed with Up/Down.
+
+### Not matching Unity yet
+- No Animator / Animator Controller (state machine, parameters, transitions, blend trees, layers, avatar /
+  humanoid retargeting, root motion); only the legacy-style Animation component (see decisions).
+- Material colour and other component properties (Camera, Audio Source, script fields) can't be animated; no
+  Quaternion / Euler interpolation options for rotation.
+- Curves: no weighted, free or broken tangents, tangent handles, curve presets, pre/post wrap modes per curve.
+- No events editing in the window (events are written in the `.anim` file); events take no parameter.
+- No cross-fade/blend, `animation["Clip"]` states, `Sample()`, `Rewind()`, culling type or Animate Physics.
+- Window: no ripple editing, copy/paste of keys, filter by selection, show-only-selected toggle, time/frame
+  display switch, or vertical scrolling of very long property lists. Animated Inspector fields are not tinted
+  (only the window's value fields). Saving while previewing leaves the preview instead of keeping it.
+- The clip Inspector (a `.anim` selected in the Project window) only has Loop Time; length, sample rate, curves
+  and events are shown read-only (Unity also has loop pose, cycle offset, root motion and import settings).
