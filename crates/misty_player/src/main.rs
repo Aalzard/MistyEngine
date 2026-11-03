@@ -20,7 +20,7 @@ use misty_engine::glam::Vec2;
 use misty_engine::scripting::LogKind;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::PhysicalKey;
 use winit::window::{Fullscreen, Window, WindowId};
@@ -167,6 +167,11 @@ impl ApplicationHandler for Player {
                 if let PhysicalKey::Code(code) = event.physical_key {
                     self.input.key(code, event.state, event.repeat);
                 }
+                if event.state == ElementState::Pressed
+                    && let Some(t) = &event.text
+                {
+                    self.input.typed_text(t);
+                }
             }
             WindowEvent::MouseInput { state, button, .. } => self.input.mouse_button(button, state),
             WindowEvent::CursorMoved { position, .. } => {
@@ -177,6 +182,14 @@ impl ApplicationHandler for Player {
                     .cursor_pixels(Some(Vec2::new(position.x as f32, position.y as f32)));
             }
             WindowEvent::CursorLeft { .. } => self.input.cursor_pixels(None),
+            WindowEvent::MouseWheel { delta, .. } => {
+                // Lines → pixels like a browser would (about 50 per notch).
+                let d = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => Vec2::new(x, y) * 50.0,
+                    MouseScrollDelta::PixelDelta(p) => Vec2::new(p.x as f32, p.y as f32),
+                };
+                self.input.wheel(d);
+            }
             WindowEvent::RedrawRequested => self.frame(event_loop),
             _ => {}
         }

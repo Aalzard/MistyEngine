@@ -207,6 +207,9 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
     ui.menu_button("UI", |ui| {
         for el in crate::ui_create::UiElement::ALL {
             item(ui, s, el.name(), "", create(Create::Ui(el)));
+            if el.ends_group() {
+                ui.separator();
+            }
         }
     });
     item(ui, s, "Camera", "", create(Create::Camera));

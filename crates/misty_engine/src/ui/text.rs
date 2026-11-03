@@ -171,6 +171,54 @@ pub fn layout_text(
     out
 }
 
+/// The built-in font, parsed once (layout and input fields measure text with it).
+pub fn builtin_font() -> &'static UiFont {
+    static FONT: std::sync::OnceLock<UiFont> = std::sync::OnceLock::new();
+    FONT.get_or_init(UiFont::default)
+}
+
+/// Size of the text block (widest line × lines), wrapped at `wrap_width` when set.
+pub fn text_size(
+    m: &dyn GlyphMetrics,
+    text: &str,
+    px: f32,
+    line_spacing: f32,
+    wrap_width: Option<f32>,
+) -> Vec2 {
+    let lines = break_lines(m, text, px, wrap_width);
+    let w = lines.iter().map(|l| width_of(m, l, px)).fold(0.0, f32::max);
+    let line_h = m.line_height(px) * line_spacing;
+    let h = m.ascent(px) - m.descent(px) + line_h * (lines.len() as f32 - 1.0);
+    Vec2::new(w, h)
+}
+
+/// Single-line text in a `size` box: x of each caret position (before char 0 … after the last),
+/// plus the line's top and bottom, all relative to the box's top-left (pixels, y down).
+pub fn caret_stops(
+    m: &dyn GlyphMetrics,
+    text: &str,
+    px: f32,
+    size: Vec2,
+    align: TextAnchor,
+) -> (Vec<f32>, f32, f32) {
+    let (col, row) = align.cell();
+    let line_w = width_of(m, text, px);
+    let mut x = (size.x - line_w) * col as f32 * 0.5;
+    let h = m.ascent(px) - m.descent(px);
+    let top = (size.y - h) * row as f32 * 0.5;
+    let mut stops = vec![x];
+    let mut prev = None;
+    for c in text.chars() {
+        if let Some(p) = prev {
+            x += m.kern(p, c, px);
+        }
+        x += m.advance(c, px);
+        stops.push(x);
+        prev = Some(c);
+    }
+    (stops, top, top + h)
+}
+
 /// Where a glyph image sits in the atlas and relative to the pen.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GlyphEntry {

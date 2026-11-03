@@ -1,129 +1,128 @@
-//! Pointer events for UI: raycast against graphics, hover/press state of buttons and clicks.
+//! Pointer raycasts against UI graphics and the selectable widgets that handle them
+//! (Button, Toggle, Slider, Scrollbar, Input Field, Dropdown), with their Colour Tint states.
 
 use glam::Vec2;
 use hecs::Entity;
 
 use super::tree::UiLayout;
-use crate::scene::{Scene, UiButton, UiImage, UiText};
+use crate::scene::{
+    ColorBlock, Scene, Selectable, UiButton, UiDropdown, UiImage, UiInputField, UiRawImage,
+    UiScrollbar, UiSlider, UiText, UiToggle,
+};
 
-/// Colour Tint state of a button.
+pub use super::events::UiInteraction;
+
+/// Colour Tint state of a selectable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonState {
     Normal,
     Highlighted,
     Pressed,
+    Selected,
     Disabled,
 }
 
-/// Which button the pointer is over / pressed on (lives while playing).
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct UiInteraction {
-    pub hovered: Option<Entity>,
-    pub pressed: Option<Entity>,
-}
-
-/// Graphics that receive clicks: enabled Image/Text with Raycast Target on.
+/// Graphics that receive clicks: enabled Image/Raw Image/Text with Raycast Target on.
 fn is_raycast_target(scene: &Scene, e: Entity) -> bool {
     let w = &scene.world;
     w.get::<&UiImage>(e)
         .is_ok_and(|i| i.enabled && i.raycast_target)
+        || w.get::<&UiRawImage>(e)
+            .is_ok_and(|i| i.enabled && i.raycast_target)
         || w.get::<&UiText>(e)
             .is_ok_and(|t| t.enabled && t.raycast_target)
 }
 
-/// Topmost raycast-target graphic under `p` (screen pixels, y down).
+/// Topmost raycast-target graphic under `p` (screen pixels, y down). Masks clip hits too.
 pub fn raycast(layout: &UiLayout, scene: &Scene, p: Vec2) -> Option<Entity> {
     layout
         .nodes
         .iter()
         .rev()
-        .find(|n| n.screen.contains(p) && is_raycast_target(scene, n.entity))
+        .find(|n| {
+            n.screen.contains(p)
+                && n.clip.is_none_or(|c| c.contains(p))
+                && is_raycast_target(scene, n.entity)
+        })
         .map(|n| n.entity)
 }
 
-/// The button handling events for `hit`: itself or its nearest ancestor with a Button.
-fn button_for(scene: &Scene, hit: Entity) -> Option<Entity> {
-    let mut cur = Some(hit);
-    while let Some(e) = cur {
-        if scene.world.get::<&UiButton>(e).is_ok() {
-            return Some(e);
+/// `e` itself or its nearest ancestor matching `f`.
+pub fn ancestor(scene: &Scene, e: Entity, f: impl Fn(&Scene, Entity) -> bool) -> Option<Entity> {
+    let mut cur = Some(e);
+    while let Some(x) = cur {
+        if f(scene, x) {
+            return Some(x);
         }
-        cur = scene.parent(e);
+        cur = scene.parent(x);
     }
     None
 }
 
-impl UiInteraction {
-    /// Feed one frame of pointer input; returns the buttons clicked this frame.
-    /// A click = press and release over the same interactable button.
-    pub fn update(
-        &mut self,
-        layout: &UiLayout,
-        scene: &Scene,
-        pointer: Option<Vec2>,
-        down: bool,
-        up: bool,
-    ) -> Vec<Entity> {
-        self.hovered = pointer
-            .and_then(|p| raycast(layout, scene, p))
-            .and_then(|hit| button_for(scene, hit));
-        let mut clicked = Vec::new();
-        if down {
-            self.pressed = self.hovered;
-        }
-        // Any release ends the press; it clicks only over the same button.
-        if up
-            && let Some(b) = self.pressed.take()
-            && self.hovered == Some(b)
-            && interactable(scene, b)
-        {
-            clicked.push(b);
-        }
-        // Destroyed or deactivated buttons forget their state.
-        if self.pressed.is_some_and(|b| layout.node(b).is_none()) {
-            self.pressed = None;
-        }
-        clicked
+/// Selectable settings of a widget (a Button's colours become a block targeting itself).
+pub fn selectable(scene: &Scene, e: Entity) -> Option<Selectable> {
+    let w = &scene.world;
+    if let Ok(b) = w.get::<&UiButton>(e) {
+        return Some(Selectable {
+            interactable: b.interactable,
+            target_graphic: Some(e),
+            colors: ColorBlock {
+                normal: b.normal_color,
+                highlighted: b.highlighted_color,
+                pressed: b.pressed_color,
+                selected: b.selected_color,
+                disabled: b.disabled_color,
+                multiplier: b.color_multiplier,
+            },
+        });
     }
-
-    /// Colour Tint state of `button` (`None` interaction = edit mode: normal or disabled).
-    pub fn state(this: Option<&Self>, scene: &Scene, button: Entity) -> ButtonState {
-        if !interactable(scene, button) {
-            return ButtonState::Disabled;
-        }
-        let Some(i) = this else {
-            return ButtonState::Normal;
-        };
-        match (i.pressed == Some(button), i.hovered == Some(button)) {
-            (true, true) => ButtonState::Pressed,
-            (false, true) => ButtonState::Highlighted,
-            _ => ButtonState::Normal,
-        }
-    }
+    w.get::<&UiToggle>(e)
+        .map(|c| c.selectable)
+        .or_else(|_| w.get::<&UiSlider>(e).map(|c| c.selectable))
+        .or_else(|_| w.get::<&UiScrollbar>(e).map(|c| c.selectable))
+        .or_else(|_| w.get::<&UiInputField>(e).map(|c| c.selectable))
+        .or_else(|_| w.get::<&UiDropdown>(e).map(|c| c.selectable))
+        .ok()
 }
 
-fn interactable(scene: &Scene, b: Entity) -> bool {
-    scene
-        .world
-        .get::<&UiButton>(b)
-        .is_ok_and(|b| b.interactable)
+pub fn is_selectable(scene: &Scene, e: Entity) -> bool {
+    selectable(scene, e).is_some()
 }
 
-/// Tint colour for a button state (Colour Tint transition), multiplier applied.
-pub fn tint(button: &UiButton, state: ButtonState) -> [f32; 4] {
-    let c = match state {
-        ButtonState::Normal => button.normal_color,
-        ButtonState::Highlighted => button.highlighted_color,
-        ButtonState::Pressed => button.pressed_color,
-        ButtonState::Disabled => button.disabled_color,
+pub fn interactable(scene: &Scene, e: Entity) -> bool {
+    selectable(scene, e).is_some_and(|s| s.interactable)
+}
+
+/// Tint colour for a state (Colour Tint transition), multiplier applied.
+pub fn tint_color(c: &ColorBlock, state: ButtonState) -> [f32; 4] {
+    let col = match state {
+        ButtonState::Normal => c.normal,
+        ButtonState::Highlighted => c.highlighted,
+        ButtonState::Pressed => c.pressed,
+        ButtonState::Selected => c.selected,
+        ButtonState::Disabled => c.disabled,
     };
-    c.map(|v| (v * button.color_multiplier).clamp(0.0, 1.0))
+    col.map(|v| (v * c.multiplier).clamp(0.0, 1.0))
+}
+
+/// Tint colour of a Button in a state.
+pub fn tint(button: &UiButton, state: ButtonState) -> [f32; 4] {
+    let c = ColorBlock {
+        normal: button.normal_color,
+        highlighted: button.highlighted_color,
+        pressed: button.pressed_color,
+        selected: button.selected_color,
+        disabled: button.disabled_color,
+        multiplier: button.color_multiplier,
+    };
+    tint_color(&c, state)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::scene::{Canvas, CanvasScaler, RectTransform, UiScaleMode};
+    use crate::ui::events::PointerInput;
     use crate::ui::tree::layout;
 
     /// 800×600 canvas at scale 1 with a 160×30 button (Image + Text child) in the middle.
@@ -148,48 +147,60 @@ mod tests {
         (s, button, label)
     }
 
+    fn at(p: Vec2, down: bool, up: bool) -> PointerInput {
+        PointerInput {
+            position: Some(p),
+            down,
+            held: down,
+            up,
+            screen: Vec2::new(800.0, 600.0),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn press_and_release_over_a_button_clicks_it() {
-        let (s, button, label) = scene();
+        let (mut s, button, label) = scene();
         let l = layout(&s, Vec2::new(800.0, 600.0));
         let centre = Vec2::new(400.0, 300.0);
         assert_eq!(raycast(&l, &s, centre), Some(label), "text is on top");
         let mut ui = UiInteraction::default();
-        assert!(ui.update(&l, &s, Some(centre), false, false).is_empty());
-        assert_eq!(
-            UiInteraction::state(Some(&ui), &s, button),
-            ButtonState::Highlighted
-        );
-        ui.update(&l, &s, Some(centre), true, false);
-        assert_eq!(
-            UiInteraction::state(Some(&ui), &s, button),
-            ButtonState::Pressed
-        );
-        assert_eq!(ui.update(&l, &s, Some(centre), false, true), [button]);
+        assert!(ui.update(&mut s, &at(centre, false, false)).is_empty());
+        assert_eq!(ui.state(&s, button), ButtonState::Highlighted);
+        ui.update(&mut s, &at(centre, true, false));
+        assert_eq!(ui.state(&s, button), ButtonState::Pressed);
+        let ev = ui.update(&mut s, &at(centre, false, true));
+        assert_eq!(ev, [crate::ui::UiEvent::Click(button)]);
         assert_eq!(ui.pressed, None);
-        assert_eq!(UiInteraction::state(None, &s, button), ButtonState::Normal);
+        assert_eq!(
+            ui.state(&s, button),
+            ButtonState::Selected,
+            "clicked = selected"
+        );
+        ui.update(&mut s, &at(Vec2::new(5.0, 5.0), true, false));
+        assert_eq!(ui.selected, None, "clicking empty space deselects");
+        assert_eq!(
+            UiInteraction::state_of(None, &s, button),
+            ButtonState::Normal
+        );
     }
 
     #[test]
     fn releasing_elsewhere_or_disabled_does_not_click() {
-        let (s, button, _) = scene();
-        let l = layout(&s, Vec2::new(800.0, 600.0));
+        let (mut s, button, _) = scene();
         let mut ui = UiInteraction::default();
-        ui.update(&l, &s, Some(Vec2::new(400.0, 300.0)), true, false);
-        let outside = Some(Vec2::new(10.0, 10.0));
-        assert!(ui.update(&l, &s, outside, false, true).is_empty());
+        ui.update(&mut s, &at(Vec2::new(400.0, 300.0), true, false));
+        let outside = Vec2::new(10.0, 10.0);
+        assert!(ui.update(&mut s, &at(outside, false, true)).is_empty());
         assert_eq!(ui.hovered, None);
 
         s.world.get::<&mut UiButton>(button).unwrap().interactable = false;
-        ui.update(&l, &s, Some(Vec2::new(400.0, 300.0)), true, false);
+        ui.update(&mut s, &at(Vec2::new(400.0, 300.0), true, false));
         assert!(
-            ui.update(&l, &s, Some(Vec2::new(400.0, 300.0)), false, true)
+            ui.update(&mut s, &at(Vec2::new(400.0, 300.0), false, true))
                 .is_empty()
         );
-        assert_eq!(
-            UiInteraction::state(Some(&ui), &s, button),
-            ButtonState::Disabled
-        );
+        assert_eq!(ui.state(&s, button), ButtonState::Disabled);
     }
 
     #[test]

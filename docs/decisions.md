@@ -784,3 +784,82 @@ Record of choices made without asking, and why.
      low, rock steep, grass elsewhere), four generated tileable 256² textures (grass, rock + rock normal map,
      sand), balls and crates that roll down when playing, and `TerrainHover.lua` circling the hill with
      `SampleHeight`. Reuses `Red.mat`, `Wood.mat` and `Laser.mat` unchanged.
+
+
+## 2026-11-03 — uGUI widgets, auto layout and the event system
+
+206. **Widget parts are referenced, not found by name.** Toggle (Graphic, Group), Slider (Fill / Handle Rect),
+     Scrollbar (Handle Rect), Input Field (Text Component, Placeholder), Dropdown (Template, Caption / Item Text),
+     Scroll Rect (Content, Viewport, scrollbars), Event System (First Selected) and every widget's Target Graphic
+     are object references, remapped in scene files and prefabs like On Click targets (the reference table also
+     reaches into the nested `selectable` block). `Scene::copy_subtree` (Duplicate, copy/paste, `Instantiate`)
+     now points references between objects of the copied subtree at the copies, so a duplicated Slider drives
+     its own Fill; references to objects outside the subtree are kept.
+207. **Driven values are computed, not written.** Slider Fill/Handle and Scrollbar Handle anchors, the Toggle
+     checkmark, the Input Field's displayed text / Placeholder visibility, the Dropdown caption and layout-group
+     child rects are derived from the widget values every frame in the layout and draw passes (edit mode and
+     play mode alike) instead of being stored into the parts' components. The Inspector shows "Some values driven
+     by …" on such Rect Transforms but keeps the fields editable (their stored values are simply unused).
+208. **Layout follows the familiar algorithm** (our own implementation): min / preferred / flexible sizes per
+     axis from Layout Element (each set value overrides), layout groups (computed from their children) and Text
+     (preferred = text extent, wrapped at the width it gets); Image has no native size (no sprites), so it reports
+     0. Linear groups lerp between min and preferred, then share spare space by flexible size; Control Child Size
+     off keeps the child's Size Delta and aligns it in its cell; Child Force Expand gives flexible ≥ 1. Widths are
+     resolved before heights so wrapped text gets the right height. Grid Layout Group always sizes children to
+     the cell. Content Size Fitter resizes around the pivot (keeps its Rect Transform values, like the rest).
+     Layout is recomputed every frame (no dirty flags).
+209. **Masks clip on the CPU.** Mask and Rect Mask 2D clip descendants to their screen rect (Rect Mask 2D with
+     padding); quads are cut and their UVs shrunk in the draw list, raycasts outside the clip miss. UI graphics
+     are axis-aligned rectangles (no sprites, no rotation), so this is exact without a stencil buffer; a Mask's
+     shape is therefore always its rect. Show Mask Graphic off hides the Mask's own Image.
+210. **One event system, always on.** Pointer/keyboard handling runs while playing whether or not the scene has an
+     Event System object (UIDemo has none and keeps working); the object only holds settings (First Selected,
+     Send Navigation Events, Drag Threshold 10 px) and has no separate input-module component. GameObject ▸ UI
+     creates an `EventSystem` root object with the first Canvas, like the reference editor. The UIDemo generator
+     removes it so the committed UIDemo.scene stays byte-identical.
+211. **Pointer routing:** the press goes to the nearest selectable ancestor of the topmost raycast hit, drags to
+     the nearest Slider / Scrollbar / Input Field / Scroll Rect. Sliders and scrollbars drag at once; a Scroll Rect
+     starts after the drag threshold, then cancels the press (no click), measuring from the press point (the
+     reference measures from where the threshold was crossed). Pressing empty space deselects. Colour Tint order:
+     Disabled > Pressed > Selected > Highlighted > Normal; colours switch instantly (no fade duration). Button
+     got a Selected Color (left out of files at its default so older scenes re-save unchanged).
+212. **Value-changed events come from comparing values each frame** (Toggle isOn, Slider / Scrollbar value, Input
+     Field text, Dropdown value), so changes made by scripts or toggle groups are reported too — in the next UI
+     step instead of inside the assignment. Objects created this frame (instantiated, dropdown items) report from
+     the next one. Persistent calls (Inspector lists) get the value as the method argument; Lua listeners are
+     added with `AddListener` on `onClick` / `onValueChanged` / `onEndEdit` and stored per object in a Lua registry
+     table.
+213. **Toggle Group:** a toggle switched on (by a click or a script) turns the others of its group off; with Allow
+     Switch Off unset, clicking the toggle that is on does nothing, and a group with none on gets its first
+     toggle switched on when Play starts.
+214. **Input Field** is single line only (no multi-line / submit modes, no rich text, no clipboard shortcuts besides
+     what the OS turns into typed text, e.g. egui paste). Click places the caret, drag selects, Shift+arrows /
+     Home / End / Ctrl+A select, Backspace/Delete, Return ends editing (field stays selected), Escape restores the
+     text from before editing, clicking elsewhere ends editing. Content types Standard, Integer Number, Decimal
+     Number (one '.', leading '-') and Password (shown as '*'); Character Limit counts characters. Long text scrolls
+     so the caret stays visible and is clipped to the Text rect. Script/Inspector text is sanitised the same way.
+     Typed text and repeating key presses reach the engine through new `Input.text` / `Input.typed`.
+215. **Dropdown lists are real objects:** opening copies the inactive Template under the root canvas as "Dropdown
+     List" (last child, so it draws on top of that canvas), one copy of the template's Item per option, shrunk
+     when the options don't fill it and opened above the dropdown when there's no room below. Any press outside
+     the list closes it and is swallowed (the reference uses a full-screen blocker object). There is no fade, no
+     scroll to the selected item and no per-item images.
+216. **Scroll Rect:** Unrestricted / Elastic (our own critically damped spring, Elasticity ≈ settle time, rubber
+     band while dragging) / Clamped, inertia with Deceleration Rate per second, wheel scrolling in pixels × Scroll
+     Sensitivity (default 1; one wheel notch ≈ 50 px in the player, egui's delta in the editor). Linked scrollbars
+     get value and size every frame and move the content when dragged or clicked (a click pages by the handle
+     size). No visibility modes (scrollbars are always shown) and no onValueChanged for the Scroll Rect itself.
+217. **Navigation is spatial and arrow-key only:** with Send Navigation Events on, arrows move the selection to the
+     best selectable in that direction (score = dot / distance²), or step a selected Slider by 10 % (1 with whole
+     numbers); Return / Space submit (click a Button, flip a Toggle, open a Dropdown, start editing an Input
+     Field). No explicit navigation modes and no Tab.
+218. **Default widget hierarchies live in the engine** (`ui::presets`), so the editor menu, samples and tests build
+     the same objects. Without sprite assets the parts are plain coloured rectangles (light grey track, blue-ish
+     Fill, white handle, dark square checkmark, small dark "arrow" bar) with the reference layouts' sizes and
+     offsets. GameObject ▸ UI lists Text, Image, Raw Image | Button, Toggle, Slider, Scrollbar, Dropdown, Input
+     Field | Canvas, Panel, Scroll View | Event System.
+219. **UIWidgetsDemo is generated by code** (`sample_ui_widgets` test module, ignored writer + check + play test):
+     a settings panel laid out with Vertical/Horizontal Layout Groups and Layout Elements, a scroll list of level
+     buttons (Vertical Layout Group + Content Size Fitter), and `SettingsMenu.lua` updating a summary Text from
+     listeners plus an On End Edit call. Its Canvas Scaler uses a 1280×720 reference matched to height so the
+     panel fits any window.

@@ -38,6 +38,16 @@ impl Rect {
         Self::new(self.min * s, self.max * s)
     }
 
+    /// Overlap of two rects (empty when they don't overlap: max ≤ min).
+    pub fn intersect(&self, o: &Rect) -> Rect {
+        let min = self.min.max(o.min);
+        Self::new(min, self.max.min(o.max).max(min))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.max.x <= self.min.x || self.max.y <= self.min.y
+    }
+
     /// Mirror vertically inside a space of height `h` (y-up ↔ y-down).
     pub fn flip_y(&self, h: f32) -> Self {
         Self::new(

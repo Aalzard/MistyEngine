@@ -44,6 +44,8 @@ mod sample_physics;
 mod sample_terrain;
 #[cfg(test)]
 mod sample_ui;
+#[cfg(test)]
+mod sample_ui_widgets;
 mod scene_camera;
 mod scene_files;
 mod selection;

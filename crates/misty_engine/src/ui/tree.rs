@@ -1,11 +1,16 @@
 //! Lay out every canvas in a scene for one screen size: rects in canvas units and screen pixels,
-//! in draw order (canvas sort order, then Hierarchy order).
+//! in draw order (canvas sort order, then Hierarchy order). Layout groups, Content Size Fitters,
+//! widget-driven anchors and masks are applied here.
+
+use std::collections::HashMap;
 
 use glam::Vec2;
 use hecs::Entity;
 
+use super::auto_layout;
+use super::driven::driven_anchors;
 use super::layout::{Rect, scale_factor};
-use crate::scene::{Canvas, CanvasScaler, RectTransform, Scene};
+use crate::scene::{Canvas, CanvasScaler, RectTransform, Scene, UiMask, UiRectMask2D};
 
 /// One laid-out UI object.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -19,6 +24,8 @@ pub struct UiNode {
     pub screen: Rect,
     /// Screen pixels per canvas unit.
     pub scale: f32,
+    /// Screen rect a parent Mask / Rect Mask 2D clips this object to.
+    pub clip: Option<Rect>,
 }
 
 /// All active canvases of a scene laid out for one screen.
@@ -80,30 +87,84 @@ pub fn layout(scene: &Scene, screen: Vec2) -> UiLayout {
             .map(|s| (*s).clone());
         let scale = scale_factor(scaler.as_ref(), screen);
         let rect = Rect::from_size(screen / scale);
-        visit(scene, canvas, canvas, rect, scale, &mut out);
+        let mut ctx = Ctx {
+            scene,
+            canvas,
+            scale,
+            anchors: driven_anchors(scene),
+            out: &mut out,
+        };
+        ctx.visit(canvas, rect, None);
     }
     out
 }
 
-fn visit(scene: &Scene, e: Entity, canvas: Entity, rect: Rect, scale: f32, out: &mut UiLayout) {
-    out.nodes.push(UiNode {
-        entity: e,
-        canvas,
-        rect,
-        screen: rect.scaled(scale).flip_y(out.screen.y),
-        scale,
-    });
-    for child in scene.children(e) {
-        if !scene.game_object(child).active {
-            continue;
+struct Ctx<'a> {
+    scene: &'a Scene,
+    canvas: Entity,
+    scale: f32,
+    /// Anchors set by sliders and scrollbars on their parts.
+    anchors: HashMap<Entity, (Vec2, Vec2)>,
+    out: &'a mut UiLayout,
+}
+
+impl Ctx<'_> {
+    fn visit(&mut self, e: Entity, rect: Rect, clip: Option<Rect>) {
+        let scene = self.scene;
+        let screen = rect.scaled(self.scale).flip_y(self.out.screen.y);
+        self.out.nodes.push(UiNode {
+            entity: e,
+            canvas: self.canvas,
+            rect,
+            screen,
+            scale: self.scale,
+            clip,
+        });
+        let child_clip = match self.mask_rect(e, screen) {
+            Some(m) => Some(clip.map_or(m, |c| c.intersect(&m))),
+            None => clip,
+        };
+        // A layout group places its children; the rest follow their Rect Transforms.
+        let placed: HashMap<Entity, Rect> = auto_layout::arrange(scene, e, rect)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        for child in scene.children(e) {
+            if !scene.game_object(child).active {
+                continue;
+            }
+            let r = match placed.get(&child) {
+                Some(r) => *r,
+                None => match scene.world.get::<&RectTransform>(child) {
+                    Ok(rt) => {
+                        let mut rt = *rt;
+                        if let Some((min, max)) = self.anchors.get(&child) {
+                            rt.anchor_min = *min;
+                            rt.anchor_max = *max;
+                        }
+                        rt.rect_in(rect)
+                    }
+                    // Objects without a Rect Transform take their parent's rect.
+                    Err(_) => rect,
+                },
+            };
+            let r = auto_layout::fit(scene, child, r);
+            self.visit(child, r, child_clip);
         }
-        // Objects without a Rect Transform take their parent's rect.
-        let r = scene
-            .world
-            .get::<&RectTransform>(child)
-            .map(|rt| rt.rect_in(rect))
-            .unwrap_or(rect);
-        visit(scene, child, canvas, r, scale, out);
+    }
+
+    /// Screen rect `e` clips its children to, if it is a mask.
+    fn mask_rect(&self, e: Entity, screen: Rect) -> Option<Rect> {
+        let w = &self.scene.world;
+        if w.get::<&UiMask>(e).is_ok_and(|m| m.enabled) {
+            return Some(screen);
+        }
+        let m = w.get::<&UiRectMask2D>(e).ok().filter(|m| m.enabled)?;
+        let [l, b, r, t] = m.padding.map(|v| v * self.scale);
+        Some(Rect::new(
+            screen.min + Vec2::new(l, t),
+            screen.max - Vec2::new(r, b),
+        ))
     }
 }
 
