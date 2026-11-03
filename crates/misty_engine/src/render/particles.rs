@@ -38,8 +38,17 @@ pub fn order(
     batches: &[ParticleBatch],
     depth: impl Fn(Vec3) -> f32,
 ) -> (Vec<ParticleInstance>, Vec<ParticleDraw>) {
+    order_filtered(batches, |_| true, depth)
+}
+
+/// [`order`] for the systems `keep` accepts (the ones inside the camera frustum).
+pub fn order_filtered(
+    batches: &[ParticleBatch],
+    keep: impl Fn(usize) -> bool,
+    depth: impl Fn(Vec3) -> f32,
+) -> (Vec<ParticleInstance>, Vec<ParticleDraw>) {
     let mut by_depth: Vec<usize> = (0..batches.len())
-        .filter(|i| !batches[*i].particles.is_empty())
+        .filter(|i| !batches[*i].particles.is_empty() && keep(*i))
         .collect();
     by_depth.sort_by(|a, b| depth(batches[*b].origin).total_cmp(&depth(batches[*a].origin)));
     let mut instances = Vec::new();

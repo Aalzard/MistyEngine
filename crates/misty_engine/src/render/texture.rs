@@ -375,6 +375,16 @@ impl TextureCache {
         self.sets.get(set)
     }
 
+    /// Loaded textures and their estimated bytes (RGBA8 with mips ≈ 4/3 of the base level).
+    pub fn memory(&self) -> (usize, u64) {
+        let views = self.textures.values().filter_map(|c| c.view.as_ref());
+        views.fold((0, 0), |(n, bytes), v| {
+            let size = v.texture().size();
+            let base = size.width as u64 * size.height as u64 * 4;
+            (n + 1, bytes + base * 4 / 3)
+        })
+    }
+
     /// Whether a texture loaded successfully (false for files that failed to load).
     pub fn is_loaded(&self, rel: &str, kind: TextureKind) -> bool {
         self.textures

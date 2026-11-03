@@ -12,6 +12,7 @@ pub mod models;
 pub mod navigation;
 pub mod particles;
 pub mod physics;
+pub mod profiler;
 pub mod render;
 pub mod render_scene;
 pub mod runtime;

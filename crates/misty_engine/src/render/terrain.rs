@@ -26,6 +26,8 @@ struct TerrainParams {
 struct GpuTerrain {
     version: u64,
     mesh: GpuMesh,
+    /// Local bounds (min, max), measured once per version.
+    bounds: (Vec3, Vec3),
     splat: wgpu::TextureView,
 }
 
@@ -68,6 +70,7 @@ impl TerrainCache {
             {
                 let gpu = GpuTerrain {
                     version: t.version,
+                    bounds: t.data.bounds(),
                     mesh: GpuMesh::new(device, &t.key, &crate::terrain::mesh::build(&t.data)),
                     splat: splat_texture(device, queue, &t.key, &t.data),
                 };
@@ -127,20 +130,36 @@ impl TerrainCache {
         }
     }
 
-    /// Draw the frame's terrains (`first` = draw index of terrain 0). `textured` binds group 3.
+    /// World bounds of a terrain (cached once uploaded).
+    pub fn world_bounds(&self, t: &TerrainDraw) -> (Vec3, Vec3) {
+        match self.entries.get(&t.key).filter(|g| g.version == t.version) {
+            Some(g) => (g.bounds.0 + t.position, g.bounds.1 + t.position),
+            None => world_bounds(t),
+        }
+    }
+
+    /// Uploaded terrain meshes and their buffer bytes (Memory module).
+    pub fn memory(&self) -> (usize, u64) {
+        let bytes = self.entries.values().map(|g| g.mesh.bytes()).sum();
+        (self.entries.len(), bytes)
+    }
+
+    /// Draw the frame's terrains `filter(i)` keeps (`first` = draw index of terrain 0).
+    /// `textured` binds group 3.
     pub fn draw(
         &self,
         pass: &mut wgpu::RenderPass,
         terrains: &[TerrainDraw],
         first: usize,
         textured: bool,
-        filter: impl Fn(&TerrainDraw) -> bool,
+        filter: impl Fn(usize) -> bool,
+        stats: &mut super::RenderStats,
     ) {
         for (i, t) in terrains.iter().enumerate() {
             let Some(gpu) = self.entries.get(&t.key) else {
                 continue;
             };
-            if !filter(t) {
+            if !filter(i) {
                 continue;
             }
             if textured {
@@ -154,6 +173,7 @@ impl TerrainCache {
             pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint32);
             let index = (first + i) as u32;
             pass.draw_indexed(0..m.count, 0, index..index + 1);
+            stats.draw(1, m.count, m.vertex_count);
         }
     }
 }

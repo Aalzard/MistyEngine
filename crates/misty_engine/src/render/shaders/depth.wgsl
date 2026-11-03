@@ -12,12 +12,14 @@ struct Draw {
 };
 
 @group(1) @binding(1) var<storage, read> draws: array<Draw>;
+// Instance index → draw slot (instanced batches).
+@group(1) @binding(2) var<storage, read> slots: array<u32>;
 @group(2) @binding(0) var albedo_map: texture_2d<f32>;
 @group(2) @binding(2) var material_sampler: sampler;
 
 @vertex
-fn vs_main(@location(0) position: vec3<f32>, @builtin(instance_index) draw_index: u32) -> @builtin(position) vec4<f32> {
-    return view.view_proj * draws[draw_index].model * vec4<f32>(position, 1.0);
+fn vs_main(@location(0) position: vec3<f32>, @builtin(instance_index) instance: u32) -> @builtin(position) vec4<f32> {
+    return view.view_proj * draws[slots[instance]].model * vec4<f32>(position, 1.0);
 }
 
 struct CutoutOut {
@@ -31,9 +33,9 @@ struct CutoutOut {
 fn vs_uv(
     @location(0) position: vec3<f32>,
     @location(2) uv: vec2<f32>,
-    @builtin(instance_index) draw_index: u32,
+    @builtin(instance_index) instance: u32,
 ) -> CutoutOut {
-    let d = draws[draw_index];
+    let d = draws[slots[instance]];
     var out: CutoutOut;
     out.clip = view.view_proj * d.model * vec4<f32>(position, 1.0);
     out.uv = uv * d.uv_st.xy + d.uv_st.zw;

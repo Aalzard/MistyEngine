@@ -57,6 +57,8 @@ struct Lights {
 @group(1) @binding(2) var shadow_map: texture_depth_2d;
 @group(1) @binding(3) var shadow_sampler: sampler_comparison;
 @group(1) @binding(4) var local_shadow_map: texture_depth_2d_array;
+// Instance index → draw slot: instanced batches list their draws here.
+@group(1) @binding(5) var<storage, read> slots: array<u32>;
 
 // Material textures (1×1 white / flat normal when unassigned).
 @group(2) @binding(0) var albedo_map: texture_2d<f32>;
@@ -85,7 +87,8 @@ struct MeshOut {
 };
 
 @vertex
-fn vs_main(in: MeshIn, @builtin(instance_index) draw_index: u32) -> MeshOut {
+fn vs_main(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {
+    let draw_index = slots[instance];
     let d = draws[draw_index];
     let world = d.model * vec4<f32>(in.position, 1.0);
     var out: MeshOut;
