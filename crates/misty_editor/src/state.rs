@@ -229,6 +229,8 @@ pub struct EditorState {
     pub animator: crate::panels::animator::AnimatorWindow,
     /// Audio Mixer window: shown mixer, snapshot, selected group/effect, meters.
     pub audio_mixer: crate::panels::audio_mixer::MixerWindow,
+    /// Code Editor window: open scripts, find state, preferences.
+    pub code_editor: crate::panels::code_editor::CodeEditor,
     pub hierarchy: HierarchyState,
     pub handles: HandleState,
     pub inspector_locked: bool,
@@ -297,6 +299,7 @@ impl EditorState {
             animation: Default::default(),
             animator: Default::default(),
             audio_mixer: Default::default(),
+            code_editor: crate::panels::code_editor::CodeEditor::new(&project.root),
             hierarchy: HierarchyState::default(),
             handles: HandleState::default(),
             inspector_locked: false,

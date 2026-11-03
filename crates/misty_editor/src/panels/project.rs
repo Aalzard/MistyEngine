@@ -166,7 +166,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     }
 }
 
-/// Double-clicked file: scenes open in the editor, other files in their default app.
+/// Double-clicked file: scenes open in the editor, scripts in the Code Editor, other files in
+/// their default app.
 fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     let Some(path) = opened else { return };
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -182,6 +183,9 @@ fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     } else if misty_engine::audio::is_mixer(&path.to_string_lossy()) {
         state.audio_mixer.open(Some(state.assets.relative(&path)));
         state.push(Action::FocusTab(crate::layout::Tab::AudioMixer));
+    } else if ext == "lua" {
+        let rel = state.assets.relative(&path);
+        crate::panels::code_editor::open_script(state, &rel, None);
     } else if let Err(err) = crate::assets::open_external(&path) {
         state
             .console

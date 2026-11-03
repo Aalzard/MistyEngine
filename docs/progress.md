@@ -755,3 +755,49 @@
   asset (the reference editor keeps them).
 - The material preview has no lighting/background toggles or other preview shapes (cylinder, torus, plane);
   thumbnails don't refresh when only a referenced texture changes.
+
+## Code Editor (built-in Lua editor) ✅
+
+### Done
+- Window ▸ General ▸ Code Editor: an on-demand tab that docks with the Scene and Game views. Double-clicking a
+  `.lua` file in the Project window, Inspector ▸ script ⋮ ▸ Edit Script (or double-clicking the Script field),
+  and Project ▸ Create ▸ Lua Script open the script here. Edit ▸ Preferences ▸ External Tools ▸ Script Editor
+  switches back to the system's default app; "Open in External Editor" stays in the tab and Inspector menus.
+- Several files as tabs with a ● dirty marker, × / middle-click / Ctrl+F4 close, Ctrl+Tab cycling, a context
+  menu (Save, Close All But This, Copy Full Path, Select in Project); Save / Don't Save / Cancel when closing a
+  modified file and when quitting the editor. Files changed on disk reload (or ask when modified); renamed and
+  moved scripts keep their tab.
+- Editing: Lua highlighting (keywords, strings, `--[[ ]]` / `[==[ ]==]` long comments and strings, numbers,
+  Misty globals such as `Input`/`Time`/`Physics`/`Vector3`, Lua builtins, function names), line numbers with the
+  caret line highlighted, current-line band, bracket matching, indent guides, occurrences of the word under the
+  caret, auto-indent after block openers and auto-dedent of `end`/`else`/`until`/`}`, auto-closing brackets and
+  quotes (typing over closers, wrapping selections), Tab / Shift+Tab indent, monospace font with Ctrl+wheel /
+  Ctrl+= / Ctrl+- zoom, word wrap, minimap (click/drag to scroll), folding by block from the gutter arrows.
+- Visual Studio style shortcuts (full list under ? / F1 in the tab): Ctrl+S / Ctrl+Shift+S, undo/redo per file
+  grouped by typing bursts, line-mode Ctrl+X/C/V, Ctrl+D and Ctrl+E,V duplicate, Ctrl+L / Ctrl+Shift+L,
+  Alt+Up/Down, Ctrl+K,C / Ctrl+K,U / Ctrl+/, Ctrl+F / Ctrl+H (match case, whole word, regex with `$1`), F3 /
+  Shift+F3 / Ctrl+F3, Ctrl+G, Ctrl+Shift+F (Find in Files, click a result to jump), smart Home, word moves,
+  Ctrl+Enter / Ctrl+Shift+Enter, Ctrl+Space, Ctrl+K,D format document, F12 / Ctrl+click go to definition,
+  Ctrl+] matching bracket, Ctrl+M,O / M,L / M,M / M,P outlining, Ctrl+U / Ctrl+Shift+U case, multi-caret
+  (Alt+click, Ctrl+Alt+Up/Down, Shift+Alt+. / ;) and box selection (Alt+Shift+arrows or drag), F5 / Shift+F5
+  Play / Stop.
+- Autocomplete of keywords, names in the file and the Misty Lua API (globals, `self.`, `self.transform:`,
+  `GetComponent("…")` names, variables assigned from `GetComponent`, raycast hits) with signatures and docs in the
+  popup; hovering an API name shows its signature.
+- Syntax errors are checked 0.4 s after typing stops (compiled, not run): red squiggle, gutter marker with the
+  message on hover, and the status bar (click to jump). Console messages naming `Assets/….lua:N` get a link
+  (and double-click) that opens the script at that line.
+- Saving in Edit mode hot-reloads the script as before; in Play mode the game keeps its version until Stop.
+- Tests: buffer, every command (duplicate/move/delete/comment lines, smart home, indent, auto-close/indent,
+  paste modes, format), find/replace incl. regex, undo grouping, completion context and ranking, syntax error
+  placement, Console links, chords; kittests for opening from the Project window and the Console, typing, the
+  dirty marker, Ctrl+S on a temp project copy, the find bar, Go To Line, prompts, disk reloads, diagnostics,
+  completion and F5.
+
+### Not matching Visual Studio yet
+- No debugger (breakpoints, stepping, watches): F5 only enters Play mode.
+- No IntelliSense across files, no type inference beyond simple assignments, no parameter info while typing
+  arguments, no rename refactoring, Find All References or Navigate Backward/Forward.
+- Only the first syntax error is shown; runtime errors aren't squiggled.
+- Undo history is lost when a file is closed; no split views, no drag-and-drop of text, no Ctrl+Shift+Up/Down
+  selection expansion; word-wrap Up/Down moves by lines; the minimap is scaled to fit rather than scrolled.

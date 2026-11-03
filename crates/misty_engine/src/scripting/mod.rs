@@ -19,11 +19,12 @@
 
 pub mod animator_api;
 pub mod api;
-pub mod material_api;
 pub mod audio_api;
+pub mod material_api;
 pub mod particles_api;
 pub mod physics_api;
 pub mod render_settings_api;
+pub mod syntax;
 pub mod terrain_api;
 pub mod ui_api;
 mod ui_dispatch;

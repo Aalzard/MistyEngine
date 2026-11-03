@@ -113,6 +113,12 @@ fn create(s: &mut EditorState, kind: AssetKind) {
             s.project.start_rename(path.clone());
             s.console
                 .info(format!("Created {}", s.assets.relative(&path)));
+            // New scripts open in the Code Editor; the name field keeps the keyboard.
+            if kind == AssetKind::Script {
+                let rel = s.assets.relative(&path);
+                crate::panels::code_editor::open_script(s, &rel, None);
+                s.code_editor.ui.focus_text = false;
+            }
         }
         Err(e) => s
             .console
@@ -184,6 +190,7 @@ fn update_memory(s: &mut EditorState, old: &str, new: &str, from: &Path, to: &Pa
     s.files.settings.save(&s.project.root);
     crate::build_settings::load(s);
     s.anim_clips.rename(old, new);
+    s.code_editor.rename(old, new);
     if let Some(c) = s.animation.clip.as_mut() {
         remap(c);
     }

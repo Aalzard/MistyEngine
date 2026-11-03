@@ -18,6 +18,8 @@ pub enum Tab {
     Animator,
     /// Window ▸ Audio ▸ Audio Mixer.
     AudioMixer,
+    /// Window ▸ General ▸ Code Editor.
+    CodeEditor,
 }
 
 impl Tab {
@@ -33,7 +35,12 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 3] = [Tab::Lighting, Tab::Animator, Tab::AudioMixer];
+    pub const ON_DEMAND: [Tab; 4] = [
+        Tab::Lighting,
+        Tab::Animator,
+        Tab::AudioMixer,
+        Tab::CodeEditor,
+    ];
 
     /// Built-in layout tabs, then on-demand ones.
     pub fn every() -> impl Iterator<Item = Tab> {
@@ -48,6 +55,8 @@ impl Tab {
             Tab::Animator => Some(Tab::Scene),
             // Docks with the Project and Console like the reference editor.
             Tab::AudioMixer => Some(Tab::Project),
+            // Scripts want the big area, like a document window.
+            Tab::CodeEditor => Some(Tab::Scene),
             _ => None,
         }
     }
@@ -64,6 +73,7 @@ impl Tab {
             Tab::Lighting => "Lighting",
             Tab::Animator => "Animator",
             Tab::AudioMixer => "Audio Mixer",
+            Tab::CodeEditor => "Code Editor",
         }
     }
 
@@ -79,6 +89,7 @@ impl Tab {
             Tab::Lighting => "☀",
             Tab::Animator => crate::panels::animator::CONTROLLER_ICON,
             Tab::AudioMixer => crate::panels::audio_mixer::MIXER_ICON,
+            Tab::CodeEditor => crate::panels::code_editor::ICON,
         }
     }
 
@@ -92,7 +103,7 @@ impl Tab {
             Tab::Project => "Ctrl+5",
             Tab::Console => "Ctrl+Shift+C",
             Tab::Animation => "Ctrl+6",
-            Tab::Lighting | Tab::Animator | Tab::AudioMixer => "",
+            Tab::Lighting | Tab::Animator | Tab::AudioMixer | Tab::CodeEditor => "",
         }
     }
 }

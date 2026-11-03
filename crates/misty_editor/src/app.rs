@@ -115,6 +115,8 @@ impl EditorApp {
 
     /// Global keyboard shortcuts (skipped while typing in a text field).
     fn shortcuts(&mut self, ctx: &egui::Context) {
+        // The Code Editor owns the keyboard while its text has focus (only Play keys stay global).
+        let code_editor = crate::panels::code_editor::global_shortcuts(ctx, &mut self.state);
         let ctrl = Modifiers::COMMAND;
         let ctrl_shift = Modifiers::COMMAND | Modifiers::SHIFT;
         let ctrl_alt = Modifiers::COMMAND | Modifiers::ALT;
@@ -169,6 +171,14 @@ impl EditorApp {
             if typing && text_key {
                 continue;
             }
+            if code_editor
+                && !matches!(
+                    action,
+                    Action::TogglePlay | Action::TogglePause | Action::Step
+                )
+            {
+                continue;
+            }
             // Delete removes selected keys / states when the Animation / Animator window has focus.
             if key == Key::Delete
                 && (self.state.animation.wants_delete() || self.state.animator.wants_delete())
@@ -184,7 +194,9 @@ impl EditorApp {
         if !typing && !self.state.project.focused {
             self.clipboard_shortcuts(ctx);
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(ctrl, Key::R))) {
+        if !code_editor
+            && ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(ctrl, Key::R)))
+        {
             self.state.refresh_assets();
         }
         // Transform tools: plain Q/W/E/R/T/Y, unless typing or flying with right mouse.
@@ -403,8 +415,11 @@ impl EditorApp {
     /// Save prompt, window-close interception and the window title.
     fn scene_file_frame(&mut self, ctx: &egui::Context) {
         let s = &mut self.state;
-        // Closing the window with unsaved changes asks first.
-        if ctx.input(|i| i.viewport().close_requested()) && !s.files.quit_confirmed {
+        // Closing the window with unsaved changes asks first (scripts, then the scene).
+        let closing = ctx.input(|i| i.viewport().close_requested());
+        if closing && s.code_editor.cancel_close() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        } else if closing && !s.files.quit_confirmed {
             if s.play.in_play_mode() {
                 play::stop(s);
             }
@@ -501,6 +516,7 @@ impl eframe::App for EditorApp {
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
+        crate::panels::code_editor::show_windows(&ctx, &mut self.state);
         self.apply_actions(&ctx);
         if let Some(text) = self.state.os_clipboard_out.take() {
             ctx.copy_text(text);

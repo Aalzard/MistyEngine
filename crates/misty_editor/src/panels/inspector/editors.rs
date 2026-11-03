@@ -964,6 +964,15 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                         open_script(state, &script.path);
                         ui.close();
                     }
+                    if ui.button("Open in External Editor").clicked() {
+                        let abs = state.assets.absolute(&script.path);
+                        if let Err(err) = crate::assets::open_external(&abs) {
+                            state
+                                .console
+                                .warn(format!("Could not open {}: {err}", script.path));
+                        }
+                        ui.close();
+                    }
                 });
             });
         });
@@ -1058,12 +1067,9 @@ fn script_value_ui(ui: &mut Ui, id: &str, v: &mut ScriptValue) -> bool {
     }
 }
 
-/// Open a script in the system's default editor for `.lua` files.
+/// Open a script in the Code Editor (or the external editor chosen in Preferences).
 pub fn open_script(state: &mut EditorState, rel: &str) {
-    let abs = state.assets.absolute(rel);
-    if let Err(err) = crate::assets::open_external(&abs) {
-        state.console.warn(format!("Could not open {rel}: {err}"));
-    }
+    crate::panels::code_editor::open_script(state, rel, None);
 }
 
 /// Error colour for inline messages.
