@@ -117,6 +117,11 @@ impl Runtime {
             .with_animator(|a| a.set_param(scene, e, name, &ParamKind::ALL, value));
     }
 
+    /// Corners left on `e`'s Nav Mesh Agent path, from the agent (editor path gizmo).
+    pub fn nav_path(&self, e: hecs::Entity) -> Option<Vec<Vec3>> {
+        self.host.with_navigation(|n| n.path_of(e))
+    }
+
     /// Game view "Mute Audio" and the editor's Pause button.
     pub fn set_audio_state(&mut self, muted: bool, paused: bool) {
         self.host.with_audio(|a| {

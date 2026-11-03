@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::camera::{euler_to_quat, quat_to_euler};
 
+pub use crate::navigation::{NavMeshAgent, NavMeshObstacle};
 pub use crate::particles::ParticleSystem;
 pub use crate::terrain::{Terrain, TerrainCollider};
 

@@ -141,6 +141,8 @@ pub struct Frame<'a> {
     /// Bloom, grading, tonemapping and vignette.
     pub post: PostSettings,
     pub lines: &'a [LineVertex],
+    /// Translucent triangles drawn over the scene (depth-tested, e.g. the nav mesh overlay).
+    pub overlay: &'a [LineVertex],
     pub meshes: &'a [MeshDraw],
     /// Particle systems with live particles (drawn after opaque meshes).
     pub particles: &'a [ParticleBatch],
@@ -430,12 +432,22 @@ impl Renderer {
             );
         }
 
-        if frame.lines.len() > self.line_capacity {
-            self.line_capacity = frame.lines.len().next_power_of_two();
+        // Overlay triangles follow the lines in the same buffer.
+        let line_vertices = frame.lines.len() + frame.overlay.len();
+        if line_vertices > self.line_capacity {
+            self.line_capacity = line_vertices.next_power_of_two();
             self.line_buffer = line_buffer(device, self.line_capacity);
         }
         if !frame.lines.is_empty() {
             queue.write_buffer(&self.line_buffer, 0, bytemuck::cast_slice(frame.lines));
+        }
+        if !frame.overlay.is_empty() {
+            let offset = std::mem::size_of_val(frame.lines) as u64;
+            queue.write_buffer(
+                &self.line_buffer,
+                offset,
+                bytemuck::cast_slice(frame.overlay),
+            );
         }
 
         let particle_draws = self.upload_particles(device, queue, frame);
@@ -736,6 +748,13 @@ impl Renderer {
         // After the grid: particles don't write depth, so the grid would draw over them.
         if frame.shaded && !particle_draws.is_empty() {
             self.draw_particles(&mut pass, frame, particle_draws);
+        }
+
+        if !frame.overlay.is_empty() {
+            let first = frame.lines.len() as u32;
+            pass.set_pipeline(&self.pipelines.overlay);
+            pass.set_vertex_buffer(0, self.line_buffer.slice(..));
+            pass.draw(first..first + frame.overlay.len() as u32, 0..1);
         }
 
         if !frame.lines.is_empty() {

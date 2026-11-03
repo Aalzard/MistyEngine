@@ -374,7 +374,11 @@ impl UserData for LGameObject {
                     Some(v) => v,
                     None => match super::ui_api::component(lua, e, &name)? {
                         Some(v) => v,
-                        None => super::terrain_api::component(lua, e, &name)?.unwrap_or(Value::Nil),
+                        None => match super::terrain_api::component(lua, e, &name)? {
+                            Some(v) => v,
+                            None => super::navigation_api::component(lua, e, &name)?
+                                .unwrap_or(Value::Nil),
+                        },
                     },
                 }),
             }
@@ -861,6 +865,8 @@ pub fn register(lua: &Lua) -> Result<()> {
         lua.create_function(|lua, a: String| with_world(lua, |w| w.input.axis(&a)))?,
     )?;
     g.set("Input", input)?;
+    super::camera_api::register(lua)?;
+    super::navigation_api::register(lua)?;
 
     // GameObject.Find / Destroy
     let go = lua.create_table()?;

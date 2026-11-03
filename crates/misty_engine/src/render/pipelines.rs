@@ -33,6 +33,8 @@ pub struct Pipelines {
     pub sky: wgpu::RenderPipeline,
     pub grid: wgpu::RenderPipeline,
     pub lines: wgpu::RenderPipeline,
+    /// Translucent triangles with the line shader (no depth writes).
+    pub overlay: wgpu::RenderPipeline,
     pub mesh: wgpu::RenderPipeline,
     pub shadow: wgpu::RenderPipeline,
     pub mask: wgpu::RenderPipeline,
@@ -265,6 +267,20 @@ impl Pipelines {
                 ..Spec::new("lines", include_str!("shaders/lines.wgsl"), &[&view_layout])
             },
         );
+        let overlay = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                buffers: &line_buffers,
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new(
+                    "overlay",
+                    include_str!("shaders/lines.wgsl"),
+                    &[&view_layout],
+                )
+            },
+        );
         let mesh_buffers = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
@@ -481,6 +497,7 @@ impl Pipelines {
             sky,
             grid,
             lines,
+            overlay,
             mesh,
             shadow,
             mask,

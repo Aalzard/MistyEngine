@@ -126,6 +126,14 @@ impl SceneComponent for Terrain {
     const NAME: &'static str = "Terrain";
     const CATEGORY: &'static str = "Miscellaneous";
 }
+impl SceneComponent for NavMeshAgent {
+    const NAME: &'static str = "Nav Mesh Agent";
+    const CATEGORY: &'static str = "Navigation";
+}
+impl SceneComponent for NavMeshObstacle {
+    const NAME: &'static str = "Nav Mesh Obstacle";
+    const CATEGORY: &'static str = "Navigation";
+}
 impl SceneComponent for TerrainCollider {
     const NAME: &'static str = "Terrain Collider";
     const CATEGORY: &'static str = "Physics";
@@ -233,6 +241,8 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<ParticleSystem>(),
             ComponentInfo::of::<Terrain>(),
             ComponentInfo::of::<TerrainCollider>(),
+            ComponentInfo::of::<NavMeshAgent>(),
+            ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<Scripts>(),
             ComponentInfo::of::<PrefabLink>(),
         ]

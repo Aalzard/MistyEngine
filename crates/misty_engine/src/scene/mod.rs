@@ -29,6 +29,8 @@ pub struct Scene {
     pub world: World,
     /// Lighting window ▸ Environment (skybox, ambient, reflections, fog).
     pub render_settings: render_settings::RenderSettings,
+    /// Navigation window ▸ agent/bake settings and the baked nav mesh.
+    pub navigation: crate::navigation::NavigationSettings,
     /// Top-level objects in Hierarchy order.
     roots: Vec<Entity>,
 }
@@ -54,6 +56,7 @@ impl Clone for Scene {
             name: self.name.clone(),
             world,
             render_settings: self.render_settings.clone(),
+            navigation: self.navigation.clone(),
             roots: self.roots.clone(),
         }
     }
@@ -65,6 +68,7 @@ impl Scene {
             name: name.to_owned(),
             world: World::new(),
             render_settings: Default::default(),
+            navigation: Default::default(),
             roots: Vec::new(),
         }
     }

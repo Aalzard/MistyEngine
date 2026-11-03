@@ -30,7 +30,7 @@ impl Prefab {
     }
 
     pub fn to_json(&self) -> String {
-        write_json(self.objects.clone(), None)
+        write_json(self.objects.clone(), None, None)
     }
 
     /// Parse `.prefab` JSON: exactly one root, listed first.
