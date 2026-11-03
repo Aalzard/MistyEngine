@@ -1,6 +1,18 @@
 {
   "shader": "Standard",
-  "color": [0.2, 0.45, 0.9, 1.0],
-  "metallic": 0.6,
-  "smoothness": 0.8
+  "color": [
+    0.2,
+    0.45,
+    0.9,
+    1.0
+  ],
+  "metallic": 1.0,
+  "smoothness": 1.0,
+  "emission_enabled": true,
+  "emission": [
+    1.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 55.4
 }

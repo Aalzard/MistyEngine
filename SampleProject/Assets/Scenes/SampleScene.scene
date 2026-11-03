@@ -77,8 +77,8 @@
         "Light": {
           "color": [
             1.0,
-            0.957,
-            0.839
+            0.83137256,
+            0.7058824
           ],
           "enabled": true,
           "intensity": 1.0,
@@ -89,9 +89,9 @@
         },
         "Transform": {
           "euler_hint": [
-            50.0,
-            -30.0,
-            0.0
+            62.05274,
+            -43.296482,
+            -15.913718
           ],
           "position": [
             0.0,
@@ -99,10 +99,10 @@
             0.0
           ],
           "rotation": [
-            0.4082179,
-            -0.23456971,
-            0.10938165,
-            0.87542605
+            0.5182256,
+            -0.2467668,
+            0.078060396,
+            0.81514114
           ],
           "scale": [
             1.0,
@@ -125,7 +125,7 @@
           ],
           "is_static": false,
           "layer": 0,
-          "name": "Ground",
+          "name": "Plane",
           "tag": "Untagged"
         },
         "Mesh Collider": {
@@ -174,97 +174,17 @@
     },
     {
       "components": {
-        "Box Collider": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "is_trigger": false,
-          "size": [
-            1.0,
-            1.0,
-            1.0
-          ],
-          "surface": {
-            "bounciness": 0.0,
-            "friction": 0.6
-          }
-        },
         "GameObject": {
           "active": true,
           "component_order": [
             "Transform",
             "Mesh Filter",
             "Mesh Renderer",
-            "Box Collider",
-            "Scripts"
+            "Sphere Collider"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "Spinning Cube",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Cube"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": "Assets/Materials/Red.mat",
-          "receive_shadows": true
-        },
-        "Scripts": {
-          "list": [
-            {
-              "enabled": true,
-              "fields": {},
-              "path": "Assets/Scripts/Rotator.lua"
-            }
-          ]
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            2.0,
-            1.0,
-            1.0
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": null
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer",
-            "Sphere Collider",
-            "Rigidbody",
-            "Scripts"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "Player",
+          "name": "Sphere",
           "tag": "Untagged"
         },
         "Mesh Filter": {
@@ -273,35 +193,8 @@
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Materials/Blue Metal.mat",
+          "material": "dbg_emit0",
           "receive_shadows": true
-        },
-        "Rigidbody": {
-          "angular_drag": 0.05,
-          "continuous": false,
-          "drag": 0.0,
-          "freeze_position": [
-            false,
-            false,
-            false
-          ],
-          "freeze_rotation": [
-            false,
-            false,
-            false
-          ],
-          "is_kinematic": false,
-          "mass": 1.0,
-          "use_gravity": true
-        },
-        "Scripts": {
-          "list": [
-            {
-              "enabled": true,
-              "fields": {},
-              "path": "Assets/Scripts/PlayerController.lua"
-            }
-          ]
         },
         "Sphere Collider": {
           "center": [
@@ -324,7 +217,138 @@
             0.0
           ],
           "position": [
-            -1.5,
+            -1.6,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Sphere Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sphere (1)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "dbg_emit1",
+          "receive_shadows": true
+        },
+        "Sphere Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "radius": 0.5,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Sphere Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sphere (2)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "dbg_emit2",
+          "receive_shadows": true
+        },
+        "Prefab": {
+          "path": "Assets/Sphere (2).prefab"
+        },
+        "Sphere Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "radius": 0.5,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.6,
             0.5,
             0.0
           ],
@@ -369,12 +393,11 @@
             "Transform",
             "Mesh Filter",
             "Mesh Renderer",
-            "Box Collider",
-            "Rigidbody"
+            "Box Collider"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "Crate",
+          "name": "Cube",
           "tag": "Untagged"
         },
         "Mesh Filter": {
@@ -386,24 +409,6 @@
           "material": null,
           "receive_shadows": true
         },
-        "Rigidbody": {
-          "angular_drag": 0.05,
-          "continuous": false,
-          "drag": 0.0,
-          "freeze_position": [
-            false,
-            false,
-            false
-          ],
-          "freeze_rotation": [
-            false,
-            false,
-            false
-          ],
-          "is_kinematic": false,
-          "mass": 1.0,
-          "use_gravity": true
-        },
         "Transform": {
           "euler_hint": [
             0.0,
@@ -411,241 +416,15 @@
             0.0
           ],
           "position": [
-            -3.0,
+            0.0,
             0.5,
-            2.5
+            -2.0
           ],
           "rotation": [
             0.0,
             0.0,
             0.0,
             1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": null
-    },
-    {
-      "components": {
-        "Box Collider": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "is_trigger": false,
-          "size": [
-            1.0,
-            1.0,
-            1.0
-          ],
-          "surface": {
-            "bounciness": 0.0,
-            "friction": 0.6
-          }
-        },
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer",
-            "Box Collider",
-            "Rigidbody"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "Crate",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Cube"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": null,
-          "receive_shadows": true
-        },
-        "Rigidbody": {
-          "angular_drag": 0.05,
-          "continuous": false,
-          "drag": 0.0,
-          "freeze_position": [
-            false,
-            false,
-            false
-          ],
-          "freeze_rotation": [
-            false,
-            false,
-            false
-          ],
-          "is_kinematic": false,
-          "mass": 1.0,
-          "use_gravity": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            -3.0,
-            1.55,
-            2.5
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": null
-    },
-    {
-      "components": {
-        "Box Collider": {
-          "center": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "enabled": true,
-          "is_trigger": false,
-          "size": [
-            1.0,
-            1.0,
-            1.0
-          ],
-          "surface": {
-            "bounciness": 0.0,
-            "friction": 0.6
-          }
-        },
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Mesh Filter",
-            "Mesh Renderer",
-            "Box Collider",
-            "Rigidbody"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "Crate",
-          "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Cube"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": true,
-          "enabled": true,
-          "material": null,
-          "receive_shadows": true
-        },
-        "Rigidbody": {
-          "angular_drag": 0.05,
-          "continuous": false,
-          "drag": 0.0,
-          "freeze_position": [
-            false,
-            false,
-            false
-          ],
-          "freeze_rotation": [
-            false,
-            false,
-            false
-          ],
-          "is_kinematic": false,
-          "mass": 1.0,
-          "use_gravity": true
-        },
-        "Transform": {
-          "euler_hint": [
-            0.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            -3.0,
-            2.6,
-            2.5
-          ],
-          "rotation": [
-            0.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        }
-      },
-      "parent": null
-    },
-    {
-      "components": {
-        "GameObject": {
-          "active": true,
-          "component_order": [
-            "Transform",
-            "Light"
-          ],
-          "is_static": false,
-          "layer": 0,
-          "name": "Spot Light",
-          "tag": "Untagged"
-        },
-        "Light": {
-          "color": [
-            1.0,
-            0.85,
-            0.6
-          ],
-          "enabled": true,
-          "intensity": 2.0,
-          "kind": "Spot",
-          "range": 10.0,
-          "shadows": "Soft",
-          "spot_angle": 50.0
-        },
-        "Transform": {
-          "euler_hint": [
-            70.0,
-            0.0,
-            0.0
-          ],
-          "position": [
-            2.0,
-            4.0,
-            -1.0
-          ],
-          "rotation": [
-            0.57357645,
-            0.0,
-            0.0,
-            0.81915206
           ],
           "scale": [
             1.0,
