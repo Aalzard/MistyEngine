@@ -14,6 +14,8 @@ pub enum Create {
     Light(LightType),
     Camera,
     AudioSource,
+    /// GameObject â–¸ Effects â–¸ Particle System.
+    ParticleSystem,
 }
 
 impl Create {
@@ -26,6 +28,7 @@ impl Create {
             Create::Light(LightType::Spot) => "Spot Light",
             Create::Camera => "Camera",
             Create::AudioSource => "Audio Source",
+            Create::ParticleSystem => "Particle System",
         }
     }
 }

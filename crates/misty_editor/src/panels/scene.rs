@@ -47,6 +47,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 2 => gizmos::wireframe(&mut lines, &meshes, [0.0, 0.0, 0.0, 0.35]),
                 _ => {}
             }
+            let particles = misty_engine::particles::batches(&state.scene);
             let lights = if sv.lighting {
                 render_scene::lights(&state.scene)
             } else {
@@ -60,6 +61,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 background: [0.28, 0.28, 0.28],
                 lines: &lines.0,
                 meshes: &meshes,
+                particles: &particles,
                 shaded: sv.draw_mode != 1,
                 lights: &lights,
                 ambient_intensity: 1.0,
@@ -129,6 +131,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     }
 
     tools_overlay(ui, rect, state);
+    crate::particle_preview::overlay(ui, rect, state);
     if !state.scene_view.camera.is_2d() {
         scene_gizmo(ui, rect, &mut state.scene_view.camera);
     }

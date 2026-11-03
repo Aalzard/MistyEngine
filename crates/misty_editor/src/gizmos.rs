@@ -1,7 +1,8 @@
-//! Scene-view gizmo lines: camera frustum, light ranges, and mesh wireframes.
+//! Scene-view gizmo lines: camera frustum, light ranges, particle shapes and mesh wireframes.
 
 use glam::{Mat4, Vec3};
 use misty_engine::models;
+use misty_engine::particles::{ParticleSystem, ShapeKind, ShapeModule};
 use misty_engine::physics::collider_matrix;
 use misty_engine::render::LineVertex;
 use misty_engine::render::MeshDraw;
@@ -18,6 +19,7 @@ pub const WIREFRAME: [f32; 4] = [0.05, 0.05, 0.05, 0.9];
 const CAMERA: [f32; 4] = [0.85, 0.85, 0.85, 0.8];
 const LIGHT: [f32; 4] = [1.0, 0.92, 0.45, 0.9];
 const AUDIO: [f32; 4] = [0.45, 0.7, 1.0, 0.85];
+const PARTICLES: [f32; 4] = [0.55, 0.85, 1.0, 0.9];
 
 /// Collects line segments in world space.
 #[derive(Default)]
@@ -256,9 +258,82 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
                 }
             }
         }
+        if let Ok(ps) = w.get::<&ParticleSystem>(e)
+            && ps.shape.enabled
+        {
+            lines.particle_shape(&m, &ps.shape);
+        }
         lines.colliders(scene, e);
     }
     lines
+}
+
+impl Lines {
+    /// Emission shape of a selected Particle System (local +Z is the emission axis).
+    fn particle_shape(&mut self, m: &Mat4, shape: &ShapeModule) {
+        let c = PARTICLES;
+        let r = shape.radius.max(0.0);
+        match shape.shape {
+            ShapeKind::Sphere => {
+                for axis in 0..3 {
+                    self.circle(m, Vec3::ZERO, r, axis, c);
+                }
+            }
+            ShapeKind::Hemisphere => {
+                self.circle(m, Vec3::ZERO, r, 2, c);
+                // Two half arcs over the dome.
+                for flat in [0, 1] {
+                    let pts: Vec<Vec3> = (0..=16)
+                        .map(|i| {
+                            let a = i as f32 / 16.0 * std::f32::consts::PI;
+                            let (s, k) = a.sin_cos();
+                            if flat == 0 {
+                                Vec3::new(k * r, 0.0, s * r)
+                            } else {
+                                Vec3::new(0.0, k * r, s * r)
+                            }
+                        })
+                        .collect();
+                    self.polyline(m, &pts, false, c);
+                }
+            }
+            ShapeKind::Cone => {
+                // Base disc and the disc particles reach after one unit along the axis.
+                let len = 1.0;
+                let top = r + len * shape.angle.clamp(0.0, 89.0).to_radians().tan();
+                self.circle(m, Vec3::ZERO, r, 2, c);
+                self.circle(m, Vec3::Z * len, top, 2, c);
+                for (x, y) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+                    self.line(
+                        m.transform_point3(Vec3::new(x * r, y * r, 0.0)),
+                        m.transform_point3(Vec3::new(x * top, y * top, len)),
+                        c,
+                    );
+                }
+            }
+            ShapeKind::Box => {
+                let h = shape.box_size * 0.5;
+                let corner = |i: u32| {
+                    Vec3::new(
+                        if i & 1 == 0 { -h.x } else { h.x },
+                        if i & 2 == 0 { -h.y } else { h.y },
+                        if i & 4 == 0 { -h.z } else { h.z },
+                    )
+                };
+                for i in 0..8u32 {
+                    for bit in [1, 2, 4] {
+                        if i & bit == 0 {
+                            self.line(
+                                m.transform_point3(corner(i)),
+                                m.transform_point3(corner(i | bit)),
+                                c,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Mesh triangle edges for the Wireframe / Shaded Wireframe draw modes.

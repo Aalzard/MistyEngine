@@ -37,6 +37,7 @@ impl EditorApp {
         theme::apply(&cc.egui_ctx);
         let mut state = EditorState::new(ProjectBrowser::open(project));
         scene_files::open_initial(&mut state);
+        Capture::select_from_env(&mut state);
         let (saved_layouts, dock) = layouts::load(&state.project.root);
         state.layouts = saved_layouts;
         let layout_autosave = Autosave::new(&state.layouts, &dock);
@@ -297,6 +298,10 @@ impl EditorApp {
             }
         }
         if !s.play.in_play_mode() {
+            // Selected Particle Systems play in the Scene view.
+            if crate::particle_preview::tick(s, ctx.input(|i| i.stable_dt)) {
+                ctx.request_repaint();
+            }
             // Scripts reload when their files change; syntax errors go to the Console.
             for err in s.assets.poll_scripts() {
                 s.console.log(LogLevel::Error, err);

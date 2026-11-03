@@ -1,4 +1,5 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
+//! `MISTY_SELECT=Name` also selects that object at startup (to show its Inspector and previews).
 
 use std::path::PathBuf;
 
@@ -15,6 +16,16 @@ impl Capture {
             frames: 0,
             requested: false,
         })
+    }
+
+    /// Select the object named by `MISTY_SELECT`, if set.
+    pub fn select_from_env(state: &mut crate::state::EditorState) {
+        let Some(name) = std::env::var_os("MISTY_SELECT") else {
+            return;
+        };
+        if let Some(e) = state.scene.find_by_name(&name.to_string_lossy()) {
+            state.select(e);
+        }
     }
 
     /// Call once per frame; requests a screenshot after warm-up and quits once saved.

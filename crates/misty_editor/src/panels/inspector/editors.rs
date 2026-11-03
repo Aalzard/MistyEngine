@@ -29,6 +29,7 @@ pub fn icon(name: &str) -> &'static str {
         "Box Collider" | "Sphere Collider" | "Capsule Collider" | "Mesh Collider" => "⬡",
         "Audio Source" => crate::state::AUDIO_ICON,
         "Audio Listener" => "🎧",
+        "Particle System" => crate::state::PARTICLE_ICON,
         _ => "▣",
     }
 }
@@ -102,6 +103,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Capsule Collider" => with::<CapsuleCollider>(ui, state, e, capsule_collider),
         "Mesh Collider" => with::<MeshCollider>(ui, state, e, mesh_collider),
         "Audio Source" => audio_source(ui, state, e),
+        "Particle System" => super::particles::particle_system(ui, state, e),
         "Audio Listener" => {
             ui.weak("Hears every Audio Source in the scene.");
             false
@@ -193,7 +195,7 @@ fn transform(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) -> bool {
 }
 
 /// Two-column property grid like the Inspector's label/value layout.
-fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
+pub(super) fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     Grid::new(id)
         .num_columns(2)
         .spacing([10.0, 4.0])
@@ -202,7 +204,7 @@ fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
         .inner
 }
 
-fn combo<T: Copy + PartialEq>(
+pub(super) fn combo<T: Copy + PartialEq>(
     ui: &mut Ui,
     id: &str,
     value: &mut T,

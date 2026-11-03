@@ -151,6 +151,9 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
             item(ui, s, p.name(), "", create(Create::Primitive(p)));
         }
     });
+    ui.menu_button("Effects", |ui| {
+        item(ui, s, "Particle System", "", create(Create::ParticleSystem));
+    });
     ui.menu_button("Light", |ui| {
         for l in LightType::ALL {
             let what = Create::Light(l);

@@ -2,6 +2,7 @@
 //! With several objects selected, edits apply to all of them (only shared components are shown).
 
 mod editors;
+mod particles;
 mod slots;
 
 use egui::{RichText, Ui};
