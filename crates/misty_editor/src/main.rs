@@ -36,6 +36,8 @@ mod sample_lighting;
 #[cfg(test)]
 mod sample_particles;
 #[cfg(test)]
+mod sample_physics;
+#[cfg(test)]
 mod sample_ui;
 mod scene_camera;
 mod scene_files;

@@ -20,15 +20,19 @@ return Rotator                     -- a script must return its class table
 ## Callbacks
 `Awake`, `Start`, `Update`, `FixedUpdate` (every 0.02 s physics step), `LateUpdate`,
 `OnCollisionEnter(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`, `OnTriggerExit(other)`
-(`other` is a GameObject). Fields starting with `_` stay private.
+(`other` is a GameObject), `OnControllerColliderHit(hit)` (see Character Controller below). Fields starting
+with `_` stay private.
 Animation events call a function by name (no arguments) on the scripts of the object with the Animation.
 
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation")` (nil if the object has none) |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"CharacterController"/…)` (nil if the object has none) |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
-| Rigidbody | `velocity`, `angularVelocity`, `mass`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])` |
+| Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
+| `Physics` | `Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere` (see Physics queries), `DefaultRaycastLayers`, `AllLayers`, `IgnoreRaycastLayer` |
+| `LayerMask` | `GetMask("Default", "Player", …)`, `NameToLayer(name)` (-1 if unknown), `LayerToName(index)` |
+| CharacterController | `Move(motion)`, `SimpleMove(speed)` (returns `isGrounded`), `isGrounded`, `velocity`, `height`, `radius`, `center`, `slopeLimit`, `stepOffset`, `skinWidth` (read-only) |
 | AudioSource | `Play()`, `Stop()`, `Pause()`, `UnPause()`, `PlayOneShot(clipPath [, volumeScale])`, `isPlaying` (read-only), `volume`, `pitch`, `loop`, `mute`, `spatialBlend`, `enabled`, `clip` (project path like `"Assets/Audio/Beep.wav"`, or nil) |
 | Animation | `Play([name])` (the default clip, or the clip of the Animation's list with that file name; restarts it; returns false and warns if missing), `Stop()` (rewinds, keeps the pose), `IsPlaying(name)`, `isPlaying` (read-only), `time` (seconds since Play, keeps growing while looping; settable), `speed` (1 = normal, negative plays backwards), `clip` (name of the current clip, read-only), `enabled` |
 | Text (UI) | `GetComponent("Text")`: `text` (numbers are shown as text), `fontSize`, `color`, `enabled`, `gameObject` |
@@ -42,7 +46,7 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
 | `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name` |
 | `Application` | `Quit()` — closes the built game (ignored with a Console message in the editor) |
-| Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
+| Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
 
 Key names: letters/digits (`"a"`, `"1"`), `"space"`, `"return"`, `"escape"`, `"tab"`, `"up"`, `"down"`, `"left"`,
 `"right"`, `"left shift"`, `"left ctrl"`, `"left alt"`, `"f1"`…
@@ -171,3 +175,55 @@ end
 return Dusk
 ```
 The fog mode and the skybox are not scriptable yet.
+
+### Physics queries
+
+```lua
+local hit = Physics.Raycast(origin, direction [, maxDistance [, layerMask]])   -- nil when nothing is hit
+if hit ~= nil then
+    Debug.Log(hit.gameObject.name, hit.distance, hit.point, hit.normal)
+end
+local all = Physics.RaycastAll(origin, direction, 50)          -- list of hits, nearest first
+local hit2 = Physics.SphereCast(origin, 0.5, direction, 10)    -- like Raycast with a sphere
+local near = Physics.OverlapSphere(center, 3)                  -- list of GameObjects (one per collider)
+```
+A hit has `point`, `normal`, `distance`, `gameObject`, `collider` (the collider's GameObject, so
+`hit.collider.gameObject` works), `transform` and `rigidbody` (nil for static colliders). `direction` doesn't need
+to be normalised; `maxDistance` defaults to `Mathf.Infinity`. Masks are layer bit masks: Raycast/RaycastAll/
+SphereCast default to `Physics.DefaultRaycastLayers` (every layer but Ignore Raycast), OverlapSphere to every layer.
+Combine them with Lua's bit operators, e.g. `Physics.DefaultRaycastLayers & ~LayerMask.GetMask("Player")`.
+Rays ignore colliders they start inside. Triggers are hit unless Project Settings ▸ Physics ▸ Queries Hit
+Triggers is off; the Layer Collision Matrix there decides which layers collide (queries use only the mask).
+Queries see the positions of the last physics step (and work in `Awake`/`Start`).
+
+### Character Controller
+
+Add **Component ▸ Physics ▸ Character Controller** (it is its own capsule collider; remove other colliders or
+put them on another layer). Move it from a script; it slides along walls, climbs steps up to Step Offset and
+slopes up to Slope Limit, and isn't pushed by physics.
+
+```lua
+local Walker = { speed = 4, gravity = -15 }
+function Walker:Start() self.cc = self.gameObject:GetComponent("CharacterController"); self._vy = 0 end
+function Walker:Update()
+    local move = self.transform.forward * (Input.GetAxis("Vertical") * self.speed)
+    if self.cc.isGrounded then self._vy = -1 end
+    self._vy = self._vy + self.gravity * Time.deltaTime
+    self.cc:Move((move + Vector3.new(0, self._vy, 0)) * Time.deltaTime)   -- motion for this frame
+end
+function Walker:OnControllerColliderHit(hit)                              -- push crates
+    if hit.rigidbody ~= nil then hit.rigidbody.velocity = hit.moveDirection * 2 end
+end
+return Walker
+```
+`Move(motion)` moves by a world-space displacement (no gravity added) and updates the Transform at once;
+`SimpleMove(speed)` takes a velocity in units/second, ignores its Y and applies gravity itself. `isGrounded` and
+`velocity` describe the last move. `OnControllerColliderHit(hit)` is called once per collider touched by a move,
+right after the callback that called `Move`; `hit` has `gameObject`, `collider`, `transform`, `rigidbody`, `point`,
+`normal`, `moveDirection`, `moveLength`, `controller`. Sample: `Scenes/PhysicsDemo.scene` with
+`Assets/Scripts/CharacterWalker.lua` and `Assets/Scripts/LaserPointer.lua`.
+
+### Joints
+
+Fixed, Hinge and Spring Joints are set up in the Inspector (Connected Body = another object with a Rigidbody, or
+None for the world) and need no script. Bodies keep reacting to `AddForce`, `velocity` and so on while jointed.

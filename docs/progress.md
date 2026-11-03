@@ -137,9 +137,34 @@
 - Play mode simulates: gravity, collisions between dynamic/static/kinematic bodies, compound colliders on parents,
   collider sizes follow object scale; Stop restores the pre-Play scene.
 - Green collider gizmos for selected objects.
+- Rigidbody ▸ Interpolate (None / Interpolate) blends the drawn pose between fixed steps.
+- Layer Collision Matrix in Project Settings ▸ Physics (unchecked pairs don't collide, trigger or block
+  controllers) and **Queries Hit Triggers**.
+- Queries: `Physics.Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere` with layer masks (default skips Ignore
+  Raycast; rays ignore colliders they start in); `LayerMask.GetMask/NameToLayer/LayerToName`; work from `Start`.
+- Joints (Component ▸ Physics, a Rigidbody is added with them): **Fixed Joint**, **Hinge Joint** (anchor, axis,
+  auto-configured connected anchor, spring, motor, limits), **Spring Joint** (spring, damper, min/max distance),
+  each with Connected Body (another Rigidbody, or the world) and Enable Collision; Inspector editors with a
+  Connected Body picker; Scene-view gizmos (anchor cross, hinge axis arrow and limit arc, spring zigzag).
+- **Character Controller** (slope limit, step offset, skin width, min move distance, center, radius, height):
+  kinematic capsule driven by rapier's character controller; Lua `Move`, `SimpleMove`, `isGrounded`, `velocity`,
+  `OnControllerColliderHit`; capsule gizmo. Dynamic bodies collide with it.
+- Lua Rigidbody extras: `MovePosition`, `MoveRotation`, `position`, `isKinematic`, `useGravity`; `gameObject.layer`.
+- Sample: `Scenes/PhysicsDemo.scene` — capsule character (W/S walk, A/D turn, Space jump, camera follows) with a
+  raycast laser pointer (click/E shoves what it points at), a self-closing hinged door it can push open, a
+  motorised turnstile, a spring chain with a weight, steps, a ramp and crates (`CharacterWalker.lua`,
+  `LaserPointer.lua`, `Laser.mat`).
 
 ### Not matching Unity yet
-- No joints, no physics materials as assets, no layer collision matrix.
+- No physics materials as assets, no Tags & Layers editor (six fixed layers), no `Physics.gravity` from Lua,
+  no `BoxCast`/`CapsuleCast`/`OverlapBox`, no `QueryTriggerInteraction` argument, no Collider userdata
+  (`hit.collider` is the GameObject).
+- Joints: no Configurable/Character joints, no break force/torque or `OnJointBreak`, no Lua access to joints,
+  no Free Spin / bounciness of limits; joint frames are fixed when Play starts. Spring Joint has no Tolerance.
+- Character Controller: capsule follows the object's rotation (not kept upright), `Move` returns nothing
+  (no CollisionFlags), `isGrounded` also true on flat ground without gravity, no `detectCollisions`/
+  `enableOverlapRecovery`, can't be disabled; `OnControllerColliderHit` runs after the calling callback.
+- No Extrapolate interpolation, no Continuous Dynamic / Speculative modes; `MoveRotation` takes Euler angles.
 - No "Edit Collider" handles; Mesh Collider only works with built-in meshes.
 
 ## Step 8 — Scripting ✅
@@ -157,7 +182,7 @@
 - Samples: Rotator.lua, PlayerController.lua.
 
 ### Not matching Unity yet
-- Lua instead of C#; no coroutines, raycasts, GetComponent for scripts or other components.
+- Lua instead of C#; no coroutines, GetComponent for scripts or for every component (Physics queries arrived with the physics extension).
 - No script execution order settings; no "Edit Script" opening at the error line.
 - Hot reload only applies in Edit mode.
 
@@ -184,7 +209,8 @@
 - Edit ▸ Project Settings… opens a floating "Project Settings" window: category list (Physics, Time) on the left,
   fields on the right. Every change is saved immediately to `<Project>/ProjectSettings/ProjectSettings.json`
   (meant for version control) and loaded when the editor opens the project.
-- Physics: Gravity, Max Steps Per Frame. Time: Fixed Timestep, Maximum Allowed Timestep, Time Scale.
+- Physics: Gravity, Max Steps Per Frame, Queries Hit Triggers, Layer Collision Matrix. Time: Fixed Timestep,
+  Maximum Allowed Timestep, Time Scale.
 - Play mode builds physics with the project's gravity / fixed timestep / step cap; Time Scale and Maximum Allowed
   Timestep also apply live while playing. Lua `Time.fixedDeltaTime` and `Time.timeScale` show the project values.
 - Missing or unknown fields load as defaults; out-of-range values are clamped.

@@ -5,6 +5,7 @@ mod anim;
 mod editors;
 mod mixed;
 mod particles;
+mod physics_editors;
 mod post_volume;
 mod slots;
 mod ui_editors;
@@ -26,14 +27,8 @@ pub const TAGS: [&str; 7] = [
     "Player",
     "GameController",
 ];
-pub const LAYERS: [&str; 6] = [
-    "Default",
-    "TransparentFX",
-    "Ignore Raycast",
-    "Water",
-    "UI",
-    "Player",
-];
+/// Layer names live with the physics layer masks.
+pub use misty_engine::physics::LAYERS;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     lock_row(ui, state);

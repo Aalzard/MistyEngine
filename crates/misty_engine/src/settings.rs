@@ -22,6 +22,34 @@ pub struct PhysicsSettings {
     pub fixed_timestep: f32,
     /// Upper bound of fixed steps per frame, so a slow frame can't spiral.
     pub max_steps_per_frame: u32,
+    /// Raycasts and overlap queries also return trigger colliders.
+    pub queries_hit_triggers: bool,
+    /// Layer Collision Matrix: layer pairs that don't collide (unchecked boxes), smaller first.
+    pub ignored_layer_pairs: Vec<[u8; 2]>,
+}
+
+impl PhysicsSettings {
+    /// Do objects on layers `a` and `b` collide?
+    pub fn layers_collide(&self, a: u8, b: u8) -> bool {
+        !self.ignored_layer_pairs.contains(&[a.min(b), a.max(b)])
+    }
+
+    /// Tick or untick one box of the Layer Collision Matrix.
+    pub fn set_layers_collide(&mut self, a: u8, b: u8, collide: bool) {
+        let pair = [a.min(b), a.max(b)];
+        self.ignored_layer_pairs.retain(|p| *p != pair);
+        if !collide {
+            self.ignored_layer_pairs.push(pair);
+            self.ignored_layer_pairs.sort();
+        }
+    }
+
+    /// Bit mask of the layers that `layer` collides with.
+    pub fn collision_mask(&self, layer: u8) -> u32 {
+        (0..32u8)
+            .filter(|other| self.layers_collide(layer, *other))
+            .fold(0, |m, other| m | 1 << other)
+    }
 }
 
 impl Default for PhysicsSettings {
@@ -30,6 +58,8 @@ impl Default for PhysicsSettings {
             gravity: Vec3::new(0.0, -9.81, 0.0),
             fixed_timestep: 0.02,
             max_steps_per_frame: 8,
+            queries_hit_triggers: true,
+            ignored_layer_pairs: Vec::new(),
         }
     }
 }
@@ -97,6 +127,16 @@ impl ProjectSettings {
         }
         p.fixed_timestep = clamp_or(p.fixed_timestep, 0.0001, 10.0, 0.02);
         p.max_steps_per_frame = p.max_steps_per_frame.clamp(1, 100);
+        // Ordered, unique pairs of real layers.
+        let mut pairs: Vec<[u8; 2]> = p
+            .ignored_layer_pairs
+            .iter()
+            .filter(|[a, b]| *a < 32 && *b < 32)
+            .map(|[a, b]| [*a.min(b), *a.max(b)])
+            .collect();
+        pairs.sort();
+        pairs.dedup();
+        p.ignored_layer_pairs = pairs;
         let t = &mut self.time;
         t.time_scale = clamp_or(t.time_scale, 0.0, 100.0, 1.0);
         t.maximum_allowed_timestep = clamp_or(t.maximum_allowed_timestep, 0.0001, 10.0, 1.0 / 3.0);
@@ -127,6 +167,8 @@ mod tests {
         s.physics.gravity = Vec3::new(1.0, -3.0, 0.5);
         s.physics.fixed_timestep = 0.01;
         s.physics.max_steps_per_frame = 4;
+        s.physics.queries_hit_triggers = false;
+        s.physics.set_layers_collide(5, 0, false);
         s.time.time_scale = 0.5;
         s.time.maximum_allowed_timestep = 0.1;
         s.save(&root).unwrap();
@@ -146,6 +188,24 @@ mod tests {
             ProjectSettings::default()
         );
         assert!(ProjectSettings::from_json("not json").is_err());
+    }
+
+    #[test]
+    fn layer_collision_matrix() {
+        let mut p = PhysicsSettings::default();
+        assert!(p.layers_collide(0, 5));
+        assert_eq!(p.collision_mask(3), u32::MAX);
+        p.set_layers_collide(5, 2, false);
+        assert!(!p.layers_collide(2, 5) && !p.layers_collide(5, 2));
+        assert_eq!(p.ignored_layer_pairs, vec![[2, 5]]);
+        assert_eq!(p.collision_mask(5), !(1 << 2));
+        p.set_layers_collide(2, 5, true);
+        assert!(p.ignored_layer_pairs.is_empty());
+        let s = ProjectSettings::from_json(
+            r#"{ "physics": { "ignored_layer_pairs": [[4, 1], [1, 4], [40, 1]] } }"#,
+        )
+        .unwrap();
+        assert_eq!(s.physics.ignored_layer_pairs, vec![[1, 4]]);
     }
 
     #[test]

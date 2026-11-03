@@ -61,27 +61,41 @@ fn tidy_numbers(v: &mut serde_json::Value) {
 }
 
 /// GameObject reference fields: (component, list field, reference field in each item).
-const OBJECT_REFS: &[(&str, &str, &str)] = &[("Button", "on_click", "target")];
+/// An empty list field means the reference is a field of the component itself.
+const OBJECT_REFS: &[(&str, &str, &str)] = &[
+    ("Button", "on_click", "target"),
+    ("Fixed Joint", "", "connected_body"),
+    ("Hinge Joint", "", "connected_body"),
+    ("Spring Joint", "", "connected_body"),
+];
 
 /// Rewrite every object reference with `f` (entity bits ↔ object index); unmapped → null.
 fn remap_refs(
     components: &mut BTreeMap<String, serde_json::Value>,
     f: impl Fn(u64) -> Option<u64>,
 ) {
+    let remap = |v: &mut serde_json::Value| {
+        *v = v
+            .as_u64()
+            .and_then(&f)
+            .map_or(serde_json::Value::Null, Into::into);
+    };
     for (comp, list, field) in OBJECT_REFS {
-        let Some(items) = components
-            .get_mut(*comp)
-            .and_then(|c| c.get_mut(*list))
-            .and_then(|l| l.as_array_mut())
-        else {
+        let Some(c) = components.get_mut(*comp) else {
+            continue;
+        };
+        if list.is_empty() {
+            if let Some(v) = c.get_mut(*field) {
+                remap(v);
+            }
+            continue;
+        }
+        let Some(items) = c.get_mut(*list).and_then(|l| l.as_array_mut()) else {
             continue;
         };
         for item in items {
             if let Some(v) = item.get_mut(*field) {
-                *v = v
-                    .as_u64()
-                    .and_then(&f)
-                    .map_or(serde_json::Value::Null, Into::into);
+                remap(v);
             }
         }
     }

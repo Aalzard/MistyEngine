@@ -602,3 +602,56 @@ Record of choices made without asking, and why.
      low evening sun ahead of the camera, hazy warm procedural sky, Exp² fog over a receding row of pillars, and a
      Global Volume with ACES, +0.7 EV, slight contrast/saturation and a vignette. Adds `Sand.mat` and
      `Sandstone.mat`; reuses `Blue Metal.mat` without changing it.
+
+## 2026-11-03 — Physics: queries, layers, joints, Character Controller
+
+167. **`physics.rs` became a `physics/` module** (`mod.rs` world + bodies, `colliders`, `joints`, `character`,
+     `queries`, `layers`, `convert` + one test file per feature). With queries, joints and the controller the
+     single file would have passed 1500 lines; the existing code moved without behaviour changes (`locked_axes`
+     and the collider centre offset became small helpers).
+168. **Layer names moved to the engine** (`misty_engine::physics::LAYERS`, re-exported as the Inspector's
+     `LAYERS`): scripts need them for `LayerMask.NameToLayer`. The six built-in names and indices are kept (`UI`
+     stays 4, matching `ui_create::UI_LAYER`); there is still no Tags & Layers editor for user layers.
+169. **Layer Collision Matrix stored as the unchecked pairs** (`physics.ignored_layer_pairs: [[a, b], …]`, smaller
+     index first) instead of a 32×32 bit matrix: the JSON stays short and an old settings file means "everything
+     collides". It becomes rapier collision groups (membership = the layer bit, filter = the layers it collides
+     with), so it applies to contacts, triggers and the Character Controller's sweeps. Changing
+     `gameObject.layer` from Lua updates the groups.
+170. **Query rules follow the reference engine:** `Physics.Raycast` returns a hit table or `nil` (Lua has no `out`
+     parameters); the default mask is `DefaultRaycastLayers` (everything but Ignore Raycast), `OverlapSphere`
+     defaults to all layers; rays ignore colliders they start inside; triggers are hit unless the new Project
+     Settings ▸ Physics ▸ **Queries Hit Triggers** is off. `RaycastAll` is sorted nearest first (the reference
+     leaves the order unspecified). `hit.collider` is the collider's GameObject (there is no Collider userdata);
+     GameObject got a `gameObject` field so `hit.collider.gameObject` works.
+171. **Queries work before the first step**: building the world (and adding instantiated objects) runs a
+     zero-length rapier step, which registers the new bodies and fills the broad phase without moving anything
+     (rapier's collision-only pipeline skips the island manager, so dynamic bodies never woke up); contacts found
+     then are kept and reported by the next real step, so `OnCollisionEnter` still fires once.
+172. **Joints connect connected body → own body** (rapier body 1 = the connected body or a shared fixed "world"
+     body, body 2 = the object), with frames taken from the poses when Play starts, so a hinge's angle starts at
+     0 and a Fixed Joint keeps the current offset. Hinge limits/spring/motor use rapier's angular X axis of a frame
+     whose X is the hinge axis; spring and motor use the force-based motor model (Spring in N·m per radian, motor
+     Force = max torque, Target Velocity in °/s); when both are on, the motor wins. Joints require a Rigidbody:
+     adding one through Add Component adds a Rigidbody too (`registry::requires`, like RequireComponent).
+173. **Spring Joint is a force, not a rapier joint**: the reference's Min/Max Distance band (no force inside it)
+     has no rapier equivalent, so before each step `spring × stretch + damper × closing speed` is applied at both
+     anchors. With Enable Collision off, an empty rapier joint (no locked axes) is added only to switch contacts
+     between the two bodies off. Explicit forces are stable for usual values (default 10/0.2: ω·dt ≈ 0.06).
+174. **Character Controller = kinematic rapier body + capsule + `KinematicCharacterController`.** Slope Limit is both
+     the climb and the slide angle, Step Offset drives autostep (min tread = radius/2) and ground snapping, Skin
+     Width is the controller's offset. `Move` updates the Transform immediately (the body follows in the next
+     step); `isGrounded` is rapier's grounded flag after the last move (also true while walking on flat ground
+     without gravity, unlike the reference). `SimpleMove` keeps its own falling speed. The capsule is not pushed
+     by physics; dynamic bodies can rest on it. A Rigidbody on the same object is ignored with a warning. The
+     capsule follows the object's rotation (the reference keeps it upright).
+175. **`OnControllerColliderHit` runs right after the callback that called `Move`** (one call per collider per
+     move), not inside `Move`: Lua callbacks can't run while the API call holds the script world.
+176. **Rigidbody ▸ Interpolate (None/Interpolate)** stores the pose before each step and blends it with the current
+     one by the leftover fixed-step time when writing Transforms, so the drawn pose lags up to one step like the
+     reference. `rb.position` reads the physics pose. Extrapolate is not offered.
+177. **`MovePosition` / `MoveRotation` place the Transform at once** (kinematic bodies then sweep there during the
+     next step, pushing what they meet; dynamic ones are placed). `MoveRotation` takes Euler angles because the Lua
+     API has no Quaternion type yet.
+178. **PhysicsDemo sample generated by code** (`sample_physics` test module, like ParticlesDemo): new scripts
+     `CharacterWalker.lua` (tank controls, so the child camera follows) and `LaserPointer.lua`, new `Laser.mat`;
+     `PlayerController.lua` and `SampleScene.scene` are untouched. A third test plays the scene headless.

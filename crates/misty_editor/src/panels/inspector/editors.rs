@@ -5,8 +5,8 @@ use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
     Animation, AudioListener, AudioRolloff, AudioSource, BoxCollider, Camera, CapsuleCollider,
-    ClearFlags, Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface, PostProcessVolume,
-    Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
+    ClearFlags, Interpolation, Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface,
+    PostProcessVolume, Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
 };
 
 use misty_engine::assets::Material;
@@ -33,7 +33,9 @@ pub fn icon(name: &str) -> &'static str {
         "Animation" => "⏵",
         "Particle System" => crate::state::PARTICLE_ICON,
         "Post-process Volume" => "◐",
-        other => super::ui_editors::icon(other).unwrap_or("▣"),
+        other => super::ui_editors::icon(other)
+            .or_else(|| super::physics_editors::icon(other))
+            .unwrap_or("▣"),
     }
 }
 
@@ -128,6 +130,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         ui_name if super::ui_editors::NAMES.contains(&ui_name) => {
             super::ui_editors::edit(ui, state, e, ui_name)
+        }
+        physics if super::physics_editors::NAMES.contains(&physics) => {
+            super::physics_editors::edit(ui, state, e, physics)
         }
         _ => {
             ui.weak("No editor for this component.");
@@ -684,6 +689,18 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
         ui.end_row();
         ui.label("Is Kinematic");
         ch |= mixed::checkbox(ui, "is_kinematic", &mut r.is_kinematic, "").changed();
+        ui.end_row();
+        ui.label("Interpolate");
+        ch |= combo(
+            ui,
+            "rb_interpolate",
+            &mut r.interpolation,
+            &[Interpolation::None, Interpolation::Interpolate],
+            |i| match i {
+                Interpolation::None => "None",
+                Interpolation::Interpolate => "Interpolate",
+            },
+        );
         ui.end_row();
         ui.label("Collision Detection");
         egui::ComboBox::from_id_salt("rb_ccd")

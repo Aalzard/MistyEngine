@@ -4,7 +4,8 @@
 use egui::Ui;
 
 use misty_engine::glam::Vec3;
-use misty_engine::settings::ProjectSettings;
+use misty_engine::physics::LAYERS;
+use misty_engine::settings::{PhysicsSettings, ProjectSettings};
 
 use crate::state::EditorState;
 use crate::widgets::vec3_row;
@@ -124,8 +125,54 @@ fn physics(ui: &mut Ui, p: &mut ProjectSettings) -> bool {
                 .changed()
         },
     );
+    edited |= row(
+        ui,
+        "Queries Hit Triggers",
+        "Raycasts, sphere casts and overlap queries also return trigger colliders.",
+        |ui| ui.checkbox(&mut p.queries_hit_triggers, "").changed(),
+    );
     ui.add_space(6.0);
     ui.weak("Friction and Bounciness are set on each collider.");
+    ui.add_space(8.0);
+    edited |= layer_matrix(ui, p);
+    edited
+}
+
+/// Layer Collision Matrix: rows top to bottom, columns in reverse order, one box per pair.
+fn layer_matrix(ui: &mut Ui, p: &mut PhysicsSettings) -> bool {
+    let mut edited = false;
+    egui::CollapsingHeader::new("Layer Collision Matrix")
+        .id_salt("layer_matrix")
+        .default_open(true)
+        .show(ui, |ui| {
+            let n = LAYERS.len();
+            egui::Grid::new("layer_matrix_grid")
+                .spacing([2.0, 2.0])
+                .show(ui, |ui| {
+                    ui.label("");
+                    for j in (0..n).rev() {
+                        ui.label(j.to_string()).on_hover_text(LAYERS[j]);
+                    }
+                    ui.end_row();
+                    for (i, name) in LAYERS.iter().enumerate() {
+                        ui.label(format!("{i} {name}"));
+                        for j in (0..n).rev() {
+                            if j < i {
+                                ui.label("");
+                                continue;
+                            }
+                            let (a, b) = (i as u8, j as u8);
+                            let mut on = p.layers_collide(a, b);
+                            let tip = format!("{name} × {}", LAYERS[j]);
+                            if ui.checkbox(&mut on, "").on_hover_text(tip).changed() {
+                                p.set_layers_collide(a, b, on);
+                                edited = true;
+                            }
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
     edited
 }
 
@@ -195,6 +242,9 @@ mod tests {
             .build_ui_state(|ui, s: &mut EditorState| contents(ui, s), s);
         h.run();
         h.get_by_label("Gravity");
+        h.get_by_label("Queries Hit Triggers");
+        h.get_by_label("Layer Collision Matrix");
+        h.get_by_label("5 Player");
         h.get_by_label("Time").click();
         h.run();
         assert_eq!(h.state().project_settings_window.category, Category::Time);
@@ -223,10 +273,13 @@ mod tests {
         s.project_settings.physics.gravity = Vec3::new(0.0, -3.0, 0.0);
         s.project_settings.physics.fixed_timestep = 0.01;
         s.project_settings.time.time_scale = 0.25;
+        s.project_settings.physics.set_layers_collide(0, 5, false);
         crate::play::start(&mut s);
         let (gravity, fixed_dt) = s.runtime.as_ref().unwrap().physics_config();
         assert_eq!(gravity, Vec3::new(0.0, -3.0, 0.0));
         assert_eq!(fixed_dt, 0.01);
         assert_eq!(s.time.time_scale, 0.25);
+        let physics = s.runtime.as_ref().unwrap().physics_settings();
+        assert!(!physics.layers_collide(5, 0));
     }
 }
