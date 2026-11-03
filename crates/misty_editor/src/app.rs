@@ -490,6 +490,14 @@ impl eframe::App for EditorApp {
                     );
             });
 
+        // Material previews asked for while drawing the panels.
+        if let Some(gpu) = self.gpu.as_mut() {
+            let previews = &mut self.state.project.thumbnails.materials;
+            crate::material_preview::render(gpu, previews);
+            if previews.pending() {
+                ctx.request_repaint();
+            }
+        }
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);

@@ -400,8 +400,16 @@ pub struct MeshRenderer {
     pub enabled: bool,
     pub cast_shadows: bool,
     pub receive_shadows: bool,
-    /// Material asset path ("Assets/…/Name.mat"); `None` = Default-Material.
+    /// Material asset path ("Assets/…/Name.mat"); `None` = Default-Material. Element 0.
     pub material: Option<String>,
+    /// Materials list elements 1.. (each draws the mesh again on top, like extra materials on
+    /// a single-submesh mesh). Left out of files when empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub extra_materials: Vec<Option<String>>,
+    /// Play mode: per-renderer material copies made by scripts (`renderer.material`), by
+    /// element. Never saved.
+    #[serde(skip)]
+    pub instances: Vec<Option<crate::assets::Material>>,
 }
 
 impl Default for MeshRenderer {
@@ -411,7 +419,49 @@ impl Default for MeshRenderer {
             cast_shadows: true,
             receive_shadows: true,
             material: None,
+            extra_materials: Vec::new(),
+            instances: Vec::new(),
         }
+    }
+}
+
+impl MeshRenderer {
+    /// Size of the Materials list.
+    pub fn material_count(&self) -> usize {
+        1 + self.extra_materials.len()
+    }
+
+    /// Material path of element `i` (`None` = Default-Material or out of range).
+    pub fn material_at(&self, i: usize) -> Option<&str> {
+        match i {
+            0 => self.material.as_deref(),
+            _ => self.extra_materials.get(i - 1)?.as_deref(),
+        }
+    }
+
+    /// Set element `i` (the list grows when needed).
+    pub fn set_material_at(&mut self, i: usize, path: Option<String>) {
+        if i == 0 {
+            self.material = path;
+            return;
+        }
+        if self.extra_materials.len() < i {
+            self.extra_materials.resize(i, None);
+        }
+        self.extra_materials[i - 1] = path;
+    }
+
+    /// Resize the Materials list (at least one element; new ones repeat the last).
+    pub fn set_material_count(&mut self, n: usize) {
+        let last = self
+            .material_at(self.material_count() - 1)
+            .map(str::to_owned);
+        self.extra_materials.resize(n.max(1) - 1, last);
+    }
+
+    /// Script-made copy of element `i`, if any.
+    pub fn instance(&self, i: usize) -> Option<&crate::assets::Material> {
+        self.instances.get(i)?.as_ref()
     }
 }
 

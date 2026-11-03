@@ -20,7 +20,26 @@ pub trait MaterialSource {
     fn params(&self, rel: Option<&str>) -> MaterialParams;
 }
 
-/// Visible meshes; `outline(e)` = draw the selection outline around `e`.
+/// Values of a renderer's material element `i`: the script-made instance, else the asset
+/// (with any `sharedMaterial` changes scripts made), else Default-Material.
+pub fn renderer_material(
+    scene: &Scene,
+    r: &MeshRenderer,
+    i: usize,
+    materials: &dyn MaterialSource,
+) -> MaterialParams {
+    if let Some(m) = r.instance(i) {
+        return m.params();
+    }
+    let path = r.material_at(i);
+    match path.and_then(|p| scene.shared_materials.get(p)) {
+        Some(m) => m.params(),
+        None => materials.params(path),
+    }
+}
+
+/// Visible meshes, one draw per Materials element; `outline(e)` = draw the selection outline
+/// around `e`.
 pub fn mesh_draws(
     scene: &Scene,
     materials: &dyn MaterialSource,
@@ -41,14 +60,19 @@ pub fn mesh_draws(
         if !r.enabled {
             continue;
         }
-        out.push(MeshDraw {
-            mesh,
-            model: scene.world_matrix(e),
-            material: materials.params(r.material.as_deref()),
-            cast_shadows: r.cast_shadows,
-            receive_shadows: r.receive_shadows,
-            outline: outline(e),
-        });
+        let model = scene.world_matrix(e);
+        let outline = outline(e);
+        for i in 0..r.material_count() {
+            out.push(MeshDraw {
+                mesh: mesh.clone(),
+                model,
+                material: renderer_material(scene, &r, i, materials),
+                cast_shadows: r.cast_shadows,
+                receive_shadows: r.receive_shadows,
+                // The outline mask needs each mesh once.
+                outline: outline && i == 0,
+            });
+        }
     }
     out
 }

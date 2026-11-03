@@ -17,6 +17,7 @@ mod gizmos;
 mod handles;
 mod layout;
 mod layouts;
+mod material_preview;
 mod menu_bar;
 mod model_import;
 mod object_clipboard;
@@ -36,6 +37,8 @@ mod sample_animator;
 mod sample_assets;
 #[cfg(test)]
 mod sample_lighting;
+#[cfg(test)]
+mod sample_materials;
 #[cfg(test)]
 mod sample_particles;
 #[cfg(test)]

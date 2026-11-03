@@ -19,6 +19,7 @@
 
 pub mod animator_api;
 pub mod api;
+pub mod material_api;
 pub mod particles_api;
 pub mod physics_api;
 pub mod render_settings_api;
@@ -719,5 +720,7 @@ return {class_name}
     )
 }
 
+#[cfg(test)]
+mod material_tests;
 #[cfg(test)]
 mod tests;

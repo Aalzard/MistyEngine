@@ -142,6 +142,36 @@ pub(crate) fn upload(
 pub enum TextureKind {
     Color,
     Normal,
+    /// Other data maps (metallic/smoothness, occlusion): linear, white when unset.
+    Linear,
+}
+
+/// The textures of one material (group 2 of the mesh pipeline); `None` = default texture.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct TextureSet {
+    pub albedo: Option<String>,
+    pub normal: Option<String>,
+    pub metallic: Option<String>,
+    pub occlusion: Option<String>,
+    pub emission: Option<String>,
+}
+
+impl TextureSet {
+    /// Albedo and normal only (particles, terrains).
+    pub fn pair(albedo: Option<&str>, normal: Option<&str>) -> Self {
+        Self {
+            albedo: albedo.map(str::to_owned),
+            normal: normal.map(str::to_owned),
+            ..Default::default()
+        }
+    }
+}
+
+/// 1×1 fallbacks: white sRGB, flat normal, white linear.
+struct Defaults {
+    white: wgpu::TextureView,
+    flat: wgpu::TextureView,
+    white_linear: wgpu::TextureView,
 }
 
 struct Cached {
@@ -150,14 +180,12 @@ struct Cached {
     view: Option<wgpu::TextureView>,
 }
 
-type SetKey = (Option<String>, Option<String>);
-
-/// Loaded textures and one bind group per (albedo, normal) pair.
+/// Loaded textures and one bind group per material texture set.
 pub struct TextureCache {
     textures: HashMap<(String, TextureKind), Cached>,
-    sets: HashMap<SetKey, wgpu::BindGroup>,
-    /// 1×1 white (albedo) and flat normal, created on first use.
-    defaults: Option<(wgpu::TextureView, wgpu::TextureView)>,
+    sets: HashMap<TextureSet, wgpu::BindGroup>,
+    /// Created on first use.
+    defaults: Option<Defaults>,
     sampler: wgpu::Sampler,
     last_poll: Option<Instant>,
     warnings: Vec<String>,
@@ -223,30 +251,94 @@ impl TextureCache {
         albedo: Option<&str>,
         normal: Option<&str>,
     ) {
-        let key = (albedo.map(str::to_owned), normal.map(str::to_owned));
-        if self.sets.contains_key(&key) {
+        self.prepare_set(device, queue, layout, &TextureSet::pair(albedo, normal));
+    }
+
+    /// Make sure the bind group for a material's textures exists.
+    pub fn prepare_set(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        set: &TextureSet,
+    ) {
+        if self.sets.contains_key(set) {
             return;
         }
-        let (albedo_view, normal_view) = self.views(device, queue, albedo, normal);
+        let (albedo, normal) =
+            self.views(device, queue, set.albedo.as_deref(), set.normal.as_deref());
+        let d = self.defaults(device, queue);
+        let (white, white_linear) = (d.white.clone(), d.white_linear.clone());
+        let mut load = |rel: &Option<String>, kind, fallback: &wgpu::TextureView| {
+            rel.as_deref()
+                .and_then(|r| self.texture(device, queue, r, kind))
+                .unwrap_or_else(|| fallback.clone())
+        };
+        let metallic = load(&set.metallic, TextureKind::Linear, &white_linear);
+        let occlusion = load(&set.occlusion, TextureKind::Linear, &white_linear);
+        let emission = load(&set.emission, TextureKind::Color, &white);
+        let view = |binding, v| wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::TextureView(v),
+        };
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("misty material textures"),
             layout,
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&albedo_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&normal_view),
-                },
+                view(0, &albedo),
+                view(1, &normal),
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: wgpu::BindingResource::Sampler(&self.sampler),
                 },
+                view(3, &metallic),
+                view(4, &occlusion),
+                view(5, &emission),
             ],
         });
-        self.sets.insert(key, group);
+        self.sets.insert(set.clone(), group);
+    }
+
+    /// The 1×1 fallback textures (created on first use).
+    fn defaults(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> &Defaults {
+        self.defaults.get_or_insert_with(|| {
+            let pixel = |label, rgba: [u8; 4], format| {
+                device
+                    .create_texture_with_data(
+                        queue,
+                        &wgpu::TextureDescriptor {
+                            label: Some(label),
+                            size: wgpu::Extent3d {
+                                width: 1,
+                                height: 1,
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format,
+                            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                            view_formats: &[],
+                        },
+                        wgpu::util::TextureDataOrder::LayerMajor,
+                        &rgba,
+                    )
+                    .create_view(&Default::default())
+            };
+            Defaults {
+                white: pixel("misty white", [255; 4], wgpu::TextureFormat::Rgba8UnormSrgb),
+                flat: pixel(
+                    "misty flat normal",
+                    [128, 128, 255, 255],
+                    wgpu::TextureFormat::Rgba8Unorm,
+                ),
+                white_linear: pixel(
+                    "misty white linear",
+                    [255; 4],
+                    wgpu::TextureFormat::Rgba8Unorm,
+                ),
+            }
+        })
     }
 
     /// Albedo and normal views for a pair (1×1 white / flat normal when unset or unreadable).
@@ -257,42 +349,8 @@ impl TextureCache {
         albedo: Option<&str>,
         normal: Option<&str>,
     ) -> (wgpu::TextureView, wgpu::TextureView) {
-        let (white, flat) = self
-            .defaults
-            .get_or_insert_with(|| {
-                let pixel = |label, rgba: [u8; 4], format| {
-                    device
-                        .create_texture_with_data(
-                            queue,
-                            &wgpu::TextureDescriptor {
-                                label: Some(label),
-                                size: wgpu::Extent3d {
-                                    width: 1,
-                                    height: 1,
-                                    depth_or_array_layers: 1,
-                                },
-                                mip_level_count: 1,
-                                sample_count: 1,
-                                dimension: wgpu::TextureDimension::D2,
-                                format,
-                                usage: wgpu::TextureUsages::TEXTURE_BINDING,
-                                view_formats: &[],
-                            },
-                            wgpu::util::TextureDataOrder::LayerMajor,
-                            &rgba,
-                        )
-                        .create_view(&Default::default())
-                };
-                (
-                    pixel("misty white", [255; 4], wgpu::TextureFormat::Rgba8UnormSrgb),
-                    pixel(
-                        "misty flat normal",
-                        [128, 128, 255, 255],
-                        wgpu::TextureFormat::Rgba8Unorm,
-                    ),
-                )
-            })
-            .clone();
+        let d = self.defaults(device, queue);
+        let (white, flat) = (d.white.clone(), d.flat.clone());
         let albedo_view = albedo
             .and_then(|a| self.texture(device, queue, a, TextureKind::Color))
             .unwrap_or(white);
@@ -309,8 +367,12 @@ impl TextureCache {
 
     /// Bind group prepared for this pair.
     pub fn get(&self, albedo: Option<&str>, normal: Option<&str>) -> Option<&wgpu::BindGroup> {
-        self.sets
-            .get(&(albedo.map(str::to_owned), normal.map(str::to_owned)))
+        self.sets.get(&TextureSet::pair(albedo, normal))
+    }
+
+    /// Bind group prepared for this material texture set.
+    pub fn get_set(&self, set: &TextureSet) -> Option<&wgpu::BindGroup> {
+        self.sets.get(set)
     }
 
     /// Whether a texture loaded successfully (false for files that failed to load).

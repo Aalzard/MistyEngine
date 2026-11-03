@@ -36,6 +36,8 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 | AudioSource | `Play()`, `Stop()`, `Pause()`, `UnPause()`, `PlayOneShot(clipPath [, volumeScale])`, `isPlaying` (read-only), `volume`, `pitch`, `loop`, `mute`, `spatialBlend`, `enabled`, `clip` (project path like `"Assets/Audio/Beep.wav"`, or nil) |
 | Animation | `Play([name])` (the default clip, or the clip of the Animation's list with that file name; restarts it; returns false and warns if missing), `Stop()` (rewinds, keeps the pose), `IsPlaying(name)`, `isPlaying` (read-only), `time` (seconds since Play, keeps growing while looping; settable), `speed` (1 = normal, negative plays backwards), `clip` (name of the current clip, read-only), `enabled` |
 | Animator | `SetFloat(name, v)`, `GetFloat(name)`, `SetInteger`, `GetInteger`, `SetBool`, `GetBool`, `SetTrigger(name)`, `ResetTrigger(name)`, `Play(state [, layer [, normalizedTime]])`, `CrossFade(state, normalizedDuration [, layer [, normalizedOffset]])`, `CrossFadeInFixedTime(state, seconds [, …])`, `GetCurrentAnimatorStateInfo(0)` / `GetNextAnimatorStateInfo(0)` (table: `normalizedTime`, `length`, `speed`, `loop`, `IsName(name)`), `IsInTransition(0)`, `speed`, `enabled` (only layer 0; unknown names or wrong types warn in the Console) |
+| MeshRenderer | `GetComponent("MeshRenderer")` / `("Renderer")`: `material`, `sharedMaterial`, `materials`, `sharedMaterials`, `enabled`, `castShadows`, `receiveShadows`, `gameObject` (see Materials below) |
+| Material | `color`, `mainTextureOffset`, `mainTextureScale`, `shader`, `name`, `renderQueue`, `SetColor`/`GetColor`, `SetFloat`/`GetFloat`, `SetTexture`/`GetTexture`, `SetTextureOffset`/`SetTextureScale`, `HasProperty`, `EnableKeyword`/`DisableKeyword`/`IsKeywordEnabled` |
 | Text (UI) | `GetComponent("Text")`: `text` (numbers are shown as text), `fontSize`, `color`, `enabled`, `gameObject` |
 | Image (UI) | `GetComponent("Image")`: `color`, `texture` (project path or nil), `raycastTarget`, `enabled`, `gameObject` |
 | Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`; clicks call the On Click methods set in the Inspector |
@@ -296,3 +298,36 @@ p.y = t:SampleHeight(p) + t:GetPosition().y + 1.5
 self.transform.position = p
 ```
 Sample: `Scenes/TerrainDemo.scene` with `Assets/Scripts/TerrainHover.lua`.
+
+### Materials
+
+`GetComponent("MeshRenderer")` (or `"Renderer"`) gives the renderer's materials:
+
+| Member | Meaning |
+| --- | --- |
+| `material` | This object's own copy of Element 0, made on first use; changing it changes only this object. Assigning a material sets the element (an asset by path, or a copy of another instance). |
+| `sharedMaterial` | The material asset itself: changes show on every object using it (and on later `Instantiate`s). Once the renderer has its own copy, `sharedMaterial` is that copy. |
+| `materials` / `sharedMaterials` | Lists (1-based) of all Materials elements, as copies / as assets; assign a list to resize. |
+
+Changes made from scripts last until Play mode ends: the `.mat` files are never written.
+A Material has `color`, `mainTextureOffset` / `mainTextureScale` (Vector3, z ignored, or `{ x =, y = }`),
+`shader` (`"Standard"`, `"Unlit/Color"`, `"Unlit/Texture"`, `"Unlit/Transparent"`), `name` and `renderQueue`
+(read-only), and the Standard shader's property names:
+
+| Kind | Names |
+| --- | --- |
+| `SetColor` / `GetColor` | `_Color` (albedo), `_EmissionColor` (HDR: components above 1 raise the intensity) |
+| `SetFloat` / `GetFloat` | `_Metallic`, `_Glossiness` / `_GlossMapScale` (smoothness), `_BumpScale`, `_Cutoff`, `_OcclusionStrength`, `_Mode` (0 Opaque, 1 Cutout, 2 Fade, 3 Transparent), `_SmoothnessTextureChannel` (0 metallic alpha, 1 albedo alpha), `_Cull` (0 = double sided, 2 = back) |
+| `SetTexture` / `GetTexture` | `_MainTex`, `_BumpMap`, `_MetallicGlossMap`, `_OcclusionMap`, `_EmissionMap` (project paths or nil) |
+| Keywords | `EnableKeyword("_EMISSION")` / `DisableKeyword` switch emission; `IsKeywordEnabled` also answers `_NORMALMAP`, `_METALLICGLOSSMAP`, `_ALPHATEST_ON`, `_ALPHABLEND_ON`, `_ALPHAPREMULTIPLY_ON` |
+
+Unknown property names are ignored (`Get…` returns 0 / black, `HasProperty` false).
+
+```lua
+-- Pulse this object's colour without touching other objects using the same material.
+local r = self.gameObject:GetComponent("MeshRenderer")
+local t = (math.sin(Time.time * 2) + 1) * 0.5
+r.material.color = Color.new(1, t, 0, 1)
+r.material:SetColor("_EmissionColor", Color.new(2 * t, t, 0, 1))
+```
+Sample: `Scenes/MaterialsDemo.scene` with `Assets/Scripts/MaterialPulse.lua`.

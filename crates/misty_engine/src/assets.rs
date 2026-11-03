@@ -6,7 +6,7 @@ use std::sync::RwLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::render::MaterialParams;
+use crate::render::{MaterialParams, RenderingMode, ShaderKind};
 use crate::render_scene::MaterialSource;
 
 static PROJECT_ROOT: RwLock<Option<PathBuf>> = RwLock::new(None);
@@ -35,6 +35,17 @@ pub fn relative(path: &Path) -> String {
         .replace('\\', "/")
 }
 
+/// Display name of a material path ("Red"), or "Default-Material" for none.
+pub fn material_name(rel: Option<&str>) -> String {
+    match rel {
+        Some(r) => Path::new(r)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        None => "Default-Material".to_owned(),
+    }
+}
+
 /// File extensions loaded as textures.
 pub const TEXTURE_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
 
@@ -49,10 +60,46 @@ pub(crate) fn has_extension(path: &str, list: &[&str]) -> bool {
         .is_some_and(|e| list.iter().any(|x| x.eq_ignore_ascii_case(e)))
 }
 
-/// A material asset (`.mat`, JSON). Mirrors the Standard shader's main properties.
+/// Where the Standard shader reads smoothness from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SmoothnessSource {
+    /// The Metallic map's alpha (the slider when there is no map).
+    #[default]
+    MetallicAlpha,
+    /// The Albedo texture's alpha (which is then not used as transparency).
+    AlbedoAlpha,
+}
+
+impl SmoothnessSource {
+    pub const ALL: [Self; 2] = [Self::MetallicAlpha, Self::AlbedoAlpha];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MetallicAlpha => "Metallic Alpha",
+            Self::AlbedoAlpha => "Albedo Alpha",
+        }
+    }
+}
+
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
+
+fn is_half(v: &f32) -> bool {
+    *v == 0.5
+}
+
+fn is_one(v: &f32) -> bool {
+    *v == 1.0
+}
+
+/// A material asset (`.mat`, JSON). Mirrors the Standard shader's properties; fields added after
+/// the first version are left out of the file while at their defaults, so older files re-save
+/// unchanged.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Material {
+    /// "Standard", "Unlit/Color", "Unlit/Texture" or "Unlit/Transparent" (see [`ShaderKind`]).
     pub shader: String,
     /// Albedo, sRGB + alpha.
     pub color: [f32; 4],
@@ -70,6 +117,28 @@ pub struct Material {
     /// UV scale and offset applied to both maps.
     pub tiling: [f32; 2],
     pub offset: [f32; 2],
+    /// Standard shader Rendering Mode.
+    #[serde(skip_serializing_if = "is_default")]
+    pub rendering_mode: RenderingMode,
+    /// Cutout: alpha below this is cut away.
+    #[serde(skip_serializing_if = "is_half")]
+    pub alpha_cutoff: f32,
+    #[serde(skip_serializing_if = "is_default")]
+    pub smoothness_source: SmoothnessSource,
+    /// R = metallic, A = smoothness; replaces the Metallic slider (Smoothness then scales A).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metallic_map: Option<String>,
+    /// G channel = ambient occlusion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub occlusion_map: Option<String>,
+    #[serde(skip_serializing_if = "is_one")]
+    pub occlusion_strength: f32,
+    /// Multiplied by the emission colour.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emission_map: Option<String>,
+    /// Draw both faces (Cull Off).
+    #[serde(skip_serializing_if = "is_default")]
+    pub double_sided: bool,
 }
 
 impl Default for Material {
@@ -87,12 +156,52 @@ impl Default for Material {
             normal_scale: 1.0,
             tiling: [1.0, 1.0],
             offset: [0.0, 0.0],
+            rendering_mode: RenderingMode::Opaque,
+            alpha_cutoff: 0.5,
+            smoothness_source: SmoothnessSource::MetallicAlpha,
+            metallic_map: None,
+            occlusion_map: None,
+            occlusion_strength: 1.0,
+            emission_map: None,
+            double_sided: false,
         }
     }
 }
 
 impl Material {
+    pub fn shader_kind(&self) -> ShaderKind {
+        ShaderKind::from_name(&self.shader)
+    }
+
+    /// Renderer values. Unlit shaders keep only what they use (Unlit/Color: colour,
+    /// Unlit/Texture: texture, Unlit/Transparent: texture with alpha blending).
     pub fn params(&self) -> MaterialParams {
+        let standard = self.standard_params();
+        let unlit = MaterialParams {
+            unlit: true,
+            color: [1.0; 4],
+            albedo_map: self.albedo_map.clone(),
+            tiling: self.tiling,
+            offset: self.offset,
+            double_sided: self.double_sided,
+            ..Default::default()
+        };
+        match self.shader_kind() {
+            ShaderKind::Standard => standard,
+            ShaderKind::UnlitColor => MaterialParams {
+                color: self.color,
+                albedo_map: None,
+                ..unlit
+            },
+            ShaderKind::UnlitTexture => unlit,
+            ShaderKind::UnlitTransparent => MaterialParams {
+                mode: RenderingMode::Fade,
+                ..unlit
+            },
+        }
+    }
+
+    fn standard_params(&self) -> MaterialParams {
         MaterialParams {
             color: self.color,
             metallic: self.metallic,
@@ -108,6 +217,15 @@ impl Material {
             normal_scale: self.normal_scale,
             tiling: self.tiling,
             offset: self.offset,
+            unlit: false,
+            mode: self.rendering_mode,
+            alpha_cutoff: self.alpha_cutoff,
+            double_sided: self.double_sided,
+            smoothness_from_albedo: self.smoothness_source == SmoothnessSource::AlbedoAlpha,
+            metallic_map: self.metallic_map.clone(),
+            occlusion_map: self.occlusion_map.clone(),
+            occlusion_strength: self.occlusion_strength,
+            emission_map: self.emission_map.clone().filter(|_| self.emission_enabled),
         }
     }
 
@@ -235,6 +353,107 @@ mod tests {
         m.emission_enabled = true;
         assert_eq!(m.params().emission, [1.0, 0.5, 0.0]);
         assert_eq!(m.params().emission_intensity, 2.0);
+    }
+
+    /// Committed materials written before rendering modes and the extra maps existed re-save
+    /// byte-identical (new fields at their defaults are left out).
+    #[test]
+    fn old_sample_materials_re_save_unchanged() {
+        let dir =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject/Assets/Materials");
+        for name in [
+            "Checker.mat",
+            "Bumpy Tiles.mat",
+            "Laser.mat",
+            "Wood.mat",
+            "Blue Steel.mat",
+        ] {
+            let text = std::fs::read_to_string(dir.join(name)).unwrap();
+            let m: Material = serde_json::from_str(&text).unwrap();
+            assert_eq!(m.rendering_mode, RenderingMode::Opaque, "{name}");
+            assert_eq!(m.alpha_cutoff, 0.5);
+            assert_eq!(m.occlusion_strength, 1.0);
+            assert_eq!(
+                serde_json::to_string_pretty(&m).unwrap(),
+                text.trim_end(),
+                "{name}"
+            );
+            // Same renderer values as before: opaque, lit, no extra maps.
+            let p = m.params();
+            assert!(!p.unlit && !p.double_sided && !p.smoothness_from_albedo);
+            assert!(p.metallic_map.is_none() && p.occlusion_map.is_none());
+            assert!(p.shadow_key().is_some_and(|k| !k.cutout));
+        }
+    }
+
+    #[test]
+    fn standard_options_round_trip() {
+        let m = Material {
+            rendering_mode: RenderingMode::Cutout,
+            alpha_cutoff: 0.3,
+            smoothness_source: SmoothnessSource::AlbedoAlpha,
+            metallic_map: Some("Assets/Textures/Metal.png".into()),
+            occlusion_map: Some("Assets/Textures/AO.png".into()),
+            occlusion_strength: 0.7,
+            emission_enabled: true,
+            emission_map: Some("Assets/Textures/Glow.png".into()),
+            double_sided: true,
+            ..Default::default()
+        };
+        let text = serde_json::to_string_pretty(&m).unwrap();
+        assert!(text.contains("\"rendering_mode\": \"Cutout\""), "{text}");
+        assert_eq!(serde_json::from_str::<Material>(&text).unwrap(), m);
+        let p = m.params();
+        assert_eq!(p.mode, RenderingMode::Cutout);
+        assert!(p.smoothness_from_albedo && p.double_sided);
+        assert_eq!(p.emission_map.as_deref(), Some("Assets/Textures/Glow.png"));
+        let shadow = p.shadow_key().unwrap();
+        assert!(
+            shadow.cutout && shadow.double_sided,
+            "cutout casts clipped shadows"
+        );
+
+        let defaults = serde_json::to_string_pretty(&Material::default()).unwrap();
+        for key in [
+            "rendering_mode",
+            "alpha_cutoff",
+            "metallic_map",
+            "double_sided",
+        ] {
+            assert!(!defaults.contains(key), "{key} left out at its default");
+        }
+    }
+
+    #[test]
+    fn blended_and_unlit_materials_cast_no_shadows() {
+        for mode in [RenderingMode::Fade, RenderingMode::Transparent] {
+            let m = Material {
+                rendering_mode: mode,
+                ..Default::default()
+            };
+            assert!(m.params().shadow_key().is_none(), "{mode:?}");
+            assert!(m.params().mode.is_blended());
+        }
+        let unlit = |shader: &str| Material {
+            shader: shader.into(),
+            color: [0.2, 0.4, 0.6, 0.5],
+            albedo_map: Some("Assets/Textures/Sign.png".into()),
+            emission_enabled: true,
+            ..Default::default()
+        };
+        let color = unlit("Unlit/Color").params();
+        assert!(color.unlit && color.shadow_key().is_none());
+        assert_eq!(color.color, [0.2, 0.4, 0.6, 0.5]);
+        assert_eq!(color.albedo_map, None, "Unlit/Color has no texture");
+        assert_eq!(color.mode, RenderingMode::Opaque);
+        let texture = unlit("Unlit/Texture").params();
+        assert_eq!(texture.color, [1.0; 4], "Unlit/Texture has no colour");
+        assert!(texture.albedo_map.is_some());
+        assert_eq!(texture.emission_intensity, 0.0);
+        assert_eq!(
+            unlit("Unlit/Transparent").params().mode,
+            RenderingMode::Fade
+        );
     }
 
     #[test]

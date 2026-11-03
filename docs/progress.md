@@ -672,3 +672,41 @@
   rotation, spacing or scatter; strengths are our own rates.
 - Wireframe draw modes don't draw the terrain's wires; terrains have no selection outline.
 - No `TerrainData` API in Lua beyond the read-only table (no `GetHeights`/`SetHeights`, `GetInterpolatedNormal`).
+
+## Materials (Standard shader options, Unlit shaders) ✅
+
+### Done
+- Standard shader Rendering Mode: Opaque, Cutout (Alpha Cutoff, clipped in the shadow map too), Fade (everything
+  fades) and Transparent (premultiplied: highlights and reflections stay, alpha grows with reflectivity).
+  Fade/Transparent don't write depth and are drawn back to front after opaque meshes, terrains and the grid and
+  before particles; opaque (queue 2000) then cutout (2450) are drawn front to back. Pipelines per variant are
+  built on first use.
+- Maps: Albedo (alpha = transparency, or smoothness with Source = Albedo Alpha), Metallic map (R = metallic,
+  A = smoothness, the Smoothness slider scales it), Normal Map, Occlusion (G, with strength; ambient and
+  reflections only), Emission map × HDR emission colour, Tiling/Offset for all main maps; Double Sided (Cull Off,
+  back faces lit from their side) as an extra.
+- Shaders `Unlit/Color`, `Unlit/Texture`, `Unlit/Transparent` (fogged, no lighting, no shadows).
+- Material Inspector laid out like the Standard shader (Shader dropdown, Rendering Mode, Main Maps, Advanced
+  Options with the Render Queue) with a live preview at the bottom (engine renderer, sphere or cube, drag to
+  rotate). The Project window shows rendered material thumbnails (cached until the file changes).
+- Mesh Renderer Materials list with Size: Element 0 is the old `material` field; extra elements draw the mesh
+  again (single-submesh behaviour). Older scenes and `.mat` files load and re-save unchanged.
+- Lua: `MeshRenderer` / `Renderer` with `material` (per-object copy), `sharedMaterial`, `materials`,
+  `sharedMaterials`; `Material` with `color`, `mainTextureOffset/Scale`, `shader`, `SetColor/SetFloat/…` with
+  the Standard property names and the `_EMISSION` keyword. Play mode only.
+- Sample: `Scenes/MaterialsDemo.scene` (glass, pulsing ghost via `MaterialPulse.lua`, cutout lattice sphere and
+  fence, metallic-mapped sphere, unlit sign, emission-mapped panel) with generated textures.
+- Tests: draw order, pipeline state per mode, shader names, old file re-save, option round trips, unlit and
+  shadow rules, Lua instance/shared/list API, preview cache, sample generator check and headless play.
+
+### Not matching Unity yet
+- No Secondary Maps (detail albedo/normal), Height (parallax) map, Specular setup shader, Specular Highlights /
+  Reflections toggles, GPU instancing or Double Sided GI; one Smoothness value is both Glossiness and the map
+  scale.
+- Fade/Transparent materials cast no shadows (the reference dithers them); transparent meshes are sorted by
+  object origin and separately from particles (always before them), not by bounds centre in one list.
+- No custom Render Queue override, no shader keywords beyond `_EMISSION`, no material property blocks, no
+  material variants, no `new Material(…)` / `Shader.Find` in Lua; `sharedMaterial` edits are not saved to the
+  asset (the reference editor keeps them).
+- The material preview has no lighting/background toggles or other preview shapes (cylinder, torus, plane);
+  thumbnails don't refresh when only a referenced texture changes.

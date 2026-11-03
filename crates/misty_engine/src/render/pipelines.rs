@@ -2,11 +2,30 @@
 
 use super::mesh::Vertex;
 use super::particles::ParticleInstance;
-use super::{
-    COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT, SHADOW_FORMAT,
-};
+use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
 const COMMON: &str = include_str!("shaders/common.wgsl");
+/// Lit/unlit meshes (all material variants).
+pub(super) const MESH_SRC: &str = include_str!("shaders/mesh.wgsl");
+/// Shadow-map depth and the selection mask.
+pub(super) const DEPTH_SRC: &str = include_str!("shaders/depth.wgsl");
+
+/// Mesh vertex attributes: position, normal, uv, tangent.
+const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+    0 => Float32x3,
+    1 => Float32x3,
+    2 => Float32x2,
+    3 => Float32x4
+];
+
+/// Vertex buffer layout of [`Vertex`] meshes.
+pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
+    [wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<Vertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &MESH_ATTRIBUTES,
+    }]
+}
 /// The terrain fragment stage reuses the mesh shader's vertex stage and lighting.
 const TERRAIN_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
@@ -22,7 +41,7 @@ pub struct Pipelines {
     pub mesh_layout: wgpu::BindGroupLayout,
     /// Draws only (shadow and mask passes).
     pub draws_layout: wgpu::BindGroupLayout,
-    /// Per-material albedo + normal map + sampler (lit mesh pass, group 2).
+    /// Per-material albedo, normal, sampler, metallic, occlusion, emission (mesh pass, group 2).
     pub material_layout: wgpu::BindGroupLayout,
     /// Selection mask texture (outline pass).
     pub mask_layout: wgpu::BindGroupLayout,
@@ -33,8 +52,8 @@ pub struct Pipelines {
     pub sky: wgpu::RenderPipeline,
     pub grid: wgpu::RenderPipeline,
     pub lines: wgpu::RenderPipeline,
-    pub mesh: wgpu::RenderPipeline,
-    pub shadow: wgpu::RenderPipeline,
+    /// Material variants (rendering mode, unlit, culling), built on first use.
+    pub variants: super::variants::Variants,
     pub mask: wgpu::RenderPipeline,
     pub outline: wgpu::RenderPipeline,
     /// Billboards: alpha-blended and additive.
@@ -50,15 +69,15 @@ pub struct Pipelines {
 }
 
 /// Depth state; `None` in [`Spec::depth`] means the pass has no depth attachment.
-struct Depth {
-    format: wgpu::TextureFormat,
-    write: bool,
-    compare: wgpu::CompareFunction,
-    bias: wgpu::DepthBiasState,
+pub(super) struct Depth {
+    pub format: wgpu::TextureFormat,
+    pub write: bool,
+    pub compare: wgpu::CompareFunction,
+    pub bias: wgpu::DepthBiasState,
 }
 
 impl Depth {
-    fn main(write: bool, compare: wgpu::CompareFunction) -> Option<Self> {
+    pub fn main(write: bool, compare: wgpu::CompareFunction) -> Option<Self> {
         Some(Self {
             format: DEPTH_FORMAT,
             write,
@@ -69,27 +88,27 @@ impl Depth {
 }
 
 /// Everything that differs between pipelines.
-struct Spec<'a> {
-    name: &'a str,
-    source: &'a str,
-    layouts: &'a [&'a wgpu::BindGroupLayout],
-    vs: &'a str,
-    fs: Option<&'a str>,
-    buffers: &'a [wgpu::VertexBufferLayout<'a>],
-    topology: wgpu::PrimitiveTopology,
-    cull: Option<wgpu::Face>,
-    depth: Option<Depth>,
-    color: Option<wgpu::TextureFormat>,
-    blend: Option<wgpu::BlendState>,
-    samples: u32,
+pub(super) struct Spec<'a> {
+    pub name: &'a str,
+    pub source: &'a str,
+    pub layouts: &'a [&'a wgpu::BindGroupLayout],
+    pub vs: &'a str,
+    pub fs: Option<&'a str>,
+    pub buffers: &'a [wgpu::VertexBufferLayout<'a>],
+    pub topology: wgpu::PrimitiveTopology,
+    pub cull: Option<wgpu::Face>,
+    pub depth: Option<Depth>,
+    pub color: Option<wgpu::TextureFormat>,
+    pub blend: Option<wgpu::BlendState>,
+    pub samples: u32,
     /// Main-pass glow target: None = not in the main pass, Some(true) = writes emission
     /// (blended like the colour target).
-    glow: Option<bool>,
+    pub glow: Option<bool>,
 }
 
 impl<'a> Spec<'a> {
     /// Defaults for a fullscreen/main-pass pipeline.
-    fn new(name: &'a str, source: &'a str, layouts: &'a [&'a wgpu::BindGroupLayout]) -> Self {
+    pub fn new(name: &'a str, source: &'a str, layouts: &'a [&'a wgpu::BindGroupLayout]) -> Self {
         Self {
             name,
             source,
@@ -222,6 +241,9 @@ impl Pipelines {
                 entry(0, S::FRAGMENT, filtered),
                 entry(1, S::FRAGMENT, filtered),
                 entry(2, S::FRAGMENT, filtering),
+                entry(3, S::FRAGMENT, filtered),
+                entry(4, S::FRAGMENT, filtered),
+                entry(5, S::FRAGMENT, filtered),
             ],
         );
         let composite_layout = layout(
@@ -265,57 +287,8 @@ impl Pipelines {
                 ..Spec::new("lines", include_str!("shaders/lines.wgsl"), &[&view_layout])
             },
         );
-        let mesh_buffers = [wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &wgpu::vertex_attr_array![
-                0 => Float32x3,
-                1 => Float32x3,
-                2 => Float32x2,
-                3 => Float32x4
-            ],
-        }];
-        let mesh = build(
-            device,
-            Spec {
-                vs: "vs_main",
-                buffers: &mesh_buffers,
-                cull: Some(wgpu::Face::Back),
-                depth: Depth::main(true, wgpu::CompareFunction::Less),
-                glow: Some(true),
-                ..Spec::new(
-                    "mesh",
-                    include_str!("shaders/mesh.wgsl"),
-                    &[&view_layout, &mesh_layout, &material_layout],
-                )
-            },
-        );
-        let depth_src = include_str!("shaders/depth.wgsl");
-        let shadow = build(
-            device,
-            Spec {
-                vs: "vs_main",
-                fs: None,
-                buffers: &mesh_buffers,
-                // Light-facing faces, so shadows start right at contact points (no gap).
-                // Acne is handled by a small slope bias plus a texel-sized normal offset in the shader.
-                cull: Some(wgpu::Face::Back),
-                depth: Some(Depth {
-                    format: SHADOW_FORMAT,
-                    write: true,
-                    compare: wgpu::CompareFunction::LessEqual,
-                    bias: wgpu::DepthBiasState {
-                        constant: 1,
-                        slope_scale: 1.0,
-                        clamp: 0.0,
-                    },
-                }),
-                color: None,
-                samples: 1,
-                glow: None,
-                ..Spec::new("shadow", depth_src, &[&shadow_view_layout, &draws_layout])
-            },
-        );
+        let mesh_buffers = mesh_buffers();
+        let depth_src = DEPTH_SRC;
         let mask = build(
             device,
             Spec {
@@ -481,8 +454,7 @@ impl Pipelines {
             sky,
             grid,
             lines,
-            mesh,
-            shadow,
+            variants: Default::default(),
             mask,
             outline,
             particles_alpha,
@@ -493,7 +465,7 @@ impl Pipelines {
     }
 }
 
-fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
+pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(spec.name),
         source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{}", spec.source).into()),
@@ -565,7 +537,7 @@ fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
 
 #[cfg(test)]
 mod tests {
-    use super::COMMON;
+    use super::{COMMON, DEPTH_SRC, MESH_SRC};
     use wgpu::naga;
 
     /// Every shader must parse and validate (catches WGSL errors without a GPU).
@@ -575,8 +547,8 @@ mod tests {
             ("sky", include_str!("shaders/sky.wgsl")),
             ("grid", include_str!("shaders/grid.wgsl")),
             ("lines", include_str!("shaders/lines.wgsl")),
-            ("mesh", include_str!("shaders/mesh.wgsl")),
-            ("depth", include_str!("shaders/depth.wgsl")),
+            ("mesh", MESH_SRC),
+            ("depth", DEPTH_SRC),
             ("outline", include_str!("shaders/outline.wgsl")),
             ("bloom", include_str!("shaders/bloom.wgsl")),
             ("composite", include_str!("shaders/composite.wgsl")),

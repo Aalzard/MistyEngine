@@ -9,7 +9,6 @@ use misty_engine::scene::{
     PostProcessVolume, Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
 };
 
-use misty_engine::assets::Material;
 use misty_engine::scene::{ScriptValue, Scripts};
 
 use super::mixed;
@@ -297,7 +296,7 @@ fn combo_k<T: Copy + PartialEq>(
 }
 
 /// sRGB float colour edited through egui's sRGB colour picker.
-fn color_rgb(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
+pub(super) fn color_rgb(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
     let mut srgb = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
     let changed = ui.color_edit_button_srgb(&mut srgb).changed();
     if changed {
@@ -485,32 +484,18 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let changed = grid(ui, "meshrenderer_grid", |ui| {
         let mut ch = false;
         ui.label("Materials");
-        ui.label(RichText::new("Size 1").color(theme::TEXT_DIM));
-        ui.end_row();
-        ui.label("    Element 0");
-        let current = AssetDatabase::material_name(r.material.as_deref());
-        let slot = egui::ComboBox::from_id_salt("mr_material")
-            .selected_text(mixed::text("material", format!("◍ {current}")))
-            .width(150.0)
-            .show_ui(ui, |ui| {
-                ch |= ui
-                    .selectable_value(&mut r.material, None, crate::assets::DEFAULT_MATERIAL)
-                    .changed();
-                for n in &names {
-                    let label = AssetDatabase::material_name(Some(n));
-                    ch |= ui
-                        .selectable_value(&mut r.material, Some(n.clone()), label)
-                        .changed();
-                }
-            })
-            .response;
-        if let Some(path) = slot.dnd_release_payload::<crate::panels::AssetPayload>()
-            && path.0.ends_with(".mat")
-        {
-            r.material = Some(path.0.clone());
+        let mut size = r.material_count();
+        let resp = ui.add(egui::DragValue::new(&mut size).range(1..=8).prefix("Size "));
+        if resp.changed() {
+            r.set_material_count(size);
             ch = true;
         }
         ui.end_row();
+        for i in 0..r.material_count() {
+            ui.label(format!("    Element {i}"));
+            ch |= material_slot(ui, &mut r, i, &names);
+            ui.end_row();
+        }
         ui.label("Cast Shadows");
         egui::ComboBox::from_id_salt("mr_cast")
             .selected_text(mixed::text(
@@ -536,6 +521,43 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         let _ = state.scene.world.insert_one(e, r);
     }
     changed
+}
+
+/// Materials element `i`: pick from project materials, or drop one from the Project window.
+fn material_slot(ui: &mut Ui, r: &mut MeshRenderer, i: usize, names: &[String]) -> bool {
+    let mut ch = false;
+    let mut value = r.material_at(i).map(str::to_owned);
+    let current = AssetDatabase::material_name(value.as_deref());
+    let key = if i == 0 {
+        "material"
+    } else {
+        "extra_materials"
+    };
+    let slot = egui::ComboBox::from_id_salt(("mr_material", i))
+        .selected_text(mixed::text(key, format!("◍ {current}")))
+        .width(150.0)
+        .show_ui(ui, |ui| {
+            ch |= ui
+                .selectable_value(&mut value, None, crate::assets::DEFAULT_MATERIAL)
+                .changed();
+            for n in names {
+                let label = AssetDatabase::material_name(Some(n));
+                ch |= ui
+                    .selectable_value(&mut value, Some(n.clone()), label)
+                    .changed();
+            }
+        })
+        .response;
+    if let Some(path) = slot.dnd_release_payload::<crate::panels::AssetPayload>()
+        && path.0.ends_with(".mat")
+    {
+        value = Some(path.0.clone());
+        ch = true;
+    }
+    if ch {
+        r.set_material_at(i, value);
+    }
+    ch
 }
 
 /// Audio clip slot: pick from the project's clips, or drop one from the Project window.
@@ -882,97 +904,6 @@ fn mesh_collider(ui: &mut Ui, c: &mut MeshCollider) -> bool {
     ch |= collider_common(ui, "mesh_col", &mut c.is_trigger, &mut c.surface);
     ui.weak("Uses the Mesh Filter's mesh.");
     ch
-}
-
-/// Standard material fields. Returns true when changed.
-/// Material properties; `textures` lists the project's textures for the map slots.
-pub fn material_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String]) -> bool {
-    use super::slots::texture_slot;
-    grid(ui, id, |ui| {
-        let mut ch = false;
-        ui.label("Shader");
-        ui.label(&m.shader);
-        ui.end_row();
-        ui.label("Albedo");
-        ui.horizontal(|ui| {
-            ch |= texture_slot(ui, &format!("{id}_albedo"), &mut m.albedo_map, textures);
-            let mut rgb = [m.color[0], m.color[1], m.color[2]];
-            if color_rgb(ui, &mut rgb) {
-                m.color[..3].copy_from_slice(&rgb);
-                ch = true;
-            }
-        });
-        ui.end_row();
-        ui.label("Metallic");
-        ch |= ui
-            .add(egui::Slider::new(&mut m.metallic, 0.0..=1.0))
-            .changed();
-        ui.end_row();
-        ui.label("Smoothness");
-        ch |= ui
-            .add(egui::Slider::new(&mut m.smoothness, 0.0..=1.0))
-            .changed();
-        ui.end_row();
-        ui.label("Normal Map");
-        ui.horizontal(|ui| {
-            ch |= texture_slot(ui, &format!("{id}_normal"), &mut m.normal_map, textures);
-            if m.normal_map.is_some() {
-                ch |= ui
-                    .add(
-                        egui::DragValue::new(&mut m.normal_scale)
-                            .speed(0.01)
-                            .range(-4.0..=4.0),
-                    )
-                    .on_hover_text("Normal map strength")
-                    .changed();
-            }
-        });
-        ui.end_row();
-        ui.label("Emission");
-        ch |= ui.checkbox(&mut m.emission_enabled, "").changed();
-        ui.end_row();
-        if m.emission_enabled {
-            ui.label("    Color");
-            ch |= color_rgb(ui, &mut m.emission);
-            ui.end_row();
-            ui.label("    Intensity");
-            ch |= ui
-                .add(
-                    egui::DragValue::new(&mut m.emission_intensity)
-                        .speed(0.05)
-                        .range(0.0..=100.0),
-                )
-                .changed();
-            ui.end_row();
-        }
-        for (label, v) in [("Tiling", &mut m.tiling), ("Offset", &mut m.offset)] {
-            ui.label(label);
-            ui.horizontal(|ui| {
-                for (axis, c) in ["X", "Y"].into_iter().zip(v.iter_mut()) {
-                    ui.label(axis);
-                    ch |= ui
-                        .add(egui::DragValue::new(c).speed(0.01).max_decimals(3))
-                        .changed();
-                }
-            });
-            ui.end_row();
-        }
-        ch
-    })
-}
-
-/// Edit a material asset in place and save it. Used inline under Mesh Renderer and for Project selection.
-pub fn material_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
-    let Some(mut m) = state.assets.materials.get(rel).cloned() else {
-        ui.weak(format!("Missing material: {rel}"));
-        return;
-    };
-    let textures = state.assets.textures.clone();
-    if material_fields(ui, &format!("mat_{rel}"), &mut m, &textures)
-        && let Err(err) = state.assets.update_material(rel, m)
-    {
-        state.console.warn(format!("Could not save {rel}: {err}"));
-    }
 }
 
 /// Wide "Add Component" button with a searchable popup of addable components.

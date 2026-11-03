@@ -31,6 +31,8 @@ pub struct Scene {
     pub render_settings: render_settings::RenderSettings,
     /// Top-level objects in Hierarchy order.
     roots: Vec<Entity>,
+    /// Play mode: material assets changed by scripts through `sharedMaterial`, by path (not saved).
+    pub shared_materials: std::collections::BTreeMap<String, crate::assets::Material>,
 }
 
 impl Default for Scene {
@@ -55,6 +57,7 @@ impl Clone for Scene {
             world,
             render_settings: self.render_settings.clone(),
             roots: self.roots.clone(),
+            shared_materials: self.shared_materials.clone(),
         }
     }
 }
@@ -66,6 +69,7 @@ impl Scene {
             world: World::new(),
             render_settings: Default::default(),
             roots: Vec::new(),
+            shared_materials: Default::default(),
         }
     }
 
