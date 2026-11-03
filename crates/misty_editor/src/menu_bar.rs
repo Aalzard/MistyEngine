@@ -215,6 +215,10 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
     ui.menu_button("Audio", |ui| {
         item(ui, s, "Audio Source", "", create(Create::AudioSource));
     });
+    ui.menu_button("Rendering", |ui| {
+        let what = Create::FogVolume;
+        item(ui, s, what.default_name(), "", create(what));
+    });
     ui.menu_button("UI", |ui| {
         for el in crate::ui_create::UiElement::ALL {
             item(ui, s, el.name(), "", create(Create::Ui(el)));

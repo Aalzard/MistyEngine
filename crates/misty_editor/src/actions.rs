@@ -22,6 +22,8 @@ pub enum Create {
     Terrain,
     /// GameObject ▸ 2D Object ▸ Sprite (None) or Sprites ▸ a built-in shape.
     Sprite(Option<&'static str>),
+    /// GameObject ▸ Rendering ▸ Local Volumetric Fog (a Fog Volume).
+    FogVolume,
 }
 
 impl Create {
@@ -39,6 +41,7 @@ impl Create {
             Create::Terrain => "Terrain",
             Create::Sprite(None) => "New Sprite",
             Create::Sprite(Some(shape)) => shape,
+            Create::FogVolume => "Local Volumetric Fog",
         }
     }
 }

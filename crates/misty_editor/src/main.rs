@@ -63,6 +63,8 @@ mod sample_terrain;
 mod sample_ui;
 #[cfg(test)]
 mod sample_ui_widgets;
+#[cfg(test)]
+mod sample_volumetric_fog;
 mod scene_camera;
 mod scene_files;
 mod selection;

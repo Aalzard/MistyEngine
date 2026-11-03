@@ -2,7 +2,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Ui, pos2, vec2};
 use glam::Vec3;
-use misty_engine::render::{Frame, GridPlane, PostSettings};
+use misty_engine::render::{FogDebug, FogSettings, Frame, GridPlane, PostSettings};
 
 use super::AssetPayload;
 use crate::scene_camera::{AxisView, SceneCamera};
@@ -12,7 +12,15 @@ use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
-const DRAW_MODES: [&str; 3] = ["Shaded", "Wireframe", "Shaded Wireframe"];
+/// The last two show the volumetric fog alone (density = 1 - transmittance, lighting = the
+/// light it scatters).
+const DRAW_MODES: [&str; 5] = [
+    "Shaded",
+    "Wireframe",
+    "Shaded Wireframe",
+    "Fog Density",
+    "Fog Lighting",
+];
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -70,11 +78,24 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();
             }
-            let post = if sv.skybox && fx.post_processing {
-                render_scene::post_settings(&state.scene)
+            let volume = render_scene::post_settings(&state.scene);
+            let mut post = if sv.skybox && fx.post_processing {
+                volume
             } else {
                 PostSettings::default()
             };
+            // Volumetric fog follows the Fog toggle; the fog debug modes always show it.
+            let debug = match sv.draw_mode {
+                3 => FogDebug::Density,
+                4 => FogDebug::Lighting,
+                _ => FogDebug::Off,
+            };
+            post.fog = if sv.skybox && fx.fog || debug != FogDebug::Off {
+                volume.fog
+            } else {
+                FogSettings::default()
+            };
+            post.fog.debug = debug;
             let lights = if sv.lighting {
                 scene_lights
             } else {

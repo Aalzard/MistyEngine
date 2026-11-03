@@ -5,6 +5,7 @@ mod anim;
 mod animator;
 mod audio_editors;
 mod editors;
+mod fog_editors;
 mod layer_mask;
 mod material;
 mod mixed;
