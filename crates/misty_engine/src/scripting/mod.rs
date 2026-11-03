@@ -26,6 +26,7 @@ use glam::{Vec2, Vec3};
 use hecs::Entity;
 use mlua::{Function, Lua, RegistryKey, Table, Value};
 
+use crate::audio::Audio;
 use crate::physics::{Contact, Physics};
 use crate::runtime::Time;
 use crate::scene::{Scene, ScriptValue, Scripts};
@@ -110,6 +111,8 @@ pub struct World {
     pub spawned: Vec<Entity>,
     /// Scene loads and quit requests made this frame.
     pub requests: Vec<Request>,
+    /// Audio Source voices (`Play`, `PlayOneShot`, …).
+    pub audio: Audio,
 }
 
 struct Instance {
@@ -129,9 +132,20 @@ pub struct ScriptHost {
 }
 
 impl ScriptHost {
-    /// Create script instances for every script in the scene and run `Awake`.
-    /// `scene` is moved into the host's world for the duration of the call.
+    /// Create script instances for every script in the scene and run `Awake` (silent audio).
     pub fn start(scene: &mut Scene, physics: Physics, project_root: PathBuf) -> Self {
+        let (audio, _) = Audio::null(project_root.clone());
+        Self::start_with_audio(scene, physics, project_root, audio)
+    }
+
+    /// Like [`ScriptHost::start`]; sources with Play On Awake start after the scripts' `Awake`.
+    /// `scene` is moved into the host's world for the duration of the call.
+    pub fn start_with_audio(
+        scene: &mut Scene,
+        physics: Physics,
+        project_root: PathBuf,
+        audio: Audio,
+    ) -> Self {
         let lua = Lua::new();
         let mut logs = Vec::new();
         if let Err(e) = api::register(&lua) {
@@ -147,6 +161,7 @@ impl ScriptHost {
             root: project_root.clone(),
             spawned: Vec::new(),
             requests: Vec::new(),
+            audio,
         });
         let mut host = Self {
             lua,
@@ -174,8 +189,14 @@ impl ScriptHost {
         }
         host.call_all("Awake");
         host.flush_spawned();
+        host.with_world(|w| w.audio.play_on_awake(&w.scene, None));
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
         host
+    }
+
+    /// The audio voices of this game (between frames).
+    pub fn with_audio<R>(&self, f: impl FnOnce(&mut Audio) -> R) -> R {
+        self.with_world(|w| f(&mut w.audio))
     }
 
     fn with_world<R>(&self, f: impl FnOnce(&mut World) -> R) -> R {
@@ -325,6 +346,7 @@ impl ScriptHost {
                 self.call(i, "Awake", None);
             }
         }
+        self.with_world(|w| w.audio.play_on_awake(&w.scene, Some(root)));
     }
 
     fn dispatch(&self, contacts: &[Contact]) {

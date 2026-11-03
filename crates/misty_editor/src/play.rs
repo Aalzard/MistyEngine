@@ -1,5 +1,6 @@
 //! Play mode: snapshot on Play, run the game loop, restore everything on Stop.
 
+use misty_engine::audio::Audio;
 use misty_engine::build::SceneRef;
 use misty_engine::runtime::{Runtime, Time};
 use misty_engine::scripting::{LogKind, Request};
@@ -37,10 +38,17 @@ pub fn start(s: &mut EditorState) {
         path: s.files.path.clone(),
     });
     s.time = Time::new(&s.project_settings.time);
-    s.runtime = Some(Runtime::start(
+    // The editor's clip preview stops when the game starts.
+    if let Some(p) = s.clip_preview.as_mut() {
+        p.stop_all();
+    }
+    let mut audio = Audio::with_device(s.project.root.clone());
+    audio.set_muted(s.game_view.mute);
+    s.runtime = Some(Runtime::start_with_audio(
         &mut s.scene,
         s.project.root.clone(),
         &s.project_settings,
+        audio,
     ));
     flush_logs(s);
     s.game_view.focused = s.game_view.play_mode_target != 2;
@@ -75,6 +83,10 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
         PlayState::Paused => std::mem::take(&mut s.step_requested),
         PlayState::Edit => false,
     };
+    let (muted, paused) = (s.game_view.mute, s.play == PlayState::Paused);
+    if let Some(runtime) = s.runtime.as_mut() {
+        runtime.set_audio_state(muted, paused);
+    }
     if !run {
         return;
     }
@@ -122,10 +134,13 @@ fn load_scene(s: &mut EditorState, which: &SceneRef) {
                 s.console.warn(format!("{rel}: {w}"));
             }
             s.runtime = None;
-            s.runtime = Some(Runtime::start(
+            let mut audio = Audio::with_device(s.project.root.clone());
+            audio.set_muted(s.game_view.mute);
+            s.runtime = Some(Runtime::start_with_audio(
                 &mut scene,
                 s.project.root.clone(),
                 &s.project_settings,
+                audio,
             ));
             s.scene = scene;
             s.files.path = Some(rel);
@@ -304,5 +319,24 @@ return N
         assert!((y - 0.5).abs() < 0.05, "landed on the plane: {y}");
         stop(&mut s);
         assert_eq!(s.scene.world_position(cube).y, 4.0);
+    }
+
+    #[test]
+    fn audio_source_menu_item_and_play_without_clip() {
+        use crate::actions::{Action, Create};
+        let mut s = state();
+        let what = Create::AudioSource;
+        crate::commands::apply(&mut s, Action::Create { what, parent: None });
+        let e = s.scene.find_by_name("Audio Source").unwrap();
+        assert_eq!(s.scene.component_names(e), ["Transform", "Audio Source"]);
+        s.game_view.mute = true;
+        start(&mut s);
+        tick(&mut s, 1.0 / 60.0);
+        let stats = s.runtime.as_ref().unwrap().stats();
+        assert_eq!(
+            stats.voices, 0,
+            "no clip, nothing plays (and no device is opened)"
+        );
+        stop(&mut s);
     }
 }

@@ -91,10 +91,10 @@ fn stats_overlay(
         ),
         match state.runtime.as_ref().map(|r| r.stats()) {
             Some(r) => format!(
-                "Physics: {} bodies, {} colliders   Scripts: {}",
-                r.bodies, r.colliders, r.scripts
+                "Physics: {} bodies, {} colliders   Scripts: {}   Audio: {}",
+                r.bodies, r.colliders, r.scripts, r.voices
             ),
-            None => "Physics: -   Scripts: -".to_owned(),
+            None => "Physics: -   Scripts: -   Audio: -".to_owned(),
         },
     ];
     let font = FontId::monospace(11.0);

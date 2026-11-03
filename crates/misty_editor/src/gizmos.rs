@@ -6,8 +6,8 @@ use misty_engine::render::LineVertex;
 use misty_engine::render::MeshDraw;
 use misty_engine::render::mesh::primitive_edges;
 use misty_engine::scene::{
-    BoxCollider, Camera, CapsuleCollider, Light, LightType, MeshCollider, MeshFilter, Scene,
-    SphereCollider,
+    AudioSource, BoxCollider, Camera, CapsuleCollider, Light, LightType, MeshCollider, MeshFilter,
+    Scene, SphereCollider,
 };
 
 use crate::selection::Selection;
@@ -17,6 +17,7 @@ const COLLIDER: [f32; 4] = [0.57, 0.96, 0.55, 0.9];
 pub const WIREFRAME: [f32; 4] = [0.05, 0.05, 0.05, 0.9];
 const CAMERA: [f32; 4] = [0.85, 0.85, 0.85, 0.8];
 const LIGHT: [f32; 4] = [1.0, 0.92, 0.45, 0.9];
+const AUDIO: [f32; 4] = [0.45, 0.7, 1.0, 0.85];
 
 /// Collects line segments in world space.
 #[derive(Default)]
@@ -241,6 +242,17 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         }
         if let Ok(light) = w.get::<&Light>(e) {
             lines.light_rays(&rigid, &light, LIGHT);
+        }
+        if let Ok(src) = w.get::<&AudioSource>(e)
+            && src.spatial_blend > 0.0
+        {
+            // Min/max distance spheres (positions only: distances ignore scale and rotation).
+            let at = Mat4::from_translation(pos);
+            for radius in [src.min_distance, src.max_distance] {
+                for axis in 0..3 {
+                    lines.circle(&at, Vec3::ZERO, radius, axis, AUDIO);
+                }
+            }
         }
         lines.colliders(scene, e);
     }

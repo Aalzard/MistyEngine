@@ -59,6 +59,7 @@ impl Scene {
         s.set_transform(cam, Transform::from_position(Vec3::new(0.0, 1.0, -10.0)));
         s.game_object_mut(cam).tag = "MainCamera".into();
         s.add(cam, Camera::default());
+        s.add(cam, AudioListener::default());
         let light = s.spawn("Directional Light", None);
         s.set_transform(
             light,
@@ -462,7 +463,10 @@ mod tests {
         let s = Scene::default_3d("SampleScene");
         assert_eq!(names(&s, s.roots()), ["Main Camera", "Directional Light"]);
         let cam = s.roots()[0];
-        assert_eq!(s.component_names(cam), ["Transform", "Camera"]);
+        assert_eq!(
+            s.component_names(cam),
+            ["Transform", "Camera", "Audio Listener"]
+        );
     }
 
     #[test]
@@ -541,7 +545,10 @@ mod tests {
         s.spawn("New", None);
         assert_eq!(snap.name(cam), "Main Camera");
         assert_eq!(snap.len(), 2);
-        assert_eq!(snap.component_names(cam), ["Transform", "Camera"]);
+        assert_eq!(
+            snap.component_names(cam),
+            ["Transform", "Camera", "Audio Listener"]
+        );
     }
 
     #[test]

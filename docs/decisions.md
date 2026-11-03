@@ -271,3 +271,30 @@ Record of choices made without asking, and why.
     ("left shift", "page up", "-"); the editor's egui-based capture keeps its names, which match for letters,
     digits, arrows, space, return, escape, F-keys and modifiers. Release players use the Windows GUI subsystem
     (no console); output goes to stderr and `Player.log` next to the executable.
+
+## 2026-11-03 — Audio
+
+87. **kira (0.12) for audio output, not rodio.** kira is built for games: every playing sound has a handle whose
+    volume, playback rate and stereo panning can be changed (with short tweens, so per-frame 3D updates don't
+    click), plus loop regions and pause/resume. rodio's `Sink` has volume/speed but no live panning, which 3D sound
+    needs. kira decodes wav/ogg/mp3 through symphonia (only those formats are enabled).
+88. **Spatial mixing is our own math, not kira's spatial tracks:** `audio::spatial` computes rolloff (Logarithmic =
+    `min / distance`, holding its level past Max Distance; Linear = fade to silence at Max Distance) and pan
+    (direction to the source · listener right), then blends 2D/3D by Spatial Blend. It is pure, unit-tested,
+    backend-independent, and matches the familiar Inspector settings directly.
+89. **Swappable backend, device opened lazily.** `Audio` talks to an `AudioBackend` trait: `KiraBackend` (real
+    device) or `NullBackend` (records calls, never makes sound). The device is opened on the first sound, so tests,
+    scenes without audio and machines without a sound card never touch it; failure logs one Console warning and the
+    game keeps running silently. Tests and `ScriptHost::start` use the null backend.
+90. **`Audio` lives in the scripting `World`**, next to the scene and physics, so Lua `AudioSource` methods can
+    start/stop voices synchronously and `isPlaying` is correct immediately after `Play()`. Property setters write
+    the component; the per-frame update pushes them to playing voices.
+91. **Play = restart, Pause/UnPause = hold/resume**, `isPlaying` is false while paused or after the clip ends.
+    `PlayOneShot(path [, volume])` is a method on the source (its mix and position) and is not counted by
+    `isPlaying`. Sources stop when disabled, deactivated or destroyed.
+92. **Editor Pause pauses audio; Mute Audio = volume 0** (voices keep running, so unmuting resumes mid-clip). The
+    Audio is created already muted when Mute Audio was on before Play, so play-on-awake sounds don't blip.
+93. **Clip preview uses its own `Audio`** in the editor state (device opened on the first ▶), stopped when Play
+    starts. The Inspector shows WAV format/length read from the header; other formats show the file size.
+94. **Sample clip is generated, not downloaded:** `audio::wav::sine_beep` writes a 0.3 s 660 Hz mono 16-bit WAV;
+    a test checks the committed file (regenerate with `MISTY_WRITE_SAMPLES=1 cargo test sample_clip`).

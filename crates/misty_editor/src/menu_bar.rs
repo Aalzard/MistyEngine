@@ -157,7 +157,9 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
             item(ui, s, what.default_name(), "", create(what));
         }
     });
-    ui.menu_button("Audio", |ui| todo(ui, s, "Audio Source", ""));
+    ui.menu_button("Audio", |ui| {
+        item(ui, s, "Audio Source", "", create(Create::AudioSource));
+    });
     ui.menu_button("UI", |ui| todo(ui, s, "Canvas", ""));
     item(ui, s, "Camera", "", create(Create::Camera));
 }

@@ -1,4 +1,5 @@
-//! Built-in components: GameObject header, Transform, hierarchy node, Camera, Light, mesh components.
+//! Built-in components: GameObject header, Transform, hierarchy node, Camera, Light, mesh, physics,
+//! scripts, prefab link and audio components.
 
 use glam::{Mat4, Quat, Vec3};
 use serde::{Deserialize, Serialize};
@@ -578,4 +579,81 @@ pub struct Scripts {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrefabLink {
     pub path: String,
+}
+
+// ---- audio ---------------------------------------------------------------------------------
+
+/// How a 3D sound gets quieter with distance.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AudioRolloff {
+    /// Natural falloff: `min / distance` past the min distance.
+    #[default]
+    Logarithmic,
+    /// Straight fade from full volume at min distance to silence at max distance.
+    Linear,
+}
+
+impl AudioRolloff {
+    pub const ALL: [Self; 2] = [Self::Logarithmic, Self::Linear];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Logarithmic => "Logarithmic Rolloff",
+            Self::Linear => "Linear Rolloff",
+        }
+    }
+}
+
+/// Plays an audio clip, in 2D or positioned in 3D around the Audio Listener.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AudioSource {
+    pub enabled: bool,
+    /// Clip asset path ("Assets/Audio/Beep.wav"); `None` = no clip.
+    pub clip: Option<String>,
+    pub mute: bool,
+    pub play_on_awake: bool,
+    #[serde(rename = "loop")]
+    pub looping: bool,
+    pub volume: f32,
+    pub pitch: f32,
+    /// -1 (left) .. 1 (right), applied to the 2D part of the mix.
+    pub stereo_pan: f32,
+    /// 0 = 2D, 1 = fully 3D.
+    pub spatial_blend: f32,
+    pub min_distance: f32,
+    pub max_distance: f32,
+    pub rolloff: AudioRolloff,
+}
+
+impl Default for AudioSource {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            clip: None,
+            mute: false,
+            play_on_awake: true,
+            looping: false,
+            volume: 1.0,
+            pitch: 1.0,
+            stereo_pan: 0.0,
+            spatial_blend: 0.0,
+            min_distance: 1.0,
+            max_distance: 500.0,
+            rolloff: AudioRolloff::Logarithmic,
+        }
+    }
+}
+
+/// The "ears" of the scene: 3D sounds are mixed relative to this object.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AudioListener {
+    pub enabled: bool,
+}
+
+impl Default for AudioListener {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }

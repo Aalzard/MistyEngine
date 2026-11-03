@@ -337,3 +337,70 @@ return Loader
         "{logs:?}"
     );
 }
+
+const JUKEBOX: &str = r#"
+local Jukebox = {}
+function Jukebox:Start()
+    local src = self.gameObject:GetComponent("AudioSource")
+    Debug.Log("awake playing", src.isPlaying, src.clip)
+    src:Stop()
+    Debug.Log("after stop", src.isPlaying)
+    src.volume = 0.25
+    src.pitch = 1.5
+    src.loop = true
+    src.clip = "Assets/Audio/Other.ogg"
+    src:Play()
+    Debug.Log("after play", src.isPlaying, src.volume, src.pitch, src.loop, src.clip)
+    src:Pause()
+    Debug.Log("after pause", src.isPlaying)
+    src:UnPause()
+    src:PlayOneShot("Assets/Audio/Shot.wav", 0.5)
+    Debug.Log("none", self.gameObject:GetComponent("Rigidbody") == nil)
+end
+return Jukebox
+"#;
+
+#[test]
+fn audio_source_api_against_the_silent_backend() {
+    let root = project(&[("Jukebox.lua", JUKEBOX)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Speaker", None);
+    scene.add(
+        e,
+        crate::scene::AudioSource {
+            clip: Some("Assets/Audio/Beep.wav".into()),
+            ..Default::default()
+        },
+    );
+    attach(&mut scene, e, "Jukebox.lua", &[]);
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let (audio, log) = Audio::null(root.clone());
+    let mut host = ScriptHost::start_with_audio(&mut scene, physics, root.clone(), audio);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    let logs: Vec<String> = host.take_logs().into_iter().map(|(_, t)| t).collect();
+    assert_eq!(
+        logs,
+        [
+            "awake playing true Assets/Audio/Beep.wav",
+            "after stop false",
+            "after play true 0.25 1.5 true Assets/Audio/Other.ogg",
+            "after pause false",
+            "none true",
+        ]
+    );
+    let played: Vec<PathBuf> = log.lock().unwrap().played.clone();
+    let clips: Vec<PathBuf> = ["Beep.wav", "Other.ogg", "Shot.wav"]
+        .iter()
+        .map(|f| root.join("Assets/Audio").join(f))
+        .collect();
+    assert_eq!(played, clips, "play on awake, Play(), PlayOneShot()");
+    let src = scene.world.get::<&crate::scene::AudioSource>(e).unwrap();
+    assert!(
+        src.looping && src.volume == 0.25,
+        "settings are written to the component"
+    );
+    drop(src);
+    assert_eq!(host.with_audio(|a| a.voice_count()), 2);
+}

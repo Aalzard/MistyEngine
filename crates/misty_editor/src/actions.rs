@@ -13,6 +13,7 @@ pub enum Create {
     Primitive(PrimitiveMesh),
     Light(LightType),
     Camera,
+    AudioSource,
 }
 
 impl Create {
@@ -24,6 +25,7 @@ impl Create {
             Create::Light(LightType::Point) => "Point Light",
             Create::Light(LightType::Spot) => "Spot Light",
             Create::Camera => "Camera",
+            Create::AudioSource => "Audio Source",
         }
     }
 }
