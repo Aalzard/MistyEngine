@@ -18,15 +18,18 @@ pub enum Category {
     TagsAndLayers,
     /// Physics 2D and Sorting Layers pages live in `project_settings_2d`.
     Physics2D,
+    /// Shadow quality and cascades (`project_settings_quality`).
+    Quality,
     SortingLayers,
     Time,
 }
 
 impl Category {
-    pub const ALL: [Category; 6] = [
+    pub const ALL: [Category; 7] = [
         Category::InputManager,
         Category::Physics,
         Category::Physics2D,
+        Category::Quality,
         Category::SortingLayers,
         Category::TagsAndLayers,
         Category::Time,
@@ -38,6 +41,7 @@ impl Category {
             Category::Physics => "Physics",
             Category::TagsAndLayers => "Tags and Layers",
             Category::Physics2D => "Physics 2D",
+            Category::Quality => "Quality",
             Category::SortingLayers => "Sorting Layers",
             Category::Time => "Time",
         }
@@ -121,6 +125,7 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
                     Category::InputManager => crate::project_settings_input::page(ui, &mut p.input),
                     Category::Physics => physics(ui, p),
                     Category::Physics2D => crate::project_settings_2d::physics2d(ui, p),
+                    Category::Quality => crate::project_settings_quality::page(ui, &mut p.quality),
                     Category::SortingLayers => crate::project_settings_2d::sorting_layers(ui, p),
                     Category::TagsAndLayers => {
                         crate::project_settings_tags::page(ui, &mut p.tags_and_layers)

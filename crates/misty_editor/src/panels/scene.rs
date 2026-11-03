@@ -12,7 +12,8 @@ use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
-const DRAW_MODES: [&str; 3] = ["Shaded", "Wireframe", "Shaded Wireframe"];
+/// 3 = Shadow Cascades: shaded, each sun cascade tinted.
+pub const DRAW_MODES: [&str; 4] = ["Shaded", "Wireframe", "Shaded Wireframe", "Shadow Cascades"];
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -97,6 +98,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 lights: &lights,
             };
             let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
+            gpu.renderer.set_cascade_debug(sv.draw_mode == 3);
             let texture = gpu.render(ViewId::Scene, size, &frame);
             ui.painter().image(
                 texture,

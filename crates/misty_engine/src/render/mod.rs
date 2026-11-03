@@ -1,6 +1,7 @@
 //! wgpu renderer: sky, lit meshes with shadows, grid, particles, gizmo lines and selection outline.
 
 mod batch;
+mod cascades;
 pub mod culling;
 pub mod environment;
 mod frame_lists;
@@ -10,6 +11,7 @@ pub mod particles;
 mod pipelines;
 pub mod post;
 mod shadows;
+mod soft_shadows;
 pub mod stats;
 pub mod surface;
 mod target;
@@ -22,6 +24,7 @@ pub use crate::terrain::TerrainDraw;
 pub use environment::{Environment, Sun};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
+pub use soft_shadows::LightShadow;
 pub use stats::{RenderMemory, RenderOptions, RenderStats};
 pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
@@ -197,6 +200,8 @@ pub struct LightData {
     /// Full cone angle in degrees.
     pub spot_angle: f32,
     pub shadows: Shadows,
+    /// Source size and biases (soft shadows).
+    pub shadow: LightShadow,
 }
 
 /// Everything needed to draw one view.
@@ -445,7 +450,7 @@ impl Renderer {
             &self.lights_buffer,
         ];
         let shadow_bytes = 4
-            * (shadows::DIRECTIONAL_SIZE.pow(2) as u64
+            * (shadows::DIRECTIONAL_SIZE.pow(2) as u64 * cascades::MAX_CASCADES as u64
                 + shadows::LOCAL_SIZE.pow(2) as u64 * shadows::MAX_LOCAL_LAYERS as u64);
         RenderMemory {
             meshes: self.meshes.len() + imported.count() + terrains,
@@ -583,12 +588,13 @@ impl Renderer {
         );
 
         // Culling and batching for the camera and every shadow map.
+        let shadow_settings = crate::quality::shadows();
         let (lists, plan) = {
             crate::profile_scope!("Render.Culling");
             let meshes = self.mesh_bounds(frame);
             let terrains = self.terrain_bounds(frame);
             let casters = Self::caster_bounds(frame, &meshes, &terrains);
-            let plan = shadows::plan_with(frame, &casters);
+            let plan = shadows::plan_with(frame, &casters, aspect, &shadow_settings);
             let view_proj = frame.camera.view_projection(aspect);
             let lists =
                 self.frame_lists(frame, &view_proj, &plan, (&meshes, &terrains), &mut stats);
@@ -596,23 +602,10 @@ impl Renderer {
         };
         self.upload_draws(device, queue, frame, &lists.slots);
 
-        // Lights and their shadow maps (slot 0 = directional, 1.. = local layers).
+        // Lights and their shadow maps (cascades first, then local layers).
         let lights = lights_uniform(frame, &plan);
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
-        let slots = plan
-            .directional
-            .iter()
-            .map(|m| (0, *m))
-            .chain(plan.local.iter().enumerate().map(|(i, m)| (i + 1, *m)));
-        for (slot, m) in slots {
-            let mut v = ViewUniform::zeroed();
-            v.view_proj = m.to_cols_array_2d();
-            queue.write_buffer(
-                &self.shadows.view_buffer,
-                slot as u64 * shadows::VIEW_STRIDE,
-                bytemuck::bytes_of(&v),
-            );
-        }
+        self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
 
         // Overlay triangles follow the lines in the same buffer.
         let line_vertices = frame.lines.len() + frame.overlay.len();
@@ -642,16 +635,7 @@ impl Renderer {
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         // First pass: starts the GPU timing.
         self.mask_pass(&mut encoder, target, frame, timing);
-        let mut shadow_lists = lists.shadows.iter();
-        if plan.directional.is_some() {
-            let list = shadow_lists.next();
-            let view = &self.shadows.directional_view;
-            self.shadow_pass(&mut encoder, frame, view, 0, list, &mut stats);
-        }
-        for (layer, list) in shadow_lists.enumerate() {
-            let view = &self.shadows.local_layer_views[layer];
-            self.shadow_pass(&mut encoder, frame, view, layer + 1, Some(list), &mut stats);
-        }
+        self.shadow_passes(&mut encoder, frame, &plan, &lists.shadows, &mut stats);
         self.main_pass(
             &mut encoder,
             target,
@@ -1185,7 +1169,7 @@ fn draw_groups(
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: wgpu::BindingResource::TextureView(&shadows.directional_view),
+                resource: wgpu::BindingResource::TextureView(&shadows.cascade_array_view),
             },
             wgpu::BindGroupEntry {
                 binding: 3,
@@ -1198,6 +1182,11 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 5,
                 resource: slots.as_entire_binding(),
+            },
+            // Soft-shadow parameters (shadows.wgsl).
+            wgpu::BindGroupEntry {
+                binding: 6,
+                resource: shadows.params_buffer.as_entire_binding(),
             },
         ],
     });
@@ -1332,15 +1321,16 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
         n += 1;
     }
     let env = &frame.environment.settings;
+    // Cascade 0 stands in for the single sun map of older shader code.
+    let first = plan.cascades.first();
     u.info = [
         n as f32,
-        plan.directional_texel,
+        first.map_or(0.0, |c| c.texel),
         env.environment_lighting.intensity.max(0.0),
         env.reflection_intensity.max(0.0),
     ];
-    u.shadow_view_proj = plan
-        .directional
-        .unwrap_or(Mat4::IDENTITY)
+    u.shadow_view_proj = first
+        .map_or(Mat4::IDENTITY, |c| c.view_proj)
         .to_cols_array_2d();
     for (i, m) in plan.local.iter().enumerate() {
         u.local_view_proj[i] = m.to_cols_array_2d();

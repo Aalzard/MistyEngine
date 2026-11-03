@@ -6,6 +6,7 @@ mod animator;
 mod audio_editors;
 mod editors;
 mod layer_mask;
+mod light_shadows;
 mod material;
 mod mixed;
 mod mixer_inspector;

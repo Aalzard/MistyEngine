@@ -102,6 +102,14 @@ pub fn apply_env(
     {
         crate::project_settings::open_at(s, c);
     }
+    // `MISTY_DRAW_MODE=Shadow Cascades` picks a Scene view draw mode.
+    if let Some(mode) = std::env::var_os("MISTY_DRAW_MODE")
+        && let Some(i) = crate::panels::scene::DRAW_MODES
+            .iter()
+            .position(|m| *m == mode.to_string_lossy())
+    {
+        s.scene_view.draw_mode = i;
+    }
     // `MISTY_2D=1` switches the Scene view to 2D (looking down +Z at the XY plane).
     if std::env::var_os("MISTY_2D").is_some() {
         s.scene_view.is_2d = true;

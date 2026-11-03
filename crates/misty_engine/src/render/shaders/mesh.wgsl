@@ -1,6 +1,6 @@
 // Lit meshes, close to the Standard (metallic) shader:
 // Lambert diffuse + GGX specular, sky reflections with Fresnel, hemisphere ambient,
-// directional/point/spot lights, hard or soft shadows for all three light types.
+// directional/point/spot lights, hard or soft shadows for all three light types (shadows.wgsl).
 // Albedo texture × colour and tangent-space normal maps (OpenGL convention, green = up),
 // metallic (R) / smoothness (A), occlusion (G) and emission maps.
 // Rendering modes: Opaque, Cutout (fs_cutout discards below the cutoff), Fade (straight alpha)
@@ -54,7 +54,8 @@ struct Lights {
 
 @group(1) @binding(0) var<uniform> lights: Lights;
 @group(1) @binding(1) var<storage, read> draws: array<Draw>;
-@group(1) @binding(2) var shadow_map: texture_depth_2d;
+// Sun cascades, one layer each (shadows.wgsl).
+@group(1) @binding(2) var shadow_map: texture_depth_2d_array;
 @group(1) @binding(3) var shadow_sampler: sampler_comparison;
 @group(1) @binding(4) var local_shadow_map: texture_depth_2d_array;
 // Instance index → draw slot: instanced batches list their draws here.
@@ -112,90 +113,6 @@ fn mapped_normal(in: MeshOut, d: Draw, sampled: vec3<f32>) -> vec3<f32> {
     var m = sampled * 2.0 - 1.0;
     m = vec3<f32>(m.xy * d.params.w, max(m.z, 1e-3));
     return normalize(t * m.x + b * m.y + n * m.z);
-}
-
-// Shadow-map coordinates (uv, depth) of a world point, or depth > 1 when outside.
-fn shadow_coords(m: mat4x4<f32>, p: vec3<f32>) -> vec3<f32> {
-    let c = m * vec4<f32>(p, 1.0);
-    let ndc = c.xyz / c.w;
-    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-    if (c.w <= 0.0 || any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) {
-        return vec3<f32>(0.0, 0.0, 2.0);
-    }
-    return vec3<f32>(uv, ndc.z);
-}
-
-// Hard = one bilinear compare; Soft = 5x5 PCF over a wider footprint.
-fn filter_directional(sc: vec3<f32>, mode: f32, bias: f32) -> f32 {
-    if (sc.z > 1.0) {
-        return 1.0;
-    }
-    let z = sc.z - bias;
-    if (mode < 1.5) {
-        return textureSampleCompareLevel(shadow_map, shadow_sampler, sc.xy, z);
-    }
-    let texel = 1.5 / vec2<f32>(textureDimensions(shadow_map));
-    var sum = 0.0;
-    for (var y = -2; y <= 2; y++) {
-        for (var x = -2; x <= 2; x++) {
-            sum += textureSampleCompareLevel(shadow_map, shadow_sampler, sc.xy + vec2<f32>(f32(x), f32(y)) * texel, z);
-        }
-    }
-    return sum / 25.0;
-}
-
-fn filter_local(sc: vec3<f32>, layer: i32, mode: f32, bias: f32) -> f32 {
-    if (sc.z > 1.0) {
-        return 1.0;
-    }
-    let z = sc.z - bias;
-    if (mode < 1.5) {
-        return textureSampleCompareLevel(local_shadow_map, shadow_sampler, sc.xy, layer, z);
-    }
-    let texel = 1.5 / vec2<f32>(textureDimensions(local_shadow_map));
-    var sum = 0.0;
-    for (var y = -2; y <= 2; y++) {
-        for (var x = -2; x <= 2; x++) {
-            sum += textureSampleCompareLevel(local_shadow_map, shadow_sampler, sc.xy + vec2<f32>(f32(x), f32(y)) * texel, layer, z);
-        }
-    }
-    return sum / 25.0;
-}
-
-fn shadow_factor(li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) -> f32 {
-    let mode = li.shadow.x;
-    if (mode < 0.5) {
-        return 1.0;
-    }
-    // Normal offset reduces acne on surfaces facing away from the light.
-    let slope = 1.0 - max(dot(n, l), 0.0);
-    let kind = u32(li.dir_type.w);
-    if (kind == 0u) {
-        // Push the lookup out along the normal by about one shadow texel (more on slopes).
-        let p = world + n * lights.info.y * (1.5 + 3.0 * slope);
-        return filter_directional(shadow_coords(lights.shadow_view_proj, p), mode, 0.0003);
-    }
-    var layer = i32(li.shadow.y);
-    if (layer < 0) {
-        return 1.0;
-    }
-    let to_point = world - li.pos_range.xyz;
-    if (kind == 1u) {
-        // Pick the cube face by the major axis.
-        let a = abs(to_point);
-        if (a.x >= a.y && a.x >= a.z) {
-            layer += select(1, 0, to_point.x > 0.0);
-        } else if (a.y >= a.z) {
-            layer += select(3, 2, to_point.y > 0.0);
-        } else {
-            layer += select(5, 4, to_point.z > 0.0);
-        }
-    }
-    // One 1024² texel of a ~92° frustum at this distance is about 0.002 × distance.
-    let texel = length(to_point) * 0.002;
-    let offset = n * texel * (2.0 + 4.0 * slope);
-    let sc = shadow_coords(lights.local_view_proj[layer], world + offset);
-    return filter_local(sc, layer, mode, 0.0002);
 }
 
 // GGX normal distribution.
@@ -354,7 +271,7 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
             continue;
         }
         if (s.receive_shadows) {
-            atten *= shadow_factor(li, world, n, l);
+            atten *= shadow_factor(i, li, world, n, l);
         }
         let h = normalize(l + v);
         let n_dot_h = max(dot(n, h), 0.0);
@@ -365,6 +282,7 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
         let spec = fresnel * (d_ggx(n_dot_h, roughness) * vis * PI);
         color += (diffuse_color + spec) * li.color.rgb * n_dot_l * atten;
     }
+    color = cascade_debug(world, color);
     color += s.emission;
     let fog = fog_visibility(fog_distance(world));
     // Premultiplied colour gets premultiplied fog.

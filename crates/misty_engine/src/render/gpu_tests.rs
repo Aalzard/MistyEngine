@@ -148,6 +148,7 @@ fn test_lights() -> Vec<LightData> {
         range: 9.0,
         spot_angle: 50.0,
         shadows: Shadows::Soft,
+        shadow: Default::default(),
     };
     vec![
         light(

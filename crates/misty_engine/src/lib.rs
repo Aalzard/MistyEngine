@@ -15,6 +15,7 @@ pub mod particles;
 pub mod physics;
 pub mod physics2d;
 pub mod profiler;
+pub mod quality;
 pub mod render;
 pub mod render_scene;
 pub mod runtime;

@@ -5,6 +5,7 @@
 use glam::{Mat4, Quat, Vec3};
 use serde::{Deserialize, Serialize};
 
+use super::light_shadow;
 use crate::camera::{euler_to_quat, quat_to_euler};
 
 pub use crate::navigation::{NavMeshAgent, NavMeshObstacle};
@@ -274,6 +275,18 @@ pub struct Light {
     /// Full cone angle in degrees.
     pub spot_angle: f32,
     pub shadows: Shadows,
+    /// Directional: angular diameter of the source in degrees (soft shadows widen with it).
+    #[serde(skip_serializing_if = "light_shadow::is_angle")]
+    pub shadow_angle: f32,
+    /// Spot / point: radius of the source in metres.
+    #[serde(skip_serializing_if = "light_shadow::is_radius")]
+    pub shadow_radius: f32,
+    /// Depth bias in shadow-map texels.
+    #[serde(skip_serializing_if = "light_shadow::is_bias")]
+    pub shadow_bias: f32,
+    /// Normal offset in shadow-map texels.
+    #[serde(skip_serializing_if = "light_shadow::is_normal_bias")]
+    pub shadow_normal_bias: f32,
 }
 
 impl Default for Light {
@@ -286,6 +299,10 @@ impl Default for Light {
             range: 10.0,
             spot_angle: 30.0,
             shadows: Shadows::None,
+            shadow_angle: light_shadow::ANGLE,
+            shadow_radius: light_shadow::RADIUS,
+            shadow_bias: light_shadow::BIAS,
+            shadow_normal_bias: light_shadow::NORMAL_BIAS,
         }
     }
 }

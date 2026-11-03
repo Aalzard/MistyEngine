@@ -31,6 +31,7 @@ mod project;
 mod project_settings;
 mod project_settings_2d;
 mod project_settings_input;
+mod project_settings_quality;
 mod project_settings_tags;
 mod render_scene;
 #[cfg(test)]
@@ -55,6 +56,8 @@ mod sample_navigation;
 mod sample_particles;
 #[cfg(test)]
 mod sample_physics;
+#[cfg(test)]
+mod sample_shadows;
 #[cfg(test)]
 mod sample_stress;
 #[cfg(test)]

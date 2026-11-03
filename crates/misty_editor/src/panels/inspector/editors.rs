@@ -496,6 +496,7 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             Shadows::label,
         );
         ui.end_row();
+        ch |= super::light_shadows::rows(ui, l);
         ch
     })
 }
