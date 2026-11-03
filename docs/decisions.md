@@ -1057,7 +1057,7 @@ Record of choices made without asking, and why.
      300-frame history. Children inherit the parent's category; the CPU chart stacks each
      category's *self* time, and Others also gets the time no scope covers (editor UI, vsync).
 260. **Profiler window** (Window ▸ Analysis ▸ Profiler, Ctrl+7, on-demand tab docking with the
-     Scene/Game views): Record / Clear / previous / next / Current; module charts with the
+     Project/Console, so the Game view keeps rendering): Record / Clear / previous / next / Current; module charts with the
      newest frame on the right: CPU Usage (stacked categories, legend toggles, 60/30/15 FPS
      lines, GPU time as a yellow line), Rendering (batches) and Memory (GPU MB). Clicking a
      chart selects a frame and its module; details show the merged Hierarchy (Total %, Self %,

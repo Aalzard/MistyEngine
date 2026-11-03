@@ -119,39 +119,46 @@ fn module_legend(
     }
     match module {
         Module::Cpu => {
-            for c in Category::ALL {
+            // Two compact columns of colour swatches; click one to hide its category.
+            let top = ui.cursor().top();
+            let col_w = (rect.width() - 12.0) / 2.0;
+            for (i, c) in Category::ALL.into_iter().enumerate() {
                 let ms = frame.map_or(0.0, |f| f.categories[c.index()]);
                 let shown = !w.hidden[c.index()];
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    let (r, resp) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::click());
-                    let color = category_color(c);
-                    if shown {
-                        ui.painter().rect_filled(r, 1.0, color);
-                    } else {
-                        ui.painter().rect_stroke(
-                            r,
-                            1.0,
-                            Stroke::new(1.0, color),
-                            egui::StrokeKind::Inside,
-                        );
-                    }
-                    let label = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(format!("{} {ms:.2}ms", c.label())).size(11.0),
-                        )
-                        .sense(Sense::click()),
-                    );
-                    if resp.clicked() || label.clicked() {
-                        w.hidden[c.index()] = shown;
-                    }
-                });
+                let at = pos2(
+                    rect.left() + 6.0 + (i % 2) as f32 * col_w,
+                    top + (i / 2) as f32 * 14.0,
+                );
+                let item = Rect::from_min_size(at, vec2(col_w, 13.0));
+                let swatch = Rect::from_min_size(at + vec2(0.0, 2.0), vec2(9.0, 9.0));
+                let color = category_color(c);
+                if shown {
+                    ui.painter().rect_filled(swatch, 1.0, color);
+                } else {
+                    let stroke = Stroke::new(1.0, color);
+                    ui.painter()
+                        .rect_stroke(swatch, 1.0, stroke, egui::StrokeKind::Inside);
+                }
+                ui.painter().text(
+                    at + vec2(12.0, 0.0),
+                    Align2::LEFT_TOP,
+                    format!("{} {ms:.1}", c.label()),
+                    FontId::proportional(10.0),
+                    Color32::from_gray(if shown { 210 } else { 120 }),
+                );
+                let id = ui.id().with(("profiler legend", i));
+                if ui.interact(item, id, Sense::click()).clicked() {
+                    w.hidden[c.index()] = shown;
+                }
             }
+            let below = top + 4.0 * 14.0;
             if let Some(gpu) = frame.and_then(|f| f.gpu_ms) {
-                ui.label(
-                    egui::RichText::new(format!("— GPU {gpu:.2}ms"))
-                        .size(11.0)
-                        .color(GPU_COLOR),
+                ui.painter().text(
+                    pos2(rect.left() + 6.0, below),
+                    Align2::LEFT_TOP,
+                    format!("GPU {gpu:.2}ms"),
+                    FontId::proportional(10.0),
+                    GPU_COLOR,
                 );
             }
         }
@@ -211,10 +218,14 @@ fn cpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], pl
             .map(|c| f.categories[c.index()])
             .sum()
     };
-    let peak = frames
+    // Scale to the 95th percentile so one hitch (loading, entering Play) doesn't flatten
+    // the rest; taller frames are clipped at the top.
+    let mut totals: Vec<f32> = frames
         .iter()
         .map(|f| stack(f).max(f.gpu_ms.unwrap_or(0.0)))
-        .fold(0.0, f32::max);
+        .collect();
+    totals.sort_by(f32::total_cmp);
+    let peak = totals[(totals.len() * 95 / 100).min(totals.len() - 1)];
     // Always room for the 60 FPS line.
     let top = nice_max(peak.max(16.7) * 1.1);
     let y = |ms: f32| plot.bottom() - (ms / top).min(1.0) * plot.height();

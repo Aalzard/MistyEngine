@@ -84,7 +84,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         });
         return;
     }
-    let chart_h = (ui.available_height() * 0.45).clamp(150.0, 320.0);
+    let chart_h = (ui.available_height() * 0.5).clamp(170.0, 320.0);
     ui.allocate_ui(egui::vec2(ui.available_width(), chart_h), |ui| {
         chart::modules(ui, w, &frames);
     });

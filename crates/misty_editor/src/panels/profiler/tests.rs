@@ -64,11 +64,11 @@ fn counters_list_rendering_and_memory_values() {
 }
 
 #[test]
-fn profiler_opens_beside_the_scene_view() {
+fn profiler_opens_beside_the_project_window() {
     let mut dock = layout::default_layout();
     layout::focus_or_open(&mut dock, Tab::Profiler);
     let profiler = dock.find_tab(&Tab::Profiler).expect("opened");
-    assert_eq!(profiler.node, dock.find_tab(&Tab::Scene).unwrap().node);
+    assert_eq!(profiler.node, dock.find_tab(&Tab::Project).unwrap().node);
 }
 
 #[test]

@@ -71,11 +71,13 @@ pub fn apply_env(
         s.selection.clear();
         s.inspector_asset = Some(rel);
     }
-    if let Some(title) = std::env::var_os("MISTY_TAB")
-        && let Some(tab) =
-            crate::layout::Tab::every().find(|t| t.title() == title.to_string_lossy())
-    {
-        crate::layout::focus_or_open(dock, tab);
+    // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
+    if let Some(titles) = std::env::var_os("MISTY_TAB") {
+        for title in titles.to_string_lossy().split(',') {
+            if let Some(tab) = crate::layout::Tab::every().find(|t| t.title() == title.trim()) {
+                crate::layout::focus_or_open(dock, tab);
+            }
+        }
     }
     // `MISTY_STATS=1` shows the Game view's Stats box.
     if std::env::var_os("MISTY_STATS").is_some() {

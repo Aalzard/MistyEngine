@@ -54,10 +54,11 @@ impl Tab {
     fn opens_beside(self) -> Option<Tab> {
         match self {
             Tab::Lighting | Tab::Navigation => Some(Tab::Inspector),
-            // The graph and the charts want room: they dock with the Scene and Game views.
-            Tab::Animator | Tab::Profiler => Some(Tab::Scene),
-            // Docks with the Project and Console like the reference editor.
-            Tab::AudioMixer => Some(Tab::Project),
+            // The graph wants room: it docks with the Scene and Game views.
+            Tab::Animator => Some(Tab::Scene),
+            // Docks with the Project and Console like the reference editor; the Profiler too,
+            // so the Game view keeps rendering (and reporting its counters) while profiling.
+            Tab::AudioMixer | Tab::Profiler => Some(Tab::Project),
             _ => None,
         }
     }
