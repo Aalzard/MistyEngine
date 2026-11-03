@@ -404,3 +404,60 @@ fn audio_source_api_against_the_silent_backend() {
     drop(src);
     assert_eq!(host.with_audio(|a| a.voice_count()), 2);
 }
+
+const SPARKS: &str = r#"
+local Sparks = {}
+function Sparks:Start()
+    local ps = self.gameObject:GetComponent("ParticleSystem")
+    Debug.Log("start", ps.isPlaying, ps.particleCount)
+    ps:Stop()
+    ps:Emit(5)
+    Debug.Log("emit", ps.isPlaying, ps.isStopped, ps.particleCount)
+    self.ps = ps
+end
+function Sparks:Update()
+    if Time.frameCount == 3 then
+        self.ps:Clear()
+        self.ps:Play()
+        Debug.Log("play", self.ps.isPlaying, self.ps.particleCount)
+        self.ps:Pause()
+        Debug.Log("pause", self.ps.isPlaying, self.ps.isPaused)
+        Debug.Log("none", self.gameObject:GetComponent("AudioSource") == nil)
+    end
+end
+return Sparks
+"#;
+
+#[test]
+fn particle_system_api_controls_the_emitter() {
+    use crate::particles::{MinMax, ParticleEmitter, ParticleSystem};
+    let root = project(&[("Sparks.lua", SPARKS)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Sparks", None);
+    let mut ps = ParticleSystem::default();
+    ps.main.start_lifetime = MinMax::constant(10.0);
+    ps.emission.rate_over_time = MinMax::constant(0.0);
+    scene.add(e, ps);
+    attach(&mut scene, e, "Sparks.lua", &[]);
+    let (audio, _) = Audio::null(root.clone());
+    let settings = crate::settings::ProjectSettings::default();
+    let mut rt = crate::runtime::Runtime::start_with_audio(&mut scene, root, &settings, audio);
+    let mut time = Time::default();
+    for _ in 0..4 {
+        time.advance(1.0 / 60.0);
+        rt.update(&mut scene, &time, Input::default());
+    }
+    let logs: Vec<String> = rt.take_logs().into_iter().map(|(_, t)| t).collect();
+    assert_eq!(
+        logs,
+        [
+            "start true 0",
+            "emit false false 5",
+            "play true 0",
+            "pause false true",
+            "none true",
+        ]
+    );
+    let em = scene.world.get::<&ParticleEmitter>(e).unwrap();
+    assert!(em.is_paused(), "paused emitter stays paused");
+}
