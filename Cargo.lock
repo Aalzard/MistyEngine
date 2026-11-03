@@ -2018,6 +2018,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "misty_player"
+version = "0.1.0"
+dependencies = [
+ "misty_engine",
+ "png",
+ "pollster 0.4.0",
+ "winit",
+]
+
+[[package]]
 name = "mlua"
 version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

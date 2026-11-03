@@ -3,6 +3,7 @@
 mod actions;
 mod app;
 mod assets;
+mod build_settings;
 mod capture;
 mod commands;
 mod console;

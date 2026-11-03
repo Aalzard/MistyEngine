@@ -1,11 +1,8 @@
 //! Game view: display/aspect/scale toolbar and the camera output.
 
 use egui::{Align2, Color32, FontId, Ui};
-use misty_engine::camera::{Camera, Projection};
-use misty_engine::render::Frame;
-use misty_engine::scene::{Camera as CameraComponent, ClearFlags};
+use misty_engine::render_scene::GameView;
 
-use crate::render_scene;
 use crate::state::EditorState;
 use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, toggle_button};
@@ -34,23 +31,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     };
     state.game_view.view_rect = view;
 
-    let camera = game_camera(state);
-    match (camera, gpu) {
-        (Some((camera, settings)), Some(gpu)) => {
-            let bg = settings.background;
-            let meshes = render_scene::mesh_draws(&state.scene, &state.assets, None);
-            let lights = render_scene::lights(&state.scene);
-            let frame = Frame {
-                camera: &camera,
-                grid: None,
-                skybox: settings.clear_flags == ClearFlags::Skybox,
-                background: [bg[0], bg[1], bg[2]],
-                lines: &[],
-                meshes: &meshes,
-                shaded: true,
-                lights: &lights,
-                ambient_intensity: 1.0,
-            };
+    let game = GameView::new(&state.scene, &state.assets);
+    match (game, gpu) {
+        (Some(game), Some(gpu)) => {
+            let frame = game.frame();
             let ppp = ui.ctx().pixels_per_point();
             let size = [(view.width() * ppp) as u32, (view.height() * ppp) as u32];
             let started = std::time::Instant::now();
@@ -59,7 +43,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             ui.painter().image(texture, view, uv, Color32::WHITE);
             if state.game_view.stats {
-                stats_overlay(ui, state, view, &meshes, size, render_ms);
+                stats_overlay(ui, state, view, &game.meshes, size, render_ms);
             }
         }
         _ => {
@@ -137,36 +121,6 @@ fn fmt_k(n: usize) -> String {
     } else {
         n.to_string()
     }
-}
-
-/// The enabled, active camera with the highest Depth renders the game.
-fn game_camera(state: &EditorState) -> Option<(Camera, CameraComponent)> {
-    let scene = &state.scene;
-    scene
-        .walk()
-        .into_iter()
-        .filter(|(e, _)| scene.active_in_hierarchy(*e))
-        .filter_map(|(e, _)| {
-            let c = scene.world.get::<&CameraComponent>(e).ok()?;
-            c.enabled.then(|| (e, (*c).clone()))
-        })
-        .max_by(|a, b| a.1.depth.total_cmp(&b.1.depth))
-        .map(|(e, c)| {
-            let (_, rotation, position) = scene.world_matrix(e).to_scale_rotation_translation();
-            let projection = if c.orthographic {
-                Projection::Orthographic { size: c.ortho_size }
-            } else {
-                Projection::Perspective { fov_y: c.fov }
-            };
-            let camera = Camera {
-                position,
-                rotation,
-                projection,
-                near: c.near,
-                far: c.far,
-            };
-            (camera, c)
-        })
 }
 
 fn fit_aspect(area: egui::Rect, aspect: f32) -> egui::Rect {

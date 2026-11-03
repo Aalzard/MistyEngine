@@ -174,7 +174,7 @@
 - Sample project ships `Assets/Scenes/SampleScene.scene` (spinning cube, rollable player, crate stack, lights).
 
 ### Not matching Unity yet
-- One scene at a time (no additive multi-scene editing); no Build Settings scene list.
+- One scene at a time (no additive multi-scene editing).
 - Asset references are paths, so moving/renaming an asset outside the editor breaks references (no GUIDs/.meta yet).
 - Window layout isn't persisted.
 
@@ -240,3 +240,28 @@
 - Creating a prefab never overwrites an existing file (Unity asks to Replace); dragging an instance asks nothing
   about Original vs Variant.
 - Objects added to an instance are blue like the rest (no "+" badge); `Instantiate` doesn't take a rotation or parent.
+
+## Standalone player and Build Settings ✅
+
+### Done
+- `misty_player` executable (winit + wgpu): opens a window titled with the product name at the Build Settings
+  size (or borderless fullscreen), plays build scene 0 with the same loop as Play mode (physics, Lua scripts,
+  `Time`, keyboard/mouse input) and renders from the highest-Depth enabled camera with the editor's renderer
+  (HDR, bloom, shadows). Resizing works; closing the window quits. Logs go to `Player.log` next to the exe.
+- File ▸ Build Settings… (Ctrl+Shift+B): Scenes In Build list with enabled checkboxes, build indices, Add Open
+  Scenes, Remove Selected, move up/down; Player section with Product Name, Resolution, Fullscreen. Saved to
+  `ProjectSettings/BuildSettings.json`.
+- **Build** (pick a folder) and **Build And Run** / File ▸ Build And Run (Ctrl+B, last folder): copies the player
+  as `<Product>.exe` plus the project's `Assets` and `ProjectSettings`; Console messages for success, a missing
+  player (`cargo build -p misty_player --release`) and other failures.
+- Scripting: `SceneManager.LoadScene(name or index)`, `SceneManager.GetActiveScene().name`, `Application.Quit()`.
+  In the editor LoadScene swaps the Play-mode scene until Stop; Quit logs that it is ignored.
+- `MISTY_SCREENSHOT=out.png misty_player` saves the game image after 60 frames and exits.
+
+### Not matching Unity yet
+- No platform choice, compression, asset packing or stripping: the build ships the whole `Assets` folder as files.
+- No splash screen, resolution dialog, icon or company name; no `Screen` API, cursor lock or VSync setting.
+- No additive or async scene loading, `DontDestroyOnLoad`, or `sceneLoaded` callbacks; `GetActiveScene` has only
+  `name`.
+- Unsaved scene changes aren't saved before a build (a Console warning says the saved file is used).
+- The editor can't build the player itself; it must exist next to the editor executable.

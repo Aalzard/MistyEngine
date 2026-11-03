@@ -4,9 +4,11 @@
 //! +X right. Euler angles are degrees applied in Z, X, Y order.
 
 pub mod assets;
+pub mod build;
 pub mod camera;
 pub mod physics;
 pub mod render;
+pub mod render_scene;
 pub mod runtime;
 pub mod scene;
 pub mod scripting;

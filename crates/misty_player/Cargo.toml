@@ -1,0 +1,16 @@
+[package]
+name = "misty_player"
+description = "Misty Engine standalone game player"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "misty_player"
+path = "src/main.rs"
+
+[dependencies]
+misty_engine = { path = "../misty_engine" }
+winit = "0.30"
+pollster = "0.4"
+png = "0.18"

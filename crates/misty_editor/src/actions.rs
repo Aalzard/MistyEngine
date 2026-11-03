@@ -34,6 +34,12 @@ pub enum Action {
     FocusTab(Tab),
     /// Edit ▸ Project Settings.
     OpenProjectSettings,
+    /// File ▸ Build Settings.
+    OpenBuildSettings,
+    /// Build into a folder picked now.
+    Build,
+    /// Build into the last build folder (asks the first time), then run it.
+    BuildAndRun,
     /// Window ▸ Layouts: apply a built-in or saved layout.
     LoadLayout(LayoutRef),
     /// Save the current arrangement under a name.

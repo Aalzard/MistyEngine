@@ -59,8 +59,14 @@ fn file_menu(ui: &mut Ui, s: &mut EditorState) {
     todo(ui, s, "New Project...", "");
     todo(ui, s, "Open Project...", "");
     ui.separator();
-    todo(ui, s, "Build Settings...", "Ctrl+Shift+B");
-    todo(ui, s, "Build And Run", "Ctrl+B");
+    item(
+        ui,
+        s,
+        "Build Settings...",
+        "Ctrl+Shift+B",
+        Action::OpenBuildSettings,
+    );
+    item(ui, s, "Build And Run", "Ctrl+B", Action::BuildAndRun);
     ui.separator();
     item(ui, s, "Exit", "", Action::Quit);
 }

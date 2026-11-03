@@ -289,3 +289,51 @@ return Ball
     assert_eq!(scene.children(copy).len(), 1);
     assert_eq!(scene.world_position(copy), Vec3::new(3.0, 0.0, 0.0));
 }
+
+#[test]
+fn scene_manager_and_application_requests() {
+    let root = project(&[(
+        "Loader.lua",
+        r#"
+local Loader = {}
+function Loader:Update()
+    if Time.frameCount == 1 then
+        Debug.Log(SceneManager.GetActiveScene().name)
+        SceneManager.LoadScene("Level2")
+        SceneManager.LoadScene(1)
+        Application.Quit()
+    elseif Time.frameCount == 2 then
+        SceneManager.LoadScene(true)
+    end
+end
+return Loader
+"#,
+    )]);
+    let mut scene = Scene::new("Menu");
+    let e = scene.spawn("Loader", None);
+    attach(&mut scene, e, "Loader.lua", &[]);
+    let physics = Physics::build(&scene, Vec3::ZERO);
+    let mut host = ScriptHost::start(&mut scene, physics, root);
+    let mut time = Time::default();
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    use crate::build::SceneRef;
+    assert_eq!(
+        host.take_requests(),
+        [
+            Request::LoadScene(SceneRef::Name("Level2".into())),
+            Request::LoadScene(SceneRef::Index(1)),
+            Request::Quit,
+        ]
+    );
+    assert!(host.take_requests().is_empty(), "requests are taken once");
+    time.advance(1.0 / 60.0);
+    host.update(&mut scene, &time, Input::default());
+    let logs = host.take_logs();
+    assert!(logs.iter().any(|(_, t)| t == "Menu"), "{logs:?}");
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("scene name or build index")),
+        "{logs:?}"
+    );
+}
