@@ -246,3 +246,24 @@ right after the callback that called `Move`; `hit` has `gameObject`, `collider`,
 
 Fixed, Hinge and Spring Joints are set up in the Inspector (Connected Body = another object with a Rigidbody, or
 None for the world) and need no script. Bodies keep reacting to `AddForce`, `velocity` and so on while jointed.
+
+### Terrain
+
+`Terrain.activeTerrain` is the first enabled terrain in the scene (`nil` without one); `Terrain.activeTerrains`
+lists them all; `GetComponent("Terrain")` returns an object's terrain.
+
+| Member | Meaning |
+| --- | --- |
+| `SampleHeight(position)` | Height of the surface under a world position, relative to the terrain's position (points outside use the nearest edge). |
+| `GetPosition()` | World position of the terrain's corner. |
+| `terrainData` | Table with `size` (Vector3: width, height, length), `heightmapResolution`, `alphamapResolution`, `layerCount`. |
+| `gameObject`, `transform` | The terrain's object. |
+
+```lua
+-- Keep an object 1.5 m above the ground.
+local t = Terrain.activeTerrain
+local p = self.transform.position
+p.y = t:SampleHeight(p) + t:GetPosition().y + 1.5
+self.transform.position = p
+```
+Sample: `Scenes/TerrainDemo.scene` with `Assets/Scripts/TerrainHover.lua`.

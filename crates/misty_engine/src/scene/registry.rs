@@ -122,6 +122,15 @@ impl SceneComponent for ParticleSystem {
     const CATEGORY: &'static str = "Effects";
 }
 
+impl SceneComponent for Terrain {
+    const NAME: &'static str = "Terrain";
+    const CATEGORY: &'static str = "Miscellaneous";
+}
+impl SceneComponent for TerrainCollider {
+    const NAME: &'static str = "Terrain Collider";
+    const CATEGORY: &'static str = "Physics";
+}
+
 /// Type-erased operations for one component type.
 pub struct ComponentInfo {
     pub name: &'static str,
@@ -205,6 +214,8 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<Animation>(),
             ComponentInfo::of::<super::Animator>(),
             ComponentInfo::of::<ParticleSystem>(),
+            ComponentInfo::of::<Terrain>(),
+            ComponentInfo::of::<TerrainCollider>(),
             ComponentInfo::of::<Scripts>(),
             ComponentInfo::of::<PrefabLink>(),
         ]

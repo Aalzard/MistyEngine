@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::camera::{euler_to_quat, quat_to_euler};
 
 pub use crate::particles::ParticleSystem;
+pub use crate::terrain::{Terrain, TerrainCollider};
 
 /// Name, active flag, tag, layer and component order: what the Inspector header shows.
 #[derive(Clone, Debug, Serialize, Deserialize)]

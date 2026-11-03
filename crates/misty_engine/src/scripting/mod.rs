@@ -22,6 +22,7 @@ pub mod api;
 pub mod particles_api;
 pub mod physics_api;
 pub mod render_settings_api;
+pub mod terrain_api;
 pub mod ui_api;
 
 use std::collections::{HashMap, HashSet};

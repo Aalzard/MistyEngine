@@ -128,6 +128,9 @@ pub fn object_icon(scene: &Scene, e: Entity) -> &'static str {
     if w.get::<&misty_engine::scene::ParticleSystem>(e).is_ok() {
         return PARTICLE_ICON;
     }
+    if w.get::<&misty_engine::scene::Terrain>(e).is_ok() {
+        return "⛰";
+    }
     if w.get::<&MeshFilter>(e).is_ok_and(|m| m.mesh.is_some()) {
         return "⬛";
     }
@@ -204,6 +207,8 @@ pub struct EditorState {
     pub clip_preview: Option<misty_engine::audio::Audio>,
     /// Scene view Particle Effect overlay settings.
     pub particle_preview: crate::particle_preview::ParticlePreview,
+    /// Terrain Inspector tool, brush settings and the stroke in progress.
+    pub terrain_tools: crate::terrain_tools::TerrainTools,
     /// Keyboard/mouse for scripts this frame (filled while the Game view has focus).
     pub game_input: Input,
     /// Pause toggled before Play: Play starts paused.
@@ -277,6 +282,7 @@ impl EditorState {
             runtime: None,
             clip_preview: None,
             particle_preview: Default::default(),
+            terrain_tools: Default::default(),
             game_input: Input::default(),
             pause_on_play: false,
             step_requested: false,

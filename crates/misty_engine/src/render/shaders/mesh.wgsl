@@ -198,23 +198,48 @@ struct MeshTargets {
     @location(1) glow: vec4<f32>,
 };
 
+// Lit surface inputs of `shade` (also used by the terrain shader).
+struct Surface {
+    albedo: vec3<f32>,
+    alpha: f32,
+    metallic: f32,
+    smoothness: f32,
+    normal: vec3<f32>,
+    // Linear emission.
+    emission: vec3<f32>,
+    receive_shadows: bool,
+};
+
 @fragment
 fn fs_main(in: MeshOut) -> MeshTargets {
     let d = draws[in.draw];
     // Sample before any non-uniform branch (implicit derivatives).
     let base = textureSample(albedo_map, material_sampler, in.uv);
     let sampled_normal = textureSample(normal_map, material_sampler, in.uv).xyz;
-    let albedo = srgb_to_linear(d.color.rgb) * base.rgb;
-    let metallic = clamp(d.params.x, 0.0, 1.0);
-    let smoothness = clamp(d.params.y, 0.0, 1.0);
+    var s: Surface;
+    s.albedo = srgb_to_linear(d.color.rgb) * base.rgb;
+    s.alpha = d.color.a * base.a;
+    s.metallic = d.params.x;
+    s.smoothness = d.params.y;
+    s.normal = mapped_normal(in, d, sampled_normal);
+    s.emission = d.emission.rgb;
+    s.receive_shadows = d.params.z > 0.5;
+    return shade(in.world, s);
+}
+
+// Ambient, sky reflections, lights with shadows, emission and fog for one surface point.
+fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
+    let albedo = s.albedo;
+    let metallic = clamp(s.metallic, 0.0, 1.0);
+    let smoothness = clamp(s.smoothness, 0.0, 1.0);
     let perceptual = 1.0 - smoothness;
     let roughness = max(perceptual * perceptual, 0.002);
-    let n = mapped_normal(in, d, sampled_normal);
+    let n = s.normal;
     var v: vec3<f32>;
     if (view.camera_pos.w > 0.5) {
         v = normalize(-(view.inv_view_proj * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
     } else {
-        v = normalize(view.camera_pos.xyz - in.world);
+        v = normalize(view.camera_pos.xyz - world);
     }
     let n_dot_v = max(dot(n, v), 1e-4);
 
@@ -247,7 +272,7 @@ fn fs_main(in: MeshOut) -> MeshTargets {
         if (kind == 0u) {
             l = -normalize(li.dir_type.xyz);
         } else {
-            let to_light = li.pos_range.xyz - in.world;
+            let to_light = li.pos_range.xyz - world;
             let dist = length(to_light);
             l = to_light / max(dist, 1e-4);
             let x = dist / max(li.pos_range.w, 1e-4);
@@ -262,8 +287,8 @@ fn fs_main(in: MeshOut) -> MeshTargets {
         if (n_dot_l <= 0.0 || atten <= 0.0) {
             continue;
         }
-        if (d.params.z > 0.5) {
-            atten *= shadow_factor(li, in.world, n, l);
+        if (s.receive_shadows) {
+            atten *= shadow_factor(li, world, n, l);
         }
         let h = normalize(l + v);
         let n_dot_h = max(dot(n, h), 0.0);
@@ -274,12 +299,12 @@ fn fs_main(in: MeshOut) -> MeshTargets {
         let spec = fresnel * (d_ggx(n_dot_h, roughness) * vis * PI);
         color += (diffuse_color + spec) * li.color.rgb * n_dot_l * atten;
     }
-    color += d.emission.rgb;
-    let fog = fog_visibility(fog_distance(in.world));
+    color += s.emission;
+    let fog = fog_visibility(fog_distance(world));
     color = mix(view.fog_color.rgb, color, fog);
     var out: MeshTargets;
-    out.color = vec4<f32>(color, d.color.a * base.a);
-    out.glow = vec4<f32>(d.emission.rgb * fog, 1.0);
+    out.color = vec4<f32>(color, s.alpha);
+    out.glow = vec4<f32>(s.emission * fog, 1.0);
     return out;
 
 }

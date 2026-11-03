@@ -607,3 +607,39 @@
   effects (depth of field, motion blur, white balance, lift/gamma/gain, channel mixer, film grain, lens
   distortion…); tonemapping None compresses highlights instead of clipping; Neutral/ACES are fitted curves.
 - Fog does not affect UI or gizmos (by design) and the skybox only near the horizon.
+
+## Terrain ✅
+
+### Done
+- `Terrain` component + `.terrain` data asset (heightmap resolution 33–1025, width/length/height, 16-bit heights,
+  splat map 16–512, up to 4 layers with texture, optional normal map, tile size/offset, metallic, smoothness).
+- GameObject ▸ 3D Object ▸ Terrain creates an object with Terrain + Terrain Collider and a new
+  `Assets/New Terrain.terrain`; the Project window shows `.terrain` files with a ⛰ icon.
+- Rendering: one mesh per terrain asset (rebuilt when edited), smooth normals from the heightmap, splat-blended
+  layers with normal maps, lit like other meshes (all light types, shadows cast and received, ambient,
+  reflections, fog) in the Scene view, Game view and player.
+- Physics: `Terrain Collider` (friction, bounciness) = static rapier heightfield; rigidbodies, raycasts and the
+  Character Controller collide with it.
+- Terrain Inspector with tool tabs: Raise or Lower (Shift lowers), Set Height (+ Flatten All), Smooth Height,
+  Paint Texture (layer list, add/remove, per-layer settings) and Settings (Terrain Data, Cast Shadows, size,
+  heightmap and control texture resolution). Brush Size / Opacity / Falloff, brush circle following the terrain
+  under the mouse, painting with the left mouse button; one undo step per stroke or settings change. Clicking a
+  terrain selects it; surface snapping lands on terrains.
+- Lua: `Terrain.activeTerrain`, `Terrain.activeTerrains`, `GetComponent("Terrain")` with `SampleHeight`,
+  `GetPosition`, `terrainData`.
+- Sample: `Scenes/TerrainDemo.scene` (hills, grass/rock/sand layers from generated textures, rolling balls and
+  crates, `TerrainHover.lua` marker following the ground).
+- Tests: height sampling and triangle split, normals/winding, file round trip and sanitising, base64, brush
+  weight/raise/lower/set height/smooth/paint, resampling, ray casts, scene helpers and versions, rigidbody and
+  Character Controller on the collider, raycast hits, Lua API, editor create + undo/redo of a settings edit,
+  sample generator check and a headless play of the demo.
+
+### Not matching Unity yet
+- No LOD, chunking or pixel error / basemap distance (every heightmap sample is a vertex); no holes, trees,
+  details/grass, wind, neighbour terrains (Create Neighbor), stamp or custom brush shapes, or terrain layer assets.
+- Max 4 layers; no per-layer mask maps, height-based blending, specular colour, or "Paint Holes".
+- Rotation/scale of the object are ignored (as in the reference) but not hidden in the Transform Inspector.
+- Brushes don't work in Play mode; Set Height has no Shift-sample of the height under the mouse; no brush
+  rotation, spacing or scatter; strengths are our own rates.
+- Wireframe draw modes don't draw the terrain's wires; terrains have no selection outline.
+- No `TerrainData` API in Lua beyond the read-only table (no `GetHeights`/`SetHeights`, `GetInterpolatedNormal`).

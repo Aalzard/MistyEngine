@@ -498,6 +498,7 @@ impl eframe::App for EditorApp {
             ctx.copy_text(text);
         }
         animation::preview::post_frame(&mut self.state, Self::interacting(&ctx));
+        crate::terrain_tools::end_frame(&mut self.state, Self::interacting(&ctx));
         self.state.undo.end_frame(Self::interacting(&ctx));
         self.scene_file_frame(&ctx);
         self.save_layout(false);

@@ -7,6 +7,12 @@ use super::{
 };
 
 const COMMON: &str = include_str!("shaders/common.wgsl");
+/// The terrain fragment stage reuses the mesh shader's vertex stage and lighting.
+const TERRAIN_SRC: &str = concat!(
+    include_str!("shaders/mesh.wgsl"),
+    "\n",
+    include_str!("shaders/terrain.wgsl")
+);
 
 pub struct Pipelines {
     pub view_layout: wgpu::BindGroupLayout,
@@ -34,6 +40,9 @@ pub struct Pipelines {
     /// Billboards: alpha-blended and additive.
     pub particles_alpha: wgpu::RenderPipeline,
     pub particles_additive: wgpu::RenderPipeline,
+    /// Splat map + layer textures + params (terrain pass, group 3).
+    pub terrain_layout: wgpu::BindGroupLayout,
+    pub terrain: wgpu::RenderPipeline,
     pub bloom_prefilter: wgpu::RenderPipeline,
     pub bloom_down: wgpu::RenderPipeline,
     pub bloom_up: wgpu::RenderPipeline,
@@ -378,6 +387,37 @@ impl Pipelines {
             particles("particles additive", "fs_additive", add_light),
         );
 
+        // Terrain: mesh layouts plus its own textures at group 3.
+        let mut terrain_entries = vec![
+            entry(0, S::FRAGMENT, uniform()),
+            entry(1, S::FRAGMENT, filtered),
+            entry(2, S::FRAGMENT, filtering),
+            entry(11, S::FRAGMENT, filtering),
+        ];
+        terrain_entries.extend((3..11).map(|b| entry(b, S::FRAGMENT, filtered)));
+        let terrain_layout = layout("misty terrain", &terrain_entries);
+        let terrain = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                fs: Some("fs_terrain"),
+                buffers: &mesh_buffers,
+                cull: Some(wgpu::Face::Back),
+                depth: Depth::main(true, wgpu::CompareFunction::Less),
+                glow: Some(true),
+                ..Spec::new(
+                    "terrain",
+                    TERRAIN_SRC,
+                    &[
+                        &view_layout,
+                        &mesh_layout,
+                        &material_layout,
+                        &terrain_layout,
+                    ],
+                )
+            },
+        );
+
         // Post-processing: single-sample, no depth.
         let bloom_src = include_str!("shaders/bloom.wgsl");
         let post_layouts = [&view_layout, &post_layout];
@@ -447,6 +487,8 @@ impl Pipelines {
             outline,
             particles_alpha,
             particles_additive,
+            terrain_layout,
+            terrain,
         }
     }
 }
@@ -539,6 +581,7 @@ mod tests {
             ("bloom", include_str!("shaders/bloom.wgsl")),
             ("composite", include_str!("shaders/composite.wgsl")),
             ("particles", include_str!("shaders/particles.wgsl")),
+            ("terrain", super::TERRAIN_SRC),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));

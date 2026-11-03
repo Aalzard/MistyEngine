@@ -227,6 +227,36 @@ impl TextureCache {
         if self.sets.contains_key(&key) {
             return;
         }
+        let (albedo_view, normal_view) = self.views(device, queue, albedo, normal);
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty material textures"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&albedo_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+        self.sets.insert(key, group);
+    }
+
+    /// Albedo and normal views for a pair (1×1 white / flat normal when unset or unreadable).
+    pub(crate) fn views(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        albedo: Option<&str>,
+        normal: Option<&str>,
+    ) -> (wgpu::TextureView, wgpu::TextureView) {
         let (white, flat) = self
             .defaults
             .get_or_insert_with(|| {
@@ -269,25 +299,12 @@ impl TextureCache {
         let normal_view = normal
             .and_then(|n| self.texture(device, queue, n, TextureKind::Normal))
             .unwrap_or(flat);
-        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("misty material textures"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&albedo_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&normal_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-            ],
-        });
-        self.sets.insert(key, group);
+        (albedo_view, normal_view)
+    }
+
+    /// Repeating, mipmapped sampler used by materials.
+    pub(crate) fn sampler(&self) -> &wgpu::Sampler {
+        &self.sampler
     }
 
     /// Bind group prepared for this pair.

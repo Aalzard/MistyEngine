@@ -24,6 +24,7 @@ impl AssetEntry {
             "wav" | "ogg" | "mp3" => "🔊",
             "anim" => "⏵",
             "controller" => crate::panels::animator::CONTROLLER_ICON,
+            "terrain" => "⛰",
             _ => "📄",
         }
     }
@@ -209,6 +210,7 @@ pub fn asset_type(entry: &AssetEntry) -> &'static str {
         "wav" | "ogg" | "mp3" => "audioclip",
         "anim" => "animationclip",
         "controller" => "animatorcontroller",
+        "terrain" => "terraindata",
         _ => "",
     }
 }

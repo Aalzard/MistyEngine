@@ -120,7 +120,7 @@ impl ShadowMaps {
 /// take array layers in order until the budget runs out.
 pub fn plan(frame: &Frame) -> ShadowPlan {
     let mut plan = ShadowPlan::default();
-    let casters: Vec<&MeshDraw> = frame.meshes.iter().filter(|m| m.cast_shadows).collect();
+    let casters = caster_bounds(frame);
     for l in frame.lights {
         let wants =
             l.shadows != Shadows::None && l.intensity > 0.0 && frame.shaded && !casters.is_empty();
@@ -150,21 +150,43 @@ pub fn plan(frame: &Frame) -> ShadowPlan {
     plan
 }
 
-/// Orthographic box around all casters, looking along the light (and its half size).
-fn directional_matrix(light: &LightData, casters: &[&MeshDraw]) -> (Mat4, f32) {
+/// World bounds of every shadow caster: meshes and terrains.
+fn caster_bounds(frame: &Frame) -> Vec<(Vec3, Vec3)> {
+    let meshes = frame
+        .meshes
+        .iter()
+        .filter(|m| m.cast_shadows)
+        .map(mesh_bounds);
+    let terrains = frame
+        .terrains
+        .iter()
+        .filter(|t| t.cast_shadows)
+        .map(super::terrain::world_bounds);
+    meshes.chain(terrains).collect()
+}
+
+fn mesh_bounds(m: &MeshDraw) -> (Vec3, Vec3) {
+    let (min, max) = crate::models::bounds(&m.mesh).unwrap_or((Vec3::ZERO, Vec3::ZERO));
     let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
-    for m in casters {
-        let (min, max) = crate::models::bounds(&m.mesh).unwrap_or((Vec3::ZERO, Vec3::ZERO));
-        for corner in 0..8 {
-            let s = Vec3::new(
-                if corner & 1 == 0 { min.x } else { max.x },
-                if corner & 2 == 0 { min.y } else { max.y },
-                if corner & 4 == 0 { min.z } else { max.z },
-            );
-            let p = m.model.transform_point3(s);
-            lo = lo.min(p);
-            hi = hi.max(p);
-        }
+    for corner in 0..8 {
+        let s = Vec3::new(
+            if corner & 1 == 0 { min.x } else { max.x },
+            if corner & 2 == 0 { min.y } else { max.y },
+            if corner & 4 == 0 { min.z } else { max.z },
+        );
+        let p = m.model.transform_point3(s);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    (lo, hi)
+}
+
+/// Orthographic box around all casters, looking along the light (and its half size).
+fn directional_matrix(light: &LightData, casters: &[(Vec3, Vec3)]) -> (Mat4, f32) {
+    let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+    for (min, max) in casters {
+        lo = lo.min(*min);
+        hi = hi.max(*max);
     }
     let center = (lo + hi) * 0.5;
     let radius = ((hi - lo).length() * 0.5).max(1.0);
@@ -263,6 +285,7 @@ mod tests {
             lines: &[],
             meshes: &meshes,
             particles: &[],
+            terrains: &[],
             shaded: true,
             lights: &lights,
         };
