@@ -37,7 +37,15 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 | Animation | `Play([name])` (the default clip, or the clip of the Animation's list with that file name; restarts it; returns false and warns if missing), `Stop()` (rewinds, keeps the pose), `IsPlaying(name)`, `isPlaying` (read-only), `time` (seconds since Play, keeps growing while looping; settable), `speed` (1 = normal, negative plays backwards), `clip` (name of the current clip, read-only), `enabled` |
 | Text (UI) | `GetComponent("Text")`: `text` (numbers are shown as text), `fontSize`, `color`, `enabled`, `gameObject` |
 | Image (UI) | `GetComponent("Image")`: `color`, `texture` (project path or nil), `raycastTarget`, `enabled`, `gameObject` |
-| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`; clicks call the On Click methods set in the Inspector |
+| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`; clicks call the On Click methods set in the Inspector |
+| Toggle (UI) | `GetComponent("Toggle")`: `isOn`, `interactable`, `group` (ToggleGroup or nil), `onValueChanged` (bool) |
+| ToggleGroup (UI) | `allowSwitchOff`, `AnyTogglesOn()`, `SetAllTogglesOff()` |
+| Slider (UI) | `value` (clamped, rounded with whole numbers), `minValue`, `maxValue`, `wholeNumbers`, `normalizedValue`, `interactable`, `onValueChanged` (number) |
+| Scrollbar (UI) | `value` (0..1), `size`, `numberOfSteps`, `interactable`, `onValueChanged` (number) |
+| InputField (UI) | `text` (filtered by the content type and limit), `characterLimit`, `contentType` (`"Standard"`, `"IntegerNumber"`, `"DecimalNumber"`, `"Password"`), `readOnly`, `interactable`, `onValueChanged` / `onEndEdit` (string) |
+| Dropdown (UI) | `value` (0-based index), `options` (array of strings; read or assign), `captionText`, `AddOptions({…})`, `ClearOptions()`, `RefreshShownValue()`, `interactable`, `onValueChanged` (integer) |
+| ScrollRect (UI) | `horizontal`, `vertical`, `enabled`, `content` (GameObject) |
+| RawImage (UI) | `color`, `texture`, `enabled`, `gameObject` |
 | `Color` | `new(r,g,b [,a])` (0..1), `white black red green blue yellow cyan magenta gray clear`, `Lerp(a,b,t)`; `.r .g .b .a`, `* number/Color`, `==` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
@@ -122,6 +130,27 @@ return ScoreKeeper
 A click is a press and release over the same button while it is `interactable`; every script on the target object
 that defines the method gets the call (before this frame's `Update`). Sample: `Assets/Scenes/UIDemo.scene` with
 `Assets/Scripts/ScoreKeeper.lua`.
+
+### UI events and listeners
+
+Widgets report changes in two ways, like the familiar UnityEvents:
+
+- **In the Inspector:** On Value Changed / On End Edit lists (Toggle, Slider, Scrollbar, Input Field, Dropdown)
+  work like On Click; the method gets the new value (`true`/`false`, a number, the text or the option index).
+- **From Lua:** `onClick`, `onValueChanged` and `onEndEdit` have `AddListener(fn)`, `RemoveListener(fn)` and
+  `RemoveAllListeners()`.
+
+```lua
+function SettingsMenu:Start()
+    local volume = GameObject.Find("Volume Slider"):GetComponent("Slider")
+    volume.onValueChanged:AddListener(function(v) Debug.Log("volume", v) end)
+    GameObject.Find("Level 1"):GetComponent("Button").onClick:AddListener(function() self:Play(1) end)
+end
+```
+Events run in the UI step of the frame (before `FixedUpdate`/`Update`). A value changed by a script (for example
+`slider.value = 3`) is reported in the next frame's UI step rather than inside the assignment; a widget created
+this frame starts reporting from the next one. Sample: `Assets/Scenes/UIWidgetsDemo.scene` with
+`Assets/Scripts/SettingsMenu.lua`.
 
 ### Particle systems
 

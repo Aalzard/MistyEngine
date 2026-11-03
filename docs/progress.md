@@ -440,15 +440,44 @@
   frames UI rects.
 - Sample: `Assets/Scenes/UIDemo.scene` with a score Text and an "Add Point" Button handled by
   `Assets/Scripts/ScoreKeeper.lua` (the button disables itself and turns green at 10 points).
+- **Widgets:** Toggle (+ Toggle Group, Allow Switch Off), Slider (4 directions, min/max, whole numbers, driven
+  Fill + Handle), Scrollbar (value, size, steps; click pages), Input Field (single line, caret + blink,
+  selection, placeholder, character limit, Standard / Integer / Decimal / Password, read only, On Value Changed /
+  On End Edit), Dropdown (options, list built from its Template, opens above when there's no room), Scroll Rect
+  (drag, wheel, inertia, Elastic / Clamped / Unrestricted, linked scrollbars), Mask / Rect Mask 2D (clipping of
+  drawing and clicks), Raw Image (texture + UV rect), Panel. GameObject ▸ UI creates them with the familiar child
+  hierarchies (`ui::presets`); references between parts survive files, prefabs and duplicates.
+- **Auto layout:** Horizontal / Vertical Layout Group (padding, spacing, child alignment, reverse arrangement,
+  control child size, child force expand), Grid Layout Group (cell size, spacing, start corner/axis, alignment,
+  flexible / fixed column / fixed row constraint), Content Size Fitter (min / preferred) and Layout Element
+  (ignore layout, min / preferred / flexible); Text reports its preferred size.
+- **Events:** an Event System object (created with the first Canvas; First Selected, navigation, drag threshold);
+  hover / press / click / drag routed to widgets, selection (Selected colour), arrow-key navigation and Return /
+  Space submit, Colour Tint with Normal / Highlighted / Pressed / Selected / Disabled on every selectable.
+- **Lua:** `onClick` / `onValueChanged` / `onEndEdit` with `AddListener`, `toggle.isOn`,
+  `slider.value/minValue/maxValue/wholeNumbers`, `scrollbar.value/size`, `inputField.text/contentType`,
+  `dropdown.value/options/AddOptions/ClearOptions`, Toggle Group and Scroll Rect basics; Inspector On Value Changed
+  lists pass the value to the method.
+- Inspector editors for every new component (object pickers for parts, call lists, options list, optional Layout
+  Element sizes), "Some values driven by …" on Rect Transforms placed by a layout group or widget.
+- Sample: `Assets/Scenes/UIWidgetsDemo.scene` — a settings panel (volume slider, fullscreen toggle, name field,
+  quality dropdown, scroll list of level buttons in a Vertical Layout Group) with `Assets/Scripts/SettingsMenu.lua`
+  showing the choices in a Text.
 - Tests: layout maths, canvas layout tree, text wrapping/alignment and glyph atlas, raycasts/clicks, draw list,
-  serialisation round trip, Lua API + On Click, kittest of the GameObject ▸ UI menu, and the UIDemo click-through.
+  serialisation round trip, Lua API + On Click, kittest of the GameObject ▸ UI menu, and the UIDemo click-through;
+  layout groups / fitter / grid, slider from the pointer, input field editing and content types, toggle groups,
+  dropdown list, scroll rect drag/clamp/wheel, mask clipping, navigation, widget Lua API + listeners, duplicate
+  remapping, and the UIWidgetsDemo play-through.
 
 ### Not matching Unity yet
 - Only Screen Space - Overlay: no Screen Space - Camera / World Space canvases, Pixel Perfect, or Graphic Raycaster
-  settings; no EventSystem object, keyboard/gamepad navigation, Selected state or colour fade duration.
+  settings; no gamepad input, explicit navigation modes, Tab navigation or colour fade duration.
 - One built-in font (Ubuntu Light); no font assets, rich text, Best Fit, vertical truncation or TextMeshPro.
 - Image has no sprite types (Sliced/Tiled/Filled), Preserve Aspect or Set Native Size; textures don't hot-reload.
-- No layout groups, Content Size Fitter, masks, scroll views, toggles, sliders, input fields or dropdowns.
+- Masks are rectangles (no sprite-shaped stencil masks); Input Field is single line without clipboard shortcuts
+  or rich text; Dropdown lists have no fade, item images or scroll-to-selected; Scroll Rect has no scrollbar
+  visibility modes or onValueChanged; no Sprite Swap / Animation transitions, Aspect Ratio Fitter, Layout
+  priorities or Canvas Group; value-changed events from scripts arrive in the next frame's UI step.
 - Rect Transform ignores the Transform's rotation/scale; no Rect tool handles to drag UI rects in the Scene view,
   and UI graphics are not drawn in the Scene view (outlines only). Clicking UI in the Scene view doesn't select it.
 - On Click picks a method by name (no dropdown of the target's methods, no arguments).
