@@ -39,6 +39,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::terrain::icon(other))
             .or_else(|| super::nav_editors::icon(other))
             .or_else(|| super::sprite_editors::icon(other))
+            .or_else(|| super::probe_editor::icon(other))
             .unwrap_or("▣"),
     }
 }
@@ -60,6 +61,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::sprite_editors::NAMES.contains(&name) {
         return super::sprite_editors::enabled_flag(state, e, name);
+    }
+    if super::probe_editor::NAMES.contains(&name) {
+        return super::probe_editor::enabled_flag(state, e, name);
     }
     match name {
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
@@ -96,6 +100,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::sprite_editors::NAMES.contains(&name) {
         return super::sprite_editors::set_enabled(state, e, name, on);
+    }
+    if super::probe_editor::NAMES.contains(&name) {
+        return super::probe_editor::set_enabled(state, e, name, on);
     }
     let w = &mut state.scene.world;
     match name {
@@ -182,6 +189,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         two_d if super::sprite_editors::NAMES.contains(&two_d) => {
             super::sprite_editors::edit(ui, state, e, two_d)
+        }
+        probe if super::probe_editor::NAMES.contains(&probe) => {
+            super::probe_editor::edit(ui, state, e, probe)
         }
         _ => {
             ui.weak("No editor for this component.");

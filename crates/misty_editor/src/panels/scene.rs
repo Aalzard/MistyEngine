@@ -12,7 +12,14 @@ use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
-const DRAW_MODES: [&str; 3] = ["Shaded", "Wireframe", "Shaded Wireframe"];
+const DRAW_MODES: [&str; 4] = [
+    "Shaded",
+    "Wireframe",
+    "Shaded Wireframe",
+    "Reflection Probes",
+];
+/// Draw mode colouring pixels by the reflection probes that light them.
+const PROBES_MODE: usize = 3;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -43,12 +50,16 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     match gpu {
         Some(gpu) => {
             let sv = &state.scene_view;
-            let meshes =
+            let mut meshes =
                 render_scene::mesh_draws(&state.scene, &state.assets, Some(&state.selection));
+            if sv.gizmos {
+                crate::probe_gizmos::spheres(state, &mut meshes);
+            }
             let mut lines = if sv.gizmos {
                 let mut l = gizmos::scene_lines(&state.scene, &state.selection);
                 let screen = state.game_view.screen_px;
                 crate::ui_gizmos::ui_lines(&mut l, &state.scene, &state.selection, screen);
+                crate::probe_gizmos::lines(&mut l, state, sv.draw_mode == PROBES_MODE);
                 l
             } else {
                 gizmos::Lines::default()
@@ -66,6 +77,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let scene_lights = render_scene::lights(&state.scene);
             // The sky follows the scene's sun even when the view uses the headlight.
             let mut environment = render_scene::environment(&state.scene, &scene_lights);
+            environment.probes.debug = sv.draw_mode == PROBES_MODE;
             let fx = sv.effects;
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();
@@ -116,8 +128,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         draw_icons(ui, rect, state, &camera);
     }
     // 2D handles (sprite Rect tool, Edit Collider) take the mouse before the transform handles.
-    if !brush_active && !crate::sprite_handles::show(ui, state, &camera, rect, response.hovered()) {
-        handles::show(ui, state, &camera, rect, response.hovered());
+    let hovered = response.hovered();
+    if !brush_active
+        && !crate::sprite_handles::show(ui, state, &camera, rect, hovered)
+        && !crate::probe_gizmos::handles(ui, state, &camera, rect, hovered)
+    {
+        handles::show(ui, state, &camera, rect, hovered);
     }
     let suppressed = state.handles.click_suppressed() || brush_click;
     if response.clicked()

@@ -35,7 +35,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 }
 
 /// Baked lighting isn't supported: everything is realtime.
-fn scene_page(ui: &mut Ui, state: &EditorState) {
+fn scene_page(ui: &mut Ui, state: &mut EditorState) {
     ui.label(RichText::new("Lighting Settings").strong());
     ui.horizontal(|ui| {
         ui.label("Scene");
@@ -51,6 +51,8 @@ fn scene_page(ui: &mut Ui, state: &EditorState) {
     ui.label(RichText::new("Lightmapping").strong());
     ui.weak("All lights are realtime; lightmap baking is not available.");
     ui.add_enabled(false, egui::Button::new("Generate Lighting"));
+    ui.add_space(8.0);
+    crate::probe_tools::lighting_section(ui, state);
 }
 
 fn environment_page(ui: &mut Ui, state: &mut EditorState) {

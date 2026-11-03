@@ -131,6 +131,9 @@ pub fn object_icon(scene: &Scene, e: Entity) -> &'static str {
     if w.get::<&misty_engine::scene::Terrain>(e).is_ok() {
         return "⛰";
     }
+    if w.get::<&misty_engine::scene::ReflectionProbe>(e).is_ok() {
+        return "◍";
+    }
     if w.get::<&MeshFilter>(e).is_ok_and(|m| m.mesh.is_some()) {
         return "⬛";
     }
@@ -211,6 +214,8 @@ pub struct EditorState {
     pub terrain_tools: crate::terrain_tools::TerrainTools,
     /// Navigation window settings and the bake in progress.
     pub navigation: crate::panels::navigation::NavigationWindow,
+    /// Reflection probe generator settings, the bake in progress and Realtime probes.
+    pub probes: crate::probe_tools::ProbeTools,
     /// Keyboard/mouse for scripts this frame (filled while the Game view has focus).
     pub game_input: Input,
     /// Pause toggled before Play: Play starts paused.
@@ -292,6 +297,7 @@ impl EditorState {
             particle_preview: Default::default(),
             terrain_tools: Default::default(),
             navigation: Default::default(),
+            probes: Default::default(),
             game_input: Input::default(),
             pause_on_play: false,
             step_requested: false,

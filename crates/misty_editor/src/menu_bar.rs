@@ -211,6 +211,15 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
             let what = Create::Light(l);
             item(ui, s, what.default_name(), "", create(what));
         }
+        ui.separator();
+        if ui.button("Reflection Probe").clicked() {
+            crate::probe_tools::create_probe(s, parent);
+            ui.close();
+        }
+        if ui.button("Generate Reflection Probes").clicked() {
+            crate::probe_tools::generate(s);
+            ui.close();
+        }
     });
     ui.menu_button("Audio", |ui| {
         item(ui, s, "Audio Source", "", create(Create::AudioSource));

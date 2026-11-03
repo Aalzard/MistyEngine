@@ -27,6 +27,8 @@ mod particle_preview;
 mod picking;
 mod play;
 mod prefabs;
+mod probe_gizmos;
+mod probe_tools;
 mod project;
 mod project_settings;
 mod project_settings_2d;
@@ -55,6 +57,8 @@ mod sample_navigation;
 mod sample_particles;
 #[cfg(test)]
 mod sample_physics;
+#[cfg(test)]
+mod sample_reflections;
 #[cfg(test)]
 mod sample_stress;
 #[cfg(test)]
