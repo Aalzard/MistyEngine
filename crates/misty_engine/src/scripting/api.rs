@@ -1,4 +1,5 @@
-//! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody, AudioSource and global tables
+//! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody, AudioSource, Animation and
+//! global tables
 //! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy, SceneManager,
 //! Application).
 //!
@@ -16,7 +17,7 @@ use super::{LogKind, Request, World};
 use crate::build::SceneRef;
 use crate::camera::{euler_to_quat, quat_to_euler};
 use crate::scene::prefab::Prefab;
-use crate::scene::{AudioSource, Rigidbody};
+use crate::scene::{Animation, AudioSource, Rigidbody};
 
 /// Run `f` with the live game world, or fail if no frame is running.
 pub fn with_world<R>(lua: &Lua, f: impl FnOnce(&mut World) -> R) -> Result<R> {
@@ -336,13 +337,15 @@ impl UserData for LGameObject {
                     "Transform" => Some(0),
                     "Rigidbody" if w.scene.world.get::<&Rigidbody>(e).is_ok() => Some(1),
                     "AudioSource" if w.scene.world.get::<&AudioSource>(e).is_ok() => Some(2),
+                    "Animation" if w.scene.world.get::<&Animation>(e).is_ok() => Some(3),
                     _ => None,
                 })
             })??;
             match kind {
                 Some(0) => lua.create_userdata(LTransform(e)).map(Value::UserData),
                 Some(1) => lua.create_userdata(LRigidbody(e)).map(Value::UserData),
-                Some(_) => lua.create_userdata(LAudioSource(e)).map(Value::UserData),
+                Some(2) => lua.create_userdata(LAudioSource(e)).map(Value::UserData),
+                Some(_) => lua.create_userdata(LAnimation(e)).map(Value::UserData),
                 None => Ok(Value::Nil),
             }
         });
@@ -538,6 +541,71 @@ impl UserData for LAudioSource {
                 })
             },
         );
+    }
+}
+
+// ---- Animation --------------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+pub struct LAnimation(pub Entity);
+
+impl UserData for LAnimation {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("isPlaying", |lua, a| {
+            with_world(lua, |w| w.animation.is_playing(a.0))
+        });
+        f.add_field_method_get("time", |lua, a| with_world(lua, |w| w.animation.time(a.0)));
+        f.add_field_method_set("time", |lua, a, t: f32| {
+            with_world(lua, |w| w.animation.set_time(a.0, t))
+        });
+        f.add_field_method_get("speed", |lua, a| {
+            with_world(lua, |w| w.animation.speed(a.0))
+        });
+        f.add_field_method_set("speed", |lua, a, v: f32| {
+            with_world(lua, |w| w.animation.set_speed(a.0, v))
+        });
+        f.add_field_method_get("clip", |lua, a| {
+            with_world(lua, |w| w.animation.current_clip(a.0))
+        });
+        f.add_field_method_get("enabled", |lua, a| {
+            with_world(lua, |w| {
+                w.scene
+                    .world
+                    .get::<&Animation>(a.0)
+                    .map(|c| c.enabled)
+                    .map_err(|_| missing())
+            })?
+        });
+        f.add_field_method_set("enabled", |lua, a, v: bool| {
+            with_world(lua, |w| {
+                w.scene
+                    .world
+                    .get::<&mut Animation>(a.0)
+                    .map(|mut c| c.enabled = v)
+                    .map_err(|_| missing())
+            })?
+        });
+        f.add_field_method_get("gameObject", |_, a| Ok(LGameObject(a.0)));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        // Play([name]): the default clip, or the clip with that file name. Returns false if missing.
+        m.add_method("Play", |lua, a, name: Option<String>| {
+            with_world(lua, |w| {
+                let World {
+                    animation, scene, ..
+                } = w;
+                animation.play(scene, a.0, name.as_deref())
+            })
+        });
+        m.add_method("Stop", |lua, a, ()| {
+            with_world(lua, |w| w.animation.stop(a.0))
+        });
+        m.add_method("IsPlaying", |lua, a, name: String| {
+            with_world(lua, |w| {
+                w.animation.is_playing(a.0) && w.animation.current_clip(a.0) == Some(name)
+            })
+        });
     }
 }
 

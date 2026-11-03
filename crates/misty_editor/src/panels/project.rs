@@ -200,6 +200,28 @@ pub fn create_menu(ui: &mut Ui, state: &mut EditorState) {
         }
         ui.close();
     }
+    if ui.button("Animation").clicked() {
+        let dir = state.project.current.clone();
+        let path = (0..)
+            .map(|n| match n {
+                0 => dir.join("New Animation.anim"),
+                n => dir.join(format!("New Animation {n}.anim")),
+            })
+            .find(|p| !p.exists())
+            .expect("free name");
+        let rel = state.assets.relative(&path);
+        match state.anim_clips.create(&rel, Default::default()) {
+            Ok(()) => {
+                state.refresh_assets();
+                state.project.selected = Some(path);
+                state.console.info(format!("Created {rel}"));
+            }
+            Err(e) => state
+                .console
+                .warn(format!("Could not create animation: {e}")),
+        }
+        ui.close();
+    }
     if ui.button("Scene").clicked() {
         let dir = state.project.current.clone();
         match crate::scene_files::create_scene_asset(state, &dir) {

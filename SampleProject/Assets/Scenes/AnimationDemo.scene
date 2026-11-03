@@ -1,0 +1,389 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            12.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            2.5,
+            -7.0
+          ],
+          "rotation": [
+            0.104528464,
+            0.0,
+            0.0,
+            0.9945219
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.4082179,
+            -0.23456971,
+            0.10938165,
+            0.87542605
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Floor",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": null,
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Animation": {
+          "clip": "Assets/Animations/Bob.anim",
+          "clips": [
+            "Assets/Animations/Bob.anim"
+          ],
+          "enabled": true,
+          "play_automatically": true,
+          "wrap_mode": "Default"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Animation",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Bobber",
+          "tag": "Untagged"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/AnimationControl.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.5,
+            0.6,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Cube",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Red.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "Animation": {
+          "clip": "Assets/Animations/Blink.anim",
+          "clips": [
+            "Assets/Animations/Blink.anim"
+          ],
+          "enabled": true,
+          "play_automatically": true,
+          "wrap_mode": "Default"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light",
+            "Animation"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Blinking Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.6,
+            0.2
+          ],
+          "enabled": true,
+          "intensity": 3.0,
+          "kind": "Point",
+          "range": 6.0,
+          "shadows": "None",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.8,
+            1.2,
+            -0.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pedestal",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": null,
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.8,
+            0.0,
+            0.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

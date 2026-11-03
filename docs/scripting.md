@@ -21,14 +21,16 @@ return Rotator                     -- a script must return its class table
 `Awake`, `Start`, `Update`, `FixedUpdate` (every 0.02 s physics step), `LateUpdate`,
 `OnCollisionEnter(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`, `OnTriggerExit(other)`
 (`other` is a GameObject). Fields starting with `_` stay private.
+Animation events call a function by name (no arguments) on the scripts of the object with the Animation.
 
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource")` (nil if the object has none) |
+| `self.gameObject` | `name`, `tag`, `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation")` (nil if the object has none) |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])` |
 | AudioSource | `Play()`, `Stop()`, `Pause()`, `UnPause()`, `PlayOneShot(clipPath [, volumeScale])`, `isPlaying` (read-only), `volume`, `pitch`, `loop`, `mute`, `spatialBlend`, `enabled`, `clip` (project path like `"Assets/Audio/Beep.wav"`, or nil) |
+| Animation | `Play([name])` (the default clip, or the clip of the Animation's list with that file name; restarts it; returns false and warns if missing), `Stop()` (rewinds, keeps the pose), `IsPlaying(name)`, `isPlaying` (read-only), `time` (seconds since Play, keeps growing while looping; settable), `speed` (1 = normal, negative plays backwards), `clip` (name of the current clip, read-only), `enabled` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")`, `GetMouseButton(0)`, `GetAxis("Horizontal"/"Vertical"/"Mouse X"/"Mouse Y")` — the Game view must have focus (click it) |
@@ -75,3 +77,19 @@ return Clicker
 `Play()` restarts the source's clip; `PlayOneShot` plays an extra copy through the same source (its volume,
 pitch and 3D position) without interrupting it. Changes to `volume`, `pitch`, `loop` take effect the same frame;
 a new `clip` is used by the next `Play()`.
+
+### Controlling animations
+
+```lua
+local Door = { }
+function Door:Start() self._anim = self.gameObject:GetComponent("Animation") end
+function Door:Update()
+    if Input.GetKeyDown("e") then self._anim:Play("Open") end
+    if Input.GetKeyDown("q") then self._anim.speed = -1 end   -- play the current clip backwards
+end
+function Door:Opened() Debug.Log("door open") end  -- an animation event in Open.anim
+return Door
+```
+Animations are sampled after every `Update` and before `LateUpdate`, so `LateUpdate` sees the animated pose and
+can override it. Sample: `Assets/Scripts/AnimationControl.lua` in `Scenes/AnimationDemo.scene` (Space pauses /
+resumes, Up/Down change the speed).

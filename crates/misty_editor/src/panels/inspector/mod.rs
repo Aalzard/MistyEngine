@@ -1,6 +1,7 @@
 //! Inspector panel: GameObject header and one foldout per component.
 //! With several objects selected, edits apply to all of them (only shared components are shown).
 
+mod anim;
 mod editors;
 mod slots;
 
@@ -402,6 +403,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::audio::is_clip(rel) {
         audio_clip_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::animation::is_clip(rel) {
+        anim::clip_asset(ui, state, rel);
         return;
     }
     let name = crate::assets::AssetDatabase::material_name(Some(rel));

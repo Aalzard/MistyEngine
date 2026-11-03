@@ -233,6 +233,7 @@ fn component_menu(ui: &mut Ui, s: &mut EditorState) {
         "Physics",
         "Audio",
         "Rendering",
+        "Miscellaneous",
         "Scripts",
         "UI",
     ] {
@@ -257,9 +258,13 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
     ui.menu_button("Layouts", |ui| layouts_menu(ui, s));
     ui.separator();
     ui.menu_button("General", |ui| {
-        for tab in Tab::ALL {
+        for tab in Tab::ALL.into_iter().filter(|t| *t != Tab::Animation) {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
+    });
+    ui.menu_button("Animation", |ui| {
+        let tab = Tab::Animation;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
     todo(ui, s, "Package Manager", "");
 }

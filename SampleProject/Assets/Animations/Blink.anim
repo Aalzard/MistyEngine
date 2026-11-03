@@ -1,0 +1,72 @@
+{
+  "length": 1.0,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "",
+      "property": "Light.intensity",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 3.0,
+          "tangent": "Constant"
+        },
+        {
+          "time": 0.5,
+          "value": 0.2,
+          "tangent": "Constant"
+        }
+      ]
+    },
+    {
+      "path": "",
+      "property": "Light.color.r",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 1.0,
+          "tangent": "Constant"
+        },
+        {
+          "time": 0.5,
+          "value": 0.3,
+          "tangent": "Constant"
+        }
+      ]
+    },
+    {
+      "path": "",
+      "property": "Light.color.g",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.6,
+          "tangent": "Constant"
+        },
+        {
+          "time": 0.5,
+          "value": 0.5,
+          "tangent": "Constant"
+        }
+      ]
+    },
+    {
+      "path": "",
+      "property": "Light.color.b",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.2,
+          "tangent": "Constant"
+        },
+        {
+          "time": 0.5,
+          "value": 1.0,
+          "tangent": "Constant"
+        }
+      ]
+    }
+  ],
+  "events": []
+}

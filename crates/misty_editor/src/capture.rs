@@ -41,6 +41,26 @@ impl Capture {
     }
 }
 
+/// Screenshot setup from the environment: `MISTY_SELECT=<object name>` selects an object and
+/// `MISTY_TAB=<tab title>` brings a tab to the front (e.g. the Animation window).
+pub fn apply_env(
+    s: &mut crate::state::EditorState,
+    dock: &mut egui_dock::DockState<crate::layout::Tab>,
+) {
+    if let Some(name) = std::env::var_os("MISTY_SELECT")
+        && let Some(e) = s.scene.find_by_name(&name.to_string_lossy())
+    {
+        s.select(e);
+    }
+    if let Some(title) = std::env::var_os("MISTY_TAB")
+        && let Some(tab) = crate::layout::Tab::ALL
+            .into_iter()
+            .find(|t| t.title() == title.to_string_lossy())
+    {
+        crate::layout::focus_or_open(dock, tab);
+    }
+}
+
 fn save_png(path: &PathBuf, image: &egui::ColorImage) -> Result<(), Box<dyn std::error::Error>> {
     let file = std::io::BufWriter::new(std::fs::File::create(path)?);
     let mut encoder = png::Encoder::new(file, image.size[0] as u32, image.size[1] as u32);

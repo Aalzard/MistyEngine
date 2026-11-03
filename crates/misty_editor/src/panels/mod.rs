@@ -1,5 +1,6 @@
 //! Dock tab viewer: routes each tab to its panel.
 
+pub mod animation;
 mod console;
 mod game;
 mod hierarchy;
@@ -43,6 +44,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::Inspector => inspector::show(ui, self.state),
             Tab::Project => project::show(ui, self.state),
             Tab::Console => console::show(ui, self.state),
+            Tab::Animation => animation::show(ui, self.state),
         }
     }
 

@@ -150,7 +150,7 @@ f 4 6 5
         assert_eq!(mesh_of(&s.scene, e), None, "the root only groups the nodes");
 
         s.undo
-            .undo(&mut s.scene, &mut s.selection)
+            .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips)
             .expect("undo step");
         assert_eq!(s.scene.len(), before);
         std::fs::remove_dir_all(root).ok();
