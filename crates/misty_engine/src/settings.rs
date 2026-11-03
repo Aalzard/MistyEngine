@@ -1,4 +1,4 @@
-//! Project Settings: per-project physics and time configuration.
+//! Project Settings: per-project physics, time, input axes and tags & layers.
 //!
 //! Stored in `<Project>/ProjectSettings/ProjectSettings.json`, which belongs in version control
 //! (unlike `Library/`). Missing fields load as their defaults.
@@ -87,6 +87,9 @@ impl Default for TimeSettings {
 pub struct ProjectSettings {
     pub physics: PhysicsSettings,
     pub time: TimeSettings,
+    /// Input Manager axes.
+    pub input: crate::input::InputSettings,
+    pub tags_and_layers: crate::tags_layers::TagsAndLayers,
 }
 
 impl ProjectSettings {
@@ -140,6 +143,8 @@ impl ProjectSettings {
         let t = &mut self.time;
         t.time_scale = clamp_or(t.time_scale, 0.0, 100.0, 1.0);
         t.maximum_allowed_timestep = clamp_or(t.maximum_allowed_timestep, 0.0001, 10.0, 1.0 / 3.0);
+        self.input.sanitize();
+        self.tags_and_layers.sanitize();
     }
 }
 
@@ -171,6 +176,10 @@ mod tests {
         s.physics.set_layers_collide(5, 0, false);
         s.time.time_scale = 0.5;
         s.time.maximum_allowed_timestep = 0.1;
+        s.input.axes[0].sensitivity = 5.0;
+        s.input.axes.pop();
+        s.tags_and_layers.tags.push("Enemy".into());
+        s.tags_and_layers.layers[8] = "Hidden".into();
         s.save(&root).unwrap();
         assert!(root.join("ProjectSettings/ProjectSettings.json").is_file());
         assert_eq!(ProjectSettings::load(&root).unwrap(), s);
@@ -183,6 +192,9 @@ mod tests {
         assert_eq!(s.physics.fixed_timestep, 0.02);
         assert_eq!(s.physics.max_steps_per_frame, 8);
         assert_eq!(s.time, TimeSettings::default());
+        // Files from before the Input Manager / Tags and Layers pages.
+        assert_eq!(s.input, crate::input::InputSettings::default());
+        assert_eq!(s.tags_and_layers.name_to_layer("Player"), 5);
         assert_eq!(
             ProjectSettings::from_json("{}").unwrap(),
             ProjectSettings::default()

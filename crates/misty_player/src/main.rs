@@ -28,6 +28,7 @@ use winit::window::{Fullscreen, Window, WindowId};
 use game::Game;
 use gfx::Gfx;
 use input::InputState;
+use misty_engine::input::Gamepads;
 
 /// Frames rendered before a `MISTY_SCREENSHOT` capture.
 const SCREENSHOT_FRAME: u64 = 60;
@@ -60,6 +61,7 @@ fn main() {
         window: None,
         gfx: None,
         input: InputState::default(),
+        gamepads: Gamepads::default(),
         last: Instant::now(),
         frames: 0,
         screenshot: std::env::var_os("MISTY_SCREENSHOT").map(PathBuf::from),
@@ -75,6 +77,7 @@ struct Player {
     window: Option<Arc<Window>>,
     gfx: Option<Gfx>,
     input: InputState,
+    gamepads: Gamepads,
     last: Instant,
     frames: u64,
     screenshot: Option<PathBuf>,
@@ -86,7 +89,9 @@ impl Player {
         let now = Instant::now();
         let dt = now.duration_since(self.last).as_secs_f32();
         self.last = now;
-        self.game.frame(dt, self.input.frame());
+        let mut input = self.input.frame();
+        input.joysticks = self.gamepads.poll();
+        self.game.frame(dt, input);
         for (kind, text) in self.game.take_logs() {
             self.log.write(kind, &text);
         }

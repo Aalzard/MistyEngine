@@ -793,3 +793,36 @@
 - Agents: no auto repath, `updatePosition`/`updateRotation` switches, `Move`, agent `CalculatePath`,
   `nextPosition` setter or `isPathStale`; paths are computed immediately.
 - No `NavMesh.Raycast` / `FindClosestEdge` and no NavMeshPath object (CalculatePath returns a corner list).
+
+## Input Manager, gamepads, Tags and Layers ✅
+
+### Done
+- Edit ▸ Project Settings ▸ Input Manager: Axes list (Size, one foldout per axis with name, descriptive names,
+  negative/positive/alt buttons, gravity, dead, sensitivity, snap, invert, type, axis, joy num; Duplicate /
+  Delete), saved in `ProjectSettings.json`; the usual default axes.
+- Runtime axes with gravity/sensitivity smoothing and snap; mouse movement and wheel axes; joystick axes with
+  dead zones. Lua `Input.GetAxis`, `GetAxisRaw`, `GetButton/Down/Up`, `GetMouseButton/Down/Up`,
+  `mouseScrollDelta`, `anyKey`, `anyKeyDown`, `GetJoystickNames()`; `"mouse 0"` / `"joystick button 0"` /
+  `"joystick 1 button 0"` key names.
+- Gamepads via `gilrs` in the player and the editor while playing (Xbox-style button/axis layout).
+- Edit ▸ Project Settings ▸ Tags and Layers: user tags (+ / −), 32 layers (0–7 built in, 8–31 nameable). The
+  Layer Collision Matrix, Inspector Tag/Layer dropdowns ("Add Tag…" / "Add Layer…" open the page) and
+  `LayerMask.NameToLayer/LayerToName/GetMask` use them. Lua `GameObject.FindWithTag`,
+  `FindGameObjectsWithTag` (and `CompareTag`).
+- Camera ▸ Culling Mask (Nothing / Everything / per-layer toggles; Lua `cullingMask`) honoured by the game
+  view and the player for meshes, terrains and particles.
+- Sample: `Scenes/InputDemo.scene` (`InputMover.lua`, `GamepadHint.lua`, a Hidden-layer marker the camera
+  skips; layer 8 "Hidden" in the sample's Project Settings).
+- Tests: axis smoothing / snap / invert / gravity, mouse and wheel axes, buttons, key-name parsing, gamepad
+  mapping and press detection with fake pads, settings round trip and old files, tags/layers sanitising and
+  old layer indices, culling mask (and old cameras = Everything), Lua Input/tag/layer API, Project Settings
+  pages, sample generator check and headless play with injected keys and a fake gamepad.
+
+### Not matching Unity yet
+- No light culling masks, no Sorting Layers, no Scene view Layers visibility/lock menu.
+- Fixed Xbox-style layout for every pad (no per-device raw axes, no remapping, no rumble); only 10 joystick
+  axes and 20 buttons, up to 8 joysticks.
+- Mouse buttons above 2, `Input.GetKey(KeyCode…)` enums, `Input.inputString`, touch, accelerometer and the new
+  action-based input system are not available; the Input Manager has no right-click array menu (Duplicate /
+  Delete buttons instead).
+- Renaming a tag or layer doesn't update objects using it; tags aren't reorderable.

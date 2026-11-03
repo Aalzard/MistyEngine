@@ -45,9 +45,24 @@ pub fn mesh_draws(
     materials: &dyn MaterialSource,
     outline: impl Fn(Entity) -> bool,
 ) -> Vec<MeshDraw> {
+    mesh_draws_culled(scene, materials, u32::MAX, outline)
+}
+
+/// Is `e`'s layer in a camera's culling mask?
+pub fn in_mask(scene: &Scene, e: Entity, mask: u32) -> bool {
+    mask & (1u32 << scene.game_object(e).layer.min(31)) != 0
+}
+
+/// [`mesh_draws`] of the objects whose layer is in `culling_mask`.
+pub fn mesh_draws_culled(
+    scene: &Scene,
+    materials: &dyn MaterialSource,
+    culling_mask: u32,
+    outline: impl Fn(Entity) -> bool,
+) -> Vec<MeshDraw> {
     let mut out = Vec::new();
     for (e, _) in scene.walk() {
-        if !scene.active_in_hierarchy(e) {
+        if !scene.active_in_hierarchy(e) || !in_mask(scene, e, culling_mask) {
             continue;
         }
         let w = &scene.world;
@@ -187,15 +202,18 @@ impl GameView {
     pub fn new(scene: &Scene, materials: &dyn MaterialSource) -> Option<Self> {
         let (camera, settings) = game_camera(scene)?;
         let lights = lights(scene);
+        // Only the layers in the camera's Culling Mask are drawn (lights light everything).
+        let mask = settings.culling_mask;
+        let keep = |e: Entity| in_mask(scene, e, mask);
         Some(Self {
             camera,
-            settings,
-            meshes: mesh_draws(scene, materials, |_| false),
+            meshes: mesh_draws_culled(scene, materials, mask, |_| false),
             environment: environment(scene, &lights),
             post: post_settings(scene),
             lights,
-            particles: crate::particles::batches(scene),
-            terrains: crate::terrain::draws(scene),
+            particles: crate::particles::batches_where(scene, keep),
+            terrains: crate::terrain::draws_where(scene, keep),
+            settings,
         })
     }
 
@@ -216,5 +234,47 @@ impl GameView {
             shaded: true,
             lights: &self.lights,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene::PrimitiveMesh;
+
+    struct NoMaterials;
+    impl MaterialSource for NoMaterials {
+        fn params(&self, _: Option<&str>) -> MaterialParams {
+            MaterialParams::default()
+        }
+    }
+
+    fn cube(s: &mut Scene, name: &str, layer: u8) {
+        let e = s.spawn(name, None);
+        s.add(e, MeshFilter::primitive(PrimitiveMesh::Cube));
+        s.add(e, MeshRenderer::default());
+        s.game_object_mut(e).layer = layer;
+    }
+
+    #[test]
+    fn culling_mask_hides_layers_from_the_game_camera() {
+        let mut s = Scene::new("t");
+        let cam = s.spawn("Camera", None);
+        s.add(cam, CameraComponent::default());
+        cube(&mut s, "Shown", 0);
+        cube(&mut s, "Hidden", 8);
+        let view = GameView::new(&s, &NoMaterials).unwrap();
+        assert_eq!(view.meshes.len(), 2, "Everything by default");
+        s.world
+            .get::<&mut CameraComponent>(cam)
+            .unwrap()
+            .culling_mask = !(1 << 8);
+        let view = GameView::new(&s, &NoMaterials).unwrap();
+        assert_eq!(view.meshes.len(), 1);
+        // The editor's views ignore camera masks.
+        assert_eq!(mesh_draws(&s, &NoMaterials, |_| false).len(), 2);
+        // Old scenes without the field render everything.
+        let c: CameraComponent = serde_json::from_str("{}").unwrap();
+        assert_eq!(c.culling_mask, u32::MAX);
     }
 }

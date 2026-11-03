@@ -1,8 +1,22 @@
 //! Keyboard/mouse for scripts while playing, using the familiar key names
-//! ("w", "space", "left shift", "up", "return", "escape", "1", "f1").
+//! ("w", "space", "left shift", "up", "return", "escape", "1", "f1"), and gamepads.
+
+use std::cell::RefCell;
 
 use egui::{Event, Key, PointerButton};
+use misty_engine::input::{Gamepads, Joystick};
 use misty_engine::scripting::Input;
+
+thread_local! {
+    /// Opened on the first Play frame (the UI thread owns it).
+    static GAMEPADS: RefCell<Gamepads> = RefCell::default();
+}
+
+/// Connected gamepads this frame. They reach the game even without Game view focus, since
+/// the editor UI doesn't use them.
+pub fn gamepads() -> Vec<Joystick> {
+    GAMEPADS.with(|g| g.borrow_mut().poll())
+}
 
 /// Script-facing name of an egui key.
 pub fn key_name(key: Key) -> String {

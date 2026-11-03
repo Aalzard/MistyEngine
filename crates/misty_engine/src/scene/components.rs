@@ -195,6 +195,13 @@ pub struct Camera {
     /// Normalised viewport rect: x, y, w, h.
     pub viewport: [f32; 4],
     pub depth: f32,
+    /// Layers this camera renders (bit per layer; all by default, left out of files then).
+    #[serde(skip_serializing_if = "is_everything")]
+    pub culling_mask: u32,
+}
+
+fn is_everything(mask: &u32) -> bool {
+    *mask == u32::MAX
 }
 
 impl Default for Camera {
@@ -210,6 +217,7 @@ impl Default for Camera {
             far: 1000.0,
             viewport: [0.0, 0.0, 1.0, 1.0],
             depth: 0.0,
+            culling_mask: u32::MAX,
         }
     }
 }

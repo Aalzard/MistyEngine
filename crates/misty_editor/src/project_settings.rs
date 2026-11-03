@@ -4,28 +4,43 @@
 use egui::Ui;
 
 use misty_engine::glam::Vec3;
-use misty_engine::physics::LAYERS;
 use misty_engine::settings::{PhysicsSettings, ProjectSettings};
+use misty_engine::tags_layers::TagsAndLayers;
 
 use crate::state::EditorState;
 use crate::widgets::vec3_row;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Category {
+    InputManager,
     #[default]
     Physics,
+    TagsAndLayers,
     Time,
 }
 
 impl Category {
-    pub const ALL: [Category; 2] = [Category::Physics, Category::Time];
+    pub const ALL: [Category; 4] = [
+        Category::InputManager,
+        Category::Physics,
+        Category::TagsAndLayers,
+        Category::Time,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
+            Category::InputManager => "Input Manager",
             Category::Physics => "Physics",
+            Category::TagsAndLayers => "Tags and Layers",
             Category::Time => "Time",
         }
     }
+}
+
+/// Open the window on a category (e.g. "Add Tag…" in the Inspector).
+pub fn open_at(s: &mut EditorState, category: Category) {
+    s.project_settings_window.open = true;
+    s.project_settings_window.category = category;
 }
 
 /// Window state.
@@ -90,10 +105,18 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
             let category = s.project_settings_window.category;
             ui.heading(category.title());
             ui.add_space(4.0);
-            let edited = match category {
-                Category::Physics => physics(ui, &mut s.project_settings),
-                Category::Time => time(ui, &mut s.project_settings),
-            };
+            let p = &mut s.project_settings;
+            let edited = egui::ScrollArea::vertical()
+                .auto_shrink([false, true])
+                .show(ui, |ui| match category {
+                    Category::InputManager => crate::project_settings_input::page(ui, &mut p.input),
+                    Category::Physics => physics(ui, p),
+                    Category::TagsAndLayers => {
+                        crate::project_settings_tags::page(ui, &mut p.tags_and_layers)
+                    }
+                    Category::Time => time(ui, p),
+                })
+                .inner;
             if edited {
                 changed(s);
             }
@@ -111,8 +134,9 @@ fn row(ui: &mut Ui, label: &str, tip: &str, add: impl FnOnce(&mut Ui) -> bool) -
     .inner
 }
 
-fn physics(ui: &mut Ui, p: &mut ProjectSettings) -> bool {
-    let p = &mut p.physics;
+fn physics(ui: &mut Ui, settings: &mut ProjectSettings) -> bool {
+    let names = &settings.tags_and_layers;
+    let p = &mut settings.physics;
     let mut gravity = p.gravity.to_array();
     let mut edited = vec3_row(ui, "Gravity", &mut gravity, 0.05);
     p.gravity = Vec3::from_array(gravity);
@@ -134,36 +158,39 @@ fn physics(ui: &mut Ui, p: &mut ProjectSettings) -> bool {
     ui.add_space(6.0);
     ui.weak("Friction and Bounciness are set on each collider.");
     ui.add_space(8.0);
-    edited |= layer_matrix(ui, p);
+    edited |= layer_matrix(ui, p, names);
     edited
 }
 
-/// Layer Collision Matrix: rows top to bottom, columns in reverse order, one box per pair.
-fn layer_matrix(ui: &mut Ui, p: &mut PhysicsSettings) -> bool {
+/// Layer Collision Matrix of the named layers: rows top to bottom, columns in reverse order,
+/// one box per pair.
+fn layer_matrix(ui: &mut Ui, p: &mut PhysicsSettings, names: &TagsAndLayers) -> bool {
     let mut edited = false;
+    let layers = names.named_layers();
     egui::CollapsingHeader::new("Layer Collision Matrix")
         .id_salt("layer_matrix")
         .default_open(true)
         .show(ui, |ui| {
-            let n = LAYERS.len();
+            let n = layers.len();
             egui::Grid::new("layer_matrix_grid")
                 .spacing([2.0, 2.0])
                 .show(ui, |ui| {
                     ui.label("");
                     for j in (0..n).rev() {
-                        ui.label(j.to_string()).on_hover_text(LAYERS[j]);
+                        let (index, name) = layers[j];
+                        ui.label(index.to_string()).on_hover_text(name);
                     }
                     ui.end_row();
-                    for (i, name) in LAYERS.iter().enumerate() {
-                        ui.label(format!("{i} {name}"));
+                    for (i, (a, name)) in layers.iter().enumerate() {
+                        ui.label(format!("{a} {name}"));
                         for j in (0..n).rev() {
                             if j < i {
                                 ui.label("");
                                 continue;
                             }
-                            let (a, b) = (i as u8, j as u8);
+                            let (a, b) = (*a, layers[j].0);
                             let mut on = p.layers_collide(a, b);
-                            let tip = format!("{name} × {}", LAYERS[j]);
+                            let tip = format!("{name} × {}", layers[j].1);
                             if ui.checkbox(&mut on, "").on_hover_text(tip).changed() {
                                 p.set_layers_collide(a, b, on);
                                 edited = true;
@@ -250,6 +277,41 @@ mod tests {
         assert_eq!(h.state().project_settings_window.category, Category::Time);
         h.get_by_label("Fixed Timestep");
         h.get_by_label("Time Scale");
+    }
+
+    #[test]
+    fn input_manager_and_tags_pages() {
+        let mut s = state("misty_ps_input_tags_test");
+        s.project_settings.tags_and_layers.layers[8] = "Hidden".into();
+        open_at(&mut s, Category::InputManager);
+        let mut h = Harness::builder()
+            .with_size([620.0, 600.0])
+            .build_ui_state(|ui, s: &mut EditorState| contents(ui, s), s);
+        h.run();
+        h.get_by_label("Axes");
+        h.get_by_label("Size");
+        assert!(
+            h.query_all_by_label("Horizontal").count() >= 2,
+            "keys + stick"
+        );
+        h.get_by_label("Mouse ScrollWheel").click();
+        h.run();
+        h.get_by_label("Sensitivity");
+        h.get_by_label("Joy Num");
+        h.get_by_label("Tags and Layers").click();
+        h.run();
+        h.get_by_label("Builtin Layer 0");
+        h.get_by_label("User Layer 31");
+        h.get_by_label("+").click();
+        h.run();
+        assert_eq!(h.state().project_settings.tags_and_layers.tags, ["New Tag"]);
+        h.get_by_label("Physics").click();
+        h.run();
+        h.get_by_label("8 Hidden");
+        // The tag was saved with the project.
+        let root = h.state().project.root.clone();
+        let saved = ProjectSettings::load(&root).unwrap();
+        assert!(saved.tags_and_layers.has_tag("New Tag"));
     }
 
     #[test]

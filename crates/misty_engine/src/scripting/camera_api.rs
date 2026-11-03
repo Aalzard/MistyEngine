@@ -57,6 +57,22 @@ impl UserData for LCamera {
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         f.add_field_method_get("gameObject", |_, c| Ok(LGameObject(c.0)));
         f.add_field_method_get("transform", |_, c| Ok(LTransform(c.0)));
+        // Layer bits the camera renders (`~(1 << layer)` hides one).
+        f.add_field_method_get("cullingMask", |lua, c| {
+            with_world(lua, |w| {
+                w.scene
+                    .world
+                    .get::<&CameraComponent>(c.0)
+                    .map_or(0, |cam| cam.culling_mask as i64)
+            })
+        });
+        f.add_field_method_set("cullingMask", |lua, c, mask: i64| {
+            with_world(lua, |w| {
+                if let Ok(mut cam) = w.scene.world.get::<&mut CameraComponent>(c.0) {
+                    cam.culling_mask = mask as u32;
+                }
+            })
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {

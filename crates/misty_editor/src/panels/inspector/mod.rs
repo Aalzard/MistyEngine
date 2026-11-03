@@ -5,6 +5,7 @@ mod anim;
 mod animator;
 mod audio_editors;
 mod editors;
+mod layer_mask;
 mod material;
 mod mixed;
 mod mixer_inspector;
@@ -24,19 +25,8 @@ use crate::actions::Action;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
 
-pub const TAGS: [&str; 7] = [
-    "Untagged",
-    "Respawn",
-    "Finish",
-    "EditorOnly",
-    "MainCamera",
-    "Player",
-    "GameController",
-];
-/// Layer names live with the physics layer masks.
-pub use misty_engine::physics::LAYERS;
-
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
+    layer_mask::publish_names(ui.ctx(), &state.project_settings.tags_and_layers);
     lock_row(ui, state);
 
     // A locked Inspector keeps showing the objects it was locked on.
@@ -141,6 +131,8 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
     let mixed_tag = differs(|g| g.tag.clone());
     let mixed_layer = differs(|g| g.layer.to_string());
     let mut changed = false;
+    let names = state.project_settings.tags_and_layers.clone();
+    let mut open_tags = false;
     ui.horizontal(|ui| {
         let icon = RichText::new(icon).size(22.0);
         let icon = if state.scene.prefab_link(e).is_some() {
@@ -178,24 +170,39 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
             })
             .width(110.0)
             .show_ui(ui, |ui| {
-                for t in TAGS {
-                    if ui.selectable_label(go.tag == t, t).clicked() {
-                        go.tag = t.to_owned();
+                for t in names.all_tags() {
+                    if ui.selectable_label(go.tag == t, &t).clicked() {
+                        go.tag = t;
                         changed = true;
                     }
                 }
+                ui.separator();
+                open_tags |= ui.selectable_label(false, "Add Tag…").clicked();
             });
         ui.label("Layer");
-        let layer_name = LAYERS.get(go.layer as usize).copied().unwrap_or("Default");
+        let layer_name = match names.layer_name(go.layer as i32) {
+            "" => go.layer.to_string(),
+            n => n.to_owned(),
+        };
         egui::ComboBox::from_id_salt("insp_layer")
-            .selected_text(if mixed_layer { mixed::DASH } else { layer_name })
+            .selected_text(if mixed_layer {
+                mixed::DASH.to_owned()
+            } else {
+                layer_name
+            })
             .width(110.0)
             .show_ui(ui, |ui| {
-                for (i, l) in LAYERS.iter().enumerate() {
-                    changed |= ui.selectable_value(&mut go.layer, i as u8, *l).changed();
+                for (i, l) in names.named_layers() {
+                    let label = format!("{i}: {l}");
+                    changed |= ui.selectable_value(&mut go.layer, i, label).changed();
                 }
+                ui.separator();
+                open_tags |= ui.selectable_label(false, "Add Layer…").clicked();
             });
     });
+    if open_tags {
+        crate::project_settings::open_at(state, crate::project_settings::Category::TagsAndLayers);
+    }
     if !changed {
         return;
     }

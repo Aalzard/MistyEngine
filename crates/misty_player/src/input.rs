@@ -165,6 +165,8 @@ impl InputState {
             text: std::mem::take(&mut self.text),
             typed: std::mem::take(&mut self.typed),
             scroll_delta: std::mem::take(&mut self.scroll),
+            // Gamepads are polled by the caller.
+            joysticks: Vec::new(),
         }
     }
 }

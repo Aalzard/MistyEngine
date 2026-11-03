@@ -110,7 +110,8 @@ return Mover
     input.held.insert("d".into());
     input.pressed.insert("space".into());
     let logs = run(&mut scene, root, 60, input);
-    assert!((scene.world_position(e).x - 2.0).abs() < 0.05);
+    // GetAxis ramps up over 1/3 s (sensitivity 3), then holds 1: 50.5 frames' worth of 2/60 m.
+    assert!((scene.world_position(e).x - 1.683).abs() < 0.01);
     assert!(
         logs.iter()
             .any(|(k, t)| *k == LogKind::Warning && t == "jump")
