@@ -327,6 +327,7 @@ impl eframe::App for EditorApp {
                     );
             });
 
+        crate::project_settings::show(&ctx, &mut self.state);
         self.apply_actions(&ctx);
         self.state.undo.end_frame(Self::interacting(&ctx));
         self.scene_file_frame(&ctx);

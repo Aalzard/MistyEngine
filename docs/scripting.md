@@ -29,7 +29,7 @@ return Rotator                     -- a script must return its class table
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
-| `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` |
+| `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")`, `GetMouseButton(0)`, `GetAxis("Horizontal"/"Vertical"/"Mouse X"/"Mouse Y")` — the Game view must have focus (click it) |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |

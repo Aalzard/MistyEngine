@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use crate::physics::Physics;
 use crate::scene::Scene;
 use crate::scripting::{Input, LogKind, ScriptHost};
+use crate::settings::{ProjectSettings, TimeSettings};
 
 /// Like the familiar `Time` class: elapsed time, frame delta, frame count, time scale.
 #[derive(Clone, Copy, Debug)]
@@ -19,6 +20,8 @@ pub struct Time {
     pub unscaled_delta: f32,
     pub frame: u64,
     pub time_scale: f32,
+    /// Longest real delta a frame may use (Maximum Allowed Timestep).
+    pub maximum_delta: f32,
 }
 
 impl Default for Time {
@@ -29,23 +32,30 @@ impl Default for Time {
             unscaled_delta: 0.0,
             frame: 0,
             time_scale: 1.0,
+            maximum_delta: 1.0 / 3.0,
         }
     }
 }
 
 impl Time {
-    /// Advance by `real_dt` seconds of wall-clock time (capped like the maximum allowed timestep).
+    /// Fresh clock using Project Settings ▸ Time.
+    pub fn new(settings: &TimeSettings) -> Self {
+        Self {
+            time_scale: settings.time_scale,
+            maximum_delta: settings.maximum_allowed_timestep,
+            ..Default::default()
+        }
+    }
+
+    /// Advance by `real_dt` seconds of wall-clock time (capped at the maximum allowed timestep).
     pub fn advance(&mut self, real_dt: f32) {
-        let dt = real_dt.clamp(0.0, 1.0 / 3.0);
+        let dt = real_dt.clamp(0.0, self.maximum_delta);
         self.unscaled_delta = dt;
         self.delta = dt * self.time_scale;
         self.time += self.delta as f64;
         self.frame += 1;
     }
 }
-
-/// Gravity used by physics (Project Settings ▸ Physics default).
-pub const DEFAULT_GRAVITY: Vec3 = Vec3::new(0.0, -9.81, 0.0);
 
 /// Everything that lives only while playing: scripts and the physics world they drive.
 pub struct Runtime {
@@ -56,8 +66,8 @@ pub struct Runtime {
 
 impl Runtime {
     /// Build physics and script instances from the scene as Play starts (runs `Awake`).
-    pub fn start(scene: &mut Scene, project_root: PathBuf) -> Self {
-        let mut physics = Physics::build(scene, DEFAULT_GRAVITY);
+    pub fn start(scene: &mut Scene, project_root: PathBuf, settings: &ProjectSettings) -> Self {
+        let mut physics = Physics::build_with(scene, &settings.physics);
         let warnings = std::mem::take(&mut physics.warnings);
         let host = ScriptHost::start(scene, physics, project_root);
         Self {
@@ -79,6 +89,11 @@ impl Runtime {
             .collect();
         out.extend(self.host.take_logs());
         out
+    }
+
+    /// Gravity and fixed timestep the physics world was built with.
+    pub fn physics_config(&self) -> (Vec3, f32) {
+        self.host.physics_config()
     }
 
     pub fn stats(&self) -> RuntimeStats {
@@ -115,5 +130,16 @@ mod tests {
             (t.unscaled_delta - 1.0 / 3.0).abs() < 1e-6,
             "long hitches are capped"
         );
+    }
+
+    #[test]
+    fn time_uses_project_settings() {
+        let mut t = Time::new(&TimeSettings {
+            time_scale: 2.0,
+            maximum_allowed_timestep: 0.1,
+        });
+        t.advance(0.5);
+        assert!((t.unscaled_delta - 0.1).abs() < 1e-6);
+        assert!((t.delta - 0.2).abs() < 1e-6);
     }
 }

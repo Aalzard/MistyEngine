@@ -180,3 +180,18 @@ Record of choices made without asking, and why.
     bloom, and Intensity directly controls how far an object glows.
 61. **Hue-preserving highlight compression** in the composite instead of per-channel clipping: over-bright orange
     stays orange and whitens gradually. There's no global tonemapper, so normal scenes look the same as before.
+
+## 2026-11-03 — Project Settings
+
+62. **Project Settings live in `<Project>/ProjectSettings/ProjectSettings.json`**, one pretty JSON file with
+    `physics` and `time` sections, committed with the project (unlike `Library/`). Every field has a default
+    (`serde(default)`), so older or hand-trimmed files keep loading; invalid values (zero timestep, NaN) are clamped.
+    A missing file means defaults and isn't written until something changes.
+63. **A floating egui window instead of a dock tab**, like the reference editor's utility window, and so the
+    dock layout/persistence code doesn't need a new tab kind. Changes save immediately (no Apply button).
+64. **Fixed Timestep is stored in `physics` but shown under Time**, where users expect it; physics is the only
+    thing that consumes it. "Max Steps Per Frame" (no direct equivalent) sits under Physics.
+65. **No project-wide default friction/bounciness:** colliders already own theirs (decision 44), so a second
+    default would be confusing until physics-material assets exist.
+66. **Settings are read when Play starts** (physics world, fixed step). Time Scale and Maximum Allowed Timestep also
+    update the running clock immediately; gravity/fixed-step edits apply on the next Play.

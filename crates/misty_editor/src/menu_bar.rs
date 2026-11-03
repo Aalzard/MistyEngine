@@ -103,7 +103,13 @@ fn edit_menu(ui: &mut Ui, s: &mut EditorState) {
     item(ui, s, "Pause", "Ctrl+Shift+P", Action::TogglePause);
     item(ui, s, "Step", "Ctrl+Alt+P", Action::Step);
     ui.separator();
-    todo(ui, s, "Project Settings...", "");
+    item(
+        ui,
+        s,
+        "Project Settings...",
+        "",
+        Action::OpenProjectSettings,
+    );
     todo(ui, s, "Preferences...", "");
     todo(ui, s, "Shortcuts...", "");
 }

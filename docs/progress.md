@@ -141,7 +141,6 @@
 
 ### Not matching Unity yet
 - No joints, no physics materials as assets, no layer collision matrix.
-- Physics settings (gravity, fixed timestep) aren't editable in a Project Settings window yet.
 - No "Edit Collider" handles; Mesh Collider only works with built-in meshes.
 
 ## Step 8 — Scripting ✅
@@ -179,3 +178,19 @@
 - One scene at a time (no additive multi-scene editing); no prefabs; no Build Settings scene list.
 - Asset references are paths, so moving/renaming an asset outside the editor breaks references (no GUIDs/.meta yet).
 - Window layout isn't persisted.
+
+## Project Settings ✅
+
+### Done
+- Edit ▸ Project Settings… opens a floating "Project Settings" window: category list (Physics, Time) on the left,
+  fields on the right. Every change is saved immediately to `<Project>/ProjectSettings/ProjectSettings.json`
+  (meant for version control) and loaded when the editor opens the project.
+- Physics: Gravity, Max Steps Per Frame. Time: Fixed Timestep, Maximum Allowed Timestep, Time Scale.
+- Play mode builds physics with the project's gravity / fixed timestep / step cap; Time Scale and Maximum Allowed
+  Timestep also apply live while playing. Lua `Time.fixedDeltaTime` and `Time.timeScale` show the project values.
+- Missing or unknown fields load as defaults; out-of-range values are clamped.
+
+### Not matching Unity yet
+- Only Physics and Time categories (no Player, Quality, Input, Tags and Layers, Graphics, Audio…).
+- No search field, no Reset in a ⋮ menu, no per-setting undo; scripts can't change `Time.timeScale` yet.
+- No default physics material: friction and bounciness are per collider.

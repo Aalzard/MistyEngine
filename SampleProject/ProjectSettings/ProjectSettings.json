@@ -1,0 +1,15 @@
+{
+  "physics": {
+    "gravity": [
+      0.0,
+      -9.81,
+      0.0
+    ],
+    "fixed_timestep": 0.02,
+    "max_steps_per_frame": 8
+  },
+  "time": {
+    "time_scale": 1.0,
+    "maximum_allowed_timestep": 0.33333334
+  }
+}

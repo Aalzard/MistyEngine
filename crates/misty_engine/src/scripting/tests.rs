@@ -202,3 +202,27 @@ fn missing_return_is_a_clear_error() {
         "{logs:?}"
     );
 }
+
+#[test]
+fn lua_time_reflects_project_settings() {
+    use crate::runtime::Runtime;
+    use crate::settings::ProjectSettings;
+    let probe = r#"
+local Probe = {}
+function Probe:Update() Debug.Log(string.format("time %.3f %.2f", Time.fixedDeltaTime, Time.timeScale)) end
+return Probe
+"#;
+    let root = project(&[("Probe.lua", probe)]);
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Probe", None);
+    attach(&mut scene, e, "Probe.lua", &[]);
+    let mut settings = ProjectSettings::default();
+    settings.physics.fixed_timestep = 0.05;
+    settings.time.time_scale = 0.5;
+    let mut runtime = Runtime::start(&mut scene, root, &settings);
+    let mut time = Time::new(&settings.time);
+    time.advance(1.0 / 60.0);
+    runtime.update(&mut scene, &time, Input::default());
+    let logs = runtime.take_logs();
+    assert!(logs.iter().any(|(_, t)| t == "time 0.050 0.50"), "{logs:?}");
+}

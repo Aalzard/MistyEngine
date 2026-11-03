@@ -11,12 +11,14 @@ use crate::console::Console;
 use crate::handles::HandleState;
 use crate::play::PlaySession;
 use crate::project::ProjectBrowser;
+use crate::project_settings::ProjectSettingsWindow;
 use crate::scene_camera::SceneCamera;
 use crate::scene_files::SceneFiles;
 use crate::selection::Selection;
 use crate::undo::UndoStack;
 use misty_engine::runtime::{Runtime, Time};
 use misty_engine::scripting::Input;
+use misty_engine::settings::ProjectSettings;
 
 /// Active transform tool (Q W E R T Y).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -182,6 +184,9 @@ pub struct EditorState {
     /// Scale fields keep their proportions.
     pub scale_locked: bool,
     pub project: ProjectBrowser,
+    /// Edit ▸ Project Settings values (saved in the project).
+    pub project_settings: ProjectSettings,
+    pub project_settings_window: ProjectSettingsWindow,
     pub assets: AssetDatabase,
     /// Asset shown in the Inspector when no scene object is selected.
     pub inspector_asset: Option<String>,
@@ -198,7 +203,7 @@ impl EditorState {
             "Misty Engine started. Project: {}",
             project.root.display()
         ));
-        Self {
+        let mut s = Self {
             console,
             tool: Tool::Move,
             pivot_center: false,
@@ -225,6 +230,8 @@ impl EditorState {
             assets: AssetDatabase::open(&project.root),
             inspector_asset: None,
             project,
+            project_settings: ProjectSettings::default(),
+            project_settings_window: ProjectSettingsWindow::default(),
             scene_view: SceneViewSettings {
                 draw_mode: 0,
                 is_2d: false,
@@ -248,7 +255,9 @@ impl EditorState {
                 gizmos: false,
             },
             actions: Vec::new(),
-        }
+        };
+        crate::project_settings::load(&mut s);
+        s
     }
 
     pub fn push(&mut self, action: Action) {
