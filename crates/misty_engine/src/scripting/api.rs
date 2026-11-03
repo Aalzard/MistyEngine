@@ -676,6 +676,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     )?;
     g.set("Vector3", v3)?;
     super::ui_api::register(lua)?;
+    super::render_settings_api::register(lua)?;
 
     // Debug / print
     let debug = lua.create_table()?;

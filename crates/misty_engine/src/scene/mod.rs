@@ -2,20 +2,25 @@
 
 pub mod components;
 pub mod file;
+pub mod post_process;
 pub mod prefab;
 pub mod registry;
+pub mod render_settings;
 pub mod ui_components;
 
 use glam::{Mat4, Vec3};
 use hecs::{Entity, EntityBuilder, World};
 
 pub use components::*;
+pub use post_process::*;
 pub use registry::SceneComponent;
 pub use ui_components::*;
 
 pub struct Scene {
     pub name: String,
     pub world: World,
+    /// Lighting window ▸ Environment (skybox, ambient, reflections, fog).
+    pub render_settings: render_settings::RenderSettings,
     /// Top-level objects in Hierarchy order.
     roots: Vec<Entity>,
 }
@@ -40,6 +45,7 @@ impl Clone for Scene {
         Self {
             name: self.name.clone(),
             world,
+            render_settings: self.render_settings.clone(),
             roots: self.roots.clone(),
         }
     }
@@ -50,6 +56,7 @@ impl Scene {
         Self {
             name: name.to_owned(),
             world: World::new(),
+            render_settings: Default::default(),
             roots: Vec::new(),
         }
     }

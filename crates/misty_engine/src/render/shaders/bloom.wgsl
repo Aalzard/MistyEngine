@@ -31,10 +31,23 @@ fn downsample13(uv: vec2<f32>) -> vec3<f32> {
         + (f + g + k + l) * 0.03125 + (g + h + l + m) * 0.03125;
 }
 
-// The source is the emission buffer, so everything in it glows.
+// Emission below the threshold doesn't glow (soft knee); 0 = everything in the buffer glows.
+fn threshold(c: vec3<f32>) -> vec3<f32> {
+    let t = view.bloom.y;
+    if (t <= 0.0) {
+        return c;
+    }
+    let b = max(c.r, max(c.g, c.b));
+    let knee = t * 0.5;
+    let soft = clamp(b - t + knee, 0.0, 2.0 * knee);
+    let contribution = max(soft * soft / (4.0 * knee + 1e-4), b - t) / max(b, 1e-4);
+    return c * contribution;
+}
+
+// The source is the emission buffer (plus the sun disc).
 @fragment
 fn fs_prefilter(in: FullscreenOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(min(downsample13(uv_of(in.ndc)), vec3<f32>(64.0)), 1.0);
+    return vec4<f32>(min(threshold(downsample13(uv_of(in.ndc))), vec3<f32>(64.0)), 1.0);
 }
 
 @fragment
@@ -51,5 +64,7 @@ fn fs_upsample(in: FullscreenOut) -> @location(0) vec4<f32> {
     c += (tap(uv + vec2<f32>(t.x, 0.0)) + tap(uv - vec2<f32>(t.x, 0.0))
         + tap(uv + vec2<f32>(0.0, t.y)) + tap(uv - vec2<f32>(0.0, t.y))) * 2.0;
     c += tap(uv + t) + tap(uv - t) + tap(uv + vec2<f32>(t.x, -t.y)) + tap(uv + vec2<f32>(-t.x, t.y));
-    return vec4<f32>(c / 16.0, 1.0);
+    // Scatter: how much of the wider levels reaches the sharper ones.
+    return vec4<f32>(c / 16.0 * view.bloom.z, 1.0);
+
 }

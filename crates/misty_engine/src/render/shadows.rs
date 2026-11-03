@@ -10,7 +10,7 @@ pub const LOCAL_SIZE: u32 = 1024;
 /// Spot = 1 layer, point = 6 layers.
 pub const MAX_LOCAL_LAYERS: usize = 16;
 /// Dynamic-offset stride for the per-pass view uniforms.
-pub const VIEW_STRIDE: u64 = 256;
+pub const VIEW_STRIDE: u64 = 512;
 /// Slot 0 = directional, 1..=16 = local layers.
 pub const VIEW_SLOTS: usize = 1 + MAX_LOCAL_LAYERS;
 
@@ -258,13 +258,15 @@ mod tests {
             grid: None,
             skybox: true,
             background: [0.0; 3],
+            environment: &Default::default(),
+            post: Default::default(),
             lines: &[],
             meshes: &meshes,
             particles: &[],
             shaded: true,
             lights: &lights,
-            ambient_intensity: 1.0,
         };
+
         let p = plan(&frame);
         assert!(p.directional.is_some());
         assert_eq!(

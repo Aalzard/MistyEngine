@@ -1,14 +1,18 @@
 //! wgpu renderer: sky, lit meshes with shadows, grid, particles, gizmo lines and selection outline.
 
+pub mod environment;
 pub mod mesh;
 pub mod particles;
 mod pipelines;
+pub mod post;
 mod shadows;
 mod target;
 pub mod texture;
 pub mod ui;
 
+pub use environment::{Environment, Sun};
 pub use particles::{ParticleBatch, ParticleInstance};
+pub use post::PostSettings;
 pub use target::RenderTarget;
 use target::TargetLayouts;
 
@@ -126,9 +130,14 @@ pub struct LightData {
 pub struct Frame<'a> {
     pub camera: &'a Camera,
     pub grid: Option<GridPlane>,
+    /// Draw the environment's skybox (else clear to `background`).
     pub skybox: bool,
     /// sRGB background colour used when the skybox is off.
     pub background: [f32; 3],
+    /// Sky, ambient, reflections and fog (Lighting window).
+    pub environment: &'a Environment,
+    /// Bloom, grading, tonemapping and vignette.
+    pub post: PostSettings,
     pub lines: &'a [LineVertex],
     pub meshes: &'a [MeshDraw],
     /// Particle systems with live particles (drawn after opaque meshes).
@@ -136,7 +145,6 @@ pub struct Frame<'a> {
     /// Draw shaded meshes (false in the Wireframe draw mode; outlines still work).
     pub shaded: bool,
     pub lights: &'a [LightData],
-    pub ambient_intensity: f32,
 }
 
 #[repr(C)]
@@ -147,6 +155,8 @@ struct ViewUniform {
     camera_pos: [f32; 4],
     grid: [f32; 4],
     background: [f32; 4],
+    environment: [[f32; 4]; 8],
+    post: [[f32; 4]; 6],
 }
 
 #[repr(C)]
@@ -782,7 +792,7 @@ fn line_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
-fn srgb_to_linear(c: [f32; 3]) -> [f32; 3] {
+pub(crate) fn srgb_to_linear(c: [f32; 3]) -> [f32; 3] {
     c.map(|v| v.max(0.0).powf(2.2))
 }
 
@@ -856,11 +866,12 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
         };
         n += 1;
     }
+    let env = &frame.environment.settings;
     u.info = [
         n as f32,
         plan.directional_texel,
-        frame.ambient_intensity,
-        0.0,
+        env.environment_lighting.intensity.max(0.0),
+        env.reflection_intensity.max(0.0),
     ];
     u.shadow_view_proj = plan
         .directional
@@ -869,14 +880,11 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
     for (i, m) in plan.local.iter().enumerate() {
         u.local_view_proj[i] = m.to_cols_array_2d();
     }
-    // Ambient matches the procedural sky gradient (sky / horizon / ground).
-    let amb = |c: [f32; 3], k: f32| {
-        let l = srgb_to_linear(c);
-        [l[0] * k, l[1] * k, l[2] * k, 0.0]
-    };
-    u.sky = amb([0.40, 0.55, 0.76], 0.45);
-    u.equator = amb([0.76, 0.79, 0.83], 0.28);
-    u.ground = amb([0.32, 0.30, 0.29], 0.3);
+    // Ambient from the Lighting window's Environment Lighting source.
+    let [sky, equator, ground] = frame.environment.ambient();
+    u.sky = sky.extend(0.0).to_array();
+    u.equator = equator.extend(0.0).to_array();
+    u.ground = ground.extend(0.0).to_array();
     u
 }
 
@@ -916,6 +924,8 @@ fn view_uniform(frame: &Frame, aspect: f32) -> ViewUniform {
             lod_ref,
         ],
         background: [bg[0], bg[1], bg[2], if frame.skybox { 1.0 } else { 0.0 }],
+        environment: frame.environment.pack(cam.far),
+        post: frame.post.pack(),
     }
 }
 
@@ -931,6 +941,8 @@ mod tests {
             std::mem::size_of::<LightsUniform>(),
             16 + 64 + 48 + 80 * MAX_LIGHTS + 64 * shadows::MAX_LOCAL_LAYERS
         );
+        // Matrices, camera/grid/background, 8 environment and 6 post vec4s (common.wgsl).
+        assert_eq!(std::mem::size_of::<ViewUniform>(), 128 + 48 + 16 * 14);
         assert!(std::mem::size_of::<ViewUniform>() as u64 <= shadows::VIEW_STRIDE);
     }
 }

@@ -224,9 +224,13 @@ impl Pipelines {
             ],
         );
 
+        // The sky writes the sun disc to the glow target.
         let sky = build(
             device,
-            Spec::new("sky", include_str!("shaders/sky.wgsl"), &[&view_layout]),
+            Spec {
+                glow: Some(true),
+                ..Spec::new("sky", include_str!("shaders/sky.wgsl"), &[&view_layout])
+            },
         );
         let grid = build(
             device,
@@ -340,8 +344,9 @@ impl Pipelines {
         }];
         let particle_src = include_str!("shaders/particles.wgsl");
         let particle_layouts = [&view_layout, &material_layout];
-        let particles = |name, blend| Spec {
+        let particles = |name, fs, blend| Spec {
             vs: "vs_main",
+            fs: Some(fs),
             buffers: &particle_buffers,
             depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
             blend: Some(blend),
@@ -362,9 +367,16 @@ impl Pipelines {
         };
         let particles_alpha = build(
             device,
-            particles("particles alpha", wgpu::BlendState::ALPHA_BLENDING),
+            particles(
+                "particles alpha",
+                "fs_main",
+                wgpu::BlendState::ALPHA_BLENDING,
+            ),
         );
-        let particles_additive = build(device, particles("particles additive", add_light));
+        let particles_additive = build(
+            device,
+            particles("particles additive", "fs_additive", add_light),
+        );
 
         // Post-processing: single-sample, no depth.
         let bloom_src = include_str!("shaders/bloom.wgsl");

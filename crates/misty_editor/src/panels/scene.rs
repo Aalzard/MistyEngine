@@ -2,7 +2,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Ui, pos2, vec2};
 use glam::Vec3;
-use misty_engine::render::{Frame, GridPlane};
+use misty_engine::render::{Frame, GridPlane, PostSettings};
 
 use super::AssetPayload;
 use crate::scene_camera::{AxisView, SceneCamera};
@@ -57,8 +57,20 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 _ => {}
             }
             let particles = misty_engine::particles::batches(&state.scene);
+            let scene_lights = render_scene::lights(&state.scene);
+            // The sky follows the scene's sun even when the view uses the headlight.
+            let mut environment = render_scene::environment(&state.scene, &scene_lights);
+            let fx = sv.effects;
+            if !(sv.skybox && fx.fog) {
+                environment = environment.without_fog();
+            }
+            let post = if sv.skybox && fx.post_processing {
+                render_scene::post_settings(&state.scene)
+            } else {
+                PostSettings::default()
+            };
             let lights = if sv.lighting {
-                render_scene::lights(&state.scene)
+                scene_lights
             } else {
                 render_scene::headlight(&camera)
             };
@@ -66,14 +78,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 camera: &camera,
                 grid: sv.grid.then(|| grid_plane(&sv.camera)),
                 // 2D mode uses a flat editor background instead of the sky.
-                skybox: sv.skybox && !sv.camera.is_2d(),
+                skybox: sv.skybox && fx.skybox && !sv.camera.is_2d(),
                 background: [0.28, 0.28, 0.28],
+                environment: &environment,
+                post,
                 lines: &lines.0,
                 meshes: &meshes,
                 particles: &particles,
                 shaded: sv.draw_mode != 1,
                 lights: &lights,
-                ambient_intensity: 1.0,
             };
             let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
             let texture = gpu.render(ViewId::Scene, size, &frame);
@@ -371,9 +384,19 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             ui.menu_button("📷 ⏷", |ui| camera_settings(ui, &mut sv.camera))
                 .response
                 .on_hover_text("Scene camera settings");
-            if toggle_button(ui, sv.skybox, "☁", "Toggle skybox").clicked() {
+            ui.menu_button("⏷", |ui| {
+                let fx = &mut sv.effects;
+                ui.checkbox(&mut fx.skybox, "Skybox");
+                ui.checkbox(&mut fx.fog, "Fog");
+                ui.checkbox(&mut fx.post_processing, "Post Processing");
+            })
+            .response
+            .on_hover_text("Scene view effects");
+            if toggle_button(ui, sv.skybox, "☁", "Toggle skybox, fog and post-processing").clicked()
+            {
                 sv.skybox = !sv.skybox;
             }
+
             if toggle_button(ui, sv.audio, "🔊", "Toggle audio").clicked() {
                 sv.audio = !sv.audio;
             }

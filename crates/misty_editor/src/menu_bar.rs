@@ -313,6 +313,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         let tab = Tab::Animation;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
+    ui.menu_button("Rendering", |ui| {
+        let tab = Tab::Lighting;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
     todo(ui, s, "Package Manager", "");
 }
 

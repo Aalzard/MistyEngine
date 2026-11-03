@@ -499,3 +499,38 @@
 - Project window: single selection, no Ctrl+C/V of assets, no Favorites, references are path-based (Lua source
   strings aren't rewritten); Delete can't be undone in the editor (restore from the Recycle Bin).
 - Pasted objects get numbered names ("Rig (1)"); no Paste As Child shortcut.
+
+## Lighting window, environment and post-processing ✅
+
+### Done
+- Per-scene lighting settings saved in the `.scene` file (`"lighting"`, omitted at defaults; older scenes load
+  with defaults that render exactly as before).
+- Window ▸ Rendering ▸ Lighting opens a dockable Lighting tab (next to the Inspector) with Scene and Environment
+  pages. Environment: Skybox (Procedural: sun disc None/Simple/High Quality, sun size, atmosphere thickness, sky
+  tint, ground, exposure — or Solid Color), Sun Source (brightest Directional Light), Environment Lighting
+  (Skybox / Gradient / Color + intensity multiplier), Environment Reflections intensity, Fog (colour,
+  Linear/Exponential/Exponential Squared, density or start/end). Edits are undoable and mark the scene dirty.
+- Procedural sky follows the main Directional Light: visible sun disc (blooms), warm horizon and darker zenith at
+  sunset, dark night sky; skybox ambient is derived from the sky.
+- Fog on lit meshes, alpha and additive particles, and the sky horizon.
+- `Post-process Volume` component (Add Component ▸ Rendering; global, highest priority wins) with override
+  sections: Tonemapping (None / Neutral / ACES), Bloom (threshold, intensity, scatter, tint), Color Adjustments
+  (post exposure, contrast, colour filter, saturation), Vignette (colour, intensity, smoothness). Without a volume
+  the baseline (bloom 0.6, no grading) keeps existing scenes identical.
+- Applied in the Game view, `misty_player` and the Scene view; the Scene view ☁ Effects toggle (with a ⏷ menu for
+  Skybox / Fog / Post Processing) turns them off.
+- Lua: `RenderSettings.fog`, `fogColor`, `fogDensity`, `fogStartDistance`, `fogEndDistance`, `ambientIntensity`,
+  `reflectionIntensity`.
+- Sample: `Scenes/LightingDemo.scene` (sunset sky, fog, ACES + vignette; `Sand.mat`, `Sandstone.mat`).
+- Tests: shader validation, CPU mirrors of the sky/ambient and tonemap/grading math, fog formulas, settings round
+  trip and old-file defaults, Lighting window (menu, fog edit + undo) and tab placement, Lua RenderSettings.
+
+### Not matching Unity yet
+- No skybox materials/cubemaps (the skybox is set in the Lighting window), no Sun Source picker, no realtime
+  shadow colour, no reflection probes or custom reflection cubemaps (reflections always use the sky), no
+  lightmapping / Generate Lighting, no Halo/Flare settings.
+- The procedural sky is our own approximation (no physical scattering); exposure default is 1, not 1.3.
+- Post-processing: global volumes only (no local/box volumes, weights, blending or profile assets); no other
+  effects (depth of field, motion blur, white balance, lift/gamma/gain, channel mixer, film grain, lens
+  distortion…); tonemapping None compresses highlights instead of clipping; Neutral/ACES are fitted curves.
+- Fog does not affect UI or gizmos (by design) and the skybox only near the horizon.

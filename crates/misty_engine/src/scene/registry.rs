@@ -90,6 +90,11 @@ impl SceneComponent for Animation {
     const CATEGORY: &'static str = "Miscellaneous";
 }
 
+impl SceneComponent for super::PostProcessVolume {
+    const NAME: &'static str = "Post-process Volume";
+    const CATEGORY: &'static str = "Rendering";
+}
+
 impl SceneComponent for ParticleSystem {
     const NAME: &'static str = "Particle System";
     const CATEGORY: &'static str = "Effects";
@@ -161,6 +166,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::UiButton>(),
             ComponentInfo::of::<Camera>(),
             ComponentInfo::of::<Light>(),
+            ComponentInfo::of::<super::PostProcessVolume>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
             ComponentInfo::of::<Rigidbody>(),

@@ -1,5 +1,6 @@
 // Camera-facing particle billboards (instanced quads), drawn after opaque meshes.
 // Colours arrive linear (HDR); the part above 1 also goes to the glow target for bloom.
+// Fog: alpha-blended particles fade to the fog colour, additive ones fade out.
 
 @group(1) @binding(0) var particle_tex: texture_2d<f32>;
 @group(1) @binding(2) var particle_sampler: sampler;
@@ -17,6 +18,7 @@ struct ParticleOut {
     @location(0) uv: vec2<f32>,
     @location(1) color: vec4<f32>,
     @location(2) @interpolate(flat) textured: f32,
+    @location(3) world: vec3<f32>,
 };
 
 @vertex
@@ -36,6 +38,7 @@ fn vs_main(@builtin(vertex_index) vi: u32, in: ParticleIn) -> ParticleOut {
     out.uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
     out.color = in.color;
     out.textured = in.params.x;
+    out.world = world;
     return out;
 }
 
@@ -44,8 +47,7 @@ struct ParticleTargets {
     @location(1) glow: vec4<f32>,
 };
 
-@fragment
-fn fs_main(in: ParticleOut) -> ParticleTargets {
+fn shade(in: ParticleOut) -> ParticleTargets {
     let tex = textureSample(particle_tex, particle_sampler, in.uv);
     var shape = tex;
     if (in.textured < 0.5) {
@@ -60,3 +62,22 @@ fn fs_main(in: ParticleOut) -> ParticleTargets {
     out.glow = vec4<f32>(c.rgb * clamp(bright - 1.0, 0.0, 1.0), c.a);
     return out;
 }
+
+@fragment
+fn fs_main(in: ParticleOut) -> ParticleTargets {
+    var out = shade(in);
+    let fog = fog_visibility(fog_distance(in.world));
+    out.color = vec4<f32>(mix(view.fog_color.rgb, out.color.rgb, fog), out.color.a);
+    out.glow = vec4<f32>(out.glow.rgb * fog, out.glow.a);
+    return out;
+}
+
+@fragment
+fn fs_additive(in: ParticleOut) -> ParticleTargets {
+    var out = shade(in);
+    let fog = fog_visibility(fog_distance(in.world));
+    out.color = vec4<f32>(out.color.rgb * fog, out.color.a);
+    out.glow = vec4<f32>(out.glow.rgb * fog, out.glow.a);
+    return out;
+}
+

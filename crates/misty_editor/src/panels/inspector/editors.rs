@@ -5,8 +5,8 @@ use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
     Animation, AudioListener, AudioRolloff, AudioSource, BoxCollider, Camera, CapsuleCollider,
-    ClearFlags, Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface, Rigidbody,
-    SceneComponent, Shadows, SphereCollider, registry,
+    ClearFlags, Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface, PostProcessVolume,
+    Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
 };
 
 use misty_engine::assets::Material;
@@ -32,6 +32,7 @@ pub fn icon(name: &str) -> &'static str {
         "Audio Listener" => "🎧",
         "Animation" => "⏵",
         "Particle System" => crate::state::PARTICLE_ICON,
+        "Post-process Volume" => "◐",
         other => super::ui_editors::icon(other).unwrap_or("▣"),
     }
 }
@@ -53,6 +54,7 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
         "Audio Source" => w.get::<&AudioSource>(e).ok().map(|c| c.enabled),
         "Audio Listener" => w.get::<&AudioListener>(e).ok().map(|c| c.enabled),
         "Animation" => w.get::<&Animation>(e).ok().map(|c| c.enabled),
+        "Post-process Volume" => w.get::<&PostProcessVolume>(e).ok().map(|c| c.enabled),
         _ => None,
     }
 }
@@ -94,6 +96,10 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
             .map(|mut c| c.enabled = on)
             .ok(),
         "Animation" => w.get::<&mut Animation>(e).map(|mut c| c.enabled = on).ok(),
+        "Post-process Volume" => w
+            .get::<&mut PostProcessVolume>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
         _ => None,
     };
 }
@@ -115,6 +121,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Audio Source" => audio_source(ui, state, e),
         "Animation" => super::anim::animation(ui, state, e),
         "Particle System" => super::particles::particle_system(ui, state, e),
+        "Post-process Volume" => super::post_volume::post_process_volume(ui, state, e),
         "Audio Listener" => {
             ui.weak("Hears every Audio Source in the scene.");
             false

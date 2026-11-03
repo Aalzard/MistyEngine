@@ -7,8 +7,38 @@ struct View {
     camera_pos: vec4<f32>,
     // x = plane normal axis (0 = X, 1 = Y, 2 = Z), y = fade distance, z = enabled, w = LOD reference size.
     grid: vec4<f32>,
-    // rgb = background colour (linear), w = 1 to draw the procedural sky.
+    // rgb = background colour (linear), w = 1 to draw the skybox.
     background: vec4<f32>,
+    // ---- Environment (render/environment.rs) ----
+    // xyz = unit direction towards the sun, w = 1 when there is a sun.
+    sun_dir: vec4<f32>,
+    // rgb = linear sun colour × intensity, w = disc (0 none, 1 simple, 2 high quality).
+    sun_color: vec4<f32>,
+    // rgb = sky tint factor (1 = none), w = atmosphere thickness.
+    sky_tint: vec4<f32>,
+    // rgb = linear ground colour, w = exposure.
+    sky_ground: vec4<f32>,
+    // rgb = linear Solid Color skybox, w = 1 when the skybox is a solid colour.
+    sky_solid: vec4<f32>,
+    // x = sun disc angular radius (radians), y = distance used to fog the horizon.
+    sky_misc: vec4<f32>,
+    // rgb = linear fog colour, w = mode (0 off, 1 linear, 2 exponential, 3 exponential squared).
+    fog_color: vec4<f32>,
+    // x = density, y = linear start, z = linear end.
+    fog: vec4<f32>,
+    // ---- Post-processing (render/post.rs) ----
+    // x = tonemapper (0 none, 1 neutral, 2 ACES), y = exposure multiplier, z = contrast, w = saturation.
+    grade: vec4<f32>,
+    // rgb = linear colour filter.
+    color_filter: vec4<f32>,
+    // x = intensity, y = threshold, z = weight of smaller levels when upsampling.
+    bloom: vec4<f32>,
+    // rgb = linear bloom tint.
+    bloom_tint: vec4<f32>,
+    // x = intensity (× 3), y = smoothness exponent.
+    vignette: vec4<f32>,
+    // rgb = linear vignette colour.
+    vignette_color: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> view: View;
@@ -17,16 +47,79 @@ fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     return pow(c, vec3<f32>(2.2));
 }
 
-// Linear sky colour for a direction: zenith blue, light horizon, dark ground.
-// Used by the skybox and for reflections on smooth surfaces.
-fn sky_gradient(dir: vec3<f32>) -> vec3<f32> {
-    let zenith = srgb_to_linear(vec3<f32>(0.40, 0.55, 0.76));
-    let horizon = srgb_to_linear(vec3<f32>(0.76, 0.79, 0.83));
-    let ground = srgb_to_linear(vec3<f32>(0.32, 0.30, 0.29));
-    if (dir.y >= 0.0) {
-        return mix(horizon, zenith, pow(dir.y, 0.6));
+// 0 = sun high, 1 = sun at or below the horizon.
+fn sky_sunset() -> f32 {
+    if (view.sun_dir.w < 0.5) {
+        return 0.0;
     }
-    return mix(horizon, ground, pow(min(-dir.y * 6.0, 1.0), 0.5));
+    return 1.0 - smoothstep(0.0, 0.42, view.sun_dir.y);
+}
+
+// Night darkening (1 = day).
+fn sky_daylight() -> f32 {
+    if (view.sun_dir.w < 0.5) {
+        return 1.0;
+    }
+    return 0.04 + 0.96 * smoothstep(-0.3, 0.05, view.sun_dir.y);
+}
+
+// Linear sky colour for a direction, without the sun disc: zenith, horizon (warm at sunset),
+// ground. Used by the skybox, reflections and (on the CPU, environment.rs) ambient light.
+fn sky_color(dir: vec3<f32>) -> vec3<f32> {
+    if (view.sky_solid.w > 0.5) {
+        return view.sky_solid.rgb;
+    }
+    let zenith0 = srgb_to_linear(vec3<f32>(0.40, 0.55, 0.76));
+    let horizon0 = srgb_to_linear(vec3<f32>(0.76, 0.79, 0.83));
+    let t = view.sky_tint.w;
+    let tint = view.sky_tint.rgb;
+    let thin = clamp(t, 0.0, 1.0);
+    let haze = clamp((t - 1.0) * 0.25, 0.0, 1.0);
+    var zenith = mix(zenith0, horizon0, haze * 0.8) * tint * (thin * thin);
+    var horizon = horizon0 * mix(vec3<f32>(1.0), tint, 0.5) * (0.3 + 0.7 * thin);
+    let sunset = sky_sunset();
+    if (sunset > 0.0) {
+        let toward = dot(dir, view.sun_dir.xyz) * 0.5 + 0.5;
+        let glow = srgb_to_linear(vec3<f32>(1.0, 0.55, 0.25)) * (0.3 + 1.1 * toward * toward);
+        horizon = mix(horizon, glow, sunset * (0.5 + 0.5 * toward));
+        zenith *= 1.0 - 0.65 * sunset;
+    }
+    let ground = view.sky_ground.rgb * (1.0 - 0.4 * sunset);
+    var c: vec3<f32>;
+    if (dir.y >= 0.0) {
+        c = mix(horizon, zenith, pow(dir.y, 0.6 - 0.2 * sunset));
+    } else {
+        c = mix(horizon, ground, pow(min(-dir.y * 6.0, 1.0), 0.5));
+    }
+    return c * sky_daylight() * view.sky_ground.w;
+}
+
+// Fraction of a surface still visible through fog at distance `d` (1 = no fog).
+fn fog_visibility(d: f32) -> f32 {
+    let mode = view.fog_color.w;
+    if (mode < 0.5) {
+        return 1.0;
+    }
+    var f: f32;
+    if (mode < 1.5) {
+        f = (view.fog.z - d) / max(view.fog.z - view.fog.y, 1e-4);
+    } else if (mode < 2.5) {
+        f = exp(-view.fog.x * d);
+    } else {
+        let k = view.fog.x * d;
+        f = exp(-k * k);
+    }
+    return clamp(f, 0.0, 1.0);
+}
+
+// Fog distance of a world point: from the eye (perspective) or the view plane (orthographic).
+fn fog_distance(world: vec3<f32>) -> f32 {
+    let to_point = world - view.camera_pos.xyz;
+    if (view.camera_pos.w > 0.5) {
+        let forward = normalize((view.inv_view_proj * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
+        return max(dot(to_point, forward), 0.0);
+    }
+    return length(to_point);
 }
 
 // World position on the near (z = 0) or far (z = 1) plane under an NDC point.
