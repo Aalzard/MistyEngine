@@ -48,16 +48,18 @@ pub enum AssetKind {
     Scene,
     Animation,
     AnimatorController,
+    AudioMixer,
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 6] = [
+    pub const ALL: [AssetKind; 7] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
         AssetKind::Scene,
         AssetKind::Animation,
         AssetKind::AnimatorController,
+        AssetKind::AudioMixer,
     ];
 
     /// Menu label.
@@ -69,6 +71,7 @@ impl AssetKind {
             AssetKind::Scene => "Scene",
             AssetKind::Animation => "Animation",
             AssetKind::AnimatorController => "Animator Controller",
+            AssetKind::AudioMixer => "Audio Mixer",
         }
     }
 }

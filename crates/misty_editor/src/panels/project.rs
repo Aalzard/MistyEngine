@@ -179,6 +179,9 @@ fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {
         state.animator.open(Some(state.assets.relative(&path)));
         state.push(Action::FocusTab(crate::layout::Tab::Animator));
+    } else if misty_engine::audio::is_mixer(&path.to_string_lossy()) {
+        state.audio_mixer.open(Some(state.assets.relative(&path)));
+        state.push(Action::FocusTab(crate::layout::Tab::AudioMixer));
     } else if let Err(err) = crate::assets::open_external(&path) {
         state
             .console

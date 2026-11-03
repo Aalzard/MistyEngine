@@ -3,8 +3,10 @@
 
 mod anim;
 mod animator;
+mod audio_editors;
 mod editors;
 mod mixed;
+mod mixer_inspector;
 mod particles;
 mod physics_editors;
 mod post_volume;
@@ -447,6 +449,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::animation::is_controller(rel) {
         animator::controller_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::audio::is_mixer(rel) {
+        mixer_inspector::mixer_asset(ui, state, rel);
         return;
     }
     let name = crate::assets::AssetDatabase::material_name(Some(rel));

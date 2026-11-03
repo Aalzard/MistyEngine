@@ -24,6 +24,7 @@ impl AssetEntry {
             "wav" | "ogg" | "mp3" => "🔊",
             "anim" => "⏵",
             "controller" => crate::panels::animator::CONTROLLER_ICON,
+            "mixer" => crate::panels::audio_mixer::MIXER_ICON,
             "terrain" => "⛰",
             _ => "📄",
         }

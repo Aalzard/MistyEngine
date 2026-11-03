@@ -319,6 +319,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
     });
+    ui.menu_button("Audio", |ui| {
+        let tab = Tab::AudioMixer;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
     ui.menu_button("Rendering", |ui| {
         let tab = Tab::Lighting;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));

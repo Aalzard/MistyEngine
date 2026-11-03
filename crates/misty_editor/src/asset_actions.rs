@@ -97,6 +97,14 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .create(&rel, Default::default())
                 .map(|_| path)
         }
+        AssetKind::AudioMixer => {
+            let path = asset_ops::unique_path(&dir, "New Audio Mixer", "mixer");
+            let rel = s.assets.relative(&path);
+            s.anim_clips
+                .mixers
+                .create(&rel, Default::default())
+                .map(|_| path)
+        }
     };
     match made {
         Ok(path) => {

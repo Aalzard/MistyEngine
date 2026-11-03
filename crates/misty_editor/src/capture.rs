@@ -1,5 +1,5 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
-//! See [`apply_env`] for `MISTY_SELECT` / `MISTY_TAB`.
+//! See [`apply_env`] for `MISTY_SCENE` / `MISTY_SELECT` / `MISTY_TAB` / `MISTY_PLAY`.
 
 use std::path::PathBuf;
 
@@ -48,6 +48,10 @@ pub fn apply_env(
     s: &mut crate::state::EditorState,
     dock: &mut egui_dock::DockState<crate::layout::Tab>,
 ) {
+    // `MISTY_SCENE=Assets/Scenes/AudioDemo.scene` opens a scene first.
+    if let Some(scene) = std::env::var_os("MISTY_SCENE") {
+        crate::scene_files::load(s, &scene.to_string_lossy());
+    }
     if let Some(name) = std::env::var_os("MISTY_SELECT")
         && let Some(e) = s.scene.find_by_name(&name.to_string_lossy())
     {
@@ -58,6 +62,10 @@ pub fn apply_env(
             crate::layout::Tab::every().find(|t| t.title() == title.to_string_lossy())
     {
         crate::layout::focus_or_open(dock, tab);
+    }
+    // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
+    if std::env::var_os("MISTY_PLAY").is_some() {
+        crate::play::start(s);
     }
 }
 

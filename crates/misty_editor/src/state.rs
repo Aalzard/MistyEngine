@@ -227,6 +227,8 @@ pub struct EditorState {
     pub animation: crate::panels::animation::AnimationWindow,
     /// Animator window: controller graph, selection and view.
     pub animator: crate::panels::animator::AnimatorWindow,
+    /// Audio Mixer window: shown mixer, snapshot, selected group/effect, meters.
+    pub audio_mixer: crate::panels::audio_mixer::MixerWindow,
     pub hierarchy: HierarchyState,
     pub handles: HandleState,
     pub inspector_locked: bool,
@@ -294,6 +296,7 @@ impl EditorState {
             anim_clips: crate::anim_clips::ClipStore::new(project.root.clone()),
             animation: Default::default(),
             animator: Default::default(),
+            audio_mixer: Default::default(),
             hierarchy: HierarchyState::default(),
             handles: HandleState::default(),
             inspector_locked: false,

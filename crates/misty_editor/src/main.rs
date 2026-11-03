@@ -7,6 +7,7 @@ mod app;
 mod asset_actions;
 mod asset_ops;
 mod assets;
+mod audio_mixers;
 mod build_settings;
 mod capture;
 mod commands;
@@ -34,6 +35,8 @@ mod sample_animation;
 mod sample_animator;
 #[cfg(test)]
 mod sample_assets;
+#[cfg(test)]
+mod sample_audio;
 #[cfg(test)]
 mod sample_lighting;
 #[cfg(test)]

@@ -38,6 +38,8 @@ pub struct AssetDatabase {
     pub controllers: BTreeSet<String>,
     /// Project-relative paths of audio clips (.wav/.ogg/.mp3).
     pub clips: BTreeSet<String>,
+    /// Project-relative paths of Audio Mixers (.mixer).
+    pub mixers: BTreeSet<String>,
     /// Prefabs read so far, re-read when the file changes.
     prefabs: BTreeMap<String, CachedPrefab>,
     /// Project-relative texture paths (`.png`, `.jpg`).
@@ -58,6 +60,7 @@ impl AssetDatabase {
             materials: BTreeMap::new(),
             scripts: BTreeMap::new(),
             clips: BTreeSet::new(),
+            mixers: BTreeSet::new(),
             anims: BTreeSet::new(),
             controllers: BTreeSet::new(),
             prefabs: BTreeMap::new(),
@@ -76,6 +79,7 @@ impl AssetDatabase {
     pub fn refresh(&mut self) {
         self.materials.clear();
         self.clips.clear();
+        self.mixers.clear();
         self.anims.clear();
         self.controllers.clear();
         self.textures.clear();
@@ -105,6 +109,8 @@ impl AssetDatabase {
                     self.controllers.insert(self.relative(&path));
                 } else if misty_engine::audio::is_clip(&path.to_string_lossy()) {
                     self.clips.insert(self.relative(&path));
+                } else if misty_engine::audio::is_mixer(&path.to_string_lossy()) {
+                    self.mixers.insert(self.relative(&path));
                 } else {
                     let rel = self.relative(&path);
                     if misty_engine::assets::is_texture(&rel) {

@@ -268,6 +268,14 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
                 }
             }
         }
+        if let Ok(zone) = w.get::<&misty_engine::scene::AudioReverbZone>(e) {
+            let at = Mat4::from_translation(pos);
+            for radius in [zone.min_distance, zone.max_distance] {
+                for axis in 0..3 {
+                    lines.circle(&at, Vec3::ZERO, radius, axis, AUDIO);
+                }
+            }
+        }
         if let Ok(ps) = w.get::<&ParticleSystem>(e)
             && ps.shape.enabled
         {
