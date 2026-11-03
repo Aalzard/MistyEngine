@@ -1,7 +1,9 @@
 //! Game view: display/aspect/scale toolbar and the camera output.
 
 use egui::{Align2, Color32, FontId, Ui};
+use misty_engine::render::RenderStats;
 use misty_engine::render_scene::GameView;
+use misty_engine::runtime::RuntimeStats;
 
 use crate::state::EditorState;
 use crate::viewport::{Gpu, ViewId};
@@ -38,15 +40,23 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let ppp = ui.ctx().pixels_per_point();
             let size = [(view.width() * ppp) as u32, (view.height() * ppp) as u32];
             state.game_view.screen_px = glam::Vec2::new(size[0] as f32, size[1] as f32);
-            let started = std::time::Instant::now();
             let texture = gpu.render(ViewId::Game, size, &frame);
+            let render = gpu.renderer.stats();
+            // The Profiler's Rendering and Memory modules report the Game view.
+            if misty_engine::profiler::enabled() {
+                misty_engine::profiler::set_render_stats(render);
+                misty_engine::profiler::set_memory(misty_engine::profiler::MemoryStats {
+                    entities: state.scene.world.len() as usize,
+                    render: gpu.renderer.memory(),
+                });
+            }
             let interaction = state.runtime.as_ref().map(|r| r.ui_interaction());
             gpu.render_ui(&state.scene, interaction);
-            let render_ms = started.elapsed().as_secs_f32() * 1000.0;
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             ui.painter().image(texture, view, uv, Color32::WHITE);
             if state.game_view.stats {
-                stats_overlay(ui, state, view, &game.meshes, size, render_ms);
+                let gpu_ms = gpu.renderer.gpu_ms();
+                stats_overlay(ui, state, view, size, &render, gpu_ms);
             }
         }
         _ => {
@@ -62,49 +72,73 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     }
 }
 
+/// Text of the Stats box: frame rate, CPU/GPU times, draw counters, audio voices.
+pub fn stats_lines(
+    dt: f32,
+    render: &RenderStats,
+    gpu_ms: Option<f32>,
+    size: [u32; 2],
+    runtime: Option<RuntimeStats>,
+) -> Vec<String> {
+    let gpu = gpu_ms.map_or("n/a".to_owned(), |g| format!("{g:.1}ms"));
+    vec![
+        "Statistics".to_owned(),
+        match runtime {
+            Some(r) => format!("Audio:  {} voices playing", r.voices),
+            None => "Audio:  -".to_owned(),
+        },
+        format!("Graphics:  {:.1} FPS ({:.1}ms)", 1.0 / dt, dt * 1000.0),
+        format!(
+            "  CPU: main {:.1}ms  render thread {:.1}ms",
+            dt * 1000.0,
+            render.cpu_ms
+        ),
+        format!("  GPU: {gpu}"),
+        format!(
+            "  Batches: {}   Saved by batching: {}",
+            render.batches, render.saved_by_batching
+        ),
+        format!(
+            "  Tris: {}   Verts: {}",
+            fmt_k(render.triangles as usize),
+            fmt_k(render.vertices as usize)
+        ),
+        format!("  Screen: {}x{}", size[0], size[1]),
+        format!(
+            "  SetPass calls: {}   Shadow casters: {}",
+            render.set_pass, render.shadow_casters
+        ),
+        format!(
+            "  Visible meshes: {}   Culled: {}",
+            render.visible, render.culled
+        ),
+        match runtime {
+            Some(r) => format!(
+                "Physics: {} bodies, {} colliders   Scripts: {}",
+                r.bodies, r.colliders, r.scripts
+            ),
+            None => "Physics: -   Scripts: -".to_owned(),
+        },
+    ]
+}
+
 /// Rendering statistics box in the top-right corner of the Game view.
 fn stats_overlay(
     ui: &Ui,
     state: &EditorState,
     view: egui::Rect,
-    meshes: &[misty_engine::render::MeshDraw],
     size: [u32; 2],
-    render_ms: f32,
+    render: &RenderStats,
+    gpu_ms: Option<f32>,
 ) {
-    let (tris, verts) = meshes.iter().fold((0, 0), |(t, v), m| {
-        match misty_engine::models::mesh(&m.mesh) {
-            Some(data) => (t + data.indices.len() / 3, v + data.vertices.len()),
-            None => (t, v),
-        }
-    });
     let dt = ui.input(|i| i.stable_dt).max(1e-4);
-    let lines = [
-        "Statistics".to_owned(),
-        format!("Graphics:  {:.1} FPS ({:.1}ms)", 1.0 / dt, dt * 1000.0),
-        format!("  Render thread:  {render_ms:.2}ms"),
-        format!(
-            "  Batches: {}   Tris: {}   Verts: {}",
-            meshes.len(),
-            fmt_k(tris),
-            fmt_k(verts)
-        ),
-        format!("  Screen: {}x{}", size[0], size[1]),
-        format!(
-            "Play time: {:.2}s   Frame: {}",
-            state.time.time, state.time.frame
-        ),
-        match state.runtime.as_ref().map(|r| r.stats()) {
-            Some(r) => format!(
-                "Physics: {} bodies, {} colliders   Scripts: {}   Audio: {}",
-                r.bodies, r.colliders, r.scripts, r.voices
-            ),
-            None => "Physics: -   Scripts: -   Audio: -".to_owned(),
-        },
-    ];
+    let runtime = state.runtime.as_ref().map(|r| r.stats());
+    let lines = stats_lines(dt, render, gpu_ms, size, runtime);
     let font = FontId::monospace(11.0);
+    let height = 12.0 + lines.len() as f32 * 14.0;
     let rect = egui::Rect::from_min_size(
-        view.right_top() + egui::vec2(-300.0, 8.0),
-        egui::vec2(292.0, 110.0),
+        view.right_top() + egui::vec2(-318.0, 8.0),
+        egui::vec2(310.0, height),
     );
     let painter = ui.painter().with_clip_rect(view);
     painter.rect_filled(rect, 4.0, Color32::from_rgba_unmultiplied(20, 20, 20, 200));

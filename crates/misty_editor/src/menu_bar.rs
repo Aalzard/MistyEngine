@@ -332,6 +332,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         let tab = Tab::Navigation;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
+    ui.menu_button("Analysis", |ui| {
+        let tab = Tab::Profiler;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
     todo(ui, s, "Package Manager", "");
 }
 

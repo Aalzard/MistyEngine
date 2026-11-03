@@ -9,9 +9,13 @@ mod hierarchy;
 mod inspector;
 mod lighting;
 pub mod navigation;
+pub mod profiler;
 pub mod project;
 mod project_menus;
 mod scene;
+
+#[cfg(test)]
+pub use game::stats_lines as game_stats_lines;
 
 use egui::{Id, Ui, WidgetText};
 use egui_dock::TabViewer;
@@ -54,6 +58,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::Animator => animator::show(ui, self.state),
             Tab::AudioMixer => audio_mixer::show(ui, self.state),
             Tab::Navigation => navigation::show(ui, self.state),
+            Tab::Profiler => profiler::show(ui, self.state),
         }
     }
 

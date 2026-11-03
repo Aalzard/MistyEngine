@@ -1,5 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
-//! See [`apply_env`] for `MISTY_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_TAB` / `MISTY_PLAY`.
+//! See [`apply_env`] for `MISTY_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_TAB` / `MISTY_PLAY`
+//! / `MISTY_STATS`.
 
 use std::path::PathBuf;
 
@@ -75,6 +76,10 @@ pub fn apply_env(
             crate::layout::Tab::every().find(|t| t.title() == title.to_string_lossy())
     {
         crate::layout::focus_or_open(dock, tab);
+    }
+    // `MISTY_STATS=1` shows the Game view's Stats box.
+    if std::env::var_os("MISTY_STATS").is_some() {
+        s.game_view.stats = true;
     }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {

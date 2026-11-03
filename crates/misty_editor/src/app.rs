@@ -149,6 +149,7 @@ impl EditorApp {
             (ctrl, Key::Num4, Action::FocusTab(Tab::Hierarchy)),
             (ctrl, Key::Num5, Action::FocusTab(Tab::Project)),
             (ctrl, Key::Num6, Action::FocusTab(Tab::Animation)),
+            (ctrl, Key::Num7, Action::FocusTab(Tab::Profiler)),
             (ctrl_shift, Key::C, Action::FocusTab(Tab::Console)),
             (Modifiers::SHIFT, Key::D, Action::DeselectAll),
             (Modifiers::SHIFT, Key::F, Action::ToggleLockView),
@@ -514,6 +515,11 @@ impl eframe::App for EditorApp {
         self.save_layout(false);
         if let Some(capture) = &mut self.capture {
             capture.update(&ctx);
+        }
+        // One profiler frame per editor frame.
+        misty_engine::profiler::end_frame();
+        if misty_engine::profiler::enabled() {
+            ctx.request_repaint();
         }
     }
 }

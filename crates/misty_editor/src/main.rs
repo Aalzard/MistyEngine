@@ -49,6 +49,8 @@ mod sample_particles;
 #[cfg(test)]
 mod sample_physics;
 #[cfg(test)]
+mod sample_stress;
+#[cfg(test)]
 mod sample_terrain;
 #[cfg(test)]
 mod sample_ui;
@@ -87,6 +89,7 @@ fn main() -> eframe::Result<()> {
             .with_min_inner_size([960.0, 540.0])
             .with_maximized(true),
         renderer: eframe::Renderer::Wgpu,
+        wgpu_options: wgpu_options(),
         ..Default::default()
     };
 
@@ -95,6 +98,24 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| Ok(Box::new(app::EditorApp::new(cc, project)))),
     )
+}
+
+/// egui's device setup plus timestamp queries when available (Profiler GPU times).
+fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
+    let egui_wgpu::WgpuSetup::CreateNew(mut setup) = egui_wgpu::WgpuSetup::without_display_handle()
+    else {
+        return Default::default();
+    };
+    let base = setup.device_descriptor.clone();
+    setup.device_descriptor = std::sync::Arc::new(move |adapter| {
+        let mut desc = base(adapter);
+        desc.required_features |= misty_engine::render::timestamp_features(adapter);
+        desc
+    });
+    egui_wgpu::WgpuConfiguration {
+        wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(setup),
+        ..Default::default()
+    }
 }
 
 /// Find `SampleProject` next to the working directory or the executable, searching upwards.

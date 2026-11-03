@@ -20,6 +20,8 @@ pub enum Tab {
     AudioMixer,
     /// Window ▸ AI ▸ Navigation.
     Navigation,
+    /// Window ▸ Analysis ▸ Profiler.
+    Profiler,
 }
 
 impl Tab {
@@ -35,11 +37,12 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 4] = [
+    pub const ON_DEMAND: [Tab; 5] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
         Tab::Navigation,
+        Tab::Profiler,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -51,8 +54,8 @@ impl Tab {
     fn opens_beside(self) -> Option<Tab> {
         match self {
             Tab::Lighting | Tab::Navigation => Some(Tab::Inspector),
-            // The graph wants room: it docks with the Scene and Game views.
-            Tab::Animator => Some(Tab::Scene),
+            // The graph and the charts want room: they dock with the Scene and Game views.
+            Tab::Animator | Tab::Profiler => Some(Tab::Scene),
             // Docks with the Project and Console like the reference editor.
             Tab::AudioMixer => Some(Tab::Project),
             _ => None,
@@ -72,6 +75,7 @@ impl Tab {
             Tab::Animator => "Animator",
             Tab::AudioMixer => "Audio Mixer",
             Tab::Navigation => "Navigation",
+            Tab::Profiler => "Profiler",
         }
     }
 
@@ -88,6 +92,7 @@ impl Tab {
             Tab::Animator => crate::panels::animator::CONTROLLER_ICON,
             Tab::AudioMixer => crate::panels::audio_mixer::MIXER_ICON,
             Tab::Navigation => "🚶",
+            Tab::Profiler => "📈",
         }
     }
 
@@ -101,6 +106,7 @@ impl Tab {
             Tab::Project => "Ctrl+5",
             Tab::Console => "Ctrl+Shift+C",
             Tab::Animation => "Ctrl+6",
+            Tab::Profiler => "Ctrl+7",
             Tab::Lighting | Tab::Animator | Tab::AudioMixer | Tab::Navigation => "",
         }
     }
