@@ -1,23 +1,25 @@
 //! Move / Rotate / Scale handles in the Scene view (screen-space drawing and hit testing).
 //!
-//! Handles act on the top-level selection. Hold Ctrl to snap (0.25 units, 15°, 0.1 scale).
+//! Handles act on the top-level selection. Hold Ctrl to snap by the Grid and Snap increments,
+//! Ctrl+Shift on the centre handle to snap onto surfaces, V to snap vertex to vertex; the Scene
+//! toolbar's grid snapping rounds moves to the world grid.
 
-use egui::{Color32, Pos2, Rect, Shape, Stroke, Ui, vec2};
+use egui::{Color32, Key, Pos2, Rect, Shape, Stroke, Ui, vec2};
 use glam::{Mat4, Quat, Vec3};
 use misty_engine::camera::Camera;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::Transform;
 
-use crate::picking::{ray, to_screen};
+use crate::picking::{self, ray, to_screen};
+use crate::snap;
 use crate::state::{EditorState, Tool};
 use crate::theme;
 
 const AXIS_PX: f32 = 90.0;
 const PICK_PX: f32 = 7.0;
+/// Vertex snapping only considers target vertices this close to the cursor.
+const VERTEX_PX: f32 = 40.0;
 const HOT: Color32 = Color32::from_rgb(255, 230, 0);
-const MOVE_SNAP: f32 = 0.25;
-const ROTATE_SNAP: f32 = 15.0;
-const SCALE_SNAP: f32 = 0.1;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Part {
@@ -111,11 +113,25 @@ pub fn show(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, view_
         return;
     }
     let local = !state.global_space || tool == Tool::Scale;
-    let Some(frame) = handle_frame(state, camera, rect, local) else {
+    let Some(mut frame) = handle_frame(state, camera, rect, local) else {
         state.handles.hot = None;
         state.handles.drag = None;
         return;
     };
+    // Holding V puts the move handle on the selection's vertex nearest the cursor.
+    let moves = matches!(tool, Tool::Move | Tool::Transform);
+    if moves
+        && state.handles.drag.is_none()
+        && ui.input(|i| i.key_down(Key::V))
+        && let Some(m) = ui.input(|i| i.pointer.hover_pos())
+    {
+        let selected = state.selection.top_level(&state.scene);
+        let scene = &state.scene;
+        let mine = |e: Entity| selected.iter().any(|s| scene.is_ancestor(*s, e));
+        if let Some(v) = picking::nearest_vertex(scene, camera, rect, m, f32::INFINITY, mine) {
+            frame.origin = v;
+        }
+    }
     let Some(center) = to_screen(camera, rect, frame.origin) else {
         return;
     };
@@ -260,7 +276,12 @@ fn grab_point(part: Part, camera: &Camera, rect: Rect, f: &Frame, m: Pos2) -> Op
 }
 
 fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, drag: &Drag, m: Pos2) {
-    let snap = ui.input(|i| i.modifiers.command);
+    let (ctrl, shift, vertex) =
+        ui.input(|i| (i.modifiers.command, i.modifiers.shift, i.key_down(Key::V)));
+    let snap = ctrl && !shift;
+    let steps = state.snap.clone();
+    // Grid snapping works with the world-aligned (Global) handle only.
+    let grid = steps.grid_snap && state.global_space;
     let (o, d) = ray(camera, rect, m);
     let f = Frame {
         origin: drag.origin,
@@ -268,16 +289,37 @@ fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, dra
         length: camera.world_per_pixel(drag.origin, rect.height()) * AXIS_PX,
     };
     match drag.part {
+        Part::MoveAxis(_) | Part::MovePlane(_) | Part::MoveFree if vertex => {
+            let exclude = selected_subtrees(state, drag);
+            let other = |e: Entity| !exclude.contains(&e);
+            if let Some(target) =
+                picking::nearest_vertex(&state.scene, camera, rect, m, VERTEX_PX, other)
+            {
+                translate(state, drag, target - drag.origin);
+            }
+        }
+        Part::MoveFree if ctrl && shift => {
+            let exclude = selected_subtrees(state, drag);
+            let other = |e: Entity| !exclude.contains(&e);
+            if let Some(hit) = picking::surface_point(&state.scene, camera, rect, m, other) {
+                translate(state, drag, hit - drag.origin);
+            }
+        }
         Part::MoveAxis(i) => {
             let Some(t) = closest_on_axis(f.origin, f.axes[i], o, d) else {
                 return;
             };
             let start = (drag.start_point - f.origin).dot(f.axes[i]);
-            let mut delta = t - start;
+            let mut delta = f.axes[i] * (t - start);
             if snap {
-                delta = (delta / MOVE_SNAP).round() * MOVE_SNAP;
+                delta = snap::snap_delta(delta, f.axes, steps.move_step);
             }
-            translate(state, drag, f.axes[i] * delta);
+            if grid {
+                let mut mask = [false; 3];
+                mask[i] = true;
+                delta = snap::snap_to_grid(f.origin + delta, steps.grid_size, mask) - f.origin;
+            }
+            translate(state, drag, delta);
         }
         Part::MovePlane(_) | Part::MoveFree => {
             let normal = match drag.part {
@@ -289,7 +331,14 @@ fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, dra
             };
             let mut delta = p - drag.start_point;
             if snap {
-                delta = (delta / MOVE_SNAP).round() * MOVE_SNAP;
+                delta = snap::snap_delta(delta, f.axes, steps.move_step);
+            }
+            if grid {
+                let mask = match drag.part {
+                    Part::MovePlane(n) => std::array::from_fn(|i| i != n),
+                    _ => [true; 3],
+                };
+                delta = snap::snap_to_grid(f.origin + delta, steps.grid_size, mask) - f.origin;
             }
             translate(state, drag, delta);
         }
@@ -301,7 +350,7 @@ fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, dra
             let b = (p - f.origin).normalize_or_zero();
             let mut angle = a.cross(b).dot(f.axes[i]).atan2(a.dot(b)).to_degrees();
             if snap {
-                angle = (angle / ROTATE_SNAP).round() * ROTATE_SNAP;
+                angle = snap::snap(angle, steps.rotate_step);
             }
             rotate(
                 state,
@@ -320,7 +369,7 @@ fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, dra
                 .atan2(a.x * b.x + a.y * b.y)
                 .to_degrees();
             if snap {
-                angle = (angle / ROTATE_SNAP).round() * ROTATE_SNAP;
+                angle = snap::snap(angle, steps.rotate_step);
             }
             rotate(
                 state,
@@ -339,7 +388,7 @@ fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, dra
             let moved = (m - drag.start_mouse).dot(dir);
             let mut factor = 1.0 + moved / AXIS_PX;
             if snap {
-                factor = (factor / SCALE_SNAP).round() * SCALE_SNAP;
+                factor = snap::snap(factor, steps.scale_step);
             }
             let mut v = Vec3::ONE;
             v[i] = factor;
@@ -349,12 +398,27 @@ fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, dra
             let moved = (m - drag.start_mouse).x - (m - drag.start_mouse).y;
             let mut factor = (1.0 + moved / AXIS_PX).max(0.01);
             if snap {
-                factor = (factor / SCALE_SNAP).round() * SCALE_SNAP;
+                factor = snap::snap(factor, steps.scale_step).max(steps.scale_step);
             }
             scale(state, drag, Vec3::splat(factor));
         }
     }
     state.mark_edited("Transform");
+}
+
+/// Dragged objects and everything under them (never snap onto themselves).
+fn selected_subtrees(state: &EditorState, drag: &Drag) -> Vec<Entity> {
+    state
+        .scene
+        .walk()
+        .into_iter()
+        .map(|(e, _)| e)
+        .filter(|e| {
+            drag.targets
+                .iter()
+                .any(|(t, _, _)| state.scene.is_ancestor(*t, *e))
+        })
+        .collect()
 }
 
 fn translate(state: &mut EditorState, drag: &Drag, delta: Vec3) {

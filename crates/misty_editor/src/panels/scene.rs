@@ -22,6 +22,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let response = ui.allocate_rect(rect, Sense::click_and_drag());
     let ppp = ui.ctx().pixels_per_point();
 
+    // Lock View to Selected: the pivot stays on the selection while it moves.
+    if state.scene_view.lock_to_selection
+        && let Some((center, _)) = crate::commands::selection_bounds(state)
+    {
+        state.scene_view.camera.follow(center);
+    }
     // Camera input first so this frame renders the updated view.
     let view_tool = state.tool == Tool::Hand;
     let cam = &mut state.scene_view.camera;
@@ -342,10 +348,20 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 ui.selectable_value(&mut s.global_space, true, "Global");
                 ui.selectable_value(&mut s.global_space, false, "Local");
             });
-        let sv = &mut s.scene_view;
-        if toggle_button(ui, sv.grid, "#", "Toggle grid visibility").clicked() {
-            sv.grid = !sv.grid;
+        if toggle_button(ui, s.scene_view.grid, "#", "Toggle grid visibility").clicked() {
+            s.scene_view.grid = !s.scene_view.grid;
         }
+        // Grid snapping needs the world-aligned handle, like the familiar toolbar toggle.
+        let snap_tip =
+            "Toggle grid snapping (Global handle only). Hold Ctrl to snap by increments.";
+        let snap_button = ui.add_enabled_ui(s.global_space, |ui| {
+            toggle_button(ui, s.snap.grid_snap, "🧲", snap_tip)
+        });
+        if snap_button.inner.clicked() {
+            s.snap.grid_snap = !s.snap.grid_snap;
+            crate::snap_window::changed(s);
+        }
+        let sv = &mut s.scene_view;
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             search_field(ui, &mut sv.search, 110.0);
@@ -699,6 +715,61 @@ mod tests {
             Some(cube),
             "handle click must not change selection"
         );
+    }
+
+    /// Drag the move handle's X axis by `px` pixels with `mods` held; returns the cube position.
+    fn drag_x_axis(h: &mut Harness<'_, EditorState>, px: f32, mods: Modifiers) -> Vec3 {
+        let (cube, origin, x_tip, _) = cube_setup(h);
+        let grab = origin + (x_tip - origin) * 0.6;
+        let dir = (x_tip - origin).normalized();
+        button(h, grab, PointerButton::Primary, true, mods);
+        for i in 1..=5 {
+            h.event(Event::PointerMoved(grab + dir * (px * i as f32 / 5.0)));
+            h.step();
+        }
+        button(h, grab + dir * px, PointerButton::Primary, false, mods);
+        h.event(Event::ModifiersChanged(Modifiers::NONE));
+        h.state().scene.transform(cube).position
+    }
+
+    #[test]
+    fn ctrl_drag_snaps_by_the_move_increment() {
+        let mut h = harness();
+        h.state_mut().snap.move_step = [0.5; 3];
+        let p = drag_x_axis(&mut h, 70.0, Modifiers::COMMAND);
+        assert!(p.x >= 0.5, "moved: {p:?}");
+        assert!((p.x / 0.5 - (p.x / 0.5).round()).abs() < 1e-4, "{p:?}");
+        assert_eq!((p.y, p.z), (0.0, 0.0));
+    }
+
+    #[test]
+    fn grid_snapping_rounds_the_dragged_axis_to_the_world_grid() {
+        let mut h = harness();
+        h.state_mut().snap.grid_snap = true;
+        h.state_mut().snap.grid_size = [0.5, 1.0, 1.0];
+        let p = drag_x_axis(&mut h, 55.0, Modifiers::NONE);
+        assert!(
+            p.x > 0.0 && (p.x * 2.0 - (p.x * 2.0).round()).abs() < 1e-4,
+            "{p:?}"
+        );
+        // Local handle orientation turns grid snapping off.
+        let mut h = harness();
+        h.state_mut().snap.grid_snap = true;
+        h.state_mut().global_space = false;
+        let p = drag_x_axis(&mut h, 55.0, Modifiers::NONE);
+        assert!((p.x - p.x.round()).abs() > 1e-3, "free move: {p:?}");
+    }
+
+    #[test]
+    fn lock_view_keeps_the_pivot_on_the_selection() {
+        let mut h = harness();
+        let (cube, ..) = cube_setup(&mut h);
+        h.state_mut().scene_view.lock_to_selection = true;
+        h.state_mut()
+            .scene
+            .set_world_position(cube, Vec3::new(3.0, 1.0, -2.0));
+        h.run_steps(2);
+        assert!((cam(&h).pivot() - Vec3::new(3.0, 1.0, -2.0)).length() < 1e-4);
     }
 
     #[test]

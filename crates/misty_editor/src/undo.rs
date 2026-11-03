@@ -96,6 +96,15 @@ impl UndoStack {
         self.edited = None;
     }
 
+    /// Every scene held by the history (asset renames rewrite their paths).
+    pub fn scenes_mut(&mut self) -> impl Iterator<Item = &mut Scene> {
+        self.past
+            .iter_mut()
+            .chain(self.future.iter_mut())
+            .chain(self.candidate.iter_mut())
+            .map(|s| &mut s.scene)
+    }
+
     #[cfg(test)]
     pub fn can_undo(&self) -> bool {
         !self.past.is_empty()

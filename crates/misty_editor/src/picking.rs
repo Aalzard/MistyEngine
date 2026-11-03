@@ -63,12 +63,23 @@ pub fn pick(scene: &Scene, camera: &Camera, rect: Rect, at: Pos2) -> Option<Enti
         return icon;
     }
 
+    mesh_hit(scene, camera, rect, at, |_| true).map(|(e, _)| e)
+}
+
+/// Nearest mesh (bounds box) hit under the cursor among objects `keep` accepts: (object, point).
+fn mesh_hit(
+    scene: &Scene,
+    camera: &Camera,
+    rect: Rect,
+    at: Pos2,
+    keep: impl Fn(Entity) -> bool,
+) -> Option<(Entity, Vec3)> {
     let (origin, dir) = ray(camera, rect, at);
     scene
         .walk()
         .into_iter()
         .map(|(e, _)| e)
-        .filter(|e| scene.active_in_hierarchy(*e))
+        .filter(|e| scene.active_in_hierarchy(*e) && keep(*e))
         .filter_map(|e| {
             let mesh = scene.world.get::<&MeshFilter>(e).ok()?.mesh.clone()?;
             let (min, max) = misty_engine::models::bounds(&mesh)?;
@@ -81,10 +92,61 @@ pub fn pick(scene: &Scene, camera: &Camera, rect: Rect, at: Pos2) -> Option<Enti
             let t = ray_box(lo, ld, ((max - min) * 0.5).max(Vec3::splat(0.01)))?;
             let lo = lo + center;
             let hit = m.transform_point3(lo + ld * t);
-            Some((e, hit.distance(origin)))
+            Some((e, hit))
         })
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(e, _)| e)
+        .min_by(|a, b| a.1.distance(origin).total_cmp(&b.1.distance(origin)))
+}
+
+/// Surface point under the cursor (Ctrl+Shift surface snapping), ignoring objects `keep` rejects.
+/// Meshes are approximated by their bounds box.
+pub fn surface_point(
+    scene: &Scene,
+    camera: &Camera,
+    rect: Rect,
+    at: Pos2,
+    keep: impl Fn(Entity) -> bool,
+) -> Option<Vec3> {
+    mesh_hit(scene, camera, rect, at, keep).map(|(_, p)| p)
+}
+
+/// World position of the mesh vertex drawn closest to `at` (within `max_px`) among objects `keep`
+/// accepts (V vertex snapping).
+pub fn nearest_vertex(
+    scene: &Scene,
+    camera: &Camera,
+    rect: Rect,
+    at: Pos2,
+    max_px: f32,
+    keep: impl Fn(Entity) -> bool,
+) -> Option<Vec3> {
+    let mut best: Option<(Vec3, f32)> = None;
+    for (e, _) in scene.walk() {
+        if !scene.active_in_hierarchy(e) || !keep(e) {
+            continue;
+        }
+        let Some(mesh) = scene
+            .world
+            .get::<&MeshFilter>(e)
+            .ok()
+            .and_then(|f| f.mesh.clone())
+        else {
+            continue;
+        };
+        let Some(data) = misty_engine::models::mesh(&mesh) else {
+            continue;
+        };
+        let m = scene.world_matrix(e);
+        for v in &data.vertices {
+            let p = m.transform_point3(Vec3::from(v.position));
+            if let Some(s) = to_screen(camera, rect, p) {
+                let d = s.distance(at);
+                if d <= max_px && best.is_none_or(|(_, bd)| d < bd) {
+                    best = Some((p, d));
+                }
+            }
+        }
+    }
+    best.map(|(p, _)| p)
 }
 
 /// Slab test against an origin-centred box; returns the entry parameter.

@@ -463,3 +463,39 @@
   `withChildren`/`stopBehavior` arguments; no `main`/`emission` property access from Lua.
 - The editor preview doesn't show the Simulate Layers / Resimulate options; Playback Time is per-play, not
   scrubbable.
+
+## Editor workflows ✅
+
+### Done
+- **Snapping**: hold Ctrl while moving / rotating / scaling with the handles to snap by increments; Edit ▸ Grid and
+  Snap window (grid size, move increment per axis, rotate, scale, Grid Snapping, Align Selected to Grid, Reset),
+  saved per project in `Library/SnapSettings.json`. Scene toolbar 🧲 toggle snaps moves to the world grid (Global
+  handle). Ctrl+Shift on the centre move handle snaps onto surfaces; hold V for vertex-to-vertex snapping.
+- **Component context menu** (⋮ or right-click on the title): Reset, Remove Component, Move Up / Move Down,
+  Copy Component, Paste Component As New, Paste Component Values; all undoable, Reset/Remove/Paste act on every
+  selected object.
+- **Multi-object editing**: shared components only, edits apply to all, differing values show "—" (numbers,
+  combos) or an indeterminate checkbox: Transform per axis, GameObject header, enable toggles, Camera, Light,
+  Mesh Renderer, Audio Source, Rigidbody, colliders.
+- **Project window**: right-click ▸ Create ▸ Folder / Material / Lua Script / Scene / Animation (new assets start
+  renaming), Rename (F2, inline), Duplicate (Ctrl+D), Delete (to the Recycle Bin / Trash after a confirm dialog),
+  Show in Explorer, Copy Path, Refresh; drag assets or folders onto a folder (tree, tile or breadcrumb) to move
+  them. Renames/moves update references in every `.scene`, `.prefab`, `.mat`, `BuildSettings.json` and in the
+  editor's memory (open scene, undo, Build Settings, recent scenes). Assets ▸ Show in Explorer / Rename /
+  Duplicate / Delete. Search filters `t:Material t:Script t:Scene t:Prefab t:Texture t:Model t:AudioClip`
+  (also `t:AnimationClip`, `t:Folder`).
+- **Hierarchy / Edit**: Copy / Cut / Paste of GameObjects (Ctrl+C / X / V, Edit menu and row menu, deep, pasted
+  as sibling after the selection; Paste As Child), Shift+click range select, F2 rename, Alt+click expand all.
+- **Scene view**: Edit ▸ Frame Selected, Align With View (Ctrl+Shift+F), Lock View to Selected (Shift+F).
+- Tests: snap maths and settings file, Ctrl/grid snapping drags, Align to Grid, lock view, component ops, paste
+  values through the menu, mixed-value display, file operations and reference rewriting on a temp copy of the
+  sample project, Project menu create/delete, Hierarchy copy/paste, range select and expand all.
+
+### Not matching Unity yet
+- Surface snapping uses bounds boxes and doesn't align rotation; no Push to Grid per axis, no snap for the Rect
+  tool, grid snapping doesn't affect rotate/scale.
+- Mixed "—" isn't shown for colours, Particle System, UI components, Animation or script fields (edits still
+  apply to all). Only one component of each type per object, so Paste As New skips objects that already have it.
+- Project window: single selection, no Ctrl+C/V of assets, no Favorites, references are path-based (Lua source
+  strings aren't rewritten); Delete can't be undone in the editor (restore from the Recycle Bin).
+- Pasted objects get numbered names ("Rig (1)"); no Paste As Child shortcut.

@@ -3,6 +3,7 @@
 
 mod anim;
 mod editors;
+mod mixed;
 mod particles;
 mod slots;
 mod ui_editors;
@@ -126,6 +127,17 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
     let before = (*state.scene.game_object(e)).clone();
     let mut go = before.clone();
     let multi = targets.len() > 1;
+    let others: Vec<misty_engine::scene::GameObject> = targets[1..]
+        .iter()
+        .map(|t| (*state.scene.game_object(*t)).clone())
+        .collect();
+    let differs = |f: fn(&misty_engine::scene::GameObject) -> String| {
+        others.iter().any(|o| f(o) != f(&before))
+    };
+    let mixed_active = differs(|g| g.active.to_string());
+    let mixed_static = differs(|g| g.is_static.to_string());
+    let mixed_tag = differs(|g| g.tag.clone());
+    let mixed_layer = differs(|g| g.layer.to_string());
     let mut changed = false;
     ui.horizontal(|ui| {
         let icon = RichText::new(icon).size(22.0);
@@ -135,8 +147,11 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
             icon
         };
         ui.label(icon);
-        changed |= ui.checkbox(&mut go.active, "").changed();
-        let name_w = ui.available_width() - 70.0;
+        changed |= ui
+            .add(egui::Checkbox::new(&mut go.active, "").indeterminate(mixed_active))
+            .changed();
+        // Leave room for the Static toggle so the row never widens the Inspector.
+        let name_w = (ui.available_width() - 100.0).max(40.0);
         if multi {
             ui.add_enabled(
                 false,
@@ -147,12 +162,18 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
                 .add(egui::TextEdit::singleline(&mut go.name).desired_width(name_w))
                 .changed();
         }
-        changed |= ui.checkbox(&mut go.is_static, "Static").changed();
+        changed |= ui
+            .add(egui::Checkbox::new(&mut go.is_static, "Static").indeterminate(mixed_static))
+            .changed();
     });
     ui.horizontal(|ui| {
         ui.label("Tag");
         egui::ComboBox::from_id_salt("insp_tag")
-            .selected_text(go.tag.as_str())
+            .selected_text(if mixed_tag {
+                mixed::DASH
+            } else {
+                go.tag.as_str()
+            })
             .width(110.0)
             .show_ui(ui, |ui| {
                 for t in TAGS {
@@ -165,7 +186,7 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
         ui.label("Layer");
         let layer_name = LAYERS.get(go.layer as usize).copied().unwrap_or("Default");
         egui::ComboBox::from_id_salt("insp_layer")
-            .selected_text(layer_name)
+            .selected_text(if mixed_layer { mixed::DASH } else { layer_name })
             .width(110.0)
             .show_ui(ui, |ui| {
                 for (i, l) in LAYERS.iter().enumerate() {
@@ -256,21 +277,37 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
     let header = open_state.show_header(ui, |ui| {
         if let Some(enabled) = editors::enabled_flag(state, e, name) {
             let mut on = enabled;
-            if ui.checkbox(&mut on, "").changed() {
+            let mixed = targets[1..]
+                .iter()
+                .any(|t| editors::enabled_flag(state, *t, name) != Some(enabled));
+            if ui
+                .add(egui::Checkbox::new(&mut on, "").indeterminate(mixed))
+                .changed()
+            {
                 for &t in targets {
                     editors::set_enabled(state, t, name, on);
                 }
                 state.mark_edited(name);
             }
         }
-        ui.label(RichText::new(format!("{} {name}", editors::icon(name))).strong());
+        let title = ui.add(
+            egui::Label::new(RichText::new(format!("{} {name}", editors::icon(name))).strong())
+                .sense(egui::Sense::click()),
+        );
+        // Right-clicking the title opens the same menu as ⋮.
+        title.context_menu(|ui| component_menu(ui, state, targets, name, removable));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.menu_button("⋮", |ui| component_menu(ui, state, e, name, removable));
+            ui.menu_button("⋮", |ui| {
+                component_menu(ui, state, targets, name, removable)
+            });
         });
     });
     header.body(|ui| {
         let before = to_json(state, e, name);
-        if editors::edit(ui, state, targets, name) {
+        mixed::begin(state, targets, name);
+        let edited = editors::edit(ui, state, targets, name);
+        mixed::end();
+        if edited {
             if name != "Transform" {
                 propagate(state, targets, name, before);
             }
@@ -280,73 +317,67 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
     ui.separator();
 }
 
-fn component_menu(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str, removable: bool) {
-    let n = name.to_owned();
+/// Component context menu. Reset, Remove and Paste act on every target; Move and Copy on the
+/// active object only (Move is unavailable while several objects are edited).
+fn component_menu(
+    ui: &mut Ui,
+    state: &mut EditorState,
+    targets: &[Entity],
+    name: &str,
+    removable: bool,
+) {
+    use crate::component_ops::{can_move, can_paste_as_new};
+    let (e, n, all) = (targets[0], name.to_owned(), targets.to_vec());
+    let single = targets.len() == 1;
     let act = |ui: &mut Ui, state: &mut EditorState, label: &str, enabled: bool, action: Action| {
         if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
             state.push(action);
             ui.close();
         }
     };
-    act(
-        ui,
-        state,
-        "Reset",
-        true,
-        Action::ResetComponent {
-            entity: e,
-            name: n.clone(),
-        },
-    );
+    let reset = Action::ResetComponent {
+        entities: all.clone(),
+        name: n.clone(),
+    };
+    act(ui, state, "Reset", true, reset);
     ui.separator();
-    act(
-        ui,
-        state,
-        "Remove Component",
-        removable,
-        Action::RemoveComponent {
-            entity: e,
-            name: n.clone(),
-        },
-    );
-    act(
-        ui,
-        state,
-        "Move Up",
-        removable,
-        Action::MoveComponent {
-            entity: e,
-            name: n.clone(),
-            dir: -1,
-        },
-    );
-    act(
-        ui,
-        state,
-        "Move Down",
-        removable,
-        Action::MoveComponent {
-            entity: e,
-            name: n.clone(),
-            dir: 1,
-        },
-    );
-    ui.separator();
-    if ui.button("Copy Component").clicked() {
-        state.component_clipboard = to_json(state, e, name).map(|v| (n.clone(), v));
-        ui.close();
+    let remove = Action::RemoveComponent {
+        entities: all.clone(),
+        name: n.clone(),
+    };
+    act(ui, state, "Remove Component", removable, remove);
+    for (label, dir) in [("Move Up", -1), ("Move Down", 1)] {
+        let enabled = single && can_move(state, e, name, dir);
+        let entity = e;
+        let name = n.clone();
+        act(
+            ui,
+            state,
+            label,
+            enabled,
+            Action::MoveComponent { entity, name, dir },
+        );
     }
+    ui.separator();
+    let copy = Action::CopyComponent {
+        entity: e,
+        name: n.clone(),
+    };
+    act(ui, state, "Copy Component", true, copy);
+    let as_new = targets.iter().any(|t| can_paste_as_new(state, *t));
+    let paste_new = Action::PasteComponentAsNew {
+        entities: all.clone(),
+    };
+    act(ui, state, "Paste Component As New", as_new, paste_new);
     let can_paste = state
         .component_clipboard
         .as_ref()
         .is_some_and(|(c, _)| c == name);
-    act(
-        ui,
-        state,
-        "Paste Component Values",
-        can_paste,
-        Action::PasteComponentValues { entity: e, name: n },
-    );
+    let paste = Action::PasteComponentValues {
+        entities: all,
+        name: n,
+    };
+    act(ui, state, "Paste Component Values", can_paste, paste);
 }
 
 fn to_json(state: &EditorState, e: Entity, name: &str) -> Option<serde_json::Value> {
@@ -679,16 +710,70 @@ mod tests {
             },
         );
         s.scene.add(b, Camera::default());
-        s.component_clipboard = to_json(&s, a, "Camera").map(|v| ("Camera".into(), v));
-        s.push(Action::PasteComponentValues {
-            entity: b,
-            name: "Camera".into(),
-        });
-        apply_actions(&mut s);
+        s.selection.set(a);
+        let mut h = inspector(s);
+        // Copy from A through the Camera header's ⋮ menu.
+        h.get_all_by_label("⋮").last().unwrap().click();
+        h.run();
+        h.get_by_label("Copy Component").click();
+        h.run();
+        apply_actions(h.state_mut());
+        // Paste onto B.
+        h.state_mut().selection.set(b);
+        h.run();
+        h.get_all_by_label("⋮").last().unwrap().click();
+        h.run();
+        h.get_by_label("Paste Component Values").click();
+        h.run();
+        let s = h.state_mut();
+        apply_actions(s);
         assert_eq!(s.scene.world.get::<&Camera>(b).unwrap().fov, 30.0);
         s.push(Action::Undo);
-        apply_actions(&mut s);
+        apply_actions(s);
         assert_eq!(s.scene.world.get::<&Camera>(b).unwrap().fov, 60.0);
+    }
+
+    #[test]
+    fn mixed_values_show_a_dash_and_edits_apply_to_all() {
+        let mut s = state();
+        let (a, b) = (s.scene.spawn("A", None), s.scene.spawn("B", None));
+        s.scene.add(a, Camera::default());
+        s.scene.add(
+            b,
+            Camera {
+                depth: 3.0,
+                ..Default::default()
+            },
+        );
+        let mut t = s.scene.transform(b);
+        t.position.y = 2.0;
+        s.scene.set_transform(b, t);
+        s.selection.set_many(vec![a, b]);
+        let mut h = inspector(s);
+        // Name, Position Y and the Camera's Depth differ: three dashes (plus the name field).
+        let spin = |h: &Harness<'_, EditorState>| {
+            h.get_all_by_value("—")
+                .filter(|n| n.accesskit_node().role() == egui::accesskit::Role::SpinButton)
+                .count()
+        };
+        assert_eq!(spin(&h), 2, "Position Y and Depth are mixed");
+        h.get_by_role(egui::accesskit::Role::TextInput); // the multi-object name field
+        // Typing into the mixed Depth field sets it on both cameras.
+        let depth = h
+            .get_all_by_value("—")
+            .rfind(|n| n.accesskit_node().role() == egui::accesskit::Role::SpinButton)
+            .unwrap();
+        depth.click();
+        h.run();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+        h.event(egui::Event::Text("5".into()));
+        h.run();
+        h.key_press(egui::Key::Enter);
+        h.run();
+        let s = h.state();
+        for e in [a, b] {
+            assert_eq!(s.scene.world.get::<&Camera>(e).unwrap().depth, 5.0);
+        }
     }
 
     fn audio_project(tag: &str) -> (EditorState, std::path::PathBuf) {

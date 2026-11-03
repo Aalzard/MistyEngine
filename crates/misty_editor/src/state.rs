@@ -143,6 +143,8 @@ pub struct SceneViewSettings {
     pub gizmos: bool,
     pub grid: bool,
     pub skybox: bool,
+    /// Lock View to Selected: the camera pivot follows the selection.
+    pub lock_to_selection: bool,
     pub search: String,
     pub camera: SceneCamera,
     /// Screen rect of the 3D view last frame.
@@ -205,10 +207,18 @@ pub struct EditorState {
     pub inspector_add_open: bool,
     /// Objects the Inspector edits, active first (sticks while locked).
     pub inspector_targets: Vec<Entity>,
+    /// Copied GameObjects (Edit ▸ Copy / Cut).
+    pub object_clipboard: Option<crate::object_clipboard::ObjectClipboard>,
+    /// Text to put on the system clipboard this frame.
+    pub os_clipboard_out: Option<String>,
     /// Copy Component clipboard: component name and its values.
     pub component_clipboard: Option<(String, serde_json::Value)>,
     /// Scale fields keep their proportions.
     pub scale_locked: bool,
+    /// Edit ▸ Grid and Snap values (saved in the project's Library).
+    pub snap: crate::snap::SnapSettings,
+    /// Grid and Snap window is open.
+    pub snap_window_open: bool,
     pub project: ProjectBrowser,
     /// Edit ▸ Project Settings values (saved in the project).
     pub project_settings: ProjectSettings,
@@ -261,7 +271,11 @@ impl EditorState {
             inspector_add_open: false,
             inspector_targets: Vec::new(),
             component_clipboard: None,
+            object_clipboard: None,
+            os_clipboard_out: None,
             scale_locked: false,
+            snap: crate::snap::SnapSettings::load(&project.root),
+            snap_window_open: false,
             assets: AssetDatabase::open(&project.root),
             inspector_asset: None,
             project,
@@ -277,6 +291,7 @@ impl EditorState {
                 gizmos: true,
                 grid: true,
                 skybox: true,
+                lock_to_selection: false,
                 search: String::new(),
                 camera: SceneCamera::default(),
                 view_rect: egui::Rect::NOTHING,

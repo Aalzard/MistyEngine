@@ -60,6 +60,20 @@ impl ClipStore {
         Ok(())
     }
 
+    /// Follow an asset rename/move of `old` (a clip or a folder of clips) to `new`.
+    pub fn rename(&mut self, old: &str, new: &str) {
+        let keys: Vec<String> = self.clips.keys().cloned().collect();
+        for key in keys {
+            if let Some(to) = crate::asset_ops::remap(&key, old, new) {
+                let clip = self.clips.remove(&key).expect("listed key");
+                self.clips.insert(to.clone(), clip);
+                if self.dirty.remove(&key) {
+                    self.dirty.insert(to);
+                }
+            }
+        }
+    }
+
     /// Write every changed clip; returns error messages.
     pub fn save_dirty(&mut self) -> Vec<String> {
         let mut errors = Vec::new();

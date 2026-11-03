@@ -22,6 +22,19 @@ pub struct PlaySession {
     path: Option<String>,
 }
 
+impl PlaySession {
+    /// The Edit-mode scene and its undo history, restored on Stop (asset renames rewrite them).
+    pub fn scenes_mut(&mut self) -> Vec<&mut Scene> {
+        let mut out = vec![&mut self.scene];
+        out.extend(self.undo.scenes_mut());
+        out
+    }
+
+    pub fn path_mut(&mut self) -> Option<&mut String> {
+        self.path.as_mut()
+    }
+}
+
 /// Enter Play mode (optionally starting paused, like pressing Pause before Play).
 pub fn start(s: &mut EditorState) {
     if s.play.in_play_mode() {

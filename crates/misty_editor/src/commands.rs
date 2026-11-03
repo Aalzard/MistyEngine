@@ -4,7 +4,7 @@ use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
     BoxCollider, Camera, CapsuleCollider, ColliderKind, Light, LightType, MeshCollider, MeshFilter,
-    MeshRenderer, ScriptRef, Scripts, SphereCollider, Transform, registry,
+    MeshRenderer, ScriptRef, Scripts, SphereCollider, Transform,
 };
 
 use crate::actions::{Action, Create};
@@ -90,6 +90,22 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
                 }
             }
         }
+        Action::OpenGridAndSnap => s.snap_window_open = true,
+        Action::AlignToGrid => {
+            let targets = s.selection.top_level(&s.scene);
+            if !targets.is_empty() {
+                s.record("Align To Grid");
+                for e in targets {
+                    let p = s.scene.world_position(e);
+                    let snapped = crate::snap::snap_to_grid(p, s.snap.grid_size, [true; 3]);
+                    s.scene.set_world_position(e, snapped);
+                }
+            }
+        }
+        Action::ToggleLockView => {
+            let sv = &mut s.scene_view;
+            sv.lock_to_selection = !sv.lock_to_selection;
+        }
         Action::AlignWithView => {
             if let Some(e) = s.selection.active() {
                 s.record("Align With View");
@@ -124,28 +140,14 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
                 }
             }
         }
-        Action::RemoveComponent { entity, name } => {
-            s.record(&format!("Remove {name}"));
-            s.scene.remove_by_name(entity, &name);
-        }
-        Action::ResetComponent { entity, name } => {
-            if let Some(info) = registry::find(&name) {
-                s.record(&format!("Reset {name}"));
-                (info.add_default)(&mut s.scene.world, entity);
-            }
-        }
-        Action::MoveComponent { entity, name, dir } => {
-            s.record("Move Component");
-            s.scene.move_component(entity, &name, dir);
-        }
-        Action::PasteComponentValues { entity, name } => {
-            if let (Some(info), Some((_, value))) =
-                (registry::find(&name), s.component_clipboard.clone())
-            {
-                s.record(&format!("Paste {name} Values"));
-                if let Err(err) = (info.from_json)(&mut s.scene.world, entity, value) {
-                    s.console.warn(format!("Paste failed: {err}"));
-                }
+        a @ (Action::RemoveComponent { .. }
+        | Action::ResetComponent { .. }
+        | Action::MoveComponent { .. }
+        | Action::CopyComponent { .. }
+        | Action::PasteComponentValues { .. }
+        | Action::PasteComponentAsNew { .. }) => {
+            if let Some(other) = crate::component_ops::apply(s, a) {
+                return Some(other);
             }
         }
         Action::AddScript { entity, path } => {
@@ -213,6 +215,22 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         }
         Action::InstantiateModel { path, parent } => {
             crate::model_import::instantiate(s, &path, parent);
+        }
+        a @ (Action::CreateAsset(_)
+        | Action::RenameAsset { .. }
+        | Action::MoveAsset { .. }
+        | Action::DuplicateAsset(_)
+        | Action::DeleteAsset(_)
+        | Action::ShowInExplorer(_)
+        | Action::Refresh) => {
+            if let Some(other) = crate::asset_actions::apply(s, a) {
+                return Some(other);
+            }
+        }
+        a @ (Action::CopyObjects | Action::CutObjects | Action::PasteObjects { .. }) => {
+            if let Some(other) = crate::object_clipboard::apply(s, a) {
+                return Some(other);
+            }
         }
         other => return crate::prefabs::apply(s, other),
     }

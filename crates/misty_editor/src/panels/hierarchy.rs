@@ -325,7 +325,15 @@ fn rename_field(ui: &mut Ui, state: &mut EditorState, e: Entity, rect: Rect) {
 }
 
 fn row_menu(ui: &mut Ui, state: &mut EditorState, e: Entity) {
+    let paste = |as_child| Action::PasteObjects {
+        text: None,
+        as_child,
+    };
     for (label, action) in [
+        ("Cut", Action::CutObjects),
+        ("Copy", Action::CopyObjects),
+        ("Paste", paste(false)),
+        ("Paste As Child", paste(true)),
         ("Rename", Action::RenameSelected),
         ("Duplicate", Action::DuplicateSelected),
         ("Delete", Action::DeleteSelected),
@@ -643,6 +651,77 @@ mod tests {
             crate::state::PREFAB_ICON
         );
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn copy_and_paste_from_the_row_menu_makes_a_deep_sibling_copy() {
+        use egui_kittest::kittest::Queryable;
+        let mut s = state();
+        let rig = s.scene.spawn("Rig", None);
+        s.scene.spawn("Lens", Some(rig));
+        let mut h = egui_kittest::Harness::builder()
+            .with_size([300.0, 400.0])
+            .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
+        h.run();
+        let apply = |h: &mut egui_kittest::Harness<'_, EditorState>| {
+            let s = h.state_mut();
+            for a in std::mem::take(&mut s.actions) {
+                crate::commands::apply(s, a);
+            }
+            h.run();
+        };
+        for item in ["Copy", "Paste"] {
+            h.get_by_label("Rig").click_secondary();
+            h.run();
+            h.get_by_label(item).click();
+            h.run();
+            apply(&mut h);
+        }
+        let s = h.state();
+        let copy = s.selection.active().unwrap();
+        assert_eq!(s.scene.name(copy), "Rig (1)");
+        assert_eq!(s.scene.sibling_index(copy), s.scene.sibling_index(rig) + 1);
+        assert_eq!(s.scene.name(s.scene.children(copy)[0]), "Lens");
+    }
+
+    #[test]
+    fn shift_click_selects_a_range_and_alt_click_expands_all() {
+        use egui_kittest::kittest::Queryable;
+        let mut s = state();
+        let a = s.scene.spawn("A", None);
+        let b = s.scene.spawn("B", Some(a));
+        s.scene.spawn("C", Some(b));
+        let mut h = egui_kittest::Harness::builder()
+            .with_size([300.0, 400.0])
+            .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
+        h.run();
+        // Alt+click A's foldout arrow opens the whole subtree.
+        let row = h.get_by_label("A").rect();
+        let arrow = egui::pos2(row.left() + 11.0, row.center().y);
+        h.event(egui::Event::ModifiersChanged(egui::Modifiers::ALT));
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerMoved(arrow));
+            h.event(egui::Event::PointerButton {
+                pos: arrow,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::ALT,
+            });
+            h.step();
+        }
+        h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        h.run();
+        h.get_by_label("C");
+        // Click the camera, Shift+click C: everything between is selected.
+        h.get_by_label("Main Camera").click();
+        h.run();
+        h.get_by_label("C").click_modifiers(egui::Modifiers::SHIFT);
+        h.run();
+        assert_eq!(
+            h.state().selection.list().len(),
+            5,
+            "camera, light, A, B, C"
+        );
     }
 
     #[test]
