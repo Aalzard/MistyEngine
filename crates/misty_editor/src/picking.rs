@@ -29,7 +29,7 @@ pub fn ray(camera: &Camera, rect: Rect, at: Pos2) -> (Vec3, Vec3) {
     camera.screen_ray(aspect, uv)
 }
 
-/// Active objects drawn as icons: cameras and lights without a mesh.
+/// Active objects drawn as icons: cameras, lights and audio sources without a mesh.
 pub fn icon_objects(scene: &Scene) -> Vec<Entity> {
     scene
         .walk()
@@ -39,7 +39,10 @@ pub fn icon_objects(scene: &Scene) -> Vec<Entity> {
         .filter(|e| {
             let w = &scene.world;
             let has_mesh = w.get::<&MeshFilter>(*e).is_ok_and(|m| m.mesh.is_some());
-            !has_mesh && (w.get::<&CameraComponent>(*e).is_ok() || w.get::<&Light>(*e).is_ok())
+            let iconic = w.get::<&CameraComponent>(*e).is_ok()
+                || w.get::<&Light>(*e).is_ok()
+                || w.get::<&misty_engine::scene::AudioSource>(*e).is_ok();
+            !has_mesh && iconic
         })
         .collect()
 }

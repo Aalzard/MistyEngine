@@ -292,6 +292,51 @@ mod tests {
     }
 
     #[test]
+    fn audio_components_round_trip_and_fill_defaults() {
+        let mut s = Scene::default_3d("Level");
+        let e = s.spawn("Speaker", None);
+        let source = crate::scene::AudioSource {
+            clip: Some("Assets/Audio/Beep.wav".into()),
+            looping: true,
+            volume: 0.5,
+            spatial_blend: 1.0,
+            rolloff: crate::scene::AudioRolloff::Linear,
+            max_distance: 40.0,
+            ..Default::default()
+        };
+        s.add(e, source.clone());
+        let json = s.to_json();
+        assert!(json.contains("\"loop\": true"), "{json}");
+        let (loaded, report) = Scene::from_json("Level", &json).unwrap();
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        let e2 = loaded.find_by_name("Speaker").unwrap();
+        assert_eq!(
+            *loaded.world.get::<&crate::scene::AudioSource>(e2).unwrap(),
+            source
+        );
+        let cam = loaded.find_by_name("Main Camera").unwrap();
+        assert!(
+            loaded
+                .world
+                .get::<&crate::scene::AudioListener>(cam)
+                .is_ok()
+        );
+
+        // Files missing a field (or with unknown ones) get the default for it.
+        let partial = json.replace("\"volume\": 0.5", "\"old_field\": 0.5");
+        assert_ne!(partial, json);
+        let (old, _) = Scene::from_json("Level", &partial).unwrap();
+        let e3 = old.find_by_name("Speaker").unwrap();
+        assert_eq!(
+            old.world
+                .get::<&crate::scene::AudioSource>(e3)
+                .unwrap()
+                .volume,
+            1.0
+        );
+    }
+
+    #[test]
     fn saving_twice_is_byte_identical() {
         let s = sample();
         let (loaded, _) = Scene::from_json("Level", &s.to_json()).unwrap();

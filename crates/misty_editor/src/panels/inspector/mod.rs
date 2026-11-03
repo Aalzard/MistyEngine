@@ -399,6 +399,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         prefab_asset(ui, state, rel);
         return;
     }
+    if misty_engine::audio::is_clip(rel) {
+        audio_clip_asset(ui, state, rel);
+        return;
+    }
     let name = crate::assets::AssetDatabase::material_name(Some(rel));
     ui.horizontal(|ui| {
         ui.label(RichText::new("◍").size(22.0));
@@ -411,6 +415,63 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     } else {
         ui.weak("No import settings for this asset.");
     }
+}
+
+/// Audio clip: file info and a ▶ / ■ preview player.
+fn audio_clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(crate::state::AUDIO_ICON).size(22.0));
+        ui.label(RichText::new(format!("{} (Audio Clip)", editors::clip_name(rel))).strong());
+    });
+    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    ui.separator();
+    let abs = state.assets.absolute(rel);
+    if let Some(info) = clip_info(&abs) {
+        ui.label(info);
+    }
+    let playing = state.clip_preview.as_ref().is_some_and(|a| a.any_playing());
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(!playing, egui::Button::new("▶ Play"))
+            .on_hover_text("Preview this clip")
+            .clicked()
+        {
+            let root = state.project.root.clone();
+            let preview = state
+                .clip_preview
+                .get_or_insert_with(|| misty_engine::audio::Audio::with_device(root));
+            preview.stop_all();
+            preview.play_clip(rel, 1.0);
+            for w in preview.take_logs() {
+                state.console.warn(w);
+            }
+        }
+        if ui
+            .add_enabled(playing, egui::Button::new("■ Stop"))
+            .clicked()
+            && let Some(p) = state.clip_preview.as_mut()
+        {
+            p.stop_all();
+        }
+    });
+    if playing {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(100));
+    }
+}
+
+/// "22050 Hz, Mono, 0.300 s" for PCM WAV files; file size otherwise.
+fn clip_info(path: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.len() >= 44 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        let channels = u16::from_le_bytes([bytes[22], bytes[23]]);
+        let rate = u32::from_le_bytes(bytes[24..28].try_into().ok()?);
+        let byte_rate = u32::from_le_bytes(bytes[28..32].try_into().ok()?).max(1);
+        let seconds = (bytes.len() - 44) as f32 / byte_rate as f32;
+        let layout = if channels == 1 { "Mono" } else { "Stereo" };
+        return Some(format!("{rate} Hz, {layout}, {seconds:.3} s"));
+    }
+    Some(format!("{:.1} KB", bytes.len() as f32 / 1024.0))
 }
 
 /// Prefab asset: its objects as a tree and the root's components.
@@ -488,7 +549,7 @@ mod tests {
         let cam = s.scene.roots()[0];
         s.selection.set(cam);
         let mut h = Harness::builder()
-            .with_size([400.0, 700.0])
+            .with_size([400.0, 1000.0])
             .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
         h.run();
         h.get_by_label("Add Component").click();
@@ -498,7 +559,7 @@ mod tests {
         apply_actions(h.state_mut());
         assert_eq!(
             h.state().scene.component_names(cam),
-            ["Transform", "Camera", "Light"]
+            ["Transform", "Camera", "Audio Listener", "Light"]
         );
         assert!(!h.state().inspector_add_open, "popup closes after choosing");
     }
@@ -615,5 +676,52 @@ mod tests {
         s.push(Action::Undo);
         apply_actions(&mut s);
         assert_eq!(s.scene.world.get::<&Camera>(b).unwrap().fov, 60.0);
+    }
+
+    fn audio_project(tag: &str) -> (EditorState, std::path::PathBuf) {
+        let root =
+            std::env::temp_dir().join(format!("misty_insp_audio_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets/Audio")).unwrap();
+        let wav = misty_engine::audio::wav::sine_beep(440.0, 0.5, 22050);
+        std::fs::write(root.join("Assets/Audio/Beep.wav"), wav).unwrap();
+        (EditorState::new(ProjectBrowser::open(root.clone())), root)
+    }
+
+    #[test]
+    fn audio_source_editor_picks_a_project_clip() {
+        let (mut s, root) = audio_project("source");
+        let e = s.scene.spawn("Speaker", None);
+        s.scene.add(e, misty_engine::scene::AudioSource::default());
+        s.selection.set(e);
+        let mut h = inspector(s);
+        h.get_by_label("3D Sound Settings");
+        h.get_by_label("Spatial Blend");
+        h.get_by_value("🔊 None (Audio Clip)").click();
+        h.run();
+        h.get_by_label("Beep").click();
+        h.run();
+        let clip = h
+            .state()
+            .scene
+            .world
+            .get::<&misty_engine::scene::AudioSource>(e)
+            .unwrap()
+            .clip
+            .clone();
+        assert_eq!(clip.as_deref(), Some("Assets/Audio/Beep.wav"));
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn audio_clip_asset_shows_info_and_preview_buttons() {
+        let (mut s, root) = audio_project("clip");
+        s.inspector_asset = Some("Assets/Audio/Beep.wav".into());
+        let h = inspector(s);
+        h.get_by_label("Beep (Audio Clip)");
+        h.get_by_label("22050 Hz, Mono, 0.500 s");
+        h.get_by_label("▶ Play");
+        h.get_by_label("■ Stop");
+        std::fs::remove_dir_all(root).ok();
     }
 }

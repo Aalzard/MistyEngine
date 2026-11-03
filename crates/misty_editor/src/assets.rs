@@ -1,6 +1,6 @@
-//! Asset database: materials, scripts and prefabs found under the project's `Assets` folder.
+//! Asset database: materials, scripts, audio clips and prefabs found under the project's `Assets` folder.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -30,6 +30,8 @@ pub struct AssetDatabase {
     pub materials: BTreeMap<String, Material>,
     /// Project-relative path ("Assets/Scripts/Rotator.lua") → fields.
     pub scripts: BTreeMap<String, ScriptMeta>,
+    /// Project-relative paths of audio clips (.wav/.ogg/.mp3).
+    pub clips: BTreeSet<String>,
     /// Prefabs read so far, re-read when the file changes.
     prefabs: BTreeMap<String, CachedPrefab>,
     last_poll: Option<std::time::Instant>,
@@ -41,6 +43,7 @@ impl AssetDatabase {
             root: root.to_path_buf(),
             materials: BTreeMap::new(),
             scripts: BTreeMap::new(),
+            clips: BTreeSet::new(),
             prefabs: BTreeMap::new(),
             last_poll: None,
         };
@@ -48,9 +51,10 @@ impl AssetDatabase {
         db
     }
 
-    /// Re-scan the Assets folder for `.mat` and `.lua` files.
+    /// Re-scan the Assets folder for `.mat`, `.lua` and audio files.
     pub fn refresh(&mut self) {
         self.materials.clear();
+        self.clips.clear();
         let old_scripts = std::mem::take(&mut self.scripts);
         let mut stack = vec![self.root.join("Assets")];
         while let Some(dir) = stack.pop() {
@@ -69,6 +73,8 @@ impl AssetDatabase {
                         _ => inspect(&path, &rel),
                     };
                     self.scripts.insert(rel, meta);
+                } else if misty_engine::audio::is_clip(&path.to_string_lossy()) {
+                    self.clips.insert(self.relative(&path));
                 }
             }
         }

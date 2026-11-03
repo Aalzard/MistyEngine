@@ -4,9 +4,9 @@ use egui::{Grid, Key, RichText, Ui};
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    BoxCollider, Camera, CapsuleCollider, ClearFlags, Light, LightType, MeshCollider, MeshFilter,
-    MeshRenderer, PhysicsSurface, PrimitiveMesh, Rigidbody, SceneComponent, Shadows,
-    SphereCollider, registry,
+    AudioListener, AudioRolloff, AudioSource, BoxCollider, Camera, CapsuleCollider, ClearFlags,
+    Light, LightType, MeshCollider, MeshFilter, MeshRenderer, PhysicsSurface, PrimitiveMesh,
+    Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
 };
 
 use misty_engine::assets::Material;
@@ -27,6 +27,8 @@ pub fn icon(name: &str) -> &'static str {
         "Mesh Renderer" => "◈",
         "Rigidbody" => "⚛",
         "Box Collider" | "Sphere Collider" | "Capsule Collider" | "Mesh Collider" => "⬡",
+        "Audio Source" => crate::state::AUDIO_ICON,
+        "Audio Listener" => "🎧",
         _ => "▣",
     }
 }
@@ -42,6 +44,8 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
         "Sphere Collider" => w.get::<&SphereCollider>(e).ok().map(|c| c.enabled),
         "Capsule Collider" => w.get::<&CapsuleCollider>(e).ok().map(|c| c.enabled),
         "Mesh Collider" => w.get::<&MeshCollider>(e).ok().map(|c| c.enabled),
+        "Audio Source" => w.get::<&AudioSource>(e).ok().map(|c| c.enabled),
+        "Audio Listener" => w.get::<&AudioListener>(e).ok().map(|c| c.enabled),
         _ => None,
     }
 }
@@ -71,6 +75,14 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
             .get::<&mut MeshCollider>(e)
             .map(|mut c| c.enabled = on)
             .ok(),
+        "Audio Source" => w
+            .get::<&mut AudioSource>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
+        "Audio Listener" => w
+            .get::<&mut AudioListener>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
         _ => None,
     };
 }
@@ -89,6 +101,11 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Sphere Collider" => with::<SphereCollider>(ui, state, e, sphere_collider),
         "Capsule Collider" => with::<CapsuleCollider>(ui, state, e, capsule_collider),
         "Mesh Collider" => with::<MeshCollider>(ui, state, e, mesh_collider),
+        "Audio Source" => audio_source(ui, state, e),
+        "Audio Listener" => {
+            ui.weak("Hears every Audio Source in the scene.");
+            false
+        }
         _ => {
             ui.weak("No editor for this component.");
             false
@@ -444,6 +461,137 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     });
     if changed {
         let _ = state.scene.world.insert_one(e, r);
+    }
+    changed
+}
+
+/// Audio clip slot: pick from the project's clips, or drop one from the Project window.
+fn clip_field(ui: &mut Ui, id: &str, clips: &[String], clip: &mut Option<String>) -> bool {
+    let mut ch = false;
+    let current = clip
+        .as_deref()
+        .map(clip_name)
+        .unwrap_or_else(|| "None (Audio Clip)".into());
+    let slot = egui::ComboBox::from_id_salt(id)
+        .selected_text(format!("{} {current}", crate::state::AUDIO_ICON))
+        .width(150.0)
+        .show_ui(ui, |ui| {
+            ch |= ui
+                .selectable_value(clip, None, "None (Audio Clip)")
+                .changed();
+            for c in clips {
+                ch |= ui
+                    .selectable_value(clip, Some(c.clone()), clip_name(c))
+                    .changed();
+            }
+        })
+        .response;
+    if let Some(path) = slot.dnd_release_payload::<crate::panels::AssetPayload>()
+        && misty_engine::audio::is_clip(&path.0)
+    {
+        *clip = Some(path.0.clone());
+        ch = true;
+    }
+    ch
+}
+
+/// File stem of a clip path ("Beep").
+pub fn clip_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+fn slider(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
+    ui.add(egui::Slider::new(v, range)).changed()
+}
+
+fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
+    let Ok(mut a) = state
+        .scene
+        .world
+        .get::<&AudioSource>(e)
+        .map(|c| (*c).clone())
+    else {
+        return false;
+    };
+    let clips: Vec<String> = state.assets.clips.iter().cloned().collect();
+    let changed = grid(ui, "audiosource_grid", |ui| {
+        let mut ch = false;
+        ui.label("AudioClip");
+        ch |= clip_field(ui, "as_clip", &clips, &mut a.clip);
+        ui.end_row();
+        for (label, flag) in [
+            ("Mute", &mut a.mute),
+            ("Play On Awake", &mut a.play_on_awake),
+            ("Loop", &mut a.looping),
+        ] {
+            ui.label(label);
+            ch |= ui.checkbox(flag, "").changed();
+            ui.end_row();
+        }
+        ui.label("Volume");
+        ch |= slider(ui, &mut a.volume, 0.0..=1.0);
+        ui.end_row();
+        ui.label("Pitch");
+        ch |= slider(ui, &mut a.pitch, -3.0..=3.0);
+        ui.end_row();
+        ui.label("Stereo Pan");
+        ch |= slider(ui, &mut a.stereo_pan, -1.0..=1.0);
+        ui.end_row();
+        ui.label("Spatial Blend");
+        ui.vertical(|ui| {
+            ch |= slider(ui, &mut a.spatial_blend, 0.0..=1.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("2D").small().color(theme::TEXT_DIM));
+                ui.add_space(110.0);
+                ui.label(RichText::new("3D").small().color(theme::TEXT_DIM));
+            });
+        });
+        ui.end_row();
+        ch
+    });
+    let mut ch3d = false;
+    egui::CollapsingHeader::new("3D Sound Settings")
+        .id_salt("as_3d")
+        .default_open(true)
+        .show(ui, |ui| {
+            ch3d = grid(ui, "audiosource_3d", |ui| {
+                let mut ch = false;
+                ui.label("Volume Rolloff");
+                ch |= combo(
+                    ui,
+                    "as_rolloff",
+                    &mut a.rolloff,
+                    &AudioRolloff::ALL,
+                    AudioRolloff::label,
+                );
+                ui.end_row();
+                ui.label("Min Distance");
+                ch |= ui
+                    .add(
+                        egui::DragValue::new(&mut a.min_distance)
+                            .speed(0.1)
+                            .range(0.0..=a.max_distance),
+                    )
+                    .changed();
+                ui.end_row();
+                ui.label("Max Distance");
+                ch |= ui
+                    .add(
+                        egui::DragValue::new(&mut a.max_distance)
+                            .speed(1.0)
+                            .range(a.min_distance + 0.01..=1e6),
+                    )
+                    .changed();
+                ui.end_row();
+                ch
+            });
+        });
+    let changed = changed || ch3d;
+    if changed {
+        let _ = state.scene.world.insert_one(e, a);
     }
     changed
 }

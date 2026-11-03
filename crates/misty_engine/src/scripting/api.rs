@@ -1,4 +1,4 @@
-//! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody and global tables
+//! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody, AudioSource and global tables
 //! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy).
 //!
 //! Userdata only hold an entity id; they reach the scene through the [`World`] stored in the
@@ -13,8 +13,8 @@ use mlua::{
 
 use super::{LogKind, World};
 use crate::camera::{euler_to_quat, quat_to_euler};
-use crate::scene::Rigidbody;
 use crate::scene::prefab::Prefab;
+use crate::scene::{AudioSource, Rigidbody};
 
 /// Run `f` with the live game world, or fail if no frame is running.
 pub fn with_world<R>(lua: &Lua, f: impl FnOnce(&mut World) -> R) -> Result<R> {
@@ -333,12 +333,14 @@ impl UserData for LGameObject {
                 Ok::<_, mlua::Error>(match name.as_str() {
                     "Transform" => Some(0),
                     "Rigidbody" if w.scene.world.get::<&Rigidbody>(e).is_ok() => Some(1),
+                    "AudioSource" if w.scene.world.get::<&AudioSource>(e).is_ok() => Some(2),
                     _ => None,
                 })
             })??;
             match kind {
                 Some(0) => lua.create_userdata(LTransform(e)).map(Value::UserData),
-                Some(_) => lua.create_userdata(LRigidbody(e)).map(Value::UserData),
+                Some(1) => lua.create_userdata(LRigidbody(e)).map(Value::UserData),
+                Some(_) => lua.create_userdata(LAudioSource(e)).map(Value::UserData),
                 None => Ok(Value::Nil),
             }
         });
@@ -443,6 +445,97 @@ impl UserData for LRigidbody {
                 w.physics.set_angular_velocity(r.0, ang + dw);
             })
         });
+    }
+}
+
+// ---- AudioSource ------------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+pub struct LAudioSource(pub Entity);
+
+/// Read a field of the object's Audio Source.
+fn source_get<R>(lua: &Lua, e: Entity, f: impl FnOnce(&AudioSource) -> R) -> Result<R> {
+    with_world(lua, |w| {
+        w.scene
+            .world
+            .get::<&AudioSource>(e)
+            .map(|s| f(&s))
+            .map_err(|_| missing())
+    })?
+}
+
+/// Change the object's Audio Source (a playing voice picks it up at the end of the frame).
+fn source_set(lua: &Lua, e: Entity, f: impl FnOnce(&mut AudioSource)) -> Result<()> {
+    with_world(lua, |w| {
+        w.scene
+            .world
+            .get::<&mut AudioSource>(e)
+            .map(|mut s| f(&mut s))
+            .map_err(|_| missing())
+    })?
+}
+
+impl UserData for LAudioSource {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("isPlaying", |lua, a| {
+            with_world(lua, |w| w.audio.is_playing(a.0))
+        });
+        f.add_field_method_get("volume", |lua, a| source_get(lua, a.0, |s| s.volume));
+        f.add_field_method_set("volume", |lua, a, v: f32| {
+            source_set(lua, a.0, |s| s.volume = v.clamp(0.0, 1.0))
+        });
+        f.add_field_method_get("pitch", |lua, a| source_get(lua, a.0, |s| s.pitch));
+        f.add_field_method_set("pitch", |lua, a, v: f32| {
+            source_set(lua, a.0, |s| s.pitch = v.clamp(-3.0, 3.0))
+        });
+        f.add_field_method_get("loop", |lua, a| source_get(lua, a.0, |s| s.looping));
+        f.add_field_method_set("loop", |lua, a, v: bool| {
+            source_set(lua, a.0, |s| s.looping = v)
+        });
+        f.add_field_method_get("mute", |lua, a| source_get(lua, a.0, |s| s.mute));
+        f.add_field_method_set("mute", |lua, a, v: bool| {
+            source_set(lua, a.0, |s| s.mute = v)
+        });
+        f.add_field_method_get("spatialBlend", |lua, a| {
+            source_get(lua, a.0, |s| s.spatial_blend)
+        });
+        f.add_field_method_set("spatialBlend", |lua, a, v: f32| {
+            source_set(lua, a.0, |s| s.spatial_blend = v.clamp(0.0, 1.0))
+        });
+        f.add_field_method_get("enabled", |lua, a| source_get(lua, a.0, |s| s.enabled));
+        f.add_field_method_set("enabled", |lua, a, v: bool| {
+            source_set(lua, a.0, |s| s.enabled = v)
+        });
+        f.add_field_method_get("clip", |lua, a| source_get(lua, a.0, |s| s.clip.clone()));
+        f.add_field_method_set("clip", |lua, a, v: Option<String>| {
+            source_set(lua, a.0, |s| s.clip = v.filter(|c| !c.is_empty()))
+        });
+        f.add_field_method_get("gameObject", |_, a| Ok(LGameObject(a.0)));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("Play", |lua, a, ()| {
+            with_world(lua, |w| {
+                let World { audio, scene, .. } = w;
+                audio.play(scene, a.0);
+            })
+        });
+        m.add_method("Stop", |lua, a, ()| with_world(lua, |w| w.audio.stop(a.0)));
+        m.add_method("Pause", |lua, a, ()| {
+            with_world(lua, |w| w.audio.pause(a.0))
+        });
+        m.add_method("UnPause", |lua, a, ()| {
+            with_world(lua, |w| w.audio.unpause(a.0))
+        });
+        m.add_method(
+            "PlayOneShot",
+            |lua, a, (clip, volume): (String, Option<f32>)| {
+                with_world(lua, |w| {
+                    let World { audio, scene, .. } = w;
+                    audio.play_one_shot(scene, a.0, &clip, volume.unwrap_or(1.0));
+                })
+            },
+        );
     }
 }
 

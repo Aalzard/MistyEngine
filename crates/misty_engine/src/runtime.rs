@@ -4,6 +4,7 @@ use glam::Vec3;
 
 use std::path::PathBuf;
 
+use crate::audio::Audio;
 use crate::physics::Physics;
 use crate::scene::Scene;
 use crate::scripting::{Input, LogKind, ScriptHost};
@@ -57,7 +58,8 @@ impl Time {
     }
 }
 
-/// Everything that lives only while playing: scripts and the physics world they drive.
+/// Everything that lives only while playing: scripts, the physics world they drive and audio.
+/// Dropping it stops every sound.
 pub struct Runtime {
     host: ScriptHost,
     /// Warnings gathered before the first frame.
@@ -65,11 +67,23 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    /// Build physics and script instances from the scene as Play starts (runs `Awake`).
+    /// Build physics and script instances from the scene as Play starts (runs `Awake`),
+    /// playing sound through the default audio device.
     pub fn start(scene: &mut Scene, project_root: PathBuf, settings: &ProjectSettings) -> Self {
+        let audio = Audio::with_device(project_root.clone());
+        Self::start_with_audio(scene, project_root, settings, audio)
+    }
+
+    /// [`Runtime::start`] with a chosen audio output (e.g. [`Audio::null`] in tests).
+    pub fn start_with_audio(
+        scene: &mut Scene,
+        project_root: PathBuf,
+        settings: &ProjectSettings,
+        audio: Audio,
+    ) -> Self {
         let mut physics = Physics::build_with(scene, &settings.physics);
         let warnings = std::mem::take(&mut physics.warnings);
-        let host = ScriptHost::start(scene, physics, project_root);
+        let host = ScriptHost::start_with_audio(scene, physics, project_root, audio);
         Self {
             host,
             pending: warnings,
@@ -79,6 +93,15 @@ impl Runtime {
     /// One game frame.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         self.host.update(scene, time, input);
+        self.host.with_audio(|a| a.update(scene));
+    }
+
+    /// Game view "Mute Audio" and the editor's Pause button.
+    pub fn set_audio_state(&mut self, muted: bool, paused: bool) {
+        self.host.with_audio(|a| {
+            a.set_muted(muted);
+            a.set_paused(paused);
+        });
     }
 
     /// Messages for the Console (script output, errors, build problems).
@@ -88,6 +111,8 @@ impl Runtime {
             .map(|w| (LogKind::Warning, w))
             .collect();
         out.extend(self.host.take_logs());
+        let audio = self.host.with_audio(|a| a.take_logs());
+        out.extend(audio.into_iter().map(|w| (LogKind::Warning, w)));
         out
     }
 
@@ -102,6 +127,7 @@ impl Runtime {
             bodies,
             colliders,
             scripts: self.host.instance_count(),
+            voices: self.host.with_audio(|a| a.voice_count()),
         }
     }
 }
@@ -111,6 +137,8 @@ pub struct RuntimeStats {
     pub bodies: usize,
     pub colliders: usize,
     pub scripts: usize,
+    /// Sounds currently playing.
+    pub voices: usize,
 }
 
 #[cfg(test)]

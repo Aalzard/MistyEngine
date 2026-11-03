@@ -25,9 +25,10 @@ return Rotator                     -- a script must return its class table
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform")` |
+| `self.gameObject` | `name`, `tag`, `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource")` (nil if the object has none) |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])` |
+| AudioSource | `Play()`, `Stop()`, `Pause()`, `UnPause()`, `PlayOneShot(clipPath [, volumeScale])`, `isPlaying` (read-only), `volume`, `pitch`, `loop`, `mute`, `spatialBlend`, `enabled`, `clip` (project path like `"Assets/Audio/Beep.wav"`, or nil) |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")`, `GetMouseButton(0)`, `GetAxis("Horizontal"/"Vertical"/"Mouse X"/"Mouse Y")` — the Game view must have focus (click it) |
@@ -55,3 +56,20 @@ end
 return Spawner
 ```
 Create the prefab by dragging an object from the Hierarchy into the Project window.
+
+### Playing sounds
+
+```lua
+local Clicker = {}
+function Clicker:Start() self._audio = self.gameObject:GetComponent("AudioSource") end
+function Clicker:Update()
+    if Input.GetKeyDown("space") then self._audio:PlayOneShot("Assets/Audio/Beep.wav") end
+    if Input.GetKeyDown("p") then
+        if self._audio.isPlaying then self._audio:Pause() else self._audio:Play() end
+    end
+end
+return Clicker
+```
+`Play()` restarts the source's clip; `PlayOneShot` plays an extra copy through the same source (its volume,
+pitch and 3D position) without interrupting it. Changes to `volume`, `pitch`, `loop` take effect the same frame;
+a new `clip` is used by the next `Play()`.
