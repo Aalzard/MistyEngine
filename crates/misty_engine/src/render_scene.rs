@@ -115,6 +115,14 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                 range: l.range,
                 spot_angle: l.spot_angle,
                 shadows: l.shadows,
+                shadow: crate::render::LightShadow {
+                    size: match l.kind {
+                        LightType::Directional => l.shadow_angle,
+                        _ => l.shadow_radius,
+                    },
+                    bias: l.shadow_bias,
+                    normal_bias: l.shadow_normal_bias,
+                },
             })
         })
         .collect()
@@ -155,6 +163,7 @@ pub fn headlight(camera: &Camera) -> Vec<LightData> {
         range: 0.0,
         spot_angle: 0.0,
         shadows: Shadows::None,
+        shadow: Default::default(),
     }]
 }
 

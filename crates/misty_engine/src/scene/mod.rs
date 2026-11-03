@@ -4,6 +4,7 @@ pub mod animator_component;
 pub mod audio_components;
 pub mod components;
 pub mod file;
+pub mod light_shadow;
 pub mod physics2d_components;
 pub mod physics_components;
 pub mod post_process;

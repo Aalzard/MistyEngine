@@ -26,7 +26,7 @@ pub(super) struct FrameLists {
     /// Per terrain / particle system: inside the camera frustum.
     pub terrains: Vec<bool>,
     pub particles: Vec<bool>,
-    /// Directional map first (when planned), then the local layers.
+    /// Sun cascades first (when planned), then the local layers.
     pub shadows: Vec<ShadowList>,
 }
 
@@ -122,7 +122,8 @@ impl Renderer {
         }
 
         let mut caster = vec![false; frame.meshes.len()];
-        let matrices = plan.directional.iter().chain(&plan.local);
+        // Every cascade and local layer culls its own casters.
+        let matrices = plan.matrices();
         let shadows = matrices
             .map(|m| {
                 let f = Frustum::from_matrix(m);

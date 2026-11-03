@@ -195,6 +195,7 @@ mod tests {
             range: 0.0,
             spot_angle: 0.0,
             shadows: Shadows::None,
+            shadow: Default::default(),
         }
     }
 

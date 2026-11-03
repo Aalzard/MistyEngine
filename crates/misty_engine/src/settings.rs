@@ -125,6 +125,9 @@ pub struct ProjectSettings {
     /// Sorting Layers in draw order ("Default" always present).
     #[serde(skip_serializing_if = "is_default_sorting")]
     pub sorting_layers: Vec<String>,
+    /// Quality page (shadow filtering and cascades).
+    #[serde(skip_serializing_if = "is_default")]
+    pub quality: crate::quality::QualitySettings,
 }
 
 impl Default for ProjectSettings {
@@ -136,6 +139,7 @@ impl Default for ProjectSettings {
             tags_and_layers: Default::default(),
             physics2d: Physics2DSettings::default(),
             sorting_layers: crate::sprites::sorting::default_layers(),
+            quality: Default::default(),
         }
     }
 }
@@ -197,11 +201,13 @@ impl ProjectSettings {
             self.physics2d.gravity = Physics2DSettings::default().gravity;
         }
         self.sorting_layers = crate::sprites::sorting::normalized(&self.sorting_layers);
+        self.quality.sanitize();
     }
 
-    /// Install what the renderer reads process-wide (Sorting Layers).
+    /// Install what the renderer reads process-wide (Sorting Layers, Quality).
     pub fn apply_globals(&self) {
         crate::sprites::sorting::set_layers(&self.sorting_layers);
+        crate::quality::set(&self.quality);
     }
 }
 

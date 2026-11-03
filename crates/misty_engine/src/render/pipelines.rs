@@ -5,8 +5,12 @@ use super::particles::ParticleInstance;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
 const COMMON: &str = include_str!("shaders/common.wgsl");
-/// Lit/unlit meshes (all material variants).
-pub(super) const MESH_SRC: &str = include_str!("shaders/mesh.wgsl");
+/// Lit/unlit meshes (all material variants), with the soft-shadow include.
+pub(super) const MESH_SRC: &str = concat!(
+    include_str!("shaders/mesh.wgsl"),
+    "\n",
+    include_str!("shaders/shadows.wgsl")
+);
 /// Shadow-map depth and the selection mask.
 pub(super) const DEPTH_SRC: &str = include_str!("shaders/depth.wgsl");
 
@@ -29,6 +33,8 @@ pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
 /// The terrain fragment stage reuses the mesh shader's vertex stage and lighting.
 const TERRAIN_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
+    "\n",
+    include_str!("shaders/shadows.wgsl"),
     "\n",
     include_str!("shaders/terrain.wgsl")
 );
@@ -173,12 +179,13 @@ impl Pipelines {
             &[
                 entry(0, S::FRAGMENT, uniform()),
                 entry(1, S::VERTEX_FRAGMENT, storage()),
+                // Sun cascades (one layer each).
                 entry(
                     2,
                     S::FRAGMENT,
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
                         multisampled: false,
                     },
                 ),
@@ -198,6 +205,8 @@ impl Pipelines {
                 ),
                 // Instance → draw slot (instanced batches).
                 entry(5, S::VERTEX, storage()),
+                // Soft-shadow parameters (shadows.wgsl).
+                entry(6, S::FRAGMENT, uniform()),
             ],
         );
         let draws_layout = layout(
