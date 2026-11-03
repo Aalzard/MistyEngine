@@ -325,8 +325,6 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         for tab in Tab::ALL.into_iter().filter(|t| *t != Tab::Animation) {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
-        let tab = Tab::CodeEditor;
-        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
     ui.menu_button("Animation", |ui| {
         for tab in [Tab::Animation, Tab::Animator] {

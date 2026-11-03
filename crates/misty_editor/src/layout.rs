@@ -28,9 +28,10 @@ pub enum Tab {
 
 impl Tab {
     /// Tabs every built-in layout contains.
-    pub const ALL: [Tab; 7] = [
+    pub const ALL: [Tab; 8] = [
         Tab::Scene,
         Tab::Game,
+        Tab::CodeEditor,
         Tab::Inspector,
         Tab::Hierarchy,
         Tab::Project,
@@ -39,12 +40,11 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 6] = [
+    pub const ON_DEMAND: [Tab; 5] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
         Tab::Navigation,
-        Tab::CodeEditor,
         Tab::Profiler,
     ];
 
@@ -62,8 +62,6 @@ impl Tab {
             // Docks with the Project and Console like the reference editor; the Profiler too,
             // so the Game view keeps rendering (and reporting its counters) while profiling.
             Tab::AudioMixer | Tab::Profiler => Some(Tab::Project),
-            // Scripts want the big area, like a document window.
-            Tab::CodeEditor => Some(Tab::Scene),
             _ => None,
         }
     }
@@ -168,7 +166,7 @@ impl BuiltinLayout {
 
 /// Default layout: Hierarchy | Scene+Game over Project+Console+Animation, Inspector on the right.
 pub fn default_layout() -> DockState<Tab> {
-    let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
+    let mut dock = DockState::new(vec![Tab::Scene, Tab::Game, Tab::CodeEditor]);
     let tree = dock.main_surface_mut();
     let [left, _inspector] = tree.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector]);
     let [top, _bottom] =
@@ -182,7 +180,7 @@ fn two_by_three() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::Scene]);
     let tree = dock.main_surface_mut();
     let [views, rest] = tree.split_right(NodeIndex::root(), 0.5, vec![Tab::Hierarchy]);
-    let [_scene, _game] = tree.split_below(views, 0.5, vec![Tab::Game]);
+    let [_scene, _game] = tree.split_below(views, 0.5, vec![Tab::Game, Tab::CodeEditor]);
     let [_hierarchy, rest] =
         tree.split_right(rest, 0.33, vec![Tab::Project, Tab::Console, Tab::Animation]);
     let [_project, _inspector] = tree.split_right(rest, 0.5, vec![Tab::Inspector]);
@@ -195,7 +193,7 @@ fn four_split() -> DockState<Tab> {
     let tree = dock.main_surface_mut();
     let [grid, _inspector] = tree.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector]);
     let [top, bottom] = tree.split_below(grid, 0.5, vec![Tab::Hierarchy]);
-    let [_scene, _game] = tree.split_right(top, 0.5, vec![Tab::Game]);
+    let [_scene, _game] = tree.split_right(top, 0.5, vec![Tab::Game, Tab::CodeEditor]);
     let [_hierarchy, _project] = tree.split_right(
         bottom,
         0.5,
@@ -206,7 +204,7 @@ fn four_split() -> DockState<Tab> {
 
 /// Full-height Scene+Game, then Hierarchy over Project+Console+Animation, Inspector on the right.
 fn tall() -> DockState<Tab> {
-    let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
+    let mut dock = DockState::new(vec![Tab::Scene, Tab::Game, Tab::CodeEditor]);
     let tree = dock.main_surface_mut();
     let [_views, rest] = tree.split_right(NodeIndex::root(), 0.55, vec![Tab::Hierarchy]);
     let [column, _inspector] = tree.split_right(rest, 0.5, vec![Tab::Inspector]);
@@ -220,7 +218,7 @@ fn tall() -> DockState<Tab> {
 
 /// Wide Scene+Game on top, Hierarchy | Project+Console+Animation below, full-height Inspector.
 fn wide() -> DockState<Tab> {
-    let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
+    let mut dock = DockState::new(vec![Tab::Scene, Tab::Game, Tab::CodeEditor]);
     let tree = dock.main_surface_mut();
     let [left, _inspector] = tree.split_right(NodeIndex::root(), 0.8, vec![Tab::Inspector]);
     let [_views, bottom] = tree.split_below(left, 0.62, vec![Tab::Hierarchy]);

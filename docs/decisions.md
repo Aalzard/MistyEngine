@@ -1300,3 +1300,5 @@ Record of choices made without asking, and why.
      against Default), coins on Ignore Raycast as triggers that disappear and update a UI Text. It uses the
      Default sorting layer with orders, so ProjectSettings.json stays unchanged. The capture also accepts
      `MISTY_2D=1` to open the Scene view in 2D.
+
+304. **Code Editor is a built-in layout tab.** At the user's request it now sits beside the Scene and Game tabs in every built-in layout (moved from `Tab::ON_DEMAND` to `Tab::ALL`). Saved layouts are not migrated: a user who closed it keeps their arrangement, and Window ▸ Layouts ▸ Default brings it back.
