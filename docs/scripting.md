@@ -75,3 +75,31 @@ return Clicker
 `Play()` restarts the source's clip; `PlayOneShot` plays an extra copy through the same source (its volume,
 pitch and 3D position) without interrupting it. Changes to `volume`, `pitch`, `loop` take effect the same frame;
 a new `clip` is used by the next `Play()`.
+
+### Particle systems
+
+`GetComponent("ParticleSystem")` returns the object's Particle System (or `nil`):
+
+| Member | Meaning |
+| --- | --- |
+| `Play()` | Start a new cycle, or resume when paused (live particles are kept). |
+| `Stop()` | Stop emitting; existing particles finish their lives. |
+| `Pause()` | Freeze the simulation until `Play()`. |
+| `Clear()` | Remove every live particle. |
+| `Emit(n)` | Emit `n` particles now, whatever the play state (up to Max Particles). |
+| `isPlaying`, `isPaused`, `isStopped` | Play state (`isStopped` = stopped and no particles left). |
+| `particleCount` | Live particles. |
+| `time` | Seconds into the current cycle. |
+
+```lua
+local Sparks = { amount = 40 }
+function Sparks:Start() self.ps = self.gameObject:GetComponent("ParticleSystem") end
+function Sparks:Update()
+    if Input.GetKeyDown("space") then self.ps:Emit(self.amount) end
+    if Input.GetKeyDown("p") then
+        if self.ps.isPlaying then self.ps:Pause() else self.ps:Play() end
+    end
+end
+return Sparks
+```
+Systems with Play On Awake are already playing in `Awake`/`Start`. Module settings are not scriptable yet.
