@@ -18,6 +18,8 @@ pub enum Tab {
     Animator,
     /// Window ▸ Audio ▸ Audio Mixer.
     AudioMixer,
+    /// Window ▸ AI ▸ Navigation.
+    Navigation,
 }
 
 impl Tab {
@@ -33,7 +35,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 3] = [Tab::Lighting, Tab::Animator, Tab::AudioMixer];
+    pub const ON_DEMAND: [Tab; 4] = [Tab::Lighting, Tab::Animator, Tab::AudioMixer, Tab::Navigation];
 
     /// Built-in layout tabs, then on-demand ones.
     pub fn every() -> impl Iterator<Item = Tab> {
@@ -43,7 +45,7 @@ impl Tab {
     /// Where an on-demand tab docks when first opened (Unity puts Lighting by the Inspector).
     fn opens_beside(self) -> Option<Tab> {
         match self {
-            Tab::Lighting => Some(Tab::Inspector),
+            Tab::Lighting | Tab::Navigation => Some(Tab::Inspector),
             // The graph wants room: it docks with the Scene and Game views.
             Tab::Animator => Some(Tab::Scene),
             // Docks with the Project and Console like the reference editor.
@@ -64,6 +66,7 @@ impl Tab {
             Tab::Lighting => "Lighting",
             Tab::Animator => "Animator",
             Tab::AudioMixer => "Audio Mixer",
+            Tab::Navigation => "Navigation",
         }
     }
 
@@ -79,6 +82,7 @@ impl Tab {
             Tab::Lighting => "☀",
             Tab::Animator => crate::panels::animator::CONTROLLER_ICON,
             Tab::AudioMixer => crate::panels::audio_mixer::MIXER_ICON,
+            Tab::Navigation => "🚶",
         }
     }
 
@@ -92,7 +96,7 @@ impl Tab {
             Tab::Project => "Ctrl+5",
             Tab::Console => "Ctrl+Shift+C",
             Tab::Animation => "Ctrl+6",
-            Tab::Lighting | Tab::Animator | Tab::AudioMixer => "",
+            Tab::Lighting | Tab::Animator | Tab::AudioMixer | Tab::Navigation => "",
         }
     }
 }

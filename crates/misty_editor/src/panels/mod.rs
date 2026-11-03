@@ -8,6 +8,7 @@ mod game;
 mod hierarchy;
 mod inspector;
 mod lighting;
+pub mod navigation;
 pub mod project;
 mod project_menus;
 mod scene;
@@ -52,6 +53,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::Lighting => lighting::show(ui, self.state),
             Tab::Animator => animator::show(ui, self.state),
             Tab::AudioMixer => audio_mixer::show(ui, self.state),
+            Tab::Navigation => navigation::show(ui, self.state),
         }
     }
 

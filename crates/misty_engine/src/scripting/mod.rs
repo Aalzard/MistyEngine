@@ -21,6 +21,8 @@ pub mod animator_api;
 pub mod api;
 pub mod audio_api;
 pub mod material_api;
+pub mod camera_api;
+pub mod navigation_api;
 pub mod particles_api;
 pub mod physics_api;
 pub mod render_settings_api;
@@ -156,6 +158,8 @@ pub struct World {
     pub animation: AnimationPlayer,
     /// Animator state machines (`SetFloat`, `Play`, …).
     pub animator: AnimatorPlayer,
+    /// Nav Mesh Agents and the scene's nav mesh.
+    pub navigation: crate::navigation::NavRuntime,
 }
 
 struct Instance {
@@ -196,7 +200,9 @@ impl ScriptHost {
         if let Err(e) = api::register(&lua) {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
         }
+        let navigation = crate::navigation::NavRuntime::load(scene, &project_root);
         lua.set_app_data(World {
+            navigation,
             scene: std::mem::take(scene),
             physics,
             time: Time::default(),
@@ -248,6 +254,11 @@ impl ScriptHost {
     /// Run `f` on the Animator state machines between frames (the Animator window's live view).
     pub fn with_animator<R>(&self, f: impl FnOnce(&mut AnimatorPlayer) -> R) -> R {
         self.with_world(|w| f(&mut w.animator))
+    }
+
+    /// Nav Mesh Agents of this game (between frames).
+    pub fn with_navigation<R>(&self, f: impl FnOnce(&crate::navigation::NavRuntime) -> R) -> R {
+        self.with_world(|w| f(&w.navigation))
     }
 
     /// The audio voices of this game (between frames).
@@ -516,6 +527,12 @@ impl ScriptHost {
         self.with_world(|w| w.physics.sync_out(&mut w.scene));
 
         self.call_all("Update");
+        self.with_world(|w| {
+            w.navigation.update(&mut w.scene, time.delta);
+            let logs = w.navigation.take_logs();
+            w.logs
+                .extend(logs.into_iter().map(|l| (LogKind::Warning, l)));
+        });
         self.animate(time.delta);
         self.call_all("LateUpdate");
         self.process_destroy();

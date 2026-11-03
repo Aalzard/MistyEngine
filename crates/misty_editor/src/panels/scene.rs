@@ -60,6 +60,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 _ => {}
             }
             crate::terrain_tools::brush_lines(&mut lines, state);
+            let overlay = gizmos::nav_overlay(state, ui.ctx(), &mut lines);
             let terrains = misty_engine::terrain::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
             let scene_lights = render_scene::lights(&state.scene);
@@ -88,6 +89,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 environment: &environment,
                 post,
                 lines: &lines.0,
+                overlay: &overlay,
                 meshes: &meshes,
                 particles: &particles,
                 terrains: &terrains,

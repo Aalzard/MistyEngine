@@ -54,6 +54,8 @@ pub struct Pipelines {
     pub lines: wgpu::RenderPipeline,
     /// Material variants (rendering mode, unlit, culling), built on first use.
     pub variants: super::variants::Variants,
+    /// Translucent triangles with the line shader (no depth writes).
+    pub overlay: wgpu::RenderPipeline,
     pub mask: wgpu::RenderPipeline,
     pub outline: wgpu::RenderPipeline,
     /// Billboards: alpha-blended and additive.
@@ -287,6 +289,20 @@ impl Pipelines {
                 ..Spec::new("lines", include_str!("shaders/lines.wgsl"), &[&view_layout])
             },
         );
+        let overlay = build(
+            device,
+            Spec {
+                vs: "vs_main",
+                buffers: &line_buffers,
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                ..Spec::new(
+                    "overlay",
+                    include_str!("shaders/lines.wgsl"),
+                    &[&view_layout],
+                )
+            },
+        );
         let mesh_buffers = mesh_buffers();
         let depth_src = DEPTH_SRC;
         let mask = build(
@@ -455,6 +471,7 @@ impl Pipelines {
             grid,
             lines,
             variants: Default::default(),
+            overlay,
             mask,
             outline,
             particles_alpha,

@@ -282,6 +282,7 @@ fn component_menu(ui: &mut Ui, s: &mut EditorState) {
         "Mesh",
         "Effects",
         "Physics",
+        "Navigation",
         "Audio",
         "Rendering",
         "Layout",
@@ -325,6 +326,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
     });
     ui.menu_button("Rendering", |ui| {
         let tab = Tab::Lighting;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
+    ui.menu_button("AI", |ui| {
+        let tab = Tab::Navigation;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
     todo(ui, s, "Package Manager", "");

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use super::render_settings::RenderSettings;
 use super::{Node, Scene, SceneComponent, registry};
+use crate::navigation::NavigationSettings;
 
 pub const EXTENSION: &str = "scene";
 const VERSION: u32 = 1;
@@ -26,6 +27,9 @@ struct SceneFile {
     /// Lighting window settings (scenes only; read separately so a bad value only warns).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     lighting: Option<serde_json::Value>,
+    /// Navigation settings and baked nav mesh (scenes only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    navigation: Option<serde_json::Value>,
     objects: Vec<ObjectEntry>,
 }
 
@@ -144,10 +148,15 @@ pub(super) fn remap_copied_refs(
 }
 
 /// Pretty JSON with tidy numbers (shared by scenes and prefabs).
-pub(super) fn write_json(objects: Vec<ObjectEntry>, lighting: Option<&RenderSettings>) -> String {
+pub(super) fn write_json(
+    objects: Vec<ObjectEntry>,
+    lighting: Option<&RenderSettings>,
+    navigation: Option<&NavigationSettings>,
+) -> String {
     let mut value = serde_json::to_value(SceneFile {
         version: VERSION,
         lighting: lighting.map(|l| serde_json::to_value(l).expect("settings serialise")),
+        navigation: navigation.map(|n| serde_json::to_value(n).expect("settings serialise")),
         objects,
     })
     .expect("scene data serialises");
@@ -276,7 +285,8 @@ impl Scene {
     pub fn to_json(&self) -> String {
         // Default settings are left out, so older scenes save byte-identical.
         let lighting = Some(&self.render_settings).filter(|r| **r != RenderSettings::default());
-        write_json(self.entries(None), lighting)
+        let navigation = Some(&self.navigation).filter(|n| **n != NavigationSettings::default());
+        write_json(self.entries(None), lighting, navigation)
     }
 
     /// Parse `.scene` JSON. Unknown components are skipped with a warning.
@@ -285,6 +295,14 @@ impl Scene {
         let mut scene = Scene::new(name);
         let mut report = LoadReport::default();
         scene.render_settings = read_lighting(file.lighting, &mut report);
+        if let Some(v) = file.navigation {
+            scene.navigation = serde_json::from_value(v).unwrap_or_else(|e| {
+                report
+                    .warnings
+                    .push(format!("navigation settings: {e}; using defaults"));
+                NavigationSettings::default()
+            });
+        }
         scene.spawn_entries(file.objects, None, &mut report);
         Ok((scene, report))
     }

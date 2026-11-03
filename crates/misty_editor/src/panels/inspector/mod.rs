@@ -8,6 +8,7 @@ mod editors;
 mod material;
 mod mixed;
 mod mixer_inspector;
+mod nav_editors;
 mod particles;
 mod physics_editors;
 mod post_volume;

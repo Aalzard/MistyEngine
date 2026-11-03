@@ -283,6 +283,7 @@ mod tests {
             environment: &Default::default(),
             post: Default::default(),
             lines: &[],
+            overlay: &[],
             meshes: &meshes,
             particles: &[],
             terrains: &[],

@@ -42,8 +42,9 @@ impl Capture {
     }
 }
 
-/// Screenshot setup from the environment: `MISTY_SELECT=<object name>` selects an object and
-/// `MISTY_TAB=<tab title>` brings a tab to the front (e.g. the Animation window).
+/// Screenshot setup from the environment: `MISTY_SELECT=<object name>` selects an object,
+/// `MISTY_TAB=<tab title>` brings a tab to the front (e.g. the Animation window) and
+/// `MISTY_PLAY=1` enters Play mode.
 pub fn apply_env(
     s: &mut crate::state::EditorState,
     dock: &mut egui_dock::DockState<crate::layout::Tab>,

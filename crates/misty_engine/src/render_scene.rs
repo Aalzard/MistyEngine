@@ -209,6 +209,7 @@ impl GameView {
             environment: &self.environment,
             post: self.post,
             lines: &[],
+            overlay: &[],
             meshes: &self.meshes,
             particles: &self.particles,
             terrains: &self.terrains,

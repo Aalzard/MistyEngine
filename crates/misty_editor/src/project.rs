@@ -26,6 +26,7 @@ impl AssetEntry {
             "controller" => crate::panels::animator::CONTROLLER_ICON,
             "mixer" => crate::panels::audio_mixer::MIXER_ICON,
             "terrain" => "⛰",
+            "navmesh" => "🚶",
             _ => "📄",
         }
     }
