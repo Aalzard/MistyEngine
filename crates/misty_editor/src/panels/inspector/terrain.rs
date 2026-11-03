@@ -1,6 +1,7 @@
 //! Terrain and Terrain Collider Inspectors. The Terrain editor has a row of tool tabs (Raise or
 //! Lower, Set Height, Smooth, Paint Texture, Settings) with brush settings, the layer list and
-//! the terrain data settings. Data edits go through `terrain_tools` (one undo step each);
+//! the terrain data settings; Paint Texture also holds the collapsible procedural sections of
+//! `terrain_rules` (Auto Paint Rules, Generate, Grass & Details, Cliffs, Color Harmony). Data edits go through `terrain_tools` (one undo step each);
 //! component fields return `true` like other editors.
 
 use egui::{RichText, Ui};
@@ -150,6 +151,15 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 && let Some(d) = data.as_deref()
             {
                 layers(ui, state, &path, d);
+                // Procedural painting: rules of the selected layer, Generate, grass, look.
+                let layer = state.terrain_tools.layer;
+                crate::terrain_rules::layer_rules(ui, state, &path, d, layer);
+                ui.add_space(4.0);
+                crate::terrain_rules::generate_row(ui, state, &path, d);
+                ui.add_space(4.0);
+                crate::terrain_rules::details_section(ui, state, &path, d);
+                crate::terrain_rules::cliffs_section(ui, state, &path, d);
+                crate::terrain_rules::harmony_section(ui, state, &path, d);
             }
             if tool == TerrainTool::SetHeight
                 && let Some(d) = data.as_deref()
@@ -228,7 +238,7 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
             .clicked()
         {
             terrain_tools::begin_edit(state, path, "Add Terrain Layer");
-            store::modify(path, |d| {
+            store::modify_settings(path, |d| {
                 d.layers.push(TerrainLayer {
                     name: format!("Layer {}", d.layers.len()),
                     ..Default::default()
@@ -272,6 +282,9 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
             }
         });
         ui.end_row();
+        ui.label("Height Map");
+        ch |= texture_slot(ui, "terrain_layer_height", &mut layer.height_map, &textures);
+        ui.end_row();
         for (label, v, min) in [
             ("Tile Size", &mut layer.tile_size, 0.1),
             ("Tile Offset", &mut layer.tile_offset, f32::MIN),
@@ -301,7 +314,7 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
     });
     if changed {
         terrain_tools::begin_edit(state, path, "Modify Terrain Layer");
-        store::modify(path, |d| d.layers[selected] = layer);
+        store::modify_settings(path, |d| d.layers[selected] = layer);
     }
 }
 
