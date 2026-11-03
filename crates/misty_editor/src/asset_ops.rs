@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 /// Files whose text can hold asset paths.
-const REFERENCING: [&str; 3] = ["scene", "prefab", "mat"];
+const REFERENCING: [&str; 4] = ["scene", "prefab", "mat", "controller"];
 const BUILD_SETTINGS: &str = "ProjectSettings/BuildSettings.json";
 
 /// "Assets/…" path of `abs` inside `root`, with forward slashes.

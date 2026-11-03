@@ -169,8 +169,10 @@ impl EditorApp {
             if typing && text_key {
                 continue;
             }
-            // Delete removes selected keys when the Animation window has focus.
-            if key == Key::Delete && self.state.animation.wants_delete() {
+            // Delete removes selected keys / states when the Animation / Animator window has focus.
+            if key == Key::Delete
+                && (self.state.animation.wants_delete() || self.state.animator.wants_delete())
+            {
                 continue;
             }
             if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(mods, key)))

@@ -310,8 +310,9 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         }
     });
     ui.menu_button("Animation", |ui| {
-        let tab = Tab::Animation;
-        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+        for tab in [Tab::Animation, Tab::Animator] {
+            item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+        }
     });
     ui.menu_button("Rendering", |ui| {
         let tab = Tab::Lighting;

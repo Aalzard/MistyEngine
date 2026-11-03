@@ -31,6 +31,7 @@ pub fn icon(name: &str) -> &'static str {
         "Audio Source" => crate::state::AUDIO_ICON,
         "Audio Listener" => "🎧",
         "Animation" => "⏵",
+        "Animator" => crate::panels::animator::CONTROLLER_ICON,
         "Particle System" => crate::state::PARTICLE_ICON,
         "Post-process Volume" => "◐",
         other => super::ui_editors::icon(other)
@@ -56,6 +57,10 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
         "Audio Source" => w.get::<&AudioSource>(e).ok().map(|c| c.enabled),
         "Audio Listener" => w.get::<&AudioListener>(e).ok().map(|c| c.enabled),
         "Animation" => w.get::<&Animation>(e).ok().map(|c| c.enabled),
+        "Animator" => w
+            .get::<&misty_engine::scene::Animator>(e)
+            .ok()
+            .map(|c| c.enabled),
         "Post-process Volume" => w.get::<&PostProcessVolume>(e).ok().map(|c| c.enabled),
         _ => None,
     }
@@ -98,6 +103,10 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
             .map(|mut c| c.enabled = on)
             .ok(),
         "Animation" => w.get::<&mut Animation>(e).map(|mut c| c.enabled = on).ok(),
+        "Animator" => w
+            .get::<&mut misty_engine::scene::Animator>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
         "Post-process Volume" => w
             .get::<&mut PostProcessVolume>(e)
             .map(|mut c| c.enabled = on)
@@ -122,6 +131,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Mesh Collider" => with::<MeshCollider>(ui, state, e, mesh_collider),
         "Audio Source" => audio_source(ui, state, e),
         "Animation" => super::anim::animation(ui, state, e),
+        "Animator" => super::animator::animator(ui, state, e),
         "Particle System" => super::particles::particle_system(ui, state, e),
         "Post-process Volume" => super::post_volume::post_process_volume(ui, state, e),
         "Audio Listener" => {

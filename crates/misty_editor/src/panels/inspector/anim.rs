@@ -10,7 +10,7 @@ use crate::state::EditorState;
 use crate::theme;
 
 /// Icon shown in clip slots.
-const CLIP_ICON: &str = "⏵";
+pub(super) const CLIP_ICON: &str = "⏵";
 
 pub fn animation(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let Ok(mut a) = state.scene.world.get::<&Animation>(e).map(|c| (*c).clone()) else {
@@ -84,7 +84,7 @@ pub fn animation(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
 }
 
 /// Clip picker: project `.anim` files, or a clip dragged from the Project window.
-fn clip_slot(
+pub(super) fn clip_slot(
     ui: &mut Ui,
     id: impl std::hash::Hash + std::fmt::Debug,
     clips: &[String],

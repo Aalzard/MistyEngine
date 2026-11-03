@@ -44,15 +44,17 @@ pub enum AssetKind {
     Script,
     Scene,
     Animation,
+    AnimatorController,
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 5] = [
+    pub const ALL: [AssetKind; 6] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
         AssetKind::Scene,
         AssetKind::Animation,
+        AssetKind::AnimatorController,
     ];
 
     /// Menu label.
@@ -63,6 +65,7 @@ impl AssetKind {
             AssetKind::Script => "Lua Script",
             AssetKind::Scene => "Scene",
             AssetKind::Animation => "Animation",
+            AssetKind::AnimatorController => "Animator Controller",
         }
     }
 }
