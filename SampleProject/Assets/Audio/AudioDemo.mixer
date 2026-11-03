@@ -1,0 +1,82 @@
+{
+  "groups": [
+    {
+      "id": 0,
+      "name": "Master",
+      "parent": null,
+      "mute": false,
+      "solo": false,
+      "bypass_effects": false,
+      "effects": [
+        {
+          "id": 3,
+          "kind": "Lowpass",
+          "bypass": false
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "Music",
+      "parent": 0,
+      "mute": false,
+      "solo": false,
+      "bypass_effects": false,
+      "effects": []
+    },
+    {
+      "id": 2,
+      "name": "SFX",
+      "parent": 0,
+      "mute": false,
+      "solo": false,
+      "bypass_effects": false,
+      "effects": [
+        {
+          "id": 4,
+          "kind": "Reverb",
+          "bypass": false
+        }
+      ]
+    }
+  ],
+  "snapshots": [
+    {
+      "name": "Normal",
+      "values": {
+        "0/3/Cutoff freq": 20000.0,
+        "1/Volume": -4.0,
+        "2/4/Wet mix": 0.0
+      }
+    },
+    {
+      "name": "Muffled",
+      "values": {
+        "0/3/Cutoff freq": 700.0,
+        "1/Volume": -8.0,
+        "2/4/Wet mix": 0.0
+      }
+    },
+    {
+      "name": "Cave",
+      "values": {
+        "0/3/Cutoff freq": 20000.0,
+        "1/Volume": -4.0,
+        "2/4/Room size": 0.92,
+        "2/4/Wet mix": 60.0
+      }
+    }
+  ],
+  "start_snapshot": 0,
+  "exposed": [
+    {
+      "name": "MusicVol",
+      "key": "1/Volume"
+    },
+    {
+      "name": "SFXVol",
+      "key": "2/Volume"
+    }
+  ],
+  "next_id": 5
+}

@@ -700,6 +700,8 @@ pub struct PrefabLink {
 
 // ---- audio ---------------------------------------------------------------------------------
 
+use super::audio_components::defaults as audio_defaults;
+
 /// How a 3D sound gets quieter with distance.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AudioRolloff {
@@ -741,6 +743,29 @@ pub struct AudioSource {
     pub min_distance: f32,
     pub max_distance: f32,
     pub rolloff: AudioRolloff,
+    // Newer fields are left out of files at their defaults (older scenes re-save unchanged).
+    /// Mixer group: `"Assets/Audio/Main.mixer#SFX"`; `None` = straight to the listener.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// 0 = most important .. 256 = least (which voices stay audible past the voice limit).
+    #[serde(skip_serializing_if = "audio_defaults::is_priority")]
+    pub priority: u16,
+    /// Skip the filter components on this object.
+    #[serde(skip_serializing_if = "audio_defaults::is_false")]
+    pub bypass_effects: bool,
+    #[serde(skip_serializing_if = "audio_defaults::is_false")]
+    pub bypass_listener_effects: bool,
+    #[serde(skip_serializing_if = "audio_defaults::is_false")]
+    pub bypass_reverb_zones: bool,
+    /// 0..1.1: how much of the signal reaches Audio Reverb Zones.
+    #[serde(skip_serializing_if = "audio_defaults::is_one")]
+    pub reverb_zone_mix: f32,
+    /// 0..5: pitch shift from relative motion (0 = none).
+    #[serde(skip_serializing_if = "audio_defaults::is_one")]
+    pub doppler_level: f32,
+    /// 0..360°: how widely a 3D sound spreads over the speakers (0 = a point).
+    #[serde(skip_serializing_if = "audio_defaults::is_zero")]
+    pub spread: f32,
 }
 
 impl Default for AudioSource {
@@ -758,6 +783,14 @@ impl Default for AudioSource {
             min_distance: 1.0,
             max_distance: 500.0,
             rolloff: AudioRolloff::Logarithmic,
+            output: None,
+            priority: 128,
+            bypass_effects: false,
+            bypass_listener_effects: false,
+            bypass_reverb_zones: false,
+            reverb_zone_mix: 1.0,
+            doppler_level: 1.0,
+            spread: 0.0,
         }
     }
 }

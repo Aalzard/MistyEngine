@@ -1,6 +1,7 @@
 //! Scene: an ECS world of GameObjects with an ordered parent/child hierarchy.
 
 pub mod animator_component;
+pub mod audio_components;
 pub mod components;
 pub mod file;
 pub mod physics_components;
@@ -16,6 +17,7 @@ use glam::{Mat4, Vec3};
 use hecs::{Entity, EntityBuilder, World};
 
 pub use animator_component::Animator;
+pub use audio_components::*;
 pub use components::*;
 pub use physics_components::*;
 pub use post_process::*;

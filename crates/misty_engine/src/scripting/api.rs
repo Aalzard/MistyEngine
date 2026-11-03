@@ -29,7 +29,7 @@ pub fn with_world<R>(lua: &Lua, f: impl FnOnce(&mut World) -> R) -> Result<R> {
     Ok(f(&mut world))
 }
 
-fn missing() -> mlua::Error {
+pub(super) fn missing() -> mlua::Error {
     mlua::Error::runtime("object was destroyed")
 }
 
@@ -545,96 +545,7 @@ impl UserData for LRigidbody {
     }
 }
 
-// ---- AudioSource ------------------------------------------------------------------------------
-
-#[derive(Clone, Copy)]
-pub struct LAudioSource(pub Entity);
-
-/// Read a field of the object's Audio Source.
-fn source_get<R>(lua: &Lua, e: Entity, f: impl FnOnce(&AudioSource) -> R) -> Result<R> {
-    with_world(lua, |w| {
-        w.scene
-            .world
-            .get::<&AudioSource>(e)
-            .map(|s| f(&s))
-            .map_err(|_| missing())
-    })?
-}
-
-/// Change the object's Audio Source (a playing voice picks it up at the end of the frame).
-fn source_set(lua: &Lua, e: Entity, f: impl FnOnce(&mut AudioSource)) -> Result<()> {
-    with_world(lua, |w| {
-        w.scene
-            .world
-            .get::<&mut AudioSource>(e)
-            .map(|mut s| f(&mut s))
-            .map_err(|_| missing())
-    })?
-}
-
-impl UserData for LAudioSource {
-    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
-        f.add_field_method_get("isPlaying", |lua, a| {
-            with_world(lua, |w| w.audio.is_playing(a.0))
-        });
-        f.add_field_method_get("volume", |lua, a| source_get(lua, a.0, |s| s.volume));
-        f.add_field_method_set("volume", |lua, a, v: f32| {
-            source_set(lua, a.0, |s| s.volume = v.clamp(0.0, 1.0))
-        });
-        f.add_field_method_get("pitch", |lua, a| source_get(lua, a.0, |s| s.pitch));
-        f.add_field_method_set("pitch", |lua, a, v: f32| {
-            source_set(lua, a.0, |s| s.pitch = v.clamp(-3.0, 3.0))
-        });
-        f.add_field_method_get("loop", |lua, a| source_get(lua, a.0, |s| s.looping));
-        f.add_field_method_set("loop", |lua, a, v: bool| {
-            source_set(lua, a.0, |s| s.looping = v)
-        });
-        f.add_field_method_get("mute", |lua, a| source_get(lua, a.0, |s| s.mute));
-        f.add_field_method_set("mute", |lua, a, v: bool| {
-            source_set(lua, a.0, |s| s.mute = v)
-        });
-        f.add_field_method_get("spatialBlend", |lua, a| {
-            source_get(lua, a.0, |s| s.spatial_blend)
-        });
-        f.add_field_method_set("spatialBlend", |lua, a, v: f32| {
-            source_set(lua, a.0, |s| s.spatial_blend = v.clamp(0.0, 1.0))
-        });
-        f.add_field_method_get("enabled", |lua, a| source_get(lua, a.0, |s| s.enabled));
-        f.add_field_method_set("enabled", |lua, a, v: bool| {
-            source_set(lua, a.0, |s| s.enabled = v)
-        });
-        f.add_field_method_get("clip", |lua, a| source_get(lua, a.0, |s| s.clip.clone()));
-        f.add_field_method_set("clip", |lua, a, v: Option<String>| {
-            source_set(lua, a.0, |s| s.clip = v.filter(|c| !c.is_empty()))
-        });
-        f.add_field_method_get("gameObject", |_, a| Ok(LGameObject(a.0)));
-    }
-
-    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
-        m.add_method("Play", |lua, a, ()| {
-            with_world(lua, |w| {
-                let World { audio, scene, .. } = w;
-                audio.play(scene, a.0);
-            })
-        });
-        m.add_method("Stop", |lua, a, ()| with_world(lua, |w| w.audio.stop(a.0)));
-        m.add_method("Pause", |lua, a, ()| {
-            with_world(lua, |w| w.audio.pause(a.0))
-        });
-        m.add_method("UnPause", |lua, a, ()| {
-            with_world(lua, |w| w.audio.unpause(a.0))
-        });
-        m.add_method(
-            "PlayOneShot",
-            |lua, a, (clip, volume): (String, Option<f32>)| {
-                with_world(lua, |w| {
-                    let World { audio, scene, .. } = w;
-                    audio.play_one_shot(scene, a.0, &clip, volume.unwrap_or(1.0));
-                })
-            },
-        );
-    }
-}
+pub use super::audio_api::LAudioSource;
 
 // ---- Animation --------------------------------------------------------------------------------
 
@@ -768,6 +679,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::render_settings_api::register(lua)?;
     super::terrain_api::register(lua)?;
     super::physics_api::register(lua)?;
+    super::audio_api::register(lua)?;
 
     // Debug / print
     let debug = lua.create_table()?;

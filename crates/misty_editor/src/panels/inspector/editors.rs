@@ -4,9 +4,9 @@ use egui::{Grid, Key, RichText, Ui};
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    Animation, AudioListener, AudioRolloff, AudioSource, BoxCollider, Camera, CapsuleCollider,
-    ClearFlags, Interpolation, Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface,
-    PostProcessVolume, Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
+    Animation, AudioListener, AudioSource, BoxCollider, Camera, CapsuleCollider, ClearFlags,
+    Interpolation, Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface, PostProcessVolume,
+    Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
 };
 
 use misty_engine::scene::{ScriptValue, Scripts};
@@ -35,6 +35,7 @@ pub fn icon(name: &str) -> &'static str {
         "Post-process Volume" => "◐",
         other => super::ui_editors::icon(other)
             .or_else(|| super::physics_editors::icon(other))
+            .or_else(|| super::audio_editors::icon(other))
             .or_else(|| super::terrain::icon(other))
             .unwrap_or("▣"),
     }
@@ -48,6 +49,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::terrain::NAMES.contains(&name) {
         return super::terrain::enabled_flag(state, e, name);
+    }
+    if super::audio_editors::NAMES.contains(&name) {
+        return super::audio_editors::enabled_flag(state, e, name);
     }
     match name {
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
@@ -75,6 +79,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::terrain::NAMES.contains(&name) {
         return super::terrain::set_enabled(state, e, name, on);
+    }
+    if super::audio_editors::NAMES.contains(&name) {
+        return super::audio_editors::set_enabled(state, e, name, on);
     }
     let w = &mut state.scene.world;
     match name {
@@ -135,7 +142,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Sphere Collider" => with::<SphereCollider>(ui, state, e, sphere_collider),
         "Capsule Collider" => with::<CapsuleCollider>(ui, state, e, capsule_collider),
         "Mesh Collider" => with::<MeshCollider>(ui, state, e, mesh_collider),
-        "Audio Source" => audio_source(ui, state, e),
+        "Audio Source" => super::audio_editors::audio_source(ui, state, e),
         "Animation" => super::anim::animation(ui, state, e),
         "Animator" => super::animator::animator(ui, state, e),
         "Particle System" => super::particles::particle_system(ui, state, e),
@@ -146,6 +153,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         ui_name if super::ui_editors::NAMES.contains(&ui_name) => {
             super::ui_editors::edit(ui, state, e, ui_name)
+        }
+        audio if super::audio_editors::NAMES.contains(&audio) => {
+            super::audio_editors::edit(ui, state, e, audio)
         }
         physics if super::physics_editors::NAMES.contains(&physics) => {
             super::physics_editors::edit(ui, state, e, physics)
@@ -275,7 +285,7 @@ pub(super) fn combo<T: Copy + PartialEq>(
 }
 
 /// [`combo`] for the component field `key` (shows "—" when the targets differ).
-fn combo_k<T: Copy + PartialEq>(
+pub(super) fn combo_k<T: Copy + PartialEq>(
     ui: &mut Ui,
     id: &str,
     key: &str,
@@ -560,39 +570,6 @@ fn material_slot(ui: &mut Ui, r: &mut MeshRenderer, i: usize, names: &[String]) 
     ch
 }
 
-/// Audio clip slot: pick from the project's clips, or drop one from the Project window.
-fn clip_field(ui: &mut Ui, id: &str, clips: &[String], clip: &mut Option<String>) -> bool {
-    let mut ch = false;
-    let current = clip
-        .as_deref()
-        .map(clip_name)
-        .unwrap_or_else(|| "None (Audio Clip)".into());
-    let slot = egui::ComboBox::from_id_salt(id)
-        .selected_text(mixed::text(
-            "clip",
-            format!("{} {current}", crate::state::AUDIO_ICON),
-        ))
-        .width(150.0)
-        .show_ui(ui, |ui| {
-            ch |= ui
-                .selectable_value(clip, None, "None (Audio Clip)")
-                .changed();
-            for c in clips {
-                ch |= ui
-                    .selectable_value(clip, Some(c.clone()), clip_name(c))
-                    .changed();
-            }
-        })
-        .response;
-    if let Some(path) = slot.dnd_release_payload::<crate::panels::AssetPayload>()
-        && misty_engine::audio::is_clip(&path.0)
-    {
-        *clip = Some(path.0.clone());
-        ch = true;
-    }
-    ch
-}
-
 /// File stem of a clip path ("Beep").
 pub fn clip_name(path: &str) -> String {
     std::path::Path::new(path)
@@ -601,99 +578,14 @@ pub fn clip_name(path: &str) -> String {
         .unwrap_or_default()
 }
 
-fn slider(ui: &mut Ui, key: &str, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
+pub(super) fn slider(
+    ui: &mut Ui,
+    key: &str,
+    v: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+) -> bool {
     ui.add(mixed::slider(key, egui::Slider::new(v, range)))
         .changed()
-}
-
-fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
-    let Ok(mut a) = state
-        .scene
-        .world
-        .get::<&AudioSource>(e)
-        .map(|c| (*c).clone())
-    else {
-        return false;
-    };
-    let clips: Vec<String> = state.assets.clips.iter().cloned().collect();
-    let changed = grid(ui, "audiosource_grid", |ui| {
-        let mut ch = false;
-        ui.label("AudioClip");
-        ch |= clip_field(ui, "as_clip", &clips, &mut a.clip);
-        ui.end_row();
-        for (label, key, flag) in [
-            ("Mute", "mute", &mut a.mute),
-            ("Play On Awake", "play_on_awake", &mut a.play_on_awake),
-            ("Loop", "loop", &mut a.looping),
-        ] {
-            ui.label(label);
-            ch |= mixed::checkbox(ui, key, flag, "").changed();
-            ui.end_row();
-        }
-        ui.label("Volume");
-        ch |= slider(ui, "volume", &mut a.volume, 0.0..=1.0);
-        ui.end_row();
-        ui.label("Pitch");
-        ch |= slider(ui, "pitch", &mut a.pitch, -3.0..=3.0);
-        ui.end_row();
-        ui.label("Stereo Pan");
-        ch |= slider(ui, "stereo_pan", &mut a.stereo_pan, -1.0..=1.0);
-        ui.end_row();
-        ui.label("Spatial Blend");
-        ui.vertical(|ui| {
-            ch |= slider(ui, "spatial_blend", &mut a.spatial_blend, 0.0..=1.0);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("2D").small().color(theme::TEXT_DIM));
-                ui.add_space(110.0);
-                ui.label(RichText::new("3D").small().color(theme::TEXT_DIM));
-            });
-        });
-        ui.end_row();
-        ch
-    });
-    let mut ch3d = false;
-    egui::CollapsingHeader::new("3D Sound Settings")
-        .id_salt("as_3d")
-        .default_open(true)
-        .show(ui, |ui| {
-            ch3d = grid(ui, "audiosource_3d", |ui| {
-                let mut ch = false;
-                ui.label("Volume Rolloff");
-                ch |= combo_k(
-                    ui,
-                    "as_rolloff",
-                    "rolloff",
-                    &mut a.rolloff,
-                    &AudioRolloff::ALL,
-                    AudioRolloff::label,
-                );
-                ui.end_row();
-                ui.label("Min Distance");
-                ch |= ui
-                    .add(
-                        mixed::drag("min_distance", egui::DragValue::new(&mut a.min_distance))
-                            .speed(0.1)
-                            .range(0.0..=a.max_distance),
-                    )
-                    .changed();
-                ui.end_row();
-                ui.label("Max Distance");
-                ch |= ui
-                    .add(
-                        mixed::drag("max_distance", egui::DragValue::new(&mut a.max_distance))
-                            .speed(1.0)
-                            .range(a.min_distance + 0.01..=1e6),
-                    )
-                    .changed();
-                ui.end_row();
-                ch
-            });
-        });
-    let changed = changed || ch3d;
-    if changed {
-        let _ = state.scene.world.insert_one(e, a);
-    }
-    changed
 }
 
 fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
