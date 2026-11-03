@@ -13,7 +13,7 @@ pub mod navigation;
 pub mod profiler;
 pub mod project;
 mod project_menus;
-mod scene;
+pub(crate) mod scene;
 
 #[cfg(test)]
 pub use game::stats_lines as game_stats_lines;
