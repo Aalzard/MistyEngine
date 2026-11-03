@@ -75,6 +75,11 @@ pub struct InputState {
     cursor_px: Option<Vec2>,
     /// Window size in physical pixels.
     screen: Vec2,
+    /// Characters typed and key presses with repeats (UI text editing).
+    text: String,
+    typed: Vec<String>,
+    /// Wheel movement in pixels (y > 0 = away from the user).
+    scroll: Vec2,
 }
 
 impl InputState {
@@ -82,6 +87,7 @@ impl InputState {
         let Some(name) = key_name(key) else { return };
         match state {
             ElementState::Pressed => {
+                self.typed.push(name.clone());
                 if !repeat {
                     self.pressed.insert(name.clone());
                 }
@@ -128,6 +134,16 @@ impl InputState {
         self.screen = Vec2::new(width as f32, height as f32);
     }
 
+    /// Text a key press produced (control characters are dropped).
+    pub fn typed_text(&mut self, text: &str) {
+        self.text.extend(text.chars().filter(|c| !c.is_control()));
+    }
+
+    /// Mouse wheel movement in pixels.
+    pub fn wheel(&mut self, delta: Vec2) {
+        self.scroll += delta;
+    }
+
     /// Focus lost: release everything so keys don't stick.
     pub fn clear_held(&mut self) {
         self.released.extend(self.held.drain());
@@ -146,6 +162,9 @@ impl InputState {
             mouse_delta: std::mem::take(&mut self.mouse_delta),
             mouse_position: self.cursor_px,
             screen_size: self.screen,
+            text: std::mem::take(&mut self.text),
+            typed: std::mem::take(&mut self.typed),
+            scroll_delta: std::mem::take(&mut self.scroll),
         }
     }
 }

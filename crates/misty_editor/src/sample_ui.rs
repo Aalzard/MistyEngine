@@ -106,6 +106,11 @@ fn demo_scene() -> Scene {
         t.font_size = 26.0;
         t.alignment = TextAnchor::MiddleCenter;
     }
+    // UIDemo predates the Event System object (the first Canvas now brings one); it plays the
+    // same without it, so the committed scene stays as it was.
+    if let Some(es) = s.scene.find_by_name("EventSystem") {
+        s.scene.despawn(es);
+    }
     s.scene
 }
 

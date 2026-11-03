@@ -22,6 +22,8 @@ pub mod particles_api;
 pub mod physics_api;
 pub mod render_settings_api;
 pub mod ui_api;
+mod ui_dispatch;
+pub mod ui_widgets_api;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -34,7 +36,7 @@ use crate::animation::AnimationPlayer;
 use crate::audio::Audio;
 use crate::physics::{Contact, Physics};
 use crate::runtime::Time;
-use crate::scene::{ButtonCall, Scene, ScriptValue, Scripts, UiButton};
+use crate::scene::{Scene, ScriptValue, Scripts};
 use crate::ui::UiInteraction;
 use api::{LGameObject, LTransform, LVec3};
 
@@ -59,9 +61,32 @@ pub struct Input {
     pub mouse_position: Option<Vec2>,
     /// Game image size in pixels (UI layout and clicks use it).
     pub screen_size: Vec2,
+    /// Characters typed this frame (Input Fields).
+    pub text: String,
+    /// Key presses this frame including auto-repeats (Input Field editing).
+    pub typed: Vec<String>,
+    /// Mouse wheel this frame in pixels (y > 0 = scrolled away from the user).
+    pub scroll_delta: Vec2,
 }
 
 impl Input {
+    /// This frame's input as the UI event system sees it.
+    pub fn ui_pointer(&self, dt: f32) -> crate::ui::PointerInput {
+        crate::ui::PointerInput {
+            position: self.mouse_position,
+            down: self.mouse_pressed[0],
+            held: self.mouse_held[0],
+            up: self.mouse_released[0],
+            scroll: self.scroll_delta,
+            text: self.text.clone(),
+            keys: self.typed.clone(),
+            shift: self.key("left shift") || self.key("right shift"),
+            ctrl: self.key("left ctrl") || self.key("right ctrl"),
+            screen: self.screen_size,
+            dt,
+        }
+    }
+
     pub fn key(&self, k: &str) -> bool {
         self.held.contains(&k.to_lowercase())
     }
@@ -476,44 +501,29 @@ impl ScriptHost {
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
     }
 
-    /// UI pointer events (before FixedUpdate/Update, like an event system): hover/press state
-    /// and Button On Click calls.
+    /// UI events (before FixedUpdate/Update, like an event system): hover/press/selection,
+    /// widget input, then On Click / On Value Changed calls and Lua listeners.
     fn ui_events(&mut self) {
-        let calls: Vec<ButtonCall> = {
-            let Some(w) = self.lua.app_data_ref::<World>() else {
+        let events = {
+            let Some(mut w) = self.lua.app_data_mut::<World>() else {
                 return;
             };
-            let input = &w.input;
-            let layout = crate::ui::layout(&w.scene, input.screen_size);
-            let clicked = self.ui.update(
-                &layout,
-                &w.scene,
-                input.mouse_position,
-                input.mouse_pressed[0],
-                input.mouse_released[0],
-            );
-            clicked
-                .into_iter()
-                .filter_map(|b| {
-                    w.scene
-                        .world
-                        .get::<&UiButton>(b)
-                        .ok()
-                        .map(|c| c.on_click.clone())
-                })
-                .flatten()
-                .collect()
+            let w = &mut *w;
+            let pointer = w.input.ui_pointer(w.time.unscaled_delta);
+            self.ui.update(&mut w.scene, &pointer)
         };
-        for call in calls {
-            match call.target {
-                Some(t) if !call.method.is_empty() => self.send_message(t, &call.method),
-                _ => {}
-            }
+        for ev in events {
+            self.ui_event(ev);
         }
     }
 
     /// Call `method` on every running script of `target` that defines it.
     pub fn send_message(&mut self, target: Entity, method: &str) {
+        self.send_message_with(target, method, None, "SendMessage");
+    }
+
+    /// Like [`ScriptHost::send_message`] with an argument; `what` names the caller in warnings.
+    fn send_message_with(&mut self, target: Entity, method: &str, arg: Option<Value>, what: &str) {
         let mut found = false;
         for i in 0..self.instances.len() {
             let inst = &self.instances[i];
@@ -527,7 +537,7 @@ impl ScriptHost {
                 .is_ok_and(|f| f.is_some());
             if defined {
                 found = true;
-                self.call(i, method, None);
+                self.call(i, method, arg.clone());
                 self.flush_spawned();
             }
         }
@@ -541,7 +551,7 @@ impl ScriptHost {
             });
             self.log(
                 LogKind::Warning,
-                format!("On Click: no script on '{name}' has a method '{method}'"),
+                format!("{what}: no script on '{name}' has a method '{method}'"),
             );
         }
     }

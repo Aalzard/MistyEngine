@@ -94,7 +94,11 @@ pub fn register(lua: &Lua) -> Result<()> {
 }
 
 /// Read a component of `e` (error if it was removed or the object destroyed).
-fn get<T: SceneComponent, R>(lua: &Lua, e: Entity, f: impl FnOnce(&T) -> R) -> Result<R> {
+pub(super) fn get<T: SceneComponent, R>(
+    lua: &Lua,
+    e: Entity,
+    f: impl FnOnce(&T) -> R,
+) -> Result<R> {
     with_world(lua, |w| {
         w.scene
             .world
@@ -104,7 +108,7 @@ fn get<T: SceneComponent, R>(lua: &Lua, e: Entity, f: impl FnOnce(&T) -> R) -> R
     })?
 }
 
-fn set<T: SceneComponent>(lua: &Lua, e: Entity, f: impl FnOnce(&mut T)) -> Result<()> {
+pub(super) fn set<T: SceneComponent>(lua: &Lua, e: Entity, f: impl FnOnce(&mut T)) -> Result<()> {
     with_world(lua, |w| {
         w.scene
             .world
@@ -190,6 +194,7 @@ impl UserData for LButton {
             set(lua, b.0, |c: &mut UiButton| c.interactable = v)
         });
         f.add_field_method_get("gameObject", |_, b| Ok(LGameObject(b.0)));
+        f.add_field_method_get("onClick", |_, b| Ok(super::ui_widgets_api::on_click(b.0)));
     }
 }
 
@@ -204,7 +209,7 @@ pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
         _ => false,
     };
     if !present {
-        return Ok(None);
+        return super::ui_widgets_api::component(lua, e, name);
     }
     let ud = match name {
         "Text" => lua.create_userdata(LText(e))?,

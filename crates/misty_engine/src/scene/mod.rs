@@ -8,6 +8,8 @@ pub mod prefab;
 pub mod registry;
 pub mod render_settings;
 pub mod ui_components;
+pub mod ui_layout_components;
+pub mod ui_widgets;
 
 use glam::{Mat4, Vec3};
 use hecs::{Entity, EntityBuilder, World};
@@ -17,6 +19,8 @@ pub use physics_components::*;
 pub use post_process::*;
 pub use registry::SceneComponent;
 pub use ui_components::*;
+pub use ui_layout_components::*;
+pub use ui_widgets::*;
 
 pub struct Scene {
     pub name: String,
@@ -346,8 +350,23 @@ impl Scene {
         copy
     }
 
-    /// Deep copy of `e` appended under `parent` (keeps the name).
+    /// Deep copy of `e` appended under `parent` (keeps the name). References between objects
+    /// of the copied subtree (a Slider's Fill, …) point at the copies.
     pub fn copy_subtree(&mut self, e: Entity, parent: Option<Entity>) -> Entity {
+        let mut map = std::collections::HashMap::new();
+        let copy = self.copy_nodes(e, parent, &mut map);
+        for new in map.values() {
+            file::remap_copied_refs(&mut self.world, *new, &map);
+        }
+        copy
+    }
+
+    fn copy_nodes(
+        &mut self,
+        e: Entity,
+        parent: Option<Entity>,
+        map: &mut std::collections::HashMap<Entity, Entity>,
+    ) -> Entity {
         let mut b = EntityBuilder::new();
         for info in registry::components() {
             (info.clone_into)(&self.world, e, &mut b);
@@ -356,8 +375,9 @@ impl Scene {
         // Fresh links; children are re-attached below.
         *self.world.get::<&mut Node>(copy).expect("copied Node") = Node::default();
         self.attach(copy, parent, None);
+        map.insert(e, copy);
         for c in self.children(e) {
-            self.copy_subtree(c, Some(copy));
+            self.copy_nodes(c, Some(copy), map);
         }
         copy
     }

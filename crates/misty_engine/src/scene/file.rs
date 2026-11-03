@@ -69,7 +69,16 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Spring Joint", "", "connected_body"),
 ];
 
+/// Every object-reference field: the ones above plus the UI widgets' (see `ui_widgets`).
+fn all_refs() -> impl Iterator<Item = &'static (&'static str, &'static str, &'static str)> {
+    OBJECT_REFS
+        .iter()
+        .chain(super::ui_widgets::WIDGET_REFS)
+        .chain(super::ui_widgets::SELECTABLE_REFS)
+}
+
 /// Rewrite every object reference with `f` (entity bits ↔ object index); unmapped → null.
+/// The middle entry names a list of items or a nested object holding the field.
 fn remap_refs(
     components: &mut BTreeMap<String, serde_json::Value>,
     f: impl Fn(u64) -> Option<u64>,
@@ -80,7 +89,7 @@ fn remap_refs(
             .and_then(&f)
             .map_or(serde_json::Value::Null, Into::into);
     };
-    for (comp, list, field) in OBJECT_REFS {
+    for (comp, list, field) in all_refs() {
         let Some(c) = components.get_mut(*comp) else {
             continue;
         };
@@ -90,13 +99,46 @@ fn remap_refs(
             }
             continue;
         }
-        let Some(items) = c.get_mut(*list).and_then(|l| l.as_array_mut()) else {
+        match c.get_mut(*list) {
+            Some(serde_json::Value::Array(items)) => {
+                for item in items {
+                    if let Some(v) = item.get_mut(*field) {
+                        remap(v);
+                    }
+                }
+            }
+            Some(obj @ serde_json::Value::Object(_)) => {
+                if let Some(v) = obj.get_mut(*field) {
+                    remap(v);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Point references of a copied object at the copies in `map` (others stay as they are).
+pub(super) fn remap_copied_refs(
+    world: &mut hecs::World,
+    e: Entity,
+    map: &std::collections::HashMap<Entity, Entity>,
+) {
+    let mut names: Vec<&str> = all_refs().map(|r| r.0).collect();
+    names.dedup();
+    for name in names {
+        let Some(info) = registry::find(name) else {
             continue;
         };
-        for item in items {
-            if let Some(v) = item.get_mut(*field) {
-                remap(v);
-            }
+        let Some(value) = (info.to_json)(world, e) else {
+            continue;
+        };
+        let mut one = BTreeMap::from([(name.to_owned(), value)]);
+        remap_refs(&mut one, |bits| {
+            let old = Entity::from_bits(bits)?;
+            Some(map.get(&old).map_or(bits, |n| n.to_bits().get()))
+        });
+        if let Some(v) = one.remove(name) {
+            let _ = (info.from_json)(world, e, v);
         }
     }
 }

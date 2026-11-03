@@ -59,21 +59,32 @@ pub fn capture(ctx: &egui::Context, view: egui::Rect) -> Input {
             }
         }
         for e in &i.events {
-            if let Event::Key {
-                key,
-                pressed,
-                repeat: false,
-                ..
-            } = e
-            {
-                let set = if *pressed {
-                    &mut input.pressed
-                } else {
-                    &mut input.released
-                };
-                set.insert(key_name(*key));
+            match e {
+                Event::Key {
+                    key,
+                    pressed,
+                    repeat,
+                    ..
+                } => {
+                    // Auto-repeats only reach UI text editing.
+                    if *pressed {
+                        input.typed.push(key_name(*key));
+                    }
+                    if !*repeat {
+                        let set = if *pressed {
+                            &mut input.pressed
+                        } else {
+                            &mut input.released
+                        };
+                        set.insert(key_name(*key));
+                    }
+                }
+                Event::Text(t) | Event::Paste(t) => input.text.push_str(t),
+                _ => {}
             }
         }
+        let wheel = i.smooth_scroll_delta * ppp;
+        input.scroll_delta = glam::Vec2::new(wheel.x, wheel.y);
         for (b, idx) in [
             (PointerButton::Primary, 0),
             (PointerButton::Secondary, 1),

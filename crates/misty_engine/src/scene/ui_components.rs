@@ -270,8 +270,18 @@ pub struct UiButton {
     pub highlighted_color: [f32; 4],
     pub pressed_color: [f32; 4],
     pub disabled_color: [f32; 4],
+    /// Colour while selected (last clicked); left out of files while at its default so older
+    /// scenes re-save unchanged.
+    #[serde(skip_serializing_if = "is_default_selected")]
+    pub selected_color: [f32; 4],
     pub color_multiplier: f32,
     pub on_click: Vec<ButtonCall>,
+}
+
+const DEFAULT_SELECTED: [f32; 4] = [245.0 / 255.0, 245.0 / 255.0, 245.0 / 255.0, 1.0];
+
+fn is_default_selected(c: &[f32; 4]) -> bool {
+    *c == DEFAULT_SELECTED
 }
 
 impl Default for UiButton {
@@ -283,6 +293,7 @@ impl Default for UiButton {
             highlighted_color: [g(245.0), g(245.0), g(245.0), 1.0],
             pressed_color: [g(200.0), g(200.0), g(200.0), 1.0],
             disabled_color: [g(200.0), g(200.0), g(200.0), 0.5],
+            selected_color: DEFAULT_SELECTED,
             color_multiplier: 1.0,
             on_click: Vec::new(),
         }
