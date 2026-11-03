@@ -863,3 +863,56 @@ Record of choices made without asking, and why.
      buttons (Vertical Layout Group + Content Size Fitter), and `SettingsMenu.lua` updating a summary Text from
      listeners plus an On End Edit call. Its Canvas Scaler uses a 1280×720 reference matched to height so the
      panel fits any window.
+220. **Rendering modes are pipeline variants.** `RenderingMode` (Opaque / Cutout / Fade / Transparent) plus
+     Unlit and Double Sided pick one mesh pipeline (`render/variants.rs`), built the first time a frame needs it.
+     Cutout discards in its own entry point (`fs_cutout`) so Opaque keeps early depth. Fade = straight alpha
+     blending (specular fades too); Transparent = premultiplied: the diffuse is scaled by alpha and the output
+     alpha is `1 − oneMinusReflectivity + alpha × oneMinusReflectivity` (0.96 for dielectrics), so reflections
+     and highlights stay, like the reference. Blended modes test but don't write depth; their emission blends
+     into the bloom target the same way.
+221. **Draw order:** Opaque (queue 2000) then Cutout (2450) front to back, terrains, the grid, then Fade /
+     Transparent (3000) back to front, then particles, lines and the outline. Distance is to the object's origin
+     (squared distance, or along the view axis when orthographic); ties keep Hierarchy order. Transparent meshes
+     and particles are sorted separately (all meshes before all particles).
+222. **Shadows per material:** Opaque casts as before; Cutout casts clipped shadows (the shadow pass samples the
+     albedo alpha, `fs_shadow_cutout`); Fade, Transparent and the Unlit shaders cast none (the reference dithers
+     semi-transparent casters; its unlit built-ins have no caster pass). Double Sided casters render both faces.
+     Receiving is unchanged (Unlit ignores light and shadows).
+223. **Maps:** Metallic map R = metallic and A = smoothness; with a map the Metallic slider is hidden (metallic
+     = R) and Smoothness scales A — one value stands for both Glossiness and Gloss Map Scale. Smoothness Source =
+     Albedo Alpha takes smoothness from the albedo alpha and then alpha comes from the colour only. Occlusion =
+     G channel, `lerp(1, G, strength)`, applied to ambient light and reflections only. Emission map (sRGB) ×
+     emission colour × intensity, only while Emission is on. All main maps share one Tiling/Offset. Data maps
+     (metallic, occlusion) are sampled as linear textures; unset maps bind a 1×1 white texture, so older
+     materials shade exactly as before.
+224. **Double Sided is an extra Advanced Option** (the reference Standard shader has no culling toggle): Cull Off
+     in the main and shadow passes, back faces lit with the flipped normal.
+225. **Unlit shaders:** `Unlit/Color` = colour only, `Unlit/Texture` = texture only, `Unlit/Transparent` = texture
+     with alpha blending (Fade queue); all are fogged, unlit, cast/receive no shadows and add no glow. The shader
+     is stored by name in the `.mat` (unknown names fall back to Standard) and switching keeps every value.
+226. **Materials list:** Mesh Renderer `material` stays Element 0; `extra_materials` holds elements 1.. (left out
+     of files when empty). Our meshes have one submesh, so each extra element draws the mesh again on top, like
+     the reference does for extra materials on the last submesh. The Inspector has a Size field (1–8).
+227. **Instance and shared materials (Play mode only).** `renderer.material` copies the element's material on
+     first use into `MeshRenderer.instances` (never saved, gone when Play stops) — only that object changes.
+     `renderer.sharedMaterial` edits go to `Scene.shared_materials` by asset path and show on every renderer
+     using that asset; they are not written to the `.mat` (the reference editor writes them to the asset).
+     Renderers resolve instance → script-changed asset → asset → Default-Material. Default-Material can't be
+     changed from scripts.
+228. **Lua material properties use the Standard names** (`_Color`, `_EmissionColor`, `_Metallic`, `_Glossiness`,
+     `_GlossMapScale`, `_BumpScale`, `_Cutoff`, `_OcclusionStrength`, `_Mode`, `_SmoothnessTextureChannel`,
+     `_Cull`, `_MainTex`, `_BumpMap`, `_MetallicGlossMap`, `_OcclusionMap`, `_EmissionMap`). `_EmissionColor` is
+     colour × intensity; setting it divides by the brightest component above 1. `SetFloat("_Mode")` switches the
+     mode completely (no keywords or render queue to set by hand); only `_EMISSION` is a switchable keyword.
+     Unknown names are ignored. Texture offset/scale use Vector3 (z ignored) since Lua has no Vector2 yet.
+229. **Material previews** are rendered by the engine renderer after the UI pass (`material_preview`), so a new
+     preview appears one frame later: two directional lights, a dark solid background, the default lighting
+     environment for reflections. Project thumbnails are 128 px, rendered into one shared target and copied to
+     their own texture, at most 6 per frame, and re-rendered when the `.mat` file's time changes. The Inspector
+     preview (bottom of the material Inspector, sphere or cube, drag to rotate) re-renders when the material,
+     size or rotation changes. Only Project-selected materials get the preview, not the inline editors.
+230. **`.mat` compatibility:** fields added for this step are left out of the file at their defaults, so the
+     committed materials re-save byte-identical (tested); old files load as Opaque, cutoff 0.5, strength 1.
+231. **MaterialsDemo is generated by code** (`sample_materials`, ignored writer + check + play test) with its own
+     generated textures (fence lattice with alpha, hazard sign, panel glow grid, metallic stripes) and materials;
+     the floor reuses `Checker.mat`. `MISTY_ASSET=<Assets/…>` selects a Project asset for editor screenshots.

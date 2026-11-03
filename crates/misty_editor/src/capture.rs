@@ -1,5 +1,5 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
-//! See [`apply_env`] for `MISTY_SELECT` / `MISTY_TAB`.
+//! See [`apply_env`] for `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_TAB`.
 
 use std::path::PathBuf;
 
@@ -52,6 +52,18 @@ pub fn apply_env(
         && let Some(e) = s.scene.find_by_name(&name.to_string_lossy())
     {
         s.select(e);
+    }
+    // `MISTY_ASSET=Assets/…` selects a Project asset (its folder is opened, the Inspector shows it).
+    if let Some(rel) = std::env::var_os("MISTY_ASSET") {
+        let rel = rel.to_string_lossy().into_owned();
+        let abs = s.assets.absolute(&rel);
+        if let Some(dir) = abs.parent() {
+            s.project.current = dir.to_path_buf();
+            s.project.refresh();
+        }
+        s.project.selected = Some(abs);
+        s.selection.clear();
+        s.inspector_asset = Some(rel);
     }
     if let Some(title) = std::env::var_os("MISTY_TAB")
         && let Some(tab) =

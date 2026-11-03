@@ -1,0 +1,30 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.08,
+    0.09,
+    0.1,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 0.7,
+  "emission_enabled": true,
+  "emission": [
+    0.25,
+    0.85,
+    1.0
+  ],
+  "emission_intensity": 3.0,
+  "albedo_map": null,
+  "normal_map": null,
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "emission_map": "Assets/Textures/PanelGlow.png"
+}

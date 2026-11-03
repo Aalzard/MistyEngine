@@ -109,7 +109,8 @@ fn frame_parts(
         rotation: Quat::IDENTITY,
         projection: Projection::Perspective { fov_y: 20.0 },
         near: 0.1,
-        far: 20.0,
+        // Not closer: the view uniform fades the grid from 30 m on.
+        far: 100.0,
     };
     let light = |direction: Vec3, intensity| LightData {
         kind: LightType::Directional,

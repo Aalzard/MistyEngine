@@ -38,6 +38,8 @@ mod sample_assets;
 #[cfg(test)]
 mod sample_lighting;
 #[cfg(test)]
+mod sample_materials;
+#[cfg(test)]
 mod sample_particles;
 #[cfg(test)]
 mod sample_physics;

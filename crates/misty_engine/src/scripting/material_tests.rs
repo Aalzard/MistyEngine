@@ -1,6 +1,6 @@
 //! Lua `MeshRenderer` / `Material` tests: instance copies, shared edits, property names.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use glam::Vec3;
 
@@ -59,9 +59,9 @@ fn ball(scene: &mut Scene, name: &str, script: Option<&str>) -> Entity {
     e
 }
 
-fn run(scene: &mut Scene, root: &PathBuf, frames: u32) -> Vec<(LogKind, String)> {
+fn run(scene: &mut Scene, root: &Path, frames: u32) -> Vec<(LogKind, String)> {
     let physics = Physics::build(scene, Vec3::new(0.0, -9.81, 0.0));
-    let mut host = ScriptHost::start(scene, physics, root.clone());
+    let mut host = ScriptHost::start(scene, physics, root.to_path_buf());
     let mut time = Time::default();
     for _ in 0..frames {
         time.advance(1.0 / 60.0);
@@ -71,7 +71,7 @@ fn run(scene: &mut Scene, root: &PathBuf, frames: u32) -> Vec<(LogKind, String)>
 }
 
 /// What each object renders with (by Hierarchy order).
-fn rendered(scene: &Scene, root: &PathBuf) -> Vec<MaterialParams> {
+fn rendered(scene: &Scene, root: &Path) -> Vec<MaterialParams> {
     let cache = AssetCache::open(root);
     render_scene::mesh_draws(scene, &cache, |_| false)
         .into_iter()
