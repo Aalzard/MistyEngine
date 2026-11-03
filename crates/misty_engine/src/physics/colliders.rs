@@ -29,6 +29,14 @@ impl Physics {
                 }
                 self.insert_collider(scene, e, owner, collider);
             }
+            // Terrain Collider: a static heightfield placed in world space (ignores rotation).
+            if let Some(c) = crate::terrain::collider(scene, e) {
+                let c = c
+                    .collision_groups(groups)
+                    .active_events(rp::ActiveEvents::COLLISION_EVENTS);
+                let h = self.world.insert_collider(c.build(), None);
+                self.colliders.insert(h, e);
+            }
         }
     }
 

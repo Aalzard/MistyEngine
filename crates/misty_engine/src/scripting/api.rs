@@ -368,7 +368,10 @@ impl UserData for LGameObject {
                 Some(_) => lua.create_userdata(LParticleSystem(e)).map(Value::UserData),
                 None => Ok(match super::physics_api::component(lua, e, &name)? {
                     Some(v) => v,
-                    None => super::ui_api::component(lua, e, &name)?.unwrap_or(Value::Nil),
+                    None => match super::ui_api::component(lua, e, &name)? {
+                        Some(v) => v,
+                        None => super::terrain_api::component(lua, e, &name)?.unwrap_or(Value::Nil),
+                    },
                 }),
             }
         });
@@ -754,6 +757,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     g.set("Vector3", v3)?;
     super::ui_api::register(lua)?;
     super::render_settings_api::register(lua)?;
+    super::terrain_api::register(lua)?;
     super::physics_api::register(lua)?;
 
     // Debug / print

@@ -153,6 +153,7 @@ pub struct GameView {
     pub meshes: Vec<MeshDraw>,
     pub lights: Vec<LightData>,
     pub particles: Vec<ParticleBatch>,
+    pub terrains: Vec<crate::terrain::TerrainDraw>,
     pub environment: Environment,
     pub post: PostSettings,
 }
@@ -170,6 +171,7 @@ impl GameView {
             post: post_settings(scene),
             lights,
             particles: crate::particles::batches(scene),
+            terrains: crate::terrain::draws(scene),
         })
     }
 
@@ -185,6 +187,7 @@ impl GameView {
             lines: &[],
             meshes: &self.meshes,
             particles: &self.particles,
+            terrains: &self.terrains,
             shaded: true,
             lights: &self.lights,
         }

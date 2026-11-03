@@ -7,9 +7,11 @@ mod pipelines;
 pub mod post;
 mod shadows;
 mod target;
+mod terrain;
 pub mod texture;
 pub mod ui;
 
+pub use crate::terrain::TerrainDraw;
 pub use environment::{Environment, Sun};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
@@ -142,6 +144,8 @@ pub struct Frame<'a> {
     pub meshes: &'a [MeshDraw],
     /// Particle systems with live particles (drawn after opaque meshes).
     pub particles: &'a [ParticleBatch],
+    /// Terrains (lit, shadowed, drawn with the opaque meshes).
+    pub terrains: &'a [TerrainDraw],
     /// Draw shaded meshes (false in the Wireframe draw mode; outlines still work).
     pub shaded: bool,
     pub lights: &'a [LightData],
@@ -211,6 +215,7 @@ pub struct Renderer {
     line_buffer: wgpu::Buffer,
     line_capacity: usize,
     particle_instances: particles::InstanceBuffer,
+    terrains: terrain::TerrainCache,
     meshes: Vec<GpuMesh>,
     /// Imported meshes by "path#index" (None = could not be loaded), uploaded on first use.
     imported: std::collections::HashMap<String, Option<GpuMesh>>,
@@ -277,6 +282,7 @@ impl Renderer {
             line_buffer: line_buffer(device, line_capacity),
             line_capacity,
             particle_instances: particles::InstanceBuffer::new(device),
+            terrains: terrain::TerrainCache::new(device),
             meshes,
             imported: Default::default(),
             imported_generation: models::generation(),
@@ -321,6 +327,18 @@ impl Renderer {
                     d.material.normal_map.as_deref(),
                 );
             }
+        }
+        if !frame.terrains.is_empty() {
+            // Group 2 of the terrain pipeline is unused; any material group fits.
+            let layout = &self.pipelines.material_layout;
+            self.textures.prepare(device, queue, layout, None, None);
+            self.terrains.prepare(
+                device,
+                queue,
+                &self.pipelines.terrain_layout,
+                &mut self.textures,
+                frame.terrains,
+            );
         }
         for b in frame.particles {
             self.textures.prepare(
@@ -370,8 +388,10 @@ impl Renderer {
         );
 
         // Per-draw data, grown on demand.
-        if frame.meshes.len() > self.draws_capacity {
-            self.draws_capacity = frame.meshes.len().next_power_of_two();
+        // Terrains take the draw slots after the meshes.
+        let draw_count = frame.meshes.len() + frame.terrains.len();
+        if draw_count > self.draws_capacity {
+            self.draws_capacity = draw_count.next_power_of_two();
             self.draws_buffer = draws_buffer(device, self.draws_capacity);
             (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
                 device,
@@ -381,7 +401,12 @@ impl Renderer {
                 &self.shadows,
             );
         }
-        let draws: Vec<DrawUniform> = frame.meshes.iter().map(draw_uniform).collect();
+        let draws: Vec<DrawUniform> = frame
+            .meshes
+            .iter()
+            .map(draw_uniform)
+            .chain(frame.terrains.iter().map(terrain::draw_uniform))
+            .collect();
         if !draws.is_empty() {
             queue.write_buffer(&self.draws_buffer, 0, bytemuck::cast_slice(&draws));
         }
@@ -609,6 +634,9 @@ impl Renderer {
         pass.set_bind_group(0, &self.shadows.view_bind_group, &[offset]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
         self.draw_meshes(&mut pass, frame, false, |d| d.cast_shadows);
+        let first = frame.meshes.len();
+        self.terrains
+            .draw(&mut pass, frame.terrains, first, false, |t| t.cast_shadows);
     }
 
     fn mask_pass(&self, encoder: &mut wgpu::CommandEncoder, target: &RenderTarget, frame: &Frame) {
@@ -686,6 +714,18 @@ impl Renderer {
             pass.set_pipeline(&self.pipelines.mesh);
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
             self.draw_meshes(&mut pass, frame, true, |_| true);
+        }
+
+        if frame.shaded
+            && !frame.terrains.is_empty()
+            && let Some(material) = self.textures.get(None, None)
+        {
+            pass.set_pipeline(&self.pipelines.terrain);
+            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            pass.set_bind_group(2, material, &[]);
+            let first = frame.meshes.len();
+            self.terrains
+                .draw(&mut pass, frame.terrains, first, true, |_| true);
         }
 
         if frame.grid.is_some() {
