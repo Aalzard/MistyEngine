@@ -1105,3 +1105,74 @@ Record of choices made without asking, and why.
      API before keywords before names from the file, shorter first. Enter on a fully typed name inserts a new
      line instead of accepting. Hovering an API name shows its signature (quick info); Ctrl+click and F12 go to
      a definition in the same file.
+
+272. **Our own profiler, not puffin or tracing.** `puffin` comes with an egui viewer tied to
+     particular egui versions and its own frame/scope model; `tracing` needs a subscriber and
+     per-event allocation to get timings out. A small `profiler` module is enough: the
+     `profile_scope!(name[, Category])` macro opens a guard that records a sample (name,
+     category, depth, start, duration) into a thread-local list; while recording is off it
+     costs one relaxed atomic load and the name expression (which may be a `format!`, e.g. the
+     per-script "Orbit.Update()") is never evaluated. `end_frame()` on the main loop's thread
+     moves the samples, the Rendering/Memory counters and the wall-clock frame time into a
+     300-frame history. Children inherit the parent's category; the CPU chart stacks each
+     category's *self* time, and Others also gets the time no scope covers (editor UI, vsync).
+273. **Profiler window** (Window ▸ Analysis ▸ Profiler, Ctrl+7, on-demand tab docking with the
+     Project/Console, so the Game view keeps rendering): Record / Clear / previous / next / Current; module charts with the
+     newest frame on the right: CPU Usage (stacked categories, legend toggles, 60/30/15 FPS
+     lines, GPU time as a yellow line), Rendering (batches) and Memory (GPU MB). Clicking a
+     chart selects a frame and its module; details show the merged Hierarchy (Total %, Self %,
+     Calls, Time ms, Self ms, expandable by path) or a Timeline of the samples, or the
+     Rendering / Memory counters. Recording works in Edit and Play mode (one profiler frame per
+     editor frame); Rendering/Memory counters describe the Game view. No Deep Profile, no
+     per-thread rows, no saving/loading captures in the editor, no GC/allocation counters.
+274. **GPU time** comes from pass timestamp queries: the device is created with
+     `TIMESTAMP_QUERY` when the adapter has it (editor through egui-wgpu's device descriptor,
+     the player and headless tests directly). The first pass of a render (now the selection
+     mask) writes the start, the final composite the end; up to 8 renders are read back
+     asynchronously and reported to the frame they were submitted in. Without the feature the
+     GPU line and value are simply missing. egui's own rendering is not included.
+275. **Player capture:** `MISTY_PROFILE=<file>` makes the player record from the first frame and
+     write one JSON object per frame (JSON Lines, 4 frames late so GPU times are in) until it
+     quits. There is no viewer for captures yet.
+276. **Culling** is done in the renderer, per render: each mesh's local box (primitive half
+     extents, imported mesh bounds) is transformed to a world AABB and tested against the six
+     planes of the camera's view-projection; terrains are culled whole (bounds cached per
+     terrain version), particle systems by the box around their live particles. Every shadow
+     map (directional, each spot, each point-light face) culls its casters against its own
+     matrix. The test is conservative, so it only drops what the GPU would have clipped anyway;
+     the directional map is still fitted around *all* casters (no cascades), so it culls
+     nothing there. No occlusion culling, no layer cull masks or per-layer cull distances, no
+     LOD groups.
+277. **Automatic GPU instancing instead of static batching.** Per-draw data already lives in a
+     storage buffer, so instancing needs no new vertex streams: a second storage buffer maps
+     `instance_index → draw slot` and the shaders read `draws[slots[instance_index]]` (model
+     and normal matrix, colour, material values). Draws with the same mesh, pipeline variant
+     and material texture bind group form one batch. Opaque and Cutout queues group equal keys
+     anywhere in the front-to-back list (batches stay ordered by their nearest member, queues
+     stay in order); Fade/Transparent keep their back-to-front order and only merge neighbours;
+     shadow casters group freely (depth results don't depend on order). It is always on (no
+     per-material "Enable GPU Instancing" toggle; `RenderOptions` can switch culling and
+     instancing off for comparisons). Static batching (merging static meshes into one buffer)
+     was not done: instancing already brings the stress scene to a few dozen draw calls and
+     static batching would need per-scene combined meshes and memory.
+278. **Identical images:** a headless test renders a small scene (four materials incl. cutout
+     and fade, objects outside the view and behind the camera, sun + spot + point shadows,
+     particles) with culling/instancing on and off and compares every pixel: they are equal.
+     Opaque draw order inside a queue changes with instancing, which could only matter for
+     exactly coplanar overlapping faces.
+279. **Hot-path allocations removed:** the per-draw uniform list, the slot list and the batcher's
+     map are kept between frames; terrain bounds are measured once per terrain version instead
+     of scanning the heightmap every frame; shadow fitting reuses the culling boxes; the Game
+     view Stats no longer look up every mesh's data each frame. Still per frame: the scene →
+     draw list gathering (`GameView::new`, one `MaterialParams` clone per draw) and one terrain
+     parameter buffer + bind group.
+280. **Stats overlay** (Game view ▸ Stats, as before) now shows FPS and frame time, CPU main and
+     render-call time, GPU time, Batches and Saved by batching, Tris/Verts, Screen, SetPass
+     calls, visible shadow casters, visible/culled meshes, audio voices, physics/script
+     counts. "Batches" counts every draw call of the render, shadow-map draws included.
+281. **StressDemo is generated by code** (`sample_stress`, ignored writer + check + headless
+     play test): 5,040 cubes and spheres on a 72 × 70 grid (four new "Stress *" materials, every
+     25th object spinning with the existing `Rotator.lua`), a ground plane (Sand), a camera
+     orbiting with the new `CameraOrbit.lua`, a soft-shadowed sun, a hard-shadowed spot and two
+     point lights. No colliders (it measures rendering). The ignored
+     `stress_benchmark` test renders it headless at 1280×720 with each optimisation on/off.

@@ -129,8 +129,12 @@ impl UiRenderer {
         scene: &Scene,
         interaction: Option<&UiInteraction>,
     ) {
+        crate::profile_scope!("UI.Render", crate::profiler::Category::Ui);
         let (w, h) = target.size();
-        let l = layout(scene, Vec2::new(w as f32, h as f32));
+        let l = {
+            crate::profile_scope!("UI.Layout");
+            layout(scene, Vec2::new(w as f32, h as f32))
+        };
         if l.nodes.is_empty() {
             return;
         }

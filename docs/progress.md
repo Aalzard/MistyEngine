@@ -839,3 +839,56 @@
 - Only the first syntax error is shown; runtime errors aren't squiggled.
 - Undo history is lost when a file is closed; no split views, no drag-and-drop of text, no Ctrl+Shift+Up/Down
   selection expansion; word-wrap Up/Down moves by lines; the minimap is scaled to fit rather than scrolled.
+
+## Performance tooling + first optimisations ✅
+
+### Done
+- Engine `profiler`: `profile_scope!("Name", Category::…)` (one atomic load while not recording),
+  per-frame samples with nesting, a 300-frame history, self time per category, a merged
+  Hierarchy tree and a JSON Lines capture writer. Scopes cover the player loop: Scripts
+  Start/FixedUpdate/Update/LateUpdate and every script method ("Rotator.Update()"), physics
+  step and transform sync, navigation, animation, audio, particles, UI events/layout/render,
+  scene gathering and the renderer's prepare / culling / encode stages.
+- GPU frame time from timestamp queries (first and last pass of each render, read back
+  asynchronously) when the adapter supports them; missing otherwise.
+- Window ▸ Analysis ▸ Profiler (Ctrl+7, docks with the Project/Console): Record (on when first opened), Clear, previous/next/
+  Current frame; CPU Usage stacked chart by category (Rendering, Scripts, Physics, Animation,
+  Navigation, Audio, UI, Others) with legend toggles, 60/30/15 FPS lines and the GPU line;
+  Rendering (batches) and Memory (GPU MB) charts; click a frame to select it; Hierarchy
+  (Total %, Self %, Calls, Time ms, Self ms) or Timeline view; Rendering counters (batches,
+  saved by batching, SetPass, tris, verts, texture binds, shadow casters, visible/culled) and
+  Memory (objects, meshes, textures, GPU buffer/texture estimates). Works in Play mode.
+- Player: `MISTY_PROFILE=capture.jsonl` records every frame to a capture file. Editor capture env:
+  `MISTY_STATS=1` shows the Stats box, `MISTY_TAB` accepts a list (`Game,Profiler`).
+- Game view Stats box: FPS, CPU main / render, GPU, Batches and Saved by batching, Tris,
+  Verts, Screen, SetPass calls, shadow casters, visible/culled meshes, audio voices.
+- Renderer: frustum culling of meshes, terrains (whole) and particle systems per camera and
+  per shadow map (spot, each point-light face, directional); automatic GPU instancing of
+  identical mesh + shader variant + material textures in the opaque/cutout queues and shadow
+  passes (transparent only merges neighbours, keeping back-to-front order) through a draw-slot
+  indirection buffer; reused per-frame buffers; terrain bounds cached per version.
+- Headless GPU tests: culling + instancing on vs off (and each alone) produce identical
+  pixels; batches and culled counts checked.
+- Sample: `Scenes/StressDemo.scene` (5,040 cubes and spheres, 4 materials, 200 spinners,
+  orbiting camera via `CameraOrbit.lua`, sun + spot + two point lights).
+
+### StressDemo, 1280×720, release build (`stress_benchmark`, headless, this machine)
+| Configuration | FPS | Frame ms | Gather ms | Render CPU ms | Draw calls | Tris |
+|---|---|---|---|---|---|---|
+| Before (no culling, no instancing) | 49.4 | 20.3 | 8.6 | 9.0 | 15,123 | 5.9 M |
+| Culling only | 53.1 | 18.8 | 7.5 | 5.2 | 9,685 | 3.8 M |
+| Instancing only | 66.8 | 15.0 | 6.2 | 2.1 | 9 | 5.9 M |
+| Culling + instancing | 93.5 | 10.7 | 6.2 | 1.9 | 9 | 3.8 M |
+
+Frame = gather (scene → draw list) + render call + waiting for the GPU. The remaining CPU cost
+is mostly gathering the scene into draws each frame.
+
+### Not matching Unity yet
+- No Deep Profile, thread rows, GC/allocation counters, editor-side capture save/load, or
+  Profiler modules for Physics/Audio/UI details; Rendering/Memory describe the Game view only;
+  GPU time excludes the editor UI.
+- No occlusion culling, LOD groups, per-layer cull distances, static batching, SRP-batcher-
+  style material batching, per-material "Enable GPU Instancing" toggle or material property
+  blocks; the directional shadow map is fitted to all casters (no cascades), so it culls nothing.
+- The scene → draw list gathering still runs every frame for every object (no caching of
+  unchanged transforms/materials).

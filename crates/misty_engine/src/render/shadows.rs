@@ -2,7 +2,9 @@
 
 use glam::{Mat4, Vec3};
 
-use super::{Frame, LightData, MeshDraw, SHADOW_FORMAT};
+#[cfg(test)]
+use super::MeshDraw;
+use super::{Frame, LightData, SHADOW_FORMAT};
 use crate::scene::{LightType, Shadows};
 
 pub const DIRECTIONAL_SIZE: u32 = 2048;
@@ -116,18 +118,24 @@ impl ShadowMaps {
     }
 }
 
-/// Assign shadow maps: the first shadowed directional light gets the big map; spot and point lights
-/// take array layers in order until the budget runs out.
+/// [`plan_with`] measuring the casters' bounds itself.
+#[cfg(test)]
 pub fn plan(frame: &Frame) -> ShadowPlan {
+    plan_with(frame, &caster_bounds(frame))
+}
+
+/// Assign shadow maps: the first shadowed directional light gets the big map; spot and point lights
+/// take array layers in order until the budget runs out. `casters` = world bounds of the
+/// shadow casters (the directional map is fitted around them).
+pub fn plan_with(frame: &Frame, casters: &[(Vec3, Vec3)]) -> ShadowPlan {
     let mut plan = ShadowPlan::default();
-    let casters = caster_bounds(frame);
     for l in frame.lights {
         let wants =
             l.shadows != Shadows::None && l.intensity > 0.0 && frame.shaded && !casters.is_empty();
         let layer = match l.kind {
             _ if !wants => None,
             LightType::Directional if plan.directional.is_none() => {
-                let (m, radius) = directional_matrix(l, &casters);
+                let (m, radius) = directional_matrix(l, casters);
                 plan.directional = Some(m);
                 plan.directional_texel = 2.0 * radius / DIRECTIONAL_SIZE as f32;
                 Some(-1)
@@ -151,6 +159,7 @@ pub fn plan(frame: &Frame) -> ShadowPlan {
 }
 
 /// World bounds of every shadow caster: meshes and terrains.
+#[cfg(test)]
 fn caster_bounds(frame: &Frame) -> Vec<(Vec3, Vec3)> {
     let meshes = frame
         .meshes
@@ -165,6 +174,7 @@ fn caster_bounds(frame: &Frame) -> Vec<(Vec3, Vec3)> {
     meshes.chain(terrains).collect()
 }
 
+#[cfg(test)]
 fn mesh_bounds(m: &MeshDraw) -> (Vec3, Vec3) {
     let (min, max) = crate::models::bounds(&m.mesh).unwrap_or((Vec3::ZERO, Vec3::ZERO));
     let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use crate::audio::Audio;
 use crate::physics::Physics;
+use crate::profiler::Category;
 use crate::scene::Scene;
 use crate::scripting::{Input, LogKind, Request, ScriptHost};
 use crate::settings::{ProjectSettings, TimeSettings};
@@ -95,11 +96,16 @@ impl Runtime {
 
     /// One game frame.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
+        crate::profile_scope!("PlayerLoop", Category::Others);
         self.host.update(scene, time, input);
-        self.host.with_audio(|a| {
-            a.tick(time.delta);
-            a.update(scene);
-        });
+        {
+            crate::profile_scope!("Audio.Update", Category::Audio);
+            self.host.with_audio(|a| {
+                a.tick(time.delta);
+                a.update(scene);
+            });
+        }
+        crate::profile_scope!("ParticleSystem.Update", Category::Others);
         let (gravity, _) = self.host.physics_config();
         crate::particles::update(scene, time.delta, gravity);
     }

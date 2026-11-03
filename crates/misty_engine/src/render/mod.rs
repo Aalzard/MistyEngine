@@ -1,11 +1,16 @@
 //! wgpu renderer: sky, lit meshes with shadows, grid, particles, gizmo lines and selection outline.
 
+mod batch;
+pub mod culling;
 pub mod environment;
+mod frame_lists;
+mod gpu_timer;
 pub mod mesh;
 pub mod particles;
 mod pipelines;
 pub mod post;
 mod shadows;
+pub mod stats;
 pub mod surface;
 mod target;
 mod terrain;
@@ -17,6 +22,7 @@ pub use crate::terrain::TerrainDraw;
 pub use environment::{Environment, Sun};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
+pub use stats::{RenderMemory, RenderOptions, RenderStats};
 pub use surface::{RenderingMode, ShaderKind};
 pub use target::RenderTarget;
 use target::TargetLayouts;
@@ -38,6 +44,12 @@ pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float
 pub const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 pub const SAMPLE_COUNT: u32 = 4;
 const MAX_LIGHTS: usize = 8;
+
+/// Device features to request when the adapter has them: timestamp queries for GPU timing
+/// (see [`Renderer::with_queue`]).
+pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
+    adapter.features() & wgpu::Features::TIMESTAMP_QUERY
+}
 
 /// World plane the editor grid lies on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -262,6 +274,9 @@ struct GpuMesh {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     count: u32,
+    vertex_count: u32,
+    /// Local bounds (culling, shadow fitting).
+    bounds: culling::Aabb,
 }
 
 pub struct Renderer {
@@ -272,6 +287,9 @@ pub struct Renderer {
     lights_buffer: wgpu::Buffer,
     draws_buffer: wgpu::Buffer,
     draws_capacity: usize,
+    /// Instance → draw slot indices (see [`batch`]).
+    slots_buffer: wgpu::Buffer,
+    slots_capacity: usize,
     mesh_bind_group: wgpu::BindGroup,
     draws_bind_group: wgpu::BindGroup,
     line_buffer: wgpu::Buffer,
@@ -286,9 +304,18 @@ pub struct Renderer {
     textures: texture::TextureCache,
     /// Linear clamp sampler for post-processing.
     post_sampler: wgpu::Sampler,
+    options: RenderOptions,
+    stats: RenderStats,
+    /// GPU time per render (when the device supports timestamp queries).
+    gpu_timer: Option<gpu_timer::GpuTimer>,
+    // Per-frame scratch kept to avoid reallocating.
+    batcher: batch::Batcher,
+    slots_scratch: Vec<u32>,
+    draws_scratch: Vec<DrawUniform>,
 }
 
 impl Renderer {
+    /// Renderer without GPU timing (see [`Renderer::with_queue`]).
     pub fn new(device: &wgpu::Device) -> Self {
         let pipelines = pipelines::Pipelines::new(device);
         let uniform = |label, size: usize| {
@@ -316,12 +343,24 @@ impl Renderer {
 
         let draws_capacity = 256;
         let draws_buffer = draws_buffer(device, draws_capacity);
-        let (mesh_bind_group, draws_bind_group) =
-            draw_groups(device, &pipelines, &lights_buffer, &draws_buffer, &shadows);
+        let slots_capacity = 1024;
+        let slots_buffer = slots_buffer(device, slots_capacity);
+        let (mesh_bind_group, draws_bind_group) = draw_groups(
+            device,
+            &pipelines,
+            &lights_buffer,
+            [&draws_buffer, &slots_buffer],
+            &shadows,
+        );
 
         let meshes = PrimitiveMesh::ALL
             .iter()
-            .map(|p| GpuMesh::new(device, p.name(), mesh::primitive(*p)))
+            .map(|p| {
+                let mut m = GpuMesh::new(device, p.name(), mesh::primitive(*p));
+                // The same box picking and shadow fitting use.
+                m.bounds = culling::Aabb::new(-p.half_extents(), p.half_extents());
+                m
+            })
             .collect();
 
         let line_capacity = 1024;
@@ -339,6 +378,8 @@ impl Renderer {
             lights_buffer,
             draws_buffer,
             draws_capacity,
+            slots_buffer,
+            slots_capacity,
             mesh_bind_group,
             draws_bind_group,
             line_buffer: line_buffer(device, line_capacity),
@@ -350,6 +391,68 @@ impl Renderer {
             imported_generation: models::generation(),
             textures: texture::TextureCache::new(device),
             pipelines,
+            options: RenderOptions::default(),
+            stats: RenderStats::default(),
+            gpu_timer: None,
+            batcher: Default::default(),
+            slots_scratch: Vec::new(),
+            draws_scratch: Vec::new(),
+        }
+    }
+
+    /// Renderer that also measures GPU time per render when the device was created with
+    /// `TIMESTAMP_QUERY` (see [`timestamp_features`]).
+    pub fn with_queue(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        Self {
+            gpu_timer: gpu_timer::GpuTimer::new(device, queue),
+            ..Self::new(device)
+        }
+    }
+
+    /// Culling / instancing switches.
+    pub fn options(&self) -> RenderOptions {
+        self.options
+    }
+
+    pub fn set_options(&mut self, options: RenderOptions) {
+        self.options = options;
+    }
+
+    /// Counters of the last [`Renderer::render`] call.
+    pub fn stats(&self) -> RenderStats {
+        self.stats
+    }
+
+    /// Latest GPU time of a render, when timestamp queries are supported.
+    pub fn gpu_ms(&self) -> Option<f32> {
+        self.gpu_timer.as_ref().and_then(|t| t.last_ms())
+    }
+
+    /// GPU resources held (Profiler Memory module).
+    pub fn memory(&self) -> RenderMemory {
+        let imported = self.imported.values().flatten();
+        let meshes = self.meshes.iter().chain(imported.clone());
+        let mesh_bytes: u64 = meshes.map(GpuMesh::bytes).sum();
+        let (terrains, terrain_bytes) = self.terrains.memory();
+        let (textures, texture_bytes) = self.textures.memory();
+        let buffers = [
+            &self.draws_buffer,
+            &self.slots_buffer,
+            &self.line_buffer,
+            &self.view_buffer,
+            &self.lights_buffer,
+        ];
+        let shadow_bytes = 4
+            * (shadows::DIRECTIONAL_SIZE.pow(2) as u64
+                + shadows::LOCAL_SIZE.pow(2) as u64 * shadows::MAX_LOCAL_LAYERS as u64);
+        RenderMemory {
+            meshes: self.meshes.len() + imported.count() + terrains,
+            textures,
+            buffer_bytes: mesh_bytes
+                + terrain_bytes
+                + buffers.iter().map(|b| b.size()).sum::<u64>()
+                + self.particle_instances.buffer.size(),
+            texture_bytes: texture_bytes + shadow_bytes,
         }
     }
 
@@ -377,7 +480,13 @@ impl Renderer {
             {
                 let gpu = models::mesh(&d.mesh)
                     .filter(|m| !m.indices.is_empty())
-                    .map(|m| GpuMesh::new(device, key, &m));
+                    .map(|m| {
+                        let mut gpu = GpuMesh::new(device, key, &m);
+                        if let Some((lo, hi)) = models::bounds(&d.mesh) {
+                            gpu.bounds = culling::Aabb::new(lo, hi);
+                        }
+                        gpu
+                    });
                 self.imported.insert(key.clone(), gpu);
             }
             if frame.shaded {
@@ -454,7 +563,16 @@ impl Renderer {
         target: &RenderTarget,
         frame: &Frame,
     ) {
-        self.prepare_assets(device, queue, frame);
+        crate::profile_scope!("Render", crate::profiler::Category::Rendering);
+        let started = std::time::Instant::now();
+        let mut stats = RenderStats::default();
+        if let Some(timer) = self.gpu_timer.as_mut() {
+            timer.poll(device);
+        }
+        {
+            crate::profile_scope!("Render.PrepareAssets");
+            self.prepare_assets(device, queue, frame);
+        }
         let aspect = target.aspect();
         queue.write_buffer(
             &self.view_buffer,
@@ -462,32 +580,21 @@ impl Renderer {
             bytemuck::bytes_of(&view_uniform(frame, aspect)),
         );
 
-        // Per-draw data, grown on demand.
-        // Terrains take the draw slots after the meshes.
-        let draw_count = frame.meshes.len() + frame.terrains.len();
-        if draw_count > self.draws_capacity {
-            self.draws_capacity = draw_count.next_power_of_two();
-            self.draws_buffer = draws_buffer(device, self.draws_capacity);
-            (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
-                device,
-                &self.pipelines,
-                &self.lights_buffer,
-                &self.draws_buffer,
-                &self.shadows,
-            );
-        }
-        let draws: Vec<DrawUniform> = frame
-            .meshes
-            .iter()
-            .map(draw_uniform)
-            .chain(frame.terrains.iter().map(terrain::draw_uniform))
-            .collect();
-        if !draws.is_empty() {
-            queue.write_buffer(&self.draws_buffer, 0, bytemuck::cast_slice(&draws));
-        }
+        // Culling and batching for the camera and every shadow map.
+        let (lists, plan) = {
+            crate::profile_scope!("Render.Culling");
+            let meshes = self.mesh_bounds(frame);
+            let terrains = self.terrain_bounds(frame);
+            let casters = Self::caster_bounds(frame, &meshes, &terrains);
+            let plan = shadows::plan_with(frame, &casters);
+            let view_proj = frame.camera.view_projection(aspect);
+            let lists =
+                self.frame_lists(frame, &view_proj, &plan, (&meshes, &terrains), &mut stats);
+            (lists, plan)
+        };
+        self.upload_draws(device, queue, frame, &lists.slots);
 
         // Lights and their shadow maps (slot 0 = directional, 1.. = local layers).
-        let plan = shadows::plan(frame);
         let lights = lights_uniform(frame, &plan);
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
         let slots = plan
@@ -523,45 +630,99 @@ impl Renderer {
             );
         }
 
-        let particle_draws = self.upload_particles(device, queue, frame);
+        let particle_draws = self.upload_particles(device, queue, frame, &lists.particles);
+        let timing = self.gpu_timer.as_mut().and_then(|t| t.begin());
 
+        crate::profile_scope!("Render.Encode");
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("misty frame"),
         });
-        if plan.directional.is_some() {
-            self.shadow_pass(&mut encoder, frame, &self.shadows.directional_view, 0);
-        }
-        for layer in 0..plan.local.len() {
-            self.shadow_pass(
-                &mut encoder,
-                frame,
-                &self.shadows.local_layer_views[layer],
-                layer + 1,
-            );
-        }
         let any_outline = frame.meshes.iter().any(|m| m.outline);
-        self.mask_pass(&mut encoder, target, frame);
-        let order = surface::draw_order(frame.meshes, camera_depth(frame.camera));
+        // First pass: starts the GPU timing.
+        self.mask_pass(&mut encoder, target, frame, timing);
+        let mut shadow_lists = lists.shadows.iter();
+        if plan.directional.is_some() {
+            let list = shadow_lists.next();
+            let view = &self.shadows.directional_view;
+            self.shadow_pass(&mut encoder, frame, view, 0, list, &mut stats);
+        }
+        for (layer, list) in shadow_lists.enumerate() {
+            let view = &self.shadows.local_layer_views[layer];
+            self.shadow_pass(&mut encoder, frame, view, layer + 1, Some(list), &mut stats);
+        }
         self.main_pass(
             &mut encoder,
             target,
             frame,
             any_outline,
-            &order,
+            &lists,
             &particle_draws,
+            &mut stats,
         );
-        self.bloom_passes(&mut encoder, target);
+        self.bloom_passes(&mut encoder, target, timing);
+        if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
+            timer.resolve(&mut encoder, slot);
+        }
         queue.submit([encoder.finish()]);
+        if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
+            timer.submitted(slot);
+        }
+        self.slots_scratch = lists.slots;
+        stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
+        self.stats = stats;
     }
 
-    /// Sort the frame's particles back to front and upload them as instances.
+    /// Write the per-draw values and the slot lists, growing the buffers when needed.
+    fn upload_draws(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        frame: &Frame,
+        slots: &[u32],
+    ) {
+        let draw_count = frame.meshes.len() + frame.terrains.len();
+        let grow_draws = draw_count > self.draws_capacity;
+        let grow_slots = slots.len() > self.slots_capacity;
+        if grow_draws {
+            self.draws_capacity = draw_count.next_power_of_two();
+            self.draws_buffer = draws_buffer(device, self.draws_capacity);
+        }
+        if grow_slots {
+            self.slots_capacity = slots.len().next_power_of_two();
+            self.slots_buffer = slots_buffer(device, self.slots_capacity);
+        }
+        if grow_draws || grow_slots {
+            (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
+                device,
+                &self.pipelines,
+                &self.lights_buffer,
+                [&self.draws_buffer, &self.slots_buffer],
+                &self.shadows,
+            );
+        }
+        let mut draws = std::mem::take(&mut self.draws_scratch);
+        draws.clear();
+        draws.extend(frame.meshes.iter().map(draw_uniform));
+        draws.extend(frame.terrains.iter().map(terrain::draw_uniform));
+        if !draws.is_empty() {
+            queue.write_buffer(&self.draws_buffer, 0, bytemuck::cast_slice(&draws));
+        }
+        if !slots.is_empty() {
+            queue.write_buffer(&self.slots_buffer, 0, bytemuck::cast_slice(slots));
+        }
+        self.draws_scratch = draws;
+    }
+
+    /// Sort the visible particles back to front and upload them as instances.
     fn upload_particles(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         frame: &Frame,
+        visible: &[bool],
     ) -> Vec<particles::ParticleDraw> {
-        let (instances, draws) = particles::order(frame.particles, camera_depth(frame.camera));
+        let depth = camera_depth(frame.camera);
+        let (instances, draws) = particles::order_filtered(frame.particles, |i| visible[i], depth);
         self.particle_instances.upload(device, queue, &instances);
         draws
     }
@@ -571,6 +732,7 @@ impl Renderer {
         pass: &mut wgpu::RenderPass,
         frame: &Frame,
         draws: &[particles::ParticleDraw],
+        stats: &mut RenderStats,
     ) {
         pass.set_vertex_buffer(0, self.particle_instances.buffer.slice(..));
         for d in draws {
@@ -585,6 +747,12 @@ impl Renderer {
             });
             pass.set_bind_group(1, group, &[]);
             pass.draw(0..6, d.instances.clone());
+            // A system is one draw of camera-facing quads.
+            let n = d.instances.len() as u64;
+            stats.batches += 1;
+            stats.set_pass += 1;
+            stats.triangles += 2 * n;
+            stats.vertices += 4 * n;
         }
     }
 
@@ -596,6 +764,7 @@ impl Renderer {
         pipeline: &wgpu::RenderPipeline,
         group: &wgpu::BindGroup,
         clear: bool,
+        timestamps: Option<wgpu::RenderPassTimestampWrites>,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty post pass"),
@@ -613,7 +782,7 @@ impl Renderer {
                 },
             })],
             depth_stencil_attachment: None,
-            timestamp_writes: None,
+            timestamp_writes: timestamps,
             occlusion_query_set: None,
             multiview_mask: None,
         });
@@ -623,8 +792,14 @@ impl Renderer {
         pass.draw(0..3, 0..1);
     }
 
-    /// Bright-pass → downsample chain → additive upsample chain → composite into the output image.
-    fn bloom_passes(&self, encoder: &mut wgpu::CommandEncoder, target: &RenderTarget) {
+    /// Bright-pass → downsample chain → additive upsample chain → composite into the output
+    /// image (the last pass: ends the GPU timing).
+    fn bloom_passes(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget,
+        timing: Option<usize>,
+    ) {
         let levels = &target.bloom;
         let p = &self.pipelines;
         self.fullscreen(
@@ -633,6 +808,7 @@ impl Renderer {
             &p.bloom_prefilter,
             &target.hdr_group,
             true,
+            None,
         );
         for i in 1..levels.len() {
             self.fullscreen(
@@ -641,6 +817,7 @@ impl Renderer {
                 &p.bloom_down,
                 &levels[i - 1].group,
                 true,
+                None,
             );
         }
         for i in (1..levels.len()).rev() {
@@ -650,6 +827,7 @@ impl Renderer {
                 &p.bloom_up,
                 &levels[i].group,
                 false,
+                None,
             );
         }
         self.fullscreen(
@@ -658,31 +836,58 @@ impl Renderer {
             &p.composite,
             &target.composite_group,
             true,
+            self.timestamps(timing, false, true),
         );
+    }
+
+    /// Timestamp writes of the timed render's first or last pass.
+    fn timestamps(
+        &self,
+        timing: Option<usize>,
+        start: bool,
+        end: bool,
+    ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+        let (timer, slot) = (self.gpu_timer.as_ref()?, timing?);
+        Some(timer.writes(slot, start, end))
     }
 
     /// Draw one mesh (draw slot `i`).
     fn draw_mesh(&self, pass: &mut wgpu::RenderPass, i: usize, d: &MeshDraw) {
         if let Some(m) = self.gpu_mesh(&d.mesh) {
-            pass.set_vertex_buffer(0, m.vertices.slice(..));
-            pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint32);
-            pass.draw_indexed(0..m.count, 0, i as u32..i as u32 + 1);
+            m.draw(pass, i as u32..i as u32 + 1);
         }
     }
 
-    /// Draw the meshes `order` lists with their material's pipeline and textures.
-    fn draw_shaded(&self, pass: &mut wgpu::RenderPass, frame: &Frame, order: &[usize]) {
-        for &i in order {
-            let d = &frame.meshes[i];
-            let (Some(pipeline), Some(group)) = (
+    /// Draw main-pass batches with their material's pipeline and textures.
+    fn draw_batches(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        frame: &Frame,
+        batches: &[batch::Batch],
+        stats: &mut RenderStats,
+    ) {
+        let (mut pipeline_at, mut group_at) = (0, 0);
+        for b in batches {
+            let d = &frame.meshes[b.draw];
+            let (Some(pipeline), Some(group), Some(m)) = (
                 self.pipelines.mesh_variant(d.material.pipeline_key()),
                 self.textures.get_set(&d.material.textures()),
+                self.gpu_mesh(&d.mesh),
             ) else {
                 continue;
             };
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(2, group, &[]);
-            self.draw_mesh(pass, i, d);
+            if batch::addr(pipeline) != pipeline_at {
+                pipeline_at = batch::addr(pipeline);
+                pass.set_pipeline(pipeline);
+                stats.set_pass += 1;
+            }
+            if batch::addr(group) != group_at {
+                group_at = batch::addr(group);
+                pass.set_bind_group(2, group, &[]);
+                stats.texture_binds += 1;
+            }
+            m.draw(pass, b.first..b.first + b.count);
+            stats.draw(b.count, m.count, m.vertex_count);
         }
     }
 
@@ -692,6 +897,8 @@ impl Renderer {
         frame: &Frame,
         target: &wgpu::TextureView,
         slot: usize,
+        list: Option<&frame_lists::ShadowList>,
+        stats: &mut RenderStats,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty shadow pass"),
@@ -708,14 +915,21 @@ impl Renderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        let Some(list) = list else {
+            return;
+        };
         let offset = (slot as u64 * shadows::VIEW_STRIDE) as u32;
         pass.set_bind_group(0, &self.shadows.view_bind_group, &[offset]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
-        for (i, d) in frame.meshes.iter().enumerate() {
-            let Some(key) = d.material.shadow_key().filter(|_| d.cast_shadows) else {
+        let mut pipeline_at = 0;
+        for b in &list.batches {
+            let d = &frame.meshes[b.draw];
+            let Some(key) = d.material.shadow_key() else {
                 continue;
             };
-            let Some(pipeline) = self.pipelines.shadow_variant(key) else {
+            let (Some(pipeline), Some(m)) =
+                (self.pipelines.shadow_variant(key), self.gpu_mesh(&d.mesh))
+            else {
                 continue;
             };
             if key.cutout {
@@ -724,8 +938,13 @@ impl Renderer {
                 };
                 pass.set_bind_group(2, group, &[]);
             }
-            pass.set_pipeline(pipeline);
-            self.draw_mesh(&mut pass, i, d);
+            if batch::addr(pipeline) != pipeline_at {
+                pipeline_at = batch::addr(pipeline);
+                pass.set_pipeline(pipeline);
+                stats.set_pass += 1;
+            }
+            m.draw(&mut pass, b.first..b.first + b.count);
+            stats.draw(b.count, m.count, m.vertex_count);
         }
         let first = frame.meshes.len();
         let terrain_caster = surface::ShadowKey {
@@ -736,11 +955,23 @@ impl Renderer {
             return;
         };
         pass.set_pipeline(pipeline);
-        self.terrains
-            .draw(&mut pass, frame.terrains, first, false, |t| t.cast_shadows);
+        self.terrains.draw(
+            &mut pass,
+            frame.terrains,
+            first,
+            false,
+            |i| list.terrains[i],
+            stats,
+        );
     }
 
-    fn mask_pass(&self, encoder: &mut wgpu::CommandEncoder, target: &RenderTarget, frame: &Frame) {
+    fn mask_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget,
+        frame: &Frame,
+        timing: Option<usize>,
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty selection mask"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -753,7 +984,7 @@ impl Renderer {
                 },
             })],
             depth_stencil_attachment: None,
-            timestamp_writes: None,
+            timestamp_writes: self.timestamps(timing, true, false),
             occlusion_query_set: None,
             multiview_mask: None,
         });
@@ -767,14 +998,16 @@ impl Renderer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn main_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         target: &RenderTarget,
         frame: &Frame,
         outline: bool,
-        order: &surface::DrawOrder,
+        lists: &frame_lists::FrameLists,
         particle_draws: &[particles::ParticleDraw],
+        stats: &mut RenderStats,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty main pass"),
@@ -817,9 +1050,9 @@ impl Renderer {
         pass.draw(0..3, 0..1);
 
         // Opaque and Cutout meshes, front to back.
-        if frame.shaded && !frame.meshes.is_empty() {
+        if frame.shaded && !lists.opaque.is_empty() {
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            self.draw_shaded(&mut pass, frame, &order.opaque);
+            self.draw_batches(&mut pass, frame, &lists.opaque, stats);
         }
 
         if frame.shaded
@@ -830,8 +1063,14 @@ impl Renderer {
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
             pass.set_bind_group(2, material, &[]);
             let first = frame.meshes.len();
-            self.terrains
-                .draw(&mut pass, frame.terrains, first, true, |_| true);
+            self.terrains.draw(
+                &mut pass,
+                frame.terrains,
+                first,
+                true,
+                |i| lists.terrains[i],
+                stats,
+            );
         }
 
         if frame.grid.is_some() {
@@ -840,14 +1079,14 @@ impl Renderer {
         }
 
         // Fade / Transparent meshes back to front, after the grid (they don't write depth).
-        if frame.shaded && !order.transparent.is_empty() {
+        if frame.shaded && !lists.transparent.is_empty() {
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            self.draw_shaded(&mut pass, frame, &order.transparent);
+            self.draw_batches(&mut pass, frame, &lists.transparent, stats);
         }
 
         // After the grid: particles don't write depth, so the grid would draw over them.
         if frame.shaded && !particle_draws.is_empty() {
-            self.draw_particles(&mut pass, frame, particle_draws);
+            self.draw_particles(&mut pass, frame, particle_draws, stats);
         }
 
         if !frame.overlay.is_empty() {
@@ -873,6 +1112,7 @@ impl Renderer {
 
 impl GpuMesh {
     fn new(device: &wgpu::Device, label: &str, data: &mesh::MeshData) -> Self {
+        let (lo, hi) = data.bounds();
         Self {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(label),
@@ -885,7 +1125,20 @@ impl GpuMesh {
                 usage: wgpu::BufferUsages::INDEX,
             }),
             count: data.indices.len() as u32,
+            vertex_count: data.vertices.len() as u32,
+            bounds: culling::Aabb::new(lo, hi),
         }
+    }
+
+    /// Draw `instances` (entries of the slots buffer).
+    fn draw(&self, pass: &mut wgpu::RenderPass, instances: std::ops::Range<u32>) {
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+        pass.draw_indexed(0..self.count, 0, instances);
+    }
+
+    fn bytes(&self) -> u64 {
+        self.vertices.size() + self.indices.size()
     }
 }
 
@@ -898,13 +1151,24 @@ fn draws_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
+fn slots_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("misty draw slots"),
+        size: (capacity * std::mem::size_of::<u32>()) as u64,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+/// Group 1 of the lit mesh pass and of the shadow/mask passes; `buffers` = draws, slots.
 fn draw_groups(
     device: &wgpu::Device,
     p: &pipelines::Pipelines,
     lights: &wgpu::Buffer,
-    draws: &wgpu::Buffer,
+    buffers: [&wgpu::Buffer; 2],
     shadows: &shadows::ShadowMaps,
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
+    let [draws, slots] = buffers;
     let mesh = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("misty mesh group"),
         layout: &p.mesh_layout,
@@ -929,15 +1193,25 @@ fn draw_groups(
                 binding: 4,
                 resource: wgpu::BindingResource::TextureView(&shadows.local_array_view),
             },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: slots.as_entire_binding(),
+            },
         ],
     });
     let draws_only = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("misty draws group"),
         layout: &p.draws_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 1,
-            resource: draws.as_entire_binding(),
-        }],
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: draws.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: slots.as_entire_binding(),
+            },
+        ],
     });
     (mesh, draws_only)
 }
@@ -1117,6 +1391,9 @@ fn view_uniform(frame: &Frame, aspect: f32) -> ViewUniform {
         post: frame.post.pack(),
     }
 }
+
+#[cfg(test)]
+mod gpu_tests;
 
 #[cfg(test)]
 mod tests {

@@ -65,6 +65,7 @@ impl Gfx {
         .map_err(|e| format!("no graphics adapter: {e}"))?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("misty player"),
+            required_features: misty_engine::render::timestamp_features(&adapter),
             required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
             ..Default::default()
         }))
@@ -78,7 +79,7 @@ impl Gfx {
         config.present_mode = wgpu::PresentMode::AutoVsync;
         surface.configure(&device, &config);
 
-        let renderer = Renderer::new(&device);
+        let renderer = Renderer::with_queue(&device, &queue);
         let ui = UiRenderer::new(&device, &queue);
         let target = renderer.create_target(&device, config.width, config.height);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -184,6 +185,11 @@ impl Gfx {
         self.group = blit_group(&self.device, &self.layout, &self.sampler, &self.target);
     }
 
+    /// GPU resources the renderer holds (profiler capture).
+    pub fn memory(&self) -> misty_engine::render::RenderMemory {
+        self.renderer.memory()
+    }
+
     /// Texture problems found while drawing the UI.
     pub fn take_warnings(&mut self) -> Vec<String> {
         self.ui.take_warnings()
@@ -194,6 +200,7 @@ impl Gfx {
         if let Some(frame) = frame {
             self.renderer
                 .render(&self.device, &self.queue, &self.target, frame);
+            misty_engine::profiler::set_render_stats(self.renderer.stats());
             self.ui
                 .render(&self.device, &self.queue, &self.target, scene, ui);
         }

@@ -264,6 +264,8 @@ pub struct EditorState {
     pub inspector_asset: Option<String>,
     pub scene_view: SceneViewSettings,
     pub game_view: GameViewSettings,
+    /// Window ▸ Analysis ▸ Profiler state.
+    pub profiler: crate::panels::profiler::ProfilerWindow,
     /// Saved window layouts and the Save Layout prompt.
     pub layouts: crate::layouts::Layouts,
     /// Commands to apply after the UI pass.
@@ -347,6 +349,7 @@ impl EditorState {
                 stats: false,
                 gizmos: false,
             },
+            profiler: Default::default(),
             layouts: Default::default(),
             actions: Vec::new(),
         };

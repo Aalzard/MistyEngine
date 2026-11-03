@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY`.
+//! `MISTY_PLAY` / `MISTY_STATS`.
 
 use std::path::PathBuf;
 
@@ -82,11 +82,17 @@ pub fn apply_env(
             crate::layout::focus_or_open(dock, crate::layout::Tab::CodeEditor);
         }
     }
-    if let Some(title) = std::env::var_os("MISTY_TAB")
-        && let Some(tab) =
-            crate::layout::Tab::every().find(|t| t.title() == title.to_string_lossy())
-    {
-        crate::layout::focus_or_open(dock, tab);
+    // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
+    if let Some(titles) = std::env::var_os("MISTY_TAB") {
+        for title in titles.to_string_lossy().split(',') {
+            if let Some(tab) = crate::layout::Tab::every().find(|t| t.title() == title.trim()) {
+                crate::layout::focus_or_open(dock, tab);
+            }
+        }
+    }
+    // `MISTY_STATS=1` shows the Game view's Stats box.
+    if std::env::var_os("MISTY_STATS").is_some() {
+        s.game_view.stats = true;
     }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {

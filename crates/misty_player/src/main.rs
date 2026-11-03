@@ -3,6 +3,8 @@
 //! `misty_player [ProjectFolder]`. Without an argument it plays the folder it sits in (a build
 //! made by File ▸ Build), else the nearest `SampleProject`.
 //! `MISTY_SCREENSHOT=out.png misty_player` saves the game image after warm-up and exits.
+//! `MISTY_PROFILE=capture.jsonl misty_player` records the profiler into a capture file
+//! (one JSON object per frame) until the player quits.
 
 // Release builds are windowed apps with no console; output goes to Player.log.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -54,6 +56,11 @@ fn main() {
         }
     };
     event_loop.set_control_flow(ControlFlow::Poll);
+    if let Some(path) = std::env::var_os("MISTY_PROFILE")
+        && let Err(e) = misty_engine::profiler::capture::start(Path::new(&path))
+    {
+        log.write(LogKind::Warning, &format!("profiler capture: {e}"));
+    }
     let mut app = Player {
         game,
         log,
@@ -66,6 +73,10 @@ fn main() {
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         app.log.write(LogKind::Error, &e.to_string());
+    }
+    if let Err(e) = misty_engine::profiler::capture::finish() {
+        app.log
+            .write(LogKind::Warning, &format!("profiler capture: {e}"));
     }
 }
 
@@ -101,6 +112,13 @@ impl Player {
         for w in gfx.take_warnings() {
             self.log.write(LogKind::Warning, &w);
         }
+        if misty_engine::profiler::enabled() {
+            misty_engine::profiler::set_memory(misty_engine::profiler::MemoryStats {
+                entities: self.game.scene.world.len() as usize,
+                render: gfx.memory(),
+            });
+        }
+        misty_engine::profiler::end_frame();
         self.frames += 1;
         if self.frames == SCREENSHOT_FRAME
             && let Some(path) = self.screenshot.take()

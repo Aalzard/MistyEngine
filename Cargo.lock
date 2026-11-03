@@ -2248,6 +2248,7 @@ dependencies = [
  "image",
  "kira",
  "mlua",
+ "pollster 0.4.0",
  "rapier3d",
  "serde",
  "serde_json",

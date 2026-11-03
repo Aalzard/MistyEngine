@@ -196,9 +196,17 @@ impl Pipelines {
                         multisampled: false,
                     },
                 ),
+                // Instance → draw slot (instanced batches).
+                entry(5, S::VERTEX, storage()),
             ],
         );
-        let draws_layout = layout("misty draws", &[entry(1, S::VERTEX, storage())]);
+        let draws_layout = layout(
+            "misty draws",
+            &[
+                entry(1, S::VERTEX, storage()),
+                entry(2, S::VERTEX, storage()),
+            ],
+        );
         let shadow_view_layout = layout(
             "misty shadow view",
             &[entry(

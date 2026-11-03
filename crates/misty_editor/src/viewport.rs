@@ -25,7 +25,7 @@ pub struct Gpu {
 
 impl Gpu {
     pub fn new(state: egui_wgpu::RenderState) -> Self {
-        let renderer = Renderer::new(&state.device);
+        let renderer = Renderer::with_queue(&state.device, &state.queue);
         let ui = UiRenderer::new(&state.device, &state.queue);
         Self {
             state,

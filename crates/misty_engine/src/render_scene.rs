@@ -185,6 +185,7 @@ pub struct GameView {
 impl GameView {
     /// `None` when no camera is rendering.
     pub fn new(scene: &Scene, materials: &dyn MaterialSource) -> Option<Self> {
+        crate::profile_scope!("Render.GatherScene", crate::profiler::Category::Rendering);
         let (camera, settings) = game_camera(scene)?;
         let lights = lights(scene);
         Some(Self {

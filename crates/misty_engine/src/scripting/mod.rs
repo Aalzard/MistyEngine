@@ -42,6 +42,8 @@ use mlua::{Function, Lua, RegistryKey, Table, Value};
 use crate::animation::{AnimationPlayer, AnimatorPlayer};
 use crate::audio::Audio;
 use crate::physics::{Contact, Physics};
+use crate::profile_scope;
+use crate::profiler::Category;
 use crate::runtime::Time;
 use crate::scene::{Scene, ScriptValue, Scripts};
 use crate::ui::UiInteraction;
@@ -346,6 +348,8 @@ impl ScriptHost {
             Ok(Some(f)) => f,
             _ => return,
         };
+        // Per script file and method, e.g. "Orbit.Update()".
+        profile_scope!(format!("{}.{name}()", inst.name));
         let result = match arg {
             Some(a) => f.call::<()>((t, a)),
             None => f.call::<()>(t),
@@ -508,34 +512,59 @@ impl ScriptHost {
             self.log(LogKind::Error, format!("Time: {e}"));
         }
 
-        for i in 0..self.instances.len() {
-            if !self.instances[i].started && self.runnable(&self.instances[i]) {
-                self.instances[i].started = true;
-                self.call(i, "Start", None);
-                self.flush_spawned();
+        {
+            profile_scope!("Scripts.Start", Category::Scripts);
+            for i in 0..self.instances.len() {
+                if !self.instances[i].started && self.runnable(&self.instances[i]) {
+                    self.instances[i].started = true;
+                    self.call(i, "Start", None);
+                    self.flush_spawned();
+                }
             }
         }
 
-        self.ui_events();
+        {
+            profile_scope!("UI.Events", Category::Ui);
+            self.ui_events();
+        }
 
         let steps = self.with_world(|w| w.physics.steps_due(time.delta));
         for _ in 0..steps {
-            self.call_all("FixedUpdate");
+            {
+                profile_scope!("Scripts.FixedUpdate", Category::Scripts);
+                self.call_all("FixedUpdate");
+            }
+            profile_scope!("Physics.Step", Category::Physics);
             let contacts = self.with_world(|w| w.physics.step(&w.scene));
             self.dispatch(&contacts);
             self.flush_spawned();
         }
-        self.with_world(|w| w.physics.sync_out(&mut w.scene));
+        {
+            profile_scope!("Physics.SyncTransforms", Category::Physics);
+            self.with_world(|w| w.physics.sync_out(&mut w.scene));
+        }
 
-        self.call_all("Update");
-        self.with_world(|w| {
-            w.navigation.update(&mut w.scene, time.delta);
-            let logs = w.navigation.take_logs();
-            w.logs
-                .extend(logs.into_iter().map(|l| (LogKind::Warning, l)));
-        });
-        self.animate(time.delta);
-        self.call_all("LateUpdate");
+        {
+            profile_scope!("Scripts.Update", Category::Scripts);
+            self.call_all("Update");
+        }
+        {
+            profile_scope!("Navigation.Update", Category::Navigation);
+            self.with_world(|w| {
+                w.navigation.update(&mut w.scene, time.delta);
+                let logs = w.navigation.take_logs();
+                w.logs
+                    .extend(logs.into_iter().map(|l| (LogKind::Warning, l)));
+            });
+        }
+        {
+            profile_scope!("Animation.Update", Category::Animation);
+            self.animate(time.delta);
+        }
+        {
+            profile_scope!("Scripts.LateUpdate", Category::Scripts);
+            self.call_all("LateUpdate");
+        }
         self.process_destroy();
 
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
