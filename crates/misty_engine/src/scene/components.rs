@@ -105,7 +105,7 @@ pub struct Node {
 }
 
 /// Entities are stored by their id bits (only meaningful inside one world; scene files remap them).
-mod entity_bits {
+pub(crate) mod entity_bits {
     use hecs::Entity;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

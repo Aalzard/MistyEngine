@@ -5,6 +5,7 @@ mod pipelines;
 mod shadows;
 mod target;
 pub mod texture;
+pub mod ui;
 
 pub use target::RenderTarget;
 use target::TargetLayouts;

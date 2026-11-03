@@ -4,12 +4,14 @@ pub mod components;
 pub mod file;
 pub mod prefab;
 pub mod registry;
+pub mod ui_components;
 
 use glam::{Mat4, Vec3};
 use hecs::{Entity, EntityBuilder, World};
 
 pub use components::*;
 pub use registry::SceneComponent;
+pub use ui_components::*;
 
 pub struct Scene {
     pub name: String,

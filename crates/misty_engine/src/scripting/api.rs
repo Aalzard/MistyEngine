@@ -343,7 +343,7 @@ impl UserData for LGameObject {
                 Some(0) => lua.create_userdata(LTransform(e)).map(Value::UserData),
                 Some(1) => lua.create_userdata(LRigidbody(e)).map(Value::UserData),
                 Some(_) => lua.create_userdata(LAudioSource(e)).map(Value::UserData),
-                None => Ok(Value::Nil),
+                None => Ok(super::ui_api::component(lua, e, &name)?.unwrap_or(Value::Nil)),
             }
         });
         m.add_meta_method(MetaMethod::Eq, |_, a, b: LGameObjectArg| Ok(a.0 == b.0));
@@ -604,6 +604,7 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
     g.set("Vector3", v3)?;
+    super::ui_api::register(lua)?;
 
     // Debug / print
     let debug = lua.create_table()?;
