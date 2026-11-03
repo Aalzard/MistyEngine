@@ -431,6 +431,17 @@ pub struct Rigidbody {
     pub continuous: bool,
     pub freeze_position: [bool; 3],
     pub freeze_rotation: [bool; 3],
+    /// Smooth the drawn pose between fixed steps.
+    pub interpolation: Interpolation,
+}
+
+/// Rigidbody ▸ Interpolate.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Interpolation {
+    #[default]
+    None,
+    /// Blend between the last two physics poses (drawn up to one step behind).
+    Interpolate,
 }
 
 impl Default for Rigidbody {
@@ -444,6 +455,7 @@ impl Default for Rigidbody {
             continuous: false,
             freeze_position: [false; 3],
             freeze_rotation: [false; 3],
+            interpolation: Interpolation::None,
         }
     }
 }

@@ -1,5 +1,6 @@
 //! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody, AudioSource, Animation
-//! (ParticleSystem is in `particles_api`, UI components in `ui_api`) and global tables
+//! (ParticleSystem is in `particles_api`, UI components in `ui_api`, queries, LayerMask and the
+//! CharacterController in `physics_api`) and global tables
 //! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy, SceneManager,
 //! Application).
 //!
@@ -315,6 +316,22 @@ impl UserData for LGameObject {
             })?
         });
         f.add_field_method_get("transform", |_, g| Ok(LTransform(g.0)));
+        // So `hit.collider.gameObject` works on query hits.
+        f.add_field_method_get("gameObject", |_, g| Ok(LGameObject(g.0)));
+        f.add_field_method_get("layer", |lua, g| {
+            with_world(lua, |w| {
+                alive(w, g.0).map(|_| w.scene.game_object(g.0).layer as i64)
+            })?
+        });
+        f.add_field_method_set("layer", |lua, g, layer: u8| {
+            with_world(lua, |w| {
+                alive(w, g.0)?;
+                let layer = layer.min(31);
+                w.scene.game_object_mut(g.0).layer = layer;
+                w.physics.set_layer(g.0, layer);
+                Ok(())
+            })?
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
@@ -349,7 +366,10 @@ impl UserData for LGameObject {
                 Some(2) => lua.create_userdata(LAudioSource(e)).map(Value::UserData),
                 Some(3) => lua.create_userdata(LAnimation(e)).map(Value::UserData),
                 Some(_) => lua.create_userdata(LParticleSystem(e)).map(Value::UserData),
-                None => Ok(super::ui_api::component(lua, e, &name)?.unwrap_or(Value::Nil)),
+                None => Ok(match super::physics_api::component(lua, e, &name)? {
+                    Some(v) => v,
+                    None => super::ui_api::component(lua, e, &name)?.unwrap_or(Value::Nil),
+                }),
             }
         });
         m.add_meta_method(MetaMethod::Eq, |_, a, b: LGameObjectArg| Ok(a.0 == b.0));
@@ -408,6 +428,16 @@ fn force_args(lua: &Lua, args: &Variadic<Value>) -> Result<(Vec3, String)> {
     Ok((vec_args(lua, args)?, mode))
 }
 
+fn rigidbody_get<R>(lua: &Lua, e: Entity, f: impl FnOnce(&Rigidbody) -> R) -> Result<R> {
+    with_world(lua, |w| {
+        w.scene
+            .world
+            .get::<&Rigidbody>(e)
+            .map(|b| f(&b))
+            .map_err(|_| missing())
+    })?
+}
+
 impl UserData for LRigidbody {
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         f.add_field_method_get("velocity", |lua, r| {
@@ -434,9 +464,56 @@ impl UserData for LRigidbody {
             })
         });
         f.add_field_method_get("gameObject", |_, r| Ok(LGameObject(r.0)));
+        // Pose in the physics world (the Transform may be interpolated).
+        f.add_field_method_get("position", |lua, r| {
+            with_world(lua, |w| match w.physics.body_pose(r.0) {
+                Some((p, _)) => LVec3(p),
+                None => LVec3(w.scene.world_position(r.0)),
+            })
+        });
+        f.add_field_method_get("isKinematic", |lua, r| {
+            rigidbody_get(lua, r.0, |b| b.is_kinematic)
+        });
+        f.add_field_method_set("isKinematic", |lua, r, on: bool| {
+            with_world(lua, |w| {
+                if let Ok(mut b) = w.scene.world.get::<&mut Rigidbody>(r.0) {
+                    b.is_kinematic = on;
+                }
+                w.physics.set_kinematic(r.0, on);
+            })
+        });
+        f.add_field_method_get("useGravity", |lua, r| {
+            rigidbody_get(lua, r.0, |b| b.use_gravity)
+        });
+        f.add_field_method_set("useGravity", |lua, r, on: bool| {
+            with_world(lua, |w| {
+                if let Ok(mut b) = w.scene.world.get::<&mut Rigidbody>(r.0) {
+                    b.use_gravity = on;
+                }
+                w.physics.set_use_gravity(r.0, on);
+            })
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        // MovePosition(v): kinematic bodies sweep there in the next step, pushing others.
+        m.add_method("MovePosition", |lua, r, args: Variadic<Value>| {
+            let p = vec_args(lua, &args)?;
+            with_world(lua, |w| {
+                let rot = w.scene.world_rotation(r.0);
+                let World { physics, scene, .. } = w;
+                physics.move_body(scene, r.0, p, rot);
+            })
+        });
+        // MoveRotation(euler): Euler angles in degrees (there is no Quaternion type).
+        m.add_method("MoveRotation", |lua, r, args: Variadic<Value>| {
+            let euler = vec_args(lua, &args)?;
+            with_world(lua, |w| {
+                let pos = w.scene.world_position(r.0);
+                let World { physics, scene, .. } = w;
+                physics.move_body(scene, r.0, pos, euler_to_quat(euler));
+            })
+        });
         m.add_method("AddForce", |lua, r, args: Variadic<Value>| {
             let (v, mode) = force_args(lua, &args)?;
             with_world(lua, |w| {
@@ -676,6 +753,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     )?;
     g.set("Vector3", v3)?;
     super::ui_api::register(lua)?;
+    super::physics_api::register(lua)?;
 
     // Debug / print
     let debug = lua.create_table()?;
@@ -700,6 +778,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     // Mathf
     let mathf = lua.create_table()?;
     mathf.set("PI", std::f64::consts::PI)?;
+    mathf.set("Infinity", f64::INFINITY)?;
     mathf.set("Deg2Rad", std::f64::consts::PI / 180.0)?;
     mathf.set("Rad2Deg", 180.0 / std::f64::consts::PI)?;
     mathf.set(

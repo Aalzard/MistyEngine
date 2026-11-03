@@ -2,6 +2,7 @@
 
 pub mod components;
 pub mod file;
+pub mod physics_components;
 pub mod prefab;
 pub mod registry;
 pub mod ui_components;
@@ -10,6 +11,7 @@ use glam::{Mat4, Vec3};
 use hecs::{Entity, EntityBuilder, World};
 
 pub use components::*;
+pub use physics_components::*;
 pub use registry::SceneComponent;
 pub use ui_components::*;
 
@@ -148,6 +150,9 @@ impl Scene {
         };
         if (info.has)(&self.world, e) {
             return false;
+        }
+        for required in registry::requires(name) {
+            self.add_by_name(e, required);
         }
         (info.add_default)(&mut self.world, e);
         self.game_object_mut(e)

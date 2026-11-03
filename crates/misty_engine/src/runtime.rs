@@ -136,6 +136,11 @@ impl Runtime {
         self.host.physics_config()
     }
 
+    /// Project Settings ▸ Physics the world was built with (layer matrix, queries).
+    pub fn physics_settings(&self) -> crate::settings::PhysicsSettings {
+        self.host.physics_settings()
+    }
+
     pub fn stats(&self) -> RuntimeStats {
         let (bodies, colliders) = self.host.physics_counts();
         RuntimeStats {

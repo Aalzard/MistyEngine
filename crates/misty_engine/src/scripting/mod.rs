@@ -3,7 +3,7 @@
 //! A script file returns a class table. Plain values in it (numbers, booleans, strings, Vector3)
 //! are public fields shown in the Inspector; functions are callbacks:
 //! `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`,
-//! `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`.
+//! `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`, `OnControllerColliderHit(hit)`.
 //! `Instantiate(prefabPath or gameObject [, position])` creates objects while playing; their
 //! scripts get `Awake` right after the callback that created them.
 //! `SceneManager.LoadScene(name or index)` and `Application.Quit()` are handled after the frame
@@ -19,6 +19,7 @@
 
 pub mod api;
 pub mod particles_api;
+pub mod physics_api;
 pub mod ui_api;
 
 use std::collections::{HashMap, HashSet};
@@ -314,8 +315,25 @@ impl ScriptHost {
         }
     }
 
-    /// Create script instances for objects made by `Instantiate` and run their `Awake`.
+    /// OnControllerColliderHit for the moves made by the last callback.
+    fn controller_hits(&mut self) {
+        let hits = self.with_world(|w| w.physics.take_controller_hits());
+        for hit in hits {
+            for i in 0..self.instances.len() {
+                if self.instances[i].entity == hit.controller && self.runnable(&self.instances[i]) {
+                    let arg = physics_api::controller_hit_table(&self.lua, &hit)
+                        .map(Value::Table)
+                        .ok();
+                    self.call(i, "OnControllerColliderHit", arg);
+                }
+            }
+        }
+    }
+
+    /// Run what the last callback queued: controller hits, then `Awake` of objects made by
+    /// `Instantiate`.
     fn flush_spawned(&mut self) {
+        self.controller_hits();
         // Awake may instantiate more; stop runaway chains instead of hanging.
         for _ in 0..64 {
             let spawned = self.with_world(|w| std::mem::take(&mut w.spawned));
@@ -569,6 +587,11 @@ impl ScriptHost {
     /// Physics counters for the Stats overlay.
     pub fn physics_counts(&self) -> (usize, usize) {
         self.with_world(|w| (w.physics.body_count(), w.physics.collider_count()))
+    }
+
+    /// Project Settings ▸ Physics the world was built with.
+    pub fn physics_settings(&self) -> crate::settings::PhysicsSettings {
+        self.with_world(|w| w.physics.settings().clone())
     }
 
     pub fn physics_config(&self) -> (Vec3, f32) {

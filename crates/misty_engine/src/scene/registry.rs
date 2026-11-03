@@ -7,6 +7,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::components::*;
+use super::physics_components::*;
 
 /// A component type the editor and scene files know about.
 pub trait SceneComponent: hecs::Component + Clone + Default + Serialize + DeserializeOwned {
@@ -61,6 +62,22 @@ impl SceneComponent for SphereCollider {
 }
 impl SceneComponent for CapsuleCollider {
     const NAME: &'static str = "Capsule Collider";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for CharacterController {
+    const NAME: &'static str = "Character Controller";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for FixedJoint {
+    const NAME: &'static str = "Fixed Joint";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for HingeJoint {
+    const NAME: &'static str = "Hinge Joint";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for SpringJoint {
+    const NAME: &'static str = "Spring Joint";
     const CATEGORY: &'static str = "Physics";
 }
 impl SceneComponent for Scripts {
@@ -168,6 +185,10 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<SphereCollider>(),
             ComponentInfo::of::<CapsuleCollider>(),
             ComponentInfo::of::<MeshCollider>(),
+            ComponentInfo::of::<CharacterController>(),
+            ComponentInfo::of::<FixedJoint>(),
+            ComponentInfo::of::<HingeJoint>(),
+            ComponentInfo::of::<SpringJoint>(),
             ComponentInfo::of::<AudioSource>(),
             ComponentInfo::of::<AudioListener>(),
             ComponentInfo::of::<Animation>(),
@@ -176,6 +197,14 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<PrefabLink>(),
         ]
     })
+}
+
+/// Components added together with `name` (like a RequireComponent attribute).
+pub fn requires(name: &str) -> &'static [&'static str] {
+    match name {
+        "Fixed Joint" | "Hinge Joint" | "Spring Joint" => &["Rigidbody"],
+        _ => &[],
+    }
 }
 
 pub fn find(name: &str) -> Option<&'static ComponentInfo> {
