@@ -26,6 +26,7 @@ use glam::{Vec2, Vec3};
 use hecs::Entity;
 use mlua::{Function, Lua, RegistryKey, Table, Value};
 
+use crate::animation::AnimationPlayer;
 use crate::audio::Audio;
 use crate::physics::{Contact, Physics};
 use crate::runtime::Time;
@@ -113,6 +114,8 @@ pub struct World {
     pub requests: Vec<Request>,
     /// Audio Source voices (`Play`, `PlayOneShot`, …).
     pub audio: Audio,
+    /// Animation component playback (`Play`, `Stop`, …).
+    pub animation: AnimationPlayer,
 }
 
 struct Instance {
@@ -162,6 +165,7 @@ impl ScriptHost {
             spawned: Vec::new(),
             requests: Vec::new(),
             audio,
+            animation: AnimationPlayer::new(project_root.clone()),
         });
         let mut host = Self {
             lua,
@@ -189,7 +193,10 @@ impl ScriptHost {
         }
         host.call_all("Awake");
         host.flush_spawned();
-        host.with_world(|w| w.audio.play_on_awake(&w.scene, None));
+        host.with_world(|w| {
+            w.audio.play_on_awake(&w.scene, None);
+            w.animation.play_automatically(&w.scene, None);
+        });
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
         host
     }
@@ -346,7 +353,33 @@ impl ScriptHost {
                 self.call(i, "Awake", None);
             }
         }
-        self.with_world(|w| w.audio.play_on_awake(&w.scene, Some(root)));
+        self.with_world(|w| {
+            w.audio.play_on_awake(&w.scene, Some(root));
+            w.animation.play_automatically(&w.scene, Some(root));
+        });
+    }
+
+    /// Advance animations (after Update, before LateUpdate) and call their events' functions on
+    /// the animated object's scripts.
+    fn animate(&mut self, dt: f32) {
+        let events = self.with_world(|w| {
+            let World {
+                animation, scene, ..
+            } = w;
+            animation.update(scene, dt)
+        });
+        for (e, function) in events {
+            for i in 0..self.instances.len() {
+                if self.instances[i].entity == e && self.runnable(&self.instances[i]) {
+                    self.call(i, &function, None);
+                }
+            }
+            self.flush_spawned();
+        }
+        let logs = self.with_world(|w| w.animation.take_logs());
+        for l in logs {
+            self.log(LogKind::Warning, l);
+        }
     }
 
     fn dispatch(&self, contacts: &[Contact]) {
@@ -405,6 +438,7 @@ impl ScriptHost {
         self.with_world(|w| w.physics.sync_out(&mut w.scene));
 
         self.call_all("Update");
+        self.animate(time.delta);
         self.call_all("LateUpdate");
         self.process_destroy();
 

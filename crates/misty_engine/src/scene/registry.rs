@@ -85,6 +85,10 @@ impl SceneComponent for AudioListener {
     const NAME: &'static str = "Audio Listener";
     const CATEGORY: &'static str = "Audio";
 }
+impl SceneComponent for Animation {
+    const NAME: &'static str = "Animation";
+    const CATEGORY: &'static str = "Miscellaneous";
+}
 
 /// Type-erased operations for one component type.
 pub struct ComponentInfo {
@@ -154,6 +158,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<MeshCollider>(),
             ComponentInfo::of::<AudioSource>(),
             ComponentInfo::of::<AudioListener>(),
+            ComponentInfo::of::<Animation>(),
             ComponentInfo::of::<Scripts>(),
             ComponentInfo::of::<PrefabLink>(),
         ]

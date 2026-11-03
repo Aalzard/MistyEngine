@@ -404,3 +404,72 @@ fn audio_source_api_against_the_silent_backend() {
     drop(src);
     assert_eq!(host.with_audio(|a| a.voice_count()), 2);
 }
+
+const ANIMATOR: &str = r#"
+local A = { frames = 0 }
+function A:Start()
+    self.anim = self.gameObject:GetComponent("Animation")
+    Debug.Log("auto", self.anim.isPlaying, self.anim.clip)
+    self.anim.speed = 2
+end
+function A:Update()
+    self.frames = self.frames + 1
+    if self.frames == 10 then
+        self.anim:Stop()
+        Debug.Log("stopped", self.anim.isPlaying, self.anim.time == 0)
+        Debug.Log("missing", self.anim:Play("Nope"))
+        Debug.Log("play", self.anim:Play("Rise"), self.anim:IsPlaying("Rise"))
+    end
+end
+function A:Peak() Debug.Log("event Peak") end
+return A
+"#;
+
+#[test]
+fn animation_component_lua_api_and_events() {
+    use crate::animation::{AnimationClip, AnimationEvent, Property};
+    let root = project(&[("A.lua", ANIMATOR)]);
+    let mut spin = AnimationClip::default();
+    spin.set_key("", Property::Rotation(1), 0.0, 0.0);
+    spin.set_key("", Property::Rotation(1), 1.0, 90.0);
+    spin.events.push(AnimationEvent {
+        time: 0.1,
+        function: "Peak".into(),
+    });
+    spin.save(&root.join("Assets/Anim/Spin.anim")).unwrap();
+    let mut rise = AnimationClip {
+        looping: false,
+        ..Default::default()
+    };
+    rise.set_key("", Property::Position(1), 0.0, 0.0);
+    rise.set_key("", Property::Position(1), 0.5, 3.0);
+    rise.save(&root.join("Assets/Anim/Rise.anim")).unwrap();
+
+    let mut scene = Scene::new("t");
+    let e = scene.spawn("Dancer", None);
+    scene.add(
+        e,
+        crate::scene::Animation {
+            clip: Some("Assets/Anim/Spin.anim".into()),
+            clips: vec!["Assets/Anim/Rise.anim".into()],
+            ..Default::default()
+        },
+    );
+    attach(&mut scene, e, "A.lua", &[]);
+    let logs = run(&mut scene, root, 60, Input::default());
+    let texts: Vec<&str> = logs.iter().map(|(_, t)| t.as_str()).collect();
+    assert!(texts.contains(&"auto true Spin"), "{texts:?}");
+    assert!(texts.contains(&"event Peak"), "{texts:?}");
+    assert!(texts.contains(&"stopped false true"), "{texts:?}");
+    assert!(texts.contains(&"missing false"), "{texts:?}");
+    assert!(texts.contains(&"play true true"), "{texts:?}");
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Warning && t.contains("Nope")),
+        "missing clip warns"
+    );
+    // Rise (0.5 s at speed 2) finished long ago and holds its last pose; Spin stopped mid-way.
+    let t = scene.transform(e);
+    assert!((t.position.y - 3.0).abs() < 1e-4, "{}", t.position.y);
+    assert!(t.euler().y > 0.0 && t.euler().y < 90.0);
+}

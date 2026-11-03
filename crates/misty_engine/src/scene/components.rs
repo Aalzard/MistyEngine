@@ -708,3 +708,91 @@ impl Default for AudioListener {
         Self { enabled: true }
     }
 }
+
+// ---- animation -----------------------------------------------------------------------------
+
+/// What happens when playback reaches the end of a clip.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WrapMode {
+    /// Use the clip's own Loop Time setting (Loop or Once).
+    #[default]
+    Default,
+    /// Stop at the end, holding the last pose.
+    Once,
+    Loop,
+    /// Play forwards, then backwards, and so on.
+    PingPong,
+    /// Hold the last pose and keep "playing".
+    ClampForever,
+}
+
+impl WrapMode {
+    pub const ALL: [Self; 5] = [
+        Self::Default,
+        Self::Once,
+        Self::Loop,
+        Self::PingPong,
+        Self::ClampForever,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Default => "Default",
+            Self::Once => "Once",
+            Self::Loop => "Loop",
+            Self::PingPong => "Ping Pong",
+            Self::ClampForever => "Clamp Forever",
+        }
+    }
+}
+
+/// Plays animation clips (`.anim`) on this object and its children.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Animation {
+    pub enabled: bool,
+    /// Default clip asset path, played automatically and by `Play()` without a name.
+    pub clip: Option<String>,
+    /// Clips `Play(name)` can choose from (asset paths; the name is the file name).
+    pub clips: Vec<String>,
+    pub play_automatically: bool,
+    pub wrap_mode: WrapMode,
+}
+
+impl Default for Animation {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            clip: None,
+            clips: Vec::new(),
+            play_automatically: true,
+            wrap_mode: WrapMode::Default,
+        }
+    }
+}
+
+impl Animation {
+    /// Every clip path, the default clip first, without duplicates.
+    pub fn all_clips(&self) -> Vec<String> {
+        let mut out: Vec<String> = self.clip.iter().cloned().collect();
+        for c in &self.clips {
+            if !out.contains(c) {
+                out.push(c.clone());
+            }
+        }
+        out
+    }
+
+    /// Path of the clip called `name` (file name without extension).
+    pub fn find_clip(&self, name: &str) -> Option<String> {
+        self.all_clips().into_iter().find(|c| clip_name(c) == name)
+    }
+}
+
+/// Clip name shown to users and used by `Play(name)`: the file name without extension.
+pub fn clip_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
