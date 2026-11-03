@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::physics::Physics;
 use crate::scene::Scene;
-use crate::scripting::{Input, LogKind, ScriptHost};
+use crate::scripting::{Input, LogKind, Request, ScriptHost};
 use crate::settings::{ProjectSettings, TimeSettings};
 
 /// Like the familiar `Time` class: elapsed time, frame delta, frame count, time scale.
@@ -89,6 +89,11 @@ impl Runtime {
             .collect();
         out.extend(self.host.take_logs());
         out
+    }
+
+    /// `SceneManager.LoadScene` / `Application.Quit` calls made by scripts since the last call.
+    pub fn take_requests(&mut self) -> Vec<Request> {
+        self.host.take_requests()
     }
 
     /// Gravity and fixed timestep the physics world was built with.

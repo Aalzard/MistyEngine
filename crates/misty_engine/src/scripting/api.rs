@@ -1,5 +1,6 @@
 //! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody and global tables
-//! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy).
+//! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy, SceneManager,
+//! Application).
 //!
 //! Userdata only hold an entity id; they reach the scene through the [`World`] stored in the
 //! Lua state's app data while a game frame runs.
@@ -11,7 +12,8 @@ use mlua::{
     Variadic,
 };
 
-use super::{LogKind, World};
+use super::{LogKind, Request, World};
+use crate::build::SceneRef;
 use crate::camera::{euler_to_quat, quat_to_euler};
 use crate::scene::Rigidbody;
 use crate::scene::prefab::Prefab;
@@ -651,6 +653,41 @@ pub fn register(lua: &Lua) -> Result<()> {
             with_world(lua, |w| w.destroy.push(e))
         })?,
     )?;
+
+    // SceneManager / Application: requests handled after the frame.
+    let scenes = lua.create_table()?;
+    scenes.set(
+        "LoadScene",
+        lua.create_function(|lua, v: Value| {
+            let scene = match v {
+                Value::Integer(i) => SceneRef::Index(i),
+                Value::Number(n) if n.fract() == 0.0 => SceneRef::Index(n as i64),
+                Value::String(s) => SceneRef::Name(s.to_string_lossy()),
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "LoadScene expects a scene name or build index",
+                    ));
+                }
+            };
+            with_world(lua, |w| w.requests.push(Request::LoadScene(scene)))
+        })?,
+    )?;
+    scenes.set(
+        "GetActiveScene",
+        lua.create_function(|lua, ()| {
+            let name = with_world(lua, |w| w.scene.name.clone())?;
+            let t = lua.create_table()?;
+            t.set("name", name)?;
+            Ok(t)
+        })?,
+    )?;
+    g.set("SceneManager", scenes)?;
+    let app = lua.create_table()?;
+    app.set(
+        "Quit",
+        lua.create_function(|lua, ()| with_world(lua, |w| w.requests.push(Request::Quit)))?,
+    )?;
+    g.set("Application", app)?;
     Ok(())
 }
 

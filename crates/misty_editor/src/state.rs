@@ -7,6 +7,7 @@ use misty_engine::scene::{Camera, Light, LightType, MeshFilter, Scene};
 
 use crate::actions::Action;
 use crate::assets::AssetDatabase;
+use crate::build_settings::BuildSettingsWindow;
 use crate::console::Console;
 use crate::handles::HandleState;
 use crate::play::PlaySession;
@@ -16,6 +17,7 @@ use crate::scene_camera::SceneCamera;
 use crate::scene_files::SceneFiles;
 use crate::selection::Selection;
 use crate::undo::UndoStack;
+use misty_engine::build::BuildSettings;
 use misty_engine::runtime::{Runtime, Time};
 use misty_engine::scripting::Input;
 use misty_engine::settings::ProjectSettings;
@@ -193,6 +195,9 @@ pub struct EditorState {
     /// Edit ▸ Project Settings values (saved in the project).
     pub project_settings: ProjectSettings,
     pub project_settings_window: ProjectSettingsWindow,
+    /// File ▸ Build Settings values (saved in the project).
+    pub build_settings: BuildSettings,
+    pub build_window: BuildSettingsWindow,
     pub assets: AssetDatabase,
     /// Asset shown in the Inspector when no scene object is selected.
     pub inspector_asset: Option<String>,
@@ -240,6 +245,8 @@ impl EditorState {
             project,
             project_settings: ProjectSettings::default(),
             project_settings_window: ProjectSettingsWindow::default(),
+            build_settings: BuildSettings::default(),
+            build_window: BuildSettingsWindow::default(),
             scene_view: SceneViewSettings {
                 draw_mode: 0,
                 is_2d: false,
@@ -266,6 +273,7 @@ impl EditorState {
             actions: Vec::new(),
         };
         crate::project_settings::load(&mut s);
+        crate::build_settings::load(&mut s);
         s
     }
 

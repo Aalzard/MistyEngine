@@ -1,0 +1,12 @@
+{
+  "scenes": [
+    {
+      "path": "Assets/Scenes/SampleScene.scene",
+      "enabled": true
+    }
+  ],
+  "product_name": "Misty Sample",
+  "width": 1280,
+  "height": 720,
+  "fullscreen": false
+}

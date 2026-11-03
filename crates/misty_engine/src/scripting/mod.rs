@@ -6,6 +6,8 @@
 //! `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`.
 //! `Instantiate(prefabPath or gameObject [, position])` creates objects while playing; their
 //! scripts get `Awake` right after the callback that created them.
+//! `SceneManager.LoadScene(name or index)` and `Application.Quit()` are handled after the frame
+//! by whoever runs the game (player or editor).
 //!
 //! ```lua
 //! local Rotator = { speed = 90 }
@@ -85,6 +87,15 @@ impl Input {
     }
 }
 
+/// Something a script asked the game (not the scene) to do; handled after the frame.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Request {
+    /// `SceneManager.LoadScene(name or index)`.
+    LoadScene(crate::build::SceneRef),
+    /// `Application.Quit()`.
+    Quit,
+}
+
 /// What scripts can reach during a frame (stored in the Lua state's app data).
 pub struct World {
     pub scene: Scene,
@@ -97,6 +108,8 @@ pub struct World {
     pub root: PathBuf,
     /// Roots created by `Instantiate` that still need script instances.
     pub spawned: Vec<Entity>,
+    /// Scene loads and quit requests made this frame.
+    pub requests: Vec<Request>,
 }
 
 struct Instance {
@@ -133,6 +146,7 @@ impl ScriptHost {
             destroy: Vec::new(),
             root: project_root.clone(),
             spawned: Vec::new(),
+            requests: Vec::new(),
         });
         let mut host = Self {
             lua,
@@ -402,6 +416,11 @@ impl ScriptHost {
 
     pub fn take_logs(&self) -> Vec<(LogKind, String)> {
         self.with_world(|w| std::mem::take(&mut w.logs))
+    }
+
+    /// Scene loads and quit requests scripts made since the last call.
+    pub fn take_requests(&self) -> Vec<Request> {
+        self.with_world(|w| std::mem::take(&mut w.requests))
     }
 
     /// Physics counters for the Stats overlay.

@@ -11,6 +11,18 @@ cargo run -p misty_editor --release
 The editor opens `SampleProject/` (or pass a project folder: `cargo run -p misty_editor --release -- path/to/Project`).
 A project is any folder with an `Assets/` directory.
 
+### Play a build
+
+```bash
+cargo build -p misty_player --release
+```
+
+Build the player next to the editor first, then in the editor use **File ▸ Build Settings…** to list the scenes
+(scene 0 starts the game) and press **Build** or **Build And Run** (Ctrl+B). The output folder holds
+`<Product Name>.exe` with copies of `Assets/` and `ProjectSettings/`; run the exe to play.
+To play a project without building: `cargo run -p misty_player --release -- path/to/Project`
+(no argument = `SampleProject/`).
+
 ## What's inside
 
 | Area | Highlights |
@@ -21,6 +33,7 @@ A project is any folder with an `Assets/` directory.
 | Physics | Rigidbody, Box/Sphere/Capsule/Mesh colliders (rapier) |
 | Scripting | Lua scripts with Start/Update/FixedUpdate/collision callbacks — see [docs/scripting.md](docs/scripting.md) |
 | Scenes | Save/load `.scene` files, recent scenes, unsaved-changes prompt |
+| Player | Standalone `misty_player` window, Build Settings scene list, Build / Build And Run |
 
 Docs: [progress](docs/progress.md) · [decisions](docs/decisions.md) · [behaviour notes](docs/unity-notes.md)
 
@@ -31,4 +44,5 @@ cargo test
 cargo clippy --all-targets
 ```
 
-`MISTY_SCREENSHOT=out.png` makes the editor save a screenshot of its window and exit (used for visual checks).
+`MISTY_SCREENSHOT=out.png` makes the editor (or `misty_player`) save a screenshot of its window and exit (used for
+visual checks).

@@ -19,6 +19,8 @@ const MAX_RECENT: usize = 8;
 pub struct EditorSettings {
     /// Project-relative scene paths, most recent first.
     pub recent_scenes: Vec<String>,
+    /// Output folder of the last build (File ▸ Build And Run builds there again).
+    pub last_build_folder: Option<PathBuf>,
 }
 
 impl EditorSettings {
@@ -29,7 +31,7 @@ impl EditorSettings {
             .unwrap_or_default()
     }
 
-    fn save(&self, root: &Path) {
+    pub fn save(&self, root: &Path) {
         let path = root.join(SETTINGS_FILE);
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);

@@ -239,3 +239,35 @@ Record of choices made without asking, and why.
     Their physics bodies are added with `Physics::add_subtree`; scripts get `Awake` right after the callback that
     called `Instantiate` (not inside it, since the host can't be re-entered from Lua), and `Start` before their
     first `Update`. A chain of more than 64 nested Awake→Instantiate rounds is stopped with a Console error.
+
+## 2026-11-03 — Standalone player and Build Settings
+
+79. **Player = plain `winit` 0.30 + `wgpu` surface, no eframe** (`crates/misty_player`). The player has no UI, so
+    egui would only add a second renderer and an event loop it doesn't need; winit is already in the dependency
+    tree (same version eframe uses). The engine renders to its usual offscreen `RenderTarget`; a fullscreen
+    blit copies the target's gamma-encoded image to a non-sRGB view of the surface (`remove_srgb_suffix`), so the
+    window shows exactly what the Game view shows. Resizing recreates the target at window size (no letterbox).
+80. **Scene → renderer code moved to `misty_engine::render_scene`** (mesh draws, lights, headlight, game camera,
+    `GameView`), with a small `MaterialSource` trait implemented by the editor's `AssetDatabase` and the new
+    engine `AssetCache` (loads every `.mat` under `Assets/` once — a build never changes its assets).
+81. **Build Settings in `ProjectSettings/BuildSettings.json`** (scene list with enabled flags, product name,
+    width/height, fullscreen), version-controlled like the Project Settings. Build index = position among the
+    enabled scenes, like the familiar list. An empty product name means the project folder's name.
+82. **A build is a folder**: `<Product>.exe` (the player, renamed), plus copies of `Assets/` and `ProjectSettings/`
+    (replaced on each build so deleted assets don't linger). The player plays the folder it sits in, so no packing
+    format is needed yet. Building into the project's own `Assets`/`ProjectSettings` is refused. With no enabled
+    scenes the open (saved) scene is added first, matching the reference editor's "build the open scene".
+83. **The player executable is found next to the editor's** (`current_exe()` dir); if it is missing the Console says
+    to run `cargo build -p misty_player --release`. Building the player from the editor would need cargo and the
+    source tree at runtime, which an installed editor won't have.
+84. **Build always asks for a folder; Build And Run (button, File menu, Ctrl+B) reuses the last folder** (stored per
+    user in `Library/EditorSettings.json`) and asks only the first time.
+85. **`SceneManager.LoadScene` / `Application.Quit` are requests handled after the frame** (`Runtime::take_requests`),
+    since the script host can't replace the world it is running. The last LoadScene of a frame wins; scenes must be
+    enabled in Build Settings (by file name, path or index) or a Console error explains why, as users expect. A
+    load restarts physics and scripts (`Awake`) but `Time` keeps running. In the editor the loaded scene replaces
+    the Play-mode scene (and the window title's scene) until Stop restores the edit scene and its path.
+86. **Player key names come from physical key codes** (layout independent) and use the familiar names
+    ("left shift", "page up", "-"); the editor's egui-based capture keeps its names, which match for letters,
+    digits, arrows, space, return, escape, F-keys and modifiers. Release players use the Windows GUI subsystem
+    (no console); output goes to stderr and `Player.log` next to the executable.

@@ -15,7 +15,7 @@ use crate::project::ProjectBrowser;
 use crate::scene_files::{self, AfterPrompt};
 use crate::state::{EditorState, PlayState, Tool};
 use crate::viewport::Gpu;
-use crate::{commands, game_input, menu_bar, play, status_bar, theme, toolbar};
+use crate::{build_settings, commands, game_input, menu_bar, play, status_bar, theme, toolbar};
 
 pub struct EditorApp {
     state: EditorState,
@@ -126,6 +126,8 @@ impl EditorApp {
             (ctrl, Key::O, Action::OpenScene),
             (ctrl, Key::S, Action::SaveScene),
             (ctrl_shift, Key::S, Action::SaveSceneAs),
+            (ctrl_shift, Key::B, Action::OpenBuildSettings),
+            (ctrl, Key::B, Action::BuildAndRun),
             (ctrl_shift, Key::N, create_empty),
             (ctrl_shift, Key::G, Action::CreateEmptyParent),
             (ctrl, Key::D, Action::DuplicateSelected),
@@ -231,6 +233,8 @@ impl EditorApp {
             Action::SaveSceneAs => {
                 scene_files::save_as(s);
             }
+            Action::Build => build_settings::build(s, false, true),
+            Action::BuildAndRun => build_settings::build(s, true, false),
             Action::TogglePlay => {
                 if s.play.in_play_mode() {
                     play::stop(s);
@@ -395,6 +399,7 @@ impl eframe::App for EditorApp {
             });
 
         crate::project_settings::show(&ctx, &mut self.state);
+        build_settings::show(&ctx, &mut self.state);
         self.apply_actions(&ctx);
         self.state.undo.end_frame(Self::interacting(&ctx));
         self.scene_file_frame(&ctx);

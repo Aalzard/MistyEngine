@@ -1,7 +1,8 @@
 //! Play mode: snapshot on Play, run the game loop, restore everything on Stop.
 
+use misty_engine::build::SceneRef;
 use misty_engine::runtime::{Runtime, Time};
-use misty_engine::scripting::LogKind;
+use misty_engine::scripting::{LogKind, Request};
 
 use crate::console::LogLevel;
 use misty_engine::scene::Scene;
@@ -16,6 +17,8 @@ pub struct PlaySession {
     selection: Selection,
     undo: UndoStack,
     dirty: bool,
+    /// Open scene file (scripts may load another scene while playing).
+    path: Option<String>,
 }
 
 /// Enter Play mode (optionally starting paused, like pressing Pause before Play).
@@ -31,6 +34,7 @@ pub fn start(s: &mut EditorState) {
         selection: s.selection.clone(),
         undo: std::mem::take(&mut s.undo),
         dirty: s.scene_dirty,
+        path: s.files.path.clone(),
     });
     s.time = Time::new(&s.project_settings.time);
     s.runtime = Some(Runtime::start(
@@ -59,6 +63,7 @@ pub fn stop(s: &mut EditorState) {
     s.selection.retain_existing(&s.scene);
     s.undo = session.undo;
     s.scene_dirty = session.dirty;
+    s.files.path = session.path;
     s.play = PlayState::Edit;
     s.console.info("Exited Play mode.");
 }
@@ -85,6 +90,51 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
         runtime.update(&mut s.scene, &s.time, input);
     }
     flush_logs(s);
+    handle_requests(s);
+}
+
+/// `SceneManager.LoadScene` / `Application.Quit` from scripts.
+fn handle_requests(s: &mut EditorState) {
+    let Some(runtime) = s.runtime.as_mut() else {
+        return;
+    };
+    // The last LoadScene of a frame wins.
+    let mut load = None;
+    for r in runtime.take_requests() {
+        match r {
+            Request::LoadScene(scene) => load = Some(scene),
+            Request::Quit => s.console.info("Application.Quit() ignored in the editor"),
+        }
+    }
+    if let Some(scene) = load {
+        load_scene(s, &scene);
+    }
+}
+
+/// Swap in a build scene while playing (the edit-mode scene comes back on Stop).
+fn load_scene(s: &mut EditorState, which: &SceneRef) {
+    let loaded = s.build_settings.resolve(which).and_then(|(rel, _)| {
+        misty_engine::scene::Scene::load(&s.project.root.join(&rel)).map(|r| (rel, r))
+    });
+    match loaded {
+        Ok((rel, (mut scene, report))) => {
+            for w in report.warnings {
+                s.console.warn(format!("{rel}: {w}"));
+            }
+            s.runtime = None;
+            s.runtime = Some(Runtime::start(
+                &mut scene,
+                s.project.root.clone(),
+                &s.project_settings,
+            ));
+            s.scene = scene;
+            s.files.path = Some(rel);
+            s.selection.clear();
+            s.inspector_targets.clear();
+            flush_logs(s);
+        }
+        Err(e) => s.console.log(LogLevel::Error, e),
+    }
 }
 
 /// Script output and runtime problems go to the Console.
@@ -151,6 +201,70 @@ mod tests {
         tick(&mut s, 0.1);
         assert_eq!(s.time.frame, 2);
         assert!((s.time.delta - 1.0 / 60.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn scripts_load_build_scenes_until_stop_and_quit_is_ignored() {
+        use misty_engine::build::BuildScene;
+        use misty_engine::scene::{ScriptRef, Scripts};
+        let root = std::env::temp_dir().join(format!("misty_play_load_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
+        std::fs::write(
+            root.join("Assets/Scripts/Next.lua"),
+            "local N = {}
+function N:Update() SceneManager.LoadScene(1) Application.Quit() end
+return N
+",
+        )
+        .unwrap();
+        let mut level = Scene::new("Level2");
+        level.spawn("Only In Level2", None);
+        level
+            .save(&root.join("Assets/Scenes/Level2.scene"))
+            .unwrap();
+
+        let mut s = EditorState::new(ProjectBrowser::open(root));
+        s.files.path = Some("Assets/Scenes/Menu.scene".into());
+        let e = s.scene.spawn("Loader", None);
+        s.scene.add(
+            e,
+            Scripts {
+                list: vec![ScriptRef {
+                    path: "Assets/Scripts/Next.lua".into(),
+                    enabled: true,
+                    fields: Default::default(),
+                }],
+            },
+        );
+        s.build_settings.scenes = vec![
+            BuildScene::new("Assets/Scenes/Menu.scene"),
+            BuildScene::new("Assets/Scenes/Level2.scene"),
+        ];
+        start(&mut s);
+        tick(&mut s, 1.0 / 60.0);
+        assert_eq!(s.scene.name, "Level2");
+        assert!(s.scene.find_by_name("Only In Level2").is_some());
+        assert_eq!(s.files.path.as_deref(), Some("Assets/Scenes/Level2.scene"));
+        assert!(
+            s.console
+                .entries
+                .iter()
+                .any(|l| l.message == "Application.Quit() ignored in the editor")
+        );
+        stop(&mut s);
+        assert!(
+            s.scene.find_by_name("Loader").is_some(),
+            "edit scene restored"
+        );
+        assert_eq!(s.files.path.as_deref(), Some("Assets/Scenes/Menu.scene"));
+
+        // Scenes outside the build list fail with a Console error.
+        s.build_settings.scenes.truncate(1);
+        start(&mut s);
+        tick(&mut s, 1.0 / 60.0);
+        assert!(s.scene.find_by_name("Loader").is_some());
+        assert!(s.console.count(LogLevel::Error) > 0);
     }
 
     #[test]

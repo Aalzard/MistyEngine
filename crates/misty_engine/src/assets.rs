@@ -1,10 +1,12 @@
 //! Asset types stored as files in a project's `Assets` folder.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
 use crate::render::MaterialParams;
+use crate::render_scene::MaterialSource;
 
 /// A material asset (`.mat`, JSON). Mirrors the Standard shader's main properties.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -61,8 +63,48 @@ impl Material {
     }
 }
 
+/// Read-only asset lookups for a built game: every material under `Assets/`, loaded once.
+#[derive(Default)]
+pub struct AssetCache {
+    /// Project-relative path ("Assets/Materials/Red.mat") → material.
+    pub materials: BTreeMap<String, Material>,
+}
+
+impl AssetCache {
+    /// Load the materials of the project at `root`. Unreadable files are skipped.
+    pub fn open(root: &Path) -> Self {
+        let mut cache = Self::default();
+        let mut stack = vec![root.join("Assets")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "mat")
+                    && let Ok(m) = Material::load(&path)
+                {
+                    let rel = path.strip_prefix(root).unwrap_or(&path);
+                    let rel = rel.to_string_lossy().replace('\\', "/");
+                    cache.materials.insert(rel, m);
+                }
+            }
+        }
+        cache
+    }
+}
+
+impl MaterialSource for AssetCache {
+    fn params(&self, rel: Option<&str>) -> MaterialParams {
+        rel.and_then(|r| self.materials.get(r))
+            .map(Material::params)
+            .unwrap_or_default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
@@ -95,5 +137,18 @@ mod tests {
         m.emission_enabled = true;
         assert_eq!(m.params().emission, [1.0, 0.5, 0.0]);
         assert_eq!(m.params().emission_intensity, 2.0);
+    }
+
+    #[test]
+    fn cache_loads_project_materials() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+        let cache = AssetCache::open(&root);
+        let red = cache.params(Some("Assets/Materials/Red.mat"));
+        assert_ne!(red, MaterialParams::default());
+        assert_eq!(cache.params(None), MaterialParams::default());
+        assert_eq!(
+            cache.params(Some("Assets/Missing.mat")),
+            MaterialParams::default()
+        );
     }
 }
