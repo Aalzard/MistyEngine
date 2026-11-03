@@ -3,6 +3,7 @@
 pub mod animation;
 pub mod animator;
 pub mod audio_mixer;
+pub mod code_editor;
 mod console;
 mod game;
 mod hierarchy;
@@ -54,6 +55,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::Animator => animator::show(ui, self.state),
             Tab::AudioMixer => audio_mixer::show(ui, self.state),
             Tab::Navigation => navigation::show(ui, self.state),
+            Tab::CodeEditor => code_editor::show(ui, self.state),
         }
     }
 

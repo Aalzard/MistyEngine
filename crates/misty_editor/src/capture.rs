@@ -1,5 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
-//! See [`apply_env`] for `MISTY_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_TAB` / `MISTY_PLAY`.
+//! See [`apply_env`] for `MISTY_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
+//! `MISTY_PLAY`.
 
 use std::path::PathBuf;
 
@@ -69,6 +70,17 @@ pub fn apply_env(
         s.project.selected = Some(abs);
         s.selection.clear();
         s.inspector_asset = Some(rel);
+    }
+    // `MISTY_SCRIPT=Assets/Scripts/Rotator.lua` (optionally `:line`) opens it in the Code Editor.
+    if let Some(script) = std::env::var_os("MISTY_SCRIPT") {
+        let script = script.to_string_lossy().into_owned();
+        let (rel, line) = match script.rsplit_once(':') {
+            Some((r, l)) if l.parse::<usize>().is_ok() => (r.to_owned(), l.parse().ok()),
+            _ => (script, None),
+        };
+        if s.code_editor.open(&rel, line).is_ok() {
+            crate::layout::focus_or_open(dock, crate::layout::Tab::CodeEditor);
+        }
     }
     if let Some(title) = std::env::var_os("MISTY_TAB")
         && let Some(tab) =

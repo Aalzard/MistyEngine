@@ -1046,3 +1046,62 @@ Record of choices made without asking, and why.
      (`Patrol.lua`) and three chasers (`Chaser.lua`) following a marker that clicks move (`ClickMarker.lua`).
      Reuses the Checker, Sandstone, Wood, Bumpy Tiles, Blue Steel, Red and Laser materials unchanged. The editor
      capture also accepts `MISTY_PLAY=1` to screenshot Play mode.
+
+## 2026-11-03 — Code Editor
+
+259. **Custom text widget over a line buffer, not `TextEdit`.** egui's `TextEdit` with a layouter can colour text,
+     but multi-caret editing, box selection, squiggles, folding, line commands and VS-style undo need control of
+     the model, so the Code Editor has its own: `Vec<String>` lines with character columns (`text`), selections
+     (`editor`), commands (`commands`), find (`find`), Lua tokens (`lexer`), completion and diagnostics — all
+     pure and unit-tested — and an egui view that lays out each visible line as a coloured galley. Scripts are
+     small, so whole-line strings are fast enough without a rope.
+260. **Undo = whole-text snapshots per file, grouped by typing bursts.** An edit records the text and carets
+     before it unless it continues the open burst: same kind (typing or erasing) within 1.2 s and no caret move,
+     Enter or other command in between. Every change gets a new version number; undo restores the version too,
+     so undoing back to the saved text clears the dirty marker (●).
+261. **Multi-caret editing everywhere.** Each command is a list of edits applied bottom-up; every selection (and
+     every fold marker) is moved by each edit, so typing, Backspace, paste, comments, Ctrl+D and line moves work
+     with several carets. Box selection (Alt+Shift+arrows / drag) is one selection per line. Alt+click adds a
+     caret, Shift+Alt+. / ; add the next / all occurrences, Ctrl+Alt+Up/Down add a caret above/below.
+262. **Visual Studio keys where they don't clash with the task:** Ctrl+L cuts the line and Ctrl+Shift+L deletes
+     it; Ctrl+] goes to the matching bracket (indent stays on Tab / Shift+Tab); Ctrl+E, W toggles word wrap;
+     Ctrl+= / Ctrl+- zoom (VS uses Ctrl+- for Navigate Backward, which isn't implemented); F1 lists the
+     shortcuts. While the text has focus it owns the keyboard: editor-wide shortcuts are skipped except Play,
+     Pause and Step, and egui's own Ctrl+= UI zoom is turned off. F5 / Shift+F5 enter / stop Play mode from
+     anywhere but a text field.
+263. **Clipboard like Visual Studio:** Copy/Cut with nothing selected takes whole lines; pasting exactly that text
+     again inserts it above the caret's line. With several carets and as many pasted lines, each caret gets one.
+264. **Syntax check = compile without running** (`misty_engine::scripting::syntax::check`: `Lua::load(..)
+     .into_function()` with the script's path as chunk name), 400 ms after typing stops. The error's line comes
+     from Lua's message; the squiggle covers the token after `near '…'`, the last character for `<eof>`, else
+     the line. Only the first error is shown (Lua stops there).
+265. **Console messages that name `Assets/….lua:N` get a link** (`Rotator.lua:12`); clicking it or
+     double-clicking the row opens the script at that line in the Code Editor, even when Preferences choose an
+     external editor (it can't jump to a line).
+266. **Script editor preference:** Edit ▸ Preferences ▸ External Tools ▸ Script Editor picks the Misty Code
+     Editor (default) or the system's default app; both the file tab menu and the Inspector's ⋮ menu keep an
+     "Open in External Editor" entry. Preferences and Code Editor options (font size, word wrap, minimap, line
+     numbers, auto-close, tab size) are per user in `Library/CodeEditor.json`.
+267. **Closing the Code Editor tab keeps the open files** (with unsaved edits) in memory, like hiding a tool
+     window; they come back when it reopens. Closing a file (×, middle-click, Ctrl+F4) and quitting the editor
+     ask Save / Don't Save / Cancel for unsaved scripts first; the quit prompt comes before the scene's.
+268. **Files changed on disk** are checked twice a second: unmodified ones reload (as an undoable step),
+     modified ones show a "changed outside the editor" bar with Reload / Keep Mine. Renaming or moving a script
+     in the Project window renames its open tab. A new script from the Project window opens in the Code Editor
+     without taking the keyboard from the name field.
+269. **Saving follows the existing hot reload** (decision 51): in Edit mode the asset database sees the new file
+     and re-reads fields (errors go to the Console); in Play mode the running game keeps the version it started
+     with and the status bar says the change applies when Play mode ends. Editing never blocks Play mode.
+270. **Folding by block** (`function`/`if`/`for`/`while`/`do`/`repeat` … `end`/`until`, multi-line `{ }` and
+     `( )`) from the lexer's block structure, which also drives auto-indent, auto-dedent of `end`/`else`/`until`/
+     `}` and Format Document (Ctrl+K, D re-indents by depth with the tab size and strips trailing spaces; long
+     strings are left alone). Folds are markers that move with edits; a caret moving into a folded block opens
+     it. In word-wrap mode Up/Down move by whole lines, not by wrapped rows.
+271. **Autocomplete data is a static table** (`code_editor/api.rs`, written from `docs/scripting.md`) of globals,
+     their members and object types (`#Transform`, `#Rigidbody`, …) with signatures and one-line docs. Member
+     completion resolves `self`, `.transform`, `.gameObject`, the script's own class table, variables assigned
+     from `GetComponent("Type")`, `Physics.Raycast` hits and vectors; unknown objects list every object member.
+     Ranking: exact case prefix, then case-insensitive prefix, camel humps (`gkd` → GetKeyDown), substring; then
+     API before keywords before names from the file, shorter first. Enter on a fully typed name inserts a new
+     line instead of accepting. Hovering an API name shows its signature (quick info); Ctrl+click and F12 go to
+     a definition in the same file.

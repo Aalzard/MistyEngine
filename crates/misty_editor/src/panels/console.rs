@@ -8,6 +8,8 @@ use crate::theme;
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
+    // A message naming a script line opens it in the Code Editor (link or double-click).
+    let mut open_script: Option<String> = None;
     let c = &mut state.console;
     let (n_info, n_warn, n_err) = (
         c.count(LogLevel::Info),
@@ -91,6 +93,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     } else {
                         egui::Color32::from_rgb(60, 60, 60)
                     };
+                    let mut link_rect = None;
                     let resp = egui::Frame::new()
                         .fill(bg)
                         .inner_margin(egui::Margin::symmetric(4, 3))
@@ -104,6 +107,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                                 );
                                 let first = e.message.lines().next().unwrap_or("");
                                 ui.label(format!("[{}] {first}", e.time));
+                                if let Some(link) =
+                                    crate::panels::code_editor::console_link(&e.message)
+                                {
+                                    link_rect = Some(
+                                        ui.link(link).on_hover_text("Open in the Code Editor").rect,
+                                    );
+                                }
                                 if c.collapse {
                                     ui.with_layout(
                                         egui::Layout::right_to_left(egui::Align::Center),
@@ -121,7 +131,16 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     if resp.clicked() {
                         c.selected = Some(i);
                     }
+                    let on_link = resp
+                        .interact_pointer_pos()
+                        .is_some_and(|p| link_rect.is_some_and(|r: egui::Rect| r.contains(p)));
+                    if resp.double_clicked() || (resp.clicked() && on_link) {
+                        open_script = Some(e.message.clone());
+                    }
                 }
             });
     });
+    if let Some(msg) = open_script {
+        crate::panels::code_editor::open_console_location(state, &msg);
+    }
 }

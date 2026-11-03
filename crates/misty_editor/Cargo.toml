@@ -22,6 +22,7 @@ serde_json.workspace = true
 serde.workspace = true
 rfd = "0.17"
 trash = "5"
+regex = "1"
 
 [dev-dependencies]
 egui_kittest = "0.36"
