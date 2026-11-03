@@ -600,6 +600,9 @@ mod tests {
         h.run();
         h.get_by_label("Add Component").click();
         h.run();
+        // The search field has focus; the list itself scrolls.
+        h.event(egui::Event::Text("Light".into()));
+        h.run();
         h.get_by_label("Light").click();
         h.run();
         apply_actions(h.state_mut());

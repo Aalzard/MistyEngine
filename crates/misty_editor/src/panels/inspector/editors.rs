@@ -1002,48 +1002,55 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                 let field = ui.add(egui::TextEdit::singleline(&mut search).hint_text("🔍 Search"));
                 field.request_focus();
                 ui.separator();
-                let needle = search.to_lowercase();
-                let mut last_cat = "";
-                for info in registry::components()
-                    .iter()
-                    .filter(|c| !c.category.is_empty())
-                {
-                    if !needle.is_empty() && !info.name.to_lowercase().contains(&needle) {
-                        continue;
-                    }
-                    if info.category != last_cat {
-                        ui.label(RichText::new(info.category).color(theme::TEXT_DIM).small());
-                        last_cat = info.category;
-                    }
-                    let has = present.iter().any(|p| p == info.name);
-                    if ui
-                        .add_enabled(!has, egui::Button::new(info.name).frame(false))
-                        .clicked()
-                    {
-                        chosen = Some(info.name);
-                    }
-                }
-                // Project scripts, then "New script".
-                let scripts: Vec<String> = state
-                    .assets
-                    .scripts
-                    .keys()
-                    .filter(|p| needle.is_empty() || p.to_lowercase().contains(&needle))
-                    .cloned()
-                    .collect();
-                ui.label(RichText::new("Scripts").color(theme::TEXT_DIM).small());
-                for path in scripts {
-                    let label = format!("📜 {}", AssetDatabase::material_name(Some(&path)));
-                    if ui.add(egui::Button::new(label).frame(false)).clicked() {
-                        chosen_script = Some(path);
-                    }
-                }
-                if ui
-                    .add(egui::Button::new("➕ New script").frame(false))
-                    .clicked()
-                {
-                    new_script = true;
-                }
+                // The list scrolls under the search field so it never runs off screen.
+                egui::ScrollArea::vertical()
+                    .max_height(360.0)
+                    .show(ui, |ui| {
+                        let needle = search.to_lowercase();
+                        let mut last_cat = "";
+                        for info in registry::components()
+                            .iter()
+                            .filter(|c| !c.category.is_empty())
+                        {
+                            if !needle.is_empty() && !info.name.to_lowercase().contains(&needle) {
+                                continue;
+                            }
+                            if info.category != last_cat {
+                                ui.label(
+                                    RichText::new(info.category).color(theme::TEXT_DIM).small(),
+                                );
+                                last_cat = info.category;
+                            }
+                            let has = present.iter().any(|p| p == info.name);
+                            if ui
+                                .add_enabled(!has, egui::Button::new(info.name).frame(false))
+                                .clicked()
+                            {
+                                chosen = Some(info.name);
+                            }
+                        }
+                        // Project scripts, then "New script".
+                        let scripts: Vec<String> = state
+                            .assets
+                            .scripts
+                            .keys()
+                            .filter(|p| needle.is_empty() || p.to_lowercase().contains(&needle))
+                            .cloned()
+                            .collect();
+                        ui.label(RichText::new("Scripts").color(theme::TEXT_DIM).small());
+                        for path in scripts {
+                            let label = format!("📜 {}", AssetDatabase::material_name(Some(&path)));
+                            if ui.add(egui::Button::new(label).frame(false)).clicked() {
+                                chosen_script = Some(path);
+                            }
+                        }
+                        if ui
+                            .add(egui::Button::new("➕ New script").frame(false))
+                            .clicked()
+                        {
+                            new_script = true;
+                        }
+                    });
             });
         });
 
