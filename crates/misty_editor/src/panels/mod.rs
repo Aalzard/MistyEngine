@@ -5,6 +5,7 @@ mod console;
 mod game;
 mod hierarchy;
 mod inspector;
+mod lighting;
 pub mod project;
 mod scene;
 
@@ -45,6 +46,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::Project => project::show(ui, self.state),
             Tab::Console => console::show(ui, self.state),
             Tab::Animation => animation::show(ui, self.state),
+            Tab::Lighting => lighting::show(ui, self.state),
         }
     }
 

@@ -54,9 +54,8 @@ pub fn apply_env(
         s.select(e);
     }
     if let Some(title) = std::env::var_os("MISTY_TAB")
-        && let Some(tab) = crate::layout::Tab::ALL
-            .into_iter()
-            .find(|t| t.title() == title.to_string_lossy())
+        && let Some(tab) =
+            crate::layout::Tab::every().find(|t| t.title() == title.to_string_lossy())
     {
         crate::layout::focus_or_open(dock, tab);
     }

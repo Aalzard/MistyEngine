@@ -28,6 +28,8 @@ mod sample_animation;
 #[cfg(test)]
 mod sample_assets;
 #[cfg(test)]
+mod sample_lighting;
+#[cfg(test)]
 mod sample_particles;
 #[cfg(test)]
 mod sample_ui;

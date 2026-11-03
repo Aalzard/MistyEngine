@@ -12,9 +12,12 @@ pub enum Tab {
     Project,
     Console,
     Animation,
+    /// Window ▸ Rendering ▸ Lighting.
+    Lighting,
 }
 
 impl Tab {
+    /// Tabs every built-in layout contains.
     pub const ALL: [Tab; 7] = [
         Tab::Scene,
         Tab::Game,
@@ -25,6 +28,22 @@ impl Tab {
         Tab::Animation,
     ];
 
+    /// Tabs no built-in layout contains; opened from the Window menu.
+    pub const ON_DEMAND: [Tab; 1] = [Tab::Lighting];
+
+    /// Built-in layout tabs, then on-demand ones.
+    pub fn every() -> impl Iterator<Item = Tab> {
+        Self::ALL.into_iter().chain(Self::ON_DEMAND)
+    }
+
+    /// Where an on-demand tab docks when first opened (Unity puts Lighting by the Inspector).
+    fn opens_beside(self) -> Option<Tab> {
+        match self {
+            Tab::Lighting => Some(Tab::Inspector),
+            _ => None,
+        }
+    }
+
     pub fn title(self) -> &'static str {
         match self {
             Tab::Scene => "Scene",
@@ -34,6 +53,7 @@ impl Tab {
             Tab::Project => "Project",
             Tab::Console => "Console",
             Tab::Animation => "Animation",
+            Tab::Lighting => "Lighting",
         }
     }
 
@@ -46,6 +66,7 @@ impl Tab {
             Tab::Project => "🗁",
             Tab::Console => "🗒",
             Tab::Animation => "⏵",
+            Tab::Lighting => "☀",
         }
     }
 
@@ -59,6 +80,7 @@ impl Tab {
             Tab::Project => "Ctrl+5",
             Tab::Console => "Ctrl+Shift+C",
             Tab::Animation => "Ctrl+6",
+            Tab::Lighting => "",
         }
     }
 }
@@ -173,7 +195,8 @@ fn wide() -> DockState<Tab> {
     dock
 }
 
-/// Focus a tab if it is open anywhere, otherwise add it to the focused area.
+/// Focus a tab if it is open anywhere, otherwise add it to the focused area
+/// (on-demand tabs go next to their usual neighbour when it is open).
 pub fn focus_or_open(dock: &mut DockState<Tab>, tab: Tab) {
     if let Some(path) = dock.find_tab(&tab) {
         let _ = dock.set_active_tab(path);
@@ -182,6 +205,12 @@ pub fn focus_or_open(dock: &mut DockState<Tab>, tab: Tab) {
             node: path.node,
         });
     } else {
+        if let Some(beside) = tab.opens_beside().and_then(|b| dock.find_tab(&b)) {
+            dock.set_focused_node_and_surface(NodePath {
+                surface: beside.surface,
+                node: beside.node,
+            });
+        }
         dock.push_to_focused_leaf(tab);
     }
 }
@@ -201,6 +230,22 @@ mod tests {
             }
             assert!(tabs.is_empty(), "{}", layout.name());
             assert_eq!(BuiltinLayout::from_name(layout.name()), Some(layout));
+            // On-demand windows (Lighting) open from the Window menu instead.
+            for tab in Tab::ON_DEMAND {
+                assert!(dock.find_tab(&tab).is_none(), "{}", layout.name());
+            }
         }
+    }
+
+    #[test]
+    fn lighting_opens_next_to_the_inspector() {
+        let mut dock = default_layout();
+        focus_or_open(&mut dock, Tab::Lighting);
+        let lighting = dock.find_tab(&Tab::Lighting).expect("opened");
+        let inspector = dock.find_tab(&Tab::Inspector).unwrap();
+        assert_eq!(lighting.node, inspector.node);
+        // A second request only focuses it.
+        focus_or_open(&mut dock, Tab::Lighting);
+        assert_eq!(dock.iter_all_tabs().count(), Tab::ALL.len() + 1);
     }
 }

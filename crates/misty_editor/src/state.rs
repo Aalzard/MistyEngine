@@ -142,11 +142,31 @@ pub struct SceneViewSettings {
     pub audio: bool,
     pub gizmos: bool,
     pub grid: bool,
+    /// The effects toggle (☁): skybox, fog and post-processing as picked in `effects`.
     pub skybox: bool,
+    pub effects: SceneEffects,
     pub search: String,
     pub camera: SceneCamera,
     /// Screen rect of the 3D view last frame.
     pub view_rect: egui::Rect,
+}
+
+/// Scene view effects dropdown (what the ☁ toggle turns on).
+#[derive(Clone, Copy, Debug)]
+pub struct SceneEffects {
+    pub skybox: bool,
+    pub fog: bool,
+    pub post_processing: bool,
+}
+
+impl Default for SceneEffects {
+    fn default() -> Self {
+        Self {
+            skybox: true,
+            fog: true,
+            post_processing: true,
+        }
+    }
 }
 
 /// Game view toolbar settings.
@@ -277,7 +297,9 @@ impl EditorState {
                 gizmos: true,
                 grid: true,
                 skybox: true,
+                effects: SceneEffects::default(),
                 search: String::new(),
+
                 camera: SceneCamera::default(),
                 view_rect: egui::Rect::NOTHING,
             },

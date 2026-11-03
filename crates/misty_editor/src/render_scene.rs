@@ -5,7 +5,7 @@ use misty_engine::render::{MaterialParams, MeshDraw};
 use misty_engine::render_scene::{self, MaterialSource};
 use misty_engine::scene::Scene;
 
-pub use misty_engine::render_scene::{headlight, lights};
+pub use misty_engine::render_scene::{environment, headlight, lights, post_settings};
 
 use crate::assets::AssetDatabase;
 use crate::selection::Selection;
