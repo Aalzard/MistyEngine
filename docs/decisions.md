@@ -863,3 +863,68 @@ Record of choices made without asking, and why.
      buttons (Vertical Layout Group + Content Size Fitter), and `SettingsMenu.lua` updating a summary Text from
      listeners plus an On End Edit call. Its Canvas Scaler uses a 1280×720 reference matched to height so the
      panel fits any window.
+
+## 2026-11-03 — Audio Mixer
+
+220. **Mixer groups are kira sub-tracks.** Each group of a loaded mixer becomes a track under its parent's track
+     (Master under kira's main track) with the group's effect chain and a peak-meter effect at the end; voices play
+     on their Output group's track. Volume and effect values are pushed to the tracks every frame. kira fixes a
+     track's effect chain when it is built, so adding / removing / reordering groups or effects while playing
+     rebuilds that mixer's tracks and restarts the sources routed to it.
+221. **Effects map onto kira's built-in effects:** Lowpass / Highpass = kira Filter (resonance Q 1..10 mapped to
+     kira's 0..0.9), Echo = Delay (decay % → feedback dB, wet / (dry + wet) → mix; the delay time is read when the
+     track is built), Reverb = Reverb (room size → feedback, damping, width, wet mix %), Distortion = soft clip
+     (Level 0..1 → 0..36 dB drive), Compressor = Compressor (threshold, ratio, attack, release, make-up gain). Bypass
+     = the effect's mix at fully dry. Effect parameters are described by one table per kind (name, unit, range,
+     default) shared by the backend, snapshots, the Inspector and exposure.
+222. **Mixer values are addressed by id keys** (`"<group>/Volume"`, `"<group>/Pitch"`, `"<group>/<effect>/<param>"`).
+     Group and effect ids never change, so renames keep snapshots and exposed parameters valid; snapshots store only
+     the values that differ from the defaults, and deleting a group or effect prunes its keys. Group names are kept
+     unique so outputs can name them.
+223. **Snapshots hold volumes, pitches and effect values; Mute / Solo / Bypass are per mixer** (not per snapshot), like
+     the reference. `TransitionTo(t)` blends every value linearly (in dB for volumes) from where it is now; faders in
+     the window edit the snapshot selected there (in Play mode: the game's current snapshot).
+224. **Group pitch and Solo are applied per voice, not per track:** kira tracks have no pitch, so a voice's playback
+     rate is multiplied by the pitches from its group up to Master. With any group soloed, voices routed outside
+     every soloed subtree are silenced (that includes sounds routed to Master itself). Mute sets the track to
+     silence.
+225. **No Sends / Receives yet** (the task called them optional): kira send tracks must be wired when a track is built
+     and don't nest under sub-tracks, so a faithful Send → Receive would need a parallel track tree. Recorded as a
+     gap.
+226. **Audio Source Output is a string `"<mixer path>#<group name>"`**, like model sub-asset references; no `#` means
+     the mixer's Master. A missing mixer or group warns once and the source plays straight to the listener. New
+     Audio Source fields (output, priority, bypass flags, reverb zone mix, Doppler level, spread) are left out of
+     files at their defaults so older scenes re-save byte-identically.
+227. **`AudioMixer.Find(name)` searches by file name, not a Resources folder:** a loaded mixer with that name, else the
+     first `.mixer` under `Assets/` (sorted path order) whose file stem matches. Mixers load on first use (an
+     Output, `Find`, or a group lookup) and stay loaded for the rest of Play. `outputAudioMixerGroup = "SFX"` looks
+     in the current Output's mixer first, then loaded mixers, then all project mixers.
+228. **Per-source filters and reverb zones get the voice its own track.** A source with Low Pass / High Pass / Echo
+     Filter components (same object) or in a scene with an Audio Reverb Zone plays on a private track (under its
+     Output group) holding those effects; it is removed with the voice. Bypass Effects bypasses the filters, Bypass
+     Reverb Zones the zone reverb. Zones: weight 1 inside Min Distance fading to 0 at Max Distance around the
+     *listener*; the strongest zone wins (no blending); wet = preset wet × weight × Reverb Zone Mix. Cheap with kira
+     (an extra track per voice) and exact for the few voices a scene has.
+229. **Doppler, Spread and Priority are our own math.** Doppler: `(c + v_listener·d) / (c + v_source·d)` with
+     c = 343 m/s and velocities from last frame's positions (scaled delta time), blended by Doppler Level ×
+     Spatial Blend and clamped to 0.5..2. Spread multiplies the 3D pan by `cos(spread / 2)`. Beyond 32 live voices
+     the ones with the highest Priority value (then the quietest) are silenced, like virtual voices.
+230. **`PlayClipAtPoint` is a voice, not a GameObject:** a fully 3D one-shot at a fixed point with the default
+     rolloff, straight to the listener (the reference spawns a temporary object; nothing scripts could see differs).
+     `source.time` reads / seeks the `Play()` voice (kira `position` / `seek_to`).
+231. **VU meters read a peak-meter effect** appended to every track: the audio thread keeps the loudest sample since
+     the last read in an atomic, the Mixer window reads it each frame and lets the bar fall 30 dB/s. The null backend
+     estimates a level per track from the voices routed through it (voice volume × the track volumes in between), so
+     tests can check routing and mute without a device.
+232. **Fader scale is piecewise linear in dB** with more travel near 0 dB (-80, -40, -20, -10, 0, +10, +20 at 0, 22, 42,
+     58, 78, 90, 100 %), similar in feel to the reference fader.
+233. **Mixer edits in the editor go through a `MixerStore`** (beside Animator Controllers in the clip store, so undo
+     snapshots can restore them): every edit saves the file and bumps a generation counter; in Play mode the Mixer
+     window sends the edited asset to the running game when the counter changes (`Audio::replace_mixer`), which
+     keeps the current snapshot and drops a running transition.
+234. **AudioDemo is generated by code** (`sample_audio` test module: ignored writer + check + headless play test). Its
+     clips are synthesized (a 4 s plucked arpeggio over a bass, a 1 s humming tone, a short blip) with whole cycles
+     so the loops are seamless; the mixer is Master (Lowpass) ▸ Music, SFX (Reverb) with Normal / Muffled / Cave
+     snapshots and MusicVol / SFXVol exposed. Like Beep.wav the check compares WAV sizes and headers only.
+235. **Screenshot switches:** `MISTY_SCENE=<path>` opens a scene and `MISTY_PLAY=1` enters Play mode before the
+     capture, so live views (meters, Game view UI) can be checked.
