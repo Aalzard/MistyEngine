@@ -29,6 +29,10 @@ return Rotator                     -- a script must return its class table
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])` |
 | AudioSource | `Play()`, `Stop()`, `Pause()`, `UnPause()`, `PlayOneShot(clipPath [, volumeScale])`, `isPlaying` (read-only), `volume`, `pitch`, `loop`, `mute`, `spatialBlend`, `enabled`, `clip` (project path like `"Assets/Audio/Beep.wav"`, or nil) |
+| Text (UI) | `GetComponent("Text")`: `text` (numbers are shown as text), `fontSize`, `color`, `enabled`, `gameObject` |
+| Image (UI) | `GetComponent("Image")`: `color`, `texture` (project path or nil), `raycastTarget`, `enabled`, `gameObject` |
+| Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`; clicks call the On Click methods set in the Inspector |
+| `Color` | `new(r,g,b [,a])` (0..1), `white black red green blue yellow cyan magenta gray clear`, `Lerp(a,b,t)`; `.r .g .b .a`, `* number/Color`, `==` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
 | `Input` | `GetKey/GetKeyDown/GetKeyUp("w")`, `GetMouseButton(0)`, `GetAxis("Horizontal"/"Vertical"/"Mouse X"/"Mouse Y")` — the Game view must have focus (click it) |
@@ -75,3 +79,24 @@ return Clicker
 `Play()` restarts the source's clip; `PlayOneShot` plays an extra copy through the same source (its volume,
 pitch and 3D position) without interrupting it. Changes to `volume`, `pitch`, `loop` take effect the same frame;
 a new `clip` is used by the next `Play()`.
+
+### UI buttons
+
+Create a button with **GameObject ▸ UI ▸ Button** (a Canvas is added if the scene has none). In its Button
+component, press **+** under **On Click ()**, pick the object that has your script and type the method name:
+
+```lua
+local ScoreKeeper = { scoreText = "Score Text" }
+function ScoreKeeper:Start()
+    self._score = 0
+    self._label = GameObject.Find(self.scoreText):GetComponent("Text")
+end
+function ScoreKeeper:AddPoint()            -- On Click: Score Keeper ▸ AddPoint
+    self._score = self._score + 1
+    self._label.text = "Score: " .. self._score
+end
+return ScoreKeeper
+```
+A click is a press and release over the same button while it is `interactable`; every script on the target object
+that defines the method gets the call (before this frame's `Update`). Sample: `Assets/Scenes/UIDemo.scene` with
+`Assets/Scripts/ScoreKeeper.lua`.
