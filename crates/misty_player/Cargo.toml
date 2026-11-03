@@ -14,3 +14,4 @@ misty_engine = { path = "../misty_engine" }
 winit = "0.30"
 pollster = "0.4"
 png = "0.18"
+serde_json.workspace = true

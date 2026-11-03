@@ -60,7 +60,26 @@ impl Game {
     }
 
     pub fn product_name(&self) -> String {
-        self.build.product_name_or(&self.root)
+        self.player_settings().product_name_or(&self.root)
+    }
+
+    /// Project Settings ▸ Player (older projects: the old Build Settings window values).
+    pub fn player_settings(&self) -> misty_engine::player_settings::PlayerSettings {
+        self.settings.player_or(&self.build)
+    }
+
+    /// Install the quality levels on the player's saved choice (else the default level).
+    pub fn apply_saved_quality(&self) {
+        let q = &self.settings.quality;
+        let saved = misty_engine::prefs::get_int(
+            misty_engine::prefs::keys::QUALITY,
+            q.default_level as i64,
+        );
+        let index = usize::try_from(saved)
+            .ok()
+            .filter(|i| *i < q.levels.len())
+            .unwrap_or(q.default_level);
+        misty_engine::quality::install(q, index);
     }
 
     /// Replace the current scene with a build scene and start its scripts (`Awake`).
@@ -240,6 +259,41 @@ return Loader
 
         game.frame(1.0 / 60.0, Input::default());
         assert!(game.quit, "Application.Quit() in Level2");
+        let errors: Vec<_> = game
+            .take_logs()
+            .into_iter()
+            .filter(|(k, _)| *k == LogKind::Error)
+            .collect();
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    /// A build plays from its pak: nothing but `data.pak` exists in the data folder.
+    #[test]
+    fn plays_from_a_mounted_pak() {
+        let project = project("pak");
+        let data =
+            std::env::temp_dir().join(format!("misty_player_pak_data_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).unwrap();
+        let pak_path = data.join(misty_engine::build::PAK_FILE);
+        let file = std::fs::File::create(&pak_path).unwrap();
+        let mut w = misty_engine::pak::PakWriter::new(file, true).unwrap();
+        for path in misty_engine::vfs::files_under(&project) {
+            let rel = path.strip_prefix(&project).unwrap();
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            w.add(&rel, &std::fs::read(&path).unwrap()).unwrap();
+        }
+        w.finish().unwrap();
+        let pak = misty_engine::pak::Pak::open(&pak_path).unwrap();
+        misty_engine::vfs::mount(&data, pak, std::time::SystemTime::UNIX_EPOCH);
+        let opened = Game::open(&data);
+        misty_engine::vfs::unmount();
+        let mut game = opened.unwrap();
+        assert_eq!(game.product_name(), "Test Game");
+        assert_eq!(game.scene.name, "Menu");
+        for _ in 0..3 {
+            game.frame(1.0 / 60.0, Input::default());
+        }
         let errors: Vec<_> = game
             .take_logs()
             .into_iter()
