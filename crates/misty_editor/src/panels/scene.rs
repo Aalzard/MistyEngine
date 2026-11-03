@@ -37,6 +37,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     }
 
     let camera = cam.camera();
+    // Terrain brushes take the left mouse button while a brush tool is active.
+    let brush_active = crate::terrain_tools::brush_active(state);
+    let brush_click = crate::terrain_tools::scene_view(ui, state, &camera, rect, &response);
     match gpu {
         Some(gpu) => {
             let sv = &state.scene_view;
@@ -56,6 +59,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 2 => gizmos::wireframe(&mut lines, &meshes, [0.0, 0.0, 0.0, 0.35]),
                 _ => {}
             }
+            crate::terrain_tools::brush_lines(&mut lines, state);
+            let terrains = misty_engine::terrain::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
             let scene_lights = render_scene::lights(&state.scene);
             // The sky follows the scene's sun even when the view uses the headlight.
@@ -85,6 +90,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 lines: &lines.0,
                 meshes: &meshes,
                 particles: &particles,
+                terrains: &terrains,
                 shaded: sv.draw_mode != 1,
                 lights: &lights,
             };
@@ -107,8 +113,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     if state.scene_view.gizmos {
         draw_icons(ui, rect, state, &camera);
     }
-    handles::show(ui, state, &camera, rect, response.hovered());
-    let suppressed = state.handles.click_suppressed();
+    if !brush_active {
+        handles::show(ui, state, &camera, rect, response.hovered());
+    }
+    let suppressed = state.handles.click_suppressed() || brush_click;
     if response.clicked()
         && !suppressed
         && !view_tool

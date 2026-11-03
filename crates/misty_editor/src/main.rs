@@ -38,6 +38,8 @@ mod sample_particles;
 #[cfg(test)]
 mod sample_physics;
 #[cfg(test)]
+mod sample_terrain;
+#[cfg(test)]
 mod sample_ui;
 mod scene_camera;
 mod scene_files;
@@ -46,6 +48,7 @@ mod snap;
 mod snap_window;
 mod state;
 mod status_bar;
+mod terrain_tools;
 mod theme;
 mod thumbnails;
 mod toolbar;

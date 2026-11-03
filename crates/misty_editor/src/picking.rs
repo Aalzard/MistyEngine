@@ -94,6 +94,7 @@ fn mesh_hit(
             let hit = m.transform_point3(lo + ld * t);
             Some((e, hit))
         })
+        .chain(misty_engine::terrain::raycast(scene, origin, dir).filter(|(e, _)| keep(*e)))
         .min_by(|a, b| a.1.distance(origin).total_cmp(&b.1.distance(origin)))
 }
 

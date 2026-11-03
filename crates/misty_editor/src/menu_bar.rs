@@ -189,6 +189,8 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
         for p in PrimitiveMesh::ALL {
             item(ui, s, p.name(), "", create(Create::Primitive(p)));
         }
+        ui.separator();
+        item(ui, s, "Terrain", "", create(Create::Terrain));
     });
     ui.menu_button("Effects", |ui| {
         item(ui, s, "Particle System", "", create(Create::ParticleSystem));

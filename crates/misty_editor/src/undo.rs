@@ -4,7 +4,8 @@
 //! (dragging a value, typing a name) are grouped per interaction: a snapshot is taken when the
 //! mouse goes down or typing starts, and committed when the interaction ends if anything changed.
 //! A snapshot can also hold one animation clip (the one being edited in the Animation window), so
-//! key edits undo in the same history as scene edits.
+//! key edits undo in the same history as scene edits. Terrain edits carry the terrain data from
+//! before the edit (terrain data is an asset, not part of the scene).
 
 use misty_engine::scene::Scene;
 
@@ -16,6 +17,7 @@ pub struct Snapshot {
     pub scene: Scene,
     pub selection: Selection,
     pub clip: Option<ClipSnapshot>,
+    pub terrain: Option<crate::terrain_tools::TerrainSnapshot>,
 }
 
 #[derive(Default)]
@@ -46,6 +48,7 @@ impl UndoStack {
             scene: scene.clone(),
             selection: selection.clone(),
             clip,
+            terrain: None,
         });
         if self.past.len() > LIMIT {
             self.past.remove(0);
@@ -54,6 +57,20 @@ impl UndoStack {
         // A structural command ends any pending continuous edit.
         self.candidate = None;
         self.edited = None;
+    }
+
+    /// Like [`UndoStack::push`], also restoring terrain data `before` on undo.
+    pub fn push_terrain(
+        &mut self,
+        label: &str,
+        scene: &Scene,
+        selection: &Selection,
+        before: crate::terrain_tools::TerrainSnapshot,
+    ) {
+        self.push(label, scene, selection);
+        if let Some(last) = self.past.last_mut() {
+            last.terrain = Some(before);
+        }
     }
 
     /// Mark that the current interaction changed something (e.g. "Transform").
@@ -78,6 +95,7 @@ impl UndoStack {
                 scene: scene.clone(),
                 selection: selection.clone(),
                 clip: clip(),
+                terrain: None,
             });
         }
     }
@@ -153,6 +171,7 @@ impl UndoStack {
             scene: std::mem::replace(scene, snap.scene),
             selection: std::mem::replace(selection, snap.selection),
             clip: snap.clip.map(|c| clips.restore(c)),
+            terrain: snap.terrain.map(|t| t.restore()),
         };
         if undo {
             self.future.push(current);

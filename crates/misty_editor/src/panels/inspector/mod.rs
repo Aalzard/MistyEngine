@@ -8,6 +8,7 @@ mod particles;
 mod physics_editors;
 mod post_volume;
 mod slots;
+mod terrain;
 mod ui_editors;
 
 use egui::{RichText, Ui};

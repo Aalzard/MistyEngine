@@ -18,6 +18,8 @@ pub enum Create {
     Ui(crate::ui_create::UiElement),
     /// GameObject ▸ Effects ▸ Particle System.
     ParticleSystem,
+    /// GameObject ▸ 3D Object ▸ Terrain (see `terrain_tools`).
+    Terrain,
 }
 
 impl Create {
@@ -32,6 +34,7 @@ impl Create {
             Create::Camera => "Camera",
             Create::AudioSource => "Audio Source",
             Create::ParticleSystem => "Particle System",
+            Create::Terrain => "Terrain",
         }
     }
 }
