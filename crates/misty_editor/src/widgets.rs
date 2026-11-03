@@ -22,11 +22,24 @@ pub fn toggle_button(
 /// One `X [..] Y [..] Z [..]` row. Dragging an axis letter scrubs its value.
 /// Returns true when any value changed.
 pub fn vec3_row(ui: &mut Ui, label: &str, value: &mut [f32; 3], speed: f32) -> bool {
+    vec3_row_mixed(ui, label, value, speed, [false; 3])
+}
+
+/// [`vec3_row`] where axes flagged in `mixed` show "—" (values differ between edited objects).
+pub fn vec3_row_mixed(
+    ui: &mut Ui,
+    label: &str,
+    value: &mut [f32; 3],
+    speed: f32,
+    mixed: [bool; 3],
+) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.add_sized([72.0, 18.0], egui::Label::new(label).truncate());
         let avail = ui.available_width();
-        let field_w = ((avail - 3.0 * 14.0 - 12.0) / 3.0).max(30.0);
+        // Per axis: letter (~10 px), field and two item gaps, so the row never overflows.
+        let gap = ui.spacing().item_spacing.x;
+        let field_w = ((avail - 3.0 * (10.0 + 2.0 * gap)) / 3.0).max(30.0);
         for (i, axis) in ["X", "Y", "Z"].into_iter().enumerate() {
             let letter = ui.add(
                 egui::Label::new(RichText::new(axis).color(axis_color(i))).sense(Sense::drag()),
@@ -38,14 +51,13 @@ pub fn vec3_row(ui: &mut Ui, label: &str, value: &mut [f32; 3], speed: f32) -> b
                 value[i] += letter.drag_delta().x * speed;
                 changed = true;
             }
-            changed |= ui
-                .add_sized(
-                    [field_w, 18.0],
-                    egui::DragValue::new(&mut value[i])
-                        .speed(speed)
-                        .max_decimals(3),
-                )
-                .changed();
+            let mut field = egui::DragValue::new(&mut value[i])
+                .speed(speed)
+                .max_decimals(3);
+            if mixed[i] {
+                field = field.custom_formatter(|_, _| "—".to_owned());
+            }
+            changed |= ui.add_sized([field_w, 18.0], field).changed();
         }
     });
     changed

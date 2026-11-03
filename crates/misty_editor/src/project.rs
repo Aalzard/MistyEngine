@@ -64,6 +64,12 @@ pub struct ProjectBrowser {
     pub drop_rect: egui::Rect,
     /// Texture previews shown in the grid.
     pub thumbnails: crate::thumbnails::Thumbnails,
+    /// Asset being renamed inline and the name typed so far (without extension).
+    pub renaming: Option<(PathBuf, String)>,
+    /// Asset waiting for the Delete confirmation.
+    pub confirm_delete: Option<PathBuf>,
+    /// Keyboard focus: the last click landed in the Project window.
+    pub focused: bool,
 }
 
 impl ProjectBrowser {
@@ -84,6 +90,9 @@ impl ProjectBrowser {
             entries: Vec::new(),
             drop_rect: egui::Rect::NOTHING,
             thumbnails: Default::default(),
+            renaming: None,
+            confirm_delete: None,
+            focused: false,
         };
         browser.refresh();
         browser
@@ -127,12 +136,78 @@ impl ProjectBrowser {
             .replace('\\', "/")
     }
 
-    /// Recursive name search under Assets.
+    /// Start inline renaming `path` (the field shows the name without extension).
+    pub fn start_rename(&mut self, path: PathBuf) {
+        let stem = if path.is_dir() {
+            path.file_name()
+        } else {
+            path.file_stem()
+        };
+        let name = stem
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.renaming = Some((path, name));
+    }
+
+    /// Recursive search under Assets: name words plus `t:Type` filters (see [`SearchFilter`]).
     pub fn search_results(&self) -> Vec<AssetEntry> {
-        let needle = self.search.to_lowercase();
+        let filter = SearchFilter::parse(&self.search);
         let mut out = Vec::new();
-        collect_matches(&self.assets_dir(), &needle, &mut out);
+        collect_matches(&self.assets_dir(), &filter, &mut out);
         out
+    }
+}
+
+/// Project search: words must all appear in the name; `t:Material t:Prefab` keeps those types.
+#[derive(Debug, Default, PartialEq)]
+pub struct SearchFilter {
+    pub words: Vec<String>,
+    /// Lower-case type names after `t:`.
+    pub types: Vec<String>,
+}
+
+impl SearchFilter {
+    pub fn parse(text: &str) -> Self {
+        let mut f = Self::default();
+        for token in text.split_whitespace() {
+            match token.get(..2) {
+                Some(p) if p.eq_ignore_ascii_case("t:") => f.types.push(token[2..].to_lowercase()),
+                _ => f.words.push(token.to_lowercase()),
+            }
+        }
+        f
+    }
+
+    pub fn matches(&self, entry: &AssetEntry) -> bool {
+        let name = entry.name.to_lowercase();
+        self.words.iter().all(|w| name.contains(w))
+            && (self.types.is_empty() || self.types.iter().any(|t| asset_type(entry) == *t))
+    }
+}
+
+/// Type name used by `t:` filters ("material", "script", "scene", "prefab", "texture",
+/// "model", "audioclip", "animationclip", "folder").
+pub fn asset_type(entry: &AssetEntry) -> &'static str {
+    if entry.is_dir {
+        return "folder";
+    }
+    match entry
+        .path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
+        "mat" => "material",
+        "lua" | "rs" | "wasm" => "script",
+        "scene" | "mscene" => "scene",
+        "prefab" => "prefab",
+        "png" | "jpg" | "jpeg" | "tga" => "texture",
+        "obj" | "gltf" | "glb" | "fbx" => "model",
+        "wav" | "ogg" | "mp3" => "audioclip",
+        "anim" => "animationclip",
+        _ => "",
     }
 }
 
@@ -176,13 +251,13 @@ fn build_tree(dir: &Path, name: &str) -> FolderNode {
     }
 }
 
-fn collect_matches(dir: &Path, needle: &str, out: &mut Vec<AssetEntry>) {
+fn collect_matches(dir: &Path, filter: &SearchFilter, out: &mut Vec<AssetEntry>) {
     for entry in list_dir(dir) {
-        if entry.name.to_lowercase().contains(needle) {
+        if filter.matches(&entry) {
             out.push(entry.clone());
         }
         if entry.is_dir {
-            collect_matches(&entry.path, needle, out);
+            collect_matches(&entry.path, filter, out);
         }
     }
 }
@@ -198,5 +273,49 @@ mod tests {
         let names: Vec<_> = browser.entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"Scenes"), "got {names:?}");
         assert!(browser.tree.children.iter().any(|c| c.name == "Scripts"));
+    }
+
+    #[test]
+    fn type_filters_narrow_the_search() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+        let mut browser = ProjectBrowser::open(root);
+        let kinds = |b: &ProjectBrowser| {
+            b.search_results()
+                .iter()
+                .map(|e| asset_type(e))
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        for (query, ty) in [
+            ("t:Material", "material"),
+            ("t:Script", "script"),
+            ("t:scene", "scene"),
+            ("t:Texture", "texture"),
+            ("t:Model", "model"),
+            ("t:AudioClip", "audioclip"),
+        ] {
+            browser.search = query.into();
+            assert_eq!(
+                kinds(&browser).into_iter().collect::<Vec<_>>(),
+                [ty],
+                "{query}"
+            );
+        }
+        browser.search = "t:Material t:Scene".into();
+        assert_eq!(kinds(&browser).len(), 2);
+        browser.search = "sample t:Scene".into();
+        let names: Vec<_> = browser
+            .search_results()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert!(names.contains(&"SampleScene.scene".to_owned()), "{names:?}");
+        assert!(names.iter().all(|n| n.to_lowercase().contains("sample")));
+        assert_eq!(
+            SearchFilter::parse("Red  T:Prefab"),
+            SearchFilter {
+                words: vec!["red".into()],
+                types: vec!["prefab".into()],
+            }
+        );
     }
 }

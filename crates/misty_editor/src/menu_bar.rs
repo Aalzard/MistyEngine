@@ -96,15 +96,33 @@ fn edit_menu(ui: &mut Ui, s: &mut EditorState) {
     item(ui, s, "Select All", "Ctrl+A", Action::SelectAll);
     item(ui, s, "Deselect All", "Shift+D", Action::DeselectAll);
     ui.separator();
-    todo(ui, s, "Cut", "Ctrl+X");
-    todo(ui, s, "Copy", "Ctrl+C");
-    todo(ui, s, "Paste", "Ctrl+V");
+    item(ui, s, "Cut", "Ctrl+X", Action::CutObjects);
+    item(ui, s, "Copy", "Ctrl+C", Action::CopyObjects);
+    let paste = Action::PasteObjects {
+        text: None,
+        as_child: false,
+    };
+    item(ui, s, "Paste", "Ctrl+V", paste);
     item(ui, s, "Duplicate", "Ctrl+D", Action::DuplicateSelected);
     item(ui, s, "Rename", "F2", Action::RenameSelected);
     item(ui, s, "Delete", "Del", Action::DeleteSelected);
     ui.separator();
     item(ui, s, "Frame Selected", "F", Action::FrameSelected);
-    todo(ui, s, "Lock View to Selected", "Shift+F");
+    let lock = if s.scene_view.lock_to_selection {
+        "✔ Lock View to Selected"
+    } else {
+        "Lock View to Selected"
+    };
+    item(ui, s, lock, "Shift+F", Action::ToggleLockView);
+    item(
+        ui,
+        s,
+        "Align With View",
+        "Ctrl+Shift+F",
+        Action::AlignWithView,
+    );
+    ui.separator();
+    item(ui, s, "Grid and Snap...", "", Action::OpenGridAndSnap);
     ui.separator();
     item(ui, s, "Play", "Ctrl+P", Action::TogglePlay);
     item(ui, s, "Pause", "Ctrl+Shift+P", Action::TogglePause);
@@ -123,11 +141,32 @@ fn edit_menu(ui: &mut Ui, s: &mut EditorState) {
 
 fn assets_menu(ui: &mut Ui, s: &mut EditorState) {
     ui.menu_button("Create", |ui| crate::panels::project::create_menu(ui, s));
-    todo(ui, s, "Show in Explorer", "");
-    todo(ui, s, "Open", "");
-    todo(ui, s, "Delete", "");
-    todo(ui, s, "Rename", "");
-    todo(ui, s, "Copy Path", "Alt+Ctrl+C");
+    let selected = s.project.selected.clone();
+    ui.add_enabled_ui(selected.is_some(), |ui| {
+        let path = selected.clone().unwrap_or_default();
+        item(
+            ui,
+            s,
+            "Show in Explorer",
+            "",
+            Action::ShowInExplorer(path.clone()),
+        );
+        if ui.button("Rename").clicked() {
+            s.project.start_rename(path.clone());
+            ui.close();
+        }
+        item(
+            ui,
+            s,
+            "Duplicate",
+            "Ctrl+D",
+            Action::DuplicateAsset(path.clone()),
+        );
+        if ui.button("Delete").clicked() {
+            s.project.confirm_delete = Some(path);
+            ui.close();
+        }
+    });
     ui.separator();
     todo(ui, s, "Import New Asset...", "");
     if ui

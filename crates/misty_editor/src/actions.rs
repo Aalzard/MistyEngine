@@ -36,6 +36,37 @@ impl Create {
     }
 }
 
+/// What Assets ▸ Create makes in the Project window's current folder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AssetKind {
+    Folder,
+    Material,
+    Script,
+    Scene,
+    Animation,
+}
+
+impl AssetKind {
+    pub const ALL: [AssetKind; 5] = [
+        AssetKind::Folder,
+        AssetKind::Material,
+        AssetKind::Script,
+        AssetKind::Scene,
+        AssetKind::Animation,
+    ];
+
+    /// Menu label.
+    pub fn label(self) -> &'static str {
+        match self {
+            AssetKind::Folder => "Folder",
+            AssetKind::Material => "Material",
+            AssetKind::Script => "Lua Script",
+            AssetKind::Scene => "Scene",
+            AssetKind::Animation => "Animation",
+        }
+    }
+}
+
 /// One editor command.
 #[derive(Clone, Debug)]
 pub enum Action {
@@ -71,6 +102,14 @@ pub enum Action {
     CreateEmptyParent,
     DeleteSelected,
     DuplicateSelected,
+    /// Edit ▸ Copy / Cut of the selected objects (deep).
+    CopyObjects,
+    CutObjects,
+    /// Edit ▸ Paste: from clipboard `text` (the OS paste event) or the editor's own copy.
+    PasteObjects {
+        text: Option<String>,
+        as_child: bool,
+    },
     RenameSelected,
     SelectAll,
     DeselectAll,
@@ -81,18 +120,25 @@ pub enum Action {
         first: bool,
     },
     MoveToView,
+    /// Edit ▸ Grid and Snap window.
+    OpenGridAndSnap,
+    /// Round the selection's world positions to the grid.
+    AlignToGrid,
+    /// Edit ▸ Lock View to Selected (Shift+F): the Scene camera follows the selection.
+    ToggleLockView,
     AlignWithView,
     AlignViewToSelected,
     Undo,
     Redo,
     /// Add a component (registry name) to every selected object.
     AddComponent(&'static str),
+    /// Component context menu (see `component_ops`); list commands act on every Inspector target.
     RemoveComponent {
-        entity: Entity,
+        entities: Vec<Entity>,
         name: String,
     },
     ResetComponent {
-        entity: Entity,
+        entities: Vec<Entity>,
         name: String,
     },
     MoveComponent {
@@ -100,9 +146,16 @@ pub enum Action {
         name: String,
         dir: i32,
     },
-    PasteComponentValues {
+    CopyComponent {
         entity: Entity,
         name: String,
+    },
+    PasteComponentValues {
+        entities: Vec<Entity>,
+        name: String,
+    },
+    PasteComponentAsNew {
+        entities: Vec<Entity>,
     },
     /// Attach a script asset ("Assets/…/Name.lua") to an object.
     AddScript {
@@ -138,6 +191,22 @@ pub enum Action {
     RevertPrefab(Entity),
     ApplyPrefab(Entity),
     UnpackPrefab(Entity),
+    /// Project window (see `asset_actions`); paths are absolute.
+    CreateAsset(AssetKind),
+    RenameAsset {
+        path: std::path::PathBuf,
+        name: String,
+    },
+    MoveAsset {
+        path: std::path::PathBuf,
+        folder: std::path::PathBuf,
+    },
+    DuplicateAsset(std::path::PathBuf),
+    /// Move to the OS trash (after the confirm dialog).
+    DeleteAsset(std::path::PathBuf),
+    ShowInExplorer(std::path::PathBuf),
+    /// Assets ▸ Refresh (Ctrl+R): re-scan the project.
+    Refresh,
     /// Component > Add... (opens the Inspector's search popup).
     OpenAddComponent,
     TogglePlay,

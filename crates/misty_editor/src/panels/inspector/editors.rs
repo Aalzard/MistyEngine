@@ -12,11 +12,12 @@ use misty_engine::scene::{
 use misty_engine::assets::Material;
 use misty_engine::scene::{ScriptValue, Scripts};
 
+use super::mixed;
 use crate::actions::Action;
 use crate::assets::AssetDatabase;
 use crate::state::EditorState;
 use crate::theme;
-use crate::widgets::vec3_row;
+use crate::widgets::vec3_row_mixed;
 
 pub fn icon(name: &str) -> &'static str {
     match name {
@@ -154,8 +155,23 @@ fn transform(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) -> bool {
         t0.scale.to_array(),
     ];
     let mut new = old;
-    let mut changed = vec3_row(ui, "Position", &mut new[0], 0.1);
-    changed |= vec3_row(ui, "Rotation", &mut new[1], 1.0);
+    // An axis is mixed when any other target's value differs from the active one.
+    let mut mixed = [[false; 3]; 3];
+    for &t in &targets[1..] {
+        let tr = state.scene.transform(t);
+        let vals = [
+            tr.position.to_array(),
+            tr.euler().to_array(),
+            tr.scale.to_array(),
+        ];
+        for f in 0..3 {
+            for a in 0..3 {
+                mixed[f][a] |= (vals[f][a] - old[f][a]).abs() > 1e-5;
+            }
+        }
+    }
+    let mut changed = vec3_row_mixed(ui, "Position", &mut new[0], 0.1, mixed[0]);
+    changed |= vec3_row_mixed(ui, "Rotation", &mut new[1], 1.0, mixed[1]);
     ui.horizontal(|ui| {
         let lock = if state.scale_locked { "🔗" } else { "⛓" };
         if ui
@@ -169,7 +185,7 @@ fn transform(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) -> bool {
         {
             state.scale_locked = !state.scale_locked;
         }
-        changed |= vec3_row(ui, "Scale", &mut new[2], 0.01);
+        changed |= vec3_row_mixed(ui, "Scale", &mut new[2], 0.01, mixed[2]);
     });
     if !changed {
         return false;
@@ -224,9 +240,21 @@ pub(super) fn combo<T: Copy + PartialEq>(
     options: &[T],
     label: fn(T) -> &'static str,
 ) -> bool {
+    combo_k(ui, id, "", value, options, label)
+}
+
+/// [`combo`] for the component field `key` (shows "—" when the targets differ).
+fn combo_k<T: Copy + PartialEq>(
+    ui: &mut Ui,
+    id: &str,
+    key: &str,
+    value: &mut T,
+    options: &[T],
+    label: fn(T) -> &'static str,
+) -> bool {
     let mut changed = false;
     egui::ComboBox::from_id_salt(id)
-        .selected_text(label(*value))
+        .selected_text(super::mixed::text(key, label(*value)))
         .width(150.0)
         .show_ui(ui, |ui| {
             for &o in options {
@@ -250,9 +278,10 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
     grid(ui, "camera_grid", |ui| {
         let mut ch = false;
         ui.label("Clear Flags");
-        ch |= combo(
+        ch |= combo_k(
             ui,
             "cam_clear",
+            "clear_flags",
             &mut c.clear_flags,
             &ClearFlags::ALL,
             ClearFlags::label,
@@ -271,7 +300,10 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
         ui.label("Projection");
         let mut ortho = c.orthographic;
         egui::ComboBox::from_id_salt("cam_proj")
-            .selected_text(if ortho { "Orthographic" } else { "Perspective" })
+            .selected_text(mixed::text(
+                "orthographic",
+                if ortho { "Orthographic" } else { "Perspective" },
+            ))
             .width(150.0)
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut ortho, false, "Perspective");
@@ -286,14 +318,19 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
             ui.label("Size");
             ch |= ui
                 .add(
-                    egui::DragValue::new(&mut c.ortho_size)
+                    mixed::drag("ortho_size", egui::DragValue::new(&mut c.ortho_size))
                         .speed(0.05)
                         .range(0.01..=1e5),
                 )
                 .changed();
         } else {
             ui.label("Field of View");
-            ch |= ui.add(egui::Slider::new(&mut c.fov, 1.0..=179.0)).changed();
+            ch |= ui
+                .add(mixed::slider(
+                    "fov",
+                    egui::Slider::new(&mut c.fov, 1.0..=179.0),
+                ))
+                .changed();
         }
         ui.end_row();
         ui.label("Clipping Planes");
@@ -301,7 +338,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
             ui.label("Near");
             ch |= ui
                 .add(
-                    egui::DragValue::new(&mut c.near)
+                    mixed::drag("near", egui::DragValue::new(&mut c.near))
                         .speed(0.01)
                         .range(0.01..=c.far - 0.01),
                 )
@@ -309,7 +346,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
             ui.label("Far");
             ch |= ui
                 .add(
-                    egui::DragValue::new(&mut c.far)
+                    mixed::drag("far", egui::DragValue::new(&mut c.far))
                         .speed(1.0)
                         .range(c.near + 0.01..=1e7),
                 )
@@ -322,9 +359,12 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
                 ui.label(*l);
                 ch |= ui
                     .add(
-                        egui::DragValue::new(&mut c.viewport[i])
-                            .speed(0.01)
-                            .range(0.0..=1.0),
+                        mixed::drag(
+                            &format!("viewport/{i}"),
+                            egui::DragValue::new(&mut c.viewport[i]),
+                        )
+                        .speed(0.01)
+                        .range(0.0..=1.0),
                     )
                     .changed();
             }
@@ -332,7 +372,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
         ui.end_row();
         ui.label("Depth");
         ch |= ui
-            .add(egui::DragValue::new(&mut c.depth).speed(0.1))
+            .add(mixed::drag("depth", egui::DragValue::new(&mut c.depth)).speed(0.1))
             .changed();
         ui.end_row();
         ch
@@ -343,9 +383,10 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
     grid(ui, "light_grid", |ui| {
         let mut ch = false;
         ui.label("Type");
-        ch |= combo(
+        ch |= combo_k(
             ui,
             "light_type",
+            "kind",
             &mut l.kind,
             &LightType::ALL,
             LightType::label,
@@ -355,7 +396,7 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             ui.label("Range");
             ch |= ui
                 .add(
-                    egui::DragValue::new(&mut l.range)
+                    mixed::drag("range", egui::DragValue::new(&mut l.range))
                         .speed(0.1)
                         .range(0.0..=1e5),
                 )
@@ -365,7 +406,10 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         if l.kind == LightType::Spot {
             ui.label("Spot Angle");
             ch |= ui
-                .add(egui::Slider::new(&mut l.spot_angle, 1.0..=179.0))
+                .add(mixed::slider(
+                    "spot_angle",
+                    egui::Slider::new(&mut l.spot_angle, 1.0..=179.0),
+                ))
                 .changed();
             ui.end_row();
         }
@@ -375,16 +419,17 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         ui.label("Intensity");
         ch |= ui
             .add(
-                egui::DragValue::new(&mut l.intensity)
+                mixed::drag("intensity", egui::DragValue::new(&mut l.intensity))
                     .speed(0.01)
                     .range(0.0..=1e4),
             )
             .changed();
         ui.end_row();
         ui.label("Shadow Type");
-        ch |= combo(
+        ch |= combo_k(
             ui,
             "light_shadows",
+            "shadows",
             &mut l.shadows,
             &Shadows::ALL,
             Shadows::label,
@@ -413,7 +458,7 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ui.label("    Element 0");
         let current = AssetDatabase::material_name(r.material.as_deref());
         let slot = egui::ComboBox::from_id_salt("mr_material")
-            .selected_text(format!("◍ {current}"))
+            .selected_text(mixed::text("material", format!("◍ {current}")))
             .width(150.0)
             .show_ui(ui, |ui| {
                 ch |= ui
@@ -436,7 +481,10 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ui.end_row();
         ui.label("Cast Shadows");
         egui::ComboBox::from_id_salt("mr_cast")
-            .selected_text(if r.cast_shadows { "On" } else { "Off" })
+            .selected_text(mixed::text(
+                "cast_shadows",
+                if r.cast_shadows { "On" } else { "Off" },
+            ))
             .width(150.0)
             .show_ui(ui, |ui| {
                 ch |= ui
@@ -448,7 +496,7 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             });
         ui.end_row();
         ui.label("Receive Shadows");
-        ch |= ui.checkbox(&mut r.receive_shadows, "").changed();
+        ch |= mixed::checkbox(ui, "receive_shadows", &mut r.receive_shadows, "").changed();
         ui.end_row();
         ch
     });
@@ -466,7 +514,10 @@ fn clip_field(ui: &mut Ui, id: &str, clips: &[String], clip: &mut Option<String>
         .map(clip_name)
         .unwrap_or_else(|| "None (Audio Clip)".into());
     let slot = egui::ComboBox::from_id_salt(id)
-        .selected_text(format!("{} {current}", crate::state::AUDIO_ICON))
+        .selected_text(mixed::text(
+            "clip",
+            format!("{} {current}", crate::state::AUDIO_ICON),
+        ))
         .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui
@@ -496,8 +547,9 @@ pub fn clip_name(path: &str) -> String {
         .unwrap_or_default()
 }
 
-fn slider(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
-    ui.add(egui::Slider::new(v, range)).changed()
+fn slider(ui: &mut Ui, key: &str, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
+    ui.add(mixed::slider(key, egui::Slider::new(v, range)))
+        .changed()
 }
 
 fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
@@ -515,27 +567,27 @@ fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ui.label("AudioClip");
         ch |= clip_field(ui, "as_clip", &clips, &mut a.clip);
         ui.end_row();
-        for (label, flag) in [
-            ("Mute", &mut a.mute),
-            ("Play On Awake", &mut a.play_on_awake),
-            ("Loop", &mut a.looping),
+        for (label, key, flag) in [
+            ("Mute", "mute", &mut a.mute),
+            ("Play On Awake", "play_on_awake", &mut a.play_on_awake),
+            ("Loop", "loop", &mut a.looping),
         ] {
             ui.label(label);
-            ch |= ui.checkbox(flag, "").changed();
+            ch |= mixed::checkbox(ui, key, flag, "").changed();
             ui.end_row();
         }
         ui.label("Volume");
-        ch |= slider(ui, &mut a.volume, 0.0..=1.0);
+        ch |= slider(ui, "volume", &mut a.volume, 0.0..=1.0);
         ui.end_row();
         ui.label("Pitch");
-        ch |= slider(ui, &mut a.pitch, -3.0..=3.0);
+        ch |= slider(ui, "pitch", &mut a.pitch, -3.0..=3.0);
         ui.end_row();
         ui.label("Stereo Pan");
-        ch |= slider(ui, &mut a.stereo_pan, -1.0..=1.0);
+        ch |= slider(ui, "stereo_pan", &mut a.stereo_pan, -1.0..=1.0);
         ui.end_row();
         ui.label("Spatial Blend");
         ui.vertical(|ui| {
-            ch |= slider(ui, &mut a.spatial_blend, 0.0..=1.0);
+            ch |= slider(ui, "spatial_blend", &mut a.spatial_blend, 0.0..=1.0);
             ui.horizontal(|ui| {
                 ui.label(RichText::new("2D").small().color(theme::TEXT_DIM));
                 ui.add_space(110.0);
@@ -553,9 +605,10 @@ fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             ch3d = grid(ui, "audiosource_3d", |ui| {
                 let mut ch = false;
                 ui.label("Volume Rolloff");
-                ch |= combo(
+                ch |= combo_k(
                     ui,
                     "as_rolloff",
+                    "rolloff",
                     &mut a.rolloff,
                     &AudioRolloff::ALL,
                     AudioRolloff::label,
@@ -564,7 +617,7 @@ fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 ui.label("Min Distance");
                 ch |= ui
                     .add(
-                        egui::DragValue::new(&mut a.min_distance)
+                        mixed::drag("min_distance", egui::DragValue::new(&mut a.min_distance))
                             .speed(0.1)
                             .range(0.0..=a.max_distance),
                     )
@@ -573,7 +626,7 @@ fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 ui.label("Max Distance");
                 ch |= ui
                     .add(
-                        egui::DragValue::new(&mut a.max_distance)
+                        mixed::drag("max_distance", egui::DragValue::new(&mut a.max_distance))
                             .speed(1.0)
                             .range(a.min_distance + 0.01..=1e6),
                     )
@@ -595,7 +648,7 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
         ui.label("Mass");
         ch |= ui
             .add(
-                egui::DragValue::new(&mut r.mass)
+                mixed::drag("mass", egui::DragValue::new(&mut r.mass))
                     .speed(0.05)
                     .range(1e-4..=1e6),
             )
@@ -604,7 +657,7 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
         ui.label("Drag");
         ch |= ui
             .add(
-                egui::DragValue::new(&mut r.drag)
+                mixed::drag("drag", egui::DragValue::new(&mut r.drag))
                     .speed(0.01)
                     .range(0.0..=1e4),
             )
@@ -613,25 +666,28 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
         ui.label("Angular Drag");
         ch |= ui
             .add(
-                egui::DragValue::new(&mut r.angular_drag)
+                mixed::drag("angular_drag", egui::DragValue::new(&mut r.angular_drag))
                     .speed(0.01)
                     .range(0.0..=1e4),
             )
             .changed();
         ui.end_row();
         ui.label("Use Gravity");
-        ch |= ui.checkbox(&mut r.use_gravity, "").changed();
+        ch |= mixed::checkbox(ui, "use_gravity", &mut r.use_gravity, "").changed();
         ui.end_row();
         ui.label("Is Kinematic");
-        ch |= ui.checkbox(&mut r.is_kinematic, "").changed();
+        ch |= mixed::checkbox(ui, "is_kinematic", &mut r.is_kinematic, "").changed();
         ui.end_row();
         ui.label("Collision Detection");
         egui::ComboBox::from_id_salt("rb_ccd")
-            .selected_text(if r.continuous {
-                "Continuous"
-            } else {
-                "Discrete"
-            })
+            .selected_text(mixed::text(
+                "continuous",
+                if r.continuous {
+                    "Continuous"
+                } else {
+                    "Discrete"
+                },
+            ))
             .width(150.0)
             .show_ui(ui, |ui| {
                 ch |= ui
@@ -648,14 +704,15 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
         .id_salt("rb_constraints")
         .default_open(false)
         .show(ui, |ui| {
-            for (label, flags) in [
-                ("Freeze Position", &mut r.freeze_position),
-                ("Freeze Rotation", &mut r.freeze_rotation),
+            for (label, key, flags) in [
+                ("Freeze Position", "freeze_position", &mut r.freeze_position),
+                ("Freeze Rotation", "freeze_rotation", &mut r.freeze_rotation),
             ] {
                 ui.horizontal(|ui| {
                     ui.add_sized([110.0, 18.0], egui::Label::new(label));
                     for (i, axis) in ["X", "Y", "Z"].iter().enumerate() {
-                        ch |= ui.checkbox(&mut flags[i], *axis).changed();
+                        ch |= mixed::checkbox(ui, &format!("{key}/{i}"), &mut flags[i], *axis)
+                            .changed();
                     }
                 });
             }
@@ -673,25 +730,31 @@ fn collider_common(
     grid(ui, id, |ui| {
         let mut ch = false;
         ui.label("Is Trigger");
-        ch |= ui.checkbox(trigger, "").changed();
+        ch |= mixed::checkbox(ui, "is_trigger", trigger, "").changed();
         ui.end_row();
         ui.label("Friction");
         ch |= ui
-            .add(egui::Slider::new(&mut surface.friction, 0.0..=2.0))
+            .add(mixed::slider(
+                "surface/friction",
+                egui::Slider::new(&mut surface.friction, 0.0..=2.0),
+            ))
             .changed();
         ui.end_row();
         ui.label("Bounciness");
         ch |= ui
-            .add(egui::Slider::new(&mut surface.bounciness, 0.0..=1.0))
+            .add(mixed::slider(
+                "surface/bounciness",
+                egui::Slider::new(&mut surface.bounciness, 0.0..=1.0),
+            ))
             .changed();
         ui.end_row();
         ch
     })
 }
 
-fn vec3_field(ui: &mut Ui, label: &str, v: &mut Vec3, speed: f32) -> bool {
+fn vec3_field(ui: &mut Ui, label: &str, key: &str, v: &mut Vec3, speed: f32) -> bool {
     let mut a = v.to_array();
-    let ch = vec3_row(ui, label, &mut a, speed);
+    let ch = vec3_row_mixed(ui, label, &mut a, speed, mixed::axes(key));
     if ch {
         *v = Vec3::from(a);
     }
@@ -700,8 +763,8 @@ fn vec3_field(ui: &mut Ui, label: &str, v: &mut Vec3, speed: f32) -> bool {
 
 fn box_collider(ui: &mut Ui, c: &mut BoxCollider) -> bool {
     let mut ch = collider_common(ui, "box_col", &mut c.is_trigger, &mut c.surface);
-    ch |= vec3_field(ui, "Center", &mut c.center, 0.01);
-    if vec3_field(ui, "Size", &mut c.size, 0.01) {
+    ch |= vec3_field(ui, "Center", "center", &mut c.center, 0.01);
+    if vec3_field(ui, "Size", "size", &mut c.size, 0.01) {
         c.size = c.size.max(Vec3::ZERO);
         ch = true;
     }
@@ -710,12 +773,12 @@ fn box_collider(ui: &mut Ui, c: &mut BoxCollider) -> bool {
 
 fn sphere_collider(ui: &mut Ui, c: &mut SphereCollider) -> bool {
     let mut ch = collider_common(ui, "sphere_col", &mut c.is_trigger, &mut c.surface);
-    ch |= vec3_field(ui, "Center", &mut c.center, 0.01);
+    ch |= vec3_field(ui, "Center", "center", &mut c.center, 0.01);
     ch |= grid(ui, "sphere_col_r", |ui| {
         ui.label("Radius");
         let r = ui
             .add(
-                egui::DragValue::new(&mut c.radius)
+                mixed::drag("radius", egui::DragValue::new(&mut c.radius))
                     .speed(0.01)
                     .range(0.0..=1e5),
             )
@@ -728,13 +791,13 @@ fn sphere_collider(ui: &mut Ui, c: &mut SphereCollider) -> bool {
 
 fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
     let mut ch = collider_common(ui, "capsule_col", &mut c.is_trigger, &mut c.surface);
-    ch |= vec3_field(ui, "Center", &mut c.center, 0.01);
+    ch |= vec3_field(ui, "Center", "center", &mut c.center, 0.01);
     ch |= grid(ui, "capsule_col_dims", |ui| {
         let mut ch = false;
         ui.label("Radius");
         ch |= ui
             .add(
-                egui::DragValue::new(&mut c.radius)
+                mixed::drag("radius", egui::DragValue::new(&mut c.radius))
                     .speed(0.01)
                     .range(0.0..=1e5),
             )
@@ -743,7 +806,7 @@ fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
         ui.label("Height");
         ch |= ui
             .add(
-                egui::DragValue::new(&mut c.height)
+                mixed::drag("height", egui::DragValue::new(&mut c.height))
                     .speed(0.01)
                     .range(0.0..=1e5),
             )
@@ -752,7 +815,7 @@ fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
         ui.label("Direction");
         let names = ["X-Axis", "Y-Axis", "Z-Axis"];
         egui::ComboBox::from_id_salt("capsule_dir")
-            .selected_text(names[c.direction.min(2) as usize])
+            .selected_text(mixed::text("direction", names[c.direction.min(2) as usize]))
             .width(150.0)
             .show_ui(ui, |ui| {
                 for (i, n) in names.iter().enumerate() {
@@ -768,7 +831,7 @@ fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
 fn mesh_collider(ui: &mut Ui, c: &mut MeshCollider) -> bool {
     let mut ch = grid(ui, "mesh_col_convex", |ui| {
         ui.label("Convex");
-        let r = ui.checkbox(&mut c.convex, "").changed();
+        let r = mixed::checkbox(ui, "convex", &mut c.convex, "").changed();
         ui.end_row();
         r
     });

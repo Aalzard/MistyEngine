@@ -151,6 +151,7 @@ impl EditorApp {
             (ctrl, Key::Num6, Action::FocusTab(Tab::Animation)),
             (ctrl_shift, Key::C, Action::FocusTab(Tab::Console)),
             (Modifiers::SHIFT, Key::D, Action::DeselectAll),
+            (Modifiers::SHIFT, Key::F, Action::ToggleLockView),
             (Modifiers::NONE, Key::Delete, Action::DeleteSelected),
             (Modifiers::NONE, Key::F2, Action::RenameSelected),
         ];
@@ -164,7 +165,7 @@ impl EditorApp {
             // While typing, text fields own plain keys, Shift+keys and their own undo.
             let text_key = mods == Modifiers::NONE
                 || mods == Modifiers::SHIFT
-                || matches!(key, Key::Z | Key::Y | Key::A);
+                || matches!(key, Key::Z | Key::Y | Key::A | Key::D);
             if typing && text_key {
                 continue;
             }
@@ -172,9 +173,14 @@ impl EditorApp {
             if key == Key::Delete && self.state.animation.wants_delete() {
                 continue;
             }
-            if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(mods, key))) {
+            if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(mods, key)))
+                && let Some(action) = crate::asset_actions::redirect(&mut self.state, action)
+            {
                 self.state.push(action);
             }
+        }
+        if !typing && !self.state.project.focused {
+            self.clipboard_shortcuts(ctx);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(ctrl, Key::R))) {
             self.state.refresh_assets();
@@ -190,6 +196,43 @@ impl EditorApp {
             if ctx.input(|i| i.modifiers.is_none() && i.key_pressed(Key::F)) {
                 self.state.push(Action::FrameSelected);
             }
+        }
+    }
+
+    /// Ctrl+C / Ctrl+X / Ctrl+V on GameObjects. The OS delivers these as Copy/Cut/Paste events.
+    fn clipboard_shortcuts(&mut self, ctx: &egui::Context) {
+        let ctrl = Modifiers::COMMAND;
+        let mut actions = Vec::new();
+        ctx.input_mut(|i| {
+            for ev in &i.events {
+                match ev {
+                    egui::Event::Copy => actions.push(Action::CopyObjects),
+                    egui::Event::Cut => actions.push(Action::CutObjects),
+                    egui::Event::Paste(text) => actions.push(Action::PasteObjects {
+                        text: Some(text.clone()),
+                        as_child: false,
+                    }),
+                    _ => {}
+                }
+            }
+            for (key, action) in [
+                (Key::C, Action::CopyObjects),
+                (Key::X, Action::CutObjects),
+                (
+                    Key::V,
+                    Action::PasteObjects {
+                        text: None,
+                        as_child: false,
+                    },
+                ),
+            ] {
+                if i.consume_shortcut(&KeyboardShortcut::new(ctrl, key)) {
+                    actions.push(action);
+                }
+            }
+        });
+        for a in actions {
+            self.state.push(a);
         }
     }
 
@@ -447,7 +490,11 @@ impl eframe::App for EditorApp {
 
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
+        crate::snap_window::show(&ctx, &mut self.state);
         self.apply_actions(&ctx);
+        if let Some(text) = self.state.os_clipboard_out.take() {
+            ctx.copy_text(text);
+        }
         animation::preview::post_frame(&mut self.state, Self::interacting(&ctx));
         self.state.undo.end_frame(Self::interacting(&ctx));
         self.scene_file_frame(&ctx);

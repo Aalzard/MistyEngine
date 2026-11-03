@@ -6,6 +6,7 @@ mod game;
 mod hierarchy;
 mod inspector;
 pub mod project;
+mod project_menus;
 mod scene;
 
 use egui::{Id, Ui, WidgetText};

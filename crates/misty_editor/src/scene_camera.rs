@@ -343,6 +343,15 @@ impl SceneCamera {
         self.animate_to(target);
     }
 
+    /// Keep the pivot on `center` without animating (Lock View to Selected).
+    pub fn follow(&mut self, center: Vec3) {
+        if let Some((_, to, _)) = &mut self.anim {
+            to.pivot = center;
+        } else {
+            self.pose.pivot = center;
+        }
+    }
+
     /// Put the eye at `position` looking along `rotation` (Align View to Selected).
     pub fn align_to(&mut self, position: Vec3, rotation: Quat) {
         let (yaw, pitch) = yaw_pitch_from_forward(rotation * Vec3::Z);
