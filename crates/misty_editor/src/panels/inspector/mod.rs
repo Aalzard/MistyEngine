@@ -3,6 +3,7 @@
 
 mod anim;
 mod editors;
+mod particles;
 mod slots;
 mod ui_editors;
 

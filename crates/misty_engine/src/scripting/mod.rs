@@ -18,6 +18,7 @@
 //! ```
 
 pub mod api;
+pub mod particles_api;
 pub mod ui_api;
 
 use std::collections::{HashMap, HashSet};

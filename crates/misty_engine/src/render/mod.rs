@@ -1,12 +1,14 @@
-//! wgpu renderer: sky, lit meshes with shadows, grid, gizmo lines and selection outline.
+//! wgpu renderer: sky, lit meshes with shadows, grid, particles, gizmo lines and selection outline.
 
 pub mod mesh;
+pub mod particles;
 mod pipelines;
 mod shadows;
 mod target;
 pub mod texture;
 pub mod ui;
 
+pub use particles::{ParticleBatch, ParticleInstance};
 pub use target::RenderTarget;
 use target::TargetLayouts;
 
@@ -129,6 +131,8 @@ pub struct Frame<'a> {
     pub background: [f32; 3],
     pub lines: &'a [LineVertex],
     pub meshes: &'a [MeshDraw],
+    /// Particle systems with live particles (drawn after opaque meshes).
+    pub particles: &'a [ParticleBatch],
     /// Draw shaded meshes (false in the Wireframe draw mode; outlines still work).
     pub shaded: bool,
     pub lights: &'a [LightData],
@@ -196,6 +200,7 @@ pub struct Renderer {
     draws_bind_group: wgpu::BindGroup,
     line_buffer: wgpu::Buffer,
     line_capacity: usize,
+    particle_instances: particles::InstanceBuffer,
     meshes: Vec<GpuMesh>,
     /// Imported meshes by "path#index" (None = could not be loaded), uploaded on first use.
     imported: std::collections::HashMap<String, Option<GpuMesh>>,
@@ -261,6 +266,7 @@ impl Renderer {
             draws_bind_group,
             line_buffer: line_buffer(device, line_capacity),
             line_capacity,
+            particle_instances: particles::InstanceBuffer::new(device),
             meshes,
             imported: Default::default(),
             imported_generation: models::generation(),
@@ -305,6 +311,15 @@ impl Renderer {
                     d.material.normal_map.as_deref(),
                 );
             }
+        }
+        for b in frame.particles {
+            self.textures.prepare(
+                device,
+                queue,
+                &self.pipelines.material_layout,
+                b.texture.as_deref(),
+                None,
+            );
         }
     }
 
@@ -388,6 +403,8 @@ impl Renderer {
             queue.write_buffer(&self.line_buffer, 0, bytemuck::cast_slice(frame.lines));
         }
 
+        let particle_draws = self.upload_particles(device, queue, frame);
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("misty frame"),
         });
@@ -404,9 +421,52 @@ impl Renderer {
         }
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         self.mask_pass(&mut encoder, target, frame);
-        self.main_pass(&mut encoder, target, frame, any_outline);
+        self.main_pass(&mut encoder, target, frame, any_outline, &particle_draws);
         self.bloom_passes(&mut encoder, target);
         queue.submit([encoder.finish()]);
+    }
+
+    /// Sort the frame's particles back to front and upload them as instances.
+    fn upload_particles(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        frame: &Frame,
+    ) -> Vec<particles::ParticleDraw> {
+        let cam = frame.camera;
+        let (eye, forward) = (cam.position, cam.forward());
+        let ortho = matches!(cam.projection, Projection::Orthographic { .. });
+        let (instances, draws) = particles::order(frame.particles, |p| {
+            if ortho {
+                (p - eye).dot(forward)
+            } else {
+                p.distance_squared(eye)
+            }
+        });
+        self.particle_instances.upload(device, queue, &instances);
+        draws
+    }
+
+    fn draw_particles(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        frame: &Frame,
+        draws: &[particles::ParticleDraw],
+    ) {
+        pass.set_vertex_buffer(0, self.particle_instances.buffer.slice(..));
+        for d in draws {
+            let b = &frame.particles[d.batch];
+            let Some(group) = self.textures.get(b.texture.as_deref(), None) else {
+                continue;
+            };
+            pass.set_pipeline(if b.additive {
+                &self.pipelines.particles_additive
+            } else {
+                &self.pipelines.particles_alpha
+            });
+            pass.set_bind_group(1, group, &[]);
+            pass.draw(0..6, d.instances.clone());
+        }
     }
 
     /// Fullscreen pass into `view` (clear or load), sampling `group`.
@@ -570,6 +630,7 @@ impl Renderer {
         target: &RenderTarget,
         frame: &Frame,
         outline: bool,
+        particle_draws: &[particles::ParticleDraw],
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty main pass"),
@@ -620,6 +681,11 @@ impl Renderer {
         if frame.grid.is_some() {
             pass.set_pipeline(&self.pipelines.grid);
             pass.draw(0..3, 0..1);
+        }
+
+        // After the grid: particles don't write depth, so the grid would draw over them.
+        if frame.shaded && !particle_draws.is_empty() {
+            self.draw_particles(&mut pass, frame, particle_draws);
         }
 
         if !frame.lines.is_empty() {

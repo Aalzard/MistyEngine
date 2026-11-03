@@ -1,11 +1,11 @@
-//! Turn the ECS scene into renderer input: the game camera, mesh draws and lights.
+//! Turn the ECS scene into renderer input: the game camera, mesh draws, particles and lights.
 //! Shared by the editor's views and the standalone player.
 
 use glam::Vec3;
 use hecs::Entity;
 
 use crate::camera::{Camera, Projection};
-use crate::render::{Frame, LightData, MaterialParams, MeshDraw};
+use crate::render::{Frame, LightData, MaterialParams, MeshDraw, ParticleBatch};
 use crate::scene::{
     Camera as CameraComponent, ClearFlags, Light, LightType, MeshFilter, MeshRenderer, Scene,
     Shadows,
@@ -125,6 +125,7 @@ pub struct GameView {
     pub settings: CameraComponent,
     pub meshes: Vec<MeshDraw>,
     pub lights: Vec<LightData>,
+    pub particles: Vec<ParticleBatch>,
 }
 
 impl GameView {
@@ -136,6 +137,7 @@ impl GameView {
             settings,
             meshes: mesh_draws(scene, materials, |_| false),
             lights: lights(scene),
+            particles: crate::particles::batches(scene),
         })
     }
 
@@ -148,6 +150,7 @@ impl GameView {
             background: [bg[0], bg[1], bg[2]],
             lines: &[],
             meshes: &self.meshes,
+            particles: &self.particles,
             shaded: true,
             lights: &self.lights,
             ambient_intensity: 1.0,

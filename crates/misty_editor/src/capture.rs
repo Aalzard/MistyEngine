@@ -1,4 +1,5 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
+//! See [`apply_env`] for `MISTY_SELECT` / `MISTY_TAB`.
 
 use std::path::PathBuf;
 

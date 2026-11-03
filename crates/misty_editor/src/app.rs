@@ -324,6 +324,10 @@ impl EditorApp {
             }
         }
         if !s.play.in_play_mode() {
+            // Selected Particle Systems play in the Scene view.
+            if crate::particle_preview::tick(s, ctx.input(|i| i.stable_dt)) {
+                ctx.request_repaint();
+            }
             // Scripts reload when their files change; syntax errors go to the Console.
             for err in s.assets.poll_scripts() {
                 s.console.log(LogLevel::Error, err);

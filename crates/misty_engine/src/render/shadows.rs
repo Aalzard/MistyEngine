@@ -260,6 +260,7 @@ mod tests {
             background: [0.0; 3],
             lines: &[],
             meshes: &meshes,
+            particles: &[],
             shaded: true,
             lights: &lights,
             ambient_intensity: 1.0,

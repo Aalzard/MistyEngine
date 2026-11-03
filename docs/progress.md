@@ -427,3 +427,39 @@
   and UI graphics are not drawn in the Scene view (outlines only). Clicking UI in the Scene view doesn't select it.
 - On Click picks a method by name (no dropdown of the target's methods, no arguments).
 - The player draws no UI while no camera renders (the screen stays black).
+
+## Particle System ✅
+
+### Done
+- `Particle System` component (Add Component ▸ Effects, or GameObject ▸ Effects ▸ Particle System) with modules:
+  Main (Duration, Looping, Prewarm, Start Delay/Lifetime/Speed/Size/Color, Gravity Modifier, Simulation Space
+  Local/World, Play On Awake, Max Particles, Auto Random Seed), Emission (Rate over Time, Bursts with time, count,
+  cycles, interval, probability), Shape (Sphere, Hemisphere, Cone angle/radius, Box), Color over Lifetime
+  (colour + alpha gradient keys), Size over Lifetime (start → end), Renderer (billboard, optional texture, Alpha
+  Blended / Additive, HDR intensity). Numbers and Start Color support Constant / Random Between Two Constants.
+- Deterministic, frame-rate independent simulation in `misty_engine::particles` with unit tests (rate counts,
+  bursts and cycles, lifetime death, max cap, gravity, delay, prewarm, play/stop/pause/clear, local vs world).
+- Rendering: instanced camera-facing billboards after opaque meshes, depth-tested without depth writes, alpha
+  systems sorted back to front; colours above 1 bloom. Works in the Scene view, Game view and `misty_player`.
+- Play mode and the player run systems with Play On Awake (also on instantiated prefabs).
+- Edit mode: selecting a system (or a parent of systems) previews it in the Scene view with a "Particle Effect"
+  overlay: Play/Pause, Restart, Stop, Playback Speed, Playback Time, particle count. Shape gizmo (cone, sphere,
+  hemisphere, box) on the selected system; ✨ icon in the Hierarchy and Scene view (clickable).
+- Inspector: main section plus collapsible module sections with enable checkboxes; burst table; gradient bar with
+  editable keys.
+- Lua: `GetComponent("ParticleSystem")` with `Play()`, `Stop()`, `Pause()`, `Clear()`, `Emit(n)`, `isPlaying`,
+  `isPaused`, `isStopped`, `particleCount`, `time`.
+- Sample: `Scenes/ParticlesDemo.scene` (campfire: fire, sparks with a Space-to-burst script, smoke, fire light; `Wood.mat`, `Dirt.mat`, `SparkBurst.lua`).
+
+### Not matching Unity yet
+- Only the modules above: no Velocity/Force/Limit Velocity/Rotation/Noise/Collision/Sub Emitters/Texture Sheet
+  Animation/Trails/Lights modules, no curves (only constants, random between two constants, a linear start→end
+  size ramp and a gradient), no Start Rotation / 3D start size.
+- Renderer: billboard only (no stretched/horizontal/vertical/mesh), no particle materials (texture + blend +
+  intensity instead), no soft particles, no per-particle sorting across different systems.
+- Shape: no Circle, Edge, Mesh, Donut or Rectangle shapes, no radius thickness, arc, or cone length/volume
+  emission; Box always emits along +Z. Transform scale scales the shape positions but not particle size.
+- Deactivating an object hides its particles but doesn't reset the system; `Stop()` takes no
+  `withChildren`/`stopBehavior` arguments; no `main`/`emission` property access from Lua.
+- The editor preview doesn't show the Simulate Layers / Resimulate options; Playback Time is per-play, not
+  scrubbable.

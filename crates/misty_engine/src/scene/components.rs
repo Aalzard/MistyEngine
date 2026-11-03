@@ -1,10 +1,13 @@
 //! Built-in components: GameObject header, Transform, hierarchy node, Camera, Light, mesh, physics,
-//! scripts, prefab link and audio components.
+//! scripts, prefab link and audio components. The Particle System lives with its simulation in
+//! `crate::particles` and is re-exported here.
 
 use glam::{Mat4, Quat, Vec3};
 use serde::{Deserialize, Serialize};
 
 use crate::camera::{euler_to_quat, quat_to_euler};
+
+pub use crate::particles::ParticleSystem;
 
 /// Name, active flag, tag, layer and component order: what the Inspector header shows.
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -90,6 +90,11 @@ impl SceneComponent for Animation {
     const CATEGORY: &'static str = "Miscellaneous";
 }
 
+impl SceneComponent for ParticleSystem {
+    const NAME: &'static str = "Particle System";
+    const CATEGORY: &'static str = "Effects";
+}
+
 /// Type-erased operations for one component type.
 pub struct ComponentInfo {
     pub name: &'static str,
@@ -166,6 +171,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<AudioSource>(),
             ComponentInfo::of::<AudioListener>(),
             ComponentInfo::of::<Animation>(),
+            ComponentInfo::of::<ParticleSystem>(),
             ComponentInfo::of::<Scripts>(),
             ComponentInfo::of::<PrefabLink>(),
         ]

@@ -1,4 +1,5 @@
-//! Game loop time and the per-frame update that runs while playing.
+//! Game loop time and the per-frame update that runs while playing (scripts, physics, audio,
+//! particles).
 
 use glam::Vec3;
 
@@ -81,6 +82,8 @@ impl Runtime {
         settings: &ProjectSettings,
         audio: Audio,
     ) -> Self {
+        // Edit-mode particle previews don't carry into the game.
+        crate::particles::clear_all(scene);
         let mut physics = Physics::build_with(scene, &settings.physics);
         let warnings = std::mem::take(&mut physics.warnings);
         let host = ScriptHost::start_with_audio(scene, physics, project_root, audio);
@@ -94,6 +97,8 @@ impl Runtime {
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         self.host.update(scene, time, input);
         self.host.with_audio(|a| a.update(scene));
+        let (gravity, _) = self.host.physics_config();
+        crate::particles::update(scene, time.delta, gravity);
     }
 
     /// Game view "Mute Audio" and the editor's Pause button.

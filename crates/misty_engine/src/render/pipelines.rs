@@ -1,6 +1,7 @@
 //! Bind group layouts, shader modules and render pipelines.
 
 use super::mesh::Vertex;
+use super::particles::ParticleInstance;
 use super::{
     COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT, SHADOW_FORMAT,
 };
@@ -30,6 +31,9 @@ pub struct Pipelines {
     pub shadow: wgpu::RenderPipeline,
     pub mask: wgpu::RenderPipeline,
     pub outline: wgpu::RenderPipeline,
+    /// Billboards: alpha-blended and additive.
+    pub particles_alpha: wgpu::RenderPipeline,
+    pub particles_additive: wgpu::RenderPipeline,
     pub bloom_prefilter: wgpu::RenderPipeline,
     pub bloom_down: wgpu::RenderPipeline,
     pub bloom_up: wgpu::RenderPipeline,
@@ -69,7 +73,8 @@ struct Spec<'a> {
     color: Option<wgpu::TextureFormat>,
     blend: Option<wgpu::BlendState>,
     samples: u32,
-    /// Main-pass glow target: None = not in the main pass, Some(true) = writes emission.
+    /// Main-pass glow target: None = not in the main pass, Some(true) = writes emission
+    /// (blended like the colour target).
     glow: Option<bool>,
 }
 
@@ -323,6 +328,44 @@ impl Pipelines {
             },
         );
 
+        // Particles: tested against opaque depth but don't write it; glow gets the bright part.
+        let particle_buffers = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<ParticleInstance>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![
+                0 => Float32x4,
+                1 => Float32x4,
+                2 => Float32x4
+            ],
+        }];
+        let particle_src = include_str!("shaders/particles.wgsl");
+        let particle_layouts = [&view_layout, &material_layout];
+        let particles = |name, blend| Spec {
+            vs: "vs_main",
+            buffers: &particle_buffers,
+            depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+            blend: Some(blend),
+            glow: Some(true),
+            ..Spec::new(name, particle_src, &particle_layouts)
+        };
+        let add_light = wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::Zero,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+        };
+        let particles_alpha = build(
+            device,
+            particles("particles alpha", wgpu::BlendState::ALPHA_BLENDING),
+        );
+        let particles_additive = build(device, particles("particles additive", add_light));
+
         // Post-processing: single-sample, no depth.
         let bloom_src = include_str!("shaders/bloom.wgsl");
         let post_layouts = [&view_layout, &post_layout];
@@ -390,6 +433,8 @@ impl Pipelines {
             shadow,
             mask,
             outline,
+            particles_alpha,
+            particles_additive,
         }
     }
 }
@@ -419,7 +464,7 @@ fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
     if let Some(writes) = spec.glow {
         targets.push(Some(wgpu::ColorTargetState {
             format: HDR_FORMAT,
-            blend: None,
+            blend: if writes { spec.blend } else { None },
             write_mask: if writes {
                 wgpu::ColorWrites::ALL
             } else {
@@ -481,6 +526,7 @@ mod tests {
             ("outline", include_str!("shaders/outline.wgsl")),
             ("bloom", include_str!("shaders/bloom.wgsl")),
             ("composite", include_str!("shaders/composite.wgsl")),
+            ("particles", include_str!("shaders/particles.wgsl")),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));

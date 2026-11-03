@@ -259,6 +259,12 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
         Create::Camera => s.scene.add(e, Camera::default()),
         Create::AudioSource => s.scene.add(e, misty_engine::scene::AudioSource::default()),
         Create::Ui(_) => {} // handled by ui_create
+        Create::ParticleSystem => {
+            // Rotated so the cone emits upwards, like a new system in the familiar editor.
+            t.set_euler(Vec3::new(-90.0, 0.0, 0.0));
+            s.scene
+                .add(e, misty_engine::scene::ParticleSystem::default());
+        }
     }
     s.scene.set_transform(e, t);
     s.select(e);

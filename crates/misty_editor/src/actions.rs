@@ -16,6 +16,8 @@ pub enum Create {
     AudioSource,
     /// GameObject ▸ UI ▸ … (see `ui_create`).
     Ui(crate::ui_create::UiElement),
+    /// GameObject ▸ Effects ▸ Particle System.
+    ParticleSystem,
 }
 
 impl Create {
@@ -29,6 +31,7 @@ impl Create {
             Create::Light(LightType::Spot) => "Spot Light",
             Create::Camera => "Camera",
             Create::AudioSource => "Audio Source",
+            Create::ParticleSystem => "Particle System",
         }
     }
 }

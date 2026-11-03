@@ -30,6 +30,7 @@ pub fn icon(name: &str) -> &'static str {
         "Audio Source" => crate::state::AUDIO_ICON,
         "Audio Listener" => "🎧",
         "Animation" => "⏵",
+        "Particle System" => crate::state::PARTICLE_ICON,
         other => super::ui_editors::icon(other).unwrap_or("▣"),
     }
 }
@@ -112,6 +113,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Mesh Collider" => with::<MeshCollider>(ui, state, e, mesh_collider),
         "Audio Source" => audio_source(ui, state, e),
         "Animation" => super::anim::animation(ui, state, e),
+        "Particle System" => super::particles::particle_system(ui, state, e),
         "Audio Listener" => {
             ui.weak("Hears every Audio Source in the scene.");
             false

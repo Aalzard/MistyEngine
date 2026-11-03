@@ -9,6 +9,7 @@ pub mod audio;
 pub mod build;
 pub mod camera;
 pub mod models;
+pub mod particles;
 pub mod physics;
 pub mod render;
 pub mod render_scene;

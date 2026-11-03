@@ -16,6 +16,7 @@ mod layouts;
 mod menu_bar;
 mod model_import;
 mod panels;
+mod particle_preview;
 mod picking;
 mod play;
 mod prefabs;
@@ -26,6 +27,8 @@ mod render_scene;
 mod sample_animation;
 #[cfg(test)]
 mod sample_assets;
+#[cfg(test)]
+mod sample_particles;
 #[cfg(test)]
 mod sample_ui;
 mod scene_camera;

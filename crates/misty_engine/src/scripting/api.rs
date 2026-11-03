@@ -1,5 +1,5 @@
-//! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody, AudioSource, Animation and
-//! global tables
+//! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody, AudioSource, Animation
+//! (ParticleSystem is in `particles_api`, UI components in `ui_api`) and global tables
 //! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy, SceneManager,
 //! Application).
 //!
@@ -13,11 +13,12 @@ use mlua::{
     Variadic,
 };
 
+use super::particles_api::LParticleSystem;
 use super::{LogKind, Request, World};
 use crate::build::SceneRef;
 use crate::camera::{euler_to_quat, quat_to_euler};
 use crate::scene::prefab::Prefab;
-use crate::scene::{Animation, AudioSource, Rigidbody};
+use crate::scene::{Animation, AudioSource, ParticleSystem, Rigidbody};
 
 /// Run `f` with the live game world, or fail if no frame is running.
 pub fn with_world<R>(lua: &Lua, f: impl FnOnce(&mut World) -> R) -> Result<R> {
@@ -338,6 +339,7 @@ impl UserData for LGameObject {
                     "Rigidbody" if w.scene.world.get::<&Rigidbody>(e).is_ok() => Some(1),
                     "AudioSource" if w.scene.world.get::<&AudioSource>(e).is_ok() => Some(2),
                     "Animation" if w.scene.world.get::<&Animation>(e).is_ok() => Some(3),
+                    "ParticleSystem" if w.scene.world.get::<&ParticleSystem>(e).is_ok() => Some(4),
                     _ => None,
                 })
             })??;
@@ -345,7 +347,8 @@ impl UserData for LGameObject {
                 Some(0) => lua.create_userdata(LTransform(e)).map(Value::UserData),
                 Some(1) => lua.create_userdata(LRigidbody(e)).map(Value::UserData),
                 Some(2) => lua.create_userdata(LAudioSource(e)).map(Value::UserData),
-                Some(_) => lua.create_userdata(LAnimation(e)).map(Value::UserData),
+                Some(3) => lua.create_userdata(LAnimation(e)).map(Value::UserData),
+                Some(_) => lua.create_userdata(LParticleSystem(e)).map(Value::UserData),
                 None => Ok(super::ui_api::component(lua, e, &name)?.unwrap_or(Value::Nil)),
             }
         });
