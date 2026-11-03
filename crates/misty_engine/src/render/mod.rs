@@ -23,7 +23,7 @@ pub use environment::{Environment, Sun};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
 pub use stats::{RenderMemory, RenderOptions, RenderStats};
-pub use surface::{RenderingMode, ShaderKind};
+pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
 use target::TargetLayouts;
 
@@ -180,6 +180,8 @@ pub struct MeshDraw {
     pub receive_shadows: bool,
     /// Draw the orange selection outline around this mesh.
     pub outline: bool,
+    /// Sorting Layer / Order in Layer (sprites); meshes use the default.
+    pub sorting: surface::SortingKey,
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -20,6 +20,8 @@ pub enum Create {
     ParticleSystem,
     /// GameObject ▸ 3D Object ▸ Terrain (see `terrain_tools`).
     Terrain,
+    /// GameObject ▸ 2D Object ▸ Sprite (None) or Sprites ▸ a built-in shape.
+    Sprite(Option<&'static str>),
 }
 
 impl Create {
@@ -35,6 +37,8 @@ impl Create {
             Create::AudioSource => "Audio Source",
             Create::ParticleSystem => "Particle System",
             Create::Terrain => "Terrain",
+            Create::Sprite(None) => "New Sprite",
+            Create::Sprite(Some(shape)) => shape,
         }
     }
 }

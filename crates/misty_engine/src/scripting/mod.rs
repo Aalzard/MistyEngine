@@ -3,7 +3,8 @@
 //! A script file returns a class table. Plain values in it (numbers, booleans, strings, Vector3)
 //! are public fields shown in the Inspector; functions are callbacks:
 //! `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`,
-//! `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`, `OnControllerColliderHit(hit)`.
+//! `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`, `OnControllerColliderHit(hit)`,
+//! and the 2D `OnCollisionEnter2D/Stay2D/Exit2D(collision)`, `OnTriggerEnter2D/Stay2D/Exit2D(other)`.
 //! `Instantiate(prefabPath or gameObject [, position])` creates objects while playing; their
 //! scripts get `Awake` right after the callback that created them.
 //! `SceneManager.LoadScene(name or index)` and `Application.Quit()` are handled after the frame
@@ -25,6 +26,7 @@ pub mod input_api;
 pub mod material_api;
 pub mod navigation_api;
 pub mod particles_api;
+pub mod physics2d_api;
 pub mod physics_api;
 pub mod render_settings_api;
 pub mod syntax;
@@ -43,6 +45,7 @@ use mlua::{Function, Lua, RegistryKey, Table, Value};
 use crate::animation::{AnimationPlayer, AnimatorPlayer};
 use crate::audio::Audio;
 use crate::physics::{Contact, Physics};
+use crate::physics2d::{Contact2D, Phase, Physics2D};
 use crate::profile_scope;
 use crate::profiler::Category;
 use crate::runtime::Time;
@@ -133,6 +136,8 @@ pub enum Request {
 pub struct World {
     pub scene: Scene,
     pub physics: Physics,
+    /// The 2D physics world (Rigidbody 2D, 2D colliders).
+    pub physics2d: Physics2D,
     pub time: Time,
     pub input: Input,
     pub logs: Vec<(LogKind, String)>,
@@ -202,6 +207,19 @@ impl ScriptHost {
         audio: Audio,
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
+        let physics2d = Physics2D::build(scene, &settings.physics2d, physics.settings());
+        Self::start_with_physics(scene, physics, physics2d, project_root, audio, settings)
+    }
+
+    /// Like [`ScriptHost::start_configured`] with a prepared 2D physics world.
+    pub fn start_with_physics(
+        scene: &mut Scene,
+        physics: Physics,
+        physics2d: Physics2D,
+        project_root: PathBuf,
+        audio: Audio,
+        settings: &crate::settings::ProjectSettings,
+    ) -> Self {
         let lua = Lua::new();
         let mut logs = Vec::new();
         if let Err(e) = api::register(&lua) {
@@ -212,6 +230,7 @@ impl ScriptHost {
             navigation,
             scene: std::mem::take(scene),
             physics,
+            physics2d,
             time: Time::default(),
             input: Input::default(),
             logs,
@@ -503,6 +522,36 @@ impl ScriptHost {
         }
     }
 
+    /// `OnCollision*2D(collision)` / `OnTrigger*2D(other)` for 2D contacts.
+    fn dispatch_2d(&mut self, contacts: &[Contact2D]) {
+        for c in contacts {
+            let base = match (c.trigger, c.phase) {
+                (true, Phase::Enter) => "OnTriggerEnter2D",
+                (true, Phase::Stay) => "OnTriggerStay2D",
+                (true, Phase::Exit) => "OnTriggerExit2D",
+                (false, Phase::Enter) => "OnCollisionEnter2D",
+                (false, Phase::Stay) => "OnCollisionStay2D",
+                (false, Phase::Exit) => "OnCollisionExit2D",
+            };
+            for (me, other) in [(c.a, c.b), (c.b, c.a)] {
+                for i in 0..self.instances.len() {
+                    if self.instances[i].entity != me || !self.runnable(&self.instances[i]) {
+                        continue;
+                    }
+                    let arg = if c.trigger {
+                        self.lua
+                            .create_userdata(LGameObject(other))
+                            .map(Value::UserData)
+                    } else {
+                        physics2d_api::collision_table(&self.lua, me, c).map(Value::Table)
+                    };
+                    self.call(i, base, arg.ok());
+                }
+            }
+            self.flush_spawned();
+        }
+    }
+
     /// One game frame: Start (first frame), FixedUpdate + physics steps, Update, LateUpdate, Destroy.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         let scene_in = std::mem::take(scene);
@@ -546,10 +595,15 @@ impl ScriptHost {
             let contacts = self.with_world(|w| w.physics.step(&w.scene));
             self.dispatch(&contacts);
             self.flush_spawned();
+            let contacts_2d = self.with_world(|w| w.physics2d.step());
+            self.dispatch_2d(&contacts_2d);
         }
         {
             profile_scope!("Physics.SyncTransforms", Category::Physics);
-            self.with_world(|w| w.physics.sync_out(&mut w.scene));
+            self.with_world(|w| {
+                w.physics.sync_out(&mut w.scene);
+                w.physics2d.sync_out(&mut w.scene);
+            });
         }
 
         {
@@ -655,6 +709,7 @@ impl ScriptHost {
                     .collect();
                 for x in &all {
                     w.physics.remove(*x);
+                    w.physics2d.remove(*x);
                 }
                 w.scene.despawn(e);
                 all
@@ -674,7 +729,12 @@ impl ScriptHost {
 
     /// Physics counters for the Stats overlay.
     pub fn physics_counts(&self) -> (usize, usize) {
-        self.with_world(|w| (w.physics.body_count(), w.physics.collider_count()))
+        self.with_world(|w| {
+            (
+                w.physics.body_count() + w.physics2d.body_count(),
+                w.physics.collider_count() + w.physics2d.collider_count(),
+            )
+        })
     }
 
     /// Project Settings ▸ Physics the world was built with.

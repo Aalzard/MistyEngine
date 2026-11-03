@@ -29,9 +29,12 @@ mod play;
 mod prefabs;
 mod project;
 mod project_settings;
+mod project_settings_2d;
 mod project_settings_input;
 mod project_settings_tags;
 mod render_scene;
+#[cfg(test)]
+mod sample_2d;
 #[cfg(test)]
 mod sample_animation;
 #[cfg(test)]
@@ -65,6 +68,7 @@ mod scene_files;
 mod selection;
 mod snap;
 mod snap_window;
+mod sprite_handles;
 mod state;
 mod status_bar;
 mod terrain_tools;

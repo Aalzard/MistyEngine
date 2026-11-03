@@ -115,7 +115,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     if state.scene_view.gizmos {
         draw_icons(ui, rect, state, &camera);
     }
-    if !brush_active {
+    // 2D handles (sprite Rect tool, Edit Collider) take the mouse before the transform handles.
+    if !brush_active && !crate::sprite_handles::show(ui, state, &camera, rect, response.hovered()) {
         handles::show(ui, state, &camera, rect, response.hovered());
     }
     let suppressed = state.handles.click_suppressed() || brush_click;

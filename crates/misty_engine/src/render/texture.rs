@@ -10,6 +10,7 @@ use image::RgbaImage;
 use wgpu::util::DeviceExt;
 
 use crate::assets;
+use crate::sprites::{self, FilterMode, WrapMode};
 
 /// Largest side kept on upload (bigger images are scaled down).
 const MAX_SIZE: u32 = 4096;
@@ -105,8 +106,24 @@ pub(crate) fn upload(
     image: RgbaImage,
     srgb: bool,
 ) -> wgpu::TextureView {
+    upload_with(device, queue, label, image, srgb, true)
+}
+
+/// Upload an image, with or without generated mips (import setting Generate Mip Maps).
+pub(crate) fn upload_with(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    image: RgbaImage,
+    srgb: bool,
+    mips: bool,
+) -> wgpu::TextureView {
     let (w, h) = image.dimensions();
-    let chain = mip_chain(image, srgb);
+    let chain = if mips {
+        mip_chain(image, srgb)
+    } else {
+        vec![image]
+    };
     let data: Vec<u8> = chain
         .iter()
         .flat_map(|m| m.as_raw().iter().copied())
@@ -135,6 +152,49 @@ pub(crate) fn upload(
         &data,
     );
     texture.create_view(&Default::default())
+}
+
+/// Sampler state from a texture's import settings (Filter Mode, Wrap Mode).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SamplerKey {
+    pub filter: FilterMode,
+    pub wrap: WrapMode,
+}
+
+impl SamplerKey {
+    /// The sampler of a texture by project path (bilinear + repeat without import settings).
+    pub fn of(rel: Option<&str>) -> Self {
+        let imp = rel.map(sprites::importer).unwrap_or_default();
+        Self {
+            filter: imp.filter_mode,
+            wrap: imp.wrap_mode,
+        }
+    }
+
+    pub(crate) fn create(self, device: &wgpu::Device) -> wgpu::Sampler {
+        let address = match self.wrap {
+            WrapMode::Repeat => wgpu::AddressMode::Repeat,
+            WrapMode::Clamp => wgpu::AddressMode::ClampToEdge,
+            WrapMode::Mirror => wgpu::AddressMode::MirrorRepeat,
+        };
+        let point = self.filter == FilterMode::Point;
+        let (filter, mip) = if point {
+            (wgpu::FilterMode::Nearest, wgpu::MipmapFilterMode::Nearest)
+        } else {
+            (wgpu::FilterMode::Linear, wgpu::MipmapFilterMode::Linear)
+        };
+        device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("misty material sampler"),
+            address_mode_u: address,
+            address_mode_v: address,
+            mag_filter: filter,
+            min_filter: filter,
+            mipmap_filter: mip,
+            // Anisotropy needs linear filtering.
+            anisotropy_clamp: if point { 1 } else { 8 },
+            ..Default::default()
+        })
+    }
 }
 
 /// Colour maps are sRGB; normal maps hold vectors and stay linear.
@@ -175,7 +235,8 @@ struct Defaults {
 }
 
 struct Cached {
-    modified: Option<SystemTime>,
+    /// Modification times of the image and its `.meta` import settings.
+    modified: (Option<SystemTime>, Option<SystemTime>),
     /// None when the file could not be read (the default texture is used).
     view: Option<wgpu::TextureView>,
 }
@@ -186,28 +247,23 @@ pub struct TextureCache {
     sets: HashMap<TextureSet, wgpu::BindGroup>,
     /// Created on first use.
     defaults: Option<Defaults>,
+    /// Bilinear repeat (textures without import settings).
     sampler: wgpu::Sampler,
+    /// Samplers for other import settings, created on first use.
+    samplers: HashMap<SamplerKey, wgpu::Sampler>,
     last_poll: Option<Instant>,
     warnings: Vec<String>,
 }
 
 impl TextureCache {
     pub fn new(device: &wgpu::Device) -> Self {
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("misty material sampler"),
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            anisotropy_clamp: 8,
-            ..Default::default()
-        });
+        let sampler = SamplerKey::default().create(device);
         Self {
             textures: HashMap::new(),
             sets: HashMap::new(),
             defaults: None,
             sampler,
+            samplers: HashMap::new(),
             last_poll: None,
             warnings: Vec::new(),
         }
@@ -224,9 +280,12 @@ impl TextureCache {
         if let Some(c) = self.textures.get(&key) {
             return c.view.clone();
         }
-        let abs = assets::absolute(rel);
-        let view = match load_image(&abs) {
-            Ok(img) => Some(upload(device, queue, rel, img, kind == TextureKind::Color)),
+        let mips = sprites::importer(rel).generate_mip_maps;
+        let view = match sprites::load_image(rel) {
+            Ok(img) => {
+                let srgb = kind == TextureKind::Color;
+                Some(upload_with(device, queue, rel, img, srgb, mips))
+            }
             Err(e) => {
                 self.warnings.push(format!("Could not load texture {e}"));
                 None
@@ -235,7 +294,7 @@ impl TextureCache {
         self.textures.insert(
             key,
             Cached {
-                modified: mtime(&abs),
+                modified: stamps(rel),
                 view: view.clone(),
             },
         );
@@ -277,6 +336,15 @@ impl TextureCache {
         let metallic = load(&set.metallic, TextureKind::Linear, &white_linear);
         let occlusion = load(&set.occlusion, TextureKind::Linear, &white_linear);
         let emission = load(&set.emission, TextureKind::Color, &white);
+        // The albedo texture's import settings pick the sampler of the whole set.
+        let key = SamplerKey::of(set.albedo.as_deref());
+        let sampler = if key == SamplerKey::default() {
+            &self.sampler
+        } else {
+            self.samplers
+                .entry(key)
+                .or_insert_with(|| key.create(device))
+        };
         let view = |binding, v| wgpu::BindGroupEntry {
             binding,
             resource: wgpu::BindingResource::TextureView(v),
@@ -289,7 +357,7 @@ impl TextureCache {
                 view(1, &normal),
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    resource: wgpu::BindingResource::Sampler(sampler),
                 },
                 view(3, &metallic),
                 view(4, &occlusion),
@@ -404,7 +472,7 @@ impl TextureCache {
         self.last_poll = Some(now);
         let before = self.textures.len();
         self.textures
-            .retain(|(rel, _), c| c.modified == mtime(&assets::absolute(rel)));
+            .retain(|(rel, _), c| c.modified == stamps(rel));
         let changed = self.textures.len() != before;
         if changed {
             self.sets.clear();
@@ -420,6 +488,18 @@ impl TextureCache {
 
 fn mtime(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// Modification times of a texture and its import settings (built-ins never change).
+fn stamps(rel: &str) -> (Option<SystemTime>, Option<SystemTime>) {
+    if sprites::builtin::is_builtin(rel) {
+        return (None, None);
+    }
+    let abs = assets::absolute(rel);
+    (
+        mtime(&abs),
+        mtime(&sprites::TextureImporter::meta_path(&abs)),
+    )
 }
 
 #[cfg(test)]

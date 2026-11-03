@@ -82,7 +82,36 @@ impl Default for TimeSettings {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// Project Settings ▸ Physics 2D (the layer matrix is shared with 3D physics).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Physics2DSettings {
+    pub gravity: glam::Vec2,
+    /// Raycasts and overlap queries also return trigger colliders.
+    pub queries_hit_triggers: bool,
+    /// Raycasts starting inside a collider report it (at distance 0).
+    pub queries_start_in_colliders: bool,
+}
+
+impl Default for Physics2DSettings {
+    fn default() -> Self {
+        Self {
+            gravity: glam::Vec2::new(0.0, -9.81),
+            queries_hit_triggers: true,
+            queries_start_in_colliders: true,
+        }
+    }
+}
+
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
+
+fn is_default_sorting(v: &Vec<String>) -> bool {
+    *v == crate::sprites::sorting::default_layers()
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectSettings {
     pub physics: PhysicsSettings,
@@ -90,6 +119,25 @@ pub struct ProjectSettings {
     /// Input Manager axes.
     pub input: crate::input::InputSettings,
     pub tags_and_layers: crate::tags_layers::TagsAndLayers,
+    /// Left out of the file at its defaults (older settings files re-save unchanged).
+    #[serde(skip_serializing_if = "is_default")]
+    pub physics2d: Physics2DSettings,
+    /// Sorting Layers in draw order ("Default" always present).
+    #[serde(skip_serializing_if = "is_default_sorting")]
+    pub sorting_layers: Vec<String>,
+}
+
+impl Default for ProjectSettings {
+    fn default() -> Self {
+        Self {
+            physics: PhysicsSettings::default(),
+            time: TimeSettings::default(),
+            input: Default::default(),
+            tags_and_layers: Default::default(),
+            physics2d: Physics2DSettings::default(),
+            sorting_layers: crate::sprites::sorting::default_layers(),
+        }
+    }
 }
 
 impl ProjectSettings {
@@ -145,6 +193,15 @@ impl ProjectSettings {
         t.maximum_allowed_timestep = clamp_or(t.maximum_allowed_timestep, 0.0001, 10.0, 1.0 / 3.0);
         self.input.sanitize();
         self.tags_and_layers.sanitize();
+        if !self.physics2d.gravity.is_finite() {
+            self.physics2d.gravity = Physics2DSettings::default().gravity;
+        }
+        self.sorting_layers = crate::sprites::sorting::normalized(&self.sorting_layers);
+    }
+
+    /// Install what the renderer reads process-wide (Sorting Layers).
+    pub fn apply_globals(&self) {
+        crate::sprites::sorting::set_layers(&self.sorting_layers);
     }
 }
 
@@ -218,6 +275,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.physics.ignored_layer_pairs, vec![[1, 4]]);
+    }
+
+    #[test]
+    fn physics2d_and_sorting_layers_round_trip_and_stay_out_at_defaults() {
+        let text = serde_json::to_string(&ProjectSettings::default()).unwrap();
+        assert!(!text.contains("physics2d") && !text.contains("sorting_layers"));
+        let mut s = ProjectSettings::default();
+        s.physics2d.gravity = glam::Vec2::new(0.0, -20.0);
+        s.sorting_layers = vec!["Background".into(), "Default".into(), "UI".into()];
+        let back = ProjectSettings::from_json(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back, s);
+        let fixed = ProjectSettings::from_json(r#"{ "sorting_layers": ["Front"] }"#).unwrap();
+        assert_eq!(fixed.sorting_layers, vec!["Default", "Front"]);
     }
 
     #[test]

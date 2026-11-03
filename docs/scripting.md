@@ -427,3 +427,28 @@ if Input.GetMouseButtonDown(0) then
 end
 ```
 Sample: `Scenes/NavigationDemo.scene` with `Patrol.lua`, `Chaser.lua` and `ClickMarker.lua`.
+
+### 2D physics and sprites
+2D values are Vector3 with z = 0: `Vector2.new(x, y)` / `Vector2(x, y)`, `Vector2.zero/one/up/down/left/right`,
+`Vector2.Distance/Dot/Lerp`; 2D functions also take `{x=, y=}` tables or two numbers.
+
+| | |
+|---|---|
+| Rigidbody2D | `GetComponent("Rigidbody2D")`: `velocity` (settable), `angularVelocity` (degrees/s), `position`, `rotation` (read-only), `mass`, `gravityScale`, `bodyType` (`"Dynamic"`/`"Kinematic"`/`"Static"`), `isKinematic`, `freezeRotation`, `AddForce(v [, ForceMode2D.Force/Impulse])`, `AddTorque(t [, mode])`, `MovePosition(v)`, `MoveRotation(degrees)` |
+| 2D colliders | `GetComponent("BoxCollider2D"/"CircleCollider2D"/"CapsuleCollider2D"/"PolygonCollider2D"/"EdgeCollider2D")`: `isTrigger`, `enabled`, `offset`, `size`, `radius`, `attachedRigidbody`, `CompareTag` (read-only) |
+| SpriteRenderer | `sprite` (`"Assets/Sprites/Tiles.png#Tiles_1"`), `color`, `flipX`, `flipY`, `sortingLayerName`, `sortingOrder`, `enabled` |
+| `Physics2D` | `Raycast(origin, dir [, distance [, mask]])` → hit table (`point`, `normal`, `distance`, `fraction`, `gameObject`, `collider`, `transform`, `rigidbody`) or nil, `RaycastAll`, `OverlapCircle(c, r [, mask])` / `OverlapBox(c, size [, angle [, mask]])` / `OverlapPoint(p [, mask])` → GameObject or nil, `OverlapCircleAll` → list, `gravity` (read/write) |
+| Image (UI) | also `sprite` (sprite reference or nil) |
+
+Callbacks: `OnCollisionEnter2D(c)`, `OnCollisionStay2D(c)`, `OnCollisionExit2D(c)` with `c.gameObject`, `c.collider`,
+`c.otherCollider`, `c.rigidbody`, `c.relativeVelocity`, `c.contacts[1].point/normal`, `c:GetContact(0)`;
+`OnTriggerEnter2D(other)`, `OnTriggerStay2D(other)`, `OnTriggerExit2D(other)` with the other GameObject.
+Rays that start inside a collider report it (Project Settings ▸ Physics 2D ▸ Queries Start In Colliders), so
+ground checks use a layer mask:
+
+```lua
+local grounded = Physics2D.Raycast(self.transform.position + Vector2.down * 0.5, Vector2.down, 0.1,
+    LayerMask.GetMask("Default")) ~= nil
+```
+
+Sample: `Assets/Scripts/PlayerController2D.lua`, `Assets/Scripts/CameraFollow2D.lua` (Platformer2D scene).

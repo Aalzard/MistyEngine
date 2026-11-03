@@ -1227,3 +1227,76 @@ Record of choices made without asking, and why.
      on user layer 8 "Hidden" that the Main Camera's Culling Mask leaves out. The writer names layer 8 in
      `SampleProject/ProjectSettings/ProjectSettings.json` (which therefore now lists every settings block).
      Reuses Checker, Wood, Blue Steel and Laser materials and `Rotator.lua` unchanged.
+
+## 2026-11-03 — 2D: sprites, Sorting Layers, 2D physics
+
+290. **Texture import settings are a `<image>.meta` JSON sidecar** next to the image (`Player.png.meta`), like the
+     reference engine's per-asset meta files but holding only importer settings (no GUIDs). No sidecar = Texture
+     Type Default, Bilinear, Repeat, mipmaps, which is exactly how textures behaved before, so existing textures
+     and materials are unchanged. The Project window already hides `.meta` files. Moving an image outside the
+     editor must move its `.meta` too.
+291. **Settings:** Texture Type (Default / Sprite (2D and UI)), Sprite Mode (Single / Multiple), Pixels Per Unit,
+     Pivot (presets + custom, Single mode), Filter Mode (Point / Bilinear; no Trilinear), Wrap Mode (Repeat /
+     Clamp / Mirror), Generate Mip Maps, and the Multiple-mode sprite rects (name, pixel rect with y from the
+     bottom, pivot). Switching to Sprite sets Clamp and no mipmaps, like the reference importer. The sampler of
+     a material comes from its albedo texture's settings (Point filtering works for 3D materials too); the UI
+     pass also honours them.
+292. **Sprite references are strings:** the texture path, plus `#<name>` for a sprite of a Multiple texture
+     (`Assets/Sprites/Tiles.png#Tiles_1`; no name = its first sprite). Built-in shapes are `Builtin/Square.png`,
+     `Builtin/Circle.png`, `Builtin/Triangle.png`, generated in code (128 px at 128 PPU = 1 unit, anti-aliased
+     edges) instead of shipping image files. Import settings and image sizes are cached per path and re-read
+     when the image or `.meta` changes (checked at most twice a second).
+293. **Sprite Renderers are drawn as mesh draws** (the unit Quad scaled to the sprite and offset by its pivot)
+     with a fixed "Sprites-Default" material: unlit, Fade blending, Cull Off, no shadows, uv tiling/offset
+     selecting the rect, flips done in uv space. They join the transparent queue, which now sorts by Sorting
+     Layer, then Order in Layer, then back to front. 3D meshes stay at Default / 0, as in the reference engine.
+     Only Draw Mode Simple; no custom sprite materials, masks, or sprite atlases. Unlit sprites still take scene
+     fog (fog is off by default).
+294. **Sorting Layers live in ProjectSettings.json** (`sorting_layers`, left out at the default `["Default"]`)
+     with a Project Settings ▸ Sorting Layers page; the reference editor keeps them under Tags and Layers (the
+     merger may move the page there). The renderer reads them process-wide (installed on load/change, like the
+     project root); a layer's value is its index minus Default's, so Default is always 0. Renderers store the
+     layer by name; unknown names sort as Default.
+295. **2D physics is a separate rapier2d world** (`physics2d`), built at Play beside the 3D one and stepped in the
+     same fixed-step loop right after it (same Fixed Timestep). Bodies use the object's world X/Y and the angle
+     about Z; written back keeping the depth, rotation set to a pure Z rotation. Colliders attach to the nearest
+     Rigidbody 2D up the hierarchy (else static), sizes × world X/Y scale, offsets baked into the collider pose.
+     Mass comes from the Rigidbody 2D (density 0 colliders), forces are applied as velocity changes over one
+     fixed step (as in 3D). Kinematic = velocity based; MovePosition sweeps a kinematic body there in the next
+     step (velocity restored afterwards) and places other bodies; MoveRotation sets the angle directly.
+     Kinematic/static contacts are not reported (like the reference default "Full Kinematic Contacts" off).
+296. **Physics Material 2D is embedded in each collider** (friction 0.4, bounciness 0 defaults), like the 3D
+     colliders' surface values; there is no `.physicsMaterial2D` asset. Polygon Collider 2D with no points uses
+     the object's sprite rect (a unit square without one); concave outlines are decomposed into convex parts.
+     Edge Collider 2D is a polyline (capsules per segment when Edge Radius > 0). Box edge radius rounds corners.
+297. **2D layers reuse the 3D Layer Collision Matrix** and layer masks. Project Settings ▸ Physics 2D holds
+     gravity, Queries Hit Triggers and Queries Start In Colliders (on by default as in the reference engine: a
+     ray starting inside a collider reports it at distance 0, so ground checks should use a layer mask).
+298. **2D callbacks:** `OnCollisionEnter2D/Stay2D/Exit2D(collision)` and `OnTriggerEnter2D/Stay2D/Exit2D(other)`.
+     Stay comes from tracking touching pairs between started/stopped events (once per fixed step). The collision
+     table has `gameObject`, `collider`, `otherCollider`, `transform`, `rigidbody`, `relativeVelocity` (other
+     minus self, before the step for new contacts), `contacts` / `GetContact(i)` (one point: first manifold
+     point, normal pointing towards the receiver), `contactCount`. Triggers pass the other GameObject.
+299. **No Vector2 type in Lua:** 2D values are Vector3 with z = 0; `Vector2.new/zero/up/…`, `Vector2(x, y)` and
+     every 2D function also accept `{x=, y=}` tables or two numbers. `Physics2D.gravity` is a live property
+     (metatable). `ForceMode2D.Force/Impulse`. `Physics2D.OverlapCircle/OverlapBox/OverlapPoint` return the first
+     GameObject (the `…All` variant of the circle returns a list).
+300. **Editor:** GameObject ▸ 2D Object ▸ Sprite / Sprites ▸ Square, Circle, Triangle (placed at the pivot with
+     z = 0). Sprites are picked by their rect (the top-most by sorting wins on one plane) and framed by it. The
+     Rect tool on a selected sprite shows corner/edge handles that resize by scaling the object (opposite side
+     fixed) and moves it when dragging inside. Box/Circle Collider 2D have an Edit Collider toggle with edge /
+     rim handles; selected objects show green 2D collider outlines in the physics frame. No edit handles for
+     Capsule/Polygon/Edge colliders (their points are edited in the Inspector).
+301. **No separate Sprite Editor window:** Multiple-mode slicing is in the texture Inspector (Slice: Grid By Cell
+     Size with pixel size, offset, padding, keep empty rects) with Revert / Apply and a preview outlining the
+     sprite rects; unapplied edits live in egui memory. No automatic slicing, per-sprite rect editing, custom
+     outlines or physics shapes.
+302. **UI Image takes a sprite** (`sprite`, left out of files when unset): it replaces the texture and only its
+     rect is drawn (no Image Type sliced/tiled/filled, no Preserve Aspect / Set Native Size).
+303. **Platformer2D is generated by code** (`sample_2d`, ignored writer + check + headless play test): pixel-art
+     PNGs made in code (Player, a 2-tile sheet sliced Multiple, Coin; Point filter, 16 PPU), tile platforms with
+     one Box Collider 2D each, built-in Circle backdrops at order -10, an orthographic camera following the
+     player (`CameraFollow2D.lua`), `PlayerController2D.lua` (A/D velocity, Space jump with three ground rays
+     against Default), coins on Ignore Raycast as triggers that disappear and update a UI Text. It uses the
+     Default sorting layer with orders, so ProjectSettings.json stays unchanged. The capture also accepts
+     `MISTY_2D=1` to open the Scene view in 2D.

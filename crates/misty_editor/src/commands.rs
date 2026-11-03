@@ -281,6 +281,17 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
         Create::Camera => s.scene.add(e, Camera::default()),
         Create::AudioSource => s.scene.add(e, misty_engine::scene::AudioSource::default()),
         Create::Ui(_) | Create::Terrain => {} // handled by ui_create / terrain_tools
+        Create::Sprite(shape) => {
+            // On the XY plane, where the 2D view looks.
+            t.position.z = 0.0;
+            s.scene.add(
+                e,
+                misty_engine::scene::SpriteRenderer {
+                    sprite: shape.map(misty_engine::sprites::builtin::path),
+                    ..Default::default()
+                },
+            );
+        }
         Create::ParticleSystem => {
             // Rotated so the cone emits upwards, like a new system in the familiar editor.
             t.set_euler(Vec3::new(-90.0, 0.0, 0.0));
@@ -318,6 +329,12 @@ fn create_empty_parent(s: &mut EditorState) {
 }
 
 /// Centre and radius around the selection (for Frame Selected).
+/// A Sprite Renderer's local bounds as a thin box.
+fn sprite_box(scene: &misty_engine::scene::Scene, e: Entity) -> Option<(Vec3, Vec3)> {
+    let (min, max) = misty_engine::sprites::local_bounds(scene, e)?;
+    Some((min.extend(-0.01), max.extend(0.01)))
+}
+
 pub fn selection_bounds(s: &EditorState) -> Option<(Vec3, f32)> {
     let list = s.selection.list();
     if list.is_empty() {
@@ -337,7 +354,8 @@ pub fn selection_bounds(s: &EditorState) -> Option<(Vec3, f32)> {
                 .get::<&MeshFilter>(*e)
                 .ok()
                 .and_then(|f| f.mesh.clone())
-                .and_then(|mesh| misty_engine::models::bounds(&mesh));
+                .and_then(|mesh| misty_engine::models::bounds(&mesh))
+                .or_else(|| sprite_box(&s.scene, *e));
             match bounds {
                 Some((min, max)) => (
                     m.transform_point3((min + max) * 0.5),

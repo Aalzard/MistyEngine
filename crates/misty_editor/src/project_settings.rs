@@ -16,13 +16,18 @@ pub enum Category {
     #[default]
     Physics,
     TagsAndLayers,
+    /// Physics 2D and Sorting Layers pages live in `project_settings_2d`.
+    Physics2D,
+    SortingLayers,
     Time,
 }
 
 impl Category {
-    pub const ALL: [Category; 4] = [
+    pub const ALL: [Category; 6] = [
         Category::InputManager,
         Category::Physics,
+        Category::Physics2D,
+        Category::SortingLayers,
         Category::TagsAndLayers,
         Category::Time,
     ];
@@ -32,6 +37,8 @@ impl Category {
             Category::InputManager => "Input Manager",
             Category::Physics => "Physics",
             Category::TagsAndLayers => "Tags and Layers",
+            Category::Physics2D => "Physics 2D",
+            Category::SortingLayers => "Sorting Layers",
             Category::Time => "Time",
         }
     }
@@ -60,11 +67,13 @@ pub fn load(s: &mut EditorState) {
                 .warn(format!("ProjectSettings.json: {e}. Using defaults."));
         }
     }
+    s.project_settings.apply_globals();
 }
 
 /// Clamp, save, and apply what can change live (time scale while playing).
 pub fn changed(s: &mut EditorState) {
     s.project_settings.sanitize();
+    s.project_settings.apply_globals();
     if let Err(e) = s.project_settings.save(&s.project.root) {
         s.console.log(
             crate::console::LogLevel::Error,
@@ -111,6 +120,8 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
                 .show(ui, |ui| match category {
                     Category::InputManager => crate::project_settings_input::page(ui, &mut p.input),
                     Category::Physics => physics(ui, p),
+                    Category::Physics2D => crate::project_settings_2d::physics2d(ui, p),
+                    Category::SortingLayers => crate::project_settings_2d::sorting_layers(ui, p),
                     Category::TagsAndLayers => {
                         crate::project_settings_tags::page(ui, &mut p.tags_and_layers)
                     }

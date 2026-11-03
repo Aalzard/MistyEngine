@@ -200,14 +200,25 @@ impl Ctx<'_> {
         if !img.enabled {
             return;
         }
-        let tex = img
-            .texture
-            .clone()
-            .map_or(UiTexture::White, UiTexture::Image);
+        let sprite = img.sprite.as_deref().and_then(crate::sprites::resolve);
+        let (tex, uv) = match sprite {
+            // The sprite's rect of its texture (uv v runs up, screen y down).
+            Some(s) => {
+                let (lo, hi) = s.uv_rect();
+                let uv = [Vec2::new(lo.x, 1.0 - hi.y), Vec2::new(hi.x, 1.0 - lo.y)];
+                (UiTexture::Image(s.texture), uv)
+            }
+            None => (
+                img.texture
+                    .clone()
+                    .map_or(UiTexture::White, UiTexture::Image),
+                [Vec2::ZERO, Vec2::ONE],
+            ),
+        };
         let q = Quad {
             min: n.screen.min,
             max: n.screen.max,
-            uv: [Vec2::ZERO, Vec2::ONE],
+            uv,
             color: self.tint(n.entity, img.color),
             texture: tex,
             mask: 0.0,

@@ -5,8 +5,7 @@ use std::collections::HashMap;
 use glam::Vec2;
 
 use super::RenderTarget;
-use super::texture::{load_image, upload};
-use crate::assets;
+use super::texture::{SamplerKey, upload, upload_with};
 use crate::scene::Scene;
 use crate::ui::draw::{UiDrawList, UiTexture, UiVertex, build};
 use crate::ui::text::{GlyphAtlas, UiFont};
@@ -218,10 +217,15 @@ impl UiRenderer {
             if self.images.contains_key(path) {
                 continue;
             }
-            let g = match load_image(&assets::absolute(path)) {
+            let g = match crate::sprites::load_image(path) {
                 Ok(img) => {
-                    let view = upload(device, queue, path, img, true);
-                    Some(group(device, &self.layout, &self.sampler, &view))
+                    let mips = crate::sprites::importer(path).generate_mip_maps;
+                    let view = upload_with(device, queue, path, img, true, mips);
+                    // Point filtering or clamping gets its own sampler.
+                    let key = SamplerKey::of(Some(path));
+                    let custom = (key != SamplerKey::default()).then(|| key.create(device));
+                    let sampler = custom.as_ref().unwrap_or(&self.sampler);
+                    Some(group(device, &self.layout, sampler, &view))
                 }
                 Err(e) => {
                     self.warnings.push(format!("Could not load UI texture {e}"));

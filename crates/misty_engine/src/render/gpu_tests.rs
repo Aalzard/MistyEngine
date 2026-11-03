@@ -96,6 +96,7 @@ fn draw(mesh: PrimitiveMesh, model: Mat4, material: &MaterialParams) -> MeshDraw
         cast_shadows: true,
         receive_shadows: true,
         outline: false,
+        sorting: Default::default(),
     }
 }
 

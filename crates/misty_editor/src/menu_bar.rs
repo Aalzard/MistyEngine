@@ -195,6 +195,14 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
         ui.separator();
         item(ui, s, "Terrain", "", create(Create::Terrain));
     });
+    ui.menu_button("2D Object", |ui| {
+        item(ui, s, "Sprite", "", create(Create::Sprite(None)));
+        ui.menu_button("Sprites", |ui| {
+            for shape in misty_engine::sprites::builtin::SHAPES {
+                item(ui, s, shape, "", create(Create::Sprite(Some(shape))));
+            }
+        });
+    });
     ui.menu_button("Effects", |ui| {
         item(ui, s, "Particle System", "", create(Create::ParticleSystem));
     });
