@@ -139,8 +139,16 @@ fn particle_size(system: &ParticleSystem, p: &Particle) -> f32 {
 
 /// Render data for every active system with live particles (world-space billboards).
 pub fn batches(scene: &Scene) -> Vec<ParticleBatch> {
+    batches_where(scene, |_| true)
+}
+
+/// [`batches`] of the systems `keep` accepts (a camera's culling mask).
+pub fn batches_where(scene: &Scene, keep: impl Fn(Entity) -> bool) -> Vec<ParticleBatch> {
     let mut out = Vec::new();
     for (e, world) in active_systems(scene) {
+        if !keep(e) {
+            continue;
+        }
         let Ok(system) = scene.world.get::<&ParticleSystem>(e) else {
             continue;
         };

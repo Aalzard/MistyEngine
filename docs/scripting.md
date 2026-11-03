@@ -56,15 +56,54 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 | `Color` | `new(r,g,b [,a])` (0..1), `white black red green blue yellow cyan magenta gray clear`, `Lerp(a,b,t)`; `.r .g .b .a`, `* number/Color`, `==` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
-| `Input` | `GetKey/GetKeyDown/GetKeyUp("w")`, `GetMouseButton(0)`, `mousePosition`, `GetAxis("Horizontal"/"Vertical"/"Mouse X"/"Mouse Y")` — the Game view must have focus (click it) |
+| `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseScrollDelta` (notches) — keyboard and mouse need Game view focus (click it), gamepads always reach a playing game |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
 | `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name` |
 | `Application` | `Quit()` — closes the built game (ignored with a Console message in the editor) |
+| Tags | `gameObject.tag`, `gameObject:CompareTag("Enemy")`, `GameObject.FindWithTag(tag)` (first active object or nil), `GameObject.FindGameObjectsWithTag(tag)` (list); tags come from Project Settings ▸ Tags and Layers (an undefined tag is an error) |
 | Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
 
 Key names: letters/digits (`"a"`, `"1"`), `"space"`, `"return"`, `"escape"`, `"tab"`, `"up"`, `"down"`, `"left"`,
-`"right"`, `"left shift"`, `"left ctrl"`, `"left alt"`, `"f1"`…
+`"right"`, `"left shift"`, `"left ctrl"`, `"left alt"`, `"f1"`…, mouse buttons `"mouse 0"`–`"mouse 2"` and joystick
+buttons `"joystick button 0"` (any pad) / `"joystick 1 button 0"` (the first pad).
+
+### Input Manager axes and gamepads
+
+Edit ▸ Project Settings ▸ Input Manager lists the virtual axes. Default entries: Horizontal (←/→, A/D, left stick
+X), Vertical (↓/↑, S/W, left stick Y), Fire1 (left ctrl, mouse 0, joystick button 0), Fire2 (left alt, mouse 1,
+button 1), Fire3 (left shift, mouse 2, button 2), Jump (space, button 3), Mouse X, Mouse Y, Mouse ScrollWheel,
+Submit (return, enter, space, button 0) and Cancel (escape, button 1). Several entries can share a name; the
+one with the largest value wins.
+
+- **Key or Mouse Button** axes move towards -1/0/+1 at Sensitivity units per second and fall back to 0 at Gravity
+  per second (Snap jumps to 0 when the direction reverses; Invert swaps the sides). `GetAxisRaw` gives -1/0/+1.
+  Smoothing uses real time (`Time.unscaledDeltaTime`).
+- **Mouse Movement**: axis 0 = X, 1 = Y (up positive), 2 = wheel notches, times Sensitivity.
+- **Joystick Axis**: the value of axis N of the chosen joystick (or the largest of all), 0 inside Dead, times
+  Sensitivity.
+
+Gamepads (via `gilrs`, in the player and in the editor while playing) use an Xbox-style layout. Buttons: 0 A,
+1 B, 2 X, 3 Y, 4 left bumper, 5 right bumper, 6 back, 7 start, 8 left stick, 9 right stick, 10 guide, 11–14 d-pad
+up/down/left/right. Axes (Axis field): X axis = left stick X, Y axis = left stick Y (+1 = down, so Vertical
+inverts it), 3rd = triggers (left − right), 4th/5th = right stick X/Y, 6th/7th = d-pad X/Y (+1 = up), 9th/10th =
+left/right trigger 0..1.
+
+```lua
+function Player:Update()
+    local move = Vector3.new(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"))
+    self.cc:Move(move * (self.speed * Time.deltaTime))
+    if Input.GetButtonDown("Jump") then self:Jump() end
+end
+```
+Sample: `Scenes/InputDemo.scene` with `InputMover.lua` and `GamepadHint.lua`.
+
+### Layers
+
+`LayerMask.NameToLayer("Hidden")`, `LayerMask.LayerToName(8)` and `LayerMask.GetMask("Water", "Hidden")` use
+the names from Project Settings ▸ Tags and Layers (layers 0–7 built in, 8–31 user layers). A camera's
+`cullingMask` (from `Camera.main`) is a bit mask of the layers it draws: `cam.cullingMask = ~(1 << 8)` hides
+layer 8.
 
 Samples: `Assets/Scripts/Rotator.lua`, `Assets/Scripts/PlayerController.lua`.
 

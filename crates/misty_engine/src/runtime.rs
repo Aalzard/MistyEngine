@@ -87,7 +87,7 @@ impl Runtime {
         crate::particles::clear_all(scene);
         let mut physics = Physics::build_with(scene, &settings.physics);
         let warnings = std::mem::take(&mut physics.warnings);
-        let host = ScriptHost::start_with_audio(scene, physics, project_root, audio);
+        let host = ScriptHost::start_configured(scene, physics, project_root, audio, settings);
         Self {
             host,
             pending: warnings,

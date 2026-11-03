@@ -81,8 +81,14 @@ pub struct TerrainDraw {
 
 /// Enabled terrains of active objects whose data loads.
 pub fn draws(scene: &Scene) -> Vec<TerrainDraw> {
+    draws_where(scene, |_| true)
+}
+
+/// [`draws`] of the terrains `keep` accepts (a camera's culling mask).
+pub fn draws_where(scene: &Scene, keep: impl Fn(Entity) -> bool) -> Vec<TerrainDraw> {
     terrains(scene)
         .into_iter()
+        .filter(|(e, _)| keep(*e))
         .filter_map(|(e, t)| {
             let (data, version) = store::get(&t.terrain_data)?;
             Some(TerrainDraw {

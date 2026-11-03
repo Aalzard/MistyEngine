@@ -8,6 +8,7 @@ pub mod assets;
 pub mod audio;
 pub mod build;
 pub mod camera;
+pub mod input;
 pub mod models;
 pub mod navigation;
 pub mod particles;
@@ -19,6 +20,7 @@ pub mod runtime;
 pub mod scene;
 pub mod scripting;
 pub mod settings;
+pub mod tags_layers;
 pub mod terrain;
 pub mod ui;
 

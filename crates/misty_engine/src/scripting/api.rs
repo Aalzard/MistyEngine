@@ -771,14 +771,6 @@ pub fn register(lua: &Lua) -> Result<()> {
         "GetMouseButtonUp",
         lua.create_function(|lua, b: usize| with_world(lua, |w| w.input.mouse_up(b)))?,
     )?;
-    input.set(
-        "GetAxis",
-        lua.create_function(|lua, a: String| with_world(lua, |w| w.input.axis(&a)))?,
-    )?;
-    input.set(
-        "GetAxisRaw",
-        lua.create_function(|lua, a: String| with_world(lua, |w| w.input.axis(&a)))?,
-    )?;
     g.set("Input", input)?;
     super::camera_api::register(lua)?;
     super::navigation_api::register(lua)?;
@@ -792,6 +784,8 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
     g.set("GameObject", go)?;
+    // Axes, buttons and tags (needs Input, its mousePosition lookup and GameObject).
+    super::input_api::register(lua)?;
     g.set(
         "Instantiate",
         lua.create_function(|lua, args: Variadic<Value>| {

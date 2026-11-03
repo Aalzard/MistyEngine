@@ -402,6 +402,7 @@ impl EditorApp {
         } else {
             Default::default()
         };
+        s.game_input.joysticks = game_input::gamepads();
         play::tick(s, ctx.input(|i| i.stable_dt));
         let errors = s.console.count(LogLevel::Error);
         if s.console.error_pause && errors > self.errors_seen && s.play == PlayState::Playing {

@@ -346,7 +346,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
         }
         ui.end_row();
         ui.label("Culling Mask");
-        ui.label("Everything");
+        ch |= super::layer_mask::mask_field(ui, "cam_cull", &mut c.culling_mask);
         ui.end_row();
         ui.label("Projection");
         let mut ortho = c.orthographic;

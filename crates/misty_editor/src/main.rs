@@ -29,6 +29,8 @@ mod play;
 mod prefabs;
 mod project;
 mod project_settings;
+mod project_settings_input;
+mod project_settings_tags;
 mod render_scene;
 #[cfg(test)]
 mod sample_animation;
@@ -38,6 +40,8 @@ mod sample_animator;
 mod sample_assets;
 #[cfg(test)]
 mod sample_audio;
+#[cfg(test)]
+mod sample_input;
 #[cfg(test)]
 mod sample_lighting;
 #[cfg(test)]

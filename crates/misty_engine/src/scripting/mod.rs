@@ -21,6 +21,7 @@ pub mod animator_api;
 pub mod api;
 pub mod audio_api;
 pub mod camera_api;
+pub mod input_api;
 pub mod material_api;
 pub mod navigation_api;
 pub mod particles_api;
@@ -76,6 +77,8 @@ pub struct Input {
     pub typed: Vec<String>,
     /// Mouse wheel this frame in pixels (y > 0 = scrolled away from the user).
     pub scroll_delta: Vec2,
+    /// Connected gamepads by joystick number - 1.
+    pub joysticks: Vec<crate::input::Joystick>,
 }
 
 impl Input {
@@ -96,14 +99,15 @@ impl Input {
         }
     }
 
+    /// Key, mouse ("mouse 0") or joystick ("joystick button 0") button names.
     pub fn key(&self, k: &str) -> bool {
-        self.held.contains(&k.to_lowercase())
+        self.button_held(k)
     }
     pub fn key_down(&self, k: &str) -> bool {
-        self.pressed.contains(&k.to_lowercase())
+        self.button_pressed(k)
     }
     pub fn key_up(&self, k: &str) -> bool {
-        self.released.contains(&k.to_lowercase())
+        self.button_released(k)
     }
     pub fn mouse(&self, b: usize) -> bool {
         self.mouse_held.get(b).copied().unwrap_or(false)
@@ -113,22 +117,6 @@ impl Input {
     }
     pub fn mouse_up(&self, b: usize) -> bool {
         self.mouse_released.get(b).copied().unwrap_or(false)
-    }
-
-    /// Default axes: Horizontal (A/D, ←/→), Vertical (W/S, ↑/↓), Mouse X / Mouse Y.
-    pub fn axis(&self, name: &str) -> f32 {
-        let pair = |pos: [&str; 2], neg: [&str; 2]| {
-            let p = pos.iter().any(|k| self.key(k)) as i32 as f32;
-            let n = neg.iter().any(|k| self.key(k)) as i32 as f32;
-            p - n
-        };
-        match name {
-            "Horizontal" => pair(["d", "right"], ["a", "left"]),
-            "Vertical" => pair(["w", "up"], ["s", "down"]),
-            "Mouse X" => self.mouse_delta.x * 0.1,
-            "Mouse Y" => -self.mouse_delta.y * 0.1,
-            _ => 0.0,
-        }
     }
 }
 
@@ -163,6 +151,10 @@ pub struct World {
     pub animator: AnimatorPlayer,
     /// Nav Mesh Agents and the scene's nav mesh.
     pub navigation: crate::navigation::NavRuntime,
+    /// Input Manager axes (`Input.GetAxis`, `GetButton`).
+    pub axes: crate::input::InputManager,
+    /// Project tags and layer names (`LayerMask.NameToLayer`, `FindWithTag`).
+    pub tags_layers: crate::tags_layers::TagsAndLayers,
 }
 
 struct Instance {
@@ -198,6 +190,18 @@ impl ScriptHost {
         project_root: PathBuf,
         audio: Audio,
     ) -> Self {
+        let settings = crate::settings::ProjectSettings::default();
+        Self::start_configured(scene, physics, project_root, audio, &settings)
+    }
+
+    /// Like [`ScriptHost::start_with_audio`] with the project's input axes, tags and layers.
+    pub fn start_configured(
+        scene: &mut Scene,
+        physics: Physics,
+        project_root: PathBuf,
+        audio: Audio,
+        settings: &crate::settings::ProjectSettings,
+    ) -> Self {
         let lua = Lua::new();
         let mut logs = Vec::new();
         if let Err(e) = api::register(&lua) {
@@ -218,6 +222,8 @@ impl ScriptHost {
             audio,
             animation: AnimationPlayer::new(project_root.clone()),
             animator: AnimatorPlayer::new(project_root.clone()),
+            axes: crate::input::InputManager::new(&settings.input),
+            tags_layers: settings.tags_and_layers.clone(),
         });
         let mut host = Self {
             lua,
@@ -503,6 +509,8 @@ impl ScriptHost {
         self.with_world(|w| {
             w.scene = scene_in;
             w.time = *time;
+            // Axis smoothing runs on real time, so it works while the game is paused.
+            w.axes.update(&input, time.unscaled_delta);
             w.input = input;
         });
         if let Some(w) = self.lua.app_data_ref::<World>()
@@ -768,6 +776,8 @@ return {class_name}
     )
 }
 
+#[cfg(test)]
+mod input_tests;
 #[cfg(test)]
 mod material_tests;
 #[cfg(test)]

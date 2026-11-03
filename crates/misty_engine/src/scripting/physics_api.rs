@@ -131,18 +131,30 @@ pub fn register(lua: &Lua) -> Result<()> {
     let layer_mask = lua.create_table()?;
     layer_mask.set(
         "GetMask",
-        lua.create_function(|_, names: Variadic<String>| Ok(layers::get_mask(&names) as i64))?,
+        lua.create_function(|lua, names: Variadic<String>| {
+            Ok(with_layers(lua, |l| l.get_mask(&names)) as i64)
+        })?,
     )?;
     layer_mask.set(
         "NameToLayer",
-        lua.create_function(|_, name: String| Ok(layers::name_to_layer(&name)))?,
+        lua.create_function(|lua, name: String| Ok(with_layers(lua, |l| l.name_to_layer(&name))))?,
     )?;
     layer_mask.set(
         "LayerToName",
-        lua.create_function(|_, layer: i32| Ok(layers::layer_to_name(layer)))?,
+        lua.create_function(|lua, layer: i32| {
+            Ok(with_layers(lua, |l| l.layer_name(layer).to_owned()))
+        })?,
     )?;
     g.set("LayerMask", layer_mask)?;
     Ok(())
+}
+
+/// The project's layer names (the built-in ones outside a running game).
+fn with_layers<R>(lua: &Lua, f: impl FnOnce(&crate::tags_layers::TagsAndLayers) -> R) -> R {
+    match lua.app_data_ref::<World>() {
+        Some(w) => f(&w.tags_layers),
+        None => f(&Default::default()),
+    }
 }
 
 // ---- CharacterController ----------------------------------------------------------------------

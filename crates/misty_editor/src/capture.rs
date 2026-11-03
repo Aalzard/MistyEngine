@@ -94,6 +94,14 @@ pub fn apply_env(
     if std::env::var_os("MISTY_STATS").is_some() {
         s.game_view.stats = true;
     }
+    // `MISTY_SETTINGS=Input Manager` opens Project Settings on that page.
+    if let Some(page) = std::env::var_os("MISTY_SETTINGS")
+        && let Some(c) = crate::project_settings::Category::ALL
+            .into_iter()
+            .find(|c| c.title() == page.to_string_lossy())
+    {
+        crate::project_settings::open_at(s, c);
+    }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {
         crate::play::start(s);
