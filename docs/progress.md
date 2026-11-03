@@ -971,3 +971,50 @@ clippy fixes in `sprite_handles.rs` (a type alias, a removed `.clone()`), then t
   sprite, Edit Collider for capsule/polygon/edge, `Rigidbody2D.Sleep`/`IsTouching`, `Physics2D.BoxCast`/
   `CircleCast`, contact filters, or "Use Full Kinematic Contacts"; Collision2D has a single contact point.
 - Sorting Layers have their own Project Settings page (not Tags and Layers); sprites take fog.
+
+## Volumetric fog and light shafts ✅
+
+### Done
+- Froxel volumetric fog (`render/volumetrics/`): camera-aligned grid with exponential depth slices (Low
+  96×54×48, Medium 128×72×64, High 160×90×64) built in two compute passes: density (global height fog with
+  base height and falloff, up to 16 Fog Volumes with soft edges, scrolling 3D noise) lit by up to 8
+  directional / spot / point lights through their shadow maps with a Henyey-Greenstein phase plus sky ambient,
+  temporal reprojection with Halton jitter; then front-to-back integration into an in-scatter / transmittance
+  volume. Meshes (all modes, unlit too), terrain, the sky and background, and alpha / additive particles sample
+  it in their shaders (`fog_apply.wgsl`).
+- Analytic height fog (same density, unshadowed sun + ambient) when Volumetric is off, in orthographic views,
+  and between the volumetric distance and the max fog distance.
+- Post-process Volume ▸ **Fog**: Enable, Max Fog Distance, Fog Attenuation Distance, Base Height, Maximum
+  Height, Albedo, Anisotropy, Ambient Light Probe Dimmer, Volumetric, Volumetric Distance, Quality, Denoising
+  (temporal), Noise Intensity / Scale / Scroll Speed. **Sun Shafts**: Intensity, Threshold, Length, Radius, Tint
+  (screen-space radial blur of the bright open sky around the sun, half resolution).
+- Light Inspector: Volumetric Multiplier, Volumetric Shadow Dimmer.
+- `Fog Volume` component (Size, Fog Distance, Albedo, Blend Distance), GameObject ▸ Rendering ▸ Local
+  Volumetric Fog, Component ▸ Rendering; selected boxes show their outer and inner (blend) box; ☁ scene icon.
+- Scene view draw modes **Fog Density** and **Fog Lighting**; the Fog effects toggle controls volumetric fog.
+- Sample: `Scenes/VolumetricFogDemo.scene` (wall with window slits + forest against a low sun, street-lamp spot
+  cone, lantern point light, a fog-filled valley, orbiting camera).
+- Tests: shaders validate, uniform layouts, slice mapping, phase normalisation, analytic height-fog integral vs
+  numeric, old volumes / lights load with fog off and save unchanged, Fog Volume weights, uniform packing
+  (multiplier 0 skipped, dimmer, box cap, jitter); headless GPU: shadowed fog darker than lit fog, shadow
+  dimmer 0 / multiplier 0, spot cone visible, Fog Volume in the density view, froxel = analytic = temporal on
+  unshadowed fog, fog off pixel-identical to a renderer that never had fog, sun shafts brighten / skip when the
+  sun is behind; sample check + headless play.
+
+### Cost (`fog_benchmark`, release, RTX 4060, 1920×1080, VolumetricFogDemo, whole frame GPU time)
+| Fog | GPU ms / frame | Fog cost |
+|---|---|---|
+| Off | 0.92 | — |
+| Low (96×54×48) | 1.08 | 0.16 |
+| Medium (128×72×64) | 1.09 | 0.16 |
+| High (160×90×64) | 1.11 | 0.19 |
+
+Screenshots: `docs/screenshots/round8/fog_before_off.png`, `fog_after_godrays.png`, `fog_scene_view.png`.
+
+### Not matching HDRP yet
+- No depth-based froxel culling, no "slice distribution uniformity" control (fixed exponential), no
+  per-froxel multiple scattering / anisotropy per volume, no 3D density textures on Fog Volumes, no volumetric
+  clouds, no light probe ambient (sky ambient only), no area lights or light cookies in the fog.
+- Volumes aren't blended between overlapping local post volumes (only global volumes exist; the highest
+  priority wins as a whole).
+- Orthographic views get analytic fog only; reflections don't see fog.
