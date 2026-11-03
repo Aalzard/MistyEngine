@@ -22,6 +22,8 @@ pub struct Sun {
 pub struct Environment {
     pub settings: RenderSettings,
     pub sun: Option<Sun>,
+    /// Local Fog Volumes (seen by volumetric fog only).
+    pub fog_volumes: Vec<super::LocalFog>,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -52,7 +54,11 @@ impl Environment {
                 color: l.color,
                 intensity: l.intensity,
             });
-        Self { settings, sun }
+        Self {
+            settings,
+            sun,
+            fog_volumes: Vec::new(),
+        }
     }
 
     /// The same environment without fog (Scene view effects off).
@@ -195,6 +201,7 @@ mod tests {
             range: 0.0,
             spot_angle: 0.0,
             shadows: Shadows::None,
+            volumetric: Default::default(),
         }
     }
 

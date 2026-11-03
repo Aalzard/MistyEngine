@@ -7,10 +7,10 @@ use hecs::Entity;
 
 use crate::camera::{Camera, Projection};
 use crate::render::{
-    Environment, Frame, LightData, MaterialParams, MeshDraw, ParticleBatch, PostSettings,
+    Environment, Frame, LightData, LocalFog, MaterialParams, MeshDraw, ParticleBatch, PostSettings,
 };
 use crate::scene::{
-    Camera as CameraComponent, ClearFlags, Light, LightType, MeshFilter, MeshRenderer,
+    Camera as CameraComponent, ClearFlags, FogVolume, Light, LightType, MeshFilter, MeshRenderer,
     PostProcessVolume, Scene, Shadows,
 };
 
@@ -115,14 +115,34 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                 range: l.range,
                 spot_angle: l.spot_angle,
                 shadows: l.shadows,
+                volumetric: crate::render::VolumetricLight {
+                    multiplier: l.volumetric_multiplier,
+                    shadow_dimmer: l.volumetric_shadow_dimmer,
+                },
             })
         })
         .collect()
 }
 
-/// The scene's Lighting settings with its main Directional Light as the sun.
+/// The scene's Lighting settings with its main Directional Light as the sun, plus its
+/// enabled Fog Volumes.
 pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
-    Environment::new(scene.render_settings.clone(), lights)
+    let mut env = Environment::new(scene.render_settings.clone(), lights);
+    env.fog_volumes = fog_volumes(scene);
+    env
+}
+
+/// Enabled, active Fog Volumes in Hierarchy order.
+pub fn fog_volumes(scene: &Scene) -> Vec<LocalFog> {
+    scene
+        .walk()
+        .into_iter()
+        .filter(|(e, _)| scene.active_in_hierarchy(*e))
+        .filter_map(|(e, _)| {
+            let v = scene.world.get::<&FogVolume>(e).ok()?;
+            v.enabled.then(|| LocalFog::new(&v, scene.world_matrix(e)))
+        })
+        .collect()
 }
 
 /// Effects from the enabled, active Post-process Volume with the highest priority
@@ -155,6 +175,7 @@ pub fn headlight(camera: &Camera) -> Vec<LightData> {
         range: 0.0,
         spot_angle: 0.0,
         shadows: Shadows::None,
+        volumetric: Default::default(),
     }]
 }
 

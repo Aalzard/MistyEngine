@@ -4,7 +4,13 @@ use super::mesh::Vertex;
 use super::particles::ParticleInstance;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
-const COMMON: &str = include_str!("shaders/common.wgsl");
+/// Shared view uniform + helpers, then the fog every forward shader applies.
+const COMMON: &str = concat!(
+    include_str!("shaders/common.wgsl"),
+    "
+",
+    include_str!("volumetrics/shaders/fog_apply.wgsl")
+);
 /// Lit/unlit meshes (all material variants).
 pub(super) const MESH_SRC: &str = include_str!("shaders/mesh.wgsl");
 /// Shadow-map depth and the selection mask.
@@ -63,6 +69,8 @@ pub struct Pipelines {
     pub particles_additive: wgpu::RenderPipeline,
     /// Splat map + layer textures + params (terrain pass, group 3).
     pub terrain_layout: wgpu::BindGroupLayout,
+    /// Empty group 2 of the terrain pass (keeps it under 16 sampled textures per stage).
+    pub empty_group: wgpu::BindGroup,
     pub terrain: wgpu::RenderPipeline,
     pub bloom_prefilter: wgpu::RenderPipeline,
     pub bloom_down: wgpu::RenderPipeline,
@@ -167,7 +175,10 @@ impl Pipelines {
                 entries,
             })
         };
-        let view_layout = layout("misty view", &[entry(0, S::VERTEX_FRAGMENT, uniform())]);
+        // View uniform + the fog volume, sampler and uniform (render/volumetrics).
+        let mut view_entries = vec![entry(0, S::VERTEX_FRAGMENT, uniform())];
+        view_entries.extend(super::volumetrics::view_layout_entries());
+        let view_layout = layout("misty view", &view_entries);
         let mesh_layout = layout(
             "misty mesh",
             &[
@@ -393,6 +404,12 @@ impl Pipelines {
         ];
         terrain_entries.extend((3..11).map(|b| entry(b, S::FRAGMENT, filtered)));
         let terrain_layout = layout("misty terrain", &terrain_entries);
+        let empty_layout = layout("misty empty", &[]);
+        let empty_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty empty"),
+            layout: &empty_layout,
+            entries: &[],
+        });
         let terrain = build(
             device,
             Spec {
@@ -405,12 +422,7 @@ impl Pipelines {
                 ..Spec::new(
                     "terrain",
                     TERRAIN_SRC,
-                    &[
-                        &view_layout,
-                        &mesh_layout,
-                        &material_layout,
-                        &terrain_layout,
-                    ],
+                    &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
                 )
             },
         );
@@ -485,6 +497,7 @@ impl Pipelines {
             particles_alpha,
             particles_additive,
             terrain_layout,
+            empty_group,
             terrain,
         }
     }

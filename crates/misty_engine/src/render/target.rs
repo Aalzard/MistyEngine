@@ -24,6 +24,8 @@ pub(crate) struct BloomLevel {
 }
 
 pub struct RenderTarget {
+    /// Unique per target (per-view state such as fog history is keyed by it).
+    pub(crate) id: u64,
     width: u32,
     height: u32,
     msaa_view: wgpu::TextureView,
@@ -88,7 +90,15 @@ impl RenderTarget {
             attach,
             &[],
         );
-        let depth = make("misty depth", full, DEPTH_FORMAT, SAMPLE_COUNT, attach, &[]);
+        // Sampled by the sun shafts.
+        let depth = make(
+            "misty depth",
+            full,
+            DEPTH_FORMAT,
+            SAMPLE_COUNT,
+            sampled,
+            &[],
+        );
         let hdr = make("misty hdr", full, HDR_FORMAT, 1, sampled, &[]);
         let glow_msaa = make(
             "misty msaa glow",
@@ -176,7 +186,9 @@ impl RenderTarget {
             format: Some(DISPLAY_FORMAT),
             ..Default::default()
         });
+        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         Self {
+            id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             width,
             height,
             msaa_view: view(&msaa),

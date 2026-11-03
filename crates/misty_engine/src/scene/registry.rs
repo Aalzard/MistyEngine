@@ -253,6 +253,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<Camera>(),
             ComponentInfo::of::<Light>(),
             ComponentInfo::of::<super::PostProcessVolume>(),
+            ComponentInfo::of::<super::FogVolume>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
             ComponentInfo::of::<SpriteRenderer>(),

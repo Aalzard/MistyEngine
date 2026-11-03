@@ -274,6 +274,12 @@ pub struct Light {
     /// Full cone angle in degrees.
     pub spot_angle: f32,
     pub shadows: Shadows,
+    /// Scales this light's contribution to volumetric fog.
+    #[serde(skip_serializing_if = "super::fog_volume::defaults::is_one")]
+    pub volumetric_multiplier: f32,
+    /// 0..1: how dark this light's shadows are inside the fog (0 = no volumetric shadows).
+    #[serde(skip_serializing_if = "super::fog_volume::defaults::is_one")]
+    pub volumetric_shadow_dimmer: f32,
 }
 
 impl Default for Light {
@@ -286,6 +292,8 @@ impl Default for Light {
             range: 10.0,
             spot_angle: 30.0,
             shadows: Shadows::None,
+            volumetric_multiplier: 1.0,
+            volumetric_shadow_dimmer: 1.0,
         }
     }
 }

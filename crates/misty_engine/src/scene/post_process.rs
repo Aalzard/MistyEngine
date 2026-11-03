@@ -127,6 +127,11 @@ pub struct PostProcessVolume {
     pub bloom: BloomOverride,
     pub color_adjustments: ColorAdjustmentsOverride,
     pub vignette: VignetteOverride,
+    /// Volumetric / height fog (left out of files while untouched).
+    #[serde(skip_serializing_if = "super::fog_volume::defaults::is_default")]
+    pub fog: super::FogOverride,
+    #[serde(skip_serializing_if = "super::fog_volume::defaults::is_default")]
+    pub sun_shafts: super::SunShaftsOverride,
 }
 
 impl Default for PostProcessVolume {
@@ -138,6 +143,8 @@ impl Default for PostProcessVolume {
             bloom: BloomOverride::default(),
             color_adjustments: ColorAdjustmentsOverride::default(),
             vignette: VignetteOverride::default(),
+            fog: Default::default(),
+            sun_shafts: Default::default(),
         }
     }
 }
