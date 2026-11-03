@@ -1,4 +1,5 @@
-//! Asset database: materials, scripts, audio clips and prefabs found under the project's `Assets` folder.
+//! Asset database: materials, scripts, audio clips, prefabs, textures and models found under the
+//! project's `Assets` folder.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -7,6 +8,7 @@ use std::rc::Rc;
 use std::time::SystemTime;
 
 use misty_engine::assets::Material;
+use misty_engine::models;
 use misty_engine::render::MaterialParams;
 use misty_engine::scene::ScriptValue;
 use misty_engine::scene::prefab::Prefab;
@@ -34,28 +36,44 @@ pub struct AssetDatabase {
     pub clips: BTreeSet<String>,
     /// Prefabs read so far, re-read when the file changes.
     prefabs: BTreeMap<String, CachedPrefab>,
+    /// Project-relative texture paths (`.png`, `.jpg`).
+    pub textures: Vec<String>,
+    /// Project-relative model path → its mesh names (or why it could not be imported).
+    pub models: BTreeMap<String, Result<Vec<String>, String>>,
+    /// Import messages for the Console (drained by the editor).
+    pub messages: Vec<String>,
     last_poll: Option<std::time::Instant>,
 }
 
 impl AssetDatabase {
     pub fn open(root: &Path) -> Self {
+        // Engine-side loaders (renderer textures, models, physics) resolve "Assets/…" against it.
+        misty_engine::assets::set_project_root(root);
         let mut db = Self {
             root: root.to_path_buf(),
             materials: BTreeMap::new(),
             scripts: BTreeMap::new(),
             clips: BTreeSet::new(),
             prefabs: BTreeMap::new(),
+            textures: Vec::new(),
+            models: BTreeMap::new(),
+            messages: Vec::new(),
             last_poll: None,
         };
         db.refresh();
         db
     }
 
-    /// Re-scan the Assets folder for `.mat`, `.lua` and audio files.
+    /// Re-scan the Assets folder for materials, scripts, audio clips, textures and models.
+    /// New models get their materials extracted (once) as `.mat` files next to them.
+    /// Messages about imported or broken models go to [`Self::messages`].
     pub fn refresh(&mut self) {
         self.materials.clear();
         self.clips.clear();
+        self.textures.clear();
+        self.models.clear();
         let old_scripts = std::mem::take(&mut self.scripts);
+        let mut model_files = Vec::new();
         let mut stack = vec![self.root.join("Assets")];
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
@@ -75,9 +93,51 @@ impl AssetDatabase {
                     self.scripts.insert(rel, meta);
                 } else if misty_engine::audio::is_clip(&path.to_string_lossy()) {
                     self.clips.insert(self.relative(&path));
+                } else {
+                    let rel = self.relative(&path);
+                    if misty_engine::assets::is_texture(&rel) {
+                        self.textures.push(rel);
+                    } else if models::is_model(&rel) {
+                        model_files.push(rel);
+                    }
                 }
             }
         }
+        self.textures.sort();
+        let messages = &mut self.messages;
+        for rel in model_files {
+            let entry = models::model(&rel).map(|m| {
+                match models::extract_materials(&rel, &m) {
+                    Ok(created) => {
+                        for c in created {
+                            if misty_engine::assets::is_texture(&c) {
+                                self.textures.push(c.clone());
+                            } else if let Ok(mat) = Material::load(&self.root.join(&c)) {
+                                self.materials.insert(c.clone(), mat);
+                            }
+                            messages.push(format!("Imported {c} from {rel}"));
+                        }
+                    }
+                    Err(e) => messages.push(format!("Could not extract materials of {rel}: {e}")),
+                }
+                m.meshes.iter().map(|mesh| mesh.name.clone()).collect()
+            });
+            if let Err(e) = &entry {
+                messages.push(format!("Could not import model: {e}"));
+            }
+            self.models.insert(rel, entry);
+        }
+        self.textures.sort();
+    }
+
+    /// Material asset for each material of a model (extracted next to it), by model material index.
+    pub fn model_materials(&self, model_rel: &str, model: &models::Model) -> Vec<Option<String>> {
+        (0..model.materials.len())
+            .map(|i| {
+                models::material_asset_path(model_rel, model, i)
+                    .filter(|p| self.materials.contains_key(p))
+            })
+            .collect()
     }
 
     /// "Assets/…" path with forward slashes.

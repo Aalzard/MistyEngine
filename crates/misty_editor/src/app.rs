@@ -167,7 +167,7 @@ impl EditorApp {
             }
         }
         if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(ctrl, Key::R))) {
-            self.state.project.refresh();
+            self.state.refresh_assets();
         }
         // Transform tools: plain Q/W/E/R/T/Y, unless typing or flying with right mouse.
         let flying = ctx.input(|i| i.pointer.secondary_down());
@@ -284,6 +284,18 @@ impl EditorApp {
     /// Advance the game while in Play mode; Error Pause stops on new errors.
     fn game_frame(&mut self, ctx: &egui::Context) {
         let s = &mut self.state;
+        for msg in std::mem::take(&mut s.assets.messages) {
+            s.console.info(msg);
+        }
+        if let Some(gpu) = self.gpu.as_mut() {
+            // Textures and models reload when their files change (Edit mode only).
+            if !s.play.in_play_mode() {
+                gpu.renderer.reload_changed_assets();
+            }
+            for w in gpu.renderer.take_warnings() {
+                s.console.warn(w);
+            }
+        }
         if !s.play.in_play_mode() {
             // Scripts reload when their files change; syntax errors go to the Console.
             for err in s.assets.poll_scripts() {

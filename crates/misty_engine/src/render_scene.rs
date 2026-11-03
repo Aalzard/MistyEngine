@@ -29,7 +29,7 @@ pub fn mesh_draws(
             continue;
         }
         let w = &scene.world;
-        let Some(mesh) = w.get::<&MeshFilter>(e).ok().and_then(|f| f.mesh) else {
+        let Some(mesh) = w.get::<&MeshFilter>(e).ok().and_then(|f| f.mesh.clone()) else {
             continue;
         };
         let Ok(r) = w.get::<&MeshRenderer>(e) else {

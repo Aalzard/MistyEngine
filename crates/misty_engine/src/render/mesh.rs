@@ -1,6 +1,8 @@
 //! Built-in primitive meshes, sized like the familiar defaults:
 //! Cube 1×1×1, Sphere Ø1, Capsule/Cylinder 2 tall Ø1, Plane 10×10 (+Y), Quad 1×1 facing −Z.
 //!
+//! Every vertex carries a tangent (xyz + handedness in w) for normal mapping.
+//!
 //! Triangles wind so that `cross(b - a, c - a)` points outward. In our left-handed world that is
 //! clockwise on screen, so pipelines use `FrontFace::Cw`.
 
@@ -19,6 +21,8 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
+    /// Tangent along +u; w = ±1 so that `cross(normal, tangent) * w` points towards −v (image up).
+    pub tangent: [f32; 4],
 }
 
 #[derive(Default, Clone)]
@@ -33,6 +37,7 @@ impl MeshData {
             position: p.into(),
             normal: n.into(),
             uv: uv.into(),
+            tangent: [1.0, 0.0, 0.0, 1.0],
         });
         self.vertices.len() as u32 - 1
     }
@@ -65,6 +70,82 @@ impl MeshData {
         self.tri(i[0], i[2], i[3]);
     }
 
+    /// Local-space bounds (min, max); zero box when empty.
+    pub fn bounds(&self) -> (Vec3, Vec3) {
+        if self.vertices.is_empty() {
+            return (Vec3::ZERO, Vec3::ZERO);
+        }
+        self.vertices.iter().fold(
+            (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)),
+            |(lo, hi), v| {
+                let p = Vec3::from(v.position);
+                (lo.min(p), hi.max(p))
+            },
+        )
+    }
+
+    /// Smooth vertex normals from the triangles (for imported meshes without normals).
+    pub fn compute_normals(&mut self) {
+        let mut acc = vec![Vec3::ZERO; self.vertices.len()];
+        for t in self.indices.as_chunks::<3>().0 {
+            let p = |i: u32| Vec3::from(self.vertices[i as usize].position);
+            let face = (p(t[1]) - p(t[0])).cross(p(t[2]) - p(t[0]));
+            for i in t {
+                acc[*i as usize] += face;
+            }
+        }
+        for (v, n) in self.vertices.iter_mut().zip(acc) {
+            v.normal = n.normalize_or(Vec3::Y).into();
+        }
+    }
+
+    /// Per-vertex tangents from positions and UVs (accumulated per triangle, then
+    /// Gram-Schmidt orthogonalised against the normal).
+    pub fn compute_tangents(&mut self) {
+        let n = self.vertices.len();
+        let (mut tan, mut bit) = (vec![Vec3::ZERO; n], vec![Vec3::ZERO; n]);
+        for t in self.indices.as_chunks::<3>().0 {
+            let v = |k: usize| self.vertices[t[k] as usize];
+            let (p0, p1, p2) = (
+                Vec3::from(v(0).position),
+                Vec3::from(v(1).position),
+                Vec3::from(v(2).position),
+            );
+            let (w0, w1, w2) = (
+                Vec2::from(v(0).uv),
+                Vec2::from(v(1).uv),
+                Vec2::from(v(2).uv),
+            );
+            let (e1, e2, d1, d2) = (p1 - p0, p2 - p0, w1 - w0, w2 - w0);
+            let r = d1.x * d2.y - d2.x * d1.y;
+            if r.abs() < 1e-12 {
+                continue;
+            }
+            // dP/du and dP/dv.
+            let sdir = (e1 * d2.y - e2 * d1.y) / r;
+            let tdir = (e2 * d1.x - e1 * d2.x) / r;
+            for i in t {
+                tan[*i as usize] += sdir;
+                bit[*i as usize] += tdir;
+            }
+        }
+        for (i, v) in self.vertices.iter_mut().enumerate() {
+            let nrm = Vec3::from(v.normal);
+            let mut t = tan[i] - nrm * nrm.dot(tan[i]);
+            if t.length_squared() < 1e-12 {
+                t = nrm.any_orthonormal_vector();
+            }
+            let t = t.normalize();
+            // The shader's bitangent points to decreasing v (up in the image).
+            let w = if nrm.cross(t).dot(-bit[i]) < 0.0 {
+                -1.0
+            } else {
+                1.0
+            };
+            v.tangent = [t.x, t.y, t.z, w];
+        }
+    }
+
     /// Unique triangle edges, for wireframe drawing.
     pub fn edges(&self) -> Vec<[Vec3; 2]> {
         let key = |v: &Vertex| v.position.map(|x| (x * 1e4).round() as i64);
@@ -85,14 +166,16 @@ impl MeshData {
 }
 
 pub fn generate(p: PrimitiveMesh) -> MeshData {
-    match p {
+    let mut m = match p {
         PrimitiveMesh::Cube => cube(),
         PrimitiveMesh::Sphere => sphere(0.5, 24, 16),
         PrimitiveMesh::Capsule => capsule(0.5, 2.0, 24, 8),
         PrimitiveMesh::Cylinder => cylinder(0.5, 2.0, 24),
         PrimitiveMesh::Plane => plane(),
         PrimitiveMesh::Quad => quad(),
-    }
+    };
+    m.compute_tangents();
+    m
 }
 
 /// Cached mesh data per primitive (shared by the GPU uploader and wireframe/edge drawing).
@@ -313,6 +396,35 @@ mod tests {
         let (a, b, c) = (ndc(m.indices[0]), ndc(m.indices[1]), ndc(m.indices[2]));
         let area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
         assert!(area < 0.0, "front faces must be clockwise in NDC (y up)");
+    }
+
+    #[test]
+    fn tangents_follow_u_and_are_orthonormal() {
+        for p in PrimitiveMesh::ALL {
+            let m = generate(p);
+            for v in &m.vertices {
+                let (n, t) = (Vec3::from(v.normal), Vec3::from_slice(&v.tangent[..3]));
+                assert!((t.length() - 1.0).abs() < 1e-3, "{p:?}");
+                assert!(n.dot(t).abs() < 1e-3, "{p:?}");
+                assert_eq!(v.tangent[3].abs(), 1.0);
+            }
+        }
+        // Quad: u grows along +X, v grows downwards (-Y), so the bitangent (image up) is +Y.
+        let q = generate(PrimitiveMesh::Quad);
+        for v in &q.vertices {
+            let (n, t) = (Vec3::from(v.normal), Vec3::from_slice(&v.tangent[..3]));
+            assert!(t.distance(Vec3::X) < 1e-4, "{t:?}");
+            assert!((n.cross(t) * v.tangent[3]).distance(Vec3::Y) < 1e-4);
+        }
+    }
+
+    #[test]
+    fn computed_normals_point_outward_and_bounds_fit() {
+        let mut m = generate(PrimitiveMesh::Cube);
+        m.compute_normals();
+        let p = Vec3::from(m.vertices[0].position);
+        assert!(Vec3::from(m.vertices[0].normal).dot(p) > 0.0);
+        assert_eq!(m.bounds(), (Vec3::splat(-0.5), Vec3::splat(0.5)));
     }
 
     #[test]

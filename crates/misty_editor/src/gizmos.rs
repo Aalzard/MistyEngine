@@ -1,10 +1,10 @@
 //! Scene-view gizmo lines: camera frustum, light ranges, and mesh wireframes.
 
 use glam::{Mat4, Vec3};
+use misty_engine::models;
 use misty_engine::physics::collider_matrix;
 use misty_engine::render::LineVertex;
 use misty_engine::render::MeshDraw;
-use misty_engine::render::mesh::primitive_edges;
 use misty_engine::scene::{
     AudioSource, BoxCollider, Camera, CapsuleCollider, Light, LightType, MeshCollider, MeshFilter,
     Scene, SphereCollider,
@@ -150,12 +150,14 @@ impl Lines {
         }
         if let Ok(c) = w.get::<&MeshCollider>(e)
             && c.enabled
-            && let Some(mesh) = w.get::<&MeshFilter>(e).ok().and_then(|f| f.mesh)
+            && let Some(mesh) = w.get::<&MeshFilter>(e).ok().and_then(|f| f.mesh.clone())
         {
             let m = scene.world_matrix(e);
-            for [p, q] in primitive_edges(mesh) {
-                self.line(m.transform_point3(*p), m.transform_point3(*q), COLLIDER);
-            }
+            models::with_edges(&mesh, |edges| {
+                for [p, q] in edges {
+                    self.line(m.transform_point3(*p), m.transform_point3(*q), COLLIDER);
+                }
+            });
         }
     }
 
@@ -262,12 +264,14 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
 /// Mesh triangle edges for the Wireframe / Shaded Wireframe draw modes.
 pub fn wireframe(lines: &mut Lines, meshes: &[MeshDraw], color: [f32; 4]) {
     for d in meshes {
-        for [a, b] in primitive_edges(d.mesh) {
-            lines.line(
-                d.model.transform_point3(*a),
-                d.model.transform_point3(*b),
-                color,
-            );
-        }
+        models::with_edges(&d.mesh, |edges| {
+            for [a, b] in edges {
+                lines.line(
+                    d.model.transform_point3(*a),
+                    d.model.transform_point3(*b),
+                    color,
+                );
+            }
+        });
     }
 }

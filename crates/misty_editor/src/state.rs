@@ -300,6 +300,12 @@ impl EditorState {
         self.scene_dirty = true;
     }
 
+    /// Re-scan the Project window and the asset database (Assets ▸ Refresh, Ctrl+R).
+    pub fn refresh_assets(&mut self) {
+        self.project.refresh();
+        self.assets.refresh();
+    }
+
     /// Select one object and reveal it in the Hierarchy.
     pub fn select(&mut self, e: Entity) {
         self.selection.set(e);

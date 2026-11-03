@@ -15,6 +15,8 @@ pub struct Pipelines {
     pub mesh_layout: wgpu::BindGroupLayout,
     /// Draws only (shadow and mask passes).
     pub draws_layout: wgpu::BindGroupLayout,
+    /// Per-material albedo + normal map + sampler (lit mesh pass, group 2).
+    pub material_layout: wgpu::BindGroupLayout,
     /// Selection mask texture (outline pass).
     pub mask_layout: wgpu::BindGroupLayout,
     /// One sampled texture + sampler (bloom passes).
@@ -200,6 +202,14 @@ impl Pipelines {
                 entry(1, S::FRAGMENT, filtering),
             ],
         );
+        let material_layout = layout(
+            "misty material",
+            &[
+                entry(0, S::FRAGMENT, filtered),
+                entry(1, S::FRAGMENT, filtered),
+                entry(2, S::FRAGMENT, filtering),
+            ],
+        );
         let composite_layout = layout(
             "misty composite",
             &[
@@ -240,7 +250,12 @@ impl Pipelines {
         let mesh_buffers = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as u64,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
+            attributes: &wgpu::vertex_attr_array![
+                0 => Float32x3,
+                1 => Float32x3,
+                2 => Float32x2,
+                3 => Float32x4
+            ],
         }];
         let mesh = build(
             device,
@@ -253,7 +268,7 @@ impl Pipelines {
                 ..Spec::new(
                     "mesh",
                     include_str!("shaders/mesh.wgsl"),
-                    &[&view_layout, &mesh_layout],
+                    &[&view_layout, &mesh_layout, &material_layout],
                 )
             },
         );
@@ -366,6 +381,7 @@ impl Pipelines {
             shadow_view_layout,
             mesh_layout,
             draws_layout,
+            material_layout,
             mask_layout,
             sky,
             grid,

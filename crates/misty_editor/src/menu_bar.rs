@@ -134,7 +134,7 @@ fn assets_menu(ui: &mut Ui, s: &mut EditorState) {
         .add(egui::Button::new("Refresh").shortcut_text("Ctrl+R"))
         .clicked()
     {
-        s.project.refresh();
+        s.refresh_assets();
         s.console.info("Asset database refreshed.");
         ui.close();
     }

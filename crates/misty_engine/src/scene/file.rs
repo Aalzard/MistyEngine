@@ -210,7 +210,7 @@ mod tests {
         s.add(
             cube,
             MeshFilter {
-                mesh: Some(PrimitiveMesh::Cube),
+                mesh: Some(PrimitiveMesh::Cube.into()),
             },
         );
         s.add(
@@ -366,6 +366,33 @@ mod tests {
         assert!(Scene::from_json("t", "not json").is_err());
         let newer = Scene::from_json("t", r#"{"version": 99, "objects": []}"#);
         assert!(newer.err().is_some_and(|e| e.contains("newer")));
+    }
+
+    /// Scenes saved before imported meshes stored the primitive name; both forms load and save.
+    #[test]
+    fn mesh_filter_reads_old_primitive_names_and_asset_paths() {
+        let text = r#"{ "version": 1, "objects": [
+            { "parent": null, "components": { "GameObject": { "name": "Old" },
+              "Transform": {}, "Mesh Filter": { "mesh": "Sphere" } } },
+            { "parent": null, "components": { "GameObject": { "name": "Ship" },
+              "Transform": {}, "Mesh Filter": { "mesh": "Assets/Models/Ship.glb#2" } } },
+            { "parent": null, "components": { "GameObject": { "name": "None" },
+              "Transform": {}, "Mesh Filter": { "mesh": null } } }
+        ] }"#;
+        let (s, report) = Scene::from_json("t", text).unwrap();
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        let mesh = |name| {
+            let e = s.find_by_name(name).unwrap();
+            s.world.get::<&MeshFilter>(e).unwrap().mesh.clone()
+        };
+        assert_eq!(mesh("Old"), Some(PrimitiveMesh::Sphere.into()));
+        let ship = mesh("Ship").unwrap();
+        assert_eq!(ship.split_asset(), Some(("Assets/Models/Ship.glb", 2)));
+        assert_eq!(mesh("None"), None);
+        // Written back in the same shapes.
+        let json = s.to_json();
+        assert!(json.contains(r#""mesh": "Sphere""#), "{json}");
+        assert!(json.contains(r#""mesh": "Assets/Models/Ship.glb#2""#));
     }
 
     #[test]

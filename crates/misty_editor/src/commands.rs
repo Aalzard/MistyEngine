@@ -194,6 +194,9 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
             Some(label) => s.console.info(format!("Redo {label}")),
             None => s.console.info("Nothing to redo."),
         },
+        Action::InstantiateModel { path, parent } => {
+            crate::model_import::instantiate(s, &path, parent);
+        }
         other => return crate::prefabs::apply(s, other),
     }
     s.selection.retain_existing(&s.scene);
@@ -212,7 +215,7 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
     match what {
         Create::Empty => {}
         Create::Primitive(mesh) => {
-            s.scene.add(e, MeshFilter { mesh: Some(mesh) });
+            s.scene.add(e, MeshFilter::primitive(mesh));
             s.scene.add(e, MeshRenderer::default());
             // Primitives come with a matching collider.
             match mesh.default_collider() {
@@ -278,15 +281,20 @@ pub fn selection_bounds(s: &EditorState) -> Option<(Vec3, f32)> {
         .iter()
         .map(|e| {
             let m = s.scene.world_matrix(*e);
-            let extent = s
+            let bounds = s
                 .scene
                 .world
                 .get::<&MeshFilter>(*e)
                 .ok()
-                .and_then(|f| f.mesh)
-                .map(|mesh| (m.transform_vector3(mesh.half_extents())).length())
-                .unwrap_or(0.5);
-            (m.w_axis.truncate(), extent)
+                .and_then(|f| f.mesh.clone())
+                .and_then(|mesh| misty_engine::models::bounds(&mesh));
+            match bounds {
+                Some((min, max)) => (
+                    m.transform_point3((min + max) * 0.5),
+                    m.transform_vector3((max - min) * 0.5).length(),
+                ),
+                None => (m.w_axis.truncate(), 0.5),
+            }
         })
         .collect();
     let center = points.iter().map(|(p, _)| *p).sum::<Vec3>() / points.len() as f32;

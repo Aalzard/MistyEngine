@@ -31,6 +31,8 @@ impl Game {
     /// Open the project at `root` and start build scene 0.
     pub fn open(root: &Path) -> Result<Self, String> {
         let mut logs = Vec::new();
+        // Textures and models are resolved against the project folder.
+        misty_engine::assets::set_project_root(root);
         let settings = ProjectSettings::load(root).unwrap_or_else(|e| {
             logs.push((LogKind::Warning, format!("ProjectSettings.json: {e}")));
             ProjectSettings::default()
@@ -156,7 +158,7 @@ return Loader
         menu.add(
             cube,
             MeshFilter {
-                mesh: Some(PrimitiveMesh::Cube),
+                mesh: Some(PrimitiveMesh::Cube.into()),
             },
         );
         menu.add(cube, MeshRenderer::default());

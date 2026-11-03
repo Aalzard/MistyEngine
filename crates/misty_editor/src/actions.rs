@@ -122,6 +122,11 @@ pub enum Action {
         path: String,
         parent: Option<Entity>,
     },
+    /// Instantiate a model file (one object per node) under `parent`, or at the Scene view pivot.
+    InstantiateModel {
+        path: String,
+        parent: Option<Entity>,
+    },
     /// Instance root actions (Inspector Prefab row, Hierarchy menu).
     SelectPrefabAsset(Entity),
     RevertPrefab(Entity),

@@ -106,10 +106,18 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         }
     }
 
-    // Drop a prefab into the view (instantiated at the pivot) or a material onto an object.
+    // Drop a prefab or model into the view (instantiated at the pivot) or a material onto an object.
     let payload = response.dnd_release_payload::<AssetPayload>();
     if let Some(p) = payload.as_ref().filter(|p| p.0.ends_with(".prefab")) {
         state.push(crate::actions::Action::InstantiatePrefab {
+            path: p.0.clone(),
+            parent: None,
+        });
+    } else if let Some(p) = payload
+        .as_ref()
+        .filter(|p| misty_engine::models::is_model(&p.0))
+    {
+        state.push(crate::actions::Action::InstantiateModel {
             path: p.0.clone(),
             parent: None,
         });
@@ -644,7 +652,7 @@ mod tests {
         s.scene.add(
             cube,
             MeshFilter {
-                mesh: Some(PrimitiveMesh::Cube),
+                mesh: Some(PrimitiveMesh::Cube.into()),
             },
         );
         s.selection.set(cube);

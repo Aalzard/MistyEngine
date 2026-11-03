@@ -6,6 +6,7 @@ struct Draw {
     color: vec4<f32>,
     params: vec4<f32>,
     emission: vec4<f32>,
+    uv_st: vec4<f32>,
 };
 
 @group(1) @binding(1) var<storage, read> draws: array<Draw>;

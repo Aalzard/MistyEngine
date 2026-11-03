@@ -290,7 +290,7 @@ impl Light {
 }
 
 /// Built-in meshes (GameObject ▸ 3D Object).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum PrimitiveMesh {
     #[default]
     Cube,
@@ -333,10 +333,61 @@ impl PrimitiveMesh {
     }
 }
 
+/// The mesh a Mesh Filter shows: a built-in primitive or a mesh inside an imported model file.
+///
+/// Stored untagged, so scene files keep the old `"Cube"` form for primitives and use the asset
+/// path (`"Assets/Models/Ship.glb#0"`) for imported meshes.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MeshRef {
+    Primitive(PrimitiveMesh),
+    /// "Assets/…/Model.ext#index" (index into the model's mesh list).
+    Asset(String),
+}
+
+impl From<PrimitiveMesh> for MeshRef {
+    fn from(p: PrimitiveMesh) -> Self {
+        Self::Primitive(p)
+    }
+}
+
+impl MeshRef {
+    /// Reference to mesh `index` of the model file at `path`.
+    pub fn asset(path: &str, index: usize) -> Self {
+        Self::Asset(format!("{path}#{index}"))
+    }
+
+    /// Model file path and mesh index of an imported mesh.
+    pub fn split_asset(&self) -> Option<(&str, usize)> {
+        let Self::Asset(s) = self else {
+            return None;
+        };
+        match s.rsplit_once('#') {
+            Some((path, i)) => Some((path, i.parse().ok()?)),
+            None => Some((s.as_str(), 0)),
+        }
+    }
+
+    pub fn primitive(&self) -> Option<PrimitiveMesh> {
+        match self {
+            Self::Primitive(p) => Some(*p),
+            Self::Asset(_) => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MeshFilter {
-    pub mesh: Option<PrimitiveMesh>,
+    pub mesh: Option<MeshRef>,
+}
+
+impl MeshFilter {
+    pub fn primitive(p: PrimitiveMesh) -> Self {
+        Self {
+            mesh: Some(MeshRef::Primitive(p)),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

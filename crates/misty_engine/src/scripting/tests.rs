@@ -142,7 +142,7 @@ return Breakable
     scene.add(
         ball,
         MeshFilter {
-            mesh: Some(PrimitiveMesh::Cube),
+            mesh: Some(PrimitiveMesh::Cube.into()),
         },
     );
     scene.add(ball, BoxCollider::default());

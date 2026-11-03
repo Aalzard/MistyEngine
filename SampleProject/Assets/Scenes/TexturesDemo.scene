@@ -1,0 +1,314 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.5,
+            -8.0
+          ],
+          "rotation": [
+            0.17364818,
+            0.0,
+            0.0,
+            0.9848077
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.4082179,
+            -0.23456971,
+            0.10938165,
+            0.87542605
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Floor",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Checker.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ramp",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Assets/Models/Ramp.obj#0"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Bumpy Tiles.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            30.0,
+            0.0
+          ],
+          "position": [
+            -2.2,
+            0.0,
+            0.5
+          ],
+          "rotation": [
+            0.0,
+            0.25881904,
+            0.0,
+            0.9659258
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Cube",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Bumpy Tiles.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            -25.0,
+            0.0
+          ],
+          "position": [
+            2.0,
+            0.75,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            -0.21643962,
+            0.0,
+            0.976296
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sphere",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Bumpy Tiles.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.3,
+            0.75,
+            1.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

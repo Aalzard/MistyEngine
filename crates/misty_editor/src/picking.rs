@@ -68,12 +68,16 @@ pub fn pick(scene: &Scene, camera: &Camera, rect: Rect, at: Pos2) -> Option<Enti
         .map(|(e, _)| e)
         .filter(|e| scene.active_in_hierarchy(*e))
         .filter_map(|e| {
-            let mesh = scene.world.get::<&MeshFilter>(e).ok()?.mesh?;
+            let mesh = scene.world.get::<&MeshFilter>(e).ok()?.mesh.clone()?;
+            let (min, max) = misty_engine::models::bounds(&mesh)?;
             let m = scene.world_matrix(e);
             let inv = m.inverse();
-            let lo = inv.transform_point3(origin);
+            // Test against the bounds box, re-centred on the origin (flat boxes get a little depth).
+            let center = (min + max) * 0.5;
+            let lo = inv.transform_point3(origin) - center;
             let ld = inv.transform_vector3(dir);
-            let t = ray_box(lo, ld, mesh.half_extents().max(Vec3::splat(0.01)))?;
+            let t = ray_box(lo, ld, ((max - min) * 0.5).max(Vec3::splat(0.01)))?;
+            let lo = lo + center;
             let hit = m.transform_point3(lo + ld * t);
             Some((e, hit.distance(origin)))
         })
@@ -123,7 +127,7 @@ mod tests {
             scene.add(
                 e,
                 MeshFilter {
-                    mesh: Some(PrimitiveMesh::Cube),
+                    mesh: Some(PrimitiveMesh::Cube.into()),
                 },
             );
             scene.add(e, MeshRenderer::default());

@@ -230,7 +230,7 @@ mod tests {
         s.add(
             lid,
             MeshFilter {
-                mesh: Some(PrimitiveMesh::Cube),
+                mesh: Some(PrimitiveMesh::Cube.into()),
             },
         );
         (s, root)

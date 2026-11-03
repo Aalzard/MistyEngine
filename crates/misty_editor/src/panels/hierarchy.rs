@@ -273,9 +273,15 @@ fn row(
 }
 
 /// A prefab dropped in the Hierarchy: instantiate under `parent` (None = scene root).
+/// Prefabs and model files dropped on a row (or the empty area) are instantiated there.
 fn drop_prefab(state: &mut EditorState, path: &str, parent: Option<Entity>) {
     if path.ends_with(".prefab") {
         state.push(Action::InstantiatePrefab {
+            path: path.to_owned(),
+            parent,
+        });
+    } else if misty_engine::models::is_model(path) {
+        state.push(Action::InstantiateModel {
             path: path.to_owned(),
             parent,
         });

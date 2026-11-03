@@ -1,6 +1,7 @@
 // Lit meshes, close to the Standard (metallic) shader:
 // Lambert diffuse + GGX specular, sky reflections with Fresnel, hemisphere ambient,
 // directional/point/spot lights, hard or soft shadows for all three light types.
+// Albedo texture × colour and tangent-space normal maps (OpenGL convention, green = up).
 
 const PI: f32 = 3.14159265;
 const MAX_LOCAL_SHADOWS: u32 = 16u;
@@ -10,10 +11,12 @@ struct Draw {
     normal: mat4x4<f32>,
     // sRGB base colour + alpha.
     color: vec4<f32>,
-    // x = metallic, y = smoothness, z = receive shadows, w unused.
+    // x = metallic, y = smoothness, z = receive shadows, w = normal map scale (0 = no normal map).
     params: vec4<f32>,
-    // rgb = emission (linear).
+    // rgb = emission (linear), w = -1 when the model matrix mirrors (flips tangent handedness).
     emission: vec4<f32>,
+    // xy = tiling, zw = offset.
+    uv_st: vec4<f32>,
 };
 
 struct LightItem {
@@ -47,10 +50,17 @@ struct Lights {
 @group(1) @binding(3) var shadow_sampler: sampler_comparison;
 @group(1) @binding(4) var local_shadow_map: texture_depth_2d_array;
 
+// Material textures (1×1 white / flat normal when unassigned).
+@group(2) @binding(0) var albedo_map: texture_2d<f32>;
+@group(2) @binding(1) var normal_map: texture_2d<f32>;
+@group(2) @binding(2) var material_sampler: sampler;
+
 struct MeshIn {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    // xyz = tangent along +u, w = bitangent sign.
+    @location(3) tangent: vec4<f32>,
 };
 
 struct MeshOut {
@@ -59,6 +69,7 @@ struct MeshOut {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) @interpolate(flat) draw: u32,
+    @location(4) tangent: vec4<f32>,
 };
 
 @vertex
@@ -69,9 +80,23 @@ fn vs_main(in: MeshIn, @builtin(instance_index) draw_index: u32) -> MeshOut {
     out.clip = view.view_proj * world;
     out.world = world.xyz;
     out.normal = (d.normal * vec4<f32>(in.normal, 0.0)).xyz;
-    out.uv = in.uv;
+    out.uv = in.uv * d.uv_st.xy + d.uv_st.zw;
     out.draw = draw_index;
+    out.tangent = vec4<f32>((d.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz, in.tangent.w * d.emission.w);
     return out;
+}
+
+// Surface normal with the material's normal map applied (bitangent points up in the image).
+fn mapped_normal(in: MeshOut, d: Draw, sampled: vec3<f32>) -> vec3<f32> {
+    let n = normalize(in.normal);
+    if (d.params.w == 0.0) {
+        return n;
+    }
+    let t = normalize(in.tangent.xyz - n * dot(n, in.tangent.xyz));
+    let b = cross(n, t) * in.tangent.w;
+    var m = sampled * 2.0 - 1.0;
+    m = vec3<f32>(m.xy * d.params.w, max(m.z, 1e-3));
+    return normalize(t * m.x + b * m.y + n * m.z);
 }
 
 // Shadow-map coordinates (uv, depth) of a world point, or depth > 1 when outside.
@@ -174,12 +199,15 @@ struct MeshTargets {
 @fragment
 fn fs_main(in: MeshOut) -> MeshTargets {
     let d = draws[in.draw];
-    let albedo = srgb_to_linear(d.color.rgb);
+    // Sample before any non-uniform branch (implicit derivatives).
+    let base = textureSample(albedo_map, material_sampler, in.uv);
+    let sampled_normal = textureSample(normal_map, material_sampler, in.uv).xyz;
+    let albedo = srgb_to_linear(d.color.rgb) * base.rgb;
     let metallic = clamp(d.params.x, 0.0, 1.0);
     let smoothness = clamp(d.params.y, 0.0, 1.0);
     let perceptual = 1.0 - smoothness;
     let roughness = max(perceptual * perceptual, 0.002);
-    let n = normalize(in.normal);
+    let n = mapped_normal(in, d, sampled_normal);
     var v: vec3<f32>;
     if (view.camera_pos.w > 0.5) {
         v = normalize(-(view.inv_view_proj * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
@@ -246,7 +274,7 @@ fn fs_main(in: MeshOut) -> MeshTargets {
     }
     color += d.emission.rgb;
     var out: MeshTargets;
-    out.color = vec4<f32>(color, d.color.a);
+    out.color = vec4<f32>(color, d.color.a * base.a);
     out.glow = vec4<f32>(d.emission.rgb, 1.0);
     return out;
 }

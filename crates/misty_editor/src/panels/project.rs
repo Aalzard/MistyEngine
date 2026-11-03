@@ -113,6 +113,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                         browser.icon_size,
                         &mut browser.selected,
                         &mut open,
+                        &mut browser.thumbnails,
                     );
                 }
             });
@@ -271,6 +272,7 @@ fn grid_view(
     icon_size: f32,
     selected: &mut Option<PathBuf>,
     open: &mut Option<PathBuf>,
+    thumbnails: &mut crate::thumbnails::Thumbnails,
 ) {
     let cell = 48.0 + icon_size * 80.0;
     ui.horizontal_wrapped(|ui| {
@@ -285,13 +287,34 @@ fn grid_view(
                 ui.painter()
                     .rect_filled(rect, 3.0, Color32::from_rgb(69, 69, 69));
             }
-            ui.painter().text(
-                rect.center_top() + egui::vec2(0.0, cell * 0.5),
-                Align2::CENTER_CENTER,
-                e.icon(),
-                FontId::proportional(cell * 0.6),
-                e.icon_color(),
-            );
+            // Textures show a preview of the image instead of the icon.
+            let thumb = e
+                .is_texture()
+                .then(|| thumbnails.get(ui.ctx(), &e.path))
+                .flatten();
+            if let Some(tex) = thumb {
+                let box_rect = egui::Rect::from_center_size(
+                    rect.center_top() + egui::vec2(0.0, cell * 0.5),
+                    egui::vec2(cell * 0.8, cell * 0.8),
+                );
+                let size = tex.size_vec2();
+                let fit = box_rect.size() / size.max_elem();
+                let img_rect = egui::Rect::from_center_size(box_rect.center(), size * fit.x);
+                ui.painter().image(
+                    tex.id(),
+                    img_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+            } else {
+                ui.painter().text(
+                    rect.center_top() + egui::vec2(0.0, cell * 0.5),
+                    Align2::CENTER_CENTER,
+                    e.icon(),
+                    FontId::proportional(cell * 0.6),
+                    e.icon_color(),
+                );
+            }
             ui.painter().text(
                 rect.center_bottom() - egui::vec2(0.0, 9.0),
                 Align2::CENTER_CENTER,
