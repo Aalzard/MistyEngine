@@ -1,4 +1,8 @@
 //! Scene-view gizmo lines: camera frustum, light ranges, particle shapes and mesh wireframes.
+//! Joint and Character Controller gizmos are in `physics_gizmos`.
+
+#[path = "physics_gizmos.rs"]
+mod physics;
 
 use glam::{Mat4, Vec3};
 use misty_engine::models;
@@ -101,6 +105,29 @@ impl Lines {
         }
     }
 
+    /// Capsule along `axis` with end spheres of radius `r` at ±`half`, in the frame of `m`.
+    fn capsule(&mut self, m: &Mat4, axis: usize, r: f32, half: f32, color: [f32; 4]) {
+        let (a, b) = ((axis + 1) % 3, (axis + 2) % 3);
+        let mut up = Vec3::ZERO;
+        up[axis] = half;
+        for end in [up, -up] {
+            for k in 0..3 {
+                self.circle(m, end, r, k, color);
+            }
+        }
+        for side in [a, b] {
+            for sign in [-1.0, 1.0] {
+                let mut off = Vec3::ZERO;
+                off[side] = r * sign;
+                self.line(
+                    m.transform_point3(up + off),
+                    m.transform_point3(-up + off),
+                    color,
+                );
+            }
+        }
+    }
+
     /// Green collider outlines (shown for selected objects), sized with the object's scale.
     fn colliders(&mut self, scene: &Scene, e: misty_engine::hecs::Entity) {
         let w = &scene.world;
@@ -131,24 +158,7 @@ impl Lines {
             let (a, b) = ((axis + 1) % 3, (axis + 2) % 3);
             let r = c.radius * s[a].max(s[b]);
             let half = (c.height * s[axis] * 0.5 - r).max(0.0);
-            let mut up = Vec3::ZERO;
-            up[axis] = half;
-            for end in [up, -up] {
-                for k in 0..3 {
-                    self.circle(&m, end, r, k, COLLIDER);
-                }
-            }
-            for side in [a, b] {
-                for sign in [-1.0, 1.0] {
-                    let mut off = Vec3::ZERO;
-                    off[side] = r * sign;
-                    self.line(
-                        m.transform_point3(up + off),
-                        m.transform_point3(-up + off),
-                        COLLIDER,
-                    );
-                }
-            }
+            self.capsule(&m, axis, r, half, COLLIDER);
         }
         if let Ok(c) = w.get::<&MeshCollider>(e)
             && c.enabled
@@ -264,6 +274,8 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
             lines.particle_shape(&m, &ps.shape);
         }
         lines.colliders(scene, e);
+        lines.character(scene, e);
+        lines.joints(scene, e);
     }
     lines
 }
