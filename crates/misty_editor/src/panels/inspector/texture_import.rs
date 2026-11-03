@@ -1,14 +1,14 @@
 //! Texture import settings in the Inspector (selected `.png` / `.jpg`): Texture Type, Sprite
-//! Mode, Pixels Per Unit, Pivot, Wrap/Filter Mode, mipmaps and a grid slicer for Multiple mode,
-//! with Revert / Apply and a preview that outlines the sprites.
+//! Mode, Pixels Per Unit, Pivot, Max Size, Filter Mode and mipmaps on top; Wrap Mode, sRGB and
+//! Aniso Level under a collapsed "Advanced"; a grid slicer for Multiple mode, Revert / Apply and
+//! a preview that outlines the sprites.
 //!
 //! Unapplied edits live in egui's memory (per texture) until Apply writes the `.meta` file.
 
 use egui::{Color32, Grid, RichText, Stroke, Ui, pos2, vec2};
+use misty_engine::sprites::import::{MAX_SIZES, PIVOTS, max_size_label};
 use misty_engine::sprites::slice::{self, GridSlice};
-use misty_engine::sprites::{
-    self, FilterMode, SpriteMode, TextureImporter, TextureType, WrapMode, import::PIVOTS,
-};
+use misty_engine::sprites::{self, FilterMode, SpriteMode, TextureImporter, TextureType, WrapMode};
 
 use crate::state::EditorState;
 use crate::theme;
@@ -111,20 +111,19 @@ fn settings_ui(ui: &mut Ui, s: &mut TextureImporter) {
         .spacing([10.0, 4.0])
         .min_col_width(130.0)
         .show(ui, |ui| {
-            ui.label("Texture Type");
-            let before = s.texture_type;
+            ui.label("Texture Type").on_hover_text(
+                "Default for 3D materials, Normal Map for bumps, Sprite for 2D and UI.",
+            );
+            let mut t = s.texture_type;
             if combo(
                 ui,
                 "tex_type",
-                &mut s.texture_type,
+                &mut t,
                 &TextureType::ALL,
                 TextureType::label,
-            ) && before != s.texture_type
-                && s.is_sprite()
-            {
-                // Like the reference importer: sprites clamp and skip mipmaps.
-                s.wrap_mode = WrapMode::Clamp;
-                s.generate_mip_maps = false;
+            ) {
+                // Sprites clamp and skip mipmaps; normal maps are linear.
+                s.set_type(t);
             }
             ui.end_row();
             if s.is_sprite() {
@@ -150,16 +149,20 @@ fn settings_ui(ui: &mut Ui, s: &mut TextureImporter) {
                     ui.end_row();
                 }
             }
-            ui.label("Wrap Mode");
-            combo(
-                ui,
-                "tex_wrap",
-                &mut s.wrap_mode,
-                &WrapMode::ALL,
-                WrapMode::label,
-            );
+            ui.label("Max Size")
+                .on_hover_text("Larger images are scaled down when loaded (saves GPU memory).");
+            egui::ComboBox::from_id_salt("tex_max_size")
+                .selected_text(max_size_label(s.max_size))
+                .show_ui(ui, |ui| {
+                    for v in MAX_SIZES {
+                        ui.selectable_value(&mut s.max_size, v, max_size_label(v));
+                    }
+                });
             ui.end_row();
-            ui.label("Filter Mode");
+            ui.label("Filter Mode").on_hover_text(
+                "Nearest Neighbor: crisp pixel art. Bilinear: smooth. Trilinear: smooth and \
+                 blends between mip levels (best for 3D).",
+            );
             combo(
                 ui,
                 "tex_filter",
@@ -168,9 +171,49 @@ fn settings_ui(ui: &mut Ui, s: &mut TextureImporter) {
                 FilterMode::label,
             );
             ui.end_row();
-            ui.label("Generate Mip Maps");
+            ui.label("Generate Mip Maps")
+                .on_hover_text("Smaller copies used far away: less shimmer, faster. Off for UI.");
             ui.checkbox(&mut s.generate_mip_maps, "");
             ui.end_row();
+        });
+    egui::CollapsingHeader::new("Advanced")
+        .id_salt("texture_import_advanced")
+        .default_open(false)
+        .show(ui, |ui| {
+            Grid::new("texture_import_advanced_grid")
+                .num_columns(2)
+                .spacing([10.0, 4.0])
+                .min_col_width(118.0)
+                .show(ui, |ui| {
+                    ui.label("Wrap Mode").on_hover_text(
+                        "What happens outside 0–1 UVs: tile, stretch the edge, or mirror.",
+                    );
+                    combo(
+                        ui,
+                        "tex_wrap",
+                        &mut s.wrap_mode,
+                        &WrapMode::ALL,
+                        WrapMode::label,
+                    );
+                    ui.end_row();
+                    ui.label("sRGB (Color Texture)").on_hover_text(
+                        "On for colours. Off for data such as masks and metallic maps.",
+                    );
+                    let normal = s.texture_type == TextureType::NormalMap;
+                    ui.add_enabled_ui(!normal, |ui| {
+                        let mut on = s.is_srgb();
+                        if ui.checkbox(&mut on, "").changed() {
+                            s.srgb = on;
+                        }
+                    });
+                    ui.end_row();
+                    ui.label("Aniso Level").on_hover_text(
+                        "Sharpness at grazing angles (0–16; 1 = off). Needs Trilinear; see \
+                         Quality ▸ Anisotropic Textures.",
+                    );
+                    ui.add(egui::Slider::new(&mut s.aniso_level, 0..=16));
+                    ui.end_row();
+                });
         });
 }
 
@@ -302,8 +345,8 @@ fn preview_texture(
         let size = [img.width() as usize, img.height() as usize];
         let color = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
         let options = match filter {
-            FilterMode::Point => egui::TextureOptions::NEAREST,
-            FilterMode::Bilinear => egui::TextureOptions::LINEAR,
+            FilterMode::Nearest => egui::TextureOptions::NEAREST,
+            FilterMode::Bilinear | FilterMode::Trilinear => egui::TextureOptions::LINEAR,
         };
         ctx.load_texture(format!("import:{rel}"), color, options)
     });

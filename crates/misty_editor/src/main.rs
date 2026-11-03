@@ -8,6 +8,7 @@ mod asset_actions;
 mod asset_ops;
 mod assets;
 mod audio_mixers;
+mod build_pipeline;
 mod build_settings;
 mod capture;
 mod commands;
@@ -31,6 +32,8 @@ mod project;
 mod project_settings;
 mod project_settings_2d;
 mod project_settings_input;
+mod project_settings_player;
+mod project_settings_quality;
 mod project_settings_tags;
 mod render_scene;
 #[cfg(test)]

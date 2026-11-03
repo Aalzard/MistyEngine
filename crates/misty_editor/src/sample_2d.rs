@@ -225,11 +225,11 @@ fn pixel_art(rows: &[&str], color: impl Fn(char) -> Option<Rgba<u8>>) -> RgbaIma
     })
 }
 
-/// Pixel-art sprite import: Point filter, 16 pixels per unit.
+/// Pixel-art sprite import: Nearest Neighbor filter, 16 pixels per unit.
 fn importer(sprites: Vec<misty_engine::sprites::SpriteRect>) -> TextureImporter {
     TextureImporter {
         pixels_per_unit: PPU,
-        filter_mode: FilterMode::Point,
+        filter_mode: FilterMode::Nearest,
         sprite_mode: if sprites.is_empty() {
             SpriteMode::Single
         } else {

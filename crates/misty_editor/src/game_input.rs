@@ -52,13 +52,14 @@ pub fn capture(ctx: &egui::Context, view: egui::Rect) -> Input {
     ctx.input(|i| {
         let mut input = Input::default();
         let ppp = i.pixels_per_point;
-        // Same pixel size the Game view renders at.
-        input.screen_size = (glam::Vec2::new(view.width(), view.height()) * ppp).floor();
+        // Same pixel size the Game view renders at (Quality ▸ Render Scale included).
+        let px = ppp * misty_engine::quality::active().render_scale;
+        input.screen_size = (glam::Vec2::new(view.width(), view.height()) * px).floor();
         input.mouse_position = i
             .pointer
             .hover_pos()
             .filter(|p| view.contains(*p))
-            .map(|p| glam::Vec2::new(p.x - view.min.x, p.y - view.min.y) * ppp);
+            .map(|p| glam::Vec2::new(p.x - view.min.x, p.y - view.min.y) * px);
         for k in &i.keys_down {
             input.held.insert(key_name(*k));
         }

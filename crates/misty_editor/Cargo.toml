@@ -23,6 +23,9 @@ serde.workspace = true
 rfd = "0.17"
 trash = "5"
 regex = "1"
+# Build window: .zip archives of builds.
+flate2 = "1"
+crc32fast = "1"
 
 [dev-dependencies]
 egui_kittest = "0.36"

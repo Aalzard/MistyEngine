@@ -13,6 +13,8 @@ pub const HOVER_BG: Color32 = Color32::from_rgb(103, 103, 103);
 pub const SELECTION: Color32 = Color32::from_rgb(44, 93, 135);
 pub const TEXT: Color32 = Color32::from_rgb(210, 210, 210);
 pub const TEXT_DIM: Color32 = Color32::from_rgb(130, 130, 130);
+/// Warnings and problems that need the user's attention.
+pub const WARN: Color32 = Color32::from_rgb(230, 180, 60);
 /// Names of prefab instances in the Hierarchy (and the prefab icon).
 pub const PREFAB: Color32 = Color32::from_rgb(123, 174, 250);
 pub const PREFAB_DIM: Color32 = Color32::from_rgb(78, 108, 155);

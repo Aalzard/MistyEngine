@@ -37,9 +37,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     match (game, gpu) {
         (Some(game), Some(gpu)) => {
             let frame = game.frame();
-            let ppp = ui.ctx().pixels_per_point();
+            // Quality ▸ Render Scale changes the pixel size the game renders at.
+            let ppp = ui.ctx().pixels_per_point() * misty_engine::quality::active().render_scale;
             let size = [(view.width() * ppp) as u32, (view.height() * ppp) as u32];
             state.game_view.screen_px = glam::Vec2::new(size[0] as f32, size[1] as f32);
+            let mode = misty_engine::player_settings::ScreenMode::Windowed;
+            misty_engine::screen::set_size(size[0], size[1], mode);
+            // The Game view has no window to resize: Screen.SetResolution is a no-op here.
+            misty_engine::screen::take_requests();
             let texture = gpu.render(ViewId::Game, size, &frame);
             let render = gpu.renderer.stats();
             // The Profiler's Rendering and Memory modules report the Game view.
@@ -161,6 +166,32 @@ fn fmt_k(n: usize) -> String {
     }
 }
 
+/// Preview a Quality level in the Scene and Game views (and Play mode).
+fn quality_dropdown(ui: &mut Ui, quality: &misty_engine::quality::QualitySettings) {
+    let current = misty_engine::quality::level();
+    let name = quality
+        .levels
+        .get(current)
+        .map_or("Quality", |l| l.name.as_str());
+    egui::ComboBox::from_id_salt("game_quality")
+        .selected_text(name)
+        .width(80.0)
+        .show_ui(ui, |ui| {
+            for (i, l) in quality.levels.iter().enumerate() {
+                let label = if i == quality.default_level {
+                    format!("{} (default)", l.name)
+                } else {
+                    l.name.clone()
+                };
+                if ui.selectable_label(i == current, label).clicked() {
+                    misty_engine::quality::install(quality, i);
+                }
+            }
+        })
+        .response
+        .on_hover_text("Quality level to preview (Project Settings ▸ Quality)");
+}
+
 fn fit_aspect(area: egui::Rect, aspect: f32) -> egui::Rect {
     let mut size = area.size();
     if size.x / size.y > aspect {
@@ -172,6 +203,7 @@ fn fit_aspect(area: egui::Rect, aspect: f32) -> egui::Rect {
 }
 
 fn toolbar(ui: &mut Ui, state: &mut EditorState) {
+    let quality = &state.project_settings.quality;
     let gv = &mut state.game_view;
     panel_toolbar(ui, |ui| {
         egui::ComboBox::from_id_salt("game_display")
@@ -204,6 +236,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             if toggle_button(ui, gv.mute, "🔇", "Mute Audio").clicked() {
                 gv.mute = !gv.mute;
             }
+            quality_dropdown(ui, quality);
             egui::ComboBox::from_id_salt("game_play_target")
                 .selected_text(PLAY_TARGETS[gv.play_mode_target])
                 .width(110.0)

@@ -21,6 +21,8 @@ pub struct Gpu {
     pub ui: UiRenderer,
     pub scene: Viewport,
     pub game: Viewport,
+    /// [`misty_engine::quality::generation`] the renderer was set up for.
+    quality: u64,
 }
 
 impl Gpu {
@@ -33,6 +35,7 @@ impl Gpu {
             ui,
             scene: Viewport::default(),
             game: Viewport::default(),
+            quality: u64::MAX,
         }
     }
 
@@ -60,6 +63,13 @@ pub enum ViewId {
 impl Gpu {
     /// Render `frame` at `size_px` and return the texture to show with `ui.image`.
     pub fn render(&mut self, view: ViewId, size_px: [u32; 2], frame: &Frame) -> egui::TextureId {
+        // The previewed quality level (shadow resolution, effects).
+        let generation = misty_engine::quality::generation();
+        if generation != self.quality {
+            self.quality = generation;
+            let level = misty_engine::quality::active();
+            self.renderer.set_quality(&self.state.device, &level);
+        }
         let vp = match view {
             ViewId::Scene => &mut self.scene,
             ViewId::Game => &mut self.game,
