@@ -8,7 +8,8 @@ use egui_dock::{DockArea, DockState};
 use crate::actions::{Action, Create};
 use crate::capture::Capture;
 use crate::console::LogLevel;
-use crate::layout::{self, Tab};
+use crate::layout::{self, BuiltinLayout, Tab};
+use crate::layouts::{self, Autosave, LayoutRef};
 use crate::panels::PanelViewer;
 use crate::project::ProjectBrowser;
 use crate::scene_files::{self, AfterPrompt};
@@ -27,6 +28,8 @@ pub struct EditorApp {
     errors_seen: usize,
     /// Last window title sent.
     title: String,
+    /// Writes the layout to the project's Library folder.
+    layout_autosave: Autosave,
 }
 
 impl EditorApp {
@@ -34,6 +37,9 @@ impl EditorApp {
         theme::apply(&cc.egui_ctx);
         let mut state = EditorState::new(ProjectBrowser::open(project));
         scene_files::open_initial(&mut state);
+        let (saved_layouts, dock) = layouts::load(&state.project.root);
+        state.layouts = saved_layouts;
+        let layout_autosave = Autosave::new(&state.layouts, &dock);
         let gpu = cc.wgpu_render_state.clone().map(Gpu::new);
         match &gpu {
             Some(g) => {
@@ -48,13 +54,58 @@ impl EditorApp {
         }
         Self {
             state,
-            dock: layout::default_layout(),
+            dock,
             gpu,
             capture: Capture::from_env(),
             saved_dock: None,
             errors_seen: 0,
             title: String::new(),
+            layout_autosave,
         }
+    }
+
+    /// Save the layout if it changed (debounced), or now when `force` is set.
+    /// During Play Maximized the layout from before Play is the one kept.
+    fn save_layout(&mut self, force: bool) {
+        let dock = self.saved_dock.as_ref().unwrap_or(&self.dock);
+        let s = &self.state;
+        self.layout_autosave
+            .tick(&s.project.root, &s.layouts, dock, force);
+    }
+
+    /// Window ▸ Layouts commands.
+    fn apply_layout(&mut self, action: Action) {
+        let s = &mut self.state;
+        match action {
+            Action::LoadLayout(layout) => {
+                let Some(dock) = s.layouts.get(&layout) else {
+                    return;
+                };
+                self.dock = dock;
+                self.saved_dock = None;
+                s.layouts.current_name = match layout {
+                    LayoutRef::Builtin(b) => b.name().to_owned(),
+                    LayoutRef::User(name) => name,
+                };
+            }
+            Action::SaveLayout(name) => {
+                let dock = self.saved_dock.as_ref().unwrap_or(&self.dock).clone();
+                s.layouts.user.insert(name.clone(), dock);
+                s.console.info(format!("Saved layout \"{name}\"."));
+                s.layouts.current_name = name;
+            }
+            Action::DeleteLayout(name) => {
+                s.layouts.user.remove(&name);
+            }
+            Action::ResetAllLayouts => {
+                s.layouts.user.clear();
+                s.layouts.current_name = BuiltinLayout::Default.name().to_owned();
+                self.dock = layout::default_layout();
+                self.saved_dock = None;
+            }
+            _ => return,
+        }
+        self.save_layout(true);
     }
 
     /// Global keyboard shortcuts (skipped while typing in a text field).
@@ -146,7 +197,10 @@ impl EditorApp {
         let s = &mut self.state;
         match action {
             Action::FocusTab(tab) => layout::focus_or_open(&mut self.dock, tab),
-            Action::ResetLayout => self.dock = layout::default_layout(),
+            Action::LoadLayout(_)
+            | Action::SaveLayout(_)
+            | Action::DeleteLayout(_)
+            | Action::ResetAllLayouts => self.apply_layout(action),
             Action::Quit => {
                 if let Some(a) = scene_files::guard(s, AfterPrompt::Quit)
                     && scene_files::perform(s, a)
@@ -267,6 +321,10 @@ impl EditorApp {
                 s.files.prompt = Some(AfterPrompt::Quit);
             }
         }
+        if let Some(action) = layouts::save_prompt_ui(ctx, s) {
+            s.push(action);
+            ctx.request_repaint();
+        }
         if let Some(action) = scene_files::prompt_ui(ctx, s)
             && scene_files::perform(s, action)
         {
@@ -286,6 +344,15 @@ impl EditorApp {
 }
 
 impl eframe::App for EditorApp {
+    fn on_exit(&mut self) {
+        self.save_layout(true);
+    }
+
+    /// Only the window position/size is persisted by eframe; editor state lives in the project.
+    fn persist_egui_memory(&self) -> bool {
+        false
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let s = &mut self.state;
@@ -331,6 +398,7 @@ impl eframe::App for EditorApp {
         self.apply_actions(&ctx);
         self.state.undo.end_frame(Self::interacting(&ctx));
         self.scene_file_frame(&ctx);
+        self.save_layout(false);
         if let Some(capture) = &mut self.capture {
             capture.update(&ctx);
         }

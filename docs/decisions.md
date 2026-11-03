@@ -195,3 +195,23 @@ Record of choices made without asking, and why.
     default would be confusing until physics-material assets exist.
 66. **Settings are read when Play starts** (physics world, fixed step). Time Scale and Maximum Allowed Timestep also
     update the running clock immediately; gravity/fixed-step edits apply on the next Play.
+
+## 2026-11-03 — Window layouts
+
+67. **Layouts live in their own `<Project>/Library/Layouts.json`** (current arrangement, its name, named user
+    layouts) instead of a field in `EditorSettings.json`. Dock trees are large and change often; a separate file
+    keeps the recent-scenes file small and lets the two be written independently. It is git-ignored with the rest
+    of `Library/`.
+68. **Saving is change-driven and debounced:** once a second the layout is serialized and written only if the text
+    differs from what is on disk; exit and user-layout edits write immediately. Screen rects are zeroed before
+    serializing (egui recomputes them every frame), so resizing the window doesn't rewrite the file and fresh
+    layouts don't contain infinities that JSON can't store.
+69. **Built-in layouts** approximate the same panel arrangements: 2 by 3 (Scene over Game, then Hierarchy,
+    Project+Console and Inspector columns), 4 Split (2×2 grid of Scene/Game/Hierarchy/Project, Inspector right),
+    Tall (full-height Scene+Game, Hierarchy over Project+Console, Inspector), Wide (Scene+Game on top with
+    Hierarchy | Project+Console below, full-height Inspector). Every built-in contains all six tabs once. User
+    layouts may not reuse a built-in name; saving an existing name replaces it.
+70. **Main window size/position via eframe's `persistence` feature** (stored by eframe in the OS app-data folder,
+    since window placement is per machine, not per project). It restores the maximized flag too, so it works
+    with `with_maximized(true)` on first run. egui's own memory isn't persisted (`persist_egui_memory = false`):
+    editor state belongs in the project.

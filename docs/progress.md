@@ -5,7 +5,7 @@
 ### Done
 - Native window (winit) rendered by wgpu through eframe; Unity-like dark theme, OS UI font + symbol fallback.
 - Dockable tabs (drag, split, float, close) in the Default layout: Hierarchy | Scene+Game | Inspector,
-  Project+Console along the bottom. Window ▸ Layouts ▸ Default and toolbar Layout ▾ restore it.
+  Project+Console along the bottom (see Window layouts below for the other layouts and saving).
 - Menu bar: File, Edit, Assets, GameObject, Component, Window, Help with shortcut hints.
   Unbuilt items log a warning in the Console.
 - Main toolbar: View/Move/Rotate/Scale/Rect/Transform tools (Q W E R T Y), Pivot/Center, Global/Local,
@@ -20,7 +20,6 @@
 
 ### Not matching Unity yet
 - No tab ⋮ menu (Maximize / Add Tab), no double-click-to-maximize.
-- Layouts are not saved between sessions (scenes are).
 - Cut/Copy/Paste not implemented.
 
 ## Step 2 — Scene view with camera movement ✅
@@ -194,3 +193,20 @@
 - Only Physics and Time categories (no Player, Quality, Input, Tags and Layers, Graphics, Audio…).
 - No search field, no Reset in a ⋮ menu, no per-setting undo; scripts can't change `Time.timeScale` yet.
 - No default physics material: friction and bounciness are per collider.
+
+
+## Window layouts ✅
+
+### Done
+- The dock arrangement (including floating windows) is saved per user in `<Project>/Library/Layouts.json`
+  whenever it changes (at most once a second) and on exit, and restored on startup; a missing or corrupt file
+  falls back to the Default layout. During Play Maximized the pre-Play layout is the one saved.
+- Window ▸ Layouts and the toolbar Layout ▾ (which shows the current layout's name): built-in **2 by 3**,
+  **4 Split**, **Default**, **Tall**, **Wide**; saved user layouts; **Save Layout...** (name prompt, replaces a
+  layout with the same name); **Delete Layout ▸**; **Reset All Layouts** (deletes user layouts, back to Default).
+- The main window's size, position and maximized state are remembered between runs (eframe persistence).
+
+### Not matching Unity yet
+- Built-in layouts can't be deleted; user layouts are per project rather than per machine.
+- 4 Split has one Scene view (multiple Scene views aren't supported yet), so it shows Scene, Game, Hierarchy and
+  Project in the grid.
