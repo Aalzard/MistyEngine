@@ -12,12 +12,14 @@ pub mod models;
 pub mod navigation;
 pub mod particles;
 pub mod physics;
+pub mod physics2d;
 pub mod render;
 pub mod render_scene;
 pub mod runtime;
 pub mod scene;
 pub mod scripting;
 pub mod settings;
+pub mod sprites;
 pub mod terrain;
 pub mod ui;
 

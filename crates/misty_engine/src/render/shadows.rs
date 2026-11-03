@@ -266,6 +266,7 @@ mod tests {
             cast_shadows: true,
             receive_shadows: true,
             outline: false,
+            sorting: Default::default(),
         }];
         let lights = [
             light(LightType::Directional),

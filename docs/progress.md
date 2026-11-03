@@ -793,3 +793,49 @@
 - Agents: no auto repath, `updatePosition`/`updateRotation` switches, `Move`, agent `CalculatePath`,
   `nextPosition` setter or `isPathStale`; paths are computed immediately.
 - No `NavMesh.Raycast` / `FindClosestEdge` and no NavMeshPath object (CalculatePath returns a corner list).
+
+## 2D: sprites, Sorting Layers, 2D physics (paused, WIP)
+
+Status: paused at the user's request. Everything below is implemented; `cargo build`, `cargo test --workspace`
+(engine 298, editor 144 + 13 ignored, player 4) and `cargo fmt` passed, and the editor, texture Inspector and
+player were checked in screenshots. Left: re-run `cargo clippy --workspace --all-targets` after the last two
+clippy fixes in `sprite_handles.rs` (a type alias, a removed `.clone()`), then the merge.
+
+
+### Done
+- Texture import settings per image in a `<image>.meta` sidecar: Texture Type Default / Sprite (2D and UI),
+  Sprite Mode Single / Multiple, Pixels Per Unit, Pivot, Filter Mode Point / Bilinear, Wrap Mode, Generate Mip
+  Maps, sliced sprite rects. Textures without a `.meta` behave as before. Selecting an image shows the import
+  Inspector (Revert / Apply, Slice: Grid By Cell Size, preview with the sprite rects outlined).
+- `Sprite Renderer` (sprite, colour, flip X/Y, Draw Mode Simple, Sprites-Default material, Sorting Layer, Order
+  in Layer): unlit alpha-blended two-sided quads in the transparent queue, sorted by Sorting Layer, Order in
+  Layer, then distance. Built-in Square / Circle / Triangle sprites. Project Settings ▸ Sorting Layers.
+- GameObject ▸ 2D Object ▸ Sprite and Sprites ▸ Square / Circle / Triangle; sprite picking (top-most wins),
+  framing, the Rect tool on sprites (resize by scale, drag to move); 2D Scene view (2D toggle) and
+  orthographic cameras.
+- UI Image `sprite` (draws the sprite's rect).
+- 2D physics on rapier2d, separate from 3D: `Rigidbody 2D` (Dynamic / Kinematic / Static, mass, linear and
+  angular drag, gravity scale, collision detection, freeze position / rotation), `Box`, `Circle`, `Capsule`,
+  `Polygon` (points or the sprite rect, concave decomposed) and `Edge Collider 2D` with Is Trigger, Offset and
+  Physics Material 2D (friction, bounciness); layers via the Layer Collision Matrix. Project Settings ▸
+  Physics 2D (gravity, query options). Green collider outlines and Edit Collider handles for Box / Circle.
+- Lua: `OnCollisionEnter2D/Stay2D/Exit2D(collision)`, `OnTriggerEnter2D/Stay2D/Exit2D(other)`, `Rigidbody2D`
+  (`velocity`, `angularVelocity`, `AddForce`, `AddTorque`, `MovePosition`, `MoveRotation`, `bodyType`,
+  `gravityScale`, …), 2D colliders, `SpriteRenderer`, `Physics2D.Raycast/RaycastAll/OverlapCircle(All)/
+  OverlapBox/OverlapPoint`, `Physics2D.gravity`, `Vector2`, `ForceMode2D`.
+- Sample: `Scenes/Platformer2D.scene` (generated pixel-art sprites, tile platforms, coins, score text, camera
+  follow; A/D + Space).
+- Tests: import settings round trips and repairs, PPU sizing and pivots, grid slicing, Multiple-mode lookup,
+  uv rects and flips, sprite draws and sorting, built-in shapes, settings round trip; 2D falling and landing,
+  body types, MovePosition, forces, freeze rotation, collision enter/stay/exit with contact data, triggers,
+  raycasts / overlaps / masks / query settings, every collider shape, bounciness, parent bodies and layers;
+  Lua 2D API; editor Rect tool and collider handles; sample generator check and a headless play.
+
+### Not matching Unity yet
+- No Sprite Editor window (slicing is in the texture Inspector, grid only), no sprite atlases, Sliced/Tiled
+  draw modes, sprite masks, custom sprite materials, sprite shapes, tilemaps or 2D lights.
+- No GUIDs: references are paths, so renaming an image outside the editor breaks its sprites.
+- No Physics Material 2D assets, joints 2D, effectors, composite colliders, auto-fit of new colliders to the
+  sprite, Edit Collider for capsule/polygon/edge, `Rigidbody2D.Sleep`/`IsTouching`, `Physics2D.BoxCast`/
+  `CircleCast`, contact filters, or "Use Full Kinematic Contacts"; Collision2D has a single contact point.
+- Sorting Layers have their own Project Settings page (not Tags and Layers); sprites take fog.

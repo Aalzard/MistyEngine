@@ -132,6 +132,10 @@ fn sync_body(w: &mut World, e: Entity) {
         let (_, rot, pos) = w.scene.world_matrix(e).to_scale_rotation_translation();
         w.physics.teleport(e, pos, rot);
     }
+    if w.physics2d.has_body(e) {
+        let (_, rot, pos) = w.scene.world_matrix(e).to_scale_rotation_translation();
+        w.physics2d.teleport(e, pos, rot);
+    }
 }
 
 fn alive(w: &World, e: Entity) -> Result<()> {
@@ -329,6 +333,7 @@ impl UserData for LGameObject {
                 let layer = layer.min(31);
                 w.scene.game_object_mut(g.0).layer = layer;
                 w.physics.set_layer(g.0, layer);
+                w.physics2d.set_layer(g.0, layer);
                 Ok(())
             })?
         });
@@ -378,8 +383,11 @@ impl UserData for LGameObject {
                             Some(v) => v,
                             None => match super::terrain_api::component(lua, e, &name)? {
                                 Some(v) => v,
-                                None => super::navigation_api::component(lua, e, &name)?
-                                    .unwrap_or(Value::Nil),
+                                None => match super::navigation_api::component(lua, e, &name)? {
+                                    Some(v) => v,
+                                    None => super::physics2d_api::component(lua, e, &name)?
+                                        .unwrap_or(Value::Nil),
+                                },
                             },
                         },
                     },
@@ -681,6 +689,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::render_settings_api::register(lua)?;
     super::terrain_api::register(lua)?;
     super::physics_api::register(lua)?;
+    super::physics2d_api::register(lua)?;
     super::audio_api::register(lua)?;
 
     // Debug / print
@@ -901,6 +910,7 @@ fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<
         w.scene.set_world_position(e, p);
     }
     w.physics.add_subtree(&w.scene, e);
+    w.physics2d.add_subtree(&w.scene, e);
     w.spawned.push(e);
     Ok(e)
 }

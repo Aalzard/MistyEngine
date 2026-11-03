@@ -181,6 +181,14 @@ impl UserData for LImage {
                 c.texture = v.filter(|p| !p.is_empty())
             })
         });
+        f.add_field_method_get("sprite", |lua, i| {
+            get(lua, i.0, |c: &UiImage| c.sprite.clone())
+        });
+        f.add_field_method_set("sprite", |lua, i, v: Option<String>| {
+            set(lua, i.0, |c: &mut UiImage| {
+                c.sprite = v.filter(|p| !p.is_empty())
+            })
+        });
         f.add_field_method_get("gameObject", |_, i| Ok(LGameObject(i.0)));
     }
 }

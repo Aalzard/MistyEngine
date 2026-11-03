@@ -1,0 +1,13 @@
+{
+  "texture_type": "Sprite",
+  "sprite_mode": "Single",
+  "pixels_per_unit": 16.0,
+  "pivot": [
+    0.5,
+    0.5
+  ],
+  "filter_mode": "Point",
+  "wrap_mode": "Clamp",
+  "generate_mip_maps": false,
+  "sprites": []
+}

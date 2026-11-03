@@ -13,7 +13,9 @@ mod particles;
 mod physics_editors;
 mod post_volume;
 mod slots;
+mod sprite_editors;
 mod terrain;
+mod texture_import;
 mod ui_editors;
 
 use egui::{RichText, Ui};
@@ -455,6 +457,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::audio::is_mixer(rel) {
         mixer_inspector::mixer_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::assets::is_texture(rel) {
+        texture_import::texture_asset(ui, state, rel);
         return;
     }
     let name = crate::assets::AssetDatabase::material_name(Some(rel));

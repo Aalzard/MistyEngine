@@ -39,7 +39,8 @@ pub fn icon_objects(scene: &Scene) -> Vec<Entity> {
         .filter(|e| scene.active_in_hierarchy(*e))
         .filter(|e| {
             let w = &scene.world;
-            let has_mesh = w.get::<&MeshFilter>(*e).is_ok_and(|m| m.mesh.is_some());
+            let has_mesh = w.get::<&MeshFilter>(*e).is_ok_and(|m| m.mesh.is_some())
+                || w.get::<&misty_engine::scene::SpriteRenderer>(*e).is_ok();
             let iconic = w.get::<&CameraComponent>(*e).is_ok()
                 || w.get::<&Light>(*e).is_ok()
                 || w.get::<&misty_engine::scene::AudioSource>(*e).is_ok()
@@ -81,8 +82,7 @@ fn mesh_hit(
         .map(|(e, _)| e)
         .filter(|e| scene.active_in_hierarchy(*e) && keep(*e))
         .filter_map(|e| {
-            let mesh = scene.world.get::<&MeshFilter>(e).ok()?.mesh.clone()?;
-            let (min, max) = misty_engine::models::bounds(&mesh)?;
+            let (min, max) = object_bounds(scene, e)?;
             let m = scene.world_matrix(e);
             let inv = m.inverse();
             // Test against the bounds box, re-centred on the origin (flat boxes get a little depth).
@@ -95,7 +95,43 @@ fn mesh_hit(
             Some((e, hit))
         })
         .chain(misty_engine::terrain::raycast(scene, origin, dir).filter(|(e, _)| keep(*e)))
-        .min_by(|a, b| a.1.distance(origin).total_cmp(&b.1.distance(origin)))
+        .min_by(|a, b| {
+            // Sprites on one plane: the one drawn on top wins.
+            let (da, db) = (a.1.distance(origin), b.1.distance(origin));
+            if (da - db).abs() < 1e-3 {
+                sorting(scene, b.0).cmp(&sorting(scene, a.0))
+            } else {
+                da.total_cmp(&db)
+            }
+        })
+}
+
+/// Local bounds of what an object draws: its mesh, else its sprite (as a thin box).
+fn object_bounds(scene: &Scene, e: Entity) -> Option<(Vec3, Vec3)> {
+    let mesh = scene
+        .world
+        .get::<&MeshFilter>(e)
+        .ok()
+        .and_then(|f| f.mesh.clone());
+    match mesh {
+        Some(mesh) => misty_engine::models::bounds(&mesh),
+        None => {
+            let (min, max) = misty_engine::sprites::local_bounds(scene, e)?;
+            Some((min.extend(-0.005), max.extend(0.005)))
+        }
+    }
+}
+
+/// Sorting Layer and Order in Layer of an object's Sprite Renderer (meshes: Default, 0).
+fn sorting(scene: &Scene, e: Entity) -> (i32, i32) {
+    scene
+        .world
+        .get::<&misty_engine::scene::SpriteRenderer>(e)
+        .map(|r| {
+            let layer = misty_engine::sprites::sorting::value(&r.sorting_layer);
+            (layer, r.order_in_layer)
+        })
+        .unwrap_or((0, 0))
 }
 
 /// Surface point under the cursor (Ctrl+Shift surface snapping), ignoring objects `keep` rejects.

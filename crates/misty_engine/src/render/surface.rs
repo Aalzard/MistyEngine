@@ -139,6 +139,14 @@ pub struct ShadowKey {
     pub double_sided: bool,
 }
 
+/// Sorting Layer value (relative to Default) and Order in Layer of a draw. Transparent draws are
+/// sorted by these before distance; 3D meshes stay at Default / 0.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SortingKey {
+    pub layer: i32,
+    pub order: i32,
+}
+
 /// Mesh indices in draw order.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DrawOrder {
@@ -149,8 +157,8 @@ pub struct DrawOrder {
 }
 
 /// Sort meshes like the reference renderer: by render queue, opaque front to back and
-/// transparent back to front. `depth` = distance of a world point from the camera; meshes are
-/// placed by their origin. Ties keep scene order.
+/// transparent by Sorting Layer, Order in Layer, then back to front. `depth` = distance of a
+/// world point from the camera; meshes are placed by their origin. Ties keep scene order.
 pub fn draw_order(meshes: &[MeshDraw], depth: impl Fn(Vec3) -> f32) -> DrawOrder {
     let keyed: Vec<(usize, u32, f32)> = meshes
         .iter()
@@ -163,7 +171,8 @@ pub fn draw_order(meshes: &[MeshDraw], depth: impl Fn(Vec3) -> f32) -> DrawOrder
     let mut opaque: Vec<_> = keyed.iter().filter(|k| k.1 < 3000).copied().collect();
     opaque.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.total_cmp(&b.2)));
     let mut transparent: Vec<_> = keyed.iter().filter(|k| k.1 >= 3000).copied().collect();
-    transparent.sort_by(|a, b| b.2.total_cmp(&a.2));
+    let sorting = |i: usize| meshes[i].sorting;
+    transparent.sort_by(|a, b| sorting(a.0).cmp(&sorting(b.0)).then(b.2.total_cmp(&a.2)));
     DrawOrder {
         opaque: opaque.into_iter().map(|k| k.0).collect(),
         transparent: transparent.into_iter().map(|k| k.0).collect(),
@@ -189,6 +198,7 @@ mod tests {
             cast_shadows: true,
             receive_shadows: true,
             outline: false,
+            sorting: SortingKey::default(),
         }
     }
 
@@ -207,6 +217,23 @@ mod tests {
         let order = draw_order(&meshes, |p| p.z);
         assert_eq!(order.opaque, vec![2, 1, 3], "Geometry before AlphaTest");
         assert_eq!(order.transparent, vec![4, 0, 5]);
+    }
+
+    #[test]
+    fn sorting_layer_then_order_then_distance() {
+        let sorted = |layer, order, z| MeshDraw {
+            sorting: SortingKey { layer, order },
+            ..draw(z, RenderingMode::Fade)
+        };
+        let meshes = [
+            sorted(1, 0, 1.0),  // 0: foreground layer, drawn last
+            sorted(0, 5, 9.0),  // 1: default layer, high order
+            sorted(0, 0, 2.0),  // 2
+            sorted(0, 0, 8.0),  // 3: same key as 2 but farther: first
+            sorted(-1, 9, 0.5), // 4: background layer, drawn first
+        ];
+        let order = draw_order(&meshes, |p| p.z);
+        assert_eq!(order.transparent, vec![4, 3, 2, 1, 0]);
     }
 
     #[test]

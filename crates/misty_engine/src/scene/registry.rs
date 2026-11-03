@@ -8,6 +8,8 @@ use serde::de::DeserializeOwned;
 
 use super::components::*;
 use super::physics_components::*;
+use super::physics2d_components::*;
+use super::sprite_components::SpriteRenderer;
 
 /// A component type the editor and scene files know about.
 pub trait SceneComponent: hecs::Component + Clone + Default + Serialize + DeserializeOwned {
@@ -138,6 +140,34 @@ impl SceneComponent for TerrainCollider {
     const NAME: &'static str = "Terrain Collider";
     const CATEGORY: &'static str = "Physics";
 }
+impl SceneComponent for SpriteRenderer {
+    const NAME: &'static str = "Sprite Renderer";
+    const CATEGORY: &'static str = "Rendering";
+}
+impl SceneComponent for Rigidbody2D {
+    const NAME: &'static str = "Rigidbody 2D";
+    const CATEGORY: &'static str = "Physics 2D";
+}
+impl SceneComponent for BoxCollider2D {
+    const NAME: &'static str = "Box Collider 2D";
+    const CATEGORY: &'static str = "Physics 2D";
+}
+impl SceneComponent for CircleCollider2D {
+    const NAME: &'static str = "Circle Collider 2D";
+    const CATEGORY: &'static str = "Physics 2D";
+}
+impl SceneComponent for CapsuleCollider2D {
+    const NAME: &'static str = "Capsule Collider 2D";
+    const CATEGORY: &'static str = "Physics 2D";
+}
+impl SceneComponent for PolygonCollider2D {
+    const NAME: &'static str = "Polygon Collider 2D";
+    const CATEGORY: &'static str = "Physics 2D";
+}
+impl SceneComponent for EdgeCollider2D {
+    const NAME: &'static str = "Edge Collider 2D";
+    const CATEGORY: &'static str = "Physics 2D";
+}
 
 /// Type-erased operations for one component type.
 pub struct ComponentInfo {
@@ -225,6 +255,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::PostProcessVolume>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
+            ComponentInfo::of::<SpriteRenderer>(),
             ComponentInfo::of::<Rigidbody>(),
             ComponentInfo::of::<BoxCollider>(),
             ComponentInfo::of::<SphereCollider>(),
@@ -234,6 +265,12 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<FixedJoint>(),
             ComponentInfo::of::<HingeJoint>(),
             ComponentInfo::of::<SpringJoint>(),
+            ComponentInfo::of::<Rigidbody2D>(),
+            ComponentInfo::of::<BoxCollider2D>(),
+            ComponentInfo::of::<CircleCollider2D>(),
+            ComponentInfo::of::<CapsuleCollider2D>(),
+            ComponentInfo::of::<PolygonCollider2D>(),
+            ComponentInfo::of::<EdgeCollider2D>(),
             ComponentInfo::of::<AudioSource>(),
             ComponentInfo::of::<AudioListener>(),
             ComponentInfo::of::<super::AudioReverbZone>(),

@@ -76,6 +76,10 @@ pub fn apply_env(
     {
         crate::layout::focus_or_open(dock, tab);
     }
+    // `MISTY_2D=1` switches the Scene view to 2D (looking down +Z at the XY plane).
+    if std::env::var_os("MISTY_2D").is_some() {
+        s.scene_view.is_2d = true;
+    }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {
         crate::play::start(s);

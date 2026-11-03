@@ -37,6 +37,8 @@ impl Game {
             logs.push((LogKind::Warning, format!("ProjectSettings.json: {e}")));
             ProjectSettings::default()
         });
+        // Sorting Layers are read by the renderer.
+        settings.apply_globals();
         let build = BuildSettings::load(root).map_err(|e| format!("BuildSettings.json: {e}"))?;
         if build.enabled().next().is_none() {
             return Err("Build Settings has no scenes: add one in File ▸ Build Settings…".into());

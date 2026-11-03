@@ -203,6 +203,10 @@ pub struct UiImage {
     pub texture: Option<String>,
     /// Blocks and receives clicks.
     pub raycast_target: bool,
+    /// Sprite reference (see `crate::sprites`); when set it replaces `texture` and only its rect
+    /// is drawn. Left out of files when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sprite: Option<String>,
 }
 
 impl Default for UiImage {
@@ -212,6 +216,7 @@ impl Default for UiImage {
             color: [1.0; 4],
             texture: None,
             raycast_target: true,
+            sprite: None,
         }
     }
 }

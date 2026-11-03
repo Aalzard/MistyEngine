@@ -38,8 +38,8 @@ pub fn renderer_material(
     }
 }
 
-/// Visible meshes, one draw per Materials element; `outline(e)` = draw the selection outline
-/// around `e`.
+/// Visible meshes, one draw per Materials element, then Sprite Renderers; `outline(e)` = draw the
+/// selection outline around `e`.
 pub fn mesh_draws(
     scene: &Scene,
     materials: &dyn MaterialSource,
@@ -71,9 +71,11 @@ pub fn mesh_draws(
                 receive_shadows: r.receive_shadows,
                 // The outline mask needs each mesh once.
                 outline: outline && i == 0,
+                sorting: Default::default(),
             });
         }
     }
+    crate::sprites::draws(scene, &outline, &mut out);
     out
 }
 

@@ -1,0 +1,4068 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Camera": {
+          "background": [
+            0.42,
+            0.72,
+            0.95,
+            1.0
+          ],
+          "clear_flags": "SolidColor",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": true,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/CameraFollow2D.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -5.0,
+            1.5,
+            -10.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sun",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            0.93,
+            0.55,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -10,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            7.0,
+            6.0,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.5,
+            2.5,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hill 1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.55,
+            0.78,
+            0.45,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -10,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -4.0,
+            -1.5,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            9.0,
+            9.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hill 2",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            0.48,
+            0.7,
+            0.4,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": -10,
+          "sorting_layer": "Default",
+          "sprite": "Builtin/Circle.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            6.0,
+            -2.5,
+            5.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            11.0,
+            11.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": false,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            22.0,
+            2.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Box Collider 2D"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Ground",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.5,
+            -1.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 0,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -10.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 1,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -9.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 2,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -8.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 3,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -7.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 4,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -6.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 5,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -5.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 6,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -4.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 7,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -3.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 8,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -2.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 9,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 10,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 11,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 12,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 13,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            2.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 14,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            3.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 15,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            4.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 16,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            5.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 17,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            6.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 18,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            7.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 19,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            8.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 20,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            9.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 21,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            10.5,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 0,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -10.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 1,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -9.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 2,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -8.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 3,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -7.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 4,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -6.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 5,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -5.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 6,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -4.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 7,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -3.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 8,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -2.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 9,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 10,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 11,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 12,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 13,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            2.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 14,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            3.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 15,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            4.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 16,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            5.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 17,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            6.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 18,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            7.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 19,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            8.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 20,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            9.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 21,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            10.5,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": false,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            1.0,
+            4.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Box Collider 2D"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Wall",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -9.0,
+            2.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 0,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 49
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 0,1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 49
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 0,2",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 49
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 0,3",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_1"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -1.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 49
+    },
+    {
+      "components": {
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": false,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            4.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Box Collider 2D"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Platform A",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            5.5,
+            2.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 0,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.5,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 54
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 1,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.5,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 54
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 2,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.5,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 54
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 3,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.5,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 54
+    },
+    {
+      "components": {
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": false,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            3.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Box Collider 2D"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Platform B",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            10.0,
+            4.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 0,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 59
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 1,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 59
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tile 2,0",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 0,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Tiles.png#Tiles_0"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 59
+    },
+    {
+      "components": {
+        "Circle Collider 2D": {
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "radius": 0.35
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Circle Collider 2D"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Coin 1",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 1,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Coin.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -3.0,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Circle Collider 2D": {
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "radius": 0.35
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Circle Collider 2D"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Coin 2",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 1,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Coin.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -2.0,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Circle Collider 2D": {
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "radius": 0.35
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Circle Collider 2D"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Coin 3",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 1,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Coin.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.0,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Circle Collider 2D": {
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "radius": 0.35
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Circle Collider 2D"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Coin 4",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 1,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Coin.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            5.5,
+            3.1,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Circle Collider 2D": {
+          "enabled": true,
+          "is_trigger": true,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.4
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "radius": 0.35
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Circle Collider 2D"
+          ],
+          "is_static": false,
+          "layer": 2,
+          "name": "Coin 5",
+          "tag": "Untagged"
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 1,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Coin.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            10.0,
+            5.1,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider 2D": {
+          "edge_radius": 0.0,
+          "enabled": true,
+          "is_trigger": false,
+          "material": {
+            "bounciness": 0.0,
+            "friction": 0.0
+          },
+          "offset": [
+            0.0,
+            0.0
+          ],
+          "size": [
+            0.7,
+            0.95
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Sprite Renderer",
+            "Rigidbody 2D",
+            "Box Collider 2D",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 5,
+          "name": "Player",
+          "tag": "Untagged"
+        },
+        "Rigidbody 2D": {
+          "angular_drag": 0.05,
+          "body_type": "Dynamic",
+          "collision_detection": "Discrete",
+          "freeze_position": [
+            false,
+            false
+          ],
+          "freeze_rotation": true,
+          "gravity_scale": 3.0,
+          "linear_drag": 0.0,
+          "mass": 1.0
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/PlayerController2D.lua"
+            }
+          ]
+        },
+        "Sprite Renderer": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "draw_mode": "Simple",
+          "enabled": true,
+          "flip_x": false,
+          "flip_y": false,
+          "order_in_layer": 5,
+          "sorting_layer": "Default",
+          "sprite": "Assets/Sprites/Player.png"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -6.0,
+            0.5,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "render_mode": "ScreenSpaceOverlay",
+          "sort_order": 0
+        },
+        "Canvas Scaler": {
+          "enabled": true,
+          "match_width_or_height": 0.0,
+          "mode": "ScaleWithScreenSize",
+          "reference_resolution": [
+            800.0,
+            600.0
+          ],
+          "scale_factor": 1.0
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Canvas",
+            "Canvas Scaler"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Canvas",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            1.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            0.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            0.0,
+            0.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Score Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            20.0,
+            -16.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            300.0,
+            44.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 30.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "Coins: 0",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 69
+    },
+    {
+      "components": {
+        "Event System": {
+          "drag_threshold": 10.0,
+          "enabled": true,
+          "first_selected": null,
+          "send_navigation_events": true
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Event System"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "EventSystem",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

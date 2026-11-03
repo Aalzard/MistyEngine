@@ -14,15 +14,25 @@ use crate::widgets::vec3_row;
 pub enum Category {
     #[default]
     Physics,
+    /// Physics 2D and Sorting Layers pages live in `project_settings_2d`.
+    Physics2D,
+    SortingLayers,
     Time,
 }
 
 impl Category {
-    pub const ALL: [Category; 2] = [Category::Physics, Category::Time];
+    pub const ALL: [Category; 4] = [
+        Category::Physics,
+        Category::Physics2D,
+        Category::SortingLayers,
+        Category::Time,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
             Category::Physics => "Physics",
+            Category::Physics2D => "Physics 2D",
+            Category::SortingLayers => "Sorting Layers",
             Category::Time => "Time",
         }
     }
@@ -45,11 +55,13 @@ pub fn load(s: &mut EditorState) {
                 .warn(format!("ProjectSettings.json: {e}. Using defaults."));
         }
     }
+    s.project_settings.apply_globals();
 }
 
 /// Clamp, save, and apply what can change live (time scale while playing).
 pub fn changed(s: &mut EditorState) {
     s.project_settings.sanitize();
+    s.project_settings.apply_globals();
     if let Err(e) = s.project_settings.save(&s.project.root) {
         s.console.log(
             crate::console::LogLevel::Error,
@@ -92,6 +104,12 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
             ui.add_space(4.0);
             let edited = match category {
                 Category::Physics => physics(ui, &mut s.project_settings),
+                Category::Physics2D => {
+                    crate::project_settings_2d::physics2d(ui, &mut s.project_settings)
+                }
+                Category::SortingLayers => {
+                    crate::project_settings_2d::sorting_layers(ui, &mut s.project_settings)
+                }
                 Category::Time => time(ui, &mut s.project_settings),
             };
             if edited {

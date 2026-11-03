@@ -437,6 +437,11 @@ fn image(ui: &mut Ui, img: &mut UiImage, textures: &[String]) -> bool {
         ui.label("Source Image");
         ch |= super::slots::texture_slot(ui, "ui_image_tex", &mut img.texture, textures);
         ui.end_row();
+        // A sprite replaces the texture and draws only its rect.
+        ui.label("Sprite");
+        let sprites = super::sprite_editors::sprite_choices_from(textures);
+        ch |= super::sprite_editors::sprite_slot(ui, "ui_image_sprite", &mut img.sprite, &sprites);
+        ui.end_row();
         ui.label("Color");
         ch |= color(ui, &mut img.color);
         ui.end_row();

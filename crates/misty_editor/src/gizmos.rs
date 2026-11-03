@@ -5,6 +5,8 @@
 mod nav;
 #[path = "physics_gizmos.rs"]
 mod physics;
+#[path = "physics2d_gizmos.rs"]
+mod physics2d;
 
 use glam::{Mat4, Vec3};
 use misty_engine::models;
@@ -286,6 +288,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
             lines.particle_shape(&m, &ps.shape);
         }
         lines.colliders(scene, e);
+        lines.colliders_2d(scene, e);
         lines.character(scene, e);
         lines.joints(scene, e);
         lines.nav_shapes(scene, e);
