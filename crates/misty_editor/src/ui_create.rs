@@ -10,9 +10,6 @@ use misty_engine::ui::presets;
 
 use crate::state::EditorState;
 
-/// Index of the "UI" layer in the Inspector's layer list.
-pub const UI_LAYER: u8 = presets::UI_LAYER;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UiElement {
     Text,
@@ -188,7 +185,7 @@ mod tests {
         let label = s.scene.children(button)[0];
         assert_eq!(s.scene.world.get::<&UiText>(label).unwrap().text, "Button");
         assert_eq!(s.selection.active(), Some(button));
-        assert_eq!(s.scene.game_object(button).layer, UI_LAYER);
+        assert_eq!(s.scene.game_object(button).layer, presets::UI_LAYER);
         let es = s.scene.find_by_name("EventSystem").expect("event system");
         assert_eq!(s.scene.parent(es), None);
 
@@ -236,21 +233,28 @@ mod tests {
             .map(|c| s.scene.name(c))
             .collect();
         assert_eq!(names, ["Background", "Fill Area", "Handle Slide Area"]);
-        let sl = s.scene.world.get::<&UiSlider>(slider).unwrap().clone();
+        let sl = (*s.scene.world.get::<&UiSlider>(slider).unwrap()).clone();
         let fill = sl.fill_rect.unwrap();
         assert_eq!(s.scene.name(fill), "Fill");
         // Duplicating points the copy at its own parts.
         let copy = s.scene.duplicate(slider);
-        let c = s.scene.world.get::<&UiSlider>(copy).unwrap().clone();
+        let c = (*s.scene.world.get::<&UiSlider>(copy).unwrap()).clone();
         assert_ne!(c.fill_rect, Some(fill));
         assert!(s.scene.is_ancestor(copy, c.fill_rect.unwrap()));
-        assert!(s.scene.is_ancestor(copy, c.selectable.target_graphic.unwrap()));
+        assert!(
+            s.scene
+                .is_ancestor(copy, c.selectable.target_graphic.unwrap())
+        );
 
         create_ui(&mut s, UiElement::Toggle, None);
         let t = s.selection.active().unwrap();
         let check = s.scene.world.get::<&UiToggle>(t).unwrap().graphic.unwrap();
         assert_eq!(s.scene.name(check), "Checkmark");
-        for el in [UiElement::Dropdown, UiElement::InputField, UiElement::ScrollView] {
+        for el in [
+            UiElement::Dropdown,
+            UiElement::InputField,
+            UiElement::ScrollView,
+        ] {
             create_ui(&mut s, el, None);
             let e = s.selection.active().unwrap();
             assert_eq!(s.scene.name(e), el.name());

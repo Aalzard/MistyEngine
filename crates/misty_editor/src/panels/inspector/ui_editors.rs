@@ -13,14 +13,33 @@ use misty_engine::ui::layout::{AnchorAxis, apply_anchor_preset};
 use crate::state::EditorState;
 use crate::theme;
 
-/// Names of the UI components handled here.
-pub const NAMES: [&str; 6] = [
+#[path = "ui_widget_editors.rs"]
+mod widgets;
+
+/// Names of the UI components handled here (widgets and layout in `ui_widget_editors.rs`).
+pub const NAMES: &[&str] = &[
     "Rect Transform",
     "Canvas",
     "Canvas Scaler",
     "Image",
     "Text",
     "Button",
+    "Raw Image",
+    "Toggle",
+    "Toggle Group",
+    "Slider",
+    "Scrollbar",
+    "Input Field",
+    "Dropdown",
+    "Scroll Rect",
+    "Mask",
+    "Rect Mask 2D",
+    "Horizontal Layout Group",
+    "Vertical Layout Group",
+    "Grid Layout Group",
+    "Content Size Fitter",
+    "Layout Element",
+    "Event System",
 ];
 
 pub fn icon(name: &str) -> Option<&'static str> {
@@ -31,7 +50,7 @@ pub fn icon(name: &str) -> Option<&'static str> {
         "Image" => "🖼",
         "Text" => "T",
         "Button" => "▣",
-        _ => return None,
+        other => return widgets::icon(other),
     })
 }
 
@@ -43,7 +62,7 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
         "Canvas Scaler" => w.get::<&CanvasScaler>(e).ok().map(|c| c.enabled),
         "Image" => w.get::<&UiImage>(e).ok().map(|c| c.enabled),
         "Text" => w.get::<&UiText>(e).ok().map(|c| c.enabled),
-        _ => None,
+        other => widgets::enabled_flag(state, e, other),
     }
 }
 
@@ -54,7 +73,7 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
         "Canvas Scaler" => w.get::<&mut CanvasScaler>(e).map(|mut c| c.enabled = on),
         "Image" => w.get::<&mut UiImage>(e).map(|mut c| c.enabled = on),
         "Text" => w.get::<&mut UiText>(e).map(|mut c| c.enabled = on),
-        _ => return,
+        other => return widgets::set_enabled(state, e, other, on),
     };
 }
 
@@ -78,12 +97,12 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
                 .collect();
             edit_copy::<UiButton>(state, e, |c| button(ui, c, &objects))
         }
-        _ => false,
+        other => widgets::edit(ui, state, e, other),
     }
 }
 
 /// Edit a copy of `T` with `f` and store it if anything changed.
-fn edit_copy<T: SceneComponent>(
+pub(super) fn edit_copy<T: SceneComponent>(
     state: &mut EditorState,
     e: Entity,
     f: impl FnOnce(&mut T) -> bool,
@@ -107,7 +126,7 @@ fn with<T: SceneComponent>(
     edit_copy(state, e, |c| draw(ui, c))
 }
 
-fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
+pub(super) fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     Grid::new(id)
         .num_columns(2)
         .spacing([10.0, 4.0])
@@ -121,7 +140,7 @@ fn drag(ui: &mut Ui, v: &mut f32, speed: f64) -> bool {
         .changed()
 }
 
-fn vec2(ui: &mut Ui, v: &mut Vec2, speed: f64) -> bool {
+pub(super) fn vec2(ui: &mut Ui, v: &mut Vec2, speed: f64) -> bool {
     ui.horizontal(|ui| {
         let mut ch = false;
         ui.label("X");
@@ -134,7 +153,7 @@ fn vec2(ui: &mut Ui, v: &mut Vec2, speed: f64) -> bool {
 }
 
 /// sRGB + alpha colour picker.
-fn color(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
+pub(super) fn color(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
     let mut rgba = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
     let changed = ui.color_edit_button_srgba_unmultiplied(&mut rgba).changed();
     if changed {
@@ -165,6 +184,9 @@ fn rect_transform(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     if driven {
         ui.label(RichText::new("Some values driven by Canvas.").color(theme::TEXT_DIM));
         return false;
+    }
+    if let Some(by) = widgets::driven_by(state, e) {
+        ui.label(RichText::new(format!("Some values driven by {by}.")).color(theme::TEXT_DIM));
     }
     let parent = parent_size(state, e);
     let id = ui.make_persistent_id(("anchor_presets", e));
@@ -481,7 +503,7 @@ fn text(ui: &mut Ui, t: &mut UiText) -> bool {
 }
 
 /// Horizontal (left/center/right) and vertical (upper/middle/lower) toggle rows.
-fn alignment(ui: &mut Ui, a: &mut TextAnchor) -> bool {
+pub(super) fn alignment(ui: &mut Ui, a: &mut TextAnchor) -> bool {
     let (col, row) = a.cell();
     let mut ch = false;
     ui.horizontal(|ui| {
@@ -566,7 +588,7 @@ fn button(ui: &mut Ui, b: &mut UiButton, objects: &[(Entity, String)]) -> bool {
 }
 
 /// Scene object picker for an On Click target.
-fn target_field(
+pub(super) fn target_field(
     ui: &mut Ui,
     i: usize,
     call: &mut ButtonCall,

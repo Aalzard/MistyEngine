@@ -39,6 +39,8 @@ mod sample_particles;
 mod sample_physics;
 #[cfg(test)]
 mod sample_ui;
+#[cfg(test)]
+mod sample_ui_widgets;
 mod scene_camera;
 mod scene_files;
 mod selection;
