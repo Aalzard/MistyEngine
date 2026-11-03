@@ -499,6 +499,8 @@ impl eframe::App for EditorApp {
         }
         animation::preview::post_frame(&mut self.state, Self::interacting(&ctx));
         crate::terrain_tools::end_frame(&mut self.state, Self::interacting(&ctx));
+        // A nav mesh bake finishing while its window is hidden.
+        crate::panels::navigation::poll(&mut self.state);
         self.state.undo.end_frame(Self::interacting(&ctx));
         self.scene_file_frame(&ctx);
         self.save_layout(false);

@@ -37,6 +37,7 @@ pub fn icon(name: &str) -> &'static str {
         other => super::ui_editors::icon(other)
             .or_else(|| super::physics_editors::icon(other))
             .or_else(|| super::terrain::icon(other))
+            .or_else(|| super::nav_editors::icon(other))
             .unwrap_or("▣"),
     }
 }
@@ -49,6 +50,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::terrain::NAMES.contains(&name) {
         return super::terrain::enabled_flag(state, e, name);
+    }
+    if super::nav_editors::NAMES.contains(&name) {
+        return super::nav_editors::enabled_flag(state, e, name);
     }
     match name {
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
@@ -76,6 +80,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::terrain::NAMES.contains(&name) {
         return super::terrain::set_enabled(state, e, name, on);
+    }
+    if super::nav_editors::NAMES.contains(&name) {
+        return super::nav_editors::set_enabled(state, e, name, on);
     }
     let w = &mut state.scene.world;
     match name {
@@ -153,6 +160,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         terrain if super::terrain::NAMES.contains(&terrain) => {
             super::terrain::edit(ui, state, e, terrain)
+        }
+        nav if super::nav_editors::NAMES.contains(&nav) => {
+            super::nav_editors::edit(ui, state, e, nav)
         }
         _ => {
             ui.weak("No editor for this component.");

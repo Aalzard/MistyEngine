@@ -5,6 +5,7 @@ mod anim;
 mod animator;
 mod editors;
 mod mixed;
+mod nav_editors;
 mod particles;
 mod physics_editors;
 mod post_volume;

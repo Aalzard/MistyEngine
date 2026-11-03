@@ -1,6 +1,8 @@
 //! Scene-view gizmo lines: camera frustum, light ranges, particle shapes and mesh wireframes.
-//! Joint and Character Controller gizmos are in `physics_gizmos`.
+//! Joint and Character Controller gizmos are in `physics_gizmos`, navigation ones in `nav_gizmos`.
 
+#[path = "nav_gizmos.rs"]
+mod nav;
 #[path = "physics_gizmos.rs"]
 mod physics;
 
@@ -16,6 +18,8 @@ use misty_engine::scene::{
 };
 
 use crate::selection::Selection;
+
+pub use nav::nav_overlay;
 
 const COLLIDER: [f32; 4] = [0.57, 0.96, 0.55, 0.9];
 /// Wireframe draw-mode colour (dark lines).
@@ -276,6 +280,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.colliders(scene, e);
         lines.character(scene, e);
         lines.joints(scene, e);
+        lines.nav_shapes(scene, e);
     }
     lines
 }
