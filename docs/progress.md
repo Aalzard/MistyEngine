@@ -971,3 +971,42 @@ clippy fixes in `sprite_handles.rs` (a type alias, a removed `.clone()`), then t
   sprite, Edit Collider for capsule/polygon/edge, `Rigidbody2D.Sleep`/`IsTouching`, `Physics2D.BoxCast`/
   `CircleCast`, contact filters, or "Use Full Kinematic Contacts"; Collision2D has a single contact point.
 - Sorting Layers have their own Project Settings page (not Tags and Layers); sprites take fog.
+
+## Reflection probes with automatic placement ✅
+
+`cargo test --workspace`: engine 338 (+1 ignored), editor 206 (+16 ignored), player 4; clippy and fmt clean.
+Screenshots: `docs/screenshots/round8/probes_*.png` (before/after Game view, Scene view, debug view, Lighting).
+
+### Done
+- `Reflection Probe` component (GameObject ▸ Light ▸ Reflection Probe): Baked / Realtime (refresh every N
+  frames or on demand, time sliced one face per frame), importance, intensity, box projection, blend distance,
+  box size / offset, resolution 64–512, near / far clip, clear flags Skybox / Solid Color. Inspector with Bake,
+  Refresh Now and Edit Bounding Volume (face handles in the Scene view).
+- Baking with the engine's renderer (six HDR faces), optional second bounce, GGX-prefiltered roughness chain
+  (filtered importance sampling) and SH9 diffuse; saved as compressed half-float `ReflectionProbe-N.probe`
+  next to the scene and loaded in the editor and the player.
+- Shading: per-draw lists of up to four probes, per-pixel blend by importance / box size / blend distance, box
+  projection, roughness mip for specular with a split-sum BRDF LUT (plus multiple-scattering energy), probe
+  SH for diffuse ambient; sky fallback unchanged where no probe covers a pixel (scenes without probes render
+  as before).
+- Automatic placement (Lighting ▸ Scene ▸ Generate Probes, GameObject ▸ Light ▸ Generate Reflection Probes):
+  floors found by raycasts over the renderer bounds, probes 1.5 m above them, solids skipped, boxes fitted to
+  walls / floor / ceiling with median ray fans, rooms and open areas merged; placed under an undoable
+  "Reflection Probes" group (settings: spacing, height, merge, resolution, second bounce), then baked with a
+  progress bar. Realtime probes update in the editor and the player.
+- Gizmos: chrome sphere per probe, box + blend box for the selection, Scene view draw mode "Reflection Probes".
+- Sample: `Scenes/ReflectionsDemo.scene` (coloured room with a doorway, chrome / gold / copper spheres, glossy
+  tiles, outdoor lawn and chrome ball; 10 generated probes, baked data committed).
+- Tests: cube face math, SH projection vs brute force, prefilter energy / blur, BRDF LUT values, probe file
+  round trip, BVH, placement (probes out of walls and the pillar, boxes fit the test room, merging,
+  determinism), per-draw list order, GPU capture orientation, a chrome sphere in a red room reflecting red,
+  Lighting window Generate + undo, sample generator check and a headless render of the demo with its probes.
+
+### Not matching HDRP yet
+- One box per probe (influence = projection box, axis-aligned); no sphere shape, separate proxy volume,
+  per-face blend distances, normal-direction blend or oriented boxes.
+- Prefiltering and SH run on the CPU (fine for bakes, a few frames of latency for realtime probes); no GPU
+  convolution, no probe atlas compression (BC6H), no planar reflections or screen-space reflections.
+- No light probes / APV: diffuse comes from the reflection probes' SH only (no per-object light probe
+  interpolation); probes capture every active renderer, not only Static ones.
+- Specular occlusion is just the material's occlusion; no horizon fade or bent normals.
