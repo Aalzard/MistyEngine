@@ -106,8 +106,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         }
     }
 
-    // Drop a material from the Project window onto an object.
-    if let Some(payload) = response.dnd_release_payload::<AssetPayload>()
+    // Drop a prefab into the view (instantiated at the pivot) or a material onto an object.
+    let payload = response.dnd_release_payload::<AssetPayload>();
+    if let Some(p) = payload.as_ref().filter(|p| p.0.ends_with(".prefab")) {
+        state.push(crate::actions::Action::InstantiatePrefab {
+            path: p.0.clone(),
+            parent: None,
+        });
+    } else if let Some(payload) = payload
         && let Some(at) = ui.input(|i| i.pointer.hover_pos())
         && let Some(e) = picking::pick(&state.scene, &camera, rect, at)
     {

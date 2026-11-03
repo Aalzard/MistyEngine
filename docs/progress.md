@@ -157,7 +157,7 @@
 - Samples: Rotator.lua, PlayerController.lua.
 
 ### Not matching Unity yet
-- Lua instead of C#; no coroutines, Instantiate/prefabs, raycasts, GetComponent for scripts or other components.
+- Lua instead of C#; no coroutines, raycasts, GetComponent for scripts or other components.
 - No script execution order settings; no "Edit Script" opening at the error line.
 - Hot reload only applies in Edit mode.
 
@@ -174,7 +174,7 @@
 - Sample project ships `Assets/Scenes/SampleScene.scene` (spinning cube, rollable player, crate stack, lights).
 
 ### Not matching Unity yet
-- One scene at a time (no additive multi-scene editing); no prefabs; no Build Settings scene list.
+- One scene at a time (no additive multi-scene editing); no Build Settings scene list.
 - Asset references are paths, so moving/renaming an asset outside the editor breaks references (no GUIDs/.meta yet).
 - Window layout isn't persisted.
 
@@ -210,3 +210,33 @@
 - Built-in layouts can't be deleted; user layouts are per project rather than per machine.
 - 4 Split has one Scene view (multiple Scene views aren't supported yet), so it shows Scene, Game, Hierarchy and
   Project in the grid.
+
+## Prefabs ✅
+
+### Done
+- `.prefab` assets (same readable JSON as `.scene`, exactly one root object).
+- Drag a Hierarchy row onto the Project window → `Name.prefab` in the current folder (numbered if taken); the
+  object becomes an instance of it.
+- Drag a `.prefab` into the Scene view (placed at the Scene view pivot) or the Hierarchy (empty space = root at the
+  pivot, onto a row = child of that row) → new instance; undoable.
+- Instances: blue names in the Hierarchy (root and children), blue cube icon on the root; the link is saved in
+  scenes.
+- Inspector "Prefab" row on instance roots: **Select** (shows the asset in the Project window and Inspector),
+  **Revert** and **Apply All** (enabled when the instance differs from the asset). Apply All writes the asset and
+  refreshes the other instances in the open scene.
+- Hierarchy context menu ▸ Prefab ▸ Select Asset / Unpack Prefab (undoable).
+- Project window: blue prefab icon; selecting a prefab shows a read-only summary (object tree, root components).
+- Scripting: `Instantiate(prefabPath or gameObject [, position])` creates "Name(Clone)" with physics bodies,
+  colliders and scripts (`Awake` runs right after the calling callback).
+
+### Not matching Unity yet
+- No Prefab Mode (double-click a prefab just logs a hint), no prefab variants, no nested-prefab tracking (a linked
+  child keeps its own link but isn't refreshed with its asset).
+- Overrides are not tracked per property: there is no Overrides dropdown, no bold override labels and no
+  per-component Apply/Revert. Apply All replaces the other instances with the asset, so their own overrides are
+  lost (Unity keeps them); Revert / Apply All give the instance's objects new ids.
+- Instances don't follow edits made to the `.prefab` file outside the editor until reverted.
+- Missing prefab assets are only shown in the Inspector ("Missing: Name"), not as red Hierarchy rows.
+- Creating a prefab never overwrites an existing file (Unity asks to Replace); dragging an instance asks nothing
+  about Original vs Variant.
+- Objects added to an instance are blue like the rest (no "+" badge); `Instantiate` doesn't take a rotation or parent.

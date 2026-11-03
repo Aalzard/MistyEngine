@@ -25,12 +25,12 @@ struct SceneFile {
     objects: Vec<ObjectEntry>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct ObjectEntry {
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub(super) struct ObjectEntry {
     /// Index of the parent in `objects` (always earlier in the list).
-    parent: Option<usize>,
+    pub parent: Option<usize>,
     /// Component name → its fields.
-    components: BTreeMap<String, serde_json::Value>,
+    pub components: BTreeMap<String, serde_json::Value>,
 }
 
 /// Problems found while loading that didn't stop the load.
@@ -56,18 +56,44 @@ fn tidy_numbers(v: &mut serde_json::Value) {
     }
 }
 
+/// Pretty JSON with tidy numbers (shared by scenes and prefabs).
+pub(super) fn write_json(objects: Vec<ObjectEntry>) -> String {
+    let mut value = serde_json::to_value(SceneFile {
+        version: VERSION,
+        objects,
+    })
+    .expect("scene data serialises");
+    tidy_numbers(&mut value);
+    serde_json::to_string_pretty(&value).expect("scene data serialises")
+}
+
+/// Parse the object list and check the format version.
+pub(super) fn read_json(text: &str, what: &str) -> Result<Vec<ObjectEntry>, String> {
+    let file: SceneFile =
+        serde_json::from_str(text).map_err(|e| format!("invalid {what} file: {e}"))?;
+    if file.version > VERSION {
+        return Err(format!(
+            "{what} was saved by a newer version (format {}, this editor reads {VERSION})",
+            file.version
+        ));
+    }
+    Ok(file.objects)
+}
+
 impl Scene {
-    /// Serialise to the `.scene` JSON text.
-    pub fn to_json(&self) -> String {
-        let order = self.walk();
-        let index: BTreeMap<Entity, usize> = order
-            .iter()
-            .enumerate()
-            .map(|(i, (e, _))| (*e, i))
+    /// Object entries for every scene object, or only `root` and its children.
+    pub(super) fn entries(&self, root: Option<Entity>) -> Vec<ObjectEntry> {
+        let order: Vec<Entity> = self
+            .walk()
+            .into_iter()
+            .map(|(e, _)| e)
+            .filter(|e| root.is_none_or(|r| self.is_ancestor(r, *e)))
             .collect();
-        let objects = order
+        let index: BTreeMap<Entity, usize> =
+            order.iter().enumerate().map(|(i, e)| (*e, i)).collect();
+        let mut objects: Vec<ObjectEntry> = order
             .iter()
-            .map(|(e, _)| ObjectEntry {
+            .map(|e| ObjectEntry {
                 parent: self.parent(*e).and_then(|p| index.get(&p).copied()),
                 components: registry::components()
                     .iter()
@@ -78,34 +104,27 @@ impl Scene {
                     .collect(),
             })
             .collect();
-        let mut value = serde_json::to_value(SceneFile {
-            version: VERSION,
-            objects,
-        })
-        .expect("scene data serialises");
-        tidy_numbers(&mut value);
-        serde_json::to_string_pretty(&value).expect("scene data serialises")
+        // Same numbers as a saved file, so entries can be compared.
+        for o in &mut objects {
+            o.components.values_mut().for_each(tidy_numbers);
+        }
+        objects
     }
 
-    /// Parse `.scene` JSON. Unknown components are skipped with a warning.
-    pub fn from_json(name: &str, text: &str) -> Result<(Scene, LoadReport), String> {
-        let file: SceneFile =
-            serde_json::from_str(text).map_err(|e| format!("invalid scene file: {e}"))?;
-        if file.version > VERSION {
-            return Err(format!(
-                "scene was saved by a newer version (format {}, this editor reads {VERSION})",
-                file.version
-            ));
-        }
-        let mut scene = Scene::new(name);
-        let mut report = LoadReport::default();
-        let mut entities: Vec<Entity> = Vec::with_capacity(file.objects.len());
-        for (i, obj) in file.objects.into_iter().enumerate() {
-            let e = scene.world.spawn((Node::default(),));
+    /// Create objects from entries; top-level ones go under `parent`. Returns them in order.
+    pub(super) fn spawn_entries(
+        &mut self,
+        objects: Vec<ObjectEntry>,
+        parent: Option<Entity>,
+        report: &mut LoadReport,
+    ) -> Vec<Entity> {
+        let mut entities: Vec<Entity> = Vec::with_capacity(objects.len());
+        for (i, obj) in objects.into_iter().enumerate() {
+            let e = self.world.spawn((Node::default(),));
             for (comp, value) in obj.components {
                 match registry::find(&comp) {
                     Some(info) if info.name != Node::NAME => {
-                        if let Err(err) = (info.from_json)(&mut scene.world, e, value) {
+                        if let Err(err) = (info.from_json)(&mut self.world, e, value) {
                             report.warnings.push(format!("object {i}: {comp}: {err}"));
                         }
                     }
@@ -117,22 +136,36 @@ impl Scene {
             // Every object needs a GameObject header and a Transform.
             for required in ["GameObject", "Transform"] {
                 let info = registry::find(required).expect("built-in component");
-                if !(info.has)(&scene.world, e) {
-                    (info.add_default)(&mut scene.world, e);
+                if !(info.has)(&self.world, e) {
+                    (info.add_default)(&mut self.world, e);
                     report
                         .warnings
                         .push(format!("object {i}: missing {required}, added default"));
                 }
             }
-            let parent = obj.parent.and_then(|p| entities.get(p).copied());
-            if obj.parent.is_some() && parent.is_none() {
+            let p = obj.parent.and_then(|p| entities.get(p).copied());
+            if obj.parent.is_some() && p.is_none() {
                 report.warnings.push(format!(
                     "object {i}: parent index out of order, placed at root"
                 ));
             }
-            scene.attach(e, parent, None);
+            self.attach(e, p.or(parent), None);
             entities.push(e);
         }
+        entities
+    }
+
+    /// Serialise to the `.scene` JSON text.
+    pub fn to_json(&self) -> String {
+        write_json(self.entries(None))
+    }
+
+    /// Parse `.scene` JSON. Unknown components are skipped with a warning.
+    pub fn from_json(name: &str, text: &str) -> Result<(Scene, LoadReport), String> {
+        let objects = read_json(text, "scene")?;
+        let mut scene = Scene::new(name);
+        let mut report = LoadReport::default();
+        scene.spawn_entries(objects, None, &mut report);
         Ok((scene, report))
     }
 

@@ -56,6 +56,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .auto_shrink(false)
         .show(ui, |ui| {
             header(ui, state, &targets);
+            if targets.len() == 1 {
+                prefab_row(ui, state, e);
+            }
             if targets.len() > 1 {
                 ui.label(
                     RichText::new(format!("{} objects selected", targets.len()))
@@ -116,7 +119,13 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
     let multi = targets.len() > 1;
     let mut changed = false;
     ui.horizontal(|ui| {
-        ui.label(RichText::new(icon).size(22.0));
+        let icon = RichText::new(icon).size(22.0);
+        let icon = if state.scene.prefab_link(e).is_some() {
+            icon.color(theme::PREFAB)
+        } else {
+            icon
+        };
+        ui.label(icon);
         changed |= ui.checkbox(&mut go.active, "").changed();
         let name_w = ui.available_width() - 70.0;
         if multi {
@@ -177,6 +186,54 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
         }
     }
     state.mark_edited("GameObject");
+}
+
+/// "Prefab" row on an instance root: Select, Revert, Apply All (the last two only with overrides).
+fn prefab_row(ui: &mut Ui, state: &mut EditorState, e: Entity) {
+    let Some(rel) = state.scene.prefab_link(e) else {
+        return;
+    };
+    let overrides = match state.assets.prefab(&rel) {
+        Ok(p) => Some(state.scene.has_prefab_overrides(e, &p)),
+        Err(_) => None,
+    };
+    ui.horizontal(|ui| {
+        ui.label("Prefab");
+        let name = std::path::Path::new(&rel)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let text = match overrides {
+            Some(_) => {
+                RichText::new(format!("{} {name}", crate::state::PREFAB_ICON)).color(theme::PREFAB)
+            }
+            None => RichText::new(format!("Missing: {name}")).color(theme::AXIS_X),
+        };
+        ui.label(text).on_hover_text(&rel);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let changed = overrides == Some(true);
+            if ui
+                .add_enabled(changed, egui::Button::new("Apply All"))
+                .on_hover_text("Write this instance's changes to the prefab asset")
+                .clicked()
+            {
+                state.push(Action::ApplyPrefab(e));
+            }
+            if ui
+                .add_enabled(changed, egui::Button::new("Revert"))
+                .on_hover_text("Discard this instance's changes")
+                .clicked()
+            {
+                state.push(Action::RevertPrefab(e));
+            }
+            if ui
+                .add_enabled(overrides.is_some(), egui::Button::new("Select"))
+                .clicked()
+            {
+                state.push(Action::SelectPrefabAsset(e));
+            }
+        });
+    });
 }
 
 /// Foldout header with enable toggle and ⋮ menu, then the component's fields.
@@ -336,8 +393,12 @@ fn material_previews(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     ui.separator();
 }
 
-/// Inspector for a Project asset (materials for now).
+/// Inspector for a Project asset: material editor, or a read-only prefab summary.
 fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    if rel.ends_with(".prefab") {
+        prefab_asset(ui, state, rel);
+        return;
+    }
     let name = crate::assets::AssetDatabase::material_name(Some(rel));
     ui.horizontal(|ui| {
         ui.label(RichText::new("◍").size(22.0));
@@ -352,10 +413,57 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
 }
 
+/// Prefab asset: its objects as a tree and the root's components.
+fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    let name = crate::assets::AssetDatabase::material_name(Some(rel));
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(crate::state::PREFAB_ICON)
+                .size(22.0)
+                .color(theme::PREFAB),
+        );
+        ui.label(RichText::new(format!("{name} (Prefab Asset)")).strong());
+    });
+    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    ui.separator();
+    match state.assets.prefab(rel) {
+        Ok(prefab) => {
+            let outline = prefab.outline();
+            ui.label(format!(
+                "{} object{}",
+                outline.len(),
+                if outline.len() == 1 { "" } else { "s" }
+            ));
+            egui::Frame::new()
+                .fill(theme::FIELD_BG)
+                .inner_margin(4.0)
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    for (n, depth) in &outline {
+                        ui.label(
+                            RichText::new(format!("{}{n}", "    ".repeat(*depth)))
+                                .color(theme::PREFAB),
+                        );
+                    }
+                });
+            ui.add_space(6.0);
+            ui.label(RichText::new("Root components").strong());
+            for c in prefab.root_components() {
+                ui.label(format!("{} {c}", editors::icon(&c)));
+            }
+            ui.add_space(6.0);
+            ui.weak("Drag into the Scene view or Hierarchy to create an instance.");
+        }
+        Err(err) => {
+            ui.colored_label(theme::AXIS_X, err);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use egui_kittest::Harness;
-    use egui_kittest::kittest::Queryable;
+    use egui_kittest::kittest::{NodeT, Queryable};
     use misty_engine::scene::Camera;
 
     use super::*;
@@ -393,6 +501,75 @@ mod tests {
             ["Transform", "Camera", "Light"]
         );
         assert!(!h.state().inspector_add_open, "popup closes after choosing");
+    }
+
+    /// A project with "Assets/Crate.prefab" and one linked instance (selected).
+    fn prefab_state(tag: &str) -> (EditorState, Entity, std::path::PathBuf) {
+        let root =
+            std::env::temp_dir().join(format!("misty_insp_prefab_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut s = EditorState::new(ProjectBrowser::open(root.clone()));
+        let e = s.scene.spawn("Crate", None);
+        s.scene.spawn("Lid", Some(e));
+        let folder = s.project.assets_dir();
+        s.push(Action::CreatePrefab { entity: e, folder });
+        apply_actions(&mut s);
+        s.selection.set(e);
+        (s, e, root)
+    }
+
+    fn inspector(s: EditorState) -> Harness<'static, EditorState> {
+        let mut h = Harness::builder()
+            .with_size([400.0, 700.0])
+            .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
+        h.run();
+        h
+    }
+
+    #[test]
+    fn prefab_row_applies_overrides_to_the_asset() {
+        let (s, e, root) = prefab_state("apply");
+        let mut h = inspector(s);
+        assert!(
+            !!h.get_by_label("Apply All").accesskit_node().is_disabled(),
+            "nothing to apply without overrides"
+        );
+        h.state_mut().scene.add(e, Camera::default());
+        h.run();
+        h.get_by_label("Apply All").click();
+        h.run();
+        apply_actions(h.state_mut());
+        let s = h.state_mut();
+        let asset = s.assets.prefab("Assets/Crate.prefab").unwrap();
+        assert_eq!(asset.root_components(), ["Transform", "Camera"]);
+        assert!(!s.scene.has_prefab_overrides(e, &asset));
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn prefab_row_reverts_and_selects_the_asset() {
+        let (mut s, e, root) = prefab_state("revert");
+        s.scene.spawn("Extra", Some(e));
+        let mut h = inspector(s);
+        h.get_by_label("Revert").click();
+        h.run();
+        apply_actions(h.state_mut());
+        let reverted = h.state().selection.active().unwrap();
+        assert_eq!(h.state().scene.children(reverted).len(), 1, "Extra removed");
+
+        h.run();
+        h.get_by_label("Select").click();
+        h.run();
+        apply_actions(h.state_mut());
+        assert_eq!(
+            h.state().inspector_asset.as_deref(),
+            Some("Assets/Crate.prefab")
+        );
+        h.run();
+        // The Inspector now shows the asset summary.
+        h.get_by_label("Crate (Prefab Asset)");
+        h.get_by_label("2 objects");
+        std::fs::remove_dir_all(root).ok();
     }
 
     #[test]

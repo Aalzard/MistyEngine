@@ -1,5 +1,5 @@
 //! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody and global tables
-//! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Destroy).
+//! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy).
 //!
 //! Userdata only hold an entity id; they reach the scene through the [`World`] stored in the
 //! Lua state's app data while a game frame runs.
@@ -14,6 +14,7 @@ use mlua::{
 use super::{LogKind, World};
 use crate::camera::{euler_to_quat, quat_to_euler};
 use crate::scene::Rigidbody;
+use crate::scene::prefab::Prefab;
 
 /// Run `f` with the live game world, or fail if no frame is running.
 pub fn with_world<R>(lua: &Lua, f: impl FnOnce(&mut World) -> R) -> Result<R> {
@@ -616,6 +617,30 @@ pub fn register(lua: &Lua) -> Result<()> {
     )?;
     g.set("GameObject", go)?;
     g.set(
+        "Instantiate",
+        lua.create_function(|lua, args: Variadic<Value>| {
+            let position = match args.get(1) {
+                Some(v) if !v.is_nil() => Some(LVec3::from_lua(v.clone(), lua)?.0),
+                _ => None,
+            };
+            let source = match args.first() {
+                Some(Value::String(s)) => Source::Prefab(s.to_string_lossy()),
+                Some(Value::UserData(ud)) if ud.is::<LGameObject>() => {
+                    Source::Object(ud.borrow::<LGameObject>()?.0)
+                }
+                Some(Value::UserData(ud)) if ud.is::<LTransform>() => {
+                    Source::Object(ud.borrow::<LTransform>()?.0)
+                }
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "Instantiate expects a prefab path or a GameObject",
+                    ));
+                }
+            };
+            with_world(lua, |w| instantiate(w, source, position))?.map(LGameObject)
+        })?,
+    )?;
+    g.set(
         "Destroy",
         lua.create_function(|lua, target: Value| {
             let e = match &target {
@@ -627,6 +652,46 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
     Ok(())
+}
+
+enum Source {
+    /// Project-relative `.prefab` path.
+    Prefab(String),
+    Object(Entity),
+}
+
+/// Copy a prefab or object to a new root object named "Name(Clone)", with physics bodies.
+/// Script instances are created by the host after the current callback.
+fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<Entity> {
+    let e = match source {
+        Source::Prefab(path) => {
+            let prefab = Prefab::load(&w.root.join(&path)).map_err(mlua::Error::runtime)?;
+            // Runtime copies are plain objects, not linked instances.
+            w.scene.instantiate_prefab(&prefab, None, None)
+        }
+        Source::Object(src) => {
+            alive(w, src)?;
+            let world = w.scene.world_matrix(src);
+            let e = w.scene.copy_subtree(src, None);
+            // Same world placement as the original, now at the root.
+            let (scale, rot, pos) = world.to_scale_rotation_translation();
+            let mut t = w.scene.transform(e);
+            t.position = pos;
+            t.scale = scale;
+            t.set_rotation(rot);
+            w.scene.set_transform(e, t);
+            w.scene.unlink_prefab(e);
+            e
+        }
+    };
+    let name = format!("{}(Clone)", w.scene.name(e));
+    w.scene.game_object_mut(e).name = name;
+    if let Some(p) = position {
+        w.scene.set_world_position(e, p);
+    }
+    w.physics.add_subtree(&w.scene, e);
+    w.spawned.push(e);
+    Ok(e)
 }
 
 /// Copy the current frame's time into the `Time` table.

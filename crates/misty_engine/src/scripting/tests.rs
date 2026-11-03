@@ -226,3 +226,66 @@ return Probe
     let logs = runtime.take_logs();
     assert!(logs.iter().any(|(_, t)| t == "time 0.050 0.50"), "{logs:?}");
 }
+
+#[test]
+fn instantiate_prefabs_and_objects_with_physics_and_scripts() {
+    let spawner = r#"
+local Spawner = {}
+function Spawner:Start()
+    local ball = Instantiate("Assets/Prefabs/Ball.prefab", Vector3.new(0, 5, 0))
+    Debug.Log("spawned", ball.name)
+    local copy = Instantiate(GameObject.Find("Template"))
+    copy.transform.position = Vector3.new(3, 0, 0)
+    Instantiate("Assets/Prefabs/Missing.prefab")
+end
+return Spawner
+"#;
+    let ball_script = r#"
+local Ball = {}
+function Ball:Awake() Debug.Log("awake", self.gameObject.name) end
+return Ball
+"#;
+    let root = project(&[("Spawner.lua", spawner), ("Ball.lua", ball_script)]);
+
+    // The prefab asset: a falling ball with a script.
+    let mut asset = Scene::new("asset");
+    let ball = asset.spawn("Ball", None);
+    asset.add(ball, BoxCollider::default());
+    asset.add(ball, Rigidbody::default());
+    attach(&mut asset, ball, "Ball.lua", &[]);
+    crate::scene::prefab::Prefab::from_scene(&asset, ball)
+        .save(&root.join("Assets/Prefabs/Ball.prefab"))
+        .unwrap();
+
+    let mut scene = Scene::new("t");
+    let s = scene.spawn("Spawner", None);
+    attach(&mut scene, s, "Spawner.lua", &[]);
+    let template = scene.spawn("Template", None);
+    scene.spawn("Part", Some(template));
+    let logs = run(&mut scene, root, 30, Input::default());
+
+    assert!(
+        logs.iter().any(|(_, t)| t == "awake Ball(Clone)"),
+        "Awake runs on the new object: {logs:?}"
+    );
+    assert!(logs.iter().any(|(_, t)| t == "spawned Ball(Clone)"));
+    assert!(
+        logs.iter()
+            .any(|(k, t)| *k == LogKind::Error && t.contains("Missing.prefab")),
+        "{logs:?}"
+    );
+    let ball = scene.find_by_name("Ball(Clone)").unwrap();
+    let y = scene.world_position(ball).y;
+    assert!(
+        y < 4.9,
+        "the instance has a physics body and falls (y = {y})"
+    );
+    assert_eq!(
+        scene.prefab_link(ball),
+        None,
+        "runtime copies are not linked"
+    );
+    let copy = scene.find_by_name("Template(Clone)").unwrap();
+    assert_eq!(scene.children(copy).len(), 1);
+    assert_eq!(scene.world_position(copy), Vec3::new(3.0, 0.0, 0.0));
+}

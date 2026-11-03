@@ -18,6 +18,7 @@ impl AssetEntry {
             "scene" | "mscene" => "🎬",
             "rs" | "lua" | "wasm" => "📜",
             "mat" => "⚪",
+            "prefab" => crate::state::PREFAB_ICON,
             "png" | "jpg" | "jpeg" | "tga" => "🖼",
             "obj" | "gltf" | "glb" | "fbx" => "📦",
             "wav" | "ogg" | "mp3" => "🔊",
@@ -34,6 +35,17 @@ pub struct FolderNode {
     pub children: Vec<FolderNode>,
 }
 
+impl AssetEntry {
+    /// Icon tint in the Project window (prefabs are blue).
+    pub fn icon_color(&self) -> egui::Color32 {
+        if self.path.extension().is_some_and(|e| e == "prefab") {
+            crate::theme::PREFAB
+        } else {
+            egui::Color32::from_gray(200)
+        }
+    }
+}
+
 pub struct ProjectBrowser {
     pub root: PathBuf,
     pub current: PathBuf,
@@ -43,6 +55,8 @@ pub struct ProjectBrowser {
     pub icon_size: f32,
     pub tree: FolderNode,
     pub entries: Vec<AssetEntry>,
+    /// Folder contents area last frame (drop target for Hierarchy rows -> new prefab).
+    pub drop_rect: egui::Rect,
 }
 
 impl ProjectBrowser {
@@ -61,6 +75,7 @@ impl ProjectBrowser {
                 children: Vec::new(),
             },
             entries: Vec::new(),
+            drop_rect: egui::Rect::NOTHING,
         };
         browser.refresh();
         browser

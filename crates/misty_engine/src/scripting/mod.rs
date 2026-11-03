@@ -4,6 +4,8 @@
 //! are public fields shown in the Inspector; functions are callbacks:
 //! `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`,
 //! `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`.
+//! `Instantiate(prefabPath or gameObject [, position])` creates objects while playing; their
+//! scripts get `Awake` right after the callback that created them.
 //!
 //! ```lua
 //! local Rotator = { speed = 90 }
@@ -91,6 +93,10 @@ pub struct World {
     pub input: Input,
     pub logs: Vec<(LogKind, String)>,
     pub destroy: Vec<Entity>,
+    /// Project folder, for reading prefab files.
+    pub root: PathBuf,
+    /// Roots created by `Instantiate` that still need script instances.
+    pub spawned: Vec<Entity>,
 }
 
 struct Instance {
@@ -125,6 +131,8 @@ impl ScriptHost {
             input: Input::default(),
             logs,
             destroy: Vec::new(),
+            root: project_root.clone(),
+            spawned: Vec::new(),
         });
         let mut host = Self {
             lua,
@@ -151,6 +159,7 @@ impl ScriptHost {
             }
         }
         host.call_all("Awake");
+        host.flush_spawned();
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
         host
     }
@@ -244,9 +253,62 @@ impl ScriptHost {
     }
 
     fn call_all(&mut self, name: &str) {
+        // Objects created during this pass join from the next one (after their Awake).
         for i in 0..self.instances.len() {
             if self.runnable(&self.instances[i]) {
                 self.call(i, name, None);
+                self.flush_spawned();
+            }
+        }
+    }
+
+    /// Create script instances for objects made by `Instantiate` and run their `Awake`.
+    fn flush_spawned(&mut self) {
+        // Awake may instantiate more; stop runaway chains instead of hanging.
+        for _ in 0..64 {
+            let spawned = self.with_world(|w| std::mem::take(&mut w.spawned));
+            if spawned.is_empty() {
+                return;
+            }
+            for root in spawned {
+                self.awake_spawned(root);
+            }
+        }
+        self.with_world(|w| w.spawned.clear());
+        self.log(
+            LogKind::Error,
+            "Instantiate: objects kept instantiating more objects in Awake; stopped".into(),
+        );
+    }
+
+    fn awake_spawned(&mut self, root: Entity) {
+        let scripted: Vec<(Entity, Vec<crate::scene::ScriptRef>)> = self.with_world(|w| {
+            if !w.scene.contains(root) {
+                return Vec::new();
+            }
+            w.scene
+                .walk()
+                .into_iter()
+                .map(|(e, _)| e)
+                .filter(|e| w.scene.is_ancestor(root, *e))
+                .filter_map(|e| {
+                    w.scene
+                        .world
+                        .get::<&Scripts>(e)
+                        .ok()
+                        .map(|s| (e, s.list.clone()))
+                })
+                .collect()
+        });
+        let first = self.instances.len();
+        for (e, list) in scripted {
+            for (slot, script) in list.iter().enumerate() {
+                self.instantiate(e, slot, script);
+            }
+        }
+        for i in first..self.instances.len() {
+            if self.runnable(&self.instances[i]) {
+                self.call(i, "Awake", None);
             }
         }
     }
@@ -293,6 +355,7 @@ impl ScriptHost {
             if !self.instances[i].started && self.runnable(&self.instances[i]) {
                 self.instances[i].started = true;
                 self.call(i, "Start", None);
+                self.flush_spawned();
             }
         }
 
@@ -301,6 +364,7 @@ impl ScriptHost {
             self.call_all("FixedUpdate");
             let contacts = self.with_world(|w| w.physics.step(&w.scene));
             self.dispatch(&contacts);
+            self.flush_spawned();
         }
         self.with_world(|w| w.physics.sync_out(&mut w.scene));
 

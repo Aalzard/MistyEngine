@@ -99,9 +99,15 @@ pub struct HierarchyState {
     pub focused: bool,
 }
 
-/// Icon for an object, based on its components.
+/// Icon shown for prefab assets and instance roots (drawn blue; plain meshes use the same grey).
+pub const PREFAB_ICON: &str = "⬛";
+
+/// Icon for an object, based on its components (instance roots show the prefab icon).
 pub fn object_icon(scene: &Scene, e: Entity) -> &'static str {
     let w = &scene.world;
+    if w.get::<&misty_engine::scene::PrefabLink>(e).is_ok() {
+        return PREFAB_ICON;
+    }
     if let Ok(light) = w.get::<&Light>(e) {
         return if light.kind == LightType::Directional {
             "☀"

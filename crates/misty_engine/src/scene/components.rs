@@ -570,3 +570,12 @@ impl ScriptRef {
 pub struct Scripts {
     pub list: Vec<ScriptRef>,
 }
+
+// ---- prefabs -------------------------------------------------------------------------------
+
+/// Marks the root of a prefab instance: the project-relative path of its `.prefab` asset.
+/// Not listed in the Inspector's component list (the header shows a Prefab row instead).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PrefabLink {
+    pub path: String,
+}

@@ -1,13 +1,15 @@
-//! Asset database: material assets found under the project's `Assets` folder.
+//! Asset database: materials, scripts and prefabs found under the project's `Assets` folder.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use std::time::SystemTime;
 
 use misty_engine::assets::Material;
 use misty_engine::render::MaterialParams;
 use misty_engine::scene::ScriptValue;
+use misty_engine::scene::prefab::Prefab;
 
 /// Name shown for renderers without a material.
 pub const DEFAULT_MATERIAL: &str = "Default-Material";
@@ -19,12 +21,17 @@ pub struct ScriptMeta {
     modified: Option<SystemTime>,
 }
 
+/// A prefab read from disk (or why it couldn't be), with the file time it was read at.
+type CachedPrefab = (Option<SystemTime>, Result<Rc<Prefab>, String>);
+
 pub struct AssetDatabase {
     root: PathBuf,
     /// Project-relative path ("Assets/Materials/Red.mat") → material.
     pub materials: BTreeMap<String, Material>,
     /// Project-relative path ("Assets/Scripts/Rotator.lua") → fields.
     pub scripts: BTreeMap<String, ScriptMeta>,
+    /// Prefabs read so far, re-read when the file changes.
+    prefabs: BTreeMap<String, CachedPrefab>,
     last_poll: Option<std::time::Instant>,
 }
 
@@ -34,6 +41,7 @@ impl AssetDatabase {
             root: root.to_path_buf(),
             materials: BTreeMap::new(),
             scripts: BTreeMap::new(),
+            prefabs: BTreeMap::new(),
             last_poll: None,
         };
         db.refresh();
@@ -126,6 +134,29 @@ impl AssetDatabase {
         let rel = self.relative(&path);
         self.scripts.insert(rel.clone(), inspect(&path, &rel));
         Ok(rel)
+    }
+
+    /// A prefab asset (cached; re-read when its file changes).
+    pub fn prefab(&mut self, rel: &str) -> Result<Rc<Prefab>, String> {
+        let abs = self.absolute(rel);
+        let modified = mtime(&abs);
+        match self.prefabs.get(rel) {
+            Some((m, p)) if *m == modified && modified.is_some() => p.clone(),
+            _ => {
+                let p = Prefab::load(&abs).map(Rc::new);
+                self.prefabs.insert(rel.to_owned(), (modified, p.clone()));
+                p
+            }
+        }
+    }
+
+    /// Write a prefab asset (Apply All) and update the cache.
+    pub fn save_prefab(&mut self, rel: &str, prefab: &Prefab) -> Result<(), String> {
+        let abs = self.absolute(rel);
+        prefab.save(&abs)?;
+        self.prefabs
+            .insert(rel.to_owned(), (mtime(&abs), Ok(Rc::new(prefab.clone()))));
+        Ok(())
     }
 
     /// Display name of a material path ("Red"), or Default-Material.
