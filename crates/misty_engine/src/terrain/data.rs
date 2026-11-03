@@ -9,12 +9,17 @@
 use glam::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 
+use super::auto_paint::AutoPaintRules;
+use super::cliffs::CliffSettings;
+use super::details::DetailSettings;
+use super::harmony::HarmonySettings;
+
 /// Most layers a terrain blends (one splat-map channel each).
 pub const MAX_LAYERS: usize = 4;
 /// Heightmap resolutions offered (2^n + 1 samples per side).
-pub const HEIGHTMAP_RESOLUTIONS: [usize; 6] = [33, 65, 129, 257, 513, 1025];
+pub const HEIGHTMAP_RESOLUTIONS: [usize; 8] = [33, 65, 129, 257, 513, 1025, 2049, 4097];
 /// Splat-map resolutions offered (texels per side).
-pub const ALPHAMAP_RESOLUTIONS: [usize; 6] = [16, 32, 64, 128, 256, 512];
+pub const ALPHAMAP_RESOLUTIONS: [usize; 8] = [16, 32, 64, 128, 256, 512, 1024, 2048];
 
 /// One paintable surface: a tiled texture with an optional normal map.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -32,6 +37,10 @@ pub struct TerrainLayer {
     pub tile_offset: [f32; 2],
     pub metallic: f32,
     pub smoothness: f32,
+    /// Greyscale height texture for height-based blending (None = the albedo's luminance).
+    pub height_map: Option<String>,
+    /// Auto Paint rules; `rules.enabled` marks the layer rule-driven (Generate repaints it).
+    pub rules: AutoPaintRules,
 }
 
 impl Default for TerrainLayer {
@@ -45,6 +54,8 @@ impl Default for TerrainLayer {
             tile_offset: [0.0, 0.0],
             metallic: 0.0,
             smoothness: 0.0,
+            height_map: None,
+            rules: AutoPaintRules::default(),
         }
     }
 }
@@ -62,6 +73,16 @@ pub struct TerrainData {
     /// Layer weights per texel (channel n = layer n), row by row along z.
     pub alphamap: Vec<[u8; 4]>,
     pub layers: Vec<TerrainLayer>,
+    /// Seed of the Auto Paint breakup noise and the detail scatter.
+    pub rule_seed: u32,
+    /// Triplanar cliffs and height blending (shader settings).
+    pub cliffs: CliffSettings,
+    /// Color Harmony (non-destructive per-layer colour adjustment).
+    pub harmony: HarmonySettings,
+    /// Grass / detail placement rules and look.
+    pub details: DetailSettings,
+    /// Detail density per splat texel (0..255 of `details.density`); empty = no details yet.
+    pub detail_map: Vec<u8>,
 }
 
 impl Default for TerrainData {
@@ -90,6 +111,11 @@ impl TerrainData {
             alphamap_resolution: ares,
             alphamap: vec![[255, 0, 0, 0]; ares * ares],
             layers: Vec::new(),
+            rule_seed: 1,
+            cliffs: CliffSettings::default(),
+            harmony: HarmonySettings::default(),
+            details: DetailSettings::default(),
+            detail_map: Vec::new(),
         }
     }
 
@@ -203,15 +229,23 @@ impl TerrainData {
             return;
         }
         let old = self.alphamap_resolution;
+        let source = |tx: usize, tz: usize| {
+            let sx = (tx * old + old / 2) / res;
+            let sz = (tz * old + old / 2) / res;
+            sz.min(old - 1) * old + sx.min(old - 1)
+        };
         let mut map = Vec::with_capacity(res * res);
+        let mut details = Vec::new();
         for tz in 0..res {
             for tx in 0..res {
-                let sx = (tx * old + old / 2) / res;
-                let sz = (tz * old + old / 2) / res;
-                map.push(self.alphamap[sz.min(old - 1) * old + sx.min(old - 1)]);
+                map.push(self.alphamap[source(tx, tz)]);
+                if !self.detail_map.is_empty() {
+                    details.push(self.detail_map[source(tx, tz)]);
+                }
             }
         }
         self.alphamap = map;
+        self.detail_map = details;
         self.alphamap_resolution = res;
     }
 
@@ -227,6 +261,9 @@ impl TerrainData {
         self.heights.resize(r * r, 0.0);
         let a = self.alphamap_resolution;
         self.alphamap.resize(a * a, [255, 0, 0, 0]);
+        if self.detail_map.len() != a * a {
+            self.detail_map.clear();
+        }
         self.layers.truncate(MAX_LAYERS);
         self.size = sanitize_size(self.size);
     }

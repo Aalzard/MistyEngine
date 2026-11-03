@@ -1,6 +1,7 @@
 //! Process-wide store of loaded terrain data, keyed by asset path. The renderer, physics, scripts
 //! and the editor's brushes all read (and the editor writes) the same copy; each change bumps a
-//! version so the renderer knows when to rebuild its mesh.
+//! version so the renderer knows what to re-upload. Brush strokes record the region they touched
+//! ([`modify_region`]) so the renderer uploads only that part; other changes count as full.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -9,9 +10,66 @@ use std::sync::{Arc, LazyLock, Mutex};
 use super::data::TerrainData;
 use crate::assets;
 
+/// Changed part of a terrain in normalised coordinates (0..1 along x and z).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Region {
+    pub min: [f32; 2],
+    pub max: [f32; 2],
+}
+
+impl Region {
+    pub const EMPTY: Region = Region {
+        min: [f32::MAX; 2],
+        max: [f32::MIN; 2],
+    };
+
+    pub fn union(self, o: Region) -> Region {
+        Region {
+            min: [self.min[0].min(o.min[0]), self.min[1].min(o.min[1])],
+            max: [self.max[0].max(o.max[0]), self.max[1].max(o.max[1])],
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.min[0] > self.max[0] || self.min[1] > self.max[1]
+    }
+
+    /// Covered cells of an `n`-wide grid spanning 0..1 (`grow` extra cells on each side):
+    /// (x range, z range), clamped to the grid.
+    pub fn cells(&self, n: usize, grow: usize) -> (std::ops::Range<usize>, std::ops::Range<usize>) {
+        let range = |lo: f32, hi: f32| {
+            let a = ((lo * n as f32).floor().max(0.0) as usize).saturating_sub(grow);
+            let b = (((hi * n as f32).ceil().max(0.0) as usize) + 1 + grow).min(n);
+            a.min(b)..b
+        };
+        (
+            range(self.min[0], self.max[0]),
+            range(self.min[1], self.max[1]),
+        )
+    }
+}
+
+/// Region changes kept per terrain (older ones fall back to a full upload).
+const LOG_LEN: usize = 256;
+
 struct Entry {
     data: Result<Arc<TerrainData>, String>,
     version: u64,
+    /// (version, region) of recent partial changes.
+    log: std::collections::VecDeque<(u64, Region)>,
+    /// Readers older than this version need everything again.
+    full_at: u64,
+}
+
+impl Entry {
+    fn new(data: Result<Arc<TerrainData>, String>, version: u64) -> Self {
+        Self {
+            data,
+            version,
+            log: Default::default(),
+            full_at: version,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -32,7 +90,7 @@ impl Store {
         if !self.entries.contains_key(&key) {
             let version = self.bump();
             let data = TerrainData::load(&key).map(Arc::new);
-            self.entries.insert(key.clone(), Entry { data, version });
+            self.entries.insert(key.clone(), Entry::new(data, version));
         }
         self.entries.get_mut(&key).expect("just inserted")
     }
@@ -66,10 +124,7 @@ pub fn insert(path: &str, data: TerrainData) {
     let version = s.bump();
     s.entries.insert(
         assets::absolute(path),
-        Entry {
-            data: Ok(Arc::new(data)),
-            version,
-        },
+        Entry::new(Ok(Arc::new(data)), version),
     );
 }
 
@@ -80,7 +135,45 @@ pub fn modify<R>(path: &str, f: impl FnOnce(&mut TerrainData) -> R) -> Option<R>
     let e = s.entry(path);
     let data = e.data.as_mut().ok()?;
     e.version = version;
+    e.full_at = version;
+    e.log.clear();
     Some(f(Arc::make_mut(data)))
+}
+
+/// [`modify`] that only changes `region` (renderers re-upload just that part).
+pub fn modify_region<R>(
+    path: &str,
+    region: Region,
+    f: impl FnOnce(&mut TerrainData) -> R,
+) -> Option<R> {
+    let mut s = store();
+    let version = s.bump();
+    let e = s.entry(path);
+    let data = e.data.as_mut().ok()?;
+    e.version = version;
+    e.log.push_back((version, region));
+    if e.log.len() > LOG_LEN
+        && let Some((v, _)) = e.log.pop_front()
+    {
+        e.full_at = e.full_at.max(v);
+    }
+    Some(f(Arc::make_mut(data)))
+}
+
+/// What changed at `path` since version `since`: `Some(region)` (possibly empty) when only
+/// regions changed, `None` when everything must be refreshed.
+pub fn changes_since(path: &str, since: u64) -> Option<Region> {
+    let mut s = store();
+    let e = s.entry(path);
+    if since < e.full_at {
+        return None;
+    }
+    Some(
+        e.log
+            .iter()
+            .filter(|(v, _)| *v > since)
+            .fold(Region::EMPTY, |acc, (_, r)| acc.union(*r)),
+    )
 }
 
 /// Write the data at `path` to its file.
@@ -92,4 +185,10 @@ pub fn save(path: &str) -> Result<(), String> {
 /// Forget `path` so the next use reads the file again.
 pub fn unload(path: &str) {
     store().entries.remove(&assets::absolute(path));
+}
+
+/// [`modify`] for settings that leave heights and splat weights alone (layer properties,
+/// cliffs, harmony, detail look): renderers re-upload nothing.
+pub fn modify_settings<R>(path: &str, f: impl FnOnce(&mut TerrainData) -> R) -> Option<R> {
+    modify_region(path, Region::EMPTY, f)
 }

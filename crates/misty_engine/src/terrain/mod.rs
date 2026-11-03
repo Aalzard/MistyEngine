@@ -4,10 +4,15 @@
 //! Like the reference engine, a terrain only uses its object's world position: rotation and scale
 //! are ignored by the renderer, the collider and height sampling.
 
+pub mod auto_paint;
 pub mod brush;
+pub mod cliffs;
 mod data;
+pub mod details;
 mod file;
+pub mod harmony;
 pub mod mesh;
+pub mod noise;
 pub mod store;
 #[cfg(test)]
 mod tests;

@@ -30,6 +30,15 @@ impl Brush {
         (self.size * 0.5).max(1e-3)
     }
 
+    /// The touched area as a dirty region of `d` (normalised 0..1, see `store::Region`).
+    pub fn region(&self, d: &TerrainData) -> super::store::Region {
+        let size = Vec2::new(d.size.x, d.size.z);
+        super::store::Region {
+            min: ((self.center - self.radius()) / size).to_array(),
+            max: ((self.center + self.radius()) / size).to_array(),
+        }
+    }
+
     /// Influence (0..1) at a local point.
     pub fn weight(&self, p: Vec2) -> f32 {
         let r = p.distance(self.center) / self.radius();
@@ -146,7 +155,7 @@ pub fn paint(d: &mut TerrainData, b: &Brush, dt: f32, layer: usize) {
 }
 
 /// Weights to bytes that sum to exactly 255 (rounding error goes to `keep`).
-fn quantize_weights(w: [f32; 4], keep: usize) -> [u8; 4] {
+pub(super) fn quantize_weights(w: [f32; 4], keep: usize) -> [u8; 4] {
     let sum: f32 = w.iter().sum::<f32>().max(1e-6);
     let mut out = w.map(|v| (v / sum * 255.0).round().clamp(0.0, 255.0) as u8);
     let total: i32 = out.iter().map(|v| *v as i32).sum();

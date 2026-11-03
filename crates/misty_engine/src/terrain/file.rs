@@ -6,7 +6,10 @@ use std::path::Path;
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
+use super::cliffs::CliffSettings;
 use super::data::{TerrainData, TerrainLayer};
+use super::details::DetailSettings;
+use super::harmony::HarmonySettings;
 
 /// File extension of terrain data assets.
 pub const EXTENSION: &str = "terrain";
@@ -23,6 +26,13 @@ struct TerrainFile {
     heights: String,
     /// base64 of RGBA weights.
     alphamap: String,
+    // Added after version 1; older files load with the defaults.
+    rule_seed: u32,
+    cliffs: CliffSettings,
+    harmony: HarmonySettings,
+    details: DetailSettings,
+    /// base64 of one detail density byte per splat texel (empty = none).
+    detail_map: String,
 }
 
 impl Default for TerrainFile {
@@ -35,6 +45,11 @@ impl Default for TerrainFile {
             layers: Vec::new(),
             heights: String::new(),
             alphamap: String::new(),
+            rule_seed: 1,
+            cliffs: CliffSettings::default(),
+            harmony: HarmonySettings::default(),
+            details: DetailSettings::default(),
+            detail_map: String::new(),
         }
     }
 }
@@ -56,6 +71,11 @@ impl TerrainData {
             layers: self.layers.clone(),
             heights: encode(&heights),
             alphamap: encode(&alphamap),
+            rule_seed: self.rule_seed,
+            cliffs: self.cliffs.clone(),
+            harmony: self.harmony.clone(),
+            details: self.details.clone(),
+            detail_map: encode(&self.detail_map),
         };
         serde_json::to_string_pretty(&file).expect("terrain serialises")
     }
@@ -76,6 +96,11 @@ impl TerrainData {
             alphamap_resolution: f.alphamap_resolution,
             alphamap,
             layers: f.layers,
+            rule_seed: f.rule_seed,
+            cliffs: f.cliffs,
+            harmony: f.harmony,
+            details: f.details,
+            detail_map: decode(&f.detail_map)?,
         };
         d.sanitize();
         Ok(d)
