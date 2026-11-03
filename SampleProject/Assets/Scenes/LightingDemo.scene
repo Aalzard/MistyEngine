@@ -1026,7 +1026,7 @@
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Materials/Blue Metal.mat",
+          "material": "Assets/Materials/Blue Steel.mat",
           "receive_shadows": true
         },
         "Transform": {

@@ -17,7 +17,8 @@ use misty_engine::scene::{
 const SCENE: &str = "Assets/Scenes/LightingDemo.scene";
 const SAND: &str = "Assets/Materials/Sand.mat";
 const STONE: &str = "Assets/Materials/Sandstone.mat";
-const METAL: &str = "Assets/Materials/Blue Metal.mat";
+// Its own material: the shared "Blue Metal.mat" is the user's to edit.
+const METAL: &str = "Assets/Materials/Blue Steel.mat";
 
 fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject")
@@ -35,6 +36,15 @@ fn sandstone() -> Material {
     Material {
         color: [0.78, 0.62, 0.48, 1.0],
         smoothness: 0.25,
+        ..Default::default()
+    }
+}
+
+fn blue_steel() -> Material {
+    Material {
+        color: [0.2, 0.45, 0.9, 1.0],
+        metallic: 0.6,
+        smoothness: 0.8,
         ..Default::default()
     }
 }
@@ -129,6 +139,7 @@ fn write_lighting_demo() {
     let root = project();
     sand().save(&root.join(SAND)).unwrap();
     sandstone().save(&root.join(STONE)).unwrap();
+    blue_steel().save(&root.join(METAL)).unwrap();
     demo_scene().save(&root.join(SCENE)).unwrap();
 }
 
@@ -137,6 +148,7 @@ fn lighting_demo_matches_its_generator() {
     let root = project();
     assert_eq!(Material::load(&root.join(SAND)).unwrap(), sand());
     assert_eq!(Material::load(&root.join(STONE)).unwrap(), sandstone());
+    assert_eq!(Material::load(&root.join(METAL)).unwrap(), blue_steel());
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
     assert_eq!(
         text.replace("\r\n", "\n"),
