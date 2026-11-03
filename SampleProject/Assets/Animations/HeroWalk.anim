@@ -1,0 +1,74 @@
+{
+  "length": 0.6,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "Body",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.5
+        },
+        {
+          "time": 0.15,
+          "value": 0.8
+        },
+        {
+          "time": 0.3,
+          "value": 0.5
+        },
+        {
+          "time": 0.45,
+          "value": 0.8
+        },
+        {
+          "time": 0.6,
+          "value": 0.5
+        }
+      ]
+    },
+    {
+      "path": "Body",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 0.15,
+          "value": 10.0
+        },
+        {
+          "time": 0.3,
+          "value": 0.0
+        },
+        {
+          "time": 0.45,
+          "value": -10.0
+        },
+        {
+          "time": 0.6,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Body",
+      "property": "Transform.scale.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 1.0
+        },
+        {
+          "time": 0.6,
+          "value": 1.0
+        }
+      ]
+    }
+  ],
+  "events": []
+}

@@ -398,8 +398,7 @@
   `Scripts/AnimationControl.lua` pauses/resumes with Space and changes speed with Up/Down.
 
 ### Not matching Unity yet
-- No Animator / Animator Controller (state machine, parameters, transitions, blend trees, layers, avatar /
-  humanoid retargeting, root motion); only the legacy-style Animation component (see decisions).
+- Animator: see the Animator section below (no layers, avatar / humanoid retargeting or root motion).
 - Material colour and other component properties (Camera, Audio Source, script fields) can't be animated; no
   Quaternion / Euler interpolation options for rotation.
 - Curves: no weighted, free or broken tangents, tangent handles, curve presets, pre/post wrap modes per curve.
@@ -410,6 +409,54 @@
   (only the window's value fields). Saving while previewing leaves the preview instead of keeping it.
 - The clip Inspector (a `.anim` selected in the Project window) only has Loop Time; length, sample rate, curves
   and events are shown read-only (Unity also has loop pose, cycle offset, root motion and import settings).
+
+## Animator ✅
+
+### Done
+- **Animator Controller** asset (`.controller`, JSON; Project ▸ Create ▸ Animator Controller, ⇄ icon):
+  parameters (Float, Int, Bool, Trigger), one base layer state machine with states (clip or 1D blend tree,
+  speed, loop), a default state, Entry, Any State and Exit, and transitions (Has Exit Time + Exit Time, Fixed
+  Duration + Duration, Offset, conditions Greater / Less / Equals / NotEqual / If / IfNot).
+- **Animator component** (Add Component ▸ Miscellaneous ▸ Animator): Controller (picker or drag a controller),
+  Speed, Keep State On Disable, Open button. Evaluated in Play mode and the standalone player after `Update`
+  (after the Animation component): default state on the first frame, Any State transitions first, triggers
+  consumed by the transition that uses them, exit times (repeating each loop below 1), cross-fades that blend
+  the sampled values, rest values restored for properties no longer animated, clip events.
+- **1D Blend Trees**: a Float parameter mixes neighbouring child clips by threshold.
+- **Lua**: `GetComponent("Animator")` with `SetFloat/GetFloat`, `SetInteger/GetInteger`, `SetBool/GetBool`,
+  `SetTrigger/ResetTrigger`, `Play`, `CrossFade`, `CrossFadeInFixedTime`, `GetCurrentAnimatorStateInfo(0)` /
+  `GetNextAnimatorStateInfo(0)` (`IsName`, `normalizedTime`, `length`, `speed`, `loop`), `IsInTransition(0)`,
+  `speed`, `enabled`.
+- **Animator window** (Window ▸ Animation ▸ Animator, or double-click a `.controller`; docks with the Scene and
+  Game views): follows the selected object's Animator.
+  - Graph with grid, wheel zoom, middle-mouse / Alt+drag pan; state nodes (default state orange), Any State
+    (teal), Entry (green, arrow to the default state), Exit (red); transition arrows; drag nodes to move them.
+  - Right-click: Create State ▸ Empty / From New Blend Tree; on a state Make Transition (then click the target),
+    Set as Layer Default State, Delete; on a transition Delete. Delete key removes the selection. Dropping a
+    clip from the Project window creates a state for it.
+  - Parameters panel: + ▸ Float / Int / Bool / Trigger, double-click or right-click ▸ Rename, Delete, default
+    values.
+  - Selecting a state shows it in the Inspector (name, Motion Type Clip / 1D Blend Tree, Motion, Speed, Loop, the
+    blend tree's parameter and motions, its transitions); a transition shows Has Exit Time, Exit Time, Fixed
+    Duration, Transition Duration, Offset and the Conditions list (+ / −).
+  - Play mode: the current state is outlined in blue with a progress bar (the cross-fade target too), the
+    transition being taken turns blue, parameters show (and can change) the live values.
+  - Every edit is undoable (Ctrl+Z) and saved to the asset immediately.
+- Sample: `Scenes/AnimatorDemo.scene` — `Animations/Hero.controller` (Locomotion blend tree of `HeroIdle` /
+  `HeroWalk` on Speed, Jump on a trigger from Any State, Dance on a bool) and `Scripts/AnimatorControl.lua`:
+  Space jumps, 1 / 2 / 3 set the speed, 4 toggles dancing; a UI Text shows the keys and the current state.
+
+### Not matching Unity yet
+- One layer only: no layers / weights / avatar masks, sub-state machines, conditional Entry transitions, state
+  machine behaviours, 2D or direct blend trees, mirror, cycle offset, speed / time parameters, root motion,
+  humanoid avatars, IK, culling or update modes (Animate Physics, Unscaled Time).
+- Transitions can't be interrupted, can't be muted / soloed, Any State never transitions to itself, and several
+  transitions between the same two states draw as one arrow. No transition preview timeline in the Inspector.
+- Loop is set per state rather than taken from the clip; Write Defaults is always on.
+- Window: no marquee or multi-selection, copy / paste, Frame All, Layers tab, Auto Live Link toggle, or
+  Animator preview of the selected state in edit mode; parameters can't be reordered.
+- Lua: names only (no `StringToHash` / hash overloads), no `GetLayerWeight`, `runtimeAnimatorController`,
+  `applyRootMotion` or `keepAnimatorStateOnDisable` from scripts.
 
 ## Runtime UI ✅
 

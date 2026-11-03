@@ -1,0 +1,42 @@
+{
+  "length": 0.8,
+  "loop": false,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "Body",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.5
+        },
+        {
+          "time": 0.4,
+          "value": 2.6
+        },
+        {
+          "time": 0.8,
+          "value": 0.5
+        }
+      ]
+    },
+    {
+      "path": "Body",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.8,
+          "value": 360.0,
+          "tangent": "Linear"
+        }
+      ]
+    }
+  ],
+  "events": []
+}

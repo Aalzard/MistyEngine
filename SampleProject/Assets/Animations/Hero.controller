@@ -1,0 +1,153 @@
+{
+  "parameters": [
+    {
+      "name": "Speed",
+      "type": "Float",
+      "default": 0.0
+    },
+    {
+      "name": "Jump",
+      "type": "Trigger",
+      "default": 0.0
+    },
+    {
+      "name": "Dance",
+      "type": "Bool",
+      "default": 0.0
+    }
+  ],
+  "states": [
+    {
+      "name": "Locomotion",
+      "motion": null,
+      "blend_tree": {
+        "parameter": "Speed",
+        "children": [
+          {
+            "motion": "Assets/Animations/HeroIdle.anim",
+            "threshold": 0.0
+          },
+          {
+            "motion": "Assets/Animations/HeroWalk.anim",
+            "threshold": 1.0
+          }
+        ]
+      },
+      "speed": 1.0,
+      "loop": true,
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "Jump",
+      "motion": "Assets/Animations/HeroJump.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "loop": false,
+      "position": [
+        0.0,
+        -140.0
+      ]
+    },
+    {
+      "name": "Dance",
+      "motion": "Assets/Animations/HeroDance.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "loop": true,
+      "position": [
+        260.0,
+        110.0
+      ]
+    }
+  ],
+  "default_state": "Locomotion",
+  "transitions": [
+    {
+      "from": "AnyState",
+      "to": {
+        "State": "Jump"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.1,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Jump",
+          "mode": "If",
+          "threshold": 0.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "State": "Jump"
+      },
+      "to": "Exit",
+      "has_exit_time": true,
+      "exit_time": 0.9,
+      "fixed_duration": true,
+      "duration": 0.1,
+      "offset": 0.0,
+      "conditions": []
+    },
+    {
+      "from": {
+        "State": "Locomotion"
+      },
+      "to": {
+        "State": "Dance"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.25,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Dance",
+          "mode": "If",
+          "threshold": 0.0
+        }
+      ]
+    },
+    {
+      "from": {
+        "State": "Dance"
+      },
+      "to": {
+        "State": "Locomotion"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.25,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Dance",
+          "mode": "IfNot",
+          "threshold": 0.0
+        }
+      ]
+    }
+  ],
+  "nodes": {
+    "entry": [
+      -280.0,
+      0.0
+    ],
+    "any_state": [
+      -280.0,
+      -140.0
+    ],
+    "exit": [
+      280.0,
+      -140.0
+    ]
+  }
+}

@@ -27,7 +27,7 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"CharacterController"/…)` (nil if the object has none) |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"CharacterController"/…)` (nil if the object has none) |
 | `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
 | `Physics` | `Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere` (see Physics queries), `DefaultRaycastLayers`, `AllLayers`, `IgnoreRaycastLayer` |
@@ -35,6 +35,7 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 | CharacterController | `Move(motion)`, `SimpleMove(speed)` (returns `isGrounded`), `isGrounded`, `velocity`, `height`, `radius`, `center`, `slopeLimit`, `stepOffset`, `skinWidth` (read-only) |
 | AudioSource | `Play()`, `Stop()`, `Pause()`, `UnPause()`, `PlayOneShot(clipPath [, volumeScale])`, `isPlaying` (read-only), `volume`, `pitch`, `loop`, `mute`, `spatialBlend`, `enabled`, `clip` (project path like `"Assets/Audio/Beep.wav"`, or nil) |
 | Animation | `Play([name])` (the default clip, or the clip of the Animation's list with that file name; restarts it; returns false and warns if missing), `Stop()` (rewinds, keeps the pose), `IsPlaying(name)`, `isPlaying` (read-only), `time` (seconds since Play, keeps growing while looping; settable), `speed` (1 = normal, negative plays backwards), `clip` (name of the current clip, read-only), `enabled` |
+| Animator | `SetFloat(name, v)`, `GetFloat(name)`, `SetInteger`, `GetInteger`, `SetBool`, `GetBool`, `SetTrigger(name)`, `ResetTrigger(name)`, `Play(state [, layer [, normalizedTime]])`, `CrossFade(state, normalizedDuration [, layer [, normalizedOffset]])`, `CrossFadeInFixedTime(state, seconds [, …])`, `GetCurrentAnimatorStateInfo(0)` / `GetNextAnimatorStateInfo(0)` (table: `normalizedTime`, `length`, `speed`, `loop`, `IsName(name)`), `IsInTransition(0)`, `speed`, `enabled` (only layer 0; unknown names or wrong types warn in the Console) |
 | Text (UI) | `GetComponent("Text")`: `text` (numbers are shown as text), `fontSize`, `color`, `enabled`, `gameObject` |
 | Image (UI) | `GetComponent("Image")`: `color`, `texture` (project path or nil), `raycastTarget`, `enabled`, `gameObject` |
 | Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`; clicks call the On Click methods set in the Inspector |
@@ -101,6 +102,24 @@ return Door
 Animations are sampled after every `Update` and before `LateUpdate`, so `LateUpdate` sees the animated pose and
 can override it. Sample: `Assets/Scripts/AnimationControl.lua` in `Scenes/AnimationDemo.scene` (Space pauses /
 resumes, Up/Down change the speed).
+
+### Driving an Animator
+
+```lua
+local Hero = {}
+function Hero:Start() self._anim = self.gameObject:GetComponent("Animator") end
+function Hero:Update()
+    if Input.GetKeyDown("space") then self._anim:SetTrigger("Jump") end
+    self._anim:SetFloat("Speed", Input.GetAxis("Vertical"))
+    local info = self._anim:GetCurrentAnimatorStateInfo(0)
+    if info:IsName("Jump") and info.normalizedTime > 0.5 then Debug.Log("coming down") end
+end
+return Hero
+```
+Parameters set in `Update` are used the same frame: the Animator is evaluated after `Update` (after the Animation
+component), before `LateUpdate`. A trigger stays set until a transition uses it (or `ResetTrigger`).
+`normalizedTime` keeps growing while a state loops (1.5 = halfway through the second loop). Sample:
+`Assets/Scripts/AnimatorControl.lua` in `Scenes/AnimatorDemo.scene` (Space jumps, 1/2/3 set the speed, 4 dances).
 
 ### UI buttons
 
