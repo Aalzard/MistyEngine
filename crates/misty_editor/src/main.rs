@@ -23,6 +23,8 @@ mod project_settings;
 mod render_scene;
 #[cfg(test)]
 mod sample_assets;
+#[cfg(test)]
+mod sample_ui;
 mod scene_camera;
 mod scene_files;
 mod selection;
@@ -31,6 +33,8 @@ mod status_bar;
 mod theme;
 mod thumbnails;
 mod toolbar;
+mod ui_create;
+mod ui_gizmos;
 mod undo;
 mod viewport;
 mod widgets;

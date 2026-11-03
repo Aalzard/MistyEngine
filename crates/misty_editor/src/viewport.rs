@@ -1,6 +1,9 @@
 //! GPU context shared by the Scene and Game views, and per-view offscreen targets.
 
+use misty_engine::render::ui::UiRenderer;
 use misty_engine::render::{Frame, RenderTarget, Renderer};
+use misty_engine::scene::Scene;
+use misty_engine::ui::UiInteraction;
 use misty_engine::wgpu;
 
 /// One view's render target, registered as an egui texture.
@@ -14,6 +17,8 @@ pub struct Viewport {
 pub struct Gpu {
     pub state: egui_wgpu::RenderState,
     pub renderer: Renderer,
+    /// Canvas UI drawn over the Game view.
+    pub ui: UiRenderer,
     pub scene: Viewport,
     pub game: Viewport,
 }
@@ -21,11 +26,26 @@ pub struct Gpu {
 impl Gpu {
     pub fn new(state: egui_wgpu::RenderState) -> Self {
         let renderer = Renderer::new(&state.device);
+        let ui = UiRenderer::new(&state.device, &state.queue);
         Self {
             state,
             renderer,
+            ui,
             scene: Viewport::default(),
             game: Viewport::default(),
+        }
+    }
+
+    /// Draw the scene's canvases over the Game view image rendered this frame.
+    pub fn render_ui(&mut self, scene: &Scene, interaction: Option<&UiInteraction>) {
+        if let Some(target) = self.game.target.as_ref() {
+            self.ui.render(
+                &self.state.device,
+                &self.state.queue,
+                target,
+                scene,
+                interaction,
+            );
         }
     }
 }

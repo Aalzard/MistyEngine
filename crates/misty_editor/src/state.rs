@@ -151,6 +151,8 @@ pub struct GameViewSettings {
     pub focused: bool,
     /// Screen rect of the game image last frame.
     pub view_rect: egui::Rect,
+    /// Game image size in pixels last frame (UI layout in the Scene view and Inspector).
+    pub screen_px: glam::Vec2,
     pub aspect: usize,
     pub scale: f32,
     pub play_mode_target: usize,
@@ -269,6 +271,7 @@ impl EditorState {
             game_view: GameViewSettings {
                 focused: false,
                 view_rect: egui::Rect::NOTHING,
+                screen_px: glam::Vec2::new(1920.0, 1080.0),
                 aspect: 0,
                 scale: 1.0,
                 play_mode_target: 0,

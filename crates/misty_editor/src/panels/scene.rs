@@ -37,7 +37,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let meshes =
                 render_scene::mesh_draws(&state.scene, &state.assets, Some(&state.selection));
             let mut lines = if sv.gizmos {
-                gizmos::scene_lines(&state.scene, &state.selection)
+                let mut l = gizmos::scene_lines(&state.scene, &state.selection);
+                let screen = state.game_view.screen_px;
+                crate::ui_gizmos::ui_lines(&mut l, &state.scene, &state.selection, screen);
+                l
             } else {
                 gizmos::Lines::default()
             };

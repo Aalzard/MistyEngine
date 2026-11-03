@@ -31,10 +31,19 @@ pub fn key_name(key: Key) -> String {
     }
 }
 
-/// This frame's input as scripts see it.
-pub fn capture(ctx: &egui::Context) -> Input {
+/// This frame's input as scripts see it; `view` = the game image's screen rect (UI clicks
+/// use its pixels).
+pub fn capture(ctx: &egui::Context, view: egui::Rect) -> Input {
     ctx.input(|i| {
         let mut input = Input::default();
+        let ppp = i.pixels_per_point;
+        // Same pixel size the Game view renders at.
+        input.screen_size = (glam::Vec2::new(view.width(), view.height()) * ppp).floor();
+        input.mouse_position = i
+            .pointer
+            .hover_pos()
+            .filter(|p| view.contains(*p))
+            .map(|p| glam::Vec2::new(p.x - view.min.x, p.y - view.min.y) * ppp);
         for k in &i.keys_down {
             input.held.insert(key_name(*k));
         }

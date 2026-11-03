@@ -29,13 +29,16 @@ pub fn icon(name: &str) -> &'static str {
         "Box Collider" | "Sphere Collider" | "Capsule Collider" | "Mesh Collider" => "⬡",
         "Audio Source" => crate::state::AUDIO_ICON,
         "Audio Listener" => "🎧",
-        _ => "▣",
+        other => super::ui_editors::icon(other).unwrap_or("▣"),
     }
 }
 
 /// Components with an enable checkbox in their header.
 pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> {
     let w = &state.scene.world;
+    if super::ui_editors::NAMES.contains(&name) {
+        return super::ui_editors::enabled_flag(state, e, name);
+    }
     match name {
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
         "Light" => w.get::<&Light>(e).ok().map(|c| c.enabled),
@@ -51,6 +54,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
 }
 
 pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
+    if super::ui_editors::NAMES.contains(&name) {
+        return super::ui_editors::set_enabled(state, e, name, on);
+    }
     let w = &mut state.scene.world;
     match name {
         "Camera" => w.get::<&mut Camera>(e).map(|mut c| c.enabled = on).ok(),
@@ -105,6 +111,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Audio Listener" => {
             ui.weak("Hears every Audio Source in the scene.");
             false
+        }
+        ui_name if super::ui_editors::NAMES.contains(&ui_name) => {
+            super::ui_editors::edit(ui, state, e, ui_name)
         }
         _ => {
             ui.weak("No editor for this component.");

@@ -96,7 +96,11 @@ impl Player {
         }
         let Some(gfx) = self.gfx.as_mut() else { return };
         let view = self.game.view();
-        gfx.draw(view.as_ref().map(|v| v.frame()).as_ref());
+        let frame = view.as_ref().map(|v| v.frame());
+        gfx.draw(frame.as_ref(), &self.game.scene, self.game.ui_interaction());
+        for w in gfx.take_warnings() {
+            self.log.write(LogKind::Warning, &w);
+        }
         self.frames += 1;
         if self.frames == SCREENSHOT_FRAME
             && let Some(path) = self.screenshot.take()
@@ -143,6 +147,8 @@ impl ApplicationHandler for Player {
                 return;
             }
         }
+        let size = window.inner_size();
+        self.input.screen_resized(size.width, size.height);
         self.window = Some(window);
         self.last = Instant::now();
     }
@@ -151,6 +157,7 @@ impl ApplicationHandler for Player {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
+                self.input.screen_resized(size.width, size.height);
                 if let Some(gfx) = self.gfx.as_mut() {
                     gfx.resize(size.width, size.height);
                 }
@@ -166,7 +173,10 @@ impl ApplicationHandler for Player {
                 let scale = self.window.as_ref().map_or(1.0, |w| w.scale_factor());
                 let p = position.to_logical::<f32>(scale);
                 self.input.cursor_moved(Vec2::new(p.x, p.y));
+                self.input
+                    .cursor_pixels(Some(Vec2::new(position.x as f32, position.y as f32)));
             }
+            WindowEvent::CursorLeft { .. } => self.input.cursor_pixels(None),
             WindowEvent::RedrawRequested => self.frame(event_loop),
             _ => {}
         }

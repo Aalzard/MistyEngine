@@ -3,6 +3,7 @@
 
 mod editors;
 mod slots;
+mod ui_editors;
 
 use egui::{RichText, Ui};
 use misty_engine::hecs::Entity;
@@ -83,13 +84,18 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 /// Components present on every target, in the active object's order.
 fn shared_components(state: &EditorState, targets: &[Entity]) -> Vec<String> {
     let names = state.scene.component_names(targets[0]);
-    names
+    let shared: Vec<String> = names
         .into_iter()
         .filter(|n| {
             registry::find(n)
                 .is_some_and(|info| targets.iter().all(|t| (info.has)(&state.scene.world, *t)))
         })
-        .collect()
+        .collect();
+    // UI objects show their Rect Transform in place of the Transform.
+    if shared.iter().any(|n| n == "Rect Transform") {
+        return shared.into_iter().filter(|n| n != "Transform").collect();
+    }
+    shared
 }
 
 fn lock_row(ui: &mut Ui, state: &mut EditorState) {

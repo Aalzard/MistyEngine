@@ -37,8 +37,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let frame = game.frame();
             let ppp = ui.ctx().pixels_per_point();
             let size = [(view.width() * ppp) as u32, (view.height() * ppp) as u32];
+            state.game_view.screen_px = glam::Vec2::new(size[0] as f32, size[1] as f32);
             let started = std::time::Instant::now();
             let texture = gpu.render(ViewId::Game, size, &frame);
+            let interaction = state.runtime.as_ref().map(|r| r.ui_interaction());
+            gpu.render_ui(&state.scene, interaction);
             let render_ms = started.elapsed().as_secs_f32() * 1000.0;
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             ui.painter().image(texture, view, uv, Color32::WHITE);
