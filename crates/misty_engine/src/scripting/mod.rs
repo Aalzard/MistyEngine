@@ -18,6 +18,7 @@
 //! ```
 
 pub mod api;
+pub mod ui_api;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -30,7 +31,8 @@ use crate::animation::AnimationPlayer;
 use crate::audio::Audio;
 use crate::physics::{Contact, Physics};
 use crate::runtime::Time;
-use crate::scene::{Scene, ScriptValue, Scripts};
+use crate::scene::{ButtonCall, Scene, ScriptValue, Scripts, UiButton};
+use crate::ui::UiInteraction;
 use api::{LGameObject, LTransform, LVec3};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +52,10 @@ pub struct Input {
     pub mouse_pressed: [bool; 3],
     pub mouse_released: [bool; 3],
     pub mouse_delta: Vec2,
+    /// Pointer over the game image, in its pixels from the top-left (None = outside / unknown).
+    pub mouse_position: Option<Vec2>,
+    /// Game image size in pixels (UI layout and clicks use it).
+    pub screen_size: Vec2,
 }
 
 impl Input {
@@ -132,6 +138,8 @@ pub struct ScriptHost {
     root: PathBuf,
     classes: HashMap<String, Option<RegistryKey>>,
     instances: Vec<Instance>,
+    /// UI button hover/press state.
+    ui: UiInteraction,
 }
 
 impl ScriptHost {
@@ -172,6 +180,7 @@ impl ScriptHost {
             root: project_root,
             classes: HashMap::new(),
             instances: Vec::new(),
+            ui: UiInteraction::default(),
         };
         let scripted: Vec<(Entity, Vec<crate::scene::ScriptRef>)> = host.with_world(|w| {
             w.scene
@@ -428,6 +437,8 @@ impl ScriptHost {
             }
         }
 
+        self.ui_events();
+
         let steps = self.with_world(|w| w.physics.steps_due(time.delta));
         for _ in 0..steps {
             self.call_all("FixedUpdate");
@@ -443,6 +454,81 @@ impl ScriptHost {
         self.process_destroy();
 
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
+    }
+
+    /// UI pointer events (before FixedUpdate/Update, like an event system): hover/press state
+    /// and Button On Click calls.
+    fn ui_events(&mut self) {
+        let calls: Vec<ButtonCall> = {
+            let Some(w) = self.lua.app_data_ref::<World>() else {
+                return;
+            };
+            let input = &w.input;
+            let layout = crate::ui::layout(&w.scene, input.screen_size);
+            let clicked = self.ui.update(
+                &layout,
+                &w.scene,
+                input.mouse_position,
+                input.mouse_pressed[0],
+                input.mouse_released[0],
+            );
+            clicked
+                .into_iter()
+                .filter_map(|b| {
+                    w.scene
+                        .world
+                        .get::<&UiButton>(b)
+                        .ok()
+                        .map(|c| c.on_click.clone())
+                })
+                .flatten()
+                .collect()
+        };
+        for call in calls {
+            match call.target {
+                Some(t) if !call.method.is_empty() => self.send_message(t, &call.method),
+                _ => {}
+            }
+        }
+    }
+
+    /// Call `method` on every running script of `target` that defines it.
+    pub fn send_message(&mut self, target: Entity, method: &str) {
+        let mut found = false;
+        for i in 0..self.instances.len() {
+            let inst = &self.instances[i];
+            if inst.entity != target || !self.runnable(inst) {
+                continue;
+            }
+            let defined = self
+                .lua
+                .registry_value::<Table>(&inst.table)
+                .and_then(|t| t.get::<Option<Function>>(method))
+                .is_ok_and(|f| f.is_some());
+            if defined {
+                found = true;
+                self.call(i, method, None);
+                self.flush_spawned();
+            }
+        }
+        if !found {
+            let name = self.with_world(|w| {
+                if w.scene.contains(target) {
+                    w.scene.name(target)
+                } else {
+                    "a destroyed object".into()
+                }
+            });
+            self.log(
+                LogKind::Warning,
+                format!("On Click: no script on '{name}' has a method '{method}'"),
+            );
+        }
+    }
+
+    /// Button hover/press state (the Game view and player tint buttons with it).
+    pub fn ui_interaction(&self) -> &UiInteraction {
+        &self.ui
     }
 
     /// Remove objects queued by `Destroy` (with their children and physics bodies).

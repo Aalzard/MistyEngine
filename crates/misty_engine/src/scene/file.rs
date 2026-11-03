@@ -56,6 +56,33 @@ fn tidy_numbers(v: &mut serde_json::Value) {
     }
 }
 
+/// GameObject reference fields: (component, list field, reference field in each item).
+const OBJECT_REFS: &[(&str, &str, &str)] = &[("Button", "on_click", "target")];
+
+/// Rewrite every object reference with `f` (entity bits ↔ object index); unmapped → null.
+fn remap_refs(
+    components: &mut BTreeMap<String, serde_json::Value>,
+    f: impl Fn(u64) -> Option<u64>,
+) {
+    for (comp, list, field) in OBJECT_REFS {
+        let Some(items) = components
+            .get_mut(*comp)
+            .and_then(|c| c.get_mut(*list))
+            .and_then(|l| l.as_array_mut())
+        else {
+            continue;
+        };
+        for item in items {
+            if let Some(v) = item.get_mut(*field) {
+                *v = v
+                    .as_u64()
+                    .and_then(&f)
+                    .map_or(serde_json::Value::Null, Into::into);
+            }
+        }
+    }
+}
+
 /// Pretty JSON with tidy numbers (shared by scenes and prefabs).
 pub(super) fn write_json(objects: Vec<ObjectEntry>) -> String {
     let mut value = serde_json::to_value(SceneFile {
@@ -107,6 +134,10 @@ impl Scene {
         // Same numbers as a saved file, so entries can be compared.
         for o in &mut objects {
             o.components.values_mut().for_each(tidy_numbers);
+            // Object references become list indices (null when outside the saved objects).
+            remap_refs(&mut o.components, |bits| {
+                Entity::from_bits(bits).and_then(|e| index.get(&e).map(|i| *i as u64))
+            });
         }
         objects
     }
@@ -118,9 +149,17 @@ impl Scene {
         parent: Option<Entity>,
         report: &mut LoadReport,
     ) -> Vec<Entity> {
+        // Spawn first so object references (by index) can point forward.
+        let all: Vec<Entity> = objects
+            .iter()
+            .map(|_| self.world.spawn((Node::default(),)))
+            .collect();
         let mut entities: Vec<Entity> = Vec::with_capacity(objects.len());
-        for (i, obj) in objects.into_iter().enumerate() {
-            let e = self.world.spawn((Node::default(),));
+        for (i, mut obj) in objects.into_iter().enumerate() {
+            let e = all[i];
+            remap_refs(&mut obj.components, |index| {
+                all.get(index as usize).map(|e| e.to_bits().get())
+            });
             for (comp, value) in obj.components {
                 match registry::find(&comp) {
                     Some(info) if info.name != Node::NAME => {

@@ -121,6 +121,11 @@ impl Runtime {
         self.host.take_requests()
     }
 
+    /// UI button hover/press state, for drawing buttons with their Colour Tint.
+    pub fn ui_interaction(&self) -> &crate::ui::UiInteraction {
+        self.host.ui_interaction()
+    }
+
     /// Gravity and fixed timestep the physics world was built with.
     pub fn physics_config(&self) -> (Vec3, f32) {
         self.host.physics_config()

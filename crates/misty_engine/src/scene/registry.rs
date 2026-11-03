@@ -147,6 +147,13 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<GameObject>(),
             ComponentInfo::of::<Node>(),
             ComponentInfo::of::<Transform>(),
+            // UI (see ui_components.rs).
+            ComponentInfo::of::<super::RectTransform>(),
+            ComponentInfo::of::<super::Canvas>(),
+            ComponentInfo::of::<super::CanvasScaler>(),
+            ComponentInfo::of::<super::UiImage>(),
+            ComponentInfo::of::<super::UiText>(),
+            ComponentInfo::of::<super::UiButton>(),
             ComponentInfo::of::<Camera>(),
             ComponentInfo::of::<Light>(),
             ComponentInfo::of::<MeshFilter>(),

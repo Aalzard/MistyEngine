@@ -71,6 +71,10 @@ pub struct InputState {
     mouse_released: [bool; 3],
     cursor: Option<Vec2>,
     mouse_delta: Vec2,
+    /// Cursor in physical pixels (what the UI is laid out in); None = outside the window.
+    cursor_px: Option<Vec2>,
+    /// Window size in physical pixels.
+    screen: Vec2,
 }
 
 impl InputState {
@@ -114,6 +118,16 @@ impl InputState {
         self.cursor = Some(pos);
     }
 
+    /// Cursor position in physical pixels, for UI clicks (`None` = it left the window).
+    pub fn cursor_pixels(&mut self, pos: Option<Vec2>) {
+        self.cursor_px = pos;
+    }
+
+    /// Window size in physical pixels (UI layout).
+    pub fn screen_resized(&mut self, width: u32, height: u32) {
+        self.screen = Vec2::new(width as f32, height as f32);
+    }
+
     /// Focus lost: release everything so keys don't stick.
     pub fn clear_held(&mut self) {
         self.released.extend(self.held.drain());
@@ -130,6 +144,8 @@ impl InputState {
             mouse_pressed: std::mem::take(&mut self.mouse_pressed),
             mouse_released: std::mem::take(&mut self.mouse_released),
             mouse_delta: std::mem::take(&mut self.mouse_delta),
+            mouse_position: self.cursor_px,
+            screen_size: self.screen,
         }
     }
 }

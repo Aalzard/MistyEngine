@@ -14,11 +14,14 @@ pub enum Create {
     Light(LightType),
     Camera,
     AudioSource,
+    /// GameObject ▸ UI ▸ … (see `ui_create`).
+    Ui(crate::ui_create::UiElement),
 }
 
 impl Create {
     pub fn default_name(self) -> &'static str {
         match self {
+            Create::Ui(el) => el.name(),
             Create::Empty => "GameObject",
             Create::Primitive(p) => p.name(),
             Create::Light(LightType::Directional) => "Directional Light",

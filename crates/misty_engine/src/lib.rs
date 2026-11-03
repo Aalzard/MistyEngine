@@ -16,6 +16,7 @@ pub mod runtime;
 pub mod scene;
 pub mod scripting;
 pub mod settings;
+pub mod ui;
 
 pub use hecs;
 

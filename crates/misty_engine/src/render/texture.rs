@@ -98,7 +98,7 @@ pub fn load_image(path: &Path) -> Result<RgbaImage, String> {
 }
 
 /// Upload an image with generated mips.
-fn upload(
+pub(crate) fn upload(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     label: &str,

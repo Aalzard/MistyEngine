@@ -102,6 +102,11 @@ impl Game {
         }
     }
 
+    /// Button hover/press state for drawing the UI.
+    pub fn ui_interaction(&self) -> Option<&misty_engine::ui::UiInteraction> {
+        self.runtime.as_ref().map(|r| r.ui_interaction())
+    }
+
     /// What the game camera sees (`None` = no camera rendering).
     pub fn view(&self) -> Option<GameView> {
         GameView::new(&self.scene, &self.assets)

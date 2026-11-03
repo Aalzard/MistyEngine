@@ -384,3 +384,46 @@
   (only the window's value fields). Saving while previewing leaves the preview instead of keeping it.
 - The clip Inspector (a `.anim` selected in the Project window) only has Loop Time; length, sample rate, curves
   and events are shown read-only (Unity also has loop pose, cycle offset, root motion and import settings).
+
+## Runtime UI ✅
+
+### Done
+- Components: **Canvas** (Screen Space - Overlay, Sort Order), **Canvas Scaler** (Constant Pixel Size / Scale With
+  Screen Size with Reference Resolution and Match Width-Height), **Rect Transform** (anchors, pivot, anchored
+  position, size delta), **Image** (colour, optional project texture, Raycast Target), **Text** (text, font size,
+  line spacing, colour, 9-way alignment, Wrap/Overflow, Raycast Target) and **Button** (Interactable, Colour Tint
+  Normal/Highlighted/Pressed/Disabled colours, Colour Multiplier, On Click list of target object + Lua method).
+  All save/load with defaults for missing fields; On Click targets survive scene files, prefabs and duplicates.
+- Layout every frame from parent rects and anchors (pure maths, unit-tested), with the Canvas Scaler factor.
+- Rendering: the UI is drawn over the camera image in the Game view and in the standalone player (shared engine
+  pass: coloured/textured quads + a glyph atlas from the built-in font, crisp at every scale).
+- Input while playing: buttons highlight on hover, darken while pressed, fade when not interactable; a click (press
+  + release on the same button) calls the On Click methods on the target's scripts. Works in the Game view (its
+  pixels) and in the player window. Raycast Target off lets clicks through.
+- Lua: `GetComponent("Text").text`, `Image.color`, `Button.interactable`, `Color.new(r, g, b [, a])` and more
+  (see scripting.md).
+- Editor: GameObject ▸ UI ▸ Canvas / Text / Image / Button (also in the Hierarchy + and right-click menus); UI
+  elements go into the selected canvas or the scene's first canvas, and a Canvas is created when there is none.
+  Objects get the UI layer and unique names. Component ▸ Layout / UI and Add Component list the new components.
+- Inspector: Rect Transform replaces the Transform section (Pos X/Y + Width/Height, or Left/Right/Top/Bottom on
+  stretched axes; Anchors Min/Max; Pivot) with an Anchor Presets popup (4×4 grid, "also set pivot / position"
+  toggles or Shift/Alt); "Some values driven by Canvas." on canvases. Editors for Canvas, Canvas Scaler, Image
+  (texture slot accepts drag & drop), Text (multi-line text, alignment buttons) and Button (On Click list with an
+  object picker and method name).
+- Scene view: canvas rectangles (one unit per screen pixel), selected UI rects with anchor markers; Frame Selected
+  frames UI rects.
+- Sample: `Assets/Scenes/UIDemo.scene` with a score Text and an "Add Point" Button handled by
+  `Assets/Scripts/ScoreKeeper.lua` (the button disables itself and turns green at 10 points).
+- Tests: layout maths, canvas layout tree, text wrapping/alignment and glyph atlas, raycasts/clicks, draw list,
+  serialisation round trip, Lua API + On Click, kittest of the GameObject ▸ UI menu, and the UIDemo click-through.
+
+### Not matching Unity yet
+- Only Screen Space - Overlay: no Screen Space - Camera / World Space canvases, Pixel Perfect, or Graphic Raycaster
+  settings; no EventSystem object, keyboard/gamepad navigation, Selected state or colour fade duration.
+- One built-in font (Ubuntu Light); no font assets, rich text, Best Fit, vertical truncation or TextMeshPro.
+- Image has no sprite types (Sliced/Tiled/Filled), Preserve Aspect or Set Native Size; textures don't hot-reload.
+- No layout groups, Content Size Fitter, masks, scroll views, toggles, sliders, input fields or dropdowns.
+- Rect Transform ignores the Transform's rotation/scale; no Rect tool handles to drag UI rects in the Scene view,
+  and UI graphics are not drawn in the Scene view (outlines only). Clicking UI in the Scene view doesn't select it.
+- On Click picks a method by name (no dropdown of the target's methods, no arguments).
+- The player draws no UI while no camera renders (the screen stays black).

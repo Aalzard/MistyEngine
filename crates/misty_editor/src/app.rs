@@ -319,6 +319,9 @@ impl EditorApp {
             for w in gpu.renderer.take_warnings() {
                 s.console.warn(w);
             }
+            for w in gpu.ui.take_warnings() {
+                s.console.warn(w);
+            }
         }
         if !s.play.in_play_mode() {
             // Scripts reload when their files change; syntax errors go to the Console.
@@ -333,7 +336,7 @@ impl EditorApp {
             s.game_view.focused = s.game_view.view_rect.contains(p);
         }
         s.game_input = if s.game_view.focused && !ctx.egui_wants_keyboard_input() {
-            game_input::capture(ctx)
+            game_input::capture(ctx, s.game_view.view_rect)
         } else {
             Default::default()
         };

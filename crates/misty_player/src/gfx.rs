@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
+use misty_engine::render::ui::UiRenderer;
 use misty_engine::render::{Frame, RenderTarget, Renderer};
+use misty_engine::scene::Scene;
+use misty_engine::ui::UiInteraction;
 use misty_engine::wgpu;
 use winit::window::Window;
 
@@ -35,6 +38,8 @@ pub struct Gfx {
     /// Non-sRGB view format of the surface (the blit writes encoded bytes).
     view_format: wgpu::TextureFormat,
     renderer: Renderer,
+    /// Canvas UI drawn over the camera image.
+    ui: UiRenderer,
     target: RenderTarget,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -74,6 +79,7 @@ impl Gfx {
         surface.configure(&device, &config);
 
         let renderer = Renderer::new(&device);
+        let ui = UiRenderer::new(&device, &queue);
         let target = renderer.create_target(&device, config.width, config.height);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("misty blit layout"),
@@ -115,6 +121,7 @@ impl Gfx {
             config,
             view_format,
             renderer,
+            ui,
             target,
             layout,
             sampler,
@@ -177,11 +184,18 @@ impl Gfx {
         self.group = blit_group(&self.device, &self.layout, &self.sampler, &self.target);
     }
 
-    /// Render `frame` (or black when no camera renders) and present it.
-    pub fn draw(&mut self, frame: Option<&Frame>) {
+    /// Texture problems found while drawing the UI.
+    pub fn take_warnings(&mut self) -> Vec<String> {
+        self.ui.take_warnings()
+    }
+
+    /// Render `frame` (or black when no camera renders) with `scene`'s UI on top, and present it.
+    pub fn draw(&mut self, frame: Option<&Frame>, scene: &Scene, ui: Option<&UiInteraction>) {
         if let Some(frame) = frame {
             self.renderer
                 .render(&self.device, &self.queue, &self.target, frame);
+            self.ui
+                .render(&self.device, &self.queue, &self.target, scene, ui);
         }
         let texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)

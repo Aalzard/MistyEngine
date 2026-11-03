@@ -13,6 +13,10 @@ use crate::state::EditorState;
 /// Apply a scene command. Returns the action back if it is not a scene command.
 pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
     match action {
+        Action::Create {
+            what: Create::Ui(el),
+            parent,
+        } => crate::ui_create::create(s, el, parent),
         Action::Create { what, parent } => create(s, what, parent),
         Action::CreateEmptyParent => create_empty_parent(s),
         Action::DeleteSelected => {
@@ -254,6 +258,7 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
         }
         Create::Camera => s.scene.add(e, Camera::default()),
         Create::AudioSource => s.scene.add(e, misty_engine::scene::AudioSource::default()),
+        Create::Ui(_) => {} // handled by ui_create
     }
     s.scene.set_transform(e, t);
     s.select(e);
@@ -293,6 +298,10 @@ pub fn selection_bounds(s: &EditorState) -> Option<(Vec3, f32)> {
     let points: Vec<(Vec3, f32)> = list
         .iter()
         .map(|e| {
+            // UI objects frame their on-canvas rect.
+            if let Some(b) = crate::ui_gizmos::ui_bounds(&s.scene, *e, s.game_view.screen_px) {
+                return b;
+            }
             let m = s.scene.world_matrix(*e);
             let bounds = s
                 .scene
