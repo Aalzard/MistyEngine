@@ -96,7 +96,10 @@ impl Runtime {
     /// One game frame.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         self.host.update(scene, time, input);
-        self.host.with_audio(|a| a.update(scene));
+        self.host.with_audio(|a| {
+            a.tick(time.delta);
+            a.update(scene);
+        });
         let (gravity, _) = self.host.physics_config();
         crate::particles::update(scene, time.delta, gravity);
     }
@@ -123,6 +126,11 @@ impl Runtime {
             a.set_muted(muted);
             a.set_paused(paused);
         });
+    }
+
+    /// The game's audio between frames (the Audio Mixer window's meters and live edits).
+    pub fn with_audio<R>(&self, f: impl FnOnce(&mut Audio) -> R) -> R {
+        self.host.with_audio(f)
     }
 
     /// Messages for the Console (script output, errors, build problems).

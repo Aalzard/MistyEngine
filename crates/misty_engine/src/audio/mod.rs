@@ -1,26 +1,40 @@
-//! Play-mode audio: Audio Sources heard through the Audio Listener.
+//! Play-mode audio: Audio Sources heard through the Audio Listener, mixed through Audio Mixers.
 //!
 //! [`Audio`] owns the voices started by Audio Sources (play on awake, scripts) and, every frame,
-//! recomputes their volume and pan from the listener and source positions. The sound device
-//! (kira) is opened lazily on the first sound, so scenes without audio and tests never touch it;
-//! if it can't be opened a warning is logged and everything keeps running silently.
+//! recomputes their volume, pitch and pan from the listener and source positions, and pushes
+//! mixer group volumes and effect values to the backend's tracks. The sound device (kira) is
+//! opened lazily on the first sound, so scenes without audio and tests never touch it; if it
+//! can't be opened a warning is logged and everything keeps running silently.
 
 pub mod backend;
+pub mod effects;
+mod kira_fx;
+pub mod mixer;
+pub mod mixer_state;
+mod routing;
 pub mod spatial;
 pub mod wav;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use glam::Mat4;
+use glam::{Mat4, Vec3};
 use hecs::Entity;
 
 use crate::scene::{AudioListener, AudioSource, Scene};
-pub use backend::{AudioBackend, KiraBackend, NullBackend, NullLog, VoiceId};
+pub use backend::{AudioBackend, KiraBackend, NullBackend, NullLog, TrackId, VoiceId};
+pub use effects::{EffectKind, EffectSpec, amplitude_to_db, db_to_amplitude};
+pub use mixer::{AudioMixer, is_mixer};
+pub use mixer_state::MixerState;
+use routing::{Ctx, Route};
+pub use routing::{output_ref, split_output};
 pub use spatial::VoiceParams;
 
 /// File extensions treated as audio clips.
 pub const CLIP_EXTENSIONS: [&str; 3] = ["wav", "ogg", "mp3"];
+
+/// Voices beyond this many are silenced, least important (highest Priority value) first.
+pub const MAX_REAL_VOICES: usize = 32;
 
 pub fn is_clip(path: &str) -> bool {
     std::path::Path::new(path)
@@ -32,10 +46,10 @@ pub fn is_clip(path: &str) -> bool {
 type Factory = fn() -> Result<Box<dyn AudioBackend>, String>;
 
 /// The voice an Audio Source is playing with `Play()`.
-#[derive(Clone, Copy)]
 struct SourceVoice {
     id: VoiceId,
     paused: bool,
+    route: Route,
 }
 
 /// A `PlayOneShot` voice: follows its source's position, scaled by its own volume.
@@ -43,6 +57,14 @@ struct OneShot {
     source: Entity,
     id: VoiceId,
     scale: f32,
+    route: Route,
+}
+
+/// `AudioSource.PlayClipAtPoint`: a fully 3D voice at a fixed point.
+struct PointVoice {
+    id: VoiceId,
+    at: Vec3,
+    volume: f32,
 }
 
 pub struct Audio {
@@ -52,12 +74,22 @@ pub struct Audio {
     root: PathBuf,
     sources: HashMap<Entity, SourceVoice>,
     one_shots: Vec<OneShot>,
+    points: Vec<PointVoice>,
     /// Untracked 2D voices (`play_clip`, e.g. the editor's clip preview).
     clips: Vec<VoiceId>,
+    /// Mixers loaded so far (by first use).
+    mixers: Vec<MixerState>,
+    /// Sources to start again on the next update (their mixer's tracks were rebuilt).
+    restart: Vec<Entity>,
+    /// Positions last frame, for Doppler.
+    last_pos: HashMap<Entity, Vec3>,
+    last_ear: Option<Vec3>,
+    /// Scaled seconds of the current frame (`tick`).
+    dt: f32,
     muted: bool,
     paused: bool,
     logs: Vec<String>,
-    /// Clips that already failed to load (warn once each).
+    /// Clips / outputs that already failed (warn once each).
     bad_clips: HashSet<String>,
 }
 
@@ -83,7 +115,13 @@ impl Audio {
             root,
             sources: HashMap::new(),
             one_shots: Vec::new(),
+            points: Vec::new(),
             clips: Vec::new(),
+            mixers: Vec::new(),
+            restart: Vec::new(),
+            last_pos: HashMap::new(),
+            last_ear: None,
+            dt: 0.0,
             muted: false,
             paused: false,
             logs: Vec::new(),
@@ -105,12 +143,17 @@ impl Audio {
         self.backend.as_mut()
     }
 
-    /// Start a voice for `clip` (project-relative), logging load errors once per clip.
-    fn start_voice(&mut self, clip: &str, params: VoiceParams) -> Option<VoiceId> {
+    /// Start a voice for `clip` (project-relative) on `track`, logging load errors once per clip.
+    fn start_voice(
+        &mut self,
+        clip: &str,
+        params: VoiceParams,
+        track: Option<TrackId>,
+    ) -> Option<VoiceId> {
         let path = self.root.join(clip);
         let paused = self.paused;
         let backend = self.backend()?;
-        match backend.play(&path, params) {
+        match backend.play(&path, params, track) {
             Ok(id) => {
                 if paused {
                     backend.pause(id);
@@ -124,6 +167,11 @@ impl Audio {
                 None
             }
         }
+    }
+
+    /// Mixing context for this frame (no motion: Doppler starts at 1).
+    fn ctx(&self, scene: &Scene) -> Ctx<'_> {
+        Ctx::new(scene, &self.mixers, self.muted)
     }
 
     // ---- Audio Sources ------------------------------------------------------------------------
@@ -154,27 +202,40 @@ impl Audio {
         let Some(clip) = source.clip.clone().filter(|c| !c.is_empty()) else {
             return false;
         };
-        let params = spatial::mix(
-            &source,
-            scene.world_position(e),
-            listener(scene),
-            self.muted,
-        );
-        match self.start_voice(&clip, params) {
+        self.backend();
+        let route = self.route(scene, e, &source);
+        let params = self.ctx(scene).source_params(scene, e, &source, &route);
+        match self.start_voice(&clip, params, route.target(&self.mixers)) {
             Some(id) => {
-                self.sources.insert(e, SourceVoice { id, paused: false });
+                self.sources.insert(
+                    e,
+                    SourceVoice {
+                        id,
+                        paused: false,
+                        route,
+                    },
+                );
                 true
             }
-            None => false,
+            None => {
+                self.drop_route(route);
+                false
+            }
         }
     }
 
     pub fn stop(&mut self, e: Entity) {
-        if let Some(v) = self.sources.remove(&e)
-            && let Some(b) = self.backend.as_mut()
-        {
-            b.stop(v.id);
+        if let Some(v) = self.sources.remove(&e) {
+            self.end(v.id, v.route);
         }
+    }
+
+    /// Stop a voice and remove its own effect track.
+    fn end(&mut self, id: VoiceId, route: Route) {
+        if let Some(b) = self.backend.as_mut() {
+            b.stop(id);
+        }
+        self.drop_route(route);
     }
 
     pub fn pause(&mut self, e: Entity) {
@@ -208,27 +269,56 @@ impl Audio {
             .is_some_and(|v| !v.paused && self.backend.as_ref().is_some_and(|b| b.is_alive(v.id)))
     }
 
+    /// `AudioSource.time`: playback position of the source's `Play()` voice in seconds.
+    pub fn time(&self, e: Entity) -> f32 {
+        match (self.sources.get(&e), self.backend.as_ref()) {
+            (Some(v), Some(b)) => b.position(v.id) as f32,
+            _ => 0.0,
+        }
+    }
+
+    pub fn set_time(&mut self, e: Entity, seconds: f32) {
+        if let (Some(v), Some(b)) = (self.sources.get(&e), self.backend.as_mut()) {
+            b.seek(v.id, seconds.max(0.0) as f64);
+        }
+    }
+
     /// `AudioSource.PlayOneShot(clip, volumeScale)`: an extra voice through the source's mix.
     pub fn play_one_shot(&mut self, scene: &Scene, e: Entity, clip: &str, scale: f32) -> bool {
         let Some(source) = playable(scene, e) else {
             return false;
         };
         let scale = scale.clamp(0.0, 1.0);
-        let mut params = spatial::mix(
-            &source,
-            scene.world_position(e),
-            listener(scene),
-            self.muted,
-        );
+        self.backend();
+        let route = self.route(scene, e, &source);
+        let mut params = self.ctx(scene).source_params(scene, e, &source, &route);
         params.volume *= scale;
         params.looping = false;
-        match self.start_voice(clip, params) {
+        match self.start_voice(clip, params, route.target(&self.mixers)) {
             Some(id) => {
                 self.one_shots.push(OneShot {
                     source: e,
                     id,
                     scale,
+                    route,
                 });
+                true
+            }
+            None => {
+                self.drop_route(route);
+                false
+            }
+        }
+    }
+
+    /// `AudioSource.PlayClipAtPoint(clip, position [, volume])`: a fully 3D one-shot at a
+    /// fixed world position with the default rolloff, straight to the listener.
+    pub fn play_clip_at_point(&mut self, scene: &Scene, clip: &str, at: Vec3, volume: f32) -> bool {
+        let volume = volume.clamp(0.0, 1.0);
+        let params = spatial::mix(&point_source(volume), at, listener(scene), self.muted);
+        match self.start_voice(clip, params, None) {
+            Some(id) => {
+                self.points.push(PointVoice { id, at, volume });
                 true
             }
             None => false,
@@ -241,19 +331,21 @@ impl Audio {
             volume: if self.muted { 0.0 } else { volume },
             ..Default::default()
         };
-        let id = self.start_voice(clip, params);
+        let id = self.start_voice(clip, params, None);
         self.clips.extend(id);
         id.is_some()
     }
 
+    fn all_ids(&self) -> impl Iterator<Item = VoiceId> + '_ {
+        let ids = self.sources.values().map(|v| v.id);
+        ids.chain(self.one_shots.iter().map(|o| o.id))
+            .chain(self.points.iter().map(|p| p.id))
+            .chain(self.clips.iter().copied())
+    }
+
     /// Whether any voice is still sounding.
     pub fn any_playing(&self) -> bool {
-        let Some(b) = self.backend.as_ref() else {
-            return false;
-        };
-        self.sources.values().any(|v| b.is_alive(v.id))
-            || self.one_shots.iter().any(|o| b.is_alive(o.id))
-            || self.clips.iter().any(|id| b.is_alive(*id))
+        self.voice_count() > 0
     }
 
     /// Number of live voices (Stats).
@@ -261,23 +353,25 @@ impl Audio {
         let Some(b) = self.backend.as_ref() else {
             return 0;
         };
-        let ids = self.sources.values().map(|v| v.id);
-        ids.chain(self.one_shots.iter().map(|o| o.id))
-            .chain(self.clips.iter().copied())
-            .filter(|id| b.is_alive(*id))
-            .count()
+        self.all_ids().filter(|id| b.is_alive(*id)).count()
     }
 
     pub fn stop_all(&mut self) {
-        let ids: Vec<VoiceId> = self
-            .sources
-            .drain()
-            .map(|(_, v)| v.id)
-            .chain(self.one_shots.drain(..).map(|o| o.id))
+        let sources: Vec<(VoiceId, Route)> =
+            self.sources.drain().map(|(_, v)| (v.id, v.route)).collect();
+        let shots: Vec<(VoiceId, Route)> =
+            self.one_shots.drain(..).map(|o| (o.id, o.route)).collect();
+        for (id, route) in sources.into_iter().chain(shots) {
+            self.end(id, route);
+        }
+        let rest: Vec<VoiceId> = self
+            .points
+            .drain(..)
+            .map(|p| p.id)
             .chain(self.clips.drain(..))
             .collect();
         if let Some(b) = self.backend.as_mut() {
-            for id in ids {
+            for id in rest {
                 b.stop(id);
             }
         }
@@ -306,6 +400,7 @@ impl Audio {
             .filter(|v| paused || !v.paused)
             .map(|v| v.id)
             .chain(self.one_shots.iter().map(|o| o.id))
+            .chain(self.points.iter().map(|p| p.id))
             .collect();
         if let Some(b) = self.backend.as_mut() {
             for id in resumable {
@@ -314,50 +409,85 @@ impl Audio {
         }
     }
 
-    /// Per frame: stop voices of destroyed/disabled sources, drop finished ones, and update
-    /// volume, pitch and pan from the current positions.
+    /// Advance time-based mixing (snapshot transitions, Doppler velocities) by `dt` seconds.
+    pub fn tick(&mut self, dt: f32) {
+        self.dt = dt.max(0.0);
+        for m in &mut self.mixers {
+            m.tick(self.dt);
+        }
+    }
+
+    /// Per frame: stop voices of destroyed/disabled sources, drop finished ones, update volume,
+    /// pitch and pan from the current positions, and push mixer values to their tracks.
     pub fn update(&mut self, scene: &Scene) {
-        let Some(b) = self.backend.as_mut() else {
+        for e in std::mem::take(&mut self.restart) {
+            self.play(scene, e);
+        }
+        if self.backend.is_none() {
             return;
-        };
-        let ear = listener(scene);
-        let muted = self.muted;
-        let mut ended = Vec::new();
-        self.sources.retain(|e, v| {
-            let alive = b.is_alive(v.id);
-            match playable(scene, *e).filter(|_| alive) {
+        }
+        let mut ended: Vec<(VoiceId, Route)> = Vec::new();
+        let ctx = Ctx::moving(
+            scene,
+            &self.mixers,
+            self.muted,
+            self.dt,
+            self.last_ear,
+            &self.last_pos,
+        );
+        let Self {
+            backend,
+            sources,
+            one_shots,
+            points,
+            clips,
+            ..
+        } = self;
+        let b = backend.as_mut().expect("checked");
+        for m in ctx.mixers {
+            m.push(b.as_mut());
+        }
+        // (voice, params, priority) for everything scene-driven.
+        let mut planned: Vec<(VoiceId, VoiceParams, u16)> = Vec::new();
+        for (e, v) in std::mem::take(sources) {
+            match playable(scene, e).filter(|_| b.is_alive(v.id)) {
                 Some(src) => {
-                    b.set(
-                        v.id,
-                        spatial::mix(&src, scene.world_position(*e), ear, muted),
-                    );
-                    true
+                    let p = ctx.source_params(scene, e, &src, &v.route);
+                    ctx.push_own(b.as_mut(), scene, e, &src, &v.route);
+                    planned.push((v.id, p, src.priority));
+                    sources.insert(e, v);
                 }
-                None => {
-                    ended.push(v.id);
-                    false
-                }
+                None => ended.push((v.id, v.route)),
             }
-        });
-        self.one_shots.retain(|o| {
-            let alive = b.is_alive(o.id);
-            match playable(scene, o.source).filter(|_| alive) {
+        }
+        for o in std::mem::take(one_shots) {
+            match playable(scene, o.source).filter(|_| b.is_alive(o.id)) {
                 Some(src) => {
-                    let mut p = spatial::mix(&src, scene.world_position(o.source), ear, muted);
+                    let mut p = ctx.source_params(scene, o.source, &src, &o.route);
                     p.volume *= o.scale;
                     p.looping = false;
-                    b.set(o.id, p);
-                    true
+                    ctx.push_own(b.as_mut(), scene, o.source, &src, &o.route);
+                    planned.push((o.id, p, src.priority));
+                    one_shots.push(o);
                 }
-                None => {
-                    ended.push(o.id);
-                    false
-                }
+                None => ended.push((o.id, o.route)),
             }
-        });
-        self.clips.retain(|id| b.is_alive(*id));
-        for id in ended {
-            b.stop(id);
+        }
+        points.retain(|p| b.is_alive(p.id));
+        for p in points.iter() {
+            let params = spatial::mix(&point_source(p.volume), p.at, ctx.ear, ctx.muted);
+            planned.push((p.id, params, 128));
+        }
+        clips.retain(|id| b.is_alive(*id));
+        limit_voices(&mut planned);
+        for (id, p, _) in planned {
+            b.set(id, p);
+        }
+        let (ear, positions) = ctx.positions(scene, sources.keys().copied());
+        self.last_ear = ear;
+        self.last_pos = positions;
+        for (id, route) in ended {
+            self.end(id, route);
         }
     }
 
@@ -370,6 +500,31 @@ impl Audio {
 impl Drop for Audio {
     fn drop(&mut self) {
         self.stop_all();
+    }
+}
+
+/// Keep the most important voices audible: sort by Priority (lower first), then loudness,
+/// and silence everything past [`MAX_REAL_VOICES`].
+fn limit_voices(planned: &mut [(VoiceId, VoiceParams, u16)]) {
+    if planned.len() <= MAX_REAL_VOICES {
+        return;
+    }
+    planned.sort_by(|a, b| {
+        a.2.cmp(&b.2)
+            .then(b.1.volume.total_cmp(&a.1.volume))
+            .then(a.0.cmp(&b.0))
+    });
+    for (_, p, _) in &mut planned[MAX_REAL_VOICES..] {
+        p.volume = 0.0;
+    }
+}
+
+/// The settings `PlayClipAtPoint` plays with.
+fn point_source(volume: f32) -> AudioSource {
+    AudioSource {
+        volume,
+        spatial_blend: 1.0,
+        ..Default::default()
     }
 }
 
@@ -394,5 +549,7 @@ pub fn listener(scene: &Scene) -> Option<Mat4> {
     Some(scene.world_matrix(e))
 }
 
+#[cfg(test)]
+mod mixer_tests;
 #[cfg(test)]
 mod tests;

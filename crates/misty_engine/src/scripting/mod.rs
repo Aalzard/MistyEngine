@@ -19,6 +19,7 @@
 
 pub mod animator_api;
 pub mod api;
+pub mod audio_api;
 pub mod particles_api;
 pub mod physics_api;
 pub mod render_settings_api;

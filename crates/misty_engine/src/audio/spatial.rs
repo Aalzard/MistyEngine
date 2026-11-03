@@ -55,6 +55,35 @@ pub fn pan(listener: Mat4, source: Vec3) -> f32 {
     dir.dot(rotation * Vec3::X).clamp(-1.0, 1.0)
 }
 
+/// Spread (0..360°) narrows the 3D pan: a point source at 0°, centred at 180°, mirrored at 360°.
+pub fn spread_factor(spread: f32) -> f32 {
+    (spread.clamp(0.0, 360.0).to_radians() * 0.5).cos()
+}
+
+/// Speed of sound used for the Doppler effect (m/s).
+pub const SPEED_OF_SOUND: f32 = 343.0;
+
+/// Pitch factor from motion: `listener` and `source` positions with their velocities, scaled
+/// by the source's Doppler Level (0 = off). Clamped to half / double speed.
+pub fn doppler(
+    listener: Vec3,
+    listener_vel: Vec3,
+    source: Vec3,
+    source_vel: Vec3,
+    level: f32,
+) -> f32 {
+    let dir = (source - listener).normalize_or_zero();
+    if dir == Vec3::ZERO || level <= 0.0 {
+        return 1.0;
+    }
+    let c = SPEED_OF_SOUND;
+    // Listener moving towards the source and source moving away both count along `dir`.
+    let towards = listener_vel.dot(dir).clamp(-c * 0.5, c * 0.5);
+    let away = source_vel.dot(dir).clamp(-c * 0.5, c * 0.5);
+    let factor = (c + towards) / (c + away);
+    (1.0 + (factor - 1.0) * level).clamp(0.5, 2.0)
+}
+
 /// Mix an Audio Source at world position `at` for a listener (`None` = no listener: only 2D).
 pub fn mix(source: &AudioSource, at: Vec3, listener: Option<Mat4>, muted: bool) -> VoiceParams {
     let blend = source.spatial_blend.clamp(0.0, 1.0);
@@ -67,7 +96,7 @@ pub fn mix(source: &AudioSource, at: Vec3, listener: Option<Mat4>, muted: bool) 
                 source.max_distance,
                 distance,
             );
-            (gain, pan(l, at))
+            (gain, pan(l, at) * spread_factor(source.spread))
         }
         None => (1.0, 0.0),
     };
@@ -155,6 +184,44 @@ mod tests {
             0.8,
             "no listener = 2D"
         );
+    }
+
+    #[test]
+    fn spread_narrows_the_pan() {
+        let mut s = AudioSource {
+            spatial_blend: 1.0,
+            ..Default::default()
+        };
+        let right = Vec3::new(4.0, 0.0, 0.0);
+        let l = Some(Mat4::IDENTITY);
+        assert!(close(mix(&s, right, l, false).pan, 1.0));
+        s.spread = 180.0;
+        assert!(
+            close(mix(&s, right, l, false).pan, 0.0),
+            "fills both speakers"
+        );
+        s.spread = 360.0;
+        assert!(close(mix(&s, right, l, false).pan, -1.0), "mirrored");
+    }
+
+    #[test]
+    fn doppler_raises_pitch_when_approaching() {
+        let ear = Vec3::ZERO;
+        let at = Vec3::new(0.0, 0.0, 10.0);
+        let still = doppler(ear, Vec3::ZERO, at, Vec3::ZERO, 1.0);
+        assert_eq!(still, 1.0);
+        let closing = doppler(ear, Vec3::ZERO, at, Vec3::new(0.0, 0.0, -34.3), 1.0);
+        assert!((closing - 343.0 / 308.7).abs() < 1e-3, "{closing}");
+        let leaving = doppler(ear, Vec3::ZERO, at, Vec3::new(0.0, 0.0, 34.3), 1.0);
+        assert!(leaving < 1.0);
+        let walking_up = doppler(ear, Vec3::new(0.0, 0.0, 34.3), at, Vec3::ZERO, 1.0);
+        assert!((walking_up - 1.1).abs() < 1e-4);
+        assert_eq!(
+            doppler(ear, Vec3::ZERO, at, Vec3::new(0.0, 0.0, -34.3), 0.0),
+            1.0
+        );
+        let half = doppler(ear, Vec3::ZERO, at, Vec3::new(0.0, 0.0, -34.3), 0.5);
+        assert!((half - 1.0 - (closing - 1.0) * 0.5).abs() < 1e-5);
     }
 
     #[test]
