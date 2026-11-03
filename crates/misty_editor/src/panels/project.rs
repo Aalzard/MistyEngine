@@ -503,7 +503,8 @@ mod tests {
         apply_actions(h.state_mut());
 
         assert!(materials.join("Crimson.mat").exists() && !materials.join("Red.mat").exists());
-        let scene = read(&root.join("Assets/Scenes/SampleScene.scene"));
+        // Generated demo scenes, not SampleScene: the user edits that one freely.
+        let scene = read(&root.join("Assets/Scenes/PhysicsDemo.scene"));
         assert!(scene.contains("\"Assets/Materials/Crimson.mat\""));
         assert!(!scene.contains("Red.mat"));
         assert!(read(&root.join("Assets/Scenes/AnimationDemo.scene")).contains("Crimson.mat"));
