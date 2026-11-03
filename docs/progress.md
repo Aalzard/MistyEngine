@@ -971,3 +971,35 @@ clippy fixes in `sprite_handles.rs` (a type alias, a removed `.clone()`), then t
   sprite, Edit Collider for capsule/polygon/edge, `Rigidbody2D.Sleep`/`IsTouching`, `Physics2D.BoxCast`/
   `CircleCast`, contact filters, or "Use Full Kinematic Contacts"; Collision2D has a single contact point.
 - Sorting Layers have their own Project Settings page (not Tags and Layers); sprites take fog.
+
+## Soft shadows: PCSS and cascaded sun shadows ✅
+
+### Done
+- Contact-hardening soft shadows (PCSS) for directional, spot and point lights: blocker search, penumbra from
+  the light's size, variable-size PCF on a per-pixel rotated Vogel disk, receiver-plane depth bias. Shadows are
+  sharp where a caster touches the ground and widen with distance. Hard / Soft / None kept (Soft = PCSS).
+- Light Inspector ▸ Shadow Angle (directional, degrees) or Shadow Radius (spot/point, metres), Bias, Normal Bias.
+- Cascaded sun shadows: 1–4 cascades (default 4), practical split, blending between cascades, stabilised with a
+  bounding sphere and texel snapping, fade-out at the Shadow Distance; frustum culling and instancing per
+  cascade. This replaces the single map fitted around every caster, which blurred shadows in large scenes.
+- Project Settings ▸ Quality: Soft Shadow Quality (Low/Medium/High/Ultra), Shadow Distance, Shadow Cascades,
+  Cascade Split, Cascade Blend (the player uses them too).
+- Scene view draw mode "Shadow Cascades" (one colour per cascade).
+- Sample: `Scenes/ShadowsDemo.scene` (poles, a figure, a spot-lit table, pillars into the distance, low sun).
+- Tests: split distances, every slice corner inside its cascade, whole-texel snapping while the camera moves and
+  turns, caster depth range, quality settings clamping and old files; GPU: the penumbra widens with distance
+  (hard shadows don't), ShadowsDemo shows all four cascade tints; the culling/instancing pixel-identity test
+  still passes with cascades.
+- Screenshots: `docs/screenshots/round8/shadows_*.png` (before/after Game view, cascade debug in the Scene view
+  and from the game camera, a close-up of contact hardening, the top-down pole penumbra test image, the Quality
+  page with the spot light's Inspector).
+
+### Not matching HDRP yet
+- No temporal filtering: the per-pixel disk rotation is static noise (fine grain on wide penumbrae at Low and
+  Medium), where HDRP smooths it with TAA.
+- Point lights use six perspective faces of the shared 1024² array (wide penumbrae can show a seam at face
+  edges); no per-light shadow resolution, shadow atlas or caching, coloured/translucent shadows or area-light
+  shadows. Contact shadows are another branch.
+- Cascade splits use one λ instead of per-cascade percentages; no per-cascade border controls, per-light
+  Shadow Strength / near plane, shadowmask or baked shadows.
+- The blocker search uses point samples, so very thin casters far above the receiver can slip between taps.
