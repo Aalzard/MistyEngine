@@ -146,3 +146,28 @@ end
 return Sparks
 ```
 Systems with Play On Awake are already playing in `Awake`/`Start`. Module settings are not scriptable yet.
+
+### Render settings
+
+The global `RenderSettings` reads and changes the open scene's Lighting window values; changes show on the
+next frame.
+
+| Member | Meaning |
+| --- | --- |
+| `fog` | Fog on/off (boolean). |
+| `fogColor` | Fog colour (`Color`; alpha is ignored). |
+| `fogDensity` | Density for the Exponential / Exponential Squared modes. |
+| `fogStartDistance`, `fogEndDistance` | Linear fog range. |
+| `ambientIntensity` | Environment Lighting intensity multiplier. |
+| `reflectionIntensity` | Environment Reflections intensity multiplier. |
+
+```lua
+local Dusk = { speed = 0.02 }
+function Dusk:Start() RenderSettings.fog = true end
+function Dusk:Update()
+    RenderSettings.fogDensity = Mathf.Min(RenderSettings.fogDensity + self.speed * Time.deltaTime, 0.1)
+    RenderSettings.fogColor = Color.new(0.8, 0.55, 0.4)
+end
+return Dusk
+```
+The fog mode and the skybox are not scriptable yet.
