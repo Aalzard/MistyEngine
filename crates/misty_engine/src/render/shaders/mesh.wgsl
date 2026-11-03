@@ -2,6 +2,7 @@
 // Lambert diffuse + GGX specular, sky reflections with Fresnel, hemisphere ambient,
 // directional/point/spot lights, hard or soft shadows for all three light types.
 // Albedo texture × colour and tangent-space normal maps (OpenGL convention, green = up).
+// Fog (Lighting window) blends the result towards the fog colour.
 
 const PI: f32 = 3.14159265;
 const MAX_LOCAL_SHADOWS: u32 = 16u;
@@ -33,7 +34,8 @@ struct LightItem {
 };
 
 struct Lights {
-    // x = light count, y = directional shadow texel size (world), z = ambient intensity, w unused.
+    // x = light count, y = directional shadow texel size (world), z = ambient intensity,
+    // w = reflection intensity.
     info: vec4<f32>,
     shadow_view_proj: mat4x4<f32>,
     sky: vec4<f32>,
@@ -220,7 +222,7 @@ fn fs_main(in: MeshOut) -> MeshTargets {
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
     let grazing = clamp(smoothness + (1.0 - (1.0 - metallic) * 0.96), 0.0, 1.0);
 
-    // Ambient diffuse from the sky hemisphere.
+    // Ambient diffuse from the environment (sky / equator / ground).
     var ambient: vec3<f32>;
     if (n.y >= 0.0) {
         ambient = mix(lights.equator.rgb, lights.sky.rgb, n.y);
@@ -231,10 +233,10 @@ fn fs_main(in: MeshOut) -> MeshTargets {
 
     // Reflection of the sky: sharp when smooth, blurred towards the ambient colour when rough.
     let r = reflect(-v, n);
-    let env = mix(sky_gradient(r), ambient * 1.6, perceptual);
+    let env = mix(sky_color(r), ambient * 1.6, perceptual);
     let fresnel_env = mix(f0, vec3<f32>(grazing), pow(1.0 - n_dot_v, 5.0));
     let surface_reduction = 1.0 / (roughness * roughness + 1.0);
-    color += env * fresnel_env * surface_reduction * lights.info.z * smoothness;
+    color += env * fresnel_env * surface_reduction * lights.info.w * smoothness;
 
     let count = u32(lights.info.x);
     for (var i = 0u; i < count; i++) {
@@ -273,8 +275,11 @@ fn fs_main(in: MeshOut) -> MeshTargets {
         color += (diffuse_color + spec) * li.color.rgb * n_dot_l * atten;
     }
     color += d.emission.rgb;
+    let fog = fog_visibility(fog_distance(in.world));
+    color = mix(view.fog_color.rgb, color, fog);
     var out: MeshTargets;
     out.color = vec4<f32>(color, d.color.a * base.a);
-    out.glow = vec4<f32>(d.emission.rgb, 1.0);
+    out.glow = vec4<f32>(d.emission.rgb * fog, 1.0);
     return out;
+
 }

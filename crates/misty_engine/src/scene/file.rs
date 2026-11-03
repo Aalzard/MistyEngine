@@ -14,6 +14,7 @@ use std::path::Path;
 use hecs::Entity;
 use serde::{Deserialize, Serialize};
 
+use super::render_settings::RenderSettings;
 use super::{Node, Scene, SceneComponent, registry};
 
 pub const EXTENSION: &str = "scene";
@@ -22,6 +23,9 @@ const VERSION: u32 = 1;
 #[derive(Serialize, Deserialize)]
 struct SceneFile {
     version: u32,
+    /// Lighting window settings (scenes only; read separately so a bad value only warns).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lighting: Option<serde_json::Value>,
     objects: Vec<ObjectEntry>,
 }
 
@@ -84,9 +88,10 @@ fn remap_refs(
 }
 
 /// Pretty JSON with tidy numbers (shared by scenes and prefabs).
-pub(super) fn write_json(objects: Vec<ObjectEntry>) -> String {
+pub(super) fn write_json(objects: Vec<ObjectEntry>, lighting: Option<&RenderSettings>) -> String {
     let mut value = serde_json::to_value(SceneFile {
         version: VERSION,
+        lighting: lighting.map(|l| serde_json::to_value(l).expect("settings serialise")),
         objects,
     })
     .expect("scene data serialises");
@@ -96,6 +101,10 @@ pub(super) fn write_json(objects: Vec<ObjectEntry>) -> String {
 
 /// Parse the object list and check the format version.
 pub(super) fn read_json(text: &str, what: &str) -> Result<Vec<ObjectEntry>, String> {
+    read_file(text, what).map(|f| f.objects)
+}
+
+fn read_file(text: &str, what: &str) -> Result<SceneFile, String> {
     let file: SceneFile =
         serde_json::from_str(text).map_err(|e| format!("invalid {what} file: {e}"))?;
     if file.version > VERSION {
@@ -104,7 +113,20 @@ pub(super) fn read_json(text: &str, what: &str) -> Result<Vec<ObjectEntry>, Stri
             file.version
         ));
     }
-    Ok(file.objects)
+    Ok(file)
+}
+
+/// Lighting settings from a scene file; missing = defaults (the look of older scenes).
+fn read_lighting(value: Option<serde_json::Value>, report: &mut LoadReport) -> RenderSettings {
+    let Some(v) = value else {
+        return RenderSettings::default();
+    };
+    serde_json::from_value(v).unwrap_or_else(|e| {
+        report
+            .warnings
+            .push(format!("lighting settings: {e}; using defaults"));
+        RenderSettings::default()
+    })
 }
 
 impl Scene {
@@ -196,15 +218,18 @@ impl Scene {
 
     /// Serialise to the `.scene` JSON text.
     pub fn to_json(&self) -> String {
-        write_json(self.entries(None))
+        // Default settings are left out, so older scenes save byte-identical.
+        let lighting = Some(&self.render_settings).filter(|r| **r != RenderSettings::default());
+        write_json(self.entries(None), lighting)
     }
 
     /// Parse `.scene` JSON. Unknown components are skipped with a warning.
     pub fn from_json(name: &str, text: &str) -> Result<(Scene, LoadReport), String> {
-        let objects = read_json(text, "scene")?;
+        let file = read_file(text, "scene")?;
         let mut scene = Scene::new(name);
         let mut report = LoadReport::default();
-        scene.spawn_entries(objects, None, &mut report);
+        scene.render_settings = read_lighting(file.lighting, &mut report);
+        scene.spawn_entries(file.objects, None, &mut report);
         Ok((scene, report))
     }
 
@@ -432,6 +457,45 @@ mod tests {
         let json = s.to_json();
         assert!(json.contains(r#""mesh": "Sphere""#), "{json}");
         assert!(json.contains(r#""mesh": "Assets/Models/Ship.glb#2""#));
+    }
+
+    #[test]
+    fn lighting_settings_round_trip_and_old_files_get_defaults() {
+        use crate::scene::render_settings::{AmbientSource, FogMode, SkyboxKind};
+        let mut s = sample();
+        let rs = &mut s.render_settings;
+        rs.skybox.kind = SkyboxKind::SolidColor;
+        rs.skybox.sky_tint = [0.8, 0.4, 0.2];
+        rs.environment_lighting.source = AmbientSource::Gradient;
+        rs.environment_lighting.intensity = 1.5;
+        rs.reflection_intensity = 0.25;
+        rs.fog.enabled = true;
+        rs.fog.mode = FogMode::Linear;
+        rs.fog.end = 42.0;
+        let json = s.to_json();
+        assert!(json.contains("\"lighting\""), "{json}");
+        let (loaded, report) = Scene::from_json("Level", &json).unwrap();
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(loaded.render_settings, s.render_settings);
+
+        // Scenes saved before the Lighting window have no "lighting" block.
+        let old = r#"{ "version": 1, "objects": [] }"#;
+        let (old, report) = Scene::from_json("Old", old).unwrap();
+        assert!(report.warnings.is_empty());
+        assert_eq!(old.render_settings, RenderSettings::default());
+        assert!(!old.render_settings.fog.enabled);
+        assert_eq!(old.render_settings.reflection_intensity, 1.0);
+
+        // Partial or broken blocks keep the rest of the scene.
+        let partial =
+            r#"{ "version": 1, "lighting": { "fog": { "enabled": true } }, "objects": [] }"#;
+        let (p, _) = Scene::from_json("P", partial).unwrap();
+        assert!(p.render_settings.fog.enabled);
+        assert_eq!(p.render_settings.fog.density, 0.01);
+        let broken = r#"{ "version": 1, "lighting": { "fog": 5 }, "objects": [] }"#;
+        let (b, report) = Scene::from_json("B", broken).unwrap();
+        assert_eq!(b.render_settings, RenderSettings::default());
+        assert!(report.warnings.iter().any(|w| w.contains("lighting")));
     }
 
     #[test]

@@ -1,14 +1,17 @@
-//! Turn the ECS scene into renderer input: the game camera, mesh draws, particles and lights.
+//! Turn the ECS scene into renderer input: the game camera, mesh draws, particles, lights,
+//! the lighting environment and post-processing.
 //! Shared by the editor's views and the standalone player.
 
 use glam::Vec3;
 use hecs::Entity;
 
 use crate::camera::{Camera, Projection};
-use crate::render::{Frame, LightData, MaterialParams, MeshDraw, ParticleBatch};
+use crate::render::{
+    Environment, Frame, LightData, MaterialParams, MeshDraw, ParticleBatch, PostSettings,
+};
 use crate::scene::{
-    Camera as CameraComponent, ClearFlags, Light, LightType, MeshFilter, MeshRenderer, Scene,
-    Shadows,
+    Camera as CameraComponent, ClearFlags, Light, LightType, MeshFilter, MeshRenderer,
+    PostProcessVolume, Scene, Shadows,
 };
 
 /// Where material paths ("Assets/Materials/Red.mat") get their shading values.
@@ -76,6 +79,30 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
         .collect()
 }
 
+/// The scene's Lighting settings with its main Directional Light as the sun.
+pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
+    Environment::new(scene.render_settings.clone(), lights)
+}
+
+/// Effects from the enabled, active Post-process Volume with the highest priority
+/// (the first in Hierarchy order on ties); the baseline when there is none.
+pub fn post_settings(scene: &Scene) -> PostSettings {
+    let mut best: Option<PostProcessVolume> = None;
+    for (e, _) in scene.walk() {
+        if !scene.active_in_hierarchy(e) {
+            continue;
+        }
+        let Ok(v) = scene.world.get::<&PostProcessVolume>(e) else {
+            continue;
+        };
+        if v.enabled && best.as_ref().is_none_or(|b| v.priority > b.priority) {
+            best = Some((*v).clone());
+        }
+    }
+    best.map(|v| PostSettings::from_volume(&v))
+        .unwrap_or_default()
+}
+
 /// Scene-view lighting off: one light shining from the camera, no shadows.
 pub fn headlight(camera: &Camera) -> Vec<LightData> {
     vec![LightData {
@@ -126,17 +153,22 @@ pub struct GameView {
     pub meshes: Vec<MeshDraw>,
     pub lights: Vec<LightData>,
     pub particles: Vec<ParticleBatch>,
+    pub environment: Environment,
+    pub post: PostSettings,
 }
 
 impl GameView {
     /// `None` when no camera is rendering.
     pub fn new(scene: &Scene, materials: &dyn MaterialSource) -> Option<Self> {
         let (camera, settings) = game_camera(scene)?;
+        let lights = lights(scene);
         Some(Self {
             camera,
             settings,
             meshes: mesh_draws(scene, materials, |_| false),
-            lights: lights(scene),
+            environment: environment(scene, &lights),
+            post: post_settings(scene),
+            lights,
             particles: crate::particles::batches(scene),
         })
     }
@@ -148,12 +180,13 @@ impl GameView {
             grid: None,
             skybox: self.settings.clear_flags == ClearFlags::Skybox,
             background: [bg[0], bg[1], bg[2]],
+            environment: &self.environment,
+            post: self.post,
             lines: &[],
             meshes: &self.meshes,
             particles: &self.particles,
             shaded: true,
             lights: &self.lights,
-            ambient_intensity: 1.0,
         }
     }
 }
