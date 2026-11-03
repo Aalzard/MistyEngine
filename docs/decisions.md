@@ -1068,7 +1068,8 @@ Record of choices made without asking, and why.
      8/9 stick clicks, 10 guide, 11–14 d-pad; axes 0/1 left stick (Y +1 = down), 2 triggers (left − right),
      3/4 right stick, 5/6 d-pad (Y +1 = up), 8/9 triggers 0..1. Joystick state is plain data on `Input`
      (`joysticks`), so tests inject fake pads and never open a device. The editor opens gilrs lazily on the UI
-     thread (thread-local) and passes pads to the game even without Game view focus (the editor doesn't use
+     thread (a leaked thread-local: dropping gilrs at process exit panics joining its worker thread) and
+     passes pads to the game even without Game view focus (the editor doesn't use
      them); keyboard/mouse still need focus. No rumble, no per-device remapping UI.
 262. **Button names**: keyboard names as before, plus `"mouse 0"`–`"mouse 2"`, `"joystick button N"` (any pad) and
      `"joystick J button N"` (1-based pad); they work in `GetKey*` and in axis button fields. `Input.anyKey` /

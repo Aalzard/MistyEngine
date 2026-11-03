@@ -8,8 +8,9 @@ use misty_engine::input::{Gamepads, Joystick};
 use misty_engine::scripting::Input;
 
 thread_local! {
-    /// Opened on the first Play frame (the UI thread owns it).
-    static GAMEPADS: RefCell<Gamepads> = RefCell::default();
+    /// Opened on the first Play frame (the UI thread owns it). Leaked on purpose: gilrs joins
+    /// its worker thread on drop, which panics in a thread-local destructor at process exit.
+    static GAMEPADS: &'static RefCell<Gamepads> = Box::leak(Box::default());
 }
 
 /// Connected gamepads this frame. They reach the game even without Game view focus, since
