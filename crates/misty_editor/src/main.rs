@@ -42,6 +42,7 @@ mod sample_audio;
 mod sample_lighting;
 #[cfg(test)]
 mod sample_materials;
+#[cfg(test)]
 mod sample_navigation;
 #[cfg(test)]
 mod sample_particles;

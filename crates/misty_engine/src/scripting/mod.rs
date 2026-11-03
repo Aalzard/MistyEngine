@@ -20,8 +20,8 @@
 pub mod animator_api;
 pub mod api;
 pub mod audio_api;
-pub mod material_api;
 pub mod camera_api;
+pub mod material_api;
 pub mod navigation_api;
 pub mod particles_api;
 pub mod physics_api;

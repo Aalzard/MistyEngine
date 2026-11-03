@@ -53,6 +53,7 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::audio_editors::NAMES.contains(&name) {
         return super::audio_editors::enabled_flag(state, e, name);
+    }
     if super::nav_editors::NAMES.contains(&name) {
         return super::nav_editors::enabled_flag(state, e, name);
     }
@@ -85,6 +86,7 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::audio_editors::NAMES.contains(&name) {
         return super::audio_editors::set_enabled(state, e, name, on);
+    }
     if super::nav_editors::NAMES.contains(&name) {
         return super::nav_editors::set_enabled(state, e, name, on);
     }

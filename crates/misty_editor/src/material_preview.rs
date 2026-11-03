@@ -167,6 +167,7 @@ fn draw(
         environment: &environment,
         post: Default::default(),
         lines: &[],
+        overlay: &[],
         meshes: &meshes,
         particles: &[],
         terrains: &[],

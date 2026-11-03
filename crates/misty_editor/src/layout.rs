@@ -35,7 +35,12 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 4] = [Tab::Lighting, Tab::Animator, Tab::AudioMixer, Tab::Navigation];
+    pub const ON_DEMAND: [Tab; 4] = [
+        Tab::Lighting,
+        Tab::Animator,
+        Tab::AudioMixer,
+        Tab::Navigation,
+    ];
 
     /// Built-in layout tabs, then on-demand ones.
     pub fn every() -> impl Iterator<Item = Tab> {
