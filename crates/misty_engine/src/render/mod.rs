@@ -6,15 +6,18 @@ pub mod particles;
 mod pipelines;
 pub mod post;
 mod shadows;
+pub mod surface;
 mod target;
 mod terrain;
 pub mod texture;
 pub mod ui;
+mod variants;
 
 pub use crate::terrain::TerrainDraw;
 pub use environment::{Environment, Sun};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
+pub use surface::{RenderingMode, ShaderKind};
 pub use target::RenderTarget;
 use target::TargetLayouts;
 
@@ -83,6 +86,22 @@ pub struct MaterialParams {
     pub normal_scale: f32,
     pub tiling: [f32; 2],
     pub offset: [f32; 2],
+    /// Unlit shaders: colour × albedo texture, no lighting or shadows.
+    pub unlit: bool,
+    pub mode: RenderingMode,
+    /// Cutout: pixels with alpha below this are discarded.
+    pub alpha_cutoff: f32,
+    /// Cull Off.
+    pub double_sided: bool,
+    /// Smoothness from the albedo alpha (else from the metallic map's alpha).
+    pub smoothness_from_albedo: bool,
+    /// R = metallic, A = smoothness (linear). With a map, `metallic` is 1 and `smoothness` scales A.
+    pub metallic_map: Option<String>,
+    /// G = ambient occlusion (linear), applied to ambient light and reflections.
+    pub occlusion_map: Option<String>,
+    pub occlusion_strength: f32,
+    /// Multiplied by the emission colour (sRGB).
+    pub emission_map: Option<String>,
 }
 
 impl Default for MaterialParams {
@@ -98,6 +117,44 @@ impl Default for MaterialParams {
             normal_scale: 1.0,
             tiling: [1.0, 1.0],
             offset: [0.0, 0.0],
+            unlit: false,
+            mode: RenderingMode::Opaque,
+            alpha_cutoff: 0.5,
+            double_sided: false,
+            smoothness_from_albedo: false,
+            metallic_map: None,
+            occlusion_map: None,
+            occlusion_strength: 1.0,
+            emission_map: None,
+        }
+    }
+}
+
+impl MaterialParams {
+    pub fn pipeline_key(&self) -> surface::PipelineKey {
+        surface::PipelineKey {
+            unlit: self.unlit,
+            mode: self.mode,
+            double_sided: self.double_sided,
+        }
+    }
+
+    /// Shadow caster variant; `None` = casts no shadow (unlit and blended materials).
+    pub fn shadow_key(&self) -> Option<surface::ShadowKey> {
+        (!self.unlit && !self.mode.is_blended()).then_some(surface::ShadowKey {
+            cutout: self.mode == RenderingMode::Cutout,
+            double_sided: self.double_sided,
+        })
+    }
+
+    /// The textures bound at group 2.
+    pub fn textures(&self) -> texture::TextureSet {
+        texture::TextureSet {
+            albedo: self.albedo_map.clone(),
+            normal: self.normal_map.clone(),
+            metallic: self.metallic_map.clone(),
+            occlusion: self.occlusion_map.clone(),
+            emission: self.emission_map.clone(),
         }
     }
 }
@@ -172,6 +229,9 @@ struct DrawUniform {
     params: [f32; 4],
     emission: [f32; 4],
     uv_st: [f32; 4],
+    /// x = rendering mode index, y = alpha cutoff, z = occlusion strength,
+    /// w = 1 when smoothness comes from the albedo alpha.
+    surface: [f32; 4],
 }
 
 #[repr(C)]
@@ -319,16 +379,29 @@ impl Renderer {
                 self.imported.insert(key.clone(), gpu);
             }
             if frame.shaded {
-                self.textures.prepare(
-                    device,
-                    queue,
-                    &self.pipelines.material_layout,
-                    d.material.albedo_map.as_deref(),
-                    d.material.normal_map.as_deref(),
-                );
+                let set = d.material.textures();
+                let layout = &self.pipelines.material_layout;
+                self.textures.prepare_set(device, queue, layout, &set);
+                self.pipelines
+                    .ensure_mesh(device, d.material.pipeline_key());
+            }
+            if d.cast_shadows
+                && let Some(key) = d.material.shadow_key()
+            {
+                self.pipelines.ensure_shadow(device, key);
+                if key.cutout {
+                    let set = d.material.textures();
+                    let layout = &self.pipelines.material_layout;
+                    self.textures.prepare_set(device, queue, layout, &set);
+                }
             }
         }
         if !frame.terrains.is_empty() {
+            let opaque_caster = surface::ShadowKey {
+                cutout: false,
+                double_sided: false,
+            };
+            self.pipelines.ensure_shadow(device, opaque_caster);
             // Group 2 of the terrain pipeline is unused; any material group fits.
             let layout = &self.pipelines.material_layout;
             self.textures.prepare(device, queue, layout, None, None);
@@ -456,7 +529,15 @@ impl Renderer {
         }
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         self.mask_pass(&mut encoder, target, frame);
-        self.main_pass(&mut encoder, target, frame, any_outline, &particle_draws);
+        let order = surface::draw_order(frame.meshes, camera_depth(frame.camera));
+        self.main_pass(
+            &mut encoder,
+            target,
+            frame,
+            any_outline,
+            &order,
+            &particle_draws,
+        );
         self.bloom_passes(&mut encoder, target);
         queue.submit([encoder.finish()]);
     }
@@ -468,16 +549,7 @@ impl Renderer {
         queue: &wgpu::Queue,
         frame: &Frame,
     ) -> Vec<particles::ParticleDraw> {
-        let cam = frame.camera;
-        let (eye, forward) = (cam.position, cam.forward());
-        let ortho = matches!(cam.projection, Projection::Orthographic { .. });
-        let (instances, draws) = particles::order(frame.particles, |p| {
-            if ortho {
-                (p - eye).dot(forward)
-            } else {
-                p.distance_squared(eye)
-            }
-        });
+        let (instances, draws) = particles::order(frame.particles, camera_depth(frame.camera));
         self.particle_instances.upload(device, queue, &instances);
         draws
     }
@@ -577,33 +649,28 @@ impl Renderer {
         );
     }
 
-    /// Draw the meshes passing `filter`; `textured` binds each material's textures at group 2.
-    fn draw_meshes(
-        &self,
-        pass: &mut wgpu::RenderPass,
-        frame: &Frame,
-        textured: bool,
-        filter: impl Fn(&MeshDraw) -> bool,
-    ) {
-        for (i, d) in frame.meshes.iter().enumerate() {
-            if !filter(d) {
-                continue;
-            }
-            let Some(m) = self.gpu_mesh(&d.mesh) else {
-                continue;
-            };
-            if textured {
-                let Some(group) = self.textures.get(
-                    d.material.albedo_map.as_deref(),
-                    d.material.normal_map.as_deref(),
-                ) else {
-                    continue;
-                };
-                pass.set_bind_group(2, group, &[]);
-            }
+    /// Draw one mesh (draw slot `i`).
+    fn draw_mesh(&self, pass: &mut wgpu::RenderPass, i: usize, d: &MeshDraw) {
+        if let Some(m) = self.gpu_mesh(&d.mesh) {
             pass.set_vertex_buffer(0, m.vertices.slice(..));
             pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..m.count, 0, i as u32..i as u32 + 1);
+        }
+    }
+
+    /// Draw the meshes `order` lists with their material's pipeline and textures.
+    fn draw_shaded(&self, pass: &mut wgpu::RenderPass, frame: &Frame, order: &[usize]) {
+        for &i in order {
+            let d = &frame.meshes[i];
+            let (Some(pipeline), Some(group)) = (
+                self.pipelines.mesh_variant(d.material.pipeline_key()),
+                self.textures.get_set(&d.material.textures()),
+            ) else {
+                continue;
+            };
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(2, group, &[]);
+            self.draw_mesh(pass, i, d);
         }
     }
 
@@ -629,12 +696,34 @@ impl Renderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_pipeline(&self.pipelines.shadow);
         let offset = (slot as u64 * shadows::VIEW_STRIDE) as u32;
         pass.set_bind_group(0, &self.shadows.view_bind_group, &[offset]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
-        self.draw_meshes(&mut pass, frame, false, |d| d.cast_shadows);
+        for (i, d) in frame.meshes.iter().enumerate() {
+            let Some(key) = d.material.shadow_key().filter(|_| d.cast_shadows) else {
+                continue;
+            };
+            let Some(pipeline) = self.pipelines.shadow_variant(key) else {
+                continue;
+            };
+            if key.cutout {
+                let Some(group) = self.textures.get_set(&d.material.textures()) else {
+                    continue;
+                };
+                pass.set_bind_group(2, group, &[]);
+            }
+            pass.set_pipeline(pipeline);
+            self.draw_mesh(&mut pass, i, d);
+        }
         let first = frame.meshes.len();
+        let terrain_caster = surface::ShadowKey {
+            cutout: false,
+            double_sided: false,
+        };
+        let Some(pipeline) = self.pipelines.shadow_variant(terrain_caster) else {
+            return;
+        };
+        pass.set_pipeline(pipeline);
         self.terrains
             .draw(&mut pass, frame.terrains, first, false, |t| t.cast_shadows);
     }
@@ -659,7 +748,11 @@ impl Renderer {
         pass.set_pipeline(&self.pipelines.mask);
         pass.set_bind_group(0, &self.view_bind_group, &[]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
-        self.draw_meshes(&mut pass, frame, false, |d| d.outline);
+        for (i, d) in frame.meshes.iter().enumerate() {
+            if d.outline {
+                self.draw_mesh(&mut pass, i, d);
+            }
+        }
     }
 
     fn main_pass(
@@ -668,6 +761,7 @@ impl Renderer {
         target: &RenderTarget,
         frame: &Frame,
         outline: bool,
+        order: &surface::DrawOrder,
         particle_draws: &[particles::ParticleDraw],
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -710,10 +804,10 @@ impl Renderer {
         pass.set_pipeline(&self.pipelines.sky);
         pass.draw(0..3, 0..1);
 
+        // Opaque and Cutout meshes, front to back.
         if frame.shaded && !frame.meshes.is_empty() {
-            pass.set_pipeline(&self.pipelines.mesh);
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            self.draw_meshes(&mut pass, frame, true, |_| true);
+            self.draw_shaded(&mut pass, frame, &order.opaque);
         }
 
         if frame.shaded
@@ -731,6 +825,12 @@ impl Renderer {
         if frame.grid.is_some() {
             pass.set_pipeline(&self.pipelines.grid);
             pass.draw(0..3, 0..1);
+        }
+
+        // Fade / Transparent meshes back to front, after the grid (they don't write depth).
+        if frame.shaded && !order.transparent.is_empty() {
+            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            self.draw_shaded(&mut pass, frame, &order.transparent);
         }
 
         // After the grid: particles don't write depth, so the grid would draw over them.
@@ -832,6 +932,19 @@ fn line_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
+/// Sort distance of a world point: along the view axis when orthographic, else squared distance.
+fn camera_depth(cam: &Camera) -> impl Fn(Vec3) -> f32 + use<> {
+    let (eye, forward) = (cam.position, cam.forward());
+    let ortho = matches!(cam.projection, Projection::Orthographic { .. });
+    move |p| {
+        if ortho {
+            (p - eye).dot(forward)
+        } else {
+            p.distance_squared(eye)
+        }
+    }
+}
+
 pub(crate) fn srgb_to_linear(c: [f32; 3]) -> [f32; 3] {
     c.map(|v| v.max(0.0).powf(2.2))
 }
@@ -851,19 +964,36 @@ fn draw_uniform(d: &MeshDraw) -> DrawUniform {
     } else {
         0.0
     };
-    let (t, o) = (d.material.tiling, d.material.offset);
+    let m = &d.material;
+    let (t, o) = (m.tiling, m.offset);
+    // A metallic map replaces the slider: metallic = map R.
+    let metallic = if m.metallic_map.is_some() {
+        1.0
+    } else {
+        m.metallic
+    };
     DrawUniform {
         model: d.model.to_cols_array_2d(),
         normal: d.model.inverse().transpose().to_cols_array_2d(),
-        color: d.material.color,
+        color: m.color,
         params: [
-            d.material.metallic,
-            d.material.smoothness,
+            metallic,
+            m.smoothness,
             if d.receive_shadows { 1.0 } else { 0.0 },
             normal_scale,
         ],
         emission: [e[0], e[1], e[2], mirror],
         uv_st: [t[0], t[1], o[0], o[1]],
+        surface: [
+            m.mode.index() as f32,
+            m.alpha_cutoff,
+            if m.occlusion_map.is_some() {
+                m.occlusion_strength
+            } else {
+                0.0
+            },
+            if m.smoothness_from_albedo { 1.0 } else { 0.0 },
+        ],
     }
 }
 
@@ -975,7 +1105,7 @@ mod tests {
 
     #[test]
     fn gpu_struct_sizes_match_wgsl() {
-        assert_eq!(std::mem::size_of::<DrawUniform>(), 192);
+        assert_eq!(std::mem::size_of::<DrawUniform>(), 208);
         assert_eq!(std::mem::size_of::<LightItem>(), 80);
         assert_eq!(
             std::mem::size_of::<LightsUniform>(),

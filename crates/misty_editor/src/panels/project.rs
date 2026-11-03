@@ -357,7 +357,7 @@ fn grid_view(
     });
 }
 
-/// Texture preview, or the asset's icon.
+/// Texture or material preview, or the asset's icon.
 fn tile_icon(
     ui: &Ui,
     e: &AssetEntry,
@@ -365,20 +365,26 @@ fn tile_icon(
     cell: f32,
     thumbnails: &mut crate::thumbnails::Thumbnails,
 ) {
-    let thumb = e
-        .is_texture()
-        .then(|| thumbnails.get(ui.ctx(), &e.path))
-        .flatten();
-    if let Some(tex) = thumb {
+    let thumb = if e.path.extension().is_some_and(|x| x == "mat") {
+        thumbnails
+            .materials
+            .thumbnail(&e.path)
+            .map(|id| (id, egui::vec2(1.0, 1.0)))
+    } else {
+        e.is_texture()
+            .then(|| thumbnails.get(ui.ctx(), &e.path))
+            .flatten()
+            .map(|t| (t.id(), t.size_vec2()))
+    };
+    if let Some((id, size)) = thumb {
         let box_rect = Rect::from_center_size(
             rect.center_top() + egui::vec2(0.0, cell * 0.5),
             egui::vec2(cell * 0.8, cell * 0.8),
         );
-        let size = tex.size_vec2();
         let fit = box_rect.size() / size.max_elem();
         let img_rect = Rect::from_center_size(box_rect.center(), size * fit.x);
         ui.painter().image(
-            tex.id(),
+            id,
             img_rect,
             Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             Color32::WHITE,

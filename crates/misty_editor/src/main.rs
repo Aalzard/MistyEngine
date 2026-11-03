@@ -17,6 +17,7 @@ mod gizmos;
 mod handles;
 mod layout;
 mod layouts;
+mod material_preview;
 mod menu_bar;
 mod model_import;
 mod object_clipboard;

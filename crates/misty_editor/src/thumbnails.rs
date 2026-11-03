@@ -1,4 +1,5 @@
-//! Texture previews for the Project window, decoded once per file version.
+//! Texture previews for the Project window, decoded once per file version, and the material
+//! previews (rendered by `material_preview`).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -11,6 +12,8 @@ const SIZE: u32 = 96;
 pub struct Thumbnails {
     /// None = the file could not be decoded (the icon is shown instead).
     cache: HashMap<PathBuf, (Option<SystemTime>, Option<egui::TextureHandle>)>,
+    /// Material thumbnails and the Inspector's preview sphere.
+    pub materials: crate::material_preview::MaterialPreviews,
 }
 
 impl Thumbnails {

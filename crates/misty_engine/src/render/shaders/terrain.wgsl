@@ -87,5 +87,6 @@ fn fs_terrain(in: MeshOut) -> MeshTargets {
     }
     s.emission = vec3<f32>(0.0);
     s.receive_shadows = true;
+    s.occlusion = 1.0;
     return shade(in.world, s);
 }

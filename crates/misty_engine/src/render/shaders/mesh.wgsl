@@ -1,7 +1,10 @@
 // Lit meshes, close to the Standard (metallic) shader:
 // Lambert diffuse + GGX specular, sky reflections with Fresnel, hemisphere ambient,
 // directional/point/spot lights, hard or soft shadows for all three light types.
-// Albedo texture × colour and tangent-space normal maps (OpenGL convention, green = up).
+// Albedo texture × colour and tangent-space normal maps (OpenGL convention, green = up),
+// metallic (R) / smoothness (A), occlusion (G) and emission maps.
+// Rendering modes: Opaque, Cutout (fs_cutout discards below the cutoff), Fade (straight alpha)
+// and Transparent (premultiplied: only the diffuse fades). fs_unlit is the Unlit shaders.
 // Fog (Lighting window) blends the result towards the fog colour.
 
 const PI: f32 = 3.14159265;
@@ -18,6 +21,9 @@ struct Draw {
     emission: vec4<f32>,
     // xy = tiling, zw = offset.
     uv_st: vec4<f32>,
+    // x = rendering mode (0 opaque, 1 cutout, 2 fade, 3 transparent), y = alpha cutoff,
+    // z = occlusion strength, w = 1 when smoothness comes from the albedo alpha.
+    surface: vec4<f32>,
 };
 
 struct LightItem {
@@ -56,6 +62,10 @@ struct Lights {
 @group(2) @binding(0) var albedo_map: texture_2d<f32>;
 @group(2) @binding(1) var normal_map: texture_2d<f32>;
 @group(2) @binding(2) var material_sampler: sampler;
+// Linear maps (1×1 white when unassigned) and the sRGB emission map (white).
+@group(2) @binding(3) var metallic_map: texture_2d<f32>;
+@group(2) @binding(4) var occlusion_map: texture_2d<f32>;
+@group(2) @binding(5) var emission_map: texture_2d<f32>;
 
 struct MeshIn {
     @location(0) position: vec3<f32>,
@@ -208,23 +218,69 @@ struct Surface {
     // Linear emission.
     emission: vec3<f32>,
     receive_shadows: bool,
+    // Ambient occlusion (1 = none), scales ambient light and reflections.
+    occlusion: f32,
+    // Transparent mode: diffuse × alpha, specular kept (premultiplied blending).
+    premultiply: bool,
 };
 
-@fragment
-fn fs_main(in: MeshOut) -> MeshTargets {
+// Standard shader inputs of a fragment; back faces (Cull Off) are lit from their side.
+fn standard_surface(in: MeshOut, front: bool) -> Surface {
     let d = draws[in.draw];
     // Sample before any non-uniform branch (implicit derivatives).
     let base = textureSample(albedo_map, material_sampler, in.uv);
     let sampled_normal = textureSample(normal_map, material_sampler, in.uv).xyz;
+    let metal_gloss = textureSample(metallic_map, material_sampler, in.uv);
+    let occlusion = textureSample(occlusion_map, material_sampler, in.uv).g;
+    let emission = textureSample(emission_map, material_sampler, in.uv).rgb;
+    let from_albedo = d.surface.w > 0.5;
     var s: Surface;
     s.albedo = srgb_to_linear(d.color.rgb) * base.rgb;
-    s.alpha = d.color.a * base.a;
-    s.metallic = d.params.x;
-    s.smoothness = d.params.y;
-    s.normal = mapped_normal(in, d, sampled_normal);
-    s.emission = d.emission.rgb;
+    // Smoothness in the albedo alpha: the texture alpha is not transparency.
+    s.alpha = d.color.a * select(base.a, 1.0, from_albedo);
+    s.metallic = d.params.x * metal_gloss.r;
+    s.smoothness = d.params.y * select(metal_gloss.a, base.a, from_albedo);
+    var side = in;
+    if (!front) {
+        side.normal = -in.normal;
+    }
+    s.normal = mapped_normal(side, d, sampled_normal);
+    s.emission = d.emission.rgb * emission;
     s.receive_shadows = d.params.z > 0.5;
-    return shade(in.world, s);
+    s.occlusion = mix(1.0, occlusion, d.surface.z);
+    s.premultiply = d.surface.x > 2.5;
+    return s;
+}
+
+@fragment
+fn fs_main(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
+    return shade(in.world, standard_surface(in, front));
+}
+
+// Cutout: holes where alpha is below the cutoff.
+@fragment
+fn fs_cutout(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
+    let s = standard_surface(in, front);
+    if (s.alpha < draws[in.draw].surface.y) {
+        discard;
+    }
+    var out = shade(in.world, s);
+    out.color.a = 1.0;
+    return out;
+}
+
+// Unlit/Color, Unlit/Texture, Unlit/Transparent: colour × albedo texture, fogged.
+@fragment
+fn fs_unlit(in: MeshOut) -> MeshTargets {
+    let d = draws[in.draw];
+    let base = textureSample(albedo_map, material_sampler, in.uv);
+    let color = srgb_to_linear(d.color.rgb) * base.rgb;
+    let alpha = d.color.a * base.a;
+    let fog = fog_visibility(fog_distance(in.world));
+    var out: MeshTargets;
+    out.color = vec4<f32>(mix(view.fog_color.rgb, color, fog), alpha);
+    out.glow = vec4<f32>(0.0, 0.0, 0.0, alpha);
+    return out;
 }
 
 // Ambient, sky reflections, lights with shadows, emission and fog for one surface point.
@@ -243,7 +299,14 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     }
     let n_dot_v = max(dot(n, v), 1e-4);
 
-    let diffuse_color = albedo * (1.0 - metallic);
+    var diffuse_color = albedo * (1.0 - metallic);
+    var alpha = s.alpha;
+    if (s.premultiply) {
+        // Reflective parts stay visible on glass: alpha grows with reflectivity.
+        let one_minus_reflectivity = (1.0 - metallic) * 0.96;
+        diffuse_color *= s.alpha;
+        alpha = 1.0 - one_minus_reflectivity + s.alpha * one_minus_reflectivity;
+    }
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
     let grazing = clamp(smoothness + (1.0 - (1.0 - metallic) * 0.96), 0.0, 1.0);
 
@@ -254,14 +317,14 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     } else {
         ambient = mix(lights.equator.rgb, lights.ground.rgb, -n.y);
     }
-    var color = ambient * lights.info.z * diffuse_color;
+    var color = ambient * lights.info.z * diffuse_color * s.occlusion;
 
     // Reflection of the sky: sharp when smooth, blurred towards the ambient colour when rough.
     let r = reflect(-v, n);
     let env = mix(sky_color(r), ambient * 1.6, perceptual);
     let fresnel_env = mix(f0, vec3<f32>(grazing), pow(1.0 - n_dot_v, 5.0));
     let surface_reduction = 1.0 / (roughness * roughness + 1.0);
-    color += env * fresnel_env * surface_reduction * lights.info.w * smoothness;
+    color += env * fresnel_env * surface_reduction * lights.info.w * smoothness * s.occlusion;
 
     let count = u32(lights.info.x);
     for (var i = 0u; i < count; i++) {
@@ -301,10 +364,12 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     }
     color += s.emission;
     let fog = fog_visibility(fog_distance(world));
-    color = mix(view.fog_color.rgb, color, fog);
+    // Premultiplied colour gets premultiplied fog.
+    let fog_color = select(view.fog_color.rgb, view.fog_color.rgb * alpha, s.premultiply);
+    color = mix(fog_color, color, fog);
     var out: MeshTargets;
-    out.color = vec4<f32>(color, s.alpha);
-    out.glow = vec4<f32>(s.emission * fog, 1.0);
+    out.color = vec4<f32>(color, alpha);
+    out.glow = vec4<f32>(s.emission * fog, alpha);
     return out;
 
 }

@@ -4,6 +4,7 @@
 mod anim;
 mod animator;
 mod editors;
+mod material;
 mod mixed;
 mod particles;
 mod physics_editors;
@@ -427,7 +428,7 @@ fn material_previews(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     egui::CollapsingHeader::new(RichText::new(format!("◍ {name} (Material)")).strong())
         .id_salt(("inline_material", &rel))
         .default_open(true)
-        .show(ui, |ui| editors::material_asset(ui, state, &rel));
+        .show(ui, |ui| material::material_asset(ui, state, &rel));
     ui.separator();
 }
 
@@ -457,7 +458,8 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
     ui.separator();
     if rel.ends_with(".mat") {
-        editors::material_asset(ui, state, rel);
+        material::material_asset(ui, state, rel);
+        material::preview(ui, state, rel);
     } else {
         ui.weak("No import settings for this asset.");
     }

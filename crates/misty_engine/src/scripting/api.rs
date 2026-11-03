@@ -374,7 +374,12 @@ impl UserData for LGameObject {
                     Some(v) => v,
                     None => match super::ui_api::component(lua, e, &name)? {
                         Some(v) => v,
-                        None => super::terrain_api::component(lua, e, &name)?.unwrap_or(Value::Nil),
+                        None => match super::material_api::component(lua, e, &name)? {
+                            Some(v) => v,
+                            None => {
+                                super::terrain_api::component(lua, e, &name)?.unwrap_or(Value::Nil)
+                            }
+                        },
                     },
                 }),
             }

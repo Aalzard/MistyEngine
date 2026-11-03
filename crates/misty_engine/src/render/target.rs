@@ -33,6 +33,8 @@ pub struct RenderTarget {
     depth_view: wgpu::TextureView,
     hdr_view: wgpu::TextureView,
     output_view: wgpu::TextureView,
+    /// The final image (copy source for thumbnails).
+    output: wgpu::Texture,
     display_view: wgpu::TextureView,
     mask_view: wgpu::TextureView,
     /// Outline pass input (selection mask).
@@ -102,7 +104,7 @@ impl RenderTarget {
             full,
             COLOR_FORMAT,
             1,
-            sampled,
+            sampled | wgpu::TextureUsages::COPY_SRC,
             &[DISPLAY_FORMAT],
         );
         let mask = make("misty selection mask", full, MASK_FORMAT, 1, sampled, &[]);
@@ -183,6 +185,7 @@ impl RenderTarget {
             depth_view: view(&depth),
             hdr_view,
             output_view: view(&output),
+            output,
             display_view,
             mask_view,
             mask_bind_group,
@@ -203,6 +206,15 @@ impl RenderTarget {
     /// The final image for display in the editor (gamma-encoded bytes).
     pub fn view(&self) -> &wgpu::TextureView {
         &self.display_view
+    }
+
+    /// Copy the final image into `dst` (same size, `Rgba8Unorm` or `Rgba8UnormSrgb`).
+    pub fn copy_output(&self, encoder: &mut wgpu::CommandEncoder, dst: &wgpu::Texture) {
+        encoder.copy_texture_to_texture(
+            self.output.as_image_copy(),
+            dst.as_image_copy(),
+            self.output.size(),
+        );
     }
 
     /// MSAA resolve destination of the main pass.
