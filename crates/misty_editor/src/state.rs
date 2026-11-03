@@ -186,6 +186,10 @@ pub struct EditorState {
     pub files: SceneFiles,
     pub selection: Selection,
     pub undo: UndoStack,
+    /// Animation clips being edited (written back to their files after each edit).
+    pub anim_clips: crate::anim_clips::ClipStore,
+    /// Animation window: clip, playhead, preview and Record mode.
+    pub animation: crate::panels::animation::AnimationWindow,
     pub hierarchy: HierarchyState,
     pub handles: HandleState,
     pub inspector_locked: bool,
@@ -240,6 +244,8 @@ impl EditorState {
             files: SceneFiles::default(),
             selection: Selection::default(),
             undo: UndoStack::default(),
+            anim_clips: crate::anim_clips::ClipStore::new(project.root.clone()),
+            animation: Default::default(),
             hierarchy: HierarchyState::default(),
             handles: HandleState::default(),
             inspector_locked: false,

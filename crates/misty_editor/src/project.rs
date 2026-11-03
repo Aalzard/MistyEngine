@@ -22,6 +22,7 @@ impl AssetEntry {
             "png" | "jpg" | "jpeg" | "tga" => "🖼",
             "obj" | "gltf" | "glb" | "fbx" => "📦",
             "wav" | "ogg" | "mp3" => "🔊",
+            "anim" => "⏵",
             _ => "📄",
         }
     }

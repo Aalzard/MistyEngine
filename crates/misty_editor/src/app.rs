@@ -10,7 +10,7 @@ use crate::capture::Capture;
 use crate::console::LogLevel;
 use crate::layout::{self, BuiltinLayout, Tab};
 use crate::layouts::{self, Autosave, LayoutRef};
-use crate::panels::PanelViewer;
+use crate::panels::{PanelViewer, animation};
 use crate::project::ProjectBrowser;
 use crate::scene_files::{self, AfterPrompt};
 use crate::state::{EditorState, PlayState, Tool};
@@ -40,6 +40,11 @@ impl EditorApp {
         let (saved_layouts, dock) = layouts::load(&state.project.root);
         state.layouts = saved_layouts;
         let layout_autosave = Autosave::new(&state.layouts, &dock);
+        let mut dock = dock;
+        let capture = Capture::from_env();
+        if capture.is_some() {
+            crate::capture::apply_env(&mut state, &mut dock);
+        }
         let gpu = cc.wgpu_render_state.clone().map(Gpu::new);
         match &gpu {
             Some(g) => {
@@ -56,7 +61,7 @@ impl EditorApp {
             state,
             dock,
             gpu,
-            capture: Capture::from_env(),
+            capture,
             saved_dock: None,
             errors_seen: 0,
             title: String::new(),
@@ -143,6 +148,7 @@ impl EditorApp {
             (ctrl, Key::Num3, Action::FocusTab(Tab::Inspector)),
             (ctrl, Key::Num4, Action::FocusTab(Tab::Hierarchy)),
             (ctrl, Key::Num5, Action::FocusTab(Tab::Project)),
+            (ctrl, Key::Num6, Action::FocusTab(Tab::Animation)),
             (ctrl_shift, Key::C, Action::FocusTab(Tab::Console)),
             (Modifiers::SHIFT, Key::D, Action::DeselectAll),
             (Modifiers::NONE, Key::Delete, Action::DeleteSelected),
@@ -160,6 +166,10 @@ impl EditorApp {
                 || mods == Modifiers::SHIFT
                 || matches!(key, Key::Z | Key::Y | Key::A);
             if typing && text_key {
+                continue;
+            }
+            // Delete removes selected keys when the Animation window has focus.
+            if key == Key::Delete && self.state.animation.wants_delete() {
                 continue;
             }
             if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(mods, key))) {
@@ -187,6 +197,20 @@ impl EditorApp {
     fn apply_actions(&mut self, ctx: &egui::Context) {
         let actions = std::mem::take(&mut self.state.actions);
         for action in actions {
+            // The Animation window's preview pose must not be saved or played.
+            if matches!(
+                action,
+                Action::TogglePlay
+                    | Action::Step
+                    | Action::SaveScene
+                    | Action::SaveSceneAs
+                    | Action::NewScene
+                    | Action::OpenScene
+                    | Action::OpenScenePath(_)
+                    | Action::Quit
+            ) {
+                animation::preview::stop_preview(&mut self.state);
+            }
             if let Some(action) = commands::apply(&mut self.state, action) {
                 self.apply(ctx, action);
             }
@@ -372,10 +396,14 @@ impl eframe::App for EditorApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let s = &mut self.state;
+        let (clips, clip) = (&mut s.anim_clips, &s.animation.clip);
         s.undo
-            .begin_frame(Self::interacting(&ctx), &s.scene, &s.selection);
+            .begin_frame(Self::interacting(&ctx), &s.scene, &s.selection, || {
+                clips.snapshot(clip.as_deref()?)
+            });
         self.shortcuts(&ctx);
         self.game_frame(&ctx);
+        animation::preview::pre_frame(&mut self.state, ctx.input(|i| i.stable_dt));
 
         let bar_frame = egui::Frame::new()
             .fill(theme::TAB_BAR_BG)
@@ -413,6 +441,7 @@ impl eframe::App for EditorApp {
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         self.apply_actions(&ctx);
+        animation::preview::post_frame(&mut self.state, Self::interacting(&ctx));
         self.state.undo.end_frame(Self::interacting(&ctx));
         self.scene_file_frame(&ctx);
         self.save_layout(false);

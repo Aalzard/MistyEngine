@@ -186,14 +186,27 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::OpenAddComponent => s.inspector_add_open = true,
         Action::OpenProjectSettings => s.project_settings_window.open = true,
         Action::OpenBuildSettings => s.build_window.open = true,
-        Action::Undo => match s.undo.undo(&mut s.scene, &mut s.selection) {
-            Some(label) => s.console.info(format!("Undo {label}")),
-            None => s.console.info("Nothing to undo."),
-        },
-        Action::Redo => match s.undo.redo(&mut s.scene, &mut s.selection) {
-            Some(label) => s.console.info(format!("Redo {label}")),
-            None => s.console.info("Nothing to redo."),
-        },
+        Action::Undo => {
+            // Undone values are not new edits for Record mode.
+            s.animation.skip_record = true;
+            match s
+                .undo
+                .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips)
+            {
+                Some(label) => s.console.info(format!("Undo {label}")),
+                None => s.console.info("Nothing to undo."),
+            }
+        }
+        Action::Redo => {
+            s.animation.skip_record = true;
+            match s
+                .undo
+                .redo(&mut s.scene, &mut s.selection, &mut s.anim_clips)
+            {
+                Some(label) => s.console.info(format!("Redo {label}")),
+                None => s.console.info("Nothing to redo."),
+            }
+        }
         Action::InstantiateModel { path, parent } => {
             crate::model_import::instantiate(s, &path, parent);
         }

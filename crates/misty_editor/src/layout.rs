@@ -11,16 +11,18 @@ pub enum Tab {
     Inspector,
     Project,
     Console,
+    Animation,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 6] = [
+    pub const ALL: [Tab; 7] = [
         Tab::Scene,
         Tab::Game,
         Tab::Inspector,
         Tab::Hierarchy,
         Tab::Project,
         Tab::Console,
+        Tab::Animation,
     ];
 
     pub fn title(self) -> &'static str {
@@ -31,6 +33,7 @@ impl Tab {
             Tab::Inspector => "Inspector",
             Tab::Project => "Project",
             Tab::Console => "Console",
+            Tab::Animation => "Animation",
         }
     }
 
@@ -42,6 +45,7 @@ impl Tab {
             Tab::Inspector => "ℹ",
             Tab::Project => "🗁",
             Tab::Console => "🗒",
+            Tab::Animation => "⏵",
         }
     }
 
@@ -54,6 +58,7 @@ impl Tab {
             Tab::Hierarchy => "Ctrl+4",
             Tab::Project => "Ctrl+5",
             Tab::Console => "Ctrl+Shift+C",
+            Tab::Animation => "Ctrl+6",
         }
     }
 }
@@ -102,55 +107,69 @@ impl BuiltinLayout {
     }
 }
 
-/// Default layout: Hierarchy | Scene+Game over Project+Console, Inspector on the right.
+/// Default layout: Hierarchy | Scene+Game over Project+Console+Animation, Inspector on the right.
 pub fn default_layout() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
     let tree = dock.main_surface_mut();
     let [left, _inspector] = tree.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector]);
-    let [top, _bottom] = tree.split_below(left, 0.66, vec![Tab::Project, Tab::Console]);
+    let [top, _bottom] =
+        tree.split_below(left, 0.66, vec![Tab::Project, Tab::Console, Tab::Animation]);
     let [_scene, _hierarchy] = tree.split_left(top, 0.24, vec![Tab::Hierarchy]);
     dock
 }
 
-/// Scene over Game on the left, then Hierarchy, Project+Console and Inspector columns.
+/// Scene over Game on the left, then Hierarchy, Project+Console+Animation and Inspector columns.
 fn two_by_three() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::Scene]);
     let tree = dock.main_surface_mut();
     let [views, rest] = tree.split_right(NodeIndex::root(), 0.5, vec![Tab::Hierarchy]);
     let [_scene, _game] = tree.split_below(views, 0.5, vec![Tab::Game]);
-    let [_hierarchy, rest] = tree.split_right(rest, 0.33, vec![Tab::Project, Tab::Console]);
+    let [_hierarchy, rest] =
+        tree.split_right(rest, 0.33, vec![Tab::Project, Tab::Console, Tab::Animation]);
     let [_project, _inspector] = tree.split_right(rest, 0.5, vec![Tab::Inspector]);
     dock
 }
 
-/// A 2×2 grid (Scene, Game / Hierarchy, Project+Console) with the Inspector on the right.
+/// A 2×2 grid (Scene, Game / Hierarchy, Project+Console+Animation) with the Inspector on the right.
 fn four_split() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::Scene]);
     let tree = dock.main_surface_mut();
     let [grid, _inspector] = tree.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector]);
     let [top, bottom] = tree.split_below(grid, 0.5, vec![Tab::Hierarchy]);
     let [_scene, _game] = tree.split_right(top, 0.5, vec![Tab::Game]);
-    let [_hierarchy, _project] = tree.split_right(bottom, 0.5, vec![Tab::Project, Tab::Console]);
+    let [_hierarchy, _project] = tree.split_right(
+        bottom,
+        0.5,
+        vec![Tab::Project, Tab::Console, Tab::Animation],
+    );
     dock
 }
 
-/// Full-height Scene+Game, then Hierarchy over Project+Console, Inspector on the right.
+/// Full-height Scene+Game, then Hierarchy over Project+Console+Animation, Inspector on the right.
 fn tall() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
     let tree = dock.main_surface_mut();
     let [_views, rest] = tree.split_right(NodeIndex::root(), 0.55, vec![Tab::Hierarchy]);
     let [column, _inspector] = tree.split_right(rest, 0.5, vec![Tab::Inspector]);
-    let [_hierarchy, _project] = tree.split_below(column, 0.5, vec![Tab::Project, Tab::Console]);
+    let [_hierarchy, _project] = tree.split_below(
+        column,
+        0.5,
+        vec![Tab::Project, Tab::Console, Tab::Animation],
+    );
     dock
 }
 
-/// Wide Scene+Game on top, Hierarchy | Project+Console below, Inspector full height on the right.
+/// Wide Scene+Game on top, Hierarchy | Project+Console+Animation below, full-height Inspector.
 fn wide() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::Scene, Tab::Game]);
     let tree = dock.main_surface_mut();
     let [left, _inspector] = tree.split_right(NodeIndex::root(), 0.8, vec![Tab::Inspector]);
     let [_views, bottom] = tree.split_below(left, 0.62, vec![Tab::Hierarchy]);
-    let [_hierarchy, _project] = tree.split_right(bottom, 0.3, vec![Tab::Project, Tab::Console]);
+    let [_hierarchy, _project] = tree.split_right(
+        bottom,
+        0.3,
+        vec![Tab::Project, Tab::Console, Tab::Animation],
+    );
     dock
 }
 

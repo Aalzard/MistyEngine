@@ -3,15 +3,19 @@
 //! Structural commands call [`UndoStack::push`] before changing the scene. Continuous edits
 //! (dragging a value, typing a name) are grouped per interaction: a snapshot is taken when the
 //! mouse goes down or typing starts, and committed when the interaction ends if anything changed.
+//! A snapshot can also hold one animation clip (the one being edited in the Animation window), so
+//! key edits undo in the same history as scene edits.
 
 use misty_engine::scene::Scene;
 
+use crate::anim_clips::{ClipSnapshot, ClipStore};
 use crate::selection::Selection;
 
 pub struct Snapshot {
     pub label: String,
     pub scene: Scene,
     pub selection: Selection,
+    pub clip: Option<ClipSnapshot>,
 }
 
 #[derive(Default)]
@@ -26,10 +30,22 @@ const LIMIT: usize = 200;
 
 impl UndoStack {
     pub fn push(&mut self, label: &str, scene: &Scene, selection: &Selection) {
+        self.push_with_clip(label, scene, selection, None);
+    }
+
+    /// Like [`UndoStack::push`], also restoring `clip` on undo.
+    pub fn push_with_clip(
+        &mut self,
+        label: &str,
+        scene: &Scene,
+        selection: &Selection,
+        clip: Option<ClipSnapshot>,
+    ) {
         self.past.push(Snapshot {
             label: label.to_owned(),
             scene: scene.clone(),
             selection: selection.clone(),
+            clip,
         });
         if self.past.len() > LIMIT {
             self.past.remove(0);
@@ -48,12 +64,20 @@ impl UndoStack {
     }
 
     /// Call at the start of every frame with whether the user is mid-interaction.
-    pub fn begin_frame(&mut self, interacting: bool, scene: &Scene, selection: &Selection) {
+    /// `clip` gives the clip an interaction may edit (only called when an interaction starts).
+    pub fn begin_frame(
+        &mut self,
+        interacting: bool,
+        scene: &Scene,
+        selection: &Selection,
+        clip: impl FnOnce() -> Option<ClipSnapshot>,
+    ) {
         if interacting && self.candidate.is_none() {
             self.candidate = Some(Snapshot {
                 label: String::new(),
                 scene: scene.clone(),
                 selection: selection.clone(),
+                clip: clip(),
             });
         }
     }
@@ -86,14 +110,24 @@ impl UndoStack {
     }
 
     /// Restore the previous snapshot; returns its label.
-    pub fn undo(&mut self, scene: &mut Scene, selection: &mut Selection) -> Option<String> {
+    pub fn undo(
+        &mut self,
+        scene: &mut Scene,
+        selection: &mut Selection,
+        clips: &mut ClipStore,
+    ) -> Option<String> {
         let snap = self.past.pop()?;
-        Some(self.swap(snap, scene, selection, true))
+        Some(self.swap(snap, scene, selection, clips, true))
     }
 
-    pub fn redo(&mut self, scene: &mut Scene, selection: &mut Selection) -> Option<String> {
+    pub fn redo(
+        &mut self,
+        scene: &mut Scene,
+        selection: &mut Selection,
+        clips: &mut ClipStore,
+    ) -> Option<String> {
         let snap = self.future.pop()?;
-        Some(self.swap(snap, scene, selection, false))
+        Some(self.swap(snap, scene, selection, clips, false))
     }
 
     fn swap(
@@ -101,6 +135,7 @@ impl UndoStack {
         snap: Snapshot,
         scene: &mut Scene,
         selection: &mut Selection,
+        clips: &mut ClipStore,
         undo: bool,
     ) -> String {
         let label = snap.label.clone();
@@ -108,6 +143,7 @@ impl UndoStack {
             label: snap.label,
             scene: std::mem::replace(scene, snap.scene),
             selection: std::mem::replace(selection, snap.selection),
+            clip: snap.clip.map(|c| clips.restore(c)),
         };
         if undo {
             self.future.push(current);
@@ -134,13 +170,15 @@ mod tests {
         sel.set(cube);
 
         assert_eq!(
-            undo.undo(&mut scene, &mut sel).as_deref(),
+            undo.undo(&mut scene, &mut sel, &mut ClipStore::default())
+                .as_deref(),
             Some("Create Cube")
         );
         assert_eq!(scene.len(), 2);
         assert!(sel.is_empty());
         assert_eq!(
-            undo.redo(&mut scene, &mut sel).as_deref(),
+            undo.redo(&mut scene, &mut sel, &mut ClipStore::default())
+                .as_deref(),
             Some("Create Cube")
         );
         assert_eq!(scene.len(), 3);
@@ -154,18 +192,18 @@ mod tests {
         let mut undo = UndoStack::default();
         let cam = scene.roots()[0];
         for x in 0..10 {
-            undo.begin_frame(true, &scene, &sel);
+            undo.begin_frame(true, &scene, &sel, || None);
             let mut t = scene.transform(cam);
             t.position.x = x as f32;
             scene.set_transform(cam, t);
             undo.mark_edited("Transform");
             undo.end_frame(true);
         }
-        undo.begin_frame(false, &scene, &sel);
+        undo.begin_frame(false, &scene, &sel, || None);
         undo.end_frame(false);
         assert_eq!(undo.undo_label(), Some("Modify Transform"));
         let mut sel = sel;
-        undo.undo(&mut scene, &mut sel);
+        undo.undo(&mut scene, &mut sel, &mut ClipStore::default());
         assert_eq!(scene.transform(cam).position.x, 0.0);
         assert!(!undo.can_undo());
     }
@@ -175,7 +213,7 @@ mod tests {
         let scene = Scene::default_3d("t");
         let sel = Selection::default();
         let mut undo = UndoStack::default();
-        undo.begin_frame(true, &scene, &sel);
+        undo.begin_frame(true, &scene, &sel, || None);
         undo.end_frame(false);
         assert!(!undo.can_undo());
     }

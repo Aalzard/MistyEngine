@@ -32,6 +32,8 @@ pub struct AssetDatabase {
     pub materials: BTreeMap<String, Material>,
     /// Project-relative path ("Assets/Scripts/Rotator.lua") → fields.
     pub scripts: BTreeMap<String, ScriptMeta>,
+    /// Project-relative paths of animation clips (.anim).
+    pub anims: BTreeSet<String>,
     /// Project-relative paths of audio clips (.wav/.ogg/.mp3).
     pub clips: BTreeSet<String>,
     /// Prefabs read so far, re-read when the file changes.
@@ -54,6 +56,7 @@ impl AssetDatabase {
             materials: BTreeMap::new(),
             scripts: BTreeMap::new(),
             clips: BTreeSet::new(),
+            anims: BTreeSet::new(),
             prefabs: BTreeMap::new(),
             textures: Vec::new(),
             models: BTreeMap::new(),
@@ -70,6 +73,7 @@ impl AssetDatabase {
     pub fn refresh(&mut self) {
         self.materials.clear();
         self.clips.clear();
+        self.anims.clear();
         self.textures.clear();
         self.models.clear();
         let old_scripts = std::mem::take(&mut self.scripts);
@@ -91,6 +95,8 @@ impl AssetDatabase {
                         _ => inspect(&path, &rel),
                     };
                     self.scripts.insert(rel, meta);
+                } else if misty_engine::animation::is_clip(&path.to_string_lossy()) {
+                    self.anims.insert(self.relative(&path));
                 } else if misty_engine::audio::is_clip(&path.to_string_lossy()) {
                     self.clips.insert(self.relative(&path));
                 } else {

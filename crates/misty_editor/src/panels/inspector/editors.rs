@@ -4,9 +4,9 @@ use egui::{Grid, Key, RichText, Ui};
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    AudioListener, AudioRolloff, AudioSource, BoxCollider, Camera, CapsuleCollider, ClearFlags,
-    Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface, Rigidbody, SceneComponent,
-    Shadows, SphereCollider, registry,
+    Animation, AudioListener, AudioRolloff, AudioSource, BoxCollider, Camera, CapsuleCollider,
+    ClearFlags, Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface, Rigidbody,
+    SceneComponent, Shadows, SphereCollider, registry,
 };
 
 use misty_engine::assets::Material;
@@ -29,6 +29,7 @@ pub fn icon(name: &str) -> &'static str {
         "Box Collider" | "Sphere Collider" | "Capsule Collider" | "Mesh Collider" => "⬡",
         "Audio Source" => crate::state::AUDIO_ICON,
         "Audio Listener" => "🎧",
+        "Animation" => "⏵",
         _ => "▣",
     }
 }
@@ -46,6 +47,7 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
         "Mesh Collider" => w.get::<&MeshCollider>(e).ok().map(|c| c.enabled),
         "Audio Source" => w.get::<&AudioSource>(e).ok().map(|c| c.enabled),
         "Audio Listener" => w.get::<&AudioListener>(e).ok().map(|c| c.enabled),
+        "Animation" => w.get::<&Animation>(e).ok().map(|c| c.enabled),
         _ => None,
     }
 }
@@ -83,6 +85,7 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
             .get::<&mut AudioListener>(e)
             .map(|mut c| c.enabled = on)
             .ok(),
+        "Animation" => w.get::<&mut Animation>(e).map(|mut c| c.enabled = on).ok(),
         _ => None,
     };
 }
@@ -102,6 +105,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Capsule Collider" => with::<CapsuleCollider>(ui, state, e, capsule_collider),
         "Mesh Collider" => with::<MeshCollider>(ui, state, e, mesh_collider),
         "Audio Source" => audio_source(ui, state, e),
+        "Animation" => super::anim::animation(ui, state, e),
         "Audio Listener" => {
             ui.weak("Hears every Audio Source in the scene.");
             false
@@ -193,7 +197,7 @@ fn transform(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) -> bool {
 }
 
 /// Two-column property grid like the Inspector's label/value layout.
-fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
+pub(super) fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     Grid::new(id)
         .num_columns(2)
         .spacing([10.0, 4.0])
@@ -202,7 +206,7 @@ fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
         .inner
 }
 
-fn combo<T: Copy + PartialEq>(
+pub(super) fn combo<T: Copy + PartialEq>(
     ui: &mut Ui,
     id: &str,
     value: &mut T,

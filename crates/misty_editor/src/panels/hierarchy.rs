@@ -559,7 +559,8 @@ mod tests {
         apply_drop(&mut s, &[light], Drop::Into(cam));
         assert_eq!(s.scene.parent(light), Some(cam));
         assert!(s.hierarchy.expanded.contains(&cam));
-        s.undo.undo(&mut s.scene, &mut s.selection);
+        s.undo
+            .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips);
         assert_eq!(s.scene.parent(light), None);
     }
 

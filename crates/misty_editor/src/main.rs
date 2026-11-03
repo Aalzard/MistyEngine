@@ -1,6 +1,7 @@
 //! Misty Engine editor entry point.
 
 mod actions;
+mod anim_clips;
 mod app;
 mod assets;
 mod build_settings;
@@ -21,6 +22,8 @@ mod prefabs;
 mod project;
 mod project_settings;
 mod render_scene;
+#[cfg(test)]
+mod sample_animation;
 #[cfg(test)]
 mod sample_assets;
 mod scene_camera;
