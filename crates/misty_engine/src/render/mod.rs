@@ -4,6 +4,7 @@ pub mod mesh;
 mod pipelines;
 mod shadows;
 mod target;
+pub mod texture;
 
 pub use target::RenderTarget;
 use target::TargetLayouts;
@@ -13,7 +14,8 @@ use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 use crate::camera::{Camera, Projection};
-use crate::scene::{LightType, PrimitiveMesh, Shadows};
+use crate::models;
+use crate::scene::{LightType, MeshRef, PrimitiveMesh, Shadows};
 
 /// Final image shown in the editor.
 pub const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -55,7 +57,7 @@ pub struct LineVertex {
 }
 
 /// Surface parameters of a draw (from a material asset).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MaterialParams {
     /// sRGB base colour + alpha.
     pub color: [f32; 4],
@@ -65,6 +67,13 @@ pub struct MaterialParams {
     pub emission: [f32; 3],
     /// Linear multiplier on the emission colour (HDR: values above 1 glow through bloom).
     pub emission_intensity: f32,
+    /// Project-relative albedo texture (sRGB), multiplied by `color`.
+    pub albedo_map: Option<String>,
+    /// Project-relative tangent-space normal map (linear).
+    pub normal_map: Option<String>,
+    pub normal_scale: f32,
+    pub tiling: [f32; 2],
+    pub offset: [f32; 2],
 }
 
 impl Default for MaterialParams {
@@ -75,13 +84,18 @@ impl Default for MaterialParams {
             smoothness: 0.5,
             emission: [0.0; 3],
             emission_intensity: 0.0,
+            albedo_map: None,
+            normal_map: None,
+            normal_scale: 1.0,
+            tiling: [1.0, 1.0],
+            offset: [0.0, 0.0],
         }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct MeshDraw {
-    pub mesh: PrimitiveMesh,
+    pub mesh: MeshRef,
     pub model: Mat4,
     pub material: MaterialParams,
     pub cast_shadows: bool,
@@ -138,6 +152,7 @@ struct DrawUniform {
     color: [f32; 4],
     params: [f32; 4],
     emission: [f32; 4],
+    uv_st: [f32; 4],
 }
 
 #[repr(C)]
@@ -181,6 +196,11 @@ pub struct Renderer {
     line_buffer: wgpu::Buffer,
     line_capacity: usize,
     meshes: Vec<GpuMesh>,
+    /// Imported meshes by "path#index" (None = could not be loaded), uploaded on first use.
+    imported: std::collections::HashMap<String, Option<GpuMesh>>,
+    /// [`models::generation`] the imported meshes were uploaded at.
+    imported_generation: u64,
+    textures: texture::TextureCache,
     /// Linear clamp sampler for post-processing.
     post_sampler: wgpu::Sampler,
 }
@@ -218,22 +238,7 @@ impl Renderer {
 
         let meshes = PrimitiveMesh::ALL
             .iter()
-            .map(|p| {
-                let data = mesh::primitive(*p);
-                GpuMesh {
-                    vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some(p.name()),
-                        contents: bytemuck::cast_slice(&data.vertices),
-                        usage: wgpu::BufferUsages::VERTEX,
-                    }),
-                    indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some(p.name()),
-                        contents: bytemuck::cast_slice(&data.indices),
-                        usage: wgpu::BufferUsages::INDEX,
-                    }),
-                    count: data.indices.len() as u32,
-                }
-            })
+            .map(|p| GpuMesh::new(device, p.name(), mesh::primitive(*p)))
             .collect();
 
         let line_capacity = 1024;
@@ -256,7 +261,49 @@ impl Renderer {
             line_buffer: line_buffer(device, line_capacity),
             line_capacity,
             meshes,
+            imported: Default::default(),
+            imported_generation: models::generation(),
+            textures: texture::TextureCache::new(device),
             pipelines,
+        }
+    }
+
+    /// Reload textures and models whose files changed on disk (the editor calls this in Edit mode).
+    pub fn reload_changed_assets(&mut self) {
+        self.textures.poll_changes();
+        models::poll_changes();
+    }
+
+    /// Texture load errors since the last call.
+    pub fn take_warnings(&mut self) -> Vec<String> {
+        self.textures.take_warnings()
+    }
+
+    /// Upload imported meshes and build texture bind groups used by this frame.
+    fn prepare_assets(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, frame: &Frame) {
+        let generation = models::generation();
+        if generation != self.imported_generation {
+            self.imported.clear();
+            self.imported_generation = generation;
+        }
+        for d in frame.meshes {
+            if let MeshRef::Asset(key) = &d.mesh
+                && !self.imported.contains_key(key)
+            {
+                let gpu = models::mesh(&d.mesh)
+                    .filter(|m| !m.indices.is_empty())
+                    .map(|m| GpuMesh::new(device, key, &m));
+                self.imported.insert(key.clone(), gpu);
+            }
+            if frame.shaded {
+                self.textures.prepare(
+                    device,
+                    queue,
+                    &self.pipelines.material_layout,
+                    d.material.albedo_map.as_deref(),
+                    d.material.normal_map.as_deref(),
+                );
+            }
         }
     }
 
@@ -271,8 +318,13 @@ impl Renderer {
         RenderTarget::new(device, width, height, &layouts)
     }
 
-    fn gpu_mesh(&self, p: PrimitiveMesh) -> &GpuMesh {
-        &self.meshes[PrimitiveMesh::ALL.iter().position(|m| *m == p).unwrap_or(0)]
+    fn gpu_mesh(&self, r: &MeshRef) -> Option<&GpuMesh> {
+        match r {
+            MeshRef::Primitive(p) => {
+                Some(&self.meshes[PrimitiveMesh::ALL.iter().position(|m| m == p).unwrap_or(0)])
+            }
+            MeshRef::Asset(key) => self.imported.get(key)?.as_ref(),
+        }
     }
 
     /// Draw a frame into `target` and submit it.
@@ -283,6 +335,7 @@ impl Renderer {
         target: &RenderTarget,
         frame: &Frame,
     ) {
+        self.prepare_assets(device, queue, frame);
         let aspect = target.aspect();
         queue.write_buffer(
             &self.view_buffer,
@@ -428,17 +481,30 @@ impl Renderer {
         );
     }
 
+    /// Draw the meshes passing `filter`; `textured` binds each material's textures at group 2.
     fn draw_meshes(
         &self,
         pass: &mut wgpu::RenderPass,
         frame: &Frame,
+        textured: bool,
         filter: impl Fn(&MeshDraw) -> bool,
     ) {
         for (i, d) in frame.meshes.iter().enumerate() {
             if !filter(d) {
                 continue;
             }
-            let m = self.gpu_mesh(d.mesh);
+            let Some(m) = self.gpu_mesh(&d.mesh) else {
+                continue;
+            };
+            if textured {
+                let Some(group) = self.textures.get(
+                    d.material.albedo_map.as_deref(),
+                    d.material.normal_map.as_deref(),
+                ) else {
+                    continue;
+                };
+                pass.set_bind_group(2, group, &[]);
+            }
             pass.set_vertex_buffer(0, m.vertices.slice(..));
             pass.set_index_buffer(m.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..m.count, 0, i as u32..i as u32 + 1);
@@ -471,7 +537,7 @@ impl Renderer {
         let offset = (slot as u64 * shadows::VIEW_STRIDE) as u32;
         pass.set_bind_group(0, &self.shadows.view_bind_group, &[offset]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
-        self.draw_meshes(&mut pass, frame, |d| d.cast_shadows);
+        self.draw_meshes(&mut pass, frame, false, |d| d.cast_shadows);
     }
 
     fn mask_pass(&self, encoder: &mut wgpu::CommandEncoder, target: &RenderTarget, frame: &Frame) {
@@ -494,7 +560,7 @@ impl Renderer {
         pass.set_pipeline(&self.pipelines.mask);
         pass.set_bind_group(0, &self.view_bind_group, &[]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
-        self.draw_meshes(&mut pass, frame, |d| d.outline);
+        self.draw_meshes(&mut pass, frame, false, |d| d.outline);
     }
 
     fn main_pass(
@@ -547,7 +613,7 @@ impl Renderer {
         if frame.shaded && !frame.meshes.is_empty() {
             pass.set_pipeline(&self.pipelines.mesh);
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            self.draw_meshes(&mut pass, frame, |_| true);
+            self.draw_meshes(&mut pass, frame, true, |_| true);
         }
 
         if frame.grid.is_some() {
@@ -565,6 +631,24 @@ impl Renderer {
             pass.set_pipeline(&self.pipelines.outline);
             pass.set_bind_group(1, &target.mask_bind_group, &[]);
             pass.draw(0..3, 0..1);
+        }
+    }
+}
+
+impl GpuMesh {
+    fn new(device: &wgpu::Device, label: &str, data: &mesh::MeshData) -> Self {
+        Self {
+            vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(label),
+                contents: bytemuck::cast_slice(&data.vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+            indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(label),
+                contents: bytemuck::cast_slice(&data.indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }),
+            count: data.indices.len() as u32,
         }
     }
 }
@@ -638,6 +722,19 @@ fn srgb_to_linear(c: [f32; 3]) -> [f32; 3] {
 fn draw_uniform(d: &MeshDraw) -> DrawUniform {
     // Colour to linear first, then scale: intensity is linear brightness.
     let e = srgb_to_linear(d.material.emission).map(|c| c * d.material.emission_intensity);
+    // Mirrored transforms flip the tangent frame's handedness.
+    let mirror = if d.model.determinant() < 0.0 {
+        -1.0
+    } else {
+        1.0
+    };
+    // No normal map: scale 0 keeps the vertex normal exactly.
+    let normal_scale = if d.material.normal_map.is_some() {
+        d.material.normal_scale
+    } else {
+        0.0
+    };
+    let (t, o) = (d.material.tiling, d.material.offset);
     DrawUniform {
         model: d.model.to_cols_array_2d(),
         normal: d.model.inverse().transpose().to_cols_array_2d(),
@@ -646,9 +743,10 @@ fn draw_uniform(d: &MeshDraw) -> DrawUniform {
             d.material.metallic,
             d.material.smoothness,
             if d.receive_shadows { 1.0 } else { 0.0 },
-            0.0,
+            normal_scale,
         ],
-        emission: [e[0], e[1], e[2], 0.0],
+        emission: [e[0], e[1], e[2], mirror],
+        uv_st: [t[0], t[1], o[0], o[1]],
     }
 }
 
@@ -760,7 +858,7 @@ mod tests {
 
     #[test]
     fn gpu_struct_sizes_match_wgsl() {
-        assert_eq!(std::mem::size_of::<DrawUniform>(), 176);
+        assert_eq!(std::mem::size_of::<DrawUniform>(), 192);
         assert_eq!(std::mem::size_of::<LightItem>(), 80);
         assert_eq!(
             std::mem::size_of::<LightsUniform>(),

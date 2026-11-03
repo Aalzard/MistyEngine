@@ -10,7 +10,6 @@ use glam::{Mat4, Quat, Vec3};
 use hecs::Entity;
 use rapier3d::prelude as rp;
 
-use crate::render::mesh;
 use crate::scene::{
     BoxCollider, CapsuleCollider, MeshCollider, MeshFilter, PhysicsSurface, Rigidbody, Scene,
     SphereCollider,
@@ -299,9 +298,9 @@ impl Physics {
         if let Ok(c) = w.get::<&MeshCollider>(e)
             && c.enabled
         {
-            match w.get::<&MeshFilter>(e).ok().and_then(|f| f.mesh) {
-                Some(m) => {
-                    let data = mesh::primitive(m);
+            let mesh_ref = w.get::<&MeshFilter>(e).ok().and_then(|f| f.mesh.clone());
+            match mesh_ref.as_ref().and_then(crate::models::mesh) {
+                Some(data) => {
                     let verts: Vec<rp::Vector> = data
                         .vertices
                         .iter()
@@ -326,9 +325,13 @@ impl Physics {
                             .push(format!("'{name}': could not build Mesh Collider.")),
                     }
                 }
-                None => self.warnings.push(format!(
-                    "'{name}': Mesh Collider needs a Mesh Filter with a mesh."
-                )),
+                None => self.warnings.push(match &mesh_ref {
+                    Some(r) => format!(
+                        "'{name}': Mesh Collider mesh {} could not be loaded.",
+                        crate::models::display_name(r)
+                    ),
+                    None => format!("'{name}': Mesh Collider needs a Mesh Filter with a mesh."),
+                }),
             }
         }
         // Fold the centre offset into each shape by pre-translating.
@@ -529,7 +532,7 @@ mod tests {
         scene.add(
             e,
             MeshFilter {
-                mesh: Some(PrimitiveMesh::Cube),
+                mesh: Some(PrimitiveMesh::Cube.into()),
             },
         );
         scene.add(e, BoxCollider::default());
@@ -546,7 +549,7 @@ mod tests {
         scene.add(
             ground,
             MeshFilter {
-                mesh: Some(PrimitiveMesh::Plane),
+                mesh: Some(PrimitiveMesh::Plane.into()),
             },
         );
         scene.add(ground, MeshCollider::default());

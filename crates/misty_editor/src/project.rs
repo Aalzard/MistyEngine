@@ -36,6 +36,10 @@ pub struct FolderNode {
 }
 
 impl AssetEntry {
+    pub fn is_texture(&self) -> bool {
+        !self.is_dir && misty_engine::assets::is_texture(&self.path.to_string_lossy())
+    }
+
     /// Icon tint in the Project window (prefabs are blue).
     pub fn icon_color(&self) -> egui::Color32 {
         if self.path.extension().is_some_and(|e| e == "prefab") {
@@ -57,6 +61,8 @@ pub struct ProjectBrowser {
     pub entries: Vec<AssetEntry>,
     /// Folder contents area last frame (drop target for Hierarchy rows -> new prefab).
     pub drop_rect: egui::Rect,
+    /// Texture previews shown in the grid.
+    pub thumbnails: crate::thumbnails::Thumbnails,
 }
 
 impl ProjectBrowser {
@@ -76,6 +82,7 @@ impl ProjectBrowser {
             },
             entries: Vec::new(),
             drop_rect: egui::Rect::NOTHING,
+            thumbnails: Default::default(),
         };
         browser.refresh();
         browser

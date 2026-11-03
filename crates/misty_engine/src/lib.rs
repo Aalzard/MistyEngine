@@ -5,6 +5,7 @@
 
 pub mod assets;
 pub mod camera;
+pub mod models;
 pub mod physics;
 pub mod render;
 pub mod runtime;
@@ -15,4 +16,5 @@ pub mod settings;
 pub use hecs;
 
 pub use glam;
+pub use image;
 pub use wgpu;

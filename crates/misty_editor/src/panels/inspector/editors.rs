@@ -4,9 +4,8 @@ use egui::{Grid, Key, RichText, Ui};
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    BoxCollider, Camera, CapsuleCollider, ClearFlags, Light, LightType, MeshCollider, MeshFilter,
-    MeshRenderer, PhysicsSurface, PrimitiveMesh, Rigidbody, SceneComponent, Shadows,
-    SphereCollider, registry,
+    BoxCollider, Camera, CapsuleCollider, ClearFlags, Light, LightType, MeshCollider, MeshRenderer,
+    PhysicsSurface, Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
 };
 
 use misty_engine::assets::Material;
@@ -82,7 +81,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Transform" => transform(ui, state, targets),
         "Camera" => with::<Camera>(ui, state, e, camera),
         "Light" => with::<Light>(ui, state, e, light),
-        "Mesh Filter" => with::<MeshFilter>(ui, state, e, mesh_filter),
+        "Mesh Filter" => super::slots::mesh_filter(ui, state, e),
         "Mesh Renderer" => mesh_renderer(ui, state, e),
         "Rigidbody" => with::<Rigidbody>(ui, state, e, rigidbody),
         "Box Collider" => with::<BoxCollider>(ui, state, e, box_collider),
@@ -362,28 +361,6 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
     })
 }
 
-fn mesh_filter(ui: &mut Ui, f: &mut MeshFilter) -> bool {
-    grid(ui, "meshfilter_grid", |ui| {
-        let mut ch = false;
-        ui.label("Mesh");
-        egui::ComboBox::from_id_salt("mesh_filter_mesh")
-            .selected_text(f.mesh.map(|m| m.name()).unwrap_or("None (Mesh)"))
-            .width(150.0)
-            .show_ui(ui, |ui| {
-                ch |= ui
-                    .selectable_value(&mut f.mesh, None, "None (Mesh)")
-                    .changed();
-                for m in PrimitiveMesh::ALL {
-                    ch |= ui
-                        .selectable_value(&mut f.mesh, Some(m), m.name())
-                        .changed();
-                }
-            });
-        ui.end_row();
-        ch
-    })
-}
-
 /// Mesh Renderer: material slot (pick from project materials, or drop one from the Project window).
 fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let Ok(mut r) = state
@@ -637,18 +614,23 @@ fn mesh_collider(ui: &mut Ui, c: &mut MeshCollider) -> bool {
 }
 
 /// Standard material fields. Returns true when changed.
-pub fn material_fields(ui: &mut Ui, id: &str, m: &mut Material) -> bool {
+/// Material properties; `textures` lists the project's textures for the map slots.
+pub fn material_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String]) -> bool {
+    use super::slots::texture_slot;
     grid(ui, id, |ui| {
         let mut ch = false;
         ui.label("Shader");
         ui.label(&m.shader);
         ui.end_row();
         ui.label("Albedo");
-        let mut rgb = [m.color[0], m.color[1], m.color[2]];
-        if color_rgb(ui, &mut rgb) {
-            m.color[..3].copy_from_slice(&rgb);
-            ch = true;
-        }
+        ui.horizontal(|ui| {
+            ch |= texture_slot(ui, &format!("{id}_albedo"), &mut m.albedo_map, textures);
+            let mut rgb = [m.color[0], m.color[1], m.color[2]];
+            if color_rgb(ui, &mut rgb) {
+                m.color[..3].copy_from_slice(&rgb);
+                ch = true;
+            }
+        });
         ui.end_row();
         ui.label("Metallic");
         ch |= ui
@@ -659,6 +641,21 @@ pub fn material_fields(ui: &mut Ui, id: &str, m: &mut Material) -> bool {
         ch |= ui
             .add(egui::Slider::new(&mut m.smoothness, 0.0..=1.0))
             .changed();
+        ui.end_row();
+        ui.label("Normal Map");
+        ui.horizontal(|ui| {
+            ch |= texture_slot(ui, &format!("{id}_normal"), &mut m.normal_map, textures);
+            if m.normal_map.is_some() {
+                ch |= ui
+                    .add(
+                        egui::DragValue::new(&mut m.normal_scale)
+                            .speed(0.01)
+                            .range(-4.0..=4.0),
+                    )
+                    .on_hover_text("Normal map strength")
+                    .changed();
+            }
+        });
         ui.end_row();
         ui.label("Emission");
         ch |= ui.checkbox(&mut m.emission_enabled, "").changed();
@@ -677,6 +674,18 @@ pub fn material_fields(ui: &mut Ui, id: &str, m: &mut Material) -> bool {
                 .changed();
             ui.end_row();
         }
+        for (label, v) in [("Tiling", &mut m.tiling), ("Offset", &mut m.offset)] {
+            ui.label(label);
+            ui.horizontal(|ui| {
+                for (axis, c) in ["X", "Y"].into_iter().zip(v.iter_mut()) {
+                    ui.label(axis);
+                    ch |= ui
+                        .add(egui::DragValue::new(c).speed(0.01).max_decimals(3))
+                        .changed();
+                }
+            });
+            ui.end_row();
+        }
         ch
     })
 }
@@ -687,7 +696,8 @@ pub fn material_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         ui.weak(format!("Missing material: {rel}"));
         return;
     };
-    if material_fields(ui, &format!("mat_{rel}"), &mut m)
+    let textures = state.assets.textures.clone();
+    if material_fields(ui, &format!("mat_{rel}"), &mut m, &textures)
         && let Err(err) = state.assets.update_material(rel, m)
     {
         state.console.warn(format!("Could not save {rel}: {err}"));

@@ -107,7 +107,7 @@
 - Sample materials: `Assets/Materials/Red.mat`, `Blue Metal.mat`.
 
 ### Not matching Unity yet
-- No textures, normal maps or transparency (Rendering Mode); no shader selection.
+- No transparency (Rendering Mode) and no shader selection (textures and normal maps: see below).
 - No lightmapping, reflection probes or fog; local-light shadows are limited to 16 layers (e.g. 2 point + 4 spot).
 - Material changes are not undoable; assets can't be renamed/deleted from the Project window yet.
 - No material preview sphere in the Inspector; no drag-hover preview in the Scene view.
@@ -240,3 +240,38 @@
 - Creating a prefab never overwrites an existing file (Unity asks to Replace); dragging an instance asks nothing
   about Original vs Variant.
 - Objects added to an instance are blue like the rest (no "+" badge); `Instantiate` doesn't take a rotation or parent.
+
+## Textures and 3D models ✅
+
+### Done
+- Textures: PNG/JPG under `Assets/` (sRGB albedo, linear normal maps), mipmaps generated on import (averaged in
+  linear light), trilinear + anisotropic filtering, repeat wrapping. Cached by path; edited files reload in Edit
+  mode. Missing files fall back to white / flat normal with a Console warning.
+- Materials: Albedo texture slot (× colour), Normal Map slot + strength, Tiling and Offset. Slots are dropdowns of
+  the project's textures and accept textures dragged from the Project window. Old `.mat` files load unchanged.
+- Normal mapping in the Standard shader (tangent space, OpenGL/green-up convention); tangents are generated for
+  primitives and imported meshes. Shadows, emission/bloom and the selection outline work as before.
+- Model import: `.gltf` / `.glb` (meshes, node hierarchy with TRS, PBR metallic-roughness materials, base colour
+  and normal textures, embedded GLB images) and `.obj` (objects, normals, UVs, `.mtl` diffuse/normal textures).
+  Each model material is extracted once as `ModelName_Material.mat` next to the model; embedded images are saved
+  as PNG beside it. Extracted materials are never overwritten, so edits stick.
+- Meshes inside models are referenced as `Assets/Models/Ship.glb#0`; Mesh Filter's dropdown lists primitives plus
+  every imported mesh, and a model dropped on the slot uses its first mesh. Old scenes (`"mesh": "Cube"`) load.
+- Drag a model from the Project window into the Scene view (placed at the pivot) or the Hierarchy (root or child of
+  a row): one object per node with Mesh Filter + Mesh Renderer using the extracted materials; undoable.
+- Picking, Frame Selected, shadow bounds, wireframe and Mesh Collider (convex hull or triangle mesh) use the
+  imported mesh's own bounds and triangles.
+- Project window: 🖼 textures with an image preview in the grid, 📦 model files. Assets ▸ Refresh / Ctrl+R
+  re-scans textures and models (new models are imported then).
+- Sample project: `Textures/Checker.png`, `Textures/Bumps.png` (normal map), `Models/Ramp.obj`,
+  `Materials/Checker.mat`, `Materials/Bumpy Tiles.mat` and the `Scenes/TexturesDemo.scene` showing them.
+
+### Not matching Unity yet
+- No model import settings (scale factor, normals/tangents mode, read/write, material location) and no `.fbx`.
+- Models are not prefab-like assets: instances are plain objects, so later changes to the model file don't update
+  their hierarchy (meshes do reload). No model preview in the Inspector; models don't expand into sub-assets in the
+  Project window.
+- No texture import settings (max size is 4096, wrap/filter fixed, no compression); no texture Inspector preview.
+- Only Albedo and Normal Map slots: no metallic/smoothness, occlusion, height, emission or detail maps; glTF
+  metallic-roughness/occlusion/emissive textures, texture transforms and vertex colours are ignored.
+- No skinning, animation, blend shapes, cameras or lights from glTF.

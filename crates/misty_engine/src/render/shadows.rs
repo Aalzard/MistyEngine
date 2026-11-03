@@ -154,14 +154,14 @@ pub fn plan(frame: &Frame) -> ShadowPlan {
 fn directional_matrix(light: &LightData, casters: &[&MeshDraw]) -> (Mat4, f32) {
     let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
     for m in casters {
-        let half = m.mesh.half_extents();
+        let (min, max) = crate::models::bounds(&m.mesh).unwrap_or((Vec3::ZERO, Vec3::ZERO));
         for corner in 0..8 {
             let s = Vec3::new(
-                if corner & 1 == 0 { -1.0 } else { 1.0 },
-                if corner & 2 == 0 { -1.0 } else { 1.0 },
-                if corner & 4 == 0 { -1.0 } else { 1.0 },
+                if corner & 1 == 0 { min.x } else { max.x },
+                if corner & 2 == 0 { min.y } else { max.y },
+                if corner & 4 == 0 { min.z } else { max.z },
             );
-            let p = m.model.transform_point3(half * s);
+            let p = m.model.transform_point3(s);
             lo = lo.min(p);
             hi = hi.max(p);
         }
@@ -238,7 +238,7 @@ mod tests {
             far: 100.0,
         };
         let meshes = [MeshDraw {
-            mesh: PrimitiveMesh::Cube,
+            mesh: PrimitiveMesh::Cube.into(),
             model: Mat4::IDENTITY,
             material: MaterialParams::default(),
             cast_shadows: true,

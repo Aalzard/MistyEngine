@@ -84,10 +84,11 @@ fn stats_overlay(
     size: [u32; 2],
     render_ms: f32,
 ) {
-    use misty_engine::render::mesh::primitive;
     let (tris, verts) = meshes.iter().fold((0, 0), |(t, v), m| {
-        let data = primitive(m.mesh);
-        (t + data.indices.len() / 3, v + data.vertices.len())
+        match misty_engine::models::mesh(&m.mesh) {
+            Some(data) => (t + data.indices.len() / 3, v + data.vertices.len()),
+            None => (t, v),
+        }
     });
     let dt = ui.input(|i| i.stable_dt).max(1e-4);
     let lines = [
