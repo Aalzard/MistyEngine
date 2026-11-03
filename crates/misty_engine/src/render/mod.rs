@@ -14,6 +14,9 @@ pub mod stats;
 pub mod surface;
 mod target;
 mod terrain;
+mod terrain_grass;
+mod terrain_layers;
+mod terrain_lod;
 pub mod texture;
 pub mod ui;
 mod variants;
@@ -510,12 +513,7 @@ impl Renderer {
             }
         }
         if !frame.terrains.is_empty() {
-            let opaque_caster = surface::ShadowKey {
-                cutout: false,
-                double_sided: false,
-            };
-            self.pipelines.ensure_shadow(device, opaque_caster);
-            // Group 2 of the terrain pipeline is unused; any material group fits.
+            // Group 2 of the terrain pipelines is unused; any material group fits.
             let layout = &self.pipelines.material_layout;
             self.textures.prepare(device, queue, layout, None, None);
             self.terrains.prepare(
@@ -524,6 +522,7 @@ impl Renderer {
                 &self.pipelines.terrain_layout,
                 &mut self.textures,
                 frame.terrains,
+                frame.environment,
             );
         }
         for b in frame.particles {
@@ -592,6 +591,9 @@ impl Renderer {
             let view_proj = frame.camera.view_projection(aspect);
             let lists =
                 self.frame_lists(frame, &view_proj, &plan, (&meshes, &terrains), &mut stats);
+            let grass_layout = &self.pipelines.grass_layout;
+            let camera = frame.camera.position;
+            (self.terrains).select(device, camera, &view_proj, frame.terrains, grass_layout);
             (lists, plan)
         };
         self.upload_draws(device, queue, frame, &lists.slots);
@@ -949,14 +951,12 @@ impl Renderer {
             stats.draw(b.count, m.count, m.vertex_count);
         }
         let first = frame.meshes.len();
-        let terrain_caster = surface::ShadowKey {
-            cutout: false,
-            double_sided: false,
-        };
-        let Some(pipeline) = self.pipelines.shadow_variant(terrain_caster) else {
+        // Terrain casters pull heights from their own textures (group 3; group 2 unused).
+        let Some(material) = self.textures.get(None, None) else {
             return;
         };
-        pass.set_pipeline(pipeline);
+        pass.set_pipeline(&self.pipelines.terrain_shadow);
+        pass.set_bind_group(2, material, &[]);
         self.terrains.draw(
             &mut pass,
             frame.terrains,
@@ -1073,6 +1073,10 @@ impl Renderer {
                 |i| lists.terrains[i],
                 stats,
             );
+            if self.terrains.has_grass() {
+                pass.set_pipeline(&self.pipelines.grass);
+                self.terrains.draw_grass(&mut pass, frame.terrains, stats);
+            }
         }
 
         if frame.grid.is_some() {
@@ -1396,6 +1400,8 @@ fn view_uniform(frame: &Frame, aspect: f32) -> ViewUniform {
 
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod terrain_gpu_tests;
 
 #[cfg(test)]
 mod tests {
