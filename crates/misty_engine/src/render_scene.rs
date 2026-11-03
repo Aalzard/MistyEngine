@@ -120,9 +120,11 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
         .collect()
 }
 
-/// The scene's Lighting settings with its main Directional Light as the sun.
+/// The scene's Lighting settings with its main Directional Light as the sun, and its baked or
+/// realtime reflection probes.
 pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
     Environment::new(scene.render_settings.clone(), lights)
+        .with_probes(crate::render::probes::scene_probes(scene))
 }
 
 /// Effects from the enabled, active Post-process Volume with the highest priority

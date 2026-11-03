@@ -1689,6 +1689,7 @@ version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
 dependencies = [
+ "bytemuck",
  "cfg-if",
  "crunchy",
  "num-traits",
@@ -2298,6 +2299,7 @@ dependencies = [
  "glam 0.34.2",
  "misty_engine",
  "png",
+ "pollster 0.4.0",
  "regex",
  "rfd",
  "serde",
@@ -2312,9 +2314,11 @@ dependencies = [
  "ab_glyph",
  "bytemuck",
  "epaint_default_fonts",
+ "flate2",
  "gilrs",
  "glam 0.34.2",
  "gltf",
+ "half",
  "hecs",
  "image",
  "kira",

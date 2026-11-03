@@ -32,6 +32,8 @@ pub struct RenderTarget {
     glow_view: wgpu::TextureView,
     depth_view: wgpu::TextureView,
     hdr_view: wgpu::TextureView,
+    /// The resolved HDR image (before bloom and tonemapping).
+    hdr: wgpu::Texture,
     output_view: wgpu::TextureView,
     /// The final image (copy source for thumbnails).
     output: wgpu::Texture,
@@ -89,7 +91,15 @@ impl RenderTarget {
             &[],
         );
         let depth = make("misty depth", full, DEPTH_FORMAT, SAMPLE_COUNT, attach, &[]);
-        let hdr = make("misty hdr", full, HDR_FORMAT, 1, sampled, &[]);
+        // Copy source for reflection probe captures.
+        let hdr = make(
+            "misty hdr",
+            full,
+            HDR_FORMAT,
+            1,
+            sampled | wgpu::TextureUsages::COPY_SRC,
+            &[],
+        );
         let glow_msaa = make(
             "misty msaa glow",
             full,
@@ -184,6 +194,7 @@ impl RenderTarget {
             glow_view,
             depth_view: view(&depth),
             hdr_view,
+            hdr,
             output_view: view(&output),
             output,
             display_view,
@@ -215,6 +226,11 @@ impl RenderTarget {
             dst.as_image_copy(),
             self.output.size(),
         );
+    }
+
+    /// Linear HDR scene colour of the last render (reflection probe captures).
+    pub(crate) fn hdr_texture(&self) -> &wgpu::Texture {
+        &self.hdr
     }
 
     /// MSAA resolve destination of the main pass.

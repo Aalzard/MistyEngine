@@ -22,6 +22,8 @@ pub struct Sun {
 pub struct Environment {
     pub settings: RenderSettings,
     pub sun: Option<Sun>,
+    /// Reflection probes (none = sky reflections and ambient everywhere).
+    pub probes: super::probes::ProbeSet,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -52,7 +54,17 @@ impl Environment {
                 color: l.color,
                 intensity: l.intensity,
             });
-        Self { settings, sun }
+        Self {
+            settings,
+            sun,
+            probes: Default::default(),
+        }
+    }
+
+    /// The same environment lit by probes.
+    pub fn with_probes(mut self, probes: super::probes::ProbeSet) -> Self {
+        self.probes = probes;
+        self
     }
 
     /// The same environment without fog (Scene view effects off).

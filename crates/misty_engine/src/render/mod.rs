@@ -9,6 +9,7 @@ pub mod mesh;
 pub mod particles;
 mod pipelines;
 pub mod post;
+pub mod probes;
 mod shadows;
 pub mod stats;
 pub mod surface;
@@ -286,6 +287,10 @@ pub struct Renderer {
     view_buffer: wgpu::Buffer,
     view_bind_group: wgpu::BindGroup,
     shadows: shadows::ShadowMaps,
+    /// Reflection probe atlas, lists and BRDF LUT (mesh group bindings 20–24).
+    probes: probes::gpu::ProbeGpu,
+    /// Group 2 of the terrain pass (no bindings).
+    empty_group: wgpu::BindGroup,
     lights_buffer: wgpu::Buffer,
     draws_buffer: wgpu::Buffer,
     draws_capacity: usize,
@@ -342,6 +347,7 @@ impl Renderer {
         };
         let view_bind_group = view_group(&view_buffer);
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
+        let probes = probes::gpu::ProbeGpu::new(device);
 
         let draws_capacity = 256;
         let draws_buffer = draws_buffer(device, draws_capacity);
@@ -353,6 +359,7 @@ impl Renderer {
             &lights_buffer,
             [&draws_buffer, &slots_buffer],
             &shadows,
+            &probes,
         );
 
         let meshes = PrimitiveMesh::ALL
@@ -377,6 +384,12 @@ impl Renderer {
             view_buffer,
             view_bind_group,
             shadows,
+            probes,
+            empty_group: device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("misty empty group"),
+                layout: &pipelines.empty_layout,
+                entries: &[],
+            }),
             lights_buffer,
             draws_buffer,
             draws_capacity,
@@ -454,7 +467,7 @@ impl Renderer {
                 + terrain_bytes
                 + buffers.iter().map(|b| b.size()).sum::<u64>()
                 + self.particle_instances.buffer.size(),
-            texture_bytes: texture_bytes + shadow_bytes,
+            texture_bytes: texture_bytes + shadow_bytes + self.probes.bytes(),
         }
     }
 
@@ -515,9 +528,6 @@ impl Renderer {
                 double_sided: false,
             };
             self.pipelines.ensure_shadow(device, opaque_caster);
-            // Group 2 of the terrain pipeline is unused; any material group fits.
-            let layout = &self.pipelines.material_layout;
-            self.textures.prepare(device, queue, layout, None, None);
             self.terrains.prepare(
                 device,
                 queue,
@@ -583,18 +593,22 @@ impl Renderer {
         );
 
         // Culling and batching for the camera and every shadow map.
-        let (lists, plan) = {
+        let (lists, plan, probes_rebuilt) = {
             crate::profile_scope!("Render.Culling");
             let meshes = self.mesh_bounds(frame);
             let terrains = self.terrain_bounds(frame);
+            // Reflection probes: atlas uploads and each draw's probe list.
+            let rebuilt = self
+                .probes
+                .prepare(device, queue, frame, &meshes, &terrains);
             let casters = Self::caster_bounds(frame, &meshes, &terrains);
             let plan = shadows::plan_with(frame, &casters);
             let view_proj = frame.camera.view_projection(aspect);
             let lists =
                 self.frame_lists(frame, &view_proj, &plan, (&meshes, &terrains), &mut stats);
-            (lists, plan)
+            (lists, plan, rebuilt)
         };
-        self.upload_draws(device, queue, frame, &lists.slots);
+        self.upload_draws(device, queue, frame, &lists.slots, probes_rebuilt);
 
         // Lights and their shadow maps (slot 0 = directional, 1.. = local layers).
         let lights = lights_uniform(frame, &plan);
@@ -681,6 +695,7 @@ impl Renderer {
         queue: &wgpu::Queue,
         frame: &Frame,
         slots: &[u32],
+        rebuild: bool,
     ) {
         let draw_count = frame.meshes.len() + frame.terrains.len();
         let grow_draws = draw_count > self.draws_capacity;
@@ -693,13 +708,14 @@ impl Renderer {
             self.slots_capacity = slots.len().next_power_of_two();
             self.slots_buffer = slots_buffer(device, self.slots_capacity);
         }
-        if grow_draws || grow_slots {
+        if grow_draws || grow_slots || rebuild {
             (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
                 device,
                 &self.pipelines,
                 &self.lights_buffer,
                 [&self.draws_buffer, &self.slots_buffer],
                 &self.shadows,
+                &self.probes,
             );
         }
         let mut draws = std::mem::take(&mut self.draws_scratch);
@@ -1057,13 +1073,10 @@ impl Renderer {
             self.draw_batches(&mut pass, frame, &lists.opaque, stats);
         }
 
-        if frame.shaded
-            && !frame.terrains.is_empty()
-            && let Some(material) = self.textures.get(None, None)
-        {
+        if frame.shaded && !frame.terrains.is_empty() {
             pass.set_pipeline(&self.pipelines.terrain);
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            pass.set_bind_group(2, material, &[]);
+            pass.set_bind_group(2, &self.empty_group, &[]);
             let first = frame.meshes.len();
             self.terrains.draw(
                 &mut pass,
@@ -1169,8 +1182,10 @@ fn draw_groups(
     lights: &wgpu::Buffer,
     buffers: [&wgpu::Buffer; 2],
     shadows: &shadows::ShadowMaps,
+    probes: &probes::gpu::ProbeGpu,
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [draws, slots] = buffers;
+    let [p0, p1, p2, p3, p4] = probes.entries();
     let mesh = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("misty mesh group"),
         layout: &p.mesh_layout,
@@ -1199,6 +1214,11 @@ fn draw_groups(
                 binding: 5,
                 resource: slots.as_entire_binding(),
             },
+            p0,
+            p1,
+            p2,
+            p3,
+            p4,
         ],
     });
     let draws_only = device.create_bind_group(&wgpu::BindGroupDescriptor {
