@@ -55,7 +55,8 @@ impl Prefab {
     }
 
     pub fn load(path: &Path) -> Result<Prefab, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text =
+            crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         Self::from_json(&text)
             .map(|(p, _)| p)
             .map_err(|e| format!("{}: {e}", path.display()))

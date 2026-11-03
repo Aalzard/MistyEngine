@@ -14,9 +14,8 @@ static CACHE: LazyLock<Mutex<HashMap<PathBuf, Entry>>> = LazyLock::new(Default::
 
 /// The nav mesh at `path` (cached until the file's modification time changes).
 pub fn load(path: &Path) -> Result<Arc<NavMesh>, String> {
-    let modified = std::fs::metadata(path)
-        .and_then(|m| m.modified())
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let modified =
+        crate::vfs::modified(path).ok_or_else(|| format!("{}: file not found", path.display()))?;
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((time, mesh)) = cache.get(path)
         && *time == Some(modified)

@@ -16,9 +16,14 @@ pub fn load(path: &Path) -> Result<Model, String> {
         ignore_points: true,
         ignore_lines: true,
     };
-    let (objects, materials) =
-        tobj::load_obj(path, &options).map_err(|e| format!("{}: {e}", path.display()))?;
     let dir = path.parent().unwrap_or(Path::new("."));
+    // Read through the asset file system so packed builds work; `.mtl` files sit next to the obj.
+    let bytes = crate::vfs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let (objects, materials) = tobj::load_obj_buf(&mut bytes.as_slice(), &options, |mtl| {
+        let text = crate::vfs::read(dir.join(mtl)).map_err(|_| tobj::LoadError::OpenFileFailed)?;
+        tobj::load_mtl_buf(&mut text.as_slice())
+    })
+    .map_err(|e| format!("{}: {e}", path.display()))?;
 
     let mut model = Model::default();
     for (i, obj) in objects.into_iter().enumerate() {
@@ -74,7 +79,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
         let d = m.diffuse.unwrap_or([1.0; 3]);
         let texture = |t: Option<String>| {
             t.map(|t| dir.join(t.replace('\\', "/")))
-                .filter(|p| p.is_file())
+                .filter(|p| crate::vfs::is_file(p))
                 .map(TextureSource::File)
         };
         model.materials.push(ModelMaterial {

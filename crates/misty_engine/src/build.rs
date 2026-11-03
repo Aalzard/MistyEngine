@@ -1,7 +1,9 @@
-//! Build Settings: the scenes a built game contains (in order) and how its window opens.
+//! Build Settings: the scenes a built game contains (in order), the platform to build for and
+//! the build options.
 //!
 //! Stored in `<Project>/ProjectSettings/BuildSettings.json` next to the Project Settings.
-//! Scene 0 of the enabled list is the one the player starts with.
+//! Scene 0 of the enabled list is the one the player starts with. The window options that used
+//! to live here moved to Project Settings ▸ Player; they are still read from old files.
 
 use std::path::{Path, PathBuf};
 
@@ -62,17 +64,148 @@ impl std::fmt::Display for SceneRef {
     }
 }
 
+/// A platform the player can be built for (operating system + CPU).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BuildTarget {
+    #[default]
+    WindowsX64,
+    WindowsArm64,
+    LinuxX64,
+    LinuxArm64,
+    MacArm64,
+    MacX64,
+}
+
+/// Operating system family of a target.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TargetOs {
+    Windows,
+    Linux,
+    MacOs,
+}
+
+impl BuildTarget {
+    pub const ALL: [Self; 6] = [
+        Self::WindowsX64,
+        Self::WindowsArm64,
+        Self::LinuxX64,
+        Self::LinuxArm64,
+        Self::MacArm64,
+        Self::MacX64,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::WindowsX64 => "Windows x64",
+            Self::WindowsArm64 => "Windows ARM64",
+            Self::LinuxX64 => "Linux x64",
+            Self::LinuxArm64 => "Linux ARM64",
+            Self::MacArm64 => "macOS (Apple Silicon)",
+            Self::MacX64 => "macOS (Intel)",
+        }
+    }
+
+    /// Rust target triple.
+    pub fn triple(self) -> &'static str {
+        match self {
+            Self::WindowsX64 => "x86_64-pc-windows-msvc",
+            Self::WindowsArm64 => "aarch64-pc-windows-msvc",
+            Self::LinuxX64 => "x86_64-unknown-linux-gnu",
+            Self::LinuxArm64 => "aarch64-unknown-linux-gnu",
+            Self::MacArm64 => "aarch64-apple-darwin",
+            Self::MacX64 => "x86_64-apple-darwin",
+        }
+    }
+
+    pub fn os(self) -> TargetOs {
+        match self {
+            Self::WindowsX64 | Self::WindowsArm64 => TargetOs::Windows,
+            Self::LinuxX64 | Self::LinuxArm64 => TargetOs::Linux,
+            Self::MacArm64 | Self::MacX64 => TargetOs::MacOs,
+        }
+    }
+
+    /// Short name for file names ("windows-x64").
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::WindowsX64 => "windows-x64",
+            Self::WindowsArm64 => "windows-arm64",
+            Self::LinuxX64 => "linux-x64",
+            Self::LinuxArm64 => "linux-arm64",
+            Self::MacArm64 => "macos-arm64",
+            Self::MacX64 => "macos-x64",
+        }
+    }
+
+    pub fn exe_suffix(self) -> &'static str {
+        if self.os() == TargetOs::Windows {
+            ".exe"
+        } else {
+            ""
+        }
+    }
+
+    /// The machine this program runs on, when it is one of the targets.
+    pub fn host() -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.triple() == HOST_TRIPLE)
+    }
+}
+
+/// Triple of the platform this code was compiled for.
+const HOST_TRIPLE: &str = if cfg!(all(windows, target_arch = "x86_64")) {
+    "x86_64-pc-windows-msvc"
+} else if cfg!(all(windows, target_arch = "aarch64")) {
+    "aarch64-pc-windows-msvc"
+} else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+    "x86_64-unknown-linux-gnu"
+} else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+    "aarch64-unknown-linux-gnu"
+} else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+    "aarch64-apple-darwin"
+} else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+    "x86_64-apple-darwin"
+} else {
+    "unknown"
+};
+
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+fn yes() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BuildSettings {
     pub scenes: Vec<BuildScene>,
-    /// Window title and executable name; empty = the project folder's name.
+    /// Legacy (now Project Settings ▸ Player): window title and executable name.
     pub product_name: String,
-    /// Windowed size in pixels.
+    /// Legacy: windowed size in pixels.
     pub width: u32,
     pub height: u32,
-    /// Start in borderless fullscreen.
+    /// Legacy: start in borderless fullscreen.
     pub fullscreen: bool,
+    /// Platform to build for.
+    #[serde(skip_serializing_if = "is_default")]
+    pub target: BuildTarget,
+    /// Development Build: a console window, `Player.log` next to the game, `steam_appid.txt`.
+    #[serde(skip_serializing_if = "is_default")]
+    pub development: bool,
+    /// LZ4-compress the packed data (smaller download, slightly slower first load).
+    #[serde(skip_serializing_if = "is_true", default = "yes")]
+    pub compression: bool,
+    /// Also write `<Product>-<version>-<platform>.zip` next to the build folder (itch.io etc.).
+    #[serde(skip_serializing_if = "is_default")]
+    pub create_zip: bool,
+    /// Steam App ID (digits); empty = not a Steam game.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub steam_app_id: String,
 }
 
 impl Default for BuildSettings {
@@ -83,6 +216,11 @@ impl Default for BuildSettings {
             width: 1280,
             height: 720,
             fullscreen: false,
+            target: BuildTarget::default(),
+            development: false,
+            compression: true,
+            create_zip: false,
+            steam_app_id: String::new(),
         }
     }
 }
@@ -100,7 +238,7 @@ impl BuildSettings {
 
     /// Load a project's build settings. No file = defaults; an unreadable file is an error.
     pub fn load(root: &Path) -> Result<Self, String> {
-        match std::fs::read_to_string(Self::path(root)) {
+        match crate::vfs::read_to_string(Self::path(root)) {
             Ok(text) => Self::from_json(&text),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e.to_string()),
@@ -116,10 +254,11 @@ impl BuildSettings {
         std::fs::write(path, text + "\n").map_err(|e| e.to_string())
     }
 
-    /// Keep the window size usable.
+    /// Keep the window size usable and the App ID numeric.
     pub fn sanitize(&mut self) {
         self.width = self.width.clamp(64, 16384);
         self.height = self.height.clamp(64, 16384);
+        self.steam_app_id.retain(|c| c.is_ascii_digit());
     }
 
     /// Product name, or the project folder's name when none is set.
@@ -179,6 +318,48 @@ impl BuildSettings {
             )
         })
     }
+}
+
+// ---- built game layout ------------------------------------------------------------------------
+
+/// Archive with the game's assets and settings, inside the data folder.
+pub const PAK_FILE: &str = "data.pak";
+/// Build facts stored in the pak (development flag, target).
+pub const BUILD_INFO_FILE: &str = "ProjectSettings/BuildInfo.json";
+
+/// What kind of build the player is running (stored in the pak).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BuildInfo {
+    pub development: bool,
+    /// Target triple the player was built for.
+    pub target: String,
+    pub version: String,
+}
+
+/// File-system-safe stem for a product name ("Rolling Ball", "a_b_").
+pub fn file_stem(product: &str) -> String {
+    let clean: String = product
+        .chars()
+        .map(|c| {
+            if "<>:\"/\\|?*".contains(c) || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let clean = clean.trim().trim_end_matches('.');
+    if clean.is_empty() {
+        "Game".into()
+    } else {
+        clean.to_owned()
+    }
+}
+
+/// `<Product>_Data`: the folder next to the executable that holds the pak.
+pub fn data_folder(product_stem: &str) -> String {
+    format!("{product_stem}_Data")
 }
 
 #[cfg(test)]
@@ -257,6 +438,33 @@ mod tests {
         assert_eq!(s.product_name_or(Path::new("/x/MyGame")), "MyGame");
         s.product_name = " Rolling Ball ".into();
         assert_eq!(s.product_name_or(Path::new("/x/MyGame")), "Rolling Ball");
+    }
+
+    #[test]
+    fn build_options_round_trip_and_stay_out_of_old_files() {
+        let text = serde_json::to_string(&BuildSettings::default()).unwrap();
+        assert!(!text.contains("target") && !text.contains("compression"));
+        let mut s = BuildSettings {
+            target: BuildTarget::LinuxArm64,
+            development: true,
+            compression: false,
+            create_zip: true,
+            steam_app_id: "48 0x".into(),
+            ..Default::default()
+        };
+        s.sanitize();
+        assert_eq!(s.steam_app_id, "480");
+        let back = BuildSettings::from_json(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back, s);
+        assert!(BuildSettings::from_json("{}").unwrap().compression);
+        assert_eq!(
+            BuildTarget::LinuxArm64.triple(),
+            "aarch64-unknown-linux-gnu"
+        );
+        assert_eq!(BuildTarget::MacX64.exe_suffix(), "");
+        if cfg!(all(windows, target_arch = "x86_64")) {
+            assert_eq!(BuildTarget::host(), Some(BuildTarget::WindowsX64));
+        }
     }
 
     #[test]

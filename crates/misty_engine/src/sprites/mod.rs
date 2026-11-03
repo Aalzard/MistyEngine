@@ -93,7 +93,7 @@ static CACHE: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(Default::d
 
 fn stamps(rel: &str) -> (Option<SystemTime>, Option<SystemTime>) {
     let abs = assets::absolute(rel);
-    let m = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let m = crate::vfs::modified;
     (m(&abs), m(&TextureImporter::meta_path(&abs)))
 }
 
@@ -119,7 +119,7 @@ pub fn texture_info(rel: &str) -> (TextureImporter, Option<[u32; 2]>) {
         checked: now,
         stamps: stamps(rel),
         importer: TextureImporter::load(&abs),
-        size: image::image_dimensions(&abs).ok().map(|(w, h)| [w, h]),
+        size: crate::render::texture::image_size(&abs),
     };
     let out = (entry.importer.clone(), entry.size);
     cache.insert(rel.to_owned(), entry);
@@ -136,7 +136,18 @@ pub fn invalidate(rel: &str) {
     CACHE.lock().unwrap_or_else(|e| e.into_inner()).remove(rel);
 }
 
-/// Decode a texture by project path, including built-in sprites.
+/// Decode a texture for the GPU: scaled to its import Max Size and the active quality level's
+/// texture limit (built-in sprites as they are).
+pub fn load_texture(rel: &str) -> Result<RgbaImage, String> {
+    let img = load_image(rel)?;
+    if builtin::is_builtin(rel) {
+        return Ok(img);
+    }
+    let limit = crate::quality::active().texture_size_limit(importer(rel).max_size);
+    Ok(crate::render::texture::fit(img, limit))
+}
+
+/// Decode a texture by project path at full size, including built-in sprites.
 pub fn load_image(rel: &str) -> Result<RgbaImage, String> {
     match builtin::image(rel) {
         Some(img) => Ok(img),

@@ -11,9 +11,9 @@ use crate::render::mesh::{MeshData, Vertex};
 
 pub fn load(path: &Path) -> Result<Model, String> {
     let err = |e: gltf::Error| format!("{}: {e}", path.display());
-    let gltf = gltf::Gltf::open(path).map_err(err)?;
-    let buffers =
-        gltf::import_buffers(&gltf.document, path.parent(), gltf.blob.clone()).map_err(err)?;
+    let bytes = crate::vfs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let gltf = gltf::Gltf::from_slice(&bytes).map_err(err)?;
+    let buffers = buffers(&gltf, path).map_err(err)?;
     let doc = &gltf.document;
     let dir = path.parent().unwrap_or(Path::new("."));
 
@@ -175,4 +175,32 @@ fn image_source(
         }
         gltf::image::Source::Uri { .. } => None,
     }
+}
+
+/// Buffer data: the GLB blob, data URIs, or `.bin` files next to the model. When a pak is
+/// mounted the files are read from it (the glTF crate itself only reads the disk).
+fn buffers(gltf: &gltf::Gltf, path: &Path) -> gltf::Result<Vec<gltf::buffer::Data>> {
+    use gltf::buffer::Source;
+    let is_file = |s: &Source| matches!(s, Source::Uri(u) if !u.starts_with("data:"));
+    let doc = &gltf.document;
+    if !crate::vfs::is_mounted() || !doc.buffers().any(|b| is_file(&b.source())) {
+        return gltf::import_buffers(doc, path.parent(), gltf.blob.clone());
+    }
+    let dir = path.parent().unwrap_or(Path::new("."));
+    doc.buffers()
+        .map(|b| {
+            let mut data = match b.source() {
+                Source::Bin => gltf.blob.clone().unwrap_or_default(),
+                Source::Uri(uri) if !uri.starts_with("data:") => {
+                    crate::vfs::read(dir.join(uri.replace("%20", " "))).map_err(gltf::Error::Io)?
+                }
+                // Data URIs mixed with external files are not supported in packed builds.
+                Source::Uri(_) => return Err(gltf::Error::UnsupportedScheme),
+            };
+            while data.len() % 4 != 0 {
+                data.push(0);
+            }
+            Ok(gltf::buffer::Data(data))
+        })
+        .collect()
 }

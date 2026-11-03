@@ -143,7 +143,7 @@ fn library() -> std::sync::MutexGuard<'static, Library> {
 }
 
 fn mtime(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    crate::vfs::modified(path)
 }
 
 /// The model at a project-relative path (read once, then cached until the file changes).

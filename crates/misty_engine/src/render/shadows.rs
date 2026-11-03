@@ -27,6 +27,8 @@ const CUBE_FACES: [(Vec3, Vec3); 6] = [
 ];
 
 pub struct ShadowMaps {
+    /// Side of the directional map in pixels (Quality ▸ Shadow Resolution).
+    pub directional_size: u32,
     pub directional_view: wgpu::TextureView,
     pub local_array_view: wgpu::TextureView,
     pub local_layer_views: Vec<wgpu::TextureView>,
@@ -49,6 +51,15 @@ pub struct ShadowPlan {
 
 impl ShadowMaps {
     pub fn new(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Self {
+        Self::with_size(device, view_layout, DIRECTIONAL_SIZE)
+    }
+
+    /// Maps with a directional shadow map of `directional_size`² pixels.
+    pub fn with_size(
+        device: &wgpu::Device,
+        view_layout: &wgpu::BindGroupLayout,
+        directional_size: u32,
+    ) -> Self {
         let texture = |label, size: u32, layers: u32| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -66,7 +77,7 @@ impl ShadowMaps {
                 view_formats: &[],
             })
         };
-        let directional = texture("misty directional shadow", DIRECTIONAL_SIZE, 1);
+        let directional = texture("misty directional shadow", directional_size, 1);
         let local = texture("misty local shadows", LOCAL_SIZE, MAX_LOCAL_LAYERS as u32);
         let local_array_view = local.create_view(&wgpu::TextureViewDescriptor {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
@@ -108,6 +119,7 @@ impl ShadowMaps {
             }],
         });
         Self {
+            directional_size,
             directional_view: directional.create_view(&Default::default()),
             local_array_view,
             local_layer_views,

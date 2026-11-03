@@ -1,4 +1,4 @@
-//! Project Settings: per-project physics, time, input axes and tags & layers.
+//! Project Settings: per-project physics, time, input axes, tags & layers, player and quality.
 //!
 //! Stored in `<Project>/ProjectSettings/ProjectSettings.json`, which belongs in version control
 //! (unlike `Library/`). Missing fields load as their defaults.
@@ -125,6 +125,12 @@ pub struct ProjectSettings {
     /// Sorting Layers in draw order ("Default" always present).
     #[serde(skip_serializing_if = "is_default_sorting")]
     pub sorting_layers: Vec<String>,
+    /// Player page; `None` in projects made before it (see [`ProjectSettings::player_or`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player: Option<crate::player_settings::PlayerSettings>,
+    /// Quality levels.
+    #[serde(skip_serializing_if = "is_default")]
+    pub quality: crate::quality::QualitySettings,
 }
 
 impl Default for ProjectSettings {
@@ -136,6 +142,8 @@ impl Default for ProjectSettings {
             tags_and_layers: Default::default(),
             physics2d: Physics2DSettings::default(),
             sorting_layers: crate::sprites::sorting::default_layers(),
+            player: None,
+            quality: Default::default(),
         }
     }
 }
@@ -154,7 +162,7 @@ impl ProjectSettings {
 
     /// Load a project's settings. No file = defaults; an unreadable file is an error.
     pub fn load(root: &Path) -> Result<Self, String> {
-        match std::fs::read_to_string(Self::path(root)) {
+        match crate::vfs::read_to_string(Self::path(root)) {
             Ok(text) => Self::from_json(&text),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(e.to_string()),
@@ -197,6 +205,20 @@ impl ProjectSettings {
             self.physics2d.gravity = Physics2DSettings::default().gravity;
         }
         self.sorting_layers = crate::sprites::sorting::normalized(&self.sorting_layers);
+        if let Some(p) = self.player.as_mut() {
+            p.sanitize();
+        }
+        self.quality.sanitize();
+    }
+
+    /// Player settings; older projects get theirs from the old Build Settings fields.
+    pub fn player_or(
+        &self,
+        build: &crate::build::BuildSettings,
+    ) -> crate::player_settings::PlayerSettings {
+        self.player
+            .clone()
+            .unwrap_or_else(|| crate::player_settings::PlayerSettings::from_legacy(build))
     }
 
     /// Install what the renderer reads process-wide (Sorting Layers).
@@ -288,6 +310,27 @@ mod tests {
         assert_eq!(back, s);
         let fixed = ProjectSettings::from_json(r#"{ "sorting_layers": ["Front"] }"#).unwrap();
         assert_eq!(fixed.sorting_layers, vec!["Default", "Front"]);
+    }
+
+    #[test]
+    fn player_and_quality_stay_out_at_defaults_and_round_trip() {
+        let text = serde_json::to_string(&ProjectSettings::default()).unwrap();
+        assert!(!text.contains("player") && !text.contains("quality"));
+        let mut s = ProjectSettings::default();
+        let build = crate::build::BuildSettings {
+            product_name: "Old".into(),
+            ..Default::default()
+        };
+        assert_eq!(s.player_or(&build).product_name, "Old");
+        s.player = Some(crate::player_settings::PlayerSettings {
+            product_name: "New".into(),
+            ..Default::default()
+        });
+        s.quality.default_level = 1;
+        s.quality.levels[3].render_scale = 0.5;
+        let back = ProjectSettings::from_json(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back, s);
+        assert_eq!(back.player_or(&build).product_name, "New");
     }
 
     #[test]

@@ -217,7 +217,7 @@ impl UiRenderer {
             if self.images.contains_key(path) {
                 continue;
             }
-            let g = match crate::sprites::load_image(path) {
+            let g = match crate::sprites::load_texture(path) {
                 Ok(img) => {
                     let mips = crate::sprites::importer(path).generate_mip_maps;
                     let view = upload_with(device, queue, path, img, true, mips);

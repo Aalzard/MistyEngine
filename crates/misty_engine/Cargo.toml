@@ -23,6 +23,8 @@ gilrs.workspace = true
 # UI text: font rasteriser + the editor UI library's bundled fonts (no font files in the repo).
 ab_glyph = "0.2.32"
 epaint_default_fonts = "0.36.2"
+# Built games: LZ4 compression of `.pak` entries (pure Rust, so every target cross-compiles).
+lz4_flex = "0.11"
 
 [dev-dependencies]
 # Headless GPU tests (pixel comparisons, the stress benchmark).

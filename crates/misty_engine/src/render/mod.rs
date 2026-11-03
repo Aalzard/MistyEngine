@@ -307,6 +307,7 @@ pub struct Renderer {
     /// Linear clamp sampler for post-processing.
     post_sampler: wgpu::Sampler,
     options: RenderOptions,
+    quality: crate::quality::QualityLevel,
     stats: RenderStats,
     /// GPU time per render (when the device supports timestamp queries).
     gpu_timer: Option<gpu_timer::GpuTimer>,
@@ -394,6 +395,8 @@ impl Renderer {
             textures: texture::TextureCache::new(device),
             pipelines,
             options: RenderOptions::default(),
+            // High: the default level, with the 2048² shadow map created above.
+            quality: crate::quality::QualityLevel::default(),
             stats: RenderStats::default(),
             gpu_timer: None,
             batcher: Default::default(),
@@ -418,6 +421,31 @@ impl Renderer {
 
     pub fn set_options(&mut self, options: RenderOptions) {
         self.options = options;
+    }
+
+    /// The quality level the renderer draws with (see [`crate::quality`]).
+    pub fn quality(&self) -> &crate::quality::QualityLevel {
+        &self.quality
+    }
+
+    /// Use a quality level: resizes the directional shadow map when its resolution changes.
+    /// Effect settings (cascades, soft shadows, AO, fog, probes) are read from
+    /// [`Renderer::quality`] by the passes that implement them.
+    pub fn set_quality(&mut self, device: &wgpu::Device, quality: &crate::quality::QualityLevel) {
+        let size = quality.shadow_map_size();
+        if size != self.shadows.directional_size {
+            self.shadows =
+                shadows::ShadowMaps::with_size(device, &self.pipelines.shadow_view_layout, size);
+            let lists = [&self.draws_buffer, &self.slots_buffer];
+            (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
+                device,
+                &self.pipelines,
+                &self.lights_buffer,
+                lists,
+                &self.shadows,
+            );
+        }
+        self.quality = quality.clone();
     }
 
     /// Counters of the last [`Renderer::render`] call.
@@ -445,7 +473,7 @@ impl Renderer {
             &self.lights_buffer,
         ];
         let shadow_bytes = 4
-            * (shadows::DIRECTIONAL_SIZE.pow(2) as u64
+            * (self.shadows.directional_size.pow(2) as u64
                 + shadows::LOCAL_SIZE.pow(2) as u64 * shadows::MAX_LOCAL_LAYERS as u64);
         RenderMemory {
             meshes: self.meshes.len() + imported.count() + terrains,
@@ -588,7 +616,10 @@ impl Renderer {
             let meshes = self.mesh_bounds(frame);
             let terrains = self.terrain_bounds(frame);
             let casters = Self::caster_bounds(frame, &meshes, &terrains);
-            let plan = shadows::plan_with(frame, &casters);
+            let mut plan = shadows::plan_with(frame, &casters);
+            // The plan assumes the default map size; texels scale with the active one.
+            plan.directional_texel *=
+                shadows::DIRECTIONAL_SIZE as f32 / self.shadows.directional_size as f32;
             let view_proj = frame.camera.view_projection(aspect);
             let lists =
                 self.frame_lists(frame, &view_proj, &plan, (&meshes, &terrains), &mut stats);

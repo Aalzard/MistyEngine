@@ -208,7 +208,8 @@ pub fn is_clip(path: &str) -> bool {
 
 impl AnimationClip {
     pub fn load(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text =
+            crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         Self::from_json(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 

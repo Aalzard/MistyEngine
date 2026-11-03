@@ -12,8 +12,8 @@ use wgpu::util::DeviceExt;
 use crate::assets;
 use crate::sprites::{self, FilterMode, WrapMode};
 
-/// Largest side kept on upload (bigger images are scaled down).
-const MAX_SIZE: u32 = 4096;
+/// Largest side ever decoded (the largest import Max Size).
+const MAX_SIZE: u32 = 8192;
 
 /// Number of mip levels for a full chain down to 1×1.
 pub fn mip_count(width: u32, height: u32) -> u32 {
@@ -82,20 +82,38 @@ pub fn mip_chain(image: RgbaImage, srgb: bool) -> Vec<RgbaImage> {
 
 /// Decode a PNG/JPG file as RGBA8 (scaled down if larger than [`MAX_SIZE`]).
 pub fn load_image(path: &Path) -> Result<RgbaImage, String> {
-    let img = image::open(path)
-        .map_err(|e| format!("{}: {e}", path.display()))?
+    let err = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
+    let bytes = crate::vfs::read(path).map_err(|e| err(&e))?;
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| err(&e))?
         .into_rgba8();
+    Ok(fit(img, MAX_SIZE))
+}
+
+/// Pixel size of an image file without decoding it.
+pub fn image_size(path: &Path) -> Option<[u32; 2]> {
+    let bytes = crate::vfs::read(path).ok()?;
+    let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()?;
+    Some([w, h])
+}
+
+/// Scale `img` down (Lanczos, keeping the aspect ratio) so its larger side is at most `max`.
+pub fn fit(img: RgbaImage, max: u32) -> RgbaImage {
     let (w, h) = img.dimensions();
-    if w.max(h) <= MAX_SIZE {
-        return Ok(img);
+    if w.max(h) <= max {
+        return img;
     }
-    let s = MAX_SIZE as f32 / w.max(h) as f32;
-    Ok(image::imageops::resize(
+    let s = max as f64 / w.max(h) as f64;
+    image::imageops::resize(
         &img,
-        ((w as f32 * s) as u32).max(1),
-        ((h as f32 * s) as u32).max(1),
-        image::imageops::FilterType::Triangle,
-    ))
+        ((w as f64 * s).round() as u32).max(1),
+        ((h as f64 * s).round() as u32).max(1),
+        image::imageops::FilterType::Lanczos3,
+    )
 }
 
 /// Upload an image with generated mips.
@@ -154,20 +172,34 @@ pub(crate) fn upload_with(
     texture.create_view(&Default::default())
 }
 
-/// Sampler state from a texture's import settings (Filter Mode, Wrap Mode).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+/// Sampler state from a texture's import settings (Filter Mode, Wrap Mode, Aniso Level) and
+/// the active quality level's Anisotropic Textures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SamplerKey {
     pub filter: FilterMode,
     pub wrap: WrapMode,
+    /// Anisotropy clamp, 1 = off.
+    pub anisotropy: u16,
+}
+
+impl Default for SamplerKey {
+    fn default() -> Self {
+        Self {
+            filter: FilterMode::default(),
+            wrap: WrapMode::default(),
+            anisotropy: 1,
+        }
+    }
 }
 
 impl SamplerKey {
-    /// The sampler of a texture by project path (bilinear + repeat without import settings).
+    /// The sampler of a texture by project path (trilinear + repeat without import settings).
     pub fn of(rel: Option<&str>) -> Self {
         let imp = rel.map(sprites::importer).unwrap_or_default();
         Self {
             filter: imp.filter_mode,
             wrap: imp.wrap_mode,
+            anisotropy: crate::quality::active().anisotropy(imp.aniso_level),
         }
     }
 
@@ -177,11 +209,10 @@ impl SamplerKey {
             WrapMode::Clamp => wgpu::AddressMode::ClampToEdge,
             WrapMode::Mirror => wgpu::AddressMode::MirrorRepeat,
         };
-        let point = self.filter == FilterMode::Point;
-        let (filter, mip) = if point {
-            (wgpu::FilterMode::Nearest, wgpu::MipmapFilterMode::Nearest)
-        } else {
-            (wgpu::FilterMode::Linear, wgpu::MipmapFilterMode::Linear)
+        let (filter, mip) = match self.filter {
+            FilterMode::Nearest => (wgpu::FilterMode::Nearest, wgpu::MipmapFilterMode::Nearest),
+            FilterMode::Bilinear => (wgpu::FilterMode::Linear, wgpu::MipmapFilterMode::Nearest),
+            FilterMode::Trilinear => (wgpu::FilterMode::Linear, wgpu::MipmapFilterMode::Linear),
         };
         device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("misty material sampler"),
@@ -190,8 +221,12 @@ impl SamplerKey {
             mag_filter: filter,
             min_filter: filter,
             mipmap_filter: mip,
-            // Anisotropy needs linear filtering.
-            anisotropy_clamp: if point { 1 } else { 8 },
+            // Anisotropy needs linear filtering in every direction (trilinear only).
+            anisotropy_clamp: if self.filter == FilterMode::Trilinear {
+                self.anisotropy.clamp(1, 16)
+            } else {
+                1
+            },
             ..Default::default()
         })
     }
@@ -253,11 +288,17 @@ pub struct TextureCache {
     samplers: HashMap<SamplerKey, wgpu::Sampler>,
     last_poll: Option<Instant>,
     warnings: Vec<String>,
+    /// [`crate::quality::generation`] the textures were loaded for.
+    quality: u64,
 }
 
 impl TextureCache {
     pub fn new(device: &wgpu::Device) -> Self {
-        let sampler = SamplerKey::default().create(device);
+        let sampler = SamplerKey {
+            anisotropy: 8,
+            ..Default::default()
+        }
+        .create(device);
         Self {
             textures: HashMap::new(),
             sets: HashMap::new(),
@@ -266,6 +307,7 @@ impl TextureCache {
             samplers: HashMap::new(),
             last_poll: None,
             warnings: Vec::new(),
+            quality: crate::quality::generation(),
         }
     }
 
@@ -280,11 +322,18 @@ impl TextureCache {
         if let Some(c) = self.textures.get(&key) {
             return c.view.clone();
         }
-        let mips = sprites::importer(rel).generate_mip_maps;
-        let view = match sprites::load_image(rel) {
+        let imp = sprites::importer(rel);
+        let view = match sprites::load_texture(rel) {
             Ok(img) => {
-                let srgb = kind == TextureKind::Color;
-                Some(upload_with(device, queue, rel, img, srgb, mips))
+                let srgb = kind == TextureKind::Color && imp.is_srgb();
+                Some(upload_with(
+                    device,
+                    queue,
+                    rel,
+                    img,
+                    srgb,
+                    imp.generate_mip_maps,
+                ))
             }
             Err(e) => {
                 self.warnings.push(format!("Could not load texture {e}"));
@@ -321,6 +370,14 @@ impl TextureCache {
         layout: &wgpu::BindGroupLayout,
         set: &TextureSet,
     ) {
+        // A new quality level can change texture sizes and anisotropy: reload everything.
+        let quality = crate::quality::generation();
+        if quality != self.quality {
+            self.quality = quality;
+            self.textures.clear();
+            self.sets.clear();
+            self.samplers.clear();
+        }
         if self.sets.contains_key(set) {
             return;
         }
@@ -338,13 +395,10 @@ impl TextureCache {
         let emission = load(&set.emission, TextureKind::Color, &white);
         // The albedo texture's import settings pick the sampler of the whole set.
         let key = SamplerKey::of(set.albedo.as_deref());
-        let sampler = if key == SamplerKey::default() {
-            &self.sampler
-        } else {
-            self.samplers
-                .entry(key)
-                .or_insert_with(|| key.create(device))
-        };
+        let sampler = self
+            .samplers
+            .entry(key)
+            .or_insert_with(|| key.create(device));
         let view = |binding, v| wgpu::BindGroupEntry {
             binding,
             resource: wgpu::BindingResource::TextureView(v),
@@ -487,7 +541,7 @@ impl TextureCache {
 }
 
 fn mtime(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    crate::vfs::modified(path)
 }
 
 /// Modification times of a texture and its import settings (built-ins never change).
@@ -519,6 +573,28 @@ mod tests {
         assert_eq!(sizes[1], (32, 8));
         assert_eq!(*sizes.last().unwrap(), (1, 1));
         assert_eq!(chain.last().unwrap().get_pixel(0, 0).0, [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn max_size_downscales_keeping_the_aspect_ratio() {
+        let img = RgbaImage::from_pixel(512, 128, image::Rgba([10, 20, 30, 255]));
+        let small = fit(img.clone(), 128);
+        assert_eq!(small.dimensions(), (128, 32));
+        assert_eq!(small.get_pixel(5, 5).0, [10, 20, 30, 255]);
+        assert_eq!(fit(img, 1024).dimensions(), (512, 128), "never upscaled");
+        // Texture Quality halves on top of the import Max Size.
+        let half = crate::quality::QualityLevel {
+            texture_quality: crate::quality::TextureQuality::Half,
+            ..Default::default()
+        };
+        assert_eq!(half.texture_size_limit(256), 128);
+    }
+
+    #[test]
+    fn filter_modes_and_defaults() {
+        assert_eq!(SamplerKey::default().anisotropy, 1);
+        assert_eq!(SamplerKey::of(None).filter, FilterMode::Trilinear);
+        assert_eq!(SamplerKey::of(None).wrap, WrapMode::Repeat);
     }
 
     #[test]

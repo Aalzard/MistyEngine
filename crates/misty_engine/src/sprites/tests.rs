@@ -34,7 +34,7 @@ fn import_settings_round_trip_and_default_without_meta() {
     let s = TextureImporter {
         sprite_mode: SpriteMode::Multiple,
         pixels_per_unit: 16.0,
-        filter_mode: FilterMode::Point,
+        filter_mode: FilterMode::Nearest,
         sprites: vec![SpriteRect {
             name: "A".into(),
             rect: [0.0, 0.0, 4.0, 4.0],
@@ -57,6 +57,54 @@ fn import_settings_round_trip_and_default_without_meta() {
     let fixed = TextureImporter::load(&path);
     assert_eq!(fixed.pixels_per_unit, 100.0);
     assert!(fixed.is_sprite() && fixed.generate_mip_maps);
+}
+
+/// `.meta` files written before Max Size / Aniso / sRGB / Trilinear existed.
+#[test]
+fn old_meta_files_load_and_point_is_nearest_neighbor() {
+    let old = r#"{
+  "texture_type": "Sprite",
+  "sprite_mode": "Single",
+  "pixels_per_unit": 16.0,
+  "pivot": [0.5, 0.5],
+  "filter_mode": "Point",
+  "wrap_mode": "Clamp",
+  "generate_mip_maps": false,
+  "sprites": []
+}"#;
+    let s: TextureImporter = serde_json::from_str(old).unwrap();
+    assert_eq!(s.filter_mode, FilterMode::Nearest);
+    assert_eq!(s.max_size, 2048);
+    assert_eq!(s.aniso_level, 1);
+    assert!(s.is_srgb());
+    let bilinear: TextureImporter =
+        serde_json::from_str(r#"{ "filter_mode": "Bilinear" }"#).unwrap();
+    assert_eq!(bilinear.filter_mode, FilterMode::Bilinear);
+    // New files say "Nearest"; no file at all is trilinear with mips.
+    let text = serde_json::to_string(&s).unwrap();
+    assert!(text.contains("\"Nearest\""));
+    assert_eq!(
+        TextureImporter::default().filter_mode,
+        FilterMode::Trilinear
+    );
+}
+
+#[test]
+fn texture_types_set_mips_and_color_space() {
+    let mut s = TextureImporter::default();
+    s.set_type(TextureType::NormalMap);
+    assert!(!s.is_srgb() && s.generate_mip_maps);
+    s.set_type(TextureType::Sprite);
+    assert!(!s.generate_mip_maps && s.wrap_mode == WrapMode::Clamp);
+    s.set_type(TextureType::Default);
+    assert!(s.generate_mip_maps);
+    let mut odd = TextureImporter {
+        max_size: 300,
+        aniso_level: 99,
+        ..Default::default()
+    };
+    odd.sanitize();
+    assert_eq!((odd.max_size, odd.aniso_level), (512, 16));
 }
 
 #[test]
