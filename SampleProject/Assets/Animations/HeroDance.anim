@@ -1,0 +1,76 @@
+{
+  "length": 1.0,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "Body",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.0,
+          "value": 360.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Body",
+      "property": "Transform.scale.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 1.0
+        },
+        {
+          "time": 0.25,
+          "value": 1.3
+        },
+        {
+          "time": 0.5,
+          "value": 1.0
+        },
+        {
+          "time": 0.75,
+          "value": 1.3
+        },
+        {
+          "time": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "path": "Body",
+      "property": "Transform.scale.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 1.0
+        },
+        {
+          "time": 0.25,
+          "value": 1.3
+        },
+        {
+          "time": 0.5,
+          "value": 1.0
+        },
+        {
+          "time": 0.75,
+          "value": 1.3
+        },
+        {
+          "time": 1.0,
+          "value": 1.0
+        }
+      ]
+    }
+  ],
+  "events": []
+}

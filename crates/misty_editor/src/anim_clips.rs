@@ -1,13 +1,18 @@
 //! Animation clips open in the editor: loaded on first use, edited in memory, written back to
-//! their `.anim` files once an edit is finished.
+//! their `.anim` files once an edit is finished. Animator Controllers live alongside them
+//! (`controllers`) so either kind of asset can ride along with an undo snapshot.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use misty_engine::animation::AnimationClip;
 
-/// A clip as it was before an edit, kept by undo.
-pub type ClipSnapshot = (String, AnimationClip);
+/// A clip (or Animator Controller) as it was before an edit, kept by undo.
+#[derive(Clone)]
+pub enum ClipSnapshot {
+    Clip(String, AnimationClip),
+    Controller(String, misty_engine::animation::AnimatorController),
+}
 
 #[derive(Default)]
 pub struct ClipStore {
@@ -15,11 +20,14 @@ pub struct ClipStore {
     clips: BTreeMap<String, AnimationClip>,
     /// Clips changed since they were last written.
     dirty: BTreeSet<String>,
+    /// Animator Controllers being edited.
+    pub controllers: crate::anim_controllers::ControllerStore,
 }
 
 impl ClipStore {
     pub fn new(root: PathBuf) -> Self {
         Self {
+            controllers: crate::anim_controllers::ControllerStore::new(root.clone()),
             root,
             ..Default::default()
         }
@@ -42,15 +50,20 @@ impl ClipStore {
     }
 
     pub fn snapshot(&mut self, path: &str) -> Option<ClipSnapshot> {
-        self.get(path).ok().map(|c| (path.to_owned(), c.clone()))
+        self.get(path)
+            .ok()
+            .map(|c| ClipSnapshot::Clip(path.to_owned(), c.clone()))
     }
 
     /// Put an undo snapshot back; returns the clip it replaced (for redo).
     pub fn restore(&mut self, snap: ClipSnapshot) -> ClipSnapshot {
-        let (path, clip) = snap;
+        let (path, clip) = match snap {
+            ClipSnapshot::Clip(path, clip) => (path, clip),
+            ClipSnapshot::Controller(path, c) => return self.controllers.restore(path, c),
+        };
         let old = self.clips.insert(path.clone(), clip).unwrap_or_default();
         self.dirty.insert(path.clone());
-        (path, old)
+        ClipSnapshot::Clip(path, old)
     }
 
     /// Write a new clip file and keep it open.
@@ -62,6 +75,7 @@ impl ClipStore {
 
     /// Follow an asset rename/move of `old` (a clip or a folder of clips) to `new`.
     pub fn rename(&mut self, old: &str, new: &str) {
+        self.controllers.rename(old, new);
         let keys: Vec<String> = self.clips.keys().cloned().collect();
         for key in keys {
             if let Some(to) = crate::asset_ops::remap(&key, old, new) {

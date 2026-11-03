@@ -107,6 +107,11 @@ impl SceneComponent for Animation {
     const CATEGORY: &'static str = "Miscellaneous";
 }
 
+impl SceneComponent for super::Animator {
+    const NAME: &'static str = "Animator";
+    const CATEGORY: &'static str = "Miscellaneous";
+}
+
 impl SceneComponent for super::PostProcessVolume {
     const NAME: &'static str = "Post-process Volume";
     const CATEGORY: &'static str = "Rendering";
@@ -198,6 +203,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<AudioSource>(),
             ComponentInfo::of::<AudioListener>(),
             ComponentInfo::of::<Animation>(),
+            ComponentInfo::of::<super::Animator>(),
             ComponentInfo::of::<ParticleSystem>(),
             ComponentInfo::of::<Scripts>(),
             ComponentInfo::of::<PrefabLink>(),

@@ -101,6 +101,22 @@ impl Runtime {
         crate::particles::update(scene, time.delta, gravity);
     }
 
+    /// Live Animator state of `e` (current state, cross-fade, parameter values).
+    pub fn animator_status(
+        &self,
+        scene: &Scene,
+        e: hecs::Entity,
+    ) -> Option<crate::animation::animator::AnimatorStatus> {
+        self.host.with_animator(|a| a.status(scene, e))
+    }
+
+    /// Change an Animator parameter from the editor while playing (any parameter type).
+    pub fn set_animator_param(&mut self, scene: &Scene, e: hecs::Entity, name: &str, value: f32) {
+        use crate::animation::controller::ParamKind;
+        self.host
+            .with_animator(|a| a.set_param(scene, e, name, &ParamKind::ALL, value));
+    }
+
     /// Game view "Mute Audio" and the editor's Pause button.
     pub fn set_audio_state(&mut self, muted: bool, paused: bool) {
         self.host.with_audio(|a| {

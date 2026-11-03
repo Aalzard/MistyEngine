@@ -220,6 +220,8 @@ pub struct EditorState {
     pub anim_clips: crate::anim_clips::ClipStore,
     /// Animation window: clip, playhead, preview and Record mode.
     pub animation: crate::panels::animation::AnimationWindow,
+    /// Animator window: controller graph, selection and view.
+    pub animator: crate::panels::animator::AnimatorWindow,
     pub hierarchy: HierarchyState,
     pub handles: HandleState,
     pub inspector_locked: bool,
@@ -285,6 +287,7 @@ impl EditorState {
             undo: UndoStack::default(),
             anim_clips: crate::anim_clips::ClipStore::new(project.root.clone()),
             animation: Default::default(),
+            animator: Default::default(),
             hierarchy: HierarchyState::default(),
             handles: HandleState::default(),
             inspector_locked: false,

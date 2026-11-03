@@ -14,6 +14,8 @@ pub enum Tab {
     Animation,
     /// Window ▸ Rendering ▸ Lighting.
     Lighting,
+    /// Window ▸ Animation ▸ Animator.
+    Animator,
 }
 
 impl Tab {
@@ -29,7 +31,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 1] = [Tab::Lighting];
+    pub const ON_DEMAND: [Tab; 2] = [Tab::Lighting, Tab::Animator];
 
     /// Built-in layout tabs, then on-demand ones.
     pub fn every() -> impl Iterator<Item = Tab> {
@@ -40,6 +42,8 @@ impl Tab {
     fn opens_beside(self) -> Option<Tab> {
         match self {
             Tab::Lighting => Some(Tab::Inspector),
+            // The graph wants room: it docks with the Scene and Game views.
+            Tab::Animator => Some(Tab::Scene),
             _ => None,
         }
     }
@@ -54,6 +58,7 @@ impl Tab {
             Tab::Console => "Console",
             Tab::Animation => "Animation",
             Tab::Lighting => "Lighting",
+            Tab::Animator => "Animator",
         }
     }
 
@@ -67,6 +72,7 @@ impl Tab {
             Tab::Console => "🗒",
             Tab::Animation => "⏵",
             Tab::Lighting => "☀",
+            Tab::Animator => crate::panels::animator::CONTROLLER_ICON,
         }
     }
 
@@ -80,7 +86,7 @@ impl Tab {
             Tab::Project => "Ctrl+5",
             Tab::Console => "Ctrl+Shift+C",
             Tab::Animation => "Ctrl+6",
-            Tab::Lighting => "",
+            Tab::Lighting | Tab::Animator => "",
         }
     }
 }

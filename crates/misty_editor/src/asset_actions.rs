@@ -89,6 +89,14 @@ fn create(s: &mut EditorState, kind: AssetKind) {
             let rel = s.assets.relative(&path);
             s.anim_clips.create(&rel, Default::default()).map(|_| path)
         }
+        AssetKind::AnimatorController => {
+            let path = asset_ops::unique_path(&dir, "New Animator Controller", "controller");
+            let rel = s.assets.relative(&path);
+            s.anim_clips
+                .controllers
+                .create(&rel, Default::default())
+                .map(|_| path)
+        }
     };
     match made {
         Ok(path) => {

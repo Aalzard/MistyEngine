@@ -357,6 +357,9 @@ impl UserData for LGameObject {
                     "AudioSource" if w.scene.world.get::<&AudioSource>(e).is_ok() => Some(2),
                     "Animation" if w.scene.world.get::<&Animation>(e).is_ok() => Some(3),
                     "ParticleSystem" if w.scene.world.get::<&ParticleSystem>(e).is_ok() => Some(4),
+                    "Animator" if w.scene.world.get::<&crate::scene::Animator>(e).is_ok() => {
+                        Some(5)
+                    }
                     _ => None,
                 })
             })??;
@@ -365,6 +368,7 @@ impl UserData for LGameObject {
                 Some(1) => lua.create_userdata(LRigidbody(e)).map(Value::UserData),
                 Some(2) => lua.create_userdata(LAudioSource(e)).map(Value::UserData),
                 Some(3) => lua.create_userdata(LAnimation(e)).map(Value::UserData),
+                Some(5) => super::animator_api::component(lua, e),
                 Some(_) => lua.create_userdata(LParticleSystem(e)).map(Value::UserData),
                 None => Ok(match super::physics_api::component(lua, e, &name)? {
                     Some(v) => v,

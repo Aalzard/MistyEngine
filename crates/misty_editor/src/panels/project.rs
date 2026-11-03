@@ -176,6 +176,9 @@ fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
             .info("Prefab Mode is not available yet: edit an instance and use Apply All.");
     } else if ext == misty_engine::scene::file::EXTENSION {
         state.push(Action::OpenScenePath(state.assets.relative(&path)));
+    } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {
+        state.animator.open(Some(state.assets.relative(&path)));
+        state.push(Action::FocusTab(crate::layout::Tab::Animator));
     } else if let Err(err) = crate::assets::open_external(&path) {
         state
             .console

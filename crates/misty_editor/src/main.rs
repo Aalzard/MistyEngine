@@ -2,6 +2,7 @@
 
 mod actions;
 mod anim_clips;
+mod anim_controllers;
 mod app;
 mod asset_actions;
 mod asset_ops;
@@ -29,6 +30,8 @@ mod project_settings;
 mod render_scene;
 #[cfg(test)]
 mod sample_animation;
+#[cfg(test)]
+mod sample_animator;
 #[cfg(test)]
 mod sample_assets;
 #[cfg(test)]

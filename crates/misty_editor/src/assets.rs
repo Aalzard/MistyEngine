@@ -34,6 +34,8 @@ pub struct AssetDatabase {
     pub scripts: BTreeMap<String, ScriptMeta>,
     /// Project-relative paths of animation clips (.anim).
     pub anims: BTreeSet<String>,
+    /// Project-relative paths of Animator Controllers (.controller).
+    pub controllers: BTreeSet<String>,
     /// Project-relative paths of audio clips (.wav/.ogg/.mp3).
     pub clips: BTreeSet<String>,
     /// Prefabs read so far, re-read when the file changes.
@@ -57,6 +59,7 @@ impl AssetDatabase {
             scripts: BTreeMap::new(),
             clips: BTreeSet::new(),
             anims: BTreeSet::new(),
+            controllers: BTreeSet::new(),
             prefabs: BTreeMap::new(),
             textures: Vec::new(),
             models: BTreeMap::new(),
@@ -74,6 +77,7 @@ impl AssetDatabase {
         self.materials.clear();
         self.clips.clear();
         self.anims.clear();
+        self.controllers.clear();
         self.textures.clear();
         self.models.clear();
         let old_scripts = std::mem::take(&mut self.scripts);
@@ -97,6 +101,8 @@ impl AssetDatabase {
                     self.scripts.insert(rel, meta);
                 } else if misty_engine::animation::is_clip(&path.to_string_lossy()) {
                     self.anims.insert(self.relative(&path));
+                } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {
+                    self.controllers.insert(self.relative(&path));
                 } else if misty_engine::audio::is_clip(&path.to_string_lossy()) {
                     self.clips.insert(self.relative(&path));
                 } else {

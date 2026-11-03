@@ -2,6 +2,7 @@
 //! With several objects selected, edits apply to all of them (only shared components are shown).
 
 mod anim;
+mod animator;
 mod editors;
 mod mixed;
 mod particles;
@@ -441,6 +442,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::animation::is_clip(rel) {
         anim::clip_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::animation::is_controller(rel) {
+        animator::controller_asset(ui, state, rel);
         return;
     }
     let name = crate::assets::AssetDatabase::material_name(Some(rel));

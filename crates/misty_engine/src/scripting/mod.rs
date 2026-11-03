@@ -17,6 +17,7 @@
 //! return Rotator
 //! ```
 
+pub mod animator_api;
 pub mod api;
 pub mod particles_api;
 pub mod physics_api;
@@ -30,7 +31,7 @@ use glam::{Vec2, Vec3};
 use hecs::Entity;
 use mlua::{Function, Lua, RegistryKey, Table, Value};
 
-use crate::animation::AnimationPlayer;
+use crate::animation::{AnimationPlayer, AnimatorPlayer};
 use crate::audio::Audio;
 use crate::physics::{Contact, Physics};
 use crate::runtime::Time;
@@ -125,6 +126,8 @@ pub struct World {
     pub audio: Audio,
     /// Animation component playback (`Play`, `Stop`, …).
     pub animation: AnimationPlayer,
+    /// Animator state machines (`SetFloat`, `Play`, …).
+    pub animator: AnimatorPlayer,
 }
 
 struct Instance {
@@ -177,6 +180,7 @@ impl ScriptHost {
             requests: Vec::new(),
             audio,
             animation: AnimationPlayer::new(project_root.clone()),
+            animator: AnimatorPlayer::new(project_root.clone()),
         });
         let mut host = Self {
             lua,
@@ -211,6 +215,11 @@ impl ScriptHost {
         });
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
         host
+    }
+
+    /// Run `f` on the Animator state machines between frames (the Animator window's live view).
+    pub fn with_animator<R>(&self, f: impl FnOnce(&mut AnimatorPlayer) -> R) -> R {
+        self.with_world(|w| f(&mut w.animator))
     }
 
     /// The audio voices of this game (between frames).
@@ -393,9 +402,15 @@ impl ScriptHost {
     fn animate(&mut self, dt: f32) {
         let events = self.with_world(|w| {
             let World {
-                animation, scene, ..
+                animation,
+                animator,
+                scene,
+                ..
             } = w;
-            animation.update(scene, dt)
+            // An Animator on the same object runs last, so it wins for shared properties.
+            let mut events = animation.update(scene, dt);
+            events.extend(animator.update(scene, dt));
+            events
         });
         for (e, function) in events {
             for i in 0..self.instances.len() {
@@ -405,7 +420,11 @@ impl ScriptHost {
             }
             self.flush_spawned();
         }
-        let logs = self.with_world(|w| w.animation.take_logs());
+        let logs = self.with_world(|w| {
+            let mut l = w.animation.take_logs();
+            l.extend(w.animator.take_logs());
+            l
+        });
         for l in logs {
             self.log(LogKind::Warning, l);
         }

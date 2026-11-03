@@ -64,7 +64,7 @@ pub fn effective_wrap(mode: WrapMode, clip: &AnimationClip) -> WrapMode {
 }
 
 /// True if playback moving from `prev` to `cur` passes `event` (once per frame at most).
-fn crossed(prev: f32, cur: f32, event: f32, length: f32, looping: bool) -> bool {
+pub(super) fn crossed(prev: f32, cur: f32, event: f32, length: f32, looping: bool) -> bool {
     if cur <= prev {
         return false;
     }

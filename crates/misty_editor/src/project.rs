@@ -23,6 +23,7 @@ impl AssetEntry {
             "obj" | "gltf" | "glb" | "fbx" => "📦",
             "wav" | "ogg" | "mp3" => "🔊",
             "anim" => "⏵",
+            "controller" => crate::panels::animator::CONTROLLER_ICON,
             _ => "📄",
         }
     }
@@ -207,6 +208,7 @@ pub fn asset_type(entry: &AssetEntry) -> &'static str {
         "obj" | "gltf" | "glb" | "fbx" => "model",
         "wav" | "ogg" | "mp3" => "audioclip",
         "anim" => "animationclip",
+        "controller" => "animatorcontroller",
         _ => "",
     }
 }
