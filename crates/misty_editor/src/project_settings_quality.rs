@@ -148,6 +148,26 @@ fn shadows(ui: &mut Ui, l: &mut QualityLevel) -> bool {
             ch
         },
     );
+    if l.shadow_cascades > 1 {
+        edited |= row(
+            ui,
+            "Cascade Split",
+            "0 = even bands, 1 = most detail close to the camera.",
+            |ui| {
+                ui.add(egui::Slider::new(&mut l.cascade_split, 0.0..=1.0))
+                    .changed()
+            },
+        );
+        edited |= row(
+            ui,
+            "Cascade Blend",
+            "How much neighbouring cascades fade into each other (hides the seam).",
+            |ui| {
+                ui.add(egui::Slider::new(&mut l.cascade_blend, 0.0..=0.5))
+                    .changed()
+            },
+        );
+    }
     edited |= row(
         ui,
         "Soft Shadows",

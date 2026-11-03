@@ -158,6 +158,10 @@ pub struct QualityLevel {
     pub shadow_distance: f32,
     /// Directional shadow cascades: 1, 2 or 4.
     pub shadow_cascades: u32,
+    /// Where cascades split: 0 = even, 1 = logarithmic (more resolution near the camera).
+    pub cascade_split: f32,
+    /// Fraction of each cascade blended into the next, hiding the seam.
+    pub cascade_blend: f32,
     /// Soft shadow filtering (Off = hard edges).
     pub soft_shadows: Tier,
     pub anti_aliasing: AntiAliasing,
@@ -187,6 +191,8 @@ impl QualityLevel {
             shadow_resolution: ShadowResolution::Low,
             shadow_distance: 40.0,
             shadow_cascades: 1,
+            cascade_split: 0.75,
+            cascade_blend: 0.1,
             soft_shadows: Tier::Off,
             anti_aliasing: AntiAliasing::Off,
             texture_quality: TextureQuality::Half,
@@ -206,6 +212,8 @@ impl QualityLevel {
             shadow_resolution: ShadowResolution::Medium,
             shadow_distance: 70.0,
             shadow_cascades: 2,
+            cascade_split: 0.75,
+            cascade_blend: 0.1,
             soft_shadows: Tier::Low,
             anti_aliasing: AntiAliasing::X2,
             texture_quality: TextureQuality::Full,
@@ -225,6 +233,8 @@ impl QualityLevel {
             shadow_resolution: ShadowResolution::High,
             shadow_distance: 150.0,
             shadow_cascades: 4,
+            cascade_split: 0.75,
+            cascade_blend: 0.1,
             soft_shadows: Tier::Medium,
             anti_aliasing: AntiAliasing::X4,
             texture_quality: TextureQuality::Full,
@@ -263,6 +273,8 @@ impl QualityLevel {
             2 | 3 => 2,
             _ => 4,
         };
+        self.cascade_split = finite_clamp(self.cascade_split, 0.0, 1.0, 0.75);
+        self.cascade_blend = finite_clamp(self.cascade_blend, 0.0, 0.5, 0.1);
         self.max_texture_size = self.max_texture_size.clamp(32, 8192);
         self.render_scale = finite_clamp(self.render_scale, 0.25, 2.0, 1.0);
         self.lod_bias = finite_clamp(self.lod_bias, 0.01, 10.0, 1.0);

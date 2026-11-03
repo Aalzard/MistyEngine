@@ -180,7 +180,7 @@ fn platform(ui: &mut Ui, b: &mut BuildSettings) -> bool {
                 }
             }
         });
-        ui.separator();
+        ui.add_space(12.0);
         ui.vertical(|ui| {
             let t = b.target;
             ui.label(RichText::new(t.label()).strong());

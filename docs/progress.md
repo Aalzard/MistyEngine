@@ -971,3 +971,46 @@ clippy fixes in `sprite_handles.rs` (a type alias, a removed `.clone()`), then t
   sprite, Edit Collider for capsule/polygon/edge, `Rigidbody2D.Sleep`/`IsTouching`, `Physics2D.BoxCast`/
   `CircleCast`, contact filters, or "Use Full Kinematic Contacts"; Collision2D has a single contact point.
 - Sorting Layers have their own Project Settings page (not Tags and Layers); sprites take fog.
+
+## Player, Quality and the build pipeline ✅
+
+### Done
+- Project Settings ▸ **Player**: product name, company, version, icon (PNG from Assets), optional splash screen
+  (image, duration, background), screen mode (Fullscreen Window / Exclusive Fullscreen / Windowed / Maximized),
+  default resolution, Resizable Window, Run In Background, VSync, Target Frame Rate. The player applies all of
+  it at startup (window icon too). Older projects migrate the old Build Settings product/size/fullscreen.
+- Project Settings ▸ **Quality**: editable list of levels (Low / Medium / High / Ultra, add / remove / rename,
+  one default) with shadows (resolution, distance, cascades, soft), rendering (MSAA, render scale, LOD bias),
+  textures (texture quality = global mipmap limit, anisotropic textures, max texture size) and effects (AO,
+  volumetric fog, reflection probes). `misty_engine::quality` holds the active level; `Renderer::set_quality`
+  resizes the directional shadow map; render scale, texture limits and anisotropy are applied; the rest is
+  exposed through accessors for the shadow / AO / probe / fog work. Game view toolbar dropdown previews a level.
+- Project Settings reorganised into six pages: Player, Quality, Input, Physics (3D + collapsed 2D section),
+  Tags and Layers (+ collapsed Sorting Layers), Time; each with a description and collapsible sections.
+- Texture import: Filter Mode Nearest Neighbor / Bilinear / Trilinear (old "Point" loads), Max Size 32–8K with
+  Lanczos downscale, Normal Map type, sRGB toggle, Aniso Level 0–16 under a collapsed Advanced section; Apply
+  reloads live. Trilinear + anisotropic sampling in the Scene view, Game view and player.
+- Lua: `Screen` (width, height, fullScreen, fullScreenMode, resolutions, SetResolution), `FullScreenMode`,
+  `QualitySettings` (GetQualityLevel, SetQualityLevel, names), `PlayerPrefs` (Get/Set Int/Float/String, HasKey,
+  DeleteKey, DeleteAll, Save). The player remembers the chosen quality and resolution in the per-user prefs.
+- File ▸ Build Settings: platform list (Windows x64/ARM64, Linux x64/ARM64, macOS Apple Silicon/Intel) with
+  `rustup` checks and the exact `rustup target add` command, cross-OS blockers explained; Development Build,
+  Compress Data, Create .zip, Steam App ID; Build / Build And Run on a background thread with a progress bar
+  and log (cargo output streamed).
+- Build output: `<Product>.exe` with the icon embedded (Windows), `<Product>_Data/data.pak` (LZ4 pak with only
+  the assets the build scenes use plus `Resources` folders, and the settings), icon files, macOS `.app`
+  bundles, `steam_appid.txt` for development builds, `steam/` SteamPipe scripts + README, optional zip.
+- All asset loading goes through `misty_engine::vfs` (pak or disk); loose project folders still play.
+- docs/building.md: a beginner's guide to building, platforms, itch.io and Steam.
+- Tests: pak round trip, vfs keys, dependency walk, quality accessors / sanitising, player settings migration,
+  prefs file round trip, Lua Screen/Quality/PlayerPrefs, texture max size / filters / old `.meta` loading,
+  target status and cargo command construction, icon files and embedding, zip, Steam templates, packaging
+  layout (Windows and macOS), build job errors, the Build / Player / Quality windows, playing from a pak.
+
+### Not matching Unity yet
+- No Steamworks API (achievements, overlay), no IL2CPP-like options, no code signing / notarization, no
+  `.icns` icon for macOS, no Linux `.desktop` file.
+- MSAA level is stored but the renderer always uses 4x; LOD bias is stored (no LOD Groups yet).
+- Render Scale scales the UI too. Screen.SetResolution does nothing in the Game view.
+- Cross-compiling Linux needs cargo-zigbuild; macOS builds need a Mac.
+- No per-platform overrides of texture import settings or Player settings.
