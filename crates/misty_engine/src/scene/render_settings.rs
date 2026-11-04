@@ -11,16 +11,57 @@ pub enum SkyboxKind {
     #[default]
     Procedural,
     SolidColor,
+    /// Equirectangular `.hdr` / `.exr` image (see [`HdriSettings`]).
+    Hdri,
 }
 
 impl SkyboxKind {
-    pub const ALL: [SkyboxKind; 2] = [Self::Procedural, Self::SolidColor];
+    pub const ALL: [SkyboxKind; 3] = [Self::Procedural, Self::SolidColor, Self::Hdri];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Procedural => "Procedural",
             Self::SolidColor => "Solid Color",
+            Self::Hdri => "HDRI",
         }
+    }
+}
+
+/// The HDRI skybox: image, rotation about +Y, exposure and tint. Drives ambient light and
+/// reflections too (Environment Lighting source = Skybox).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HdriSettings {
+    /// Project path of the image ("Assets/HDRI/Sunset.hdr").
+    pub texture: Option<String>,
+    /// Degrees about +Y.
+    pub rotation: f32,
+    /// Stops (EV): the image is scaled by 2^exposure.
+    pub exposure: f32,
+    /// sRGB multiplier (white = none).
+    pub tint: [f32; 3],
+}
+
+impl Default for HdriSettings {
+    fn default() -> Self {
+        Self {
+            texture: None,
+            rotation: 0.0,
+            exposure: 0.0,
+            tint: [1.0; 3],
+        }
+    }
+}
+
+impl HdriSettings {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Linear colour multiplier: tint × 2^exposure.
+    pub fn multiplier(&self) -> [f32; 3] {
+        let scale = 2f32.powf(self.exposure.clamp(-16.0, 16.0));
+        self.tint.map(|c| c.max(0.0).powf(2.2) * scale)
     }
 }
 
@@ -63,6 +104,10 @@ pub struct Skybox {
     pub exposure: f32,
     /// sRGB colour of the Solid Color skybox.
     pub color: [f32; 3],
+    /// The HDRI skybox (kept while another kind is selected). Left out of the file while
+    /// default, so scenes saved before HDRI skies stay byte-identical.
+    #[serde(skip_serializing_if = "HdriSettings::is_default")]
+    pub hdri: HdriSettings,
 }
 
 impl Default for Skybox {
@@ -76,6 +121,7 @@ impl Default for Skybox {
             ground: [0.32, 0.30, 0.29],
             exposure: 1.0,
             color: [0.19, 0.30, 0.47],
+            hdri: HdriSettings::default(),
         }
     }
 }
@@ -234,5 +280,22 @@ mod tests {
         assert!((f.visibility(20.0) - (-4.0f32).exp()).abs() < 1e-6);
         f.enabled = false;
         assert_eq!(f.visibility(1e6), 1.0);
+    }
+
+    /// Scenes saved before HDRI skies load with the defaults; the HDRI round-trips.
+    #[test]
+    fn hdri_settings_are_optional_and_round_trip() {
+        let old: Skybox = serde_json::from_str(r#"{"kind":"Procedural","exposure":1.5}"#).unwrap();
+        assert_eq!(old.hdri, HdriSettings::default());
+        let mut s = Skybox {
+            kind: SkyboxKind::Hdri,
+            ..Default::default()
+        };
+        s.hdri.texture = Some("Assets/HDRI/Sky.hdr".into());
+        s.hdri.rotation = 90.0;
+        let back: Skybox = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back, s);
+        s.hdri.exposure = 1.0;
+        assert_eq!(s.hdri.multiplier(), [2.0; 3]);
     }
 }

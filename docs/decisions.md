@@ -2050,3 +2050,61 @@ Record of choices made without asking, and why.
      street (solid dark sky, faint moon, volumetric fog with a ground-mist Fog Volume), six street lamps alternating
      warm sodium / cool LED with halos, a doorway spot light shining down, and a floodlight at the far end facing the
      camera with a halo and the scene's one Lens Flare.
+
+## 2026-11-04 — HDRI skies
+
+441. **HDRI import through the image crate:** the workspace `image` dependency gains the `hdr` (built in) and `exr`
+     (pure Rust `exr` crate) features. `hdri::HdrImage` decodes both to linear float RGB, turns NaN / negative
+     texels into 0, clamps at 60 000 (half-float textures top out at 65 504) and box-filters images wider than
+     4096 by powers of two. HDR images are a separate list (`hdri::EXTENSIONS`, `AssetDatabase::hdris`), not
+     material textures; the Project window treats them as textures for icons, thumbnails and `t:Texture`.
+442. **Equirect convention:** u = 0.5 + atan2(x, z) / 2π, v = acos(y) / π, so the image centre faces +Z (the
+     default camera's forward) and +X is to its right; the same formulas run on the CPU (`hdri/equirect.rs`) and
+     the GPU (`convert.wgsl`). Rotation turns the sky about +Y (`hdri::rotation`); lookups undo it.
+443. **Our own Radiance writer** (`hdri::rgbe`): shared-exponent RGBE with per-channel run-length scanlines (runs
+     ≥ 3, literal chunks ≤ 128), flat scanlines for widths outside 8..32767. The sample HDRI is written with it;
+     the test reads files back through the image crate's decoder.
+444. **Settings:** `SkyboxKind::Hdri` plus `Skybox::hdri: HdriSettings` (texture path, Rotation in degrees,
+     Exposure in EV = ×2^EV, sRGB Tint). The block is left out of the file while default, so every scene saved
+     before stays byte-identical and loads unchanged. A missing or broken file shows its error in the Lighting
+     window and the sky falls back to the procedural one.
+445. **Two GPU cubes per HDRI, built once per file:** a background cube (face = width / 4 rounded to a power of
+     two, 64..512, 2 × 2 equirect taps per texel, full box mip chain) and a specular cube (128², seven levels with
+     the probes' roughness mapping, GGX filtered importance sampling with 512 samples reading the background mip
+     that matches each sample's solid angle; level 0 is the background mip of the same size). Compute passes with
+     automatic layouts, one submission, keyed by the decoded image's identity. Rotation, Exposure and Tint are
+     applied at lookup, so moving their sliders never rebuilds anything.
+446. **Diffuse from SH9 on the CPU:** projected from a 128 × 64 copy with solid-angle weights and cosine-convolved
+     (`probes::sh`); rotation re-projects that copy (cached per angle) instead of rotating SH coefficients.
+     Exposure, tint and the ambient Intensity Multiplier are folded in on the CPU, the GPU evaluates world-space
+     SH. With Source = Gradient or Color, the HDRI still draws and reflects but the ambient is those colours,
+     projected onto SH so the same shader path serves all sources.
+447. **The sky lives in the view group** (group 0, bindings 4–7: `SkyEnv` uniform, background cube, specular cube,
+     sampler) so the skybox, meshes, terrain, grass, water and custom shaders all see it through `sky_color` /
+     `sky_hdri_*` in common.wgsl. A separate uniform because the view uniform must stay within the 512-byte
+     shadow-view stride. Sampled textures per fragment stage stay at 12 or fewer.
+448. **The HDRI is the probe at infinity:** `probe_lighting` blends the draw's probes as before, then the HDRI fills
+     the weight they leave (prefiltered cube + SH, split-sum like a probe). Probes that aren't baked have no data,
+     so their area falls back to the sky; bakes and Realtime captures render the skybox, so they capture the HDRI.
+     The probe debug view shows probe coverage only. The procedural sky keeps its old reflection/ambient path,
+     so existing scenes render exactly as before.
+449. **Sun handling:** an HDRI skybox draws no procedural disc (the image has its own sun); texels above 8 feed the
+     bloom glow target. Lighting ▸ Align Sun to HDRI finds the brightest texel of the 128 × 64 copy, refines it by
+     the luminance-weighted centre of its 3 × 3 neighbourhood, applies Rotation and turns the brightest enabled
+     Directional Light (in its parent's space) to shine from there, as one undo step. The renderer's sun is
+     still the brightest Directional Light (volumetric fog, shafts, water glitter, shadows).
+450. **Fog and water use the HDRI:** volumetric fog's ambient comes from `Environment::ambient()`, which with an
+     HDRI evaluates its SH (up / equator / down); the water's ambient is the SH and its reflection the specular
+     cube at the surface's smoothness. Classic fog keeps its own colour, as Unity's does.
+451. **Editor:** Lighting ▸ Environment ▸ Skybox = HDRI shows an image slot (picker of the project's HDR files
+     plus drag and drop from the Project window), a tonemapped preview, Rotation (0–360°), Exposure (±10 EV),
+     Tint and Align Sun to HDRI. Dropping an HDR file anywhere on the Scene view sets Skybox = HDRI with that
+     image (one undo step, like dropping a material on the sky). Thumbnails are tonemapped with auto exposure
+     (log-average luminance → middle grey) and Reinhard. `MISTY_LIGHTING_PAGE=Environment` opens that page for
+     screenshots.
+452. **HdriSkyDemo is generated by code** (`sample_hdri`): the 2048 × 1024 "Sunset Clouds.hdr" (gradient sky warm
+     towards a sun 7° up, a 0.55° sun disc at 4000, its glow, fbm clouds lit from the sun's side, dark ground)
+     written by our writer, and a scene with chrome → rough steel, glossy → matte white and gold spheres on a grey
+     floor, lit by the HDRI and a soft-shadowed sun aligned with it. The check compares 400 texels of the committed
+     image with the generator within RGBE precision rather than bytes (float functions may differ between
+     machines), and that its brightest point is the sun.

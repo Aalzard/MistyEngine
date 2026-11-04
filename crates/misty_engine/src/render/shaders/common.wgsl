@@ -43,6 +43,55 @@ struct View {
 
 @group(0) @binding(0) var<uniform> view: View;
 
+// ---- HDRI sky (render/hdri_sky) ----
+struct SkyEnv {
+    // x = 1 when the sky is an HDRI, y / z = cos / sin of its rotation, w = highest specular level.
+    params: vec4<f32>,
+    // rgb = linear tint × 2^exposure.
+    color: vec4<f32>,
+    // Diffuse SH (irradiance / π, world space, intensity applied) for surfaces no probe covers.
+    sh: array<vec4<f32>, 9>,
+};
+
+@group(0) @binding(4) var<uniform> sky_env: SkyEnv;
+// Background cube (box-filtered mips) and the GGX roughness chain (one level per mip).
+@group(0) @binding(5) var sky_cube: texture_cube<f32>;
+@group(0) @binding(6) var sky_specular: texture_cube<f32>;
+@group(0) @binding(7) var sky_sampler: sampler;
+
+fn sky_is_hdri() -> bool {
+    return sky_env.params.x > 0.5;
+}
+
+// World direction → the HDRI's own frame (undo the Rotation about +Y).
+fn sky_local(d: vec3<f32>) -> vec3<f32> {
+    let c = sky_env.params.y;
+    let s = sky_env.params.z;
+    return vec3<f32>(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
+}
+
+// HDRI radiance in `dir`, blurred by `lod` background mips.
+fn sky_hdri(dir: vec3<f32>, lod: f32) -> vec3<f32> {
+    return textureSampleLevel(sky_cube, sky_sampler, sky_local(dir), lod).rgb * sky_env.color.rgb;
+}
+
+// Prefiltered HDRI reflection for perceptual roughness `perceptual`.
+fn sky_hdri_specular(r: vec3<f32>, perceptual: f32) -> vec3<f32> {
+    let lod = perceptual * sky_env.params.w;
+    return textureSampleLevel(sky_specular, sky_sampler, sky_local(r), lod).rgb * sky_env.color.rgb;
+}
+
+// Diffuse sky light at normal `n` (SH9, basis as probes/sh.rs).
+fn sky_hdri_diffuse(n: vec3<f32>) -> vec3<f32> {
+    let c = sky_env.sh;
+    var r = c[0].rgb * 0.282095;
+    r += c[1].rgb * (0.488603 * n.y) + c[2].rgb * (0.488603 * n.z) + c[3].rgb * (0.488603 * n.x);
+    r += c[4].rgb * (1.092548 * n.x * n.y) + c[5].rgb * (1.092548 * n.y * n.z);
+    r += c[6].rgb * (0.315392 * (3.0 * n.z * n.z - 1.0)) + c[7].rgb * (1.092548 * n.x * n.z);
+    r += c[8].rgb * (0.546274 * (n.x * n.x - n.y * n.y));
+    return max(r, vec3<f32>(0.0));
+}
+
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     return pow(c, vec3<f32>(2.2));
 }
@@ -68,6 +117,9 @@ fn sky_daylight() -> f32 {
 fn sky_color(dir: vec3<f32>) -> vec3<f32> {
     if (view.sky_solid.w > 0.5) {
         return view.sky_solid.rgb;
+    }
+    if (sky_is_hdri()) {
+        return sky_hdri(dir, 0.0);
     }
     let zenith0 = srgb_to_linear(vec3<f32>(0.40, 0.55, 0.76));
     let horizon0 = srgb_to_linear(vec3<f32>(0.76, 0.79, 0.83));

@@ -1,4 +1,5 @@
-// Skybox: procedural sky (see `sky_color` in common.wgsl) with a sun disc, or a solid colour.
+// Skybox: procedural sky (see `sky_color` in common.wgsl) with a sun disc, a solid colour, or
+// an HDRI (its background cube, rotated and tinted).
 // The camera's solid background replaces it when the skybox is off. Fog hazes the horizon;
 // volumetric / height fog covers both at the max fog distance (fog_apply.wgsl).
 
@@ -11,7 +12,8 @@ struct SkyTargets {
 // Sun disc (and halo in High Quality) seen in `dir`; zero when there is no visible sun.
 fn sun_disc(dir: vec3<f32>) -> vec3<f32> {
     let mode = view.sun_color.w;
-    if (view.sun_dir.w < 0.5 || mode < 0.5 || view.sky_solid.w > 0.5) {
+    // An HDRI has its own sun in the image.
+    if (view.sun_dir.w < 0.5 || mode < 0.5 || view.sky_solid.w > 0.5 || sky_is_hdri()) {
         return vec3<f32>(0.0);
     }
     let cos_a = dot(dir, view.sun_dir.xyz);
@@ -36,8 +38,12 @@ fn fs_main(in: FullscreenOut) -> SkyTargets {
         out.color = vec4<f32>(vfog_blend(view.background.rgb, vf, 1.0), 1.0);
         return out;
     }
-    let sun = sun_disc(dir);
+    var sun = sun_disc(dir);
     var c = sky_color(dir) + sun;
+    if (sky_is_hdri()) {
+        // The HDRI's very bright texels (its sun) glow through bloom like the procedural disc.
+        sun = max(c - vec3<f32>(8.0), vec3<f32>(0.0));
+    }
     var visible = 1.0;
     if (view.fog_color.w > 0.5) {
         // Fog thickens towards the horizon and fills the view below it.

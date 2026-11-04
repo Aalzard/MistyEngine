@@ -12,6 +12,7 @@ mod frame_lists;
 mod glow;
 mod gpu_culling;
 mod gpu_timer;
+mod hdri_sky;
 pub mod lod;
 pub mod mesh;
 pub mod overrides;
@@ -405,6 +406,8 @@ pub struct Renderer {
     screen_space: screen_space::ScreenSpace,
     /// Light halos and lens flares.
     glows: glow::Glows,
+    /// HDRI sky cubes and uniform (view group bindings 4–7).
+    sky: hdri_sky::SkyGpu,
 }
 
 impl Renderer {
@@ -422,8 +425,14 @@ impl Renderer {
         let view_buffer = uniform("misty view", std::mem::size_of::<ViewUniform>());
         let lights_buffer = uniform("misty lights", std::mem::size_of::<LightsUniform>());
         let volumetrics = volumetrics::Volumetrics::new(device);
-        let view_bind_group =
-            volumetrics::view_group(device, &pipelines.view_layout, &view_buffer, &volumetrics);
+        let sky = hdri_sky::SkyGpu::new(device);
+        let view_bind_group = volumetrics::view_group(
+            device,
+            &pipelines.view_layout,
+            &view_buffer,
+            &volumetrics,
+            &sky,
+        );
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
         let probes = probes::gpu::ProbeGpu::new(device);
         let screen_space = screen_space::ScreenSpace::new(device);
@@ -495,6 +504,7 @@ impl Renderer {
             volumetrics,
             screen_space,
             glows: Default::default(),
+            sky,
         }
     }
 
@@ -550,6 +560,11 @@ impl Renderer {
         self.stats
     }
 
+    /// Time the last HDRI → cubemap conversion took (upload, GPU passes and the wait), in ms.
+    pub fn hdri_build_ms(&self) -> Option<f32> {
+        self.sky.last_build_ms
+    }
+
     /// Latest GPU time of a render, when timestamp queries are supported.
     pub fn gpu_ms(&self) -> Option<f32> {
         self.gpu_timer.as_ref().and_then(|t| t.last_ms())
@@ -582,6 +597,7 @@ impl Renderer {
             texture_bytes: texture_bytes
                 + shadow_bytes
                 + self.probes.bytes()
+                + self.sky.bytes()
                 + self.volumetrics.texture_bytes(),
         }
     }
@@ -734,6 +750,16 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&view_uniform(frame, aspect)),
         );
+        // HDRI sky: cubes built when the file changes, the uniform every render.
+        if self.sky.prepare(device, queue, frame.environment) {
+            self.view_bind_group = volumetrics::view_group(
+                device,
+                &self.pipelines.view_layout,
+                &self.view_buffer,
+                &self.volumetrics,
+                &self.sky,
+            );
+        }
         let scene_copy = self.needs_scene_copy(frame);
         self.prepare_scene_inputs(device, queue, target, frame, scene_copy);
 

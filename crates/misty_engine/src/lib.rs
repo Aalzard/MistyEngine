@@ -11,6 +11,7 @@ pub mod build;
 pub mod camera;
 pub mod clock;
 pub mod draw_cache;
+pub mod hdri;
 pub mod input;
 pub mod models;
 pub mod navigation;

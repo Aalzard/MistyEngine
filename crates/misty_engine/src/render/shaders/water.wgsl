@@ -195,6 +195,10 @@ fn caustics(p: vec2<f32>, t: f32) -> vec3<f32> {
 // ---- Lighting helpers ----
 
 fn water_ambient(n: vec3<f32>) -> vec3<f32> {
+    // An HDRI sky lights the water through its SH (intensity already applied).
+    if (sky_is_hdri()) {
+        return sky_hdri_diffuse(n);
+    }
     var a: vec3<f32>;
     if (n.y >= 0.0) {
         a = mix(lights.equator.rgb, lights.sky.rgb, n.y);
@@ -351,6 +355,10 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
     var r = reflect(-v, n);
     r.y = abs(r.y);
     var reflected = sky_color(r);
+    if (sky_is_hdri()) {
+        // The HDRI's prefiltered cube, blurred by the surface's roughness.
+        reflected = sky_hdri_specular(r, 1.0 - clamp(water.p1.y, 0.0, 1.0));
+    }
     if (water.p1.w > 0.5) {
         let hit = screen_reflection(in.world, r);
         reflected = mix(reflected, hit.rgb, hit.a);

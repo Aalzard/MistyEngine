@@ -1,6 +1,7 @@
 // Reflection probes (render/probes): appended to mesh.wgsl. Each draw lists up to four probes
 // (most important first); a pixel blends those whose influence box contains it, fading over
-// the blend distance, and the sky fills the rest. Specular reads the prefiltered cube level of
+// the blend distance, and the sky fills the rest (an HDRI sky through its own prefiltered cube
+// and SH, like a probe at infinity; the procedural sky in mesh.wgsl). Specular reads the prefiltered cube level of
 // the surface roughness along the box-projected reflection; diffuse evaluates the probe's SH9.
 
 const PROBE_NONE: u32 = 0xffffffffu;
@@ -35,8 +36,11 @@ struct ProbeLight {
     // Blend of the probes' SH and prefiltered reflections (intensity applied).
     diffuse: vec3<f32>,
     specular: vec3<f32>,
-    // How much the probes cover (the sky gets 1 - weight).
+    // How much the probes cover (the sky gets 1 - weight); 1 with an HDRI sky, which fills
+    // the rest itself.
     weight: f32,
+    // Probe coverage alone (debug view).
+    coverage: f32,
     // Debug view colour.
     debug: vec3<f32>,
 };
@@ -88,6 +92,20 @@ fn probe_hue(i: f32) -> vec3<f32> {
 
 // Probes lighting a point of draw `draw`: normal `n`, reflection `r`.
 fn probe_lighting(draw: u32, world: vec3<f32>, n: vec3<f32>, r: vec3<f32>, perceptual: f32) -> ProbeLight {
+    var out = probe_blend(draw, world, n, r, perceptual);
+    out.coverage = out.weight;
+    // An HDRI sky is the probe of last resort: it fills whatever the probes leave.
+    if (sky_is_hdri() && out.weight < 0.999) {
+        let rest = 1.0 - out.weight;
+        out.specular = out.specular * out.weight + sky_hdri_specular(r, perceptual) * rest;
+        out.diffuse = out.diffuse * out.weight + sky_hdri_diffuse(n) * rest;
+        out.weight = 1.0;
+    }
+    return out;
+}
+
+// The draw's probes alone: weighted averages and how much they cover.
+fn probe_blend(draw: u32, world: vec3<f32>, n: vec3<f32>, r: vec3<f32>, perceptual: f32) -> ProbeLight {
     var out: ProbeLight;
     let count = u32(probes.header.x);
     if (count == 0u) {
@@ -136,5 +154,5 @@ fn probe_specular(probe: ProbeLight, f0: vec3<f32>, n_dot_v: f32, perceptual: f3
 // Debug view: each probe's colour where it lights, dark grey where the sky does.
 fn probe_debug_color(probe: ProbeLight, n: vec3<f32>) -> vec3<f32> {
     let shade = 0.45 + 0.55 * clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
-    return mix(vec3<f32>(0.12), probe.debug, probe.weight) * shade;
+    return mix(vec3<f32>(0.12), probe.debug, probe.coverage) * shade;
 }
