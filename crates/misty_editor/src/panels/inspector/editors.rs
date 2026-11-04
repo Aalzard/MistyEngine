@@ -538,7 +538,7 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             )
             .changed();
         ui.end_row();
-        ui.label("Shadow Type");
+        crate::tutorials::targets::label(ui, "Shadow Type");
         ch |= combo_k(
             ui,
             "light_shadows",
@@ -893,6 +893,7 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     let resp = ui
         .vertical_centered(|ui| ui.add_sized([230.0, 24.0], egui::Button::new("Add Component")))
         .inner;
+    crate::tutorials::targets::mark_response(ui, "inspector.add_component", &resp);
     if resp.clicked() {
         state.inspector_add_open = !state.inspector_add_open;
     }

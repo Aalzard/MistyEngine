@@ -298,6 +298,8 @@ pub struct EditorState {
     pub layouts: crate::layouts::Layouts,
     /// Ctrl+K search palette, its asset index and recent searches.
     pub search: crate::search::SearchPalette,
+    /// Help ▸ Tutorials: the running tutorial and finished ones.
+    pub tutorials: crate::tutorials::Tutorials,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
 }
@@ -390,6 +392,7 @@ impl EditorState {
             profiler: Default::default(),
             layouts: Default::default(),
             search: crate::search::SearchPalette::new(&root),
+            tutorials: Default::default(),
             actions: Vec::new(),
         };
         crate::project_settings::load(&mut s);

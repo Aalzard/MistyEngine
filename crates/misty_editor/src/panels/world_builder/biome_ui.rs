@@ -127,7 +127,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, builder: misty_engine::hecs::E
         let _ = state.scene.world.insert_one(builder, settings);
         state.mark_edited("Change World Builder Biomes");
     }
-    ui.horizontal_wrapped(|ui| {
+    let list = ui.horizontal_wrapped(|ui| {
         for p in &paths {
             let selected = state.world_builder.biome.as_deref() == Some(p.as_str());
             if ui.selectable_label(selected, display_name(p)).clicked() {
@@ -146,6 +146,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, builder: misty_engine::hecs::E
             state.refresh_assets();
         }
     });
+    crate::tutorials::targets::header(ui, "List", list.response.rect);
     if let Some(path) = state.world_builder.biome.clone() {
         ui.separator();
         edit_biome(ui, state, &path);
@@ -204,7 +205,8 @@ fn edit_biome(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             ui.end_row();
         });
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("Scatter").strong());
+    let scatter = ui.label(egui::RichText::new("Scatter").strong());
+    crate::tutorials::targets::row(ui, "Scatter", scatter.rect);
     let prefabs = prefab_files(&state.project.root);
     let mut remove = None;
     for (i, item) in b.scatter.iter_mut().enumerate() {

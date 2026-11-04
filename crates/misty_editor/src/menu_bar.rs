@@ -10,6 +10,7 @@ use crate::actions::{Action, Create};
 use crate::layout::{BuiltinLayout, Tab};
 use crate::layouts::LayoutRef;
 use crate::state::EditorState;
+use crate::tutorials::targets;
 
 /// Menu entry with a right-aligned shortcut hint; pushes `action` when clicked.
 fn item(ui: &mut Ui, state: &mut EditorState, label: &str, shortcut: &str, action: Action) {
@@ -17,10 +18,31 @@ fn item(ui: &mut Ui, state: &mut EditorState, label: &str, shortcut: &str, actio
     if !shortcut.is_empty() {
         button = button.shortcut_text(shortcut);
     }
-    if ui.add(button).clicked() {
+    let resp = ui.add(button);
+    targets::header(ui, label, resp.rect);
+    if resp.clicked() {
         state.push(action);
         ui.close();
     }
+}
+
+/// Top menu button; it and its entries are tutorial targets (`menu.<Menu>/<Entry>`).
+fn top(ui: &mut Ui, label: &str, f: impl FnOnce(&mut Ui)) {
+    let id = format!("menu.{label}");
+    let r = ui.menu_button(label, |ui| {
+        let _scope = targets::scope(&id);
+        f(ui)
+    });
+    targets::mark(ui, &id, r.response.rect);
+}
+
+/// Submenu that is a tutorial target too (`…/<Submenu>/<Entry>`).
+fn sub(ui: &mut Ui, label: &str, f: impl FnOnce(&mut Ui)) {
+    let r = ui.menu_button(label, |ui| {
+        let _scope = targets::scope(label);
+        f(ui)
+    });
+    targets::header(ui, label, r.response.rect);
 }
 
 /// Entry that only logs "not implemented yet" for now.
@@ -30,13 +52,13 @@ fn todo(ui: &mut Ui, state: &mut EditorState, label: &'static str, shortcut: &st
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     egui::MenuBar::new().ui(ui, |ui| {
-        ui.menu_button("File", |ui| file_menu(ui, state));
-        ui.menu_button("Edit", |ui| edit_menu(ui, state));
-        ui.menu_button("Assets", |ui| assets_menu(ui, state));
-        ui.menu_button("GameObject", |ui| gameobject_menu(ui, state));
-        ui.menu_button("Component", |ui| component_menu(ui, state));
-        ui.menu_button("Window", |ui| window_menu(ui, state));
-        ui.menu_button("Help", |ui| help_menu(ui, state));
+        top(ui, "File", |ui| file_menu(ui, state));
+        top(ui, "Edit", |ui| edit_menu(ui, state));
+        top(ui, "Assets", |ui| assets_menu(ui, state));
+        top(ui, "GameObject", |ui| gameobject_menu(ui, state));
+        top(ui, "Component", |ui| component_menu(ui, state));
+        top(ui, "Window", |ui| window_menu(ui, state));
+        top(ui, "Help", |ui| help_menu(ui, state));
     });
 }
 
@@ -196,7 +218,7 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
     let create = |what| Action::Create { what, parent };
     let shortcut = if parent.is_none() { "Ctrl+Shift+N" } else { "" };
     item(ui, s, "Create Empty", shortcut, create(Create::Empty));
-    ui.menu_button("3D Object", |ui| {
+    sub(ui, "3D Object", |ui| {
         for p in PrimitiveMesh::ALL {
             item(ui, s, p.name(), "", create(Create::Primitive(p)));
         }
@@ -232,7 +254,7 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
     ui.menu_button("Audio", |ui| {
         item(ui, s, "Audio Source", "", create(Create::AudioSource));
     });
-    ui.menu_button("Rendering", |ui| {
+    sub(ui, "Rendering", |ui| {
         let what = Create::FogVolume;
         item(ui, s, what.default_name(), "", create(what));
     });
@@ -369,7 +391,7 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         let tab = Tab::Navigation;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
-    ui.menu_button("Terrain", |ui| {
+    sub(ui, "Terrain", |ui| {
         let tab = Tab::WorldBuilder;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
@@ -415,6 +437,13 @@ pub fn layouts_menu(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn help_menu(ui: &mut Ui, s: &mut EditorState) {
+    let tutorials = ui.button("Tutorials...");
+    targets::header(ui, "Tutorials...", tutorials.rect);
+    if tutorials.clicked() {
+        s.tutorials.window_open = true;
+        ui.close();
+    }
+    ui.separator();
     if ui.button("About Misty Engine").clicked() {
         s.console
             .info(concat!("Misty Engine ", env!("CARGO_PKG_VERSION")));

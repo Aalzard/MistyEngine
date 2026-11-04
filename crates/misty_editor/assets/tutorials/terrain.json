@@ -1,0 +1,91 @@
+{
+  "id": "terrain",
+  "title": "Sculpt and paint a terrain",
+  "description": "Make hills and valleys with brushes, paint grass and rock, then let rules paint the whole terrain.",
+  "minutes": 10,
+  "scene": "empty",
+  "steps": [
+    {
+      "title": "Create a terrain",
+      "text": "Add GameObject ▸ 3D Object ▸ Terrain. A flat piece of land appears and is selected.",
+      "targets": ["menu.GameObject/3D Object/Terrain", "menu.GameObject/3D Object", "menu.GameObject"],
+      "done_when": "has:Terrain",
+      "demo": "create:Terrain"
+    },
+    {
+      "title": "Raise and lower",
+      "text": "Pick the first tool, Raise or Lower Terrain. Click and drag on the terrain in the Scene view to make hills. Hold Shift to dig down.",
+      "targets": ["inspector.Terrain/tool/Raise or Lower Terrain", "inspector.Terrain"],
+      "done_when": "undo:Raise or Lower Terrain",
+      "demo": "terrain:raise"
+    },
+    {
+      "title": "Change the brush",
+      "text": "Brush Size sets how wide the brush is. Opacity sets how fast it works. A big, soft brush makes nice mountains.",
+      "targets": ["inspector.Terrain/Brush Size", "inspector.Terrain"]
+    },
+    {
+      "title": "Smooth it out",
+      "text": "Pick Smooth Height (≈) and paint over sharp bumps to soften them.",
+      "targets": ["inspector.Terrain/tool/Smooth Height", "inspector.Terrain"],
+      "done_when": "undo:Smooth Terrain",
+      "demo": "terrain:smooth"
+    },
+    {
+      "title": "Make flat ground",
+      "text": "Pick Set Height (⊟), choose a Height and paint. The ground moves to that height, good for roads or a village.",
+      "targets": ["inspector.Terrain/tool/Set Height", "inspector.Terrain"],
+      "done_when": "undo:Set Terrain Height",
+      "demo": "terrain:set_height"
+    },
+    {
+      "title": "Add a texture layer",
+      "text": "Pick Paint Texture (🖌) and click + Add Layer. Each layer is one kind of ground.",
+      "targets": ["inspector.Terrain/+ Add Layer", "inspector.Terrain/tool/Paint Texture", "inspector.Terrain"],
+      "done_when": "terrain:layers1",
+      "demo": "terrain:layers1"
+    },
+    {
+      "title": "Pick grass",
+      "text": "Click the Diffuse slot and pick a grass texture. The first layer covers the whole terrain.",
+      "targets": ["inspector.Terrain/Diffuse", "inspector.Terrain"],
+      "done_when": "terrain:texture1",
+      "demo": "terrain:texture1"
+    },
+    {
+      "title": "Add rock",
+      "text": "Click + Add Layer again and give the new layer a rock texture. You can name it Rock.",
+      "targets": ["inspector.Terrain/+ Add Layer", "inspector.Terrain"],
+      "done_when": "terrain:layers2",
+      "demo": "terrain:layers2"
+    },
+    {
+      "title": "Paint by hand",
+      "text": "With the rock layer selected, paint on the terrain in the Scene view. Rock shows up where you paint.",
+      "targets": ["panel.Scene"],
+      "done_when": "undo:Paint Terrain",
+      "demo": "terrain:paint"
+    },
+    {
+      "title": "Rock on steep slopes",
+      "text": "Open Auto Paint Rules and tick Rule-driven. Set Slope to about 30° to 90°: rock now belongs on steep slopes.",
+      "targets": ["inspector.Terrain/Auto Paint Rules/Slope", "inspector.Terrain/Auto Paint Rules", "inspector.Terrain"],
+      "done_when": "terrain:rule_slope",
+      "demo": "terrain:rule_slope"
+    },
+    {
+      "title": "Grass on flat ground",
+      "text": "Click the grass layer in Layers. Make it Rule-driven too, with Slope 0° to 30°.",
+      "targets": ["inspector.Terrain/Layers", "inspector.Terrain"],
+      "done_when": "terrain:rules2",
+      "demo": "terrain:rules2"
+    },
+    {
+      "title": "Generate",
+      "text": "Click Generate. The rules paint the whole terrain at once. Change a rule and Generate again to try new ideas fast.",
+      "targets": ["inspector.Terrain/Generate", "inspector.Terrain"],
+      "done_when": "undo:Generate Terrain",
+      "demo": "terrain:generate"
+    }
+  ]
+}

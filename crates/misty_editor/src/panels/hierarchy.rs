@@ -316,6 +316,9 @@ fn row(
         ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
     let selected = state.selection.contains(e);
     let name = state.scene.name(e);
+    if crate::tutorials::targets::enabled() {
+        crate::tutorials::targets::mark(ui, &format!("hierarchy.{name}"), rect);
+    }
     resp.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &name)
     });

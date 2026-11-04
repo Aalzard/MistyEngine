@@ -1774,3 +1774,31 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - No project thumbnail is rendered when the editor closes (only template-created projects have one).
 - The Learn page has no tutorials yet; no project upgrade or "open with another version".
 - The Documents folder isn't resolved through the Windows known-folder API (OneDrive redirection is ignored).
+
+## v0.0.1: Tutorials ✅
+
+### Done
+- Help ▸ Tutorials (also "Tutorials" in Ctrl+K) opens a small window: title, short description, minutes and
+  a ✓ for finished ones, with Start / Again.
+- A running tutorial shows a floating step card (Step N of M, progress bar, title, 1–3 sentences, Back /
+  Next / Skip / Exit) beside the element it talks about, with a soft pulsing outline around it and a light
+  dim elsewhere. Clicks go through to the editor everywhere but the card.
+- Steps finish on their own when their condition is met (✓ Done!), Next always works.
+- Four tutorials (decisions 526–537): "Make it beautiful: Post-processing" (12 steps), "Light shafts and
+  god rays" (7), "Sculpt and paint a terrain" (12), "Generate a world with World Builder" (12). Each opens a
+  fresh Untitled scene with what it needs.
+- Targets: Hierarchy rows, Inspector component headers, Post-process Volume sections and fields, Light,
+  Terrain tools / layers / rules / Generate, World Builder sections and fields, menu bar entries, Scene view
+  effects toggle, Play button and whole panels.
+- `tutorials::list()` for the Hub's Learn page; progress in the per-user `tutorials.json`;
+  `MISTY_TUTORIAL=<id>[:<step>]` to launch into a tutorial or capture a step.
+- Tests: data loads and is complete, Hub list, navigation and saved progress, change-only auto-advance and
+  `undo:` conditions, every tutorial run end to end in kittest through the real menu bar, toolbar and
+  docked panels (every target drawn, every condition met by its demo), real clicks advancing steps, menu
+  targets opened by clicking.
+- Screenshots: docs/screenshots/v001/tutorial_*.png.
+
+### Not done yet
+- No "resume where I left off"; Exit forgets the step.
+- Targets inside a collapsed section fall back to the section header until the user opens it.
+- Tutorial text is English only.

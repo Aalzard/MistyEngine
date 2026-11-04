@@ -186,7 +186,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                     ui.end_row();
                 }
                 StampKind::Water(w) => {
-                    ui.label("Mode");
+                    crate::tutorials::targets::label(ui, "Mode");
                     ui.horizontal(|ui| {
                         ch |= ui
                             .selectable_value(&mut w.mode, WaterMode::Lake, "Lake")
@@ -208,7 +208,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                     ui.end_row();
                 }
                 StampKind::BiomeZone(z) => {
-                    ui.label("Biome");
+                    crate::tutorials::targets::label(ui, "Biome");
                     let name = |p: &str| super::biome_ui::display_name(p);
                     egui::ComboBox::from_id_salt(("zone_biome", e))
                         .selected_text(if z.biome.is_empty() {

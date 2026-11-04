@@ -263,6 +263,24 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
     });
 }
 
+/// A short stroke of `tool` across the middle of the selected terrain, as one undo step
+/// (tutorial demos and tests).
+pub fn demo_stroke(state: &mut EditorState, tool: TerrainTool) {
+    state.terrain_tools.tool = tool;
+    let Some((_, path)) = brush_target(state) else {
+        return;
+    };
+    let Some(size) = store::get(&path).map(|(d, _)| d.size) else {
+        return;
+    };
+    begin_edit(state, &path, tool.step_name());
+    for i in 0..12 {
+        let at = Vec3::new(size.x * (0.35 + i as f32 * 0.025), 0.0, size.z * 0.5);
+        apply(state, &path, at, false, 0.1);
+    }
+    end_frame(state, false);
+}
+
 /// Brush circle following the terrain under the mouse.
 pub fn brush_lines(lines: &mut Lines, state: &EditorState) {
     let Some((e, centre)) = state.terrain_tools.hover else {

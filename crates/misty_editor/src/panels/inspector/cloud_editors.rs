@@ -5,7 +5,7 @@ use egui::{DragValue, RichText, Slider, Ui};
 use misty_engine::scene::{CloudPreset, CloudsOverride};
 
 fn row(ui: &mut Ui, label: &str, tip: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {
-    ui.label(label).on_hover_text(tip);
+    crate::tutorials::targets::label(ui, label).on_hover_text(tip);
     let ch = widget(ui);
     ui.end_row();
     ch

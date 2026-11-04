@@ -8,6 +8,7 @@ use misty_engine::scene::{PostProcessVolume, TonemapMode};
 
 use super::editors::{combo, grid};
 use crate::state::EditorState;
+use crate::tutorials::targets;
 
 pub fn post_process_volume(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let Ok(mut v) = state
@@ -111,14 +112,17 @@ pub(super) fn section(
         egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
     let mut ch = false;
     let header = state.show_header(ui, |ui| {
-        ch |= ui
+        let check = ui
             .checkbox(active, "")
-            .on_hover_text("Override this effect")
-            .changed();
-        ui.label(RichText::new(title).strong());
+            .on_hover_text("Override this effect");
+        ch |= check.changed();
+        let label = ui.label(RichText::new(title).strong());
+        // Tutorial target `…/<Section>`: checkbox and title.
+        targets::row(ui, title, check.rect.union(label.rect));
     });
     let on = *active;
     header.body(|ui| {
+        let _scope = targets::scope(title);
         ui.add_enabled_ui(on, |ui| {
             ch |= grid(ui, &format!("ppv_{title}"), body);
         });
@@ -127,7 +131,7 @@ pub(super) fn section(
 }
 
 pub(super) fn row(ui: &mut Ui, label: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {
-    ui.label(label);
+    targets::label(ui, label);
     let ch = widget(ui);
     ui.end_row();
     ch

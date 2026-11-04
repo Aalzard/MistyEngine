@@ -333,6 +333,11 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
             egui::Label::new(RichText::new(format!("{} {name}", editors::icon(name))).strong())
                 .sense(egui::Sense::click()),
         );
+        // Tutorial target `inspector.<Component>`: the header row.
+        if crate::tutorials::targets::enabled() {
+            let row = title.rect.with_max_x(ui.clip_rect().right() - 4.0);
+            crate::tutorials::targets::mark(ui, &format!("inspector.{name}"), row);
+        }
         // Right-clicking the title opens the same menu as ⋮.
         title.context_menu(|ui| component_menu(ui, state, targets, name, removable));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -347,6 +352,8 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
         });
     });
     header.body(|ui| {
+        // Fields inside are tutorial targets `inspector.<Component>/<Field>`.
+        let _scope = crate::tutorials::targets::scope(&format!("inspector.{name}"));
         let before = to_json(state, e, name);
         mixed::begin(state, targets, name);
         let edited = editors::edit(ui, state, targets, name);

@@ -43,7 +43,9 @@ fn play_controls(ui: &mut Ui, state: &mut EditorState) {
     } else {
         theme::TEXT
     });
-    if toggle_button(ui, playing, play_text, "Play (Ctrl+P)").clicked() {
+    let play = toggle_button(ui, playing, play_text, "Play (Ctrl+P)");
+    crate::tutorials::targets::mark_response(ui, "toolbar.play", &play);
+    if play.clicked() {
         state.push(Action::TogglePlay);
     }
     if toggle_button(ui, paused, "⏸", "Pause (Ctrl+Shift+P)").clicked() {

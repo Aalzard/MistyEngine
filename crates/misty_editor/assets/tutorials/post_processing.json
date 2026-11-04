@@ -1,0 +1,90 @@
+{
+  "id": "post-processing",
+  "title": "Make it beautiful: Post-processing",
+  "description": "Add a Post-process Volume, then tonemapping, glow, volumetric fog, sun shafts and moving clouds.",
+  "minutes": 10,
+  "scene": "post_processing",
+  "steps": [
+    {
+      "title": "Select the Effects object",
+      "text": "This scene looks plain on purpose. Click Effects in the Hierarchy. This empty object will hold the look of the scene.",
+      "targets": ["hierarchy.Effects", "panel.Hierarchy"],
+      "done_when": "selected:Effects",
+      "demo": "select:Effects"
+    },
+    {
+      "title": "Add a Post-process Volume",
+      "text": "In the Inspector, click Add Component, type Post and pick Post-process Volume. It changes how the camera image looks.",
+      "targets": ["inspector.add_component", "panel.Inspector"],
+      "done_when": "has:Post-process Volume",
+      "demo": "add:Post-process Volume"
+    },
+    {
+      "title": "Turn on Tonemapping",
+      "text": "Tick the box next to Tonemapping. It turns very bright light into nice screen colours, like a film camera.",
+      "targets": ["inspector.Post-process Volume/Tonemapping", "inspector.Post-process Volume"],
+      "done_when": "ppv:tonemapping",
+      "demo": "ppv:tonemapping"
+    },
+    {
+      "title": "Add Bloom and Color",
+      "text": "Tick Bloom so bright things glow. Then tick Color Adjustments and play with Contrast and Saturation.",
+      "targets": ["inspector.Post-process Volume/Bloom", "inspector.Post-process Volume"],
+      "done_when": "ppv:bloom_color",
+      "demo": "ppv:bloom_color"
+    },
+    {
+      "title": "Turn on Volumetric Fog",
+      "text": "Tick Fog. Inside it, keep Volumetric ticked: now the fog catches the sunlight.",
+      "targets": ["inspector.Post-process Volume/Fog/Volumetric", "inspector.Post-process Volume/Fog"],
+      "done_when": "ppv:volumetric",
+      "demo": "ppv:volumetric"
+    },
+    {
+      "title": "Glow toward the sun",
+      "text": "Drag Anisotropy to the right, to about 0.7. Light now scatters forward, so the fog glows when you look at the sun.",
+      "targets": ["inspector.Post-process Volume/Fog/Anisotropy", "inspector.Post-process Volume/Fog"],
+      "done_when": "ppv:anisotropy",
+      "demo": "ppv:anisotropy"
+    },
+    {
+      "title": "Keep the fog low",
+      "text": "Base Height is where the fog starts to thin out. Above Maximum Height it is gone. Try a Maximum Height of 15.",
+      "targets": ["inspector.Post-process Volume/Fog/Base Height", "inspector.Post-process Volume/Fog"],
+      "done_when": "ppv:heights",
+      "demo": "ppv:heights"
+    },
+    {
+      "title": "Add Sun Shafts",
+      "text": "Tick Sun Shafts (Screen). When the sun is on screen, bright rays now shine out around it. Intensity sets how strong they are.",
+      "targets": ["inspector.Post-process Volume/Sun Shafts (Screen)", "inspector.Post-process Volume"],
+      "done_when": "ppv:sun_shafts",
+      "demo": "ppv:sun_shafts"
+    },
+    {
+      "title": "Add Volumetric Clouds",
+      "text": "Tick Volumetric Clouds. Pick a Preset, like Sparse or Stormy, then move Coverage to add or remove clouds.",
+      "targets": ["inspector.Post-process Volume/Volumetric Clouds/Preset", "inspector.Post-process Volume/Volumetric Clouds"],
+      "done_when": "ppv:clouds",
+      "demo": "ppv:clouds"
+    },
+    {
+      "title": "Shape the clouds",
+      "text": "Fluffy ↔ Sharp turns soft edges into crisp ones. Under Wind, Direction and Speed set where and how fast the clouds drift.",
+      "targets": ["inspector.Post-process Volume/Volumetric Clouds/Fluffy ↔ Sharp", "inspector.Post-process Volume/Volumetric Clouds"],
+      "demo": "ppv:cloud_shape"
+    },
+    {
+      "title": "Scene view effects",
+      "text": "This ☁ button turns fog, clouds and effects on or off in the Scene view while you work. The arrow next to it picks which ones.",
+      "targets": ["scene.effects"]
+    },
+    {
+      "title": "Press Play",
+      "text": "Press Play to watch the clouds move with the wind. Press it again to stop. Well done!",
+      "targets": ["toolbar.play"],
+      "done_when": "play",
+      "demo": "play"
+    }
+  ]
+}

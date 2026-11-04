@@ -2701,3 +2701,55 @@ Record of choices made without asking, and why.
      run after the Hub merge and passed alone. Its clear / fogged / reference images were rendered at different
      wall-clock times, so WaterDemo's waves moved between them (more when the machine is busy with parallel
      tests). The test helper now sets the (test-thread-local) game clock to 0 just before each render.
+
+
+## 2026-11-04 — v0.0.1: In-editor tutorials
+
+563. **Tutorials are data:** one JSON file per tutorial in `crates/misty_editor/assets/tutorials/`, built in
+     with `include_str!` (no files to ship or lose). A step has a title, one to three short sentences, a list
+     of UI target IDs, an optional `done_when` condition and a `demo`. Conditions (`selected:`, `has:`,
+     `undo:`, `open:`, `play`, `ppv:…`, `sun:…`, `terrain:…`, `wb:…`), demos and starting scenes are short
+     strings resolved in Rust; tests check every string in every file resolves. Adding a tutorial = one JSON
+     file + one line in `data::FILES`.
+564. **UI targets:** panels call one-line helpers (`targets::mark`, `label`, `row`, `header`, `scope`) that
+     record a widget's screen rect under a stable string ID in a thread-local registry, and only while a
+     tutorial runs (otherwise one thread-local read). A scope stack turns labels into paths
+     (`inspector.Post-process Volume/Fog/Anisotropy`, `menu.GameObject/3D Object/Cube`,
+     `World Builder/Base Heightmap/Generator`), so the existing grid `row` helpers of the volume, fog and
+     cloud editors tag every field without touching each field. Rects are clipped to what their panel shows;
+     scrolled-away rows count as not visible.
+565. **Fallback chain:** a step lists targets most specific first and the first visible one is highlighted
+     (field → section → panel; menu entry → submenu → menu button). The highlight follows the user as they
+     open menus or select the right object. On entering a step its first target is scrolled into view once.
+566. **Overlay layers:** the dim is painted on an unregistered Middle layer (above the docked panels and
+     windows, below menus and popups, which stay bright), the outline on a Tooltip layer, the card is a Foreground `Area`.
+     Painting takes no input, so everything but the card stays clickable. The outline pulses for 1.6 s when
+     a step starts, then stays still (no endless repaints).
+567. **Card placement:** beside the target (right, left, below, above; first that fits without covering
+     it), inside large targets such as a whole panel (top right), 220 px right of menus and below the menu
+     bar (room for submenus), top centre without a target.
+568. **Auto-advance on a change:** a step advances 0.7 s after its condition turns true, showing "✓ Done!";
+     a condition already true when the step starts (e.g. after Back) only shows "✓ Done. Press Next."
+     `undo:` conditions compare step names with the undo history at the start of the step, so brush strokes,
+     Generate and creating objects are detected without new hooks. Next is always there.
+569. **Buttons:** Back, Next (Finish on the last step), Exit (close, not done), Skip (skip the rest and count
+     it as done, for people who know it already), ✕ = Exit.
+570. **Starting scene:** a tutorial goes through the normal "save changes?" guard, then opens a fresh
+     Untitled scene and adds what it needs (`scenes.rs`: ground, a few primitives with default materials,
+     an empty "Effects" object, a low sun in front of the camera; no asset files). Sample scenes are never
+     opened or changed. The World Builder window state is reset so old timings or biomes don't leak in.
+571. **Progress per user:** finished IDs live in `tutorials.json` next to the editor's per-user prefs
+     (`%APPDATA%\Misty Engine\Editor\` on Windows), not in a project. Tests keep it in memory.
+572. **Hub:** `tutorials::list()` returns (id, title, description, minutes); `tutorials::progress_file()` is
+     where finished IDs are saved; `MISTY_TUTORIAL=<id>` launches the editor straight into a tutorial and
+     `<id>:<step>` fast-forwards by running the earlier steps' demos (screenshots).
+573. **Demos** call the same code the UI does: Add Component, GameObject commands, `terrain_tools::demo_stroke`
+     (a short stroke of a brush tool, one undo step), World Builder `add_stamp` / `generate` wrappers. The
+     kittest runs every tutorial end to end through the real panels with them.
+574. **Screenshot runs close without a save prompt** once the image is saved (`Capture::saved` sets
+     `quit_confirmed`), so a tutorial's edited Untitled scene never blocks or gets saved; tutorial shots run
+     on a temporary copy of SampleProject.
+575. **Post-processing tutorial follows the "Sun Shafts (Screen)" rename (merge):** main titled the screen-space
+     radial blur section "Sun Shafts (Screen)" (547) after the tutorials branch was cut, so the "Add Sun Shafts"
+     step's target `inspector.Post-process Volume/Sun Shafts` was never drawn (its end-to-end test failed). The
+     step now targets and names "Sun Shafts (Screen)".

@@ -198,7 +198,7 @@ fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
 }
 
 fn row(ui: &mut Ui, label: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {
-    ui.label(label);
+    crate::tutorials::targets::label(ui, label);
     let ch = widget(ui);
     ui.end_row();
     ch
