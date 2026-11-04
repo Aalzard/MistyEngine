@@ -110,10 +110,9 @@ pub fn draws_where(scene: &Scene, keep: impl Fn(Entity) -> bool) -> Vec<TerrainD
 /// Enabled Terrain components of active objects, in Hierarchy order.
 pub fn terrains(scene: &Scene) -> Vec<(Entity, Terrain)> {
     scene
-        .walk()
+        .active_with::<Terrain>()
         .into_iter()
-        .filter(|(e, _)| scene.active_in_hierarchy(*e))
-        .filter_map(|(e, _)| {
+        .filter_map(|e| {
             let t = scene.world.get::<&Terrain>(e).ok()?;
             t.enabled.then(|| (e, (*t).clone()))
         })

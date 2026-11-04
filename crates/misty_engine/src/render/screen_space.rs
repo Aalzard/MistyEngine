@@ -17,9 +17,16 @@ use crate::camera::{Camera, Projection};
 
 mod resources;
 
-const PREPASS_SRC: &str = include_str!("shaders/ao_prepass.wgsl");
+/// The prepass after the shared per-draw struct (draw.wgsl).
+pub(super) const PREPASS_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
+    include_str!("shaders/ao_prepass.wgsl")
+);
 /// The prepass with terrain vertex pulling (terrain_vertex.wgsl).
 pub(super) const TERRAIN_PREPASS_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
     include_str!("shaders/ao_prepass.wgsl"),
     "\n",
     include_str!("shaders/terrain_vertex.wgsl"),
@@ -153,6 +160,15 @@ impl Renderer {
             .unwrap_or(&self.mesh_bind_group)
     }
 
+    /// AO or contact shadows will run this render (when the view fits one texel buffer).
+    pub(super) fn screen_space_wanted(&self, frame: &Frame) -> bool {
+        let ao =
+            frame.post.ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;
+        let contact =
+            frame.post.contact_shadows.active() && frame.lights.iter().any(|l| l.contact_shadows);
+        frame.shaded && (ao || contact)
+    }
+
     /// Set up this render's screen-space effects; `None` when they are off (or the view is
     /// too large for one texel buffer). Call after the draw buffers are uploaded.
     pub(super) fn prepare_screen_space(
@@ -168,7 +184,7 @@ impl Renderer {
         // Quality ▸ Ambient Occlusion Off turns AO off whatever the volume says.
         let ao_on = ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;
         let contact_on = contact.active() && frame.lights.iter().any(|l| l.contact_shadows);
-        if !frame.shaded || !(ao_on || contact_on) {
+        if !self.screen_space_wanted(frame) {
             return None;
         }
         let full = target.size();

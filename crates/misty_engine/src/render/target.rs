@@ -50,6 +50,8 @@ pub struct RenderTarget {
     pub(crate) composite_group: wgpu::BindGroup,
     /// Screen-space effects' textures and AO history (created when first needed).
     pub(crate) screen_space: super::screen_space::TargetSlot,
+    /// GPU culling's Hi-Z pyramid and last frame's visibility (made on first use).
+    pub(in crate::render) culling: std::sync::Mutex<Option<super::gpu_culling::TargetState>>,
 }
 
 impl RenderTarget {
@@ -94,7 +96,7 @@ impl RenderTarget {
             attach,
             &[],
         );
-        // Sampled by the sun shafts.
+        // Sampled by the sun shafts, and by GPU culling for its Hi-Z pyramid.
         let depth = make(
             "misty depth",
             full,
@@ -218,6 +220,7 @@ impl RenderTarget {
             bloom,
             composite_group,
             screen_space: Default::default(),
+            culling: Default::default(),
         }
     }
 

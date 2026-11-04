@@ -11,21 +11,7 @@
 const PI: f32 = 3.14159265;
 const MAX_LOCAL_SHADOWS: u32 = 16u;
 
-struct Draw {
-    model: mat4x4<f32>,
-    normal: mat4x4<f32>,
-    // sRGB base colour + alpha.
-    color: vec4<f32>,
-    // x = metallic, y = smoothness, z = receive shadows, w = normal map scale (0 = no normal map).
-    params: vec4<f32>,
-    // rgb = emission (linear), w = -1 when the model matrix mirrors (flips tangent handedness).
-    emission: vec4<f32>,
-    // xy = tiling, zw = offset.
-    uv_st: vec4<f32>,
-    // x = rendering mode (0 opaque, 1 cutout, 2 fade, 3 transparent), y = alpha cutoff,
-    // z = occlusion strength, w = 1 when smoothness comes from the albedo alpha.
-    surface: vec4<f32>,
-};
+// `struct Draw` and `draw_uv` come from draw.wgsl.
 
 struct LightItem {
     // xyz = position, w = range.
@@ -80,7 +66,8 @@ struct MeshIn {
 };
 
 struct MeshOut {
-    @builtin(position) clip: vec4<f32>,
+    // Invariant: the depth prepass reuses this vertex stage and tests for equal depth.
+    @builtin(position) @invariant clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
@@ -97,7 +84,7 @@ fn vs_main(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {
     out.clip = view.view_proj * world;
     out.world = world.xyz;
     out.normal = (d.normal * vec4<f32>(in.normal, 0.0)).xyz;
-    out.uv = in.uv * d.uv_st.xy + d.uv_st.zw;
+    out.uv = draw_uv(d, in.uv);
     out.draw = draw_index;
     out.tangent = vec4<f32>((d.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz, in.tangent.w * d.emission.w);
     return out;
@@ -185,7 +172,8 @@ fn fs_main(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
 @fragment
 fn fs_cutout(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
     let s = standard_surface(in, front);
-    if (s.alpha < draws[in.draw].surface.y) {
+    let d = draws[in.draw];
+    if (s.alpha < d.surface.y || lod_dithered_out(d.extra.z, in.clip.xy)) {
         discard;
     }
     var out = shade(in.world, s);

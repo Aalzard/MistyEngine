@@ -171,7 +171,7 @@ pub struct QualityLevel {
     pub max_texture_size: u32,
     /// The 3D image is rendered at this fraction of the window size (0.25–2).
     pub render_scale: f32,
-    /// Multiplier on LOD switch distances (stored for LOD Groups).
+    /// Multiplier on LOD Group switch distances (`RenderOptions::lod_bias`).
     pub lod_bias: f32,
     pub ambient_occlusion: Tier,
     pub volumetric_fog: Tier,

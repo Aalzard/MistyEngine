@@ -2,15 +2,18 @@
 //! the lighting environment and post-processing.
 //! Shared by the editor's views and the standalone player.
 
+use std::sync::Arc;
+
 use glam::Vec3;
 use hecs::Entity;
 
 use crate::camera::{Camera, Projection};
+use crate::draw_cache::DrawCache;
 use crate::render::{
     Environment, Frame, LightData, LocalFog, MaterialParams, MeshDraw, ParticleBatch, PostSettings,
 };
 use crate::scene::{
-    Camera as CameraComponent, ClearFlags, FogVolume, Light, LightType, MeshFilter, MeshRenderer,
+    Camera as CameraComponent, ClearFlags, FogVolume, Light, LightType, MeshRenderer,
     PostProcessVolume, Scene, Shadows,
 };
 
@@ -53,54 +56,24 @@ pub fn in_mask(scene: &Scene, e: Entity, mask: u32) -> bool {
     mask & (1u32 << scene.game_object(e).layer.min(31)) != 0
 }
 
-/// [`mesh_draws`] of the objects whose layer is in `culling_mask`.
+/// [`mesh_draws`] of the objects whose layer is in `culling_mask` (a one-off
+/// [`DrawCache`]; views keep their own cache to only rebuild what changed).
 pub fn mesh_draws_culled(
     scene: &Scene,
     materials: &dyn MaterialSource,
     culling_mask: u32,
     outline: impl Fn(Entity) -> bool,
 ) -> Vec<MeshDraw> {
-    let mut out = Vec::new();
-    for (e, _) in scene.walk() {
-        if !scene.active_in_hierarchy(e) || !in_mask(scene, e, culling_mask) {
-            continue;
-        }
-        let w = &scene.world;
-        let Some(mesh) = w.get::<&MeshFilter>(e).ok().and_then(|f| f.mesh.clone()) else {
-            continue;
-        };
-        let Ok(r) = w.get::<&MeshRenderer>(e) else {
-            continue;
-        };
-        if !r.enabled {
-            continue;
-        }
-        let model = scene.world_matrix(e);
-        let outline = outline(e);
-        for i in 0..r.material_count() {
-            out.push(MeshDraw {
-                mesh: mesh.clone(),
-                model,
-                material: renderer_material(scene, &r, i, materials),
-                cast_shadows: r.cast_shadows,
-                receive_shadows: r.receive_shadows,
-                // The outline mask needs each mesh once.
-                outline: outline && i == 0,
-                sorting: Default::default(),
-            });
-        }
-    }
-    crate::sprites::draws(scene, &outline, &mut out);
-    out
+    let draws = DrawCache::new().update(scene, materials, culling_mask, outline);
+    Arc::try_unwrap(draws).unwrap_or_else(|a| (*a).clone())
 }
 
 /// Enabled lights in the scene.
 pub fn lights(scene: &Scene) -> Vec<LightData> {
     scene
-        .walk()
+        .active_with::<Light>()
         .into_iter()
-        .filter(|(e, _)| scene.active_in_hierarchy(*e))
-        .filter_map(|(e, _)| {
+        .filter_map(|e| {
             let l = scene.world.get::<&Light>(e).ok()?;
             if !l.enabled {
                 return None;
@@ -159,10 +132,7 @@ pub fn fog_volumes(scene: &Scene) -> Vec<LocalFog> {
 /// (the first in Hierarchy order on ties); the baseline when there is none.
 pub fn post_settings(scene: &Scene) -> PostSettings {
     let mut best: Option<PostProcessVolume> = None;
-    for (e, _) in scene.walk() {
-        if !scene.active_in_hierarchy(e) {
-            continue;
-        }
+    for e in scene.active_with::<PostProcessVolume>() {
         let Ok(v) = scene.world.get::<&PostProcessVolume>(e) else {
             continue;
         };
@@ -194,10 +164,9 @@ pub fn headlight(camera: &Camera) -> Vec<LightData> {
 /// The enabled, active camera with the highest Depth renders the game.
 pub fn game_camera(scene: &Scene) -> Option<(Camera, CameraComponent)> {
     scene
-        .walk()
+        .active_with::<CameraComponent>()
         .into_iter()
-        .filter(|(e, _)| scene.active_in_hierarchy(*e))
-        .filter_map(|(e, _)| {
+        .filter_map(|e| {
             let c = scene.world.get::<&CameraComponent>(e).ok()?;
             c.enabled.then(|| (e, (*c).clone()))
         })
@@ -224,7 +193,8 @@ pub fn game_camera(scene: &Scene) -> Option<(Camera, CameraComponent)> {
 pub struct GameView {
     pub camera: Camera,
     pub settings: CameraComponent,
-    pub meshes: Vec<MeshDraw>,
+    /// Shared with the view's [`DrawCache`] (no copy per frame).
+    pub meshes: Arc<Vec<MeshDraw>>,
     pub lights: Vec<LightData>,
     pub particles: Vec<ParticleBatch>,
     pub terrains: Vec<crate::terrain::TerrainDraw>,
@@ -235,6 +205,15 @@ pub struct GameView {
 impl GameView {
     /// `None` when no camera is rendering.
     pub fn new(scene: &Scene, materials: &dyn MaterialSource) -> Option<Self> {
+        Self::cached(scene, materials, &mut DrawCache::new())
+    }
+
+    /// [`GameView::new`] reusing the previous frame's draws through `cache`.
+    pub fn cached(
+        scene: &Scene,
+        materials: &dyn MaterialSource,
+        cache: &mut DrawCache,
+    ) -> Option<Self> {
         crate::profile_scope!("Render.GatherScene", crate::profiler::Category::Rendering);
         let (camera, settings) = game_camera(scene)?;
         let lights = lights(scene);
@@ -243,7 +222,7 @@ impl GameView {
         let keep = |e: Entity| in_mask(scene, e, mask);
         Some(Self {
             camera,
-            meshes: mesh_draws_culled(scene, materials, mask, |_| false),
+            meshes: cache.update(scene, materials, mask, |_| false),
             environment: environment(scene, &lights),
             post: post_settings(scene),
             lights,
@@ -276,7 +255,7 @@ impl GameView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene::PrimitiveMesh;
+    use crate::scene::{MeshFilter, PrimitiveMesh};
 
     struct NoMaterials;
     impl MaterialSource for NoMaterials {

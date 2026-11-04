@@ -50,13 +50,21 @@ pub struct RenderMemory {
     pub texture_bytes: u64,
 }
 
-/// Renderer switches (on by default; off reproduces the unoptimised path for comparisons).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Renderer switches (the defaults are what measured fastest; turning one off reproduces the
+/// unoptimised path for comparisons).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RenderOptions {
     /// Skip meshes, terrains and particle systems outside the camera / light frusta.
     pub culling: bool,
     /// Draw identical mesh + material draws with one instanced call.
     pub instancing: bool,
+    /// Quality ▸ LOD Bias: multiplies every LOD Group's screen height (> 1 keeps finer levels
+    /// longer).
+    pub lod_bias: f32,
+    /// Cull opaque draws on the GPU (frustum + Hi-Z occlusion) and draw them indirectly.
+    pub gpu_culling: bool,
+    /// Draw opaque depth first, then shade with an equal depth test.
+    pub depth_prepass: bool,
 }
 
 impl Default for RenderOptions {
@@ -64,6 +72,9 @@ impl Default for RenderOptions {
         Self {
             culling: true,
             instancing: true,
+            lod_bias: 1.0,
+            gpu_culling: false,
+            depth_prepass: false,
         }
     }
 }

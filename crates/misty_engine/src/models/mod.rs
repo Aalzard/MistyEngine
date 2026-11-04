@@ -7,6 +7,7 @@
 mod extract;
 mod gltf_import;
 mod obj_import;
+pub mod runtime;
 
 use std::collections::HashMap;
 use std::path::Path;

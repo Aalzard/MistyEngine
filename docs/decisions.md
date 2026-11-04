@@ -1750,3 +1750,78 @@ Record of choices made without asking, and why.
      + ao_prepass_terrain.wgsl) with the terrain group at 3, instead of the old vertex-buffer prepass variant.
      The terrain fragment stage samples 10 textures (fog volume, two shadow arrays, probe atlas and BRDF LUT,
      splat map, three layer arrays, normals; group 2 stays empty), under the default 16.
+
+388. **Per-object material overrides live in the draw data, not in materials.** `MeshRenderer.overrides`
+     maps a Materials element to `MaterialOverrides` (tiling, offset, UV rotation, colour tint, smoothness /
+     metallic / emission multipliers), each an `Option` left out of files when unset (renderers without
+     overrides save byte-for-byte as before). The gather applies them to that draw's own values, which go
+     into its `draws[]` entry; textures and shader variant never change, so the batch key is the same and
+     objects sharing a material still draw as one instanced call. Tiling/offset/rotation replace, the rest
+     multiply. UV rotation turns about the texture centre before tiling and offset. Terrains (their layers
+     already have tiling) and Sprite Renderers (colour, flip) have no override section.
+389. **One shared `draws[]` definition.** The WGSL `struct Draw` moved to `shaders/draw.wgsl`, prepended to
+     mesh/depth/terrain sources, with the byte layout in a comment; `DrawUniform` grew one vec4 `extra`
+     (UV rotation cos/sin, LOD cross-fade, one reserved lane) to 224 bytes. Other per-draw values go at the
+     end of both, in that one place. `draw_uv` is written as `uv + (R − I)·p` so no rotation returns the
+     exact old coordinates.
+390. **Override UI:** a collapsed "Overrides (this object only)" foldout under each Materials element: a
+     checkbox per property (switching one on starts from the material's own tiling/offset, or from "no
+     change"), overridden rows bold with a ● marker and the count in the header, Reset All. Undo comes from
+     the usual component edit; multi-object edits now merge nested objects field by field (one object's
+     tiling change doesn't wipe another's colour override), and the mixed-value check also notices fields
+     only another target has. Lua: `renderer:SetOverride/ClearOverride/GetOverride(name[, element])`.
+391. **Cached gather by comparison, not change events.** Scripts, physics and editor code write components
+     directly, so `DrawCache` keeps last frame's inputs and compares: one hierarchy walk with hecs views
+     (local transform + parent → world matrix recomputed only below a change, in `world_matrix`'s exact
+     operation order), Mesh Filter, Mesh Renderer (now `PartialEq`), outline and LOD level per renderer, and
+     each distinct material resolved once per frame (a version bumps only when its values change). The
+     output is an `Arc<Vec<MeshDraw>>` patched in place, so `Frame` is unchanged and nothing is copied when
+     nothing changed. Lights, cameras, post volumes and terrains no longer walk the whole scene
+     (`Scene::active_with::<T>()` queries and sorts the few objects into Hierarchy order).
+     `mesh_draws_culled` is a one-off cache, so cached and uncached output can't drift apart.
+392. **Parallel renderer prep with rayon.** Per-draw LOD state, world bounds, effective shader variants,
+     batch keys and `draws[]` entries are computed in parallel above 512 draws; every shadow map is culled
+     and batched on its own thread with its own batcher, then the slot runs are concatenated in map order
+     (identical output to the sequential path).
+393. **Static batching at gather time (Play mode and the player).** Static objects without a LOD Group are
+     grouped by resolved material + shadow flags + a 16 m chunk of their bounds centre and merged into one
+     world-space mesh per group (registered as a `runtime://` model so every path finds it as a mesh asset);
+     a chunk is still culled on its own. Merging happens again only when a member changes. The Scene view
+     keeps objects separate for picking/outlines. CPU-transformed vertices could round differently from the
+     GPU (the check allows ≤0.1% pixels; it measured 0).
+394. **GPU culling is two-phase (no popping):** draws visible last frame are drawn first, their depth is
+     reduced to a Hi-Z pyramid (farthest of 2×2 pixels × all MSAA samples, then 2×2 texels per level), then
+     every candidate is tested against the frustum and the pyramid with this frame's camera and the newly
+     visible ones are drawn. A compute pass writes each batch's visible instances in order (one thread per
+     batch, so the order is deterministic) and their count into `DrawIndexedIndirectArgs`. Batches are
+     sorted by shader/textures/vertex buffer; primitives now share one vertex/index buffer, so neighbouring
+     batches of different primitives go out as one `multi_draw_indexed_indirect` (wgpu loops where the API
+     lacks it). Needs `INDIRECT_FIRST_INSTANCE` (requested with the timestamp feature); otherwise, or with
+     the option off, the CPU path runs. Shadows and transparent draws stay CPU-culled. Off by default:
+     StressDemo has little occlusion and measured slower with it (see progress table).
+395. **Depth prepass is optional and off by default.** Opaque draws write depth with the mesh shader's own
+     vertex stage (`@invariant` position), then shade with less-equal and no depth writes. It renders
+     identically but measured slower on StressDemo (cheap shading, low overdraw). Opaque draws are already
+     front-to-back within instanced batches (batches keep the order of their nearest member).
+396. **LOD Group:** levels list Mesh Renderer objects (several per level, references remapped by scene files
+     and prefabs; unmapped ones dropped). The gather tags each listed renderer's draws with the group's world
+     bounds (largest side = size) and its screen-height range; the renderer picks the level per camera
+     (`size / (2·distance·tan(fov/2))`, × `RenderOptions::lod_bias`, orthographic: `size / (2·ortho size)`),
+     and shadows use the camera's choice. Cross Fade dithers both levels inside a band of `fade_width` above
+     each threshold with complementary 4×4 patterns; a fading opaque level draws with the cutout variant so
+     plain opaque shaders never contain a discard. No fade for unlit/transparent levels, no "Animate Cross-
+     fading" speed-tree mode, bounds are recomputed instead of a stored reference point/size.
+397. **Inspector LOD bar:** coloured segments from 100% to Culled, drag a divider to move a threshold (kept
+     decreasing), click a segment to edit its renderer list (add from the group's descendants, Fill from
+     Children), a white marker for where the Scene view camera currently is. +/− Level, Fade Mode/Width.
+398. **Overrides + performance merge:** `draw.wgsl` (224-byte `Draw`) is prepended to every shader that
+     reads draws, the AO prepass included (its own copy of the old 208-byte struct was removed), and the
+     terrain, terrain shadow and grass sources. The parallel frame lists build one shadow list per cascade
+     and local layer (`ShadowPlan::matrices`); the probes keep their per-draw lists, now fed the cached
+     gather's bounds. Two prepasses stay separate: the optional main depth prepass (Opaque depth into the
+     MSAA target, then Equal tests) and the AO / contact-shadow prepass (its own single-sample normal +
+     depth targets that the compute passes read). They don't share targets (sample count and the normal
+     output differ), so unifying them would cost an MSAA resolve. GPU culling is off while AO or contact
+     shadows run, because their prepass draws the CPU-culled opaque batches. The main pass keeps its depth
+     for the sun shafts and between GPU-culling phases. Quality ▸ LOD Bias feeds `RenderOptions::lod_bias`
+     in `Renderer::set_quality`.

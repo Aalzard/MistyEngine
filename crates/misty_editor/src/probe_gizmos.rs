@@ -75,6 +75,7 @@ pub fn spheres(state: &EditorState, meshes: &mut Vec<MeshDraw>) {
             receive_shadows: false,
             outline: state.selection.contains(e),
             sorting: Default::default(),
+            lod: None,
         });
     }
 }

@@ -33,7 +33,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     };
     state.game_view.view_rect = view;
 
-    let game = GameView::new(&state.scene, &state.assets);
+    // Play mode merges Static objects, like a build.
+    state
+        .game_draws
+        .set_static_batching(state.runtime.is_some());
+    let game = GameView::cached(&state.scene, &state.assets, &mut state.game_draws);
     match (game, gpu) {
         (Some(game), Some(gpu)) => {
             let frame = game.frame();

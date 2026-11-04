@@ -2,15 +2,7 @@
 // opaque and cutout meshes and terrains write their world-space vertex normal into a
 // single-sample target, and their depth into the prepass depth buffer.
 
-struct Draw {
-    model: mat4x4<f32>,
-    normal: mat4x4<f32>,
-    color: vec4<f32>,
-    params: vec4<f32>,
-    emission: vec4<f32>,
-    uv_st: vec4<f32>,
-    surface: vec4<f32>,
-};
+// `struct Draw` and `draw_uv` come from draw.wgsl.
 
 @group(1) @binding(1) var<storage, read> draws: array<Draw>;
 // Instance index → draw slot (instanced batches).
@@ -37,7 +29,7 @@ fn vs_main(
     var out: PrepassOut;
     out.clip = view.view_proj * d.model * vec4<f32>(position, 1.0);
     out.normal = (d.normal * vec4<f32>(normal, 0.0)).xyz;
-    out.uv = uv * d.uv_st.xy + d.uv_st.zw;
+    out.uv = draw_uv(d, uv);
     out.alpha = vec3<f32>(d.color.a, d.surface.y, d.surface.w);
     return out;
 }

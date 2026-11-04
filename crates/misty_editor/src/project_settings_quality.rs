@@ -206,7 +206,7 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     edited |= row(
         ui,
         "LOD Bias",
-        "Above 1 keeps detailed models further away (saved for LOD Groups).",
+        "Above 1 keeps LOD Groups on their detailed levels further away.",
         |ui| {
             ui.add(
                 egui::DragValue::new(&mut l.lod_bias)

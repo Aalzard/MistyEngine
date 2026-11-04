@@ -1,10 +1,12 @@
-//! What each pass of one render draws: world bounds, frustum culling per camera and per
-//! shadow map, and the instanced batches built from what is left.
+//! What each pass of one render draws: frustum culling per camera and per shadow map, and the
+//! instanced batches built from what is left. Shadow maps are culled and batched in parallel.
 
 use glam::{Mat4, Vec3};
+use rayon::prelude::*;
 
-use super::batch::{Batch, BatchKey, Merge, addr};
+use super::batch::{Batch, Batcher, Merge};
 use super::culling::{Aabb, Frustum};
+use super::draw_prep::{DrawPrep, map_draws};
 use super::shadows::ShadowPlan;
 use super::{Frame, RenderStats, Renderer, surface};
 
@@ -28,18 +30,14 @@ pub(super) struct FrameLists {
     pub particles: Vec<bool>,
     /// Sun cascades first (when planned), then the local layers.
     pub shadows: Vec<ShadowList>,
+    /// Per mesh draw: inside the camera frustum (and not hidden by LOD).
+    pub visible: Vec<bool>,
+    /// Opaque draws in front-to-back order (GPU culling batches these itself).
+    pub opaque_order: Vec<usize>,
+    pub prep: DrawPrep,
 }
 
 impl Renderer {
-    /// World box of each mesh draw (`None` = its mesh isn't loaded, so it isn't drawn).
-    pub(super) fn mesh_bounds(&self, frame: &Frame) -> Vec<Option<Aabb>> {
-        frame
-            .meshes
-            .iter()
-            .map(|d| Some(self.gpu_mesh(&d.mesh)?.bounds.transformed(&d.model)))
-            .collect()
-    }
-
     /// World box of each terrain (cached per terrain version).
     pub(super) fn terrain_bounds(&self, frame: &Frame) -> Vec<Aabb> {
         frame
@@ -79,10 +77,11 @@ impl Renderer {
         frame: &Frame,
         view_proj: &Mat4,
         plan: &ShadowPlan,
-        bounds: (&[Option<Aabb>], &[Aabb]),
+        prep: DrawPrep,
+        terrains: &[Aabb],
         stats: &mut RenderStats,
     ) -> FrameLists {
-        let (meshes, terrains) = bounds;
+        let meshes = &prep.bounds;
         let culling = self.options.culling;
         let instancing = self.options.instancing;
         let merge = |anywhere: bool| match (instancing, anywhere) {
@@ -93,64 +92,75 @@ impl Renderer {
         let inside = |f: &Frustum, b: &Aabb| !culling || f.intersects(b);
         let camera = Frustum::from_matrix(view_proj);
 
-        // Batch keys per draw, resolved once.
-        let main_keys: Vec<Option<BatchKey>> =
-            frame.meshes.iter().map(|d| self.main_key(d)).collect();
-        let shadow_keys: Vec<Option<BatchKey>> =
-            frame.meshes.iter().map(|d| self.shadow_key(d)).collect();
-
         let mut slots = std::mem::take(&mut self.slots_scratch);
         slots.clear();
         slots.extend(0..(frame.meshes.len() + frame.terrains.len()) as u32);
         let mut batcher = std::mem::take(&mut self.batcher);
 
-        let visible: Vec<bool> = meshes
-            .iter()
-            .map(|b| b.is_some_and(|b| inside(&camera, &b)))
-            .collect();
+        let visible = map_draws(meshes.len(), |i| {
+            meshes[i].is_some_and(|b| inside(&camera, &b))
+        });
         let loaded = meshes.iter().filter(|b| b.is_some()).count() as u32;
         stats.visible = visible.iter().filter(|v| **v).count() as u32;
         stats.culled = loaded - stats.visible;
 
-        let (mut opaque, mut transparent) = (Vec::new(), Vec::new());
+        let (mut opaque, mut transparent, mut opaque_order) = (Vec::new(), Vec::new(), Vec::new());
         if frame.shaded {
             let order = surface::draw_order(frame.meshes, super::camera_depth(frame.camera));
-            let key = |i: usize| main_keys[i].filter(|_| visible[i]);
-            opaque = batcher.build(order.opaque.into_iter(), key, merge(true), &mut slots);
+            let key = |i: usize| prep.main_keys[i].filter(|_| visible[i]);
+            opaque = batcher.build(order.opaque.iter().copied(), key, merge(true), &mut slots);
             transparent =
                 batcher.build(order.transparent.into_iter(), key, merge(false), &mut slots);
+            opaque_order = order.opaque;
         }
 
-        let mut caster = vec![false; frame.meshes.len()];
-        // Every cascade and local layer culls its own casters.
-        let matrices = plan.matrices();
-        let shadows = matrices
-            .map(|m| {
+        // Every cascade and local layer in parallel, each with its own batcher and slot run.
+        let matrices: Vec<Mat4> = plan.matrices().copied().collect();
+        let mut batchers = std::mem::take(&mut self.shadow_batchers);
+        batchers.resize_with(matrices.len(), Batcher::default);
+        let candidates = prep
+            .shadow_keys
+            .iter()
+            .zip(meshes)
+            .filter(|(k, b)| k.is_some() && b.is_some())
+            .count();
+        let n = frame.meshes.len();
+        let per_map: Vec<(Vec<Batch>, Vec<u32>, Vec<bool>)> = matrices
+            .par_iter()
+            .zip(batchers.par_iter_mut())
+            .map(|(m, batcher)| {
                 let f = Frustum::from_matrix(m);
                 let key = |i: usize| {
-                    let k = shadow_keys[i]?;
+                    let k = prep.shadow_keys[i]?;
                     let b = meshes[i]?;
                     inside(&f, &b).then_some(k)
                 };
-                let batches = batcher.build(0..frame.meshes.len(), key, merge(true), &mut slots);
-                for b in &batches {
-                    for s in &slots[b.first as usize..(b.first + b.count) as usize] {
-                        caster[*s as usize] = true;
-                    }
-                }
-                let drawn: usize = batches.iter().map(|b| b.count as usize).sum();
-                let candidates = shadow_keys
-                    .iter()
-                    .zip(meshes)
-                    .filter(|(k, b)| k.is_some() && b.is_some())
-                    .count();
-                stats.shadow_culled += (candidates - drawn) as u32;
+                let mut local = Vec::new();
+                let batches = batcher.build(0..n, key, merge(true), &mut local);
                 let terrains = frame
                     .terrains
                     .iter()
                     .zip(terrains)
                     .map(|(t, b)| t.cast_shadows && inside(&f, b))
                     .collect();
+                (batches, local, terrains)
+            })
+            .collect();
+        self.shadow_batchers = batchers;
+
+        let mut caster = vec![false; n];
+        let shadows = per_map
+            .into_iter()
+            .map(|(mut batches, local, terrains)| {
+                let offset = slots.len() as u32;
+                for s in &local {
+                    caster[*s as usize] = true;
+                }
+                stats.shadow_culled += (candidates - local.len()) as u32;
+                slots.extend(local);
+                for b in &mut batches {
+                    b.first += offset;
+                }
                 ShadowList { batches, terrains }
             })
             .collect();
@@ -173,27 +183,9 @@ impl Renderer {
             terrains,
             particles,
             shadows,
+            visible,
+            opaque_order,
+            prep,
         }
-    }
-
-    /// Main pass key: pipeline variant, material textures and mesh.
-    fn main_key(&self, d: &super::MeshDraw) -> Option<BatchKey> {
-        let pipeline = self.pipelines.mesh_variant(d.material.pipeline_key())?;
-        let group = self.textures.get_set(&d.material.textures())?;
-        let mesh = self.gpu_mesh(&d.mesh)?;
-        Some([addr(pipeline), addr(group), addr(mesh)])
-    }
-
-    /// Shadow caster key (`None` = casts no shadow): caster pipeline, mesh and, for cutout
-    /// casters, the textures they clip with.
-    fn shadow_key(&self, d: &super::MeshDraw) -> Option<BatchKey> {
-        let key = d.material.shadow_key().filter(|_| d.cast_shadows)?;
-        let pipeline = self.pipelines.shadow_variant(key)?;
-        let group = match key.cutout {
-            true => addr(self.textures.get_set(&d.material.textures())?),
-            false => 0,
-        };
-        let mesh = self.gpu_mesh(&d.mesh)?;
-        Some([addr(pipeline), addr(mesh), group])
     }
 }

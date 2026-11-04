@@ -10,9 +10,11 @@ const COMMON: &str = concat!(
     "\n",
     include_str!("volumetrics/shaders/fog_apply.wgsl")
 );
-/// Lit/unlit meshes (all material variants), with the soft-shadow, reflection probe and
-/// screen-space (AO, contact shadows) includes.
+/// Lit/unlit meshes (all material variants), after the shared per-draw struct, with the
+/// soft-shadow, reflection probe and screen-space (AO, contact shadows) includes.
 pub(super) const MESH_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/shadows.wgsl"),
@@ -22,7 +24,11 @@ pub(super) const MESH_SRC: &str = concat!(
     include_str!("shaders/screen_space.wgsl")
 );
 /// Shadow-map depth and the selection mask.
-pub(super) const DEPTH_SRC: &str = include_str!("shaders/depth.wgsl");
+pub(super) const DEPTH_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
+    include_str!("shaders/depth.wgsl")
+);
 
 /// Mesh vertex attributes: position, normal, uv, tangent.
 const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
@@ -42,6 +48,8 @@ pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
 }
 /// The terrain shader reuses the mesh shader's draws and lighting.
 const TERRAIN_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/shadows.wgsl"),
@@ -56,14 +64,18 @@ const TERRAIN_SRC: &str = concat!(
     "\n",
     include_str!("shaders/terrain.wgsl")
 );
-/// Terrain shadow casters: the depth shader plus terrain vertex pulling.
+/// Terrain shadow casters: the depth shader plus terrain vertex pulling (after draw.wgsl).
 const TERRAIN_SHADOW_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
     include_str!("shaders/depth.wgsl"),
     "\n",
     include_str!("shaders/terrain_vertex.wgsl")
 );
 /// Grass blades, lit like meshes (same includes as `MESH_SRC`).
 const GRASS_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/shadows.wgsl"),
@@ -709,7 +721,7 @@ mod tests {
             ("composite", include_str!("shaders/composite.wgsl")),
             ("particles", include_str!("shaders/particles.wgsl")),
             ("terrain", super::TERRAIN_SRC),
-            ("ao prepass", include_str!("shaders/ao_prepass.wgsl")),
+            ("ao prepass", super::super::screen_space::PREPASS_SRC),
             (
                 "ao terrain prepass",
                 super::super::screen_space::TERRAIN_PREPASS_SRC,

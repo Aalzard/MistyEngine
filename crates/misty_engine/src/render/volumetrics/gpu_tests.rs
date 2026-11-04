@@ -50,6 +50,7 @@ fn cube(center: Vec3, size: Vec3) -> MeshDraw {
         receive_shadows: true,
         outline: false,
         sorting: Default::default(),
+        lod: None,
     }
 }
 

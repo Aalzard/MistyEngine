@@ -503,6 +503,10 @@ impl UserData for LMeshRenderer {
         f.add_field_method_get("gameObject", |_, r| Ok(LGameObject(r.0)));
         f.add_field_method_get("transform", |_, r| Ok(LTransform(r.0)));
     }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        super::override_api::add_methods(m);
+    }
 }
 
 /// `GetComponent("MeshRenderer")` / `GetComponent("Renderer")`.

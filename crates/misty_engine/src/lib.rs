@@ -9,6 +9,7 @@ pub mod assets;
 pub mod audio;
 pub mod build;
 pub mod camera;
+pub mod draw_cache;
 pub mod input;
 pub mod models;
 pub mod navigation;

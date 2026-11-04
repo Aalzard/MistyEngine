@@ -1,0 +1,124 @@
+//! Per-draw values of one render, computed once and in parallel: the LOD level state, world
+//! bounds, the shader variants actually used (a cross-fading LOD level draws with the cutout
+//! variant so plain opaque shaders never contain a discard), batch keys and `draws[]` entries.
+
+use rayon::prelude::*;
+
+use super::batch::{BatchKey, addr};
+use super::culling::Aabb;
+use super::lod::{LodState, screen_height};
+use super::surface::{PipelineKey, ShadowKey};
+use super::{DrawUniform, Frame, MeshDraw, Renderer, RenderingMode};
+
+/// Below this many draws the work stays on the calling thread.
+pub(super) const PARALLEL_MIN: usize = 512;
+
+pub(super) struct DrawPrep {
+    /// World box (`None` = mesh not loaded or hidden by its LOD Group).
+    pub bounds: Vec<Option<Aabb>>,
+    /// Main pass shader variant and shadow caster variant (`None` = casts no shadow).
+    pub pipeline: Vec<PipelineKey>,
+    pub shadow: Vec<Option<ShadowKey>>,
+    pub main_keys: Vec<Option<BatchKey>>,
+    pub shadow_keys: Vec<Option<BatchKey>>,
+    pub uniforms: Vec<DrawUniform>,
+}
+
+/// LOD state of every draw for `frame`'s camera.
+pub(super) fn lod_states(frame: &Frame, bias: f32) -> Vec<LodState> {
+    frame
+        .meshes
+        .iter()
+        .map(|d| match d.lod {
+            None => LodState::Visible,
+            Some(l) => l.state(screen_height(frame.camera, l.center, l.size, bias)),
+        })
+        .collect()
+}
+
+/// The main pass variant of a draw: cross-fading opaque levels clip like Cutout.
+pub(super) fn pipeline_key(d: &MeshDraw, lod: LodState) -> PipelineKey {
+    let mut key = d.material.pipeline_key();
+    if matches!(lod, LodState::Fading(_)) && key.mode == RenderingMode::Opaque && !key.unlit {
+        key.mode = RenderingMode::Cutout;
+    }
+    key
+}
+
+/// The shadow caster variant of a draw (`None` = no shadow).
+pub(super) fn shadow_key(d: &MeshDraw, lod: LodState) -> Option<ShadowKey> {
+    let mut key = d.material.shadow_key().filter(|_| d.cast_shadows)?;
+    if matches!(lod, LodState::Fading(_)) {
+        key.cutout = true;
+    }
+    Some(key)
+}
+
+/// Map `f` over `0..n`, in parallel for large frames.
+pub(super) fn map_draws<T: Send>(n: usize, f: impl Fn(usize) -> T + Sync + Send) -> Vec<T> {
+    if n >= PARALLEL_MIN {
+        (0..n).into_par_iter().map(f).collect()
+    } else {
+        (0..n).map(f).collect()
+    }
+}
+
+impl Renderer {
+    pub(super) fn draw_prep(&self, frame: &Frame, lod: Vec<LodState>) -> DrawPrep {
+        crate::profile_scope!("Render.DrawPrep");
+        let n = frame.meshes.len();
+        let shaded = frame.shaded;
+        let per_draw = map_draws(n, |i| {
+            let d = &frame.meshes[i];
+            let state = lod[i];
+            let mesh = self.gpu_mesh(&d.mesh);
+            let bounds = match (mesh, state) {
+                (_, LodState::Hidden) | (None, _) => None,
+                (Some(m), _) => Some(m.bounds.transformed(&d.model)),
+            };
+            let pipeline = pipeline_key(d, state);
+            let shadow = shadow_key(d, state);
+            let group = || self.textures.get_set(&d.material.textures());
+            let main = (|| {
+                bounds?;
+                let p = self.pipelines.mesh_variant(pipeline)?;
+                Some([addr(p), addr(group()?), addr(mesh?)])
+            })()
+            .filter(|_| shaded);
+            let caster = (|| {
+                let key = shadow?;
+                bounds?;
+                let p = self.pipelines.shadow_variant(key)?;
+                let g = if key.cutout { addr(group()?) } else { 0 };
+                Some([addr(p), addr(mesh?), g])
+            })();
+            let fade = match state {
+                LodState::Fading(f) => f,
+                _ => 0.0,
+            };
+            let mut u = super::draw_uniform(d, fade);
+            if fade != 0.0 && d.material.mode == RenderingMode::Opaque {
+                // Opaque levels drawn with the cutout variant: only the dither clips.
+                u.surface[1] = f32::MIN;
+            }
+            (bounds, pipeline, shadow, main, caster, u)
+        });
+        let mut p = DrawPrep {
+            bounds: Vec::with_capacity(n),
+            pipeline: Vec::with_capacity(n),
+            shadow: Vec::with_capacity(n),
+            main_keys: Vec::with_capacity(n),
+            shadow_keys: Vec::with_capacity(n),
+            uniforms: Vec::with_capacity(n),
+        };
+        for (b, pk, sk, mk, ck, u) in per_draw {
+            p.bounds.push(b);
+            p.pipeline.push(pk);
+            p.shadow.push(sk);
+            p.main_keys.push(mk);
+            p.shadow_keys.push(ck);
+            p.uniforms.push(u);
+        }
+        p
+    }
+}

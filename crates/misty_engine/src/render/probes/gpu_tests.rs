@@ -24,6 +24,7 @@ fn draw(mesh: PrimitiveMesh, model: Mat4, material: MaterialParams) -> MeshDraw 
         receive_shadows: false,
         outline: false,
         sorting: Default::default(),
+        lod: None,
     }
 }
 

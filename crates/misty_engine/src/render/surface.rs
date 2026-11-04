@@ -199,6 +199,7 @@ mod tests {
             receive_shadows: true,
             outline: false,
             sorting: SortingKey::default(),
+            lod: None,
         }
     }
 

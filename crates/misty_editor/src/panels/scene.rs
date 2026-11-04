@@ -66,11 +66,17 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let brush_click = crate::terrain_tools::scene_view(ui, state, &camera, rect, &response);
     match gpu {
         Some(gpu) => {
+            let mut meshes = render_scene::cached_draws(state);
             let sv = &state.scene_view;
-            let mut meshes =
-                render_scene::mesh_draws(&state.scene, &state.assets, Some(&state.selection));
+            // Probe gizmo spheres join a copy of the cached draws (only while probes exist).
             if sv.gizmos {
-                crate::probe_gizmos::spheres(state, &mut meshes);
+                let mut spheres = Vec::new();
+                crate::probe_gizmos::spheres(state, &mut spheres);
+                if !spheres.is_empty() {
+                    let mut all = (*meshes).clone();
+                    all.extend(spheres);
+                    meshes = std::sync::Arc::new(all);
+                }
             }
             let mut lines = if sv.gizmos {
                 let mut l = gizmos::scene_lines(&state.scene, &state.selection);

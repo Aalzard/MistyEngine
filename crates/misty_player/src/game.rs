@@ -25,6 +25,8 @@ pub struct Game {
     /// `Application.Quit()` was called.
     pub quit: bool,
     logs: Vec<(LogKind, String)>,
+    /// The game camera's draws, kept between frames (static batching on).
+    draws: std::cell::RefCell<misty_engine::draw_cache::DrawCache>,
 }
 
 impl Game {
@@ -54,7 +56,9 @@ impl Game {
             runtime: None,
             quit: false,
             logs,
+            draws: Default::default(),
         };
+        game.draws.get_mut().set_static_batching(true);
         game.load_scene(&SceneRef::Index(0))?;
         Ok(game)
     }
@@ -130,7 +134,7 @@ impl Game {
 
     /// What the game camera sees (`None` = no camera rendering).
     pub fn view(&self) -> Option<GameView> {
-        GameView::new(&self.scene, &self.assets)
+        GameView::cached(&self.scene, &self.assets, &mut self.draws.borrow_mut())
     }
 
     fn collect_logs(&mut self) {

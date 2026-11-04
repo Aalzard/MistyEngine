@@ -71,6 +71,7 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Fixed Joint", "", "connected_body"),
     ("Hinge Joint", "", "connected_body"),
     ("Spring Joint", "", "connected_body"),
+    ("LOD Group", "lods", "renderers"),
 ];
 
 /// Every object-reference field: the ones above plus the UI widgets' (see `ui_widgets`).
@@ -87,11 +88,16 @@ fn remap_refs(
     components: &mut BTreeMap<String, serde_json::Value>,
     f: impl Fn(u64) -> Option<u64>,
 ) {
-    let remap = |v: &mut serde_json::Value| {
+    let remap_one = |v: &mut serde_json::Value| {
         *v = v
             .as_u64()
             .and_then(&f)
             .map_or(serde_json::Value::Null, Into::into);
+    };
+    // A reference field may also hold a list of references.
+    let remap = |v: &mut serde_json::Value| match v {
+        serde_json::Value::Array(items) => items.iter_mut().for_each(remap_one),
+        _ => remap_one(v),
     };
     for (comp, list, field) in all_refs() {
         let Some(c) = components.get_mut(*comp) else {

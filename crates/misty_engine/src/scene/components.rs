@@ -432,7 +432,7 @@ impl MeshFilter {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MeshRenderer {
     pub enabled: bool,
@@ -448,6 +448,10 @@ pub struct MeshRenderer {
     /// element. Never saved.
     #[serde(skip)]
     pub instances: Vec<Option<crate::assets::Material>>,
+    /// Per-object material overrides by Materials element (only overridden values; left out
+    /// of files when there are none). See [`crate::render::overrides`].
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub overrides: std::collections::BTreeMap<usize, crate::render::overrides::MaterialOverrides>,
 }
 
 impl Default for MeshRenderer {
@@ -459,6 +463,7 @@ impl Default for MeshRenderer {
             material: None,
             extra_materials: Vec::new(),
             instances: Vec::new(),
+            overrides: Default::default(),
         }
     }
 }
@@ -500,6 +505,25 @@ impl MeshRenderer {
     /// Script-made copy of element `i`, if any.
     pub fn instance(&self, i: usize) -> Option<&crate::assets::Material> {
         self.instances.get(i)?.as_ref()
+    }
+
+    /// Element `i`'s per-object overrides, if it has any.
+    pub fn overrides_at(&self, i: usize) -> Option<&crate::render::overrides::MaterialOverrides> {
+        self.overrides.get(&i)
+    }
+
+    /// Change element `i`'s overrides; empty ones are dropped so files only keep real changes.
+    pub fn edit_overrides<R>(
+        &mut self,
+        i: usize,
+        f: impl FnOnce(&mut crate::render::overrides::MaterialOverrides) -> R,
+    ) -> R {
+        let o = self.overrides.entry(i).or_default();
+        let r = f(o);
+        if o.is_empty() {
+            self.overrides.remove(&i);
+        }
+        r
     }
 }
 

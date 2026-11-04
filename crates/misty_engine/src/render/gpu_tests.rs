@@ -1,5 +1,5 @@
-//! Headless GPU checks: frustum culling and automatic instancing must not change a pixel,
-//! plus the StressDemo benchmark (ignored; run in release). Skipped when no adapter exists.
+//! Headless GPU checks: every renderer optimisation must not change a pixel.
+//! Skipped when no adapter exists. The StressDemo benchmark is in `benchmark.rs`.
 
 use glam::{Mat4, Quat, Vec3};
 
@@ -97,6 +97,7 @@ fn draw(mesh: PrimitiveMesh, model: Mat4, material: &MaterialParams) -> MeshDraw
         receive_shadows: true,
         outline: false,
         sorting: Default::default(),
+        lod: None,
     }
 }
 
@@ -240,6 +241,7 @@ fn culling_and_instancing_render_identically() {
     let off = RenderOptions {
         culling: false,
         instancing: false,
+        ..Default::default()
     };
     let (plain, plain_stats) = render_with(&device, &queue, off);
     let (fast, fast_stats) = render_with(&device, &queue, RenderOptions::default());
@@ -290,76 +292,15 @@ fn instancing_alone_and_culling_alone_match_too() {
         RenderOptions {
             culling: true,
             instancing: false,
+            ..Default::default()
         },
         RenderOptions {
             culling: false,
             instancing: true,
+            ..Default::default()
         },
     ] {
         let (image, _) = render_with(&device, &queue, options);
         assert!(image == both, "{options:?}");
-    }
-}
-
-/// `cargo test --release -p misty_engine stress_benchmark -- --ignored --nocapture`
-#[test]
-#[ignore = "benchmark: renders StressDemo for a few hundred frames"]
-fn stress_benchmark() {
-    let Some((device, queue)) = headless() else {
-        eprintln!("no GPU adapter: skipped");
-        return;
-    };
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
-    let (scene, _) = crate::scene::Scene::load(&root.join("Assets/Scenes/StressDemo.scene"))
-        .expect("StressDemo.scene (generate it with write_stress_demo)");
-    let materials = crate::assets::AssetCache::open(&root);
-    let configs = [
-        ("baseline (no culling, no instancing)", false, false),
-        ("culling only", true, false),
-        ("instancing only", false, true),
-        ("culling + instancing", true, true),
-    ];
-    let mut renderer = Renderer::with_queue(&device, &queue);
-    let target = renderer.create_target(&device, 1280, 720);
-    for (name, culling, instancing) in configs {
-        renderer.set_options(RenderOptions {
-            culling,
-            instancing,
-        });
-        let frames = 120;
-        let (mut gather, mut cpu, mut total) = (0.0, 0.0, 0.0);
-        let mut stats = RenderStats::default();
-        for i in 0..frames + 10 {
-            let start = std::time::Instant::now();
-            let mut view = crate::render_scene::GameView::new(&scene, &materials).expect("camera");
-            // Orbit like the demo's camera script.
-            let angle = i as f32 * 0.02;
-            view.camera.position = Vec3::new(angle.sin() * 70.0, 30.0, -angle.cos() * 70.0);
-            view.camera.rotation = Quat::from_rotation_y(-angle) * Quat::from_rotation_x(0.38);
-            let gathered = start.elapsed().as_secs_f32() * 1000.0;
-            renderer.render(&device, &queue, &target, &view.frame());
-            let _ = device.poll(wgpu::PollType::wait_indefinitely());
-            if i >= 10 {
-                gather += gathered;
-                cpu += renderer.stats().cpu_ms;
-                total += start.elapsed().as_secs_f32() * 1000.0;
-                stats = renderer.stats();
-            }
-        }
-        let n = frames as f32;
-        println!(
-            "{name}: {:.1} fps | frame {:.2} ms = gather {:.2} + render CPU {:.2} + GPU wait | \
-             batches {} (saved {}), tris {}k, visible {}, culled {}, shadow casters {}",
-            1000.0 / (total / n),
-            total / n,
-            gather / n,
-            cpu / n,
-            stats.batches,
-            stats.saved_by_batching,
-            stats.triangles / 1000,
-            stats.visible,
-            stats.culled,
-            stats.shadow_casters,
-        );
     }
 }

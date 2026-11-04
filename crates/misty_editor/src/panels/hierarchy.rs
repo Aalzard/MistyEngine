@@ -41,10 +41,26 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .show(ui, |ui| {
             scene_row(ui, state);
 
-            for &(e, depth) in &rows {
+            // Only rows inside the visible area are laid out; the rest just take their
+            // height (thousands of rows otherwise cost milliseconds every frame).
+            let clip = ui.clip_rect();
+            let spacing = ui.spacing().item_spacing.y;
+            let step = ROW_H + spacing;
+            let start = ((clip.top() - ui.cursor().top()) / step).floor().max(0.0) as usize;
+            let shown = (clip.height() / step).ceil() as usize + 2;
+            let start = start.min(rows.len());
+            let end = (start + shown).min(rows.len());
+            let width = ui.available_width();
+            if start > 0 {
+                ui.allocate_space(vec2(width, start as f32 * step - spacing));
+            }
+            for &(e, depth) in &rows[start..end] {
                 if let Some(d) = row(ui, state, e, depth, &rows, dragging.is_some()) {
                     drop = Some(d);
                 }
+            }
+            if end < rows.len() {
+                ui.allocate_space(vec2(width, (rows.len() - end) as f32 * step - spacing));
             }
 
             // Empty space below the rows: deselect, create menu, drop to root.

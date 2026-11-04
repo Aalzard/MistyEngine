@@ -8,10 +8,12 @@ mod editors;
 mod fog_editors;
 mod layer_mask;
 mod light_shadows;
+mod lod_editor;
 mod material;
 mod mixed;
 mod mixer_inspector;
 mod nav_editors;
+mod overrides;
 mod particles;
 mod physics_editors;
 mod post_volume;
@@ -414,18 +416,62 @@ fn propagate(
     else {
         return;
     };
-    let changed: Vec<(&String, &serde_json::Value)> = after
-        .iter()
-        .filter(|(k, v)| before.get(*k) != Some(*v))
-        .collect();
     for &t in &targets[1..] {
         let Some(serde_json::Value::Object(mut obj)) = (info.to_json)(&state.scene.world, t) else {
             continue;
         };
-        for (k, v) in &changed {
-            obj.insert((*k).clone(), (*v).clone());
-        }
+        merge_changes(&before, &after, &mut obj);
         let _ = (info.from_json)(&mut state.scene.world, t, serde_json::Value::Object(obj));
+    }
+}
+
+/// Apply the fields that differ between `before` and `after` to `target`. Nested objects
+/// (such as per-element material overrides) merge field by field, so each target keeps the
+/// values that weren't edited; emptied nested objects are dropped.
+fn merge_changes(
+    before: &serde_json::Map<String, serde_json::Value>,
+    after: &serde_json::Map<String, serde_json::Value>,
+    target: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    use serde_json::{Map, Value};
+    let empty = Map::new();
+    for (k, v) in after {
+        if before.get(k) == Some(v) {
+            continue;
+        }
+        let old = match before.get(k) {
+            Some(Value::Object(o)) => Some(o),
+            None => Some(&empty),
+            _ => None,
+        };
+        match (old, v, target.get_mut(k)) {
+            (Some(old), Value::Object(new), Some(Value::Object(t))) => {
+                merge_changes(old, new, t);
+                // Component structs always have fields: an empty object is an emptied map entry.
+                if t.is_empty() {
+                    target.remove(k);
+                }
+            }
+            _ => {
+                target.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    for (k, old) in before {
+        if after.contains_key(k) {
+            continue;
+        }
+        match (old, target.get_mut(k)) {
+            (Value::Object(old), Some(Value::Object(t))) => {
+                merge_changes(old, &empty, t);
+                if t.is_empty() {
+                    target.remove(k);
+                }
+            }
+            _ => {
+                target.remove(k);
+            }
+        }
     }
 }
 
@@ -706,6 +752,33 @@ mod tests {
         h.get_by_label("Crate (Prefab Asset)");
         h.get_by_label("2 objects");
         std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn nested_overrides_merge_per_field() {
+        use serde_json::json;
+        let obj = |v: serde_json::Value| v.as_object().unwrap().clone();
+        // The active object turns on tiling; the other keeps its own colour override.
+        let before = obj(json!({"enabled": true}));
+        let after = obj(json!({"enabled": true, "overrides": {"0": {"tiling": [2, 1]}}}));
+        let mut other = obj(json!({"enabled": true, "overrides": {"0": {"color": [1, 0, 0, 1]}}}));
+        merge_changes(&before, &after, &mut other);
+        assert_eq!(
+            serde_json::Value::Object(other.clone()),
+            json!({"enabled": true, "overrides": {"0": {"color": [1, 0, 0, 1], "tiling": [2, 1]}}})
+        );
+        // Turning it off again removes only tiling; emptied entries disappear.
+        merge_changes(&after, &before, &mut other);
+        assert_eq!(
+            serde_json::Value::Object(other.clone()),
+            json!({"enabled": true, "overrides": {"0": {"color": [1, 0, 0, 1]}}})
+        );
+        let mut only_tiling = after.clone();
+        merge_changes(&after, &before, &mut only_tiling);
+        assert_eq!(
+            serde_json::Value::Object(only_tiling),
+            json!({"enabled": true})
+        );
     }
 
     #[test]

@@ -54,6 +54,11 @@ impl Frustum {
         Self { planes }
     }
 
+    /// The six planes (left, right, bottom, top, near, far).
+    pub fn planes(&self) -> [Vec4; 6] {
+        self.planes
+    }
+
     /// Whether any part of `b` may be inside.
     pub fn intersects(&self, b: &Aabb) -> bool {
         let center = (b.min + b.max) * 0.5;

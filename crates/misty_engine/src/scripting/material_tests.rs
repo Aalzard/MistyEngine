@@ -79,6 +79,43 @@ fn rendered(scene: &Scene, root: &Path) -> Vec<MaterialParams> {
         .collect()
 }
 
+const OVERRIDES: &str = r#"
+local T = {}
+function T:Start()
+    local r = self.gameObject:GetComponent("MeshRenderer")
+    Debug.Log(tostring(r:GetOverride("tiling")))
+    r:SetOverride("tiling", Vector2.new(2, 3))
+    r:SetOverride("color", Color.new(1, 0, 0, 1))
+    r:SetOverride("smoothness", 0.5)
+    local t = r:GetOverride("tiling")
+    Debug.Log(t.x .. "," .. t.y .. " " .. r:GetOverride("smoothness"))
+    r:ClearOverride("smoothness")
+    Debug.Log(tostring(r:GetOverride("smoothness")))
+    local ok = pcall(function() r:SetOverride("nope", 1) end)
+    Debug.Log(tostring(ok))
+end
+return T
+"#;
+
+#[test]
+fn overrides_change_one_object_and_read_back() {
+    let root = project(&[("Over.lua", OVERRIDES)]);
+    let mut scene = Scene::new("t");
+    ball(&mut scene, "A", Some("Over.lua"));
+    ball(&mut scene, "B", None);
+    let logs: Vec<String> = run(&mut scene, &root, 1).into_iter().map(|l| l.1).collect();
+    assert_eq!(logs, ["nil", "2.0,3.0 0.5", "nil", "false"]);
+    let r = rendered(&scene, &root);
+    assert_eq!(
+        (r[0].tiling, r[0].color),
+        ([2.0, 3.0], [0.5, 0.0, 0.0, 1.0])
+    );
+    assert_eq!(
+        (r[1].tiling, r[1].color),
+        ([1.0, 1.0], [0.5, 0.5, 0.5, 1.0])
+    );
+}
+
 const INSTANCE: &str = r#"
 local Tint = {}
 function Tint:Start()

@@ -21,7 +21,7 @@ use image::RgbaImage;
 
 use crate::assets;
 pub use import::{FilterMode, SpriteMode, SpriteRect, TextureImporter, TextureType, WrapMode};
-pub use render::{draws, local_bounds, world_corners};
+pub use render::{draw_of, draws, local_bounds, world_corners};
 
 /// Name of the material every Sprite Renderer uses.
 pub const DEFAULT_MATERIAL: &str = "Sprites-Default";

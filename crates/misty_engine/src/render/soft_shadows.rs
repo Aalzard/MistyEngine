@@ -4,7 +4,7 @@
 use bytemuck::{Pod, Zeroable};
 
 use super::cascades::MAX_CASCADES;
-use super::frame_lists::ShadowList;
+use super::frame_lists::FrameLists;
 use super::shadows::{self, ShadowPlan};
 use super::{Frame, LightData, MAX_LIGHTS, RenderStats, Renderer, ViewUniform};
 use crate::quality::ShadowSettings;
@@ -130,16 +130,16 @@ impl Renderer {
         encoder: &mut wgpu::CommandEncoder,
         frame: &Frame,
         plan: &ShadowPlan,
-        lists: &[ShadowList],
+        lists: &FrameLists,
         stats: &mut RenderStats,
     ) {
         let cascades = plan.cascades.len();
-        for (slot, list) in lists.iter().enumerate() {
+        for (slot, list) in lists.shadows.iter().enumerate() {
             let view = match slot.checked_sub(cascades) {
                 None => &self.shadows.cascade_views[slot],
                 Some(layer) => &self.shadows.local_layer_views[layer],
             };
-            self.shadow_pass(encoder, frame, view, slot, Some(list), stats);
+            self.shadow_pass(encoder, frame, view, slot, lists, Some(list), stats);
         }
     }
 }
