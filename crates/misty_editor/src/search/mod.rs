@@ -54,7 +54,7 @@ impl Provider {
             Provider::Calculator => "🖩",
             Provider::Hierarchy => "☰",
             Provider::Project => "🗁",
-            Provider::Menu => "☰",
+            Provider::Menu => "▸",
             Provider::Settings => "⚙",
             Provider::Help => "❓",
         }

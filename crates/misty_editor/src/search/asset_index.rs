@@ -235,12 +235,17 @@ impl AssetIndex {
             .filter(|a| q.types.is_empty() || q.types.iter().any(|t| t == a.ty))
             .filter_map(|a| Some((a, fuzzy::match_words(&q.words, &a.name, Mode::Fuzzy)?)))
             .collect();
-        out.sort_by(|(a, ma), (b, mb)| {
-            mb.score
-                .cmp(&ma.score)
-                .then(a.name.len().cmp(&b.name.len()))
-                .then_with(|| a.rel.cmp(&b.rel))
-        });
+        if q.words.is_empty() {
+            // Filters only (`t:Material`): alphabetical, like the Project window.
+            out.sort_by_cached_key(|(a, _)| (a.name.to_lowercase(), a.rel.clone()));
+        } else {
+            out.sort_by(|(a, ma), (b, mb)| {
+                mb.score
+                    .cmp(&ma.score)
+                    .then(a.name.len().cmp(&b.name.len()))
+                    .then_with(|| a.rel.cmp(&b.rel))
+            });
+        }
         out.truncate(cap);
         out
     }
