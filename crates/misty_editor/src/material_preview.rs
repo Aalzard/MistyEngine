@@ -121,6 +121,7 @@ fn frame_parts(
         range: 0.0,
         spot_angle: 0.0,
         shadows: Shadows::None,
+        contact_shadows: false,
     };
     let lights = vec![
         light(Vec3::new(0.6, -0.6, 0.8), 1.0),

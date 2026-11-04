@@ -12,7 +12,14 @@ use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
-const DRAW_MODES: [&str; 3] = ["Shaded", "Wireframe", "Shaded Wireframe"];
+const DRAW_MODES: [&str; 4] = [
+    "Shaded",
+    "Wireframe",
+    "Shaded Wireframe",
+    "Ambient Occlusion",
+];
+/// Draw mode index of the AO debug view.
+const AO_DRAW_MODE: usize = 3;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -53,7 +60,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             } else {
                 gizmos::Lines::default()
             };
-            // Draw modes: 0 Shaded, 1 Wireframe, 2 Shaded Wireframe.
+            // Draw modes: 0 Shaded, 1 Wireframe, 2 Shaded Wireframe, 3 Ambient Occlusion.
             match sv.draw_mode {
                 1 => gizmos::wireframe(&mut lines, &meshes, gizmos::WIREFRAME),
                 2 => gizmos::wireframe(&mut lines, &meshes, [0.0, 0.0, 0.0, 0.35]),
@@ -70,11 +77,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();
             }
-            let post = if sv.skybox && fx.post_processing {
+            let mut post = if sv.skybox && fx.post_processing {
                 render_scene::post_settings(&state.scene)
             } else {
                 PostSettings::default()
             };
+            if sv.draw_mode == AO_DRAW_MODE {
+                post = ao_debug_post(&state.scene);
+            }
             let lights = if sv.lighting {
                 scene_lights
             } else {
@@ -462,6 +472,15 @@ fn camera_settings(ui: &mut Ui, cam: &mut SceneCamera) {
             ui.add(egui::Slider::new(&mut cam.speed, 0.01..=10.0).logarithmic(true));
             ui.end_row();
         });
+}
+
+/// Ambient Occlusion draw mode: the scene's AO settings (defaults when no volume has them)
+/// shown as grey on ungraded surfaces.
+fn ao_debug_post(scene: &misty_engine::scene::Scene) -> PostSettings {
+    PostSettings {
+        ao: render_scene::post_settings(scene).ao.debug_view(),
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]

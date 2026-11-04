@@ -106,6 +106,18 @@ pub fn apply_env(
     if std::env::var_os("MISTY_2D").is_some() {
         s.scene_view.is_2d = true;
     }
+    // `MISTY_ALIGN_VIEW=1` puts the Scene view camera where the selected object is (with
+    // `MISTY_SELECT=Main Camera`: the Scene view sees what the game camera sees).
+    if std::env::var_os("MISTY_ALIGN_VIEW").is_some()
+        && let Some(e) = s.selection.active()
+    {
+        let (_, rot, pos) = s.scene.world_matrix(e).to_scale_rotation_translation();
+        s.scene_view.camera.align_to(pos, rot);
+    }
+    // `MISTY_DRAW_MODE=3` picks a Scene view draw mode (3 = Ambient Occlusion).
+    if let Some(mode) = std::env::var_os("MISTY_DRAW_MODE").and_then(|m| m.to_str()?.parse().ok()) {
+        s.scene_view.draw_mode = usize::min(mode, 3);
+    }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {
         crate::play::start(s);

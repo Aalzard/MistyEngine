@@ -496,6 +496,11 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             Shadows::label,
         );
         ui.end_row();
+        ui.label("Contact Shadows").on_hover_text(
+            "Screen-space contact shadows (needs a volume's Contact Shadows override)",
+        );
+        ch |= mixed::checkbox(ui, "contact_shadows", &mut l.contact_shadows, "").changed();
+        ui.end_row();
         ch
     })
 }
