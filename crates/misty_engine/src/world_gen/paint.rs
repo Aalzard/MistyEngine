@@ -91,9 +91,9 @@ impl SplatPainter for BiomeRules {
         // Keep each used biome's Flat texture (its identity), then the most used others, at most
         // four, in first-use order.
         let mut kept: Vec<usize> = Vec::new();
-        for bi in 0..bc {
+        for (bi, slots) in slot_of.iter().enumerate() {
             let used = (0..n * n).any(|i| fields.biome_weight(i, bi) > 0.25);
-            let flat = slot_of[bi][0];
+            let flat = slots[0];
             if used && !kept.contains(&flat) && kept.len() < MAX_LAYERS {
                 kept.push(flat);
             }
