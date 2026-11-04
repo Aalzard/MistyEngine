@@ -40,6 +40,8 @@ mod sample_animation;
 #[cfg(test)]
 mod sample_animator;
 #[cfg(test)]
+mod sample_ao;
+#[cfg(test)]
 mod sample_assets;
 #[cfg(test)]
 mod sample_audio;
@@ -55,6 +57,8 @@ mod sample_navigation;
 mod sample_particles;
 #[cfg(test)]
 mod sample_physics;
+#[cfg(test)]
+mod sample_render;
 #[cfg(test)]
 mod sample_stress;
 #[cfg(test)]

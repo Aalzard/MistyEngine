@@ -26,3 +26,5 @@ regex = "1"
 
 [dev-dependencies]
 egui_kittest = "0.36"
+# Headless GPU checks of the sample scenes.
+pollster = "0.4"
