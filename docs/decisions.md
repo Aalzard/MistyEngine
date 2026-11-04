@@ -2963,3 +2963,29 @@ Record of choices made without asking, and why.
      Setup is missing (`-NoInstaller` skips it). The uninstaller also removes the folders the engine creates
      inside the install (sample `Library\`/`Builds\`, updater backups); user projects are never touched.
      The zip stays: the updater uses it, and some people prefer a portable copy.
+613. **Two templates: Standard and PP Ready (user's request).** The user asked for "only these two
+     templates", so the Hub no longer offers Empty, Ocean or Landscape. Their code
+     (`templates/landscape.rs`, the `empty()` and `ocean()` scenes) and thumbnails were removed rather than
+     hidden; unused code would only produce warnings. The Landscape setup is still in git history, and the
+     World Builder tutorial does the same job. *PP Ready* replaces the Ocean scene. It has:
+     - the Standard platform and blue cube, top 1.5 m above an Ocean water surface (storminess 0.2);
+     - a sunset sun 8° up (yaw 235°, warm `[1.0, 0.66, 0.4]`, intensity 1.8) placed in front of the camera
+       so its rays come towards the viewer;
+     - a camera low at the south-west corner, 40° field of view, looking across the cube towards the sun.
+     The Post-process Volume turns on clouds (Sparse), light volumetric fog (attenuation 900 m,
+     anisotropy 0.7) for the sharp god rays, the screen Sun Shafts at 0.8, bloom, ACES, color
+     adjustments and a light vignette.
+     `Template::from_name` ignores case and spaces (`--new ppready` works). Old projects made from the
+     removed templates are ordinary projects and still open.
+614. **The Hub thumbnail is the last view on screen.** When a project closes (window close or back to the
+     Hub), `EditorApp::on_exit` reads back the final image of the view drawn most recently. The Scene view
+     wins when both were on screen within 250 ms. The image is centre-cropped to 16:9, scaled to 480 × 270
+     and written to `Library/HubThumbnail.png`. That file used to be only the template's picture; now it
+     follows the work. The readback is shared with the GPU test helper (`project_thumbnail::read_pixels`).
+     It is a single blocking copy of one frame at exit, so it costs no time while the user works. Nothing
+     is saved when no 3D view was ever drawn.
+615. **The Scene view camera is saved with the project.** `Library/EditorSettings.json` gets
+     `scene_view: {position, rotation}` on exit (not in screenshot runs, so those stay repeatable). On open the
+     view jumps there without animation. With no saved view (a new project, or an older project) it starts
+     at the active scene's Main Camera instead of the fixed default spot. That also fixes the CloudsDemo
+     Scene view starting under the terrain.

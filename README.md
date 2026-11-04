@@ -20,8 +20,8 @@ Misty Engine tells you when a new version is out and can update itself with one 
 
 ## What you get
 
-- **Misty Hub** — the start screen: your recent projects, new projects from four templates (Empty,
-  Standard, Ocean, Landscape) and tutorials.
+- **Misty Hub** — the start screen: your recent projects, new projects from two templates (Standard,
+  and PP Ready: a sunset over the ocean with every effect on) and tutorials.
 - **Editor** — dockable windows, saved layouts, undo history, Ctrl+K search for anything, multiple
   scenes open at once, prefabs, presets.
 - **Rendering** — physically based materials, shadows, area lights, reflection probes, ambient
@@ -40,7 +40,7 @@ Misty Engine tells you when a new version is out and can update itself with one 
 | | |
 |---|---|
 | ![Misty Hub tutorials](docs/screenshots/v001/merged_hub_learn.png) | ![A tutorial step](docs/screenshots/v001/merged_tutorial.png) |
-| ![Landscape template](docs/screenshots/v001/template_landscape.png) | ![Sun shafts in volumetric fog](docs/screenshots/round10/merged_godrays.png) |
+| ![A World Builder landscape](docs/screenshots/v001/template_landscape.png) | ![Sun shafts in volumetric fog](docs/screenshots/round10/merged_godrays.png) |
 
 ## Build from source
 
@@ -60,7 +60,7 @@ Misty Engine tells you when a new version is out and can update itself with one 
    ```bash
    cargo run --release -p misty_editor                          # Misty Hub
    cargo run --release -p misty_editor -- SampleProject         # open a project directly
-   cargo run --release -p misty_editor -- --new Landscape MyGame  # new project from a template
+   cargo run --release -p misty_editor -- --new "PP Ready" MyGame  # new project from a template
    ```
 
 `misty_player` must be built next to the editor for File ▸ Build to work. A project is any folder

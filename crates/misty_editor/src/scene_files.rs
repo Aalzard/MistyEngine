@@ -34,6 +34,50 @@ pub struct EditorSettings {
     pub open_scenes: Vec<OpenSceneRecord>,
     /// Path of the active scene among `open_scenes`.
     pub active_scene: Option<String>,
+    /// Where the Scene view camera was when the project closed.
+    pub scene_view: Option<SavedView>,
+}
+
+/// A Scene view eye position and rotation (quaternion x, y, z, w).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedView {
+    pub position: [f32; 3],
+    pub rotation: [f32; 4],
+}
+
+/// Open the Scene view where it was when the project closed; a project that never saved one
+/// (a new project) starts looking through its Main Camera.
+pub fn restore_scene_view(s: &mut EditorState) {
+    let (position, rotation) = match EditorSettings::load(&s.project.root).scene_view {
+        Some(v) => (
+            glam::Vec3::from(v.position),
+            glam::Quat::from_array(v.rotation).normalize(),
+        ),
+        None => {
+            let Some(cam) = s.scene.find_by_name("Main Camera") else {
+                return;
+            };
+            let (_, r, p) = s.scene.world_matrix(cam).to_scale_rotation_translation();
+            (p, r)
+        }
+    };
+    if position.is_finite() && rotation.is_finite() {
+        s.scene_view.camera.set_view(position, rotation);
+    }
+}
+
+/// Remember the Scene view camera for the next launch (3D views only).
+pub fn remember_scene_view(s: &EditorState) {
+    let cam = &s.scene_view.camera;
+    if cam.is_2d() {
+        return;
+    }
+    let mut settings = EditorSettings::load(&s.project.root);
+    settings.scene_view = Some(SavedView {
+        position: cam.position().to_array(),
+        rotation: cam.rotation().to_array(),
+    });
+    settings.save(&s.project.root);
 }
 
 impl EditorSettings {

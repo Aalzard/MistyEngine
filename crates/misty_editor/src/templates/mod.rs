@@ -2,7 +2,6 @@
 //! generated in code: `Assets/`, `ProjectSettings/` (with Build Settings listing the starting
 //! scene), the starting scene itself and `Library/EditorSettings.json` so it opens first.
 
-mod landscape;
 mod scenes;
 #[cfg(test)]
 mod tests;
@@ -21,39 +20,43 @@ pub const PROJECT_THUMBNAIL: &str = "Library/HubThumbnail.png";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Template {
-    Empty,
     #[default]
     Standard,
-    Ocean,
-    Landscape,
+    /// Post-processing ready: the Standard platform at sunset over the ocean.
+    PpReady,
 }
 
 impl Template {
-    pub const ALL: [Self; 4] = [Self::Empty, Self::Standard, Self::Ocean, Self::Landscape];
+    pub const ALL: [Self; 2] = [Self::Standard, Self::PpReady];
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::Empty => "Empty",
             Self::Standard => "Standard",
-            Self::Ocean => "Ocean",
-            Self::Landscape => "Landscape",
+            Self::PpReady => "PP Ready",
         }
     }
 
+    /// Case and spaces don't matter: `--new ppready` works too.
     pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|t| t.name().eq_ignore_ascii_case(name.trim()))
+        let key = |n: &str| n.replace(' ', "").to_ascii_lowercase();
+        Self::ALL.into_iter().find(|t| key(t.name()) == key(name))
+    }
+
+    /// The thumbnail file name in `assets/templates/` (for `write_template_thumbnails`).
+    #[cfg(test)]
+    pub fn file_stem(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::PpReady => "pp_ready",
+        }
     }
 
     /// One line for the template card.
     pub fn description(self) -> &'static str {
         match self {
-            Self::Empty => "A camera and a light. Start from nothing.",
             Self::Standard => "A floating platform under a sunny sky, ready to build on.",
-            Self::Ocean => "The platform in an open ocean under a few clouds, post-processing on.",
-            Self::Landscape => {
-                "Generated terrain under volumetric clouds, fog and sun shafts: everything on."
+            Self::PpReady => {
+                "The platform on the ocean at sunset: clouds, god rays, light fog, all effects on."
             }
         }
     }
@@ -61,26 +64,17 @@ impl Template {
     /// The thumbnail PNG (rendered headlessly by `write_template_thumbnails`).
     pub fn thumbnail_png(self) -> &'static [u8] {
         match self {
-            Self::Empty => include_bytes!("../../assets/templates/empty.png"),
             Self::Standard => include_bytes!("../../assets/templates/standard.png"),
-            Self::Ocean => include_bytes!("../../assets/templates/ocean.png"),
-            Self::Landscape => include_bytes!("../../assets/templates/landscape.png"),
+            Self::PpReady => include_bytes!("../../assets/templates/pp_ready.png"),
         }
     }
 
     /// Write the template's assets into `root` (an existing project folder) and return its scene.
     fn build(self, root: &Path) -> Result<misty_engine::scene::Scene, String> {
+        scenes::write_materials(root)?;
         Ok(match self {
-            Self::Empty => scenes::empty(),
-            Self::Standard => {
-                scenes::write_materials(root)?;
-                scenes::standard()
-            }
-            Self::Ocean => {
-                scenes::write_materials(root)?;
-                scenes::ocean()
-            }
-            Self::Landscape => landscape::build(root)?,
+            Self::Standard => scenes::standard(),
+            Self::PpReady => scenes::pp_ready(),
         })
     }
 }

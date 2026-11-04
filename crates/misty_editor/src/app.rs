@@ -47,6 +47,7 @@ impl EditorApp {
         let mut state = EditorState::new(ProjectBrowser::open(project));
         state.assets.note_guids(guids);
         scene_files::open_initial(&mut state);
+        scene_files::restore_scene_view(&mut state);
         let (saved_layouts, dock) = layouts::load(&state.project.root);
         state.layouts = saved_layouts;
         let layout_autosave = Autosave::new(&state.layouts, &dock);
@@ -114,6 +115,19 @@ impl EditorApp {
         let s = &self.state;
         self.layout_autosave
             .tick(&s.project.root, &s.layouts, dock, force);
+    }
+
+    /// The Hub shows the last view the user was looking at as the project's preview.
+    fn save_hub_thumbnail(&self) {
+        let Some((w, h, rgba)) = self.gpu.as_ref().and_then(|g| g.last_view_pixels()) else {
+            return;
+        };
+        let Some(img) = crate::project_thumbnail::fit(w, h, rgba) else {
+            return;
+        };
+        if let Err(e) = crate::project_thumbnail::save(&self.state.project.root, &img) {
+            eprintln!("project thumbnail not saved: {e}");
+        }
     }
 
     /// Window ▸ Layouts commands.
@@ -532,6 +546,11 @@ impl EditorApp {
 impl eframe::App for EditorApp {
     fn on_exit(&mut self) {
         self.save_layout(true);
+        self.save_hub_thumbnail();
+        // Screenshot runs leave the saved view alone so they stay repeatable.
+        if self.capture.is_none() {
+            scene_files::remember_scene_view(&self.state);
+        }
     }
 
     /// Only the window position/size is persisted by eframe; editor state lives in the project.

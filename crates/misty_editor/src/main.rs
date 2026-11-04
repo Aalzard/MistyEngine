@@ -45,6 +45,7 @@ mod project_settings_player;
 mod project_settings_presets;
 mod project_settings_quality;
 mod project_settings_tags;
+mod project_thumbnail;
 mod render_scene;
 #[cfg(test)]
 mod sample_2d;

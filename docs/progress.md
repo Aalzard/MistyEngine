@@ -1938,3 +1938,14 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 
 ### Not done yet
 - Code signing (SmartScreen still warns) and the console window behind the editor (see above).
+
+## Templates: Standard and PP Ready; Hub thumbnail and Scene view follow the work ✅
+
+### Done
+- New Project offers two templates (decision 613). **Standard**: a floating platform and cube, post-processing
+  off. **PP Ready**: the same platform on the ocean at a sunset (sun 8° up, in front of the camera), with
+  Sparse clouds, light volumetric fog with sharp god rays, screen sun shafts, bloom, ACES and vignette. The
+  camera looks from a corner of the platform (40° lens). Empty, Ocean and Landscape were removed.
+- On close, the Hub thumbnail becomes the last frame of the view on screen (decision 614).
+- The Scene view camera is saved on close and restored on open. A new project starts looking through its Main
+  Camera, so PP Ready opens on the film shot.

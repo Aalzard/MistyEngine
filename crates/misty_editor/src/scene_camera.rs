@@ -365,6 +365,14 @@ impl SceneCamera {
         self.animate_to(target);
     }
 
+    /// Jump straight to an eye position and rotation (restoring a saved view).
+    pub fn set_view(&mut self, position: Vec3, rotation: Quat) {
+        self.align_to(position, rotation);
+        if let Some((_, to, _)) = self.anim.take() {
+            self.pose = to;
+        }
+    }
+
     /// Snap to an axis view (scene gizmo cone): orthographic, looking at the pivot.
     pub fn snap_to_axis(&mut self, axis: AxisView) {
         if self.in_2d {

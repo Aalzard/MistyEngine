@@ -80,21 +80,6 @@ fn cleanup(root: &Path) {
 }
 
 #[test]
-fn empty_template_has_camera_light_and_disabled_volume() {
-    let (root, scene) = create_checked(Template::Empty);
-    let v = volume(&scene);
-    assert!(!v.enabled);
-    assert!(
-        overrides(&v).iter().all(|(_, on)| !on),
-        "{:?}",
-        overrides(&v)
-    );
-    // Nothing but the camera, the light and the volume.
-    assert_eq!(scene.walk().len(), 3);
-    cleanup(&root);
-}
-
-#[test]
 fn standard_template_has_platform_and_disabled_volume() {
     let (root, scene) = create_checked(Template::Standard);
     let platform = scene.find_by_name("Platform").unwrap();
@@ -116,56 +101,41 @@ fn standard_template_has_platform_and_disabled_volume() {
 }
 
 #[test]
-fn ocean_template_has_water_and_post_processing() {
-    let (root, scene) = create_checked(Template::Ocean);
-    assert!(scene.find_by_name("Platform").is_some());
+fn pp_ready_template_has_ocean_sunset_and_effects_on() {
+    let (root, scene) = create_checked(Template::PpReady);
+    // The same ground and cube as Standard.
+    let platform = scene.find_by_name("Platform").unwrap();
+    let (scale, _, _) = scene.world_matrix(platform).to_scale_rotation_translation();
+    assert!((scale - super::scenes::PLATFORM_SIZE).length() < 1e-4);
+    assert!(scene.find_by_name("Cube").is_some());
     assert_eq!(scene.active_with::<WaterSurface>().len(), 1);
-    let v = volume(&scene);
-    assert!(v.enabled);
-    for o in ["tonemapping", "bloom", "fog"] {
-        assert!(is_on(&v, o), "{o}");
-    }
-    assert!(!is_on(&v, "ambient occlusion"));
-    cleanup(&root);
-}
-
-#[test]
-fn landscape_template_has_terrain_and_everything_on() {
-    let start = std::time::Instant::now();
-    let (root, scene) = create_checked(Template::Landscape);
-    let took = start.elapsed();
-    // < 5 s in release builds; debug test builds are slower.
-    assert!(took.as_secs_f32() < 30.0, "{took:?}");
-    let terrain = scene.find_by_name("Terrain").unwrap();
-    let data = scene
-        .world
-        .get::<&Terrain>(terrain)
-        .unwrap()
-        .terrain_data
-        .clone();
-    assert!(root.join(&data).is_file(), "{data}");
-    for stem in misty_engine::world_gen::biome::TEXTURES {
-        let tex = root.join(misty_engine::world_gen::biome::texture_path(stem));
-        assert!(tex.is_file(), "{stem}");
-    }
     let v = volume(&scene);
     assert!(v.enabled);
     for o in [
         "clouds",
         "fog",
         "sun shafts",
-        "ambient occlusion",
         "bloom",
         "tonemapping",
+        "vignette",
     ] {
         assert!(is_on(&v, o), "{o}");
     }
-    assert!(v.fog.volumetric, "volumetric fog");
-    // The camera is above the ground it stands on.
-    let d = misty_engine::terrain::TerrainData::load(&root.join(&data)).unwrap();
+    assert!(v.fog.volumetric, "volumetric fog makes the god rays");
+    // A low sun (sunset) and a camera at a corner of the platform.
+    let sun = scene.find_by_name("Directional Light").unwrap();
+    let dir = scene
+        .world_matrix(sun)
+        .transform_vector3(glam::Vec3::Z)
+        .normalize();
+    let elevation = (-dir.y).asin().to_degrees();
+    assert!(
+        elevation > 2.0 && elevation < 15.0,
+        "sun elevation {elevation}"
+    );
     let cam = scene.world_position(scene.find_by_name("Main Camera").unwrap());
-    let half = super::landscape::SIZE[0] * 0.5;
-    assert!(cam.y > d.sample_height(cam.x + half, cam.z + half) + 5.0);
+    let half = super::scenes::PLATFORM_SIZE.x * 0.5;
+    assert!(cam.x.abs() > half && cam.z.abs() > half, "{cam}");
     cleanup(&root);
 }
 
@@ -174,7 +144,7 @@ fn create_refuses_a_folder_with_files() {
     let root = temp_project("Occupied");
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("notes.txt"), "keep me").unwrap();
-    assert!(create(&root, Template::Empty).is_err());
+    assert!(create(&root, Template::Standard).is_err());
     assert!(root.join("notes.txt").is_file());
     cleanup(&root);
 }
@@ -187,10 +157,13 @@ fn template_names_round_trip() {
         let png = misty_engine::image::load_from_memory(t.thumbnail_png()).unwrap();
         assert!(png.width() >= 4, "{}", t.name());
     }
-    assert_eq!(
-        Template::from_name(" landscape "),
-        Some(Template::Landscape)
-    );
+    for alias in [" pp ready ", "PPReady", "ppready"] {
+        assert_eq!(
+            Template::from_name(alias),
+            Some(Template::PpReady),
+            "{alias}"
+        );
+    }
     assert_eq!(Template::from_name("nope"), None);
 }
 
@@ -206,6 +179,22 @@ fn editor_opens_the_template_scene() {
         Some(SCENE)
     );
     assert!(s.scene.find_by_name("Platform").is_some());
+    // A new project's Scene view starts looking through the Main Camera...
+    crate::scene_files::restore_scene_view(&mut s);
+    let cam = s.scene.find_by_name("Main Camera").unwrap();
+    let eye = s.scene.world_position(cam);
+    assert!((s.scene_view.camera.position() - eye).length() < 1e-3);
+    // ...and reopens where it was left.
+    let moved = eye + glam::Vec3::new(3.0, 1.0, -2.0);
+    s.scene_view
+        .camera
+        .set_view(moved, glam::Quat::from_rotation_y(0.5));
+    crate::scene_files::remember_scene_view(&s);
+    let mut again =
+        crate::state::EditorState::new(crate::project::ProjectBrowser::open(root.clone()));
+    crate::scene_files::open_initial(&mut again);
+    crate::scene_files::restore_scene_view(&mut again);
+    assert!((again.scene_view.camera.position() - moved).length() < 1e-3);
     cleanup(&root);
 }
 
@@ -259,7 +248,7 @@ fn write_template_thumbnails() {
         misty_engine::assets::set_project_root(&root);
         let (scene, _) = Scene::load(&root.join(SCENE)).unwrap();
         let img = render(&root, &scene);
-        let path = out.join(format!("{}.png", t.name().to_lowercase()));
+        let path = out.join(format!("{}.png", t.file_stem()));
         let rgba = misty_engine::image::RgbaImage::from_raw(
             crate::sample_render::WIDTH,
             crate::sample_render::HEIGHT,

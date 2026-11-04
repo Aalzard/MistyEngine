@@ -1,5 +1,5 @@
 //! New Project page: template cards on the left; preview, name and location on the right.
-//! The project is created on a worker thread (Landscape takes a few seconds).
+//! The project is created on a worker thread (so the window stays responsive).
 
 use std::path::{Path, PathBuf};
 use std::thread::JoinHandle;

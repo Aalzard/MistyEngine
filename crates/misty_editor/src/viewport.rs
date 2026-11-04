@@ -11,6 +11,8 @@ use misty_engine::wgpu;
 pub struct Viewport {
     target: Option<RenderTarget>,
     texture: Option<egui::TextureId>,
+    /// When this view last drew a frame (the Hub thumbnail takes the most recent one).
+    last_render: Option<std::time::Instant>,
 }
 
 /// wgpu device access plus the engine renderer.
@@ -100,6 +102,24 @@ impl Gpu {
         let target = vp.target.as_ref().expect("target created above");
         self.renderer
             .render(&self.state.device, &self.state.queue, target, frame);
+        vp.last_render = Some(std::time::Instant::now());
         vp.texture.expect("texture registered above")
+    }
+
+    /// The last frame of the view the user was looking at: the one drawn most recently, the
+    /// Scene view when both were on screen. `(width, height, RGBA8)`.
+    pub fn last_view_pixels(&self) -> Option<(u32, u32, Vec<u8>)> {
+        let recent = |vp: &Viewport| vp.target.as_ref().and(vp.last_render);
+        let vp = match (recent(&self.scene), recent(&self.game)) {
+            (Some(s), Some(g)) if g > s + std::time::Duration::from_millis(250) => &self.game,
+            (Some(_), _) => &self.scene,
+            (None, Some(_)) => &self.game,
+            (None, None) => return None,
+        };
+        let target = vp.target.as_ref()?;
+        let (w, h) = target.size();
+        let pixels =
+            crate::project_thumbnail::read_pixels(&self.state.device, &self.state.queue, target);
+        Some((w, h, pixels))
     }
 }

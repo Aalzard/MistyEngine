@@ -144,7 +144,7 @@ fn harness(config: &Path) -> Harness<'static, Shown> {
 fn projects_page_lists_recent_and_missing_projects_and_opens_one() {
     let dir = temp("page");
     let real = dir.join("Real Game");
-    crate::templates::create(&real, crate::templates::Template::Empty).unwrap();
+    crate::templates::create(&real, crate::templates::Template::Standard).unwrap();
     let mut c = HubConfig::default();
     c.touch(&dir.join("Gone Game"), config::now() - 7200);
     c.touch(&real, config::now() - 60);
@@ -213,7 +213,7 @@ fn new_project_page_creates_and_opens_the_project() {
     h.state_mut().hub.start_new_project();
     {
         let np = h.state_mut().hub.new_project.as_mut().unwrap();
-        np.template = crate::templates::Template::Empty;
+        np.template = crate::templates::Template::Standard;
         np.name = "Quick".into();
     }
     h.run();

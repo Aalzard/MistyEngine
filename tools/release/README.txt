@@ -14,7 +14,7 @@ How to start
    "C:\Program Files": Misty Engine updates itself and needs to be able to write to its folder.
 2. Double-click MistyEngine.exe. Misty Hub opens.
 3. In Misty Hub:
-   - Projects: click "New project", pick a template (Empty, Standard, Ocean or Landscape),
+   - Projects: click "New project", pick a template (Standard or PP Ready),
      give it a name and click Create. Or click "Open..." to open an existing project folder.
    - Learn: step-by-step tutorials. Click Start and the editor shows you where to click.
    - Settings: the folder for new projects, and the Hub's look.

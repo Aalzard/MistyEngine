@@ -1,6 +1,14 @@
 Misty Engine changelog
 ======================
 
+Next version
+------------
+
+- New projects: two templates. Standard (a platform to build on) and PP Ready (the platform
+  on the ocean at sunset with clouds, god rays, light fog and post-processing, seen from a
+  corner like a film shot). Empty, Ocean and Landscape are gone.
+- Misty Hub: a project's picture is the last view you were looking at when you closed it.
+
 0.0.1 - first test version (November 2026)
 ------------------------------------------
 
