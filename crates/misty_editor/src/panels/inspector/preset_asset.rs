@@ -22,13 +22,16 @@ pub fn preset_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     };
     ui.horizontal(|ui| {
         ui.label(RichText::new(PRESET_ICON).size(22.0));
-        ui.label(RichText::new(format!("{} (Preset)", preset_name(rel))).strong());
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{} (Preset)", preset_name(rel)),
+        ));
     });
     ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
     ui.separator();
     ui.horizontal(|ui| {
         ui.label("Preset for");
-        ui.label(RichText::new(&saved.target).strong());
+        ui.label(crate::theme::bold(ui.ctx(), &saved.target));
     });
     apply_row(ui, state, rel, &saved);
     // Import settings have no "new asset" moment for a default.
@@ -145,7 +148,6 @@ fn asset_apply(ui: &mut Ui, state: &mut EditorState, rel: &str, p: &Preset) {
         .unwrap_or_default();
     ui.horizontal(|ui| {
         egui::ComboBox::from_id_salt(id)
-            .width(170.0)
             .selected_text(preset_name(&chosen))
             .show_ui(ui, |ui| {
                 for c in &choices {

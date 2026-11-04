@@ -46,6 +46,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     // Bottom bar: selected path and icon-size slider.
     egui::Panel::bottom("project_bottom_bar")
         .exact_size(22.0)
+        .show_separator_line(false)
+        .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::TOOLBAR_BG))
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 if let Some(sel) = &browser.selected {
@@ -59,6 +61,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
     egui::Panel::left("project_tree")
         .default_size(180.0)
+        .show_separator_line(false)
+        .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::SIDEBAR_BG))
         .resizable(true)
         .show(ui, |ui| {
             egui::ScrollArea::vertical()

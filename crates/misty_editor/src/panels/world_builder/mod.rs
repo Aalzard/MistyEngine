@@ -12,7 +12,7 @@ mod tests;
 
 use std::time::Instant;
 
-use egui::{CollapsingHeader, Grid, RichText, Ui};
+use egui::{CollapsingHeader, RichText, Ui};
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Terrain, TerrainCollider, Transform};
@@ -259,10 +259,7 @@ fn with_settings(
 }
 
 fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
-    Grid::new(id)
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
+    crate::panels::inspector::card::PropertyGrid::new(id)
         .show(ui, body)
         .inner
 }

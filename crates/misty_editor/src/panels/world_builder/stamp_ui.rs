@@ -1,7 +1,7 @@
 //! Stamp and area fields (shown in the World Builder window and the Inspector), and creating
 //! new stamps under the World Builder.
 
-use egui::{Grid, Ui};
+use egui::Ui;
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::world_gen::stamps::{
@@ -88,168 +88,164 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let mut height = state.scene.world_position(e).y;
     let mut ch = false;
     let mut moved = false;
-    Grid::new(("stamp", e))
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
-        .show(ui, |ui| {
-            ui.label("Enabled");
-            ch |= ui.checkbox(&mut s.enabled, "").changed();
+    crate::panels::inspector::card::PropertyGrid::new(("stamp", e)).show(ui, |ui| {
+        ui.label("Enabled");
+        ch |= ui.checkbox(&mut s.enabled, "").changed();
+        ui.end_row();
+        let uses_radius = !matches!(s.kind, StampKind::River(_));
+        if uses_radius {
+            ui.label("Radius");
+            ch |= drag(ui, &mut s.radius, 0.5, 1.0, 5000.0, " m");
             ui.end_row();
-            let uses_radius = !matches!(s.kind, StampKind::River(_));
-            if uses_radius {
-                ui.label("Radius");
-                ch |= drag(ui, &mut s.radius, 0.5, 1.0, 5000.0, " m");
+            ui.label("Falloff");
+            ch |= ui
+                .add(egui::Slider::new(&mut s.falloff, 0.0..=1.0))
+                .changed();
+            ui.end_row();
+        }
+        match &mut s.kind {
+            StampKind::Mountain(m) => {
+                ui.label("Shape");
+                ch |= combo(ui, ("shape", e), &mut m.shape, &MountainShape::ALL, |v| {
+                    v.label()
+                });
                 ui.end_row();
-                ui.label("Falloff");
+                ui.label("Height");
+                ch |= drag(ui, &mut m.height, 0.5, -1000.0, 1000.0, " m");
+                ui.end_row();
+                ui.label("Blend");
+                ch |= combo(ui, ("blend", e), &mut m.blend, &BlendMode::ALL, |v| {
+                    v.label()
+                });
+                ui.end_row();
+                ui.label("Roughness");
                 ch |= ui
-                    .add(egui::Slider::new(&mut s.falloff, 0.0..=1.0))
+                    .add(egui::Slider::new(&mut m.roughness, 0.0..=1.0))
+                    .changed();
+                ui.end_row();
+                if m.blend != BlendMode::Add {
+                    ui.label("Base Height");
+                    moved |= drag(ui, &mut height, 0.25, -1000.0, 5000.0, " m");
+                    ui.end_row();
+                }
+            }
+            StampKind::Flatten(f) => {
+                ui.label("Sample Ground");
+                ch |= ui
+                    .checkbox(&mut f.sample, "")
+                    .on_hover_text("Use the ground height under the centre when generating")
+                    .changed();
+                ui.end_row();
+                if !f.sample {
+                    ui.label("Target Height");
+                    moved |= drag(ui, &mut height, 0.25, -1000.0, 5000.0, " m");
+                    ui.end_row();
+                }
+            }
+            StampKind::River(r) => {
+                ui.label("Width");
+                ch |= drag(ui, &mut r.width, 0.1, 0.5, 500.0, " m");
+                ui.end_row();
+                ui.label("Depth");
+                ch |= drag(ui, &mut r.depth, 0.1, 0.0, 200.0, " m");
+                ui.end_row();
+                ui.label("Bank Falloff");
+                ch |= drag(ui, &mut r.bank, 0.1, 0.0, 500.0, " m");
+                ui.end_row();
+                ui.label("Water");
+                ch |= ui.checkbox(&mut r.water, "Place a water strip").changed();
+                ui.end_row();
+                ui.label("Points");
+                ui.horizontal(|ui| {
+                    ui.label(r.points.len().to_string());
+                    if ui.small_button("+ Add").clicked() {
+                        let n = r.points.len();
+                        let next = match n {
+                            0 => [0.0, 0.0],
+                            1 => [r.points[0][0] + 20.0, r.points[0][1]],
+                            _ => {
+                                let (a, b) = (r.points[n - 2], r.points[n - 1]);
+                                [2.0 * b[0] - a[0], 2.0 * b[1] - a[1]]
+                            }
+                        };
+                        r.points.push(next);
+                        ch = true;
+                    }
+                    if ui
+                        .add_enabled(r.points.len() > 2, egui::Button::new("− Remove").small())
+                        .clicked()
+                    {
+                        r.points.pop();
+                        ch = true;
+                    }
+                });
+                ui.end_row();
+            }
+            StampKind::Water(w) => {
+                crate::tutorials::targets::label(ui, "Mode");
+                ui.horizontal(|ui| {
+                    ch |= ui
+                        .selectable_value(&mut w.mode, WaterMode::Lake, "Lake")
+                        .changed();
+                    ch |= ui
+                        .selectable_value(&mut w.mode, WaterMode::Sea, "Sea Level")
+                        .changed();
+                });
+                ui.end_row();
+                ui.label("Water Level");
+                moved |= drag(ui, &mut height, 0.1, -1000.0, 5000.0, " m");
+                ui.end_row();
+            }
+            StampKind::RockArea(r) => {
+                ui.label("Strength");
+                ch |= ui
+                    .add(egui::Slider::new(&mut r.strength, 0.0..=1.0))
                     .changed();
                 ui.end_row();
             }
-            match &mut s.kind {
-                StampKind::Mountain(m) => {
-                    ui.label("Shape");
-                    ch |= combo(ui, ("shape", e), &mut m.shape, &MountainShape::ALL, |v| {
-                        v.label()
+            StampKind::BiomeZone(z) => {
+                crate::tutorials::targets::label(ui, "Biome");
+                let name = |p: &str| super::biome_ui::display_name(p);
+                egui::ComboBox::from_id_salt(("zone_biome", e))
+                    .selected_text(if z.biome.is_empty() {
+                        "None".to_owned()
+                    } else {
+                        name(&z.biome)
+                    })
+                    .show_ui(ui, |ui| {
+                        for p in &biomes {
+                            ch |= ui
+                                .selectable_value(&mut z.biome, p.clone(), name(p))
+                                .changed();
+                        }
                     });
-                    ui.end_row();
-                    ui.label("Height");
-                    ch |= drag(ui, &mut m.height, 0.5, -1000.0, 1000.0, " m");
-                    ui.end_row();
-                    ui.label("Blend");
-                    ch |= combo(ui, ("blend", e), &mut m.blend, &BlendMode::ALL, |v| {
-                        v.label()
-                    });
-                    ui.end_row();
-                    ui.label("Roughness");
-                    ch |= ui
-                        .add(egui::Slider::new(&mut m.roughness, 0.0..=1.0))
-                        .changed();
-                    ui.end_row();
-                    if m.blend != BlendMode::Add {
-                        ui.label("Base Height");
-                        moved |= drag(ui, &mut height, 0.25, -1000.0, 5000.0, " m");
-                        ui.end_row();
-                    }
-                }
-                StampKind::Flatten(f) => {
-                    ui.label("Sample Ground");
-                    ch |= ui
-                        .checkbox(&mut f.sample, "")
-                        .on_hover_text("Use the ground height under the centre when generating")
-                        .changed();
-                    ui.end_row();
-                    if !f.sample {
-                        ui.label("Target Height");
-                        moved |= drag(ui, &mut height, 0.25, -1000.0, 5000.0, " m");
-                        ui.end_row();
-                    }
-                }
-                StampKind::River(r) => {
-                    ui.label("Width");
-                    ch |= drag(ui, &mut r.width, 0.1, 0.5, 500.0, " m");
-                    ui.end_row();
-                    ui.label("Depth");
-                    ch |= drag(ui, &mut r.depth, 0.1, 0.0, 200.0, " m");
-                    ui.end_row();
-                    ui.label("Bank Falloff");
-                    ch |= drag(ui, &mut r.bank, 0.1, 0.0, 500.0, " m");
-                    ui.end_row();
-                    ui.label("Water");
-                    ch |= ui.checkbox(&mut r.water, "Place a water strip").changed();
-                    ui.end_row();
-                    ui.label("Points");
-                    ui.horizontal(|ui| {
-                        ui.label(r.points.len().to_string());
-                        if ui.small_button("+ Add").clicked() {
-                            let n = r.points.len();
-                            let next = match n {
-                                0 => [0.0, 0.0],
-                                1 => [r.points[0][0] + 20.0, r.points[0][1]],
-                                _ => {
-                                    let (a, b) = (r.points[n - 2], r.points[n - 1]);
-                                    [2.0 * b[0] - a[0], 2.0 * b[1] - a[1]]
-                                }
-                            };
-                            r.points.push(next);
+                ui.end_row();
+                ui.label("Shape");
+                ui.horizontal(|ui| {
+                    if z.polygon.is_empty() {
+                        ui.weak("Circle");
+                        if ui.small_button("Make Polygon").clicked() {
+                            let r = s.radius;
+                            z.polygon = (0..6)
+                                .map(|i| {
+                                    let a = i as f32 / 6.0 * std::f32::consts::TAU;
+                                    [a.cos() * r, a.sin() * r]
+                                })
+                                .collect();
                             ch = true;
                         }
-                        if ui
-                            .add_enabled(r.points.len() > 2, egui::Button::new("− Remove").small())
-                            .clicked()
-                        {
-                            r.points.pop();
+                    } else {
+                        ui.weak(format!("Polygon ({} points)", z.polygon.len()));
+                        if ui.small_button("Circle").clicked() {
+                            z.polygon.clear();
                             ch = true;
                         }
-                    });
-                    ui.end_row();
-                }
-                StampKind::Water(w) => {
-                    crate::tutorials::targets::label(ui, "Mode");
-                    ui.horizontal(|ui| {
-                        ch |= ui
-                            .selectable_value(&mut w.mode, WaterMode::Lake, "Lake")
-                            .changed();
-                        ch |= ui
-                            .selectable_value(&mut w.mode, WaterMode::Sea, "Sea Level")
-                            .changed();
-                    });
-                    ui.end_row();
-                    ui.label("Water Level");
-                    moved |= drag(ui, &mut height, 0.1, -1000.0, 5000.0, " m");
-                    ui.end_row();
-                }
-                StampKind::RockArea(r) => {
-                    ui.label("Strength");
-                    ch |= ui
-                        .add(egui::Slider::new(&mut r.strength, 0.0..=1.0))
-                        .changed();
-                    ui.end_row();
-                }
-                StampKind::BiomeZone(z) => {
-                    crate::tutorials::targets::label(ui, "Biome");
-                    let name = |p: &str| super::biome_ui::display_name(p);
-                    egui::ComboBox::from_id_salt(("zone_biome", e))
-                        .selected_text(if z.biome.is_empty() {
-                            "None".to_owned()
-                        } else {
-                            name(&z.biome)
-                        })
-                        .show_ui(ui, |ui| {
-                            for p in &biomes {
-                                ch |= ui
-                                    .selectable_value(&mut z.biome, p.clone(), name(p))
-                                    .changed();
-                            }
-                        });
-                    ui.end_row();
-                    ui.label("Shape");
-                    ui.horizontal(|ui| {
-                        if z.polygon.is_empty() {
-                            ui.weak("Circle");
-                            if ui.small_button("Make Polygon").clicked() {
-                                let r = s.radius;
-                                z.polygon = (0..6)
-                                    .map(|i| {
-                                        let a = i as f32 / 6.0 * std::f32::consts::TAU;
-                                        [a.cos() * r, a.sin() * r]
-                                    })
-                                    .collect();
-                                ch = true;
-                            }
-                        } else {
-                            ui.weak(format!("Polygon ({} points)", z.polygon.len()));
-                            if ui.small_button("Circle").clicked() {
-                                z.polygon.clear();
-                                ch = true;
-                            }
-                        }
-                    });
-                    ui.end_row();
-                }
+                    }
+                });
+                ui.end_row();
             }
-        });
+        }
+    });
     ui.weak(hint(&s.kind));
     if moved {
         let mut p = state.scene.world_position(e);

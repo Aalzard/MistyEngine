@@ -127,10 +127,7 @@ fn with<T: SceneComponent>(
 }
 
 pub(super) fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
-    Grid::new(id)
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
+    crate::panels::inspector::card::PropertyGrid::new(id)
         .show(ui, body)
         .inner
 }
@@ -155,7 +152,10 @@ pub(super) fn vec2(ui: &mut Ui, v: &mut Vec2, speed: f64) -> bool {
 /// sRGB + alpha colour picker.
 pub(super) fn color(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
     let mut rgba = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-    let changed = ui.color_edit_button_srgba_unmultiplied(&mut rgba).changed();
+    let changed = crate::panels::inspector::card::wide(ui, |ui| {
+        ui.color_edit_button_srgba_unmultiplied(&mut rgba)
+    })
+    .changed();
     if changed {
         *c = rgba.map(|v| v as f32 / 255.0);
     }
@@ -196,7 +196,7 @@ fn rect_transform(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             ch |= presets_button(ui, id, rt, parent);
             ui.vertical(|ui| ch |= position_fields(ui, rt));
         });
-        egui::CollapsingHeader::new("Anchors")
+        egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Anchors"))
             .id_salt(("rt_anchors", e))
             .default_open(true)
             .show(ui, |ui| {
@@ -309,7 +309,7 @@ fn presets_button(ui: &mut Ui, id: egui::Id, rt: &mut RectTransform, parent: Vec
     ui.menu_button(RichText::new(label).small(), |ui| {
         let (mut set_pivot, mut set_position) =
             ui.data(|d| d.get_temp::<(bool, bool)>(id).unwrap_or_default());
-        ui.label(RichText::new("Anchor Presets").strong());
+        ui.label(crate::theme::bold(ui.ctx(), "Anchor Presets"));
         ui.checkbox(&mut set_pivot, "Also set pivot (Shift)");
         ui.checkbox(&mut set_position, "Also set position (Alt)");
         ui.data_mut(|d| d.insert_temp(id, (set_pivot, set_position)));
@@ -362,7 +362,6 @@ fn canvas(ui: &mut Ui, c: &mut Canvas) -> bool {
         ui.label("Render Mode");
         egui::ComboBox::from_id_salt("canvas_mode")
             .selected_text(c.render_mode.label())
-            .width(170.0)
             .show_ui(ui, |ui| {
                 for m in CanvasRenderMode::ALL {
                     ch |= ui
@@ -384,7 +383,6 @@ fn canvas_scaler(ui: &mut Ui, s: &mut CanvasScaler) -> bool {
         ui.label("UI Scale Mode");
         egui::ComboBox::from_id_salt("scaler_mode")
             .selected_text(s.mode.label())
-            .width(170.0)
             .show_ui(ui, |ui| {
                 for m in UiScaleMode::ALL {
                     ch |= ui.selectable_value(&mut s.mode, m, m.label()).changed();

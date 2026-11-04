@@ -41,7 +41,7 @@ pub fn halo_section(ui: &mut Ui, l: &mut Light) -> bool {
     }
     let light_color = l.color;
     let h = &mut l.halo;
-    CollapsingHeader::new("Halo")
+    CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Halo"))
         .id_salt("light_halo")
         .default_open(h.enabled)
         .show(ui, |ui| {

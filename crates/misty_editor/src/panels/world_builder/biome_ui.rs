@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use egui::{Grid, Ui};
+use egui::Ui;
 use misty_engine::world_gen::biome::{self, Biome, Feature, Preset, ScatterItem, ScatterShape};
 use misty_engine::world_gen::textures;
 
@@ -91,38 +91,30 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, builder: misty_engine::hecs::E
         return;
     };
     let mut changed = false;
-    Grid::new("wb_biome_defaults")
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
-        .show(ui, |ui| {
-            ui.label("Default Biome");
-            egui::ComboBox::from_id_salt("wb_default_biome")
-                .selected_text(display_name(&settings.default_biome))
-                .show_ui(ui, |ui| {
-                    for p in &paths {
-                        changed |= ui
-                            .selectable_value(
-                                &mut settings.default_biome,
-                                p.clone(),
-                                display_name(p),
-                            )
-                            .changed();
-                    }
-                });
-            ui.end_row();
-            ui.label("Edge Breakup");
-            changed |= ui
-                .add(
-                    egui::DragValue::new(&mut settings.biome_breakup)
-                        .speed(0.2)
-                        .range(0.0..=200.0)
-                        .suffix(" m"),
-                )
-                .on_hover_text("Noise that breaks up biome and area edges")
-                .changed();
-            ui.end_row();
-        });
+    crate::panels::inspector::card::PropertyGrid::new("wb_biome_defaults").show(ui, |ui| {
+        ui.label("Default Biome");
+        egui::ComboBox::from_id_salt("wb_default_biome")
+            .selected_text(display_name(&settings.default_biome))
+            .show_ui(ui, |ui| {
+                for p in &paths {
+                    changed |= ui
+                        .selectable_value(&mut settings.default_biome, p.clone(), display_name(p))
+                        .changed();
+                }
+            });
+        ui.end_row();
+        ui.label("Edge Breakup");
+        changed |= ui
+            .add(
+                egui::DragValue::new(&mut settings.biome_breakup)
+                    .speed(0.2)
+                    .range(0.0..=200.0)
+                    .suffix(" m"),
+            )
+            .on_hover_text("Noise that breaks up biome and area edges")
+            .changed();
+        ui.end_row();
+    });
     if changed {
         let _ = state.scene.world.insert_one(builder, settings);
         state.mark_edited("Change World Builder Biomes");
@@ -161,49 +153,46 @@ fn edit_biome(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     };
     let textures = state.assets.textures.clone();
     let mut ch = false;
-    Grid::new("wb_biome")
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
-        .show(ui, |ui| {
-            ui.label("Colour Tone");
-            ch |= ui.color_edit_button_rgb(&mut b.tone).changed();
-            ui.end_row();
-            for f in Feature::ALL {
-                ui.label(f.label());
-                ui.horizontal(|ui| {
-                    let l = b.layer_mut(f);
-                    ch |= texture_slot(ui, ("wb_tex", f.label()), &mut l.texture, &textures);
-                    ch |= ui
-                        .add(
-                            egui::DragValue::new(&mut l.tiling)
-                                .speed(0.1)
-                                .range(0.1..=500.0)
-                                .suffix(" m"),
-                        )
-                        .on_hover_text("Tiling: world size of one repeat")
-                        .changed();
-                });
-                ui.end_row();
-            }
-            for (label, v, max) in [
-                ("Slope Angle", &mut b.slope_angle, 90.0),
-                ("Cliff Angle", &mut b.cliff_angle, 90.0),
-                ("Shore Width", &mut b.shore_width, 100.0),
-            ] {
-                ui.label(label);
+    crate::panels::inspector::card::PropertyGrid::new("wb_biome").show(ui, |ui| {
+        ui.label("Colour Tone");
+        ch |= crate::panels::inspector::card::wide(ui, |ui| ui.color_edit_button_rgb(&mut b.tone))
+            .changed();
+        ui.end_row();
+        for f in Feature::ALL {
+            ui.label(f.label());
+            ui.horizontal(|ui| {
+                let l = b.layer_mut(f);
+                ch |= texture_slot(ui, ("wb_tex", f.label()), &mut l.texture, &textures);
                 ch |= ui
-                    .add(egui::DragValue::new(v).speed(0.2).range(0.0..=max))
+                    .add(
+                        egui::DragValue::new(&mut l.tiling)
+                            .speed(0.1)
+                            .range(0.1..=500.0)
+                            .suffix(" m"),
+                    )
+                    .on_hover_text("Tiling: world size of one repeat")
                     .changed();
-                ui.end_row();
-            }
-            ui.label("Snow / Peak Line");
+            });
+            ui.end_row();
+        }
+        for (label, v, max) in [
+            ("Slope Angle", &mut b.slope_angle, 90.0),
+            ("Cliff Angle", &mut b.cliff_angle, 90.0),
+            ("Shore Width", &mut b.shore_width, 100.0),
+        ] {
+            ui.label(label);
             ch |= ui
-                .add(egui::Slider::new(&mut b.peak_height, 0.0..=1.0))
-                .on_hover_text("Fraction of the terrain's height")
+                .add(egui::DragValue::new(v).speed(0.2).range(0.0..=max))
                 .changed();
             ui.end_row();
-        });
+        }
+        ui.label("Snow / Peak Line");
+        ch |= ui
+            .add(egui::Slider::new(&mut b.peak_height, 0.0..=1.0))
+            .on_hover_text("Fraction of the terrain's height")
+            .changed();
+        ui.end_row();
+    });
     ui.add_space(4.0);
     let scatter = ui.label(egui::RichText::new("Scatter").strong());
     crate::tutorials::targets::row(ui, "Scatter", scatter.rect);
@@ -234,103 +223,102 @@ fn edit_biome(ui: &mut Ui, state: &mut EditorState, rel: &str) {
 
 fn scatter_item(ui: &mut Ui, item: &mut ScatterItem, i: usize, prefabs: &[String]) -> bool {
     let mut ch = false;
-    Grid::new(("wb_item_grid", i))
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(100.0)
-        .show(ui, |ui| {
-            ui.label("Name");
-            ch |= ui.text_edit_singleline(&mut item.name).changed();
-            ui.end_row();
-            ui.label("Prefab");
-            let none = "None (primitive shape)";
-            let r = egui::ComboBox::from_id_salt(("wb_prefab", i))
-                .selected_text(
-                    item.prefab
-                        .as_deref()
-                        .map(display_name)
-                        .unwrap_or(none.into()),
-                )
-                .show_ui(ui, |ui| {
-                    ch |= ui.selectable_value(&mut item.prefab, None, none).changed();
-                    for p in prefabs {
-                        ch |= ui
-                            .selectable_value(&mut item.prefab, Some(p.clone()), display_name(p))
-                            .changed();
-                    }
-                })
-                .response;
-            if let Some(p) = r.dnd_release_payload::<AssetPayload>()
-                && p.0.ends_with(".prefab")
-            {
-                item.prefab = Some(p.0.clone());
-                ch = true;
-            }
-            ui.end_row();
-            if item.prefab.is_none() {
-                ui.label("Shape");
-                ch |= super::stamp_ui::combo(
-                    ui,
-                    ("wb_shape", i),
-                    &mut item.shape,
-                    &ScatterShape::ALL,
-                    |s| s.label(),
-                );
-                ui.end_row();
-                ui.label("Colour");
-                ch |= ui.color_edit_button_rgb(&mut item.color).changed();
-                ui.end_row();
-            }
-            ui.label("Density");
-            ch |= ui
-                .add(
-                    egui::DragValue::new(&mut item.density)
-                        .speed(0.05)
-                        .range(0.0..=500.0)
-                        .suffix(" /1000 m²"),
-                )
-                .changed();
-            ui.end_row();
-            ui.label("Min Spacing");
-            ch |= ui
-                .add(
-                    egui::DragValue::new(&mut item.min_spacing)
-                        .speed(0.05)
-                        .range(0.25..=100.0)
-                        .suffix(" m"),
-                )
-                .changed();
-            ui.end_row();
-            ui.label("Scale");
-            ui.horizontal(|ui| {
-                for v in &mut item.scale {
+    crate::panels::inspector::card::PropertyGrid::new(("wb_item_grid", i)).show(ui, |ui| {
+        ui.label("Name");
+        ch |= ui.text_edit_singleline(&mut item.name).changed();
+        ui.end_row();
+        ui.label("Prefab");
+        let none = "None (primitive shape)";
+        let r = egui::ComboBox::from_id_salt(("wb_prefab", i))
+            .selected_text(
+                item.prefab
+                    .as_deref()
+                    .map(display_name)
+                    .unwrap_or(none.into()),
+            )
+            .show_ui(ui, |ui| {
+                ch |= ui.selectable_value(&mut item.prefab, None, none).changed();
+                for p in prefabs {
                     ch |= ui
-                        .add(egui::DragValue::new(v).speed(0.01).range(0.05..=20.0))
+                        .selectable_value(&mut item.prefab, Some(p.clone()), display_name(p))
                         .changed();
                 }
-            });
+            })
+            .response;
+        if let Some(p) = r.dnd_release_payload::<AssetPayload>()
+            && p.0.ends_with(".prefab")
+        {
+            item.prefab = Some(p.0.clone());
+            ch = true;
+        }
+        ui.end_row();
+        if item.prefab.is_none() {
+            ui.label("Shape");
+            ch |= super::stamp_ui::combo(
+                ui,
+                ("wb_shape", i),
+                &mut item.shape,
+                &ScatterShape::ALL,
+                |s| s.label(),
+            );
             ui.end_row();
-            ui.label("Max Slope");
-            ch |= ui
-                .add(egui::Slider::new(&mut item.max_slope, 0.0..=90.0).suffix("°"))
-                .changed();
+            ui.label("Colour");
+            ch |= crate::panels::inspector::card::wide(ui, |ui| {
+                ui.color_edit_button_rgb(&mut item.color)
+            })
+            .changed();
             ui.end_row();
-            ui.label("Height Band");
-            ui.horizontal(|ui| {
-                for v in &mut item.height_range {
-                    ch |= ui
-                        .add(egui::DragValue::new(v).speed(0.005).range(0.0..=1.0))
-                        .changed();
-                }
-            });
-            ui.end_row();
-            ui.label("Random Rotation");
-            ch |= ui.checkbox(&mut item.random_rotation, "").changed();
-            ui.end_row();
-            ui.label("Align to Ground");
-            ch |= ui.checkbox(&mut item.align_to_normal, "").changed();
-            ui.end_row();
+        }
+        ui.label("Density");
+        ch |= ui
+            .add(
+                egui::DragValue::new(&mut item.density)
+                    .speed(0.05)
+                    .range(0.0..=500.0)
+                    .suffix(" /1000 m²"),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Min Spacing");
+        ch |= ui
+            .add(
+                egui::DragValue::new(&mut item.min_spacing)
+                    .speed(0.05)
+                    .range(0.25..=100.0)
+                    .suffix(" m"),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Scale");
+        ui.horizontal(|ui| {
+            for v in &mut item.scale {
+                ch |= ui
+                    .add(egui::DragValue::new(v).speed(0.01).range(0.05..=20.0))
+                    .changed();
+            }
         });
+        ui.end_row();
+        ui.label("Max Slope");
+        ch |= ui
+            .add(egui::Slider::new(&mut item.max_slope, 0.0..=90.0).suffix("°"))
+            .changed();
+        ui.end_row();
+        ui.label("Height Band");
+        ui.horizontal(|ui| {
+            for v in &mut item.height_range {
+                ch |= ui
+                    .add(egui::DragValue::new(v).speed(0.005).range(0.0..=1.0))
+                    .changed();
+            }
+        });
+        ui.end_row();
+        ui.label("Random Rotation");
+        ch |= ui.checkbox(&mut item.random_rotation, "").changed();
+        ui.end_row();
+        ui.label("Align to Ground");
+        ch |= ui.checkbox(&mut item.align_to_normal, "").changed();
+        ui.end_row();
+    });
     ch
 }
 

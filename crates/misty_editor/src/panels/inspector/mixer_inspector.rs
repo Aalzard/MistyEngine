@@ -33,7 +33,10 @@ pub fn mixer_asset(ui: &mut Ui, s: &mut EditorState, rel: &str) {
     }
     ui.horizontal(|ui| {
         ui.label(RichText::new(MIXER_ICON).size(22.0));
-        ui.label(RichText::new(format!("{} (Audio Mixer)", clip_name(rel))).strong());
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{} (Audio Mixer)", clip_name(rel)),
+        ));
     });
     crate::asset_guids::path_label(ui, rel);
     ui.separator();
@@ -128,7 +131,10 @@ fn group(ui: &mut Ui, s: &mut EditorState, rel: &str, mixer: &AudioMixer, item: 
     };
     ui.horizontal(|ui| {
         ui.label(RichText::new(MIXER_ICON).size(22.0));
-        ui.label(RichText::new(format!("{} (Audio Mixer Group)", g.name)).strong());
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{} (Audio Mixer Group)", g.name),
+        ));
     });
     ui.label(
         RichText::new(format!(
@@ -198,7 +204,7 @@ fn group(ui: &mut Ui, s: &mut EditorState, rel: &str, mixer: &AudioMixer, item: 
                             }
                         });
                     }
-                    let title = RichText::new(fx.kind.label()).strong();
+                    let title = crate::theme::bold(ui.ctx(), fx.kind.label());
                     ui.label(if open {
                         title.color(theme::PREFAB)
                     } else {

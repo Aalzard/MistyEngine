@@ -65,7 +65,7 @@ fn module(
     let mut ch = false;
     let header = state.show_header(ui, |ui| {
         ch |= ui.checkbox(enabled, "").changed();
-        ui.label(RichText::new(title).strong());
+        ui.label(crate::theme::bold(ui.ctx(), title));
     });
     header.body(|ui| ch |= body(ui));
     ch
@@ -74,7 +74,7 @@ fn module(
 fn main_module(ui: &mut Ui, p: &mut ParticleSystem) -> bool {
     let m = &mut p.main;
     let mut ch = false;
-    egui::CollapsingHeader::new(RichText::new("Particle System").strong())
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Particle System"))
         .id_salt("particle_main")
         .default_open(true)
         .show(ui, |ui| {
@@ -195,9 +195,10 @@ fn min_max(ui: &mut Ui, id: &str, v: &mut MinMax, min: f32) -> bool {
 /// sRGB + alpha colour button.
 fn color_rgba(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
     let mut srgba = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-    let changed = ui
-        .color_edit_button_srgba_unmultiplied(&mut srgba)
-        .changed();
+    let changed = crate::panels::inspector::card::wide(ui, |ui| {
+        ui.color_edit_button_srgba_unmultiplied(&mut srgba)
+    })
+    .changed();
     if changed {
         *c = srgba.map(|v| v as f32 / 255.0);
     }
@@ -206,7 +207,9 @@ fn color_rgba(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
 
 fn color_rgb(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
     let mut srgb = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-    let changed = ui.color_edit_button_srgb(&mut srgb).changed();
+    let changed =
+        crate::panels::inspector::card::wide(ui, |ui| ui.color_edit_button_srgb(&mut srgb))
+            .changed();
     if changed {
         *c = srgb.map(|v| v as f32 / 255.0);
     }

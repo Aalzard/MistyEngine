@@ -1,4 +1,6 @@
 //! Dark editor theme with the familiar grey-panel / blue-selection look.
+//! No outlines: areas and widgets are told apart by soft shade steps (bars darker than panel
+//! bodies, fields darker, buttons lighter); only focus and selection use the accent colour.
 
 use egui::{Color32, CornerRadius, Stroke, Visuals};
 
@@ -6,11 +8,26 @@ pub const PANEL_BG: Color32 = Color32::from_rgb(56, 56, 56);
 pub const TAB_BAR_BG: Color32 = Color32::from_rgb(40, 40, 40);
 pub const TAB_ACTIVE: Color32 = Color32::from_rgb(60, 60, 60);
 pub const TAB_INACTIVE: Color32 = Color32::from_rgb(45, 45, 45);
-pub const BORDER: Color32 = Color32::from_rgb(25, 25, 25);
+/// Dock separators and the gaps between docked panels: a soft step darker than the panels.
+pub const BORDER: Color32 = Color32::from_rgb(44, 44, 44);
+/// Soft divider lines (separators, panel splits): close to the panel colour.
+pub const DIVIDER: Color32 = Color32::from_rgb(48, 48, 48);
 pub const FIELD_BG: Color32 = Color32::from_rgb(42, 42, 42);
-pub const BUTTON_BG: Color32 = Color32::from_rgb(88, 88, 88);
-pub const HOVER_BG: Color32 = Color32::from_rgb(103, 103, 103);
+/// Number fields and dropdowns inside Inspector property rows.
+pub const INPUT_BG: Color32 = Color32::from_rgb(47, 47, 47);
+pub const INPUT_HOVER: Color32 = Color32::from_rgb(55, 55, 55);
+pub const BUTTON_BG: Color32 = Color32::from_rgb(78, 78, 78);
+pub const HOVER_BG: Color32 = Color32::from_rgb(92, 92, 92);
+/// Panel toolbars (the Hierarchy / Project create and search strips, bottom bars).
+pub const TOOLBAR_BG: Color32 = Color32::from_rgb(49, 49, 49);
+/// The Project window's folder tree, a soft step off the file area.
+pub const SIDEBAR_BG: Color32 = Color32::from_rgb(51, 51, 51);
+/// Popups and menus: a step lighter than panels instead of an outline.
+pub const POPUP_BG: Color32 = Color32::from_rgb(62, 62, 62);
 pub const SELECTION: Color32 = Color32::from_rgb(44, 93, 135);
+/// Inspector component cards: body and header bar (a soft step lighter than the panel).
+pub const CARD_BG: Color32 = Color32::from_rgb(63, 63, 63);
+pub const CARD_HEADER: Color32 = Color32::from_rgb(71, 71, 71);
 pub const TEXT: Color32 = Color32::from_rgb(210, 210, 210);
 pub const TEXT_DIM: Color32 = Color32::from_rgb(130, 130, 130);
 /// Warnings and problems that need the user's attention.
@@ -22,6 +39,26 @@ pub const PLAY_TINT: Color32 = Color32::from_rgb(70, 110, 170);
 pub const AXIS_X: Color32 = Color32::from_rgb(219, 62, 29);
 pub const AXIS_Y: Color32 = Color32::from_rgb(139, 220, 0);
 pub const AXIS_Z: Color32 = Color32::from_rgb(58, 122, 237);
+
+/// Font family of bold titles (falls back to the regular font when no bold face was found).
+const BOLD_FAMILY: &str = "bold";
+
+/// The bold font family, or the regular one when the bold face is not loaded.
+pub fn bold_family(ctx: &egui::Context) -> egui::FontFamily {
+    let bold = egui::FontFamily::Name(BOLD_FAMILY.into());
+    if ctx.fonts(|f| f.definitions().families.contains_key(&bold)) {
+        bold
+    } else {
+        egui::FontFamily::Proportional
+    }
+}
+
+/// Bold title text (component names, sub-section headers).
+pub fn bold(ctx: &egui::Context, text: impl Into<String>) -> egui::RichText {
+    egui::RichText::new(text)
+        .family(bold_family(ctx))
+        .color(Color32::from_rgb(232, 232, 232))
+}
 
 /// Use the OS UI font when present, with a symbol font as glyph fallback for icons.
 pub fn load_fonts(ctx: &egui::Context) {
@@ -52,6 +89,22 @@ pub fn load_fonts(ctx: &egui::Context) {
             }
         }
     }
+    // Bold titles: the bold face first, then the regular fallbacks for symbols.
+    if let Ok(bytes) = std::fs::read("C:/Windows/Fonts/segoeuib.ttf") {
+        fonts.font_data.insert(
+            "ui_bold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        let mut list = vec!["ui_bold".to_owned()];
+        list.extend(
+            fonts.families[&egui::FontFamily::Proportional]
+                .iter()
+                .cloned(),
+        );
+        fonts
+            .families
+            .insert(egui::FontFamily::Name(BOLD_FAMILY.into()), list);
+    }
     ctx.set_fonts(fonts);
 }
 
@@ -60,31 +113,34 @@ pub fn apply(ctx: &egui::Context) {
     let mut v = Visuals::dark();
     v.override_text_color = Some(TEXT);
     v.panel_fill = PANEL_BG;
-    v.window_fill = PANEL_BG;
+    v.window_fill = POPUP_BG;
     v.extreme_bg_color = FIELD_BG;
     v.faint_bg_color = Color32::from_rgb(62, 62, 62);
-    v.window_stroke = Stroke::new(1.0, BORDER);
+    v.window_stroke = Stroke::NONE;
     v.selection.bg_fill = SELECTION;
     v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
     v.hyperlink_color = Color32::from_rgb(76, 126, 255);
 
     let r = CornerRadius::same(3);
     v.widgets.noninteractive.bg_fill = PANEL_BG;
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
+    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, DIVIDER);
     v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
     v.widgets.inactive.bg_fill = BUTTON_BG;
     v.widgets.inactive.weak_bg_fill = BUTTON_BG;
-    v.widgets.inactive.bg_stroke = Stroke::new(1.0, Color32::from_rgb(36, 36, 36));
+    v.widgets.inactive.bg_stroke = Stroke::NONE;
     v.widgets.inactive.corner_radius = r;
     v.widgets.hovered.bg_fill = HOVER_BG;
     v.widgets.hovered.weak_bg_fill = HOVER_BG;
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0, Color32::from_rgb(36, 36, 36));
+    v.widgets.hovered.bg_stroke = Stroke::NONE;
     v.widgets.hovered.corner_radius = r;
     v.widgets.active.bg_fill = Color32::from_rgb(70, 96, 124);
     v.widgets.active.weak_bg_fill = Color32::from_rgb(70, 96, 124);
+    v.widgets.active.bg_stroke = Stroke::NONE;
     v.widgets.active.corner_radius = r;
     v.widgets.open.bg_fill = Color32::from_rgb(70, 70, 70);
     v.widgets.open.weak_bg_fill = Color32::from_rgb(70, 70, 70);
+    v.widgets.open.bg_stroke = Stroke::NONE;
+    v.widgets.open.corner_radius = r;
 
     ctx.set_visuals(v);
     ctx.global_style_mut(|s| {
@@ -104,7 +160,7 @@ pub fn dock_style(ctx: &egui::Context) -> egui_dock::Style {
     s.separator.color_dragged = SELECTION;
     s.tab_bar.bg_fill = TAB_BAR_BG;
     s.tab_bar.height = 22.0;
-    s.tab_bar.hline_color = BORDER;
+    s.tab_bar.hline_color = TAB_BAR_BG;
     s.tab.active.bg_fill = TAB_ACTIVE;
     s.tab.active.text_color = Color32::WHITE;
     s.tab.focused.bg_fill = TAB_ACTIVE;
@@ -115,5 +171,21 @@ pub fn dock_style(ctx: &egui::Context) -> egui_dock::Style {
     s.tab.hovered.text_color = TEXT;
     s.tab.tab_body.bg_fill = PANEL_BG;
     s.tab.tab_body.stroke = Stroke::NONE;
+    for t in [
+        &mut s.tab.active,
+        &mut s.tab.inactive,
+        &mut s.tab.focused,
+        &mut s.tab.hovered,
+        &mut s.tab.inactive_with_kb_focus,
+        &mut s.tab.active_with_kb_focus,
+        &mut s.tab.focused_with_kb_focus,
+    ] {
+        t.outline_color = Color32::TRANSPARENT;
+    }
+    s.tab.hline_below_active_tab_name = false;
+    s.buttons.add_tab_border_color = Color32::TRANSPARENT;
+    s.buttons.close_all_tabs_border_color = Color32::TRANSPARENT;
+    s.buttons.collapse_tabs_border_color = Color32::TRANSPARENT;
+    s.buttons.minimize_window_border_color = Color32::TRANSPARENT;
     s
 }

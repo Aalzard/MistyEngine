@@ -2,7 +2,7 @@
 //! down to Culled, dividers to drag, a marker where the Scene camera is), then the selected
 //! level's renderers and the fade settings.
 
-use egui::{Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
+use egui::{Color32, CornerRadius, FontId, Rect, Sense, Stroke, Ui, pos2, vec2};
 use misty_engine::hecs::Entity;
 use misty_engine::render::culling::Aabb;
 use misty_engine::render::lod::screen_height;
@@ -214,7 +214,7 @@ pub fn lod_group(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
 
     // The selected level's renderers.
     if let Some(level) = g.lods.get_mut(selected) {
-        ui.label(RichText::new(format!("LOD {selected} renderers")).strong());
+        super::card::sub_header(ui, &format!("LOD {selected} renderers"));
         let mut remove = None;
         for (k, r) in level.renderers.iter().enumerate() {
             ui.horizontal(|ui| {
@@ -235,7 +235,6 @@ pub fn lod_group(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         let choices = renderer_choices(&state.scene, e);
         egui::ComboBox::from_id_salt(("lod_add", selected))
             .selected_text("Add Renderer…")
-            .width(160.0)
             .show_ui(ui, |ui| {
                 for c in choices {
                     let taken = level.renderers.contains(&c);

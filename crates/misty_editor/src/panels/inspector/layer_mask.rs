@@ -54,7 +54,6 @@ pub fn mask_field(ui: &mut Ui, id: &str, mask: &mut u32) -> bool {
     let before = *mask;
     egui::ComboBox::from_id_salt(id)
         .selected_text(summary(*mask, &names))
-        .width(150.0)
         .show_ui(ui, |ui| {
             if ui.selectable_label(*mask == 0, "Nothing").clicked() {
                 *mask = 0;

@@ -36,41 +36,44 @@ pub fn animation(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ui.end_row();
         ch
     });
-    egui::CollapsingHeader::new(format!("Animations ({})", a.clips.len()))
-        .id_salt("anim_list")
-        .default_open(true)
-        .show(ui, |ui| {
-            let mut remove = None;
-            for (i, c) in a.clips.iter_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.label(format!("Element {i}"));
-                    let mut slot = Some(c.clone());
-                    if clip_slot(ui, ("anim_el", i), &clips, &mut slot) {
-                        match slot {
-                            Some(s) => *c = s,
-                            None => remove = Some(i),
-                        }
-                        changed = true;
+    egui::CollapsingHeader::new(crate::theme::bold(
+        ui.ctx(),
+        format!("Animations ({})", a.clips.len()),
+    ))
+    .id_salt("anim_list")
+    .default_open(true)
+    .show(ui, |ui| {
+        let mut remove = None;
+        for (i, c) in a.clips.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(format!("Element {i}"));
+                let mut slot = Some(c.clone());
+                if clip_slot(ui, ("anim_el", i), &clips, &mut slot) {
+                    match slot {
+                        Some(s) => *c = s,
+                        None => remove = Some(i),
                     }
-                    if ui.small_button("−").on_hover_text("Remove").clicked() {
-                        remove = Some(i);
-                    }
-                });
-            }
-            if let Some(i) = remove {
-                a.clips.remove(i);
-                changed = true;
-            }
-            if ui
-                .small_button("+")
-                .on_hover_text("Add a clip slot")
-                .clicked()
-                && let Some(first) = a.clip.clone().or_else(|| clips.first().cloned())
-            {
-                a.clips.push(first);
-                changed = true;
-            }
-        });
+                    changed = true;
+                }
+                if ui.small_button("−").on_hover_text("Remove").clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+        if let Some(i) = remove {
+            a.clips.remove(i);
+            changed = true;
+        }
+        if ui
+            .small_button("+")
+            .on_hover_text("Add a clip slot")
+            .clicked()
+            && let Some(first) = a.clip.clone().or_else(|| clips.first().cloned())
+        {
+            a.clips.push(first);
+            changed = true;
+        }
+    });
     if changed {
         // The default clip is always playable by name too.
         if let Some(c) = &a.clip
@@ -97,7 +100,6 @@ pub(super) fn clip_slot(
         .unwrap_or_else(|| "None (Animation Clip)".into());
     let slot = egui::ComboBox::from_id_salt(id)
         .selected_text(format!("{CLIP_ICON} {current}"))
-        .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui
                 .selectable_value(clip, None, "None (Animation Clip)")
@@ -122,7 +124,10 @@ pub(super) fn clip_slot(
 pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(CLIP_ICON).size(22.0));
-        ui.label(RichText::new(format!("{} (Animation Clip)", clip_name(rel))).strong());
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{} (Animation Clip)", clip_name(rel)),
+        ));
     });
     crate::asset_guids::path_label(ui, rel);
     ui.separator();

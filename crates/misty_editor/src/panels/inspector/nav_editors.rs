@@ -1,6 +1,6 @@
 //! Inspector editors for the Nav Mesh Agent and Nav Mesh Obstacle.
 
-use egui::{Grid, RichText, Ui};
+use egui::Ui;
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::navigation::{NavMeshAgent, NavMeshObstacle, ObstacleAvoidance, ObstacleShape};
@@ -67,12 +67,7 @@ fn edit_copy<T: SceneComponent>(
 }
 
 fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
-    Grid::new(id)
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(130.0)
-        .show(ui, body)
-        .inner
+    super::card::grid(ui, id, body)
 }
 
 fn number(ui: &mut Ui, label: &str, v: &mut f32, speed: f64, min: f32, max: f32) -> bool {
@@ -96,7 +91,7 @@ fn agent(ui: &mut Ui, a: &mut NavMeshAgent) -> bool {
         ui.end_row();
         number(ui, "Base Offset", &mut a.base_offset, 0.01, -100.0, 100.0)
     });
-    ui.label(RichText::new("Steering").strong());
+    super::card::sub_header(ui, "Steering");
     ch |= grid(ui, "nav_agent_steering", |ui| {
         let mut ch = number(ui, "Speed", &mut a.speed, 0.05, 0.0, 1000.0);
         ch |= number(
@@ -121,7 +116,7 @@ fn agent(ui: &mut Ui, a: &mut NavMeshAgent) -> bool {
         ui.end_row();
         ch
     });
-    ui.label(RichText::new("Obstacle Avoidance").strong());
+    super::card::sub_header(ui, "Obstacle Avoidance");
     ch |= grid(ui, "nav_agent_avoid", |ui| {
         let mut ch = number(ui, "Radius", &mut a.radius, 0.01, 0.01, 100.0);
         ch |= number(ui, "Height", &mut a.height, 0.01, 0.01, 100.0);

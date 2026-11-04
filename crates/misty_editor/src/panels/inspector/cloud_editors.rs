@@ -1,7 +1,7 @@
 //! Post-process Volume ▸ Volumetric Clouds body: a preset menu, then four small groups
 //! (Shape, Layer, Wind, Lighting) of plain sliders.
 
-use egui::{DragValue, RichText, Slider, Ui};
+use egui::{DragValue, Slider, Ui};
 use misty_engine::scene::{CloudPreset, CloudsOverride};
 
 fn row(ui: &mut Ui, label: &str, tip: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {
@@ -12,8 +12,7 @@ fn row(ui: &mut Ui, label: &str, tip: &str, widget: impl FnOnce(&mut Ui) -> bool
 }
 
 fn group(ui: &mut Ui, title: &str) {
-    ui.label(RichText::new(title).small().strong());
-    ui.end_row();
+    super::card::grid_sub_header(ui, title);
 }
 
 fn slider(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {

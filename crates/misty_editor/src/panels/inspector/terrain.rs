@@ -95,7 +95,6 @@ fn data_picker(
     let mut ch = false;
     egui::ComboBox::from_id_salt(id)
         .selected_text(format!("⛰ {shown}"))
-        .width(150.0)
         .show_ui(ui, |ui| {
             if let Some(label) = none {
                 ch |= ui.selectable_value(value, String::new(), label).changed();
@@ -129,7 +128,7 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         }
     });
     let tool = state.terrain_tools.tool;
-    ui.label(RichText::new(tool.label()).strong());
+    super::card::sub_header(ui, tool.label());
     ui.weak(tool.help());
     ui.add_space(4.0);
 
@@ -213,7 +212,7 @@ fn brush_settings(ui: &mut Ui, state: &mut EditorState, max_height: f32) {
 /// Paint Texture layer list: pick the layer to paint, add/remove layers, edit the selected one.
 fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
     ui.add_space(6.0);
-    let title = ui.label(RichText::new("Layers").strong());
+    let title = ui.label(crate::theme::bold(ui.ctx(), "Layers"));
     let selected = state.terrain_tools.layer;
     let list = egui::Frame::group(ui.style()).show(ui, |ui| {
         if d.layers.is_empty() {
@@ -372,7 +371,7 @@ fn settings(
     };
     let path = t.terrain_data.clone();
     ui.add_space(6.0);
-    ui.label(RichText::new("Mesh Resolution (on Terrain Data)").strong());
+    super::card::sub_header(ui, "Mesh Resolution (on Terrain Data)");
     let mut size = d.size;
     let mut res = d.heightmap_resolution;
     let mut ares = d.alphamap_resolution;
@@ -423,7 +422,6 @@ fn resolution_combo(ui: &mut Ui, id: &str, value: &mut usize, options: &[usize])
     let mut ch = false;
     egui::ComboBox::from_id_salt(id)
         .selected_text(value.to_string())
-        .width(150.0)
         .show_ui(ui, |ui| {
             for o in options {
                 ch |= ui.selectable_value(value, *o, o.to_string()).changed();

@@ -1,7 +1,7 @@
 //! Inspector editors for volumetric fog: the Fog Volume component, the Light's volumetric
 //! rows, and the Post-process Volume's Fog and Sun Shafts (Screen) overrides.
 
-use egui::{DragValue, Grid, Slider, Ui};
+use egui::{DragValue, Slider, Ui};
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
     FogOverride, FogQuality, FogVolume, Light, SunShaftsOverride, SunShaftsQuality,
@@ -189,12 +189,7 @@ pub fn sun_shafts_override(ui: &mut Ui, s: &mut SunShaftsOverride) -> bool {
 }
 
 fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
-    Grid::new(id)
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(130.0)
-        .show(ui, body)
-        .inner
+    super::card::grid(ui, id, body)
 }
 
 fn row(ui: &mut Ui, label: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {

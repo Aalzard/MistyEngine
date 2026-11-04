@@ -12,25 +12,39 @@ use crate::state::EditorState;
 use crate::theme;
 
 fn section(ui: &mut Ui, title: &str) {
-    ui.label(RichText::new(title).strong());
-    ui.label("");
-    ui.end_row();
+    super::card::grid_sub_header(ui, title);
 }
 
 /// Albedo-style colour with alpha.
 fn color_rgba(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
     let mut srgba = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-    let changed = ui
-        .color_edit_button_srgba_unmultiplied(&mut srgba)
-        .changed();
+    let changed = crate::panels::inspector::card::wide(ui, |ui| {
+        ui.color_edit_button_srgba_unmultiplied(&mut srgba)
+    })
+    .changed();
     if changed {
         *c = srgba.map(|v| v as f32 / 255.0);
     }
     changed
 }
 
+/// 0–1 slider filling the rest of the row (it may follow a texture slot).
 fn slider(ui: &mut Ui, v: &mut f32) -> bool {
-    ui.add(egui::Slider::new(v, 0.0..=1.0)).changed()
+    ui.scope(|ui| {
+        let gap = ui.spacing().item_spacing.x;
+        let mut number = ui.spacing().interact_size.x;
+        let mut w = ui.available_width() - number - gap;
+        if w < 60.0 {
+            // Next to a texture slot: a narrower number box keeps the slider usable.
+            number = number.min(44.0);
+            w = ui.available_width() - number - gap;
+        }
+        let s = ui.spacing_mut();
+        s.interact_size.x = number;
+        s.slider_width = w.min(s.slider_width).max(30.0);
+        ui.add(egui::Slider::new(v, 0.0..=1.0)).changed()
+    })
+    .inner
 }
 
 fn tiling_offset(ui: &mut Ui, m: &mut Material) -> bool {
@@ -245,7 +259,7 @@ pub fn preview(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     ui.add_space(6.0);
     ui.separator();
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Preview").strong());
+        ui.label(crate::theme::bold(ui.ctx(), "Preview"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             for (shape, icon, tip) in [
                 (PreviewShape::Cube, "▣", "Cube"),

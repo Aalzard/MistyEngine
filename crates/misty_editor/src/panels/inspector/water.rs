@@ -4,7 +4,7 @@
 
 use std::ops::RangeInclusive;
 
-use egui::{RichText, Ui};
+use egui::Ui;
 use misty_engine::hecs::Entity;
 use misty_engine::water::{
     Floater, SpectrumKind, WaterKind, WaterPreset, WaterSettings, WaterSurface,
@@ -90,7 +90,7 @@ fn toggle(ui: &mut Ui, label: &str, tip: &str, v: &mut bool) -> bool {
 /// A collapsible section holding a property grid.
 fn section(ui: &mut Ui, title: &str, open: bool, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     let mut ch = false;
-    egui::CollapsingHeader::new(RichText::new(title).strong())
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), title))
         .id_salt(("water_section", title))
         .default_open(open)
         .show(ui, |ui| {
