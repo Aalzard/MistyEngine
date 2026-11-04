@@ -15,6 +15,7 @@ use super::editors::grid;
 use super::slots::texture_slot;
 use crate::state::EditorState;
 use crate::terrain_tools::{self, TerrainTool};
+use crate::tutorials::targets;
 
 pub const NAMES: [&str; 2] = ["Terrain", "Terrain Collider"];
 
@@ -120,7 +121,9 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             let b = egui::Button::new(RichText::new(tool.icon()).size(16.0))
                 .selected(selected)
                 .min_size(egui::vec2(34.0, 26.0));
-            if ui.add(b).on_hover_text(tool.label()).clicked() {
+            let b = ui.add(b);
+            targets::header(ui, &format!("tool/{}", tool.label()), b.rect);
+            if b.on_hover_text(tool.label()).clicked() {
                 state.terrain_tools.tool = tool;
             }
         }
@@ -183,7 +186,7 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
 fn brush_settings(ui: &mut Ui, state: &mut EditorState, max_height: f32) {
     let tools = &mut state.terrain_tools;
     grid(ui, "terrain_brush", |ui| {
-        ui.label("Brush Size");
+        targets::label(ui, "Brush Size");
         ui.add(egui::Slider::new(&mut tools.size, 0.5..=200.0).logarithmic(true));
         ui.end_row();
         ui.label("Opacity");
@@ -210,9 +213,9 @@ fn brush_settings(ui: &mut Ui, state: &mut EditorState, max_height: f32) {
 /// Paint Texture layer list: pick the layer to paint, add/remove layers, edit the selected one.
 fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
     ui.add_space(6.0);
-    ui.label(RichText::new("Layers").strong());
+    let title = ui.label(RichText::new("Layers").strong());
     let selected = state.terrain_tools.layer;
-    egui::Frame::group(ui.style()).show(ui, |ui| {
+    let list = egui::Frame::group(ui.style()).show(ui, |ui| {
         if d.layers.is_empty() {
             ui.weak("No layers yet. Add one to paint it.");
         }
@@ -229,11 +232,13 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
             }
         }
     });
+    targets::header(ui, "Layers", title.rect.union(list.response.rect));
     let textures = state.assets.textures.clone();
     ui.horizontal(|ui| {
         let full = d.layers.len() >= MAX_LAYERS;
-        if ui
-            .add_enabled(!full, egui::Button::new("+ Add Layer"))
+        let add = ui.add_enabled(!full, egui::Button::new("+ Add Layer"));
+        targets::header(ui, "+ Add Layer", add.rect);
+        if add
             .on_hover_text(format!("At most {MAX_LAYERS} layers"))
             .clicked()
         {
@@ -264,7 +269,7 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
         ui.label("Name");
         ch |= ui.text_edit_singleline(&mut layer.name).changed();
         ui.end_row();
-        ui.label("Diffuse");
+        targets::label(ui, "Diffuse");
         ch |= texture_slot(ui, "terrain_layer_diffuse", &mut layer.diffuse, &textures);
         ui.end_row();
         ui.label("Normal Map");

@@ -479,24 +479,30 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             ui.menu_button("📷 ⏷", |ui| camera_settings(ui, &mut sv.camera))
                 .response
                 .on_hover_text("Scene camera settings");
-            ui.menu_button("⏷", |ui| {
-                let fx = &mut sv.effects;
-                ui.checkbox(&mut fx.skybox, "Skybox");
-                ui.checkbox(&mut fx.fog, "Fog");
-                ui.checkbox(&mut fx.clouds, "Clouds");
-                ui.checkbox(&mut fx.glows, "Halos & Flares");
-                ui.checkbox(&mut fx.post_processing, "Post Processing");
-            })
-            .response
-            .on_hover_text("Scene view effects");
-            if toggle_button(
+            let fx_menu = ui
+                .menu_button("⏷", |ui| {
+                    let fx = &mut sv.effects;
+                    ui.checkbox(&mut fx.skybox, "Skybox");
+                    ui.checkbox(&mut fx.fog, "Fog");
+                    ui.checkbox(&mut fx.clouds, "Clouds");
+                    ui.checkbox(&mut fx.glows, "Halos & Flares");
+                    ui.checkbox(&mut fx.post_processing, "Post Processing");
+                })
+                .response
+                .on_hover_text("Scene view effects");
+            crate::tutorials::targets::mark_response(ui, "scene.effects_menu", &fx_menu);
+            let fx_toggle = toggle_button(
                 ui,
                 sv.skybox,
                 "☁",
                 "Toggle skybox, fog, clouds, halos and post-processing",
-            )
-            .clicked()
-            {
+            );
+            crate::tutorials::targets::mark(
+                ui,
+                "scene.effects",
+                fx_toggle.rect.union(fx_menu.rect),
+            );
+            if fx_toggle.clicked() {
                 sv.skybox = !sv.skybox;
             }
 

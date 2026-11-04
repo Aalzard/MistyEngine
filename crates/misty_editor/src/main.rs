@@ -114,6 +114,7 @@ mod terrain_tools;
 mod theme;
 mod thumbnails;
 mod toolbar;
+mod tutorials;
 mod ui_create;
 mod ui_gizmos;
 mod undo;

@@ -23,6 +23,7 @@ use misty_engine::world_gen::{
 
 use crate::state::EditorState;
 use crate::terrain_tools::TerrainSnapshot;
+use crate::tutorials::targets;
 
 /// Components with editors here (Inspector).
 pub const NAMES: [&str; 3] = ["World Builder", "World Stamp", "Scatter"];
@@ -75,6 +76,8 @@ pub fn current_builder(state: &EditorState) -> Option<Entity> {
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     state.world_builder.seen_frame = Some(ui.ctx().cumulative_frame_nr());
+    // Tutorial targets `World Builder/<Section>/<Field>`.
+    let _scope = targets::scope("World Builder");
     job::poll(state);
     if state.world_builder.job.is_some() {
         ui.ctx().request_repaint();
@@ -92,19 +95,26 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            CollapsingHeader::new(RichText::new("1  Base Heightmap").strong())
-                .default_open(true)
-                .show(ui, |ui| base_section(ui, state, builder));
-            CollapsingHeader::new(RichText::new("2  Stamps & Areas").strong())
-                .default_open(true)
-                .show(ui, |ui| stamps_section(ui, state, builder));
-            CollapsingHeader::new(RichText::new("3  Biomes").strong())
-                .default_open(true)
-                .show(ui, |ui| biome_ui::show(ui, state, builder));
-            CollapsingHeader::new(RichText::new("4  Generate").strong())
-                .default_open(true)
-                .show(ui, |ui| generate_section(ui, state, builder));
+            section(ui, 1, "Base Heightmap", |ui| {
+                base_section(ui, state, builder)
+            });
+            section(ui, 2, "Stamps & Areas", |ui| {
+                stamps_section(ui, state, builder)
+            });
+            section(ui, 3, "Biomes", |ui| biome_ui::show(ui, state, builder));
+            section(ui, 4, "Generate", |ui| generate_section(ui, state, builder));
         });
+}
+
+/// A numbered, collapsible section (a tutorial target too).
+fn section(ui: &mut Ui, n: usize, title: &str, body: impl FnOnce(&mut Ui)) {
+    let r = CollapsingHeader::new(RichText::new(format!("{n}  {title}")).strong())
+        .default_open(true)
+        .show(ui, |ui| {
+            let _scope = targets::scope(title);
+            body(ui)
+        });
+    targets::row(ui, title, r.header_response.rect);
 }
 
 /// No World Builder in the scene yet.
@@ -121,7 +131,9 @@ fn empty(ui: &mut Ui, state: &mut EditorState) {
     } else {
         "Create World Builder (with a new Terrain)"
     };
-    if ui.button(label).clicked() {
+    let create = ui.button(label);
+    targets::header(ui, "Create", create.rect);
+    if create.clicked() {
         create_builder(state, terrain);
     }
     if !state.world_builder.status.is_empty() {
@@ -289,7 +301,7 @@ fn base_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
                 });
             ui.end_row();
             let b = &mut s.base;
-            ui.label("Generator");
+            targets::label(ui, "Generator");
             ch |= stamp_ui::combo(ui, "wb_gen", &mut b.generator, &Generator::ALL, |g| {
                 g.label()
             });
@@ -308,7 +320,7 @@ fn base_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
                 )
                 .changed();
             ui.end_row();
-            ui.label("Noise Amount");
+            targets::label(ui, "Noise Amount");
             ch |= ui
                 .add(egui::Slider::new(&mut b.noise_amount, 0.0..=1.5))
                 .changed();
@@ -334,7 +346,7 @@ fn base_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
             ui.end_row();
             ch
         });
-        CollapsingHeader::new("Erosion")
+        let erosion = CollapsingHeader::new("Erosion")
             .default_open(true)
             .show(ui, |ui| {
                 ch |= grid(ui, "wb_erosion", |ui| {
@@ -381,6 +393,7 @@ fn base_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
                     ch
                 });
             });
+        targets::row(ui, "Erosion", erosion.header_response.rect);
         ch
     });
 }
@@ -395,7 +408,7 @@ fn random_seed(old: u32) -> u32 {
 }
 
 fn stamps_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
-    ui.horizontal_wrapped(|ui| {
+    let add_row = ui.horizontal_wrapped(|ui| {
         ui.label("Add:");
         for (name, kind) in stamp_ui::kinds() {
             if ui
@@ -407,6 +420,7 @@ fn stamps_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
             }
         }
     });
+    targets::header(ui, "Add", add_row.response.rect);
     let list = world_gen::stamps_of(&state.scene, builder);
     if list.is_empty() {
         ui.weak("No stamps yet. Added stamps go under the World Builder object at the Scene view's centre.");
@@ -453,8 +467,9 @@ fn generate_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
     ui.horizontal(|ui| {
         let big = egui::Button::new(RichText::new("▶ Generate").strong())
             .min_size(egui::vec2(110.0, 26.0));
-        if ui
-            .add_enabled(!busy, big)
+        let big = ui.add_enabled(!busy, big);
+        targets::header(ui, "Generate", big.rect);
+        if big
             .on_hover_text("Height → erosion → stamps → water → textures → scatter")
             .clicked()
         {
@@ -525,6 +540,19 @@ fn generate_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
             .collect();
         ui.weak(t.join(" · "));
     }
+}
+
+/// Add a stamp of the kind named like the window's Add buttons ("Mountain", "Water", …) under
+/// `builder` (tutorial demos). Returns the new stamp object.
+pub fn add_stamp(state: &mut EditorState, builder: Entity, name: &str) -> Option<Entity> {
+    let (name, kind) = stamp_ui::kinds().into_iter().find(|(n, _)| *n == name)?;
+    stamp_ui::add(state, builder, name, kind);
+    state.selection.active()
+}
+
+/// Start a full generation, as the Generate button does (tutorial demos).
+pub fn generate(state: &mut EditorState, builder: Entity) {
+    job::start(state, builder, Stages::All, false);
 }
 
 /// Inspector bodies of the World Builder components.

@@ -10,6 +10,7 @@ use misty_engine::terrain::{TerrainData, details, store};
 
 use crate::state::EditorState;
 use crate::terrain_tools;
+use crate::tutorials::targets;
 
 fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     Grid::new(id)
@@ -115,7 +116,7 @@ pub fn range_slider(
 /// Slope, height, Spread and Breakup rows shared by layers and details.
 fn rule_rows(ui: &mut Ui, r: &mut AutoPaintRules, max_height: f32, slope_label: &str) -> bool {
     let mut ch = false;
-    ui.label(slope_label);
+    targets::label(ui, slope_label);
     ch |= range_slider(ui, &mut r.slope, 0.0..=90.0, "°");
     ui.end_row();
     ui.label("Height Range");
@@ -164,10 +165,11 @@ pub fn layer_rules(
         return;
     };
     let mut ch = false;
-    egui::CollapsingHeader::new(RichText::new("Auto Paint Rules").strong())
+    let section = egui::CollapsingHeader::new(RichText::new("Auto Paint Rules").strong())
         .id_salt(("terrain_rules", layer))
         .default_open(rules.enabled)
         .show(ui, |ui| {
+            let _scope = targets::scope("Auto Paint Rules");
             ch |= ui
                 .checkbox(&mut rules.enabled, "Rule-driven")
                 .on_hover_text("Generate repaints this layer from its rules. Off = hand-painted only (Generate keeps its strokes).")
@@ -185,6 +187,7 @@ pub fn layer_rules(
                 });
             });
         });
+    targets::row(ui, "Auto Paint Rules", section.header_response.rect);
     if ch {
         edit_settings(state, path, "Change Auto Paint Rules", |d| {
             d.layers[layer].rules = rules
@@ -203,6 +206,7 @@ pub fn generate_row(ui: &mut Ui, state: &mut EditorState, path: &str, d: &Terrai
             .on_disabled_hover_text(
                 "Make a layer rule-driven (Auto Paint Rules) or enable Grass & Details",
             );
+        targets::header(ui, "Generate", b.rect);
         if b.clicked() {
             generate(state, path);
         }

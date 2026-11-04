@@ -25,6 +25,8 @@ pub enum MenuRun {
     GenerateProbes,
     /// Help ▸ About.
     About,
+    /// Help ▸ Tutorials.
+    Tutorials,
 }
 
 #[derive(Clone, Debug)]
@@ -90,6 +92,7 @@ pub fn all(s: &EditorState) -> Vec<MenuCommand> {
     }
     presets(&mut l, s);
     window(&mut l, s);
+    l.add("Tutorials", "Help/Tutorials...", MenuRun::Tutorials);
     l.add(
         "About Misty Engine",
         "Help/About Misty Engine",
@@ -368,6 +371,7 @@ pub fn run(s: &mut EditorState, run: &MenuRun) {
         }
         MenuRun::CreateProbe => crate::probe_tools::create_probe(s, None),
         MenuRun::GenerateProbes => crate::probe_tools::generate(s),
+        MenuRun::Tutorials => s.tutorials.window_open = true,
         MenuRun::About => s
             .console
             .info(concat!("Misty Engine ", env!("CARGO_PKG_VERSION"))),

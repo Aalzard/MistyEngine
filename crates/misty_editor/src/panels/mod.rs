@@ -51,6 +51,10 @@ impl TabViewer for PanelViewer<'_> {
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {
+        if crate::tutorials::targets::enabled() {
+            let id = format!("panel.{}", tab.title());
+            crate::tutorials::targets::mark(ui, &id, ui.max_rect());
+        }
         match tab {
             Tab::Scene => scene::show(ui, self.state, self.gpu.as_deref_mut()),
             Tab::Game => game::show(ui, self.state, self.gpu.as_deref_mut()),

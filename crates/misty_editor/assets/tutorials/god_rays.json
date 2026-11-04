@@ -1,0 +1,56 @@
+{
+  "id": "god-rays",
+  "title": "Light shafts and god rays",
+  "description": "Make sunlight cut through fog in visible rays: shadows, fog strength, contrast and a fog box.",
+  "minutes": 5,
+  "scene": "god_rays",
+  "steps": [
+    {
+      "title": "Select the sun",
+      "text": "Click Directional Light in the Hierarchy. This is the sun. The fog is already on, but there are no rays yet.",
+      "targets": ["hierarchy.Directional Light", "panel.Hierarchy"],
+      "done_when": "selected:Directional Light",
+      "demo": "select:Directional Light"
+    },
+    {
+      "title": "Turn on shadows",
+      "text": "Set Shadow Type to Soft Shadows. Rays are light between shadows, so the sun must cast shadows.",
+      "targets": ["inspector.Light/Shadow Type", "inspector.Light"],
+      "done_when": "sun:shadows",
+      "demo": "sun:shadows"
+    },
+    {
+      "title": "Make the rays brighter",
+      "text": "Volumetric Multiplier sets how much this light shines in the fog. Try 2 or 3.",
+      "targets": ["inspector.Light/Volumetric Multiplier", "inspector.Light"],
+      "done_when": "sun:volumetric",
+      "demo": "sun:volumetric"
+    },
+    {
+      "title": "Darken the fog",
+      "text": "Select Effects. In Fog, drag Ambient Light Probe Dimmer down to about 0.2. Less sky light in the fog makes the rays stand out.",
+      "targets": ["inspector.Post-process Volume/Fog/Ambient Light Probe Dimmer", "inspector.Post-process Volume/Fog", "hierarchy.Effects"],
+      "done_when": "ppv:ambient_low",
+      "demo": "ppv:ambient_low"
+    },
+    {
+      "title": "Block the light",
+      "text": "Add GameObject ▸ 3D Object ▸ Cube. Move it between the camera and the sun and make it big with the Scale tool (R). Rays appear around its edges.",
+      "targets": ["menu.GameObject/3D Object/Cube", "menu.GameObject/3D Object", "menu.GameObject"],
+      "done_when": "undo:Create Cube",
+      "demo": "god_rays:wall"
+    },
+    {
+      "title": "Add a fog box",
+      "text": "Add GameObject ▸ Rendering ▸ Local Volumetric Fog. It is a box of thicker fog. Put it where the rays should be brightest.",
+      "targets": ["menu.GameObject/Rendering/Local Volumetric Fog", "menu.GameObject/Rendering", "menu.GameObject"],
+      "done_when": "has:Fog Volume",
+      "demo": "create:Local Volumetric Fog"
+    },
+    {
+      "title": "Look toward the sun",
+      "text": "Rays show best with the sun in front of you. Hold the right mouse button in the Scene view and turn to face it.",
+      "targets": ["panel.Scene"]
+    }
+  ]
+}

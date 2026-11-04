@@ -45,6 +45,7 @@ impl EditorApp {
         if capture.is_some() {
             crate::capture::apply_env(&mut state, &mut dock);
         }
+        crate::tutorials::from_env(&mut state);
         let gpu = cc.wgpu_render_state.clone().map(Gpu::new);
         match &gpu {
             Some(g) => {
@@ -551,6 +552,8 @@ impl eframe::App for EditorApp {
         crate::snap_window::show(&ctx, &mut self.state);
         crate::panels::preset_window(&ctx, &mut self.state);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);
+        // Last, so the tutorial card and highlight sit on top of everything drawn above.
+        crate::tutorials::frame(&ctx, &mut self.state);
         self.apply_actions(&ctx);
         if let Some(text) = self.state.os_clipboard_out.take() {
             ctx.copy_text(text);
@@ -564,6 +567,10 @@ impl eframe::App for EditorApp {
         self.save_layout(false);
         if let Some(capture) = &mut self.capture {
             capture.update(&ctx);
+            // Screenshot runs close without a save prompt (and never save the scene).
+            if capture.saved() {
+                self.state.files.quit_confirmed = true;
+            }
         }
         // One profiler frame per editor frame.
         misty_engine::profiler::end_frame();

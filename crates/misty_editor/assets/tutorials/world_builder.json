@@ -1,0 +1,85 @@
+{
+  "id": "world-builder",
+  "title": "Generate a world with World Builder",
+  "description": "Build a whole landscape from settings: landform, erosion, mountains, an ocean, biomes, trees and rocks.",
+  "minutes": 12,
+  "scene": "empty",
+  "steps": [
+    {
+      "title": "Open World Builder",
+      "text": "Open Window ▸ Terrain ▸ World Builder. It builds a whole landscape from a few settings.",
+      "targets": ["menu.Window/Terrain/World Builder", "menu.Window/Terrain", "menu.Window"],
+      "done_when": "open:World Builder",
+      "demo": "focus:World Builder"
+    },
+    {
+      "title": "Create a World Builder",
+      "text": "Click Create World Builder. It adds a new Terrain and a World Builder object that keeps all the settings.",
+      "targets": ["World Builder/Create", "panel.World Builder"],
+      "done_when": "has:World Builder",
+      "demo": "wb:create"
+    },
+    {
+      "title": "Pick a landform",
+      "text": "Under Base Heightmap, pick a Generator, like Mountains or Islands. A quick preview of the land updates as you edit.",
+      "targets": ["World Builder/Base Heightmap/Generator", "panel.World Builder"],
+      "done_when": "wb:generator",
+      "demo": "wb:generator"
+    },
+    {
+      "title": "Shape the noise",
+      "text": "Scale sets how big the hills are. Noise Amount and Roughness add detail. Press 🎲 Randomize for a different world.",
+      "targets": ["World Builder/Base Heightmap/Noise Amount", "panel.World Builder"]
+    },
+    {
+      "title": "Erosion",
+      "text": "Erosion makes land look old and is on already. Hydraulic carves valleys like rain water, and Thermal lets steep slopes slide down.",
+      "targets": ["World Builder/Base Heightmap/Erosion", "panel.World Builder"]
+    },
+    {
+      "title": "Add a mountain",
+      "text": "Under Stamps & Areas, click ⛰ Mountain. A mountain stamp appears in the middle of the view. Move it with the Move tool (W).",
+      "targets": ["World Builder/Stamps & Areas/Add", "panel.World Builder"],
+      "done_when": "wb:mountain",
+      "demo": "wb:mountain"
+    },
+    {
+      "title": "Add an ocean",
+      "text": "Click 💧 Water and set its Mode to Sea Level. Everything below the Water Level turns into ocean.",
+      "targets": ["World Builder/Stamps & Areas/Mode", "World Builder/Stamps & Areas/Add", "panel.World Builder"],
+      "done_when": "wb:sea",
+      "demo": "wb:sea"
+    },
+    {
+      "title": "Mix biomes",
+      "text": "The Default Biome is Forest. Add a 🌲 Biome Zone stamp and set its Biome to Desert or Snowy Mountains.",
+      "targets": ["World Builder/Stamps & Areas/Biome", "World Builder/Stamps & Areas/Add", "panel.World Builder"],
+      "done_when": "wb:zone",
+      "demo": "wb:zone"
+    },
+    {
+      "title": "Textures per biome",
+      "text": "Under Biomes, click a biome name, like Forest. Each kind of ground (flat, slope, cliff, shore, peak) gets its own texture.",
+      "targets": ["World Builder/Biomes/List", "panel.World Builder"],
+      "done_when": "wb:biome_open",
+      "demo": "wb:biome_open"
+    },
+    {
+      "title": "Trees and rocks",
+      "text": "Scroll down to Scatter in the biome. It lists the trees and rocks and how dense they are. + Add Scatter Item adds more.",
+      "targets": ["World Builder/Biomes/Scatter", "panel.World Builder"]
+    },
+    {
+      "title": "Generate",
+      "text": "Click ▶ Generate. Heights, erosion, water, textures, trees and rocks are all built in one go.",
+      "targets": ["World Builder/Generate/Generate", "panel.World Builder"],
+      "done_when": "undo:Generate World",
+      "demo": "wb:generate"
+    },
+    {
+      "title": "Fly around",
+      "text": "Hold the right mouse button in the Scene view and use W A S D to fly. Hold Shift to go faster. Enjoy your world!",
+      "targets": ["panel.Scene"]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_STATS` / `MISTY_SEARCH`.
+//! `MISTY_PLAY` / `MISTY_STATS` / `MISTY_SEARCH` (and `MISTY_TUTORIAL`, see `tutorials::from_env`).
 
 use std::path::PathBuf;
 
@@ -8,6 +8,7 @@ pub struct Capture {
     path: PathBuf,
     frames: u32,
     requested: bool,
+    saved: bool,
 }
 
 impl Capture {
@@ -16,7 +17,13 @@ impl Capture {
             path: p.into(),
             frames: 0,
             requested: false,
+            saved: false,
         })
+    }
+
+    /// The screenshot was taken and the window is closing.
+    pub fn saved(&self) -> bool {
+        self.saved
     }
 
     /// Call once per frame; requests a screenshot after warm-up and quits once saved.
@@ -38,6 +45,7 @@ impl Capture {
                 Ok(()) => eprintln!("screenshot saved to {}", self.path.display()),
                 Err(e) => eprintln!("screenshot failed: {e}"),
             }
+            self.saved = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
