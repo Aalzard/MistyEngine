@@ -119,6 +119,7 @@ mod terrain_rules;
 mod terrain_tools;
 mod theme;
 mod thumbnails;
+mod title_bar;
 mod toolbar;
 mod tutorials;
 mod ui_create;
@@ -184,7 +185,11 @@ fn main() -> eframe::Result<()> {
     };
     let viewport = egui::ViewportBuilder::default()
         .with_title(branding::PRODUCT)
-        .with_icon(branding::window_icon());
+        .with_icon(branding::window_icon())
+        // Frameless: the Hub and the editor draw their own title bar (`title_bar`). The title
+        // is still set, for the taskbar.
+        .with_decorations(false)
+        .with_resizable(true);
     let (viewport, persist_window) = match &start {
         Start::Editor(project) => {
             // Automated captures don't touch the user's recent list.

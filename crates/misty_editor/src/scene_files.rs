@@ -468,6 +468,13 @@ pub fn create_scene_asset(s: &mut EditorState, folder: &Path) -> Result<String, 
 
 /// Window title: "Project - ActiveScene* - Misty Engine" (* = an open scene has changes).
 pub fn window_title(s: &EditorState) -> String {
+    let (project, scene) = title_parts(s);
+    format!("{project} - {scene} - Misty Engine")
+}
+
+/// The project folder's name and the scene name (with `*` while anything is unsaved), for the
+/// taskbar title and the title bar.
+pub fn title_parts(s: &EditorState) -> (String, String) {
     let project = s
         .project
         .root
@@ -475,7 +482,7 @@ pub fn window_title(s: &EditorState) -> String {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let dirty = if s.files.dirty.is_empty() { "" } else { "*" };
-    format!("{project} - {}{dirty} - Misty Engine", s.scene.name)
+    (project, format!("{}{dirty}", s.scene.name))
 }
 
 /// The modal "Scene Has Been Modified" prompt. Returns the action to carry out, if any.
