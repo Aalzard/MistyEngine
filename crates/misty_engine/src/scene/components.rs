@@ -296,6 +296,9 @@ pub struct Light {
     /// Screen-space contact shadows (when a volume's Contact Shadows override is on).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub contact_shadows: bool,
+    /// Glow sprite around point / spot lights (left out of files while untouched).
+    #[serde(skip_serializing_if = "super::light_glow::LightHalo::is_default")]
+    pub halo: super::light_glow::LightHalo,
 }
 
 impl Default for Light {
@@ -315,6 +318,7 @@ impl Default for Light {
             volumetric_multiplier: 1.0,
             volumetric_shadow_dimmer: 1.0,
             contact_shadows: false,
+            halo: Default::default(),
         }
     }
 }

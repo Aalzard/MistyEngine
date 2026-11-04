@@ -26,6 +26,8 @@ pub struct Environment {
     pub probes: super::probes::ProbeSet,
     /// Local Fog Volumes (seen by volumetric fog only).
     pub fog_volumes: Vec<super::LocalFog>,
+    /// Light halos and lens flares (render/glow).
+    pub glows: Vec<super::GlowSource>,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -61,6 +63,7 @@ impl Environment {
             sun,
             probes: Default::default(),
             fog_volumes: Vec::new(),
+            glows: Vec::new(),
         }
     }
 

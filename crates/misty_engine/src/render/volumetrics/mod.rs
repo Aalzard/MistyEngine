@@ -27,7 +27,7 @@ use std::collections::HashMap;
 pub use settings::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 
 use super::{Frame, RenderTarget, Renderer};
-use settings::FogMode;
+pub(crate) use settings::FogMode;
 use uniforms::Slices;
 
 /// View-group entries 1..=3 (fog volume, its sampler, the fog uniform).
