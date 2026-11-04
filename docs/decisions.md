@@ -1300,3 +1300,77 @@ Record of choices made without asking, and why.
      against Default), coins on Ignore Raycast as triggers that disappear and update a UI Text. It uses the
      Default sorting layer with orders, so ProjectSettings.json stays unchanged. The capture also accepts
      `MISTY_2D=1` to open the Scene view in 2D.
+304. **Custom shaders are WGSL files with a comment header:** `.shader` assets start with `// @shader`, `// @blend`,
+     `// @cull`, `// @zwrite`, `// @queue` and `// @property NAME TYPE ["Label"] = DEFAULT // tooltip` lines. Because
+     the header lines are WGSL comments, the file compiles as written. This replaces ShaderLab's `Properties {}`
+     block and needs no second language. Property types are float, range, color (linear in the shader, sRGB in the
+     Inspector), vector and texture2d (defaults white/black/grey/normal).
+305. **Surface shaders reuse the lit mesh shader:** the generated module is common.wgsl + mesh.wgsl + a prelude +
+     generated bindings + the user's file + entry points. `fs_custom` fills the engine's `Surface` from the user's
+     `SurfaceOutput` and calls `shade()`, so a custom shader picks up any improvement to the lighting (shadows, fog,
+     ambient, probes, AO). Unlit shaders return the final colour from `fn fragment`. An optional
+     `fn vertex(VertexData)` displaces in object space. Shadows use the built-in caster (undisplaced, opaque
+     only). Custom bindings live at group 2 bindings 16+ and group 3 (`globals`, scene copy), so they never
+     collide with the built-in material's bindings.
+306. **Errors and fallback:** naga parses and validates the wrapped module before wgpu sees it, and pipeline creation
+     runs inside a validation error scope. Error spans are mapped back to lines of the user's file; errors in the
+     wrapper are reported without a line, with a hint about the expected function. A broken or missing shader draws
+     with a magenta unlit shader. Errors go to the Console as `Shader error in <path>:<line>:<col>: …`, which the
+     Console links to the Code Editor. The Code Editor highlights WGSL and shows naga errors as squiggles.
+307. **Hot reload:** a process-wide shader library caches assets by path and re-reads changed files (mtime, polled
+     twice a second in Edit mode). While you type, the Code Editor pushes the buffer into the library once it
+     compiles, so the scene updates live; saving reloads it. Each load bumps a generation number, and the renderer
+     recompiles when that number changes.
+308. **Materials store values by name:** `.mat` gets `"properties": {"_Speed": 2.0, "_Color": [..], "_MainTex": "Assets/.."}`
+     (left out when empty, so old files re-save unchanged). Values that do not fit the declared type fall back to
+     the default. The shader's blend/cull/queue map onto MaterialParams (Fade / Transparent / double sided /
+     `render_queue()`), so draw order, shadows and batching work as for built-ins. A uniform + texture bind group is
+     shared by every material with the same shader and the same values, and the batch key is the custom pipeline +
+     group + mesh.
+309. **Scene colour and depth for the transparent queue:** when a frame has water, or a queue≥3000 custom shader that
+     reads the scene, the main pass splits after opaque geometry, terrain and the grid. The resolved HDR colour is
+     copied, and MSAA depth sample 0 is resolved into an R32Float texture by a fullscreen pass. Water and
+     transparents then draw in a second pass that loads the MSAA targets. Frames without water pay nothing.
+310. **Ocean = Gerstner + FFT, one shared model on GPU and CPU:** 8 Gerstner waves (4 swell from Swell
+     Height/Length/Direction, 4 long wind waves) plus a 256² FFT ocean with a JONSWAP or Phillips spectrum. The FFT is
+     scaled so that Hs = 0.21·V²/g × Wave Height, and its tile is about two peak wavelengths (48–900 m). The CPU
+     builds the identical initial spectrum (deterministic hash Gaussians), so `Water.GetHeight` and buoyancy evaluate
+     the same Gerstner waves plus the FFT's 32² lowest modes, with a fixed-point inverse of the sideways motion. Only
+     the finest ripples are missing on the CPU. All surfaces share the first surface's FFT simulation (scaled to their
+     own wave height); their Gerstner waves, colours and foam stay their own.
+311. **FFT on the GPU:** one compute pass animates h0, runs radix-2 row and column inverse FFTs in workgroup memory
+     (4 complex signals carry height, x/z displacement, slopes and Jacobian terms), then writes rgba16f
+     displacement and slope textures with 8 mips. Foam builds where the Jacobian drops below a threshold that rises
+     with Crest Foam, fades over about 2.5 s, and is stored in a persistent buffer. The FFT runs once per new time
+     (several views per frame share it).
+312. **Ocean geometry is a camera-centred clipmap:** 9 square rings (0.5 m cells doubling to 128 m, ±4 km) plus a
+     skirt to 60 km, snapped to the camera in 4 m steps. Vertices near a ring's edge morph onto the next ring's grid,
+     so there are no cracks. Short Gerstner waves fade per cell size, FFT samples use the matching mip, and
+     displacement flattens towards 3.5 km so the horizon stays calm. Lakes and rivers use one 160² unit grid scaled
+     to their size, with waves fading towards the banks. Rivers turn their waves along the flow and scroll the FFT
+     with Flow Speed.
+313. **Water shading:** Fresnel reflection of the procedural sky, plus a 24-step screen-space march against the depth
+     copy (Screen Space Reflections toggle). There is no probe reflection yet; it hooks in when probes land.
+     Refraction distorts the scene copy by the normal, rejects samples in front of the water, and absorbs along
+     the path (red first) over Clarity metres towards a shallow↔deep body colour lit by ambient and sun. SSS adds
+     light through thin crests towards the sun, and the sun glitter is GGX, roughened with distance. Shore foam
+     comes from the depth difference and crest foam from the FFT Jacobian and Gerstner crests, broken up with value
+     noise. Caustics are procedural moving Voronoi edges, projected along the sun onto the underwater scene point
+     and faded with depth. Water writes depth, receives the sun's shadow and takes fog.
+314. **Underwater view:** when the camera is below a surface (CPU height query at the camera), a fullscreen pass before
+     the water redraws the opaque scene with wobble, caustics, distance fog in the underwater colour and light falling
+     off with depth. The underside of the surface shows Snell's window, with total internal reflection outside it.
+315. **Floater = eight corner probes:** each corner of a local box pushes up by Buoyancy × weight / 8 × its submerged
+     fraction (half at the surface). This keeps working when the box turns over; bottom-only probes made flipped
+     crates float upside down and too deep. Linear and angular water drag act relative to the river flow. It runs
+     inside `Physics::step`, before the rapier step, and uses the same `clock` time as rendering
+     (`Time.time` while playing).
+316. **Simple controls over raw parameters:** the Water Surface Inspector has the type, size, a Calm ↔ Stormy slider
+     (sets wind, height, chop, swell, foam and ripples together) and preset buttons (Tropical, Ocean, Stormy, Lake,
+     Murky River), followed by collapsible sections with tooltips. GameObject ▸ Water ▸ Ocean / Lake / River
+     creates surfaces. `water::spawn_water(scene, name, kind, position, size)`, `water::height_at` and
+     `WaterSurface` / `Floater` form the public API for other systems, such as the world builder's lakes.
+317. **WaterDemo and ShaderDemo are generated by code** (`sample_water`: ignored writer, check, headless play test that
+     the crates float). WaterDemo has an ocean at sunset, a sand-dome island with rocks, a palm, a hologram beacon,
+     seven floating crates and an orbiting camera. ShaderDemo shows Hologram (lit, alpha), Wobble (vertex), Scroll
+     Gradient (unlit) and Force Field (reads the scene copy).
