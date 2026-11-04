@@ -1,5 +1,5 @@
 //! Misty Hub: the launcher `misty` opens when started without a project path. Pages: Projects
-//! (recent list, New Project, Open), Learn (tutorial registry) and Settings. Choosing a project
+//! (recent list, New Project, Open), Learn (the editor's tutorials) and Settings. Choosing a project
 //! hands the window over to the editor (see `launcher`).
 //!
 //! Screenshots: `MISTY_HUB_PAGE=projects|new|learn|settings` opens a page and
@@ -47,6 +47,12 @@ pub struct Hub {
     open: Option<PathBuf>,
     capture: Option<crate::capture::Capture>,
     applied_theme: Option<HubTheme>,
+    /// IDs of finished tutorials (Learn page ✓).
+    tutorials_done: std::collections::BTreeSet<String>,
+    /// Learn ▸ Start: asking which project to open the tutorial in.
+    tutorial_pick: Option<&'static str>,
+    /// The tutorial to start once the editor has opened `open`.
+    open_tutorial: Option<String>,
 }
 
 #[derive(Default)]
@@ -71,6 +77,7 @@ impl Hub {
             .as_deref()
             .map(HubConfig::load)
             .unwrap_or_default();
+        let tutorials_done = learn::load_done(config_path.as_deref());
         Self {
             config_path,
             config,
@@ -82,6 +89,9 @@ impl Hub {
             open: None,
             capture: crate::capture::Capture::from_env(),
             applied_theme: None,
+            tutorials_done,
+            tutorial_pick: None,
+            open_tutorial: None,
         }
     }
 
@@ -112,7 +122,7 @@ impl Hub {
         }
     }
 
-    fn start_new_project(&mut self) {
+    pub fn start_new_project(&mut self) {
         self.new_project = Some(new_project::NewProject::new(&self.config.projects_folder()));
         self.page = Page::Projects;
     }
@@ -162,7 +172,7 @@ impl Hub {
                 } else {
                     match self.page {
                         Page::Projects => projects::show(ui, self),
-                        Page::Learn => pages::learn(ui, self),
+                        Page::Learn => learn::show(ui, self),
                         Page::Settings => pages::settings(ui, self),
                     }
                 }
@@ -171,6 +181,11 @@ impl Hub {
             capture.update(&ctx);
         }
         self.open.take()
+    }
+
+    /// The tutorial to start in the project [`Hub::ui`] just returned (Learn ▸ Start).
+    pub fn take_tutorial(&mut self) -> Option<String> {
+        self.open_tutorial.take()
     }
 
     /// Logo slot, page links and the version footer.

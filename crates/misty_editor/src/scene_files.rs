@@ -61,6 +61,8 @@ pub enum AfterPrompt {
     NewScene,
     Open(String),
     Quit,
+    /// Close the project and return to the Misty Hub (its New Project page when true).
+    OpenHub(bool),
     /// Unload / remove one scene of the open set.
     Unload(SceneId),
     Remove(SceneId),
@@ -76,6 +78,9 @@ pub struct SceneFiles {
     pub prompt: Option<AfterPrompt>,
     /// The user confirmed quitting: let the window close.
     pub quit_confirmed: bool,
+    /// Confirmed File ▸ Open Misty Hub: the launcher swaps the editor for the Hub (`Some(true)`
+    /// = on the New Project page).
+    pub open_hub: Option<bool>,
     /// Hash of each loaded scene's JSON when it was last loaded or saved.
     pub saved: HashMap<SceneId, u64>,
     /// Scenes with unsaved changes (refreshed each frame by [`refresh_dirty`]).
@@ -153,7 +158,10 @@ pub fn refresh_dirty(s: &mut EditorState) {
 fn at_risk(s: &EditorState, action: &AfterPrompt) -> Vec<SceneId> {
     let dirty = dirty_now(s);
     match action {
-        AfterPrompt::NewScene | AfterPrompt::Open(_) | AfterPrompt::Quit => dirty,
+        AfterPrompt::NewScene
+        | AfterPrompt::Open(_)
+        | AfterPrompt::Quit
+        | AfterPrompt::OpenHub(_) => dirty,
         AfterPrompt::Unload(id) | AfterPrompt::Remove(id) => {
             dirty.into_iter().filter(|d| d == id).collect()
         }
@@ -225,6 +233,7 @@ pub fn perform(s: &mut EditorState, action: AfterPrompt) -> bool {
             s.files.quit_confirmed = true;
             return true;
         }
+        AfterPrompt::OpenHub(new_project) => s.files.open_hub = Some(new_project),
         AfterPrompt::Unload(id) => crate::open_scenes::unload(s, id),
         AfterPrompt::Remove(id) => crate::open_scenes::remove(s, id),
         AfterPrompt::CloseOthers(id) => crate::open_scenes::close_others(s, id),
@@ -520,6 +529,23 @@ mod tests {
         s.scene_dirty = true;
         assert_eq!(guard(&mut s, AfterPrompt::NewScene), None);
         assert_eq!(s.files.prompt, Some(AfterPrompt::NewScene));
+    }
+
+    /// File ▸ Open Misty Hub: straight away when nothing changed, else after the save prompt;
+    /// the launcher picks the request up once.
+    #[test]
+    fn open_hub_asks_to_save_first() {
+        let mut s = state("open_hub");
+        let a = guard(&mut s, AfterPrompt::OpenHub(false)).expect("nothing to save");
+        assert!(!perform(&mut s, a), "the window stays open");
+        assert_eq!(s.files.open_hub.take(), Some(false));
+        s.scene.spawn("Unsaved", None);
+        s.scene_dirty = true;
+        assert_eq!(guard(&mut s, AfterPrompt::OpenHub(true)), None);
+        assert_eq!(s.files.prompt, Some(AfterPrompt::OpenHub(true)));
+        assert_eq!(s.files.open_hub, None, "not before the prompt is answered");
+        perform(&mut s, AfterPrompt::OpenHub(true));
+        assert_eq!(s.files.open_hub, Some(true));
     }
 
     #[test]

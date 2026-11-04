@@ -1802,3 +1802,19 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - No "resume where I left off"; Exit forgets the step.
 - Targets inside a collapsed section fall back to the section header until the user opens it.
 - Tutorial text is English only.
+
+## v0.0.1: Hub and tutorials merged ✅
+
+### Done
+- Merged `v001-hub` and `v001-tutorials` (decisions renumbered 549–562 and 563–575).
+- The Hub's Learn page lists the four built-in tutorials with their time and a ✓ Done mark from the tutorial
+  progress; Start opens a recent project you pick (or the "Tutorial Playground" project, made from the Standard
+  template in the projects folder) and the editor starts the tutorial once it has loaded.
+- Hub and tutorial progress share `%APPDATA%\MistyEngine\` (the old `Misty Engine\Editor\tutorials.json` is still
+  read until the new one exists).
+- File ▸ Open Misty Hub / New Project... / Open Project... return to the Hub (asking to save first).
+- Fixes found while merging: the post-processing tutorial follows the "Sun Shafts (Screen)" rename; the water
+  GPU tests freeze the wave clock (one flaked in a full run).
+
+### Not done yet
+- Returning to the Hub does not ask about scripts changed in the Code Editor; it refuses with a Console warning.

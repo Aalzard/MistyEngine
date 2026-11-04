@@ -263,11 +263,36 @@ fn progress_is_saved_per_user_file() {
         "broken file = nothing done"
     );
     std::fs::remove_dir_all(dir).ok();
-    assert!(
-        progress_file().is_none_or(|f| f.ends_with("Misty Engine/Editor/tutorials.json")),
-        "{:?}",
-        progress_file()
+    // Next to hub.json, in the one per-user Misty Engine folder.
+    assert_eq!(
+        progress_file(),
+        crate::hub::config::config_dir().map(|d| d.join("tutorials.json"))
     );
+}
+
+#[test]
+fn progress_falls_back_to_the_old_file_until_the_new_one_exists() {
+    let dir = std::env::temp_dir().join(format!("misty_tut_legacy_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("old")).unwrap();
+    let (new, old) = (
+        dir.join("MistyEngine/tutorials.json"),
+        dir.join("old/tutorials.json"),
+    );
+    std::fs::write(&old, r#"{"done":["terrain"]}"#).unwrap();
+    let mut p = Progress::load_or(Some(new.clone()), Some(old.clone()));
+    assert!(p.is_done("terrain"), "old progress is kept");
+    // Finishing one writes the new file with both; the old file is left alone.
+    p.complete("god-rays").unwrap();
+    let again = Progress::load_or(Some(new.clone()), Some(old.clone()));
+    assert!(again.is_done("terrain") && again.is_done("god-rays"));
+    std::fs::write(&old, r#"{"done":["world-builder"]}"#).unwrap();
+    let again = Progress::load_or(Some(new), Some(old));
+    assert!(
+        !again.is_done("world-builder"),
+        "the new file wins once it exists"
+    );
+    std::fs::remove_dir_all(dir).ok();
 }
 
 // ---- end to end in the UI --------------------------------------------------------------------

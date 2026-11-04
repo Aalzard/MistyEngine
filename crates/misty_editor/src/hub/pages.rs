@@ -1,62 +1,9 @@
-//! Learn and Settings pages.
+//! The Settings page (Learn is in `learn.rs`).
 
-use egui::{Align, Layout, RichText};
+use egui::RichText;
 
 use super::config::HubTheme;
-use super::learn::TUTORIALS;
 use super::{Hub, style};
-
-pub fn learn(ui: &mut egui::Ui, hub: &mut Hub) {
-    let p = style::palette(hub.config.theme);
-    ui.heading(RichText::new("Learn").strong());
-    ui.label(RichText::new("Step-by-step tutorials that teach the editor.").color(p.dim));
-    ui.add_space(14.0);
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            for t in TUTORIALS {
-                egui::Frame::new()
-                    .fill(p.card)
-                    .stroke(egui::Stroke::new(1.0, p.border))
-                    .corner_radius(8.0)
-                    .inner_margin(egui::Margin::symmetric(16, 12))
-                    .show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                ui.spacing_mut().item_spacing.y = 3.0;
-                                ui.label(RichText::new(t.title).size(15.0).strong());
-                                ui.label(RichText::new(t.summary).color(p.dim));
-                            });
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                match t.open {
-                                    Some(open) => {
-                                        if ui.add(style::primary("Start")).clicked() {
-                                            match open() {
-                                                Ok(project) => hub.open_project(&project),
-                                                Err(e) => hub.notice = Some(e),
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        ui.label(RichText::new("Coming soon").small().color(p.dim));
-                                    }
-                                }
-                                ui.label(
-                                    RichText::new(format!("{} min", t.minutes))
-                                        .small()
-                                        .color(p.dim),
-                                );
-                            });
-                        });
-                    });
-                ui.add_space(4.0);
-            }
-            if let Some(n) = &hub.notice {
-                ui.colored_label(style::ERROR, n);
-            }
-        });
-}
 
 pub fn settings(ui: &mut egui::Ui, hub: &mut Hub) {
     let p = style::palette(hub.config.theme);

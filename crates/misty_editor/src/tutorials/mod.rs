@@ -7,7 +7,8 @@
 //! through the steps. Finished tutorials are remembered per user (`progress.rs`).
 //!
 //! **Misty Hub:** [`list`] returns every tutorial's id, title, description and minutes for the
-//! Learn page; [`progress_file`] is where finished IDs are saved (JSON `{"done": [...]}`).
+//! Learn page; `progress_file` is where finished IDs are saved (JSON `{"done": [...]}`), and
+//! Start there opens a project and calls [`launch`] once the editor has loaded it.
 //! Launching the editor with `MISTY_TUTORIAL=<id>` starts that tutorial (see [`from_env`]).
 
 mod card;
@@ -49,9 +50,13 @@ pub fn list() -> Vec<TutorialInfo> {
         .collect()
 }
 
-/// Where finished tutorials are saved for this user.
-pub fn progress_file() -> Option<std::path::PathBuf> {
-    progress::default_file()
+/// Where finished tutorials are saved for this user (next to the Hub's `hub.json`).
+#[cfg(test)]
+pub use progress::default_file as progress_file;
+
+/// The progress file kept in the per-user folder `dir` (the Hub's config folder).
+pub fn progress_file_in(dir: &std::path::Path) -> std::path::PathBuf {
+    dir.join(progress::FILE_NAME)
 }
 
 /// Editor-wide tutorial state.
@@ -67,11 +72,15 @@ pub struct Tutorials {
 impl Default for Tutorials {
     fn default() -> Self {
         // Tests never touch the real per-user file.
-        let file = if cfg!(test) { None } else { progress_file() };
+        let progress = if cfg!(test) {
+            Progress::load(None)
+        } else {
+            Progress::load_default()
+        };
         Self {
             window_open: false,
             run: None,
-            progress: Progress::load(file),
+            progress,
             pending: None,
         }
     }
@@ -217,6 +226,15 @@ pub fn fast_forward(s: &mut EditorState, i: usize) {
     enter_step(s, i);
 }
 
+/// Start tutorial `id` right after the project opened (`MISTY_TUTORIAL`, or Start on the Hub's
+/// Learn page): the scene the project opened on is replaced without asking, since nothing was
+/// changed yet. False if there is no such tutorial.
+pub fn launch(s: &mut EditorState, id: &str) -> bool {
+    s.scene_dirty = false;
+    s.files.dirty.clear();
+    start(s, id)
+}
+
 /// `MISTY_TUTORIAL=<id>` starts a tutorial at launch; `<id>:<step>` (1-based) jumps to a step
 /// by doing the earlier steps (screenshots); `window` opens the Tutorials window.
 pub fn from_env(s: &mut EditorState) {
@@ -232,10 +250,7 @@ pub fn from_env(s: &mut EditorState) {
         Some((id, n)) => (id.to_owned(), n.trim().parse::<usize>().unwrap_or(1)),
         None => (v, 1),
     };
-    // Launch: the open scene is replaced without asking (nothing is saved or lost on disk).
-    s.scene_dirty = false;
-    s.files.dirty.clear();
-    if start(s, &id) {
+    if launch(s, &id) {
         fast_forward(s, step.saturating_sub(1));
     } else {
         s.console

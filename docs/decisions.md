@@ -2699,8 +2699,10 @@ Record of choices made without asking, and why.
      Hub show it).
 562. **Water GPU tests freeze the wave clock (merge):** `water_demo_ocean_fades_into_fog` failed once in the full
      run after the Hub merge and passed alone. Its clear / fogged / reference images were rendered at different
-     wall-clock times, so WaterDemo's waves moved between them (more when the machine is busy with parallel
-     tests). The test helper now sets the (test-thread-local) game clock to 0 just before each render.
+     wall-clock time: WaterDemo's wave phase is taken from it when `GameView::new` builds the water draws, and
+     how much the low fog changes the near water depends on that phase (the "near stays mostly clear" margin
+     ranged from +11 to −7 across runs). The test now sets the (test-thread-local) game clock to 0 before
+     building the view, and the render helper does so before each render (globals time).
 
 
 ## 2026-11-04 — v0.0.1: In-editor tutorials
@@ -2753,3 +2755,32 @@ Record of choices made without asking, and why.
      radial blur section "Sun Shafts (Screen)" (547) after the tutorials branch was cut, so the "Add Sun Shafts"
      step's target `inspector.Post-process Volume/Sun Shafts` was never drawn (its end-to-end test failed). The
      step now targets and names "Sun Shafts (Screen)".
+
+## 2026-11-04 — v0.0.1: Hub and tutorials together (merge)
+
+576. **The Learn page lists the real tutorials:** `hub::learn::TUTORIALS` (placeholder entries) is gone; the
+     page reads `tutorials::list()` (same crate) and shows title, description, minutes, and "✓ Done" with an
+     "Again" button for finished ones (Start otherwise). The progress is read once when the Hub opens (the Hub
+     is rebuilt when returning from the editor, so a tutorial finished there shows up).
+577. **Start asks which project:** a tutorial always begins on a new, untitled scene, so it can run in any
+     project. With recent projects that still exist, a dialog lists the six most recent plus "New / Open
+     Tutorial Playground"; with none, Start goes straight to the playground. The playground is
+     `<projects folder>/Tutorial Playground`, made from the Standard template the first time and reused after.
+     It is created on the UI thread (the Standard template takes well under a second; Landscape is the slow one
+     and is not used here).
+578. **Starting after the hand-over:** `Hub::ui` still returns the project path; `Hub::take_tutorial()` gives
+     the tutorial chosen with it, and the launcher calls `EditorApp::start_tutorial` right after
+     `EditorApp::start`. That goes through `tutorials::launch` (also used by `MISTY_TUTORIAL`): the scene the
+     project opened on is replaced without a save prompt, since nothing was edited yet.
+579. **One per-user folder, `%APPDATA%\MistyEngine\`:** the Hub used `MistyEngine\hub.json`, the tutorials used
+     the PlayerPrefs-style `Misty Engine\Editor\tutorials.json`. Both now live in `MistyEngine\` (macOS:
+     `~/Library/Application Support/MistyEngine`, else `$XDG_CONFIG_HOME/MistyEngine`); `hub::config::config_dir`
+     is the one source. The old `tutorials.json` is still read while the new file doesn't exist (the next
+     finished tutorial writes the new one; the old file is left alone). `MISTY_HUB_CONFIG=<file>` moves both
+     (the progress goes next to that file), so tests and screenshot runs never touch the user's files.
+580. **File ▸ Open Misty Hub, New Project..., Open Project...:** the two placeholder entries now go to the Hub
+     (New Project... on its New Project page), plus an explicit "Open Misty Hub" (also in the Ctrl+K palette).
+     It asks to save changed scenes like New Scene does (`AfterPrompt::OpenHub`), refuses while scripts have
+     unsaved changes in the Code Editor (Console warning) and in Play mode. The launcher then saves the layout
+     (`on_exit`), resets the style and shows a Hub built without the `MISTY_HUB_*` env hooks, at its own size
+     (un-maximised, 1180×720, titled "Misty Hub").

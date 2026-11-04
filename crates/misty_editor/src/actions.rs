@@ -130,6 +130,11 @@ pub enum Action {
     /// Delete user layouts and go back to Default.
     ResetAllLayouts,
     Quit,
+    /// File ▸ Open Misty Hub (asks to save first): close the project and show the Hub, on its
+    /// New Project page when `new_project` (File ▸ New Project...).
+    OpenHub {
+        new_project: bool,
+    },
     NewScene,
     /// File ▸ Open Scene (file dialog).
     OpenScene,

@@ -78,8 +78,27 @@ fn file_menu(ui: &mut Ui, s: &mut EditorState) {
     item(ui, s, "Save", "Ctrl+S", Action::SaveScene);
     item(ui, s, "Save As...", "Ctrl+Shift+S", Action::SaveSceneAs);
     ui.separator();
-    todo(ui, s, "New Project...", "");
-    todo(ui, s, "Open Project...", "");
+    item(
+        ui,
+        s,
+        "New Project...",
+        "",
+        Action::OpenHub { new_project: true },
+    );
+    item(
+        ui,
+        s,
+        "Open Project...",
+        "",
+        Action::OpenHub { new_project: false },
+    );
+    item(
+        ui,
+        s,
+        "Open Misty Hub",
+        "",
+        Action::OpenHub { new_project: false },
+    );
     ui.separator();
     item(
         ui,

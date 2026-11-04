@@ -223,6 +223,8 @@ fn water_demo_ocean_fades_into_fog() {
     let (scene, _) = crate::scene::Scene::load(&root.join("Assets/Scenes/WaterDemo.scene"))
         .expect("WaterDemo.scene");
     let materials = crate::assets::AssetCache::open(&root);
+    // The wave phase is taken when the view is built: a fixed one, not the wall clock's.
+    crate::clock::set_play_time(0.0);
     let view = crate::render_scene::GameView::new(&scene, &materials).expect("camera");
     // Away from the island, level, 4 m above the sea.
     let mut cam = view.camera;

@@ -1,5 +1,6 @@
 //! `hub.json`: the Hub's recent projects and settings, kept in the user's config folder
-//! (`%APPDATA%\MistyEngine\hub.json` on Windows; `MISTY_HUB_CONFIG=<file>` overrides it).
+//! (`%APPDATA%\MistyEngine\hub.json` on Windows; `MISTY_HUB_CONFIG=<file>` overrides it). The
+//! tutorial progress is kept in the same folder (see [`config_dir`]).
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -106,6 +107,12 @@ impl HubConfig {
             .filter(|r| q.is_empty() || r.path.to_string_lossy().to_lowercase().contains(&q))
             .collect()
     }
+}
+
+/// The per-user Misty Engine folder (`%APPDATA%\MistyEngine` on Windows): `hub.json`, the
+/// tutorial progress (`tutorials.json`). With `MISTY_HUB_CONFIG=<file>`, that file's folder.
+pub fn config_dir() -> Option<PathBuf> {
+    config_path()?.parent().map(Path::to_path_buf)
 }
 
 /// Where `hub.json` lives.

@@ -112,10 +112,11 @@ fn project_names_are_validated() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// Hub plus the project it asked to open.
+/// Hub plus the project it asked to open (and the tutorial to start there).
 struct Shown {
     hub: Hub,
     opened: Option<PathBuf>,
+    tutorial: Option<String>,
 }
 
 fn harness(config: &Path) -> Harness<'static, Shown> {
@@ -128,9 +129,14 @@ fn harness(config: &Path) -> Harness<'static, Shown> {
             |ui, s: &mut Shown| {
                 if let Some(p) = s.hub.ui(ui) {
                     s.opened = Some(p);
+                    s.tutorial = s.hub.take_tutorial();
                 }
             },
-            Shown { hub, opened: None },
+            Shown {
+                hub,
+                opened: None,
+                tutorial: None,
+            },
         )
 }
 
@@ -244,12 +250,92 @@ fn learn_and_settings_pages_show() {
     h.run();
     h.get_by_label("Learn").click();
     h.run();
-    h.get_by_label(super::learn::TUTORIALS[0].title);
+    for t in crate::tutorials::list() {
+        h.get_by_label(t.title);
+    }
     h.get_by_label("Settings").click();
     h.run();
     h.get_by_label("Light").click();
     h.run();
     assert_eq!(HubConfig::load(&path).theme, HubTheme::Light);
     h.get_by_label(&format!("v{}", super::VERSION));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The Learn page lists the editor's tutorials with a ✓ for those in `tutorials.json` beside
+/// `hub.json`; Start with no recent project makes the Tutorial Playground and opens it.
+#[test]
+fn learn_starts_a_tutorial_in_the_playground() {
+    let dir = temp("learn_playground");
+    let path = dir.join("hub.json");
+    HubConfig {
+        projects_folder: Some(dir.join("Projects")),
+        ..Default::default()
+    }
+    .save(&path)
+    .unwrap();
+    let list = crate::tutorials::list();
+    std::fs::write(
+        dir.join("tutorials.json"),
+        format!(r#"{{"done":["{}"]}}"#, list[1].id),
+    )
+    .unwrap();
+    let mut h = harness(&path);
+    h.run();
+    h.get_by_label("Learn").click();
+    h.run();
+    // One finished: one "Again", the others "Start".
+    h.get_by_label("✓ Done");
+    assert_eq!(h.get_all_by_label("Again").count(), 1);
+    assert_eq!(h.get_all_by_label("Start").count(), list.len() - 1);
+    h.get_all_by_label("Start").next().unwrap().click();
+    h.run();
+    let s = h.state();
+    let opened = s.opened.clone().expect("opened");
+    assert_eq!(opened, dir.join("Projects").join(super::learn::PLAYGROUND));
+    assert!(
+        opened.join(crate::templates::SCENE).is_file(),
+        "Standard template"
+    );
+    assert_eq!(s.tutorial.as_deref(), Some(list[0].id));
+    assert!(config::same_path(
+        &HubConfig::load(&path).recent[0].path,
+        &opened
+    ));
+    // A second time it reuses the folder (it is not empty, so creating it again would fail).
+    assert_eq!(
+        super::learn::playground(&dir.join("Projects")).unwrap(),
+        opened
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// With recent projects, Start asks which one to open the tutorial in.
+#[test]
+fn learn_asks_which_recent_project() {
+    let dir = temp("learn_pick");
+    let path = dir.join("hub.json");
+    let game = dir.join("My Game");
+    std::fs::create_dir_all(game.join("Assets")).unwrap();
+    let mut c = HubConfig {
+        projects_folder: Some(dir.join("Projects")),
+        ..Default::default()
+    };
+    c.touch(&game, 1);
+    c.save(&path).unwrap();
+    let mut h = harness(&path);
+    h.run();
+    h.get_by_label("Learn").click();
+    h.run();
+    h.get_all_by_label("Start").nth(2).unwrap().click();
+    h.run();
+    assert!(h.state().opened.is_none(), "asks first");
+    h.get_by_label("New Tutorial Playground (Standard template)");
+    h.get_by_label("My Game").click();
+    h.run();
+    let s = h.state();
+    assert_eq!(s.opened.as_deref(), Some(game.as_path()));
+    assert_eq!(s.tutorial.as_deref(), Some(crate::tutorials::list()[2].id));
+    assert!(!dir.join("Projects").exists(), "no playground made");
     let _ = std::fs::remove_dir_all(dir);
 }

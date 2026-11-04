@@ -82,6 +82,19 @@ impl EditorApp {
         }
     }
 
+    /// File ▸ Open Misty Hub was confirmed: `Some(new_project)` once (the launcher then shows
+    /// the Hub, after calling `on_exit`).
+    pub fn take_open_hub(&mut self) -> Option<bool> {
+        self.state.files.open_hub.take()
+    }
+
+    /// Start tutorial `id` (Learn ▸ Start in the Hub, once the project has loaded).
+    pub fn start_tutorial(&mut self, id: &str) {
+        if !crate::tutorials::launch(&mut self.state, id) {
+            self.state.console.warn(format!("No tutorial '{id}'."));
+        }
+    }
+
     /// Save the layout if it changed (debounced), or now when `force` is set.
     /// During Play Maximized the layout from before Play is the one kept.
     fn save_layout(&mut self, force: bool) {
@@ -300,6 +313,7 @@ impl EditorApp {
                     | Action::OpenSceneAdditive(_)
                     | Action::Scene(..)
                     | Action::Quit
+                    | Action::OpenHub { .. }
             ) {
                 animation::preview::stop_preview(&mut self.state);
             }
@@ -319,6 +333,14 @@ impl EditorApp {
             | Action::SaveLayout(_)
             | Action::DeleteLayout(_)
             | Action::ResetAllLayouts => self.apply_layout(action),
+            Action::OpenHub { new_project } => {
+                if s.code_editor.any_dirty() {
+                    s.console
+                        .warn("Save or close the changed scripts in the Code Editor first.");
+                } else if let Some(a) = scene_files::guard(s, AfterPrompt::OpenHub(new_project)) {
+                    scene_files::perform(s, a);
+                }
+            }
             Action::Quit => {
                 if let Some(a) = scene_files::guard(s, AfterPrompt::Quit)
                     && scene_files::perform(s, a)

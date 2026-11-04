@@ -145,6 +145,24 @@ fn file(l: &mut List, s: &EditorState) {
         "Ctrl+B",
         Action::BuildAndRun,
     );
+    l.action(
+        "New Project",
+        "File/New Project...",
+        "",
+        Action::OpenHub { new_project: true },
+    );
+    l.action(
+        "Open Project",
+        "File/Open Project...",
+        "",
+        Action::OpenHub { new_project: false },
+    );
+    l.action(
+        "Open Misty Hub",
+        "File/Open Misty Hub",
+        "",
+        Action::OpenHub { new_project: false },
+    );
     l.action("Exit", "File/Exit", "", Action::Quit);
 }
 
