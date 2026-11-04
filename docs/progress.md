@@ -971,3 +971,61 @@ clippy fixes in `sprite_handles.rs` (a type alias, a removed `.clone()`), then t
   sprite, Edit Collider for capsule/polygon/edge, `Rigidbody2D.Sleep`/`IsTouching`, `Physics2D.BoxCast`/
   `CircleCast`, contact filters, or "Use Full Kinematic Contacts"; Collision2D has a single contact point.
 - Sorting Layers have their own Project Settings page (not Tags and Layers); sprites take fog.
+
+## Round 8: material overrides + rendering performance ✅
+
+### Done
+- **Per-object material overrides** (Mesh Renderer, per Materials element): UV Tiling, UV Offset,
+  UV Rotation, Color tint (multiplied), Smoothness / Metallic / Emission multipliers. Only overridden
+  values are stored (`overrides` left out of files when empty). They go into the draw's own `draws[]`
+  entry, so three walls sharing a material with different UVs/tints are still one instanced draw.
+  Inspector: collapsible "Overrides (this object only)" under each element (opens when it has
+  overrides), checkbox per property, bold ● rows, count in the header, Reset All; undo/redo and
+  multi-object editing (nested values merge per field; mixed values show —). Lua:
+  `renderer:SetOverride/ClearOverride/GetOverride(name[, element])`. Survive prefab Apply/Revert.
+- Shared per-draw struct in `shaders/draw.wgsl` (layout documented, 224 bytes, one `extra` vec4).
+- **Cached, incremental gather** (`DrawCache`, one per view): compares last frame's inputs, rebuilds
+  only changed objects, recomputes world matrices only below a changed transform, resolves each distinct
+  material once per frame; the draw list is shared (`Arc`), no per-frame copy. Lights, cameras, post
+  volumes and terrains no longer walk the scene. Render.GatherScene on a static StressDemo: 0.8 ms
+  (was 2.6–6 ms).
+- **Parallel prep** (rayon): per-draw bounds, LOD state, keys and `draws[]` entries; every shadow map
+  culled and batched on its own thread.
+- **Static batching**: Static objects (no LOD Group) merged per material + 16 m chunk into world-space
+  meshes in Play mode and the player (chunks still culled); `Scenes/StressStatic.scene`.
+- **GPU culling** (option `gpu_culling`): two-phase frustum + Hi-Z occlusion in compute, indirect draws,
+  `multi_draw_indexed_indirect` for runs sharing state (primitives share one vertex buffer); CPU path
+  as fallback. Off by default (slower on StressDemo, which has little occlusion).
+- **LOD Group** component: levels with renderer lists and screen-height thresholds, per-camera selection
+  with `RenderOptions::lod_bias`, dithered Cross Fade; Inspector LOD bar (drag thresholds, camera
+  marker, per-level renderers, Fill from Children). LOD demo row + override walls in StressStatic.
+- **Depth prepass** (option `depth_prepass`): identical output; off by default (slower here).
+- Editor: the Hierarchy lays out only visible rows (the expanded 5,040-object Field no longer costs
+  milliseconds per frame); Scene and Game views use their own draw caches.
+- GPU checks (real adapter): overrides → one batch and pixel-identical to separate draws; static
+  batching (0 pixels differ), GPU culling (0 differ, wall hides most of the field) and prepass (0 differ)
+  vs the plain path; LOD levels by distance, cross-fade, LOD Bias.
+
+### StressDemo, 1280×720, release (`stress_benchmark`), same run (other agents' builds share the machine)
+| Configuration | FPS | Frame ms | Gather ms | Render CPU ms | GPU ms |
+|---|---|---|---|---|---|
+| Baseline (no culling, no instancing, full gather) | 79.1 | 12.64 | 3.75 | 7.21 | 1.51 |
+| Culling + instancing, full gather (previous best) | 154.4 | 6.48 | 2.58 | 2.28 | 1.45 |
+| **+ cached gather + parallel prep (new default)** | **202.2** | 4.95 | 0.82 | 2.19 | 1.79 |
+| default without instancing | 141.2 | 7.08 | 0.87 | 4.24 | 1.82 |
+| default without culling | 165.7 | 6.03 | 1.00 | 2.67 | 2.20 |
+| default + depth prepass | 151.2 | 6.62 | 1.05 | 2.96 | 2.41 |
+| default + GPU culling (frustum + Hi-Z) | 171.3 | 5.84 | 0.77 | 2.42 | 2.47 |
+| StressStatic, static batching (Play mode) | 329.0 | 3.04 | 0.86 | 0.59 | 1.48 |
+
+An earlier run while the machine was busy gave the same ordering (48 → 42 → 64 fps; StressStatic 154).
+
+### Not matching Unity yet
+- Overrides are per renderer, not MaterialPropertyBlocks: no arbitrary shader properties, no texture
+  swaps; terrains and sprites have none.
+- LOD levels: bounds recomputed each frame (no stored reference point / size), no SpeedTree fade mode,
+  unlit/transparent levels don't dither; shadows use the camera's level.
+- GPU culling covers opaque main-pass draws only (shadow maps and transparent stay on the CPU);
+  multi-draw only merges batches that share a vertex buffer (primitives).
+- Static batching happens in Play mode/player only and isn't saved into builds; moving a Static object
+  re-merges its batch instead of being ignored.

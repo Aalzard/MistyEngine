@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use glam::Vec3;
 use misty_engine::assets::Material;
 use misty_engine::hecs::Entity;
+use misty_engine::render::overrides::OverrideValue;
 use misty_engine::scene::{
     Light, LightType, LodFadeMode, LodGroup, LodLevel, MeshFilter, MeshRenderer, PrimitiveMesh,
     Scene, ScriptRef, ScriptValue, Scripts, Shadows, Transform,
@@ -289,6 +290,33 @@ pub fn static_scene() -> Scene {
             })
             .collect();
         s.add(group, g);
+    }
+    // Three walls sharing one material; the middle one changes it for itself only.
+    let walls = s.spawn("Walls", None);
+    for (i, name) in ["Wall Left", "Wall Middle", "Wall Right"]
+        .iter()
+        .enumerate()
+    {
+        let e = s.spawn(name, Some(walls));
+        let t = Transform {
+            position: Vec3::new((i as f32 - 1.0) * 5.0, 2.0, -58.0),
+            scale: Vec3::new(4.5, 4.0, 0.4),
+            ..Default::default()
+        };
+        s.set_transform(e, t);
+        s.add(e, MeshFilter::primitive(PrimitiveMesh::Cube));
+        let mut r = MeshRenderer {
+            material: Some(MATERIALS[1].0.into()),
+            ..Default::default()
+        };
+        if i == 1 {
+            r.edit_overrides(0, |o| {
+                o.set("tiling", OverrideValue::Vec2([2.0, 1.0]));
+                o.set("rotation", OverrideValue::Float(15.0));
+                o.set("color", OverrideValue::Color([1.0, 0.7, 0.55, 1.0]));
+            });
+        }
+        s.add(e, r);
     }
     s
 }

@@ -38,7 +38,7 @@ pub fn section(ui: &mut Ui, r: &mut MeshRenderer, i: usize, material: &MaterialP
     let mut next = overrides.clone();
     egui::CollapsingHeader::new(RichText::new(title).small())
         .id_salt(("mr_overrides", i))
-        .default_open(false)
+        .default_open(count > 0)
         .show(ui, |ui| {
             egui::Grid::new(("mr_overrides_grid", i))
                 .num_columns(2)

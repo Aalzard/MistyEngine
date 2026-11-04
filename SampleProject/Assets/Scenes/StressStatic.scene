@@ -252326,6 +252326,206 @@
         }
       },
       "parent": 5092
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Walls",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Wall Left",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Stress Teal.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -5.0,
+            2.0,
+            -58.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            4.5,
+            4.0,
+            0.4
+          ]
+        }
+      },
+      "parent": 5096
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Wall Middle",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Stress Teal.mat",
+          "overrides": {
+            "0": {
+              "color": [
+                1.0,
+                0.7,
+                0.55,
+                1.0
+              ],
+              "rotation": 15.0,
+              "tiling": [
+                2.0,
+                1.0
+              ]
+            }
+          },
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            2.0,
+            -58.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            4.5,
+            4.0,
+            0.4
+          ]
+        }
+      },
+      "parent": 5096
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Wall Right",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Stress Teal.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            5.0,
+            2.0,
+            -58.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            4.5,
+            4.0,
+            0.4
+          ]
+        }
+      },
+      "parent": 5096
     }
   ],
   "version": 1
