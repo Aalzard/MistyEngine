@@ -1522,4 +1522,11 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Clouds under an HDRI sky take their ambient from the HDRI's SH; cloud shadows stay on directional lights only.
 - Rectangle lights draw no halo (their emitter quad is their shape); the Scene view effects dropdown lists Skybox,
   Fog, Clouds, Halos & Flares and Post Processing.
-- Screenshots of the merged build: docs/screenshots/round9/merged_*.png.
+- Screenshots of the merged build (Game view, release): docs/screenshots/round9/merged_LightGlowDemo.png,
+  merged_HdriSkyDemo.png, merged_AreaLightDemo.png, merged_CloudsDemo.png and merged_clouds_hdri.png (CloudsDemo
+  with the Sunset Clouds HDRI as its skybox, from a temporary scene copy).
+
+### Not done yet
+- Reflections of an HDRI sky ignore the volumetric clouds: under clouds the HDRI's sun still glints off the terrain
+  (a streak towards the sun in merged_clouds_hdri.png). Cloud-aware sky reflections / probes are a follow-up.
+- Clouds don't hide the HDRI's own baked-in sun or clouds; pairing a clear-sky HDRI with volumetric clouds looks best.
