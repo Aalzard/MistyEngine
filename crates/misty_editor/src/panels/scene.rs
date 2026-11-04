@@ -510,30 +510,30 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             search_field(ui, &mut sv.search, 110.0);
             // Right-to-left: the ▾ dropdown sits right of the Gizmos toggle.
-            let icon_menu = ui
-                .menu_button("⏷", |ui| crate::scene_icons::menu(ui, &mut sv.icons))
-                .response
-                .on_hover_text("Gizmo icon size and color");
+            let icon_menu = crate::widgets::dropdown(ui, "⏷", |ui| {
+                crate::scene_icons::menu(ui, &mut sv.icons)
+            })
+            .0
+            .on_hover_text("Gizmo icon size and color");
             if std::mem::take(&mut sv.open_icon_menu) {
-                egui::Popup::open_id(ui.ctx(), egui::Popup::default_response_id(&icon_menu));
+                crate::widgets::open_dropdown(ui.ctx(), &icon_menu);
             }
             if toggle_button(ui, sv.gizmos, "Gizmos", "Toggle gizmos").clicked() {
                 sv.gizmos = !sv.gizmos;
             }
-            ui.menu_button("📷 ⏷", |ui| camera_settings(ui, &mut sv.camera))
-                .response
+            crate::widgets::dropdown(ui, "📷 ⏷", |ui| camera_settings(ui, &mut sv.camera))
+                .0
                 .on_hover_text("Scene camera settings");
-            let fx_menu = ui
-                .menu_button("⏷", |ui| {
-                    let fx = &mut sv.effects;
-                    ui.checkbox(&mut fx.skybox, "Skybox");
-                    ui.checkbox(&mut fx.fog, "Fog");
-                    ui.checkbox(&mut fx.clouds, "Clouds");
-                    ui.checkbox(&mut fx.glows, "Halos & Flares");
-                    ui.checkbox(&mut fx.post_processing, "Post Processing");
-                })
-                .response
-                .on_hover_text("Scene view effects");
+            let fx_menu = crate::widgets::dropdown(ui, "⏷", |ui| {
+                let fx = &mut sv.effects;
+                ui.checkbox(&mut fx.skybox, "Skybox");
+                ui.checkbox(&mut fx.fog, "Fog");
+                ui.checkbox(&mut fx.clouds, "Clouds");
+                ui.checkbox(&mut fx.glows, "Halos & Flares");
+                ui.checkbox(&mut fx.post_processing, "Post Processing");
+            })
+            .0
+            .on_hover_text("Scene view effects");
             crate::tutorials::targets::mark_response(ui, "scene.effects_menu", &fx_menu);
             let fx_toggle = toggle_button(
                 ui,
@@ -559,14 +559,13 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             if toggle_button(ui, sv.is_2d, "2D", "Toggle 2D view").clicked() {
                 sv.is_2d = !sv.is_2d;
             }
-            let quality_menu = ui
-                .menu_button("Quality ⏷", |ui| {
-                    quality_edited |= crate::scene_quality::menu(ui, quality)
-                })
-                .response
-                .on_hover_text("Quality level, anti-aliasing, render scale and upscale filter");
+            let quality_menu = crate::widgets::dropdown(ui, "Quality ⏷", |ui| {
+                quality_edited |= crate::scene_quality::menu(ui, quality)
+            })
+            .0
+            .on_hover_text("Quality level, anti-aliasing, render scale and upscale filter");
             if std::mem::take(&mut sv.open_quality_menu) {
-                egui::Popup::open_id(ui.ctx(), egui::Popup::default_response_id(&quality_menu));
+                crate::widgets::open_dropdown(ui.ctx(), &quality_menu);
             }
             egui::ComboBox::from_id_salt("scene_draw_mode")
                 .selected_text(DRAW_MODES[sv.draw_mode])

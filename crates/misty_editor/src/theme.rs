@@ -187,5 +187,24 @@ pub fn dock_style(ctx: &egui::Context) -> egui_dock::Style {
     s.buttons.close_all_tabs_border_color = Color32::TRANSPARENT;
     s.buttons.collapse_tabs_border_color = Color32::TRANSPARENT;
     s.buttons.minimize_window_border_color = Color32::TRANSPARENT;
+    drop_overlay(&mut s.overlay);
     s
+}
+
+/// The guide shown while dragging a tab: soft accent-blue drop targets without the grey
+/// border boxes, a rounded tint over the panel under the mouse and a dimmed rest.
+fn drop_overlay(o: &mut egui_dock::OverlayStyle) {
+    let accent = Color32::from_rgb(96, 160, 230);
+    o.button_color = accent;
+    o.button_border_stroke = Stroke::NONE;
+    o.selection_color = Color32::from_rgba_unmultiplied(96, 160, 230, 70);
+    o.max_button_size = 64.0;
+    o.button_spacing = 12.0;
+    o.surface_fade_opacity = 0.35;
+    o.hovered_leaf_highlight = egui_dock::LeafHighlighting {
+        color: Color32::from_rgba_unmultiplied(96, 160, 230, 18),
+        corner_radius: CornerRadius::same(8),
+        stroke: Stroke::NONE,
+        expansion: -4.0,
+    };
 }

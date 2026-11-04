@@ -3025,3 +3025,18 @@ Record of choices made without asking, and why.
        double-click maximises. Close goes through the unsaved-changes prompt. winit gives undecorated
        windows no resize border, so 5 pt edge and 10 pt corner zones send `BeginResize`.
      - **Play controls:** flat, in the user's reference order: Pause, Play, Step.
+620. **Toolbar dropdowns are our own small popup (`widgets::dropdown`).** egui menus allow only one open popup.
+     So opening a combo box or colour picker inside the Scene view's Quality, Gizmos, camera or effects menu
+     closed the menu, even with `CloseOnClickOutside`. The dropdown is a foreground `Area` under its button.
+     It closes on Escape, or on a press outside it and its button while no child popup is open; clicks in a
+     combo list or colour picker are ignored. A kittest test picks from a combo inside it and checks that it
+     stays open.
+621. **The Project window has one toolbar row:** Create (+) on the left; search, type filter and refresh on the
+     right. Two rows wasted height (user's request).
+622. **The tab drag guide is restyled (user's request: "slightly different design").** egui_dock draws the drop
+     buttons itself, so only its style can change:
+     - soft accent-blue targets without the grey border boxes;
+     - a translucent accent fill on the half being targeted;
+     - larger spacing;
+     - a rounded faint tint over the panel under the mouse;
+     - the rest of the dock dimmed less (0.35).

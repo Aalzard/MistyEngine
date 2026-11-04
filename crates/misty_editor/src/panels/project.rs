@@ -26,13 +26,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let selected_before = state.project.selected.clone();
     let mut opened_file: Option<PathBuf> = None;
     let mut req = Requests::default();
+    let browser = &mut state.project;
+    // One toolbar row: Create on the left, search, type filter and refresh on the right.
     panel_toolbar(ui, |ui| {
         ui.menu_button("➕ ⏷", |ui| {
             project_menus::create_items(ui, &mut req.actions)
         });
-    });
-    let browser = &mut state.project;
-    panel_toolbar(ui, |ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("⟳").on_hover_text("Refresh (Ctrl+R)").clicked() {
                 req.actions.push(Action::Refresh);

@@ -117,6 +117,62 @@ fn axis_color(i: usize) -> Color32 {
 
 /// Thin horizontal strip used as a panel toolbar: a soft step darker than the panel body,
 /// without an outline.
+/// A toolbar dropdown that stays open while its controls are used and closes on a click
+/// outside it or Escape. egui menus allow only one open popup, so a combo box or colour
+/// picker inside a menu would close it; this one is a plain foreground area instead.
+pub fn dropdown<R>(
+    ui: &mut Ui,
+    label: &str,
+    content: impl FnOnce(&mut Ui) -> R,
+) -> (Response, Option<R>) {
+    let response = ui.button(label);
+    let ctx = ui.ctx().clone();
+    let id = response.id.with("dropdown");
+    let mut open = ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+    if response.clicked() {
+        open = !open;
+    }
+    let mut inner = None;
+    if open {
+        // A popup of a control inside (combo list, colour picker) gets its own clicks.
+        let child_popup_open = egui::Popup::is_any_open(&ctx);
+        let (pivot, anchor) = if response.rect.center().x > ctx.content_rect().center().x {
+            (egui::Align2::RIGHT_TOP, response.rect.right_bottom())
+        } else {
+            (egui::Align2::LEFT_TOP, response.rect.left_bottom())
+        };
+        let area = egui::Area::new(id)
+            .kind(egui::UiKind::Menu)
+            .order(egui::Order::Foreground)
+            .pivot(pivot)
+            .fixed_pos(anchor + egui::vec2(0.0, 2.0))
+            .constrain(true)
+            .show(&ctx, |ui| {
+                egui::Frame::menu(ui.style())
+                    .show(ui, |ui| content(ui))
+                    .inner
+            });
+        inner = Some(area.inner);
+        let clicked_outside = ctx.input(|i| {
+            i.pointer.any_pressed()
+                && i.pointer
+                    .interact_pos()
+                    .is_some_and(|p| !area.response.rect.contains(p) && !response.rect.contains(p))
+        });
+        if (clicked_outside && !child_popup_open) || ctx.input(|i| i.key_pressed(egui::Key::Escape))
+        {
+            open = false;
+        }
+    }
+    ctx.data_mut(|d| d.insert_temp(id, open));
+    (response, inner)
+}
+
+/// Open a [`dropdown`] from code (screenshot hooks).
+pub fn open_dropdown(ctx: &egui::Context, response: &Response) {
+    ctx.data_mut(|d| d.insert_temp(response.id.with("dropdown"), true));
+}
+
 pub fn panel_toolbar<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let frame = egui::Frame::new()
         .fill(theme::TOOLBAR_BG)
@@ -136,4 +192,48 @@ pub fn search_field(ui: &mut Ui, text: &mut String, width: f32) -> Response {
             .hint_text("🔍 Search")
             .desired_width(width),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    /// Picking from a combo box inside a dropdown keeps the dropdown open.
+    #[test]
+    fn dropdown_stays_open_while_a_combo_inside_is_used() {
+        let mut h = Harness::new_ui_state(
+            |ui, choice: &mut u32| {
+                super::dropdown(ui, "Quality", |ui| {
+                    ui.label("Inside");
+                    egui::ComboBox::from_id_salt("level")
+                        .selected_text(format!("Level {choice}"))
+                        .show_ui(ui, |ui| {
+                            for i in 0..3 {
+                                ui.selectable_value(choice, i, format!("Pick {i}"));
+                            }
+                        });
+                });
+            },
+            0u32,
+        );
+        h.run();
+        h.get_by_label("Quality").click();
+        h.run();
+        assert!(
+            h.query_by_label("Inside").is_some(),
+            "dropdown did not open"
+        );
+        h.get_by_value("Level 0").click();
+        h.run();
+        assert!(
+            h.query_by_label("Inside").is_some(),
+            "closed by opening the combo"
+        );
+        h.run();
+        h.get_by_label("Pick 2").click();
+        h.run();
+        assert_eq!(*h.state(), 2);
+        assert!(h.query_by_label("Inside").is_some(), "dropdown closed");
+    }
 }
