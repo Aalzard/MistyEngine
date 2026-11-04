@@ -2,7 +2,7 @@
 //! "active" checkbox in its header (fields are greyed out while the override is off).
 //! The Fog and Sun Shafts (Screen) bodies live in `fog_editors`, Volumetric Clouds in `cloud_editors`.
 
-use egui::{RichText, Ui};
+use egui::Ui;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{PostProcessVolume, TonemapMode};
 
@@ -111,12 +111,13 @@ pub(super) fn section(
     let state =
         egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
     let mut ch = false;
+    ui.add_space(2.0);
     let header = state.show_header(ui, |ui| {
         let check = ui
             .checkbox(active, "")
             .on_hover_text("Override this effect");
         ch |= check.changed();
-        let label = ui.label(RichText::new(title).strong());
+        let label = ui.label(crate::theme::bold(ui.ctx(), title));
         // Tutorial target `…/<Section>`: checkbox and title.
         targets::row(ui, title, check.rect.union(label.rect));
     });
@@ -148,7 +149,9 @@ pub(super) fn slider(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f
 
 fn color(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
     let mut srgb = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-    let changed = ui.color_edit_button_srgb(&mut srgb).changed();
+    let changed =
+        crate::panels::inspector::card::wide(ui, |ui| ui.color_edit_button_srgb(&mut srgb))
+            .changed();
     if changed {
         *c = srgb.map(|v| v as f32 / 255.0);
     }

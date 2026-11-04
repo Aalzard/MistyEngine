@@ -1,6 +1,6 @@
 //! Per-component Inspector editors and the Add Component popup.
 
-use egui::{Grid, Key, RichText, Ui};
+use egui::{Key, RichText, Ui};
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
@@ -335,12 +335,7 @@ fn transform(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) -> bool {
 
 /// Two-column property grid like the Inspector's label/value layout.
 pub(super) fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
-    Grid::new(id)
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
-        .show(ui, body)
-        .inner
+    super::card::grid(ui, id, body)
 }
 
 pub(super) fn combo<T: Copy + PartialEq>(
@@ -365,7 +360,6 @@ pub(super) fn combo_k<T: Copy + PartialEq>(
     let mut changed = false;
     egui::ComboBox::from_id_salt(id)
         .selected_text(super::mixed::text(key, label(*value)))
-        .width(150.0)
         .show_ui(ui, |ui| {
             for &o in options {
                 changed |= ui.selectable_value(value, o, label(o)).changed();
@@ -377,7 +371,9 @@ pub(super) fn combo_k<T: Copy + PartialEq>(
 /// sRGB float colour edited through egui's sRGB colour picker.
 pub(super) fn color_rgb(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
     let mut srgb = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-    let changed = ui.color_edit_button_srgb(&mut srgb).changed();
+    let changed =
+        crate::panels::inspector::card::wide(ui, |ui| ui.color_edit_button_srgb(&mut srgb))
+            .changed();
     if changed {
         *c = srgb.map(|v| v as f32 / 255.0);
     }
@@ -414,7 +410,6 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
                 "orthographic",
                 if ortho { "Orthographic" } else { "Perspective" },
             ))
-            .width(150.0)
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut ortho, false, "Perspective");
                 ui.selectable_value(&mut ortho, true, "Orthographic");
@@ -490,7 +485,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
 }
 
 fn light(ui: &mut Ui, l: &mut Light) -> bool {
-    let ch = grid(ui, "light_grid", |ui| {
+    let mut ch = grid(ui, "light_grid", |ui| {
         let mut ch = false;
         ui.label("Type");
         ch |= combo_k(
@@ -538,6 +533,11 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             )
             .changed();
         ui.end_row();
+        ch
+    });
+    super::card::sub_header(ui, "Shadow Settings");
+    ch |= grid(ui, "light_shadow_grid", |ui| {
+        let mut ch = false;
         crate::tutorials::targets::label(ui, "Shadow Type");
         ch |= combo_k(
             ui,
@@ -549,13 +549,16 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         );
         ui.end_row();
         ch |= super::light_shadows::rows(ui, l);
-        ch |= super::fog_editors::light_rows(ui, l);
         ui.label("Contact Shadows").on_hover_text(
             "Screen-space contact shadows (needs a volume's Contact Shadows override)",
         );
         ch |= mixed::checkbox(ui, "contact_shadows", &mut l.contact_shadows, "").changed();
         ui.end_row();
         ch
+    });
+    super::card::sub_header(ui, "Volumetrics");
+    ch |= grid(ui, "light_volumetric_grid", |ui| {
+        super::fog_editors::light_rows(ui, l)
     });
     ch | super::glow_editors::halo_section(ui, l)
 }
@@ -602,7 +605,6 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 "cast_shadows",
                 if r.cast_shadows { "On" } else { "Off" },
             ))
-            .width(150.0)
             .show_ui(ui, |ui| {
                 ch |= ui
                     .selectable_value(&mut r.cast_shadows, true, "On")
@@ -635,7 +637,6 @@ fn material_slot(ui: &mut Ui, r: &mut MeshRenderer, i: usize, names: &[String]) 
     };
     let slot = egui::ComboBox::from_id_salt(("mr_material", i))
         .selected_text(mixed::text(key, format!("◍ {current}")))
-        .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui
                 .selectable_value(&mut value, None, crate::assets::DEFAULT_MATERIAL)
@@ -736,7 +737,6 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
                     "Discrete"
                 },
             ))
-            .width(150.0)
             .show_ui(ui, |ui| {
                 ch |= ui
                     .selectable_value(&mut r.continuous, false, "Discrete")
@@ -748,7 +748,7 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
         ui.end_row();
         ch
     });
-    egui::CollapsingHeader::new("Constraints")
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Constraints"))
         .id_salt("rb_constraints")
         .default_open(false)
         .show(ui, |ui| {
@@ -864,7 +864,6 @@ fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
         let names = ["X-Axis", "Y-Axis", "Z-Axis"];
         egui::ComboBox::from_id_salt("capsule_dir")
             .selected_text(mixed::text("direction", names[c.direction.min(2) as usize]))
-            .width(150.0)
             .show_ui(ui, |ui| {
                 for (i, n) in names.iter().enumerate() {
                     ch |= ui.selectable_value(&mut c.direction, i as u8, *n).changed();
@@ -1029,9 +1028,7 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     };
     for (slot, script) in scripts.list.iter().enumerate() {
         let id = ui.make_persistent_id(("script", slot, &script.path));
-        let open =
-            egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
-        let header = open.show_header(ui, |ui| {
+        let header = |ui: &mut Ui, state: &mut EditorState| {
             let mut on = script.enabled;
             if ui.checkbox(&mut on, "").changed() {
                 if let Ok(mut s) = state.scene.world.get::<&mut Scripts>(e) {
@@ -1040,7 +1037,10 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                 let verb = if on { "Enable" } else { "Disable" };
                 state.mark_edited(&format!("{verb} Script"));
             }
-            ui.label(RichText::new(format!("📜 {} (Script)", nicify(&script.name()))).strong());
+            ui.label("📜");
+            let title =
+                crate::theme::bold(ui.ctx(), format!("{} (Script)", nicify(&script.name())));
+            let title = ui.add(egui::Label::new(title).sense(egui::Sense::click()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.menu_button("⋮", |ui| {
                     if ui.button("Reset").clicked() {
@@ -1067,9 +1067,11 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                     }
                 });
             });
+            title
+        };
+        super::card::card(ui, id, state, header, |ui, state| {
+            script_fields(ui, state, e, slot, &script.path)
         });
-        header.body(|ui| script_fields(ui, state, e, slot, &script.path));
-        ui.separator();
     }
 }
 

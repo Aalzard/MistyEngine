@@ -177,7 +177,6 @@ fn clip_field(ui: &mut Ui, id: &str, clips: &[String], clip: &mut Option<String>
             "clip",
             format!("{} {current}", crate::state::AUDIO_ICON),
         ))
-        .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui
                 .selectable_value(clip, None, "None (Audio Clip)")
@@ -211,7 +210,6 @@ fn output_field(ui: &mut Ui, mixers: &[(String, AudioMixer)], output: &mut Optio
         .unwrap_or_else(|| "None (Audio Mixer Group)".into());
     let slot = egui::ComboBox::from_id_salt("as_output")
         .selected_text(mixed::text("output", format!("{MIXER_ICON} {current}")))
-        .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui
                 .selectable_value(output, None, "None (Audio Mixer Group)")
@@ -338,7 +336,7 @@ pub fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ch
     });
     let listener = listener_distance(state, e);
-    egui::CollapsingHeader::new("3D Sound Settings")
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "3D Sound Settings"))
         .id_salt("as_3d")
         .default_open(true)
         .show(ui, |ui| {

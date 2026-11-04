@@ -19,6 +19,32 @@ pub fn toggle_button(
     .on_hover_text(tip)
 }
 
+/// Gap between the label column and the value column of property rows.
+pub const LABEL_GAP: f32 = 8.0;
+
+fn value_x_id() -> egui::Id {
+    egui::Id::new("misty_property_value_x")
+}
+
+/// Where values of property rows start (screen x), so every row in a panel lines up.
+pub fn set_value_column(ui: &Ui, x: f32) {
+    ui.data_mut(|d| d.insert_temp(value_x_id(), x));
+}
+
+/// Forget the value column (after the panel that set it is drawn).
+pub fn clear_value_column(ui: &Ui) {
+    ui.data_mut(|d| d.remove::<f32>(value_x_id()));
+}
+
+/// Width for a row label starting at the cursor so its value lands on the value column, or
+/// `fallback` outside the panels that set one.
+pub fn label_width_or(ui: &Ui, fallback: f32) -> f32 {
+    match ui.data(|d| d.get_temp::<f32>(value_x_id())) {
+        Some(x) => (x - LABEL_GAP - ui.cursor().left()).max(40.0),
+        None => fallback,
+    }
+}
+
 /// One `X [..] Y [..] Z [..]` row. Dragging an axis letter scrubs its value.
 /// Returns true when any value changed.
 pub fn vec3_row(ui: &mut Ui, label: &str, value: &mut [f32; 3], speed: f32) -> bool {
@@ -35,7 +61,17 @@ pub fn vec3_row_mixed(
 ) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
-        ui.add_sized([72.0, 18.0], egui::Label::new(label).truncate());
+        let h = ui.spacing().interact_size.y;
+        let label_w = label_width_or(ui, 72.0);
+        ui.allocate_ui_with_layout(
+            egui::vec2(label_w, h),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_min_width(label_w);
+                ui.add(egui::Label::new(label).truncate());
+            },
+        );
+        ui.add_space(LABEL_GAP - ui.spacing().item_spacing.x);
         let avail = ui.available_width();
         // Per axis: letter (~10 px), field and two item gaps, so the row never overflows.
         let gap = ui.spacing().item_spacing.x;
@@ -57,7 +93,7 @@ pub fn vec3_row_mixed(
             if mixed[i] {
                 field = field.custom_formatter(|_, _| "—".to_owned());
             }
-            changed |= ui.add_sized([field_w, 18.0], field).changed();
+            changed |= ui.add_sized([field_w, h], field).changed();
         }
     });
     changed

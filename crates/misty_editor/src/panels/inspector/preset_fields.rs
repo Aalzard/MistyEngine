@@ -192,10 +192,14 @@ fn color(ui: &mut Ui, a: &mut Vec<Value>) -> bool {
     let f = |i: usize| a[i].as_f64().unwrap_or(1.0) as f32;
     let mut c = [f(0), f(1), f(2), if a.len() == 4 { f(3) } else { 1.0 }];
     let ch = if a.len() == 4 {
-        ui.color_edit_button_rgba_unmultiplied(&mut c).changed()
+        crate::panels::inspector::card::wide(ui, |ui| {
+            ui.color_edit_button_rgba_unmultiplied(&mut c)
+        })
+        .changed()
     } else {
         let mut rgb = [c[0], c[1], c[2]];
-        let ch = ui.color_edit_button_rgb(&mut rgb).changed();
+        let ch = crate::panels::inspector::card::wide(ui, |ui| ui.color_edit_button_rgb(&mut rgb))
+            .changed();
         c[..3].copy_from_slice(&rgb);
         ch
     };

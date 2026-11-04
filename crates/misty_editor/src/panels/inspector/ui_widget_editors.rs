@@ -184,7 +184,6 @@ fn object_field(ui: &mut Ui, id: &str, v: &mut Option<Entity>, objs: &Objects) -
     let mut ch = false;
     egui::ComboBox::from_id_salt(id)
         .selected_text(name)
-        .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui.selectable_value(v, None, "None (Object)").changed();
             for (e, n) in objs {

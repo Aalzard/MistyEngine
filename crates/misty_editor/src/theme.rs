@@ -11,6 +11,9 @@ pub const FIELD_BG: Color32 = Color32::from_rgb(42, 42, 42);
 pub const BUTTON_BG: Color32 = Color32::from_rgb(88, 88, 88);
 pub const HOVER_BG: Color32 = Color32::from_rgb(103, 103, 103);
 pub const SELECTION: Color32 = Color32::from_rgb(44, 93, 135);
+/// Inspector component cards: body and header bar (a soft step lighter than the panel).
+pub const CARD_BG: Color32 = Color32::from_rgb(63, 63, 63);
+pub const CARD_HEADER: Color32 = Color32::from_rgb(71, 71, 71);
 pub const TEXT: Color32 = Color32::from_rgb(210, 210, 210);
 pub const TEXT_DIM: Color32 = Color32::from_rgb(130, 130, 130);
 /// Warnings and problems that need the user's attention.
@@ -22,6 +25,26 @@ pub const PLAY_TINT: Color32 = Color32::from_rgb(70, 110, 170);
 pub const AXIS_X: Color32 = Color32::from_rgb(219, 62, 29);
 pub const AXIS_Y: Color32 = Color32::from_rgb(139, 220, 0);
 pub const AXIS_Z: Color32 = Color32::from_rgb(58, 122, 237);
+
+/// Font family of bold titles (falls back to the regular font when no bold face was found).
+const BOLD_FAMILY: &str = "bold";
+
+/// The bold font family, or the regular one when the bold face is not loaded.
+pub fn bold_family(ctx: &egui::Context) -> egui::FontFamily {
+    let bold = egui::FontFamily::Name(BOLD_FAMILY.into());
+    if ctx.fonts(|f| f.definitions().families.contains_key(&bold)) {
+        bold
+    } else {
+        egui::FontFamily::Proportional
+    }
+}
+
+/// Bold title text (component names, sub-section headers).
+pub fn bold(ctx: &egui::Context, text: impl Into<String>) -> egui::RichText {
+    egui::RichText::new(text)
+        .family(bold_family(ctx))
+        .color(Color32::from_rgb(232, 232, 232))
+}
 
 /// Use the OS UI font when present, with a symbol font as glyph fallback for icons.
 pub fn load_fonts(ctx: &egui::Context) {
@@ -51,6 +74,22 @@ pub fn load_fonts(ctx: &egui::Context) {
                 list.push(name.to_owned());
             }
         }
+    }
+    // Bold titles: the bold face first, then the regular fallbacks for symbols.
+    if let Ok(bytes) = std::fs::read("C:/Windows/Fonts/segoeuib.ttf") {
+        fonts.font_data.insert(
+            "ui_bold".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        let mut list = vec!["ui_bold".to_owned()];
+        list.extend(
+            fonts.families[&egui::FontFamily::Proportional]
+                .iter()
+                .cloned(),
+        );
+        fonts
+            .families
+            .insert(egui::FontFamily::Name(BOLD_FAMILY.into()), list);
     }
     ctx.set_fonts(fonts);
 }

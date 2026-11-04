@@ -5,7 +5,7 @@
 //!
 //! Unapplied edits live in egui's memory (per texture) until Apply writes the `.meta` file.
 
-use egui::{Color32, Grid, RichText, Stroke, Ui, pos2, vec2};
+use egui::{Color32, RichText, Stroke, Ui, pos2, vec2};
 use misty_engine::sprites::import::{MAX_SIZES, PIVOTS, max_size_label};
 use misty_engine::sprites::slice::{self, GridSlice};
 use misty_engine::sprites::{self, FilterMode, SpriteMode, TextureImporter, TextureType, WrapMode};
@@ -63,7 +63,10 @@ pub fn texture_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         .unwrap_or_default();
     ui.horizontal(|ui| {
         ui.label(RichText::new("🖼").size(22.0));
-        ui.label(RichText::new(format!("{name} (Texture 2D) Import Settings")).strong());
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{name} (Texture 2D) Import Settings"),
+        ));
     });
     crate::asset_guids::path_label(ui, rel);
     ui.separator();
@@ -131,85 +134,78 @@ fn combo<T: PartialEq + Copy>(
 }
 
 fn settings_ui(ui: &mut Ui, s: &mut TextureImporter) {
-    Grid::new("texture_import_grid")
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(130.0)
-        .show(ui, |ui| {
-            ui.label("Texture Type").on_hover_text(
-                "Default for 3D materials, Normal Map for bumps, Sprite for 2D and UI.",
-            );
-            let mut t = s.texture_type;
-            if combo(
-                ui,
-                "tex_type",
-                &mut t,
-                &TextureType::ALL,
-                TextureType::label,
-            ) {
-                // Sprites clamp and skip mipmaps; normal maps are linear.
-                s.set_type(t);
-            }
-            ui.end_row();
-            if s.is_sprite() {
-                ui.label("Sprite Mode");
-                combo(
-                    ui,
-                    "sprite_mode",
-                    &mut s.sprite_mode,
-                    &SpriteMode::ALL,
-                    SpriteMode::label,
-                );
-                ui.end_row();
-                ui.label("Pixels Per Unit");
-                ui.add(
-                    egui::DragValue::new(&mut s.pixels_per_unit)
-                        .speed(0.5)
-                        .range(0.01..=100000.0),
-                );
-                ui.end_row();
-                if s.sprite_mode == SpriteMode::Single {
-                    ui.label("Pivot");
-                    pivot(ui, "tex_pivot", &mut s.pivot);
-                    ui.end_row();
-                }
-            }
-            ui.label("Max Size")
-                .on_hover_text("Larger images are scaled down when loaded (saves GPU memory).");
-            egui::ComboBox::from_id_salt("tex_max_size")
-                .selected_text(max_size_label(s.max_size))
-                .show_ui(ui, |ui| {
-                    for v in MAX_SIZES {
-                        ui.selectable_value(&mut s.max_size, v, max_size_label(v));
-                    }
-                });
-            ui.end_row();
-            ui.label("Filter Mode").on_hover_text(
-                "Nearest Neighbor: crisp pixel art. Bilinear: smooth. Trilinear: smooth and \
-                 blends between mip levels (best for 3D).",
-            );
+    crate::panels::inspector::card::PropertyGrid::new("texture_import_grid").show(ui, |ui| {
+        ui.label("Texture Type")
+            .on_hover_text("Default for 3D materials, Normal Map for bumps, Sprite for 2D and UI.");
+        let mut t = s.texture_type;
+        if combo(
+            ui,
+            "tex_type",
+            &mut t,
+            &TextureType::ALL,
+            TextureType::label,
+        ) {
+            // Sprites clamp and skip mipmaps; normal maps are linear.
+            s.set_type(t);
+        }
+        ui.end_row();
+        if s.is_sprite() {
+            ui.label("Sprite Mode");
             combo(
                 ui,
-                "tex_filter",
-                &mut s.filter_mode,
-                &FilterMode::ALL,
-                FilterMode::label,
+                "sprite_mode",
+                &mut s.sprite_mode,
+                &SpriteMode::ALL,
+                SpriteMode::label,
             );
             ui.end_row();
-            ui.label("Generate Mip Maps")
-                .on_hover_text("Smaller copies used far away: less shimmer, faster. Off for UI.");
-            ui.checkbox(&mut s.generate_mip_maps, "");
+            ui.label("Pixels Per Unit");
+            ui.add(
+                egui::DragValue::new(&mut s.pixels_per_unit)
+                    .speed(0.5)
+                    .range(0.01..=100000.0),
+            );
             ui.end_row();
-        });
+            if s.sprite_mode == SpriteMode::Single {
+                ui.label("Pivot");
+                pivot(ui, "tex_pivot", &mut s.pivot);
+                ui.end_row();
+            }
+        }
+        ui.label("Max Size")
+            .on_hover_text("Larger images are scaled down when loaded (saves GPU memory).");
+        egui::ComboBox::from_id_salt("tex_max_size")
+            .selected_text(max_size_label(s.max_size))
+            .show_ui(ui, |ui| {
+                for v in MAX_SIZES {
+                    ui.selectable_value(&mut s.max_size, v, max_size_label(v));
+                }
+            });
+        ui.end_row();
+        ui.label("Filter Mode").on_hover_text(
+            "Nearest Neighbor: crisp pixel art. Bilinear: smooth. Trilinear: smooth and \
+                 blends between mip levels (best for 3D).",
+        );
+        combo(
+            ui,
+            "tex_filter",
+            &mut s.filter_mode,
+            &FilterMode::ALL,
+            FilterMode::label,
+        );
+        ui.end_row();
+        ui.label("Generate Mip Maps")
+            .on_hover_text("Smaller copies used far away: less shimmer, faster. Off for UI.");
+        ui.checkbox(&mut s.generate_mip_maps, "");
+        ui.end_row();
+    });
     egui::CollapsingHeader::new("Advanced")
         .id_salt("texture_import_advanced")
         .default_open(false)
         .show(ui, |ui| {
-            Grid::new("texture_import_advanced_grid")
-                .num_columns(2)
-                .spacing([10.0, 4.0])
-                .min_col_width(118.0)
-                .show(ui, |ui| {
+            crate::panels::inspector::card::PropertyGrid::new("texture_import_advanced_grid").show(
+                ui,
+                |ui| {
                     ui.label("Wrap Mode").on_hover_text(
                         "What happens outside 0–1 UVs: tile, stretch the edge, or mirror.",
                     );
@@ -238,7 +234,8 @@ fn settings_ui(ui: &mut Ui, s: &mut TextureImporter) {
                     );
                     ui.add(egui::Slider::new(&mut s.aniso_level, 0..=16));
                     ui.end_row();
-                });
+                },
+            );
         });
 }
 
@@ -262,7 +259,7 @@ fn pivot(ui: &mut Ui, id: &str, p: &mut [f32; 2]) {
 /// Slice ▸ Grid By Cell Size (the Sprite Editor's grid slicer).
 fn slicer(ui: &mut Ui, rel: &str, p: &mut Pending, size: Option<[u32; 2]>) {
     ui.add_space(4.0);
-    ui.label(RichText::new("Slice: Grid By Cell Size").strong());
+    super::card::sub_header(ui, "Slice: Grid By Cell Size");
     let g = &mut p.grid;
     let row = |ui: &mut Ui, label: &str, a: &mut u32, b: &mut u32, min: u32| {
         ui.label(label);
@@ -272,19 +269,15 @@ fn slicer(ui: &mut Ui, rel: &str, p: &mut Pending, size: Option<[u32; 2]>) {
         });
         ui.end_row();
     };
-    Grid::new("texture_slice_grid")
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(130.0)
-        .show(ui, |ui| {
-            let [cw, ch, ox, oy, px, py] = g;
-            row(ui, "Pixel Size", cw, ch, 1);
-            row(ui, "Offset", ox, oy, 0);
-            row(ui, "Padding", px, py, 0);
-            ui.label("Keep Empty Rects");
-            ui.checkbox(&mut p.keep_empty, "");
-            ui.end_row();
-        });
+    crate::panels::inspector::card::PropertyGrid::new("texture_slice_grid").show(ui, |ui| {
+        let [cw, ch, ox, oy, px, py] = g;
+        row(ui, "Pixel Size", cw, ch, 1);
+        row(ui, "Offset", ox, oy, 0);
+        row(ui, "Padding", px, py, 0);
+        ui.label("Keep Empty Rects");
+        ui.checkbox(&mut p.keep_empty, "");
+        ui.end_row();
+    });
     let count = p.settings.sprites.len();
     ui.horizontal(|ui| {
         let Some([w, h]) = size else {

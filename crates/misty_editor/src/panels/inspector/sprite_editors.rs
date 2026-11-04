@@ -1,6 +1,6 @@
 //! Inspector editors for the 2D components: Sprite Renderer, Rigidbody 2D and the 2D colliders.
 
-use egui::{Grid, RichText, Ui};
+use egui::Ui;
 use glam::Vec2;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
@@ -177,10 +177,7 @@ fn edit_copy<T: SceneComponent>(
 }
 
 fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
-    Grid::new(id)
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(130.0)
+    crate::panels::inspector::card::PropertyGrid::new(id)
         .show(ui, body)
         .inner
 }
@@ -235,7 +232,7 @@ fn common(ui: &mut Ui, c: &mut Collider2DCommon) -> bool {
 /// Editable list of points with Size, like the Inspector's array fields.
 fn points(ui: &mut Ui, id: &str, pts: &mut Vec<Vec2>) -> bool {
     let mut ch = false;
-    egui::CollapsingHeader::new("Points")
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Points"))
         .id_salt(id)
         .default_open(true)
         .show(ui, |ui| {
@@ -324,7 +321,7 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody2D) -> bool {
         ch
     });
     if r.body_type != BodyType2D::Static {
-        egui::CollapsingHeader::new("Constraints")
+        egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Constraints"))
             .id_salt("rb2d_constraints")
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -365,7 +362,6 @@ pub fn sprite_slot(ui: &mut Ui, id: &str, value: &mut Option<String>, choices: &
     let mut ch = false;
     let slot = egui::ComboBox::from_id_salt(id)
         .selected_text(format!("🖼 {}", sprites::display_name(value.as_deref())))
-        .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui.selectable_value(value, None, "None (Sprite)").changed();
             for s in choices {
@@ -388,9 +384,10 @@ pub fn sprite_slot(ui: &mut Ui, id: &str, value: &mut Option<String>, choices: &
 
 fn color_rgba(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
     let mut srgba = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-    let changed = ui
-        .color_edit_button_srgba_unmultiplied(&mut srgba)
-        .changed();
+    let changed = crate::panels::inspector::card::wide(ui, |ui| {
+        ui.color_edit_button_srgba_unmultiplied(&mut srgba)
+    })
+    .changed();
     if changed {
         *c = srgba.map(|v| v as f32 / 255.0);
     }
@@ -420,7 +417,7 @@ fn sprite_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             ui.label("Material");
             ui.weak(format!("◈ {}", sprites::DEFAULT_MATERIAL));
             ui.end_row();
-            ui.label(RichText::new("Additional Settings").strong());
+            ui.label(crate::theme::bold(ui.ctx(), "Additional Settings"));
             ui.label("");
             ui.end_row();
             ui.label("Sorting Layer");

@@ -40,16 +40,15 @@ pub fn section(ui: &mut Ui, r: &mut MeshRenderer, i: usize, material: &MaterialP
         .id_salt(("mr_overrides", i))
         .default_open(count > 0)
         .show(ui, |ui| {
-            egui::Grid::new(("mr_overrides_grid", i))
-                .num_columns(2)
-                .spacing([8.0, 3.0])
-                .min_col_width(104.0)
-                .show(ui, |ui| {
+            crate::panels::inspector::card::PropertyGrid::new(("mr_overrides_grid", i)).show(
+                ui,
+                |ui| {
                     for (name, label) in LABELS {
                         changed |= row(ui, i, name, label, &mut next, material);
                         ui.end_row();
                     }
-                });
+                },
+            );
             ui.horizontal(|ui| {
                 let reset = ui
                     .add_enabled(
@@ -131,7 +130,10 @@ fn value_widget(ui: &mut Ui, key: &str, v: &mut OverrideValue) -> bool {
             })
             .inner
         }
-        OverrideValue::Color(c) => ui.color_edit_button_rgba_unmultiplied(c).changed(),
+        OverrideValue::Color(c) => {
+            crate::panels::inspector::card::wide(ui, |ui| ui.color_edit_button_rgba_unmultiplied(c))
+                .changed()
+        }
         OverrideValue::Float(f) => {
             let drag = if key.ends_with("rotation") {
                 egui::DragValue::new(f).speed(0.5).suffix("°")

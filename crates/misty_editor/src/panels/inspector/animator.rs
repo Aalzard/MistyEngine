@@ -67,7 +67,6 @@ fn controller_slot(ui: &mut Ui, controllers: &[String], value: &mut Option<Strin
             "{CONTROLLER_ICON} {}",
             current.as_deref().unwrap_or(none)
         ))
-        .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui.selectable_value(value, None, none).changed();
             for c in controllers {
@@ -126,7 +125,7 @@ pub fn controller_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
 fn header(ui: &mut Ui, title: &str, kind: &str) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(CONTROLLER_ICON).size(22.0));
-        ui.label(RichText::new(format!("{title}{kind}")).strong());
+        ui.label(crate::theme::bold(ui.ctx(), format!("{title}{kind}")));
     });
     ui.separator();
 }
@@ -252,8 +251,7 @@ fn state_editor(
             state.animator.selected = Some(GraphItem::Node(Node::State(n)));
         }
     }
-    ui.separator();
-    ui.label(RichText::new("Transitions").strong());
+    super::card::sub_header(ui, "Transitions");
     let here = Node::state(&old_name);
     let outgoing: Vec<(usize, String)> = c
         .transitions
@@ -280,8 +278,7 @@ fn blend_tree_editor(
     clips: &[String],
 ) -> bool {
     let mut ch = false;
-    ui.separator();
-    ui.label(RichText::new("Blend Tree").strong());
+    super::card::sub_header(ui, "Blend Tree");
     grid(ui, "blend_tree_grid", |ui| {
         ui.label("Parameter");
         egui::ComboBox::from_id_salt("blend_param")
@@ -388,8 +385,7 @@ fn transition_editor(
         ui.end_row();
         ch
     });
-    ui.separator();
-    ui.label(RichText::new("Conditions").strong());
+    super::card::sub_header(ui, "Conditions");
     changed |= conditions_editor(ui, c, &mut t.conditions);
     if !t.has_exit_time && t.conditions.is_empty() {
         ui.colored_label(

@@ -1,6 +1,6 @@
 //! Inspector editors for the Character Controller and the Fixed, Hinge and Spring Joints.
 
-use egui::{Grid, Ui};
+use egui::Ui;
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
@@ -63,12 +63,7 @@ fn edit_copy<T: SceneComponent>(
 }
 
 fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
-    Grid::new(id)
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
-        .show(ui, body)
-        .inner
+    super::card::grid(ui, id, body)
 }
 
 /// Label + number row inside a grid.
@@ -117,7 +112,6 @@ fn connected_body(
     ui.label("Connected Body");
     egui::ComboBox::from_id_salt(id)
         .selected_text(name)
-        .width(150.0)
         .show_ui(ui, |ui| {
             ch |= ui.selectable_value(v, None, none).changed();
             for (e, n) in bodies {
@@ -194,7 +188,7 @@ fn hinge(ui: &mut Ui, j: &mut HingeJoint, bodies: &[(Entity, String)]) -> bool {
         ch |= check(ui, "Use Limits", &mut j.use_limits);
         ch
     });
-    egui::CollapsingHeader::new("Spring")
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Spring"))
         .id_salt("hinge_spring")
         .show(ui, |ui| {
             ch |= grid(ui, "hinge_spring_grid", |ui| {
@@ -212,7 +206,7 @@ fn hinge(ui: &mut Ui, j: &mut HingeJoint, bodies: &[(Entity, String)]) -> bool {
                 ch
             });
         });
-    egui::CollapsingHeader::new("Motor")
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Motor"))
         .id_salt("hinge_motor")
         .show(ui, |ui| {
             ch |= grid(ui, "hinge_motor_grid", |ui| {
@@ -229,7 +223,7 @@ fn hinge(ui: &mut Ui, j: &mut HingeJoint, bodies: &[(Entity, String)]) -> bool {
                 ch
             });
         });
-    egui::CollapsingHeader::new("Limits")
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "Limits"))
         .id_salt("hinge_limits")
         .show(ui, |ui| {
             ch |= grid(ui, "hinge_limits_grid", |ui| {

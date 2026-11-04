@@ -27,7 +27,6 @@ pub fn shader_combo(ui: &mut Ui, id: &str, m: &mut Material, shaders: &[String])
     };
     egui::ComboBox::from_id_salt(format!("{id}_shader"))
         .selected_text(current)
-        .width(170.0)
         .show_ui(ui, |ui| {
             for k in ShaderKind::ALL {
                 let selected = !m.is_custom() && m.shader_kind() == k;
@@ -57,9 +56,10 @@ pub fn shader_combo(ui: &mut Ui, id: &str, m: &mut Material, shaders: &[String])
 
 fn color_rgba(ui: &mut Ui, c: &mut [f32; 4]) -> bool {
     let mut srgba = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
-    let changed = ui
-        .color_edit_button_srgba_unmultiplied(&mut srgba)
-        .changed();
+    let changed = crate::panels::inspector::card::wide(ui, |ui| {
+        ui.color_edit_button_srgba_unmultiplied(&mut srgba)
+    })
+    .changed();
     if changed {
         *c = srgba.map(|v| v as f32 / 255.0);
     }

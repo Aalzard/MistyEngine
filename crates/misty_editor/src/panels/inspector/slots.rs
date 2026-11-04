@@ -31,7 +31,8 @@ pub fn texture_slot(
     let current = value.as_deref().map(file_name);
     let slot = egui::ComboBox::from_id_salt(id)
         .selected_text(format!("🖼 {}", current.as_deref().unwrap_or(NO_TEXTURE)))
-        .width(118.0)
+        // Leaves room for the colour / strength that often follows on the same row.
+        .width((ui.available_width() * 0.55).max(100.0))
         .show_ui(ui, |ui| {
             ch |= ui.selectable_value(value, None, NO_TEXTURE).changed();
             for t in textures {
@@ -79,42 +80,37 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     };
     let choices = mesh_choices(state);
     let mut ch = false;
-    egui::Grid::new("meshfilter_grid")
-        .num_columns(2)
-        .spacing([10.0, 4.0])
-        .min_col_width(110.0)
-        .show(ui, |ui| {
-            ui.label("Mesh");
-            let current = f
-                .mesh
-                .as_ref()
-                .map(models::display_name)
-                .unwrap_or_else(|| "None (Mesh)".into());
-            let slot = egui::ComboBox::from_id_salt("mesh_filter_mesh")
-                .selected_text(format!("▦ {current}"))
-                .width(150.0)
-                .show_ui(ui, |ui| {
-                    ch |= ui
-                        .selectable_value(&mut f.mesh, None, "None (Mesh)")
-                        .changed();
-                    for (i, (r, label)) in choices.iter().enumerate() {
-                        if i == PrimitiveMesh::ALL.len() {
-                            ui.separator();
-                        }
-                        ch |= ui
-                            .selectable_value(&mut f.mesh, Some(r.clone()), label)
-                            .changed();
+    crate::panels::inspector::card::PropertyGrid::new("meshfilter_grid").show(ui, |ui| {
+        ui.label("Mesh");
+        let current = f
+            .mesh
+            .as_ref()
+            .map(models::display_name)
+            .unwrap_or_else(|| "None (Mesh)".into());
+        let slot = egui::ComboBox::from_id_salt("mesh_filter_mesh")
+            .selected_text(format!("▦ {current}"))
+            .show_ui(ui, |ui| {
+                ch |= ui
+                    .selectable_value(&mut f.mesh, None, "None (Mesh)")
+                    .changed();
+                for (i, (r, label)) in choices.iter().enumerate() {
+                    if i == PrimitiveMesh::ALL.len() {
+                        ui.separator();
                     }
-                })
-                .response;
-            if let Some(p) = slot.dnd_release_payload::<AssetPayload>()
-                && models::is_model(&p.0)
-            {
-                f.mesh = Some(MeshRef::asset(&p.0, 0));
-                ch = true;
-            }
-            ui.end_row();
-        });
+                    ch |= ui
+                        .selectable_value(&mut f.mesh, Some(r.clone()), label)
+                        .changed();
+                }
+            })
+            .response;
+        if let Some(p) = slot.dnd_release_payload::<AssetPayload>()
+            && models::is_model(&p.0)
+        {
+            f.mesh = Some(MeshRef::asset(&p.0, 0));
+            ch = true;
+        }
+        ui.end_row();
+    });
     if ch {
         let _ = state.scene.world.insert_one(e, f);
     }

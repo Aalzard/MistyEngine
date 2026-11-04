@@ -2,7 +2,7 @@
 //! projection, blend distance, box size/offset with Edit Bounding Volume), capture settings and
 //! the bake / refresh buttons.
 
-use egui::{RichText, Ui};
+use egui::Ui;
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::ReflectionProbe;
@@ -103,7 +103,7 @@ fn probe(ui: &mut Ui, state: &mut EditorState, e: Entity, p: &mut ReflectionProb
         ch
     });
 
-    ui.label(RichText::new("Runtime Settings").strong());
+    super::card::sub_header(ui, "Runtime Settings");
     ch |= grid(ui, "probe_runtime", |ui| {
         let mut ch = row(ui, "Importance", |ui| {
             ui.add(egui::DragValue::new(&mut p.importance).range(-100..=100))
@@ -139,7 +139,7 @@ fn probe(ui: &mut Ui, state: &mut EditorState, e: Entity, p: &mut ReflectionProb
         state.probes.edit_bounds = editing;
     }
 
-    ui.label(RichText::new("Cubemap Capture Settings").strong());
+    super::card::sub_header(ui, "Cubemap Capture Settings");
     ch |= grid(ui, "probe_capture", |ui| {
         let mut ch = row(ui, "Resolution", |ui| {
             let mut ch = false;

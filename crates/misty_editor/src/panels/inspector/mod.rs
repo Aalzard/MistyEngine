@@ -4,6 +4,7 @@
 mod anim;
 mod animator;
 mod audio_editors;
+pub(crate) mod card;
 mod cloud_editors;
 mod editors;
 mod fog_editors;
@@ -45,6 +46,12 @@ use crate::theme;
 pub use preset_picker::window as preset_window;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
+    show_inner(ui, state);
+    // The aligned value column belongs to this panel only.
+    crate::widgets::clear_value_column(ui);
+}
+
+fn show_inner(ui: &mut Ui, state: &mut EditorState) {
     layer_mask::publish_names(ui.ctx(), &state.project_settings.tags_and_layers);
     lock_row(ui, state);
 
@@ -63,6 +70,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let Some(&e) = targets.first() else {
         // Nothing in the scene selected: show the selected asset, if any.
         if let Some(rel) = state.inspector_asset.clone() {
+            card::begin_body(ui);
             asset_inspector(ui, state, &rel);
         }
         return;
@@ -71,6 +79,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
+            card::begin_body(ui);
             header(ui, state, &targets);
             if targets.len() == 1 {
                 prefab_row(ui, state, e);
@@ -81,7 +90,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                         .color(theme::TEXT_DIM),
                 );
             }
-            ui.separator();
+            ui.add_space(6.0);
             for name in shared_components(state, &targets) {
                 if name == "Scripts" {
                     editors::script_sections(ui, state, e);
@@ -331,10 +340,7 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
     let e = targets[0];
     let id = ui.make_persistent_id(("component", name));
     let removable = registry::find(name).is_some_and(|i| i.removable);
-    let open_state =
-        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true);
-
-    let header = open_state.show_header(ui, |ui| {
+    let header = |ui: &mut Ui, state: &mut EditorState| {
         if let Some(enabled) = editors::enabled_flag(state, e, name) {
             let mut on = enabled;
             let mixed = targets[1..]
@@ -351,16 +357,17 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
                 state.mark_edited(&format!("{verb} {name}"));
             }
         }
+        let bold = theme::bold(ui.ctx(), name);
         let title = match component_brand_icon(state, e, name) {
             Some(icon) => {
                 let tint = ui.visuals().strong_text_color();
                 icons::image(ui, icon, 16.0, tint);
-                ui.add(egui::Label::new(RichText::new(name).strong()).sense(egui::Sense::click()))
+                ui.add(egui::Label::new(bold).sense(egui::Sense::click()))
             }
-            None => ui.add(
-                egui::Label::new(RichText::new(format!("{} {name}", editors::icon(name))).strong())
-                    .sense(egui::Sense::click()),
-            ),
+            None => {
+                ui.label(editors::icon(name));
+                ui.add(egui::Label::new(bold).sense(egui::Sense::click()))
+            }
         };
         // Tutorial target `inspector.<Component>`: the header row.
         if crate::tutorials::targets::enabled() {
@@ -379,8 +386,9 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
             };
             preset_picker::button(ui, state, target, serde_json::Value::Null);
         });
-    });
-    header.body(|ui| {
+        title
+    };
+    let body = |ui: &mut Ui, state: &mut EditorState| {
         // Fields inside are tutorial targets `inspector.<Component>/<Field>`.
         let _scope = crate::tutorials::targets::scope(&format!("inspector.{name}"));
         let before = to_json(state, e, name);
@@ -396,8 +404,8 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
             }
             state.mark_edited(&label);
         }
-    });
-    ui.separator();
+    };
+    card::card(ui, id, state, header, body);
 }
 
 /// Component context menu. Reset, Remove and Paste act on every target; Move and Copy on the
@@ -580,11 +588,15 @@ fn material_previews(ui: &mut Ui, state: &mut EditorState, e: Entity) {
         return;
     };
     let name = crate::assets::AssetDatabase::material_name(Some(&rel));
-    egui::CollapsingHeader::new(RichText::new(format!("◍ {name} (Material)")).strong())
-        .id_salt(("inline_material", &rel))
-        .default_open(true)
-        .show(ui, |ui| material::material_asset(ui, state, &rel));
-    ui.separator();
+    let id = ui.make_persistent_id(("inline_material", &rel));
+    let header = |ui: &mut Ui, _: &mut EditorState| {
+        ui.label("◍");
+        let title = theme::bold(ui.ctx(), format!("{name} (Material)"));
+        ui.add(egui::Label::new(title).sense(egui::Sense::click()))
+    };
+    card::card(ui, id, state, header, |ui, state| {
+        material::material_asset(ui, state, &rel)
+    });
 }
 
 /// Inspector for a Project asset: material editor, or a read-only prefab summary.
@@ -620,7 +632,7 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let name = crate::assets::AssetDatabase::material_name(Some(rel));
     ui.horizontal(|ui| {
         ui.label(RichText::new("◍").size(22.0));
-        ui.label(RichText::new(format!("{name} (Material)")).strong());
+        ui.label(crate::theme::bold(ui.ctx(), format!("{name} (Material)")));
         if rel.ends_with(".mat") {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let current = state
@@ -648,7 +660,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
 fn audio_clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(crate::state::AUDIO_ICON).size(22.0));
-        ui.label(RichText::new(format!("{} (Audio Clip)", editors::clip_name(rel))).strong());
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{} (Audio Clip)", editors::clip_name(rel)),
+        ));
     });
     crate::asset_guids::path_label(ui, rel);
     ui.separator();
@@ -710,7 +725,10 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                 .size(22.0)
                 .color(theme::PREFAB),
         );
-        ui.label(RichText::new(format!("{name} (Prefab Asset)")).strong());
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{name} (Prefab Asset)"),
+        ));
     });
     crate::asset_guids::path_label(ui, rel);
     ui.separator();
@@ -735,7 +753,7 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                     }
                 });
             ui.add_space(6.0);
-            ui.label(RichText::new("Root components").strong());
+            ui.label(crate::theme::bold(ui.ctx(), "Root components"));
             for c in prefab.root_components() {
                 ui.label(format!("{} {c}", editors::icon(&c)));
             }
