@@ -378,10 +378,19 @@ fn row(
             Rect::from_min_max(pos2(text_x, rect.top()), rect.max),
         );
     } else {
+        // The designer's icon where there is one, else the glyph.
+        let (x, label) = match crate::state::object_brand_icon(&state.scene, e) {
+            Some(icon) => {
+                let slot = Rect::from_min_size(pos2(text_x, rect.top()), vec2(15.0, ROW_H));
+                crate::branding::icons::paint(ui, slot.shrink2(vec2(0.0, 2.0)), icon, color);
+                (text_x + ICON_ADVANCE, name.to_string())
+            }
+            None => (text_x, format!("{} {name}", object_icon(&state.scene, e))),
+        };
         ui.painter().text(
-            pos2(text_x, rect.center().y),
+            pos2(x, rect.center().y),
             Align2::LEFT_CENTER,
-            format!("{} {name}", object_icon(&state.scene, e)),
+            label,
             FontId::proportional(13.0),
             color,
         );
@@ -716,10 +725,14 @@ fn keyboard(ui: &Ui, state: &mut EditorState, rows: &[(Entity, usize)]) {
     }
 }
 
-/// Full-width selectable row with indentation (also used by the Project window).
-pub fn row_simple(
+/// Width of a painted 15 px icon and the space after it, before a row's name.
+const ICON_ADVANCE: f32 = 19.0;
+
+/// Full-width selectable row with indentation and an optional icon (the Project window).
+pub fn row_with_icon(
     ui: &mut Ui,
     selected: bool,
+    icon: Option<crate::branding::icons::Icon>,
     text: &str,
     color: Color32,
     depth: usize,
@@ -732,8 +745,13 @@ pub fn row_simple(
         ui.painter()
             .rect_filled(rect, 0.0, Color32::from_rgb(69, 69, 69));
     }
-    let pos = rect.left_center() + vec2(6.0 + depth as f32 * INDENT, 0.0);
+    let mut pos = rect.left_center() + vec2(6.0 + depth as f32 * INDENT, 0.0);
     let color = if selected { Color32::WHITE } else { color };
+    if let Some(icon) = icon {
+        let slot = Rect::from_min_size(pos2(pos.x, rect.top()), vec2(15.0, ROW_H));
+        crate::branding::icons::paint(ui, slot.shrink2(vec2(0.0, 2.0)), icon, color);
+        pos.x += ICON_ADVANCE;
+    }
     ui.painter().text(
         pos,
         Align2::LEFT_CENTER,

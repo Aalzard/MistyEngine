@@ -1747,3 +1747,44 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - The undo demo (`MISTY_UNDO_DEMO`) has no Move To Scene step.
 - sample_clouds / sample_materials generator checks fail in this working copy only, because of the uncommitted
   edits to CloudsDemo.scene / CloudsDemo.terrain and Ghost.mat.
+
+## v0.0.1: Branding ✅
+
+### Done
+- The designer's official art in the editor (decisions 549–559): `crates/misty_editor/assets/branding/` (v3 logo,
+  icon crop, small logo, `misty.ico`) and `assets/icons/` (hand, move, rotate, scale, grid, filter, folder, camera,
+  character controller, sky volume, sun light), embedded with `include_bytes!`.
+- New module `branding/`: `icons.rs` (alpha-mask icons tinted with the theme's text / accent colour, per-pixel-size
+  texture cache, icon buttons), `about.rs` (Help ▸ About Misty Engine), `splash.rs` (startup splash while the
+  project opens), `mod.rs` (`logo_texture(ctx)`, `small_logo_texture(ctx)`, `window_icon()`, ICO check).
+- Scene view: the tool strip is now a horizontal row like the mockup (View / Move / Rotate / Scale icons, Rect,
+  Transform, divider, grid toggle); hotkeys and tooltips unchanged.
+- Camera / Character Controller / Post-process Volume / Directional Light icons in the Hierarchy, the Inspector
+  (object icon and component headers) and the Scene view billboards; folder icons in the Project window; a filter
+  button with a "Search by Type" menu next to the Project search.
+- misty.exe and misty_player.exe carry the Misty icon (16–256 px) and version info through `winresource`; game
+  builds still replace the player's icon with the project's own. The window / taskbar icon is set at runtime.
+- Main toolbar mark: the small logo + "Misty".
+- Startup splash (logo, name, "Opening <project>…") while a project opens, skipped when the last open of that
+  project took under 400 ms (kept in `Library/EditorStartup.txt`); the Console logs the open time.
+- Help ▸ About Misty Engine: logo, "Misty Engine v0.1.0", credits line, license placeholder.
+- For the Misty Hub (v001-hub): `branding::logo_texture(ctx)` / `small_logo_texture(ctx)` give the logo as a
+  cached `TextureHandle`; `branding::window_icon()`, `branding::PRODUCT`, `branding::version()`.
+- Capture env: `MISTY_ABOUT=1` (About window), `MISTY_SPLASH=1` (the splash), `MISTY_THEME=light` (egui light
+  visuals, for checking icon tints).
+- Tests: ICO matches the logos (7 sizes), logo / icon decoding, per-pixel-size texture cache, theme tints, About
+  window, splash skip rule, Project type-filter words, and a game build's icon replacing the player's Misty icon
+  (one neutral-language icon group before and after).
+- Screenshots (release build): docs/screenshots/v001/branding_editor.png (tool row, Directional Light in the
+  Hierarchy / Inspector, folders, filter button), branding_inspector_camera.png, branding_character_controller.png,
+  branding_post_volume.png, branding_about.png, branding_splash.png, branding_light_theme.png (light visuals),
+  branding_exe_icon.png (misty.ico's 7 sizes on dark and light, plus the icons Windows extracts from misty.exe and
+  misty_player.exe).
+
+### Not done yet
+- The editor has only its dark theme; much of it uses fixed colours, so the light-visuals capture only checks
+  the icon tints. The full new UI style (mockup) is a later task.
+- Rect and Transform tools, other lights, prefabs and the remaining components keep their glyphs (no art yet).
+- The taskbar icon was not captured live (the user's editor is open); the window icon is set through eframe and
+  the exe icon was checked by extracting it.
+- The ICO's white flame is faint on light taskbars at 16–24 px (the art's drop shadow is the only outline).

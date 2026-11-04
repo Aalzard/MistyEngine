@@ -11,7 +11,10 @@ use crate::widgets::toggle_button;
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let full = ui.available_rect_before_wrap();
     ui.horizontal(|ui| {
-        ui.label(RichText::new("◆ Misty").strong());
+        // The logo mark and name.
+        let logo = crate::branding::small_logo_texture(ui.ctx());
+        ui.add(egui::Image::new(&logo).fit_to_exact_size(egui::vec2(20.0, 20.0)));
+        ui.label(RichText::new("Misty").strong());
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             egui::ComboBox::from_id_salt("layout_dropdown")
                 .selected_text(state.layouts.current_name.clone())

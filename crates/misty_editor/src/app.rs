@@ -33,8 +33,8 @@ pub struct EditorApp {
 }
 
 impl EditorApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, project: PathBuf) -> Self {
-        theme::apply(&cc.egui_ctx);
+    /// Load the project (the splash is on screen meanwhile, see `branding::splash`).
+    pub fn new(wgpu: Option<egui_wgpu::RenderState>, project: PathBuf) -> Self {
         // Asset GUIDs: scan the meta files (creating missing ones) before anything loads.
         let guids = misty_engine::asset_db::open(&project);
         let mut state = EditorState::new(ProjectBrowser::open(project));
@@ -48,7 +48,7 @@ impl EditorApp {
         if capture.is_some() {
             crate::capture::apply_env(&mut state, &mut dock);
         }
-        let gpu = cc.wgpu_render_state.clone().map(Gpu::new);
+        let gpu = wgpu.map(Gpu::new);
         match &gpu {
             Some(g) => {
                 let info = g.state.adapter.get_info();
@@ -70,6 +70,13 @@ impl EditorApp {
             title: String::new(),
             layout_autosave,
         }
+    }
+
+    /// Report how long opening the project took (Console).
+    pub fn note_load_time(&mut self, took: std::time::Duration) {
+        self.state
+            .console
+            .info(format!("Project opened in {} ms.", took.as_millis()));
     }
 
     /// Save the layout if it changed (debounced), or now when `force` is set.
@@ -557,6 +564,7 @@ impl eframe::App for EditorApp {
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
         crate::panels::preset_window(&ctx, &mut self.state);
+        crate::branding::about::show(&ctx, &mut self.state.about_open);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);
         self.apply_actions(&ctx);
         if let Some(text) = self.state.os_clipboard_out.take() {

@@ -10,6 +10,7 @@ mod asset_guids;
 mod asset_ops;
 mod assets;
 mod audio_mixers;
+mod branding;
 mod build_pipeline;
 mod build_settings;
 mod capture;
@@ -134,7 +135,8 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Misty Engine")
+            .with_title(branding::PRODUCT)
+            .with_icon(branding::window_icon())
             .with_inner_size([1600.0, 900.0])
             .with_min_inner_size([960.0, 540.0])
             .with_maximized(true),
@@ -144,9 +146,9 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "Misty Engine",
+        branding::PRODUCT,
         options,
-        Box::new(move |cc| Ok(Box::new(app::EditorApp::new(cc, project)))),
+        Box::new(move |cc| Ok(Box::new(branding::splash::Launcher::new(cc, project)))),
     )
 }
 

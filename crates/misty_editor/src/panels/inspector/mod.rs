@@ -38,6 +38,7 @@ use misty_engine::hecs::Entity;
 use misty_engine::scene::registry;
 
 use crate::actions::Action;
+use crate::branding::icons::{self, Icon};
 use crate::state::{EditorState, object_icon};
 use crate::theme;
 
@@ -152,13 +153,18 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
     let names = state.project_settings.tags_and_layers.clone();
     let mut open_tags = false;
     ui.horizontal(|ui| {
-        let icon = RichText::new(icon).size(22.0);
-        let icon = if state.scene.prefab_link(e).is_some() {
-            icon.color(theme::PREFAB)
+        if let Some(brand) = crate::state::object_brand_icon(&state.scene, e) {
+            let tint = ui.visuals().text_color();
+            icons::image(ui, brand, 24.0, tint);
         } else {
-            icon
-        };
-        ui.label(icon);
+            let icon = RichText::new(icon).size(22.0);
+            let icon = if state.scene.prefab_link(e).is_some() {
+                icon.color(theme::PREFAB)
+            } else {
+                icon
+            };
+            ui.label(icon);
+        }
         changed |= ui
             .add(egui::Checkbox::new(&mut go.active, "").indeterminate(mixed_active))
             .changed();
@@ -304,6 +310,22 @@ fn prefab_row(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     });
 }
 
+/// The designer's icon for a component header (the Light's only when it is Directional).
+fn component_brand_icon(state: &EditorState, e: Entity, name: &str) -> Option<Icon> {
+    match name {
+        "Camera" => Some(Icon::Camera),
+        "Character Controller" => Some(Icon::CharacterController),
+        "Post-process Volume" => Some(Icon::SkyVolume),
+        "Light" => state
+            .scene
+            .world
+            .get::<&misty_engine::scene::Light>(e)
+            .is_ok_and(|l| l.kind == misty_engine::scene::LightType::Directional)
+            .then_some(Icon::SunLight),
+        _ => None,
+    }
+}
+
 /// Foldout header with enable toggle and ⋮ menu, then the component's fields.
 fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str) {
     let e = targets[0];
@@ -329,10 +351,17 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
                 state.mark_edited(&format!("{verb} {name}"));
             }
         }
-        let title = ui.add(
-            egui::Label::new(RichText::new(format!("{} {name}", editors::icon(name))).strong())
-                .sense(egui::Sense::click()),
-        );
+        let title = match component_brand_icon(state, e, name) {
+            Some(icon) => {
+                let tint = ui.visuals().strong_text_color();
+                icons::image(ui, icon, 16.0, tint);
+                ui.add(egui::Label::new(RichText::new(name).strong()).sense(egui::Sense::click()))
+            }
+            None => ui.add(
+                egui::Label::new(RichText::new(format!("{} {name}", editors::icon(name))).strong())
+                    .sense(egui::Sense::click()),
+            ),
+        };
         // Right-clicking the title opens the same menu as ⋮.
         title.context_menu(|ui| component_menu(ui, state, targets, name, removable));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

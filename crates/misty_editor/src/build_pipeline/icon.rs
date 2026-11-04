@@ -16,6 +16,11 @@ pub struct IconImage {
 /// Square images of every size, from any PNG/JPG (non-square images are centred on a
 /// transparent square first).
 pub fn images(source: &[u8]) -> Result<Vec<IconImage>, String> {
+    images_sized(source, &SIZES)
+}
+
+/// [`images`] with a chosen list of sizes (the editor's own icon has more of them).
+pub fn images_sized(source: &[u8], sizes: &[u32]) -> Result<Vec<IconImage>, String> {
     let img = image::load_from_memory(source)
         .map_err(|e| format!("icon: {e}"))?
         .into_rgba8();
@@ -23,7 +28,7 @@ pub fn images(source: &[u8]) -> Result<Vec<IconImage>, String> {
     let mut square = RgbaImage::new(side, side);
     let (x, y) = ((side - img.width()) / 2, (side - img.height()) / 2);
     image::imageops::overlay(&mut square, &img, x as i64, y as i64);
-    SIZES
+    sizes
         .iter()
         .map(|&size| {
             let scaled = image::imageops::resize(&square, size, size, FilterType::Lanczos3);
@@ -136,6 +141,8 @@ pub fn embed(exe: &std::path::Path, images: &[IconImage]) -> Result<(), String> 
     // Integer resource ids are passed as pointer values (MAKEINTRESOURCE).
     let id = |n: usize| n as *const u16;
 
+    // The player's own Misty icon uses the neutral language like ours, so ours replace it
+    // (its 7th image, past our 6, stays as an unused image).
     let path: Vec<u16> = exe.as_os_str().encode_wide().chain([0]).collect();
     let err = || format!("icon: {}", std::io::Error::last_os_error());
     // SAFETY: plain Win32 calls with a NUL-terminated path and buffers that outlive them.
@@ -208,13 +215,79 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn embeds_into_an_executable() {
-        // Any PE file accepts resources; use a copy of this test binary.
+        // Any PE file accepts resources; use a copy of this test binary, which already carries
+        // the Misty icon (build.rs): the game icon must replace it, not sit beside it.
         let exe = std::env::current_exe().unwrap();
         let copy = std::env::temp_dir().join(format!("misty_icon_{}.exe", std::process::id()));
         std::fs::copy(&exe, &copy).unwrap();
+        assert_eq!(
+            icon_group_languages(&copy),
+            [0],
+            "the Misty icon, neutral language"
+        );
         let before = std::fs::metadata(&copy).unwrap().len();
         embed(&copy, &images(&source()).unwrap()).unwrap();
         assert_ne!(std::fs::metadata(&copy).unwrap().len(), before);
+        assert_eq!(
+            icon_group_languages(&copy),
+            [0],
+            "one icon after the game's replaced it"
+        );
         let _ = std::fs::remove_file(&copy);
+    }
+
+    /// Languages of icon group 1 in `exe`.
+    #[cfg(windows)]
+    fn icon_group_languages(exe: &std::path::Path) -> Vec<u16> {
+        use std::ffi::c_void;
+        use std::os::windows::ffi::OsStrExt;
+        type EnumLang =
+            unsafe extern "system" fn(*mut c_void, *const u16, *const u16, u16, isize) -> i32;
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn LoadLibraryExW(file: *const u16, reserved: *mut c_void, flags: u32) -> *mut c_void;
+            fn EnumResourceLanguagesW(
+                module: *mut c_void,
+                kind: *const u16,
+                name: *const u16,
+                callback: EnumLang,
+                param: isize,
+            ) -> i32;
+            fn FreeLibrary(module: *mut c_void) -> i32;
+        }
+        unsafe extern "system" fn push(
+            _: *mut c_void,
+            _: *const u16,
+            _: *const u16,
+            lang: u16,
+            param: isize,
+        ) -> i32 {
+            // SAFETY: `param` is the Vec passed below, alive for the enumeration.
+            unsafe { (*(param as *mut Vec<u16>)).push(lang) };
+            1
+        }
+        const LOAD_LIBRARY_AS_DATAFILE: u32 = 2;
+        // Integer resource ids are passed as pointer values (MAKEINTRESOURCE).
+        let id = |n: usize| n as *const u16;
+        let path: Vec<u16> = exe.as_os_str().encode_wide().chain([0]).collect();
+        let mut langs = Vec::new();
+        // SAFETY: the module is loaded as data only and freed before returning.
+        unsafe {
+            let module = LoadLibraryExW(
+                path.as_ptr(),
+                std::ptr::null_mut(),
+                LOAD_LIBRARY_AS_DATAFILE,
+            );
+            assert!(!module.is_null());
+            EnumResourceLanguagesW(
+                module,
+                id(14), // RT_GROUP_ICON
+                id(1),
+                push,
+                &mut langs as *mut Vec<u16> as isize,
+            );
+            FreeLibrary(module);
+        }
+        langs
     }
 }

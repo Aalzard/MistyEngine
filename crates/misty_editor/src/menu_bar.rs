@@ -416,8 +416,7 @@ pub fn layouts_menu(ui: &mut Ui, s: &mut EditorState) {
 
 fn help_menu(ui: &mut Ui, s: &mut EditorState) {
     if ui.button("About Misty Engine").clicked() {
-        s.console
-            .info(concat!("Misty Engine ", env!("CARGO_PKG_VERSION")));
+        s.about_open = true;
         ui.close();
     }
     todo(ui, s, "Manual", "");

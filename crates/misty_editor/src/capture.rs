@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_STATS` / `MISTY_SEARCH`.
+//! `MISTY_PLAY` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT`, and `MISTY_THEME=light`.
 
 use std::path::PathBuf;
 
@@ -8,6 +8,9 @@ pub struct Capture {
     path: PathBuf,
     frames: u32,
     requested: bool,
+    /// `MISTY_THEME=light`: egui's light visuals, to check theme-tinted icons (the editor
+    /// itself only has the dark theme).
+    light: bool,
 }
 
 impl Capture {
@@ -16,6 +19,7 @@ impl Capture {
             path: p.into(),
             frames: 0,
             requested: false,
+            light: std::env::var("MISTY_THEME").is_ok_and(|t| t == "light"),
         })
     }
 
@@ -23,6 +27,9 @@ impl Capture {
     pub fn update(&mut self, ctx: &egui::Context) {
         self.frames += 1;
         ctx.request_repaint();
+        if self.light && self.frames == 1 {
+            ctx.set_visuals(egui::Visuals::light());
+        }
         if self.frames == 45 && !self.requested {
             self.requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
@@ -176,6 +183,10 @@ pub fn apply_env(
     if let Some(text) = std::env::var_os("MISTY_SEARCH") {
         s.search.index.build_now();
         crate::search::open(s, &text.to_string_lossy());
+    }
+    // `MISTY_ABOUT=1` opens Help ▸ About Misty Engine.
+    if std::env::var_os("MISTY_ABOUT").is_some() {
+        s.about_open = true;
     }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {
