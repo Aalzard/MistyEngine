@@ -1,5 +1,5 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
-//! See [`apply_env`] for `MISTY_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
+//! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
 //! `MISTY_PLAY` / `MISTY_STATS`.
 
 use std::path::PathBuf;
@@ -50,9 +50,23 @@ pub fn apply_env(
     s: &mut crate::state::EditorState,
     dock: &mut egui_dock::DockState<crate::layout::Tab>,
 ) {
-    // `MISTY_SCENE=Assets/Scenes/AudioDemo.scene` opens a scene first.
-    if let Some(scene) = std::env::var_os("MISTY_SCENE") {
-        crate::scene_files::load(s, &scene.to_string_lossy());
+    // `MISTY_SCENE=Assets/Scenes/AudioDemo.scene` opens a scene first; more scenes after
+    // commas are opened additively (`MISTY_SCENE=A.scene,B.scene`).
+    if let Some(scenes) = std::env::var_os("MISTY_SCENE") {
+        let scenes = scenes.to_string_lossy().into_owned();
+        let mut list = scenes.split(',').map(str::trim).filter(|p| !p.is_empty());
+        if let Some(first) = list.next() {
+            crate::scene_files::load(s, first);
+        }
+        for rel in list {
+            crate::open_scenes::open_additive(s, rel);
+        }
+    }
+    // `MISTY_ACTIVE_SCENE=<scene name>` makes one of the open scenes active.
+    if let Some(name) = std::env::var_os("MISTY_ACTIVE_SCENE")
+        && let Some(id) = s.scene.find_loaded(&name.to_string_lossy())
+    {
+        crate::open_scenes::set_active(s, id);
     }
     if let Some(name) = std::env::var_os("MISTY_SELECT")
         && let Some(e) = s.scene.find_by_name(&name.to_string_lossy())

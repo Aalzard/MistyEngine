@@ -15,6 +15,7 @@ const TABLE: &str = r#"
 |Debug||Console logging
 |GameObject||Find objects by name
 |SceneManager||Load scenes from Build Settings
+|LoadSceneMode||Single or Additive scene loading
 |Application||Application control
 |LayerMask||Layer names and masks
 |ForceMode||Force modes for AddForce / AddTorque
@@ -96,8 +97,14 @@ Debug|Log|Log(...)|Write a message to the Console
 Debug|LogWarning|LogWarning(...)|Write a warning to the Console
 Debug|LogError|LogError(...)|Write an error to the Console (Error Pause stops on it)
 GameObject|Find|Find(name)|The first active object with that name, or nil
-SceneManager|LoadScene|LoadScene(nameOrIndex)|Load a scene from Build Settings after this frame
-SceneManager|GetActiveScene|GetActiveScene()|The open scene (has name)
+SceneManager|LoadScene|LoadScene(nameOrIndex, mode)|Load a Build Settings scene after this frame (LoadSceneMode.Additive keeps the open ones)
+SceneManager|UnloadSceneAsync|UnloadSceneAsync(nameOrIndex)|Unload an additively loaded scene after this frame
+SceneManager|GetActiveScene|GetActiveScene()|The active scene (name, path, isLoaded)
+SceneManager|SetActiveScene|SetActiveScene(sceneOrName)|Make a loaded scene active (its lighting is used)
+SceneManager|GetSceneByName|GetSceneByName(name)|A loaded scene, or nil
+SceneManager|GetSceneCount|GetSceneCount()|Number of loaded scenes
+LoadSceneMode|Single|Single|Replace the open scenes
+LoadSceneMode|Additive|Additive|Add to the open scenes
 Application|Quit|Quit()|Close the built game
 LayerMask|GetMask|GetMask(name, ...)|Bit mask of the named layers
 LayerMask|NameToLayer|NameToLayer(name)|Layer index, or -1

@@ -10,6 +10,7 @@ pub mod light_area;
 pub mod light_glow;
 pub mod light_shadow;
 pub mod lod_group;
+pub mod multi_scene;
 mod order;
 pub mod physics2d_components;
 pub mod physics_components;
@@ -35,6 +36,7 @@ pub use components::*;
 pub use fog_volume::{FogOverride, FogQuality, FogVolume, SunShaftsOverride};
 pub use light_glow::{LensFlare, LightHalo};
 pub use lod_group::{LodFadeMode, LodGroup, LodLevel};
+pub use multi_scene::{SceneEntry, SceneId};
 pub use physics_components::*;
 pub use physics2d_components::*;
 pub use post_process::*;
@@ -58,6 +60,13 @@ pub struct Scene {
     roots: Vec<Entity>,
     /// Play mode: material assets changed by scripts through `sharedMaterial`, by path (not saved).
     pub shared_materials: std::collections::BTreeMap<String, crate::assets::Material>,
+    /// Open scenes (loaded or not), in Hierarchy order; `name`, `render_settings` and
+    /// `navigation` above belong to the active one (see `multi_scene`).
+    scenes: Vec<SceneEntry>,
+    active: SceneId,
+    next_scene_id: SceneId,
+    /// Scene new root objects go into (`None` = the active scene).
+    spawn_into: Option<SceneId>,
 }
 
 impl Default for Scene {
@@ -84,6 +93,10 @@ impl Clone for Scene {
             navigation: self.navigation.clone(),
             roots: self.roots.clone(),
             shared_materials: self.shared_materials.clone(),
+            scenes: self.scenes.clone(),
+            active: self.active,
+            next_scene_id: self.next_scene_id,
+            spawn_into: self.spawn_into,
         }
     }
 }
@@ -97,6 +110,10 @@ impl Scene {
             navigation: Default::default(),
             roots: Vec::new(),
             shared_materials: Default::default(),
+            scenes: vec![SceneEntry::new(0, name, None)],
+            active: 0,
+            next_scene_id: 1,
+            spawn_into: None,
         }
     }
 
@@ -130,7 +147,10 @@ impl Scene {
                 ..Default::default()
             },
             Transform::default(),
-            Node::default(),
+            Node {
+                scene: self.spawn_target(),
+                ..Default::default()
+            },
         ));
         self.attach(e, parent, None);
         e
@@ -304,6 +324,11 @@ impl Scene {
             let i = index.unwrap_or(list.len()).min(list.len());
             list.insert(i, e);
         };
+        // Children always live in their parent's scene.
+        if let Some(p) = parent {
+            let scene = self.scene_of(p);
+            self.set_scene_of_subtree(e, scene);
+        }
         match parent {
             // Borrow of the parent's Node ends before the child's is taken (hecs checks at runtime).
             Some(p) => insert(
@@ -405,8 +430,12 @@ impl Scene {
             (info.clone_into)(&self.world, e, &mut b);
         }
         let copy = self.world.spawn(b.build());
-        // Fresh links; children are re-attached below.
-        *self.world.get::<&mut Node>(copy).expect("copied Node") = Node::default();
+        // Fresh links (same scene as the original); children are re-attached below.
+        let scene = self.scene_of(e);
+        *self.world.get::<&mut Node>(copy).expect("copied Node") = Node {
+            scene,
+            ..Default::default()
+        };
         self.attach(copy, parent, None);
         map.insert(e, copy);
         for c in self.children(e) {

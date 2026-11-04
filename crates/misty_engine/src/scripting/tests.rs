@@ -302,6 +302,8 @@ function Loader:Update()
         Debug.Log(SceneManager.GetActiveScene().name)
         SceneManager.LoadScene("Level2")
         SceneManager.LoadScene(1)
+        SceneManager.LoadScene("Extra", LoadSceneMode.Additive)
+        SceneManager.UnloadSceneAsync("Extra")
         Application.Quit()
     elseif Time.frameCount == 2 then
         SceneManager.LoadScene(true)
@@ -324,6 +326,8 @@ return Loader
         [
             Request::LoadScene(SceneRef::Name("Level2".into())),
             Request::LoadScene(SceneRef::Index(1)),
+            Request::LoadSceneAdditive(SceneRef::Name("Extra".into())),
+            Request::UnloadScene(SceneRef::Name("Extra".into())),
             Request::Quit,
         ]
     );

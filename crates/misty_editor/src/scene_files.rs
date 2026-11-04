@@ -1,10 +1,12 @@
 //! Scene files in the editor: New / Open / Save / Save As, recent scenes, the
 //! "Scene Has Been Modified" prompt, and per-project editor settings.
+//! Several scenes can be open at once; see `open_scenes` for additive loading and the open set.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use misty_engine::scene::Scene;
 use misty_engine::scene::file::EXTENSION;
+use misty_engine::scene::{Scene, SceneId};
 use serde::{Deserialize, Serialize};
 
 use crate::state::EditorState;
@@ -12,6 +14,13 @@ use crate::state::EditorState;
 /// Per-user editor state (not meant for version control, like a Library folder).
 const SETTINGS_FILE: &str = "Library/EditorSettings.json";
 const MAX_RECENT: usize = 8;
+
+/// One scene of the open set remembered between sessions.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OpenSceneRecord {
+    pub path: String,
+    pub loaded: bool,
+}
 
 /// Editor settings stored with the project.
 #[derive(Default, Serialize, Deserialize)]
@@ -21,6 +30,10 @@ pub struct EditorSettings {
     pub recent_scenes: Vec<String>,
     /// Output folder of the last build (File ▸ Build And Run builds there again).
     pub last_build_folder: Option<PathBuf>,
+    /// Scenes open in the Hierarchy (saved ones), restored on the next launch.
+    pub open_scenes: Vec<OpenSceneRecord>,
+    /// Path of the active scene among `open_scenes`.
+    pub active_scene: Option<String>,
 }
 
 impl EditorSettings {
@@ -48,38 +61,115 @@ pub enum AfterPrompt {
     NewScene,
     Open(String),
     Quit,
+    /// Unload / remove one scene of the open set.
+    Unload(SceneId),
+    Remove(SceneId),
+    /// Remove every scene but this one.
+    CloseOthers(SceneId),
 }
 
 /// Scene file state held by the editor.
 #[derive(Default)]
 pub struct SceneFiles {
-    /// Project-relative path of the open scene; `None` = never saved.
-    pub path: Option<String>,
     pub settings: EditorSettings,
     /// Waiting for Save / Don't Save / Cancel.
     pub prompt: Option<AfterPrompt>,
     /// The user confirmed quitting: let the window close.
     pub quit_confirmed: bool,
+    /// Hash of each loaded scene's JSON when it was last loaded or saved.
+    pub saved: HashMap<SceneId, u64>,
+    /// Scenes with unsaved changes (refreshed each frame by [`refresh_dirty`]).
+    pub dirty: Vec<SceneId>,
+    /// When `dirty` was last worked out by comparing scene contents.
+    dirty_checked: Option<std::time::Instant>,
 }
 
-fn relative(root: &Path, path: &Path) -> String {
+pub(crate) fn relative(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
 }
 
-fn remember(s: &mut EditorState, rel: &str) {
+pub(crate) fn remember(s: &mut EditorState, rel: &str) {
     let recent = &mut s.files.settings.recent_scenes;
     recent.retain(|r| r != rel);
     recent.insert(0, rel.to_owned());
     recent.truncate(MAX_RECENT);
-    s.files.settings.save(&s.project.root);
+    crate::open_scenes::remember_open_set(s);
 }
 
-/// On startup: reopen the last scene, else the sample scene, else keep the default one.
+// ---- unsaved changes ---------------------------------------------------------------------------
+
+fn hash(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish()
+}
+
+/// Remember `id`'s current contents as saved.
+pub(crate) fn mark_saved(s: &mut EditorState, id: SceneId) {
+    let h = hash(&s.scene.scene_to_json(id));
+    s.files.saved.insert(id, h);
+    s.files.dirty.retain(|d| *d != id);
+}
+
+/// Loaded scenes with unsaved changes. With one scene this is the editor's dirty flag;
+/// with several, each scene's contents are compared with what was loaded or saved.
+pub fn dirty_now(s: &EditorState) -> Vec<SceneId> {
+    if !s.scene_dirty {
+        return Vec::new();
+    }
+    let loaded = s.scene.loaded_scenes();
+    if let [only] = loaded[..] {
+        return vec![only];
+    }
+    loaded
+        .into_iter()
+        .filter(|id| s.files.saved.get(id) != Some(&hash(&s.scene.scene_to_json(*id))))
+        .collect()
+}
+
+/// Update the dirty list (at most a few times a second with several scenes open).
+pub fn refresh_dirty(s: &mut EditorState) {
+    // Play mode changes are thrown away on Stop: keep showing the Edit-mode state.
+    if s.play.in_play_mode() {
+        return;
+    }
+    let several = s.scene.loaded_scenes().len() > 1;
+    let fresh = s
+        .files
+        .dirty_checked
+        .is_some_and(|t| t.elapsed().as_secs_f32() < 0.3);
+    if several && s.scene_dirty && fresh {
+        return;
+    }
+    s.files.dirty = dirty_now(s);
+    s.files.dirty_checked = Some(std::time::Instant::now());
+}
+
+/// Scenes whose changes `action` would throw away.
+fn at_risk(s: &EditorState, action: &AfterPrompt) -> Vec<SceneId> {
+    let dirty = dirty_now(s);
+    match action {
+        AfterPrompt::NewScene | AfterPrompt::Open(_) | AfterPrompt::Quit => dirty,
+        AfterPrompt::Unload(id) | AfterPrompt::Remove(id) => {
+            dirty.into_iter().filter(|d| d == id).collect()
+        }
+        AfterPrompt::CloseOthers(id) => dirty.into_iter().filter(|d| d != id).collect(),
+    }
+}
+
+// ---- opening ----------------------------------------------------------------------------------
+
+/// On startup: reopen the last open scenes, else the last scene, else the sample scene,
+/// else keep the default one.
 pub fn open_initial(s: &mut EditorState) {
     s.files.settings = EditorSettings::load(&s.project.root);
+    if crate::open_scenes::restore_open_set(s) {
+        return;
+    }
     let candidates: Vec<String> = s
         .files
         .settings
@@ -95,19 +185,20 @@ pub fn open_initial(s: &mut EditorState) {
             return;
         }
     }
+    mark_saved(s, 0);
 }
 
-/// Run `then` now, or ask first if the scene has unsaved changes.
+/// Run `then` now, or ask first if it would lose unsaved changes.
 pub fn guard(s: &mut EditorState, then: AfterPrompt) -> Option<AfterPrompt> {
     if s.play.in_play_mode() {
         s.console.warn("Stop Play mode first.");
         return None;
     }
-    if s.scene_dirty {
+    if at_risk(s, &then).is_empty() {
+        Some(then)
+    } else {
         s.files.prompt = Some(then);
         None
-    } else {
-        Some(then)
     }
 }
 
@@ -116,37 +207,46 @@ pub fn perform(s: &mut EditorState, action: AfterPrompt) -> bool {
     match action {
         AfterPrompt::NewScene => {
             s.scene = Scene::default_3d("Untitled");
-            s.files.path = None;
             reset_after_load(s);
+            crate::open_scenes::remember_open_set(s);
             s.console.info("Created new scene.");
-            false
         }
         AfterPrompt::Open(rel) => {
             load(s, &rel);
-            false
         }
         AfterPrompt::Quit => {
             s.files.quit_confirmed = true;
-            true
+            return true;
         }
+        AfterPrompt::Unload(id) => crate::open_scenes::unload(s, id),
+        AfterPrompt::Remove(id) => crate::open_scenes::remove(s, id),
+        AfterPrompt::CloseOthers(id) => crate::open_scenes::close_others(s, id),
     }
+    false
 }
 
-fn reset_after_load(s: &mut EditorState) {
+pub(crate) fn reset_after_load(s: &mut EditorState) {
     s.selection.clear();
     s.undo = Default::default();
     s.scene_dirty = false;
     s.hierarchy.expanded.clear();
+    s.hierarchy.collapsed_scenes.clear();
     s.inspector_targets.clear();
+    s.files.saved.clear();
+    s.files.dirty.clear();
+    for id in s.scene.loaded_scenes() {
+        mark_saved(s, id);
+    }
 }
 
-/// Load a scene file into the editor. Returns false (and logs) on failure.
+/// Load a scene file into the editor, replacing every open scene. Returns false (and logs)
+/// on failure.
 pub fn load(s: &mut EditorState, rel: &str) -> bool {
     let path = s.project.root.join(rel);
     match Scene::load(&path) {
-        Ok((scene, report)) => {
+        Ok((mut scene, report)) => {
+            scene.set_scene_path(0, rel);
             s.scene = scene;
-            s.files.path = Some(rel.to_owned());
             reset_after_load(s);
             for w in report.warnings {
                 s.console.warn(format!("{rel}: {w}"));
@@ -165,20 +265,41 @@ pub fn load(s: &mut EditorState, rel: &str) -> bool {
     }
 }
 
-/// Save to the current path, or ask where (Save As) the first time. Returns true when saved.
+// ---- saving ------------------------------------------------------------------------------------
+
+/// File ▸ Save: save every scene with changes (the active one when nothing changed).
+/// Untitled scenes ask where to go. Returns true when everything was saved.
 pub fn save(s: &mut EditorState) -> bool {
     if s.play.in_play_mode() {
         s.console.warn("Scenes can't be saved in Play mode.");
         return false;
     }
-    match s.files.path.clone() {
-        Some(rel) => write(s, &rel),
-        None => save_as(s),
+    let mut list = dirty_now(s);
+    if list.is_empty() {
+        list.push(s.scene.active_scene());
+    }
+    list.into_iter().all(|id| save_scene(s, id))
+}
+
+/// Save one scene to its file, or ask where (Save As) the first time.
+pub fn save_scene(s: &mut EditorState, id: SceneId) -> bool {
+    if s.play.in_play_mode() {
+        s.console.warn("Scenes can't be saved in Play mode.");
+        return false;
+    }
+    match s.scene.scene_path(id) {
+        Some(rel) => write(s, id, &rel),
+        None => save_scene_as(s, id),
     }
 }
 
-/// Ask for a file name under Assets and save there.
+/// File ▸ Save As: the active scene.
 pub fn save_as(s: &mut EditorState) -> bool {
+    save_scene_as(s, s.scene.active_scene())
+}
+
+/// Ask for a file name under Assets and save scene `id` there.
+pub fn save_scene_as(s: &mut EditorState, id: SceneId) -> bool {
     if s.play.in_play_mode() {
         s.console.warn("Scenes can't be saved in Play mode.");
         return false;
@@ -188,7 +309,7 @@ pub fn save_as(s: &mut EditorState) -> bool {
     let picked = rfd::FileDialog::new()
         .set_title("Save Scene")
         .set_directory(&scenes_dir)
-        .set_file_name(format!("{}.{EXTENSION}", s.scene.name))
+        .set_file_name(format!("{}.{EXTENSION}", s.scene.scene_name(id)))
         .add_filter("Scene", &[EXTENSION])
         .save_file();
     let Some(path) = picked else { return false };
@@ -199,7 +320,7 @@ pub fn save_as(s: &mut EditorState) -> bool {
         return false;
     }
     let rel = relative(&s.project.root, &path);
-    write(s, &rel)
+    write(s, id, &rel)
 }
 
 fn with_extension(mut path: PathBuf) -> PathBuf {
@@ -209,15 +330,28 @@ fn with_extension(mut path: PathBuf) -> PathBuf {
     path
 }
 
-fn write(s: &mut EditorState, rel: &str) -> bool {
-    let path = s.project.root.join(rel);
-    if let Some(stem) = path.file_stem() {
-        s.scene.name = stem.to_string_lossy().into_owned();
+/// Write scene `id` to `rel` (it becomes the scene's file).
+pub(crate) fn write(s: &mut EditorState, id: SceneId, rel: &str) -> bool {
+    if s.scene.find_by_path(rel).is_some_and(|other| other != id) {
+        s.console
+            .warn(format!("{rel} is already open as another scene."));
+        return false;
     }
-    match s.scene.save(&path) {
+    let path = s.project.root.join(rel);
+    s.scene.set_scene_path(id, rel);
+    // References into other scenes can't be stored (like the familiar editor, they are lost).
+    for w in s.scene.cross_scene_references(id) {
+        s.console
+            .warn(format!("Cross-scene reference not saved: {w}"));
+    }
+    match s.scene.save_scene(id, &path) {
         Ok(()) => {
-            s.files.path = Some(rel.to_owned());
-            s.scene_dirty = false;
+            mark_saved(s, id);
+            // Clean once no other loaded scene has changes left.
+            let one = s.scene.loaded_scenes().len() == 1;
+            if one || dirty_now(s).is_empty() {
+                s.scene_dirty = false;
+            }
             remember(s, rel);
             s.project.refresh();
             s.console.info(format!("Saved {rel}"));
@@ -268,7 +402,7 @@ pub fn create_scene_asset(s: &mut EditorState, folder: &Path) -> Result<String, 
     Ok(relative(&s.project.root, &path))
 }
 
-/// Window title: "Project - Scene* - Misty Engine".
+/// Window title: "Project - ActiveScene* - Misty Engine" (* = an open scene has changes).
 pub fn window_title(s: &EditorState) -> String {
     let project = s
         .project
@@ -276,28 +410,39 @@ pub fn window_title(s: &EditorState) -> String {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let dirty = if s.scene_dirty { "*" } else { "" };
+    let dirty = if s.files.dirty.is_empty() { "" } else { "*" };
     format!("{project} - {}{dirty} - Misty Engine", s.scene.name)
 }
 
 /// The modal "Scene Has Been Modified" prompt. Returns the action to carry out, if any.
 pub fn prompt_ui(ctx: &egui::Context, s: &mut EditorState) -> Option<AfterPrompt> {
     let pending = s.files.prompt.clone()?;
+    let scenes = at_risk(s, &pending);
+    let names: Vec<String> = scenes
+        .iter()
+        .map(|id| format!("\"{}\"", s.scene.scene_name(*id)))
+        .collect();
+    let several = scenes.len() > 1;
     let mut result = None;
     let mut close = false;
     egui::Modal::new(egui::Id::new("scene_modified_prompt")).show(ctx, |ui| {
         ui.set_width(360.0);
-        ui.heading("Scene Has Been Modified");
+        ui.heading(if several {
+            "Scenes Have Been Modified"
+        } else {
+            "Scene Has Been Modified"
+        });
         ui.add_space(6.0);
+        let which = if several { "scenes" } else { "scene" };
         ui.label(format!(
-            "Do you want to save the changes you made in the scene \"{}\"?",
-            s.scene.name
+            "Do you want to save the changes you made in the {which} {}?",
+            names.join(", ")
         ));
         ui.label(egui::RichText::new("Your changes will be lost if you don't save them.").weak());
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             if ui.button("Save").clicked() {
-                if save(s) {
+                if scenes.iter().all(|id| save_scene(s, *id)) {
                     result = Some(pending.clone());
                 }
                 close = true;
@@ -335,7 +480,7 @@ mod tests {
         let mut s = state("reopen");
         s.scene.spawn("Extra", None);
         s.scene_dirty = true;
-        assert!(write(&mut s, "Assets/Scenes/Level.scene"));
+        assert!(write(&mut s, 0, "Assets/Scenes/Level.scene"));
         assert!(!s.scene_dirty);
         assert_eq!(s.scene.name, "Level");
 
@@ -353,7 +498,7 @@ mod tests {
         let mut again = EditorState::new(ProjectBrowser::open(s.project.root.clone()));
         open_initial(&mut again);
         assert_eq!(
-            again.files.path.as_deref(),
+            again.scene.active_path().as_deref(),
             Some("Assets/Scenes/Level.scene")
         );
     }
@@ -378,6 +523,7 @@ mod tests {
         assert_eq!(rel, "Assets/New Scene.scene");
         assert!(load(&mut s, &rel));
         s.scene_dirty = true;
+        refresh_dirty(&mut s);
         assert!(window_title(&s).contains("New Scene* - Misty Engine"));
     }
 }

@@ -48,17 +48,19 @@ pub fn changed(s: &mut EditorState) {
     }
 }
 
-/// "Add Open Scenes": append the open scene (it must be saved first).
+/// "Add Open Scenes": append every open scene (unsaved ones must be saved first).
 pub fn add_open_scene(s: &mut EditorState) {
-    match s.files.path.clone() {
-        Some(rel) => {
-            if s.build_settings.add(&rel) {
-                changed(s);
-            }
-        }
-        None => s
-            .console
-            .warn("Save the scene before adding it to the build."),
+    let paths: Vec<Option<String>> = s.scene.scenes().iter().map(|e| e.path.clone()).collect();
+    if paths.iter().any(Option::is_none) {
+        s.console
+            .warn("Save the scene before adding it to the build.");
+    }
+    let mut added = false;
+    for rel in paths.into_iter().flatten() {
+        added |= s.build_settings.add(&rel);
+    }
+    if added {
+        changed(s);
     }
 }
 
@@ -408,7 +410,7 @@ pub fn request(s: &EditorState, out: &Path) -> PackageRequest {
 pub fn build_into(s: &mut EditorState, out: &Path, run: bool) {
     if s.scene_dirty {
         s.console
-            .warn("The open scene has unsaved changes; the build uses the saved file.");
+            .warn("An open scene has unsaved changes; the build uses the saved files.");
     }
     s.files.settings.last_build_folder = Some(out.to_path_buf());
     s.files.settings.save(&s.project.root);
@@ -477,14 +479,16 @@ mod tests {
         let mut s = state("misty_build_window");
         crate::commands::apply(&mut s, Action::OpenBuildSettings);
         assert!(s.build_window.open);
-        s.files.path = Some("Assets/Scenes/A.scene".into());
+        s.scene.set_scene_path(0, "Assets/Scenes/A.scene");
         let mut h = Harness::builder()
             .with_size([620.0, 560.0])
             .build_ui_state(|ui, s: &mut EditorState| contents(ui, s), s);
         h.run();
         h.get_by_label("Add Open Scenes").click();
         h.run();
-        h.state_mut().files.path = Some("Assets/Scenes/B.scene".into());
+        h.state_mut()
+            .scene
+            .set_scene_path(0, "Assets/Scenes/B.scene");
         h.get_by_label("Add Open Scenes").click();
         h.run();
         h.get_by_label("Add Open Scenes").click();
@@ -539,7 +543,7 @@ mod tests {
         let mut s = state("misty_build_job");
         let root = s.project.root.clone();
         std::fs::write(root.join("Assets/Scenes/A.scene"), "[]").unwrap();
-        s.files.path = Some("Assets/Scenes/A.scene".into());
+        s.scene.set_scene_path(0, "Assets/Scenes/A.scene");
         // An empty scene list builds the open scene.
         assert!(ensure_scenes(&mut s));
         assert_eq!(s.build_settings.scenes.len(), 1);

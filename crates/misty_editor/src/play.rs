@@ -18,8 +18,6 @@ pub struct PlaySession {
     selection: Selection,
     undo: UndoStack,
     dirty: bool,
-    /// Open scene file (scripts may load another scene while playing).
-    path: Option<String>,
 }
 
 impl PlaySession {
@@ -28,10 +26,6 @@ impl PlaySession {
         let mut out = vec![&mut self.scene];
         out.extend(self.undo.scenes_mut());
         out
-    }
-
-    pub fn path_mut(&mut self) -> Option<&mut String> {
-        self.path.as_mut()
     }
 }
 
@@ -48,7 +42,6 @@ pub fn start(s: &mut EditorState) {
         selection: s.selection.clone(),
         undo: std::mem::take(&mut s.undo),
         dirty: s.scene_dirty,
-        path: s.files.path.clone(),
     });
     s.time = Time::new(&s.project_settings.time);
     // The editor's clip preview stops when the game starts.
@@ -84,7 +77,6 @@ pub fn stop(s: &mut EditorState) {
     s.selection.retain_existing(&s.scene);
     s.undo = session.undo;
     s.scene_dirty = session.dirty;
-    s.files.path = session.path;
     s.play = PlayState::Edit;
     s.console.info("Exited Play mode.");
 }
@@ -118,19 +110,32 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
     handle_requests(s);
 }
 
-/// `SceneManager.LoadScene` / `Application.Quit` from scripts.
+/// `SceneManager.LoadScene` / `UnloadSceneAsync` / `Application.Quit` from scripts.
 fn handle_requests(s: &mut EditorState) {
     let Some(runtime) = s.runtime.as_mut() else {
         return;
     };
-    // The last LoadScene of a frame wins.
+    // The last single LoadScene of a frame wins; additive loads and unloads run in order.
     let mut load = None;
     for r in runtime.take_requests() {
         match r {
             Request::LoadScene(scene) => load = Some(scene),
             Request::Quit => s.console.info("Application.Quit() ignored in the editor"),
+            other => {
+                let root = s.project.root.clone();
+                let Some(runtime) = s.runtime.as_mut() else {
+                    return;
+                };
+                if let Err(e) =
+                    runtime.apply_scene_request(&mut s.scene, &s.build_settings, &root, &other)
+                {
+                    s.console.log(LogLevel::Error, e);
+                }
+                s.selection.retain_existing(&s.scene);
+            }
         }
     }
+    flush_logs(s);
     if let Some(scene) = load {
         load_scene(s, &scene);
     }
@@ -155,8 +160,8 @@ fn load_scene(s: &mut EditorState, which: &SceneRef) {
                 &s.project_settings,
                 audio,
             ));
+            scene.set_scene_path(0, &rel);
             s.scene = scene;
-            s.files.path = Some(rel);
             s.selection.clear();
             s.inspector_targets.clear();
             flush_logs(s);
@@ -253,7 +258,7 @@ return N
             .unwrap();
 
         let mut s = EditorState::new(ProjectBrowser::open(root));
-        s.files.path = Some("Assets/Scenes/Menu.scene".into());
+        s.scene.set_scene_path(0, "Assets/Scenes/Menu.scene");
         let e = s.scene.spawn("Loader", None);
         s.scene.add(
             e,
@@ -273,7 +278,10 @@ return N
         tick(&mut s, 1.0 / 60.0);
         assert_eq!(s.scene.name, "Level2");
         assert!(s.scene.find_by_name("Only In Level2").is_some());
-        assert_eq!(s.files.path.as_deref(), Some("Assets/Scenes/Level2.scene"));
+        assert_eq!(
+            s.scene.active_path().as_deref(),
+            Some("Assets/Scenes/Level2.scene")
+        );
         assert!(
             s.console
                 .entries
@@ -285,7 +293,10 @@ return N
             s.scene.find_by_name("Loader").is_some(),
             "edit scene restored"
         );
-        assert_eq!(s.files.path.as_deref(), Some("Assets/Scenes/Menu.scene"));
+        assert_eq!(
+            s.scene.active_path().as_deref(),
+            Some("Assets/Scenes/Menu.scene")
+        );
 
         // Scenes outside the build list fail with a Console error.
         s.build_settings.scenes.truncate(1);

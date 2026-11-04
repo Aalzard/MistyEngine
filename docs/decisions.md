@@ -2258,3 +2258,66 @@ Record of choices made without asking, and why.
      samples the sky's horizon. Procedural / solid skies keep their zenith / horizon colours.
 478. **Scene view effects list:** Skybox, Fog, Clouds, Halos & Flares, Post Processing in one dropdown. Halos and
      flares get their own toggle and still need Post Processing and Lighting on.
+
+## 2026-11-04 — Multi-scene editing (additive scenes)
+
+479. **One world, a scene tag per object:** all loaded scenes live in the one `Scene` (one hecs world), so the
+     renderer, physics, scripts, audio and navigation see every loaded object without changes. Each object's
+     `Node` carries `scene: SceneId` (`scene/multi_scene.rs`); children always take their parent's (re-parenting
+     into another scene's object moves the subtree there), new top-level objects go into the active scene, copies
+     stay in their original's scene. Several worlds were rejected: every system takes one `&Scene`, and
+     cross-world parenting / picking / undo would all need new code. The tag is not saved (scene files are
+     unchanged, version 1).
+480. **Open set in the Scene:** `Scene` keeps the list of open scenes (`SceneEntry`: id, name, project-relative
+     path, loaded) in Hierarchy order and the active id. The active scene's name, lighting (`render_settings`) and
+     navigation settings stay in `Scene`'s own fields, so everything that already read them gets the active
+     scene's, like the familiar editor; the other loaded scenes keep theirs in their entry and swap in on
+     `set_active_scene`. The old editor-side `files.path` is gone: the active scene's file is
+     `scene.active_path()` (navigation and reflection bakes are stored next to it, Build Settings ▸ Add Open
+     Scenes adds every saved open scene). Ids are never reused within a world.
+481. **Saving per scene:** `scene_to_json(id)` writes only that scene's objects (whole subtrees in Hierarchy order)
+     with that scene's settings; `to_json()` still writes everything (single-scene callers and sample checks are
+     unchanged). File ▸ Save saves every scene with changes (the active one when none changed); the header menu
+     saves one; untitled scenes ask for a path; a path already used by another open scene is refused.
+482. **Dirty state per scene by content:** with one scene loaded the old dirty flag is used; with several, a
+     scene is dirty when the hash of its `scene_to_json` differs from the one taken when it was loaded or saved,
+     refreshed at most every 0.3 s (only while something changed). This needs no bookkeeping in the many places
+     that edit the scene and also clears the "*" when an edit is undone. The prompt ("Scene(s) Have Been
+     Modified": Save / Don't Save / Cancel) lists just the scenes the action would lose: all for New / Open /
+     Quit, the one scene for Unload / Remove, the others for Close Others.
+483. **Hierarchy:** every open scene gets a header row (🎬 name, `*` when dirty, bold white when active, grey
+     "(not loaded)" when unloaded) with a foldout and a ⋮ / right-click menu: Set Active Scene | Save Scene, Save
+     Scene As, Select All | Unload Scene (or Load Scene), Remove Scene, Close Others (items that can't apply are
+     disabled: the last loaded scene can't be unloaded, the only scene can't be removed). Dropping objects on a
+     header moves them (to the top level) into that scene; dropping between another scene's top-level rows moves
+     them there at that place. A `.scene` dropped anywhere in the Hierarchy opens additively, as does the
+     Project window's new "Open Scene Additive" item (next to "Open Scene") on scene assets.
+484. **Unloaded scenes stay listed:** unloading despawns the scene's objects and keeps its entry (greyed, Load
+     Scene brings it back from its file). Unloading the active scene makes the first other loaded scene active.
+     Remove takes the entry out. Loading, unloading, removing and Close Others clear the undo history (like
+     opening a scene): an undo snapshot from before would bring a scene's objects back without the open set
+     matching. Moving objects between scenes is an ordinary undoable edit.
+485. **Cross-scene references are not allowed:** object references (joints' connected body, Button targets, UI
+     widget parts, LOD renderers…) into another scene are saved as None, like the familiar editor. Saving warns
+     with one Console line per lost reference, and moving objects between scenes warns when it creates one.
+486. **Open set remembered per project:** `Library/EditorSettings.json` gets `open_scenes` (path + loaded, saved
+     scenes only) and `active_scene`; it is rewritten whenever the set changes and restored on launch (the first
+     loaded one opens normally, the rest additively or as unloaded entries, then the active one is set). Without
+     it the old "last scene, else SampleScene" start-up applies.
+487. **Scripting API:** `SceneManager.LoadScene(nameOrIndex, LoadSceneMode.Additive)` (also `true`) adds a Build
+     Settings scene after the frame; `UnloadSceneAsync(nameOrIndex)` (alias `UnloadScene`) removes a loaded scene
+     after the frame; `GetActiveScene()` returns `{ name, path, isLoaded }`; `SetActiveScene(scene or name)` and
+     `GetSceneByName(name)` act right away; `GetSceneCount()` counts loaded scenes. Names follow the existing
+     familiar-API style (PascalCase) rather than snake_case. A plain `LoadScene` still replaces everything; the
+     last one of a frame wins while additive loads and unloads run in order.
+488. **Runtime loading shared by Play mode and the player:** `Runtime::apply_scene_request` resolves the scene
+     through the Build Settings list (in the editor too, like the familiar editor), reads it through the vfs
+     (pak in builds), spawns it as another scene and starts it like `Instantiate`d objects
+     (`ScriptHost::add_objects`: physics bodies, script instances, `Awake`, Play On Awake). Unloading destroys the
+     objects with their bodies and scripts (`ScriptHost::remove_objects`) and drops the entry (runtime scenes
+     don't stay listed). Nav meshes come from the scene active when Play started.
+489. **Sample:** `MultiSceneLevel.scene` (ground, ramp, crates, a Scene Loader with `AdditiveLoader.lua`) and
+     `MultiSceneLighting.scene` (sun, camera, evening sky with fog, a falling Player capsule), generated by
+     `sample_multiscene.rs`; both were appended to the sample's Build Settings so the loader can add the lighting
+     scene when the level is played on its own. Screenshots open extra scenes with a comma list
+     (`MISTY_SCENE=A.scene,B.scene`) and pick the active one with `MISTY_ACTIVE_SCENE=<name>`.

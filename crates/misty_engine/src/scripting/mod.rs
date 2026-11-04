@@ -31,6 +31,7 @@ pub mod particles_api;
 pub mod physics2d_api;
 pub mod physics_api;
 pub mod render_settings_api;
+pub mod scene_api;
 pub mod syntax;
 pub mod terrain_api;
 pub mod ui_api;
@@ -131,6 +132,10 @@ impl Input {
 pub enum Request {
     /// `SceneManager.LoadScene(name or index)`.
     LoadScene(crate::build::SceneRef),
+    /// `SceneManager.LoadScene(name or index, LoadSceneMode.Additive)`.
+    LoadSceneAdditive(crate::build::SceneRef),
+    /// `SceneManager.UnloadSceneAsync(name or index)`.
+    UnloadScene(crate::build::SceneRef),
     /// `Application.Quit()`.
     Quit,
 }
@@ -693,6 +698,33 @@ impl ScriptHost {
     /// Button hover/press state (the Game view and player tint buttons with it).
     pub fn ui_interaction(&self) -> &UiInteraction {
         &self.ui
+    }
+
+    /// Objects added between frames (an additively loaded scene): physics bodies, script
+    /// instances and `Awake`, like `Instantiate`.
+    pub fn add_objects(&mut self, scene: &mut Scene, roots: &[Entity]) {
+        let scene_in = std::mem::take(scene);
+        self.with_world(|w| {
+            w.scene = scene_in;
+            for r in roots {
+                w.physics.add_subtree(&w.scene, *r);
+                w.physics2d.add_subtree(&w.scene, *r);
+                w.spawned.push(*r);
+            }
+        });
+        self.flush_spawned();
+        *scene = self.with_world(|w| std::mem::take(&mut w.scene));
+    }
+
+    /// Remove objects between frames (an unloaded scene) with their bodies and scripts.
+    pub fn remove_objects(&mut self, scene: &mut Scene, roots: &[Entity]) {
+        let scene_in = std::mem::take(scene);
+        self.with_world(|w| {
+            w.scene = scene_in;
+            w.destroy.extend_from_slice(roots);
+        });
+        self.process_destroy();
+        *scene = self.with_world(|w| std::mem::take(&mut w.scene));
     }
 
     /// Remove objects queued by `Destroy` (with their children and physics bodies).

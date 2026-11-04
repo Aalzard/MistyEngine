@@ -139,7 +139,7 @@ pub fn generate(state: &mut EditorState) {
     state.probes.status = format!("Generated {count} reflection probes.");
     state.console.info(state.probes.status.clone());
     // Then bake them (when the scene is saved).
-    if count > 0 && state.files.path.is_some() {
+    if count > 0 && state.scene.active_path().is_some() {
         state.probes.bake_requested = true;
     }
 }
@@ -165,7 +165,7 @@ pub fn start_bake(state: &mut EditorState) {
     if state.probes.job.is_some() {
         return;
     }
-    let Some(scene_path) = state.files.path.clone() else {
+    let Some(scene_path) = state.scene.active_path() else {
         state.probes.status = "Save the scene before baking reflection probes.".into();
         return;
     };
@@ -434,7 +434,7 @@ mod tests {
             s.scene.add(e, MeshFilter::primitive(PrimitiveMesh::Cube));
             s.scene.add(e, MeshRenderer::default());
         }
-        s.files.path = Some("Assets/Scenes/Room.scene".into());
+        s.scene.set_scene_path(0, "Assets/Scenes/Room.scene");
         s
     }
 
@@ -488,7 +488,7 @@ mod tests {
         assert!(s.scene.world.get::<&ReflectionProbe>(e).is_ok());
         assert_eq!(s.scene.name(e), "Reflection Probe");
         // Baking needs a saved scene.
-        s.files.path = None;
+        s.scene.forget_scene_path(0);
         start_bake(&mut s);
         assert!(!s.probes.baking());
         assert!(s.probes.status.contains("Save the scene"));

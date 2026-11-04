@@ -24,6 +24,7 @@ mod material_preview;
 mod menu_bar;
 mod model_import;
 mod object_clipboard;
+mod open_scenes;
 mod panels;
 mod particle_preview;
 mod picking;
@@ -65,6 +66,8 @@ mod sample_light_glow;
 mod sample_lighting;
 #[cfg(test)]
 mod sample_materials;
+#[cfg(test)]
+mod sample_multiscene;
 #[cfg(test)]
 mod sample_navigation;
 #[cfg(test)]

@@ -3,6 +3,14 @@
     {
       "path": "Assets/Scenes/SampleScene.scene",
       "enabled": true
+    },
+    {
+      "path": "Assets/Scenes/MultiSceneLevel.scene",
+      "enabled": true
+    },
+    {
+      "path": "Assets/Scenes/MultiSceneLighting.scene",
+      "enabled": true
     }
   ],
   "product_name": "Misty Sample",

@@ -23,6 +23,14 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         } => crate::terrain_tools::create(s, parent),
         Action::Create { what, parent } => create(s, what, parent),
         Action::CreateEmptyParent => create_empty_parent(s),
+        // The open set of scenes (see `open_scenes`).
+        Action::OpenSceneAdditive(rel) => {
+            crate::open_scenes::open_additive(s, &rel);
+        }
+        Action::Scene(id, op) => crate::open_scenes::apply_op(s, id, op),
+        Action::MoveToScene { objects, scene } => {
+            crate::open_scenes::move_objects(s, &objects, scene)
+        }
         Action::DeleteSelected => {
             let targets = s.selection.top_level(&s.scene);
             if !targets.is_empty() {

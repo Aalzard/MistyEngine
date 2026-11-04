@@ -291,7 +291,7 @@ pub fn start_bake(state: &mut EditorState) {
     if state.navigation.baking() {
         return;
     }
-    let Some(scene_path) = state.files.path.clone() else {
+    let Some(scene_path) = state.scene.active_path() else {
         state.navigation.status = "Save the scene before baking.".into();
         return;
     };
@@ -444,7 +444,7 @@ mod tests {
         s.scene.add(f, MeshFilter::primitive(PrimitiveMesh::Cube));
         s.scene.add(f, MeshRenderer::default());
         s.scene.game_object_mut(f).is_static = true;
-        s.files.path = Some("Assets/Scenes/Level.scene".into());
+        s.scene.set_scene_path(0, "Assets/Scenes/Level.scene");
         s
     }
 
@@ -512,7 +512,7 @@ mod tests {
     #[test]
     fn baking_needs_a_saved_scene() {
         let mut s = floor_state("misty_navigation_unsaved_test");
-        s.files.path = None;
+        s.scene.forget_scene_path(0);
         start_bake(&mut s);
         assert!(!s.navigation.baking());
         assert!(s.navigation.status.contains("Save the scene"));

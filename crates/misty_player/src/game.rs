@@ -90,6 +90,7 @@ impl Game {
     pub fn load_scene(&mut self, which: &SceneRef) -> Result<(), String> {
         let (rel, index) = self.build.resolve(which)?;
         let (mut scene, report) = Scene::load(&self.root.join(&rel))?;
+        scene.set_scene_path(0, &rel);
         for w in report.warnings {
             self.logs.push((LogKind::Warning, format!("{rel}: {w}")));
         }
@@ -112,14 +113,30 @@ impl Game {
         runtime.update(&mut self.scene, &self.time, input);
         let requests = runtime.take_requests();
         self.collect_logs();
-        // Like the familiar API, the last LoadScene of a frame wins.
+        // Like the familiar API, the last single LoadScene of a frame wins; additive loads
+        // and unloads happen in order.
         let mut load = None;
         for r in requests {
             match r {
                 Request::LoadScene(s) => load = Some(s),
                 Request::Quit => self.quit = true,
+                other => {
+                    let Some(runtime) = self.runtime.as_mut() else {
+                        continue;
+                    };
+                    let result = runtime.apply_scene_request(
+                        &mut self.scene,
+                        &self.build,
+                        &self.root,
+                        &other,
+                    );
+                    if let Err(e) = result {
+                        self.logs.push((LogKind::Error, e));
+                    }
+                }
             }
         }
+        self.collect_logs();
         if let Some(scene) = load
             && let Err(e) = self.load_scene(&scene)
         {
@@ -269,6 +286,80 @@ return Loader
             .filter(|(k, _)| *k == LogKind::Error)
             .collect();
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    /// `LoadScene(name, LoadSceneMode.Additive)` adds a build scene next to the first; its
+    /// scripts start and its bodies fall; `UnloadSceneAsync` takes it away again.
+    #[test]
+    fn additive_scenes_load_play_and_unload() {
+        let root = project("additive");
+        std::fs::write(
+            root.join("Assets/Scripts/Adder.lua"),
+            r#"
+local A = {}
+function A:Update()
+    if Time.frameCount == 1 then SceneManager.LoadScene("Extra", LoadSceneMode.Additive) end
+    if Time.frameCount == 3 then SceneManager.SetActiveScene("Extra") end
+    if Time.frameCount == 4 then Debug.Log("active " .. SceneManager.GetActiveScene().name) end
+    if Time.frameCount == 20 then SceneManager.UnloadSceneAsync("Extra") end
+end
+return A
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("Assets/Scripts/Hello.lua"),
+            "local H = {}
+function H:Awake() Debug.Log('extra awake') end
+return H
+",
+        )
+        .unwrap();
+        let mut main = Scene::new("Main");
+        let adder = main.spawn("Adder", None);
+        main.add(adder, scripts("Adder.lua"));
+        main.save(&root.join("Assets/Scenes/Main.scene")).unwrap();
+        let mut extra = Scene::new("Extra");
+        let crate_e = extra.spawn("Crate", None);
+        extra.add_by_name(crate_e, "Box Collider");
+        extra.add_by_name(crate_e, "Rigidbody");
+        extra.set_world_position(crate_e, Vec3::new(0.0, 10.0, 0.0));
+        extra.add(crate_e, scripts("Hello.lua"));
+        extra.render_settings.fog.enabled = true;
+        extra.save(&root.join("Assets/Scenes/Extra.scene")).unwrap();
+        BuildSettings {
+            scenes: vec![
+                BuildScene::new("Assets/Scenes/Main.scene"),
+                BuildScene::new("Assets/Scenes/Extra.scene"),
+            ],
+            ..Default::default()
+        }
+        .save(&root)
+        .unwrap();
+
+        let mut game = Game::open(&root).unwrap();
+        for _ in 0..10 {
+            game.frame(1.0 / 60.0, Input::default());
+        }
+        assert_eq!(game.scene.loaded_scenes().len(), 2);
+        assert!(game.scene.find_by_name("Adder").is_some(), "Main stays");
+        let crate_e = game.scene.find_by_name("Crate").unwrap();
+        assert!(game.scene.world_position(crate_e).y < 9.9, "its body falls");
+        assert_eq!(game.scene.name, "Extra");
+        assert!(
+            game.scene.render_settings.fog.enabled,
+            "lighting of the active scene"
+        );
+        for _ in 0..12 {
+            game.frame(1.0 / 60.0, Input::default());
+        }
+        assert!(game.scene.find_by_name("Crate").is_none(), "unloaded");
+        assert_eq!(game.scene.loaded_scenes().len(), 1);
+        assert_eq!(game.scene.name, "Main");
+        assert!(!game.scene.render_settings.fog.enabled);
+        let logs: Vec<String> = game.take_logs().into_iter().map(|(_, l)| l).collect();
+        assert!(logs.iter().any(|l| l == "extra awake"), "{logs:?}");
+        assert!(logs.iter().any(|l| l == "active Extra"), "{logs:?}");
     }
 
     /// A build plays from its pak: nothing but `data.pak` exists in the data folder.

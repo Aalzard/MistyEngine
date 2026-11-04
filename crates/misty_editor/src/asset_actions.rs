@@ -213,16 +213,6 @@ fn update_memory(s: &mut EditorState, old: &str, new: &str, from: &Path, to: &Pa
         for scene in session.scenes_mut() {
             rewrite_scene(scene, old, new);
         }
-        if let Some(p) = session.path_mut() {
-            remap(p);
-        }
-    }
-    // The open scene's name follows its file name.
-    if let Some(p) = s.files.path.as_mut()
-        && let Some(n) = asset_ops::remap(p, old, new)
-    {
-        *p = n;
-        s.scene.name = stem(&to.to_string_lossy());
     }
     s.files.settings.recent_scenes.iter_mut().for_each(&remap);
     s.files.settings.save(&s.project.root);
@@ -248,6 +238,8 @@ fn update_memory(s: &mut EditorState, old: &str, new: &str, from: &Path, to: &Pa
 
 /// Rewrite asset paths in every registered component of `scene`. Returns true if any changed.
 pub fn rewrite_scene(scene: &mut Scene, old: &str, new: &str) -> bool {
+    // Open scenes follow their own files too.
+    scene.remap_scene_paths(|p| asset_ops::remap(p, old, new));
     let mut changed = false;
     for (e, _) in scene.walk() {
         for info in registry::components() {
@@ -287,13 +279,6 @@ fn delete(s: &mut EditorState, path: &Path) {
         }
         Err(e) => s.console.warn(format!("Could not delete {rel}: {e}")),
     }
-}
-
-fn stem(path: &str) -> String {
-    Path::new(path)
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default()
 }
 
 /// Open the OS file browser with `path` selected.

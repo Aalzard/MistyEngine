@@ -108,6 +108,9 @@ pub struct Node {
     pub parent: Option<hecs::Entity>,
     #[serde(with = "entity_bits::list")]
     pub children: Vec<hecs::Entity>,
+    /// Loaded scene the object belongs to (see `multi_scene`); children share their root's.
+    #[serde(default)]
+    pub scene: super::SceneId,
 }
 
 /// Entities are stored by their id bits (only meaningful inside one world; scene files remap them).
