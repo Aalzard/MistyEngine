@@ -102,6 +102,14 @@ pub fn apply_env(
     {
         crate::project_settings::open_at(s, c);
     }
+    // `MISTY_TERRAIN_TOOL=Paint Texture` picks a Terrain Inspector tool tab.
+    if let Some(tool) = std::env::var_os("MISTY_TERRAIN_TOOL")
+        && let Some(t) = crate::terrain_tools::TerrainTool::ALL
+            .into_iter()
+            .find(|t| t.label() == tool.to_string_lossy())
+    {
+        s.terrain_tools.tool = t;
+    }
     // `MISTY_2D=1` switches the Scene view to 2D (looking down +Z at the XY plane).
     if std::env::var_os("MISTY_2D").is_some() {
         s.scene_view.is_2d = true;

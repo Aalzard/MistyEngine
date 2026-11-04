@@ -80,8 +80,8 @@
       "normal_map": "Assets/Textures/Terrain/CliffNormal.png",
       "normal_scale": 1.2,
       "tile_size": [
-        14.0,
-        14.0
+        18.0,
+        18.0
       ],
       "tile_offset": [
         0.0,

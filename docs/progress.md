@@ -971,3 +971,46 @@ clippy fixes in `sprite_handles.rs` (a type alias, a removed `.clone()`), then t
   sprite, Edit Collider for capsule/polygon/edge, `Rigidbody2D.Sleep`/`IsTouching`, `Physics2D.BoxCast`/
   `CircleCast`, contact filters, or "Use Full Kinematic Contacts"; Collision2D has a single contact point.
 - Sorting Layers have their own Project Settings page (not Tags and Layers); sprites take fog.
+
+## Terrain: Auto Paint, cliffs, grass, Color Harmony, large-terrain editing ✅
+
+### Done
+- Auto Paint Rules per layer (collapsible in Paint Texture): rule-driven flag, slope band (two-handle slider),
+  optional height band, Spread, Breakup strength + scale (seeded fBm), Priority. **Generate** repaints the
+  rule-driven layers over the whole terrain (multithreaded, one undo step) and keeps manual layers' strokes;
+  **Generate in brush** makes the Paint brush apply the rule result locally. Hand painting still works on top.
+- Cliffs & Blending: triplanar projection above an angle (default 45°) with blend sharpness, whiteout normal
+  blending, a cheap top-only path when off or on gentle slopes; height-based blending with a Height Blend
+  contrast slider (layer Height Map, or the albedo luminance).
+- Grass & Details: same rules (slope, height, spread, breakup) plus "Grow On" layer and density; Generate fills
+  a density map; blades are scattered per 16 m chunk around the camera and drawn instanced with wind sway,
+  distance fade, density and draw-distance settings. Never on slopes past the limit + spread.
+- Color Harmony: per-layer mean linear albedo and coverage → shared target (Average, Tint, Lighting); per-layer
+  hue shift / saturation / brightness in the shader by Strength and H/S/B weights; Preview Before/After.
+- Renderer: heightmap and normals as textures (vertex pulling), chunked LOD with crack-free edge stitching,
+  per-chunk frustum culling, partial uploads of only the brush region, layer texture arrays. Heightmaps up to
+  4097², splat maps up to 2048².
+- Sample: `Scenes/TerrainDemo2.scene` (fBm mountains, terraced cliffs, meadow grass, snow band, rock on
+  slopes, rule-driven layers, Color Harmony on; textures in `Assets/Textures/Terrain/`).
+- Tests: rock on steep / grass on flat, breakup irregular and seeded, spread widens the transition, manual
+  strokes kept, snow height band, generate-in-brush locality; detail placement (flat only, deterministic,
+  chunk-additive, layer gating); harmony maths (HSV, linear mean, circular weighted mean, strength 0 identity,
+  tint/lighting); LOD patterns cover chunks, stitched edges match coarse neighbours, LOD steps ≤ 1; noise;
+  GPU: partial uploads give the same image as a fresh upload; TerrainDemo2 check, rules and play tests.
+
+### Measured (release, RTX 4060, `terrain_timings`, profile scopes Terrain.*)
+| Heightmap | Generate splat (1024²) | Generate details | First upload + 2 frames | Brush step (CPU) | 2 frames after a stroke (partial upload) |
+|---|---|---|---|---|---|
+| 2049² | 83 ms | 110 ms | 37 ms | 0.03 ms | 4.8 ms |
+| 4097² | 58 ms | 32 ms | 163 ms | 0.02 ms | 4.7 ms |
+
+Before this change every stroke frame rebuilt and re-uploaded the whole mesh (1025² max, ~50 MB of vertices
+at 1025²); now a stroke uploads only the brush rectangle, so the cost no longer grows with terrain size.
+Screenshots: `docs/screenshots/round8/terrain_final.png`, `terrain_no_breakup.png`, `terrain_no_harmony.png`,
+`terrain_planar.png` (triplanar and height blend off), `terrain_demo2_editor.png`, `terrain_inspector_paint.png`.
+
+### Not matching Unity yet
+- No tree instances or detail meshes (grass blades only); no detail painting brush (Generate / Generate in
+  brush only); grass casts no shadows.
+- Layer textures skip import settings; at most 4 layers and 1024² slices.
+- Saving a 4097² terrain on mouse-up takes a moment (JSON + base64).

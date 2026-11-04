@@ -104,7 +104,7 @@ fn cliff_height(x: u32, y: u32, n: u32) -> f32 {
     let strata = ((y as f32 / n as f32 + warp) * std::f32::consts::TAU * 6.0).sin() * 0.5 + 0.5;
     let cracks = 1.0 - (tile_fbm(x, y, n, 8, 4, 43) * 2.0 - 1.0).abs();
     let bumps = tile_fbm(x, y, n, 6, 5, 47);
-    (0.35 * strata + 0.4 * bumps + 0.25 * cracks.powi(3)).clamp(0.0, 1.0)
+    (0.12 * strata + 0.55 * bumps + 0.33 * cracks.powi(3)).clamp(0.0, 1.0)
 }
 
 fn cliff(n: u32) -> RgbaImage {
@@ -224,7 +224,7 @@ fn layers() -> Vec<TerrainLayer> {
             normal_map: Some(ROCK_NORMAL.into()),
             height_map: Some(ROCK_HEIGHT.into()),
             normal_scale: 1.2,
-            tile_size: [14.0, 14.0],
+            tile_size: [18.0, 18.0],
             smoothness: 0.2,
             rules: rules([36.0, 90.0], 2, 0.15, 0.6),
             ..Default::default()
