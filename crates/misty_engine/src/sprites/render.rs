@@ -46,22 +46,26 @@ pub fn draws(scene: &Scene, outline: &dyn Fn(Entity) -> bool, out: &mut Vec<Mesh
         if !r.enabled || !scene.active_in_hierarchy(e) {
             continue;
         }
-        let Some(sprite) = r.sprite.as_deref().and_then(resolve) else {
-            continue;
-        };
-        out.push(MeshDraw {
-            mesh: PrimitiveMesh::Quad.into(),
-            model: scene.world_matrix(e) * quad_matrix(&sprite),
-            material: material(&r, &sprite),
-            cast_shadows: false,
-            receive_shadows: false,
-            outline: outline(e),
-            sorting: SortingKey {
-                layer: sorting::value(&r.sorting_layer),
-                order: r.order_in_layer,
-            },
-        });
+        out.extend(draw_of(&r, scene.world_matrix(e), outline(e)));
     }
+}
+
+/// The draw of one enabled Sprite Renderer on an active object at `world`.
+pub fn draw_of(r: &SpriteRenderer, world: Mat4, outline: bool) -> Option<MeshDraw> {
+    let sprite = r.sprite.as_deref().and_then(resolve)?;
+    Some(MeshDraw {
+        mesh: PrimitiveMesh::Quad.into(),
+        model: world * quad_matrix(&sprite),
+        material: material(r, &sprite),
+        cast_shadows: false,
+        receive_shadows: false,
+        outline,
+        sorting: SortingKey {
+            layer: sorting::value(&r.sorting_layer),
+            order: r.order_in_layer,
+        },
+        lod: None,
+    })
 }
 
 /// World-space corners of a sprite quad (for gizmos): bottom-left, bottom-right, top-right,

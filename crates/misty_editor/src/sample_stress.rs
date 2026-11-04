@@ -9,12 +9,14 @@ use std::path::PathBuf;
 
 use glam::Vec3;
 use misty_engine::assets::Material;
+use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    Light, LightType, MeshFilter, MeshRenderer, PrimitiveMesh, Scene, ScriptRef, ScriptValue,
-    Scripts, Shadows, Transform,
+    Light, LightType, LodFadeMode, LodGroup, LodLevel, MeshFilter, MeshRenderer, PrimitiveMesh,
+    Scene, ScriptRef, ScriptValue, Scripts, Shadows, Transform,
 };
 
 const SCENE: &str = "Assets/Scenes/StressDemo.scene";
+const STATIC_SCENE: &str = "Assets/Scenes/StressStatic.scene";
 const ORBIT: &str = "Assets/Scripts/CameraOrbit.lua";
 const ROTATOR: &str = "Assets/Scripts/Rotator.lua";
 const GROUND: &str = "Assets/Materials/Sand.mat";
@@ -226,6 +228,71 @@ pub fn demo_scene() -> Scene {
     s
 }
 
+/// "Stress Static": the same field with every object that doesn't spin (and the ground)
+/// marked Static, so Play mode merges them into chunked static batches; plus a row of
+/// LOD Groups (sphere → capsule → cube, cross-fading) along the near edge.
+pub fn static_scene() -> Scene {
+    let mut s = demo_scene();
+    s.name = "StressStatic".into();
+    let spinners: Vec<_> = s
+        .world
+        .query::<(Entity, &Scripts)>()
+        .iter()
+        .map(|(e, _)| e)
+        .collect();
+    let field = s.find_by_name("Field").expect("field");
+    for e in s.children(field) {
+        if !spinners.contains(&e) {
+            s.game_object_mut(e).is_static = true;
+        }
+    }
+    if let Some(g) = s.find_by_name("Ground") {
+        s.game_object_mut(g).is_static = true;
+    }
+    let lods = s.spawn("LOD Demo", None);
+    for i in 0..12 {
+        let group = s.spawn(&format!("LOD Group {i}"), Some(lods));
+        let x = (i as f32 - 5.5) * 6.0;
+        s.set_transform(group, Transform::from_position(Vec3::new(x, 1.5, -62.0)));
+        let mut g = LodGroup {
+            fade_mode: LodFadeMode::CrossFade,
+            fade_width: 0.25,
+            ..Default::default()
+        };
+        g.lods = vec![0.12, 0.05, 0.015]
+            .into_iter()
+            .zip([
+                PrimitiveMesh::Sphere,
+                PrimitiveMesh::Capsule,
+                PrimitiveMesh::Cube,
+            ])
+            .enumerate()
+            .map(|(k, (h, mesh))| {
+                let e = s.spawn(&format!("LOD{k} {}", mesh.name()), Some(group));
+                let t = Transform {
+                    scale: Vec3::splat(2.5),
+                    ..Default::default()
+                };
+                s.set_transform(e, t);
+                s.add(e, MeshFilter::primitive(mesh));
+                s.add(
+                    e,
+                    MeshRenderer {
+                        material: Some(MATERIALS[k % MATERIALS.len()].0.into()),
+                        ..Default::default()
+                    },
+                );
+                LodLevel {
+                    screen_height: h,
+                    renderers: vec![e],
+                }
+            })
+            .collect();
+        s.add(group, g);
+    }
+    s
+}
+
 #[test]
 #[ignore = "writes into SampleProject; run on purpose to regenerate"]
 fn write_stress_demo() {
@@ -235,6 +302,34 @@ fn write_stress_demo() {
     }
     std::fs::write(root.join(ORBIT), ORBIT_LUA).unwrap();
     demo_scene().save(&root.join(SCENE)).unwrap();
+    static_scene().save(&root.join(STATIC_SCENE)).unwrap();
+}
+
+#[test]
+fn stress_static_matches_its_generator_and_round_trips() {
+    let text = std::fs::read_to_string(project().join(STATIC_SCENE)).unwrap();
+    assert!(
+        text.replace("\r\n", "\n") == static_scene().to_json(),
+        "regenerate with write_stress_demo"
+    );
+    let (scene, report) = Scene::from_json("StressStatic", &text).unwrap();
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    let statics = scene
+        .world
+        .query::<&misty_engine::scene::GameObject>()
+        .iter()
+        .filter(|g| g.is_static)
+        .count();
+    assert!(statics > 4000, "{statics}");
+    // LOD references survive the file.
+    let groups: Vec<LodGroup> = scene.world.query::<&LodGroup>().iter().cloned().collect();
+    assert_eq!(groups.len(), 12);
+    for g in &groups {
+        for l in &g.lods {
+            assert_eq!(l.renderers.len(), 1);
+            assert!(scene.world.get::<&MeshRenderer>(l.renderers[0]).is_ok());
+        }
+    }
 }
 
 #[test]

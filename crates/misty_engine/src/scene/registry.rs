@@ -7,6 +7,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::components::*;
+use super::lod_group::LodGroup;
 use super::physics_components::*;
 use super::physics2d_components::*;
 use super::sprite_components::SpriteRenderer;
@@ -140,6 +141,10 @@ impl SceneComponent for TerrainCollider {
     const NAME: &'static str = "Terrain Collider";
     const CATEGORY: &'static str = "Physics";
 }
+impl SceneComponent for LodGroup {
+    const NAME: &'static str = "LOD Group";
+    const CATEGORY: &'static str = "Rendering";
+}
 impl SceneComponent for SpriteRenderer {
     const NAME: &'static str = "Sprite Renderer";
     const CATEGORY: &'static str = "Rendering";
@@ -256,6 +261,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
             ComponentInfo::of::<SpriteRenderer>(),
+            ComponentInfo::of::<LodGroup>(),
             ComponentInfo::of::<Rigidbody>(),
             ComponentInfo::of::<BoxCollider>(),
             ComponentInfo::of::<SphereCollider>(),

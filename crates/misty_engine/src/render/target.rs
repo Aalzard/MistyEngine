@@ -44,6 +44,8 @@ pub struct RenderTarget {
     pub(crate) bloom: Vec<BloomLevel>,
     /// HDR image + bloom level 0, for the final composite.
     pub(crate) composite_group: wgpu::BindGroup,
+    /// GPU culling's Hi-Z pyramid and last frame's visibility (made on first use).
+    pub(in crate::render) culling: std::sync::Mutex<Option<super::gpu_culling::TargetState>>,
 }
 
 impl RenderTarget {
@@ -88,7 +90,15 @@ impl RenderTarget {
             attach,
             &[],
         );
-        let depth = make("misty depth", full, DEPTH_FORMAT, SAMPLE_COUNT, attach, &[]);
+        // Sampled too: GPU culling builds its Hi-Z pyramid from it.
+        let depth = make(
+            "misty depth",
+            full,
+            DEPTH_FORMAT,
+            SAMPLE_COUNT,
+            sampled,
+            &[],
+        );
         let hdr = make("misty hdr", full, HDR_FORMAT, 1, sampled, &[]);
         let glow_msaa = make(
             "misty msaa glow",
@@ -192,6 +202,7 @@ impl RenderTarget {
             hdr_group,
             bloom,
             composite_group,
+            culling: Default::default(),
         }
     }
 

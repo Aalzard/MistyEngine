@@ -2,14 +2,20 @@
 
 mod batch;
 pub mod culling;
+mod draw_prep;
 pub mod environment;
 mod frame_lists;
+mod gpu_culling;
 mod gpu_timer;
+pub mod lod;
 pub mod mesh;
+pub mod overrides;
 pub mod particles;
 mod pipelines;
 pub mod post;
+mod prepass;
 mod shadows;
+pub mod static_batch;
 pub mod stats;
 pub mod surface;
 mod target;
@@ -46,9 +52,9 @@ pub const SAMPLE_COUNT: u32 = 4;
 const MAX_LIGHTS: usize = 8;
 
 /// Device features to request when the adapter has them: timestamp queries for GPU timing
-/// (see [`Renderer::with_queue`]).
+/// (see [`Renderer::with_queue`]) and indirect draws with an instance offset (GPU culling).
 pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
-    adapter.features() & wgpu::Features::TIMESTAMP_QUERY
+    adapter.features() & (wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::INDIRECT_FIRST_INSTANCE)
 }
 
 /// World plane the editor grid lies on.
@@ -98,6 +104,8 @@ pub struct MaterialParams {
     pub normal_scale: f32,
     pub tiling: [f32; 2],
     pub offset: [f32; 2],
+    /// UV rotation in degrees about the texture centre (per-object override; materials use 0).
+    pub uv_rotation: f32,
     /// Unlit shaders: colour × albedo texture, no lighting or shadows.
     pub unlit: bool,
     pub mode: RenderingMode,
@@ -129,6 +137,7 @@ impl Default for MaterialParams {
             normal_scale: 1.0,
             tiling: [1.0, 1.0],
             offset: [0.0, 0.0],
+            uv_rotation: 0.0,
             unlit: false,
             mode: RenderingMode::Opaque,
             alpha_cutoff: 0.5,
@@ -171,7 +180,7 @@ impl MaterialParams {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MeshDraw {
     pub mesh: MeshRef,
     pub model: Mat4,
@@ -182,6 +191,8 @@ pub struct MeshDraw {
     pub outline: bool,
     /// Sorting Layer / Order in Layer (sprites); meshes use the default.
     pub sorting: surface::SortingKey,
+    /// Level of a LOD Group (`None` = always drawn); the renderer picks levels per camera.
+    pub lod: Option<lod::LodRange>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -197,6 +208,15 @@ pub struct LightData {
     /// Full cone angle in degrees.
     pub spot_angle: f32,
     pub shadows: Shadows,
+}
+
+/// How the main pass is split: GPU culling draws it in two phases (`Some(0)`, `Some(1)`)
+/// around the Hi-Z build; `prepass` = depth is already drawn.
+#[derive(Clone, Copy)]
+struct MainSplit<'a> {
+    phase: Option<usize>,
+    culled: Option<&'a gpu_culling::CulledBatches>,
+    prepass: bool,
 }
 
 /// Everything needed to draw one view.
@@ -236,6 +256,8 @@ struct ViewUniform {
     post: [[f32; 4]; 6],
 }
 
+/// One `draws[]` entry. Its layout (and the only WGSL copy of it) is documented in
+/// shaders/draw.wgsl; new per-draw values go there and here, at the end.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct DrawUniform {
@@ -248,6 +270,8 @@ struct DrawUniform {
     /// x = rendering mode index, y = alpha cutoff, z = occlusion strength,
     /// w = 1 when smoothness comes from the albedo alpha.
     surface: [f32; 4],
+    /// x = cos, y = sin of the UV rotation, z = LOD cross-fade, w = reserved.
+    extra: [f32; 4],
 }
 
 #[repr(C)]
@@ -273,8 +297,14 @@ struct LightsUniform {
 }
 
 struct GpuMesh {
+    /// Primitives share one vertex/index buffer pair (so GPU-culled batches of different
+    /// primitives can be one multi-draw); imported meshes have their own.
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
+    /// Same id = same buffers.
+    buffer_id: u64,
+    first_index: u32,
+    base_vertex: i32,
     count: u32,
     vertex_count: u32,
     /// Local bounds (culling, shadow fitting).
@@ -310,10 +340,16 @@ pub struct Renderer {
     stats: RenderStats,
     /// GPU time per render (when the device supports timestamp queries).
     gpu_timer: Option<gpu_timer::GpuTimer>,
+    /// GPU culling pipelines and buffers (`None` when the device can't draw indirectly with
+    /// an instance offset).
+    culler: Option<gpu_culling::GpuCuller>,
+    /// Batches of the last GPU-culled frame.
+    last_gpu_batches: usize,
+    prepass: prepass::Prepass,
     // Per-frame scratch kept to avoid reallocating.
     batcher: batch::Batcher,
+    shadow_batchers: Vec<batch::Batcher>,
     slots_scratch: Vec<u32>,
-    draws_scratch: Vec<DrawUniform>,
 }
 
 impl Renderer {
@@ -355,15 +391,7 @@ impl Renderer {
             &shadows,
         );
 
-        let meshes = PrimitiveMesh::ALL
-            .iter()
-            .map(|p| {
-                let mut m = GpuMesh::new(device, p.name(), mesh::primitive(*p));
-                // The same box picking and shadow fitting use.
-                m.bounds = culling::Aabb::new(-p.half_extents(), p.half_extents());
-                m
-            })
-            .collect();
+        let meshes = GpuMesh::primitives(device);
 
         let line_capacity = 1024;
         let post_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -396,9 +424,12 @@ impl Renderer {
             options: RenderOptions::default(),
             stats: RenderStats::default(),
             gpu_timer: None,
+            culler: gpu_culling::supported(device).then(|| gpu_culling::GpuCuller::new(device)),
+            last_gpu_batches: 0,
+            prepass: Default::default(),
             batcher: Default::default(),
+            shadow_batchers: Vec::new(),
             slots_scratch: Vec::new(),
-            draws_scratch: Vec::new(),
         }
     }
 
@@ -469,14 +500,21 @@ impl Renderer {
         self.textures.take_warnings()
     }
 
-    /// Upload imported meshes and build texture bind groups used by this frame.
-    fn prepare_assets(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, frame: &Frame) {
+    /// Upload imported meshes and build texture bind groups and shader variants used by this
+    /// frame (`lod` = each draw's LOD state, which can pick the cutout variants).
+    fn prepare_assets(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        frame: &Frame,
+        lod: &[lod::LodState],
+    ) {
         let generation = models::generation();
         if generation != self.imported_generation {
             self.imported.clear();
             self.imported_generation = generation;
         }
-        for d in frame.meshes {
+        for (d, state) in frame.meshes.iter().zip(lod) {
             if let MeshRef::Asset(key) = &d.mesh
                 && !self.imported.contains_key(key)
             {
@@ -495,12 +533,13 @@ impl Renderer {
                 let set = d.material.textures();
                 let layout = &self.pipelines.material_layout;
                 self.textures.prepare_set(device, queue, layout, &set);
-                self.pipelines
-                    .ensure_mesh(device, d.material.pipeline_key());
+                let key = draw_prep::pipeline_key(d, *state);
+                self.pipelines.ensure_mesh(device, key);
+                if self.options.depth_prepass {
+                    self.prepass.ensure(device, &self.pipelines, key);
+                }
             }
-            if d.cast_shadows
-                && let Some(key) = d.material.shadow_key()
-            {
+            if let Some(key) = draw_prep::shadow_key(d, *state) {
                 self.pipelines.ensure_shadow(device, key);
                 if key.cutout {
                     let set = d.material.textures();
@@ -571,9 +610,10 @@ impl Renderer {
         if let Some(timer) = self.gpu_timer.as_mut() {
             timer.poll(device);
         }
+        let lod = draw_prep::lod_states(frame, self.options.lod_bias);
         {
             crate::profile_scope!("Render.PrepareAssets");
-            self.prepare_assets(device, queue, frame);
+            self.prepare_assets(device, queue, frame, &lod);
         }
         let aspect = target.aspect();
         queue.write_buffer(
@@ -583,18 +623,28 @@ impl Renderer {
         );
 
         // Culling and batching for the camera and every shadow map.
-        let (lists, plan) = {
+        let view_proj = frame.camera.view_projection(aspect);
+        let (mut lists, plan) = {
             crate::profile_scope!("Render.Culling");
-            let meshes = self.mesh_bounds(frame);
+            let prep = self.draw_prep(frame, lod);
             let terrains = self.terrain_bounds(frame);
-            let casters = Self::caster_bounds(frame, &meshes, &terrains);
+            let casters = Self::caster_bounds(frame, &prep.bounds, &terrains);
             let plan = shadows::plan_with(frame, &casters);
-            let view_proj = frame.camera.view_projection(aspect);
-            let lists =
-                self.frame_lists(frame, &view_proj, &plan, (&meshes, &terrains), &mut stats);
+            let lists = self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats);
             (lists, plan)
         };
-        self.upload_draws(device, queue, frame, &lists.slots);
+        // GPU culling: opaque batches are built from every candidate and culled on the GPU.
+        let culled = self.gpu_culling_active(frame).then(|| {
+            let culled = self.gpu_batches(frame, &lists, lists.slots.len() as u32);
+            lists.opaque.clear();
+            culled
+        });
+        let extra_slots = culled.as_ref().map_or(0, |c| c.slots_needed());
+        self.upload_draws(device, queue, frame, &lists, extra_slots);
+        if let Some(c) = &culled {
+            self.upload_culling(device, queue, target, frame, &lists, c, &view_proj);
+            self.last_gpu_batches = c.batches.len();
+        }
 
         // Lights and their shadow maps (slot 0 = directional, 1.. = local layers).
         let lights = lights_uniform(frame, &plan);
@@ -646,21 +696,79 @@ impl Renderer {
         if plan.directional.is_some() {
             let list = shadow_lists.next();
             let view = &self.shadows.directional_view;
-            self.shadow_pass(&mut encoder, frame, view, 0, list, &mut stats);
+            self.shadow_pass(&mut encoder, frame, view, 0, &lists, list, &mut stats);
         }
         for (layer, list) in shadow_lists.enumerate() {
             let view = &self.shadows.local_layer_views[layer];
-            self.shadow_pass(&mut encoder, frame, view, layer + 1, Some(list), &mut stats);
+            let slot = layer + 1;
+            self.shadow_pass(
+                &mut encoder,
+                frame,
+                view,
+                slot,
+                &lists,
+                Some(list),
+                &mut stats,
+            );
         }
-        self.main_pass(
-            &mut encoder,
-            target,
-            frame,
-            any_outline,
-            &lists,
-            &particle_draws,
-            &mut stats,
-        );
+        let prepass = self.prepass_active(frame);
+        if prepass {
+            self.depth_prepass(&mut encoder, target.depth_view(), frame, &lists, &mut stats);
+        }
+        let split = MainSplit {
+            phase: None,
+            culled: None,
+            prepass,
+        };
+        match (&culled, self.culler.as_ref()) {
+            (Some(c), Some(culler)) => {
+                let state = target.culling.lock().unwrap_or_else(|e| e.into_inner());
+                let state = state.as_ref().expect("made by upload_culling");
+                let slots = &self.slots_buffer;
+                culler.dispatch(device, &mut encoder, state, c, slots, 0);
+                let first = MainSplit {
+                    phase: Some(0),
+                    culled: Some(c),
+                    ..split
+                };
+                self.main_pass(
+                    &mut encoder,
+                    target,
+                    frame,
+                    any_outline,
+                    &lists,
+                    &particle_draws,
+                    &mut stats,
+                    first,
+                );
+                culler.build_pyramid(device, &mut encoder, state, target.depth_view());
+                culler.dispatch(device, &mut encoder, state, c, slots, 1);
+                let rest = MainSplit {
+                    phase: Some(1),
+                    ..first
+                };
+                self.main_pass(
+                    &mut encoder,
+                    target,
+                    frame,
+                    any_outline,
+                    &lists,
+                    &particle_draws,
+                    &mut stats,
+                    rest,
+                );
+            }
+            _ => self.main_pass(
+                &mut encoder,
+                target,
+                frame,
+                any_outline,
+                &lists,
+                &particle_draws,
+                &mut stats,
+                split,
+            ),
+        }
         self.bloom_passes(&mut encoder, target, timing);
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.resolve(&mut encoder, slot);
@@ -674,23 +782,27 @@ impl Renderer {
         self.stats = stats;
     }
 
-    /// Write the per-draw values and the slot lists, growing the buffers when needed.
+    /// Write the per-draw values and the slot lists, growing the buffers when needed
+    /// (`extra_slots` = room after the lists for GPU culling's output).
     fn upload_draws(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         frame: &Frame,
-        slots: &[u32],
+        lists: &frame_lists::FrameLists,
+        extra_slots: usize,
     ) {
+        let slots = &lists.slots[..];
         let draw_count = frame.meshes.len() + frame.terrains.len();
         let grow_draws = draw_count > self.draws_capacity;
-        let grow_slots = slots.len() > self.slots_capacity;
+        let slots_needed = slots.len() + extra_slots;
+        let grow_slots = slots_needed > self.slots_capacity;
         if grow_draws {
             self.draws_capacity = draw_count.next_power_of_two();
             self.draws_buffer = draws_buffer(device, self.draws_capacity);
         }
         if grow_slots {
-            self.slots_capacity = slots.len().next_power_of_two();
+            self.slots_capacity = slots_needed.next_power_of_two();
             self.slots_buffer = slots_buffer(device, self.slots_capacity);
         }
         if grow_draws || grow_slots {
@@ -702,17 +814,18 @@ impl Renderer {
                 &self.shadows,
             );
         }
-        let mut draws = std::mem::take(&mut self.draws_scratch);
-        draws.clear();
-        draws.extend(frame.meshes.iter().map(draw_uniform));
-        draws.extend(frame.terrains.iter().map(terrain::draw_uniform));
-        if !draws.is_empty() {
-            queue.write_buffer(&self.draws_buffer, 0, bytemuck::cast_slice(&draws));
+        let meshes = &lists.prep.uniforms;
+        if !meshes.is_empty() {
+            queue.write_buffer(&self.draws_buffer, 0, bytemuck::cast_slice(meshes));
+        }
+        let terrains: Vec<DrawUniform> = frame.terrains.iter().map(terrain::draw_uniform).collect();
+        if !terrains.is_empty() {
+            let offset = std::mem::size_of_val(&meshes[..]) as u64;
+            queue.write_buffer(&self.draws_buffer, offset, bytemuck::cast_slice(&terrains));
         }
         if !slots.is_empty() {
             queue.write_buffer(&self.slots_buffer, 0, bytemuck::cast_slice(slots));
         }
-        self.draws_scratch = draws;
     }
 
     /// Sort the visible particles back to front and upload them as instances.
@@ -860,19 +973,27 @@ impl Renderer {
         }
     }
 
-    /// Draw main-pass batches with their material's pipeline and textures.
+    /// Draw main-pass batches with their material's pipeline and textures (`prepass` = Opaque
+    /// draws test against the depth prepass).
     fn draw_batches(
         &self,
         pass: &mut wgpu::RenderPass,
         frame: &Frame,
+        lists: &frame_lists::FrameLists,
         batches: &[batch::Batch],
+        prepass: bool,
         stats: &mut RenderStats,
     ) {
         let (mut pipeline_at, mut group_at) = (0, 0);
         for b in batches {
             let d = &frame.meshes[b.draw];
+            let key = lists.prep.pipeline[b.draw];
+            let pipeline = match prepass && prepass::applies(key) {
+                true => self.prepass.shade_variant(key),
+                false => self.pipelines.mesh_variant(key),
+            };
             let (Some(pipeline), Some(group), Some(m)) = (
-                self.pipelines.mesh_variant(d.material.pipeline_key()),
+                pipeline,
                 self.textures.get_set(&d.material.textures()),
                 self.gpu_mesh(&d.mesh),
             ) else {
@@ -893,12 +1014,14 @@ impl Renderer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn shadow_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         frame: &Frame,
         target: &wgpu::TextureView,
         slot: usize,
+        lists: &frame_lists::FrameLists,
         list: Option<&frame_lists::ShadowList>,
         stats: &mut RenderStats,
     ) {
@@ -926,7 +1049,7 @@ impl Renderer {
         let mut pipeline_at = 0;
         for b in &list.batches {
             let d = &frame.meshes[b.draw];
-            let Some(key) = d.material.shadow_key() else {
+            let Some(key) = lists.prep.shadow[b.draw] else {
                 continue;
             };
             let (Some(pipeline), Some(m)) =
@@ -1010,35 +1133,43 @@ impl Renderer {
         lists: &frame_lists::FrameLists,
         particle_draws: &[particles::ParticleDraw],
         stats: &mut RenderStats,
+        split: MainSplit,
     ) {
+        // A split pass keeps its images for the next part; only the last part resolves.
+        let (first, last) = (split.phase != Some(1), split.phase != Some(0));
+        let color = |view, resolve| wgpu::RenderPassColorAttachment {
+            view,
+            depth_slice: None,
+            resolve_target: last.then_some(resolve),
+            ops: wgpu::Operations {
+                load: match first {
+                    true => wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    false => wgpu::LoadOp::Load,
+                },
+                store: match last {
+                    true => wgpu::StoreOp::Discard,
+                    false => wgpu::StoreOp::Store,
+                },
+            },
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty main pass"),
             color_attachments: &[
-                Some(wgpu::RenderPassColorAttachment {
-                    view: target.msaa_view(),
-                    depth_slice: None,
-                    resolve_target: Some(target.hdr_view()),
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Discard,
-                    },
-                }),
+                Some(color(target.msaa_view(), target.hdr_view())),
                 // Emission only; drives bloom.
-                Some(wgpu::RenderPassColorAttachment {
-                    view: target.glow_msaa_view(),
-                    depth_slice: None,
-                    resolve_target: Some(target.glow_view()),
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Discard,
-                    },
-                }),
+                Some(color(target.glow_msaa_view(), target.glow_view())),
             ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: target.depth_view(),
                 depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Discard,
+                    load: match first && !split.prepass {
+                        true => wgpu::LoadOp::Clear(1.0),
+                        false => wgpu::LoadOp::Load,
+                    },
+                    store: match last {
+                        true => wgpu::StoreOp::Discard,
+                        false => wgpu::StoreOp::Store,
+                    },
                 }),
                 stencil_ops: None,
             }),
@@ -1048,13 +1179,22 @@ impl Renderer {
         });
         pass.set_bind_group(0, &self.view_bind_group, &[]);
 
-        pass.set_pipeline(&self.pipelines.sky);
-        pass.draw(0..3, 0..1);
+        if first {
+            pass.set_pipeline(&self.pipelines.sky);
+            pass.draw(0..3, 0..1);
+        }
 
-        // Opaque and Cutout meshes, front to back.
+        // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches).
+        if let (Some(culled), Some(phase)) = (split.culled, split.phase) {
+            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            self.draw_culled(&mut pass, frame, lists, culled, phase, stats);
+            if !last {
+                return;
+            }
+        }
         if frame.shaded && !lists.opaque.is_empty() {
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            self.draw_batches(&mut pass, frame, &lists.opaque, stats);
+            self.draw_batches(&mut pass, frame, lists, &lists.opaque, split.prepass, stats);
         }
 
         if frame.shaded
@@ -1083,7 +1223,7 @@ impl Renderer {
         // Fade / Transparent meshes back to front, after the grid (they don't write depth).
         if frame.shaded && !lists.transparent.is_empty() {
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            self.draw_batches(&mut pass, frame, &lists.transparent, stats);
+            self.draw_batches(&mut pass, frame, lists, &lists.transparent, false, stats);
         }
 
         // After the grid: particles don't write depth, so the grid would draw over them.
@@ -1114,8 +1254,10 @@ impl Renderer {
 
 impl GpuMesh {
     fn new(device: &wgpu::Device, label: &str, data: &mesh::MeshData) -> Self {
+        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let (lo, hi) = data.bounds();
         Self {
+            buffer_id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(label),
                 contents: bytemuck::cast_slice(&data.vertices),
@@ -1126,21 +1268,58 @@ impl GpuMesh {
                 contents: bytemuck::cast_slice(&data.indices),
                 usage: wgpu::BufferUsages::INDEX,
             }),
+            first_index: 0,
+            base_vertex: 0,
             count: data.indices.len() as u32,
             vertex_count: data.vertices.len() as u32,
             bounds: culling::Aabb::new(lo, hi),
         }
     }
 
-    /// Draw `instances` (entries of the slots buffer).
-    fn draw(&self, pass: &mut wgpu::RenderPass, instances: std::ops::Range<u32>) {
-        pass.set_vertex_buffer(0, self.vertices.slice(..));
-        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-        pass.draw_indexed(0..self.count, 0, instances);
+    /// Every primitive, in [`PrimitiveMesh::ALL`] order, in one shared buffer pair.
+    fn primitives(device: &wgpu::Device) -> Vec<Self> {
+        let mut all = mesh::MeshData::default();
+        let mut ranges = Vec::new();
+        for p in PrimitiveMesh::ALL {
+            let data = mesh::primitive(p);
+            ranges.push((all.indices.len() as u32, all.vertices.len() as i32, data));
+            all.vertices.extend_from_slice(&data.vertices);
+            all.indices.extend_from_slice(&data.indices);
+        }
+        let shared = Self::new(device, "misty primitives", &all);
+        PrimitiveMesh::ALL
+            .iter()
+            .zip(ranges)
+            .map(|(p, (first_index, base_vertex, data))| Self {
+                vertices: shared.vertices.clone(),
+                indices: shared.indices.clone(),
+                buffer_id: shared.buffer_id,
+                first_index,
+                base_vertex,
+                count: data.indices.len() as u32,
+                vertex_count: data.vertices.len() as u32,
+                // The same box picking and shadow fitting use.
+                bounds: culling::Aabb::new(-p.half_extents(), p.half_extents()),
+            })
+            .collect()
     }
 
+    /// Draw `instances` (entries of the slots buffer).
+    fn draw(&self, pass: &mut wgpu::RenderPass, instances: std::ops::Range<u32>) {
+        self.bind(pass);
+        let first = self.first_index;
+        pass.draw_indexed(first..first + self.count, self.base_vertex, instances);
+    }
+
+    fn bind(&self, pass: &mut wgpu::RenderPass) {
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+    }
+
+    /// Bytes of this mesh's own vertices and indices.
     fn bytes(&self) -> u64 {
-        self.vertices.size() + self.indices.size()
+        self.vertex_count as u64 * std::mem::size_of::<mesh::Vertex>() as u64
+            + self.count as u64 * 4
     }
 }
 
@@ -1244,7 +1423,8 @@ pub(crate) fn srgb_to_linear(c: [f32; 3]) -> [f32; 3] {
     c.map(|v| v.max(0.0).powf(2.2))
 }
 
-fn draw_uniform(d: &MeshDraw) -> DrawUniform {
+/// `draws[]` entry of a mesh draw; `lod_fade` = its LOD cross-fade (0 = none).
+fn draw_uniform(d: &MeshDraw, lod_fade: f32) -> DrawUniform {
     // Colour to linear first, then scale: intensity is linear brightness.
     let e = srgb_to_linear(d.material.emission).map(|c| c * d.material.emission_intensity);
     // Mirrored transforms flip the tangent frame's handedness.
@@ -1267,6 +1447,8 @@ fn draw_uniform(d: &MeshDraw) -> DrawUniform {
     } else {
         m.metallic
     };
+    // No rotation gives exactly (1, 0), so draw_uv returns the plain tiled uv.
+    let (sin, cos) = m.uv_rotation.to_radians().sin_cos();
     DrawUniform {
         model: d.model.to_cols_array_2d(),
         normal: d.model.inverse().transpose().to_cols_array_2d(),
@@ -1289,6 +1471,7 @@ fn draw_uniform(d: &MeshDraw) -> DrawUniform {
             },
             if m.smoothness_from_albedo { 1.0 } else { 0.0 },
         ],
+        extra: [cos, sin, lod_fade, 0.0],
     }
 }
 
@@ -1395,6 +1578,10 @@ fn view_uniform(frame: &Frame, aspect: f32) -> ViewUniform {
 }
 
 #[cfg(test)]
+mod benchmark;
+#[cfg(test)]
+mod gpu_checks;
+#[cfg(test)]
 mod gpu_tests;
 
 #[cfg(test)]
@@ -1403,7 +1590,7 @@ mod tests {
 
     #[test]
     fn gpu_struct_sizes_match_wgsl() {
-        assert_eq!(std::mem::size_of::<DrawUniform>(), 208);
+        assert_eq!(std::mem::size_of::<DrawUniform>(), 224);
         assert_eq!(std::mem::size_of::<LightItem>(), 80);
         assert_eq!(
             std::mem::size_of::<LightsUniform>(),

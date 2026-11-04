@@ -2,13 +2,11 @@
 //! (`misty_engine::render_scene`, shared with the player). This adds the selection outline.
 
 use misty_engine::render::{MaterialParams, MeshDraw};
-use misty_engine::render_scene::{self, MaterialSource};
-use misty_engine::scene::Scene;
+use misty_engine::render_scene::MaterialSource;
 
 pub use misty_engine::render_scene::{environment, headlight, lights, post_settings};
 
 use crate::assets::AssetDatabase;
-use crate::selection::Selection;
 
 impl MaterialSource for AssetDatabase {
     fn params(&self, rel: Option<&str>) -> MaterialParams {
@@ -16,13 +14,13 @@ impl MaterialSource for AssetDatabase {
     }
 }
 
-/// Visible meshes. Selected objects (and their children) get the selection outline.
-pub fn mesh_draws(
-    scene: &Scene,
-    assets: &AssetDatabase,
-    selection: Option<&Selection>,
-) -> Vec<MeshDraw> {
-    render_scene::mesh_draws(scene, assets, |e| {
-        selection.is_some_and(|s| s.list().iter().any(|sel| scene.is_ancestor(*sel, e)))
-    })
+/// The Scene view's draws through its persistent cache (only changed objects are rebuilt);
+/// selected objects and their children get the selection outline.
+pub fn cached_draws(state: &mut crate::state::EditorState) -> std::sync::Arc<Vec<MeshDraw>> {
+    let selection = &state.selection;
+    state
+        .scene_draws
+        .update(&state.scene, &state.assets, u32::MAX, |e| {
+            selection.list().contains(&e)
+        })
 }

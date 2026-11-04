@@ -203,6 +203,9 @@ pub struct EditorState {
     pub time: Time,
     /// Physics/scripts state while playing.
     pub runtime: Option<Runtime>,
+    /// Draw lists of the Game and Scene views, kept between frames (only changes rebuild).
+    pub game_draws: misty_engine::draw_cache::DrawCache,
+    pub scene_draws: misty_engine::draw_cache::DrawCache,
     /// Inspector preview of an audio clip (device opened on first ▶).
     pub clip_preview: Option<misty_engine::audio::Audio>,
     /// Scene view Particle Effect overlay settings.
@@ -288,6 +291,8 @@ impl EditorState {
             play_session: None,
             time: Time::default(),
             runtime: None,
+            game_draws: Default::default(),
+            scene_draws: Default::default(),
             clip_preview: None,
             particle_preview: Default::default(),
             terrain_tools: Default::default(),

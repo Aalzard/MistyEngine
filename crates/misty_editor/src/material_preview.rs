@@ -159,6 +159,7 @@ fn draw(
         receive_shadows: false,
         outline: false,
         sorting: Default::default(),
+        lod: None,
     }];
     let frame = Frame {
         camera: &camera,

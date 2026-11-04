@@ -42,9 +42,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let brush_click = crate::terrain_tools::scene_view(ui, state, &camera, rect, &response);
     match gpu {
         Some(gpu) => {
+            let meshes = render_scene::cached_draws(state);
             let sv = &state.scene_view;
-            let meshes =
-                render_scene::mesh_draws(&state.scene, &state.assets, Some(&state.selection));
             let mut lines = if sv.gizmos {
                 let mut l = gizmos::scene_lines(&state.scene, &state.selection);
                 let screen = state.game_view.screen_px;

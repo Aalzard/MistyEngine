@@ -189,6 +189,7 @@ pub(super) fn draw_uniform(t: &TerrainDraw) -> DrawUniform {
         emission: [0.0, 0.0, 0.0, 1.0],
         uv_st: [1.0, 1.0, 0.0, 0.0],
         surface: [0.0; 4],
+        extra: [1.0, 0.0, 0.0, 0.0],
     }
 }
 
