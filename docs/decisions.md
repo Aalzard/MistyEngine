@@ -2624,3 +2624,46 @@ Record of choices made without asking, and why.
 548. **Ambient Light Probe Dimmer default unchanged (1.0):** in VolumetricFogDemo raising the dimmer from 0.5 to
      1.0 lifts shadowed fog by about 4/255; the low shadow-side contrast came from the froxel resolution, not the
      ambient. New volumes keep 1.0 (HDRP's default) and no scene was changed.
+549. **Updater source = GitHub Releases' latest-release API:** `https://api.github.com/repos/Aalzard/MistyEngine/releases/latest`,
+     with the repository in one constant (`updater::REPO`), `MISTY_UPDATE_REPO` to follow another repository and
+     `MISTY_UPDATE_URL` for any JSON of the same shape (tests). A placeholder (`OWNER/...`) turns the updater off. A 404
+     (no release yet, or a private repository), being offline and any other failure of an automatic check are silent;
+     only Help ▸ Check for Updates… reports "latest version" / "couldn't check".
+550. **Updater dependencies:** `ureq` 3 with only the `rustls` feature (ring + webpki roots; no gzip, json or platform
+     verifier), `sha2` 0.10 and `zip` 2.x with `default-features = false` and only deflate through the flate2 the
+     editor already uses (no zstd/bzip2/lzma/aes/time). None were in the lock file before. Redirects are followed by
+     hand (`max_redirects(0)`) so every hop is checked: HTTPS only (HTTP only for a loopback `MISTY_UPDATE_URL`), hosts
+     api.github.com, github.com, objects.githubusercontent.com, release-assets.githubusercontent.com (+ the custom
+     URL's host). User-Agent `MistyEngine-Updater/<version>`, nothing else.
+551. **Checks:** in a background thread at startup (editor; the Hub calls the same API) and at most every 6 hours —
+     `%APPDATA%\MistyEngine\updater.json` keeps the last check time, the release found and the skipped version
+     (`MISTY_UPDATER_DIR` moves it). Versions compare as SemVer (`v` prefix and build metadata ignored; a release is
+     newer than its pre-releases); drafts and pre-releases are never offered. "Skip this version" only hides that
+     version from automatic checks; a manual check still offers it. Tests, `MISTY_SCREENSHOT` captures and
+     `MISTY_FAKE_UPDATE` never touch the network.
+552. **The release must carry `MistyEngine-vX.Y.Z-windows-x64.zip` and `<zip>.sha256.txt`:** the zip is picked by exact
+     name, else any `MistyEngine-*-windows-x64.zip`; the checksum file may be `sha256sum` or bare-hash style (the first
+     64-hex word). A release without a checksum file is not installed automatically (it offers the release page
+     instead): an unverified package is never swapped in.
+553. **Self-replace by renaming:** the package is downloaded and extracted under the temp folder (zip-slip-safe
+     `enclosed_name`; one top-level folder is skipped), then files swap into the folder of the running exe: every
+     replaced `.exe` becomes `<name>.old.exe` (Windows allows renaming a running exe), every other replaced file moves to
+     `.misty-update-backup\`; the exe is placed last. Any failure undoes the journal in reverse (new files removed,
+     moved files restored, new folders removed). Only package files are written; existing files under `Examples\` are
+     kept (new ones are added). The relaunched exe is the package's top-level exe named like the running one, else
+     `MistyEngine.exe` — nothing else is ever executed. The next start deletes `*.old.exe` and the backup folder
+     (retrying for ~10 s while the old process exits).
+554. **Not writable → "Download the new version":** a probe file in the install folder decides; if it can't be created
+     (Program Files without admin), or the release has no package/checksum, the updater shows the reason with an
+     "Open release page" button (https://github.com/Aalzard/MistyEngine/releases or the release's own page). No
+     elevation prompt.
+555. **Editor flow:** "Update now" / the green pill go through the scene save prompt (`AfterPrompt::InstallUpdate`, the
+     same Save / Don't Save / Cancel as quitting); unsaved Code Editor scripts stop the install with a Console message;
+     Play mode is stopped first. After the new exe starts, `quit_confirmed` is set and the window closes normally (the
+     layout is still saved).
+556. **Updater UI:** a non-modal message box anchored bottom-right (above the status bar) with the release notes in a
+     110 px scroll area, a green "⬆ Update" pill (rgb 38,158,72) at the left of the toolbar's right-hand group, a modal
+     progress window (download bar in MB → "Checking the download…" → "Installing…" → "Restarting…"). *Later* closes
+     the box for this session (the pill stays); *Skip* removes both. The updater lives in `EditorState::updater` so the
+     toolbar and Help menu reach it; the module itself (`updater/`) has no editor dependency except `updater/editor.rs`.
+557. **Workspace version 0.0.1:** set here as on main so the running version matches the v0.0.x release tags.

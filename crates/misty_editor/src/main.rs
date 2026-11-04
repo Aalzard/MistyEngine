@@ -120,6 +120,7 @@ mod ui_gizmos;
 mod undo;
 mod undo_names;
 mod undo_terrain;
+mod updater;
 mod viewport;
 mod widgets;
 

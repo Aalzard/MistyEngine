@@ -48,6 +48,9 @@ impl EditorApp {
         if capture.is_some() {
             crate::capture::apply_env(&mut state, &mut dock);
         }
+        // Updater: background check for a newer release (see `updater`).
+        state.updater = crate::updater::Updater::from_env();
+        state.updater.start(&cc.egui_ctx);
         let gpu = cc.wgpu_render_state.clone().map(Gpu::new);
         match &gpu {
             Some(g) => {
@@ -567,6 +570,7 @@ impl eframe::App for EditorApp {
         // A nav mesh bake finishing while its window is hidden.
         crate::panels::navigation::poll(&mut self.state);
         self.state.undo.end_frame(Self::interacting(&ctx));
+        crate::updater::editor::frame(&ctx, &mut self.state);
         self.scene_file_frame(&ctx);
         self.save_layout(false);
         if let Some(capture) = &mut self.capture {

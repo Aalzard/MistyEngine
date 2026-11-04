@@ -25,6 +25,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                         ui.label(format!("👁 {layer}"));
                     }
                 });
+            // Green "⬆ Update" pill, only while an update is available.
+            if crate::updater::ui::update_button(ui, &state.updater) {
+                crate::updater::editor::request_install(state);
+            }
         });
     });
 

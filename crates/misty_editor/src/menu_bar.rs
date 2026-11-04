@@ -420,6 +420,10 @@ fn help_menu(ui: &mut Ui, s: &mut EditorState) {
             .info(concat!("Misty Engine ", env!("CARGO_PKG_VERSION")));
         ui.close();
     }
+    if ui.button("Check for Updates…").clicked() {
+        s.updater.check_now();
+        ui.close();
+    }
     todo(ui, s, "Manual", "");
     todo(ui, s, "Scripting Reference", "");
 }

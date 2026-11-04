@@ -26,6 +26,10 @@ regex = "1"
 # Build window: .zip archives of builds.
 flate2 = "1"
 crc32fast = "1"
+# Updater: HTTPS (rustls + webpki roots, no gzip/json extras), SHA-256 checks, release .zip reading.
+ureq = { version = "3.1", default-features = false, features = ["rustls"] }
+sha2 = "0.10"
+zip = { version = "2.4", default-features = false, features = ["deflate-flate2", "flate2"] }
 
 [dev-dependencies]
 egui_kittest = "0.36"

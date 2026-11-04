@@ -1747,3 +1747,27 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - The undo demo (`MISTY_UNDO_DEMO`) has no Move To Scene step.
 - sample_clouds / sample_materials generator checks fail in this working copy only, because of the uncommitted
   edits to CloudsDemo.scene / CloudsDemo.terrain and Ghost.mat.
+
+## v0.0.1: Updater ✅
+
+### Done
+- `crates/misty_editor/src/updater/`: GitHub Releases check (background, 6-hour cache in
+  `%APPDATA%\MistyEngine\updater.json`, SemVer compare, Skip this version), the "New version X is available — Update now
+  / Later / Skip this version" message box with release notes, a green "⬆ Update" pill in the editor toolbar (right),
+  Help ▸ Check for Updates…, and the in-place install: download with progress, SHA-256 check against the release's
+  `.sha256.txt`, extraction, rename-based self-replace with full rollback, relaunch with the same arguments, cleanup of
+  `*.old.exe` on the next start. Read-only installs get "Download the new version" with the release page.
+- Repository: `updater::REPO = "Aalzard/MistyEngine"`; publish steps in docs/release.md.
+- Tests (no real network): versions, cache/skip, JSON parsing, asset choice, URL allow-list, checksum refusal, extract /
+  swap / rollback / zip-slip in temp folders, end-to-end download → verify → install against a local `TcpListener`
+  server (with a redirect), a mismatching checksum leaving the install untouched, 404 = no update, offline = silent, and
+  kittest UI tests (button + box; Later keeps the button; Skip hides both; Update now → release-page fallback).
+- Screenshots (`MISTY_FAKE_UPDATE=0.0.2`): docs/screenshots/v001/updater_message_box.png,
+  updater_toolbar_button.png.
+
+### Not done yet
+- The Hub hook (sidebar footer button + windows) is documented in docs/release.md for the merge; the Hub isn't on this
+  branch.
+- Windows only for installing (other platforms get the release-page fallback only when the folder isn't writable; the
+  swap itself is platform-neutral but packages are Windows-only).
+- No signature check beyond the release's own SHA-256 file (same trust as the GitHub account).

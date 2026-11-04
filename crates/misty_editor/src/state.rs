@@ -242,6 +242,8 @@ pub struct EditorState {
     pub scene_dirty: bool,
     /// Open scene file, recent scenes, save prompt.
     pub files: SceneFiles,
+    /// In-app updater (off until the editor app starts it).
+    pub updater: crate::updater::Updater,
     pub selection: Selection,
     pub undo: UndoStack,
     /// Undo History window (search text).
@@ -333,6 +335,7 @@ impl EditorState {
             scene: Scene::default_3d("SampleScene"),
             scene_dirty: false,
             files: SceneFiles::default(),
+            updater: crate::updater::Updater::disabled(),
             selection: Selection::default(),
             undo: UndoStack::default(),
             undo_history: Default::default(),
