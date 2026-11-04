@@ -10,6 +10,7 @@ mod asset_guids;
 mod asset_ops;
 mod assets;
 mod audio_mixers;
+mod branding;
 mod build_pipeline;
 mod build_settings;
 mod capture;
@@ -169,7 +170,9 @@ fn main() -> eframe::Result<()> {
             std::process::exit(2);
         }
     };
-    let viewport = egui::ViewportBuilder::default().with_title("Misty Engine");
+    let viewport = egui::ViewportBuilder::default()
+        .with_title(branding::PRODUCT)
+        .with_icon(branding::window_icon());
     let (viewport, persist_window) = match &start {
         Start::Editor(project) => {
             // Automated captures don't touch the user's recent list.
@@ -203,7 +206,7 @@ fn main() -> eframe::Result<()> {
     // name (and saves none) to always open at its size rather than the editor's maximised one.
     let app_name = match start {
         Start::Hub => "Misty Hub",
-        Start::Editor(_) => "Misty Engine",
+        Start::Editor(_) => branding::PRODUCT,
     };
     eframe::run_native(
         app_name,
@@ -212,7 +215,9 @@ fn main() -> eframe::Result<()> {
             Ok(Box::new(match start {
                 Start::Hub => launcher::Launcher::Hub(Box::new(hub::Hub::new(&cc.egui_ctx))),
                 Start::Editor(project) => {
-                    launcher::Launcher::Editor(Box::new(app::EditorApp::new(cc, project)))
+                    // The editor's look under the splash (the Hub sets its own).
+                    theme::apply(&cc.egui_ctx);
+                    launcher::Launcher::open(project, None)
                 }
             }))
         }),

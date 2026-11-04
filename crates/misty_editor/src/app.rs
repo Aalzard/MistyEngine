@@ -33,11 +33,8 @@ pub struct EditorApp {
 }
 
 impl EditorApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, project: PathBuf) -> Self {
-        Self::start(&cc.egui_ctx, cc.wgpu_render_state.clone(), project)
-    }
-
-    /// Open `project` in a window that already exists (also used when the Hub hands over).
+    /// Open `project` in the window (the splash is on screen meanwhile when loading is slow, see
+    /// `launcher`; also used when the Hub hands over).
     pub fn start(
         ctx: &egui::Context,
         render_state: Option<egui_wgpu::RenderState>,
@@ -93,6 +90,13 @@ impl EditorApp {
         if !crate::tutorials::launch(&mut self.state, id) {
             self.state.console.warn(format!("No tutorial '{id}'."));
         }
+    }
+
+    /// Report how long opening the project took (Console).
+    pub fn note_load_time(&mut self, took: std::time::Duration) {
+        self.state
+            .console
+            .info(format!("Project opened in {} ms.", took.as_millis()));
     }
 
     /// Save the layout if it changed (debounced), or now when `force` is set.
@@ -589,6 +593,7 @@ impl eframe::App for EditorApp {
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
         crate::panels::preset_window(&ctx, &mut self.state);
+        crate::branding::about::show(&ctx, &mut self.state.about_open);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);
         // Last, so the tutorial card and highlight sit on top of everything drawn above.
         crate::tutorials::frame(&ctx, &mut self.state);

@@ -1,36 +1,92 @@
-//! The window's app: the Hub until a project is chosen, then the editor, in the same process
-//! and window (the Hub's look is reset and the window maximised for the editor). File ▸ Open
-//! Misty Hub goes back the other way once the editor's save prompt is answered.
+//! The window's app, one for every way the editor starts:
+//!
+//! - `misty` → the **Hub** until a project is chosen;
+//! - a chosen project, or `misty <project>` → **Loading**: the splash (`branding::splash`) while
+//!   the project loads, skipped for projects that opened quickly last time;
+//! - → the **Editor**. File ▸ Open Misty Hub goes back to the Hub once the save prompt is
+//!   answered.
+//!
+//! All in the same process and window: the Hub's look is reset and the window maximised for the
+//! editor, and the other way round.
+
+use std::path::PathBuf;
+use std::time::Instant;
 
 use eframe::App as _;
 
 use crate::app::EditorApp;
+use crate::branding::splash;
 use crate::hub::Hub;
 
 pub enum Launcher {
     Hub(Box<Hub>),
+    /// The project being opened, with the splash on screen for `frames` more frames first.
+    Loading {
+        project: PathBuf,
+        /// Learn ▸ Start in the Hub: the tutorial to start once loaded.
+        tutorial: Option<String>,
+        frames: u32,
+        /// `MISTY_SPLASH=1` with `MISTY_SCREENSHOT`: capture the splash itself (never loads).
+        capture: Option<crate::capture::Capture>,
+    },
     Editor(Box<EditorApp>),
 }
 
 impl Launcher {
-    fn hand_over(
-        &mut self,
-        ctx: &egui::Context,
-        frame: &eframe::Frame,
-        project: std::path::PathBuf,
-        tutorial: Option<String>,
-    ) {
-        // Drop the Hub's spacing and text sizes before the editor theme goes on.
-        ctx.all_styles_mut(|s| *s = egui::Style::default());
-        let mut editor = EditorApp::start(ctx, frame.wgpu_render_state().cloned(), project);
-        if let Some(id) = tutorial {
-            editor.start_tutorial(&id);
+    /// Open `project` (the splash first unless it opened quickly last time).
+    pub fn open(project: PathBuf, tutorial: Option<String>) -> Self {
+        let frames = if splash::wants_splash(&project) {
+            splash::SPLASH_FRAMES
+        } else {
+            0
+        };
+        Self::Loading {
+            project,
+            tutorial,
+            frames,
+            capture: std::env::var_os("MISTY_SPLASH")
+                .and_then(|_| crate::capture::Capture::from_env()),
         }
+    }
+
+    /// The Hub chose a project: the editor's window, then load it.
+    fn hand_over(&mut self, ctx: &egui::Context, project: PathBuf, tutorial: Option<String>) {
+        // Drop the Hub's spacing and text sizes; the editor theme goes on with the editor.
+        ctx.all_styles_mut(|s| *s = egui::Style::default());
+        crate::theme::apply(ctx);
         ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
             960.0, 540.0,
         )));
         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
+            crate::branding::PRODUCT.into(),
+        ));
         ctx.request_repaint();
+        *self = Self::open(project, tutorial);
+    }
+
+    /// Load the project now and show the editor (its first frame in this one).
+    fn load(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let Self::Loading {
+            project, tutorial, ..
+        } = self
+        else {
+            return;
+        };
+        let (project, tutorial) = (std::mem::take(project), tutorial.take());
+        let started = Instant::now();
+        let mut editor = EditorApp::start(
+            ui.ctx(),
+            frame.wgpu_render_state().cloned(),
+            project.clone(),
+        );
+        if let Some(id) = tutorial {
+            editor.start_tutorial(&id);
+        }
+        let took = started.elapsed();
+        editor.note_load_time(took);
+        splash::remember(&project, took.as_millis() as u64);
+        editor.ui(ui, frame);
         *self = Self::Editor(Box::new(editor));
     }
 
@@ -64,6 +120,7 @@ impl eframe::App for Launcher {
         }
     }
 
+    /// Only the window position/size is persisted by eframe; editor state lives in the project.
     fn persist_egui_memory(&self) -> bool {
         false
     }
@@ -74,7 +131,25 @@ impl eframe::App for Launcher {
             Self::Hub(hub) => {
                 if let Some(project) = hub.ui(ui) {
                     let tutorial = hub.take_tutorial();
-                    self.hand_over(&ctx, frame, project, tutorial);
+                    // Loads on the next frame (this one already has the Hub's panels).
+                    self.hand_over(&ctx, project, tutorial);
+                }
+            }
+            Self::Loading {
+                project,
+                frames,
+                capture,
+                ..
+            } => {
+                if let Some(capture) = capture {
+                    splash::paint(ui, project);
+                    capture.update(&ctx);
+                } else if *frames > 0 {
+                    *frames -= 1;
+                    splash::paint(ui, project);
+                    ctx.request_repaint();
+                } else {
+                    self.load(ui, frame);
                 }
             }
             Self::Editor(editor) => {

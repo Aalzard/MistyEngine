@@ -54,6 +54,18 @@ impl Tool {
         }
     }
 
+    /// The designer's icon for the tool, when there is one.
+    pub fn brand_icon(self) -> Option<crate::branding::icons::Icon> {
+        use crate::branding::icons::Icon;
+        match self {
+            Tool::Hand => Some(Icon::Hand),
+            Tool::Move => Some(Icon::Move),
+            Tool::Rotate => Some(Icon::Rotate),
+            Tool::Scale => Some(Icon::Scale),
+            Tool::Rect | Tool::Transform => None,
+        }
+    }
+
     pub fn tooltip(self) -> &'static str {
         match self {
             Tool::Hand => "View Tool (Q)",
@@ -109,6 +121,31 @@ pub const AUDIO_ICON: &str = "🔊";
 pub const PARTICLE_ICON: &str = "✨";
 
 /// Icon for an object, based on its components (instance roots show the prefab icon).
+/// The designer's icon for an object, where one exists (Hierarchy, Inspector, Scene view);
+/// [`object_icon`]'s glyph otherwise. Prefab instances keep the prefab glyph.
+pub fn object_brand_icon(scene: &Scene, e: Entity) -> Option<crate::branding::icons::Icon> {
+    use crate::branding::icons::Icon;
+    let w = &scene.world;
+    if w.get::<&misty_engine::scene::PrefabLink>(e).is_ok() {
+        return None;
+    }
+    if let Ok(light) = w.get::<&Light>(e) {
+        return (light.kind == LightType::Directional).then_some(Icon::SunLight);
+    }
+    if w.get::<&Camera>(e).is_ok() {
+        return Some(Icon::Camera);
+    }
+    if w.get::<&misty_engine::scene::CharacterController>(e)
+        .is_ok()
+    {
+        return Some(Icon::CharacterController);
+    }
+    if w.get::<&misty_engine::scene::PostProcessVolume>(e).is_ok() {
+        return Some(Icon::SkyVolume);
+    }
+    None
+}
+
 pub fn object_icon(scene: &Scene, e: Entity) -> &'static str {
     let w = &scene.world;
     if w.get::<&misty_engine::scene::PrefabLink>(e).is_ok() {
@@ -274,6 +311,8 @@ pub struct EditorState {
     /// Open the picker of this component or asset kind when its button is next drawn
     /// (`MISTY_PRESET_PICKER` screenshots).
     pub preset_picker_request: Option<String>,
+    /// Help ▸ About Misty Engine window.
+    pub about_open: bool,
     /// Scale fields keep their proportions.
     pub scale_locked: bool,
     /// Edit ▸ Grid and Snap values (saved in the project's Library).
@@ -351,6 +390,7 @@ impl EditorState {
             component_clipboard: None,
             preset_picker: None,
             preset_picker_request: None,
+            about_open: false,
             object_clipboard: None,
             os_clipboard_out: None,
             scale_locked: false,

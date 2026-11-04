@@ -14,7 +14,8 @@ use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::{panel_toolbar, search_field};
 
-use super::hierarchy::row_simple as row;
+use super::hierarchy::row_with_icon;
+use crate::branding::icons::{self, Icon};
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     // Keyboard focus follows the last click.
@@ -36,6 +37,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             if ui.button("⟳").on_hover_text("Refresh (Ctrl+R)").clicked() {
                 req.actions.push(Action::Refresh);
             }
+            type_filter(ui, &mut browser.search);
             search_field(ui, &mut browser.search, 180.0)
                 .on_hover_text("Name words and type filters: t:Material t:Script t:Scene t:Prefab t:Texture t:Model t:AudioClip");
         });
@@ -66,7 +68,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     let tree = browser.tree.clone();
                     let mut open = None;
                     folder_tree(ui, browser, &tree, 0, &mut open, &mut req);
-                    ui.label(egui::RichText::new("🗀 Packages").color(theme::TEXT_DIM));
+                    row_with_icon(
+                        ui,
+                        false,
+                        Some(Icon::Folder),
+                        "Packages",
+                        theme::TEXT_DIM,
+                        0,
+                    );
                     if let Some(path) = open {
                         browser.open_folder(path);
                     }
@@ -257,21 +266,17 @@ fn folder_tree(
     req: &mut Requests,
 ) {
     let selected = node.path == browser.current;
-    let icon = if selected { "🗁" } else { "🗀" };
     let renaming = browser
         .renaming
         .as_ref()
         .is_some_and(|(p, _)| *p == node.path);
-    let label = if renaming {
-        String::new()
-    } else {
-        format!("{icon} {}", node.name)
-    };
-    let resp = row(ui, selected, &label, theme::TEXT, depth);
+    let label = if renaming { "" } else { node.name.as_str() };
+    let folder = Some(Icon::Folder);
+    let resp = row_with_icon(ui, selected, folder, label, theme::TEXT, depth);
     if renaming {
         let r = resp
             .rect
-            .with_min_x(resp.rect.left() + 20.0 + depth as f32 * 14.0);
+            .with_min_x(resp.rect.left() + 24.0 + depth as f32 * 14.0);
         project_menus::rename_field(ui, r, browser, req);
     }
     if resp.clicked() {
@@ -301,12 +306,14 @@ fn list_view(
     for e in entries {
         let is_sel = browser.selected.as_ref() == Some(&e.path);
         let renaming = is_renaming(browser, e);
-        let label = if renaming {
-            e.icon().to_owned()
-        } else {
-            format!("{} {}", e.icon(), e.name)
+        let folder = e.is_dir.then_some(Icon::Folder);
+        let label = match (renaming, folder) {
+            (true, Some(_)) => String::new(),
+            (true, None) => e.icon().to_owned(),
+            (false, Some(_)) => e.name.clone(),
+            (false, None) => format!("{} {}", e.icon(), e.name),
         };
-        let resp = row(ui, is_sel, &label, theme::TEXT, 0);
+        let resp = row_with_icon(ui, is_sel, folder, &label, theme::TEXT, 0);
         if renaming {
             let r = resp.rect.with_min_x(resp.rect.left() + 26.0);
             project_menus::rename_field(ui, r, browser, req);
@@ -396,6 +403,10 @@ fn tile_icon(
             Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
+    } else if e.is_dir {
+        let center = rect.center_top() + egui::vec2(0.0, cell * 0.5);
+        let r = Rect::from_center_size(center, egui::vec2(cell * 0.7, cell * 0.7));
+        icons::paint(ui, r, Icon::Folder, ui.visuals().text_color());
     } else {
         ui.painter().text(
             rect.center_top() + egui::vec2(0.0, cell * 0.5),
@@ -405,6 +416,52 @@ fn tile_icon(
             e.icon_color(),
         );
     }
+}
+
+/// Asset types offered by the filter button (the `t:` search filters).
+const TYPE_FILTERS: [&str; 7] = [
+    "Material",
+    "Script",
+    "Scene",
+    "Prefab",
+    "Texture",
+    "Model",
+    "AudioClip",
+];
+
+/// The filter button: a "Search by Type" menu that toggles `t:` filters in the search text.
+fn type_filter(ui: &mut Ui, search: &mut String) {
+    let active = search.split_whitespace().any(|w| w.starts_with("t:"));
+    let button = icons::button(
+        ui,
+        Icon::Filter,
+        active,
+        egui::vec2(22.0, 18.0),
+        "Search by Type",
+    );
+    egui::Popup::menu(&button).show(|ui| {
+        for kind in TYPE_FILTERS {
+            let token = format!("t:{kind}");
+            let mut on = search
+                .split_whitespace()
+                .any(|w| w.eq_ignore_ascii_case(&token));
+            if ui.checkbox(&mut on, kind).changed() {
+                *search = toggle_word(search, &token, on);
+            }
+        }
+    });
+}
+
+/// `text` with `word` added (at the end) or removed.
+fn toggle_word(text: &str, word: &str, on: bool) -> String {
+    let mut words: Vec<&str> = text
+        .split_whitespace()
+        .filter(|w| !w.eq_ignore_ascii_case(word))
+        .collect();
+    if on {
+        words.push(word);
+    }
+    words.join(" ")
 }
 
 /// Click selects, double-click opens, right-click shows the menu; drag carries the asset,
@@ -488,6 +545,16 @@ mod tests {
 
     fn read(p: &Path) -> String {
         std::fs::read_to_string(p).unwrap()
+    }
+
+    #[test]
+    fn type_filter_words_toggle() {
+        assert_eq!(toggle_word("rock", "t:Material", true), "rock t:Material");
+        assert_eq!(
+            toggle_word("rock t:material x", "t:Material", false),
+            "rock x"
+        );
+        assert_eq!(toggle_word("", "t:Scene", true), "t:Scene");
     }
 
     #[test]

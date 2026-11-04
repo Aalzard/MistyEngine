@@ -23,8 +23,8 @@ use egui::{Color32, RichText, TextureHandle};
 
 use crate::templates::Template;
 
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-const LOGO_PNG: &[u8] = include_bytes!("../../assets/branding/logo.png");
+/// The same version the About window and the exe's version info show.
+pub const VERSION: &str = crate::branding::VERSION;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -57,7 +57,6 @@ pub struct Hub {
 
 #[derive(Default)]
 struct Textures {
-    logo: Option<TextureHandle>,
     templates: HashMap<Template, TextureHandle>,
     /// Project thumbnails by folder (`None` = no thumbnail file).
     projects: HashMap<PathBuf, Option<TextureHandle>>,
@@ -192,19 +191,11 @@ impl Hub {
     fn nav(&mut self, ui: &mut egui::Ui) {
         let p = style::palette(self.config.theme);
         ui.horizontal(|ui| {
-            if let Some(logo) = self.logo(ui.ctx()) {
-                let tint = match self.config.theme {
-                    HubTheme::Dark => Color32::WHITE,
-                    HubTheme::Light => Color32::from_rgb(60, 66, 78),
-                };
-                ui.add(
-                    egui::Image::new(&logo)
-                        .fit_to_exact_size(egui::vec2(30.0, 30.0))
-                        .tint(tint),
-                );
-            }
+            // The official logo (the small cut reads better at this size).
+            let logo = crate::branding::small_logo_texture(ui.ctx());
+            ui.add(egui::Image::new(&logo).fit_to_exact_size(egui::vec2(30.0, 30.0)));
             ui.label(
-                RichText::new("Misty Engine")
+                RichText::new(crate::branding::PRODUCT)
                     .size(18.0)
                     .strong()
                     .color(p.text),
@@ -229,13 +220,6 @@ impl Hub {
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             ui.label(RichText::new(format!("v{VERSION}")).small().color(p.dim));
         });
-    }
-
-    fn logo(&mut self, ctx: &egui::Context) -> Option<TextureHandle> {
-        if self.textures.logo.is_none() {
-            self.textures.logo = load_png(ctx, "hub:logo", LOGO_PNG);
-        }
-        self.textures.logo.clone()
     }
 
     fn template_texture(&mut self, ctx: &egui::Context, t: Template) -> Option<TextureHandle> {

@@ -2784,3 +2784,78 @@ Record of choices made without asking, and why.
      unsaved changes in the Code Editor (Console warning) and in Play mode. The launcher then saves the layout
      (`on_exit`), resets the style and shows a Hub built without the `MISTY_HUB_*` env hooks, at its own size
      (un-maximised, 1180×720, titled "Misty Hub").
+
+581. **Branding assets in the repo, downscaled:** the designer's v3 logo (with drop shadow) is the official one.
+     `crates/misty_editor/assets/branding/` holds `logo.png` (v3, 512²), `logo_icon.png` (v3 cropped tighter to the
+     flame, 256², for icons) and `logo_small.png` (the designer's SMALL.png cropped square, close to the flame so 16 px icons stay legible). The icons in
+     `assets/icons/` are the alpha shape only (white, 128² for the 512² sources, the 100² ones as they are); the
+     PSD, v2 and the no-shadow logo are not copied (the no-shadow logo disappears on light taskbars). Everything is
+     `include_bytes!`d.
+582. **Icons are tinted alpha masks:** black and white source icons both become a coverage mask, painted white and
+     tinted with the theme's text colour, or the accent (the theme's hyperlink blue, 30 % towards white in dark
+     themes) when a tool is active. Textures are made per pixel size (points × pixels-per-point, Lanczos3
+     downscale from the mask) and cached in the egui context per (icon, size), drawn on whole pixels: crisp at any
+     display scale, decoded once.
+583. **Viewport tool row like the mockup:** the Scene view's vertical tool strip became a horizontal row in the
+     top-left corner: View / Move / Rotate / Scale with the designer's icons, Rect and Transform with their glyphs,
+     a divider, then the grid toggle (moved out of the panel toolbar, where "#" was). Active = lighter rounded
+     background + accent icon; hotkeys Q/W/E/R/T/Y and tooltips unchanged. The row's background is the theme's
+     field colour (not a fixed grey) so the tinted icons contrast in any theme. The rest of the editor's style is
+     untouched (the new UI style is a later task). The designer's `move.png` is the square-with-arrow art and
+     `arrows.png` the four-way cross; following the mockup's order, the cross is the Move tool and the square the
+     Scale tool (stored as `icons/move.png` / `icons/scale.png` by what they show).
+584. **Where the component icons show:** Camera, Character Controller, Post-process Volume (SkyVolume art) and
+     Directional Light (SunLight art) replace the glyphs in Inspector component headers, the Inspector's object
+     icon, Hierarchy rows and the Scene view billboards. Other lights keep 💡, prefab instances keep the prefab
+     glyph (blue), everything else keeps its glyph. Folders use the open-folder art in the Project tree, list and
+     grid views.
+585. **Project ▸ filter button:** there was no search filter button, so the filter icon opens a new "Search by
+     Type" menu next to the Project search: checkboxes that add / remove the existing `t:Material`, `t:Script`, …
+     words in the search text (highlighted while any `t:` filter is in the text).
+586. **Exe icon:** `assets/branding/misty.ico` has 16, 24, 32 (from the small logo) and 48, 64, 128, 256 (from the
+     icon crop; 256 PNG-compressed), written with the build pipeline's existing ICO writer
+     (`build_pipeline::icon::images_sized`). The file is committed and a test checks it matches the logos
+     (regenerate: `cargo test -p misty_editor -- --ignored write_misty_ico`), so builds need no image code.
+587. **Embedding with `winresource` (build dependency, default features off):** `build_icon.rs`, `include!`d by the
+     editor's and the player's build scripts, writes a resource script (icon 1 + version info "Misty Engine" /
+     "Misty Engine Player") and compiles it with the Windows SDK's rc.exe (found by winresource; MSVC toolchain).
+     If the SDK is missing the build only warns. The resource uses the neutral language, like the build
+     pipeline's `UpdateResourceW` calls, so a game build's own icon replaces the player's Misty icon instead of
+     adding a second language; leftover icon images past the game's (ids 7–16) are removed.
+588. **Window icon and title:** eframe's viewport icon is the icon crop at 64² (Windows scales it for the title
+     bar and taskbar); the title stays "Misty Engine" until the project opens, then "<Project> - <Scene> - Misty
+     Engine" as before.
+589. **Splash without waiting:** `branding::splash::Launcher` is the eframe app; it paints the logo, name and
+     "Opening <project>…" for two frames (the first presented frame also shows the window), then loads the project
+     in the next frame and hands over to the editor in that same frame. Nothing sleeps, and the Console logs
+     "Project opened in N ms". The time is kept in `<Project>/Library/EditorStartup.txt`; when the last open took
+     under 400 ms (SampleProject: ~130–240 ms in release) the splash is skipped, so quick projects never flash it.
+     First opens and slow projects get it. `MISTY_SPLASH=1` with `MISTY_SCREENSHOT` captures the splash.
+590. **About window:** Help ▸ About Misty Engine opens a centred window with the logo, "Misty Engine v{version}"
+     (the crate version, 0.1.0 today), a credits line and a license placeholder ("to be announced", naming the
+     current MIT OR Apache-2.0 source license). `MISTY_ABOUT=1` opens it for screenshots; `MISTY_THEME=light`
+     switches to egui's light visuals for checking the icon tints (the editor has no light theme yet).
+591. **Logo API for other windows:** `branding::logo_texture(ctx)` / `small_logo_texture(ctx)` return the logo as
+     a cached `TextureHandle` (`egui::Image::new(&tex)` at any size), `branding::window_icon()` the viewport
+     icon, `branding::PRODUCT` / `version()` the name and version. The Misty Hub can replace its text wordmark
+     with these at merge. The main toolbar's "◆ Misty" became the small logo + "Misty".
+
+## 2026-11-04 — v0.0.1: branding with the Hub and tutorials (merge)
+
+592. **One launcher (`launcher::Launcher`):** both branches had made the eframe app an enum (the Hub's
+     Hub ↔ editor hand-over, branding's splash → editor). They are one now: `Hub` → `Loading` → `Editor`, and
+     `misty <project>` starts at `Loading`. `Loading` shows the splash for two frames unless the project opened
+     in under 400 ms last time (branding's rule, unchanged), then calls `EditorApp::start(ctx, render_state,
+     project)` — the hub branch's signature; branding's `EditorApp::new(wgpu, project)` is gone since the render
+     state comes from `eframe::Frame` on any frame. After a Hub choice the load waits one frame (that frame
+     already holds the Hub's panels); the window is maximised and retitled first, so the splash shows in the
+     editor's window. A tutorial chosen on the Learn page starts right after the load. `branding::splash` keeps
+     the painting and the startup-time file; `MISTY_SPLASH` still captures the splash.
+593. **The Hub shows the official logo:** the Hub branch had a placeholder `assets/branding/logo.png` it tinted
+     white; the file is the designer's logo now (same path, branding's version kept) and the Hub draws
+     `branding::small_logo_texture` (the cut made for marks below 48 px) untinted, next to `branding::PRODUCT`.
+     The window and taskbar icon (`branding::window_icon`) is set for the Hub too.
+594. **One version number:** `branding::VERSION` (`CARGO_PKG_VERSION`, inherited from the workspace's
+     `version = "0.0.1"`) is what the Hub footer (`hub::VERSION` is an alias), Help ▸ About and the Ctrl+K About
+     entry show, and the build script writes the same package version into the exe version info. Branding read
+     0.1.0 only because its branch was cut before the Hub's bump.

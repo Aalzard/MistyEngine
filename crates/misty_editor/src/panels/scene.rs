@@ -5,6 +5,7 @@ use glam::Vec3;
 use misty_engine::render::{FogDebug, FogSettings, Frame, GridPlane, PostSettings};
 
 use super::AssetPayload;
+use crate::branding::icons::{self, Icon};
 use crate::scene_camera::{AxisView, SceneCamera};
 use crate::state::{EditorState, Tool, object_icon};
 use crate::theme;
@@ -284,39 +285,71 @@ fn draw_icons(ui: &Ui, rect: Rect, state: &EditorState, camera: &misty_engine::c
         } else {
             Color32::from_gray(235)
         };
-        painter.text(
-            p,
-            Align2::CENTER_CENTER,
-            object_icon(&state.scene, e),
-            FontId::proportional(22.0),
-            color,
-        );
+        match crate::state::object_brand_icon(&state.scene, e) {
+            Some(icon) => {
+                let r = Rect::from_center_size(p, vec2(24.0, 24.0));
+                icons::paint_with(&painter, r, icon, color);
+            }
+            None => {
+                painter.text(
+                    p,
+                    Align2::CENTER_CENTER,
+                    object_icon(&state.scene, e),
+                    FontId::proportional(22.0),
+                    color,
+                );
+            }
+        }
     }
 }
 
-/// Vertical tool strip in the top-left corner of the view.
+/// Tool row in the top-left corner of the view: View / Move / Rotate / Scale (the designer's
+/// icons), Rect and Transform, then the grid toggle.
 fn tools_overlay(ui: &mut Ui, rect: Rect, state: &mut EditorState) {
     let button = vec2(28.0, 26.0);
-    let pad = 4.0;
+    let (pad, gap, divider) = (3.0, 2.0, 9.0);
+    let count = Tool::ALL.len() as f32 + 1.0;
     let panel = Rect::from_min_size(
         rect.left_top() + vec2(8.0, 8.0),
         vec2(
-            button.x + pad * 2.0,
-            (button.y + 2.0) * Tool::ALL.len() as f32 + pad * 2.0,
+            count * (button.x + gap) - gap + divider + pad * 2.0,
+            button.y + pad * 2.0,
         ),
     );
-    ui.painter()
-        .rect_filled(panel, 4.0, Color32::from_rgba_unmultiplied(40, 40, 40, 235));
+    // Theme colours, so the tinted icons always contrast with the row.
+    let v = ui.visuals();
+    let (fill, line) = (v.extreme_bg_color.gamma_multiply(0.92), v.weak_text_color());
+    ui.painter().rect_filled(panel, 5.0, fill);
+    let slot = |i: f32, extra: f32| {
+        let left = panel.left() + pad + i * (button.x + gap) + extra;
+        Rect::from_min_size(egui::pos2(left, panel.top() + pad), button)
+    };
     for (i, tool) in Tool::ALL.into_iter().enumerate() {
-        let r = Rect::from_min_size(
-            panel.left_top() + vec2(pad, pad + i as f32 * (button.y + 2.0)),
-            button,
-        );
+        let r = slot(i as f32, 0.0);
         let selected = state.tool == tool;
-        let b = egui::Button::new(egui::RichText::new(tool.icon()).size(15.0)).selected(selected);
-        if ui.put(r, b).on_hover_text(tool.tooltip()).clicked() {
+        let clicked = match tool.brand_icon() {
+            Some(icon) => icons::button_at(ui, r, icon, selected, tool.tooltip()).clicked(),
+            None => {
+                let b = egui::Button::new(egui::RichText::new(tool.icon()).size(15.0))
+                    .selected(selected)
+                    .frame_when_inactive(false);
+                ui.put(r, b).on_hover_text(tool.tooltip()).clicked()
+            }
+        };
+        if clicked {
             state.tool = tool;
         }
+    }
+    // Divider, then the grid toggle.
+    let r = slot(Tool::ALL.len() as f32, divider);
+    ui.painter().vline(
+        r.left() - divider * 0.5 - gap * 0.5,
+        panel.y_range().shrink(6.0),
+        egui::Stroke::new(1.0, line.gamma_multiply(0.6)),
+    );
+    let grid = &mut state.scene_view.grid;
+    if icons::button_at(ui, r, Icon::Grid, *grid, "Toggle grid visibility").clicked() {
+        *grid = !*grid;
     }
 }
 
@@ -456,9 +489,6 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 ui.selectable_value(&mut s.global_space, true, "Global");
                 ui.selectable_value(&mut s.global_space, false, "Local");
             });
-        if toggle_button(ui, s.scene_view.grid, "#", "Toggle grid visibility").clicked() {
-            s.scene_view.grid = !s.scene_view.grid;
-        }
         // Grid snapping needs the world-aligned handle, like the familiar toolbar toggle.
         let snap_tip =
             "Toggle grid snapping (Global handle only). Hold Ctrl to snap by increments.";
