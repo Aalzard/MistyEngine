@@ -9,7 +9,23 @@ use misty_engine::wgpu;
 pub const WIDTH: u32 = 480;
 pub const HEIGHT: u32 = 270;
 
+/// One GPU test at a time (concurrent devices could deadlock in the driver).
+static GPU_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+thread_local! {
+    /// The lock this test thread holds; released when the test's thread ends.
+    static GPU_HELD: std::cell::RefCell<Option<std::sync::MutexGuard<'static, ()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// A device without a window (`None` = no adapter); the calling test holds the GPU lock.
 pub fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
+    GPU_HELD.with(|held| {
+        let mut held = held.borrow_mut();
+        if held.is_none() {
+            *held = Some(GPU_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
+        }
+    });
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     let adapter =

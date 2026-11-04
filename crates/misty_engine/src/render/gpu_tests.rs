@@ -7,8 +7,25 @@ use super::*;
 use crate::camera::{Camera, Projection};
 use crate::scene::PrimitiveMesh;
 
-/// A device without a window (`None` = no usable adapter on this machine).
+/// One GPU test at a time: with a device per test, a dozen tests creating and rendering
+/// concurrently could deadlock inside the driver (every GPU test then waited forever).
+static GPU_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+thread_local! {
+    /// The lock this test thread holds; released when the test's thread ends.
+    static GPU_HELD: std::cell::RefCell<Option<std::sync::MutexGuard<'static, ()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// A device without a window (`None` = no usable adapter on this machine). The calling test
+/// holds the GPU test lock until it finishes.
 pub(crate) fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
+    GPU_HELD.with(|held| {
+        let mut held = held.borrow_mut();
+        if held.is_none() {
+            *held = Some(GPU_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
+        }
+    });
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     let adapter =

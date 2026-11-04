@@ -100,10 +100,11 @@ pub fn apply_env(
     {
         crate::project_settings::open_at(s, c);
     }
-    // `MISTY_VIEW=x,y,z,pitch,yaw` places the Scene view camera.
+    // `MISTY_VIEW=x,y,z,pitch,yaw` places the Scene view camera; `MISTY_VIEW=<object name>`
+    // puts it where that object is (e.g. Main Camera).
     if let Some(view) = std::env::var_os("MISTY_VIEW") {
+        let view = view.to_string_lossy();
         let v: Vec<f32> = view
-            .to_string_lossy()
             .split(',')
             .filter_map(|n| n.trim().parse().ok())
             .collect();
@@ -112,6 +113,9 @@ pub fn apply_env(
             s.scene_view
                 .camera
                 .align_to(glam::Vec3::new(x, y, z), rotation);
+        } else if let Some(e) = s.scene.find_by_name(&view) {
+            let (_, rot, pos) = s.scene.world_matrix(e).to_scale_rotation_translation();
+            s.scene_view.camera.align_to(pos, rot);
         }
     }
     // `MISTY_DRAW_MODE=Shadow Cascades` picks a Scene view draw mode.

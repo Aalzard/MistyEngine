@@ -172,7 +172,11 @@ impl DrawCache {
             true => (&mut self.batching.out, self.batching.meshes),
             false => (&mut self.out, self.mesh_draws),
         };
-        if !sprites.is_empty() || target.len() > meshes {
+        // World Builder scatter (stored compactly, instanced by the renderer): rebuilt too.
+        let mut scatter = Vec::new();
+        let keep = |e| crate::render_scene::in_mask(scene, e, culling_mask);
+        crate::world_gen::scatter_set::draws(scene, materials, keep, &mut scatter);
+        if !sprites.is_empty() || !scatter.is_empty() || target.len() > meshes {
             let out = Arc::make_mut(target);
             out.truncate(meshes);
             for (e, outline) in sprites {
@@ -181,6 +185,7 @@ impl DrawCache {
                     out.extend(crate::sprites::draw_of(r, world, outline));
                 }
             }
+            out.extend(scatter);
         }
         target.clone()
     }

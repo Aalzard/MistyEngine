@@ -154,6 +154,18 @@ impl SceneComponent for LodGroup {
     const NAME: &'static str = "LOD Group";
     const CATEGORY: &'static str = "Rendering";
 }
+impl SceneComponent for crate::world_gen::WorldBuilder {
+    const NAME: &'static str = "World Builder";
+    const CATEGORY: &'static str = "";
+}
+impl SceneComponent for crate::world_gen::WorldStamp {
+    const NAME: &'static str = "World Stamp";
+    const CATEGORY: &'static str = "";
+}
+impl SceneComponent for crate::world_gen::ScatterSet {
+    const NAME: &'static str = "Scatter";
+    const CATEGORY: &'static str = "";
+}
 impl SceneComponent for SpriteRenderer {
     const NAME: &'static str = "Sprite Renderer";
     const CATEGORY: &'static str = "Rendering";
@@ -300,6 +312,10 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<ParticleSystem>(),
             ComponentInfo::of::<Terrain>(),
             ComponentInfo::of::<TerrainCollider>(),
+            // World Builder (world_gen).
+            ComponentInfo::of::<crate::world_gen::WorldBuilder>(),
+            ComponentInfo::of::<crate::world_gen::WorldStamp>(),
+            ComponentInfo::of::<crate::world_gen::ScatterSet>(),
             ComponentInfo::of::<NavMeshAgent>(),
             ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<Scripts>(),

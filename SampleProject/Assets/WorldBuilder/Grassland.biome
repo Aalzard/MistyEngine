@@ -1,0 +1,108 @@
+{
+  "name": "Grassland",
+  "tone": [
+    0.5,
+    0.68,
+    0.3
+  ],
+  "flat": {
+    "texture": "Assets/WorldBuilder/Textures/Grass.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "slope": {
+    "texture": "Assets/WorldBuilder/Textures/Grass.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "cliff": {
+    "texture": "Assets/WorldBuilder/Textures/Rock.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "shore": {
+    "texture": "Assets/WorldBuilder/Textures/Sand.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "peak": {
+    "texture": "Assets/WorldBuilder/Textures/Dirt.png",
+    "normal_map": null,
+    "tiling": 8.0
+  },
+  "slope_angle": 22.0,
+  "cliff_angle": 40.0,
+  "peak_height": 0.75,
+  "shore_width": 2.5,
+  "scatter": [
+    {
+      "name": "Grass",
+      "prefab": null,
+      "shape": "Grass",
+      "color": [
+        0.4,
+        0.62,
+        0.22
+      ],
+      "density": 12.0,
+      "min_spacing": 1.2,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 30.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Oak",
+      "prefab": null,
+      "shape": "BroadleafTree",
+      "color": [
+        0.25,
+        0.5,
+        0.18
+      ],
+      "density": 0.15,
+      "min_spacing": 12.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 20.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Bush",
+      "prefab": null,
+      "shape": "Bush",
+      "color": [
+        0.3,
+        0.5,
+        0.2
+      ],
+      "density": 0.6,
+      "min_spacing": 4.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 25.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    }
+  ]
+}

@@ -95,6 +95,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 _ => {}
             }
             crate::terrain_tools::brush_lines(&mut lines, state);
+            if sv.gizmos {
+                crate::panels::world_builder::gizmos::lines(&mut lines, state, ui.ctx());
+            }
             let overlay = gizmos::nav_overlay(state, ui.ctx(), &mut lines);
             let terrains = misty_engine::terrain::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
@@ -175,6 +178,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     if !brush_active
         && !crate::sprite_handles::show(ui, state, &camera, rect, hovered)
         && !crate::probe_gizmos::handles(ui, state, &camera, rect, hovered)
+        && !crate::panels::world_builder::gizmos::show(ui, state, &camera, rect, hovered)
     {
         handles::show(ui, state, &camera, rect, hovered);
     }

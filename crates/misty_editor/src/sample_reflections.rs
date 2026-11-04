@@ -276,15 +276,7 @@ impl MaterialSource for Demo {
     }
 }
 
-/// A device without a window (`None` = no adapter on this machine).
-fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
-    let instance =
-        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
-    let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-            .ok()?;
-    pollster::block_on(adapter.request_device(&Default::default())).ok()
-}
+use crate::sample_render::headless;
 
 use misty_engine::wgpu;
 

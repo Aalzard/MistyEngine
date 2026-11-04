@@ -1260,3 +1260,49 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   multi-draw only merges batches that share a vertex buffer (primitives).
 - Static batching happens in Play mode/player only and isn't saved into builds; moving a Static object
   re-merges its batch instead of being ignored.
+
+## World Builder ✅
+- **Window:** Window ▸ Terrain ▸ World Builder is one window with collapsible sections (guide in
+  `docs/world_builder.md`). It creates a World Builder with a new terrain, or uses the selected terrain.
+- **Base Heightmap:** six generators; sliders for Height, Scale, Noise Amount, Roughness (octaves), Ridge
+  Sharpness and Seed, plus Randomize. Noise is domain-warped fBm with ridged and billow variants.
+  Hydraulic (droplet) and thermal erosion run on all cores, are deterministic and can be cancelled.
+- **Stamps & Areas:** each is a scene object under "World Builder":
+  - Mountain/Hill (cone, ridge, volcano, mesa; add / max / min / replace)
+  - Flatten (object or sampled height)
+  - River/Valley spline (width, depth, bank, water strip)
+  - Water Body (lake flood fill or sea level)
+  - Rock Area
+  - Biome Zone (circle or polygon)
+
+  Their outlines are draped on the terrain in the Scene view, with dot handles for radius, falloff and
+  points.
+- **Biomes:** `.biome` assets in `Assets/WorldBuilder/` hold:
+  - flat / slope / cliff / shore / peak textures with tiling
+  - classification thresholds
+  - scatter lists (prefab or primitive shape; density, Poisson spacing, scale and rotation randomness,
+    slope and height limits, align to ground)
+  - a colour tone
+
+  Six presets with generated textures; biome edges blend with noisy breakup.
+- **Generate:** builds height → erosion → stamps → water → splat → scatter, as one undo step. Heights /
+  Textures / Scatter Only redo one part. A low-res live preview runs (debounced) while editing, with Revert.
+- **Scatter:** stored as objects with shared materials, or compact `Scatter` components (14 bytes per
+  instance). Both are drawn through automatic instancing. Water is a simple transparent plane behind
+  `world_gen::water::spawn_water`.
+- **Sample:** `Scenes/WorldBuilderDemo.scene`, a mountain island with a crater lake, a river, a village
+  plateau, forest / snowy-peak / beach biomes and the sea.
+- **Tests:**
+  - Engine: determinism, flatten flatness, river carving, erosion (mass, channels, cancel), lake fill stays
+    in its basin, scatter slope limits and spacing, classification, biome zones, blend modes, stages, scene
+    round trip, presets.
+  - Editor: menu, create, generate + undo, preview + revert, stamp inspector.
+  - Sample: generator check and a headless play.
+- **Timings** (release, 16 threads): 1025² erosion takes about 1.5 s hydraulic + 0.4 s thermal; generating
+  the demo takes a few seconds.
+
+### Not done yet
+- No GPU erosion, heightmap-image stamps or spline roads.
+- The terrain still has at most four splat layers.
+- Water is a plain plane (the ocean system takes over `spawn_water`).
+- Edits to biome assets are not in undo.

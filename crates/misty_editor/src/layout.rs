@@ -24,6 +24,8 @@ pub enum Tab {
     CodeEditor,
     /// Window ▸ Analysis ▸ Profiler.
     Profiler,
+    /// Window ▸ Terrain ▸ World Builder.
+    WorldBuilder,
 }
 
 impl Tab {
@@ -40,12 +42,13 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 5] = [
+    pub const ON_DEMAND: [Tab; 6] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
         Tab::Navigation,
         Tab::Profiler,
+        Tab::WorldBuilder,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -56,7 +59,7 @@ impl Tab {
     /// Where an on-demand tab docks when first opened (Unity puts Lighting by the Inspector).
     fn opens_beside(self) -> Option<Tab> {
         match self {
-            Tab::Lighting | Tab::Navigation => Some(Tab::Inspector),
+            Tab::Lighting | Tab::Navigation | Tab::WorldBuilder => Some(Tab::Inspector),
             // The graph wants room: it docks with the Scene and Game views.
             Tab::Animator => Some(Tab::Scene),
             // Docks with the Project and Console like the reference editor; the Profiler too,
@@ -81,6 +84,7 @@ impl Tab {
             Tab::Navigation => "Navigation",
             Tab::CodeEditor => "Code Editor",
             Tab::Profiler => "Profiler",
+            Tab::WorldBuilder => "World Builder",
         }
     }
 
@@ -99,6 +103,7 @@ impl Tab {
             Tab::Navigation => "🚶",
             Tab::CodeEditor => crate::panels::code_editor::ICON,
             Tab::Profiler => "📈",
+            Tab::WorldBuilder => "⛰",
         }
     }
 
@@ -113,9 +118,12 @@ impl Tab {
             Tab::Console => "Ctrl+Shift+C",
             Tab::Animation => "Ctrl+6",
             Tab::Profiler => "Ctrl+7",
-            Tab::Lighting | Tab::Animator | Tab::AudioMixer | Tab::Navigation | Tab::CodeEditor => {
-                ""
-            }
+            Tab::Lighting
+            | Tab::Animator
+            | Tab::AudioMixer
+            | Tab::Navigation
+            | Tab::CodeEditor
+            | Tab::WorldBuilder => "",
         }
     }
 }

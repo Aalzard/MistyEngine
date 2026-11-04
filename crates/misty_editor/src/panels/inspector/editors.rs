@@ -211,6 +211,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         fog if super::fog_editors::NAMES.contains(&fog) => {
             super::fog_editors::edit(ui, state, e, fog)
         }
+        wb if crate::panels::world_builder::NAMES.contains(&wb) => {
+            crate::panels::world_builder::inspector(ui, state, e, wb)
+        }
         _ => {
             ui.weak("No editor for this component.");
             false
