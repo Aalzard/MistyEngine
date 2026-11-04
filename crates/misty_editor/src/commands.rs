@@ -280,6 +280,13 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
         }
         Create::Camera => s.scene.add(e, Camera::default()),
         Create::FogVolume => s.scene.add(e, misty_engine::scene::FogVolume::default()),
+        Create::Water(kind) => {
+            // The ocean sits at sea level; lakes and rivers where the view is looking.
+            if kind == misty_engine::water::WaterKind::Ocean && parent.is_none() {
+                t.position = Vec3::ZERO;
+            }
+            s.scene.add(e, misty_engine::water::WaterSurface::new(kind));
+        }
         Create::AudioSource => s.scene.add(e, misty_engine::scene::AudioSource::default()),
         Create::Ui(_) | Create::Terrain => {} // handled by ui_create / terrain_tools
         Create::Sprite(shape) => {

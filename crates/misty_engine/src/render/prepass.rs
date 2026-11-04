@@ -72,7 +72,11 @@ impl Prepass {
 impl Renderer {
     /// Is the depth prepass on for this frame? (GPU culling replaces it when both are on.)
     pub(super) fn prepass_active(&self, frame: &Frame) -> bool {
-        self.options.depth_prepass && frame.shaded && !self.gpu_culling_active(frame)
+        // `.shader` materials may move their vertices, so their depth can't come from a prepass.
+        self.options.depth_prepass
+            && frame.shaded
+            && !self.gpu_culling_active(frame)
+            && !super::custom_shader::any_in(frame)
     }
 
     /// Draw the Opaque batches' depth into the target's depth buffer.

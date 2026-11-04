@@ -251,6 +251,9 @@ impl Physics {
     pub fn step(&mut self, scene: &Scene) -> Vec<Contact> {
         self.push_kinematic(scene);
         self.apply_springs();
+        // Floaters on water surfaces.
+        let dt = self.world.integration_parameters.dt;
+        crate::water::buoyancy::apply(self, scene, dt);
         for b in self.bodies.values_mut().filter(|b| b.interpolate) {
             if let Some(body) = self.world.bodies.get(b.handle) {
                 b.prev = parts(body.position());
@@ -341,6 +344,13 @@ impl Physics {
     pub fn apply_impulse(&mut self, e: Entity, impulse: Vec3) {
         if let Some(b) = self.body_mut(e) {
             b.apply_impulse(rv(impulse), true);
+        }
+    }
+
+    /// Impulse at a world point (also turns the body).
+    pub fn apply_impulse_at_point(&mut self, e: Entity, impulse: Vec3, point: Vec3) {
+        if let Some(b) = self.body_mut(e) {
+            b.apply_impulse_at_point(rv(impulse), rv(point), true);
         }
     }
 

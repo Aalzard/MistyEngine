@@ -350,6 +350,17 @@ impl TextureCache {
         view
     }
 
+    /// A texture by project path (`None` when it can't be read), loaded on first use.
+    pub(crate) fn texture_view(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        rel: &str,
+        kind: TextureKind,
+    ) -> Option<wgpu::TextureView> {
+        self.texture(device, queue, rel, kind)
+    }
+
     /// Make sure the bind group for this texture pair exists.
     pub fn prepare(
         &mut self,

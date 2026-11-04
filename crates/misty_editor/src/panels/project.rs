@@ -183,7 +183,7 @@ fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     } else if misty_engine::audio::is_mixer(&path.to_string_lossy()) {
         state.audio_mixer.open(Some(state.assets.relative(&path)));
         state.push(Action::FocusTab(crate::layout::Tab::AudioMixer));
-    } else if ext == "lua" {
+    } else if ext == "lua" || ext == misty_engine::shader_asset::EXTENSION {
         let rel = state.assets.relative(&path);
         crate::panels::code_editor::open_script(state, &rel, None);
     } else if let Err(err) = crate::assets::open_external(&path) {

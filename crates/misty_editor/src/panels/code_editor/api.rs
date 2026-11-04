@@ -22,6 +22,7 @@ const TABLE: &str = r#"
 |AudioSource||PlayClipAtPoint
 |AudioMixer||Find mixers by name
 |Terrain||The active terrain(s)
+|Water||Water surface heights (buoyancy, wading)
 |Instantiate|Instantiate(prefabPathOrObject [, position])|Clone a prefab or object; returns the new GameObject
 |Destroy|Destroy(gameObject)|Destroy an object at the end of the frame
 |print|print(...)|Same as Debug.Log
@@ -116,6 +117,7 @@ AudioSource|PlayClipAtPoint|PlayClipAtPoint(clipPath, position [, volume])|A 3D 
 AudioMixer|Find|Find(name)|The project mixer with that file name, or nil
 Terrain|activeTerrain|activeTerrain|The first enabled terrain, or nil
 Terrain|activeTerrains|activeTerrains|Every terrain in the scene
+Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a Vector3), nil when dry
 #self|gameObject|gameObject|The GameObject this script is attached to
 #self|transform|transform|This object's Transform
 #GameObject|name|name|Object name

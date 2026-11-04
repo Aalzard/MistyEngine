@@ -96,7 +96,7 @@ impl RenderTarget {
             attach,
             &[],
         );
-        // Sampled by the sun shafts, and by GPU culling for its Hi-Z pyramid.
+        // Sampled by the sun shafts, GPU culling's Hi-Z pyramid and the scene copy (water).
         let depth = make(
             "misty depth",
             full,

@@ -168,6 +168,7 @@ fn render_room(
         meshes: &meshes,
         particles: &[],
         terrains: &[],
+        water: &[],
         shaded: true,
         lights: &lights,
     };

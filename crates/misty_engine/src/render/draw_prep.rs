@@ -81,8 +81,12 @@ impl Renderer {
             let group = || self.textures.get_set(&d.material.textures());
             let main = (|| {
                 bounds?;
-                let p = self.pipelines.mesh_variant(pipeline)?;
-                Some([addr(p), addr(group()?), addr(mesh?)])
+                // `.shader` materials bring their own pipeline and group 2.
+                let (p, g) = match &d.material.custom {
+                    Some(_) => self.material_resources(&d.material)?,
+                    None => (self.pipelines.mesh_variant(pipeline)?, group()?),
+                };
+                Some([addr(p), addr(g), addr(mesh?)])
             })()
             .filter(|_| shaded);
             let caster = (|| {

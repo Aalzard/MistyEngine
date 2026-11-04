@@ -164,7 +164,7 @@ pub fn draw_order(meshes: &[MeshDraw], depth: impl Fn(Vec3) -> f32) -> DrawOrder
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let queue = m.material.mode.render_queue();
+            let queue = m.material.render_queue();
             (i, queue, depth(m.model.w_axis.truncate()))
         })
         .collect();

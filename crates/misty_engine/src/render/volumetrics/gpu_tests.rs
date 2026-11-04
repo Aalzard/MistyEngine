@@ -116,6 +116,7 @@ impl Scene {
             meshes: &self.meshes,
             particles: &[],
             terrains: &[],
+            water: &[],
             shaded: true,
             lights: &self.lights,
         }

@@ -6,8 +6,11 @@ use std::sync::RwLock;
 
 use serde::{Deserialize, Serialize};
 
+use crate::render::custom_shader::{CustomMaterial, resolve_values};
 use crate::render::{MaterialParams, RenderingMode, ShaderKind};
 use crate::render_scene::MaterialSource;
+use crate::shader_asset::{self, Blend, Cull, PropertyValue, ShaderModel};
+use std::sync::Arc;
 
 static PROJECT_ROOT: RwLock<Option<PathBuf>> = RwLock::new(None);
 
@@ -139,6 +142,9 @@ pub struct Material {
     /// Draw both faces (Cull Off).
     #[serde(skip_serializing_if = "is_default")]
     pub double_sided: bool,
+    /// Property values of a `.shader` asset by name (left out of the file when empty).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<String, PropertyValue>,
 }
 
 impl Default for Material {
@@ -164,6 +170,7 @@ impl Default for Material {
             occlusion_strength: 1.0,
             emission_map: None,
             double_sided: false,
+            properties: BTreeMap::new(),
         }
     }
 }
@@ -176,6 +183,9 @@ impl Material {
     /// Renderer values. Unlit shaders keep only what they use (Unlit/Color: colour,
     /// Unlit/Texture: texture, Unlit/Transparent: texture with alpha blending).
     pub fn params(&self) -> MaterialParams {
+        if shader_asset::is_shader_path(&self.shader) {
+            return self.custom_params();
+        }
         let standard = self.standard_params();
         let unlit = MaterialParams {
             unlit: true,
@@ -198,6 +208,35 @@ impl Material {
                 mode: RenderingMode::Fade,
                 ..unlit
             },
+        }
+    }
+
+    /// Uses a `.shader` asset (its path is in `shader`).
+    pub fn is_custom(&self) -> bool {
+        shader_asset::is_shader_path(&self.shader)
+    }
+
+    /// A `.shader` material: render state from the shader's header, values from `properties`
+    /// (defaults for the rest). A missing or broken shader draws magenta.
+    fn custom_params(&self) -> MaterialParams {
+        let (settings, values) = match shader_asset::load(&self.shader) {
+            Ok(a) => (a.settings, resolve_values(&a, &self.properties)),
+            Err(_) => (Default::default(), self.properties.clone()),
+        };
+        MaterialParams {
+            unlit: settings.model == ShaderModel::Unlit,
+            mode: match settings.blend {
+                Blend::Off => RenderingMode::Opaque,
+                Blend::Alpha | Blend::Additive => RenderingMode::Fade,
+                Blend::Premultiply => RenderingMode::Transparent,
+            },
+            double_sided: settings.cull == Cull::Off,
+            custom: Some(CustomMaterial {
+                shader: self.shader.clone(),
+                values: Arc::new(values),
+                queue: settings.queue,
+            }),
+            ..Default::default()
         }
     }
 
@@ -227,6 +266,7 @@ impl Material {
             occlusion_map: self.occlusion_map.clone(),
             occlusion_strength: self.occlusion_strength,
             emission_map: self.emission_map.clone().filter(|_| self.emission_enabled),
+            custom: None,
         }
     }
 

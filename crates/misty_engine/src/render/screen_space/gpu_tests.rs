@@ -93,6 +93,7 @@ fn render(
         meshes,
         particles: &[],
         terrains: &[],
+        water: &[],
         shaded: true,
         lights,
     };

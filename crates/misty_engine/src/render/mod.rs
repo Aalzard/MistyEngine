@@ -5,6 +5,7 @@ mod batch;
 mod cascades;
 pub mod contact_shadows;
 pub mod culling;
+pub mod custom_shader;
 mod draw_prep;
 pub mod environment;
 mod frame_lists;
@@ -18,6 +19,7 @@ mod pipelines;
 pub mod post;
 mod prepass;
 pub mod probes;
+mod scene_copy;
 mod screen_space;
 mod shadows;
 mod soft_shadows;
@@ -33,6 +35,7 @@ pub mod texture;
 pub mod ui;
 mod variants;
 mod volumetrics;
+mod water;
 
 pub use crate::terrain::TerrainDraw;
 pub use ao::AoSettings;
@@ -136,6 +139,8 @@ pub struct MaterialParams {
     pub occlusion_strength: f32,
     /// Multiplied by the emission colour (sRGB).
     pub emission_map: Option<String>,
+    /// A `.shader` asset replaces the built-in shading (see [`custom_shader`]).
+    pub custom: Option<custom_shader::CustomMaterial>,
 }
 
 impl Default for MaterialParams {
@@ -161,11 +166,19 @@ impl Default for MaterialParams {
             occlusion_map: None,
             occlusion_strength: 1.0,
             emission_map: None,
+            custom: None,
         }
     }
 }
 
 impl MaterialParams {
+    /// Render queue: the custom shader's, else the rendering mode's.
+    pub fn render_queue(&self) -> u32 {
+        self.custom
+            .as_ref()
+            .map_or(self.mode.render_queue(), |c| c.queue)
+    }
+
     pub fn pipeline_key(&self) -> surface::PipelineKey {
         surface::PipelineKey {
             unlit: self.unlit,
@@ -231,12 +244,14 @@ pub struct LightData {
 }
 
 /// How the main pass is split: GPU culling draws it in two phases (`Some(0)`, `Some(1)`)
-/// around the Hi-Z build; `prepass` = depth is already drawn.
+/// around the Hi-Z build; `prepass` = depth is already drawn; `scene_copy` = see the field.
 #[derive(Clone, Copy)]
 struct MainSplit<'a> {
     phase: Option<usize>,
     culled: Option<&'a gpu_culling::CulledBatches>,
     prepass: bool,
+    /// The transparent part follows a copy of the opaque scene (water, scene-reading shaders).
+    scene_copy: bool,
 }
 
 /// Everything needed to draw one view.
@@ -262,6 +277,8 @@ pub struct Frame<'a> {
     /// Draw shaded meshes (false in the Wireframe draw mode; outlines still work).
     pub shaded: bool,
     pub lights: &'a [LightData],
+    /// Water surfaces (oceans, lakes, rivers), drawn after the opaque scene.
+    pub water: &'a [crate::water::WaterDraw],
 }
 
 #[repr(C)]
@@ -352,6 +369,11 @@ pub struct Renderer {
     line_capacity: usize,
     particle_instances: particles::InstanceBuffer,
     terrains: terrain::TerrainCache,
+    /// `.shader` materials (created on first use: needs the queue).
+    custom: Option<custom_shader::CustomShaders>,
+    /// Opaque scene copies for water and scene-sampling shaders.
+    scene_copies: scene_copy::SceneCopies,
+    water: water::WaterRenderer,
     meshes: Vec<GpuMesh>,
     /// Imported meshes by "path#index" (None = could not be loaded), uploaded on first use.
     imported: std::collections::HashMap<String, Option<GpuMesh>>,
@@ -447,6 +469,9 @@ impl Renderer {
             line_capacity,
             particle_instances: particles::InstanceBuffer::new(device),
             terrains: terrain::TerrainCache::new(device),
+            custom: None,
+            scene_copies: scene_copy::SceneCopies::new(device),
+            water: Default::default(),
             meshes,
             imported: Default::default(),
             imported_generation: models::generation(),
@@ -558,8 +583,21 @@ impl Renderer {
 
     /// Reload textures and models whose files changed on disk (the editor calls this in Edit mode).
     pub fn reload_changed_assets(&mut self) {
-        self.textures.poll_changes();
+        if self.textures.poll_changes()
+            && let Some(c) = self.custom.as_mut()
+        {
+            c.textures_changed();
+        }
         models::poll_changes();
+        crate::shader_asset::poll_changes();
+    }
+
+    /// Shader compile errors since the last call (Console lines with file and line).
+    pub fn take_shader_errors(&mut self) -> Vec<String> {
+        self.custom
+            .as_mut()
+            .map(|c| c.take_errors())
+            .unwrap_or_default()
     }
 
     /// Texture load errors since the last call.
@@ -596,7 +634,14 @@ impl Renderer {
                     });
                 self.imported.insert(key.clone(), gpu);
             }
-            if frame.shaded {
+            if frame.shaded
+                && let Some(c) = &d.material.custom
+            {
+                let custom = self
+                    .custom
+                    .get_or_insert_with(|| custom_shader::CustomShaders::new(device, queue));
+                custom.prepare(device, queue, &self.pipelines, &mut self.textures, c);
+            } else if frame.shaded {
                 let set = d.material.textures();
                 let layout = &self.pipelines.material_layout;
                 self.textures.prepare_set(device, queue, layout, &set);
@@ -684,6 +729,8 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&view_uniform(frame, aspect)),
         );
+        let scene_copy = self.needs_scene_copy(frame);
+        self.prepare_scene_inputs(device, queue, target, frame, scene_copy);
 
         // Culling and batching for the camera and every shadow map.
         // The active Quality level's shadows, fitted to the map size actually allocated.
@@ -765,6 +812,9 @@ impl Renderer {
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         // First pass: starts the GPU timing.
         self.mask_pass(&mut encoder, target, frame, timing);
+        if frame.shaded && !frame.water.is_empty() {
+            self.water.simulate(&mut encoder);
+        }
         self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
         self.froxel_passes(device, &mut encoder, target);
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
@@ -781,6 +831,7 @@ impl Renderer {
             phase: None,
             culled: None,
             prepass,
+            scene_copy,
         };
         match (&culled, self.culler.as_ref()) {
             (Some(c), Some(culler)) => {
@@ -793,13 +844,14 @@ impl Renderer {
                     culled: Some(c),
                     ..split
                 };
+                let parts = (&lists, &particle_draws[..]);
                 self.main_pass(
+                    device,
                     &mut encoder,
                     target,
                     frame,
                     any_outline,
-                    &lists,
-                    &particle_draws,
+                    parts,
                     &mut stats,
                     first,
                 );
@@ -810,26 +862,29 @@ impl Renderer {
                     ..first
                 };
                 self.main_pass(
+                    device,
                     &mut encoder,
                     target,
                     frame,
                     any_outline,
-                    &lists,
-                    &particle_draws,
+                    parts,
                     &mut stats,
                     rest,
                 );
             }
-            _ => self.main_pass(
-                &mut encoder,
-                target,
-                frame,
-                any_outline,
-                &lists,
-                &particle_draws,
-                &mut stats,
-                split,
-            ),
+            _ => {
+                let parts = (&lists, &particle_draws[..]);
+                self.main_pass(
+                    device,
+                    &mut encoder,
+                    target,
+                    frame,
+                    any_outline,
+                    parts,
+                    &mut stats,
+                    split,
+                );
+            }
         }
         self.sun_shaft_passes(device, &mut encoder, target);
         self.bloom_passes(&mut encoder, target, timing);
@@ -843,6 +898,28 @@ impl Renderer {
         self.slots_scratch = lists.slots;
         stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
         self.stats = stats;
+    }
+
+    /// Shader globals, the scene copy and water inputs for this render.
+    fn prepare_scene_inputs(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &RenderTarget,
+        frame: &Frame,
+        split: bool,
+    ) {
+        let copy = split.then(|| self.scene_copies.get(device, target.size()));
+        if let Some(c) = self.custom.as_mut() {
+            c.write_globals(queue, target.size());
+            if let Some(copy) = copy {
+                c.scene_group(device, copy.id, &copy.color_view, &copy.depth_view);
+            }
+        }
+        if frame.shaded && !frame.water.is_empty() {
+            self.water
+                .prepare(device, queue, &self.pipelines, frame, target.size(), copy);
+        }
     }
 
     /// Write the per-draw values and the slot lists, growing the buffers when needed
@@ -1040,7 +1117,9 @@ impl Renderer {
     }
 
     /// Draw main-pass batches with their material's pipeline and textures (`prepass` = Opaque
-    /// draws test against the depth prepass).
+    /// draws test against the depth prepass; `scene` = scene copy id when the opaque scene was
+    /// copied, custom shaders' group 3).
+    #[allow(clippy::too_many_arguments)]
     fn draw_batches(
         &self,
         pass: &mut wgpu::RenderPass,
@@ -1048,27 +1127,35 @@ impl Renderer {
         lists: &frame_lists::FrameLists,
         batches: &[batch::Batch],
         prepass: bool,
+        scene: Option<u64>,
         stats: &mut RenderStats,
     ) {
         let (mut pipeline_at, mut group_at) = (0, 0);
         for b in batches {
             let d = &frame.meshes[b.draw];
             let key = lists.prep.pipeline[b.draw];
-            let pipeline = match prepass && prepass::applies(key) {
-                true => self.prepass.shade_variant(key),
-                false => self.pipelines.mesh_variant(key),
+            let resources = match &d.material.custom {
+                Some(_) => self.material_resources(&d.material),
+                None => {
+                    let pipeline = match prepass && prepass::applies(key) {
+                        true => self.prepass.shade_variant(key),
+                        false => self.pipelines.mesh_variant(key),
+                    };
+                    pipeline.zip(self.textures.get_set(&d.material.textures()))
+                }
             };
-            let (Some(pipeline), Some(group), Some(m)) = (
-                pipeline,
-                self.textures.get_set(&d.material.textures()),
-                self.gpu_mesh(&d.mesh),
-            ) else {
+            let (Some((pipeline, group)), Some(m)) = (resources, self.gpu_mesh(&d.mesh)) else {
                 continue;
             };
             if batch::addr(pipeline) != pipeline_at {
                 pipeline_at = batch::addr(pipeline);
                 pass.set_pipeline(pipeline);
                 stats.set_pass += 1;
+                if d.material.custom.is_some()
+                    && let Some(c) = self.custom.as_ref()
+                {
+                    pass.set_bind_group(3, c.scene_group_for(scene), &[]);
+                }
             }
             if batch::addr(group) != group_at {
                 group_at = batch::addr(group);
@@ -1078,6 +1165,39 @@ impl Renderer {
             m.draw(pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
         }
+    }
+
+    /// Main-pass pipeline and group 2 of a material (built-in variant or `.shader`).
+    fn material_resources(
+        &self,
+        m: &MaterialParams,
+    ) -> Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)> {
+        match &m.custom {
+            Some(c) => self.custom.as_ref()?.get(c),
+            None => Some((
+                self.pipelines.mesh_variant(m.pipeline_key())?,
+                self.textures.get_set(&m.textures())?,
+            )),
+        }
+    }
+
+    /// The transparent queue samples the opaque scene (water, scene-reading shaders).
+    fn needs_scene_copy(&self, frame: &Frame) -> bool {
+        if !frame.shaded {
+            return false;
+        }
+        if !frame.water.is_empty() {
+            return true;
+        }
+        let Some(custom) = self.custom.as_ref() else {
+            return false;
+        };
+        frame.meshes.iter().any(|d| {
+            d.material
+                .custom
+                .as_ref()
+                .is_some_and(|c| c.queue >= 3000 && custom.uses_scene(c))
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1187,33 +1307,34 @@ impl Renderer {
         }
     }
 
+    /// Begin an MSAA main pass. `clear` = colour cleared (else loaded), `clear_depth` likewise;
+    /// `resolve` = resolve into the HDR / glow images at its end; `store` / `store_depth` keep
+    /// the MSAA images for a later pass.
     #[allow(clippy::too_many_arguments)]
-    fn main_pass(
+    fn begin_main<'e>(
         &self,
-        encoder: &mut wgpu::CommandEncoder,
-        target: &RenderTarget,
-        frame: &Frame,
-        outline: bool,
-        lists: &frame_lists::FrameLists,
-        particle_draws: &[particles::ParticleDraw],
-        stats: &mut RenderStats,
-        split: MainSplit,
-    ) {
-        // A split pass keeps its images for the next part; only the last part resolves.
-        let (first, last) = (split.phase != Some(1), split.phase != Some(0));
-        let color = |view, resolve| wgpu::RenderPassColorAttachment {
+        encoder: &'e mut wgpu::CommandEncoder,
+        target: &'e RenderTarget,
+        clear: bool,
+        clear_depth: bool,
+        resolve: bool,
+        store: bool,
+        store_depth: bool,
+    ) -> wgpu::RenderPass<'e> {
+        let op = |keep: bool| match keep {
+            true => wgpu::StoreOp::Store,
+            false => wgpu::StoreOp::Discard,
+        };
+        let color = |view, resolve_view| wgpu::RenderPassColorAttachment {
             view,
             depth_slice: None,
-            resolve_target: last.then_some(resolve),
+            resolve_target: resolve.then_some(resolve_view),
             ops: wgpu::Operations {
-                load: match first {
+                load: match clear {
                     true => wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                     false => wgpu::LoadOp::Load,
                 },
-                store: match last {
-                    true => wgpu::StoreOp::Discard,
-                    false => wgpu::StoreOp::Store,
-                },
+                store: op(store),
             },
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1226,16 +1347,11 @@ impl Renderer {
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: target.depth_view(),
                 depth_ops: Some(wgpu::Operations {
-                    load: match first && !split.prepass {
+                    load: match clear_depth {
                         true => wgpu::LoadOp::Clear(1.0),
                         false => wgpu::LoadOp::Load,
                     },
-                    // A split pass keeps it for the next part; sun shafts read it to find the
-                    // open sky.
-                    store: match !last || self.volumetrics.keeps_depth() {
-                        true => wgpu::StoreOp::Store,
-                        false => wgpu::StoreOp::Discard,
-                    },
+                    store: op(store_depth),
                 }),
                 stencil_ops: None,
             }),
@@ -1244,58 +1360,138 @@ impl Renderer {
             multiview_mask: None,
         });
         pass.set_bind_group(0, &self.view_bind_group, &[]);
+        pass
+    }
 
-        if first {
-            pass.set_pipeline(&self.pipelines.sky);
-            pass.draw(0..3, 0..1);
-        }
+    /// One part of the main pass. GPU culling splits it into two phases around the Hi-Z build
+    /// (`split.phase`); the last phase draws sky, opaque meshes, terrains and the grid, then
+    /// (after the scene copy when `split.scene_copy`) water, transparent meshes, particles,
+    /// overlays, lines and the selection outline.
+    #[allow(clippy::too_many_arguments)]
+    fn main_pass(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget,
+        frame: &Frame,
+        outline: bool,
+        (lists, particle_draws): (&frame_lists::FrameLists, &[particles::ParticleDraw]),
+        stats: &mut RenderStats,
+        split: MainSplit,
+    ) {
+        let (first, last) = (split.phase != Some(1), split.phase != Some(0));
+        let copy = last && split.scene_copy;
+        // Sun shafts read the depth after the main pass to find the open sky.
+        let keep_depth = self.volumetrics.keeps_depth();
+        {
+            let mut pass = self.begin_main(
+                encoder,
+                target,
+                first,
+                first && !split.prepass,
+                last,
+                !last || copy,
+                !last || copy || keep_depth,
+            );
+            if first {
+                pass.set_pipeline(&self.pipelines.sky);
+                pass.draw(0..3, 0..1);
+            }
 
-        // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches).
-        if let (Some(culled), Some(phase)) = (split.culled, split.phase) {
-            pass.set_bind_group(1, self.lit_group(), &[]);
-            self.draw_culled(&mut pass, frame, lists, culled, phase, stats);
-            if !last {
+            // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches).
+            if let (Some(culled), Some(phase)) = (split.culled, split.phase) {
+                pass.set_bind_group(1, self.lit_group(), &[]);
+                self.draw_culled(&mut pass, frame, lists, culled, phase, stats);
+                if !last {
+                    return;
+                }
+            }
+            if frame.shaded && !lists.opaque.is_empty() {
+                pass.set_bind_group(1, self.lit_group(), &[]);
+                let opaque = &lists.opaque;
+                self.draw_batches(&mut pass, frame, lists, opaque, split.prepass, None, stats);
+            }
+
+            if frame.shaded && !frame.terrains.is_empty() {
+                pass.set_pipeline(&self.pipelines.terrain);
+                pass.set_bind_group(1, self.lit_group(), &[]);
+                pass.set_bind_group(2, &self.empty_group, &[]);
+                let first = frame.meshes.len();
+                self.terrains.draw(
+                    &mut pass,
+                    frame.terrains,
+                    first,
+                    true,
+                    |i| lists.terrains[i],
+                    stats,
+                );
+                if self.terrains.has_grass() {
+                    pass.set_pipeline(&self.pipelines.grass);
+                    self.terrains.draw_grass(&mut pass, frame.terrains, stats);
+                }
+            }
+
+            if frame.grid.is_some() {
+                pass.set_pipeline(&self.pipelines.grid);
+                pass.draw(0..3, 0..1);
+            }
+            if !copy {
+                self.main_tail(
+                    &mut pass,
+                    target,
+                    frame,
+                    outline,
+                    lists,
+                    particle_draws,
+                    None,
+                    stats,
+                );
                 return;
             }
         }
-        if frame.shaded && !lists.opaque.is_empty() {
+        // The opaque scene, sampled by water refraction and scene-reading shaders.
+        self.scene_copies.record(device, encoder, target);
+        let scene = self.scene_copies.current(target.size()).map(|c| c.id);
+        let mut pass = self.begin_main(encoder, target, false, false, true, false, keep_depth);
+        if frame.shaded {
             pass.set_bind_group(1, self.lit_group(), &[]);
-            self.draw_batches(&mut pass, frame, lists, &lists.opaque, split.prepass, stats);
+            self.water.draw(&mut pass, frame, stats);
         }
+        self.main_tail(
+            &mut pass,
+            target,
+            frame,
+            outline,
+            lists,
+            particle_draws,
+            scene,
+            stats,
+        );
+    }
 
-        if frame.shaded && !frame.terrains.is_empty() {
-            pass.set_pipeline(&self.pipelines.terrain);
-            pass.set_bind_group(1, self.lit_group(), &[]);
-            pass.set_bind_group(2, &self.empty_group, &[]);
-            let first = frame.meshes.len();
-            self.terrains.draw(
-                &mut pass,
-                frame.terrains,
-                first,
-                true,
-                |i| lists.terrains[i],
-                stats,
-            );
-            if self.terrains.has_grass() {
-                pass.set_pipeline(&self.pipelines.grass);
-                self.terrains.draw_grass(&mut pass, frame.terrains, stats);
-            }
-        }
-
-        if frame.grid.is_some() {
-            pass.set_pipeline(&self.pipelines.grid);
-            pass.draw(0..3, 0..1);
-        }
-
+    /// The main pass after opaque geometry; `scene` = scene copy id for scene-reading shaders.
+    #[allow(clippy::too_many_arguments)]
+    fn main_tail(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        target: &RenderTarget,
+        frame: &Frame,
+        outline: bool,
+        lists: &frame_lists::FrameLists,
+        particle_draws: &[particles::ParticleDraw],
+        scene: Option<u64>,
+        stats: &mut RenderStats,
+    ) {
         // Fade / Transparent meshes back to front, after the grid (they don't write depth).
         if frame.shaded && !lists.transparent.is_empty() {
             pass.set_bind_group(1, self.lit_group(), &[]);
-            self.draw_batches(&mut pass, frame, lists, &lists.transparent, false, stats);
+            let transparent = &lists.transparent;
+            self.draw_batches(pass, frame, lists, transparent, false, scene, stats);
         }
 
         // After the grid: particles don't write depth, so the grid would draw over them.
         if frame.shaded && !particle_draws.is_empty() {
-            self.draw_particles(&mut pass, frame, particle_draws, stats);
+            self.draw_particles(pass, frame, particle_draws, stats);
         }
 
         if !frame.overlay.is_empty() {

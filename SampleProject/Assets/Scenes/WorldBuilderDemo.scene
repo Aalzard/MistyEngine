@@ -745,22 +745,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
           "name": "Lake",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -780,9 +770,69 @@
             1.0
           ],
           "scale": [
-            3.3984375,
             1.0,
-            3.515625
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "Lake",
+          "settings": {
+            "caustics": 0.8,
+            "caustics_depth": 8.0,
+            "caustics_scale": 2.0,
+            "choppiness": 0.4,
+            "clarity": 5.0,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.03,
+              0.12,
+              0.12
+            ],
+            "flow_speed": 0.0,
+            "foam_color": [
+              0.95,
+              0.97,
+              1.0
+            ],
+            "reflections": 1.0,
+            "refraction": 0.5,
+            "ripples": 0.7,
+            "scattering": 0.5,
+            "scattering_color": [
+              0.25,
+              0.5,
+              0.35
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.25,
+              0.45,
+              0.35
+            ],
+            "shore_foam": 0.4,
+            "shore_foam_width": 0.6,
+            "smoothness": 0.96,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.06,
+              0.2,
+              0.18
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 12.0,
+            "wave_height": 0.5,
+            "wind_direction": 30.0,
+            "wind_speed": 3.0
+          },
+          "size": [
+            33.984375,
+            35.15625
           ]
         }
       },
@@ -794,22 +844,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
           "name": "Sea",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -829,9 +869,69 @@
             1.0
           ],
           "scale": [
-            480.0,
             1.0,
-            480.0
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "Ocean",
+          "settings": {
+            "caustics": 1.0,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.9,
+            "clarity": 8.0,
+            "crest_foam": 0.35,
+            "deep_color": [
+              0.01,
+              0.09,
+              0.18
+            ],
+            "flow_speed": 0.0,
+            "foam_color": [
+              0.95,
+              0.97,
+              1.0
+            ],
+            "reflections": 1.0,
+            "refraction": 0.5,
+            "ripples": 1.0,
+            "scattering": 1.0,
+            "scattering_color": [
+              0.1,
+              0.65,
+              0.55
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.12,
+              0.55,
+              0.6
+            ],
+            "shore_foam": 0.8,
+            "shore_foam_width": 1.5,
+            "smoothness": 0.96,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.6,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.04,
+              0.25,
+              0.32
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 25.0,
+            "wave_height": 0.9,
+            "wind_direction": 30.0,
+            "wind_speed": 9.0
+          },
+          "size": [
+            40.0,
+            40.0
           ]
         }
       },
@@ -843,22 +943,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
           "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -873,14 +963,74 @@
           ],
           "rotation": [
             0.0,
-            0.45496222,
+            0.95139307,
             0.0,
-            0.89051074
+            0.3079793
           ],
           "scale": [
-            1.5798503,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            15.798503
           ]
         }
       },
@@ -892,22 +1042,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (1)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -922,14 +1062,74 @@
           ],
           "rotation": [
             0.0,
-            0.44900694,
+            0.9493157,
             0.0,
-            0.8935283
+            0.31432405
           ],
           "scale": [
-            2.057825,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            20.57825
           ]
         }
       },
@@ -941,22 +1141,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (2)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -971,14 +1161,74 @@
           ],
           "rotation": [
             0.0,
-            0.48476854,
+            0.96124876,
             0.0,
-            0.8746425
+            0.27568254
           ],
           "scale": [
-            2.1951685,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            21.951685
           ]
         }
       },
@@ -990,22 +1240,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (3)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1020,14 +1260,74 @@
           ],
           "rotation": [
             0.0,
-            0.56959486,
+            0.98395354,
             0.0,
-            0.82192564
+            0.17842485
           ],
           "scale": [
-            2.0352507,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            20.352507
           ]
         }
       },
@@ -1039,22 +1339,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (4)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1069,14 +1359,74 @@
           ],
           "rotation": [
             0.0,
-            0.7223829,
+            -0.9997614,
             0.0,
-            0.6914933
+            0.021842249
           ],
           "scale": [
-            1.9310529,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            19.31053
           ]
         }
       },
@@ -1088,22 +1438,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (5)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1118,14 +1458,74 @@
           ],
           "rotation": [
             0.0,
-            0.7995818,
+            -0.99004775,
             0.0,
-            0.6005572
+            0.14073165
           ],
           "scale": [
-            2.0700016,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            20.700016
           ]
         }
       },
@@ -1137,22 +1537,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (6)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1167,14 +1557,74 @@
           ],
           "rotation": [
             0.0,
-            0.7979446,
+            -0.9904271,
             0.0,
-            0.6027308
+            0.13803703
           ],
           "scale": [
-            2.1000373,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            21.000374
           ]
         }
       },
@@ -1186,22 +1636,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (7)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1216,14 +1656,74 @@
           ],
           "rotation": [
             0.0,
-            0.7214538,
+            -0.99978983,
             0.0,
-            0.69246256
+            0.020499896
           ],
           "scale": [
-            2.024719,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            20.24719
           ]
         }
       },
@@ -1235,22 +1735,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (8)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1265,14 +1755,74 @@
           ],
           "rotation": [
             0.0,
-            0.5789288,
+            0.9859239,
             0.0,
-            0.81537807
+            0.16719492
           ],
           "scale": [
-            2.0640032,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            20.640032
           ]
         }
       },
@@ -1284,22 +1834,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (9)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1314,14 +1854,74 @@
           ],
           "rotation": [
             0.0,
-            0.49647754,
+            0.96486634,
             0.0,
-            0.86804956
+            0.26274115
           ],
           "scale": [
-            2.1949525,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            21.949524
           ]
         }
       },
@@ -1333,22 +1933,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (10)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1363,14 +1953,74 @@
           ],
           "rotation": [
             0.0,
-            0.4870381,
+            0.9619614,
             0.0,
-            0.8733807
+            0.27318552
           ],
           "scale": [
-            2.2539887,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            22.539888
           ]
         }
       },
@@ -1382,22 +2032,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (11)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1412,14 +2052,74 @@
           ],
           "rotation": [
             0.0,
-            0.54375327,
+            0.97792757,
             0.0,
-            0.8392451
+            0.2089443
           ],
           "scale": [
-            2.2205424,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            22.205423
           ]
         }
       },
@@ -1431,22 +2131,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (12)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1461,14 +2151,74 @@
           ],
           "rotation": [
             0.0,
-            0.62485254,
+            0.99390596,
             0.0,
-            0.7807428
+            0.110231124
           ],
           "scale": [
-            2.3896725,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            23.896725
           ]
         }
       },
@@ -1480,22 +2230,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (13)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1510,14 +2250,74 @@
           ],
           "rotation": [
             0.0,
-            0.6582507,
+            0.9977627,
             0.0,
-            0.7527988
+            0.06685555
           ],
           "scale": [
-            2.5495718,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            25.495718
           ]
         }
       },
@@ -1529,22 +2329,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (14)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1559,14 +2349,74 @@
           ],
           "rotation": [
             0.0,
-            0.6719382,
+            0.9988204,
             0.0,
-            0.7406072
+            0.048556257
           ],
           "scale": [
-            2.3524852,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            23.524853
           ]
         }
       },
@@ -1578,22 +2428,12 @@
           "active": true,
           "component_order": [
             "Transform",
-            "Mesh Filter",
-            "Mesh Renderer"
+            "Water Surface"
           ],
           "is_static": false,
           "layer": 0,
-          "name": "River (15)",
+          "name": "River",
           "tag": "Untagged"
-        },
-        "Mesh Filter": {
-          "mesh": "Plane"
-        },
-        "Mesh Renderer": {
-          "cast_shadows": false,
-          "enabled": true,
-          "material": "Assets/WorldBuilder/Materials/Water.mat",
-          "receive_shadows": true
         },
         "Transform": {
           "euler_hint": [
@@ -1608,14 +2448,74 @@
           ],
           "rotation": [
             0.0,
-            0.6696618,
+            0.9986667,
             0.0,
-            0.7426662
+            0.05162192
           ],
           "scale": [
-            1.7881153,
             1.0,
-            1.1
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "River",
+          "settings": {
+            "caustics": 0.2,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.3,
+            "clarity": 1.2,
+            "crest_foam": 0.0,
+            "deep_color": [
+              0.12,
+              0.1,
+              0.05
+            ],
+            "flow_speed": 1.5,
+            "foam_color": [
+              0.85,
+              0.82,
+              0.72
+            ],
+            "reflections": 1.0,
+            "refraction": 0.25,
+            "ripples": 1.1,
+            "scattering": 0.3,
+            "scattering_color": [
+              0.4,
+              0.4,
+              0.25
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.45,
+              0.4,
+              0.25
+            ],
+            "shore_foam": 0.6,
+            "shore_foam_width": 0.8,
+            "smoothness": 0.92,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.0,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.2,
+              0.17,
+              0.08
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 3.0,
+            "wave_height": 0.4,
+            "wind_direction": 30.0,
+            "wind_speed": 2.0
+          },
+          "size": [
+            11.0,
+            17.881153
           ]
         }
       },

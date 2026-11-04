@@ -348,6 +348,7 @@ mod tests {
             terrains: &[],
             shaded: true,
             lights: &lights,
+            water: &[],
         };
 
         let p = plan(&frame);

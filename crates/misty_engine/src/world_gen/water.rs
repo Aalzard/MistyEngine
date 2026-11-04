@@ -1,17 +1,19 @@
 //! Water from Water Body stamps and rivers: lake flood fill, the wet-texel map used for
 //! classification, and the water objects placed in the scene.
 //!
-//! Water is drawn as a plain transparent plane. [`spawn_water`] is the only place that builds
-//! the scene object, so a dedicated water/ocean system can take over there.
+//! [`spawn_water`] is the only place that builds the scene object: a Water Surface (the ocean
+//! shader) of the matching kind.
 
 use std::collections::VecDeque;
 
 use glam::{Quat, Vec2, Vec3};
 
+use crate::water::WaterKind;
+
 use super::classify::WaterMap;
 use super::stamps::{PlacedStamp, RiverPath, StampKind, WaterMode};
 use crate::hecs::Entity;
-use crate::scene::{MeshFilter, MeshRenderer, PrimitiveMesh, Scene, Transform};
+use crate::scene::{Scene, WaterSurface};
 
 /// Material the water planes use.
 pub const MATERIAL: &str = "Assets/WorldBuilder/Materials/Water.mat";
@@ -27,6 +29,8 @@ pub struct WaterBody {
     pub size: Vec2,
     /// Direction of the plane's local X axis (rivers follow their flow).
     pub axis: Vec2,
+    /// Sea = the endless Ocean, lakes and river strips = bounded surfaces.
+    pub kind: WaterKind,
 }
 
 /// Cells of a heightmap (metres) below `level` connected to `seed` (4-neighbour flood fill).
@@ -110,6 +114,7 @@ pub fn bodies(
                     // Past the coast so the horizon is water.
                     size: size * 8.0,
                     axis: Vec2::X,
+                    kind: WaterKind::Ocean,
                 });
             }
             WaterMode::Lake => {
@@ -140,6 +145,7 @@ pub fn bodies(
                     center: (a + b) * 0.5,
                     size: (b - a).max(Vec2::splat(1.0)),
                     axis: Vec2::X,
+                    kind: WaterKind::Lake,
                 });
             }
         }
@@ -168,6 +174,7 @@ fn river_water(r: &RiverPath, out: &mut Vec<WaterBody>, map: &mut WaterMap, size
             // Overlap neighbours a little so there are no gaps at bends.
             size: Vec2::new(a.distance(b) + half, r.width * 1.1),
             axis,
+            kind: WaterKind::River,
         });
         i = j;
     }
@@ -190,32 +197,36 @@ fn river_water(r: &RiverPath, out: &mut Vec<WaterBody>, map: &mut WaterMap, size
     }
 }
 
-/// Place a water plane for `body` under `parent` (`corner` = the terrain's world corner).
-/// The single hook a dedicated water system replaces.
+/// Place a Water Surface for `body` under `parent` (`corner` = the terrain's world corner): the
+/// sea becomes the Ocean, a lake a Lake rectangle, a river strip a River flowing along its axis.
 pub fn spawn_water(
     scene: &mut Scene,
     parent: Option<Entity>,
     body: &WaterBody,
     corner: Vec3,
 ) -> Entity {
-    let e = scene.spawn(&body.name, parent);
     let world = corner + Vec3::new(body.center.x, body.level, body.center.y);
-    // The Plane primitive is 10 × 10 m.
-    let yaw = (-body.axis.y).atan2(body.axis.x);
-    let mut t = Transform::from_position(Vec3::ZERO);
+    let e = crate::water::spawn_water(scene, &body.name, body.kind, Vec3::ZERO, body.size);
+    if parent.is_some() {
+        scene.set_parent(e, parent, None, false);
+    }
+    // Lakes keep their local X on `axis`; rivers flow along local +Z.
+    let (yaw, size) = match body.kind {
+        WaterKind::River => (
+            body.axis.x.atan2(body.axis.y),
+            Vec2::new(body.size.y, body.size.x),
+        ),
+        _ => ((-body.axis.y).atan2(body.axis.x), body.size),
+    };
+    let mut t = scene.transform(e);
     t.rotation = Quat::from_rotation_y(yaw);
-    t.scale = Vec3::new(body.size.x / 10.0, 1.0, body.size.y / 10.0);
     scene.set_transform(e, t);
     scene.set_world_position(e, world);
-    scene.add(e, MeshFilter::primitive(PrimitiveMesh::Plane));
-    scene.add(
-        e,
-        MeshRenderer {
-            material: Some(MATERIAL.into()),
-            cast_shadows: false,
-            ..Default::default()
-        },
-    );
+    if body.kind != WaterKind::Ocean
+        && let Ok(mut w) = scene.world.get::<&mut WaterSurface>(e)
+    {
+        w.size = size.to_array();
+    }
     e
 }
 

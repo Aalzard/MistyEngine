@@ -166,6 +166,14 @@ impl SceneComponent for crate::world_gen::ScatterSet {
     const NAME: &'static str = "Scatter";
     const CATEGORY: &'static str = "";
 }
+impl SceneComponent for super::WaterSurface {
+    const NAME: &'static str = "Water Surface";
+    const CATEGORY: &'static str = "Rendering";
+}
+impl SceneComponent for super::Floater {
+    const NAME: &'static str = "Floater";
+    const CATEGORY: &'static str = "Physics";
+}
 impl SceneComponent for SpriteRenderer {
     const NAME: &'static str = "Sprite Renderer";
     const CATEGORY: &'static str = "Rendering";
@@ -316,6 +324,8 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<crate::world_gen::WorldBuilder>(),
             ComponentInfo::of::<crate::world_gen::WorldStamp>(),
             ComponentInfo::of::<crate::world_gen::ScatterSet>(),
+            ComponentInfo::of::<super::WaterSurface>(),
+            ComponentInfo::of::<super::Floater>(),
             ComponentInfo::of::<NavMeshAgent>(),
             ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<Scripts>(),

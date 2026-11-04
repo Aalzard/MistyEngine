@@ -84,6 +84,7 @@ fn render_pole(shadows: Shadows, angle: f32) -> Vec<u8> {
         meshes: &meshes,
         particles: &[],
         terrains: &[],
+        water: &[],
         shaded: true,
         lights: &lights,
     };

@@ -248,6 +248,7 @@ fn froxel_uniform_packs_lights_volumes_and_jitter() {
         meshes: &[],
         particles: &[],
         terrains: &[],
+        water: &[],
         shaded: true,
         lights: &lights,
     };

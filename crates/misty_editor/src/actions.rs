@@ -24,6 +24,8 @@ pub enum Create {
     Sprite(Option<&'static str>),
     /// GameObject ▸ Rendering ▸ Local Volumetric Fog (a Fog Volume).
     FogVolume,
+    /// GameObject ▸ Water ▸ Ocean / Lake / River.
+    Water(misty_engine::water::WaterKind),
 }
 
 impl Create {
@@ -42,6 +44,7 @@ impl Create {
             Create::Sprite(None) => "New Sprite",
             Create::Sprite(Some(shape)) => shape,
             Create::FogVolume => "Local Volumetric Fog",
+            Create::Water(kind) => kind.label(),
         }
     }
 }
@@ -56,6 +59,12 @@ pub enum AssetKind {
     Animation,
     AnimatorController,
     AudioMixer,
+    /// Shader ▸ Surface Shader (lit, from the template).
+    SurfaceShader,
+    /// Shader ▸ Unlit Shader.
+    UnlitShader,
+    /// A material using the shader selected in the Project window.
+    MaterialFromShader,
 }
 
 impl AssetKind {
@@ -79,6 +88,9 @@ impl AssetKind {
             AssetKind::Animation => "Animation",
             AssetKind::AnimatorController => "Animator Controller",
             AssetKind::AudioMixer => "Audio Mixer",
+            AssetKind::SurfaceShader => "Surface Shader",
+            AssetKind::UnlitShader => "Unlit Shader",
+            AssetKind::MaterialFromShader => "Material from Shader",
         }
     }
 }

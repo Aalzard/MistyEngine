@@ -5,13 +5,14 @@ use super::particles::ParticleInstance;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
 /// Shared view uniform + helpers, then the fog every forward shader applies.
-const COMMON: &str = concat!(
+pub(super) const COMMON: &str = concat!(
     include_str!("shaders/common.wgsl"),
     "\n",
     include_str!("volumetrics/shaders/fog_apply.wgsl")
 );
 /// Lit/unlit meshes (all material variants), after the shared per-draw struct, with the
-/// soft-shadow, reflection probe and screen-space (AO, contact shadows) includes.
+/// soft-shadow, reflection probe and screen-space (AO, contact shadows) includes. Custom
+/// `.shader` assets and the water are appended to it, so they get the same `shade`.
 pub(super) const MESH_SRC: &str = concat!(
     include_str!("shaders/draw.wgsl"),
     "\n",

@@ -26,6 +26,29 @@ pub fn create_items(ui: &mut Ui, actions: &mut Vec<Action>) {
         if kind == AssetKind::Folder {
             ui.separator();
         }
+        if kind == AssetKind::Material {
+            create_shader_items(ui, actions);
+        }
+    }
+}
+
+/// Shader ▸ Surface / Unlit Shader, and Material from Shader.
+fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
+    ui.menu_button("Shader", |ui| {
+        for kind in [AssetKind::SurfaceShader, AssetKind::UnlitShader] {
+            if ui.button(kind.label()).clicked() {
+                actions.push(Action::CreateAsset(kind));
+                ui.close();
+            }
+        }
+    });
+    if ui
+        .button(AssetKind::MaterialFromShader.label())
+        .on_hover_text("A new material using the shader selected in the Project window")
+        .clicked()
+    {
+        actions.push(Action::CreateAsset(AssetKind::MaterialFromShader));
+        ui.close();
     }
 }
 

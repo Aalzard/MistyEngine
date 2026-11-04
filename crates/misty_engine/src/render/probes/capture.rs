@@ -131,6 +131,7 @@ impl ProbeCapture {
             meshes: &inputs.meshes,
             particles: &[],
             terrains: &inputs.terrains,
+            water: &[],
             shaded: true,
             lights: &inputs.lights,
         };

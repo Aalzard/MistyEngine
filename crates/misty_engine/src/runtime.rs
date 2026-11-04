@@ -107,6 +107,8 @@ impl Runtime {
     /// One game frame.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         crate::profile_scope!("PlayerLoop", Category::Others);
+        // Shaders, waves and buoyancy follow the game clock.
+        crate::clock::set_play_time(time.time);
         self.host.update(scene, time, input);
         {
             crate::profile_scope!("Audio.Update", Category::Audio);

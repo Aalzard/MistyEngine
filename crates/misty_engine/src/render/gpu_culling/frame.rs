@@ -50,6 +50,7 @@ impl Renderer {
             && self.culler.is_some()
             && frame.shaded
             && !self.screen_space_wanted(frame)
+            && !super::super::custom_shader::any_in(frame)
     }
 
     /// Group every loaded opaque draw into batches for the GPU to cull (no CPU frustum test),
