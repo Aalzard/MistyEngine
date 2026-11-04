@@ -264,6 +264,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::PostProcessVolume>(),
             ComponentInfo::of::<super::ReflectionProbe>(),
             ComponentInfo::of::<super::ReflectionProbeGroup>(),
+            ComponentInfo::of::<super::FogVolume>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
             ComponentInfo::of::<SpriteRenderer>(),

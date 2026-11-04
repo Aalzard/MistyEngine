@@ -122,6 +122,7 @@ fn frame_parts(
         spot_angle: 0.0,
         shadows: Shadows::None,
         shadow: Default::default(),
+        volumetric: Default::default(),
     };
     let lights = vec![
         light(Vec3::new(0.6, -0.6, 0.8), 1.0),

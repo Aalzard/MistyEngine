@@ -2,7 +2,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Ui, pos2, vec2};
 use glam::Vec3;
-use misty_engine::render::{Frame, GridPlane, PostSettings};
+use misty_engine::render::{FogDebug, FogSettings, Frame, GridPlane, PostSettings};
 
 use super::AssetPayload;
 use crate::scene_camera::{AxisView, SceneCamera};
@@ -12,16 +12,28 @@ use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
-/// 3 = Shadow Cascades: shaded, each sun cascade tinted.
-pub const DRAW_MODES: [&str; 5] = [
+/// Scene view draw modes, indexed by `SceneView::draw_mode` (see the `*_MODE` constants).
+pub const DRAW_MODES: [&str; 7] = [
     "Shaded",
     "Wireframe",
     "Shaded Wireframe",
     "Shadow Cascades",
     "Reflection Probes",
+    "Fog Density",
+    "Fog Lighting",
 ];
-/// Draw mode colouring pixels by the reflection probes that light them.
+/// Wireframe only, no shading.
+const WIREFRAME_MODE: usize = 1;
+/// Shaded with a faint wireframe on top.
+const SHADED_WIREFRAME_MODE: usize = 2;
+/// Shaded, each sun cascade tinted.
+const CASCADES_MODE: usize = 3;
+/// Colours pixels by the reflection probes that light them.
 const PROBES_MODE: usize = 4;
+/// Volumetric fog alone: density = 1 - transmittance.
+const FOG_DENSITY_MODE: usize = 5;
+/// Volumetric fog alone: the light it scatters.
+const FOG_LIGHTING_MODE: usize = 6;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -66,10 +78,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             } else {
                 gizmos::Lines::default()
             };
-            // Draw modes: 0 Shaded, 1 Wireframe, 2 Shaded Wireframe.
             match sv.draw_mode {
-                1 => gizmos::wireframe(&mut lines, &meshes, gizmos::WIREFRAME),
-                2 => gizmos::wireframe(&mut lines, &meshes, [0.0, 0.0, 0.0, 0.35]),
+                WIREFRAME_MODE => gizmos::wireframe(&mut lines, &meshes, gizmos::WIREFRAME),
+                SHADED_WIREFRAME_MODE => {
+                    gizmos::wireframe(&mut lines, &meshes, [0.0, 0.0, 0.0, 0.35])
+                }
                 _ => {}
             }
             crate::terrain_tools::brush_lines(&mut lines, state);
@@ -84,11 +97,24 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();
             }
-            let post = if sv.skybox && fx.post_processing {
-                render_scene::post_settings(&state.scene)
+            let volume = render_scene::post_settings(&state.scene);
+            let mut post = if sv.skybox && fx.post_processing {
+                volume
             } else {
                 PostSettings::default()
             };
+            // Volumetric fog follows the Fog toggle; the fog debug modes always show it.
+            let debug = match sv.draw_mode {
+                FOG_DENSITY_MODE => FogDebug::Density,
+                FOG_LIGHTING_MODE => FogDebug::Lighting,
+                _ => FogDebug::Off,
+            };
+            post.fog = if sv.skybox && fx.fog || debug != FogDebug::Off {
+                volume.fog
+            } else {
+                FogSettings::default()
+            };
+            post.fog.debug = debug;
             let lights = if sv.lighting {
                 scene_lights
             } else {
@@ -107,11 +133,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 meshes: &meshes,
                 particles: &particles,
                 terrains: &terrains,
-                shaded: sv.draw_mode != 1,
+                shaded: sv.draw_mode != WIREFRAME_MODE,
                 lights: &lights,
             };
             let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
-            gpu.renderer.set_cascade_debug(sv.draw_mode == 3);
+            gpu.renderer
+                .set_cascade_debug(sv.draw_mode == CASCADES_MODE);
             let texture = gpu.render(ViewId::Scene, size, &frame);
             ui.painter().image(
                 texture,

@@ -172,6 +172,7 @@ mod tests {
                 size: 2.0,
                 ..Default::default()
             },
+            volumetric: Default::default(),
         };
         assert!((source_size(&l) - 1f32.to_radians().tan()).abs() < 1e-6);
         l.kind = LightType::Point;

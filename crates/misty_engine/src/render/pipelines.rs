@@ -4,7 +4,13 @@ use super::mesh::Vertex;
 use super::particles::ParticleInstance;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
-const COMMON: &str = include_str!("shaders/common.wgsl");
+/// Shared view uniform + helpers, then the fog every forward shader applies.
+const COMMON: &str = concat!(
+    include_str!("shaders/common.wgsl"),
+    "
+",
+    include_str!("volumetrics/shaders/fog_apply.wgsl")
+);
 /// Lit/unlit meshes (all material variants), with the soft-shadow and reflection probe includes.
 pub(super) const MESH_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
@@ -182,7 +188,10 @@ impl Pipelines {
                 entries,
             })
         };
-        let view_layout = layout("misty view", &[entry(0, S::VERTEX_FRAGMENT, uniform())]);
+        // View uniform + the fog volume, sampler and uniform (render/volumetrics).
+        let mut view_entries = vec![entry(0, S::VERTEX_FRAGMENT, uniform())];
+        view_entries.extend(super::volumetrics::view_layout_entries());
+        let view_layout = layout("misty view", &view_entries);
         let probe = super::probes::gpu::layout_entries();
         let mesh_layout = layout(
             "misty mesh",

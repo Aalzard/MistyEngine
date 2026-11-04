@@ -5,7 +5,8 @@
 // metallic (R) / smoothness (A), occlusion (G) and emission maps.
 // Rendering modes: Opaque, Cutout (fs_cutout discards below the cutoff), Fade (straight alpha)
 // and Transparent (premultiplied: only the diffuse fades). fs_unlit is the Unlit shaders.
-// Fog (Lighting window) blends the result towards the fog colour.
+// Fog (Lighting window) blends the result towards the fog colour; volumetric / height fog
+// (Post-process Volume, fog_apply.wgsl) is applied on top.
 
 const PI: f32 = 3.14159265;
 const MAX_LOCAL_SHADOWS: u32 = 16u;
@@ -200,8 +201,9 @@ fn fs_unlit(in: MeshOut) -> MeshTargets {
     let color = srgb_to_linear(d.color.rgb) * base.rgb;
     let alpha = d.color.a * base.a;
     let fog = fog_visibility(fog_distance(in.world));
+    let vf = vfog_eval(in.world);
     var out: MeshTargets;
-    out.color = vec4<f32>(mix(view.fog_color.rgb, color, fog), alpha);
+    out.color = vec4<f32>(vfog_blend(mix(view.fog_color.rgb, color, fog), vf, 1.0), alpha);
     out.glow = vec4<f32>(0.0, 0.0, 0.0, alpha);
     return out;
 }
@@ -303,9 +305,11 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     // Premultiplied colour gets premultiplied fog.
     let fog_color = select(view.fog_color.rgb, view.fog_color.rgb * alpha, s.premultiply);
     color = mix(fog_color, color, fog);
+    let vf = vfog_eval(world);
+    color = vfog_blend(color, vf, select(1.0, alpha, s.premultiply));
     var out: MeshTargets;
     out.color = vec4<f32>(color, alpha);
-    out.glow = vec4<f32>(s.emission * fog, alpha);
+    out.glow = vec4<f32>(s.emission * fog * vfog_glow(vf), alpha);
     return out;
 
 }

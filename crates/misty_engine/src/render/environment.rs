@@ -24,6 +24,8 @@ pub struct Environment {
     pub sun: Option<Sun>,
     /// Reflection probes (none = sky reflections and ambient everywhere).
     pub probes: super::probes::ProbeSet,
+    /// Local Fog Volumes (seen by volumetric fog only).
+    pub fog_volumes: Vec<super::LocalFog>,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -58,6 +60,7 @@ impl Environment {
             settings,
             sun,
             probes: Default::default(),
+            fog_volumes: Vec::new(),
         }
     }
 
@@ -208,6 +211,7 @@ mod tests {
             spot_angle: 0.0,
             shadows: Shadows::None,
             shadow: Default::default(),
+            volumetric: Default::default(),
         }
     }
 

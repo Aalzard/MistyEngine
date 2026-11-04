@@ -40,6 +40,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::nav_editors::icon(other))
             .or_else(|| super::sprite_editors::icon(other))
             .or_else(|| super::probe_editor::icon(other))
+            .or_else(|| super::fog_editors::icon(other))
             .unwrap_or("▣"),
     }
 }
@@ -64,6 +65,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::probe_editor::NAMES.contains(&name) {
         return super::probe_editor::enabled_flag(state, e, name);
+    }
+    if super::fog_editors::NAMES.contains(&name) {
+        return super::fog_editors::enabled_flag(state, e, name);
     }
     match name {
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
@@ -103,6 +107,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::probe_editor::NAMES.contains(&name) {
         return super::probe_editor::set_enabled(state, e, name, on);
+    }
+    if super::fog_editors::NAMES.contains(&name) {
+        return super::fog_editors::set_enabled(state, e, name, on);
     }
     let w = &mut state.scene.world;
     match name {
@@ -192,6 +199,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         probe if super::probe_editor::NAMES.contains(&probe) => {
             super::probe_editor::edit(ui, state, e, probe)
+        }
+        fog if super::fog_editors::NAMES.contains(&fog) => {
+            super::fog_editors::edit(ui, state, e, fog)
         }
         _ => {
             ui.weak("No editor for this component.");
@@ -507,6 +517,7 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         );
         ui.end_row();
         ch |= super::light_shadows::rows(ui, l);
+        ch |= super::fog_editors::light_rows(ui, l);
         ch
     })
 }

@@ -290,6 +290,7 @@ mod tests {
             spot_angle: 30.0,
             shadows: Shadows::Soft,
             shadow: Default::default(),
+            volumetric: Default::default(),
         }
     }
 

@@ -1,5 +1,6 @@
 // Skybox: procedural sky (see `sky_color` in common.wgsl) with a sun disc, or a solid colour.
-// The camera's solid background replaces it when the skybox is off. Fog hazes the horizon.
+// The camera's solid background replaces it when the skybox is off. Fog hazes the horizon;
+// volumetric / height fog covers both at the max fog distance (fog_apply.wgsl).
 
 struct SkyTargets {
     @location(0) color: vec4<f32>,
@@ -29,11 +30,12 @@ fn sun_disc(dir: vec3<f32>) -> vec3<f32> {
 fn fs_main(in: FullscreenOut) -> SkyTargets {
     var out: SkyTargets;
     out.glow = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    let dir = normalize(unproject(in.ndc, 1.0) - unproject(in.ndc, 0.0));
+    let vf = vfog_sky(dir);
     if (view.background.w < 0.5) {
-        out.color = vec4<f32>(view.background.rgb, 1.0);
+        out.color = vec4<f32>(vfog_blend(view.background.rgb, vf, 1.0), 1.0);
         return out;
     }
-    let dir = normalize(unproject(in.ndc, 1.0) - unproject(in.ndc, 0.0));
     let sun = sun_disc(dir);
     var c = sky_color(dir) + sun;
     var visible = 1.0;
@@ -44,7 +46,7 @@ fn fs_main(in: FullscreenOut) -> SkyTargets {
         c = mix(c, view.fog_color.rgb, amount);
         visible = 1.0 - amount;
     }
-    out.color = vec4<f32>(c, 1.0);
-    out.glow = vec4<f32>(sun * 0.15 * visible, 1.0);
+    out.color = vec4<f32>(vfog_blend(c, vf, 1.0), 1.0);
+    out.glow = vec4<f32>(sun * 0.15 * visible * vfog_glow(vf), 1.0);
     return out;
 }

@@ -67,6 +67,7 @@ fn render_pole(shadows: Shadows, angle: f32) -> Vec<u8> {
             size: angle,
             ..Default::default()
         },
+        volumetric: Default::default(),
     }];
     let environment = Environment::default();
     let frame = Frame {

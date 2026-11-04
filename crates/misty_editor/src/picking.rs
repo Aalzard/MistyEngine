@@ -45,7 +45,8 @@ pub fn icon_objects(scene: &Scene) -> Vec<Entity> {
                 || w.get::<&Light>(*e).is_ok()
                 || w.get::<&misty_engine::scene::AudioSource>(*e).is_ok()
                 || w.get::<&misty_engine::scene::ParticleSystem>(*e).is_ok()
-                || w.get::<&misty_engine::scene::ReflectionProbe>(*e).is_ok();
+                || w.get::<&misty_engine::scene::ReflectionProbe>(*e).is_ok()
+                || w.get::<&misty_engine::scene::FogVolume>(*e).is_ok();
             !has_mesh && iconic
         })
         .collect()

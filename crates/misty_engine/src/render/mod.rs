@@ -20,6 +20,7 @@ mod terrain;
 pub mod texture;
 pub mod ui;
 mod variants;
+mod volumetrics;
 
 pub use crate::terrain::TerrainDraw;
 pub use environment::{Environment, Sun};
@@ -30,6 +31,7 @@ pub use stats::{RenderMemory, RenderOptions, RenderStats};
 pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
 use target::TargetLayouts;
+pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -203,6 +205,8 @@ pub struct LightData {
     pub shadows: Shadows,
     /// Source size and biases (soft shadows).
     pub shadow: LightShadow,
+    /// Volumetric fog multiplier and shadow dimmer.
+    pub volumetric: VolumetricLight,
 }
 
 /// Everything needed to draw one view.
@@ -324,6 +328,8 @@ pub struct Renderer {
     batcher: batch::Batcher,
     slots_scratch: Vec<u32>,
     draws_scratch: Vec<DrawUniform>,
+    /// Froxel fog, height fog and sun shafts.
+    volumetrics: volumetrics::Volumetrics,
 }
 
 impl Renderer {
@@ -340,17 +346,9 @@ impl Renderer {
         };
         let view_buffer = uniform("misty view", std::mem::size_of::<ViewUniform>());
         let lights_buffer = uniform("misty lights", std::mem::size_of::<LightsUniform>());
-        let view_group = |buffer: &wgpu::Buffer| {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("misty view group"),
-                layout: &pipelines.view_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: buffer.as_entire_binding(),
-                }],
-            })
-        };
-        let view_bind_group = view_group(&view_buffer);
+        let volumetrics = volumetrics::Volumetrics::new(device);
+        let view_bind_group =
+            volumetrics::view_group(device, &pipelines.view_layout, &view_buffer, &volumetrics);
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
         let probes = probes::gpu::ProbeGpu::new(device);
 
@@ -417,6 +415,7 @@ impl Renderer {
             batcher: Default::default(),
             slots_scratch: Vec::new(),
             draws_scratch: Vec::new(),
+            volumetrics,
         }
     }
 
@@ -472,7 +471,10 @@ impl Renderer {
                 + terrain_bytes
                 + buffers.iter().map(|b| b.size()).sum::<u64>()
                 + self.particle_instances.buffer.size(),
-            texture_bytes: texture_bytes + shadow_bytes + self.probes.bytes(),
+            texture_bytes: texture_bytes
+                + shadow_bytes
+                + self.probes.bytes()
+                + self.volumetrics.texture_bytes(),
         }
     }
 
@@ -620,6 +622,7 @@ impl Renderer {
         let lights = lights_uniform(frame, &plan);
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
         self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
+        self.prepare_volumetrics(device, queue, target, frame, &plan);
 
         // Overlay triangles follow the lines in the same buffer.
         let line_vertices = frame.lines.len() + frame.overlay.len();
@@ -650,6 +653,7 @@ impl Renderer {
         // First pass: starts the GPU timing.
         self.mask_pass(&mut encoder, target, frame, timing);
         self.shadow_passes(&mut encoder, frame, &plan, &lists.shadows, &mut stats);
+        self.froxel_passes(device, &mut encoder, target);
         self.main_pass(
             &mut encoder,
             target,
@@ -659,6 +663,7 @@ impl Renderer {
             &particle_draws,
             &mut stats,
         );
+        self.sun_shaft_passes(device, &mut encoder, target);
         self.bloom_passes(&mut encoder, target, timing);
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.resolve(&mut encoder, slot);
@@ -1038,7 +1043,12 @@ impl Renderer {
                 view: target.depth_view(),
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Discard,
+                    // Sun shafts read it to find the open sky.
+                    store: if self.volumetrics.keeps_depth() {
+                        wgpu::StoreOp::Store
+                    } else {
+                        wgpu::StoreOp::Discard
+                    },
                 }),
                 stencil_ops: None,
             }),

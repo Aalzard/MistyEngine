@@ -4,7 +4,7 @@
 
 use glam::Vec3;
 
-use super::srgb_to_linear;
+use super::{FogSettings, SunShaftSettings, srgb_to_linear};
 use crate::scene::{PostProcessVolume, TonemapMode};
 
 /// Effect values for one view. `Default` is the baseline every scene gets without a volume:
@@ -29,6 +29,10 @@ pub struct PostSettings {
     pub vignette_smoothness: f32,
     /// sRGB.
     pub vignette_color: [f32; 3],
+    /// Volumetric / height fog (off by default).
+    pub fog: FogSettings,
+    /// Screen-space sun shafts (off by default).
+    pub sun_shafts: SunShaftSettings,
 }
 
 impl Default for PostSettings {
@@ -46,6 +50,8 @@ impl Default for PostSettings {
             vignette_intensity: 0.0,
             vignette_smoothness: 0.2,
             vignette_color: [0.0; 3],
+            fog: FogSettings::default(),
+            sun_shafts: SunShaftSettings::default(),
         }
     }
 }
@@ -76,6 +82,12 @@ impl PostSettings {
             s.vignette_intensity = g.intensity;
             s.vignette_smoothness = g.smoothness;
             s.vignette_color = g.color;
+        }
+        if v.fog.active {
+            s.fog = FogSettings::from_override(&v.fog);
+        }
+        if v.sun_shafts.active {
+            s.sun_shafts = v.sun_shafts;
         }
         s
     }

@@ -7,10 +7,10 @@ use hecs::Entity;
 
 use crate::camera::{Camera, Projection};
 use crate::render::{
-    Environment, Frame, LightData, MaterialParams, MeshDraw, ParticleBatch, PostSettings,
+    Environment, Frame, LightData, LocalFog, MaterialParams, MeshDraw, ParticleBatch, PostSettings,
 };
 use crate::scene::{
-    Camera as CameraComponent, ClearFlags, Light, LightType, MeshFilter, MeshRenderer,
+    Camera as CameraComponent, ClearFlags, FogVolume, Light, LightType, MeshFilter, MeshRenderer,
     PostProcessVolume, Scene, Shadows,
 };
 
@@ -123,16 +123,35 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                     bias: l.shadow_bias,
                     normal_bias: l.shadow_normal_bias,
                 },
+                volumetric: crate::render::VolumetricLight {
+                    multiplier: l.volumetric_multiplier,
+                    shadow_dimmer: l.volumetric_shadow_dimmer,
+                },
             })
         })
         .collect()
 }
 
-/// The scene's Lighting settings with its main Directional Light as the sun, and its baked or
-/// realtime reflection probes.
+/// The scene's Lighting settings with its main Directional Light as the sun, its baked or
+/// realtime reflection probes, and its enabled Fog Volumes.
 pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
-    Environment::new(scene.render_settings.clone(), lights)
-        .with_probes(crate::render::probes::scene_probes(scene))
+    let mut env = Environment::new(scene.render_settings.clone(), lights)
+        .with_probes(crate::render::probes::scene_probes(scene));
+    env.fog_volumes = fog_volumes(scene);
+    env
+}
+
+/// Enabled, active Fog Volumes in Hierarchy order.
+pub fn fog_volumes(scene: &Scene) -> Vec<LocalFog> {
+    scene
+        .walk()
+        .into_iter()
+        .filter(|(e, _)| scene.active_in_hierarchy(*e))
+        .filter_map(|(e, _)| {
+            let v = scene.world.get::<&FogVolume>(e).ok()?;
+            v.enabled.then(|| LocalFog::new(&v, scene.world_matrix(e)))
+        })
+        .collect()
 }
 
 /// Effects from the enabled, active Post-process Volume with the highest priority
@@ -166,6 +185,7 @@ pub fn headlight(camera: &Camera) -> Vec<LightData> {
         spot_angle: 0.0,
         shadows: Shadows::None,
         shadow: Default::default(),
+        volumetric: Default::default(),
     }]
 }
 

@@ -279,6 +279,7 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
             s.scene.add(e, light);
         }
         Create::Camera => s.scene.add(e, Camera::default()),
+        Create::FogVolume => s.scene.add(e, misty_engine::scene::FogVolume::default()),
         Create::AudioSource => s.scene.add(e, misty_engine::scene::AudioSource::default()),
         Create::Ui(_) | Create::Terrain => {} // handled by ui_create / terrain_tools
         Create::Sprite(shape) => {

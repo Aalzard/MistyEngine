@@ -1413,3 +1413,86 @@ Record of choices made without asking, and why.
      the placement code with the files baked by the ignored writer on the GPU. The check test re-runs the
      placement and compares the scene; a headless render checks the probes change and darken the room. The
      capture also takes `MISTY_VIEW=x,y,z,pitch,yaw` and `MISTY_DRAW_MODE=3`.
+
+## 2026-11-04 — Volumetric fog and light shafts
+
+327. **Froxel fog in compute, applied in the forward shaders.** A camera-aligned grid (Low 96×54×48, Medium
+     128×72×64, High 160×90×64) with exponential view-depth slices (`near · (far/near)^w`, near = reach/128,
+     slice 0 starting at the eye) is filled by one compute pass (density + lighting + temporal blend, 4×4×4
+     threads per group) and integrated front to back by a second (one thread per column, energy-conserving
+     `S·(1−e^(−σΔ))/σ` per slab). There is no depth prepass, so every froxel is computed (no empty-froxel
+     culling). Meshes, terrain, sky/background and particles sample the integrated volume at their own world
+     position through `fog_apply.wgsl` (trilinear; texel k holds the sum to the far side of slice k, the first
+     half slice fades in linearly), as the fog has to reach transparent and particle draws in a forward
+     renderer anyway.
+328. **Fog resources live in the view bind group (group 0, bindings 1–3)** next to the view uniform, because
+     every forward pipeline already binds it and the terrain pipeline has no free group (4 max). The fog
+     uniform is its own buffer, so the `View` struct and `VIEW_STRIDE` are unchanged. To stay under the 16
+     sampled textures per stage of the default limits, the terrain pipeline's unused group 2 (it bound the
+     5-texture material layout) is now an empty group.
+329. **Shared integrated volume, per-view history.** The integrated volume is one texture in the renderer (each
+     render fills it right before its own main pass, renders are submitted in order). The lit-froxel history is a
+     ping-pong pair per render target, keyed by a new `RenderTarget::id`; state of targets not rendered for 600
+     renders is dropped, and a view's history is dropped as soon as it renders without volumetric fog.
+330. **Temporal reprojection:** each froxel is sampled at a Halton(2,3,5) position inside its cell (16-frame
+     cycle) and blended 0.9 with last frame's value fetched (trilinear) where its centre was in last frame's grid;
+     history is ignored on the first frame, after a quality or reach change and outside last frame's grid.
+     Denoising off = centre samples, no history. Noise animates with real time, so moving noise trails a little
+     with denoising on (the same trade-off as the reference pipeline).
+331. **Density:** global fog with extinction 1/`Fog Attenuation Distance`, uniform below `Base Height` and
+     `e^(−2(h−base)/(max−base))` above (≈ 1/8 left at `Maximum Height`); Fog Volumes add `1/Fog Distance` inside
+     their oriented box with a linear soft edge of `Blend Distance` metres per face (product of the three axes),
+     up to 16 per view; optional 3-octave value noise (`smoothstep(0.3, 0.7, n)·2`, mean ≈ 1, so intensity
+     breaks the fog up without thinning it overall) scrolled by the wind vector. Noise and boxes only exist in
+     the volumetric path, like local fog in the reference pipeline.
+332. **Lighting units:** lights are in surface units (a white wall facing a light shows its colour), so the
+     in-scattered radiance is `σs · Σ light · phase_HG(g, cos) · π` (an isotropic medium returns a quarter of a
+     white wall), plus ambient = the scene's Environment Lighting averaged over the sphere (sky + 2 × equator +
+     ground)/4 × intensity × `Ambient Light Probe Dimmer` (there are no light probes yet; the name keeps the
+     familiar control). Spot/point falloff matches the surface shader. Up to 8 lights per view.
+333. **Shadows through one accessor** (`volumetrics/shadow_access.rs`): the directional map, the local layer
+     array and their matrices from the `ShadowPlan`, so the cascade / soft-shadow work only has to adapt that
+     file. Froxels use one hardware-PCF compare per light (a small constant bias, no normal offset: froxels have
+     no surface). `Volumetric Shadow Dimmer` lerps the shadow towards lit; `Volumetric Multiplier` scales the
+     light in fog only (0 skips the light).
+334. **Analytic fallback and distance handling:** with Volumetric off (or in orthographic views, where froxels
+     don't fit), shaders integrate the same height-fog density analytically along the view ray (split at the
+     base height) with unshadowed sun + ambient light. With Volumetric on, froxels cover the first `Volumetric
+     Distance` (default 64 m, an extra field beyond the listed ones) and the analytic fog continues to `Max Fog
+     Distance`; anything farther, the sky and camera background included, is fogged as if it were at Max Fog
+     Distance, so distant geometry never looks foggier than the sky behind it.
+335. **Fog defaults to off everywhere:** the Fog and Sun Shafts overrides are inactive in new and old volumes and
+     are left out of saved files while untouched; the new Light fields (`volumetric_multiplier`,
+     `volumetric_shadow_dimmer`, default 1) are left out while 1, so every existing scene and its check test
+     stay byte-identical. With fog off the shaders return the input colour unchanged; a headless test renders
+     identical pixels to a renderer that never had fog (and the old culling test image is byte-identical to the
+     one before this work).
+336. **Settings flow without changing `Frame`:** the Fog / Sun Shafts values ride on `PostSettings` (`fog:
+     FogSettings`, `sun_shafts`), and Fog Volumes on `Environment::fog_volumes` (gathered by
+     `render_scene::environment`). `LightData` gained `volumetric: VolumetricLight` (Default = 1, 1). The
+     highest-priority volume still wins as a whole (overrides aren't blended between volumes; there are only
+     global volumes).
+337. **Sun Shafts are a separate screen-space effect:** half-resolution prefilter of pixels whose depth is still
+     cleared (sky / background) and brighter than `Threshold`, weighted by distance to the sun (`Radius`), three
+     8-tap radial blurs towards the sun (full, 1/8 and 1/64 of `Length`, ≈ 500 effective taps), added onto the
+     HDR image before bloom, tinted by the sun colour × `Tint` × `Intensity`. They fade out as the sun leaves
+     the screen and are skipped when it is behind the camera. The main pass keeps its depth (Store instead of
+     Discard) only on frames that draw shafts; the depth texture became sampleable for that.
+338. **Scene view:** the Fog effects toggle now also controls the volumetric fog (it no longer needs Post
+     Processing on); the draw-mode menu gained **Fog Density** (1 − transmittance) and **Fog Lighting** (in-
+     scattered light only), which always show the active volume's fog. A selected Fog Volume draws its box and
+     the inner box where the soft edge ends; Fog Volumes get a ☁ scene icon so they can be clicked.
+339. **VolumetricFogDemo is generated by code** (`sample_volumetric_fog`, ignored writer + check + headless
+     play): a ruined wall with window slits and a forest of trunks against a low sun (god rays), a street lamp
+     spot light (Volumetric Multiplier 1.5), a lantern point light inside an emissive globe that doesn't cast
+     shadows, a dense blue Fog Volume between two ridges, ACES + bloom, Fog at High quality with light noise,
+     and the shared `CameraOrbit.lua` circling the forest.
+340. **Fog + soft shadows + probes merge:** the froxel lighting samples the sun's 4-cascade array (froxel
+     binding 4 is a `D2Array`; the fog uniform carries every cascade matrix and the cascade count). Each
+     froxel takes the first (tightest) cascade whose map contains it; cascades are nested around the camera,
+     so this matches picking by view depth without passing depth splits. All fog access to the shadow system
+     stays in `volumetrics/shadow_access.rs`. Scene view draw modes are one indexed list (Shaded, Wireframe,
+     Shaded Wireframe, Shadow Cascades, Reflection Probes, Fog Density, Fog Lighting) with a named constant
+     per index; `MISTY_DRAW_MODE` matches by name. Sampled textures per fragment stage stay under the default
+     16: mesh 10 (fog volume, cascades, local shadows, probe atlas, BRDF LUT, five material maps), terrain 14
+     (group 2 empty), so the device limits are unchanged.

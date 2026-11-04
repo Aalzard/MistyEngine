@@ -287,6 +287,12 @@ pub struct Light {
     /// Normal offset in shadow-map texels.
     #[serde(skip_serializing_if = "light_shadow::is_normal_bias")]
     pub shadow_normal_bias: f32,
+    /// Scales this light's contribution to volumetric fog.
+    #[serde(skip_serializing_if = "super::fog_volume::defaults::is_one")]
+    pub volumetric_multiplier: f32,
+    /// 0..1: how dark this light's shadows are inside the fog (0 = no volumetric shadows).
+    #[serde(skip_serializing_if = "super::fog_volume::defaults::is_one")]
+    pub volumetric_shadow_dimmer: f32,
 }
 
 impl Default for Light {
@@ -303,6 +309,8 @@ impl Default for Light {
             shadow_radius: light_shadow::RADIUS,
             shadow_bias: light_shadow::BIAS,
             shadow_normal_bias: light_shadow::NORMAL_BIAS,
+            volumetric_multiplier: 1.0,
+            volumetric_shadow_dimmer: 1.0,
         }
     }
 }
