@@ -377,6 +377,9 @@ impl EditorApp {
             for w in gpu.renderer.take_warnings() {
                 s.console.warn(w);
             }
+            for e in gpu.renderer.take_shader_errors() {
+                s.console.log(LogLevel::Error, e);
+            }
             for w in gpu.ui.take_warnings() {
                 s.console.warn(w);
             }

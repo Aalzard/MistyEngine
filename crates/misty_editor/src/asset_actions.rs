@@ -6,6 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use misty_engine::scene::{Scene, registry};
+use misty_engine::shader_asset;
 
 use crate::actions::{Action, AssetKind};
 use crate::asset_ops;
@@ -97,6 +98,18 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .create(&rel, Default::default())
                 .map(|_| path)
         }
+        AssetKind::SurfaceShader | AssetKind::UnlitShader => {
+            let (stem, text) = if kind == AssetKind::SurfaceShader {
+                ("New Surface Shader", shader_asset::templates::SURFACE)
+            } else {
+                ("New Unlit Shader", shader_asset::templates::UNLIT)
+            };
+            let path = asset_ops::unique_path(&dir, stem, shader_asset::EXTENSION);
+            std::fs::write(&path, text)
+                .map(|_| path)
+                .map_err(|e| e.to_string())
+        }
+        AssetKind::MaterialFromShader => material_from_shader(s, &dir),
         AssetKind::AudioMixer => {
             let path = asset_ops::unique_path(&dir, "New Audio Mixer", "mixer");
             let rel = s.assets.relative(&path);
@@ -113,8 +126,11 @@ fn create(s: &mut EditorState, kind: AssetKind) {
             s.project.start_rename(path.clone());
             s.console
                 .info(format!("Created {}", s.assets.relative(&path)));
-            // New scripts open in the Code Editor; the name field keeps the keyboard.
-            if kind == AssetKind::Script {
+            // New scripts and shaders open in the Code Editor; the name field keeps the keyboard.
+            if matches!(
+                kind,
+                AssetKind::Script | AssetKind::SurfaceShader | AssetKind::UnlitShader
+            ) {
                 let rel = s.assets.relative(&path);
                 crate::panels::code_editor::open_script(s, &rel, None);
                 s.code_editor.ui.focus_text = false;
@@ -124,6 +140,28 @@ fn create(s: &mut EditorState, kind: AssetKind) {
             .console
             .warn(format!("Could not create {}: {e}", kind.label())),
     }
+}
+
+/// A material next to the others in `dir` using the selected `.shader` asset.
+fn material_from_shader(s: &mut EditorState, dir: &Path) -> Result<PathBuf, String> {
+    let shader = s
+        .project
+        .selected
+        .as_ref()
+        .map(|p| s.assets.relative(p))
+        .filter(|rel| shader_asset::is_shader_path(rel))
+        .ok_or("select a .shader asset in the Project window first")?;
+    let stem = Path::new(&shader)
+        .file_stem()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "New".into());
+    let path = asset_ops::unique_path(dir, &format!("{stem} Material"), "mat");
+    let m = misty_engine::assets::Material {
+        shader,
+        ..Default::default()
+    };
+    m.save(&path)?;
+    Ok(path)
 }
 
 fn select(s: &mut EditorState, path: &Path) {

@@ -19,6 +19,7 @@ pub mod prefs;
 mod text;
 mod ui;
 mod view;
+mod wgsl;
 
 #[cfg(test)]
 mod tests;
@@ -103,8 +104,15 @@ impl Document {
         let v = self.editor.version;
         if self.analysis.as_ref().is_none_or(|a| a.version != v) {
             let lines = self.editor.buf.lines();
-            let tokens = lexer::tokenize(lines);
-            let structure = lexer::structure(lines, &tokens);
+            let (tokens, structure) = if wgsl::is_wgsl(&self.path) {
+                let tokens = wgsl::tokenize(lines);
+                let structure = wgsl::structure(lines, &tokens);
+                (tokens, structure)
+            } else {
+                let tokens = lexer::tokenize(lines);
+                let structure = lexer::structure(lines, &tokens);
+                (tokens, structure)
+            };
             self.analysis = Some(Rc::new(Analysis {
                 version: v,
                 tokens,
@@ -183,6 +191,14 @@ impl Document {
         }
         self.checked_version = Some(v);
         let source = self.editor.text();
+        if wgsl::is_wgsl(&self.path) {
+            self.diagnostic = wgsl::check(&source, self.editor.buf.lines());
+            // Shaders recompile live while typing (once they compile).
+            if self.diagnostic.is_none() {
+                misty_engine::shader_asset::set_source(&self.path, &source);
+            }
+            return false;
+        }
         self.diagnostic = diagnostics::check(&source, &self.path, self.editor.buf.lines());
         false
     }
@@ -256,6 +272,9 @@ impl CodeEditor {
         doc.disk_mtime = mtime(&abs);
         doc.disk_conflict = false;
         doc.missing = false;
+        if wgsl::is_wgsl(&doc.path) {
+            misty_engine::shader_asset::reload(&doc.path);
+        }
         Ok(())
     }
 

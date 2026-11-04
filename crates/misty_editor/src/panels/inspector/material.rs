@@ -50,21 +50,12 @@ fn tiling_offset(ui: &mut Ui, m: &mut Material) -> bool {
     ch
 }
 
-/// Shader dropdown (switching keeps every value, so switching back restores them).
-fn shader_row(ui: &mut Ui, id: &str, m: &mut Material) -> bool {
-    let mut kind = m.shader_kind();
+/// Shader dropdown: built-in shaders and the project's `.shader` assets (switching keeps every
+/// value, so switching back restores them).
+fn shader_row(ui: &mut Ui, id: &str, m: &mut Material, shaders: &[String]) -> bool {
     ui.label("Shader");
-    let ch = combo(
-        ui,
-        &format!("{id}_shader"),
-        &mut kind,
-        &ShaderKind::ALL,
-        ShaderKind::name,
-    );
+    let ch = super::shader_material::shader_combo(ui, id, m, shaders);
     ui.end_row();
-    if ch {
-        m.shader = kind.name().to_owned();
-    }
     ch
 }
 
@@ -203,11 +194,19 @@ fn unlit(ui: &mut Ui, id: &str, kind: ShaderKind, m: &mut Material, textures: &[
     ch
 }
 
-/// Material properties; `textures` lists the project's textures for the map slots.
-pub fn material_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String]) -> bool {
+/// Material properties; `textures` lists the project's textures for the map slots and
+/// `shaders` its `.shader` assets.
+pub fn material_fields(
+    ui: &mut Ui,
+    id: &str,
+    m: &mut Material,
+    textures: &[String],
+    shaders: &[String],
+) -> bool {
     grid(ui, id, |ui| {
-        let mut ch = shader_row(ui, id, m);
+        let mut ch = shader_row(ui, id, m, shaders);
         ch |= match m.shader_kind() {
+            _ if m.is_custom() => super::shader_material::custom_fields(ui, id, m, textures),
             ShaderKind::Standard => standard(ui, id, m, textures),
             kind => unlit(ui, id, kind, m, textures),
         };
@@ -222,7 +221,8 @@ pub fn material_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         return;
     };
     let textures = state.assets.textures.clone();
-    if material_fields(ui, &format!("mat_{rel}"), &mut m, &textures)
+    let shaders = state.assets.shaders.clone();
+    if material_fields(ui, &format!("mat_{rel}"), &mut m, &textures, &shaders)
         && let Err(err) = state.assets.update_material(rel, m)
     {
         state.console.warn(format!("Could not save {rel}: {err}"));

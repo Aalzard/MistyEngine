@@ -175,10 +175,9 @@ impl Renderer {
         }
     }
 
-    /// Main pass key: pipeline variant, material textures and mesh.
+    /// Main pass key: pipeline (variant or `.shader`), material group and mesh.
     fn main_key(&self, d: &super::MeshDraw) -> Option<BatchKey> {
-        let pipeline = self.pipelines.mesh_variant(d.material.pipeline_key())?;
-        let group = self.textures.get_set(&d.material.textures())?;
+        let (pipeline, group) = self.material_resources(&d.material)?;
         let mesh = self.gpu_mesh(&d.mesh)?;
         Some([addr(pipeline), addr(group), addr(mesh)])
     }

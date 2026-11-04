@@ -4,7 +4,7 @@ use super::mesh::Vertex;
 use super::particles::ParticleInstance;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
-const COMMON: &str = include_str!("shaders/common.wgsl");
+pub(super) const COMMON: &str = include_str!("shaders/common.wgsl");
 /// Lit/unlit meshes (all material variants).
 pub(super) const MESH_SRC: &str = include_str!("shaders/mesh.wgsl");
 /// Shadow-map depth and the selection mask.

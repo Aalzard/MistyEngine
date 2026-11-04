@@ -88,8 +88,17 @@ impl RenderTarget {
             attach,
             &[],
         );
-        let depth = make("misty depth", full, DEPTH_FORMAT, SAMPLE_COUNT, attach, &[]);
-        let hdr = make("misty hdr", full, HDR_FORMAT, 1, sampled, &[]);
+        // Sampled by the scene copy (water, scene-reading shaders).
+        let depth = make(
+            "misty depth",
+            full,
+            DEPTH_FORMAT,
+            SAMPLE_COUNT,
+            sampled,
+            &[],
+        );
+        let copy_src = sampled | wgpu::TextureUsages::COPY_SRC;
+        let hdr = make("misty hdr", full, HDR_FORMAT, 1, copy_src, &[]);
         let glow_msaa = make(
             "misty msaa glow",
             full,

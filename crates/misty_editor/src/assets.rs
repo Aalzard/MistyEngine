@@ -44,6 +44,8 @@ pub struct AssetDatabase {
     prefabs: BTreeMap<String, CachedPrefab>,
     /// Project-relative texture paths (`.png`, `.jpg`).
     pub textures: Vec<String>,
+    /// Project-relative shader assets (`.shader`).
+    pub shaders: Vec<String>,
     /// Project-relative model path → its mesh names (or why it could not be imported).
     pub models: BTreeMap<String, Result<Vec<String>, String>>,
     /// Import messages for the Console (drained by the editor).
@@ -65,6 +67,7 @@ impl AssetDatabase {
             controllers: BTreeSet::new(),
             prefabs: BTreeMap::new(),
             textures: Vec::new(),
+            shaders: Vec::new(),
             models: BTreeMap::new(),
             messages: Vec::new(),
             last_poll: None,
@@ -83,6 +86,7 @@ impl AssetDatabase {
         self.anims.clear();
         self.controllers.clear();
         self.textures.clear();
+        self.shaders.clear();
         self.models.clear();
         let old_scripts = std::mem::take(&mut self.scripts);
         let mut model_files = Vec::new();
@@ -115,6 +119,8 @@ impl AssetDatabase {
                     let rel = self.relative(&path);
                     if misty_engine::assets::is_texture(&rel) {
                         self.textures.push(rel);
+                    } else if misty_engine::shader_asset::is_shader_path(&rel) {
+                        self.shaders.push(rel);
                     } else if models::is_model(&rel) {
                         model_files.push(rel);
                     }
@@ -122,6 +128,7 @@ impl AssetDatabase {
             }
         }
         self.textures.sort();
+        self.shaders.sort();
         let messages = &mut self.messages;
         for rel in model_files {
             let entry = models::model(&rel).map(|m| {

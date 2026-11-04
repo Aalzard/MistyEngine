@@ -19,7 +19,8 @@ pub struct Diagnostic {
 fn location_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r#"(Assets/[^"\]\n]*?\.lua)"?\]?:(\d+):\s*(.*)"#).expect("valid regex")
+        Regex::new(r#"(Assets/[^"\]\n]*?\.(?:lua|shader))"?\]?:(\d+):\s*(.*)"#)
+            .expect("valid regex")
     })
 }
 
