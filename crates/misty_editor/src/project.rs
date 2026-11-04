@@ -167,6 +167,7 @@ impl ProjectBrowser {
 }
 
 /// Project search: words must all appear in the name; `t:Material t:Prefab` keeps those types.
+/// Parsing and word matching are shared with the search palette (see [`crate::search`]).
 #[derive(Debug, Default, PartialEq)]
 pub struct SearchFilter {
     pub words: Vec<String>,
@@ -176,31 +177,32 @@ pub struct SearchFilter {
 
 impl SearchFilter {
     pub fn parse(text: &str) -> Self {
-        let mut f = Self::default();
-        for token in text.split_whitespace() {
-            match token.get(..2) {
-                Some(p) if p.eq_ignore_ascii_case("t:") => f.types.push(token[2..].to_lowercase()),
-                _ => f.words.push(token.to_lowercase()),
-            }
+        let q = crate::search::query::Query::parse(text);
+        Self {
+            words: q.words,
+            types: q.types,
         }
-        f
     }
 
     pub fn matches(&self, entry: &AssetEntry) -> bool {
-        let name = entry.name.to_lowercase();
-        self.words.iter().all(|w| name.contains(w))
+        use crate::search::fuzzy::{Mode, match_words};
+        match_words(&self.words, &entry.name, Mode::Contains).is_some()
             && (self.types.is_empty() || self.types.iter().any(|t| asset_type(entry) == *t))
     }
 }
 
-/// Type name used by `t:` filters ("material", "script", "scene", "prefab", "texture",
-/// "model", "audioclip", "animationclip", "folder").
+/// Type name used by `t:` filters (see [`type_for_path`]).
 pub fn asset_type(entry: &AssetEntry) -> &'static str {
-    if entry.is_dir {
+    type_for_path(&entry.path, entry.is_dir)
+}
+
+/// Type name used by `t:` filters ("material", "script", "scene", "prefab", "texture",
+/// "model", "audioclip", "animationclip", "folder", …), "" for other files.
+pub fn type_for_path(path: &Path, is_dir: bool) -> &'static str {
+    if is_dir {
         return "folder";
     }
-    match entry
-        .path
+    match path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
@@ -216,6 +218,8 @@ pub fn asset_type(entry: &AssetEntry) -> &'static str {
         "wav" | "ogg" | "mp3" => "audioclip",
         "anim" => "animationclip",
         "controller" => "animatorcontroller",
+        "mixer" => "audiomixer",
+        "shader" => "shader",
         "terrain" => "terraindata",
         "preset" => "preset",
         _ => "",

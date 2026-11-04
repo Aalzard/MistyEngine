@@ -296,6 +296,8 @@ pub struct EditorState {
     pub profiler: crate::panels::profiler::ProfilerWindow,
     /// Saved window layouts and the Save Layout prompt.
     pub layouts: crate::layouts::Layouts,
+    /// Ctrl+K search palette, its asset index and recent searches.
+    pub search: crate::search::SearchPalette,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
 }
@@ -307,6 +309,7 @@ impl EditorState {
             "Misty Engine started. Project: {}",
             project.root.display()
         ));
+        let root = project.root.clone();
         let mut s = Self {
             console,
             tool: Tool::Move,
@@ -386,6 +389,7 @@ impl EditorState {
             },
             profiler: Default::default(),
             layouts: Default::default(),
+            search: crate::search::SearchPalette::new(&root),
             actions: Vec::new(),
         };
         crate::project_settings::load(&mut s);
@@ -448,6 +452,7 @@ impl EditorState {
     pub fn refresh_assets(&mut self) {
         self.project.refresh();
         self.assets.refresh();
+        self.search.index.invalidate();
     }
 
     /// Select one object and reveal it in the Hierarchy.

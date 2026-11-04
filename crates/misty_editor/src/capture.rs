@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_STATS`.
+//! `MISTY_PLAY` / `MISTY_STATS` / `MISTY_SEARCH`.
 
 use std::path::PathBuf;
 
@@ -171,6 +171,11 @@ pub fn apply_env(
     {
         let (_, rot, pos) = s.scene.world_matrix(e).to_scale_rotation_translation();
         s.scene_view.camera.align_to(pos, rot);
+    }
+    // `MISTY_SEARCH=t:Light` opens the Ctrl+K palette with that text (asset index built now).
+    if let Some(text) = std::env::var_os("MISTY_SEARCH") {
+        s.search.index.build_now();
+        crate::search::open(s, &text.to_string_lossy());
     }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {

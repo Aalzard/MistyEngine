@@ -6,6 +6,7 @@ use misty_engine::scene::SceneId;
 
 use crate::actions::{Action, SceneOp};
 use crate::menu_bar::create_menu_items;
+use crate::search::fuzzy::Mode;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
 use crate::theme::{PREFAB, PREFAB_DIM};
@@ -38,7 +39,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
     panel_toolbar(ui, |ui| {
         ui.menu_button("➕ ⏷", |ui| create_menu_items(ui, state, None));
-        search_field(ui, &mut state.hierarchy.search, ui.available_width());
+        search_field(ui, &mut state.hierarchy.search, ui.available_width())
+            .on_hover_text("Name words and filters: t:Light t:Camera tag:Player layer:UI");
     });
 
     let rows = visible_rows(state);
@@ -119,7 +121,16 @@ fn update_focus(ui: &Ui, state: &mut EditorState, panel: Rect) {
 /// list of matches while searching.
 fn visible_rows(state: &EditorState) -> Vec<Row> {
     let scene = &state.scene;
-    let search = state.hierarchy.search.to_lowercase();
+    // Name words plus t: / tag: / layer: filters, shared with the search palette; matches are
+    // listed flat under their scene's header.
+    let matches: Option<Vec<Entity>> = (!state.hierarchy.search.trim().is_empty()).then(|| {
+        let q = crate::search::query::Query::parse(&state.hierarchy.search);
+        let tl = &state.project_settings.tags_and_layers;
+        crate::search::scene_search::search(scene, tl, &q, Mode::Contains, 0)
+            .into_iter()
+            .map(|(e, _)| e)
+            .collect()
+    });
     let mut out = Vec::new();
     fn visit(state: &EditorState, e: Entity, depth: usize, out: &mut Vec<Row>) {
         out.push(Row::Object(e, depth));
@@ -134,18 +145,17 @@ fn visible_rows(state: &EditorState) -> Vec<Row> {
         if !entry.loaded || state.hierarchy.collapsed_scenes.contains(&entry.id) {
             continue;
         }
-        if search.is_empty() {
-            for r in scene.roots_in(entry.id) {
-                visit(state, r, 0, &mut out);
+        match &matches {
+            None => {
+                for r in scene.roots_in(entry.id) {
+                    visit(state, r, 0, &mut out);
+                }
             }
-        } else {
-            out.extend(
-                scene
-                    .objects_in(entry.id)
-                    .into_iter()
-                    .filter(|e| scene.name(*e).to_lowercase().contains(&search))
-                    .map(|e| Row::Object(e, 0)),
-            );
+            Some(hits) => out.extend(
+                hits.iter()
+                    .filter(|e| scene.scene_of(**e) == entry.id)
+                    .map(|e| Row::Object(*e, 0)),
+            ),
         }
     }
     out

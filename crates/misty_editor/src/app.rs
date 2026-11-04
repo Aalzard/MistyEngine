@@ -115,8 +115,26 @@ impl EditorApp {
 
     /// Global keyboard shortcuts (skipped while typing in a text field).
     fn shortcuts(&mut self, ctx: &egui::Context) {
+        // Ctrl+K toggles the search palette; while it is open it owns the keyboard.
+        if self.state.search.open {
+            if ctx.input_mut(|i| {
+                i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::K))
+            }) {
+                crate::search::close(&mut self.state);
+            }
+            return;
+        }
         // The Code Editor owns the keyboard while its text has focus (only Play keys stay global).
         let code_editor = crate::panels::code_editor::global_shortcuts(ctx, &mut self.state);
+        // Ctrl+K is a chord prefix inside the Code Editor, so it only opens search elsewhere.
+        if !code_editor
+            && ctx.input_mut(|i| {
+                i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::K))
+            })
+        {
+            crate::search::open(&mut self.state, "");
+            return;
+        }
         let ctrl = Modifiers::COMMAND;
         let ctrl_shift = Modifiers::COMMAND | Modifiers::SHIFT;
         let ctrl_alt = Modifiers::COMMAND | Modifiers::ALT;
@@ -494,6 +512,8 @@ impl eframe::App for EditorApp {
         egui::Panel::bottom("status_bar")
             .frame(bar_frame)
             .show(ui, |ui| status_bar::show(ui, &mut self.state));
+        // Before the panels, so arrow keys and Enter reach the palette first.
+        crate::search::palette::show(&ctx, &mut self.state);
 
         let mut style = theme::dock_style(&ctx);
         if self.state.play.in_play_mode() {

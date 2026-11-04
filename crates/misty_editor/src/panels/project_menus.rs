@@ -116,7 +116,7 @@ fn is_scene(rel: &str) -> bool {
     rel.ends_with(&format!(".{}", misty_engine::scene::file::EXTENSION))
 }
 
-fn explorer_label() -> &'static str {
+pub(crate) fn explorer_label() -> &'static str {
     if cfg!(target_os = "macos") {
         "Reveal in Finder"
     } else {

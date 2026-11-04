@@ -168,7 +168,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
 /// Double-clicked file: scenes open in the editor, scripts in the Code Editor, other files in
 /// their default app.
-fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
+pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     let Some(path) = opened else { return };
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     if ext == misty_engine::scene::prefab::EXTENSION {

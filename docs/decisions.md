@@ -2437,3 +2437,61 @@ Record of choices made without asking, and why.
      presets only change the pending import settings (applied with the importer's Apply), so they are not steps.
      Preset Manager stays between Physics and Tags and Layers in Project Settings (the list after Player,
      Quality and Input is alphabetical, as in the familiar editor).
+
+## 2026-11-04 — Round 10: Global Search (Ctrl+K)
+
+514. **Search palette is a floating modal, not a dock tab:** Ctrl+K opens a 560 px box anchored near the top
+     centre (egui `Modal`, light 60-alpha backdrop) with one text field, results grouped under small provider
+     headers, and a one-line key hint. Clicking the backdrop, Esc or Ctrl+K again closes it. It is drawn before
+     the dock area so Up/Down/Enter/Esc are consumed before any panel sees them, and the global shortcuts are
+     skipped while it is open. Inside the Code Editor Ctrl+K stays the chord prefix (Ctrl+K, C …), so search
+     opens from everywhere else.
+515. **One matching module for every search box:** `search::fuzzy` (in-order subsequence, DP-scored with bonuses
+     for word starts, camelCase, consecutive runs and prefixes, gap penalties, exact-name bonus; O(n·m) per name)
+     and `search::query` (`t:`, `tag:`, `layer:` tokens; `h: p: m: s:` provider prefixes; `=` calculator). The
+     Hierarchy box keeps substring matching (`Mode::Contains`) but now goes through `scene_search` too, so it
+     gains `t:Light`, `tag:`, `layer:` filters; the Project window's `SearchFilter` parses with `Query::parse`
+     and matches with the same code. The palette uses `Mode::Fuzzy`.
+516. **`t:` on objects means "has this component":** compared against registry component names with spaces
+     removed and case ignored (`t:Light`, `t:MeshRenderer`, `t:AudioListener`); `t:GameObject` matches all.
+     `layer:` takes a layer name or number, `tag:` a tag (case-insensitive). Filters only apply to the Hierarchy
+     and Project providers; with a filter in the query, menus / settings / help are not searched.
+517. **Project `t:` types gained `AudioMixer` and `Shader`:** `project::type_for_path` is the single type table
+     for the Project window and the palette index (previous types unchanged).
+518. **Asset index without a new watcher crate:** the editor has no OS file watcher (scripts and textures are
+     polled by mtime), so `search::asset_index` follows the same approach: the first build walks `Assets/` on a
+     background thread; afterwards, while the palette is open, 24 folders per frame have their modified time
+     checked round-robin and only changed folders are re-listed (new sub-folders walked, removed ones dropped).
+     Assets ▸ Refresh / Ctrl+R invalidates it for a background rebuild. Results are cached per (query, index
+     generation), so typing is the only thing that re-runs providers. 4000 assets query in well under a frame;
+     a 5000-object scene too (tests).
+519. **Groups ordered by their best match:** results are grouped by provider (Calculator, Hierarchy, Project,
+     Menu, Settings, Help) and groups are sorted by their top score (stable, so ties keep that order), so
+     "lighting" puts the Lighting window first and "cube" puts the Cube object first. Six results per provider
+     without a prefix, fifty with one.
+520. **Menu commands come from a parallel table:** `search::menu_items::all` lists the menu bar's commands as
+     command-like titles ("Create Cube", "Add Rigidbody", "Lighting", "Default Layout") with the menu path as
+     detail and their shortcut; entries with no `Action` (Preferences, Refresh, reflection probes, About) get a
+     `MenuRun` variant. The menu bar itself was not rewritten (it builds egui menus inline); a test checks the
+     table. Titles match first; the menu path is a fallback with a lower score and no highlight.
+521. **Settings and Help providers:** every Project Settings page plus Preferences; page blurbs act as keywords
+     ("gravity" → Physics). Help lists the headings of docs/building, scripting, shaders and world_builder
+     (embedded with `include_str!`) and opens the guide in the system's Markdown viewer.
+522. **Actions:** Enter runs the first action; Alt+Enter or right-click lists all of them in place (Esc returns to
+     results). Objects: Select and frame (default), Select, Copy name. Assets: Show in Project (opens the folder,
+     selects it, Inspector shows it, focuses the Project tab — the existing `prefabs::select_asset` ping), Open
+     (as a double-click: scenes load, scripts open in the Code Editor, folders open), Show in Explorer, Copy path.
+     Menu: Run. Settings / Help: Open. Calculator (`=2*3`): Copy result. A removed object only warns.
+523. **Recent searches:** a query that led to an action is remembered (8, newest first) in
+     `Library/SearchHistory.json`; with an empty box the palette lists them and Enter puts one back in the box.
+524. **`MISTY_SEARCH=<text>`** opens the palette with that text for screenshots (the index is built
+     synchronously first).
+525. **Search across the other round 10 features (merge):** the palette and the Hierarchy box search the one
+     world, so objects of every loaded scene are found; with several scenes open a hit's dimmed text names its
+     scene first ("Lighting / Rig"), and the Hierarchy lists matches flat under each scene's header. The menu
+     table gains Edit ▸ Undo History (Ctrl+H; left out of the Window list), "Open {recent} Additive" for recent
+     scenes, the scene header commands of every open scene ("Set Active Scene Lighting", "Unload Scene …",
+     "Save Scene …", "Remove Scene …", "Close All Scenes Except …", "Load Scene …" for unloaded ones) and, while
+     objects are selected, "Apply Preset {name}" for every component preset (one undo step, like the picker).
+     Scene assets get an "Open Scene Additive" secondary action and preset assets "Apply to selection"; the
+     Preset Manager page comes from `Category::ALL` like the other settings pages.
