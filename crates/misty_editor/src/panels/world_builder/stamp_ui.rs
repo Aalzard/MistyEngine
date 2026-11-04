@@ -255,11 +255,11 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         let mut p = state.scene.world_position(e);
         p.y = height;
         state.scene.set_world_position(e, p);
-        state.mark_edited("World Stamp");
+        state.mark_edited("Move World Stamp");
     }
     if ch {
         let _ = state.scene.world.insert_one(e, s);
-        state.mark_edited("World Stamp");
+        state.mark_edited("Change World Stamp");
     }
     ch || moved
 }

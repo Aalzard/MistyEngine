@@ -141,11 +141,12 @@ pub fn poll(state: &mut EditorState) {
                 .map(|(d, _)| (*d).clone())
                 .unwrap_or_else(|| out.data.clone()),
         });
+    // The undo step diffs `before` against the stored result, so store it first.
+    store::insert(&path, out.data.clone());
     state
         .undo
         .push_terrain(job.label, &state.scene, &state.selection, before);
     state.scene_dirty = true;
-    store::insert(&path, out.data.clone());
     if let Err(e) = store::save(&path) {
         state.console.warn(format!("Could not save {path}: {e}"));
     }

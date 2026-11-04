@@ -101,7 +101,7 @@ pub fn set_group_settings(state: &mut EditorState, s: ReflectionProbeGroup) {
     match group(state) {
         Some(g) => {
             let _ = state.scene.world.insert_one(g, s);
-            state.mark_edited("Reflection Probe Settings");
+            state.mark_edited("Change Reflection Probe Settings");
         }
         None => state.probes.settings = s,
     }

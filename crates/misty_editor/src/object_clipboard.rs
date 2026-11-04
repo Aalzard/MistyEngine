@@ -55,7 +55,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         }
         Action::CutObjects => {
             if copy(s) {
-                s.record("Cut");
+                s.record(&format!("Cut {}", s.selection_label()));
                 for e in s.selection.top_level(&s.scene) {
                     s.scene.despawn(e);
                 }

@@ -313,7 +313,7 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
         ch
     });
     if changed {
-        terrain_tools::begin_edit(state, path, "Modify Terrain Layer");
+        terrain_tools::begin_edit(state, path, "Change Terrain Layer");
         store::modify_settings(path, |d| d.layers[selected] = layer);
     }
 }
@@ -398,7 +398,7 @@ fn settings(
         ch
     });
     if data_changed {
-        terrain_tools::begin_edit(state, &path, "Terrain Settings");
+        terrain_tools::begin_edit(state, &path, "Change Terrain Settings");
         store::modify(&path, |d| {
             d.set_size(size);
             d.set_heightmap_resolution(res);

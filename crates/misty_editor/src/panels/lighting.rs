@@ -70,8 +70,9 @@ fn environment_page(ui: &mut Ui, state: &mut EditorState) {
     let hdri = (s.skybox.kind == SkyboxKind::Hdri).then(|| lighting_hdri::context(ui, state, sun));
     let mut align_sun = false;
     if edit_environment(ui, &mut s, sun, hdri.as_ref(), &mut align_sun) {
+        let label = crate::undo_names::struct_change("", &state.scene.render_settings, &s);
         state.scene.render_settings = s;
-        state.mark_edited("Lighting");
+        state.mark_edited(&label);
     }
     if align_sun {
         lighting_hdri::align_sun(state);

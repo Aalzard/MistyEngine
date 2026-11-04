@@ -1036,7 +1036,8 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                 if let Ok(mut s) = state.scene.world.get::<&mut Scripts>(e) {
                     s.list[slot].enabled = on;
                 }
-                state.mark_edited("Script");
+                let verb = if on { "Enable" } else { "Disable" };
+                state.mark_edited(&format!("{verb} Script"));
             }
             ui.label(RichText::new(format!("📜 {} (Script)", nicify(&script.name()))).strong());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1121,12 +1122,13 @@ fn script_fields(ui: &mut Ui, state: &mut EditorState, e: Entity, slot: usize, p
         false
     });
     if !edits.is_empty() {
+        let label = format!("Change {}", crate::undo_names::humanize(&edits[0].0));
         if let Ok(mut s) = state.scene.world.get::<&mut Scripts>(e) {
             for (k, v) in edits {
                 s.list[slot].fields.insert(k, v);
             }
         }
-        state.mark_edited("Script");
+        state.mark_edited(&label);
     }
 }
 

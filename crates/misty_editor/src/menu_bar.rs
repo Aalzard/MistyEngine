@@ -92,6 +92,14 @@ fn edit_menu(ui: &mut Ui, s: &mut EditorState) {
             Action::Redo,
         )
     });
+    let history = Tab::UndoHistory;
+    item(
+        ui,
+        s,
+        history.title(),
+        history.shortcut(),
+        Action::FocusTab(history),
+    );
     ui.separator();
     item(ui, s, "Select All", "Ctrl+A", Action::SelectAll);
     item(ui, s, "Deselect All", "Shift+D", Action::DeselectAll);

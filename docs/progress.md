@@ -1530,3 +1530,27 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Reflections of an HDRI sky ignore the volumetric clouds: under clouds the HDRI's sun still glints off the terrain
   (a streak towards the sun in merged_clouds_hdri.png). Cloud-aware sky reflections / probes are a follow-up.
 - Clouds don't hide the HDRI's own baked-in sun or clouds; pairing a clear-sky HDRI with volumetric clouds looks best.
+
+## Round 10 — Undo History ✅
+
+### Done
+- Edit ▸ Undo History (Ctrl+H), a dockable on-demand window: every step by name, newest first, the current step
+  highlighted, redoable steps greyed below, "Initial State" at the bottom. Click a row to undo/redo to it; search
+  box; Clear History; footer with step count and approximate memory.
+- Named steps everywhere: "Change Light Intensity", "Change Fog Density", "Move / Rotate / Scale Cube",
+  "Create Sphere", "Delete 3 Objects", "Rename Cube", "Reparent Cube", "Paint Terrain", "Smooth Terrain",
+  "Enable Fog Volume"… Inspector edits are named from the field that changed (JSON diff).
+- Audit: Inspector components that changed values without reporting it now make undo steps (value comparison in
+  `component_section`), material asset edits undo (and re-save the .mat), terrain + scene edits in one interaction
+  share a step, Script field and enable toggles, World Builder, Navigation and Lighting edits are named.
+- History cap: 200 steps / ~512 MB; terrain steps store only the changed 32×32 tiles (heights, splat, details).
+- Selection is restored with each step but never a step of its own.
+- `MISTY_UNDO_DEMO=1` for screenshots; docs/screenshots/round10/undohistory_window.png.
+- Tests: jump to any step and back, redo branch dropped after a new step, grouping of a drag into one step,
+  count and byte caps, Clear History, material undo, terrain tile diff / swap / resize, brush-stroke undo size,
+  step naming (field diff, humanize, selection names), window rows / click-to-jump / search / clear.
+
+### Not matching Unity yet
+- Project Settings, texture import settings and build settings have no undo (saved immediately).
+- Steps are whole-scene snapshots (cheap for typical scenes; the memory estimate is approximate).
+- No "group" collapse of related steps in the window; a jump replays steps one by one.
