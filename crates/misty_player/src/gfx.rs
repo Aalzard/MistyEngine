@@ -53,6 +53,8 @@ pub struct Gfx {
     pub adapter_name: String,
     /// Fraction of the window size the game is rendered at.
     render_scale: f32,
+    /// The blit samples the nearest texel (Quality ▸ Upscale Filter: Nearest).
+    nearest: bool,
     /// Splash image (bind group, pixel size) and its background colour.
     splash: Option<(wgpu::BindGroup, [u32; 2])>,
     splash_background: wgpu::Color,
@@ -112,12 +114,7 @@ impl Gfx {
                 },
             ],
         });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("misty blit sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        let sampler = blit_sampler(&device, false);
         let group = blit_group(&device, &layout, &sampler, &target);
         let mut gfx = Self {
             adapter_name: format!(
@@ -139,6 +136,7 @@ impl Gfx {
             pipelines: Vec::new(),
             probes: Default::default(),
             render_scale: 1.0,
+            nearest: false,
             splash: None,
             splash_background: wgpu::Color::BLACK,
         };
@@ -216,6 +214,13 @@ impl Gfx {
     /// Use a quality level: shadow map size, effects, render scale.
     pub fn set_quality(&mut self, quality: &misty_engine::quality::QualityLevel) {
         self.renderer.set_quality(&self.device, quality);
+        // Upscale Filter: Nearest keeps hard pixels when the image is stretched.
+        let nearest = quality.upscale_filter.nearest();
+        if nearest != self.nearest {
+            self.nearest = nearest;
+            self.sampler = blit_sampler(&self.device, nearest);
+            self.group = blit_group(&self.device, &self.layout, &self.sampler, &self.target);
+        }
         if (quality.render_scale - self.render_scale).abs() > 1e-4 {
             self.render_scale = quality.render_scale;
             self.recreate_target();
@@ -477,6 +482,21 @@ fn present_mode(vsync: bool) -> wgpu::PresentMode {
     } else {
         wgpu::PresentMode::AutoNoVsync
     }
+}
+
+/// Sampler that stretches the game image to the window.
+fn blit_sampler(device: &wgpu::Device, nearest: bool) -> wgpu::Sampler {
+    let filter = if nearest {
+        wgpu::FilterMode::Nearest
+    } else {
+        wgpu::FilterMode::Linear
+    };
+    device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("misty blit sampler"),
+        mag_filter: filter,
+        min_filter: filter,
+        ..Default::default()
+    })
 }
 
 fn blit_group(

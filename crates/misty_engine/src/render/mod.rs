@@ -10,6 +10,7 @@ pub mod culling;
 pub mod custom_shader;
 mod draw_prep;
 pub mod environment;
+mod finish;
 mod frame_lists;
 mod glow;
 mod gpu_culling;
@@ -1176,14 +1177,34 @@ impl Renderer {
                 None,
             );
         }
+        // FXAA / sharpening read the composite from a second image and write the output.
+        let finish = p.finish.pick(&self.quality);
+        let composite_to = match finish {
+            Some(_) => target.pre_finish_view(),
+            None => target.output_view(),
+        };
         self.fullscreen(
             encoder,
-            target.output_view(),
+            composite_to,
             &p.composite,
             &target.composite_group,
             true,
-            self.timestamps(timing, false, true),
+            if finish.is_none() {
+                self.timestamps(timing, false, true)
+            } else {
+                None
+            },
         );
+        if let Some(pipeline) = finish {
+            self.fullscreen(
+                encoder,
+                target.output_view(),
+                pipeline,
+                &target.pre_finish_group,
+                true,
+                self.timestamps(timing, false, true),
+            );
+        }
     }
 
     /// Timestamp writes of the timed render's first or last pass.

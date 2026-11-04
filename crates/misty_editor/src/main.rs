@@ -107,6 +107,8 @@ mod sample_water;
 mod sample_world_builder;
 mod scene_camera;
 mod scene_files;
+mod scene_icons;
+mod scene_quality;
 mod search;
 mod selection;
 mod snap;

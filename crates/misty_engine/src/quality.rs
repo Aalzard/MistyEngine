@@ -99,6 +99,35 @@ impl AntiAliasing {
     }
 }
 
+/// How the image rendered at Render Scale is stretched to the window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpscaleFilter {
+    /// Smooth.
+    #[default]
+    Bilinear,
+    /// Hard pixels (pixel-art look at low Render Scale).
+    Nearest,
+    /// Bilinear after a contrast-adaptive sharpening pass.
+    Sharpen,
+}
+
+impl UpscaleFilter {
+    pub const ALL: [Self; 3] = [Self::Bilinear, Self::Nearest, Self::Sharpen];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Bilinear => "Bilinear",
+            Self::Nearest => "Nearest (pixelated)",
+            Self::Sharpen => "Sharpen",
+        }
+    }
+
+    /// Whether the stretch samples the nearest texel instead of blending four.
+    pub fn nearest(self) -> bool {
+        self == Self::Nearest
+    }
+}
+
 /// Texture Quality (the global mipmap limit): how many top mip levels are skipped.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TextureQuality {
@@ -165,12 +194,16 @@ pub struct QualityLevel {
     /// Soft shadow filtering (Off = hard edges).
     pub soft_shadows: Tier,
     pub anti_aliasing: AntiAliasing,
+    /// FXAA post pass on the final image (smooths edges MSAA misses: alpha cut-outs, shading).
+    pub fxaa: bool,
     pub texture_quality: TextureQuality,
     pub anisotropic_textures: Anisotropic,
     /// Largest texture side on the GPU, whatever the textures' own Max Size.
     pub max_texture_size: u32,
     /// The 3D image is rendered at this fraction of the window size (0.25–2).
     pub render_scale: f32,
+    /// How the Render Scale image is stretched to the window.
+    pub upscale_filter: UpscaleFilter,
     /// Multiplier on LOD Group switch distances (`RenderOptions::lod_bias`).
     pub lod_bias: f32,
     pub ambient_occlusion: Tier,
@@ -202,10 +235,12 @@ impl QualityLevel {
             cascade_blend: 0.1,
             soft_shadows: Tier::Off,
             anti_aliasing: AntiAliasing::Off,
+            fxaa: false,
             texture_quality: TextureQuality::Half,
             anisotropic_textures: Anisotropic::Disabled,
             max_texture_size: 1024,
             render_scale: 0.75,
+            upscale_filter: UpscaleFilter::Bilinear,
             lod_bias: 0.5,
             ambient_occlusion: Tier::Off,
             volumetric_fog: Tier::Off,
@@ -226,10 +261,12 @@ impl QualityLevel {
             cascade_blend: 0.1,
             soft_shadows: Tier::Low,
             anti_aliasing: AntiAliasing::X2,
+            fxaa: false,
             texture_quality: TextureQuality::Full,
             anisotropic_textures: Anisotropic::PerTexture,
             max_texture_size: 2048,
             render_scale: 1.0,
+            upscale_filter: UpscaleFilter::Bilinear,
             lod_bias: 1.0,
             ambient_occlusion: Tier::Low,
             volumetric_fog: Tier::Low,
@@ -250,10 +287,12 @@ impl QualityLevel {
             cascade_blend: 0.1,
             soft_shadows: Tier::Medium,
             anti_aliasing: AntiAliasing::X4,
+            fxaa: false,
             texture_quality: TextureQuality::Full,
             anisotropic_textures: Anisotropic::ForcedOn,
             max_texture_size: 4096,
             render_scale: 1.0,
+            upscale_filter: UpscaleFilter::Bilinear,
             lod_bias: 1.5,
             ambient_occlusion: Tier::Medium,
             volumetric_fog: Tier::Medium,
@@ -553,6 +592,8 @@ mod tests {
         assert_eq!(q.levels[0].name, "Level");
         assert_eq!(q.levels[0].shadow_cascades, 2);
         assert_eq!(q.levels[0].render_scale, 2.0);
+        assert_eq!(q.levels[0].upscale_filter, UpscaleFilter::Bilinear);
+        assert!(!q.levels[0].fxaa);
         assert_eq!(q.default_level, 0);
         let mut empty: QualitySettings = serde_json::from_str(r#"{ "levels": [] }"#).unwrap();
         empty.sanitize();

@@ -189,6 +189,12 @@ pub struct SceneViewSettings {
     pub lighting: bool,
     pub audio: bool,
     pub gizmos: bool,
+    /// Icon gizmo size and tint (Gizmos ▾).
+    pub icons: crate::scene_icons::IconSettings,
+    /// One-shot: open the Gizmos ▾ dropdown next frame (screenshot hook).
+    pub open_icon_menu: bool,
+    /// One-shot: open the Quality dropdown next frame (screenshot hook).
+    pub open_quality_menu: bool,
     pub grid: bool,
     /// The effects toggle (☁): skybox, fog, clouds and post-processing as picked in `effects`.
     pub skybox: bool,
@@ -412,6 +418,9 @@ impl EditorState {
                 lighting: true,
                 audio: false,
                 gizmos: true,
+                icons: Default::default(),
+                open_icon_menu: false,
+                open_quality_menu: false,
                 grid: true,
                 skybox: true,
                 lock_to_selection: false,
