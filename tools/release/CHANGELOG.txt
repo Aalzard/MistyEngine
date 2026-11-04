@@ -1,0 +1,63 @@
+Misty Engine changelog
+======================
+
+0.0.1 - first test version (November 2026)
+------------------------------------------
+
+The first public test version. Everything below is new.
+
+Misty Hub and getting started
+- Misty Hub: the start screen with your recent projects (with pictures), search, Open and
+  "Show in Explorer".
+- New projects from four templates: Empty, Standard (a platform to build on), Ocean (sea and
+  sky) and Landscape (a generated world with clouds, fog and sun shafts).
+- Learn: four interactive tutorials inside the editor (post-processing, god rays, terrain,
+  World Builder). A step card tells you what to do and the place to click lights up.
+- File > Open Misty Hub goes back to the Hub.
+- Updates: Misty Engine checks for new versions and installs them with one click (the download
+  is checked before anything changes, and a failed update is undone).
+- New logo, window and program icons, a splash screen and an About window.
+
+Editor
+- Dockable windows: Hierarchy, Scene, Game, Inspector, Project, Console, Animation and more,
+  with saved layouts.
+- Scene view: fly, orbit and pan; move, rotate and scale tools; snapping; 2D mode; draw modes.
+- Undo and redo for everything, with an Undo History window.
+- Ctrl+K search: objects, assets, menu commands, settings and help in one box.
+- Several scenes open at once (additive scenes, move objects between scenes).
+- Prefabs with overrides; Presets for components and assets.
+- Asset GUIDs (.meta files): renaming or moving assets keeps references working.
+- A built-in Code Editor for Lua and shaders, with error marks.
+- Project Settings: Player, Quality, Input, Tags and Layers, Physics, and more.
+
+Rendering
+- Physically based materials (Standard shader) and unlit shaders; textures and 3D models (glTF
+  and OBJ).
+- Directional, point, spot and rectangle area lights; soft shadows (PCSS) and cascaded sun
+  shadows.
+- Reflection probes with automatic placement; ambient occlusion and contact shadows.
+- Post-processing: tonemapping, bloom, color adjustments, vignette, fog and more.
+- Volumetric fog with sharp sun shafts; volumetric clouds; HDRI skies.
+- Light halos and lens flares.
+- Custom shaders (WGSL) and a water system: oceans, lakes and rivers with waves, foam and fog.
+
+Worlds
+- Terrain: sculpt, paint layers, Auto Paint rules, cliffs, grass and trees.
+- World Builder: a whole landscape from settings: landform, erosion, mountains, ocean, biomes,
+  trees and rocks.
+
+Gameplay
+- Play, Pause and Step in the editor.
+- Physics (Rigidbody, colliders, joints) and a Character Controller.
+- Lua scripting with Start, Update, FixedUpdate and collision events.
+- Navigation meshes and agents.
+- Animation clips and Animator controllers.
+- Particle systems.
+- Audio sources, listeners and Audio Mixers.
+- Runtime UI (canvas, text, buttons and more) and the Input Manager with gamepads.
+
+Builds
+- Build Settings and File > Build: a stand-alone Windows game (your exe, icon and data).
+
+Known limitations
+- Windows only. 2D tools are unfinished. Some menu entries are placeholders.

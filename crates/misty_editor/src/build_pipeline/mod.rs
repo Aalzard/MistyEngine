@@ -118,7 +118,17 @@ fn build(req: &PackageRequest, send: &mut dyn FnMut(Msg)) -> Result<Built, Strin
         req.out.display()
     )));
     package::check_output(&req.project, &req.out)?;
+    // An editor installed outside the engine source (a release package) uses the player shipped
+    // next to it, even if the source it was compiled from is still on this machine.
     let player = match targets::engine_workspace() {
+        Some(ws) if !runs_from(&ws) && prebuilt(target).is_ok() => {
+            let p = prebuilt(target)?;
+            send(Msg::Log(format!(
+                "Using the player next to the editor: {}",
+                p.display()
+            )));
+            p
+        }
         Some(ws) => compile(&ws, target, send)?,
         None => prebuilt(target)?,
     };
@@ -200,6 +210,44 @@ fn compile(ws: &Path, target: BuildTarget, send: &mut dyn FnMut(Msg)) -> Result<
     }
 }
 
+/// `misty --build <project> <output folder>`: File ▸ Build without the window (scripts, release
+/// smoke tests). Prints the log; returns the built executable.
+pub fn build_from_cli(project: &Path, out: &Path) -> Result<PathBuf, String> {
+    let build = misty_engine::build::BuildSettings::load(project)?;
+    let settings = misty_engine::settings::ProjectSettings::load(project)?;
+    let req = PackageRequest {
+        project: project.to_path_buf(),
+        out: out.to_path_buf(),
+        build,
+        settings,
+    };
+    let mut job = BuildJob::start(req, false);
+    let mut printed = 0;
+    loop {
+        let result = job.poll();
+        for l in &job.log[printed..] {
+            println!("{}{}", if l.warning { "warning: " } else { "" }, l.text);
+        }
+        printed = job.log.len();
+        if let Some(r) = result {
+            return r.map(|b| b.exe);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// The running editor is inside `dir` (a development build in the workspace's `target`).
+fn runs_from(dir: &Path) -> bool {
+    let norm = |p: &Path| {
+        let s = std::path::absolute(p)
+            .unwrap_or_else(|_| p.to_path_buf())
+            .to_string_lossy()
+            .replace('\\', "/");
+        if cfg!(windows) { s.to_lowercase() } else { s }
+    };
+    std::env::current_exe().is_ok_and(|exe| norm(&exe).starts_with(&(norm(dir) + "/")))
+}
+
 /// Without the engine source, use the player shipped next to the editor (this platform only).
 fn prebuilt(target: BuildTarget) -> Result<PathBuf, String> {
     if Some(target) != BuildTarget::host() {
@@ -258,6 +306,20 @@ mod tests {
         let built = result.unwrap();
         eprintln!("built {:?}", built);
         assert!(built.exe.is_file());
+    }
+
+    /// A development build runs from inside the workspace (and compiles the player); a package
+    /// elsewhere uses the player next to it.
+    #[test]
+    fn runs_from_tells_a_workspace_build_from_a_package() {
+        let exe = std::env::current_exe().unwrap();
+        let above = exe.parent().and_then(Path::parent).unwrap();
+        assert!(runs_from(above));
+        assert!(!runs_from(&std::env::temp_dir().join("misty_not_here")));
+        // A folder whose name only starts the same is not the same folder.
+        let dir = exe.parent().unwrap();
+        let sibling = PathBuf::from(format!("{}x", dir.display()));
+        assert!(!runs_from(&sibling));
     }
 
     #[test]

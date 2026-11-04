@@ -2929,3 +2929,27 @@ Record of choices made without asking, and why.
      build with it may use any license (runtime exception)." The README is now GitHub-facing: what Misty
      Engine is, features, six screenshots from `docs/screenshots`, the Releases download link, system
      requirements, build-from-source steps and the license summary, marked as an early test version.
+
+## 2026-11-04 — v0.0.1: release package
+
+608. **Ctrl+K guides open from the embedded copy:** `search::pages::open_doc` opened
+     `<CARGO_MANIFEST_DIR>/../../docs/<file>`, which only exists on the machine that compiled the editor. The
+     guide text is already embedded (for the search index), so opening one writes that text to
+     `%TEMP%\MistyEngine-guides\<file>` and opens it. Nothing else is read from the source tree at runtime
+     (shaders, fonts, icons, templates and tutorials are embedded).
+609. **A packaged editor uses the player shipped next to it:** File ▸ Build compiled the player with cargo
+     whenever the source folder the editor was compiled from still exists, which on the machine that made
+     the package means a release editor would rebuild the player from the repository instead of using its
+     own `misty_player.exe`. Now an editor whose exe is *outside* that workspace (`runs_from`) uses the
+     player beside it when there is one (host target); a development build inside the workspace's `target`
+     still compiles, and other targets still need the source. The player lookup is by its own name, so
+     renaming the editor to `MistyEngine.exe` changes nothing there.
+610. **`misty --build <project> <output folder>`:** File ▸ Build without a window (prints the build log, exits
+     0 on success, 2 on failure), for scripts and the release smoke test. It runs the same `BuildJob`.
+611. **Release package (`tools/make_release.ps1`, docs/release.md):** builds both exes, makes
+     `MistyEngine-v<version>-windows-x64\` (MistyEngine.exe, misty_player.exe, `Examples\SampleProject` from
+     `git archive HEAD` so uncommitted edits are never shipped, README.txt / CHANGELOG.txt from
+     `tools/release/`, LICENSE.txt = LICENSE + RUNTIME-EXCEPTION.md), zips the folder with Windows' `tar -a`
+     (bsdtar: deflate, forward slashes; Windows PowerShell 5.1's `Compress-Archive` and .NET Framework's
+     `ZipFile` can write backslash entry names) and writes `<zip>.sha256.txt` as the updater expects. The
+     version comes from the workspace `Cargo.toml`.

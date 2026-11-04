@@ -129,7 +129,7 @@ mod updater;
 mod viewport;
 mod widgets;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// What the command line asks for.
 enum Start {
@@ -139,7 +139,8 @@ enum Start {
     Editor(PathBuf),
 }
 
-/// `misty [<project>]` or `misty --new <Template> <folder>` (creates the project, then opens it).
+/// `misty [<project>]`, `misty --new <Template> <folder>` (creates the project, then opens it)
+/// or `misty --build <project> <output folder>` (builds the game without a window, then exits).
 fn parse_args() -> Result<Start, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
@@ -156,8 +157,17 @@ fn parse_args() -> Result<Start, String> {
             templates::create(&folder, t)?;
             Ok(Start::Editor(folder))
         }
+        [flag, project, out] if flag == "--build" => {
+            match build_pipeline::build_from_cli(Path::new(project), Path::new(out)) {
+                Ok(exe) => {
+                    println!("Built {}", exe.display());
+                    std::process::exit(0)
+                }
+                Err(e) => Err(format!("build failed: {e}")),
+            }
+        }
         [flag, ..] if flag.starts_with("--") => Err(format!(
-            "usage: misty [<project folder>] | misty --new <Template> <folder> ({flag}?)"
+            "usage: misty [<project folder>] | misty --new <Template> <folder> | misty --build <project folder> <output folder> ({flag}?)"
         )),
         [project, ..] => Ok(Start::Editor(PathBuf::from(project))),
     }

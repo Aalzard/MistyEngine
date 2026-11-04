@@ -47,28 +47,63 @@ the `MistyEngine.exe` the package placed in the install folder. Requests send th
 ## How to publish a release
 
 1. Bump `version` in the root `Cargo.toml` (`[workspace.package]`), e.g. `0.0.2`, and commit.
-2. Build the release: `cargo build --release -p misty_editor -p misty_player`.
-3. Make the package folder `MistyEngine-v0.0.2-windows-x64\` with `MistyEngine.exe` (the
-   editor, renamed from `misty.exe`), `misty_player.exe` and anything else that ships
-   (e.g. `Examples\`). The exe must be called `MistyEngine.exe` at the top of the package.
-4. Zip it as **`MistyEngine-v0.0.2-windows-x64.zip`** (the files may sit at the top of the zip
-   or inside that one folder; deflate or stored).
-5. Write the checksum file **`MistyEngine-v0.0.2-windows-x64.zip.sha256.txt`**. In PowerShell:
+2. Make the package — one command from the repository root (Windows PowerShell 5.1 or 7):
 
    ```powershell
-   $zip = "MistyEngine-v0.0.2-windows-x64.zip"
-   (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  $zip" | Out-File -Encoding ascii "$zip.sha256.txt"
+   powershell -ExecutionPolicy Bypass -File tools\make_release.ps1
    ```
 
-   (`sha256sum MistyEngine-v0.0.2-windows-x64.zip > MistyEngine-v0.0.2-windows-x64.zip.sha256.txt`
-   works too — the first 64-hex-digit word is the hash.)
-6. On https://github.com/Aalzard/MistyEngine/releases click **Draft a new release**, create the
-   tag **`v0.0.2`**, write the release notes (they appear in the message box), upload both files
-   as release assets and **Publish** (not as a pre-release). The repository must be public for
+   It builds `misty_editor` and `misty_player` in release, then writes to `..\MistyRelease\`
+   (next to the repository; `-OutDir` changes it, `-TargetDir` uses another cargo target folder,
+   `-SkipBuild` packages the exes already built). Details in **The package** below.
+3. Look at the result: unzip the zip somewhere new and do the smoke test below.
+4. Commit, then tag the release commit: `git tag -a v0.0.2 -m "Misty Engine v0.0.2"`.
+5. Push the commit and the tag.
+6. On https://github.com/Aalzard/MistyEngine/releases click **Draft a new release**, pick the
+   tag **`v0.0.2`**, write the release notes (they appear in the message box), upload the zip and its
+   `.sha256.txt` as release assets and **Publish** (not as a pre-release). The repository must be public for
    the API to see it.
 
 Within 6 hours (or right away via Help ▸ Check for Updates…) every install older than 0.0.2
 offers the update.
+
+## The package
+
+`tools/make_release.ps1` makes, for the workspace version `X.Y.Z` in `Cargo.toml`:
+
+```
+MistyRelease\
+  MistyEngine-vX.Y.Z-windows-x64\
+    MistyEngine.exe          the editor and Hub (misty.exe renamed; the updater relaunches this name)
+    misty_player.exe         File > Build copies it into games; it must sit next to MistyEngine.exe
+                             (an editor outside the engine source always uses this one)
+    Examples\SampleProject\  `git archive HEAD SampleProject` (committed files only: uncommitted
+                             edits never ship), without Library\ or Builds\
+    README.txt               tools/release/README.txt ({VERSION} filled in)
+    CHANGELOG.txt            tools/release/CHANGELOG.txt (add the new version at the top)
+    LICENSE.txt              LICENSE + RUNTIME-EXCEPTION.md
+  MistyEngine-vX.Y.Z-windows-x64.zip            the folder above inside the zip (bsdtar, deflate)
+  MistyEngine-vX.Y.Z-windows-x64.zip.sha256.txt "<sha256>  <zip name>"
+```
+
+Nothing else is needed at runtime: shaders, fonts, icons, templates, tutorials and the Ctrl+K
+guides are built into the exes (the guides are written to the temp folder when opened). Both exes
+carry the Misty Engine icon and version info (`crates/misty_editor/build_icon.rs`, needs the
+Windows SDK's `rc.exe`; check Properties ▸ Details of `MistyEngine.exe` shows the version).
+
+### Smoke test
+
+From the unzipped folder, somewhere outside the repository, with a throwaway Hub config
+(`$env:MISTY_HUB_CONFIG = "$env:TEMP\misty-smoke\hub.json"`, so your recent list is untouched):
+
+1. `MISTY_SCREENSHOT=hub.png MistyEngine.exe` — the Hub.
+2. `MISTY_SCREENSHOT=new.png MistyEngine.exe --new Standard %TEMP%\misty-smoke\SmokeProject` —
+   the editor on a new Standard project.
+3. `MISTY_SCREENSHOT=clouds.png MISTY_SCENE=Assets/Scenes/CloudsDemo.scene MistyEngine.exe
+   Examples\SampleProject` — a demo scene renders.
+4. Build the SmokeProject: File ▸ Build Settings ▸ Build (or, without clicking, the ignored test
+   `real_build` with `MISTY_BUILD_PROJECT` / `MISTY_BUILD_OUT`; it uses the repository's player), then
+   run the game exe from the build folder with `MISTY_SCREENSHOT=game.png`.
 
 ## Changing the repository / testing
 
@@ -85,7 +120,8 @@ offers the update.
 
 ## Hub hook
 
-The Hub owns an `updater::Updater` like the editor (`Updater::from_env()` then `start(ctx)`);
-in its sidebar footer it draws `updater::ui::update_button(ui, &updater)` and each frame calls
-`updater::ui::windows(ctx, &mut updater)`; when either returns true it calls
-`updater.install()` (the Hub has no scenes to save).
+There is one `updater::Updater` per process: the launcher makes it at startup
+(`Launcher::updater`: `Updater::from_env()` then `start(ctx)`) and hands it Hub → editor → Hub.
+The Hub draws `updater::ui::update_button` next to the version in its sidebar footer and calls
+`updater::ui::windows` each frame; either one returning true calls `updater.install()` (the Hub
+has no scenes to save).

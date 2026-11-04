@@ -99,12 +99,20 @@ pub fn doc_headings() -> Vec<DocHeading> {
     out
 }
 
-/// Open a guide in the system's viewer for Markdown files.
+/// Open a guide in the system's viewer for Markdown files. The embedded copy is written to the
+/// temp folder first, so this works in a packaged editor without the source tree's `docs/`.
 pub fn open_doc(s: &mut EditorState, file: &str) {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs")
-        .join(file);
-    if let Err(e) = crate::assets::open_external(&path) {
+    let Some((_, text)) = DOCS.iter().find(|(f, _)| *f == file) else {
+        s.console.warn(format!("No guide named {file}."));
+        return;
+    };
+    let dir = std::env::temp_dir().join("MistyEngine-guides");
+    let path = dir.join(file);
+    let written = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text));
+    if let Err(e) = written
+        .map_err(|e| e.to_string())
+        .and_then(|_| crate::assets::open_external(&path).map_err(|e| e.to_string()))
+    {
         s.console.warn(format!("Could not open {file}: {e}"));
     }
 }
