@@ -2495,3 +2495,9 @@ Record of choices made without asking, and why.
      objects are selected, "Apply Preset {name}" for every component preset (one undo step, like the picker).
      Scene assets get an "Open Scene Additive" secondary action and preset assets "Apply to selection"; the
      Preset Manager page comes from `Category::ALL` like the other settings pages.
+526. **Engine unit tests keep their own game clock (merge):** `clock::set_play_time` is process-wide, and every
+     `Runtime::update` in the scripting / multi-scene tests sets it while the buoyancy test steps waves frame by
+     frame through the same clock, so a parallel test could swap the time under it (a race found while looking
+     for the intermittent engine failure reported on the search branch; seven full engine runs after the merge
+     all passed, so it could not be reproduced on demand). Under `cfg(test)` the play time is thread-local;
+     builds are unchanged.
