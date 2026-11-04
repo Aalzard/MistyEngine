@@ -140,6 +140,14 @@ impl SceneComponent for TerrainCollider {
     const NAME: &'static str = "Terrain Collider";
     const CATEGORY: &'static str = "Physics";
 }
+impl SceneComponent for super::WaterSurface {
+    const NAME: &'static str = "Water Surface";
+    const CATEGORY: &'static str = "Rendering";
+}
+impl SceneComponent for super::Floater {
+    const NAME: &'static str = "Floater";
+    const CATEGORY: &'static str = "Physics";
+}
 impl SceneComponent for SpriteRenderer {
     const NAME: &'static str = "Sprite Renderer";
     const CATEGORY: &'static str = "Rendering";
@@ -282,6 +290,8 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<ParticleSystem>(),
             ComponentInfo::of::<Terrain>(),
             ComponentInfo::of::<TerrainCollider>(),
+            ComponentInfo::of::<super::WaterSurface>(),
+            ComponentInfo::of::<super::Floater>(),
             ComponentInfo::of::<NavMeshAgent>(),
             ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<Scripts>(),

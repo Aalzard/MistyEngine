@@ -13,11 +13,13 @@ mod nav_editors;
 mod particles;
 mod physics_editors;
 mod post_volume;
+mod shader_material;
 mod slots;
 mod sprite_editors;
 mod terrain;
 mod texture_import;
 mod ui_editors;
+mod water;
 
 use egui::{RichText, Ui};
 use misty_engine::hecs::Entity;

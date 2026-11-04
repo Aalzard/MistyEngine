@@ -215,6 +215,11 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
     ui.menu_button("Audio", |ui| {
         item(ui, s, "Audio Source", "", create(Create::AudioSource));
     });
+    ui.menu_button("Water", |ui| {
+        for kind in misty_engine::water::WaterKind::ALL {
+            item(ui, s, kind.label(), "", create(Create::Water(kind)));
+        }
+    });
     ui.menu_button("UI", |ui| {
         for el in crate::ui_create::UiElement::ALL {
             item(ui, s, el.name(), "", create(Create::Ui(el)));

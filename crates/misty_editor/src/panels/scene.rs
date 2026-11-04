@@ -62,6 +62,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             crate::terrain_tools::brush_lines(&mut lines, state);
             let overlay = gizmos::nav_overlay(state, ui.ctx(), &mut lines);
             let terrains = misty_engine::terrain::draws(&state.scene);
+            let water = misty_engine::water::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
             let scene_lights = render_scene::lights(&state.scene);
             // The sky follows the scene's sun even when the view uses the headlight.
@@ -95,6 +96,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 terrains: &terrains,
                 shaded: sv.draw_mode != 1,
                 lights: &lights,
+                water: &water,
             };
             let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
             let texture = gpu.render(ViewId::Scene, size, &frame);

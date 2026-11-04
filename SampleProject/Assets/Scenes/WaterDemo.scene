@@ -1,0 +1,1530 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 5000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "center": [
+                  0.0,
+                  1.5,
+                  0.0
+                ],
+                "height": 6.0,
+                "radius": 48.0,
+                "speed": 0.04
+              },
+              "path": "Assets/Scripts/CameraOrbit.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            8.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            6.0,
+            -48.0
+          ],
+          "rotation": [
+            0.06975647,
+            0.0,
+            0.0,
+            0.9975641
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.7,
+            0.45
+          ],
+          "enabled": true,
+          "intensity": 1.4,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            7.0,
+            200.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "rotation": [
+            -0.010600969,
+            0.98297083,
+            -0.060121074,
+            -0.1733243
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Water Surface"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ocean",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Water Surface": {
+          "enabled": true,
+          "kind": "Ocean",
+          "settings": {
+            "caustics": 1.0,
+            "caustics_depth": 8.0,
+            "caustics_scale": 4.0,
+            "choppiness": 0.74,
+            "clarity": 8.0,
+            "crest_foam": 0.27,
+            "deep_color": [
+              0.01,
+              0.09,
+              0.18
+            ],
+            "flow_speed": 0.0,
+            "foam_color": [
+              0.95,
+              0.97,
+              1.0
+            ],
+            "reflections": 1.0,
+            "refraction": 0.5,
+            "ripples": 0.78000003,
+            "scattering": 1.0,
+            "scattering_color": [
+              0.1,
+              0.65,
+              0.55
+            ],
+            "screen_space_reflections": true,
+            "shallow_color": [
+              0.12,
+              0.55,
+              0.6
+            ],
+            "shore_foam": 0.8,
+            "shore_foam_width": 1.5,
+            "smoothness": 0.96,
+            "spectrum": "Jonswap",
+            "swell_direction": 10.0,
+            "swell_height": 0.855,
+            "swell_length": 90.0,
+            "underwater": true,
+            "underwater_color": [
+              0.04,
+              0.25,
+              0.32
+            ],
+            "underwater_distortion": 0.5,
+            "underwater_visibility": 25.0,
+            "wave_height": 0.72,
+            "wind_direction": 30.0,
+            "wind_speed": 8.6
+          },
+          "size": [
+            40.0,
+            40.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Island",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sand",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Sand.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -3.2,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            70.0,
+            10.0,
+            70.0
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Seabed",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Seabed.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -14.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            30.0,
+            1.0,
+            30.0
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rock 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Island Rock.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            14.0,
+            1.0,
+            -18.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            4.0,
+            3.0,
+            3.5
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rock 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Island Rock.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            17.5,
+            0.2,
+            -14.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.5,
+            2.0,
+            2.2
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rock 3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Island Rock.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -20.0,
+            0.4,
+            10.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            5.0,
+            3.5,
+            4.0
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rock 4",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Island Rock.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -24.0,
+            -0.5,
+            16.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.0,
+            2.5,
+            3.0
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Palm",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            8.0
+          ],
+          "position": [
+            -4.0,
+            1.5,
+            3.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.06975647,
+            0.9975641
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Trunk",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.45,
+            3.0,
+            0.45
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Leaves",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Palm Leaves.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.3,
+            6.3,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            5.0,
+            1.2,
+            5.0
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hologram Beacon",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Hologram.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            6.0,
+            3.5,
+            -6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.6,
+            2.0,
+            1.6
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crates",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Floater": {
+          "buoyancy": 2.0,
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "water_angular_drag": 1.0,
+          "water_drag": 1.5
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Rigidbody",
+            "Box Collider",
+            "Floater"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crate 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": false,
+          "mass": 30.0,
+          "use_gravity": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            5.0
+          ],
+          "position": [
+            12.071968,
+            1.5,
+            28.55289
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.043619387,
+            0.99904823
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 14
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Floater": {
+          "buoyancy": 2.0,
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "water_angular_drag": 1.0,
+          "water_drag": 1.5
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Rigidbody",
+            "Box Collider",
+            "Floater"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crate 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": false,
+          "mass": 65.909996,
+          "use_gravity": true
+        },
+        "Transform": {
+          "euler_hint": [
+            10.0,
+            37.0,
+            5.0
+          ],
+          "position": [
+            33.70195,
+            2.5,
+            9.443439
+          ],
+          "rotation": [
+            0.096361145,
+            0.31219116,
+            0.01357929,
+            0.94502217
+          ],
+          "scale": [
+            1.3,
+            1.3,
+            1.3
+          ]
+        }
+      },
+      "parent": 14
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Floater": {
+          "buoyancy": 2.0,
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "water_angular_drag": 1.0,
+          "water_drag": 1.5
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Rigidbody",
+            "Box Collider",
+            "Floater"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crate 3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": false,
+          "mass": 122.880005,
+          "use_gravity": true
+        },
+        "Transform": {
+          "euler_hint": [
+            20.0,
+            74.0,
+            5.0
+          ],
+          "position": [
+            31.641256,
+            1.5,
+            -22.7998
+          ],
+          "rotation": [
+            0.1644016,
+            0.58605874,
+            -0.070097856,
+            0.79031223
+          ],
+          "scale": [
+            1.6,
+            1.6,
+            1.6
+          ]
+        }
+      },
+      "parent": 14
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Floater": {
+          "buoyancy": 2.0,
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "water_angular_drag": 1.0,
+          "water_drag": 1.5
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Rigidbody",
+            "Box Collider",
+            "Floater"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crate 4",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": false,
+          "mass": 30.0,
+          "use_gravity": true
+        },
+        "Transform": {
+          "euler_hint": [
+            30.0,
+            111.0,
+            5.0
+          ],
+          "position": [
+            1.5121597,
+            2.5,
+            -30.963097
+          ],
+          "rotation": [
+            0.1811802,
+            0.7888926,
+            -0.18923208,
+            0.5558897
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 14
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Floater": {
+          "buoyancy": 2.0,
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "water_angular_drag": 1.0,
+          "water_drag": 1.5
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Rigidbody",
+            "Box Collider",
+            "Floater"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crate 5",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": false,
+          "mass": 65.909996,
+          "use_gravity": true
+        },
+        "Transform": {
+          "euler_hint": [
+            40.0,
+            148.0,
+            5.0
+          ],
+          "position": [
+            -26.267061,
+            1.5,
+            -23.130966
+          ],
+          "rotation": [
+            0.13358478,
+            0.8983187,
+            -0.3171599,
+            0.2731087
+          ],
+          "scale": [
+            1.3,
+            1.3,
+            1.3
+          ]
+        }
+      },
+      "parent": 14
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Floater": {
+          "buoyancy": 2.0,
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "water_angular_drag": 1.0,
+          "water_drag": 1.5
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Rigidbody",
+            "Box Collider",
+            "Floater"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crate 6",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": false,
+          "mass": 122.880005,
+          "use_gravity": true
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            185.0,
+            5.0
+          ],
+          "position": [
+            -38.400246,
+            2.5,
+            6.8132977
+          ],
+          "rotation": [
+            0.021078145,
+            0.90538746,
+            -0.42353857,
+            -0.021078194
+          ],
+          "scale": [
+            1.6,
+            1.6,
+            1.6
+          ]
+        }
+      },
+      "parent": 14
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Floater": {
+          "buoyancy": 2.0,
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "water_angular_drag": 1.0,
+          "water_drag": 1.5
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Rigidbody",
+            "Box Collider",
+            "Floater"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crate 7",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Wood.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": false,
+          "mass": 30.0,
+          "use_gravity": true
+        },
+        "Transform": {
+          "euler_hint": [
+            60.0,
+            222.0,
+            5.0
+          ],
+          "position": [
+            -14.796789,
+            1.5,
+            27.240686
+          ],
+          "rotation": [
+            -0.14374697,
+            0.8155508,
+            -0.4798835,
+            -0.28969926
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 14
+    }
+  ],
+  "version": 1
+}

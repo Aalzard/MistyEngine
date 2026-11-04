@@ -174,6 +174,7 @@ fn draw(
         terrains: &[],
         shaded: true,
         lights: &lights,
+        water: &[],
     };
     let rs = &gpu.state;
     gpu.renderer.render(&rs.device, &rs.queue, target, &frame);

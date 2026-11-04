@@ -2,6 +2,7 @@
 
 mod batch;
 pub mod culling;
+pub mod custom_shader;
 pub mod environment;
 mod frame_lists;
 mod gpu_timer;
@@ -9,6 +10,7 @@ pub mod mesh;
 pub mod particles;
 mod pipelines;
 pub mod post;
+mod scene_copy;
 mod shadows;
 pub mod stats;
 pub mod surface;
@@ -17,6 +19,7 @@ mod terrain;
 pub mod texture;
 pub mod ui;
 mod variants;
+mod water;
 
 pub use crate::terrain::TerrainDraw;
 pub use environment::{Environment, Sun};
@@ -114,6 +117,8 @@ pub struct MaterialParams {
     pub occlusion_strength: f32,
     /// Multiplied by the emission colour (sRGB).
     pub emission_map: Option<String>,
+    /// A `.shader` asset replaces the built-in shading (see [`custom_shader`]).
+    pub custom: Option<custom_shader::CustomMaterial>,
 }
 
 impl Default for MaterialParams {
@@ -138,11 +143,19 @@ impl Default for MaterialParams {
             occlusion_map: None,
             occlusion_strength: 1.0,
             emission_map: None,
+            custom: None,
         }
     }
 }
 
 impl MaterialParams {
+    /// Render queue: the custom shader's, else the rendering mode's.
+    pub fn render_queue(&self) -> u32 {
+        self.custom
+            .as_ref()
+            .map_or(self.mode.render_queue(), |c| c.queue)
+    }
+
     pub fn pipeline_key(&self) -> surface::PipelineKey {
         surface::PipelineKey {
             unlit: self.unlit,
@@ -222,6 +235,8 @@ pub struct Frame<'a> {
     /// Draw shaded meshes (false in the Wireframe draw mode; outlines still work).
     pub shaded: bool,
     pub lights: &'a [LightData],
+    /// Water surfaces (oceans, lakes, rivers), drawn after the opaque scene.
+    pub water: &'a [crate::water::WaterDraw],
 }
 
 #[repr(C)]
@@ -298,6 +313,11 @@ pub struct Renderer {
     line_capacity: usize,
     particle_instances: particles::InstanceBuffer,
     terrains: terrain::TerrainCache,
+    /// `.shader` materials (created on first use: needs the queue).
+    custom: Option<custom_shader::CustomShaders>,
+    /// Opaque scene copies for water and scene-sampling shaders.
+    scene_copies: scene_copy::SceneCopies,
+    water: water::WaterRenderer,
     meshes: Vec<GpuMesh>,
     /// Imported meshes by "path#index" (None = could not be loaded), uploaded on first use.
     imported: std::collections::HashMap<String, Option<GpuMesh>>,
@@ -388,6 +408,9 @@ impl Renderer {
             line_capacity,
             particle_instances: particles::InstanceBuffer::new(device),
             terrains: terrain::TerrainCache::new(device),
+            custom: None,
+            scene_copies: scene_copy::SceneCopies::new(device),
+            water: Default::default(),
             meshes,
             imported: Default::default(),
             imported_generation: models::generation(),
@@ -460,8 +483,21 @@ impl Renderer {
 
     /// Reload textures and models whose files changed on disk (the editor calls this in Edit mode).
     pub fn reload_changed_assets(&mut self) {
-        self.textures.poll_changes();
+        if self.textures.poll_changes()
+            && let Some(c) = self.custom.as_mut()
+        {
+            c.textures_changed();
+        }
         models::poll_changes();
+        crate::shader_asset::poll_changes();
+    }
+
+    /// Shader compile errors since the last call (Console lines with file and line).
+    pub fn take_shader_errors(&mut self) -> Vec<String> {
+        self.custom
+            .as_mut()
+            .map(|c| c.take_errors())
+            .unwrap_or_default()
     }
 
     /// Texture load errors since the last call.
@@ -491,7 +527,14 @@ impl Renderer {
                     });
                 self.imported.insert(key.clone(), gpu);
             }
-            if frame.shaded {
+            if frame.shaded
+                && let Some(c) = &d.material.custom
+            {
+                let custom = self
+                    .custom
+                    .get_or_insert_with(|| custom_shader::CustomShaders::new(device, queue));
+                custom.prepare(device, queue, &self.pipelines, &mut self.textures, c);
+            } else if frame.shaded {
                 let set = d.material.textures();
                 let layout = &self.pipelines.material_layout;
                 self.textures.prepare_set(device, queue, layout, &set);
@@ -581,6 +624,8 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&view_uniform(frame, aspect)),
         );
+        let split = self.needs_scene_copy(frame);
+        self.prepare_scene_inputs(device, queue, target, frame, split);
 
         // Culling and batching for the camera and every shadow map.
         let (lists, plan) = {
@@ -642,6 +687,9 @@ impl Renderer {
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         // First pass: starts the GPU timing.
         self.mask_pass(&mut encoder, target, frame, timing);
+        if frame.shaded && !frame.water.is_empty() {
+            self.water.simulate(&mut encoder);
+        }
         let mut shadow_lists = lists.shadows.iter();
         if plan.directional.is_some() {
             let list = shadow_lists.next();
@@ -653,10 +701,12 @@ impl Renderer {
             self.shadow_pass(&mut encoder, frame, view, layer + 1, Some(list), &mut stats);
         }
         self.main_pass(
+            device,
             &mut encoder,
             target,
             frame,
             any_outline,
+            split,
             &lists,
             &particle_draws,
             &mut stats,
@@ -672,6 +722,28 @@ impl Renderer {
         self.slots_scratch = lists.slots;
         stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
         self.stats = stats;
+    }
+
+    /// Shader globals, the scene copy and water inputs for this render.
+    fn prepare_scene_inputs(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &RenderTarget,
+        frame: &Frame,
+        split: bool,
+    ) {
+        let copy = split.then(|| self.scene_copies.get(device, target.size()));
+        if let Some(c) = self.custom.as_mut() {
+            c.write_globals(queue, target.size());
+            if let Some(copy) = copy {
+                c.scene_group(device, copy.id, &copy.color_view, &copy.depth_view);
+            }
+        }
+        if frame.shaded && !frame.water.is_empty() {
+            self.water
+                .prepare(device, queue, &self.pipelines, frame, target.size(), copy);
+        }
     }
 
     /// Write the per-draw values and the slot lists, growing the buffers when needed.
@@ -861,27 +933,32 @@ impl Renderer {
     }
 
     /// Draw main-pass batches with their material's pipeline and textures.
+    /// `scene` = scene copy id when the opaque scene was copied (custom shaders' group 3).
     fn draw_batches(
         &self,
         pass: &mut wgpu::RenderPass,
         frame: &Frame,
         batches: &[batch::Batch],
+        scene: Option<u64>,
         stats: &mut RenderStats,
     ) {
         let (mut pipeline_at, mut group_at) = (0, 0);
         for b in batches {
             let d = &frame.meshes[b.draw];
-            let (Some(pipeline), Some(group), Some(m)) = (
-                self.pipelines.mesh_variant(d.material.pipeline_key()),
-                self.textures.get_set(&d.material.textures()),
-                self.gpu_mesh(&d.mesh),
-            ) else {
+            let (Some((pipeline, group)), Some(m)) =
+                (self.material_resources(&d.material), self.gpu_mesh(&d.mesh))
+            else {
                 continue;
             };
             if batch::addr(pipeline) != pipeline_at {
                 pipeline_at = batch::addr(pipeline);
                 pass.set_pipeline(pipeline);
                 stats.set_pass += 1;
+                if d.material.custom.is_some()
+                    && let Some(c) = self.custom.as_ref()
+                {
+                    pass.set_bind_group(3, c.scene_group_for(scene), &[]);
+                }
             }
             if batch::addr(group) != group_at {
                 group_at = batch::addr(group);
@@ -891,6 +968,39 @@ impl Renderer {
             m.draw(pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
         }
+    }
+
+    /// Main-pass pipeline and group 2 of a material (built-in variant or `.shader`).
+    fn material_resources(
+        &self,
+        m: &MaterialParams,
+    ) -> Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)> {
+        match &m.custom {
+            Some(c) => self.custom.as_ref()?.get(c),
+            None => Some((
+                self.pipelines.mesh_variant(m.pipeline_key())?,
+                self.textures.get_set(&m.textures())?,
+            )),
+        }
+    }
+
+    /// The transparent queue samples the opaque scene (water, scene-reading shaders).
+    fn needs_scene_copy(&self, frame: &Frame) -> bool {
+        if !frame.shaded {
+            return false;
+        }
+        if !frame.water.is_empty() {
+            return true;
+        }
+        let Some(custom) = self.custom.as_ref() else {
+            return false;
+        };
+        frame.meshes.iter().any(|d| {
+            d.material
+                .custom
+                .as_ref()
+                .is_some_and(|c| c.queue >= 3000 && custom.uses_scene(c))
+        })
     }
 
     fn shadow_pass(
@@ -1000,17 +1110,21 @@ impl Renderer {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn main_pass(
+    /// Begin the MSAA main pass (cleared, or continuing after the scene copy).
+    fn begin_main<'e>(
         &self,
-        encoder: &mut wgpu::CommandEncoder,
-        target: &RenderTarget,
-        frame: &Frame,
-        outline: bool,
-        lists: &frame_lists::FrameLists,
-        particle_draws: &[particles::ParticleDraw],
-        stats: &mut RenderStats,
-    ) {
+        encoder: &'e mut wgpu::CommandEncoder,
+        target: &'e RenderTarget,
+        clear: bool,
+        store: wgpu::StoreOp,
+    ) -> wgpu::RenderPass<'e> {
+        let load = |c: wgpu::Color| {
+            if clear {
+                wgpu::LoadOp::Clear(c)
+            } else {
+                wgpu::LoadOp::Load
+            }
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("misty main pass"),
             color_attachments: &[
@@ -1019,8 +1133,8 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: Some(target.hdr_view()),
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Discard,
+                        load: load(wgpu::Color::BLACK),
+                        store,
                     },
                 }),
                 // Emission only; drives bloom.
@@ -1029,16 +1143,20 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: Some(target.glow_view()),
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Discard,
+                        load: load(wgpu::Color::BLACK),
+                        store,
                     },
                 }),
             ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: target.depth_view(),
                 depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Discard,
+                    load: if clear {
+                        wgpu::LoadOp::Clear(1.0)
+                    } else {
+                        wgpu::LoadOp::Load
+                    },
+                    store,
                 }),
                 stencil_ops: None,
             }),
@@ -1047,48 +1165,118 @@ impl Renderer {
             multiview_mask: None,
         });
         pass.set_bind_group(0, &self.view_bind_group, &[]);
+        pass
+    }
 
-        pass.set_pipeline(&self.pipelines.sky);
-        pass.draw(0..3, 0..1);
-
-        // Opaque and Cutout meshes, front to back.
-        if frame.shaded && !lists.opaque.is_empty() {
-            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            self.draw_batches(&mut pass, frame, &lists.opaque, stats);
-        }
-
-        if frame.shaded
-            && !frame.terrains.is_empty()
-            && let Some(material) = self.textures.get(None, None)
+    /// Sky, opaque meshes, terrains and the grid; then (after the scene copy when `split`) water,
+    /// transparent meshes, particles, overlays, lines and the selection outline.
+    #[allow(clippy::too_many_arguments)]
+    fn main_pass(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget,
+        frame: &Frame,
+        outline: bool,
+        split: bool,
+        lists: &frame_lists::FrameLists,
+        particle_draws: &[particles::ParticleDraw],
+        stats: &mut RenderStats,
+    ) {
+        let store = if split {
+            wgpu::StoreOp::Store
+        } else {
+            wgpu::StoreOp::Discard
+        };
         {
-            pass.set_pipeline(&self.pipelines.terrain);
-            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            pass.set_bind_group(2, material, &[]);
-            let first = frame.meshes.len();
-            self.terrains.draw(
-                &mut pass,
-                frame.terrains,
-                first,
-                true,
-                |i| lists.terrains[i],
-                stats,
-            );
-        }
-
-        if frame.grid.is_some() {
-            pass.set_pipeline(&self.pipelines.grid);
+            let mut pass = self.begin_main(encoder, target, true, store);
+            pass.set_pipeline(&self.pipelines.sky);
             pass.draw(0..3, 0..1);
-        }
 
+            // Opaque and Cutout meshes, front to back.
+            if frame.shaded && !lists.opaque.is_empty() {
+                pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+                self.draw_batches(&mut pass, frame, &lists.opaque, None, stats);
+            }
+
+            if frame.shaded
+                && !frame.terrains.is_empty()
+                && let Some(material) = self.textures.get(None, None)
+            {
+                pass.set_pipeline(&self.pipelines.terrain);
+                pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+                pass.set_bind_group(2, material, &[]);
+                let first = frame.meshes.len();
+                self.terrains.draw(
+                    &mut pass,
+                    frame.terrains,
+                    first,
+                    true,
+                    |i| lists.terrains[i],
+                    stats,
+                );
+            }
+
+            if frame.grid.is_some() {
+                pass.set_pipeline(&self.pipelines.grid);
+                pass.draw(0..3, 0..1);
+            }
+            if !split {
+                self.main_tail(
+                    &mut pass,
+                    target,
+                    frame,
+                    outline,
+                    lists,
+                    particle_draws,
+                    None,
+                    stats,
+                );
+                return;
+            }
+        }
+        // The opaque scene, sampled by water refraction and scene-reading shaders.
+        self.scene_copies.record(device, encoder, target);
+        let scene = self.scene_copies.current(target.size()).map(|c| c.id);
+        let mut pass = self.begin_main(encoder, target, false, wgpu::StoreOp::Discard);
+        if frame.shaded {
+            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            self.water.draw(&mut pass, frame, stats);
+        }
+        self.main_tail(
+            &mut pass,
+            target,
+            frame,
+            outline,
+            lists,
+            particle_draws,
+            scene,
+            stats,
+        );
+    }
+
+    /// The main pass after opaque geometry; `scene` = scene copy id for scene-reading shaders.
+    #[allow(clippy::too_many_arguments)]
+    fn main_tail(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        target: &RenderTarget,
+        frame: &Frame,
+        outline: bool,
+        lists: &frame_lists::FrameLists,
+        particle_draws: &[particles::ParticleDraw],
+        scene: Option<u64>,
+        stats: &mut RenderStats,
+    ) {
         // Fade / Transparent meshes back to front, after the grid (they don't write depth).
         if frame.shaded && !lists.transparent.is_empty() {
             pass.set_bind_group(1, &self.mesh_bind_group, &[]);
-            self.draw_batches(&mut pass, frame, &lists.transparent, stats);
+            self.draw_batches(pass, frame, &lists.transparent, scene, stats);
         }
 
         // After the grid: particles don't write depth, so the grid would draw over them.
         if frame.shaded && !particle_draws.is_empty() {
-            self.draw_particles(&mut pass, frame, particle_draws, stats);
+            self.draw_particles(pass, frame, particle_draws, stats);
         }
 
         if !frame.overlay.is_empty() {

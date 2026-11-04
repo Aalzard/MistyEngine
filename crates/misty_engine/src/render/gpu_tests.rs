@@ -220,6 +220,7 @@ fn render_with(
         terrains: &[],
         shaded: true,
         lights: &lights,
+        water: &[],
     };
     let mut renderer = Renderer::with_queue(device, queue);
     renderer.set_options(options);
