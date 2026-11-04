@@ -1724,3 +1724,26 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Transparent surfaces that don't write depth don't attenuate the shafts behind them.
 - A moving view clamps the history, so very thin shafts (a few cm at tens of metres) flicker slightly while moving.
 - Shafts end at the Volumetric Distance; past it the analytic fog adds unshadowed sun light as before.
+
+## Round 10 merge ✅
+
+### Done
+- Merged in order: multi-scene editing, Undo History, presets, global search, asset GUIDs, water fog fix, sharp
+  sun shafts. Decisions renumbered into one sequence (479–548); references in docs updated.
+- Integration: undo keeps the active scene and scene file paths (decision 499); a material preset pick is one
+  undo step (513); search finds objects in every loaded scene and offers Undo History, additive opens, scene
+  header commands, Apply Preset, Open Scene Additive, Reimport and Find References (525, 537); per-scene saves
+  and `.preset` files carry the GUID table (537); engine tests keep a per-thread game clock (526).
+- Sharp sun shafts follow the water fog fix under water: the march only runs with the froxel fog, which is off
+  while the camera is under water; water writes depth, so the composite puts the shafts over it.
+- `.meta` files for the round's new sample assets (MultiSceneLevel / MultiSceneLighting scenes,
+  AdditiveLoader.lua, the Presets folder and its four presets).
+- Screenshots (release build): docs/screenshots/round10/merged_multiscene_hierarchy.png,
+  merged_undo_history.png, merged_search_palette.png (hits name their scene), merged_preset_picker.png,
+  merged_godrays.png (VolumetricFogDemo, shadow side of the wall), merged_water_fog.png (WaterDemo opened with
+  VolumetricFogDemo active: the wall's shaft shadows reach across the water).
+
+### Not done yet
+- The undo demo (`MISTY_UNDO_DEMO`) has no Move To Scene step.
+- sample_clouds / sample_materials generator checks fail in this working copy only, because of the uncommitted
+  edits to CloudsDemo.scene / CloudsDemo.terrain and Ghost.mat.
