@@ -25,6 +25,7 @@ pub mod camera_api;
 pub mod input_api;
 pub mod material_api;
 pub mod navigation_api;
+mod override_api;
 pub mod particles_api;
 pub mod physics2d_api;
 pub mod physics_api;

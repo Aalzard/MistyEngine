@@ -39,6 +39,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::terrain::icon(other))
             .or_else(|| super::nav_editors::icon(other))
             .or_else(|| super::sprite_editors::icon(other))
+            .or_else(|| super::lod_editor::icon(other))
             .unwrap_or("▣"),
     }
 }
@@ -60,6 +61,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::sprite_editors::NAMES.contains(&name) {
         return super::sprite_editors::enabled_flag(state, e, name);
+    }
+    if super::lod_editor::NAMES.contains(&name) {
+        return super::lod_editor::enabled_flag(state, e, name);
     }
     match name {
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
@@ -96,6 +100,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::sprite_editors::NAMES.contains(&name) {
         return super::sprite_editors::set_enabled(state, e, name, on);
+    }
+    if super::lod_editor::NAMES.contains(&name) {
+        return super::lod_editor::set_enabled(state, e, name, on);
     }
     let w = &mut state.scene.world;
     match name {
@@ -151,6 +158,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Light" => with::<Light>(ui, state, e, light),
         "Mesh Filter" => super::slots::mesh_filter(ui, state, e),
         "Mesh Renderer" => mesh_renderer(ui, state, e),
+        "LOD Group" => super::lod_editor::lod_group(ui, state, e),
         "Rigidbody" => with::<Rigidbody>(ui, state, e, rigidbody),
         "Box Collider" => with::<BoxCollider>(ui, state, e, box_collider),
         "Sphere Collider" => with::<SphereCollider>(ui, state, e, sphere_collider),
@@ -511,21 +519,31 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         return false;
     };
     let names: Vec<String> = state.assets.materials.keys().cloned().collect();
-    let changed = grid(ui, "meshrenderer_grid", |ui| {
-        let mut ch = false;
+    let mut changed = grid(ui, "meshrenderer_grid", |ui| {
         ui.label("Materials");
         let mut size = r.material_count();
         let resp = ui.add(egui::DragValue::new(&mut size).range(1..=8).prefix("Size "));
         if resp.changed() {
             r.set_material_count(size);
-            ch = true;
         }
         ui.end_row();
-        for i in 0..r.material_count() {
+        resp.changed()
+    });
+    // Each element, then its per-object overrides.
+    for i in 0..r.material_count() {
+        changed |= grid(ui, &format!("meshrenderer_element_{i}"), |ui| {
             ui.label(format!("    Element {i}"));
-            ch |= material_slot(ui, &mut r, i, &names);
+            let ch = material_slot(ui, &mut r, i, &names);
             ui.end_row();
-        }
+            ch
+        });
+        let material = state.assets.params(r.material_at(i));
+        ui.indent(("mr_overrides_indent", i), |ui| {
+            changed |= super::overrides::section(ui, &mut r, i, &material);
+        });
+    }
+    changed |= grid(ui, "meshrenderer_shadows_grid", |ui| {
+        let mut ch = false;
         ui.label("Cast Shadows");
         egui::ComboBox::from_id_salt("mr_cast")
             .selected_text(mixed::text(

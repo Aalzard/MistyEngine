@@ -60,6 +60,10 @@ pub fn diff(a: &Value, b: &Value, path: String, out: &mut HashSet<String>) {
                     }
                 }
             }
+            // Optional fields only the other target has (e.g. a material override).
+            for k in y.keys().filter(|k| !x.contains_key(*k)) {
+                out.insert(join(k));
+            }
         }
         (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
             for (i, (v, w)) in x.iter().zip(y).enumerate() {
@@ -76,9 +80,11 @@ pub fn diff(a: &Value, b: &Value, path: String, out: &mut HashSet<String>) {
 /// The field at `key` (or anything inside it) differs between the targets.
 pub fn is(key: &str) -> bool {
     MIXED.with(|m| {
-        m.borrow()
-            .iter()
-            .any(|p| p == key || p.strip_prefix(key).is_some_and(|r| r.starts_with('/')))
+        m.borrow().iter().any(|p| {
+            let under = |a: &str, b: &str| a.strip_prefix(b).is_some_and(|r| r.starts_with('/'));
+            // The field, something inside it, or a whole parent only one target has.
+            p == key || under(p, key) || under(key, p)
+        })
     })
 }
 

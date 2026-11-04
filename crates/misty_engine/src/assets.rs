@@ -217,6 +217,7 @@ impl Material {
             normal_scale: self.normal_scale,
             tiling: self.tiling,
             offset: self.offset,
+            uv_rotation: 0.0,
             unlit: false,
             mode: self.rendering_mode,
             alpha_cutoff: self.alpha_cutoff,

@@ -5,10 +5,18 @@ use super::particles::ParticleInstance;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
 const COMMON: &str = include_str!("shaders/common.wgsl");
-/// Lit/unlit meshes (all material variants).
-pub(super) const MESH_SRC: &str = include_str!("shaders/mesh.wgsl");
+/// Lit/unlit meshes (all material variants), after the shared per-draw struct.
+pub(super) const MESH_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
+    include_str!("shaders/mesh.wgsl")
+);
 /// Shadow-map depth and the selection mask.
-pub(super) const DEPTH_SRC: &str = include_str!("shaders/depth.wgsl");
+pub(super) const DEPTH_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
+    include_str!("shaders/depth.wgsl")
+);
 
 /// Mesh vertex attributes: position, normal, uv, tangent.
 const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
@@ -28,6 +36,8 @@ pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
 }
 /// The terrain fragment stage reuses the mesh shader's vertex stage and lighting.
 const TERRAIN_SRC: &str = concat!(
+    include_str!("shaders/draw.wgsl"),
+    "\n",
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/terrain.wgsl")
