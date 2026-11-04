@@ -55,13 +55,14 @@ enum PlayIcon {
 fn play_controls(ui: &mut Ui, state: &mut EditorState) {
     let playing = state.play.in_play_mode();
     let paused = state.play == PlayState::Paused || (!playing && state.pause_on_play);
+    // Pause, Play, Step: Play sits in the middle (the user's reference layout).
+    if play_button(ui, PlayIcon::Pause, paused, "Pause", "Pause (Ctrl+Shift+P)").clicked() {
+        state.push(Action::TogglePause);
+    }
     let play = play_button(ui, PlayIcon::Play, playing, "Play", "Play (Ctrl+P)");
     crate::tutorials::targets::mark_response(ui, "toolbar.play", &play);
     if play.clicked() {
         state.push(Action::TogglePlay);
-    }
-    if play_button(ui, PlayIcon::Pause, paused, "Pause", "Pause (Ctrl+Shift+P)").clicked() {
-        state.push(Action::TogglePause);
     }
     if play_button(ui, PlayIcon::Step, false, "Step", "Step (Ctrl+Alt+P)").clicked() {
         state.push(Action::Step);
