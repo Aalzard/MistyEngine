@@ -60,6 +60,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 _ => {}
             }
             crate::terrain_tools::brush_lines(&mut lines, state);
+            if sv.gizmos {
+                crate::panels::world_builder::gizmos::lines(&mut lines, state, ui.ctx());
+            }
             let overlay = gizmos::nav_overlay(state, ui.ctx(), &mut lines);
             let terrains = misty_engine::terrain::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
@@ -116,7 +119,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         draw_icons(ui, rect, state, &camera);
     }
     // 2D handles (sprite Rect tool, Edit Collider) take the mouse before the transform handles.
-    if !brush_active && !crate::sprite_handles::show(ui, state, &camera, rect, response.hovered()) {
+    if !brush_active
+        && !crate::sprite_handles::show(ui, state, &camera, rect, response.hovered())
+        && !crate::panels::world_builder::gizmos::show(ui, state, &camera, rect, response.hovered())
+    {
         handles::show(ui, state, &camera, rect, response.hovered());
     }
     let suppressed = state.handles.click_suppressed() || brush_click;

@@ -1,0 +1,2124 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 2000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            14.0,
+            36.0,
+            0.0
+          ],
+          "position": [
+            -250.0,
+            130.0,
+            -330.0
+          ],
+          "rotation": [
+            0.115904644,
+            0.30671364,
+            -0.0376597,
+            0.9439675
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            40.0,
+            -35.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            100.0,
+            0.0
+          ],
+          "rotation": [
+            0.32619038,
+            -0.28257102,
+            0.102847435,
+            0.8962008
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Terrain",
+            "Terrain Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Terrain",
+          "tag": "Untagged"
+        },
+        "Terrain": {
+          "cast_shadows": true,
+          "enabled": true,
+          "terrain_data": "Assets/WorldBuilder/WorldBuilderDemo.terrain"
+        },
+        "Terrain Collider": {
+          "enabled": true,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          },
+          "terrain_data": ""
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -300.0,
+            0.0,
+            -300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Builder"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "World Builder",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Builder": {
+          "alphamap_resolution": 256,
+          "base": {
+            "generator": "Islands",
+            "height": 0.45,
+            "noise_amount": 0.5,
+            "octaves": 7,
+            "ridge_sharpness": 2.2,
+            "scale": 220.0,
+            "seed": 2024
+          },
+          "biome_breakup": 14.0,
+          "default_biome": "Assets/WorldBuilder/Forest.biome",
+          "erosion": {
+            "hydraulic": true,
+            "hydraulic_iterations": 4,
+            "hydraulic_strength": 0.5,
+            "talus_angle": 40.0,
+            "thermal": true,
+            "thermal_iterations": 20,
+            "thermal_strength": 0.4
+          },
+          "heightmap_resolution": 513,
+          "live_preview": true,
+          "scatter_storage": "Compact",
+          "size": [
+            600.0,
+            160.0,
+            600.0
+          ],
+          "terrain_data": "Assets/WorldBuilder/WorldBuilderDemo.terrain"
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Stamp"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Volcano",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            30.0,
+            0.0,
+            40.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Stamp": {
+          "enabled": true,
+          "falloff": 0.6,
+          "kind": {
+            "Mountain": {
+              "blend": "Replace",
+              "height": 115.0,
+              "roughness": 0.25,
+              "shape": "Volcano"
+            }
+          },
+          "radius": 115.0
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Stamp"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Crater Lake",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            30.0,
+            50.0,
+            40.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Stamp": {
+          "enabled": true,
+          "falloff": 0.0,
+          "kind": {
+            "Water": {
+              "mode": "Lake"
+            }
+          },
+          "radius": 30.0
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Stamp"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Village Plateau",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -130.0,
+            0.0,
+            -70.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Stamp": {
+          "enabled": true,
+          "falloff": 0.45,
+          "kind": {
+            "Flatten": {
+              "sample": true
+            }
+          },
+          "radius": 38.0
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Stamp"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            30.0,
+            0.0,
+            40.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Stamp": {
+          "enabled": true,
+          "falloff": 0.0,
+          "kind": {
+            "River": {
+              "bank": 14.0,
+              "depth": 3.5,
+              "points": [
+                [
+                  20.0,
+                  -90.0
+                ],
+                [
+                  50.0,
+                  -140.0
+                ],
+                [
+                  40.0,
+                  -200.0
+                ],
+                [
+                  70.0,
+                  -260.0
+                ],
+                [
+                  80.0,
+                  -330.0
+                ]
+              ],
+              "water": true,
+              "width": 10.0
+            }
+          },
+          "radius": 0.0
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Stamp"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Cliffs",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            140.0,
+            0.0,
+            90.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Stamp": {
+          "enabled": true,
+          "falloff": 0.5,
+          "kind": {
+            "RockArea": {
+              "strength": 1.0
+            }
+          },
+          "radius": 60.0
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Stamp"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Snowy Peak",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            30.0,
+            0.0,
+            40.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Stamp": {
+          "enabled": true,
+          "falloff": 0.4,
+          "kind": {
+            "BiomeZone": {
+              "biome": "Assets/WorldBuilder/Snowy Mountains.biome",
+              "polygon": []
+            }
+          },
+          "radius": 95.0
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Stamp"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "South-West Beach",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -170.0,
+            0.0,
+            -170.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Stamp": {
+          "enabled": true,
+          "falloff": 0.5,
+          "kind": {
+            "BiomeZone": {
+              "biome": "Assets/WorldBuilder/Beach.biome",
+              "polygon": []
+            }
+          },
+          "radius": 110.0
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Stamp"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sea",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            9.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Stamp": {
+          "enabled": true,
+          "falloff": 0.0,
+          "kind": {
+            "Water": {
+              "mode": "Sea"
+            }
+          },
+          "radius": 40.0
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Generated",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 3
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Water",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 12
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Lake",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            29.882813,
+            50.0,
+            39.84375
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.3984375,
+            1.0,
+            3.515625
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sea",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            9.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            -0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            480.0,
+            1.0,
+            480.0
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            53.164063,
+            39.06343,
+            -54.375
+          ],
+          "rotation": [
+            0.0,
+            0.45496222,
+            0.0,
+            0.89051074
+          ],
+          "scale": [
+            1.5798503,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (1)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            60.976563,
+            39.06343,
+            -65.0
+          ],
+          "rotation": [
+            0.0,
+            0.44900694,
+            0.0,
+            0.8935283
+          ],
+          "scale": [
+            2.057825,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (2)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            70.11719,
+            39.06343,
+            -78.4375
+          ],
+          "rotation": [
+            0.0,
+            0.48476854,
+            0.0,
+            0.8746425
+          ],
+          "scale": [
+            2.1951685,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (3)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            77.30469,
+            39.06343,
+            -92.8125
+          ],
+          "rotation": [
+            0.0,
+            0.56959486,
+            0.0,
+            0.82192564
+          ],
+          "scale": [
+            2.0352507,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (4)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            79.6875,
+            39.06343,
+            -107.14844
+          ],
+          "rotation": [
+            0.0,
+            0.7223829,
+            0.0,
+            0.6914933
+          ],
+          "scale": [
+            1.9310529,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (5)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            77.1875,
+            35.097927,
+            -121.83594
+          ],
+          "rotation": [
+            0.0,
+            0.7995818,
+            0.0,
+            0.6005572
+          ],
+          "scale": [
+            2.0700016,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (6)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            72.8125,
+            27.59684,
+            -137.07031
+          ],
+          "rotation": [
+            0.0,
+            0.7979446,
+            0.0,
+            0.6027308
+          ],
+          "scale": [
+            2.1000373,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (7)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            70.3125,
+            21.847183,
+            -152.38281
+          ],
+          "rotation": [
+            0.0,
+            0.7214538,
+            0.0,
+            0.69246256
+          ],
+          "scale": [
+            2.024719,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (8)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            72.578125,
+            16.753881,
+            -167.38281
+          ],
+          "rotation": [
+            0.0,
+            0.5789288,
+            0.0,
+            0.81537807
+          ],
+          "scale": [
+            2.0640032,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (9)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            79.453125,
+            11.665302,
+            -182.07031
+          ],
+          "rotation": [
+            0.0,
+            0.49647754,
+            0.0,
+            0.86804956
+          ],
+          "scale": [
+            2.1949525,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (10)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            88.359375,
+            7.485826,
+            -196.83594
+          ],
+          "rotation": [
+            0.0,
+            0.4870381,
+            0.0,
+            0.8733807
+          ],
+          "scale": [
+            2.2539887,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (11)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            96.484375,
+            3.861659,
+            -212.14844
+          ],
+          "rotation": [
+            0.0,
+            0.54375327,
+            0.0,
+            0.8392451
+          ],
+          "scale": [
+            2.2205424,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (12)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            102.07031,
+            1.2575527,
+            -229.21875
+          ],
+          "rotation": [
+            0.0,
+            0.62485254,
+            0.0,
+            0.7807428
+          ],
+          "scale": [
+            2.3896725,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (13)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            105.50781,
+            -0.20292783,
+            -248.59375
+          ],
+          "rotation": [
+            0.0,
+            0.6582507,
+            0.0,
+            0.7527988
+          ],
+          "scale": [
+            2.5495718,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (14)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            107.77344,
+            -0.86445105,
+            -267.96875
+          ],
+          "rotation": [
+            0.0,
+            0.6719382,
+            0.0,
+            0.7406072
+          ],
+          "scale": [
+            2.3524852,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "River (15)",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/WorldBuilder/Materials/Water.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            109.33594,
+            -1.0262887,
+            -283.59375
+          ],
+          "rotation": [
+            0.0,
+            0.6696618,
+            0.0,
+            0.7426662
+          ],
+          "scale": [
+            1.7881153,
+            1.0,
+            1.1
+          ]
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Scatter",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 12
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scatter"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Oak",
+          "tag": "Untagged"
+        },
+        "Scatter": {
+          "cast_shadows": true,
+          "count": 369,
+          "data": "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",
+          "enabled": true,
+          "max": [
+            509.8639,
+            53.02187,
+            527.4728
+          ],
+          "max_scale": 1.2985915,
+          "min": [
+            73.49339,
+            8.840844,
+            89.71592
+          ],
+          "parts": [
+            {
+              "material": "Assets/WorldBuilder/Materials/Bark.mat",
+              "mesh": "Cylinder",
+              "offset": [
+                0.0,
+                1.5,
+                0.0
+              ],
+              "scale": [
+                0.35,
+                1.5,
+                0.35
+              ]
+            },
+            {
+              "material": "Assets/WorldBuilder/Materials/Forest Oak.mat",
+              "mesh": "Sphere",
+              "offset": [
+                0.0,
+                4.2,
+                0.0
+              ],
+              "scale": [
+                3.4,
+                3.0,
+                3.4
+              ]
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -300.0,
+            0.0,
+            -300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 32
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scatter"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Fir",
+          "tag": "Untagged"
+        },
+        "Scatter": {
+          "cast_shadows": true,
+          "count": 383,
+          "data": "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",
+          "enabled": true,
+          "max": [
+            512.2784,
+            50.974472,
+            527.878
+          ],
+          "max_scale": 1.2982792,
+          "min": [
+            77.201324,
+            8.128577,
+            86.34306
+          ],
+          "parts": [
+            {
+              "material": "Assets/WorldBuilder/Materials/Bark.mat",
+              "mesh": "Cylinder",
+              "offset": [
+                0.0,
+                1.2,
+                0.0
+              ],
+              "scale": [
+                0.3,
+                1.2,
+                0.3
+              ]
+            },
+            {
+              "material": "Assets/WorldBuilder/Materials/Forest Fir.mat",
+              "mesh": "Capsule",
+              "offset": [
+                0.0,
+                4.4,
+                0.0
+              ],
+              "scale": [
+                2.2,
+                2.4,
+                2.2
+              ]
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -300.0,
+            0.0,
+            -300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 32
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scatter"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Bush",
+          "tag": "Untagged"
+        },
+        "Scatter": {
+          "cast_shadows": true,
+          "count": 245,
+          "data": "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",
+          "enabled": true,
+          "max": [
+            508.2266,
+            53.15573,
+            526.9302
+          ],
+          "max_scale": 1.2989955,
+          "min": [
+            70.9002,
+            8.526872,
+            87.2132
+          ],
+          "parts": [
+            {
+              "material": "Assets/WorldBuilder/Materials/Forest Bush.mat",
+              "mesh": "Sphere",
+              "offset": [
+                0.0,
+                0.45,
+                0.0
+              ],
+              "scale": [
+                1.7,
+                1.2,
+                1.7
+              ]
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -300.0,
+            0.0,
+            -300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 32
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scatter"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Forest Rock",
+          "tag": "Untagged"
+        },
+        "Scatter": {
+          "cast_shadows": true,
+          "count": 57,
+          "data": "HXvtCwAAhFdVe3N1JXfEdec3tQrM0kZqsNgRk6WdcxGkDDMVyd8llEFIpYLROuYP48FBaRHRC28BlIQjkxAsDNen70RpT6zOFSWkGSFCFprMqHUuvpYrT+4b6sE7wxV0GD4um1dexB5+AqZzzVPjRgpEBYA9J4HZBOidmHtHT2axtP8v7liX+4aUuKroYnCdBTdl1cvr+pkPg7/GE8M9N2zIJp3elISlqFPFqwk9tx7uud5zjVnhDDEATkDKbE5iOngONtDF2uHcQ9dPAKFEzQ1k8gdCAxdHlTAcXVOtXlTsR/rZ9kuFYVaBUyxqhR5T3sIjV6zLtZ6h0d6iYhNbQHtc99KD/Apt0S4BRCW//2OlwKO8eXTDwOpHxtpCZxV00L6eMqqjlfsLI2JmjWvNgXHLR4u+E6JTEGrKt//ZcVyRRABQ//+bb6SfNognb4+VSgM8QvV0waINcDcsiIF3L4OYZoPObtyjulgVqzseWX5aiiCqG83GTP+XCf9QF7KRTit94HnQtX84Gax17pPhpb7dEou4a3TbD4n0pxEcL6+LwPZOpOZhX4inrsVo5YS+GKCo8gEsWKfzMlV3/40CoSfyzjGsqvrTiddjiPgs///UB+Co7tH//8SzEHcOMYS0b6ypDPx/Y74QoYvPKpuWq8zS+tWEckB3P+3SOE+zZnL03p3bPIIFBfcERLZ0wd+7nHpWlgAAfg7JuCdsy6FjSXE/CNANilC3Z4/Nmowv8qUc1cONnrg4/mxYaEo2vBLJnGSTuRij3PfiWSGFtwj1EXC/DQ09e8hZDZ8YQNbOSL8hcCOPZcU2rTzOznBkwJlUOMKBSAWmYERCu8zD4Ew/k6N20NIh1YtpbMOEtnunidcPmqgkx2wGyC9OafCcIfuK495yO03LQ5xQ+UmMSzGcQQehYc6CjvzgF4L22nrgNiGa2uQTK9v9scaERsiUFgfnMex96c5UY1h9yMkCM/Ahqy5cgH5KZDpGIxlm8a3lve6wY1ykPpmuUlHwRhU88rKxFpspmQovY/cABlOlg2DRpmByAAD//5IGv6LyiPrJ",
+          "enabled": true,
+          "max": [
+            488.78696,
+            51.353752,
+            518.423
+          ],
+          "max_scale": 1.799872,
+          "min": [
+            93.520035,
+            10.16079,
+            88.23962
+          ],
+          "parts": [
+            {
+              "material": "Assets/WorldBuilder/Materials/Forest Rock.mat",
+              "mesh": "Sphere",
+              "offset": [
+                0.0,
+                0.15,
+                0.0
+              ],
+              "scale": [
+                1.4,
+                0.8,
+                1.1
+              ]
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -300.0,
+            0.0,
+            -300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 32
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scatter"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Snowy Mountains Boulder",
+          "tag": "Untagged"
+        },
+        "Scatter": {
+          "cast_shadows": true,
+          "count": 8,
+          "data": "f2sAAAAA7yXv/z9z6yFGOvhmDhsSXgHNEWI/LDiGw+AdLsIhtIVimjswAAD//3pUcxSLk2g3NEMZ7XG69mQ2PP//askfSHb09OkEiQzWgoEi4gp+//8Kiea60zvFvRHWg7PEbv44//8aDAD++XsH3Q==",
+          "enabled": true,
+          "max": [
+            365.32202,
+            79.88155,
+            385.4997
+          ],
+          "max_scale": 1.3452327,
+          "min": [
+            305.3069,
+            57.844093,
+            290.01788
+          ],
+          "parts": [
+            {
+              "material": "Assets/WorldBuilder/Materials/Snowy Mountains Boulder.mat",
+              "mesh": "Sphere",
+              "offset": [
+                0.0,
+                0.4,
+                0.0
+              ],
+              "scale": [
+                2.6,
+                1.8,
+                2.1
+              ]
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -300.0,
+            0.0,
+            -300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 32
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scatter"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Beach Rock",
+          "tag": "Untagged"
+        },
+        "Scatter": {
+          "cast_shadows": true,
+          "count": 1,
+          "data": "AAAAAAAAETv//wU5QG8=",
+          "enabled": true,
+          "max": [
+            169.29698,
+            9.386754,
+            133.69502
+          ],
+          "max_scale": 1.429467,
+          "min": [
+            169.28699,
+            9.376754,
+            133.68503
+          ],
+          "parts": [
+            {
+              "material": "Assets/WorldBuilder/Materials/Beach Rock.mat",
+              "mesh": "Sphere",
+              "offset": [
+                0.0,
+                0.15,
+                0.0
+              ],
+              "scale": [
+                1.4,
+                0.8,
+                1.1
+              ]
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -300.0,
+            0.0,
+            -300.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 32
+    }
+  ],
+  "version": 1
+}

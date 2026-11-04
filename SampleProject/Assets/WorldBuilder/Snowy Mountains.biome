@@ -1,0 +1,85 @@
+{
+  "name": "Snowy Mountains",
+  "tone": [
+    0.85,
+    0.9,
+    0.95
+  ],
+  "flat": {
+    "texture": "Assets/WorldBuilder/Textures/Snow.png",
+    "normal_map": null,
+    "tiling": 10.0
+  },
+  "slope": {
+    "texture": "Assets/WorldBuilder/Textures/Rock.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "cliff": {
+    "texture": "Assets/WorldBuilder/Textures/Rock.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "shore": {
+    "texture": "Assets/WorldBuilder/Textures/Sand.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "peak": {
+    "texture": "Assets/WorldBuilder/Textures/Snow.png",
+    "normal_map": null,
+    "tiling": 10.0
+  },
+  "slope_angle": 28.0,
+  "cliff_angle": 38.0,
+  "peak_height": 0.55,
+  "shore_width": 2.5,
+  "scatter": [
+    {
+      "name": "Pine",
+      "prefab": null,
+      "shape": "PineTree",
+      "color": [
+        0.1,
+        0.25,
+        0.15
+      ],
+      "density": 2.5,
+      "min_spacing": 5.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 28.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Boulder",
+      "prefab": null,
+      "shape": "Boulder",
+      "color": [
+        0.5,
+        0.5,
+        0.52
+      ],
+      "density": 0.8,
+      "min_spacing": 6.0,
+      "scale": [
+        0.6,
+        1.8
+      ],
+      "random_rotation": true,
+      "max_slope": 50.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": true
+    }
+  ]
+}

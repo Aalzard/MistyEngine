@@ -91,6 +91,13 @@ pub fn mesh_draws_culled(
         }
     }
     crate::sprites::draws(scene, &outline, &mut out);
+    // World Builder scatter stored compactly (instanced by the renderer).
+    crate::world_gen::scatter_set::draws(
+        scene,
+        materials,
+        |e| in_mask(scene, e, culling_mask),
+        &mut out,
+    );
     out
 }
 

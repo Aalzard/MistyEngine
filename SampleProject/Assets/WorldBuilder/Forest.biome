@@ -1,0 +1,131 @@
+{
+  "name": "Forest",
+  "tone": [
+    0.32,
+    0.55,
+    0.25
+  ],
+  "flat": {
+    "texture": "Assets/WorldBuilder/Textures/Grass.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "slope": {
+    "texture": "Assets/WorldBuilder/Textures/Dirt.png",
+    "normal_map": null,
+    "tiling": 8.0
+  },
+  "cliff": {
+    "texture": "Assets/WorldBuilder/Textures/Rock.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "shore": {
+    "texture": "Assets/WorldBuilder/Textures/Sand.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "peak": {
+    "texture": "Assets/WorldBuilder/Textures/Rock.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "slope_angle": 22.0,
+  "cliff_angle": 40.0,
+  "peak_height": 0.75,
+  "shore_width": 2.5,
+  "scatter": [
+    {
+      "name": "Oak",
+      "prefab": null,
+      "shape": "BroadleafTree",
+      "color": [
+        0.22,
+        0.45,
+        0.16
+      ],
+      "density": 12.0,
+      "min_spacing": 5.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 28.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Fir",
+      "prefab": null,
+      "shape": "PineTree",
+      "color": [
+        0.12,
+        0.32,
+        0.16
+      ],
+      "density": 10.0,
+      "min_spacing": 4.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 34.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Bush",
+      "prefab": null,
+      "shape": "Bush",
+      "color": [
+        0.26,
+        0.46,
+        0.18
+      ],
+      "density": 8.0,
+      "min_spacing": 2.5,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 32.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Rock",
+      "prefab": null,
+      "shape": "Rock",
+      "color": [
+        0.42,
+        0.4,
+        0.38
+      ],
+      "density": 0.6,
+      "min_spacing": 4.0,
+      "scale": [
+        0.6,
+        1.8
+      ],
+      "random_rotation": true,
+      "max_slope": 60.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": true
+    }
+  ]
+}

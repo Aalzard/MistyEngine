@@ -211,6 +211,8 @@ pub struct EditorState {
     pub terrain_tools: crate::terrain_tools::TerrainTools,
     /// Navigation window settings and the bake in progress.
     pub navigation: crate::panels::navigation::NavigationWindow,
+    /// World Builder window state and the generation in progress.
+    pub world_builder: crate::panels::world_builder::WorldBuilderWindow,
     /// Keyboard/mouse for scripts this frame (filled while the Game view has focus).
     pub game_input: Input,
     /// Pause toggled before Play: Play starts paused.
@@ -292,6 +294,7 @@ impl EditorState {
             particle_preview: Default::default(),
             terrain_tools: Default::default(),
             navigation: Default::default(),
+            world_builder: Default::default(),
             game_input: Input::default(),
             pause_on_play: false,
             step_requested: false,

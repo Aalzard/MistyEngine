@@ -14,6 +14,7 @@ pub mod profiler;
 pub mod project;
 mod project_menus;
 mod scene;
+pub mod world_builder;
 
 #[cfg(test)]
 pub use game::stats_lines as game_stats_lines;
@@ -61,6 +62,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::Navigation => navigation::show(ui, self.state),
             Tab::CodeEditor => code_editor::show(ui, self.state),
             Tab::Profiler => profiler::show(ui, self.state),
+            Tab::WorldBuilder => world_builder::show(ui, self.state),
         }
     }
 

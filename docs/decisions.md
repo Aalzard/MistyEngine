@@ -1300,3 +1300,85 @@ Record of choices made without asking, and why.
      against Default), coins on Ignore Raycast as triggers that disappear and update a UI Text. It uses the
      Default sorting layer with orders, so ProjectSettings.json stays unchanged. The capture also accepts
      `MISTY_2D=1` to open the Scene view in 2D.
+
+## 2026-11-04 — World Builder (procedural world generation)
+
+304. **One window, four sections:** Window ▸ Terrain ▸ World Builder is a single on-demand tab (docks by the
+     Inspector) with collapsible sections Base Heightmap (erosion inside it), Stamps & Areas, Biomes and
+     Generate. No extra tabs or sub-windows; stamps can also be edited from the Inspector.
+305. **The recipe lives in the scene:** settings are a `World Builder` component on a "World Builder" object;
+     every stamp/area is a child object with a `World Stamp` component (its transform gives the centre,
+     height, yaw and x/z scale). Generated water and scatter go under its "Generated" child and are replaced
+     on every Generate. No separate `.worldbuilder` file: saving the scene saves the recipe, and scene undo
+     covers edits to it.
+306. **Deterministic pipeline** (`world_gen::generate::run`): base → hydraulic → thermal → stamps (hierarchy
+     order) → water → classification → splat → scatter. Pure data in and out on a worker thread with a
+     shared `Progress` (stage, fraction, Cancel). All randomness comes from the base seed (stamps add their
+     index).
+307. **Noise:** own seeded gradient noise, fBm / ridged (weighted octaves) / billow, per-octave rotation and
+     two-field domain warping. The generators (Rolling Hills, Mountains, Plateaus/Mesas, Canyons, Islands,
+     Dunes) are short shaping functions over it.
+308. **Erosion on the CPU with std threads (no new dependency):** hydraulic droplets run in batches over 16
+     fixed chunks. Each chunk sees the batch's snapshot plus its own changes, and the changes are summed in a
+     fixed order, so results don't depend on the core count. Sediment still carried when a droplet stops is
+     deposited, so mass is conserved. Thermal erosion uses a two-pass gather form (parallel and conserving).
+     Heights are in cell units while eroding, so the constants don't depend on scale. At 1025²: about 1.5 s
+     hydraulic + 0.4 s thermal (release, 16 threads), so no wgpu compute pass was needed.
+309. **Stamps:**
+     - Mountain/Hill: Cone, Ridge (along local X), Volcano (with a crater) or Mesa, blended with
+       Add/Max/Min/Replace. Max, Min and Replace use the object's height as the base.
+     - Flatten: flattens to the object's height, or to the ground height at generation time (Sample Ground),
+       with edge falloff.
+     - River: Catmull-Rom curve through local points. The bed never rises downstream; the channel is rounded
+       with a bank falloff, and a water strip is optional.
+     - Water Body: Lake = 4-neighbour flood fill below the object's height, starting from its position;
+       Sea = everything below that height.
+     - Rock Area.
+     - Biome Zone: a circle or a polygon.
+310. **Water is a basic transparent plane** (`water::spawn_water`, Plane primitive + `Water.mat`): one per
+     lake (over the fill's bounds), one sea plane (8× the terrain) and strips along rivers. That one function
+     is the swap point for the dedicated ocean system. The flood fill still drives the wet map that shore
+     classification uses.
+311. **Biomes are `.biome` JSON assets** in `Assets/WorldBuilder/`. Each holds a texture + tiling per feature
+     (Flat, Slope, Cliff, Shore/Underwater, Peak/Snow), thresholds (slope and cliff angles, peak line, shore
+     width), scatter items and a colour tone. There are six presets (Forest, Desert, Grassland, Snowy
+     Mountains, Beach, Rocky Badlands) using seven generated tileable textures. Edits save the biome asset
+     directly; they are not part of scene undo.
+312. **Classification per splat texel:** slope, height, curvature (ridges expose rock earlier), chamfer
+     distance to water and height above the nearest water level. Weights are taken in the order Cliff,
+     Shore, Peak, Slope, Flat. Biome weights come from zones in hierarchy order (later zones paint over
+     earlier ones), sampled at a noise-jittered point (Edge Breakup) so boundaries look natural.
+313. **Own splat painter behind `paint::SplatPainter`** (`BiomeRules`). Each distinct texture across the biomes
+     becomes a terrain layer. With more than four (the terrain's limit), each used biome's Flat texture is
+     kept first, then the most used of the rest; a dropped texture's weight moves to its biome's Flat layer.
+     This trait is the swap point for the terrain agent's rule-based
+     auto-painter at merge time.
+314. **Scatter:** one jittered candidate per min-spacing cell, kept with probability biome weight × density
+     under the item's rules: hard slope and height limits, dry ground only, Rock Areas boost rocks and
+     suppress plants. A candidate is rejected when it is closer than the item's spacing to another instance
+     (spatial hash) or overlaps another non-grass object. Each item is a primitive shape (tree = trunk +
+     crown, rock, bush, grass tuft, cactus) or a prefab; colours are tinted 15% by the biome tone.
+315. **Scatter storage:**
+     - Auto: objects, switching to compact above 20 000 instances.
+     - Objects: one object per instance with shared materials, so automatic instancing batches them.
+     - Compact: one `Scatter` component per item, 14 bytes per instance (16-bit positions over its bounds,
+       yaw, scale, up) stored as base64. `render_scene::mesh_draws` expands it into mesh draws (editor and
+       player), so the instancing batcher still draws them.
+
+     Prefab items always spawn objects. Generated materials go to `Assets/WorldBuilder/Materials/`.
+316. **Live preview:** while the window is open, any change to settings or stamps (moving a stamp counts)
+     regenerates at 129² after 350 ms without changes, with no scatter and no saving. The data from before the
+     first preview is kept: Revert Preview restores it, and the next Generate uses it as the undo state. A full
+     Generate (or Heights / Textures / Scatter Only) saves the terrain asset and is one undo step covering
+     both terrain and scene.
+317. **Gizmos:** while the window is open or a stamp is selected, stamp outlines are draped on the terrain
+     (radius, falloff ring, river centre, edges and banks, zone polygon, water-level ring). Dot handles drag
+     the radius, falloff, river points and polygon vertices. Moving, rotating and scaling use the normal
+     transform tools.
+318. **WorldBuilderDemo is generated by code** (`sample_world_builder`: writer + check + play test). It is a
+     600 m island (513² heightmap, 256² splat) with a volcano (Replace) holding a crater lake, a river to the
+     south coast, a village plateau (Sample Ground), a rock area, forest by default with snowy-peak and beach
+     zones, the sea, and compact scatter.
+319. **Differences from tools like Gaia / MicroVerse** (only their behaviour was borrowed): no node graph and no
+     library of heightmap-image stamps (stamps are analytic shapes), no GPU erosion, no more than four splat
+     layers, no spline roads, no streaming or tiling across several terrains, and water is a simple plane.

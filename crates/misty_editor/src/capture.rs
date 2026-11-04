@@ -59,6 +59,13 @@ pub fn apply_env(
     {
         s.select(e);
     }
+    // `MISTY_VIEW=<object name>` puts the Scene view camera where that object is (e.g. Main Camera).
+    if let Some(name) = std::env::var_os("MISTY_VIEW")
+        && let Some(e) = s.scene.find_by_name(&name.to_string_lossy())
+    {
+        let (_, rot, pos) = s.scene.world_matrix(e).to_scale_rotation_translation();
+        s.scene_view.camera.align_to(pos, rot);
+    }
     // `MISTY_ASSET=Assets/…` selects a Project asset (its folder is opened, the Inspector shows it).
     if let Some(rel) = std::env::var_os("MISTY_ASSET") {
         let rel = rel.to_string_lossy().into_owned();
