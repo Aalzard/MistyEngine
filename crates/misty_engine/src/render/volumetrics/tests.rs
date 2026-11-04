@@ -32,11 +32,7 @@ fn fog_shaders_validate() {
         "froxel integrate",
         &super::froxels::source(super::froxels::INTEGRATE_SRC),
     );
-    let common = concat!(
-        include_str!("../shaders/common.wgsl"),
-        "\n",
-        include_str!("shaders/fog_apply.wgsl")
-    );
+    let common = crate::render::pipelines::COMMON;
     validate(
         "sun shafts",
         &format!("{common}\n{}", super::sun_shafts::SRC),

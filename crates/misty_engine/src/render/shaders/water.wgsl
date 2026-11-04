@@ -210,7 +210,7 @@ fn water_sun_shadow(world: vec3<f32>, n: vec3<f32>) -> f32 {
     for (var i = 0u; i < count; i++) {
         let li = lights.items[i];
         if (u32(li.dir_type.w) == 0u) {
-            return shadow_factor(i, li, world, n, -normalize(li.dir_type.xyz));
+            return shadow_factor(i, li, world, n, -normalize(li.dir_type.xyz)) * cloud_shadow(world);
         }
     }
     return 1.0;

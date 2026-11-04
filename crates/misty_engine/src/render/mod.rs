@@ -3,6 +3,7 @@
 pub mod ao;
 mod batch;
 mod cascades;
+mod clouds;
 pub mod contact_shadows;
 pub mod culling;
 pub mod custom_shader;
@@ -399,6 +400,10 @@ pub struct Renderer {
     slots_scratch: Vec<u32>,
     /// Froxel fog, height fog and sun shafts.
     volumetrics: volumetrics::Volumetrics,
+    /// Volumetric clouds (trace, temporal resolve, shadow map).
+    clouds: clouds::Clouds,
+    /// The view group must be rebuilt (fog volume resized) before this render's passes.
+    view_group_dirty: bool,
     /// Ambient occlusion and contact shadows (depth/normal prepass, GTAO passes).
     screen_space: screen_space::ScreenSpace,
 }
@@ -418,8 +423,14 @@ impl Renderer {
         let view_buffer = uniform("misty view", std::mem::size_of::<ViewUniform>());
         let lights_buffer = uniform("misty lights", std::mem::size_of::<LightsUniform>());
         let volumetrics = volumetrics::Volumetrics::new(device);
-        let view_bind_group =
-            volumetrics::view_group(device, &pipelines.view_layout, &view_buffer, &volumetrics);
+        let clouds = clouds::Clouds::new(device);
+        let view_bind_group = volumetrics::view_group(
+            device,
+            &pipelines.view_layout,
+            &view_buffer,
+            &volumetrics,
+            &clouds,
+        );
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
         let probes = probes::gpu::ProbeGpu::new(device);
         let screen_space = screen_space::ScreenSpace::new(device);
@@ -489,8 +500,22 @@ impl Renderer {
             shadow_batchers: Vec::new(),
             slots_scratch: Vec::new(),
             volumetrics,
+            clouds,
+            view_group_dirty: false,
             screen_space,
         }
+    }
+
+    /// Point the view group at the current fog volume and cloud images.
+    fn rebuild_view_group(&mut self, device: &wgpu::Device) {
+        self.view_bind_group = volumetrics::view_group(
+            device,
+            &self.pipelines.view_layout,
+            &self.view_buffer,
+            &self.volumetrics,
+            &self.clouds,
+        );
+        self.view_group_dirty = false;
     }
 
     /// Renderer that also measures GPU time per render when the device was created with
@@ -577,7 +602,8 @@ impl Renderer {
             texture_bytes: texture_bytes
                 + shadow_bytes
                 + self.probes.bytes()
-                + self.volumetrics.texture_bytes(),
+                + self.volumetrics.texture_bytes()
+                + self.clouds.texture_bytes(),
         }
     }
 
@@ -783,6 +809,7 @@ impl Renderer {
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
         self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
         self.prepare_volumetrics(device, queue, target, frame, &plan);
+        self.prepare_clouds(device, queue, target, frame);
 
         // Overlay triangles follow the lines in the same buffer.
         let line_vertices = frame.lines.len() + frame.overlay.len();
@@ -816,6 +843,7 @@ impl Renderer {
             self.water.simulate(&mut encoder);
         }
         self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+        self.cloud_passes(device, &mut encoder);
         self.froxel_passes(device, &mut encoder, target);
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see

@@ -1,7 +1,12 @@
 //! Froxel volume compute passes: light (density + lighting + temporal) into a per-view history
 //! texture, then front-to-back integration into the shared volume the forward shaders sample.
 
-const COMMON: &str = include_str!("shaders/froxel_common.wgsl");
+const COMMON: &str = concat!(
+    include_str!("shaders/froxel_common.wgsl"),
+    "
+",
+    include_str!("../clouds/shaders/cloud_shadow_lookup.wgsl")
+);
 pub(super) const LIGHT_SRC: &str = include_str!("shaders/froxel_light.wgsl");
 pub(super) const INTEGRATE_SRC: &str = include_str!("shaders/froxel_integrate.wgsl");
 /// rgb = scattering / in-scatter, a = extinction / transmittance.
@@ -81,6 +86,8 @@ pub(super) struct Dispatch<'a> {
     pub lit: &'a wgpu::TextureView,
     pub integrated: &'a wgpu::TextureView,
     pub shadows: (&'a wgpu::TextureView, &'a wgpu::TextureView),
+    /// Cloud shadow map and its `CloudApply` uniform.
+    pub clouds: (&'a wgpu::TextureView, &'a wgpu::Buffer),
     pub size: [u32; 3],
 }
 
@@ -110,6 +117,8 @@ impl FroxelPipelines {
                     6,
                     wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                 ),
+                entry(7, texture(float, D::D2)),
+                entry(8, uniform),
             ],
         });
         let integrate_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -175,6 +184,14 @@ impl FroxelPipelines {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: tex(d.clouds.0),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: d.clouds.1.as_entire_binding(),
                 },
             ],
         });

@@ -176,6 +176,8 @@ pub struct QualityLevel {
     pub ambient_occlusion: Tier,
     pub volumetric_fog: Tier,
     pub reflection_probes: Tier,
+    /// Volumetric clouds: trace resolution and step counts (Off = no clouds).
+    pub volumetric_clouds: Tier,
 }
 
 impl Default for QualityLevel {
@@ -203,6 +205,7 @@ impl QualityLevel {
             ambient_occlusion: Tier::Off,
             volumetric_fog: Tier::Off,
             reflection_probes: Tier::Low,
+            volumetric_clouds: Tier::Low,
         }
     }
 
@@ -224,6 +227,7 @@ impl QualityLevel {
             ambient_occlusion: Tier::Low,
             volumetric_fog: Tier::Low,
             reflection_probes: Tier::Medium,
+            volumetric_clouds: Tier::Medium,
         }
     }
 
@@ -245,6 +249,7 @@ impl QualityLevel {
             ambient_occlusion: Tier::Medium,
             volumetric_fog: Tier::Medium,
             reflection_probes: Tier::High,
+            volumetric_clouds: Tier::Medium,
         }
     }
 
@@ -258,6 +263,7 @@ impl QualityLevel {
             lod_bias: 2.0,
             ambient_occlusion: Tier::High,
             volumetric_fog: Tier::High,
+            volumetric_clouds: Tier::High,
             ..Self::high()
         }
     }

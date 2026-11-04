@@ -138,6 +138,9 @@ pub struct PostProcessVolume {
     pub ambient_occlusion: AmbientOcclusionOverride,
     #[serde(skip_serializing_if = "is_default")]
     pub contact_shadows: ContactShadowsOverride,
+    /// Raymarched cloud layer (left out of files while untouched).
+    #[serde(skip_serializing_if = "is_default")]
+    pub clouds: super::CloudsOverride,
 }
 
 impl Default for PostProcessVolume {
@@ -153,6 +156,7 @@ impl Default for PostProcessVolume {
             sun_shafts: Default::default(),
             ambient_occlusion: Default::default(),
             contact_shadows: Default::default(),
+            clouds: Default::default(),
         }
     }
 }

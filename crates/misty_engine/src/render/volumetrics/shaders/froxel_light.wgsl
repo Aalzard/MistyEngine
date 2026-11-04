@@ -10,6 +10,8 @@
 @group(0) @binding(4) var sun_shadow_map: texture_depth_2d_array;
 @group(0) @binding(5) var local_shadow_map: texture_depth_2d_array;
 @group(0) @binding(6) var shadow_cmp: sampler_comparison;
+@group(0) @binding(7) var cloud_shadow_map: texture_2d<f32>;
+@group(0) @binding(8) var<uniform> cloud_apply: CloudApply;
 
 fn hash(p: vec3<i32>) -> f32 {
     var n = u32(p.x) * 73856093u ^ u32(p.y) * 19349663u ^ u32(p.z) * 83492791u;
@@ -146,6 +148,10 @@ fn in_scatter(p: vec3<f32>, view_dir: vec3<f32>) -> vec3<f32> {
             continue;
         }
         atten *= light_shadow(li, p);
+        if (kind == 0u) {
+            // Volumetric clouds shade the sun (god rays through the gaps).
+            atten *= cloud_shadow_lookup(cloud_shadow_map, linear_clamp, cloud_apply, p);
+        }
         // Lights are in surface units (a white wall facing the light = colour); a medium that
         // scatters evenly returns a quarter of that, hence the PI.
         light += li.color.rgb * atten * phase(g, dot(view_dir, l)) * PI;

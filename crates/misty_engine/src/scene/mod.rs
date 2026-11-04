@@ -2,6 +2,7 @@
 
 pub mod animator_component;
 pub mod audio_components;
+pub mod clouds;
 pub mod components;
 pub mod file;
 pub mod fog_volume;
@@ -27,6 +28,7 @@ use hecs::{Entity, EntityBuilder, World};
 
 pub use animator_component::Animator;
 pub use audio_components::*;
+pub use clouds::{CloudPreset, CloudsOverride};
 pub use components::*;
 pub use fog_volume::{FogOverride, FogQuality, FogVolume, SunShaftsOverride};
 pub use lod_group::{LodFadeMode, LodGroup, LodLevel};

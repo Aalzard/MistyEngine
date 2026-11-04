@@ -4,9 +4,13 @@ use super::mesh::Vertex;
 use super::particles::ParticleInstance;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
-/// Shared view uniform + helpers, then the fog every forward shader applies.
+/// Shared view uniform + helpers, then the clouds and fog every forward shader applies.
 pub(super) const COMMON: &str = concat!(
     include_str!("shaders/common.wgsl"),
+    "\n",
+    include_str!("clouds/shaders/cloud_shadow_lookup.wgsl"),
+    "\n",
+    include_str!("clouds/shaders/clouds_apply.wgsl"),
     "\n",
     include_str!("volumetrics/shaders/fog_apply.wgsl")
 );
@@ -232,6 +236,7 @@ impl Pipelines {
         // View uniform + the fog volume, sampler and uniform (render/volumetrics).
         let mut view_entries = vec![entry(0, S::VERTEX_FRAGMENT, uniform())];
         view_entries.extend(super::volumetrics::view_layout_entries());
+        view_entries.extend(super::clouds::view_layout_entries());
         let view_layout = layout("misty view", &view_entries);
         let probe = super::probes::gpu::layout_entries();
         let mesh_layout = layout(
