@@ -92,8 +92,10 @@ fn spot_halos_show_only_when_looking_into_the_cone() {
 #[test]
 fn fog_widens_and_brightens_halos() {
     let cam = camera();
-    let mut env = Environment::default();
-    env.glows = vec![source(LightType::Point, Vec3::new(0.0, 2.0, 5.0), Vec3::Z)];
+    let mut env = Environment {
+        glows: vec![source(LightType::Point, Vec3::new(0.0, 2.0, 5.0), Vec3::Z)],
+        ..Default::default()
+    };
     let clear = instances::build(&frame(&cam, &env, PostSettings::default()), 1.6, true);
     let thick = instances::build(&frame(&cam, &env, foggy(8.0)), 1.6, true);
     let (a, b) = (clear.halos[0], thick.halos[0]);
@@ -109,11 +111,13 @@ fn fog_widens_and_brightens_halos() {
 #[test]
 fn halos_behind_the_camera_and_directional_lights_are_skipped() {
     let cam = camera();
-    let mut env = Environment::default();
-    env.glows = vec![
-        source(LightType::Point, Vec3::new(0.0, 2.0, -30.0), Vec3::Z),
-        source(LightType::Directional, Vec3::ZERO, Vec3::NEG_Y),
-    ];
+    let env = Environment {
+        glows: vec![
+            source(LightType::Point, Vec3::new(0.0, 2.0, -30.0), Vec3::Z),
+            source(LightType::Directional, Vec3::ZERO, Vec3::NEG_Y),
+        ],
+        ..Default::default()
+    };
     let list = instances::build(&frame(&cam, &env, PostSettings::default()), 1.6, true);
     assert!(list.halos.is_empty());
 }
