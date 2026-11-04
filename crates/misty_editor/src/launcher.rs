@@ -186,5 +186,7 @@ impl eframe::App for Launcher {
                 }
             }
         }
+        // The window is frameless (`main.rs`): its border resize zones, over everything.
+        crate::title_bar::resize_edges(&ctx);
     }
 }

@@ -27,13 +27,14 @@ fn item(ui: &mut Ui, state: &mut EditorState, label: &str, shortcut: &str, actio
 }
 
 /// Top menu button; it and its entries are tutorial targets (`menu.<Menu>/<Entry>`).
-fn top(ui: &mut Ui, label: &str, f: impl FnOnce(&mut Ui)) {
+fn top(ui: &mut Ui, label: &str, f: impl FnOnce(&mut Ui)) -> egui::Rect {
     let id = format!("menu.{label}");
     let r = ui.menu_button(label, |ui| {
         let _scope = targets::scope(&id);
         f(ui)
     });
     targets::mark(ui, &id, r.response.rect);
+    r.response.rect
 }
 
 /// Submenu that is a tutorial target too (`…/<Submenu>/<Entry>`).
@@ -50,16 +51,25 @@ fn todo(ui: &mut Ui, state: &mut EditorState, label: &'static str, shortcut: &st
     item(ui, state, label, shortcut, Action::NotImplemented(label));
 }
 
+/// The menus on their own (tests).
+#[cfg(test)]
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
-    egui::MenuBar::new().ui(ui, |ui| {
-        top(ui, "File", |ui| file_menu(ui, state));
-        top(ui, "Edit", |ui| edit_menu(ui, state));
-        top(ui, "Assets", |ui| assets_menu(ui, state));
-        top(ui, "GameObject", |ui| gameobject_menu(ui, state));
-        top(ui, "Component", |ui| component_menu(ui, state));
-        top(ui, "Window", |ui| window_menu(ui, state));
-        top(ui, "Help", |ui| help_menu(ui, state));
-    });
+    show_menus(ui, state);
+}
+
+/// The menus; returns the right edge of the last one (the title bar centres its title past it).
+pub fn show_menus(ui: &mut Ui, state: &mut EditorState) -> f32 {
+    egui::MenuBar::new()
+        .ui(ui, |ui| {
+            top(ui, "File", |ui| file_menu(ui, state));
+            top(ui, "Edit", |ui| edit_menu(ui, state));
+            top(ui, "Assets", |ui| assets_menu(ui, state));
+            top(ui, "GameObject", |ui| gameobject_menu(ui, state));
+            top(ui, "Component", |ui| component_menu(ui, state));
+            top(ui, "Window", |ui| window_menu(ui, state));
+            top(ui, "Help", |ui| help_menu(ui, state)).right()
+        })
+        .inner
 }
 
 fn file_menu(ui: &mut Ui, s: &mut EditorState) {

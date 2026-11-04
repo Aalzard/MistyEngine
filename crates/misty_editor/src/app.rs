@@ -15,7 +15,9 @@ use crate::project::ProjectBrowser;
 use crate::scene_files::{self, AfterPrompt};
 use crate::state::{EditorState, PlayState, Tool};
 use crate::viewport::Gpu;
-use crate::{build_settings, commands, game_input, menu_bar, play, status_bar, theme, toolbar};
+use crate::{
+    build_settings, commands, game_input, menu_bar, play, status_bar, theme, title_bar, toolbar,
+};
 
 pub struct EditorApp {
     state: EditorState,
@@ -537,6 +539,22 @@ impl EditorApp {
         }
     }
 
+    /// The frameless window's title bar: menus, "Misty Engine — project — scene", window buttons.
+    fn title_bar(&mut self, ui: &mut egui::Ui) {
+        let style = title_bar::BarStyle {
+            bg: theme::TAB_BAR_BG,
+            text: theme::TEXT,
+            dim: theme::TEXT_DIM,
+            hover: egui::Color32::from_white_alpha(18),
+        };
+        let (project, scene) = scene_files::title_parts(&self.state);
+        let rest = format!("  —  {project}  —  {scene}");
+        let title = title_bar::title_job(crate::branding::PRODUCT, &rest, &style);
+        title_bar::show(ui, &style, title, |ui| {
+            menu_bar::show_menus(ui, &mut self.state)
+        });
+    }
+
     /// The user is mid-interaction: a mouse button is down or a text field has focus.
     fn interacting(ctx: &egui::Context) -> bool {
         ctx.input(|i| i.pointer.any_down()) || ctx.egui_wants_keyboard_input()
@@ -574,8 +592,10 @@ impl eframe::App for EditorApp {
             .fill(theme::TAB_BAR_BG)
             .inner_margin(egui::Margin::symmetric(4, 2));
         egui::Panel::top("menu_bar")
-            .frame(bar_frame)
-            .show(ui, |ui| menu_bar::show(ui, &mut self.state));
+            .exact_size(title_bar::HEIGHT)
+            .frame(egui::Frame::NONE)
+            .show_separator_line(false)
+            .show(ui, |ui| self.title_bar(ui));
         egui::Panel::top("main_toolbar")
             .frame(bar_frame.inner_margin(egui::Margin::symmetric(6, 4)))
             .show(ui, |ui| toolbar::show(ui, &mut self.state));

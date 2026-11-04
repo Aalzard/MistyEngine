@@ -152,6 +152,11 @@ impl Hub {
             self.applied_theme = Some(self.config.theme);
         }
         let p = style::palette(self.config.theme);
+        egui::Panel::top("hub_title_bar")
+            .exact_size(crate::title_bar::HEIGHT)
+            .frame(egui::Frame::NONE)
+            .show_separator_line(false)
+            .show(ui, |ui| title_bar(ui, &p, self.config.theme));
         egui::Panel::left("hub_nav")
             .exact_size(216.0)
             .resizable(false)
@@ -159,7 +164,7 @@ impl Hub {
             .frame(egui::Frame::new().fill(p.nav).inner_margin(egui::Margin {
                 left: 16,
                 right: 16,
-                top: 20,
+                top: 10,
                 bottom: 14,
             }))
             .show(ui, |ui| self.nav(ui));
@@ -262,6 +267,22 @@ impl Hub {
 }
 
 /// A full-width page link with a highlight when selected.
+/// The frameless window's bar: "Misty Hub" in the centre and the window buttons.
+fn title_bar(ui: &mut egui::Ui, p: &style::Palette, theme: config::HubTheme) {
+    let hover = match theme {
+        config::HubTheme::Dark => egui::Color32::from_white_alpha(18),
+        config::HubTheme::Light => egui::Color32::from_black_alpha(18),
+    };
+    let bar = crate::title_bar::BarStyle {
+        bg: p.nav,
+        text: p.text,
+        dim: p.dim,
+        hover,
+    };
+    let title = crate::title_bar::title_job("Misty Hub", "", &bar);
+    crate::title_bar::show(ui, &bar, title, |ui| ui.max_rect().left());
+}
+
 fn nav_item(
     ui: &mut egui::Ui,
     p: &style::Palette,
