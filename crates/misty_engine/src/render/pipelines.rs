@@ -20,6 +20,8 @@ pub(super) const MESH_SRC: &str = concat!(
     "\n",
     include_str!("shaders/shadows.wgsl"),
     "\n",
+    include_str!("area/area_light.wgsl"),
+    "\n",
     include_str!("probes/probes.wgsl"),
     "\n",
     include_str!("shaders/screen_space.wgsl")
@@ -55,6 +57,8 @@ const TERRAIN_SRC: &str = concat!(
     "\n",
     include_str!("shaders/shadows.wgsl"),
     "\n",
+    include_str!("area/area_light.wgsl"),
+    "\n",
     include_str!("probes/probes.wgsl"),
     "\n",
     include_str!("shaders/screen_space.wgsl"),
@@ -80,6 +84,8 @@ const GRASS_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/shadows.wgsl"),
+    "\n",
+    include_str!("area/area_light.wgsl"),
     "\n",
     include_str!("probes/probes.wgsl"),
     "\n",
@@ -267,6 +273,8 @@ impl Pipelines {
                 entry(5, S::VERTEX, storage()),
                 // Soft-shadow parameters (shadows.wgsl).
                 entry(6, S::FRAGMENT, uniform()),
+                // Rectangle lights' LTC table (area/area_light.wgsl).
+                entry(7, S::FRAGMENT, storage()),
                 // Reflection probes (bindings 20–24, see probes/gpu.rs).
                 probe[0],
                 probe[1],

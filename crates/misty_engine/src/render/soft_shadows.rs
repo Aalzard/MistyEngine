@@ -89,11 +89,13 @@ fn pack(
     u
 }
 
-/// Directional: tan(half the angular diameter). Spot / point: the radius.
+/// Directional: tan(half the angular diameter). Spot / point: the radius. Rectangle: half its
+/// mean side, so the penumbra grows with the light's size.
 fn source_size(l: &LightData) -> f32 {
     let size = l.shadow.size.max(0.0);
     match l.kind {
         LightType::Directional => (size.min(20.0).to_radians() * 0.5).tan(),
+        LightType::Rectangle => l.area.shadow_radius(),
         _ => size,
     }
 }
@@ -169,6 +171,7 @@ mod tests {
             spot_angle: 30.0,
             shadows: crate::scene::Shadows::Soft,
             contact_shadows: false,
+            area: Default::default(),
             shadow: LightShadow {
                 size: 2.0,
                 ..Default::default()

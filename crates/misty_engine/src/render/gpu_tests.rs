@@ -169,6 +169,7 @@ fn test_lights() -> Vec<LightData> {
         shadow: Default::default(),
         volumetric: Default::default(),
         contact_shadows: false,
+        area: Default::default(),
     };
     vec![
         light(

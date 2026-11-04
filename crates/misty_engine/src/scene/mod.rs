@@ -5,6 +5,7 @@ pub mod audio_components;
 pub mod components;
 pub mod file;
 pub mod fog_volume;
+pub mod light_area;
 pub mod light_shadow;
 pub mod lod_group;
 mod order;

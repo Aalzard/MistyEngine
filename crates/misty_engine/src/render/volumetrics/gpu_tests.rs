@@ -36,6 +36,7 @@ fn light(kind: LightType, position: Vec3, direction: Vec3, intensity: f32) -> Li
         spot_angle: 30.0,
         shadows: Shadows::Hard,
         contact_shadows: false,
+        area: Default::default(),
         shadow: Default::default(),
         volumetric: VolumetricLight::default(),
     }

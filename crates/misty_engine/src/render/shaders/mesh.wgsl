@@ -1,6 +1,7 @@
 // Lit meshes, close to the Standard (metallic) shader:
 // Lambert diffuse + GGX specular, sky reflections with Fresnel, hemisphere ambient,
-// directional/point/spot lights, hard or soft shadows for all three light types (shadows.wgsl).
+// directional/point/spot lights, hard or soft shadows for all three light types (shadows.wgsl),
+// rectangle area lights through linearly transformed cosines (area/area_light.wgsl).
 // Albedo texture × colour and tangent-space normal maps (OpenGL convention, green = up),
 // metallic (R) / smoothness (A), occlusion (G) and emission maps.
 // Rendering modes: Opaque, Cutout (fs_cutout discards below the cutoff), Fade (straight alpha)
@@ -16,14 +17,18 @@ const MAX_LOCAL_SHADOWS: u32 = 16u;
 struct LightItem {
     // xyz = position, w = range.
     pos_range: vec4<f32>,
-    // xyz = direction the light travels, w = type (0 dir, 1 point, 2 spot).
+    // xyz = direction the light travels, w = type (0 dir, 1 point, 2 spot, 3 rectangle).
     dir_type: vec4<f32>,
     // rgb = linear colour * intensity.
     color: vec4<f32>,
-    // x = cos(outer half angle), y = cos(inner half angle).
+    // x = cos(outer half angle), y = cos(inner half angle), z = contact shadows.
     spot: vec4<f32>,
     // x = shadow mode (0 none, 1 hard, 2 soft), y = shadow layer (-1 = directional map).
     shadow: vec4<f32>,
+    // Rectangle (area_light.wgsl): xyz = half-width axis, w = 1 when two-sided.
+    area_x: vec4<f32>,
+    // Rectangle: xyz = half-height axis.
+    area_y: vec4<f32>,
 };
 
 struct Lights {
@@ -256,6 +261,10 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     for (var i = 0u; i < count; i++) {
         let li = lights.items[i];
         let kind = u32(li.dir_type.w);
+        if (kind == 3u) {
+            color += rect_shade(i, li, world, s.receive_shadows, n, v, perceptual, f0, diffuse_color, ssao);
+            continue;
+        }
         var l: vec3<f32>;
         var atten = 1.0;
         if (kind == 0u) {

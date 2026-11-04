@@ -11,8 +11,10 @@ use crate::scene::{LightType, Shadows};
 
 pub const DIRECTIONAL_SIZE: u32 = 2048;
 pub const LOCAL_SIZE: u32 = 1024;
-/// Spot = 1 layer, point = 6 layers.
+/// Spot and rectangle = 1 layer, point = 6 layers.
 pub const MAX_LOCAL_LAYERS: usize = 16;
+/// Field of view of a rectangle light's shadow map (points further off its axis are unshadowed).
+pub const RECT_SHADOW_FOV: f32 = 120.0;
 /// Dynamic-offset stride for the per-pass view uniforms.
 pub const VIEW_STRIDE: u64 = 512;
 /// Cascades first, then the local layers (the order of [`ShadowPlan::matrices`]).
@@ -199,7 +201,8 @@ pub fn plan_with(
                 Some(-1)
             }
             LightType::Directional => None,
-            LightType::Spot if plan.local.len() < MAX_LOCAL_LAYERS => {
+            // Rectangles: one perspective map from the centre, like a wide spot light.
+            LightType::Spot | LightType::Rectangle if plan.local.len() < MAX_LOCAL_LAYERS => {
                 let first = plan.local.len() as i32;
                 plan.local.push(spot_matrix(l));
                 Some(first)
@@ -254,6 +257,7 @@ pub fn local_clip(light: &LightData) -> (f32, f32, f32) {
     let near = (light.range * 0.005).clamp(0.02, 0.2);
     let fov: f32 = match light.kind {
         LightType::Point => 92.0,
+        LightType::Rectangle => RECT_SHADOW_FOV,
         _ => (light.spot_angle + 2.0).min(170.0),
     };
     (
@@ -304,6 +308,7 @@ mod tests {
             shadow: Default::default(),
             volumetric: Default::default(),
             contact_shadows: false,
+            area: Default::default(),
         }
     }
 

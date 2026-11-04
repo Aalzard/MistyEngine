@@ -94,6 +94,7 @@ fn render(
         shadow: Default::default(),
         volumetric: Default::default(),
         contact_shadows: false,
+        area: Default::default(),
     }];
     let environment = Environment::default();
     let terrains = [draw(key)];

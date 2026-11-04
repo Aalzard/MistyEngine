@@ -213,6 +213,7 @@ mod tests {
             shadow: Default::default(),
             volumetric: Default::default(),
             contact_shadows: false,
+            area: Default::default(),
         }
     }
 

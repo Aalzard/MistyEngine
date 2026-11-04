@@ -229,17 +229,25 @@ pub enum LightType {
     #[default]
     Point,
     Spot,
+    /// Area light: a rectangle emitting from its front face (local +Z).
+    Rectangle,
 }
 
 impl LightType {
-    pub const ALL: [LightType; 3] = [Self::Directional, Self::Point, Self::Spot];
+    pub const ALL: [LightType; 4] = [Self::Directional, Self::Point, Self::Spot, Self::Rectangle];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Directional => "Directional",
             Self::Point => "Point",
             Self::Spot => "Spot",
+            Self::Rectangle => "Rectangle",
         }
+    }
+
+    /// Lights at a position with a range (everything but the sun).
+    pub fn is_local(self) -> bool {
+        self != Self::Directional
     }
 }
 
@@ -296,6 +304,17 @@ pub struct Light {
     /// Screen-space contact shadows (when a volume's Contact Shadows override is on).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub contact_shadows: bool,
+    /// Rectangle: width along local X and height along local Y, in metres.
+    #[serde(skip_serializing_if = "super::light_area::is_size")]
+    pub width: f32,
+    #[serde(skip_serializing_if = "super::light_area::is_size")]
+    pub height: f32,
+    /// Rectangle: emit from both faces (else only towards local +Z).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub two_sided: bool,
+    /// Rectangle: draw the rectangle as an emissive quad in the Scene and Game views.
+    #[serde(skip_serializing_if = "super::light_area::is_yes")]
+    pub show_emitter: bool,
 }
 
 impl Default for Light {
@@ -315,6 +334,10 @@ impl Default for Light {
             volumetric_multiplier: 1.0,
             volumetric_shadow_dimmer: 1.0,
             contact_shadows: false,
+            width: super::light_area::SIZE,
+            height: super::light_area::SIZE,
+            two_sided: false,
+            show_emitter: true,
         }
     }
 }
@@ -325,6 +348,16 @@ impl Light {
         Self {
             kind: LightType::Directional,
             color: [1.0, 0.957, 0.839],
+            shadows: Shadows::Soft,
+            ..Default::default()
+        }
+    }
+
+    /// Defaults used by GameObject ▸ Light ▸ Rectangle Light: radiance 4, soft shadows.
+    pub fn rectangle() -> Self {
+        Self {
+            kind: LightType::Rectangle,
+            intensity: 4.0,
             shadows: Shadows::Soft,
             ..Default::default()
         }

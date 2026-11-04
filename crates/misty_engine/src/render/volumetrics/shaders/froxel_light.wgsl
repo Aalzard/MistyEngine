@@ -141,6 +141,16 @@ fn in_scatter(p: vec3<f32>, view_dir: vec3<f32>) -> vec3<f32> {
             if (kind == 2u) {
                 atten *= smoothstep(li.spot.x, li.spot.y, dot(-l, normalize(li.dir_type.xyz)));
             }
+            if (kind == 3u) {
+                // Rectangle: an emitter at its centre covering the rectangle's solid angle
+                // (area × facing cosine / d², kept finite near it), ÷ PI for surface units.
+                var facing = dot(-l, normalize(li.dir_type.xyz));
+                if (li.spot.y > 0.5) {
+                    facing = abs(facing);
+                }
+                let solid = li.spot.x * max(facing, 0.0) / (dist * dist + li.spot.x / PI);
+                atten = window * window * solid / PI;
+            }
         }
         if (atten <= 0.0) {
             continue;
