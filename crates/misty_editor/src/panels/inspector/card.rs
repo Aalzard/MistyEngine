@@ -136,6 +136,7 @@ pub fn fit_widgets(ui: &mut Ui, value_w: f32) {
     s.text_edit_width = value_w;
     s.interact_size.x = number_w;
     s.slider_width = (value_w - number_w - s.item_spacing.x).max(40.0);
+    crate::widgets::input_fills(ui);
 }
 
 /// Bold sub-section header ("Shadow Settings") between groups of rows, outside a grid.

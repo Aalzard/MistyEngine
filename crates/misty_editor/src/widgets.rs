@@ -45,6 +45,13 @@ pub fn label_width_or(ui: &Ui, fallback: f32) -> f32 {
     }
 }
 
+/// Number fields and dropdowns drawn in `ui` read as inputs: a soft step darker than panels.
+pub fn input_fills(ui: &mut Ui) {
+    let w = &mut ui.visuals_mut().widgets;
+    w.inactive.weak_bg_fill = theme::INPUT_BG;
+    w.hovered.weak_bg_fill = theme::INPUT_HOVER;
+}
+
 /// One `X [..] Y [..] Z [..]` row. Dragging an axis letter scrubs its value.
 /// Returns true when any value changed.
 pub fn vec3_row(ui: &mut Ui, label: &str, value: &mut [f32; 3], speed: f32) -> bool {
@@ -61,6 +68,7 @@ pub fn vec3_row_mixed(
 ) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
+        input_fills(ui);
         let h = ui.spacing().interact_size.y;
         let label_w = label_width_or(ui, 72.0);
         ui.allocate_ui_with_layout(
@@ -107,24 +115,18 @@ fn axis_color(i: usize) -> Color32 {
     }
 }
 
-/// Thin horizontal strip used as a panel toolbar.
+/// Thin horizontal strip used as a panel toolbar: a soft step darker than the panel body,
+/// without an outline.
 pub fn panel_toolbar<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let frame = egui::Frame::new()
-        .fill(Color32::from_rgb(60, 60, 60))
+        .fill(theme::TOOLBAR_BG)
         .inner_margin(egui::Margin::symmetric(4, 2));
-    let r = frame
+    frame
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(add).inner
         })
-        .inner;
-    let rect = ui.min_rect();
-    ui.painter().hline(
-        rect.x_range(),
-        ui.cursor().top(),
-        egui::Stroke::new(1.0, theme::BORDER),
-    );
-    r
+        .inner
 }
 
 /// Search field with a magnifier hint.

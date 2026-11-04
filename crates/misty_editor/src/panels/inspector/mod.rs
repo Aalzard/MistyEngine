@@ -194,6 +194,7 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
             .changed();
     });
     ui.horizontal(|ui| {
+        crate::widgets::input_fills(ui);
         ui.label("Tag");
         egui::ComboBox::from_id_salt("insp_tag")
             .selected_text(if mixed_tag {
