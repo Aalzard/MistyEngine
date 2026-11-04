@@ -115,8 +115,9 @@ fn agents_page(ui: &mut Ui, state: &mut EditorState) {
         ch
     });
     if changed {
+        let label = crate::undo_names::struct_change("Navigation", &state.scene.navigation, &s);
         state.scene.navigation = s;
-        state.mark_edited("Navigation");
+        state.mark_edited(&label);
     }
     ui.add_space(6.0);
     ui.weak("Bake again (Bake tab) after changing the agent.");
@@ -241,8 +242,9 @@ fn bake_page(ui: &mut Ui, state: &mut EditorState) {
         ch
     });
     if changed {
+        let label = crate::undo_names::struct_change("Navigation", &state.scene.navigation, &s);
         state.scene.navigation = s;
-        state.mark_edited("Navigation");
+        state.mark_edited(&label);
     }
     ui.add_space(8.0);
     let busy = state.navigation.baking() || state.play.in_play_mode();

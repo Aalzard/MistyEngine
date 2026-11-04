@@ -138,8 +138,7 @@ fn generate_writes_the_terrain_and_undo_restores_it() {
     assert!(!s.scene.children(generated).is_empty());
     // Undo puts the flat terrain and the scene back.
     let s = &mut s;
-    s.undo
-        .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips);
+    s.undo_step();
     assert_eq!(*store::get(&path).unwrap().0, *flat);
     assert!(
         s.scene

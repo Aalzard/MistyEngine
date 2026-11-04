@@ -208,8 +208,7 @@ mod tests {
             "placed at the Scene view pivot"
         );
         assert_eq!(s.selection.active(), Some(e));
-        s.undo
-            .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips);
+        s.undo_step();
         assert_eq!(s.scene.len(), before);
         assert!(instantiate(&mut s, "Assets/Nope.prefab", None).is_none());
     }
@@ -254,8 +253,7 @@ mod tests {
 
         apply(&mut s, Action::UnpackPrefab(other));
         assert_eq!(s.scene.prefab_link(other), None);
-        s.undo
-            .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips);
+        s.undo_step();
         assert!(s.scene.prefab_link(other).is_some(), "unpack is undoable");
     }
 

@@ -104,6 +104,10 @@ pub fn apply_env(
             }
         }
     }
+    // `MISTY_UNDO_DEMO=1` makes a few named edits (for Undo History screenshots).
+    if std::env::var_os("MISTY_UNDO_DEMO").is_some() {
+        undo_demo(s);
+    }
     // `MISTY_STATS=1` shows the Game view's Stats box.
     if std::env::var_os("MISTY_STATS").is_some() {
         s.game_view.stats = true;
@@ -178,4 +182,52 @@ fn save_png(path: &PathBuf, image: &egui::ColorImage) -> Result<(), Box<dyn std:
     let bytes: Vec<u8> = image.pixels.iter().flat_map(|c| c.to_array()).collect();
     encoder.write_header()?.write_image_data(&bytes)?;
     Ok(())
+}
+
+/// Real edits, each recorded like the editor does: create, drag, Inspector change, rename,
+/// duplicate; the last two are then undone so the window shows redoable steps.
+fn undo_demo(s: &mut crate::state::EditorState) {
+    use crate::actions::{Action, Create};
+    use misty_engine::scene::{Light, PrimitiveMesh};
+    let create = |what| Action::Create { what, parent: None };
+    crate::commands::apply(s, create(Create::Primitive(PrimitiveMesh::Cube)));
+    let Some(cube) = s.selection.active() else {
+        return;
+    };
+    // A gizmo drag: one step for the whole interaction.
+    s.undo.begin_frame(true, &s.scene, &s.selection, || None);
+    for i in 1..=5 {
+        let mut t = s.scene.transform(cube);
+        t.position.x = i as f32 * 0.4;
+        s.scene.set_transform(cube, t);
+        s.mark_edited(&format!("Move {}", s.scene.name(cube)));
+    }
+    s.undo.end_frame(false);
+    // A slider drag on a light's Intensity.
+    let light = s
+        .scene
+        .walk()
+        .into_iter()
+        .map(|(e, _)| e)
+        .find(|e| s.scene.world.get::<&Light>(*e).is_ok());
+    if let Some(l) = light {
+        s.undo.begin_frame(true, &s.scene, &s.selection, || None);
+        let before = (*s.scene.world.get::<&Light>(l).unwrap()).clone();
+        let mut after = before.clone();
+        after.intensity *= 1.5;
+        let label = crate::undo_names::struct_change("Light", &before, &after);
+        let _ = s.scene.world.insert_one(l, after);
+        s.mark_edited(&label);
+        s.undo.end_frame(false);
+    }
+    crate::commands::apply(s, create(Create::Primitive(PrimitiveMesh::Sphere)));
+    s.select(cube);
+    s.record(&format!("Rename {}", s.scene.name(cube)));
+    s.scene.game_object_mut(cube).name = "Crate".into();
+    crate::commands::apply(s, Action::DuplicateSelected);
+    crate::commands::apply(s, Action::DeleteSelected);
+    s.undo_step();
+    s.undo_step();
+    // Demo edits are never saved: closing after the screenshot must not write the scene.
+    s.scene_dirty = false;
 }

@@ -216,7 +216,7 @@ fn apply(state: &mut EditorState, d: &Drag, q: Vec2) {
             state.scene.set_transform(e, t);
             let world = d.frame.transform_point3(o.extend(0.0));
             state.scene.set_world_position(e, world);
-            state.mark_edited("Rect Tool");
+            state.mark_edited(&format!("Resize {}", state.scene.name(e)));
         }
         Part::BoxEdge(axis, side) => {
             let (_, s) = collider_frame(&state.scene, e);

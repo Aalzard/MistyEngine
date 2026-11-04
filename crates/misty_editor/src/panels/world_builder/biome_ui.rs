@@ -125,7 +125,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, builder: misty_engine::hecs::E
         });
     if changed {
         let _ = state.scene.world.insert_one(builder, settings);
-        state.mark_edited("World Builder");
+        state.mark_edited("Change World Builder Biomes");
     }
     ui.horizontal_wrapped(|ui| {
         for p in &paths {

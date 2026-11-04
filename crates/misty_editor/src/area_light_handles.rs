@@ -118,7 +118,7 @@ pub fn handles(
             }
             if l.width != light.width || l.height != light.height {
                 let _ = state.scene.world.insert_one(e, l);
-                state.mark_edited("Light Size");
+                state.mark_edited("Change Light Size");
             }
         }
         ui.ctx().data_mut(|data| data.insert_temp(id, d));

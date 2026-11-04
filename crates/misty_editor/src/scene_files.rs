@@ -227,7 +227,7 @@ pub fn perform(s: &mut EditorState, action: AfterPrompt) -> bool {
 
 pub(crate) fn reset_after_load(s: &mut EditorState) {
     s.selection.clear();
-    s.undo = Default::default();
+    s.undo.clear();
     s.scene_dirty = false;
     s.hierarchy.expanded.clear();
     s.hierarchy.collapsed_scenes.clear();

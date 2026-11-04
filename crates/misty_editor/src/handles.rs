@@ -403,7 +403,16 @@ fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, dra
             scale(state, drag, Vec3::splat(factor));
         }
     }
-    state.mark_edited("Transform");
+    let verb = match drag.part {
+        Part::MoveAxis(_) | Part::MovePlane(_) | Part::MoveFree => "Move",
+        Part::RotateAxis(_) | Part::RotateView => "Rotate",
+        Part::ScaleAxis(_) | Part::ScaleUniform => "Scale",
+    };
+    let who = match drag.targets.as_slice() {
+        [(one, _, _)] => state.scene.name(*one),
+        many => format!("{} Objects", many.len()),
+    };
+    state.mark_edited(&format!("{verb} {who}"));
 }
 
 /// Dragged objects and everything under them (never snap onto themselves).

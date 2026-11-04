@@ -237,7 +237,18 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
             g.name = go.name.clone();
         }
     }
-    state.mark_edited("GameObject");
+    let label = if go.name != before.name {
+        format!("Rename {}", before.name)
+    } else if go.active != before.active {
+        "Toggle Active State".to_owned()
+    } else if go.is_static != before.is_static {
+        "Change Static".to_owned()
+    } else if go.tag != before.tag {
+        "Change Tag".to_owned()
+    } else {
+        "Change Layer".to_owned()
+    };
+    state.mark_edited(&label);
 }
 
 /// "Prefab" row on an instance root: Select, Revert, Apply All (the last two only with overrides).
@@ -309,7 +320,8 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
                 for &t in targets {
                     editors::set_enabled(state, t, name, on);
                 }
-                state.mark_edited(name);
+                let verb = if on { "Enable" } else { "Disable" };
+                state.mark_edited(&format!("{verb} {name}"));
             }
         }
         let title = ui.add(
@@ -329,11 +341,14 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
         mixed::begin(state, targets, name);
         let edited = editors::edit(ui, state, targets, name);
         mixed::end();
-        if edited {
+        let after = to_json(state, e, name);
+        // Some editors change the component without reporting it: compare the values too.
+        if edited || before != after {
+            let label = step_name(state, targets, name, before.as_ref(), after.as_ref());
             if name != "Transform" {
                 propagate(state, targets, name, before);
             }
-            state.mark_edited(name);
+            state.mark_edited(&label);
         }
     });
     ui.separator();
@@ -400,6 +415,33 @@ fn component_menu(
         name: n,
     };
     act(ui, state, "Paste Component Values", can_paste, paste);
+}
+
+/// Undo History name of a component edit: "Move Cube" for Transform, otherwise
+/// "Change Light Intensity" (the component and the first field that changed).
+fn step_name(
+    state: &EditorState,
+    targets: &[Entity],
+    name: &str,
+    before: Option<&serde_json::Value>,
+    after: Option<&serde_json::Value>,
+) -> String {
+    let (Some(b), Some(a)) = (before, after) else {
+        return format!("Change {name}");
+    };
+    if name == "Transform" {
+        let who = match targets {
+            [one] => state.scene.name(*one),
+            many => format!("{} Objects", many.len()),
+        };
+        let verb = match crate::undo_names::changed_field(b, a).as_deref() {
+            Some("Rotation" | "Euler Hint") => "Rotate",
+            Some("Scale") => "Scale",
+            _ => "Move",
+        };
+        return format!("{verb} {who}");
+    }
+    crate::undo_names::component_change(name, b, a)
 }
 
 fn to_json(state: &EditorState, e: Entity, name: &str) -> Option<serde_json::Value> {
@@ -930,5 +972,31 @@ mod tests {
         h.get_by_label("▶ Play");
         h.get_by_label("■ Stop");
         std::fs::remove_dir_all(root).ok();
+    }
+
+    /// Undo step names come from the field that changed.
+    #[test]
+    fn step_names_describe_the_edit() {
+        let mut s = state();
+        let cube = s.scene.spawn("Cube", None);
+        let before = to_json(&s, cube, "Transform");
+        let mut t = s.scene.transform(cube);
+        t.position.x = 3.0;
+        s.scene.set_transform(cube, t);
+        let after = to_json(&s, cube, "Transform");
+        let name = step_name(&s, &[cube], "Transform", before.as_ref(), after.as_ref());
+        assert_eq!(name, "Move Cube");
+        let mut t = s.scene.transform(cube);
+        t.scale.y = 2.0;
+        s.scene.set_transform(cube, t);
+        let scaled = to_json(&s, cube, "Transform");
+        let name = step_name(&s, &[cube], "Transform", after.as_ref(), scaled.as_ref());
+        assert_eq!(name, "Scale Cube");
+        let cam = s.scene.roots()[0];
+        let b = to_json(&s, cam, "Camera");
+        s.scene.world.get::<&mut Camera>(cam).unwrap().fov = 30.0;
+        let a = to_json(&s, cam, "Camera");
+        let name = step_name(&s, &[cam], "Camera", b.as_ref(), a.as_ref());
+        assert!(name.starts_with("Change Camera "), "{name}");
     }
 }

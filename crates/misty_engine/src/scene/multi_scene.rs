@@ -174,6 +174,27 @@ impl Scene {
         true
     }
 
+    /// Undo and redo put back a whole copy of the world. Which scene is active and which file
+    /// each scene is saved to are not undoable edits (Set Active Scene, Save As), so the restored
+    /// copy keeps `current`'s for every scene both know about.
+    pub fn keep_open_set_from(&mut self, current: &Scene) {
+        if current.active != self.active {
+            self.set_active_scene(current.active);
+        }
+        for entry in &current.scenes {
+            let Some(mine) = self.entry(entry.id) else {
+                continue;
+            };
+            if mine.path == entry.path {
+                continue;
+            }
+            match &entry.path {
+                Some(path) => self.set_scene_path(entry.id, path),
+                None => self.forget_scene_path(entry.id),
+            }
+        }
+    }
+
     /// Lighting and navigation of any loaded scene (the active one's are the world's).
     pub fn scene_settings(&self, id: SceneId) -> (RenderSettings, NavigationSettings) {
         if id == self.active {
@@ -475,5 +496,26 @@ mod tests {
         assert!(refs[0].contains("'Floor' in scene 'Level'"));
         assert!(s.cross_scene_references(id).is_empty());
         assert!(s.scene_to_json(0).contains("\"connected_body\": null"));
+    }
+
+    #[test]
+    fn restored_copy_keeps_the_current_active_scene_and_paths() {
+        let mut s = Scene::default_3d("Main");
+        s.set_scene_path(0, "Assets/Main.scene");
+        let (id, _, _) = s.load_additive("Assets/Level.scene", &level()).unwrap();
+        let before = s.clone();
+        // Not undoable: Level becomes active, Main is saved under a new name.
+        assert!(s.set_active_scene(id));
+        s.set_scene_path(0, "Assets/Main 2.scene");
+        let mut restored = before;
+        restored.keep_open_set_from(&s);
+        assert_eq!(restored.active_scene(), id);
+        assert_eq!(restored.name, "Level");
+        assert_eq!(restored.render_settings.skybox.kind, SkyboxKind::SolidColor);
+        assert_eq!(
+            restored.scene_path(0).as_deref(),
+            Some("Assets/Main 2.scene")
+        );
+        assert_eq!(restored.scene_name(0), "Main 2");
     }
 }

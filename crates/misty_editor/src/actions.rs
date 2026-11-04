@@ -182,6 +182,10 @@ pub enum Action {
     AlignViewToSelected,
     Undo,
     Redo,
+    /// Undo History: undo/redo until this many steps are applied.
+    UndoJump(usize),
+    /// Undo History ▸ Clear History.
+    ClearUndoHistory,
     /// Add a component (registry name) to every selected object.
     AddComponent(&'static str),
     /// Component context menu (see `component_ops`); list commands act on every Inspector target.

@@ -142,6 +142,7 @@ impl EditorApp {
             (ctrl, Key::Z, Action::Undo),
             (ctrl, Key::Y, Action::Redo),
             (ctrl_shift, Key::Z, Action::Redo),
+            (ctrl, Key::H, Action::FocusTab(Tab::UndoHistory)),
             (ctrl_alt, Key::F, Action::MoveToView),
             (ctrl_shift, Key::F, Action::AlignWithView),
             (alt_shift, Key::A, Action::ToggleActive),

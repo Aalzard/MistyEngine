@@ -198,7 +198,7 @@ pub fn handles(
             p.center = (lo + hi) * 0.5 - pos;
             if p != probe {
                 let _ = state.scene.world.insert_one(e, p);
-                state.mark_edited("Reflection Probe Bounds");
+                state.mark_edited("Resize Reflection Probe");
             }
         }
         ui.ctx().data_mut(|data| data.insert_temp(id, d));

@@ -490,7 +490,7 @@ fn rename_field(ui: &mut Ui, state: &mut EditorState, e: Entity, rect: Rect) {
         let new_name = text.trim().to_owned();
         state.hierarchy.renaming = None;
         if !new_name.is_empty() && new_name != state.scene.name(e) {
-            state.record("Rename");
+            state.record(&format!("Rename {}", state.scene.name(e)));
             state.scene.game_object_mut(e).name = new_name;
         }
     }
@@ -627,7 +627,11 @@ fn apply_drop(state: &mut EditorState, dragged: &[Entity], drop: Drop) {
     {
         return;
     }
-    state.record("Reparent");
+    let who = match dragged {
+        [one] => scene.name(*one),
+        many => format!("{} Objects", many.len()),
+    };
+    state.record(&format!("Reparent {who}"));
     let mut prev: Option<Entity> = None;
     for &e in dragged {
         let scene = &mut state.scene;
@@ -749,8 +753,7 @@ mod tests {
         apply_drop(&mut s, &[light], Drop::Into(cam));
         assert_eq!(s.scene.parent(light), Some(cam));
         assert!(s.hierarchy.expanded.contains(&cam));
-        s.undo
-            .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips);
+        s.undo_step();
         assert_eq!(s.scene.parent(light), None);
     }
 

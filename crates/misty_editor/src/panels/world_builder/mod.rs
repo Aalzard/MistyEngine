@@ -238,9 +238,11 @@ fn with_settings(
     else {
         return;
     };
+    let before = s.clone();
     if f(&mut s) {
+        let label = crate::undo_names::struct_change("World Builder", &before, &s);
         let _ = state.scene.world.insert_one(builder, s);
-        state.mark_edited("World Builder");
+        state.mark_edited(&label);
     }
 }
 

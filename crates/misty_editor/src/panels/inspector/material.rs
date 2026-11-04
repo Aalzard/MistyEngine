@@ -222,9 +222,16 @@ pub fn material_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     };
     let textures = state.assets.textures.clone();
     let shaders = state.assets.shaders.clone();
-    if material_fields(ui, &format!("mat_{rel}"), &mut m, &textures, &shaders)
-        && let Err(err) = state.assets.update_material(rel, m)
-    {
+    let before = m.clone();
+    if !material_fields(ui, &format!("mat_{rel}"), &mut m, &textures, &shaders) {
+        return;
+    }
+    // One undo step per interaction, holding the material from before it.
+    let name = crate::assets::AssetDatabase::material_name(Some(rel));
+    let label = crate::undo_names::struct_change(&name, &before, &m);
+    state.undo.note_material(rel, &before);
+    state.undo.mark_edited(&label);
+    if let Err(err) = state.assets.update_material(rel, m) {
         state.console.warn(format!("Could not save {rel}: {err}"));
     }
 }

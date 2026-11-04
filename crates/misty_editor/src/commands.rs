@@ -34,7 +34,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::DeleteSelected => {
             let targets = s.selection.top_level(&s.scene);
             if !targets.is_empty() {
-                s.record("Delete");
+                s.record(&format!("Delete {}", s.selection_label()));
                 for e in targets {
                     s.scene.despawn(e);
                 }
@@ -44,7 +44,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::DuplicateSelected => {
             let targets = s.selection.top_level(&s.scene);
             if !targets.is_empty() {
-                s.record("Duplicate");
+                s.record(&format!("Duplicate {}", s.selection_label()));
                 let copies: Vec<Entity> =
                     targets.into_iter().map(|e| s.scene.duplicate(e)).collect();
                 s.selection.set_many(copies);
@@ -68,7 +68,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::ToggleActive => {
             let targets = s.selection.list().to_vec();
             if !targets.is_empty() {
-                s.record("Toggle Active State");
+                s.record(&format!("Toggle Active State of {}", s.selection_label()));
                 for e in targets {
                     let mut go = s.scene.game_object_mut(e);
                     go.active = !go.active;
@@ -78,7 +78,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::ClearParent => {
             let targets = s.selection.top_level(&s.scene);
             if targets.iter().any(|e| s.scene.parent(*e).is_some()) {
-                s.record("Clear Parent");
+                s.record(&format!("Clear Parent of {}", s.selection_label()));
                 for e in targets {
                     s.scene.set_parent(e, None, None, true);
                 }
@@ -86,7 +86,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         }
         Action::SetSibling { first } => {
             if let Some(e) = s.selection.active() {
-                s.record("Set Sibling Index");
+                s.record(&format!("Reorder {}", s.scene.name(e)));
                 let parent = s.scene.parent(e);
                 let index = if first { 0 } else { usize::MAX };
                 s.scene.set_parent(e, parent, Some(index), false);
@@ -207,23 +207,25 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::Undo => {
             // Undone values are not new edits for Record mode.
             s.animation.skip_record = true;
-            match s
-                .undo
-                .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips)
-            {
+            match s.undo_step() {
                 Some(label) => s.console.info(format!("Undo {label}")),
                 None => s.console.info("Nothing to undo."),
             }
         }
         Action::Redo => {
             s.animation.skip_record = true;
-            match s
-                .undo
-                .redo(&mut s.scene, &mut s.selection, &mut s.anim_clips)
-            {
+            match s.redo_step() {
                 Some(label) => s.console.info(format!("Redo {label}")),
                 None => s.console.info("Nothing to redo."),
             }
+        }
+        Action::UndoJump(position) => {
+            s.animation.skip_record = true;
+            s.undo_jump(position);
+        }
+        Action::ClearUndoHistory => {
+            s.undo.clear();
+            s.console.info("Undo history cleared.");
         }
         Action::InstantiateModel { path, parent } => {
             crate::model_import::instantiate(s, &path, parent);

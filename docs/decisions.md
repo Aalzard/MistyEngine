@@ -2321,3 +2321,53 @@ Record of choices made without asking, and why.
      `sample_multiscene.rs`; both were appended to the sample's Build Settings so the loader can add the lighting
      scene when the level is played on its own. Screenshots open extra scenes with a comma list
      (`MISTY_SCENE=A.scene,B.scene`) and pick the active one with `MISTY_ACTIVE_SCENE=<name>`.
+
+## 2026-11-04 — Round 10: Undo History window and undo polish
+
+490. **Undo History is a dockable tab** (Edit ▸ Undo History, Ctrl+H, an on-demand window that first docks with
+     the Hierarchy). Rows are newest first; the current step is highlighted, redoable steps are grey italics
+     below it, and an "Initial State" row at the bottom goes back to before the first step. Clicking a row
+     undoes or redoes step by step until that row is the current one (`UndoStack::jump`), so each step's assets
+     (terrain, clips, materials) are swapped exactly like Ctrl+Z / Ctrl+Y would. A search box filters by name;
+     Clear History forgets every step but leaves the scene as it is. A one-line footer shows the step count,
+     redoable count and approximate memory.
+491. **Selection is restored, never recorded alone:** every step keeps the selection from when it was taken and
+     undo/redo put it back (as before), but clicking objects doesn't add steps — the history stays a list of
+     changes. Play mode keeps its own history (the Edit-mode one is parked and restored on Stop), so the window
+     shows the Play-mode steps while playing.
+492. **Step names:** `mark_edited` / `record` now take the full name. Inspector component edits are named from
+     the component's JSON before and after the edit: "Change {Component} {Field}", using the first changed field
+     (nested fields add their parent, e.g. "Change Light Halo Size"; array indices are skipped). Transform edits
+     (Inspector and gizmos) are "Move / Rotate / Scale {object}" ("3 Objects" for several). Lighting,
+     Navigation and World Builder settings use the same field diff ("Change Fog Density"); structural commands
+     name what they act on ("Delete Cube", "Duplicate 2 Objects", "Rename Cube", "Reparent Cube"); terrain
+     strokes are "Raise or Lower Terrain", "Set Terrain Height", "Smooth Terrain", "Paint Terrain". The first
+     name of an interaction wins, so a slider drag keeps the name of the field it started on.
+493. **Inspector edits are caught by value, not only by the editor's return:** `component_section` compares the
+     component's JSON before and after drawing it, so a component editor that changes a field without
+     returning `true` (newer components: fog volumes, halos, area lights, water, world builder…) still makes an
+     undo step, propagates to the other selected objects and marks the scene dirty.
+494. **Material assets undo with the scene history:** an edit in the material Inspector (Project selection or
+     inline under a Mesh Renderer) stores the material from before the interaction in the step
+     (`UndoStack::note_material`); undo writes it back and saves the .mat file. Other asset settings (texture
+     import, Project Settings, build settings) are project files saved immediately and are not part of the scene
+     history, as their changes aren't per scene; they keep no undo.
+495. **History cap:** at most 200 steps and ~512 MB (approximate: 1 KB per scene object, plus the stored terrain
+     tiles and clips). The oldest steps are dropped first; the newest one always stays. A new step after jumping
+     back drops the redo branch, as before.
+496. **Terrain undo keeps only changed 32×32 tiles:** a stroke still copies the terrain once when it starts
+     (transient), but on commit the copy is diffed against the result and the step keeps the changed tiles of the
+     heightmap, splat map and detail map plus the small settings (layers, size). A map whose size changed (new
+     resolution) is stored whole. Restoring swaps the tiles in and keeps the replaced ones for redo. A stroke on
+     a 513² terrain now costs kilobytes instead of ~2 MB. World Builder runs store their result before pushing
+     the step so the diff sees it. Scene edits made in the same interaction as a terrain edit join its step.
+497. **Edit menu** shows "Undo {name}" / "Redo {name}" (unchanged) and gains the Undo History entry under them.
+498. **`MISTY_UNDO_DEMO=1`** (capture.rs) makes a few real named edits (create, drag, Inspector change, rename,
+     duplicate, delete, then two undos) for Undo History screenshots, then clears the dirty flag so closing after
+     the capture never writes the demo edits into the scene file.
+499. **Undo with several scenes (merge):** a step still restores a whole copy of the one world, but the active
+     scene and each scene's file path are not undoable (Set Active Scene, Save As), so the restored copy keeps the
+     current ones (`Scene::keep_open_set_from`, called by `UndoStack::swap`); before this, undoing an edit made
+     before Save As pointed the scene back at its old file. Loading, unloading, removing and Close Others still
+     clear the history (decision 484). Moving objects onto a scene header is named "Move Cube To Lighting" /
+     "Move 3 Objects To Lighting"; history clears use `UndoStack::clear` so the step cap is kept.

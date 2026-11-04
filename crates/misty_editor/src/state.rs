@@ -244,6 +244,8 @@ pub struct EditorState {
     pub files: SceneFiles,
     pub selection: Selection,
     pub undo: UndoStack,
+    /// Undo History window (search text).
+    pub undo_history: crate::panels::undo_history::UndoHistoryWindow,
     /// Animation clips being edited (written back to their files after each edit).
     pub anim_clips: crate::anim_clips::ClipStore,
     /// Animation window: clip, playhead, preview and Record mode.
@@ -325,6 +327,7 @@ impl EditorState {
             files: SceneFiles::default(),
             selection: Selection::default(),
             undo: UndoStack::default(),
+            undo_history: Default::default(),
             anim_clips: crate::anim_clips::ClipStore::new(project.root.clone()),
             animation: Default::default(),
             animator: Default::default(),
@@ -393,10 +396,45 @@ impl EditorState {
         self.scene_dirty = true;
     }
 
-    /// Note a continuous edit (Inspector drag, typing) for grouped undo.
-    pub fn mark_edited(&mut self, what: &str) {
-        self.undo.mark_edited(what);
+    /// Note a continuous edit (Inspector drag, typing) for grouped undo; `label` names the
+    /// step ("Change Light Intensity"). The first label of an interaction wins.
+    pub fn mark_edited(&mut self, label: &str) {
+        self.undo.mark_edited(label);
         self.scene_dirty = true;
+    }
+
+    /// "Cube" or "3 Objects": the selection, for step names like "Delete Cube".
+    pub fn selection_label(&self) -> String {
+        crate::undo_names::objects(&self.scene, &self.selection)
+    }
+
+    /// Where undo and redo write back.
+    fn undo_targets(&mut self) -> (&mut UndoStack, crate::undo::Restore<'_>) {
+        let restore = crate::undo::Restore {
+            scene: &mut self.scene,
+            selection: &mut self.selection,
+            clips: &mut self.anim_clips,
+            assets: &mut self.assets,
+        };
+        (&mut self.undo, restore)
+    }
+
+    /// Undo one step; returns its name.
+    pub fn undo_step(&mut self) -> Option<String> {
+        let (undo, mut to) = self.undo_targets();
+        undo.undo(&mut to)
+    }
+
+    /// Redo one step; returns its name.
+    pub fn redo_step(&mut self) -> Option<String> {
+        let (undo, mut to) = self.undo_targets();
+        undo.redo(&mut to)
+    }
+
+    /// Undo/redo until `position` steps of the history are applied; returns steps moved.
+    pub fn undo_jump(&mut self, position: usize) -> usize {
+        let (undo, mut to) = self.undo_targets();
+        undo.jump(position, &mut to)
     }
 
     /// Re-scan the Project window and the asset database (Assets ▸ Refresh, Ctrl+R).

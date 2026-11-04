@@ -112,6 +112,8 @@ mod toolbar;
 mod ui_create;
 mod ui_gizmos;
 mod undo;
+mod undo_names;
+mod undo_terrain;
 mod viewport;
 mod widgets;
 

@@ -15,6 +15,7 @@ pub mod profiler;
 pub mod project;
 mod project_menus;
 pub(crate) mod scene;
+pub mod undo_history;
 pub mod world_builder;
 
 #[cfg(test)]
@@ -64,6 +65,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::CodeEditor => code_editor::show(ui, self.state),
             Tab::Profiler => profiler::show(ui, self.state),
             Tab::WorldBuilder => world_builder::show(ui, self.state),
+            Tab::UndoHistory => undo_history::show(ui, self.state),
         }
     }
 

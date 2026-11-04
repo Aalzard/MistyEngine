@@ -335,5 +335,5 @@ fn apply(state: &mut EditorState, e: Entity, stamp: &WorldStamp, part: Part, l: 
         _ => return,
     }
     let _ = state.scene.world.insert_one(e, s);
-    state.mark_edited("World Stamp");
+    state.mark_edited("Edit World Stamp Shape");
 }

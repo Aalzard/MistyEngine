@@ -68,31 +68,27 @@ impl TerrainTool {
         }
     }
 
+    /// Undo History name of one stroke with this tool.
+    pub fn step_name(self) -> &'static str {
+        match self {
+            TerrainTool::RaiseLower => "Raise or Lower Terrain",
+            TerrainTool::SetHeight => "Set Terrain Height",
+            TerrainTool::Smooth => "Smooth Terrain",
+            TerrainTool::Paint => "Paint Terrain",
+            TerrainTool::Settings => "Change Terrain Settings",
+        }
+    }
+
     /// Paints in the Scene view.
     pub fn is_brush(self) -> bool {
         self != TerrainTool::Settings
     }
 }
 
-/// Terrain data before an edit, restored by undo (and swapped back by redo).
+/// Terrain data before an edit; the undo step keeps only what changed (see `undo_terrain`).
 pub struct TerrainSnapshot {
     pub path: String,
     pub data: TerrainData,
-}
-
-impl TerrainSnapshot {
-    /// Put this data back (and save it); returns the data it replaced.
-    pub fn restore(self) -> TerrainSnapshot {
-        let current = store::get(&self.path)
-            .map(|(d, _)| (*d).clone())
-            .unwrap_or_else(|| self.data.clone());
-        store::insert(&self.path, self.data);
-        let _ = store::save(&self.path);
-        TerrainSnapshot {
-            path: self.path,
-            data: current,
-        }
-    }
 }
 
 /// An edit in progress: the data from before it started.
@@ -227,7 +223,7 @@ pub fn scene_view(
     });
     if pressed && response.hovered() && !alt && hover.is_some() {
         state.terrain_tools.painting = true;
-        let label = state.terrain_tools.tool.label();
+        let label = state.terrain_tools.tool.step_name();
         begin_edit(state, &path, label);
     }
     if !down {
@@ -340,7 +336,6 @@ pub fn create(s: &mut EditorState, parent: Option<Entity>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anim_clips::ClipStore;
     use crate::project::ProjectBrowser;
 
     fn state(name: &str) -> EditorState {
@@ -383,12 +378,12 @@ mod tests {
         let mut s = state("undo");
         // Three frames of dragging, then release.
         for i in 0..3 {
-            begin_edit(&mut s, &path, "Terrain Settings");
+            begin_edit(&mut s, &path, "Change Terrain Settings");
             store::modify(&path, |d| d.set_size(Vec3::splat(11.0 + i as f32)));
             end_frame(&mut s, true);
         }
         end_frame(&mut s, false);
-        assert_eq!(s.undo.undo_label(), Some("Terrain Settings"));
+        assert_eq!(s.undo.undo_label(), Some("Change Terrain Settings"));
         assert!(
             TerrainData::load(std::path::Path::new(&path))
                 .unwrap()
@@ -397,11 +392,39 @@ mod tests {
                 == 13.0,
             "saved"
         );
-        let (mut scene, mut sel) = (s.scene.clone(), s.selection.clone());
-        s.undo.undo(&mut scene, &mut sel, &mut ClipStore::default());
+        s.undo_step();
         assert_eq!(store::get(&path).unwrap().0.size.x, 10.0);
-        s.undo.redo(&mut scene, &mut sel, &mut ClipStore::default());
+        s.redo_step();
         assert_eq!(store::get(&path).unwrap().0.size.x, 13.0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A small stroke on a big terrain keeps only a few tiles, and undo/redo restore it.
+    #[test]
+    fn brush_stroke_undo_stores_only_changed_tiles() {
+        let dir = std::env::temp_dir().join(format!("misty_terrain_tiles_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("T.terrain").to_string_lossy().into_owned();
+        let flat = TerrainData::new(513, Vec3::new(200.0, 50.0, 200.0), 256);
+        store::insert(&path, flat.clone());
+        let mut s = state("tiles");
+        begin_edit(&mut s, &path, TerrainTool::RaiseLower.step_name());
+        store::modify(&path, |d| {
+            for z in 100..140 {
+                for x in 200..240 {
+                    d.heights[z * 513 + x] = 0.5;
+                }
+            }
+        });
+        end_frame(&mut s, false);
+        assert_eq!(s.undo.undo_label(), Some("Raise or Lower Terrain"));
+        // A 40×40 patch touches at most 4 tiles (16 KB), far below the 1 MB heightmap.
+        assert!(s.undo.bytes() < 200 * 1024, "{} bytes", s.undo.bytes());
+        let edited = (*store::get(&path).unwrap().0).clone();
+        s.undo_step();
+        assert_eq!(*store::get(&path).unwrap().0, flat);
+        s.redo_step();
+        assert_eq!(*store::get(&path).unwrap().0, edited);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -26,6 +26,8 @@ pub enum Tab {
     Profiler,
     /// Window ▸ Terrain ▸ World Builder.
     WorldBuilder,
+    /// Edit ▸ Undo History.
+    UndoHistory,
 }
 
 impl Tab {
@@ -42,13 +44,14 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 6] = [
+    pub const ON_DEMAND: [Tab; 7] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
         Tab::Navigation,
         Tab::Profiler,
         Tab::WorldBuilder,
+        Tab::UndoHistory,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -60,6 +63,8 @@ impl Tab {
     fn opens_beside(self) -> Option<Tab> {
         match self {
             Tab::Lighting | Tab::Navigation | Tab::WorldBuilder => Some(Tab::Inspector),
+            // A list window, like the Hierarchy.
+            Tab::UndoHistory => Some(Tab::Hierarchy),
             // The graph wants room: it docks with the Scene and Game views.
             Tab::Animator => Some(Tab::Scene),
             // Docks with the Project and Console like the reference editor; the Profiler too,
@@ -85,6 +90,7 @@ impl Tab {
             Tab::CodeEditor => "Code Editor",
             Tab::Profiler => "Profiler",
             Tab::WorldBuilder => "World Builder",
+            Tab::UndoHistory => "Undo History",
         }
     }
 
@@ -104,6 +110,7 @@ impl Tab {
             Tab::CodeEditor => crate::panels::code_editor::ICON,
             Tab::Profiler => "📈",
             Tab::WorldBuilder => "⛰",
+            Tab::UndoHistory => "⟲",
         }
     }
 
@@ -118,6 +125,7 @@ impl Tab {
             Tab::Console => "Ctrl+Shift+C",
             Tab::Animation => "Ctrl+6",
             Tab::Profiler => "Ctrl+7",
+            Tab::UndoHistory => "Ctrl+H",
             Tab::Lighting
             | Tab::Animator
             | Tab::AudioMixer

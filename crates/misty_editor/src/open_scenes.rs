@@ -22,7 +22,7 @@ fn after_change(s: &mut EditorState) {
     s.selection.retain_existing(&s.scene);
     let scene = &s.scene;
     s.inspector_targets.retain(|e| scene.contains(*e));
-    s.undo = Default::default();
+    s.undo.clear();
     s.files.dirty = scene_files::dirty_now(s);
     remember_open_set(s);
 }
@@ -127,7 +127,12 @@ pub fn move_objects(s: &mut EditorState, objects: &[Entity], id: SceneId) {
     if moving.is_empty() || !s.scene.entry(id).is_some_and(|e| e.loaded) {
         return;
     }
-    s.record("Move To Scene");
+    let who = match moving.as_slice() {
+        [one] => s.scene.name(*one),
+        many => format!("{} Objects", many.len()),
+    };
+    let to = s.scene.scene_name(id);
+    s.record(&format!("Move {who} To {to}"));
     for e in moving {
         s.scene.move_to_scene(e, id);
     }
@@ -246,7 +251,7 @@ mod tests {
         assert!(scene_files::dirty_now(&s).is_empty());
         // An edit inside B only.
         let ground = s.scene.find_by_name("Ground").unwrap();
-        s.record("Rename");
+        s.record("Rename Ground");
         s.scene.game_object_mut(ground).name = "Floor".into();
         assert_eq!(scene_files::dirty_now(&s), [b]);
         // Unloading B asks first; A alone can be unloaded only while B is loaded.
@@ -302,8 +307,15 @@ mod tests {
         let cam = s.scene.find_by_name("Main Camera").unwrap();
         move_objects(&mut s, &[cam], b);
         assert_eq!(s.scene.scene_of(cam), b);
-        s.undo
-            .undo(&mut s.scene, &mut s.selection, &mut s.anim_clips);
+        assert_eq!(s.undo.undo_label(), Some("Move Main Camera To B"));
+        assert_eq!(s.undo_step().as_deref(), Some("Move Main Camera To B"));
+        assert_eq!(s.scene.scene_of(cam), 0);
+        assert!(s.redo_step().is_some());
+        assert_eq!(s.scene.scene_of(cam), b);
+        // Set Active Scene is not a step: undoing the move keeps B active.
+        set_active(&mut s, b);
+        assert!(s.undo_step().is_some());
+        assert_eq!(s.scene.active_scene(), b);
         assert_eq!(s.scene.scene_of(cam), 0);
     }
 }

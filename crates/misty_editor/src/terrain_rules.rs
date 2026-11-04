@@ -186,7 +186,7 @@ pub fn layer_rules(
             });
         });
     if ch {
-        edit_settings(state, path, "Modify Auto Paint Rules", |d| {
+        edit_settings(state, path, "Change Auto Paint Rules", |d| {
             d.layers[layer].rules = rules
         });
     }
