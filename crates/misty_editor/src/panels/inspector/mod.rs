@@ -21,6 +21,9 @@ mod particles;
 mod physics_editors;
 mod post_volume;
 mod post_volume_screen;
+mod preset_asset;
+mod preset_fields;
+mod preset_picker;
 mod probe_editor;
 mod shader_material;
 mod slots;
@@ -37,6 +40,8 @@ use misty_engine::scene::registry;
 use crate::actions::Action;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
+
+pub use preset_picker::window as preset_window;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     layer_mask::publish_names(ui.ctx(), &state.project_settings.tags_and_layers);
@@ -322,6 +327,11 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
             ui.menu_button("⋮", |ui| {
                 component_menu(ui, state, targets, name, removable)
             });
+            let target = crate::presets::PickTarget::Component {
+                name: name.to_owned(),
+                targets: targets.to_vec(),
+            };
+            preset_picker::button(ui, state, target, serde_json::Value::Null);
         });
     });
     header.body(|ui| {
@@ -505,6 +515,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         prefab_asset(ui, state, rel);
         return;
     }
+    if misty_engine::preset::is_preset(rel) {
+        preset_asset::preset_asset(ui, state, rel);
+        return;
+    }
     if misty_engine::audio::is_clip(rel) {
         audio_clip_asset(ui, state, rel);
         return;
@@ -529,6 +543,18 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     ui.horizontal(|ui| {
         ui.label(RichText::new("◍").size(22.0));
         ui.label(RichText::new(format!("{name} (Material)")).strong());
+        if rel.ends_with(".mat") {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let current = state
+                    .assets
+                    .materials
+                    .get(rel)
+                    .and_then(|m| serde_json::to_value(m).ok())
+                    .unwrap_or_default();
+                let target = crate::presets::PickTarget::Material(rel.to_owned());
+                preset_picker::button(ui, state, target, current);
+            });
+        }
     });
     ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
     ui.separator();
@@ -837,6 +863,54 @@ mod tests {
         let s = h.state_mut();
         apply_actions(s);
         assert_eq!(s.scene.world.get::<&Camera>(b).unwrap().fov, 30.0);
+        s.push(Action::Undo);
+        apply_actions(s);
+        assert_eq!(s.scene.world.get::<&Camera>(b).unwrap().fov, 60.0);
+    }
+
+    #[test]
+    fn preset_button_opens_the_picker_and_applies_to_every_target() {
+        let root = std::env::temp_dir().join("misty_insp_presets");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets")).unwrap();
+        let mut s = EditorState::new(ProjectBrowser::open(root));
+        let (a, b) = (s.scene.spawn("A", None), s.scene.spawn("B", None));
+        s.scene.add(a, Camera::default());
+        s.scene.add(b, Camera::default());
+        let wide = misty_engine::preset::Preset::of_value(
+            "Camera",
+            &Camera {
+                fov: 90.0,
+                ..Default::default()
+            },
+        );
+        crate::presets::save_new(&mut s, wide, "Wide").unwrap();
+        s.selection.set(a);
+        s.selection.toggle(b);
+        let mut h = Harness::builder()
+            .with_size([700.0, 700.0])
+            .build_ui_state(
+                |ui, s: &mut EditorState| {
+                    show(ui, s);
+                    preset_window(ui.ctx(), s);
+                },
+                s,
+            );
+        h.run();
+        h.get_all_by_label(crate::presets::PRESET_ICON)
+            .last()
+            .unwrap()
+            .click();
+        h.run();
+        assert!(h.state().preset_picker.is_some());
+        h.get_by_label(&format!("{} Wide", crate::presets::PRESET_ICON))
+            .click();
+        h.run();
+        let s = h.state_mut();
+        apply_actions(s);
+        for e in [a, b] {
+            assert_eq!(s.scene.world.get::<&Camera>(e).unwrap().fov, 90.0);
+        }
         s.push(Action::Undo);
         apply_actions(s);
         assert_eq!(s.scene.world.get::<&Camera>(b).unwrap().fov, 60.0);

@@ -1,0 +1,95 @@
+{
+  "target": "Post-process Volume",
+  "values": {
+    "bloom": {
+      "active": false,
+      "intensity": 0.6000000238418579,
+      "scatter": 0.699999988079071,
+      "threshold": 0.0,
+      "tint": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "clouds": {
+      "active": true,
+      "altitude": 700.0,
+      "ambient": 0.6000000238418579,
+      "coverage": 0.8600000143051147,
+      "density": 1.2000000476837158,
+      "enabled": true,
+      "shadow_opacity": 0.800000011920929,
+      "shadows": true,
+      "shape": 0.6000000238418579,
+      "silver_lining": 0.6000000238418579,
+      "thickness": 4000.0,
+      "wind_direction": 60.0,
+      "wind_speed": 25.0
+    },
+    "color_adjustments": {
+      "active": false,
+      "color_filter": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "contrast": 0.0,
+      "post_exposure": 0.0,
+      "saturation": 0.0
+    },
+    "enabled": true,
+    "fog": {
+      "active": true,
+      "albedo": [
+        0.6200000047683716,
+        0.6600000262260437,
+        0.7200000286102295
+      ],
+      "ambient_dimmer": 1.0,
+      "anisotropy": 0.4000000059604645,
+      "attenuation_distance": 1500.0,
+      "base_height": 0.0,
+      "denoising": true,
+      "enabled": true,
+      "max_fog_distance": 2500.0,
+      "maximum_height": 50.0,
+      "noise_intensity": 0.4000000059604645,
+      "noise_scale": 8.0,
+      "noise_scroll": [
+        0.6000000238418579,
+        0.0,
+        0.30000001192092896
+      ],
+      "quality": "Medium",
+      "volumetric": true,
+      "volumetric_distance": 64.0
+    },
+    "priority": 0.0,
+    "tonemapping": {
+      "active": false,
+      "mode": "Aces"
+    },
+    "vignette": {
+      "active": false,
+      "color": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "intensity": 0.25,
+      "smoothness": 0.20000000298023224
+    }
+  },
+  "excluded": [
+    "enabled",
+    "priority",
+    "tonemapping",
+    "bloom",
+    "color_adjustments",
+    "vignette",
+    "sun_shafts",
+    "ambient_occlusion",
+    "contact_shadows"
+  ]
+}

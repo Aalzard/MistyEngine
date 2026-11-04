@@ -25,6 +25,33 @@ fn pending_id(rel: &str) -> egui::Id {
     egui::Id::new(("misty_texture_import", rel.to_owned()))
 }
 
+/// Unapplied edits of `rel`, or its saved settings.
+fn load_pending(ctx: &egui::Context, state: &EditorState, rel: &str) -> Pending {
+    ctx.data(|d| d.get_temp::<Pending>(pending_id(rel)))
+        .unwrap_or_else(|| Pending {
+            settings: saved(state, rel),
+            grid: [16, 16, 0, 0, 0, 0],
+            keep_empty: false,
+        })
+}
+
+/// The import settings the Inspector shows for `rel` (unapplied edits included).
+pub fn pending_settings(ctx: &egui::Context, state: &EditorState, rel: &str) -> TextureImporter {
+    load_pending(ctx, state, rel).settings
+}
+
+/// Replace the unapplied import settings of `rel` (a preset; Apply writes them).
+pub fn set_pending_settings(
+    ctx: &egui::Context,
+    state: &EditorState,
+    rel: &str,
+    settings: TextureImporter,
+) {
+    let mut p = load_pending(ctx, state, rel);
+    p.settings = settings;
+    ctx.data_mut(|d| d.insert_temp(pending_id(rel), p));
+}
+
 /// The settings on disk.
 fn saved(state: &EditorState, rel: &str) -> TextureImporter {
     TextureImporter::load(&state.assets.absolute(rel))
@@ -44,14 +71,13 @@ pub fn texture_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
 
     let on_disk = saved(state, rel);
     let id = pending_id(rel);
-    let mut p = ui
-        .ctx()
-        .data(|d| d.get_temp::<Pending>(id))
-        .unwrap_or(Pending {
-            settings: on_disk.clone(),
-            grid: [16, 16, 0, 0, 0, 0],
-            keep_empty: false,
-        });
+    let mut p = load_pending(ui.ctx(), state, rel);
+    ui.horizontal(|ui| {
+        ui.weak("Presets");
+        let current = serde_json::to_value(&p.settings).unwrap_or_default();
+        let target = crate::presets::PickTarget::Texture(rel.to_owned());
+        super::preset_picker::button(ui, state, target, current);
+    });
     let size = sprites::texture_info(rel).1;
     settings_ui(ui, &mut p.settings);
     if p.settings.is_sprite() && p.settings.sprite_mode == SpriteMode::Multiple {

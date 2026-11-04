@@ -186,6 +186,22 @@ pub enum Action {
     PasteComponentAsNew {
         entities: Vec<Entity>,
     },
+    /// Apply a `.preset` (project-relative) to its component on every object (see `presets`).
+    ApplyPreset {
+        entities: Vec<Entity>,
+        preset: String,
+    },
+    /// Put component values back (the preset picker's None); one undo step.
+    RestoreComponentValues {
+        name: String,
+        values: Vec<(Entity, serde_json::Value)>,
+    },
+    /// Save component `name` of `entity` as `Assets/Presets/<file>.preset`.
+    SavePreset {
+        entity: Entity,
+        name: String,
+        file: String,
+    },
     /// Attach a script asset ("Assets/…/Name.lua") to an object.
     AddScript {
         entity: Entity,

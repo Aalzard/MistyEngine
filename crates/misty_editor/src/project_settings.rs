@@ -19,16 +19,18 @@ pub enum Category {
     Input,
     #[default]
     Physics,
+    PresetManager,
     TagsAndLayers,
     Time,
 }
 
 impl Category {
-    pub const ALL: [Category; 6] = [
+    pub const ALL: [Category; 7] = [
         Category::Player,
         Category::Quality,
         Category::Input,
         Category::Physics,
+        Category::PresetManager,
         Category::TagsAndLayers,
         Category::Time,
     ];
@@ -39,6 +41,7 @@ impl Category {
             Category::Quality => "Quality",
             Category::Input => "Input",
             Category::Physics => "Physics",
+            Category::PresetManager => "Preset Manager",
             Category::TagsAndLayers => "Tags and Layers",
             Category::Time => "Time",
         }
@@ -51,6 +54,7 @@ impl Category {
             Category::Quality => "Graphics presets players can pick from (Low to Ultra).",
             Category::Input => "Named axes and buttons scripts read with Input.GetAxis.",
             Category::Physics => "Gravity and which layers collide, for 3D and 2D.",
+            Category::PresetManager => "Presets new components and materials start from.",
             Category::TagsAndLayers => "Names for tags, layers and 2D drawing order.",
             Category::Time => "Physics step length and the speed of time.",
         }
@@ -154,6 +158,7 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
             let p = &mut s.project_settings;
             let build = &s.build_settings;
             let root = &s.project.root;
+            let presets = &s.assets.presets;
             let edited = egui::ScrollArea::vertical()
                 .auto_shrink([false, true])
                 .show(ui, |ui| match category {
@@ -176,6 +181,7 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
                         });
                         edited
                     }
+                    Category::PresetManager => crate::project_settings_presets::page(ui, p, presets),
                     Category::Time => time(ui, p),
                 })
                 .inner;

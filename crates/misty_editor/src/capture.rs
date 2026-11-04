@@ -59,6 +59,10 @@ pub fn apply_env(
     {
         s.select(e);
     }
+    // `MISTY_PRESET_PICKER=Light` opens that component's (or asset kind's) preset picker.
+    if let Some(kind) = std::env::var_os("MISTY_PRESET_PICKER") {
+        s.preset_picker_request = Some(kind.to_string_lossy().into_owned());
+    }
     // `MISTY_ASSET=Assets/…` selects a Project asset (its folder is opened, the Inspector shows it).
     if let Some(rel) = std::env::var_os("MISTY_ASSET") {
         let rel = rel.to_string_lossy().into_owned();

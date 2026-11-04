@@ -77,10 +77,10 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .map(|_| path)
                 .map_err(|e| e.to_string())
         }
-        AssetKind::Material => s
-            .assets
-            .create_material(&dir)
-            .map(|r| s.assets.absolute(&r)),
+        AssetKind::Material => s.assets.create_material(&dir).map(|r| {
+            crate::presets::apply_default_material(s, &r);
+            s.assets.absolute(&r)
+        }),
         AssetKind::Script => s.assets.create_script(&dir).map(|r| s.assets.absolute(&r)),
         AssetKind::Scene => {
             crate::scene_files::create_scene_asset(s, &dir).map(|r| s.assets.absolute(&r))

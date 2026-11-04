@@ -27,6 +27,7 @@ impl AssetEntry {
             "mixer" => crate::panels::audio_mixer::MIXER_ICON,
             "terrain" => "⛰",
             "navmesh" => "🚶",
+            "preset" => crate::presets::PRESET_ICON,
             _ => "📄",
         }
     }
@@ -216,6 +217,7 @@ pub fn asset_type(entry: &AssetEntry) -> &'static str {
         "anim" => "animationclip",
         "controller" => "animatorcontroller",
         "terrain" => "terraindata",
+        "preset" => "preset",
         _ => "",
     }
 }

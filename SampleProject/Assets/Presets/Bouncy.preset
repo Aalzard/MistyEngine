@@ -1,0 +1,23 @@
+{
+  "target": "Sphere Collider",
+  "values": {
+    "center": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "enabled": true,
+    "is_trigger": false,
+    "radius": 0.5,
+    "surface": {
+      "bounciness": 0.8999999761581421,
+      "friction": 0.15000000596046448
+    }
+  },
+  "excluded": [
+    "enabled",
+    "is_trigger",
+    "center",
+    "radius"
+  ]
+}
