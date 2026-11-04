@@ -111,7 +111,7 @@ impl Environment {
     }
 
     /// The HDRI's diffuse SH rotated into world space, tint and exposure applied.
-    fn hdri_world_sh(&self) -> Option<[Vec3; 9]> {
+    pub(crate) fn hdri_world_sh(&self) -> Option<[Vec3; 9]> {
         let sky = self.hdri_sky()?;
         let m = self.hdri_multiplier();
         Some(

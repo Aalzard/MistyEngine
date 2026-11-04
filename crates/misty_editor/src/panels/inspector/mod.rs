@@ -4,6 +4,7 @@
 mod anim;
 mod animator;
 mod audio_editors;
+mod cloud_editors;
 mod editors;
 mod fog_editors;
 mod glow_editors;

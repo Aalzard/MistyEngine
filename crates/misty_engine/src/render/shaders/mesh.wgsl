@@ -269,6 +269,8 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
         var atten = 1.0;
         if (kind == 0u) {
             l = -normalize(li.dir_type.xyz);
+            // Volumetric clouds shade the sun (clouds_apply.wgsl).
+            atten = cloud_shadow(world);
         } else {
             let to_light = li.pos_range.xyz - world;
             let dist = length(to_light);

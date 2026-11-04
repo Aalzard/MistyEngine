@@ -178,6 +178,8 @@ pub struct QualityLevel {
     pub reflection_probes: Tier,
     /// Lens Flare components draw (light halos always do: they are cheap).
     pub lens_flares: bool,
+    /// Volumetric clouds: trace resolution and step counts (Off = no clouds).
+    pub volumetric_clouds: Tier,
 }
 
 impl Default for QualityLevel {
@@ -206,6 +208,7 @@ impl QualityLevel {
             volumetric_fog: Tier::Off,
             reflection_probes: Tier::Low,
             lens_flares: false,
+            volumetric_clouds: Tier::Low,
         }
     }
 
@@ -228,6 +231,7 @@ impl QualityLevel {
             volumetric_fog: Tier::Low,
             reflection_probes: Tier::Medium,
             lens_flares: true,
+            volumetric_clouds: Tier::Medium,
         }
     }
 
@@ -250,6 +254,7 @@ impl QualityLevel {
             volumetric_fog: Tier::Medium,
             reflection_probes: Tier::High,
             lens_flares: true,
+            volumetric_clouds: Tier::Medium,
         }
     }
 
@@ -263,6 +268,7 @@ impl QualityLevel {
             lod_bias: 2.0,
             ambient_occlusion: Tier::High,
             volumetric_fog: Tier::High,
+            volumetric_clouds: Tier::High,
             ..Self::high()
         }
     }

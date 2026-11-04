@@ -4,6 +4,7 @@ pub mod ao;
 pub mod area;
 mod batch;
 mod cascades;
+mod clouds;
 pub mod contact_shadows;
 pub mod culling;
 pub mod custom_shader;
@@ -412,6 +413,10 @@ pub struct Renderer {
     slots_scratch: Vec<u32>,
     /// Froxel fog, height fog and sun shafts.
     volumetrics: volumetrics::Volumetrics,
+    /// Volumetric clouds (trace, temporal resolve, shadow map).
+    clouds: clouds::Clouds,
+    /// The view group must be rebuilt (fog volume resized) before this render's passes.
+    view_group_dirty: bool,
     /// Ambient occlusion and contact shadows (depth/normal prepass, GTAO passes).
     screen_space: screen_space::ScreenSpace,
     /// Light halos and lens flares.
@@ -436,12 +441,14 @@ impl Renderer {
         let lights_buffer = uniform("misty lights", std::mem::size_of::<LightsUniform>());
         let volumetrics = volumetrics::Volumetrics::new(device);
         let sky = hdri_sky::SkyGpu::new(device);
+        let clouds = clouds::Clouds::new(device);
         let view_bind_group = volumetrics::view_group(
             device,
             &pipelines.view_layout,
             &view_buffer,
             &volumetrics,
             &sky,
+            &clouds,
         );
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
         let probes = probes::gpu::ProbeGpu::new(device);
@@ -514,10 +521,25 @@ impl Renderer {
             shadow_batchers: Vec::new(),
             slots_scratch: Vec::new(),
             volumetrics,
+            clouds,
+            view_group_dirty: false,
             screen_space,
             glows: Default::default(),
             sky,
         }
+    }
+
+    /// Point the view group at the current fog volume, HDRI sky cubes and cloud images.
+    fn rebuild_view_group(&mut self, device: &wgpu::Device) {
+        self.view_bind_group = volumetrics::view_group(
+            device,
+            &self.pipelines.view_layout,
+            &self.view_buffer,
+            &self.volumetrics,
+            &self.sky,
+            &self.clouds,
+        );
+        self.view_group_dirty = false;
     }
 
     /// Renderer that also measures GPU time per render when the device was created with
@@ -610,7 +632,8 @@ impl Renderer {
                 + shadow_bytes
                 + self.probes.bytes()
                 + self.sky.bytes()
-                + self.volumetrics.texture_bytes(),
+                + self.volumetrics.texture_bytes()
+                + self.clouds.texture_bytes(),
         }
     }
 
@@ -788,13 +811,7 @@ impl Renderer {
         );
         // HDRI sky: cubes built when the file changes, the uniform every render.
         if self.sky.prepare(device, queue, frame.environment) {
-            self.view_bind_group = volumetrics::view_group(
-                device,
-                &self.pipelines.view_layout,
-                &self.view_buffer,
-                &self.volumetrics,
-                &self.sky,
-            );
+            self.rebuild_view_group(device);
         }
         let scene_copy = self.needs_scene_copy(frame);
         self.prepare_scene_inputs(device, queue, target, frame, scene_copy);
@@ -851,6 +868,7 @@ impl Renderer {
         self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
         self.prepare_volumetrics(device, queue, target, frame, &plan);
         self.prepare_glows(device, queue, target, frame);
+        self.prepare_clouds(device, queue, target, frame);
 
         // Overlay triangles follow the lines in the same buffer.
         let line_vertices = frame.lines.len() + frame.overlay.len();
@@ -884,6 +902,7 @@ impl Renderer {
             self.water.simulate(&mut encoder);
         }
         self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+        self.cloud_passes(device, &mut encoder);
         self.froxel_passes(device, &mut encoder, target);
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see

@@ -2176,3 +2176,85 @@ Record of choices made without asking, and why.
      lights draw no halo sprite and hide the Halo section, because their visible shape is the emitter quad (a
      sphere-shaped glow would contradict it). Lens Flares still work on any light. The LTC table keeps mesh group 1
      binding 7 (free on main: glow is its own pass with its own groups).
+
+## 2026-11-04 — Volumetric clouds
+
+465. **Volumetric clouds = one raymarched layer on a curved planet:** clouds live between Altitude and Altitude +
+     Thickness on a 6360 km sphere whose top is the world's y = 0 under the camera, so the layer bends below the
+     horizon like the real sky. All sphere tests are written relative to the ground point under the eye (`local()`
+     in cloud_common.wgsl) with the stable quadratic, because R² in f32 has no precision left for metres. Density is
+     the classic layered model: a 2D weather map (coverage, cloud type) sets the local coverage (weather × 0.9 around
+     0.5 plus 1.15 × Coverage, faded in below 0.25 so 0 means a clear sky); a height profile (rounded base, the type
+     sets the top) shapes a 128³ Perlin-Worley + Worley fBm base noise that the coverage carves; a 32³ Worley detail
+     erodes its edges (wispy at the base, billowy above).
+466. **Noise is generated on the GPU, blue noise on the CPU:** the base (128³), detail (32³) and weather (512², 36 km
+     tile) textures are tiling rgba8 made by one compute submit (cloud_noise.wgsl) the first time clouds are drawn,
+     so no binary assets ship. The 64² blue-noise tile comes from a small void-and-cluster on the CPU (cached per
+     process) instead of a downloaded texture.
+467. **Few controls:** the override has Enable, a Preset menu (Sparse, Cloudy, Overcast, Stormy; it shows "Custom"
+     once values were changed), then four small groups: Shape (Coverage, Density, Fluffy ↔ Sharp), Layer (Altitude,
+     Thickness), Wind (Direction, Speed) and Lighting (Silver Lining, Ambient, Cast Shadows, Shadow Opacity).
+     Fluffy ↔ Sharp moves two internals together (detail erosion 0.55 → 0.22 and a 1 → 3.5× edge density ramp).
+     Presets only set coverage, density, shape and layer, so wind and lighting choices survive a preset change; the
+     default override is the Cloudy preset. Everything else (planet size, noise tiles, extinction scale, step counts)
+     is a constant or comes from Quality.
+468. **Lighting:** each sample marches 4–6 quadratically growing steps towards the sun (the first three with detail),
+     then sums three multiple-scattering octaves (energy × 0.5, extinction × 0.3 and phase anisotropy × 0.5 per
+     octave) of a two-lobe Henyey-Greenstein phase (forward g 0.8 for the silver lining, back g −0.2; Silver Lining
+     sets the mix), with a "powder" darkening of sun-facing edges. Sky ambient goes from the horizon colour (below)
+     to the zenith (above) by height in the layer, divided by 1 + ½ × an estimate of the cloud above the sample
+     (extinction × local coverage × the rest of the layer × its own density), so thick, dense and stormy layers get
+     dark, structured bases instead of a flat ambient-lit sheet. Steps are integrated energy-conservingly. The sun
+     colour follows the sky's sunset warming. Distant clouds fade into the average horizon sky colour (28 km half
+     distance), and density fades out between 36 and 60 km so the horizon doesn't alias.
+469. **Reduced resolution + temporal, depth-independent:** the trace runs at ¼ (Low/Medium) or ½ (High) of the target
+     per axis with a blue-noise start offset (animated by the golden ratio per frame). It does not read the scene
+     depth, so upsampling is plain bilinear with no edge artefacts. A temporal pass reprojects each texel by its
+     cloud distance into last frame's image, clips the history to the current 3×3 mean ± 1.5σ and blends 90%
+     history. Both images are two-layer arrays: (light, transmittance) and (distance in km).
+470. **Clouds are folded into the fog functions:** `vfog_eval(world)` / `vfog_sky(dir)` (fog_apply.wgsl, used by every
+     forward shader) now return fog over clouds: the sky gets the clouds behind the fog, and every surface hides the
+     clouds behind it by comparing its distance with the clouds' transmittance-weighted distance (softly over the
+     last 30%). So mountains standing in clouds and views from above the layer work with no per-shader changes,
+     gizmo lines stay on top, and emission / bloom dims behind clouds. The view group gets three bindings (cloud
+     image array, cloud shadow map, `CloudApply` uniform), so every pipeline has two more sampled textures; it is
+     rebuilt each render while clouds are on because the history ping-pongs, and once when they turn off.
+471. **Cloud shadows = a top-down transmittance map:** 128² / 256² / 512² rgba8 over 8 / 12 / 16 km of the cloud
+     base plane, centred on the camera's spot on the base (along the sun) and snapped to whole texels. Each texel
+     marches 8–16 steps up through the layer along the sun. Lookups slide the point along the sun onto the base
+     plane (sun height clamped to 0.08), fade out at the map edge and mix by Shadow Opacity. The sun is shaded by it
+     on meshes, terrain, grass and water (`shade`, `water_sun_shadow`; every directional light, since only the sun
+     is expected), in the froxel fog (two new froxel bindings: god rays through cloud gaps) and in the analytic fog
+     (looked up at the eye). Sun shafts need nothing: their prefilter reads the sky, which now has the clouds in it.
+472. **Quality ▸ Volumetric Clouds tier:** Off / Low (¼ res, 40 steps, 4 light steps, 128² shadows) / Medium (¼, 64,
+     5, 256²) / High (½, 96, 6, 512²). The default levels use Low, Medium, Medium (the High level) and High (Ultra),
+     so the default editor level stays on the Medium tier. Clouds are also skipped in orthographic views, without
+     the skybox, in wireframe and in probe captures (which use the default post settings). The clock is the
+     renderer's own (like the fog noise), so clouds drift in Edit mode too.
+473. **Scene view and sample:** the Scene view effects dropdown gets a Clouds toggle next to Fog (the ☁ button turns it
+     off with the other effects). CloudsDemo (sample_clouds.rs) is a 4 km meadow valley between ridges with a low
+     sun (24°) ahead-right of the camera, Cloudy clouds at 45% coverage and density 0.75 drifting across the view,
+     light volumetric haze and sun shafts; it reuses TerrainDemo2's generated textures.
+474. **Measured cost** (RTX 4060, Vulkan, 1920×1080, release, `clouds_benchmark`, whole-render GPU time minus the
+     same frame without clouds, median of 60 frames, camera 12° above the horizon): Cloudy 0.47 / 0.72 / 2.33 ms and
+     Overcast 0.19 / 0.30 / 1.17 ms on Low / Medium / High. Medium stays well under the 2 ms target, so it keeps
+     quarter resolution; High (half resolution) is for Ultra.
+
+## 2026-11-04 — Round 9 merge (glow, HDRI skies, rectangle lights, clouds)
+
+475. **View group layout after the merge:** 0 view uniform, 1–3 fog volume / sampler / uniform, 4–7 HDRI sky
+     (uniform, background cube, specular cube, sampler), 8–10 volumetric clouds (cloud image, cloud shadow map,
+     apply uniform). The clouds moved from 4–6 to 8–10 (`clouds::view_layout_entries`, `clouds_apply.wgsl`,
+     `volumetrics::view_group`) because the HDRI merged first. `Renderer::rebuild_view_group` is the one place
+     the group is built after start-up; the HDRI cube rebuild and the fog volume resize both go through it.
+     Forward fragment shaders now see 5 sampled textures in the view group, 4 in the mesh group and up to 5
+     material maps (14 for meshes), within the default limit of 16, so no limit was raised. The rectangle
+     lights' LTC table stays a storage buffer at mesh group 1 binding 7.
+476. **Cloud shadows stay on directional lights:** rectangle (and point / spot) lights are not darkened by the
+     clouds — surfaces, water and froxel fog only apply `cloud_shadow` to light type 0.
+477. **Clouds under an HDRI sky are lit by its SH:** with Skybox = HDRI the cloud ambient (top and base) comes
+     from the HDRI's diffuse SH in world space (up and the four horizontal directions), not from point samples of
+     the image, so a bright sun or a feature in the HDRI doesn't tint the whole layer; the distant-haze colour still
+     samples the sky's horizon. Procedural / solid skies keep their zenith / horizon colours.
+478. **Scene view effects list:** Skybox, Fog, Clouds, Halos & Flares, Post Processing in one dropdown. Halos and
+     flares get their own toggle and still need Post Processing and Lighting on.

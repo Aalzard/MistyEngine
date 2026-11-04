@@ -7,7 +7,7 @@ use glam::Vec3;
 use super::{FogSettings, SunShaftSettings, srgb_to_linear};
 
 use super::{AoSettings, ContactShadowSettings};
-use crate::scene::{PostProcessVolume, TonemapMode};
+use crate::scene::{CloudsOverride, PostProcessVolume, TonemapMode};
 
 /// Effect values for one view. `Default` is the baseline every scene gets without a volume:
 /// bloom 0.6, no grading, hue-preserving highlight compression.
@@ -38,6 +38,8 @@ pub struct PostSettings {
     /// Screen-space ambient occlusion (render/ao.rs).
     pub ao: AoSettings,
     pub contact_shadows: ContactShadowSettings,
+    /// Volumetric clouds (off by default; drawn with the skybox).
+    pub clouds: CloudsOverride,
 }
 
 impl Default for PostSettings {
@@ -59,6 +61,7 @@ impl Default for PostSettings {
             sun_shafts: SunShaftSettings::default(),
             ao: AoSettings::default(),
             contact_shadows: ContactShadowSettings::default(),
+            clouds: CloudsOverride::default(),
         }
     }
 }
@@ -98,6 +101,7 @@ impl PostSettings {
         }
         s.ao = AoSettings::from_override(&v.ambient_occlusion);
         s.contact_shadows = ContactShadowSettings::from_override(&v.contact_shadows);
+        s.clouds = v.clouds;
         s
     }
 

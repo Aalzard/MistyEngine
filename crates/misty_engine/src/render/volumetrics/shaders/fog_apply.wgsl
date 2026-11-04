@@ -1,4 +1,5 @@
-// Volumetric / height fog applied by the forward shaders (included after common.wgsl).
+// Volumetric / height fog applied by the forward shaders (included after common.wgsl and
+// clouds_apply.wgsl). `vfog_eval` / `vfog_sky` also fold in the volumetric clouds behind the fog.
 // Volumetric: the integrated froxel volume up to the volumetric distance, then analytic height
 // fog (unshadowed) up to the max fog distance. Analytic: height fog only. Everything farther
 // than the max fog distance, the sky included, is fogged as if it were at that distance.
@@ -62,13 +63,22 @@ fn vfog_optical_depth(a: vec3<f32>, b: vec3<f32>) -> f32 {
 fn vfog_analytic_light(v: vec3<f32>) -> vec3<f32> {
     var light = vfog.ambient.rgb;
     if (vfog.sun_dir.w > 0.5) {
-        light += vfog.sun_color.rgb * vfog_phase(vfog.height_fog.w, dot(v, vfog.sun_dir.xyz)) * 3.14159265;
+        // Clouds above the eye dim the sunlight the fog scatters.
+        let sun = vfog.sun_color.rgb * cloud_shadow(view.camera_pos.xyz);
+        light += sun * vfog_phase(vfog.height_fog.w, dot(v, vfog.sun_dir.xyz)) * 3.14159265;
     }
     return light * vfog.albedo.rgb;
 }
 
-// rgb = light scattered towards the eye, a = transmittance, between the eye and `world`.
+// rgb = light scattered towards the eye, a = transmittance, between the eye and `world`
+// (fog and the clouds in front of `world`).
 fn vfog_eval(world: vec3<f32>) -> vec4<f32> {
+    let c = clouds_at(world, distance(world, view.camera_pos.xyz));
+    return with_clouds(vfog_fog(world), c);
+}
+
+// The fog alone between the eye and `world`.
+fn vfog_fog(world: vec3<f32>) -> vec4<f32> {
     let mode = vfog.mode.x;
     if (mode < 0.5) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
@@ -129,6 +139,9 @@ fn vfog_glow(f: vec4<f32>) -> f32 {
 }
 
 // Fog towards the sky / background in direction `dir` (fogged at the max fog distance).
+// Clouds are always in front of the sky.
 fn vfog_sky(dir: vec3<f32>) -> vec4<f32> {
-    return vfog_eval(view.camera_pos.xyz + dir * vfog.mode.w * 2.0);
+    let eye = view.camera_pos.xyz;
+    let c = clouds_at(eye + dir * 1000.0, 1e9);
+    return with_clouds(vfog_fog(eye + dir * vfog.mode.w * 2.0), c);
 }

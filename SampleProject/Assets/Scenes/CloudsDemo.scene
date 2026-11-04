@@ -1,0 +1,363 @@
+{
+  "lighting": {
+    "environment_lighting": {
+      "equator_color": [
+        0.114,
+        0.125,
+        0.133
+      ],
+      "ground_color": [
+        0.047,
+        0.043,
+        0.035
+      ],
+      "intensity": 1.0,
+      "sky_color": [
+        0.212,
+        0.227,
+        0.259
+      ],
+      "source": "Skybox"
+    },
+    "fog": {
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "density": 0.01,
+      "enabled": false,
+      "end": 300.0,
+      "mode": "ExponentialSquared",
+      "start": 0.0
+    },
+    "reflection_intensity": 1.0,
+    "skybox": {
+      "atmosphere_thickness": 1.1,
+      "color": [
+        0.19,
+        0.3,
+        0.47
+      ],
+      "exposure": 1.0,
+      "ground": [
+        0.32,
+        0.3,
+        0.29
+      ],
+      "kind": "Procedural",
+      "sky_tint": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "sun_disk": "HighQuality",
+      "sun_size": 0.04
+    }
+  },
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 6000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            -9.0,
+            12.0,
+            0.0
+          ],
+          "position": [
+            -60.0,
+            34.489624,
+            -1500.0
+          ],
+          "rotation": [
+            -0.07802929,
+            0.104206234,
+            0.008201209,
+            0.9914561
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.9,
+            0.76
+          ],
+          "enabled": true,
+          "intensity": 2.2,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            24.0,
+            212.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            200.0,
+            0.0
+          ],
+          "rotation": [
+            -0.05730823,
+            0.9402558,
+            -0.19985755,
+            -0.26961404
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Terrain",
+            "Terrain Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Terrain",
+          "tag": "Untagged"
+        },
+        "Terrain": {
+          "cast_shadows": true,
+          "enabled": true,
+          "terrain_data": "Assets/Terrains/CloudsDemo.terrain"
+        },
+        "Terrain Collider": {
+          "enabled": true,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          },
+          "terrain_data": ""
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -2000.0,
+            0.0,
+            -2000.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Post-process Volume"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Global Volume",
+          "tag": "Untagged"
+        },
+        "Post-process Volume": {
+          "bloom": {
+            "active": true,
+            "intensity": 0.5,
+            "scatter": 0.7,
+            "threshold": 1.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "clouds": {
+            "active": true,
+            "altitude": 1400.0,
+            "ambient": 1.0,
+            "coverage": 0.45,
+            "density": 0.75,
+            "enabled": true,
+            "shadow_opacity": 0.8,
+            "shadows": true,
+            "shape": 0.45,
+            "silver_lining": 0.8,
+            "thickness": 2200.0,
+            "wind_direction": 100.0,
+            "wind_speed": 18.0
+          },
+          "color_adjustments": {
+            "active": true,
+            "color_filter": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "contrast": 0.0,
+            "post_exposure": 0.4,
+            "saturation": 0.0
+          },
+          "enabled": true,
+          "fog": {
+            "active": true,
+            "albedo": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "ambient_dimmer": 1.0,
+            "anisotropy": 0.35,
+            "attenuation_distance": 9000.0,
+            "base_height": 0.0,
+            "denoising": true,
+            "enabled": true,
+            "max_fog_distance": 3000.0,
+            "maximum_height": 300.0,
+            "noise_intensity": 0.0,
+            "noise_scale": 8.0,
+            "noise_scroll": [
+              0.6,
+              0.0,
+              0.3
+            ],
+            "quality": "Medium",
+            "volumetric": true,
+            "volumetric_distance": 200.0
+          },
+          "priority": 0.0,
+          "sun_shafts": {
+            "active": true,
+            "intensity": 0.4,
+            "length": 0.8,
+            "radius": 0.5,
+            "threshold": 0.6,
+            "tint": [
+              1.0,
+              0.92,
+              0.8
+            ]
+          },
+          "tonemapping": {
+            "active": true,
+            "mode": "Aces"
+          },
+          "vignette": {
+            "active": false,
+            "color": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "intensity": 0.25,
+            "smoothness": 0.2
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

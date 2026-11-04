@@ -62,13 +62,15 @@ pub(crate) fn view_layout_entries() -> [wgpu::BindGroupLayoutEntry; 3] {
     ]
 }
 
-/// The view bind group: the view uniform, the fog resources and the HDRI sky (4–7).
+/// The view bind group: the view uniform, the fog resources (1–3), the HDRI sky (4–7) and the
+/// volumetric clouds (8–10).
 pub(crate) fn view_group(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
     view_buffer: &wgpu::Buffer,
     v: &Volumetrics,
     sky: &super::hdri_sky::SkyGpu,
+    clouds: &super::clouds::Clouds,
 ) -> wgpu::BindGroup {
     let volume = v.volume.as_ref().map_or(&v.dummy, |(_, view)| view);
     let [s0, s1, s2, s3] = sky.entries();
@@ -95,6 +97,18 @@ pub(crate) fn view_group(
             wgpu::BindGroupEntry {
                 binding: 3,
                 resource: v.apply_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 8,
+                resource: wgpu::BindingResource::TextureView(clouds.image_view()),
+            },
+            wgpu::BindGroupEntry {
+                binding: 9,
+                resource: wgpu::BindingResource::TextureView(clouds.shadow_view()),
+            },
+            wgpu::BindGroupEntry {
+                binding: 10,
+                resource: clouds.apply_buffer().as_entire_binding(),
             },
         ],
     })
@@ -296,13 +310,8 @@ impl Renderer {
         let now = v.renders;
         v.targets.retain(|_, s| now - s.last_used < STALE_AFTER);
         if rebuild {
-            self.view_bind_group = view_group(
-                device,
-                &self.pipelines.view_layout,
-                &self.view_buffer,
-                &self.volumetrics,
-                &self.sky,
-            );
+            // Rebuilt by `prepare_clouds`, which runs next.
+            self.view_group_dirty = true;
         }
     }
 
@@ -337,6 +346,7 @@ impl Renderer {
                 lit: write,
                 integrated,
                 shadows: shadow_access::views(&self.shadows),
+                clouds: (self.clouds.shadow_view(), self.clouds.apply_buffer()),
                 size,
             },
         );

@@ -295,6 +295,20 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     );
     edited |= row(
         ui,
+        "Volumetric Clouds",
+        "Resolution and detail of the raymarched cloud layer.",
+        |ui| {
+            combo(
+                ui,
+                "q_clouds",
+                &mut l.volumetric_clouds,
+                &Tier::ALL,
+                Tier::label,
+            )
+        },
+    );
+    edited |= row(
+        ui,
         "Reflection Probes",
         "Resolution of reflections from Reflection Probes (Off = sky only).",
         |ui| {

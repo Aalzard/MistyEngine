@@ -54,6 +54,8 @@ mod sample_assets;
 #[cfg(test)]
 mod sample_audio;
 #[cfg(test)]
+mod sample_clouds;
+#[cfg(test)]
 mod sample_hdri;
 #[cfg(test)]
 mod sample_input;
