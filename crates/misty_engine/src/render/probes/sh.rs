@@ -58,7 +58,11 @@ pub fn project(cube: &Cube) -> [Vec3; 9] {
 
 /// Diffuse coefficients of a cube: evaluate with [`eval`] for irradiance / π.
 pub fn irradiance(cube: &Cube) -> [Vec3; 9] {
-    let mut sh = project(cube);
+    cosine_convolve(project(cube))
+}
+
+/// Radiance coefficients → irradiance / π (the cosine lobe per band).
+pub fn cosine_convolve(mut sh: [Vec3; 9]) -> [Vec3; 9] {
     for (s, k) in sh.iter_mut().zip(BAND) {
         *s *= k;
     }

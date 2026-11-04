@@ -232,6 +232,8 @@ impl Pipelines {
         // View uniform + the fog volume, sampler and uniform (render/volumetrics).
         let mut view_entries = vec![entry(0, S::VERTEX_FRAGMENT, uniform())];
         view_entries.extend(super::volumetrics::view_layout_entries());
+        // HDRI sky: uniform, background and specular cubes, sampler (render/hdri_sky).
+        view_entries.extend(super::hdri_sky::layout_entries());
         let view_layout = layout("misty view", &view_entries);
         let probe = super::probes::gpu::layout_entries();
         let mesh_layout = layout(

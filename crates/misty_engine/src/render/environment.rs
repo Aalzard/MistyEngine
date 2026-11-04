@@ -26,6 +26,8 @@ pub struct Environment {
     pub probes: super::probes::ProbeSet,
     /// Local Fog Volumes (seen by volumetric fog only).
     pub fog_volumes: Vec<super::LocalFog>,
+    /// The decoded HDRI while the skybox is HDRI and its file loads.
+    pub hdri: Option<crate::hdri::HdriHandle>,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -56,12 +58,63 @@ impl Environment {
                 color: l.color,
                 intensity: l.intensity,
             });
+        let hdri = match (&settings.skybox.kind, &settings.skybox.hdri.texture) {
+            (SkyboxKind::Hdri, Some(rel)) => crate::hdri::store::load(rel),
+            _ => None,
+        };
         Self {
             settings,
             sun,
             probes: Default::default(),
             fog_volumes: Vec::new(),
+            hdri,
         }
+    }
+
+    /// The HDRI sky when the skybox shows one.
+    pub fn hdri_sky(&self) -> Option<&crate::hdri::HdriSky> {
+        let kind = self.settings.skybox.kind;
+        self.hdri
+            .as_ref()
+            .filter(|_| kind == SkyboxKind::Hdri)
+            .map(|h| &*h.0)
+    }
+
+    /// Linear tint × exposure of the HDRI.
+    pub fn hdri_multiplier(&self) -> Vec3 {
+        Vec3::from(self.settings.skybox.hdri.multiplier())
+    }
+
+    /// Diffuse SH (irradiance / π, world space, intensity applied) for surfaces no probe
+    /// covers while the sky is an HDRI: the HDRI's own SH for the Skybox ambient source, else
+    /// the Gradient / Color ambient projected onto SH.
+    pub fn ambient_sh(&self) -> [Vec3; 9] {
+        let env = &self.settings.environment_lighting;
+        let k = env.intensity.max(0.0);
+        if env.source == AmbientSource::Skybox
+            && let Some(sh) = self.hdri_world_sh()
+        {
+            return sh.map(|c| c * k);
+        }
+        let [up, equator, down] = self.ambient();
+        let gradient = crate::hdri::HdrImage::from_fn(32, 16, |n| {
+            if n.y >= 0.0 {
+                equator.lerp(up, n.y)
+            } else {
+                equator.lerp(down, -n.y)
+            }
+        });
+        crate::hdri::project_sh(&gradient).map(|c| c * k)
+    }
+
+    /// The HDRI's diffuse SH rotated into world space, tint and exposure applied.
+    fn hdri_world_sh(&self) -> Option<[Vec3; 9]> {
+        let sky = self.hdri_sky()?;
+        let m = self.hdri_multiplier();
+        Some(
+            sky.sh_rotated(self.settings.skybox.hdri.rotation)
+                .map(|c| c * m),
+        )
     }
 
     /// The same environment lit by probes.
@@ -100,6 +153,10 @@ impl Environment {
             return lin(sky.color);
         }
         let dir = dir.normalize_or(Vec3::Y);
+        if let Some(h) = self.hdri_sky() {
+            let local = crate::hdri::rotation(sky.hdri.rotation).inverse() * dir;
+            return h.small.sample(local) * self.hdri_multiplier();
+        }
         let (zenith0, horizon0) = (lin(ZENITH), lin(HORIZON));
         let t = sky.atmosphere_thickness;
         let tint = self.tint();
@@ -130,6 +187,17 @@ impl Environment {
         let env = &self.settings.environment_lighting;
         let s = AMBIENT_SCALE;
         match env.source {
+            AmbientSource::Skybox if self.hdri_sky().is_some() => {
+                // Irradiance from the HDRI's SH (already a diffuse quantity: no extra scale).
+                let sh = self.hdri_world_sh().unwrap_or_default();
+                let at = |d: Vec3| crate::render::probes::sh::eval(&sh, d).max(Vec3::ZERO);
+                let equator = [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z]
+                    .iter()
+                    .map(|d| at(*d))
+                    .sum::<Vec3>()
+                    / 4.0;
+                [at(Vec3::Y), equator, at(Vec3::NEG_Y)]
+            }
             AmbientSource::Skybox => {
                 let equator = [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z]
                     .iter()

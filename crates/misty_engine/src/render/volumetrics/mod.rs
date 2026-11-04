@@ -62,18 +62,24 @@ pub(crate) fn view_layout_entries() -> [wgpu::BindGroupLayoutEntry; 3] {
     ]
 }
 
-/// The view bind group: the view uniform plus the fog resources.
+/// The view bind group: the view uniform, the fog resources and the HDRI sky (4–7).
 pub(crate) fn view_group(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
     view_buffer: &wgpu::Buffer,
     v: &Volumetrics,
+    sky: &super::hdri_sky::SkyGpu,
 ) -> wgpu::BindGroup {
     let volume = v.volume.as_ref().map_or(&v.dummy, |(_, view)| view);
+    let [s0, s1, s2, s3] = sky.entries();
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("misty view group"),
         layout,
         entries: &[
+            s0,
+            s1,
+            s2,
+            s3,
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: view_buffer.as_entire_binding(),
@@ -295,6 +301,7 @@ impl Renderer {
                 &self.pipelines.view_layout,
                 &self.view_buffer,
                 &self.volumetrics,
+                &self.sky,
             );
         }
     }
