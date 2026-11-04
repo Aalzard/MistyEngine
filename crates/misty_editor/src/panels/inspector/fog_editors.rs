@@ -1,9 +1,11 @@
 //! Inspector editors for volumetric fog: the Fog Volume component, the Light's volumetric
-//! rows, and the Post-process Volume's Fog and Sun Shafts overrides.
+//! rows, and the Post-process Volume's Fog and Sun Shafts (Screen) overrides.
 
 use egui::{DragValue, Grid, Slider, Ui};
 use misty_engine::hecs::Entity;
-use misty_engine::scene::{FogOverride, FogQuality, FogVolume, Light, SunShaftsOverride};
+use misty_engine::scene::{
+    FogOverride, FogQuality, FogVolume, Light, SunShaftsOverride, SunShaftsQuality,
+};
 
 use super::editors::{color_rgb, combo};
 use crate::state::EditorState;
@@ -116,6 +118,23 @@ pub fn fog_override(ui: &mut Ui, f: &mut FogOverride) -> bool {
         })
         .inner;
     ui.end_row();
+    ui.add_enabled_ui(on, |ui| {
+        ui.label("Sun Shafts Quality").on_hover_text(
+            "Sharp: the sun is raymarched per pixel through its shadow map for crisp light              shafts. Off: the sun lights the froxel grid like other lights (softer). The              Quality settings can turn Sharp off.",
+        )
+    });
+    ch |= ui
+        .add_enabled_ui(on, |ui| {
+            combo(
+                ui,
+                "fog_sun_shafts_quality",
+                &mut f.sun_shafts_quality,
+                &SunShaftsQuality::ALL,
+                SunShaftsQuality::label,
+            )
+        })
+        .inner;
+    ui.end_row();
     ui.add_enabled_ui(on, |ui| ui.label("Denoising"));
     ch |= ui
         .add_enabled_ui(on, |ui| ui.checkbox(&mut f.denoising, "Temporal").changed())
@@ -151,7 +170,7 @@ pub fn fog_override(ui: &mut Ui, f: &mut FogOverride) -> bool {
     ch
 }
 
-/// Body of the Post-process Volume ▸ Sun Shafts section.
+/// Body of the Post-process Volume ▸ Sun Shafts (Screen) section.
 pub fn sun_shafts_override(ui: &mut Ui, s: &mut SunShaftsOverride) -> bool {
     let mut ch = row(ui, "Intensity", |ui| {
         drag(ui, &mut s.intensity, 0.0..=20.0, 0.01)

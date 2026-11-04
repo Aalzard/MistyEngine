@@ -67,6 +67,8 @@ pub(super) struct FroxelUniform {
     pub noise: [f32; 4],
     pub scroll: [f32; 4],
     pub counts: [f32; 4],
+    /// x = slot of the main sun in `lights` (-1 = none), y = 1 when the sharp shafts take it.
+    pub sun: [f32; 4],
     pub lights: [FroxelLight; MAX_FOG_LIGHTS],
     pub local_shadow: [[[f32; 4]; 4]; MAX_LOCAL_LAYERS],
     pub boxes: [FogBox; MAX_FOG_BOXES],
@@ -226,6 +228,18 @@ pub(super) struct FroxelInputs<'a> {
     pub prev: Option<PrevView>,
     pub history: f32,
     pub time: f32,
+    /// The sharp sun shafts march the main sun this frame (the froxels skip it).
+    pub sharp: bool,
+}
+
+/// Index in `frame.lights` of the main sun: the directional light that owns the cascades,
+/// else the brightest directional light.
+pub(super) fn main_sun(frame: &Frame, plan: &ShadowPlan) -> Option<usize> {
+    let owner = (0..frame.lights.len()).find(|i| shadow_access::light_layer(plan, *i) == Some(-1));
+    owner.or_else(|| {
+        let s = sun(frame.lights)?;
+        frame.lights.iter().position(|l| std::ptr::eq(l, s))
+    })
 }
 
 pub(super) fn froxel_uniform(i: &FroxelInputs) -> FroxelUniform {
@@ -287,12 +301,17 @@ pub(super) fn froxel_uniform(i: &FroxelInputs) -> FroxelUniform {
     {
         u.local_shadow[slot] = m.to_cols_array_2d();
     }
+    let main = main_sun(frame, i.plan);
+    u.sun = [-1.0, 0.0, 0.0, 0.0];
     let mut lights = 0;
     for (index, l) in frame.lights.iter().enumerate() {
         if lights == MAX_FOG_LIGHTS {
             break;
         }
         if let Some(item) = froxel_light(l, shadow_access::light_layer(i.plan, index)) {
+            if main == Some(index) {
+                u.sun = [lights as f32, if i.sharp { 1.0 } else { 0.0 }, 0.0, 0.0];
+            }
             u.lights[lights] = item;
             lights += 1;
         }

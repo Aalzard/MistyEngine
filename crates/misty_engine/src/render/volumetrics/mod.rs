@@ -5,20 +5,25 @@
 //! shadow maps, blended with last frame's reprojected result (per-frame jitter), then
 //! integrated front to back. Every forward shader (meshes, terrain, sky, particles) samples
 //! the result through `fog_apply.wgsl` at group 0. Without Volumetric, the same shaders use an
-//! analytic height fog. Sun shafts are a separate, cheap screen-space radial blur.
+//! analytic height fog. Sharp sun shafts (on by default) take the main sun out of the froxels
+//! and raymarch it per pixel through its shadow map, added after the main pass. The screen-space
+//! Sun Shafts are a separate, cheap radial blur.
 //!
 //! The renderer calls three hooks per render: [`Renderer::prepare_volumetrics`] (uniforms and
 //! textures), [`Renderer::froxel_passes`] (after the shadow maps) and
-//! [`Renderer::sun_shaft_passes`] (after the main pass).
+//! [`Renderer::sun_shaft_passes`] (after the main pass: sharp shafts, then screen-space ones).
 
 mod froxels;
 mod settings;
 mod shadow_access;
+mod sharp_shafts;
 mod sun_shafts;
 mod uniforms;
 
 #[cfg(test)]
 mod gpu_tests;
+#[cfg(test)]
+mod sharp_gpu_tests;
 #[cfg(test)]
 mod tests;
 
@@ -119,6 +124,7 @@ pub(crate) fn view_group(
 struct TargetState {
     history: Option<froxels::History>,
     shafts: Option<sun_shafts::ShaftTextures>,
+    sharp: Option<sharp_shafts::SharpTextures>,
     last_used: u64,
 }
 
@@ -138,12 +144,15 @@ pub(crate) struct Volumetrics {
     volume: Option<([u32; 3], wgpu::TextureView)>,
     froxels: Option<froxels::FroxelPipelines>,
     shafts: Option<sun_shafts::ShaftPipelines>,
+    sharp: Option<sharp_shafts::SharpPipelines>,
     targets: HashMap<u64, TargetState>,
     renders: u64,
     clock: std::time::Instant,
     /// What the current render does.
     froxels_now: Option<[u32; 3]>,
     shafts_now: bool,
+    /// The sharp sun shafts run this render.
+    sharp_now: bool,
 }
 
 impl Volumetrics {
@@ -175,17 +184,58 @@ impl Volumetrics {
             volume: None,
             froxels: None,
             shafts: None,
+            sharp: None,
             targets: HashMap::new(),
             renders: 0,
             clock: std::time::Instant::now(),
             froxels_now: None,
             shafts_now: false,
+            sharp_now: false,
         }
     }
 
-    /// The main pass must keep its depth (the sun shafts read it).
+    /// The main pass must keep its depth (both kinds of sun shafts read it).
     pub fn keeps_depth(&self) -> bool {
-        self.shafts_now
+        self.shafts_now || self.sharp_now
+    }
+
+    /// Make this view's sharp-shaft images and write their uniform (`None` = off this render:
+    /// the images are dropped so no stale history comes back).
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_sharp(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view_layout: &wgpu::BindGroupLayout,
+        target: &RenderTarget,
+        frame: &Frame,
+        quality: Option<settings::ShaftQuality>,
+        reach: f32,
+    ) {
+        let Some(q) = quality else {
+            if let Some(state) = self.targets.get_mut(&target.id) {
+                state.sharp = None;
+            }
+            return;
+        };
+        let pipelines = self
+            .sharp
+            .get_or_insert_with(|| sharp_shafts::SharpPipelines::new(device, queue, view_layout));
+        let full = target.size();
+        let state = self.targets.entry(target.id).or_default();
+        let size = sharp_shafts::march_size(full, q.scale);
+        if state
+            .sharp
+            .as_ref()
+            .is_none_or(|t| t.full != full || t.size != size)
+        {
+            state.sharp = Some(sharp_shafts::SharpTextures::new(device, full, q.scale));
+        }
+        let tex = state.sharp.as_mut().expect("sharp textures");
+        tex.begin_frame();
+        let u = sharp_shafts::SharpUniform::new(frame, tex, q, reach);
+        queue.write_buffer(&pipelines.uniform, 0, bytemuck::bytes_of(&u));
+        self.sharp_now = true;
     }
 
     /// GPU memory of the fog volumes and shaft images.
@@ -202,6 +252,7 @@ impl Volumetrics {
                     .as_ref()
                     .map_or(0, |h| 2 * froxels::volume_bytes(h.size))
                     + t.shafts.as_ref().map_or(0, |s| s.bytes())
+                    + t.sharp.as_ref().map_or(0, |s| s.bytes())
             })
             .sum();
         volume + views
@@ -221,6 +272,10 @@ impl Renderer {
     ) {
         crate::profile_scope!("Render.Volumetrics");
         let aspect = target.aspect();
+        let sharp_quality = (frame.post.fog.volume.sun_shafts_quality
+            == crate::scene::SunShaftsQuality::Sharp)
+            .then(|| settings::shaft_quality(self.quality.sun_shafts))
+            .flatten();
         let v = &mut self.volumetrics;
         v.renders += 1;
         let fog = frame.post.fog;
@@ -240,6 +295,7 @@ impl Renderer {
         queue.write_buffer(&v.apply_buffer, 0, bytemuck::bytes_of(&apply));
 
         v.froxels_now = None;
+        v.sharp_now = false;
         let mut rebuild = false;
         if mode == FogMode::Volumetric {
             if v.volume.as_ref().map(|(s, _)| *s) != Some(size) {
@@ -260,7 +316,7 @@ impl Renderer {
                 && history
                     .prev
                     .is_some_and(|p| p.slices == slices && p.size == size);
-            let u = uniforms::froxel_uniform(&uniforms::FroxelInputs {
+            let mut u = uniforms::froxel_uniform(&uniforms::FroxelInputs {
                 frame,
                 fog: &fog,
                 plan,
@@ -271,7 +327,13 @@ impl Renderer {
                 prev: history.prev,
                 history: if reuse { HISTORY_WEIGHT } else { 0.0 },
                 time: v.clock.elapsed().as_secs_f32(),
+                sharp: sharp_quality.is_some(),
             });
+            // No sun among the froxel lights: nothing to march.
+            let sharp = sharp_quality.filter(|_| u.sun[0] >= 0.0);
+            if sharp.is_none() {
+                u.sun[1] = 0.0;
+            }
             queue.write_buffer(&v.froxel_buffer, 0, bytemuck::bytes_of(&u));
             history.prev = Some(uniforms::PrevView {
                 view_proj,
@@ -281,9 +343,20 @@ impl Renderer {
                 size,
             });
             v.froxels_now = Some(size);
+            let reach = slices.far;
+            v.prepare_sharp(
+                device,
+                queue,
+                &self.pipelines.view_layout,
+                target,
+                frame,
+                sharp,
+                reach,
+            );
         } else if let Some(state) = v.targets.get_mut(&target.id) {
             // Stale history would ghost in when the fog comes back.
             state.history = None;
+            state.sharp = None;
         }
 
         v.shafts_now = false;
@@ -353,13 +426,15 @@ impl Renderer {
         history.advance();
     }
 
-    /// Screen-space sun shafts onto the HDR image (after the main pass, before bloom).
+    /// Sharp, then screen-space sun shafts onto the HDR image (after the main pass, before
+    /// bloom).
     pub(super) fn sun_shaft_passes(
         &self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         target: &RenderTarget,
     ) {
+        self.sharp_shaft_passes(device, encoder, target);
         let v = &self.volumetrics;
         if !v.shafts_now {
             return;
@@ -380,5 +455,40 @@ impl Renderer {
         for s in &steps {
             self.fullscreen(encoder, s.output, s.pipeline, &s.group, s.clear, None);
         }
+    }
+
+    /// Sharp sun shafts: march + accumulate at reduced resolution, upsample-add at full.
+    fn sharp_shaft_passes(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget,
+    ) {
+        let v = &self.volumetrics;
+        if !v.sharp_now {
+            return;
+        }
+        let Some(state) = v.targets.get(&target.id) else {
+            return;
+        };
+        let (Some(pipelines), Some(froxels), Some(tex), Some(history)) = (
+            v.sharp.as_ref(),
+            v.froxels.as_ref(),
+            state.sharp.as_ref(),
+            state.history.as_ref(),
+        ) else {
+            return;
+        };
+        let inputs = sharp_shafts::Inputs {
+            froxel_uniform: &v.froxel_buffer,
+            linear: &v.sampler,
+            shadow_cmp: &froxels.shadow_sampler,
+            sun_shadows: shadow_access::views(&self.shadows).0,
+            clouds: (self.clouds.shadow_view(), self.clouds.apply_buffer()),
+            depth: target.depth_view(),
+            froxel_lit: history.latest(),
+        };
+        let (pipeline, group) = pipelines.encode(device, encoder, tex, &inputs);
+        self.fullscreen(encoder, target.hdr_view(), pipeline, &group, false, None);
     }
 }

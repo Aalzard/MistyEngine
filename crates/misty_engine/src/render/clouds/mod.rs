@@ -11,7 +11,7 @@
 //! Hooks: [`Renderer::prepare_clouds`] (uniforms, textures, view group) and
 //! [`Renderer::cloud_passes`] (after the shadow maps, before the froxel fog).
 
-mod noise;
+pub(super) mod noise;
 mod passes;
 pub(crate) mod settings;
 mod uniforms;

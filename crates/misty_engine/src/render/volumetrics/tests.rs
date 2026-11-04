@@ -37,15 +37,27 @@ fn fog_shaders_validate() {
         "sun shafts",
         &format!("{common}\n{}", super::sun_shafts::SRC),
     );
+    validate(
+        "sharp shafts march",
+        &super::froxels::source(&super::sharp_shafts::compute_source()),
+    );
+    validate(
+        "sharp shafts composite",
+        &format!("{common}\n{}", super::sharp_shafts::composite_source()),
+    );
 }
 
 #[test]
 fn uniform_sizes_match_wgsl() {
     assert_eq!(std::mem::size_of::<ApplyUniform>(), 8 * 16);
-    // 2 matrices, 4 cascades, 13 vec4s, 8 lights, 16 shadow matrices, 16 boxes.
+    // 2 matrices, 4 cascades, 14 vec4s, 8 lights, 16 shadow matrices, 16 boxes.
     assert_eq!(
         std::mem::size_of::<FroxelUniform>(),
-        2 * 64 + 4 * 64 + 13 * 16 + 8 * 80 + 16 * 64 + 16 * 96
+        2 * 64 + 4 * 64 + 14 * 16 + 8 * 80 + 16 * 64 + 16 * 96
+    );
+    assert_eq!(
+        std::mem::size_of::<super::sharp_shafts::SharpUniform>(),
+        3 * 16
     );
 }
 
@@ -266,8 +278,11 @@ fn froxel_uniform_packs_lights_volumes_and_jitter() {
         prev: None,
         history: 0.0,
         time: 0.0,
+        sharp: true,
     };
     let u = uniforms::froxel_uniform(&inputs(0));
+    // No directional light: no sun for the sharp shafts to take over.
+    assert_eq!(u.sun, [-1.0, 0.0, 0.0, 0.0]);
     // The light with multiplier 0 adds nothing and is skipped; boxes are capped at 16.
     assert_eq!(u.counts[0], 2.0);
     assert_eq!(u.counts[1], 16.0);
@@ -279,4 +294,112 @@ fn froxel_uniform_packs_lights_volumes_and_jitter() {
     let other = uniforms::froxel_uniform(&inputs(1));
     assert_ne!(u.jitter, other.jitter);
     assert!(u.jitter[..3].iter().all(|j| (0.0..1.0).contains(j)));
+}
+
+/// The main sun is the light owning the cascades (else the brightest directional light); its
+/// froxel slot is flagged only while the sharp shafts run.
+#[test]
+fn sharp_shafts_take_the_main_sun_out_of_the_froxels() {
+    let camera = Camera {
+        position: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+        projection: Projection::Perspective { fov_y: 60.0 },
+        near: 0.1,
+        far: 200.0,
+    };
+    let mut weak = spot(1.0, 1.0);
+    weak.kind = LightType::Directional;
+    weak.intensity = 0.5;
+    let mut strong = weak;
+    strong.intensity = 3.0;
+    let lights = [spot(0.0, 1.0), weak, spot(1.0, 1.0), strong];
+    let environment = Environment::default();
+    let frame = Frame {
+        camera: &camera,
+        grid: None,
+        skybox: true,
+        background: [0.0; 3],
+        environment: &environment,
+        post: PostSettings::default(),
+        lines: &[],
+        overlay: &[],
+        meshes: &[],
+        particles: &[],
+        terrains: &[],
+        water: &[],
+        shaded: true,
+        lights: &lights,
+    };
+    let fog = FogSettings::from_override(&FogOverride {
+        active: true,
+        ..Default::default()
+    });
+    let pack = |plan: &ShadowPlan, sharp| {
+        uniforms::froxel_uniform(&uniforms::FroxelInputs {
+            frame: &frame,
+            fog: &fog,
+            plan,
+            view_proj: camera.view_projection(1.0),
+            slices: Slices::new(64.0, 64),
+            size: [128, 72, 64],
+            frame_index: 0,
+            prev: None,
+            history: 0.0,
+            time: 0.0,
+            sharp,
+        })
+    };
+    // No cascades: the brightest directional light (frame index 3, froxel slot 2 because the
+    // multiplier-0 spot is skipped).
+    let none = ShadowPlan::default();
+    assert_eq!(uniforms::main_sun(&frame, &none), Some(3));
+    assert_eq!(pack(&none, true).sun, [2.0, 1.0, 0.0, 0.0]);
+    assert_eq!(pack(&none, false).sun, [2.0, 0.0, 0.0, 0.0]);
+    // The weak sun owns the cascades: it is the one marched.
+    let owner = ShadowPlan {
+        light_layers: vec![None, Some(-1), None, None],
+        ..Default::default()
+    };
+    assert_eq!(uniforms::main_sun(&frame, &owner), Some(1));
+    assert_eq!(pack(&owner, true).sun, [0.0, 1.0, 0.0, 0.0]);
+    // Off mode packs exactly what the froxels had before, apart from the slot.
+    let off = pack(&owner, false);
+    let mut on = pack(&owner, true);
+    on.sun[1] = 0.0;
+    assert_eq!(bytemuck::bytes_of(&off), bytemuck::bytes_of(&on));
+}
+
+#[test]
+fn sun_shafts_quality_defaults_and_old_files() {
+    use crate::quality::{QualityLevel, Tier};
+    use crate::scene::SunShaftsQuality;
+    // Sharp by default, left out of saved files while Sharp; old files load as Sharp.
+    let f = FogOverride::default();
+    assert_eq!(f.sun_shafts_quality, SunShaftsQuality::Sharp);
+    assert!(
+        !serde_json::to_string(&f)
+            .unwrap()
+            .contains("sun_shafts_quality")
+    );
+    let old: FogOverride = serde_json::from_str(r#"{"active": true}"#).unwrap();
+    assert_eq!(old.sun_shafts_quality, SunShaftsQuality::Sharp);
+    let off = FogOverride {
+        sun_shafts_quality: SunShaftsQuality::Off,
+        ..f
+    };
+    let back: FogOverride = serde_json::from_str(&serde_json::to_string(&off).unwrap()).unwrap();
+    assert_eq!(back, off);
+    // Quality levels: Low turns it off, Medium and up march it.
+    assert_eq!(QualityLevel::low().sun_shafts, Tier::Off);
+    assert!(super::settings::shaft_quality(QualityLevel::low().sun_shafts).is_none());
+    for l in [
+        QualityLevel::medium(),
+        QualityLevel::high(),
+        QualityLevel::ultra(),
+    ] {
+        let q = super::settings::shaft_quality(l.sun_shafts).expect("sharp");
+        assert_eq!(q.scale, 2, "{}", l.name);
+        assert!((24..=64).contains(&q.steps));
+    }
+    assert_eq!(super::settings::shaft_quality(Tier::Low).unwrap().scale, 4);
 }

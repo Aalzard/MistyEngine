@@ -6,7 +6,7 @@ const NOISE_SRC: &str = include_str!("shaders/cloud_noise.wgsl");
 pub(super) const BASE_SIZE: u32 = 128;
 pub(super) const DETAIL_SIZE: u32 = 32;
 pub(super) const WEATHER_SIZE: u32 = 512;
-pub(super) const BLUE_SIZE: usize = 64;
+pub(in crate::render) const BLUE_SIZE: usize = 64;
 
 pub(super) struct NoiseTextures {
     pub base: wgpu::TextureView,
@@ -200,7 +200,7 @@ fn generate(device: &wgpu::Device, queue: &wgpu::Queue, views: &[wgpu::TextureVi
 }
 
 /// 64² blue-noise ranks as bytes (void and cluster on a torus, Gaussian energy).
-pub(super) fn blue_noise() -> Vec<u8> {
+pub(in crate::render) fn blue_noise() -> Vec<u8> {
     static CACHE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
     CACHE.get_or_init(|| void_and_cluster(BLUE_SIZE)).clone()
 }

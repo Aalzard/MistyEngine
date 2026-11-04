@@ -180,6 +180,9 @@ pub struct QualityLevel {
     pub lens_flares: bool,
     /// Volumetric clouds: trace resolution and step counts (Off = no clouds).
     pub volumetric_clouds: Tier,
+    /// Sharp volumetric sun shafts: resolution and steps of the per-pixel sun march (Off =
+    /// the sun stays in the froxel fog).
+    pub sun_shafts: Tier,
 }
 
 impl Default for QualityLevel {
@@ -209,6 +212,7 @@ impl QualityLevel {
             reflection_probes: Tier::Low,
             lens_flares: false,
             volumetric_clouds: Tier::Low,
+            sun_shafts: Tier::Off,
         }
     }
 
@@ -232,6 +236,7 @@ impl QualityLevel {
             reflection_probes: Tier::Medium,
             lens_flares: true,
             volumetric_clouds: Tier::Medium,
+            sun_shafts: Tier::Medium,
         }
     }
 
@@ -255,6 +260,7 @@ impl QualityLevel {
             reflection_probes: Tier::High,
             lens_flares: true,
             volumetric_clouds: Tier::Medium,
+            sun_shafts: Tier::Medium,
         }
     }
 
@@ -269,6 +275,7 @@ impl QualityLevel {
             ambient_occlusion: Tier::High,
             volumetric_fog: Tier::High,
             volumetric_clouds: Tier::High,
+            sun_shafts: Tier::High,
             ..Self::high()
         }
     }

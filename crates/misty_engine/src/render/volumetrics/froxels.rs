@@ -7,7 +7,14 @@ const COMMON: &str = concat!(
 ",
     include_str!("../clouds/shaders/cloud_shadow_lookup.wgsl")
 );
-pub(super) const LIGHT_SRC: &str = include_str!("shaders/froxel_light.wgsl");
+/// Density, phase and shadow lookups shared with the sharp sun shafts.
+pub(super) const MEDIUM_SRC: &str = include_str!("shaders/froxel_medium.wgsl");
+pub(super) const LIGHT_SRC: &str = concat!(
+    include_str!("shaders/froxel_medium.wgsl"),
+    "
+",
+    include_str!("shaders/froxel_light.wgsl")
+);
 pub(super) const INTEGRATE_SRC: &str = include_str!("shaders/froxel_integrate.wgsl");
 /// rgb = scattering / in-scatter, a = extinction / transmittance.
 const VOLUME_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -22,10 +29,11 @@ pub(super) struct FroxelPipelines {
     integrate_layout: wgpu::BindGroupLayout,
     light: wgpu::ComputePipeline,
     integrate: wgpu::ComputePipeline,
-    shadow_sampler: wgpu::Sampler,
+    /// Hardware 2×2 PCF lookups of the shadow maps (also used by the sharp shafts).
+    pub shadow_sampler: wgpu::Sampler,
 }
 
-fn entry(binding: u32, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
+pub(super) fn entry(binding: u32, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
         visibility: wgpu::ShaderStages::COMPUTE,
@@ -34,7 +42,7 @@ fn entry(binding: u32, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
-fn texture(
+pub(super) fn texture(
     sample_type: wgpu::TextureSampleType,
     dim: wgpu::TextureViewDimension,
 ) -> wgpu::BindingType {
@@ -53,10 +61,12 @@ fn storage_3d() -> wgpu::BindingType {
     }
 }
 
-fn compute(
+/// A compute pipeline running `entry` of `body` (after the froxel common code).
+pub(super) fn compute(
     device: &wgpu::Device,
     name: &str,
     body: &str,
+    entry: &str,
     layout: &wgpu::BindGroupLayout,
 ) -> wgpu::ComputePipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -72,7 +82,7 @@ fn compute(
         label: Some(name),
         layout: Some(&layout),
         module: &module,
-        entry_point: Some("main"),
+        entry_point: Some(entry),
         compilation_options: Default::default(),
         cache: None,
     })
@@ -130,11 +140,18 @@ impl FroxelPipelines {
             ],
         });
         Self {
-            light: compute(device, "misty froxel light", LIGHT_SRC, &light_layout),
+            light: compute(
+                device,
+                "misty froxel light",
+                LIGHT_SRC,
+                "main",
+                &light_layout,
+            ),
             integrate: compute(
                 device,
                 "misty froxel integrate",
                 INTEGRATE_SRC,
+                "main",
                 &integrate_layout,
             ),
             light_layout,
@@ -283,6 +300,11 @@ impl History {
     /// (read = last frame, write = this frame).
     pub fn pair(&self) -> (&wgpu::TextureView, &wgpu::TextureView) {
         (&self.views[1 - self.parity], &self.views[self.parity])
+    }
+
+    /// The lit froxels written last (after [`History::advance`]: this frame's).
+    pub fn latest(&self) -> &wgpu::TextureView {
+        &self.views[1 - self.parity]
     }
 
     pub fn advance(&mut self) {
