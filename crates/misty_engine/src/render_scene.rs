@@ -115,6 +115,7 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                 range: l.range,
                 spot_angle: l.spot_angle,
                 shadows: l.shadows,
+                contact_shadows: l.contact_shadows,
             })
         })
         .collect()
@@ -155,6 +156,7 @@ pub fn headlight(camera: &Camera) -> Vec<LightData> {
         range: 0.0,
         spot_angle: 0.0,
         shadows: Shadows::None,
+        contact_shadows: false,
     }]
 }
 

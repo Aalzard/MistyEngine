@@ -1,6 +1,8 @@
 //! wgpu renderer: sky, lit meshes with shadows, grid, particles, gizmo lines and selection outline.
 
+pub mod ao;
 mod batch;
+pub mod contact_shadows;
 pub mod culling;
 pub mod environment;
 mod frame_lists;
@@ -9,6 +11,7 @@ pub mod mesh;
 pub mod particles;
 mod pipelines;
 pub mod post;
+mod screen_space;
 mod shadows;
 pub mod stats;
 pub mod surface;
@@ -19,6 +22,8 @@ pub mod ui;
 mod variants;
 
 pub use crate::terrain::TerrainDraw;
+pub use ao::AoSettings;
+pub use contact_shadows::ContactShadowSettings;
 pub use environment::{Environment, Sun};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
@@ -197,6 +202,8 @@ pub struct LightData {
     /// Full cone angle in degrees.
     pub spot_angle: f32,
     pub shadows: Shadows,
+    /// Screen-space contact shadows (used when the view's Contact Shadows are on).
+    pub contact_shadows: bool,
 }
 
 /// Everything needed to draw one view.
@@ -314,6 +321,8 @@ pub struct Renderer {
     batcher: batch::Batcher,
     slots_scratch: Vec<u32>,
     draws_scratch: Vec<DrawUniform>,
+    /// Ambient occlusion and contact shadows (depth/normal prepass, GTAO passes).
+    screen_space: screen_space::ScreenSpace,
 }
 
 impl Renderer {
@@ -342,6 +351,7 @@ impl Renderer {
         };
         let view_bind_group = view_group(&view_buffer);
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
+        let screen_space = screen_space::ScreenSpace::new(device);
 
         let draws_capacity = 256;
         let draws_buffer = draws_buffer(device, draws_capacity);
@@ -353,6 +363,7 @@ impl Renderer {
             &lights_buffer,
             [&draws_buffer, &slots_buffer],
             &shadows,
+            &screen_space.off_buffer,
         );
 
         let meshes = PrimitiveMesh::ALL
@@ -399,6 +410,7 @@ impl Renderer {
             batcher: Default::default(),
             slots_scratch: Vec::new(),
             draws_scratch: Vec::new(),
+            screen_space,
         }
     }
 
@@ -595,6 +607,7 @@ impl Renderer {
             (lists, plan)
         };
         self.upload_draws(device, queue, frame, &lists.slots);
+        let screen = self.prepare_screen_space(device, queue, target, frame);
 
         // Lights and their shadow maps (slot 0 = directional, 1.. = local layers).
         let lights = lights_uniform(frame, &plan);
@@ -652,6 +665,9 @@ impl Renderer {
             let view = &self.shadows.local_layer_views[layer];
             self.shadow_pass(&mut encoder, frame, view, layer + 1, Some(list), &mut stats);
         }
+        if let Some(ss) = &screen {
+            self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
+        }
         self.main_pass(
             &mut encoder,
             target,
@@ -700,6 +716,7 @@ impl Renderer {
                 &self.lights_buffer,
                 [&self.draws_buffer, &self.slots_buffer],
                 &self.shadows,
+                &self.screen_space.off_buffer,
             );
         }
         let mut draws = std::mem::take(&mut self.draws_scratch);
@@ -1053,7 +1070,7 @@ impl Renderer {
 
         // Opaque and Cutout meshes, front to back.
         if frame.shaded && !lists.opaque.is_empty() {
-            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            pass.set_bind_group(1, self.lit_group(), &[]);
             self.draw_batches(&mut pass, frame, &lists.opaque, stats);
         }
 
@@ -1062,7 +1079,7 @@ impl Renderer {
             && let Some(material) = self.textures.get(None, None)
         {
             pass.set_pipeline(&self.pipelines.terrain);
-            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            pass.set_bind_group(1, self.lit_group(), &[]);
             pass.set_bind_group(2, material, &[]);
             let first = frame.meshes.len();
             self.terrains.draw(
@@ -1082,7 +1099,7 @@ impl Renderer {
 
         // Fade / Transparent meshes back to front, after the grid (they don't write depth).
         if frame.shaded && !lists.transparent.is_empty() {
-            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            pass.set_bind_group(1, self.lit_group(), &[]);
             self.draw_batches(&mut pass, frame, &lists.transparent, stats);
         }
 
@@ -1162,13 +1179,15 @@ fn slots_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
-/// Group 1 of the lit mesh pass and of the shadow/mask passes; `buffers` = draws, slots.
+/// Group 1 of the lit mesh pass and of the shadow/mask passes; `buffers` = draws, slots;
+/// `screen` = screen-space texels (AO, contact shadows).
 fn draw_groups(
     device: &wgpu::Device,
     p: &pipelines::Pipelines,
     lights: &wgpu::Buffer,
     buffers: [&wgpu::Buffer; 2],
     shadows: &shadows::ShadowMaps,
+    screen: &wgpu::Buffer,
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [draws, slots] = buffers;
     let mesh = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1198,6 +1217,10 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 5,
                 resource: slots.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 16,
+                resource: screen.as_entire_binding(),
             },
         ],
     });
@@ -1326,7 +1349,13 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
                 c[2] * l.intensity,
                 0.0,
             ],
-            spot: [half.cos(), (half * 0.8).cos(), 0.0, 0.0],
+            // z = contact shadows (screen_space.wgsl).
+            spot: [
+                half.cos(),
+                (half * 0.8).cos(),
+                if l.contact_shadows { 1.0 } else { 0.0 },
+                0.0,
+            ],
             shadow: [mode, layer, 0.0, 0.0],
         };
         n += 1;

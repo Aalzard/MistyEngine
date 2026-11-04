@@ -6,7 +6,11 @@ use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAM
 
 const COMMON: &str = include_str!("shaders/common.wgsl");
 /// Lit/unlit meshes (all material variants).
-pub(super) const MESH_SRC: &str = include_str!("shaders/mesh.wgsl");
+pub(super) const MESH_SRC: &str = concat!(
+    include_str!("shaders/mesh.wgsl"),
+    "\n",
+    include_str!("shaders/screen_space.wgsl")
+);
 /// Shadow-map depth and the selection mask.
 pub(super) const DEPTH_SRC: &str = include_str!("shaders/depth.wgsl");
 
@@ -29,6 +33,8 @@ pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
 /// The terrain fragment stage reuses the mesh shader's vertex stage and lighting.
 const TERRAIN_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
+    "\n",
+    include_str!("shaders/screen_space.wgsl"),
     "\n",
     include_str!("shaders/terrain.wgsl")
 );
@@ -198,6 +204,8 @@ impl Pipelines {
                 ),
                 // Instance → draw slot (instanced batches).
                 entry(5, S::VERTEX, storage()),
+                // Screen-space AO and contact shadow texels (screen_space.rs).
+                entry(16, S::FRAGMENT, storage()),
             ],
         );
         let draws_layout = layout(
@@ -579,6 +587,7 @@ mod tests {
             ("composite", include_str!("shaders/composite.wgsl")),
             ("particles", include_str!("shaders/particles.wgsl")),
             ("terrain", super::TERRAIN_SRC),
+            ("ao prepass", include_str!("shaders/ao_prepass.wgsl")),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));

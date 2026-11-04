@@ -257,6 +257,7 @@ mod tests {
             range: 10.0,
             spot_angle: 30.0,
             shadows: Shadows::Soft,
+            contact_shadows: false,
         }
     }
 

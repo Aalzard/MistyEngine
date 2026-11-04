@@ -44,6 +44,8 @@ pub struct RenderTarget {
     pub(crate) bloom: Vec<BloomLevel>,
     /// HDR image + bloom level 0, for the final composite.
     pub(crate) composite_group: wgpu::BindGroup,
+    /// Screen-space effects' textures and AO history (created when first needed).
+    pub(crate) screen_space: super::screen_space::TargetSlot,
 }
 
 impl RenderTarget {
@@ -192,6 +194,7 @@ impl RenderTarget {
             hdr_group,
             bloom,
             composite_group,
+            screen_space: Default::default(),
         }
     }
 

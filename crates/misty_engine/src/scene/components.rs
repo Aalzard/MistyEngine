@@ -274,6 +274,9 @@ pub struct Light {
     /// Full cone angle in degrees.
     pub spot_angle: f32,
     pub shadows: Shadows,
+    /// Screen-space contact shadows (when a volume's Contact Shadows override is on).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub contact_shadows: bool,
 }
 
 impl Default for Light {
@@ -286,6 +289,7 @@ impl Default for Light {
             range: 10.0,
             spot_angle: 30.0,
             shadows: Shadows::None,
+            contact_shadows: false,
         }
     }
 }

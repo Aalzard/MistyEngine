@@ -5,6 +5,7 @@
 use glam::Vec3;
 
 use super::srgb_to_linear;
+use super::{AoSettings, ContactShadowSettings};
 use crate::scene::{PostProcessVolume, TonemapMode};
 
 /// Effect values for one view. `Default` is the baseline every scene gets without a volume:
@@ -29,6 +30,9 @@ pub struct PostSettings {
     pub vignette_smoothness: f32,
     /// sRGB.
     pub vignette_color: [f32; 3],
+    /// Screen-space ambient occlusion (render/ao.rs).
+    pub ao: AoSettings,
+    pub contact_shadows: ContactShadowSettings,
 }
 
 impl Default for PostSettings {
@@ -46,6 +50,8 @@ impl Default for PostSettings {
             vignette_intensity: 0.0,
             vignette_smoothness: 0.2,
             vignette_color: [0.0; 3],
+            ao: AoSettings::default(),
+            contact_shadows: ContactShadowSettings::default(),
         }
     }
 }
@@ -77,6 +83,8 @@ impl PostSettings {
             s.vignette_smoothness = g.smoothness;
             s.vignette_color = g.color;
         }
+        s.ao = AoSettings::from_override(&v.ambient_occlusion);
+        s.contact_shadows = ContactShadowSettings::from_override(&v.contact_shadows);
         s
     }
 

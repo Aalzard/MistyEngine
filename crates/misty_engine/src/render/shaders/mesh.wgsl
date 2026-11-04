@@ -320,14 +320,16 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     } else {
         ambient = mix(lights.equator.rgb, lights.ground.rgb, -n.y);
     }
-    var color = ambient * lights.info.z * diffuse_color * s.occlusion;
+    // Screen-space AO (screen_space.wgsl) joins the material occlusion on ambient light.
+    let ssao = screen_ao(world);
+    var color = ambient * lights.info.z * diffuse_color * indirect_occlusion(s.occlusion, ssao, diffuse_color);
 
     // Reflection of the sky: sharp when smooth, blurred towards the ambient colour when rough.
     let r = reflect(-v, n);
     let env = mix(sky_color(r), ambient * 1.6, perceptual);
     let fresnel_env = mix(f0, vec3<f32>(grazing), pow(1.0 - n_dot_v, 5.0));
     let surface_reduction = 1.0 / (roughness * roughness + 1.0);
-    color += env * fresnel_env * surface_reduction * lights.info.w * smoothness * s.occlusion;
+    color += env * fresnel_env * surface_reduction * lights.info.w * smoothness * specular_occlusion(s.occlusion, ssao, n_dot_v, roughness);
 
     let count = u32(lights.info.x);
     for (var i = 0u; i < count; i++) {
@@ -355,7 +357,9 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
         }
         if (s.receive_shadows) {
             atten *= shadow_factor(li, world, n, l);
+            atten *= contact_shadow(li, world, n, l);
         }
+        atten *= direct_occlusion(ssao);
         let h = normalize(l + v);
         let n_dot_h = max(dot(n, h), 0.0);
         let l_dot_h = max(dot(l, h), 0.0);
@@ -373,6 +377,10 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     var out: MeshTargets;
     out.color = vec4<f32>(color, alpha);
     out.glow = vec4<f32>(s.emission * fog, alpha);
+    if (ao_debug_view()) {
+        out.color = vec4<f32>(vec3<f32>(ssao), alpha);
+        out.glow = vec4<f32>(0.0, 0.0, 0.0, alpha);
+    }
     return out;
 
 }

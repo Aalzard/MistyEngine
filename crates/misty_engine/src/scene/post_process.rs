@@ -4,6 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::screen_space_overrides::{AmbientOcclusionOverride, ContactShadowsOverride, is_default};
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TonemapMode {
     /// No curve: over-bright colours keep their hue and fade to white (the engine's baseline).
@@ -127,6 +129,10 @@ pub struct PostProcessVolume {
     pub bloom: BloomOverride,
     pub color_adjustments: ColorAdjustmentsOverride,
     pub vignette: VignetteOverride,
+    #[serde(skip_serializing_if = "is_default")]
+    pub ambient_occlusion: AmbientOcclusionOverride,
+    #[serde(skip_serializing_if = "is_default")]
+    pub contact_shadows: ContactShadowsOverride,
 }
 
 impl Default for PostProcessVolume {
@@ -138,6 +144,8 @@ impl Default for PostProcessVolume {
             bloom: BloomOverride::default(),
             color_adjustments: ColorAdjustmentsOverride::default(),
             vignette: VignetteOverride::default(),
+            ambient_occlusion: Default::default(),
+            contact_shadows: Default::default(),
         }
     }
 }
