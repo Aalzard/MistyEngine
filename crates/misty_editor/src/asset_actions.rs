@@ -289,7 +289,7 @@ fn delete(s: &mut EditorState, path: &Path) {
 }
 
 /// Open the OS file browser with `path` selected.
-fn show_in_explorer(path: &Path) -> std::io::Result<()> {
+pub(crate) fn show_in_explorer(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     let mut cmd = {
         let mut c = std::process::Command::new("explorer");

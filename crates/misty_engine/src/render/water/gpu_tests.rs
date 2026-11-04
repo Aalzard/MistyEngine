@@ -96,6 +96,9 @@ fn render(
         lights: &[],
     };
     let target = renderer.create_target(device, W, H);
+    // The same wave time for every render: wall-clock time moves the waves between the
+    // clear / fogged / reference images, by more when the machine is busy (parallel tests).
+    crate::clock::set_play_time(0.0);
     renderer.render(device, queue, &target, &frame);
     let image = read_back(device, queue, &target);
     if let Some(dir) = std::env::var_os("MISTY_FOG_TEST_DIR") {

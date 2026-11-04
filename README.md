@@ -8,7 +8,9 @@ A Rust game engine and editor with a familiar Unity-style workflow, built on wgp
 cargo run -p misty_editor --release
 ```
 
-The editor opens `SampleProject/` (or pass a project folder: `cargo run -p misty_editor --release -- path/to/Project`).
+This opens **Misty Hub**: recent projects, New Project (Empty, Standard, Ocean or Landscape template) and Open.
+Pass a project folder to go straight to the editor (`cargo run -p misty_editor --release -- SampleProject`), or
+`-- --new Landscape path/to/MyGame` to create a project from a template and open it.
 A project is any folder with an `Assets/` directory.
 
 ### Play a build

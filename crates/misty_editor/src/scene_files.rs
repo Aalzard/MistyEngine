@@ -163,8 +163,8 @@ fn at_risk(s: &EditorState, action: &AfterPrompt) -> Vec<SceneId> {
 
 // ---- opening ----------------------------------------------------------------------------------
 
-/// On startup: reopen the last open scenes, else the last scene, else the sample scene,
-/// else keep the default one.
+/// On startup: reopen the last open scenes, else the last scene, else the first Build Settings
+/// scene, else the sample scene, else keep the default one.
 pub fn open_initial(s: &mut EditorState) {
     s.files.settings = EditorSettings::load(&s.project.root);
     if crate::open_scenes::restore_open_set(s) {
@@ -176,6 +176,13 @@ pub fn open_initial(s: &mut EditorState) {
         .recent_scenes
         .iter()
         .cloned()
+        // Then the first scene in Build Settings (a fresh project), then the sample scene.
+        .chain(
+            misty_engine::build::BuildSettings::load(&s.project.root)
+                .ok()
+                .and_then(|b| b.scenes.into_iter().find(|sc| sc.enabled))
+                .map(|sc| sc.path),
+        )
         .chain(std::iter::once(
             "Assets/Scenes/SampleScene.scene".to_owned(),
         ))
