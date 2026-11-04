@@ -4,8 +4,8 @@ use egui::{Align, Context, Layout, RichText};
 
 /// Credits line under the version.
 pub const CREDITS: &str = "Made by the Misty Engine team, with Rust, wgpu and egui.";
-/// License text until the final terms are chosen.
-pub const LICENSE: &str = "License: to be announced (source currently MIT OR Apache-2.0).";
+/// The license line (LICENSE and RUNTIME-EXCEPTION.md in the source and the download).
+pub const LICENSE: &str = "Free software under the GNU GPL v3 or later. Games you build with it      may use any license (runtime exception).";
 
 /// The About window while `open` is set (closed by its × button or Close).
 pub fn show(ctx: &Context, open: &mut bool) {

@@ -2911,3 +2911,21 @@ Record of choices made without asking, and why.
      each frame; Update now installs straight away there (no scenes to save). Hubs built in tests keep a
      disabled updater. `updater::VERSION` is `branding::VERSION`. `updater.json` stays in the same per-user
      `MistyEngine` folder as `hub.json` (its own `MISTY_UPDATER_DIR` override, unchanged).
+
+## 2026-11-04 — v0.0.1: license and README
+
+605. **GPL-3.0-or-later with a runtime exception, like Blender:** the user chose "do what Blender does".
+     `LICENSE` is the FSF's GPL-3.0 text, verbatim (copied from the `COPYING` Git for Windows ships for
+     libassuan, md5 `f27defe1e96c2e1ecd4e0c9be8967949`, the standard checksum of that file; it is the text with
+     the older `http://` URLs, otherwise identical to gnu.org's current gpl-3.0.txt). `RUNTIME-EXCEPTION.md`
+     adds a section 7 permission: games and applications built with Misty Engine (the `misty_player` runtime
+     and the `misty_engine` library as embedded in exported builds) may use any license, including
+     proprietary; the GPL covers the engine and editor source and modifications of it.
+606. **Cargo metadata uses `license-file`:** "GPL-3.0-or-later WITH <custom exception>" is not an SPDX
+     expression cargo / crates.io accept (only listed exceptions may follow `WITH`), so
+     `[workspace.package]` names `license-file = "LICENSE"` (resolved from the workspace root; every crate
+     inherits it) with a comment pointing at the exception. No per-file headers.
+607. **About window and README:** Help ▸ About says "Free software under the GNU GPL v3 or later. Games you
+     build with it may use any license (runtime exception)." The README is now GitHub-facing: what Misty
+     Engine is, features, six screenshots from `docs/screenshots`, the Releases download link, system
+     requirements, build-from-source steps and the license summary, marked as an early test version.

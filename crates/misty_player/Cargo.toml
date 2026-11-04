@@ -3,7 +3,7 @@ name = "misty_player"
 description = "Misty Engine standalone game player"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 [[bin]]
 name = "misty_player"

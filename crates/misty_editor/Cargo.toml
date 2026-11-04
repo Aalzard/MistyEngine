@@ -3,7 +3,7 @@ name = "misty_editor"
 description = "Misty Engine editor"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 [[bin]]
 name = "misty"
