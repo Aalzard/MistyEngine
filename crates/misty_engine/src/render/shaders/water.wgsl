@@ -2,6 +2,7 @@
 // clipmap or a bounded grid, Fresnel sky / screen-space reflections, refraction with depth
 // absorption, subsurface scattering on crests, sun glitter, crest and shore foam, caustics on
 // what is underwater, and the view from below. Appended to mesh.wgsl (lights, shadows, fog).
+// Air fog covers the surface seen from above (`water_fog`); from below the underwater fog does.
 // The underwater fullscreen pass is at the bottom.
 
 struct WaterUniform {
@@ -378,7 +379,8 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
     let body_light = water_ambient(vec3<f32>(0.0, 1.0, 0.0)) + sun * max(l.y, 0.0) * 0.35 * shadow + rect.body * 0.35;
     let body = mix(water.shallow.rgb, water.deep.rgb, depth_tint) * body_light;
     let trans = transmittance(thickness);
-    var refracted = behind * trans + body * (1.0 - trans);
+    // The scene behind is added after the fog (it is fogged already); see `water_fog`.
+    let refracted = body * (1.0 - trans);
 
     // ---- Reflection: sky (+ the scene when screen-space reflections are on) ----
     var r = reflect(-v, n);
@@ -422,13 +424,25 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
 
     var color = mix(refracted, reflected, fresnel) + sss;
     color = mix(color, foam_lit, foam) + spec * (1.0 - foam);
-    let fog = fog_visibility(fog_distance(in.world));
-    color = mix(view.fog_color.rgb, color, fog);
-    // Shoreline edges of lakes blend into the bank.
+    // Weight of the refracted scene in the final colour.
+    let seen = trans * (1.0 - fresnel) * (1.0 - foam);
+    let fogged = water_fog(color, in.world, seen);
     var out: MeshTargets;
-    out.color = vec4<f32>(color, 1.0);
-    out.glow = vec4<f32>(max(spec - vec3<f32>(1.0), vec3<f32>(0.0)) * 0.3 * fog, 1.0);
+    out.color = vec4<f32>(fogged.rgb + behind * seen, 1.0);
+    out.glow = vec4<f32>(max(spec - vec3<f32>(1.0), vec3<f32>(0.0)) * 0.3 * fogged.a, 1.0);
     return out;
+}
+
+// Lighting-window and volumetric fog (with the clouds' haze) between the eye and the surface,
+// applied to the surface's own light. The refracted scene (weight `seen`) already holds its
+// fog, so the fog's in-scattering is scaled by what the surface covers, like premultiplied
+// transparency. rgb = fogged colour, a = what is left of emitted light (glow).
+fn water_fog(color: vec3<f32>, world: vec3<f32>, seen: vec3<f32>) -> vec4<f32> {
+    let cover = 1.0 - clamp(dot(seen, vec3<f32>(1.0 / 3.0)), 0.0, 1.0);
+    let fog = fog_visibility(fog_distance(world));
+    let c = color * fog + view.fog_color.rgb * ((1.0 - fog) * cover);
+    let vf = vfog_eval(world);
+    return vec4<f32>(vfog_blend(c, vf, cover), fog * vfog_glow(vf));
 }
 
 // ---- Camera under the water: fog, tint, wobble and caustics over the whole view ----

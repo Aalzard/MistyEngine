@@ -233,6 +233,10 @@ impl Renderer {
             // Froxels follow a perspective eye; orthographic views get the analytic fog.
             mode = FogMode::Analytic;
         }
+        if super::water::camera_underwater(frame) {
+            // The underwater pass replaces the air fog (it would apply twice).
+            mode = FogMode::Off;
+        }
         let size = settings::grid_size(fog.volume.quality);
         let reach = fog.volumetric_distance().min(frame.camera.far);
         let slices = Slices::new(reach, size[2]);

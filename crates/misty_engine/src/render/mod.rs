@@ -1957,6 +1957,11 @@ fn view_uniform(frame: &Frame, aspect: f32) -> ViewUniform {
         (lod_ref * 40.0).clamp(30.0, cam.far * 0.9)
     };
     let bg = srgb_to_linear(frame.background);
+    let mut environment = frame.environment.pack(cam.far);
+    if water::camera_underwater(frame) {
+        // Under water the underwater pass is the fog; air fog would apply twice.
+        environment[6][3] = 0.0;
+    }
     ViewUniform {
         view_proj: vp.to_cols_array_2d(),
         inv_view_proj: vp.inverse().to_cols_array_2d(),
@@ -1971,7 +1976,7 @@ fn view_uniform(frame: &Frame, aspect: f32) -> ViewUniform {
             lod_ref,
         ],
         background: [bg[0], bg[1], bg[2], if frame.skybox { 1.0 } else { 0.0 }],
-        environment: frame.environment.pack(cam.far),
+        environment,
         post: frame.post.pack(),
     }
 }

@@ -2258,3 +2258,21 @@ Record of choices made without asking, and why.
      samples the sky's horizon. Procedural / solid skies keep their zenith / horizon colours.
 478. **Scene view effects list:** Skybox, Fog, Clouds, Halos & Flares, Post Processing in one dropdown. Halos and
      flares get their own toggle and still need Post Processing and Lighting on.
+479. **Fog over water is applied to the surface's own light, the refracted scene is added after:** the scene copy
+     water refracts already holds its fog (eye → object), so `water_fog` fogs only the surface's contribution
+     (reflection, body colour, scattering, foam, glitter) and scales the fog's in-scattering by the part the
+     surface covers (1 − the refracted scene's weight, as for premultiplied transparency); the refracted scene is
+     then added unfogged. The result matches fogging the whole surface once, up to the fog inside the water
+     segment (absorbed by the water anyway). The weight is per channel; the in-scatter scale uses its mean.
+     Screen-space reflection hits keep the fog they had in the scene copy (eye → hit), a small over-fog.
+480. **Water uses the same fog path as meshes:** Lighting-window fog, then `vfog_eval` (froxel / height fog, local
+     Fog Volumes, sun shafts' lighting and the clouds' distant haze) at the displaced surface point; the glow
+     (bright glitter) fades with both like mesh emission. The view from below (back faces) gets no air fog.
+481. **Under water, air fog is off for the view:** when a surface draws the underwater pass (camera below it with
+     Underwater on), the view uniform's Lighting fog mode and the volumetric fog mode are set to off for that view,
+     so the underwater fog / tint is the only fog — meshes under water were fogged twice before (air fog in their
+     shader, then the underwater pass). The world above, seen through Snell's window, loses its air fog; it is
+     mostly hidden by the underwater fog. Clouds still occlude as usual.
+482. **`apply_fog` in custom unlit shaders includes the volumetric fog:** it now applies the Lighting fog and then
+     `vfog_blend(vfog_eval(..))`, like the built-in Unlit shaders. Surface-model custom shaders, terrain, grass,
+     particles and the built-in transparent modes already went through `shade` / `vfog_eval`.

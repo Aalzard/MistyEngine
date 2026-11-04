@@ -1530,3 +1530,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Reflections of an HDRI sky ignore the volumetric clouds: under clouds the HDRI's sun still glints off the terrain
   (a streak towards the sun in merged_clouds_hdri.png). Cloud-aware sky reflections / probes are a follow-up.
 - Clouds don't hide the HDRI's own baked-in sun or clouds; pairing a clear-sky HDRI with volumetric clouds looks best.
+
+## Fix: fog over water ✅
+
+### Done
+- Water surfaces (ocean / lake / river) now take the volumetric / height fog of the Post-process Volume (froxels,
+  local Fog Volumes, the clouds' distant haze) through `vfog_eval`, as meshes do; before, only the Lighting
+  window's fog reached them, so distant ocean stayed sharp under volumetric fog.
+- Fog is applied once: to the surface's own light, with its in-scattering scaled by the part the surface covers;
+  the refracted scene (already fogged in the scene copy) is added after (decision 479).
+- Camera under water: air fog (Lighting and volumetric) is off for that view, so meshes under water are no longer
+  fogged twice; the underwater fog / tint is unchanged (decision 481).
+- `apply_fog` for custom unlit shaders now includes the volumetric fog. Terrain, grass, particles, surface-model
+  custom shaders and the built-in transparent modes already applied both.
+- GPU tests (`render::water::gpu_tests`): far water under dense Lighting fog and under volumetric fog matches a
+  fully fogged reference while near water stays mostly clear; air fog changes nothing under water; WaterDemo
+  looking out to sea with fog turned up.
+- Screenshots (Game view, release): docs/screenshots/fixes/water_fog_volumetric_before.png / _after.png
+  (WaterDemo + a Post-process Volume with height fog: before, the island fogged while the ocean stayed clear to the
+  horizon) and water_fog_lighting_before.png / _after.png (WaterDemo + exponential Lighting fog, which already
+  reached the water; unchanged apart from the refraction no longer being fogged twice). Both from temporary scene
+  copies that are not committed.
+
+### Not done yet
+- Screen-space reflection hits keep their eye → hit fog (slightly over-fogged reflections).
+- The world above seen from under water (Snell's window) gets no air fog.
+- The island's volumetric shadow on the fog over the near water shows the froxel grid's steps (the same on any
+  mesh; the wide flat sea makes it easier to see).
