@@ -2589,3 +2589,38 @@ Record of choices made without asking, and why.
 541. **`apply_fog` in custom unlit shaders includes the volumetric fog:** it now applies the Lighting fog and then
      `vfog_blend(vfog_eval(..))`, like the built-in Unlit shaders. Surface-model custom shaders, terrain, grass,
      particles and the built-in transparent modes already went through `shade` / `vfog_eval`.
+
+542. **Sharp sun shafts: the main sun is marched per pixel, not in the froxels:** with Fog ▸ Sun Shafts Quality =
+     Sharp (the default) the froxel lighting pass skips the main sun (the light owning the sun cascades, else the
+     brightest directional light; `Froxels::sun` holds its slot and the skip flag). After the main pass a compute
+     pass marches one ray per texel at half resolution (quarter on Low) from the near plane to the depth buffer,
+     capped by the froxel reach (Volumetric Distance), with a blue-noise start offset, the froxels' density, phase
+     and light colour and a hard 2×2 PCF lookup of the tightest sun cascade (no PCSS in the fog). A second pass
+     accumulates over frames; a fullscreen pass upsamples with depth weights and adds the result onto the HDR image
+     (before bloom). Extinction, ambient and every other light stay in the froxels, and past the volumetric
+     distance the existing analytic tail (unshadowed sun) continues as before — so Max Fog Distance still caps
+     everything and the sun is never counted twice. Off is exactly the old froxel image (tested pixel for pixel).
+543. **Sharp shafts are composited, not sampled by forward shaders:** the march ends at the depth buffer, so the
+     additive composite gives opaque surfaces, water (it writes depth) and the sky the same result; transparent
+     surfaces that don't write depth get the shafts in front of and behind them added unattenuated (a slight
+     over-brightening behind glass). This keeps fog_apply.wgsl / water.wgsl untouched (no change to the shared
+     forward apply path).
+544. **Temporal accumulation: unclamped while still, clamped while moving:** weight 0.85, rejected on
+     disocclusion (reprojected view depth off by >10%). The 3×3 variance clip (mean ± 1σ within min/max) only
+     applies once the reprojection moves by half a pixel: a thin shaft is crossed by only a few rays per frame, so
+     a still view's neighbourhood is often all dark and clamping always would erase it; while the view moves the
+     clamp keeps lines from smearing.
+545. **Fog noise in the march comes from the lit froxels:** with Noise Intensity > 0 the per-step fbm (24 hashes)
+     was 60% of the march cost, so the march takes the extinction from this frame's lit froxel texture (it already
+     holds the noisy extinction) and the albedo from the noise-free density. Without noise it evaluates the exact
+     height fog and Fog Volumes per step. The march also never searches cascades it has already passed.
+546. **Sun Shafts Quality and the Quality level:** the override has Off / Sharp (default Sharp, left out of saved
+     files while Sharp, so existing volumetric scenes get sharp shafts). Quality ▸ Sharp Sun Shafts (a `Tier`)
+     sets resolution and steps: Off (Low level) = froxels only, Low = quarter res / 24 steps, Medium (Medium and
+     High levels) = half res / 32 steps, High (Ultra) = half res / 64 steps. Old project settings files without
+     the field get Medium on every level (serde default = the High level), like the clouds tier before it.
+547. **Labels:** the screen-space radial blur override is now titled "Sun Shafts (Screen)" in the Post-process
+     Volume; the new dropdown is "Sun Shafts Quality" in the Fog section (one row, with a tooltip).
+548. **Ambient Light Probe Dimmer default unchanged (1.0):** in VolumetricFogDemo raising the dimmer from 0.5 to
+     1.0 lifts shadowed fog by about 4/255; the low shadow-side contrast came from the froxel resolution, not the
+     ambient. New volumes keep 1.0 (HDRP's default) and no scene was changed.

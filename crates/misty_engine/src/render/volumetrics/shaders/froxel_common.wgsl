@@ -54,6 +54,9 @@ struct Froxels {
     scroll: vec4<f32>,
     // x = light count, y = fog box count, z = sun cascade count.
     counts: vec4<f32>,
+    // x = slot of the main sun in `lights` (-1 = none), y = 1 when the sharp sun shafts march
+    // it per pixel (the froxels then skip it).
+    sun: vec4<f32>,
     lights: array<FroxelLight, 8>,
     // Spot: one layer, point: six (+X, -X, +Y, -Y, +Z, -Z).
     local_shadow: array<mat4x4<f32>, 16>,

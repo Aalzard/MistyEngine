@@ -1692,3 +1692,35 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - The world above seen from under water (Snell's window) gets no air fog.
 - The island's volumetric shadow on the fog over the near water shows the froxel grid's steps (the same on any
   mesh; the wide flat sea makes it easier to see).
+
+## Sharp sun shafts ✅
+
+### Done
+- Fog ▸ Sun Shafts Quality: Off (froxels, the old look) / Sharp (default). Sharp takes the main sun out of the
+  froxels and raymarches it per pixel (half resolution, quarter on Low) through the sun cascades with hard 2×2 PCF
+  and the cloud shadows, using the froxels' density, phase and colour; temporal accumulation (clamped while the
+  view moves) and a depth-aware upsample add it onto the HDR image. New module `render/volumetrics/sharp_shafts.rs`
+  with `sharp_common.wgsl`, `sharp_shafts.wgsl`, `sharp_composite.wgsl`; the density / phase / shadow code moved
+  from froxel_light.wgsl into `froxel_medium.wgsl`, shared by both (decisions 542–548).
+- Quality ▸ Sharp Sun Shafts tier (Low level Off, Medium/High Medium, Ultra High) in Project Settings ▸ Quality.
+- The screen-space override is now "Sun Shafts (Screen)".
+- Shared forward apply path untouched: fog_apply.wgsl and water.wgsl are unchanged (water and transparents get
+  the shafts from the composite after the main pass).
+- Tests: shader validation, uniform sizes, main-sun slot / Off packing, override + quality defaults and old files;
+  GPU: a 25 cm hole in a roof gives a 7 px beam with black fog beside it (froxels: a 17 px smear), Sharp matches
+  the froxel brightness in unshadowed fog (206.9 vs 205.4), Off in the override or the Quality level is the
+  froxel image pixel for pixel.
+
+### GPU cost (RTX 4060, Vulkan, 1920×1080, release, `sharp_shafts_benchmark`, VolumetricFogDemo)
+- Whole frame 1.61 ms with Sun Shafts Off; Low +0.22 ms, Medium +0.73 ms, High +1.30 ms (fog noise on; noise off:
+  +0.21 / +0.67 / +1.18 ms). Medium meets the ≤ 1 ms target.
+- Screenshots (Scene view, release build, shadow side of the ruined wall): docs/screenshots/fixes/
+  godrays_wall_before.png / godrays_wall_after.png, godrays_forest_before.png / godrays_forest_after.png,
+  godrays_side_before.png / godrays_side_after.png and godrays_wall_detail_before_after.png ("before" = Sun
+  Shafts Quality Off from a temporary scene copy, identical to the previous build).
+
+### Not done yet
+- Only the main sun is marched; spot / point lights still light the froxels (soft shafts).
+- Transparent surfaces that don't write depth don't attenuate the shafts behind them.
+- A moving view clamps the history, so very thin shafts (a few cm at tens of metres) flicker slightly while moving.
+- Shafts end at the Volumetric Distance; past it the analytic fog adds unshadowed sun light as before.

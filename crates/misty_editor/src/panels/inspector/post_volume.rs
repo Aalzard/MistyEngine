@@ -1,6 +1,6 @@
 //! Post-process Volume Inspector: priority, then one override section per effect with an
 //! "active" checkbox in its header (fields are greyed out while the override is off).
-//! The Fog and Sun Shafts bodies live in `fog_editors`, Volumetric Clouds in `cloud_editors`.
+//! The Fog and Sun Shafts (Screen) bodies live in `fog_editors`, Volumetric Clouds in `cloud_editors`.
 
 use egui::{RichText, Ui};
 use misty_engine::hecs::Entity;
@@ -83,7 +83,7 @@ pub fn post_process_volume(ui: &mut Ui, state: &mut EditorState, e: Entity) -> b
     });
     v.fog.active = active;
     let mut active = v.sun_shafts.active;
-    ch |= section(ui, "Sun Shafts", &mut active, |ui| {
+    ch |= section(ui, "Sun Shafts (Screen)", &mut active, |ui| {
         super::fog_editors::sun_shafts_override(ui, &mut v.sun_shafts)
     });
     v.sun_shafts.active = active;

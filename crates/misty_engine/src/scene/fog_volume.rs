@@ -71,6 +71,27 @@ impl FogQuality {
     }
 }
 
+/// How the main sun lights the volumetric fog.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SunShaftsQuality {
+    /// The sun is one of the froxel lights (soft, low-resolution shafts).
+    Off,
+    /// The sun is raymarched per pixel through its shadow map: crisp light shafts.
+    #[default]
+    Sharp,
+}
+
+impl SunShaftsQuality {
+    pub const ALL: [Self; 2] = [Self::Off, Self::Sharp];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Off (froxels)",
+            Self::Sharp => "Sharp",
+        }
+    }
+}
+
 /// Post-process Volume ▸ Fog: global height fog, optionally volumetric (lit froxels with
 /// shadows) with local Fog Volumes and noise.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -105,6 +126,10 @@ pub struct FogOverride {
     pub noise_scale: f32,
     /// Noise drift in metres per second (wind).
     pub noise_scroll: [f32; 3],
+    /// Volumetric only: march the main sun per pixel for sharp shafts (the Quality settings
+    /// can still turn it off).
+    #[serde(skip_serializing_if = "defaults::is_default")]
+    pub sun_shafts_quality: SunShaftsQuality,
 }
 
 impl Default for FogOverride {
@@ -126,11 +151,12 @@ impl Default for FogOverride {
             noise_intensity: 0.0,
             noise_scale: 8.0,
             noise_scroll: [0.6, 0.0, 0.3],
+            sun_shafts_quality: SunShaftsQuality::Sharp,
         }
     }
 }
 
-/// Post-process Volume ▸ Sun Shafts: a cheap screen-space radial blur of the bright sky
+/// Post-process Volume ▸ Sun Shafts (Screen): a cheap screen-space radial blur of the bright sky
 /// around the sun.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]

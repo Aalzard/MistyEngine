@@ -295,6 +295,20 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     );
     edited |= row(
         ui,
+        "Sharp Sun Shafts",
+        "Per-pixel sun light shafts in volumetric fog (Off = softer froxel shafts).",
+        |ui| {
+            combo(
+                ui,
+                "q_sun_shafts",
+                &mut l.sun_shafts,
+                &Tier::ALL,
+                Tier::label,
+            )
+        },
+    );
+    edited |= row(
+        ui,
         "Volumetric Clouds",
         "Resolution and detail of the raymarched cloud layer.",
         |ui| {

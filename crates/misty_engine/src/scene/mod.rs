@@ -33,7 +33,7 @@ pub use animator_component::Animator;
 pub use audio_components::*;
 pub use clouds::{CloudPreset, CloudsOverride};
 pub use components::*;
-pub use fog_volume::{FogOverride, FogQuality, FogVolume, SunShaftsOverride};
+pub use fog_volume::{FogOverride, FogQuality, FogVolume, SunShaftsOverride, SunShaftsQuality};
 pub use light_glow::{LensFlare, LightHalo};
 pub use lod_group::{LodFadeMode, LodGroup, LodLevel};
 pub use multi_scene::{SceneEntry, SceneId};

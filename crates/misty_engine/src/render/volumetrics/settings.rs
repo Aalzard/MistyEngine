@@ -1,5 +1,5 @@
-//! Per-view fog values (from the Post-process Volume's Fog / Sun Shafts overrides) and the
-//! local Fog Volumes gathered from the scene.
+//! Per-view fog values (from the Post-process Volume's Fog / Sun Shafts overrides), the
+//! quality tables (froxel grid, sharp shaft march) and the local Fog Volumes of the scene.
 
 use glam::{Mat4, Vec3};
 
@@ -102,6 +102,34 @@ pub(crate) fn grid_size(q: FogQuality) -> [u32; 3] {
         FogQuality::Low => [96, 54, 48],
         FogQuality::Medium => [128, 72, 64],
         FogQuality::High => [160, 90, 64],
+    }
+}
+
+/// Resolution and step count of the sharp sun shaft march.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ShaftQuality {
+    /// Full-resolution pixels per march texel along each axis (2 = half, 4 = quarter).
+    pub scale: u32,
+    pub steps: u32,
+}
+
+/// Sharp shafts per Quality ▸ Sun Shafts tier (`None` = Off: the froxels light the sun).
+pub(crate) fn shaft_quality(tier: crate::quality::Tier) -> Option<ShaftQuality> {
+    use crate::quality::Tier;
+    match tier {
+        Tier::Off => None,
+        Tier::Low => Some(ShaftQuality {
+            scale: 4,
+            steps: 24,
+        }),
+        Tier::Medium => Some(ShaftQuality {
+            scale: 2,
+            steps: 32,
+        }),
+        Tier::High => Some(ShaftQuality {
+            scale: 2,
+            steps: 64,
+        }),
     }
 }
 

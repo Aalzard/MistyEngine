@@ -15,7 +15,7 @@ use crate::scene::{FogOverride, FogQuality, FogVolume, LightType, PrimitiveMesh,
 const W: u32 = 320;
 const H: u32 = 180;
 
-fn camera() -> Camera {
+pub(super) fn camera() -> Camera {
     Camera {
         position: Vec3::new(0.0, 2.0, -12.0),
         rotation: Quat::IDENTITY,
@@ -25,7 +25,7 @@ fn camera() -> Camera {
     }
 }
 
-fn light(kind: LightType, position: Vec3, direction: Vec3, intensity: f32) -> LightData {
+pub(super) fn light(kind: LightType, position: Vec3, direction: Vec3, intensity: f32) -> LightData {
     LightData {
         kind,
         position,
@@ -42,7 +42,7 @@ fn light(kind: LightType, position: Vec3, direction: Vec3, intensity: f32) -> Li
     }
 }
 
-fn cube(center: Vec3, size: Vec3) -> MeshDraw {
+pub(super) fn cube(center: Vec3, size: Vec3) -> MeshDraw {
     MeshDraw {
         mesh: PrimitiveMesh::Cube.into(),
         model: Mat4::from_scale_rotation_translation(size, Quat::IDENTITY, center),
@@ -56,7 +56,7 @@ fn cube(center: Vec3, size: Vec3) -> MeshDraw {
 }
 
 /// Thick uniform fog (base height far above everything) reaching 64 m.
-fn fog(volumetric: bool) -> FogSettings {
+pub(super) fn fog(volumetric: bool) -> FogSettings {
     FogSettings::from_override(&FogOverride {
         active: true,
         max_fog_distance: 64.0,
@@ -79,17 +79,17 @@ fn dark_environment() -> Environment {
     e
 }
 
-struct Scene {
-    meshes: Vec<MeshDraw>,
-    lights: Vec<LightData>,
-    environment: Environment,
-    post: PostSettings,
-    skybox: bool,
-    camera: Camera,
+pub(super) struct Scene {
+    pub(super) meshes: Vec<MeshDraw>,
+    pub(super) lights: Vec<LightData>,
+    pub(super) environment: Environment,
+    pub(super) post: PostSettings,
+    pub(super) skybox: bool,
+    pub(super) camera: Camera,
 }
 
 impl Scene {
-    fn dark(meshes: Vec<MeshDraw>, lights: Vec<LightData>, fog: FogSettings) -> Self {
+    pub(super) fn dark(meshes: Vec<MeshDraw>, lights: Vec<LightData>, fog: FogSettings) -> Self {
         Self {
             meshes,
             lights,
@@ -104,7 +104,7 @@ impl Scene {
         }
     }
 
-    fn frame(&self) -> Frame<'_> {
+    pub(super) fn frame(&self) -> Frame<'_> {
         Frame {
             camera: &self.camera,
             grid: None,
