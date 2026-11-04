@@ -87,6 +87,7 @@ pub fn post_process_volume(ui: &mut Ui, state: &mut EditorState, e: Entity) -> b
         super::fog_editors::sun_shafts_override(ui, &mut v.sun_shafts)
     });
     v.sun_shafts.active = active;
+    ch |= super::post_volume_screen::sections(ui, &mut v);
     if ch {
         let _ = state.scene.world.insert_one(e, v);
     }
@@ -94,7 +95,7 @@ pub fn post_process_volume(ui: &mut Ui, state: &mut EditorState, e: Entity) -> b
 }
 
 /// Collapsible override with its active checkbox; the body is disabled while inactive.
-fn section(
+pub(super) fn section(
     ui: &mut Ui,
     title: &str,
     active: &mut bool,
@@ -120,19 +121,19 @@ fn section(
     ch
 }
 
-fn row(ui: &mut Ui, label: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {
+pub(super) fn row(ui: &mut Ui, label: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {
     ui.label(label);
     let ch = widget(ui);
     ui.end_row();
     ch
 }
 
-fn drag(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
+pub(super) fn drag(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
     ui.add(egui::DragValue::new(v).speed(0.01).range(range))
         .changed()
 }
 
-fn slider(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
+pub(super) fn slider(ui: &mut Ui, v: &mut f32, range: std::ops::RangeInclusive<f32>) -> bool {
     ui.add(egui::Slider::new(v, range)).changed()
 }
 

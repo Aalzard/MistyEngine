@@ -168,6 +168,7 @@ mod tests {
             range: 10.0,
             spot_angle: 30.0,
             shadows: crate::scene::Shadows::Soft,
+            contact_shadows: false,
             shadow: LightShadow {
                 size: 2.0,
                 ..Default::default()

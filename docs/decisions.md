@@ -1412,7 +1412,7 @@ Record of choices made without asking, and why.
      chrome / gold / copper spheres on glossy tiles, a lamp, an outdoor lawn with a big chrome ball; probes from
      the placement code with the files baked by the ignored writer on the GPU. The check test re-runs the
      placement and compares the scene; a headless render checks the probes change and darken the room. The
-     capture also takes `MISTY_VIEW=x,y,z,pitch,yaw` and `MISTY_DRAW_MODE=3`.
+     capture also takes `MISTY_VIEW=x,y,z,pitch,yaw` and `MISTY_DRAW_MODE=Reflection Probes`.
 
 ## 2026-11-04 — Volumetric fog and light shafts
 
@@ -1496,3 +1496,57 @@ Record of choices made without asking, and why.
      per index; `MISTY_DRAW_MODE` matches by name. Sampled textures per fragment stage stay under the default
      16: mesh 10 (fog volume, cascades, local shadows, probe atlas, BRDF LUT, five material maps), terrain 14
      (group 2 empty), so the device limits are unchanged.
+
+341. **Screen-space AO is horizon based (GTAO-style), written from the published math:** per pixel, 2 slice
+     directions per frame with temporal accumulation (4 fixed ones without), `Quality` horizon steps per side
+     (squared spacing, denser near the pixel), occluders fading over the outer 60% of the radius, the
+     cosine-weighted arc between the two horizons, then `visibility ^ Intensity`. Runs as three compute passes
+     (`render/screen_space.rs`, `shaders/ao.wgsl`): trace at half or full resolution, a 5×5 (7×7 without
+     history) depth- and normal-aware blur, and a full-resolution resolve with a depth-weighted bilateral
+     upsample. Pixels no half-resolution texel saw (thin edges) get no AO rather than the AO behind them.
+342. **Depth + normal prepass only while an effect is on:** the renderer is forward + 4× MSAA with no normal
+     buffer, so opaque/cutout meshes (the camera's own batches) and terrains are drawn once more into a
+     single-sample Rgba16Float world-normal target and Depth32 buffer. Vertex normals only (normal maps are
+     not in the prepass). With both effects off nothing extra runs and the image is bit-identical (GPU test).
+343. **AO and depth reach the lit shaders as one storage buffer** (`@group(1) @binding(16)`, a 64-byte header
+     plus (AO, linear depth) per pixel) instead of textures: the terrain pipeline already uses all 16
+     sampled textures of the default limits, and a buffer needs no per-pass layout change. Two ping-pong
+     buffers per view hold the current frame and the history. Group 1 is rebuilt per render when an effect is
+     on (the buffers are per target); otherwise the renderer's zero-header buffer is bound.
+344. **Temporal accumulation:** last frame's AO is reprojected with the previous view-projection and blended
+     at 0.9 when its stored depth matches the expected one (perspective: last frame's view depth; 3% + 2 cm).
+     A camera cut (moved over 5 m or turned over ~32° in a frame), a resize, a resolution change or Temporal
+     off drops the history; that frame uses the wider spatial blur instead (no TAA in the engine).
+345. **AO applies to ambient light only, like HDRP:** ambient diffuse gets `min(material occlusion, SSAO)`
+     with a multi-bounce fit on the diffuse albedo (bright surfaces lose less); sky reflections get a
+     specular occlusion derived from it (Lagarde's approximation); direct light is multiplied by
+     `mix(1, SSAO, Direct Lighting Strength)` (default 0). With SSAO off the material occlusion path is the
+     old expression exactly. Transparent surfaces (not in the prepass) are left unoccluded: the lookup only
+     applies when the fragment's depth matches the prepass texel.
+346. **Contact shadows march in the lit shader**, per light with its Light Inspector toggle (`LightItem.spot.z`):
+     `Sample Count` jittered steps along `Length` towards the light, a hit when the sample is behind the
+     prepass surface by more than a small bias and less than a thin thickness (two steps, at least 10 cm,
+     + 1% of the depth). They fade over the last 20% of `Distance Fade` and with grazing light (so round
+     shapes don't shadow their own terminator); `Opacity` scales them. They apply where the shadow map
+     applies (Receive Shadows).
+347. **Overrides stay out of scene files until changed:** `ambient_occlusion` / `contact_shadows` on the
+     Post-process Volume and `contact_shadows` on Light use `skip_serializing_if` default, so every existing
+     scene keeps its exact text and loads with both effects off. Like the other overrides, the
+     highest-priority enabled volume decides (no per-field blending across volumes yet).
+348. **Ambient Occlusion draw mode:** the Scene view's draw-mode menu gets "Ambient Occlusion": lit surfaces
+     output the SSAO as grey with no grading; it uses the scene's AO settings switched on (defaults when no
+     volume has them). The capture also accepts `MISTY_DRAW_MODE=Ambient Occlusion` and `MISTY_ALIGN_VIEW=1` (Scene
+     view camera at the selected object, e.g. the Main Camera).
+349. **AmbientOcclusionDemo is generated by code** (`sample_ao`, ignored writer + check + headless play +
+     headless GPU render test): corner room, stacked crates, columns on plinths, resting spheres, cubes at
+     gaps 0 / 0.1 / 0.3 / 0.6 / 1.2 m, a sphere bobbing 2 m up and down (`VerticalBobber.lua`), sun over the side wall
+     with contact shadows, a volume with AO (intensity 2, radius 2 m, 8 steps, half resolution, temporal),
+     Contact Shadows (0.3 m) and Neutral tonemapping. Its own `AO *.mat` materials.
+350. **AO + fog + soft shadows + probes merge:** `LightData` carries `shadow`, `volumetric` and
+     `contact_shadows`; the mesh group holds the soft-shadow params (6), the AO/contact texel buffer (16)
+     and the probes (20–24), and `draw_groups` takes both the probes and the screen-space buffer (the per-frame
+     lit group the AO pass builds includes the probes too). Specular sky and probe reflections both use the
+     AO specular occlusion, probe diffuse the indirect occlusion; contact shadows multiply the soft shadow.
+     "Ambient Occlusion" is draw mode 7 in the one Scene view list, and `MISTY_DRAW_MODE` still matches by
+     name (the AO branch's numeric form was dropped). AO adds no sampled textures to the forward passes
+     (storage buffer), so the 16-texture default limit still holds.

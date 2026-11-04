@@ -206,6 +206,7 @@ fn spot(multiplier: f32, dimmer: f32) -> LightData {
         range: 10.0,
         spot_angle: 40.0,
         shadows: Shadows::Hard,
+        contact_shadows: false,
         shadow: Default::default(),
         volumetric: VolumetricLight {
             multiplier,

@@ -13,7 +13,7 @@ use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
 /// Scene view draw modes, indexed by `SceneView::draw_mode` (see the `*_MODE` constants).
-pub const DRAW_MODES: [&str; 7] = [
+pub const DRAW_MODES: [&str; 8] = [
     "Shaded",
     "Wireframe",
     "Shaded Wireframe",
@@ -21,6 +21,7 @@ pub const DRAW_MODES: [&str; 7] = [
     "Reflection Probes",
     "Fog Density",
     "Fog Lighting",
+    "Ambient Occlusion",
 ];
 /// Wireframe only, no shading.
 const WIREFRAME_MODE: usize = 1;
@@ -34,6 +35,8 @@ const PROBES_MODE: usize = 4;
 const FOG_DENSITY_MODE: usize = 5;
 /// Volumetric fog alone: the light it scatters.
 const FOG_LIGHTING_MODE: usize = 6;
+/// The screen-space AO term alone.
+const AO_DRAW_MODE: usize = 7;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -115,6 +118,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 FogSettings::default()
             };
             post.fog.debug = debug;
+            // The AO debug view shows the AO term alone (no other effects).
+            if sv.draw_mode == AO_DRAW_MODE {
+                post = ao_debug_post(&state.scene);
+            }
             let lights = if sv.lighting {
                 scene_lights
             } else {
@@ -508,6 +515,15 @@ fn camera_settings(ui: &mut Ui, cam: &mut SceneCamera) {
             ui.add(egui::Slider::new(&mut cam.speed, 0.01..=10.0).logarithmic(true));
             ui.end_row();
         });
+}
+
+/// Ambient Occlusion draw mode: the scene's AO settings (defaults when no volume has them)
+/// shown as grey on ungraded surfaces.
+fn ao_debug_post(scene: &misty_engine::scene::Scene) -> PostSettings {
+    PostSettings {
+        ao: render_scene::post_settings(scene).ao.debug_view(),
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]

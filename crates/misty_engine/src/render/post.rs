@@ -5,6 +5,8 @@
 use glam::Vec3;
 
 use super::{FogSettings, SunShaftSettings, srgb_to_linear};
+
+use super::{AoSettings, ContactShadowSettings};
 use crate::scene::{PostProcessVolume, TonemapMode};
 
 /// Effect values for one view. `Default` is the baseline every scene gets without a volume:
@@ -33,6 +35,9 @@ pub struct PostSettings {
     pub fog: FogSettings,
     /// Screen-space sun shafts (off by default).
     pub sun_shafts: SunShaftSettings,
+    /// Screen-space ambient occlusion (render/ao.rs).
+    pub ao: AoSettings,
+    pub contact_shadows: ContactShadowSettings,
 }
 
 impl Default for PostSettings {
@@ -52,6 +57,8 @@ impl Default for PostSettings {
             vignette_color: [0.0; 3],
             fog: FogSettings::default(),
             sun_shafts: SunShaftSettings::default(),
+            ao: AoSettings::default(),
+            contact_shadows: ContactShadowSettings::default(),
         }
     }
 }
@@ -89,6 +96,8 @@ impl PostSettings {
         if v.sun_shafts.active {
             s.sun_shafts = v.sun_shafts;
         }
+        s.ao = AoSettings::from_override(&v.ambient_occlusion);
+        s.contact_shadows = ContactShadowSettings::from_override(&v.contact_shadows);
         s
     }
 

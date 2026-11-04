@@ -127,6 +127,7 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                     multiplier: l.volumetric_multiplier,
                     shadow_dimmer: l.volumetric_shadow_dimmer,
                 },
+                contact_shadows: l.contact_shadows,
             })
         })
         .collect()
@@ -186,6 +187,7 @@ pub fn headlight(camera: &Camera) -> Vec<LightData> {
         shadows: Shadows::None,
         shadow: Default::default(),
         volumetric: Default::default(),
+        contact_shadows: false,
     }]
 }
 

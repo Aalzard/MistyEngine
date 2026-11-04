@@ -1,7 +1,9 @@
 //! wgpu renderer: sky, lit meshes with shadows, grid, particles, gizmo lines and selection outline.
 
+pub mod ao;
 mod batch;
 mod cascades;
+pub mod contact_shadows;
 pub mod culling;
 pub mod environment;
 mod frame_lists;
@@ -11,6 +13,7 @@ pub mod particles;
 mod pipelines;
 pub mod post;
 pub mod probes;
+mod screen_space;
 mod shadows;
 mod soft_shadows;
 pub mod stats;
@@ -23,6 +26,8 @@ mod variants;
 mod volumetrics;
 
 pub use crate::terrain::TerrainDraw;
+pub use ao::AoSettings;
+pub use contact_shadows::ContactShadowSettings;
 pub use environment::{Environment, Sun};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
@@ -207,6 +212,8 @@ pub struct LightData {
     pub shadow: LightShadow,
     /// Volumetric fog multiplier and shadow dimmer.
     pub volumetric: VolumetricLight,
+    /// Screen-space contact shadows (used when the view's Contact Shadows are on).
+    pub contact_shadows: bool,
 }
 
 /// Everything needed to draw one view.
@@ -330,6 +337,8 @@ pub struct Renderer {
     draws_scratch: Vec<DrawUniform>,
     /// Froxel fog, height fog and sun shafts.
     volumetrics: volumetrics::Volumetrics,
+    /// Ambient occlusion and contact shadows (depth/normal prepass, GTAO passes).
+    screen_space: screen_space::ScreenSpace,
 }
 
 impl Renderer {
@@ -351,6 +360,7 @@ impl Renderer {
             volumetrics::view_group(device, &pipelines.view_layout, &view_buffer, &volumetrics);
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
         let probes = probes::gpu::ProbeGpu::new(device);
+        let screen_space = screen_space::ScreenSpace::new(device);
 
         let draws_capacity = 256;
         let draws_buffer = draws_buffer(device, draws_capacity);
@@ -363,6 +373,7 @@ impl Renderer {
             [&draws_buffer, &slots_buffer],
             &shadows,
             &probes,
+            &screen_space.off_buffer,
         );
 
         let meshes = PrimitiveMesh::ALL
@@ -416,6 +427,7 @@ impl Renderer {
             slots_scratch: Vec::new(),
             draws_scratch: Vec::new(),
             volumetrics,
+            screen_space,
         }
     }
 
@@ -617,6 +629,7 @@ impl Renderer {
             (lists, plan, rebuilt)
         };
         self.upload_draws(device, queue, frame, &lists.slots, probes_rebuilt);
+        let screen = self.prepare_screen_space(device, queue, target, frame);
 
         // Lights and their shadow maps (cascades first, then local layers).
         let lights = lights_uniform(frame, &plan);
@@ -654,6 +667,9 @@ impl Renderer {
         self.mask_pass(&mut encoder, target, frame, timing);
         self.shadow_passes(&mut encoder, frame, &plan, &lists.shadows, &mut stats);
         self.froxel_passes(device, &mut encoder, target);
+        if let Some(ss) = &screen {
+            self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
+        }
         self.main_pass(
             &mut encoder,
             target,
@@ -705,6 +721,7 @@ impl Renderer {
                 [&self.draws_buffer, &self.slots_buffer],
                 &self.shadows,
                 &self.probes,
+                &self.screen_space.off_buffer,
             );
         }
         let mut draws = std::mem::take(&mut self.draws_scratch);
@@ -1063,13 +1080,13 @@ impl Renderer {
 
         // Opaque and Cutout meshes, front to back.
         if frame.shaded && !lists.opaque.is_empty() {
-            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            pass.set_bind_group(1, self.lit_group(), &[]);
             self.draw_batches(&mut pass, frame, &lists.opaque, stats);
         }
 
         if frame.shaded && !frame.terrains.is_empty() {
             pass.set_pipeline(&self.pipelines.terrain);
-            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            pass.set_bind_group(1, self.lit_group(), &[]);
             pass.set_bind_group(2, &self.empty_group, &[]);
             let first = frame.meshes.len();
             self.terrains.draw(
@@ -1089,7 +1106,7 @@ impl Renderer {
 
         // Fade / Transparent meshes back to front, after the grid (they don't write depth).
         if frame.shaded && !lists.transparent.is_empty() {
-            pass.set_bind_group(1, &self.mesh_bind_group, &[]);
+            pass.set_bind_group(1, self.lit_group(), &[]);
             self.draw_batches(&mut pass, frame, &lists.transparent, stats);
         }
 
@@ -1169,7 +1186,8 @@ fn slots_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
-/// Group 1 of the lit mesh pass and of the shadow/mask passes; `buffers` = draws, slots.
+/// Group 1 of the lit mesh pass and of the shadow/mask passes; `buffers` = draws, slots;
+/// `screen` = screen-space texels (AO, contact shadows).
 fn draw_groups(
     device: &wgpu::Device,
     p: &pipelines::Pipelines,
@@ -1177,6 +1195,7 @@ fn draw_groups(
     buffers: [&wgpu::Buffer; 2],
     shadows: &shadows::ShadowMaps,
     probes: &probes::gpu::ProbeGpu,
+    screen: &wgpu::Buffer,
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [draws, slots] = buffers;
     let [p0, p1, p2, p3, p4] = probes.entries();
@@ -1218,6 +1237,10 @@ fn draw_groups(
             p2,
             p3,
             p4,
+            wgpu::BindGroupEntry {
+                binding: 16,
+                resource: screen.as_entire_binding(),
+            },
         ],
     });
     let draws_only = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1345,7 +1368,13 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
                 c[2] * l.intensity,
                 0.0,
             ],
-            spot: [half.cos(), (half * 0.8).cos(), 0.0, 0.0],
+            // z = contact shadows (screen_space.wgsl).
+            spot: [
+                half.cos(),
+                (half * 0.8).cos(),
+                if l.contact_shadows { 1.0 } else { 0.0 },
+                0.0,
+            ],
             shadow: [mode, layer, 0.0, 0.0],
         };
         n += 1;

@@ -518,6 +518,11 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         ui.end_row();
         ch |= super::light_shadows::rows(ui, l);
         ch |= super::fog_editors::light_rows(ui, l);
+        ui.label("Contact Shadows").on_hover_text(
+            "Screen-space contact shadows (needs a volume's Contact Shadows override)",
+        );
+        ch |= mixed::checkbox(ui, "contact_shadows", &mut l.contact_shadows, "").changed();
+        ui.end_row();
         ch
     })
 }

@@ -293,6 +293,9 @@ pub struct Light {
     /// 0..1: how dark this light's shadows are inside the fog (0 = no volumetric shadows).
     #[serde(skip_serializing_if = "super::fog_volume::defaults::is_one")]
     pub volumetric_shadow_dimmer: f32,
+    /// Screen-space contact shadows (when a volume's Contact Shadows override is on).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub contact_shadows: bool,
 }
 
 impl Default for Light {
@@ -311,6 +314,7 @@ impl Default for Light {
             shadow_normal_bias: light_shadow::NORMAL_BIAS,
             volumetric_multiplier: 1.0,
             volumetric_shadow_dimmer: 1.0,
+            contact_shadows: false,
         }
     }
 }

@@ -123,6 +123,7 @@ fn frame_parts(
         shadows: Shadows::None,
         shadow: Default::default(),
         volumetric: Default::default(),
+        contact_shadows: false,
     };
     let lights = vec![
         light(Vec3::new(0.6, -0.6, 0.8), 1.0),

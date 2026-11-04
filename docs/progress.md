@@ -1089,3 +1089,30 @@ Screenshots: `docs/screenshots/round8/fog_before_off.png`, `fog_after_godrays.pn
 - Volumes aren't blended between overlapping local post volumes (only global volumes exist; the highest
   priority wins as a whole).
 - Orthographic views get analytic fog only; reflections don't see fog.
+
+## Ambient occlusion and contact shadows ✅
+
+### Done
+- Screen-space ambient occlusion, horizon based (GTAO-style): depth + normal prepass (only while an effect
+  is on), half- or full-resolution trace, depth/normal-aware denoise, bilateral upsample, temporal
+  accumulation with reprojection and camera-cut reset (wider spatial blur as the fallback).
+- Applied to ambient diffuse (with the material occlusion map, multi-bounce) and as specular occlusion on
+  reflections; direct light only through Direct Lighting Strength (default 0).
+- Post-process Volume overrides: **Ambient Occlusion** (Intensity, Radius, Direct Lighting Strength,
+  Quality (Steps), Full Resolution, Temporal Accumulation) and **Contact Shadows** (Length, Distance Fade,
+  Opacity, Sample Count); Light Inspector **Contact Shadows** toggle. All off in existing scenes.
+- Scene view draw mode **Ambient Occlusion** (debug view).
+- Sample: `Scenes/AmbientOcclusionDemo.scene` (corner room, crates, columns, spheres, cubes at rising
+  heights, a bobbing sphere).
+- Tests: settings defaults/clamps, arc integral, multi-bounce, AO shader validation, camera cuts; GPU: floor
+  darker beside a resting sphere than a floating one, crease darkening fading with distance (full and half
+  resolution), temporal converging, contact shadows beside a cube, AO debug view, and effects off rendering
+  bit-identically to a renderer that never ran them; demo generator check, play test and GPU render test.
+- Screenshots: `docs/screenshots/round8/ao_*.png`.
+
+### Not matching HDRP yet
+- Normal maps don't reach the prepass (AO uses vertex normals); no "thickness" heuristic for thin occluders,
+  no bent normals, no ray-traced AO.
+- Volumes don't blend field by field (the highest-priority volume wins, like the other overrides).
+- Contact shadows have no separate Thickness / Min Distance / Fade In settings and don't run for
+  transparent surfaces; screen-space limits apply (nothing off screen casts them).

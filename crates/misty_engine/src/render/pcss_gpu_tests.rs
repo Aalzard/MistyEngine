@@ -63,6 +63,7 @@ fn render_pole(shadows: Shadows, angle: f32) -> Vec<u8> {
         range: 0.0,
         spot_angle: 0.0,
         shadows,
+        contact_shadows: false,
         shadow: LightShadow {
             size: angle,
             ..Default::default()

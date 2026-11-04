@@ -473,7 +473,8 @@ mod tests {
 
     fn harness(s: EditorState) -> Harness<'static, EditorState> {
         let mut h = Harness::builder()
-            .with_size([800.0, 500.0])
+            // Tall enough to show every sample material without scrolling.
+            .with_size([800.0, 1200.0])
             .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
         h.run_steps(2);
         h

@@ -7,19 +7,19 @@ use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAM
 /// Shared view uniform + helpers, then the fog every forward shader applies.
 const COMMON: &str = concat!(
     include_str!("shaders/common.wgsl"),
-    "
-",
+    "\n",
     include_str!("volumetrics/shaders/fog_apply.wgsl")
 );
-/// Lit/unlit meshes (all material variants), with the soft-shadow and reflection probe includes.
+/// Lit/unlit meshes (all material variants), with the soft-shadow, reflection probe and
+/// screen-space (AO, contact shadows) includes.
 pub(super) const MESH_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
-    "
-",
+    "\n",
     include_str!("shaders/shadows.wgsl"),
-    "
-",
-    include_str!("probes/probes.wgsl")
+    "\n",
+    include_str!("probes/probes.wgsl"),
+    "\n",
+    include_str!("shaders/screen_space.wgsl")
 );
 /// Shadow-map depth and the selection mask.
 pub(super) const DEPTH_SRC: &str = include_str!("shaders/depth.wgsl");
@@ -45,9 +45,10 @@ const TERRAIN_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/shadows.wgsl"),
-    "
-",
+    "\n",
     include_str!("probes/probes.wgsl"),
+    "\n",
+    include_str!("shaders/screen_space.wgsl"),
     "\n",
     include_str!("shaders/terrain.wgsl")
 );
@@ -232,6 +233,8 @@ impl Pipelines {
                 probe[2],
                 probe[3],
                 probe[4],
+                // Screen-space AO and contact shadow texels (screen_space.rs).
+                entry(16, S::FRAGMENT, storage()),
             ],
         );
         let draws_layout = layout(
@@ -610,6 +613,7 @@ mod tests {
             ("composite", include_str!("shaders/composite.wgsl")),
             ("particles", include_str!("shaders/particles.wgsl")),
             ("terrain", super::TERRAIN_SRC),
+            ("ao prepass", include_str!("shaders/ao_prepass.wgsl")),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));
