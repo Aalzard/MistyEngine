@@ -162,7 +162,7 @@ impl Runtime {
         match request {
             Request::LoadSceneAdditive(which) => {
                 let (rel, _) = build.resolve(which)?;
-                let text = crate::vfs::read_to_string(&root.join(&rel))
+                let text = crate::vfs::read_to_string(root.join(&rel))
                     .map_err(|e| format!("{rel}: {e}"))?;
                 self.load_scene_additive(scene, &rel, &text).map(|_| ())
             }
