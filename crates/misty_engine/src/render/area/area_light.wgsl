@@ -33,32 +33,56 @@ fn ltc_edge(a: vec3<f32>, b: vec3<f32>) -> f32 {
     return cross(a, b).z * k;
 }
 
-// Signed cosine integral of the quad c (shading frame) after `minv`.
-fn ltc_integrate(minv: mat3x3<f32>, c: array<vec3<f32>, 4>) -> f32 {
-    var q = array<vec3<f32>, 4>(minv * c[0], minv * c[1], minv * c[2], minv * c[3]);
-    var poly: array<vec3<f32>, 5>;
-    var count = 0u;
-    for (var i = 0u; i < 4u; i++) {
-        let a = q[i];
-        let b = q[(i + 1u) % 4u];
-        if (a.z >= 0.0) {
-            poly[min(count, 4u)] = a;
-            count++;
-        }
-        if ((a.z >= 0.0) != (b.z >= 0.0)) {
-            poly[min(count, 4u)] = mix(a, b, a.z / (a.z - b.z));
-            count++;
+// Running sum of the clipped polygon's edges, and where its outline leaves and re-enters the
+// upper hemisphere (a convex polygon crosses the horizon at most twice).
+struct LtcClip {
+    sum: f32,
+    exit: vec3<f32>,
+    entry: vec3<f32>,
+    clipped: bool,
+};
+
+// Add the part of edge a → b above the horizon. Plain values, no indexed arrays: local arrays
+// indexed in loops spill to slow memory on many GPUs.
+fn ltc_side(c: LtcClip, a: vec3<f32>, b: vec3<f32>) -> LtcClip {
+    var o = c;
+    let up_a = a.z >= 0.0;
+    let up_b = b.z >= 0.0;
+    if (up_a && up_b) {
+        o.sum += ltc_edge(normalize(a), normalize(b));
+    } else if (up_a != up_b) {
+        let p = normalize(mix(a, b, a.z / (a.z - b.z)));
+        o.clipped = true;
+        if (up_a) {
+            o.sum += ltc_edge(normalize(a), p);
+            o.exit = p;
+        } else {
+            o.sum += ltc_edge(p, normalize(b));
+            o.entry = p;
         }
     }
-    if (count < 3u) {
+    return o;
+}
+
+// Signed cosine integral of the quad q0..q3 (shading frame) after `minv`: the clipped
+// polygon's edges plus, when clipped, the closing edge along the horizon.
+fn ltc_integrate(minv: mat3x3<f32>, q0: vec3<f32>, q1: vec3<f32>, q2: vec3<f32>, q3: vec3<f32>) -> f32 {
+    let a = minv * q0;
+    let b = minv * q1;
+    let c = minv * q2;
+    let d = minv * q3;
+    if (max(max(a.z, b.z), max(c.z, d.z)) <= 0.0) {
         return 0.0;
     }
-    count = min(count, 5u);
-    var sum = 0.0;
-    for (var i = 0u; i < count; i++) {
-        sum += ltc_edge(normalize(poly[i]), normalize(poly[(i + 1u) % count]));
+    var s = LtcClip(0.0, vec3<f32>(0.0), vec3<f32>(0.0), false);
+    s = ltc_side(s, a, b);
+    s = ltc_side(s, b, c);
+    s = ltc_side(s, c, d);
+    s = ltc_side(s, d, a);
+    if (s.clipped) {
+        s.sum += ltc_edge(s.exit, s.entry);
     }
-    return sum / 6.2831853;
+    return s.sum / 6.2831853;
 }
 
 // Range window at the rectangle's closest point (no inverse-square: the solid angle falls off).
@@ -93,20 +117,24 @@ fn rect_light(li: LightItem, world: vec3<f32>, n: vec3<f32>, v: vec3<f32>, perce
     let c = li.pos_range.xyz - world;
     let ax = li.area_x.xyz;
     let ay = li.area_y.xyz;
+    var out: RectTerms;
+    let two_sided = li.area_x.w > 0.5;
+    // Behind a one-sided light: nothing to integrate.
+    if (!two_sided && dot(c, cross(ax, ay)) >= 0.0) {
+        return out;
+    }
     // Counter-clockwise seen from the lit side: positive in front of the light.
-    let quad = array<vec3<f32>, 4>(
-        to_local * (c - ax + ay),
-        to_local * (c + ax + ay),
-        to_local * (c + ax - ay),
-        to_local * (c - ax - ay),
-    );
+    let q0 = to_local * (c - ax + ay);
+    let q1 = to_local * (c + ax + ay);
+    let q2 = to_local * (c + ax - ay);
+    let q3 = to_local * (c - ax - ay);
     let identity = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0));
-    var diffuse = ltc_integrate(identity, quad);
+    var diffuse = ltc_integrate(identity, q0, q1, q2, q3);
     let uv = vec2<f32>(perceptual, sqrt(1.0 - clamp(dot(n, v), 0.0, 1.0)));
     let m = ltc_fetch(0u, uv);
     let minv = mat3x3<f32>(vec3<f32>(m.x, 0.0, m.z), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(m.y, 0.0, m.w));
-    var spec = ltc_integrate(minv, quad);
-    if (li.area_x.w > 0.5) {
+    var spec = ltc_integrate(minv, q0, q1, q2, q3);
+    if (two_sided) {
         diffuse = abs(diffuse);
         spec = abs(spec);
     } else {
@@ -114,7 +142,6 @@ fn rect_light(li: LightItem, world: vec3<f32>, n: vec3<f32>, v: vec3<f32>, perce
         spec = max(spec, 0.0);
     }
     let s = ltc_fetch(LTC_SIZE * LTC_SIZE, uv);
-    var out: RectTerms;
     out.diffuse = diffuse;
     out.specular = spec * (f0 * s.x + vec3<f32>(s.y));
     return out;

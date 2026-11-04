@@ -43,13 +43,12 @@ pub fn texels() -> &'static [[f32; 4]] {
     static TEXELS: OnceLock<Vec<[f32; 4]>> = OnceLock::new();
     TEXELS.get_or_init(|| {
         let floats: Vec<f32> = BYTES
-            .chunks_exact(4)
-            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_le_bytes(*b))
             .collect();
-        floats
-            .chunks_exact(4)
-            .map(|c| [c[0], c[1], c[2], c[3]])
-            .collect()
+        floats.as_chunks::<4>().0.to_vec()
     })
 }
 

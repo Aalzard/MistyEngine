@@ -197,6 +197,8 @@ fn area_light_benchmark() {
     }
     let size = (1920, 1080);
     let ms = |lights: &[LightData]| render(&device, &queue, size, &meshes, lights, 60).1;
+    // Warm up first (pipeline creation, GPU clocks).
+    let _ = ms(&points);
     let none = ms(&[]);
     let point = ms(&points);
     let rect = ms(&rects);
