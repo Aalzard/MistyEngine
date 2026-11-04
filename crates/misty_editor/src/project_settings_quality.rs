@@ -307,5 +307,11 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
             )
         },
     );
+    edited |= row(
+        ui,
+        "Lens Flares",
+        "Lens Flare components draw (light halos always do).",
+        |ui| ui.checkbox(&mut l.lens_flares, "").changed(),
+    );
     edited
 }

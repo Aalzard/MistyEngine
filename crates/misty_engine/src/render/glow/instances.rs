@@ -182,7 +182,7 @@ pub(super) fn flare(
         push(STREAK, 1.0, 0.035, 14.0, base * 0.35);
     }
     if f.ring {
-        push(RING, 1.0, 0.24, 1.0, base * 0.12);
+        push(RING, 1.0, 0.24, 1.0, base * 0.07);
     }
     for (axis, size, tint) in GHOSTS
         .iter()
