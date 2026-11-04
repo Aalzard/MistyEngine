@@ -274,6 +274,11 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
     }
     match what {
         Create::Empty => {}
+        Create::Folder => {
+            // Not in the component order: the Inspector does not list it.
+            let folder = misty_engine::scene::HierarchyFolder::default();
+            let _ = s.scene.world.insert_one(e, folder);
+        }
         Create::Primitive(mesh) => {
             s.scene.add(e, MeshFilter::primitive(mesh));
             s.scene.add(e, MeshRenderer::default());

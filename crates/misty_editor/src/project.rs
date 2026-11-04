@@ -78,6 +78,8 @@ pub struct ProjectBrowser {
     pub confirm_delete: Option<PathBuf>,
     /// Keyboard focus: the last click landed in the Project window.
     pub focused: bool,
+    /// Folders open in the folder tree (Assets starts open).
+    pub expanded: std::collections::HashSet<PathBuf>,
 }
 
 impl ProjectBrowser {
@@ -101,6 +103,7 @@ impl ProjectBrowser {
             renaming: None,
             confirm_delete: None,
             focused: false,
+            expanded: [assets.clone()].into(),
         };
         browser.refresh();
         browser
@@ -117,6 +120,14 @@ impl ProjectBrowser {
     }
 
     pub fn open_folder(&mut self, path: PathBuf) {
+        // The folder tree shows where we are: open every folder above it.
+        let assets = self.assets_dir();
+        for dir in path.ancestors().skip(1) {
+            if !dir.starts_with(&assets) {
+                break;
+            }
+            self.expanded.insert(dir.to_path_buf());
+        }
         self.current = path;
         self.selected = None;
         self.entries = list_dir(&self.current);

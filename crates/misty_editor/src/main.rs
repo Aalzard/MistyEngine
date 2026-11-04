@@ -120,6 +120,7 @@ mod terrain_tools;
 mod theme;
 mod thumbnails;
 mod toolbar;
+mod tree_lines;
 mod tutorials;
 mod ui_create;
 mod ui_gizmos;

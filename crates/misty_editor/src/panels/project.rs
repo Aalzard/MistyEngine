@@ -9,7 +9,7 @@ use egui::{Align2, Color32, FontId, Rect, Sense, Ui};
 use super::AssetPayload;
 use super::project_menus::{self, Requests};
 use crate::actions::Action;
-use crate::project::{AssetEntry, FolderNode, ProjectBrowser};
+use crate::project::{AssetEntry, ProjectBrowser};
 use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::{panel_toolbar, search_field};
@@ -64,18 +64,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             egui::ScrollArea::vertical()
                 .auto_shrink(false)
                 .show(ui, |ui| {
-                    ui.label(egui::RichText::new("★ Favorites").color(theme::TEXT_DIM));
-                    let tree = browser.tree.clone();
                     let mut open = None;
-                    folder_tree(ui, browser, &tree, 0, &mut open, &mut req);
-                    row_with_icon(
-                        ui,
-                        false,
-                        Some(Icon::Folder),
-                        "Packages",
-                        theme::TEXT_DIM,
-                        0,
-                    );
+                    super::project_tree::show(ui, browser, &mut open, &mut req);
                     if let Some(path) = open {
                         browser.open_folder(path);
                     }
@@ -229,7 +219,7 @@ pub fn create_menu(ui: &mut Ui, state: &mut EditorState) {
 }
 
 /// Accept assets dragged onto a folder (row, tile or breadcrumb): move them there.
-fn drop_target(
+pub(super) fn drop_target(
     resp: &egui::Response,
     root: &std::path::Path,
     folder: &std::path::Path,
@@ -254,45 +244,6 @@ fn drop_target(
             path: from,
             folder: folder.to_path_buf(),
         });
-    }
-}
-
-fn folder_tree(
-    ui: &mut Ui,
-    browser: &mut ProjectBrowser,
-    node: &FolderNode,
-    depth: usize,
-    open: &mut Option<PathBuf>,
-    req: &mut Requests,
-) {
-    let selected = node.path == browser.current;
-    let renaming = browser
-        .renaming
-        .as_ref()
-        .is_some_and(|(p, _)| *p == node.path);
-    let label = if renaming { "" } else { node.name.as_str() };
-    let folder = Some(Icon::Folder);
-    let resp = row_with_icon(ui, selected, folder, label, theme::TEXT, depth);
-    if renaming {
-        let r = resp
-            .rect
-            .with_min_x(resp.rect.left() + 24.0 + depth as f32 * 14.0);
-        project_menus::rename_field(ui, r, browser, req);
-    }
-    if resp.clicked() {
-        *open = Some(node.path.clone());
-    }
-    drop_target(&resp, &browser.root, &node.path, req);
-    let is_root = depth == 0;
-    if !is_root {
-        if let Some(rel) = asset_relative(&node.path) {
-            resp.dnd_set_drag_payload(AssetPayload(rel));
-        }
-        let path = node.path.clone();
-        resp.context_menu(|ui| project_menus::item_menu(ui, &path, asset_relative(&path), req));
-    }
-    for child in &node.children {
-        folder_tree(ui, browser, child, depth + 1, open, req);
     }
 }
 
@@ -491,7 +442,7 @@ fn item_interaction(
 }
 
 /// "Assets/…" for a path inside the project's Assets folder.
-fn asset_relative(path: &std::path::Path) -> Option<String> {
+pub(super) fn asset_relative(path: &std::path::Path) -> Option<String> {
     let s = path.to_string_lossy().replace('\\', "/");
     s.find("Assets/").map(|i| s[i..].to_owned())
 }

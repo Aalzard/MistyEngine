@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT`, and `MISTY_THEME=light` (and
+//! `MISTY_PLAY` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 
 use std::path::PathBuf;
@@ -88,6 +88,15 @@ pub fn apply_env(
         && let Some(e) = s.scene.find_by_name(&name.to_string_lossy())
     {
         s.select(e);
+    }
+    // `MISTY_EXPAND_ALL=1` opens every Hierarchy parent and Project folder (tree screenshots).
+    if std::env::var_os("MISTY_EXPAND_ALL").is_some() {
+        expand_all(s);
+    }
+    // `MISTY_FOLDER_DEMO=1` groups the scene's objects into coloured Hierarchy folders
+    // (`=picker` also opens the colour wheel on the first one).
+    if let Some(v) = std::env::var_os("MISTY_FOLDER_DEMO") {
+        folder_demo(s, v == "picker");
     }
     // `MISTY_PRESET_PICKER=Light` opens that component's (or asset kind's) preset picker.
     if let Some(kind) = std::env::var_os("MISTY_PRESET_PICKER") {
@@ -201,6 +210,55 @@ pub fn apply_env(
     if std::env::var_os("MISTY_PLAY").is_some() {
         crate::play::start(s);
     }
+}
+
+/// Folders for screenshots: three coloured, one plain; the scene's top-level objects are
+/// shared out between them. Never saved.
+fn folder_demo(s: &mut crate::state::EditorState, picker: bool) {
+    use crate::panels::folder_colors::pastel;
+    use misty_engine::scene::HierarchyFolder;
+    let roots = s.scene.roots().to_vec();
+    let specs = [
+        ("Environment", Some(pastel(0.36, 0.4))),
+        ("Lighting", Some(pastel(0.08, 0.4))),
+        ("Interface", Some(pastel(0.72, 0.4))),
+        ("Props", None),
+    ];
+    let folders: Vec<_> = specs
+        .iter()
+        .map(|(name, color)| {
+            let f = s.scene.spawn(name, None);
+            let _ = s
+                .scene
+                .world
+                .insert_one(f, HierarchyFolder { color: *color });
+            s.hierarchy.expanded.insert(f);
+            f
+        })
+        .collect();
+    for (i, e) in roots.into_iter().enumerate() {
+        s.scene.set_parent(e, Some(folders[i % 3]), None, true);
+    }
+    if picker {
+        s.hierarchy.folder_picker = Some((folders[0], egui::pos2(150.0, 170.0)));
+    }
+    s.scene_dirty = false;
+}
+
+fn expand_all(s: &mut crate::state::EditorState) {
+    let parents: Vec<_> = s.scene.walk().into_iter().map(|(e, _)| e).collect();
+    for e in parents {
+        if !s.scene.children(e).is_empty() {
+            s.hierarchy.expanded.insert(e);
+        }
+    }
+    fn folders(n: &crate::project::FolderNode, out: &mut Vec<std::path::PathBuf>) {
+        out.push(n.path.clone());
+        n.children.iter().for_each(|c| folders(c, out));
+    }
+    let mut all = Vec::new();
+    folders(&s.project.tree, &mut all);
+    s.project.expanded.extend(all);
 }
 
 fn save_png(path: &PathBuf, image: &egui::ColorImage) -> Result<(), Box<dyn std::error::Error>> {
