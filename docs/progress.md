@@ -1642,3 +1642,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - The menu table is separate from the menu bar's inline egui menus (kept in sync by hand; see decision 520).
 - No search inside asset contents, component values or scripts; no saved searches or search-to-Hierarchy view.
 - Help opens the Markdown guide in the system viewer, not at the heading.
+
+## v0.0.1: Misty Hub and templates ✅
+
+### Done
+- `misty` with no arguments opens **Misty Hub** (`misty <project>` still opens the editor directly;
+  `misty --new <Template> <folder>` creates and opens a project). The Hub hands the same window over to the editor.
+- Sidebar: logo + wordmark, Projects / Learn / Settings, version footer (v0.0.1 from the Cargo version).
+- Projects: recent list with thumbnails, last-opened times and search; New project and Open… (folder picker);
+  per-row ⋯ menu with Show in Explorer and Remove from list; missing folders greyed with Locate….
+- New project page: template cards with previews and descriptions, name + location (Browse…), validation, Create
+  on a worker thread, then the project opens on its starting scene.
+- Templates generated in code: Empty, Standard (floating platform), Ocean (platform + ocean, post-processing on),
+  Landscape (World Builder terrain, volumetric clouds and fog, sun shafts, AO, bloom). Each writes a full project
+  with Build Settings listing its scene; thumbnails are rendered headlessly.
+- Learn page listing a tutorial registry (`hub::learn::TUTORIALS`, "Coming soon" until tutorials are added).
+- Settings: default projects folder, Dark / Light theme, clear the recent list; stored in
+  `%APPDATA%\MistyEngine\hub.json`.
+- Screenshot hooks: `MISTY_HUB_PAGE=projects|new|learn|settings`, `MISTY_HUB_TEMPLATE`, `MISTY_HUB_CONFIG`,
+  `MISTY_HUB_OPEN`. Screenshots: docs/screenshots/v001/hub_*.png and template_*.png.
+- Tests: hub.json load/save and recent-list operations, name validation, Hub pages (kittest: list, missing
+  project, open, New project validation and creation, Learn, Settings), every template's files/scene/objects/post
+  volume, the editor opening a template's scene, and a headless GPU render of every template.
+
+### Not done yet
+- No project thumbnail is rendered when the editor closes (only template-created projects have one).
+- The Learn page has no tutorials yet; no project upgrade or "open with another version".
+- The Documents folder isn't resolved through the Windows known-folder API (OneDrive redirection is ignored).

@@ -34,7 +34,16 @@ pub struct EditorApp {
 
 impl EditorApp {
     pub fn new(cc: &eframe::CreationContext<'_>, project: PathBuf) -> Self {
-        theme::apply(&cc.egui_ctx);
+        Self::start(&cc.egui_ctx, cc.wgpu_render_state.clone(), project)
+    }
+
+    /// Open `project` in a window that already exists (also used when the Hub hands over).
+    pub fn start(
+        ctx: &egui::Context,
+        render_state: Option<egui_wgpu::RenderState>,
+        project: PathBuf,
+    ) -> Self {
+        theme::apply(ctx);
         let mut state = EditorState::new(ProjectBrowser::open(project));
         scene_files::open_initial(&mut state);
         let (saved_layouts, dock) = layouts::load(&state.project.root);
@@ -45,7 +54,7 @@ impl EditorApp {
         if capture.is_some() {
             crate::capture::apply_env(&mut state, &mut dock);
         }
-        let gpu = cc.wgpu_render_state.clone().map(Gpu::new);
+        let gpu = render_state.map(Gpu::new);
         match &gpu {
             Some(g) => {
                 let info = g.state.adapter.get_info();

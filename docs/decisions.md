@@ -2495,3 +2495,75 @@ Record of choices made without asking, and why.
      objects are selected, "Apply Preset {name}" for every component preset (one undo step, like the picker).
      Scene assets get an "Open Scene Additive" secondary action and preset assets "Apply to selection"; the
      Preset Manager page comes from `Category::ALL` like the other settings pages.
+
+## 2026-11-04 — v0.0.1: Misty Hub and templates
+
+526. **`misty` without arguments opens the Hub; `misty <project>` still opens the editor directly** (the screenshot
+     and test tooling rely on it). `misty --new <Template> <folder>` creates a project from a template and opens it
+     (used for the template screenshots, handy for scripts). The old "no argument = SampleProject" fallback is gone.
+527. **Hand-over to the editor in the same process and window:** the eframe app is a `Launcher` enum (Hub or
+     Editor). When the Hub picks a project, `EditorApp::start(ctx, render_state, path)` (the old `new` minus the
+     `CreationContext`) builds the editor on the window's existing wgpu state, the Hub's style is reset to egui's
+     default before the editor theme goes on, and the window is maximised. Chosen over relaunching: no second
+     process start, no flash of a new window, nothing to go wrong with paths or arguments. `MISTY_HUB_OPEN=<path>`
+     exercises it (with `MISTY_SCREENSHOT` it captures the editor after the hand-over).
+528. **The Hub keeps its own eframe storage name ("Misty Hub") and saves no window geometry,** because eframe
+     restores the geometry saved under the app name regardless of `persist_window`: under the editor's name the
+     Hub would open maximised. A direct `misty <project>` run keeps the editor's name and its saved window.
+529. **`hub.json` in the user's config folder** (`%APPDATA%\MistyEngine\hub.json`, `~/Library/Application
+     Support/MistyEngine` on macOS, `$XDG_CONFIG_HOME/MistyEngine` on Linux; `MISTY_HUB_CONFIG=<file>` overrides it
+     for tests and screenshots): the recent list (path + Unix time, newest first, at most 50), the default projects
+     folder (unset = `%USERPROFILE%\Documents\Misty Projects`; OneDrive-redirected Documents folders are not looked
+     up) and the theme. A missing or broken file means defaults. Paths compare ignoring case, slash direction and a
+     trailing separator on Windows. Every way of opening a project records it (a direct `misty <project>` too,
+     except automated `MISTY_SCREENSHOT` runs).
+530. **A project is a folder with an `Assets` folder.** Open… and Locate… refuse folders without one; recent entries
+     whose folder is gone are greyed with "(folder not found)", a Locate… button (re-points the entry, keeping its
+     place) and Remove from list. Rows open on click; the ⋯ menu has Show in Explorer and Remove from list. Search
+     filters by name or path (substring, case-insensitive). Thumbnails: `Library/HubThumbnail.png` when present (the
+     templates write their thumbnail there), otherwise a tile with the project's initial in a colour hashed from
+     its name. Rendering a fresh thumbnail when the editor closes is left for later.
+531. **New Project is a page, not a modal:** template cards (thumbnail, name, one line) on the left; a large
+     preview, description, Project name and Location (+ Browse…) on the right; Cancel / Create project at the
+     bottom. The name defaults to the first free "My project", "My project 2", …. Validation: non-empty after
+     trimming, at most 64 characters, none of `<>:"/\|?*` or control characters, no trailing dot, not a Windows
+     device name (CON, NUL, COM1 … also with an extension); the location must be given and not be a file; the
+     project folder must not exist yet (template creation itself also refuses a non-empty folder). The message
+     shows under the fields and Create stays disabled until it is valid. Creation runs on a worker thread with a
+     spinner; a failure removes the half-made folder.
+532. **Templates are generated in code (`templates` module), not copied:** each writes `Assets/{Scenes,Materials,
+     Scripts}`, `ProjectSettings/ProjectSettings.json` (Player product name = folder name),
+     `ProjectSettings/BuildSettings.json` listing `Assets/Scenes/Main.scene`, the scene, `Library/EditorSettings.json`
+     with that scene as the most recent (so it opens), the thumbnail and a `.gitignore` (Library/, Builds/). The
+     editor's startup scene choice also falls back to the first enabled Build Settings scene before SampleScene.
+533. **Four templates (interpretation):** the request named Empty, Standard (a platform) and a landscape, and also
+     mentioned an ocean, so there are four. *Empty*: Main Camera, Directional Light and a Post-process Volume that is
+     disabled with every override off. *Standard*: a 20 × 1 × 20 m floating slab (top at y = 0, light grey) with a
+     1 m blue cube for scale, a camera framing it, a soft-shadowed sun, the procedural sky with a high-quality sun
+     disk and a blue-grey ground colour (so the slab reads as floating), and the disabled volume; no water or
+     clouds. *Ocean*: the slab 1.5 m above an endless FFT ocean (storminess 0.25), a lower warm sun, a volume with
+     ACES tonemapping, bloom, colour adjustments, Sparse clouds (the "nice sky") and light analytic height fog.
+     *Landscape*: an 800 × 220 × 800 m World Builder terrain (Mountains base, 257² heightmap, light erosion),
+     Grassland by default with a Forest zone in front and Snowy Mountains at the back, instanced scatter, and a
+     volume with Cloudy volumetric clouds, volumetric fog, sun shafts, ambient occlusion, bloom, tonemapping and
+     colour adjustments; the camera is placed 30 m above the highest ground in front of it. The World Builder
+     object stays in the scene so the user can regenerate it.
+534. **Landscape textures are the World Builder's procedural textures at 128 px** (256 px in the sample), and the
+     presets and scatter materials are written as the World Builder would; creation takes well under a second here
+     (~0.15 s in the debug tests), so the 5 s budget is comfortably met.
+535. **Template thumbnails are rendered headlessly and shipped as PNGs** (`crates/misty_editor/assets/templates/`,
+     480 × 270, embedded with `include_bytes!`). `cargo test -p misty_editor -- --ignored write_template_thumbnails`
+     re-renders them (it sets the global asset root, hence ignored and run on its own); the always-on
+     `templates_render_headless` test renders every template's scene on a GPU (skipped without an adapter) and checks
+     for a lit, non-flat image.
+536. **Learn page = a small registry (`hub::learn::TUTORIALS`):** title, summary, minutes and an optional
+     `open: fn() -> Result<PathBuf, String>`. Entries without `open` show "Coming soon"; with one they get a Start
+     button that opens the returned project. The tutorials branch only has to fill this list.
+537. **Look:** a 216 px dark sidebar (logo slot + "Misty Engine" wordmark at the top-left, Projects / Learn /
+     Settings, `v0.0.1` at the bottom read from `CARGO_PKG_VERSION`), content on a slightly lighter background,
+     8 px rounded cards, one blue accent for the primary buttons and selection, larger text and spacing than the
+     editor, and no text selection on labels (rows and cards take the clicks). The logo is the v3 (no drop shadow)
+     mark, cropped and scaled to 160 px (`assets/branding/logo.png`) and tinted dark in the light theme. The Settings
+     theme (Dark / Light) applies to the Hub only; the editor keeps its dark theme.
+538. **Version 0.0.1:** the workspace package version is now `0.0.1` (all crates inherit it; Help ▸ About and the
+     Hub show it).

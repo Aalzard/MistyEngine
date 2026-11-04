@@ -24,7 +24,7 @@ pub const AXIS_Y: Color32 = Color32::from_rgb(139, 220, 0);
 pub const AXIS_Z: Color32 = Color32::from_rgb(58, 122, 237);
 
 /// Use the OS UI font when present, with a symbol font as glyph fallback for icons.
-fn load_fonts(ctx: &egui::Context) {
+pub fn load_fonts(ctx: &egui::Context) {
     let candidates: [(&str, &str, bool); 3] = [
         ("ui", "C:/Windows/Fonts/segoeui.ttf", true),
         ("symbols", "C:/Windows/Fonts/seguisym.ttf", false),

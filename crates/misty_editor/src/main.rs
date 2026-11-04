@@ -18,6 +18,8 @@ mod console;
 mod game_input;
 mod gizmos;
 mod handles;
+mod hub;
+mod launcher;
 mod layout;
 mod layouts;
 mod material_preview;
@@ -109,6 +111,7 @@ mod snap_window;
 mod sprite_handles;
 mod state;
 mod status_bar;
+mod templates;
 mod terrain_rules;
 mod terrain_tools;
 mod theme;
@@ -124,28 +127,93 @@ mod widgets;
 
 use std::path::PathBuf;
 
-fn main() -> eframe::Result<()> {
-    // Project folder: first CLI argument, or the bundled sample project.
-    let project = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(default_project);
+/// What the command line asks for.
+enum Start {
+    /// `misty`: the Hub.
+    Hub,
+    /// `misty <project folder>`: the editor directly.
+    Editor(PathBuf),
+}
 
+/// `misty [<project>]` or `misty --new <Template> <folder>` (creates the project, then opens it).
+fn parse_args() -> Result<Start, String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.as_slice() {
+        [] => Ok(Start::Hub),
+        [flag, template, folder] if flag == "--new" => {
+            let t = templates::Template::from_name(template).ok_or_else(|| {
+                let names: Vec<&str> = templates::Template::ALL.iter().map(|t| t.name()).collect();
+                format!(
+                    "unknown template {template:?} (one of {})",
+                    names.join(", ")
+                )
+            })?;
+            let folder = PathBuf::from(folder);
+            templates::create(&folder, t)?;
+            Ok(Start::Editor(folder))
+        }
+        [flag, ..] if flag.starts_with("--") => Err(format!(
+            "usage: misty [<project folder>] | misty --new <Template> <folder> ({flag}?)"
+        )),
+        [project, ..] => Ok(Start::Editor(PathBuf::from(project))),
+    }
+}
+
+fn main() -> eframe::Result<()> {
+    let start = match parse_args() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("misty: {e}");
+            std::process::exit(2);
+        }
+    };
+    let viewport = egui::ViewportBuilder::default().with_title("Misty Engine");
+    let (viewport, persist_window) = match &start {
+        Start::Editor(project) => {
+            // Automated captures don't touch the user's recent list.
+            if std::env::var_os("MISTY_SCREENSHOT").is_none() {
+                hub::config::record_open(project);
+            }
+            let v = viewport
+                .with_inner_size([1600.0, 900.0])
+                .with_min_inner_size([960.0, 540.0])
+                .with_maximized(true);
+            (v, true)
+        }
+        // The Hub always opens at its own size (the editor's saved window would be maximised).
+        Start::Hub => {
+            let v = viewport
+                .with_title("Misty Hub")
+                .with_inner_size([1180.0, 720.0])
+                .with_min_inner_size([880.0, 540.0]);
+            (v, false)
+        }
+    };
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("Misty Engine")
-            .with_inner_size([1600.0, 900.0])
-            .with_min_inner_size([960.0, 540.0])
-            .with_maximized(true),
+        viewport,
+        persist_window,
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: wgpu_options(),
         ..Default::default()
     };
 
+    // eframe restores the window geometry saved under the app name, so the Hub keeps its own
+    // name (and saves none) to always open at its size rather than the editor's maximised one.
+    let app_name = match start {
+        Start::Hub => "Misty Hub",
+        Start::Editor(_) => "Misty Engine",
+    };
     eframe::run_native(
-        "Misty Engine",
+        app_name,
         options,
-        Box::new(move |cc| Ok(Box::new(app::EditorApp::new(cc, project)))),
+        Box::new(move |cc| {
+            Ok(Box::new(match start {
+                Start::Hub => launcher::Launcher::Hub(Box::new(hub::Hub::new(&cc.egui_ctx))),
+                Start::Editor(project) => {
+                    launcher::Launcher::Editor(Box::new(app::EditorApp::new(cc, project)))
+                }
+            }))
+        }),
     )
 }
 
@@ -165,25 +233,4 @@ fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
         wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(setup),
         ..Default::default()
     }
-}
-
-/// Find `SampleProject` next to the working directory or the executable, searching upwards.
-fn default_project() -> PathBuf {
-    let starts = [
-        std::env::current_dir().ok(),
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(PathBuf::from)),
-    ];
-    starts
-        .into_iter()
-        .flatten()
-        .flat_map(|start| {
-            start
-                .ancestors()
-                .map(|a| a.join("SampleProject"))
-                .collect::<Vec<_>>()
-        })
-        .find(|p| p.join("Assets").is_dir())
-        .unwrap_or_else(|| PathBuf::from("SampleProject"))
 }
