@@ -2,8 +2,9 @@
 
 use egui::{Align2, Color32, FontId, Id, Key, Rect, Sense, Stroke, Ui, pos2, vec2};
 use misty_engine::hecs::Entity;
+use misty_engine::scene::SceneId;
 
-use crate::actions::Action;
+use crate::actions::{Action, SceneOp};
 use crate::menu_bar::create_menu_items;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
@@ -20,6 +21,15 @@ enum Drop {
     After(Entity),
     Into(Entity),
     Root,
+    /// A scene header: move into that scene.
+    Scene(SceneId),
+}
+
+/// One Hierarchy line: a scene header or an object with its depth.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Row {
+    Scene(SceneId),
+    Object(Entity, usize),
 }
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
@@ -36,11 +46,17 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let dragging: Option<Vec<Entity>> = ui.data(|d| d.get_temp(drag_id));
     let mut drop: Option<Drop> = None;
 
+    let objects: Vec<(Entity, usize)> = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::Object(e, d) => Some((*e, *d)),
+            Row::Scene(_) => None,
+        })
+        .collect();
+
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
-            scene_row(ui, state);
-
             // Only rows inside the visible area are laid out; the rest just take their
             // height (thousands of rows otherwise cost milliseconds every frame).
             let clip = ui.clip_rect();
@@ -54,8 +70,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             if start > 0 {
                 ui.allocate_space(vec2(width, start as f32 * step - spacing));
             }
-            for &(e, depth) in &rows[start..end] {
-                if let Some(d) = row(ui, state, e, depth, &rows, dragging.is_some()) {
+            for r in &rows[start..end] {
+                let hovered = match *r {
+                    Row::Scene(id) => scene_row(ui, state, id, dragging.is_some()),
+                    Row::Object(e, depth) => row(ui, state, e, depth, &objects, dragging.is_some()),
+                };
+                if let Some(d) = hovered {
                     drop = Some(d);
                 }
             }
@@ -72,14 +92,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             rest.context_menu(|ui| create_menu_items(ui, state, None));
             if let Some(payload) = rest.dnd_release_payload::<super::AssetPayload>() {
                 drop_prefab(state, &payload.0, None);
+                drop_scene(state, &payload.0);
             }
             if dragging.is_some() && rest.contains_pointer() {
                 drop = Some(Drop::Root);
             }
         });
 
-    drag_and_drop(ui, state, &rows, drag_id, dragging, drop);
-    keyboard(ui, state, &rows);
+    drag_and_drop(ui, state, drag_id, dragging, drop);
+    keyboard(ui, state, &objects);
 }
 
 /// Temp-data key of the Hierarchy's own drag (the dragged objects).
@@ -94,55 +115,182 @@ fn update_focus(ui: &Ui, state: &mut EditorState, panel: Rect) {
     }
 }
 
-/// Depth-first rows respecting foldouts, or a flat list of matches while searching.
-fn visible_rows(state: &EditorState) -> Vec<(Entity, usize)> {
+/// Each open scene's header, then its objects: depth-first respecting foldouts, or a flat
+/// list of matches while searching.
+fn visible_rows(state: &EditorState) -> Vec<Row> {
     let scene = &state.scene;
     let search = state.hierarchy.search.to_lowercase();
-    if !search.is_empty() {
-        return scene
-            .walk()
-            .into_iter()
-            .filter(|(e, _)| scene.name(*e).to_lowercase().contains(&search))
-            .map(|(e, _)| (e, 0))
-            .collect();
-    }
     let mut out = Vec::new();
-    fn visit(state: &EditorState, e: Entity, depth: usize, out: &mut Vec<(Entity, usize)>) {
-        out.push((e, depth));
+    fn visit(state: &EditorState, e: Entity, depth: usize, out: &mut Vec<Row>) {
+        out.push(Row::Object(e, depth));
         if state.hierarchy.expanded.contains(&e) {
             for c in state.scene.children(e) {
                 visit(state, c, depth + 1, out);
             }
         }
     }
-    for r in state.scene.roots() {
-        visit(state, *r, 0, &mut out);
+    for entry in scene.scenes() {
+        out.push(Row::Scene(entry.id));
+        if !entry.loaded || state.hierarchy.collapsed_scenes.contains(&entry.id) {
+            continue;
+        }
+        if search.is_empty() {
+            for r in scene.roots_in(entry.id) {
+                visit(state, r, 0, &mut out);
+            }
+        } else {
+            out.extend(
+                scene
+                    .objects_in(entry.id)
+                    .into_iter()
+                    .filter(|e| scene.name(*e).to_lowercase().contains(&search))
+                    .map(|e| Row::Object(e, 0)),
+            );
+        }
     }
     out
 }
 
-/// Scene name row with dirty marker and ⋮ menu.
-fn scene_row(ui: &mut Ui, state: &mut EditorState) {
-    ui.horizontal(|ui| {
-        let dirty = if state.scene_dirty { "*" } else { "" };
-        ui.label(egui::RichText::new(format!("🎬 {}{dirty}", state.scene.name)).strong());
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.menu_button("⋮", |ui| {
-                if ui.button("Save Scene").clicked() {
-                    state.push(Action::SaveScene);
-                    ui.close();
-                }
-                if ui.button("Save Scene As").clicked() {
-                    state.push(Action::SaveSceneAs);
-                    ui.close();
-                }
-                if ui.button("Select All").clicked() {
-                    state.push(Action::SelectAll);
-                    ui.close();
-                }
-            });
-        });
-    });
+/// A scene header: foldout, name (bold = active, * = unsaved, grey = not loaded) and its
+/// menu (⋮ or right-click). Returns a drop target while objects are dragged over it.
+fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) -> Option<Drop> {
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
+    let loaded = state.scene.entry(id).is_some_and(|e| e.loaded);
+    let active = state.scene.active_scene() == id;
+    let dirty = if state.files.dirty.contains(&id) {
+        "*"
+    } else {
+        ""
+    };
+    let name = state.scene.scene_name(id);
+    let label = if loaded {
+        format!("{name}{dirty}")
+    } else {
+        format!("{name} (not loaded)")
+    };
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, &label));
+    let fill = if resp.hovered() && !dragging {
+        Color32::from_rgb(62, 62, 62)
+    } else {
+        Color32::from_rgb(52, 52, 52)
+    };
+    ui.painter().rect_filled(rect, 0.0, fill);
+
+    // Foldout (double-clicking the header also folds it).
+    let arrow_rect = Rect::from_min_size(pos2(rect.left() + 2.0, rect.top()), vec2(14.0, ROW_H));
+    let collapsed = state.hierarchy.collapsed_scenes.contains(&id);
+    if loaded {
+        let arrow = ui.interact(
+            arrow_rect,
+            Id::new(("hier_scene_arrow", id)),
+            Sense::click(),
+        );
+        ui.painter().text(
+            arrow_rect.center(),
+            Align2::CENTER_CENTER,
+            if collapsed { "⏵" } else { "⏷" },
+            FontId::proportional(11.0),
+            theme::TEXT_DIM,
+        );
+        if arrow.clicked() || resp.double_clicked() {
+            if collapsed {
+                state.hierarchy.collapsed_scenes.remove(&id);
+            } else {
+                state.hierarchy.collapsed_scenes.insert(id);
+            }
+        }
+    }
+    let color = match (loaded, active) {
+        (false, _) => theme::TEXT_DIM,
+        (true, true) => Color32::WHITE,
+        (true, false) => theme::TEXT,
+    };
+    let text_pos = pos2(rect.left() + 18.0, rect.center().y);
+    let text = format!("🎬 {label}");
+    let font = FontId::proportional(13.0);
+    ui.painter()
+        .text(text_pos, Align2::LEFT_CENTER, &text, font.clone(), color);
+    // The active scene is bold (drawn twice, a little apart: the UI font has no bold face).
+    if active {
+        ui.painter().text(
+            text_pos + vec2(0.7, 0.0),
+            Align2::LEFT_CENTER,
+            &text,
+            font,
+            color,
+        );
+    }
+
+    // ⋮ menu at the right edge, same items as the right-click menu.
+    let menu_rect = Rect::from_min_max(pos2(rect.right() - 20.0, rect.top()), rect.max);
+    let menu = ui.interact(menu_rect, Id::new(("hier_scene_menu", id)), Sense::click());
+    ui.painter().text(
+        menu_rect.center(),
+        Align2::CENTER_CENTER,
+        "⋮",
+        FontId::proportional(13.0),
+        theme::TEXT_DIM,
+    );
+    egui::Popup::menu(&menu).show(|ui| scene_menu(ui, state, id));
+    resp.context_menu(|ui| scene_menu(ui, state, id));
+
+    if let Some(payload) = resp.dnd_release_payload::<super::AssetPayload>() {
+        drop_scene(state, &payload.0);
+    }
+    if dragging
+        && loaded
+        && ui
+            .input(|i| i.pointer.hover_pos())
+            .is_some_and(|p| rect.contains(p))
+    {
+        let stroke = Stroke::new(2.0, Color32::from_rgb(90, 150, 230));
+        ui.painter()
+            .rect_stroke(rect.shrink(1.0), 2.0, stroke, egui::StrokeKind::Inside);
+        return Some(Drop::Scene(id));
+    }
+    None
+}
+
+/// Scene header menu: active scene, save, select, unload / load, remove, close others.
+fn scene_menu(ui: &mut Ui, state: &mut EditorState, id: SceneId) {
+    let scene = &state.scene;
+    let loaded = scene.entry(id).is_some_and(|e| e.loaded);
+    let active = scene.active_scene() == id;
+    let several_loaded = scene.loaded_scenes().len() > 1;
+    let several = scene.scenes().len() > 1;
+    let load_item = if loaded {
+        ("Unload Scene", SceneOp::Unload, several_loaded)
+    } else {
+        ("Load Scene", SceneOp::Load, true)
+    };
+    let groups = [
+        vec![("Set Active Scene", SceneOp::SetActive, loaded && !active)],
+        vec![
+            ("Save Scene", SceneOp::Save, loaded),
+            ("Save Scene As", SceneOp::SaveAs, loaded),
+            ("Select All", SceneOp::SelectAll, loaded),
+        ],
+        vec![
+            load_item,
+            (
+                "Remove Scene",
+                SceneOp::Remove,
+                several && (!loaded || several_loaded),
+            ),
+            ("Close Others", SceneOp::CloseOthers, several),
+        ],
+    ];
+    for (i, group) in groups.into_iter().enumerate() {
+        if i > 0 {
+            ui.separator();
+        }
+        for (label, op, enabled) in group {
+            if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                state.push(Action::Scene(id, op));
+                ui.close();
+            }
+        }
+    }
 }
 
 /// One object row. Returns a drop target if a drag is hovering it.
@@ -252,6 +400,7 @@ fn row(
     if let Some(payload) = resp.dnd_release_payload::<super::AssetPayload>() {
         drop_asset(state, e, &payload.0);
         drop_prefab(state, &payload.0, Some(e));
+        drop_scene(state, &payload.0);
     }
 
     // Start dragging: carry the selection (or just this row).
@@ -301,6 +450,13 @@ fn drop_prefab(state: &mut EditorState, path: &str, parent: Option<Entity>) {
             path: path.to_owned(),
             parent,
         });
+    }
+}
+
+/// A scene file dropped in the Hierarchy opens additively.
+fn drop_scene(state: &mut EditorState, path: &str) {
+    if path.ends_with(&format!(".{}", misty_engine::scene::file::EXTENSION)) {
+        state.push(Action::OpenSceneAdditive(path.to_owned()));
     }
 }
 
@@ -406,7 +562,6 @@ fn set_expanded(state: &mut EditorState, e: Entity, open: bool, recursive: bool)
 fn drag_and_drop(
     ui: &mut Ui,
     state: &mut EditorState,
-    _rows: &[(Entity, usize)],
     drag_id: Id,
     dragging: Option<Vec<Entity>>,
     drop: Option<Drop>,
@@ -458,6 +613,13 @@ fn apply_drop(state: &mut EditorState, dragged: &[Entity], drop: Drop) {
     let target = match drop {
         Drop::Before(t) | Drop::After(t) | Drop::Into(t) => Some(t),
         Drop::Root => None,
+        Drop::Scene(id) => {
+            state.push(Action::MoveToScene {
+                objects: dragged.to_vec(),
+                scene: id,
+            });
+            return;
+        }
     };
     // Can't drop onto itself or into its own subtree.
     if let Some(t) = target
@@ -474,11 +636,15 @@ fn apply_drop(state: &mut EditorState, dragged: &[Entity], drop: Drop) {
                 scene.set_parent(e, Some(t), None, true);
                 state.hierarchy.expanded.insert(t);
             }
-            Drop::Root => {
+            Drop::Root | Drop::Scene(_) => {
                 scene.set_parent(e, None, None, true);
             }
             Drop::Before(t) | Drop::After(t) => {
                 let parent = scene.parent(t);
+                // Between another scene's top-level objects: move into that scene first.
+                if parent.is_none() {
+                    scene.move_to_scene(e, scene.scene_of(t));
+                }
                 let index = match (prev, drop) {
                     (Some(p), _) => scene.sibling_index(p) + 1,
                     (None, Drop::Before(_)) => scene.sibling_index(t),
@@ -740,6 +906,47 @@ mod tests {
         );
     }
 
+    /// Two scenes: both headers are listed with their objects, the header menu makes the
+    /// second one active, and dragging the camera onto its header moves it there.
+    #[test]
+    fn scene_headers_list_scenes_and_set_the_active_one() {
+        use egui_kittest::kittest::Queryable;
+        let mut s = state();
+        let mut level = misty_engine::scene::Scene::new("Level");
+        level.spawn("Ground", None);
+        let (b, _, _) = s
+            .scene
+            .load_additive("Assets/Level.scene", &level.to_json())
+            .unwrap();
+        let rows = visible_rows(&s);
+        assert_eq!(rows.len(), 5, "two headers, camera, light, ground");
+        assert_eq!(rows[3], Row::Scene(b));
+        let mut h = egui_kittest::Harness::builder()
+            .with_size([300.0, 400.0])
+            .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
+        h.run();
+        h.get_by_label("Ground");
+        h.get_by_label("Level").click_secondary();
+        h.run();
+        h.get_by_label("Set Active Scene").click();
+        h.run();
+        let s = h.state_mut();
+        for a in std::mem::take(&mut s.actions) {
+            crate::commands::apply(s, a);
+        }
+        assert_eq!(s.scene.active_scene(), b);
+        let cam = s.scene.find_by_name("Main Camera").unwrap();
+        apply_drop(s, &[cam], Drop::Scene(b));
+        for a in std::mem::take(&mut s.actions) {
+            crate::commands::apply(s, a);
+        }
+        assert_eq!(s.scene.scene_of(cam), b);
+        // Dropping between the first scene's rows brings it back.
+        let light = s.scene.roots_in(0)[0];
+        apply_drop(s, &[cam], Drop::Before(light));
+        assert_eq!(s.scene.roots_in(0), [cam, light]);
+    }
+
     #[test]
     fn search_lists_matches_flat() {
         let mut s = state();
@@ -747,8 +954,15 @@ mod tests {
         let child = s.scene.spawn("Camera Rig", Some(cam));
         s.hierarchy.search = "camera".into();
         let rows = visible_rows(&s);
-        assert_eq!(rows, vec![(cam, 0), (child, 0)]);
+        assert_eq!(
+            rows,
+            vec![Row::Scene(0), Row::Object(cam, 0), Row::Object(child, 0)]
+        );
         s.hierarchy.search.clear();
-        assert_eq!(visible_rows(&s).len(), 2, "collapsed parent hides child");
+        assert_eq!(
+            visible_rows(&s).len(),
+            3,
+            "scene header, camera, light: collapsed parent hides child"
+        );
     }
 }

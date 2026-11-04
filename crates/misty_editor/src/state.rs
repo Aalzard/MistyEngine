@@ -99,6 +99,8 @@ pub struct HierarchyState {
     pub renaming: Option<(Entity, String)>,
     /// Keyboard focus: last click landed in the Hierarchy.
     pub focused: bool,
+    /// Scene headers folded closed.
+    pub collapsed_scenes: HashSet<misty_engine::scene::SceneId>,
 }
 
 /// Icon shown for prefab assets and instance roots (drawn blue; plain meshes use the same grey).

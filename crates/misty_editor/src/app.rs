@@ -265,6 +265,8 @@ impl EditorApp {
                     | Action::NewScene
                     | Action::OpenScene
                     | Action::OpenScenePath(_)
+                    | Action::OpenSceneAdditive(_)
+                    | Action::Scene(..)
                     | Action::Quit
             ) {
                 animation::preview::stop_preview(&mut self.state);
@@ -315,6 +317,7 @@ impl EditorApp {
             Action::SaveSceneAs => {
                 scene_files::save_as(s);
             }
+
             Action::Build => build_settings::build(s, false, true),
             Action::BuildAndRun => build_settings::build(s, true, false),
             Action::TogglePlay => {
@@ -428,7 +431,7 @@ impl EditorApp {
             if s.play.in_play_mode() {
                 play::stop(s);
             }
-            if s.scene_dirty {
+            if !scene_files::dirty_now(s).is_empty() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 s.files.prompt = Some(AfterPrompt::Quit);
             }
@@ -442,6 +445,7 @@ impl EditorApp {
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        scene_files::refresh_dirty(s);
         let title = scene_files::window_title(s);
         if title != self.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));

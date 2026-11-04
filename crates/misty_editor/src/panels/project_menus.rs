@@ -60,6 +60,18 @@ pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Reques
         req.actions.push(Action::ShowInExplorer(p.clone()));
         ui.close();
     }
+    // Scenes: open next to the scenes already in the Hierarchy.
+    if let Some(rel) = rel.as_ref().filter(|r| is_scene(r)) {
+        ui.separator();
+        if ui.button("Open Scene").clicked() {
+            req.actions.push(Action::OpenScenePath(rel.clone()));
+            ui.close();
+        }
+        if ui.button("Open Scene Additive").clicked() {
+            req.actions.push(Action::OpenSceneAdditive(rel.clone()));
+            ui.close();
+        }
+    }
     ui.separator();
     if ui.button("Rename").clicked() {
         req.rename = Some(p.clone());
@@ -98,6 +110,10 @@ pub fn folder_menu(ui: &mut Ui, folder: &Path, req: &mut Requests) {
         req.actions.push(Action::Refresh);
         ui.close();
     }
+}
+
+fn is_scene(rel: &str) -> bool {
+    rel.ends_with(&format!(".{}", misty_engine::scene::file::EXTENSION))
 }
 
 fn explorer_label() -> &'static str {

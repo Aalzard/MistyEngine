@@ -96,6 +96,20 @@ impl AssetKind {
     }
 }
 
+/// Scene header commands (Hierarchy context menu).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SceneOp {
+    Save,
+    SaveAs,
+    SetActive,
+    /// Unload (stays listed) / Load (an unloaded scene).
+    Unload,
+    Load,
+    Remove,
+    CloseOthers,
+    SelectAll,
+}
+
 /// One editor command.
 #[derive(Clone, Debug)]
 pub enum Action {
@@ -123,6 +137,15 @@ pub enum Action {
     OpenScenePath(String),
     SaveScene,
     SaveSceneAs,
+    /// Open a scene by path next to the open ones (Project window ▸ Open Scene Additive).
+    OpenSceneAdditive(String),
+    /// A Hierarchy scene header command.
+    Scene(misty_engine::scene::SceneId, SceneOp),
+    /// Objects dragged onto a scene header move into that scene.
+    MoveToScene {
+        objects: Vec<Entity>,
+        scene: misty_engine::scene::SceneId,
+    },
     /// Create an object; `parent` = Hierarchy row it was created from (None = scene root).
     Create {
         what: Create,
