@@ -207,6 +207,46 @@ impl Lines {
         }
     }
 
+    /// Rectangle light: its outline, short rays from the corners on the lit side(s) and an
+    /// arrow along its forward axis (local +Z).
+    fn rectangle_light(&mut self, m: &Mat4, light: &Light, color: [f32; 4]) {
+        let (w, h) = (light.width * 0.5, light.height * 0.5);
+        let corners = [
+            Vec3::new(-w, -h, 0.0),
+            Vec3::new(w, -h, 0.0),
+            Vec3::new(w, h, 0.0),
+            Vec3::new(-w, h, 0.0),
+        ];
+        self.polyline(m, &corners, true, color);
+        let len = (w.max(h) * 1.5).clamp(0.3, light.range.max(0.3));
+        let sides: &[f32] = if light.two_sided {
+            &[1.0, -1.0]
+        } else {
+            &[1.0]
+        };
+        for &side in sides {
+            for c in corners {
+                let p = m.transform_point3(c);
+                self.line(
+                    p,
+                    m.transform_point3(c + Vec3::Z * len * 0.25 * side),
+                    color,
+                );
+            }
+        }
+        let tip = Vec3::Z * len;
+        self.line(
+            m.transform_point3(Vec3::ZERO),
+            m.transform_point3(tip),
+            color,
+        );
+        let head = len * 0.15;
+        for d in [Vec3::X, Vec3::NEG_X, Vec3::Y, Vec3::NEG_Y] {
+            let back = tip - Vec3::Z * head + d * head * 0.5;
+            self.line(m.transform_point3(tip), m.transform_point3(back), color);
+        }
+    }
+
     /// Directional: disc with parallel rays; Point: range spheres; Spot: cone.
     fn light_rays(&mut self, m: &Mat4, light: &Light, color: [f32; 4]) {
         match light.kind {
@@ -239,6 +279,7 @@ impl Lines {
                     );
                 }
             }
+            LightType::Rectangle => self.rectangle_light(m, light, color),
         }
     }
 }

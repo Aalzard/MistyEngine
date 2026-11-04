@@ -37,6 +37,7 @@ impl Create {
             Create::Light(LightType::Directional) => "Directional Light",
             Create::Light(LightType::Point) => "Point Light",
             Create::Light(LightType::Spot) => "Spot Light",
+            Create::Light(LightType::Rectangle) => "Rectangle Light",
             Create::Camera => "Camera",
             Create::AudioSource => "Audio Source",
             Create::ParticleSystem => "Particle System",

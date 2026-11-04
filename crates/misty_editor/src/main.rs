@@ -4,6 +4,7 @@ mod actions;
 mod anim_clips;
 mod anim_controllers;
 mod app;
+mod area_light_handles;
 mod asset_actions;
 mod asset_ops;
 mod assets;
@@ -46,6 +47,8 @@ mod sample_animation;
 mod sample_animator;
 #[cfg(test)]
 mod sample_ao;
+#[cfg(test)]
+mod sample_area_lights;
 #[cfg(test)]
 mod sample_assets;
 #[cfg(test)]

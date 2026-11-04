@@ -21,7 +21,9 @@ pub fn rows(ui: &mut Ui, l: &mut Light) -> bool {
                 .range(0.0..=20.0)
                 .suffix("°");
             ch |= ui.add(mixed::drag("shadow_angle", field)).changed();
-        } else {
+            ui.end_row();
+        } else if l.kind != LightType::Rectangle {
+            // Rectangle lights soften with their size instead.
             ui.label("Shadow Radius")
                 .on_hover_text("Radius of the light source in metres: larger = softer shadows.");
             let field = DragValue::new(&mut l.shadow_radius)
@@ -29,8 +31,8 @@ pub fn rows(ui: &mut Ui, l: &mut Light) -> bool {
                 .range(0.0..=10.0)
                 .suffix(" m");
             ch |= ui.add(mixed::drag("shadow_radius", field)).changed();
+            ui.end_row();
         }
-        ui.end_row();
     }
     ui.label("Bias")
         .on_hover_text("Pushes the shadow away from the surface (shadow-map texels).");

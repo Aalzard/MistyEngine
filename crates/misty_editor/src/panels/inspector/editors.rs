@@ -513,6 +513,9 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
                 .changed();
             ui.end_row();
         }
+        if l.kind == LightType::Rectangle {
+            ch |= super::light_area::rows(ui, l);
+        }
         ui.label("Color");
         ch |= color_rgb(ui, &mut l.color);
         ui.end_row();
