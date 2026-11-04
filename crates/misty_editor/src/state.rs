@@ -269,6 +269,11 @@ pub struct EditorState {
     pub os_clipboard_out: Option<String>,
     /// Copy Component clipboard: component name and its values.
     pub component_clipboard: Option<(String, serde_json::Value)>,
+    /// The open Select Preset window.
+    pub preset_picker: Option<crate::presets::PresetPicker>,
+    /// Open the picker of this component or asset kind when its button is next drawn
+    /// (`MISTY_PRESET_PICKER` screenshots).
+    pub preset_picker_request: Option<String>,
     /// Scale fields keep their proportions.
     pub scale_locked: bool,
     /// Edit ▸ Grid and Snap values (saved in the project's Library).
@@ -339,6 +344,8 @@ impl EditorState {
             inspector_add_open: false,
             inspector_targets: Vec::new(),
             component_clipboard: None,
+            preset_picker: None,
+            preset_picker_request: None,
             object_clipboard: None,
             os_clipboard_out: None,
             scale_locked: false,

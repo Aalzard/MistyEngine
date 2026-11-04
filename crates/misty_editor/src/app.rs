@@ -529,6 +529,7 @@ impl eframe::App for EditorApp {
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
+        crate::panels::preset_window(&ctx, &mut self.state);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);
         self.apply_actions(&ctx);
         if let Some(text) = self.state.os_clipboard_out.take() {

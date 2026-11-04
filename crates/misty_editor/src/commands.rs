@@ -145,11 +145,20 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
             if !targets.is_empty() {
                 s.record(&format!("Add {name}"));
                 for e in targets {
-                    if !s.scene.add_by_name(e, name) {
+                    if s.scene.add_by_name(e, name) {
+                        crate::presets::apply_default(s, e, name);
+                    } else {
                         s.console
                             .warn(format!("'{}' already has a {name}.", s.scene.name(e)));
                     }
                 }
+            }
+        }
+        a @ (Action::ApplyPreset { .. }
+        | Action::RestoreComponentValues { .. }
+        | Action::SavePreset { .. }) => {
+            if let Some(other) = crate::presets::apply(s, a) {
+                return Some(other);
             }
         }
         a @ (Action::RemoveComponent { .. }
@@ -320,6 +329,7 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
                 .add(e, misty_engine::scene::ParticleSystem::default());
         }
     }
+    crate::presets::apply_defaults(s, e);
     s.scene.set_transform(e, t);
     s.select(e);
     s.console.info(format!("Created '{}'.", s.scene.name(e)));

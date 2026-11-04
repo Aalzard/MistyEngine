@@ -130,6 +130,25 @@ impl UndoStack {
         self.reset_interaction();
     }
 
+    /// A one-click edit of material asset `rel` (a preset applied from the picker): one step
+    /// that puts `before` back on undo. The scene is unchanged by it.
+    pub fn push_material(
+        &mut self,
+        label: &str,
+        scene: &Scene,
+        selection: &Selection,
+        rel: &str,
+        before: &Material,
+    ) {
+        let mut snap = Snapshot::new(label, scene, selection);
+        snap.material = Some(MaterialUndo {
+            rel: rel.to_owned(),
+            material: before.clone(),
+        });
+        self.commit(snap);
+        self.reset_interaction();
+    }
+
     /// Like [`UndoStack::push`], also restoring terrain data `before` on undo. Call after the
     /// edit, with its result in the terrain store (only the changed tiles are kept). Scene edits
     /// made during the same interaction join this step.
@@ -449,5 +468,27 @@ mod tests {
         assert_eq!(s.assets.materials[rel].metallic, before.metallic);
         s.redo_step();
         assert_eq!(s.assets.materials[rel].metallic, 0.75);
+    }
+
+    /// A preset picked for a material is its own step.
+    #[test]
+    fn material_preset_step_undoes() {
+        let root = std::env::temp_dir().join("misty_undo_material_preset");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Assets")).unwrap();
+        let mut s = EditorState::new(ProjectBrowser::open(root));
+        let rel = "Assets/Test.mat";
+        s.assets.update_material(rel, Material::default()).unwrap();
+        let before = s.assets.materials[rel].clone();
+        let (scene, selection) = (&s.scene, &s.selection);
+        s.undo
+            .push_material("Apply Preset Shiny", scene, selection, rel, &before);
+        let mut m = before.clone();
+        m.metallic = 0.9;
+        s.assets.update_material(rel, m).unwrap();
+        assert_eq!(s.undo_step().as_deref(), Some("Apply Preset Shiny"));
+        assert_eq!(s.assets.materials[rel].metallic, before.metallic);
+        s.redo_step();
+        assert_eq!(s.assets.materials[rel].metallic, 0.9);
     }
 }

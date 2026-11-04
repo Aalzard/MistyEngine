@@ -21,6 +21,7 @@ pub mod physics;
 pub mod physics2d;
 pub mod player_settings;
 pub mod prefs;
+pub mod preset;
 pub mod profiler;
 pub mod quality;
 pub mod render;

@@ -2371,3 +2371,69 @@ Record of choices made without asking, and why.
      before Save As pointed the scene back at its old file. Loading, unloading, removing and Close Others still
      clear the history (decision 484). Moving objects onto a scene header is named "Move Cube To Lighting" /
      "Move 3 Objects To Lighting"; history clears use `UndoStack::clear` so the step cap is kept.
+
+## 2026-11-04 — Round 10: Presets
+
+500. **`.preset` file format:** JSON `{ target, values, excluded }`. `target` is a component's registry name
+     ("Light", "Post-process Volume", …) or an asset kind (`Material`, `Texture Importer`); `values` is exactly
+     what the scene serializer writes for that component (or the asset's settings struct), so every
+     serialisable component works without per-type code and presets stay readable diffs. The engine side is
+     `misty_engine::preset`; the editor keeps every `.preset` under Assets in `AssetDatabase::presets`.
+501. **Applying sets every included field, not only the stored ones:** the scene serializer leaves many fields
+     out at their defaults (`skip_serializing_if`), so a stored preset without `halo` means "halo off". Applying
+     therefore writes the stored value of each included field and resets included fields the preset leaves out
+     to their default. Serde has no reflection, so the full field list comes from a tiny recording
+     `Serializer` (`preset::fields::names`) that notes the keys the derived `Serialize` reports through
+     `serialize_field` and `skip_field`; `registry::ComponentInfo` gains a `fields` fn built with it.
+502. **Exclusions are per top-level field:** one checkbox per field of the component (for a Post-process Volume,
+     per override: Fog, Clouds, Bloom…). Nested fields can't be excluded on their own — keeps the UI and the file
+     simple, like the reference editor's property exclusion at its coarsest.
+503. **The preset picker is a small floating window ("Select Preset")**, not a dropdown menu: it stays open so
+     presets can be compared, each pick is one undo step ("Apply Preset X") applied to every Inspector target
+     that has the component, and **None** puts back the values from when the window opened (one undo step,
+     "Revert X Preset"). Escape or ✕ closes it. The ⚙ button sits next to ⋮ in every component header, in the
+     material asset header and on the texture import page.
+504. **Save current to…** is a name field in the picker (default "<Type> Preset"); the file goes to
+     `Assets/Presets/<Name>.preset`, numbered when the name is taken. Texture presets untick `sprites` (slices
+     belong to one image).
+505. **The `.preset` Inspector uses one generic field editor** (`preset_fields.rs`) instead of reusing each
+     component's editor (those edit live scene objects through `EditorState`): checkboxes, numbers, text,
+     colour buttons for `*color*` / `*tint*` arrays, small vectors in a row, foldouts for nested structs and
+     lists. Enum fields get a dropdown whose variants are read from serde's "unknown variant …, expected one of
+     …" error, cached per field. Fields the preset leaves at their default show "Default". Edits save when they
+     deserialise as the target type; an invalid edit stays as an unsaved draft with the error shown.
+506. **Apply to Selection** on a component preset applies to the selected objects; because selecting objects
+     normally replaces the asset in the Inspector, the hint says to lock the Inspector first. Material and
+     texture presets instead pick the asset to apply to from a dropdown (written to its file right away).
+507. **Default presets** live in `ProjectSettings.default_presets` (type → preset path, left out of the file when
+     empty) and are applied on Add Component, GameObject ▸ Create (every component except the Transform the
+     Create command places), Reset (like the reference editor, Reset goes to the default preset when there is
+     one) and Assets ▸ Create ▸ Material. The type a Create menu item chose is kept (`preset::identity_fields`:
+     a Light's and a Water Surface's `kind`), so a point-light default doesn't turn Create ▸ Directional Light
+     into a point light. UI and Terrain creation (their own create paths) don't apply defaults yet. Texture
+     Importer presets have no default: there is no "new asset" moment for an imported image.
+508. **Project Settings ▸ Preset Manager** lists every type that has a preset in the project (plus types whose
+     default preset is missing, marked "(missing)") with a None / preset dropdown — no empty rows to fill in.
+     The preset Inspector also has a "Default for new … " checkbox for the same entry.
+509. **Asset presets are not scene undo steps:** material presets save the `.mat` right away (like any material
+     edit); texture presets change the unapplied import settings, so Revert / Apply on the texture page still
+     decide. Copy Component / Paste Component Values / Paste Component As New / Reset already existed
+     (`component_ops`) and act on every Inspector target; only Reset changed (default preset).
+510. **Sample presets** (`sample_presets.rs`, `SampleProject/Assets/Presets`): Warm Street Lamp (soft-shadowed
+     warm point light with a halo), Stormy Sky (Post-process Volume with only Clouds and Fog ticked, so applying
+     it keeps a volume's bloom or tonemapping), Bouncy (Sphere Collider with only Surface ticked: friction 0.15,
+     bounciness 0.9 — colliders own their physics surface, there is no physics material asset) and Pixel Art
+     (Sprite, 16 PPU, nearest filtering, no mipmaps).
+511. **Preset files write f32 values as their shortest decimal** (`0.9`, not `0.8999999761581421`): capturing
+     goes through `serde_json::to_value`, which widens f32 to f64, so `Preset::new` rounds every number that is
+     an exact f32 back to the f32's shortest form. Numbers that aren't exact f32s are left alone; a true f64
+     field that happens to hold an exact f32 would be rounded the same way (no component has f64 fields).
+512. **Preset button glyph is ⚙**, dimmed, left of ⋮: a sliders glyph (🎚) isn't in the editor's fonts (it drew
+     as a box). Its tooltip says "Presets for <type>"; `.preset` files use the same icon in the Project window.
+513. **Presets and undo (merge):** applying a preset to components ("Apply Preset Warm Street Lamp") and the
+     picker's None ("Revert Light Preset") were already single named steps. Picking a preset for a material
+     asset is now one too: `UndoStack::push_material` stores the material from before the pick, so Ctrl+Z puts
+     it back and the step shows in Undo History; None on a material is "Revert Material Preset". Texture import
+     presets only change the pending import settings (applied with the importer's Apply), so they are not steps.
+     Preset Manager stays between Physics and Tags and Layers in Project Settings (the list after Player,
+     Quality and Input is alphabetical, as in the familiar editor).

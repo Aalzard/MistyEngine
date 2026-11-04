@@ -1584,3 +1584,33 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Project Settings, texture import settings and build settings have no undo (saved immediately).
 - Steps are whole-scene snapshots (cheap for typical scenes; the memory estimate is approximate).
 - No "group" collapse of related steps in the window; a jump replays steps one by one.
+
+## Round 10: Presets ✅
+
+### Done
+- `.preset` assets (`misty_engine::preset`): a component type or asset kind (Material, Texture Importer) plus its
+  serialised values and a list of excluded fields. Applying sets every included field (fields the preset leaves
+  out reset to their defaults) and leaves excluded ones alone (decisions 500–502).
+- ⚙ preset button next to ⋮ in every component header (and on material and texture import Inspectors) opens the
+  Select Preset window: None (back to the values from when it opened), the project's matching presets, and
+  "Save current to…" (`Assets/Presets/<Name>.preset`). Picks apply to every Inspector target in one undo step.
+- `.preset` Inspector: what it targets, Apply to Selection (or to a chosen material / texture), "Default for new …",
+  and every field with an include checkbox and a generic editor (numbers, toggles, colours, vectors, enum
+  dropdowns, nested foldouts). Valid edits save right away.
+- Project Settings ▸ Preset Manager: default preset per type, applied on Add Component, GameObject ▸ Create,
+  Reset and Assets ▸ Create ▸ Material (a Light's type from the Create menu is kept).
+- Copy Component / Paste Component Values / Paste Component As New / Reset (existing) work across the selection;
+  Reset now goes to the default preset when there is one.
+- Sample presets (`sample_presets.rs`): Warm Street Lamp, Stormy Sky (clouds + fog only), Bouncy (sphere collider
+  surface only), Pixel Art (texture import settings).
+- Tests: engine round trip / defaults reset / exclusions / asset presets / field walker; editor apply to every
+  target + undo, None restore, default preset on add / create / reset / new material, enum discovery, sample
+  generator check and application.
+- Screenshots: docs/screenshots/round10/presets_picker_light.png, presets_inspector.png,
+  presets_manager.png.
+
+### Not matching Unity yet
+- Exclusions are per top-level field only; no filters in the Preset Manager (one default per type).
+- Defaults don't apply to UI elements or terrains made from the GameObject menu, nor to imported textures.
+- Material / texture preset applies aren't scene undo steps; the preset Inspector edits values generically (not
+  with each component's own editor) and can't turn a field that is at its default into a stored value.

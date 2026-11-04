@@ -40,6 +40,8 @@ pub struct AssetDatabase {
     pub clips: BTreeSet<String>,
     /// Project-relative paths of Audio Mixers (.mixer).
     pub mixers: BTreeSet<String>,
+    /// Project-relative path → preset (`.preset`).
+    pub presets: BTreeMap<String, misty_engine::preset::Preset>,
     /// Prefabs read so far, re-read when the file changes.
     prefabs: BTreeMap<String, CachedPrefab>,
     /// Project-relative texture paths (`.png`, `.jpg`).
@@ -67,6 +69,7 @@ impl AssetDatabase {
             mixers: BTreeSet::new(),
             anims: BTreeSet::new(),
             controllers: BTreeSet::new(),
+            presets: BTreeMap::new(),
             prefabs: BTreeMap::new(),
             textures: Vec::new(),
             shaders: Vec::new(),
@@ -84,6 +87,7 @@ impl AssetDatabase {
     /// Messages about imported or broken models go to [`Self::messages`].
     pub fn refresh(&mut self) {
         self.materials.clear();
+        self.presets.clear();
         self.clips.clear();
         self.mixers.clear();
         self.anims.clear();
@@ -104,6 +108,15 @@ impl AssetDatabase {
                     && let Ok(m) = Material::load(&path)
                 {
                     self.materials.insert(self.relative(&path), m);
+                } else if path.extension().is_some_and(|e| e == "preset") {
+                    match misty_engine::preset::Preset::load(&path) {
+                        Ok(p) => {
+                            self.presets.insert(self.relative(&path), p);
+                        }
+                        Err(e) => self
+                            .messages
+                            .push(format!("Could not read {}: {e}", self.relative(&path))),
+                    }
                 } else if path.extension().is_some_and(|e| e == "lua") {
                     let rel = self.relative(&path);
                     let meta = match old_scripts.get(&rel) {
@@ -292,6 +305,26 @@ impl AssetDatabase {
         let rel = self.relative(&path);
         self.materials.insert(rel.clone(), m);
         Ok(rel)
+    }
+
+    /// Presets whose target is `target` (component name or asset kind), by path.
+    pub fn presets_for(&self, target: &str) -> Vec<String> {
+        self.presets
+            .iter()
+            .filter(|(_, p)| p.target == target)
+            .map(|(rel, _)| rel.clone())
+            .collect()
+    }
+
+    /// Write a preset and update the cache.
+    pub fn save_preset(
+        &mut self,
+        rel: &str,
+        p: misty_engine::preset::Preset,
+    ) -> Result<(), String> {
+        p.save(&self.absolute(rel))?;
+        self.presets.insert(rel.to_owned(), p);
+        Ok(())
     }
 
     /// Store an edited material and write it to disk.

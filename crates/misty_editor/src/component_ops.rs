@@ -25,8 +25,10 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
                 && !targets.is_empty()
             {
                 s.record(&format!("Reset {name}"));
+                // Back to the Preset Manager's default preset, else the built-in defaults.
                 for e in targets {
                     (info.add_default)(&mut s.scene.world, e);
+                    crate::presets::apply_default(s, e, &name);
                 }
             }
         }

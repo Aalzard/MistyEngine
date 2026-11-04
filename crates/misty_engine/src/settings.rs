@@ -131,6 +131,9 @@ pub struct ProjectSettings {
     /// Quality levels.
     #[serde(skip_serializing_if = "is_default")]
     pub quality: crate::quality::QualitySettings,
+    /// Preset Manager: component or asset kind → preset applied when one is added or created.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub default_presets: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for ProjectSettings {
@@ -144,6 +147,7 @@ impl Default for ProjectSettings {
             sorting_layers: crate::sprites::sorting::default_layers(),
             player: None,
             quality: Default::default(),
+            default_presets: Default::default(),
         }
     }
 }

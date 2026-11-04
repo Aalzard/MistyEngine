@@ -8,6 +8,7 @@ mod console;
 mod game;
 mod hierarchy;
 mod inspector;
+pub use inspector::preset_window;
 mod lighting;
 mod lighting_hdri;
 pub mod navigation;
