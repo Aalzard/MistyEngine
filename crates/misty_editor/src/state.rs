@@ -151,7 +151,7 @@ pub struct SceneViewSettings {
     pub audio: bool,
     pub gizmos: bool,
     pub grid: bool,
-    /// The effects toggle (☁): skybox, fog and post-processing as picked in `effects`.
+    /// The effects toggle (☁): skybox, fog, clouds and post-processing as picked in `effects`.
     pub skybox: bool,
     /// Lock View to Selected: the camera pivot follows the selection.
     pub lock_to_selection: bool,
@@ -167,6 +167,8 @@ pub struct SceneViewSettings {
 pub struct SceneEffects {
     pub skybox: bool,
     pub fog: bool,
+    /// Volumetric clouds of the Post-process Volume.
+    pub clouds: bool,
     pub post_processing: bool,
 }
 
@@ -175,6 +177,7 @@ impl Default for SceneEffects {
         Self {
             skybox: true,
             fog: true,
+            clouds: true,
             post_processing: true,
         }
     }

@@ -30,7 +30,7 @@ impl CloudPreset {
             Self::Sparse => (0.32, 0.45, 0.35, 1500.0, 1600.0),
             Self::Cloudy => (0.5, 0.55, 0.45, 1400.0, 2200.0),
             Self::Overcast => (0.82, 0.6, 0.2, 1100.0, 2000.0),
-            Self::Stormy => (0.95, 1.0, 0.6, 700.0, 3800.0),
+            Self::Stormy => (0.86, 1.2, 0.6, 700.0, 4000.0),
         };
         o.coverage = coverage;
         o.density = density;

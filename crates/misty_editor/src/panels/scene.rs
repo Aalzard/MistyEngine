@@ -128,6 +128,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 FogSettings::default()
             };
             post.fog.debug = debug;
+            // Clouds follow their own toggle (drawn with the skybox).
+            post.clouds = if sv.skybox && fx.clouds {
+                volume.clouds
+            } else {
+                Default::default()
+            };
             // The AO debug view shows the AO term alone (no other effects).
             if sv.draw_mode == AO_DRAW_MODE {
                 post = ao_debug_post(&state.scene);
@@ -464,11 +470,18 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 let fx = &mut sv.effects;
                 ui.checkbox(&mut fx.skybox, "Skybox");
                 ui.checkbox(&mut fx.fog, "Fog");
+                ui.checkbox(&mut fx.clouds, "Clouds");
                 ui.checkbox(&mut fx.post_processing, "Post Processing");
             })
             .response
             .on_hover_text("Scene view effects");
-            if toggle_button(ui, sv.skybox, "☁", "Toggle skybox, fog and post-processing").clicked()
+            if toggle_button(
+                ui,
+                sv.skybox,
+                "☁",
+                "Toggle skybox, fog, clouds and post-processing",
+            )
+            .clicked()
             {
                 sv.skybox = !sv.skybox;
             }

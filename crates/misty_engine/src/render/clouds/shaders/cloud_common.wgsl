@@ -73,8 +73,8 @@ fn height_fraction(p: vec3<f32>) -> f32 {
 fn local_coverage(p: vec3<f32>) -> vec2<f32> {
     let w = textureSampleLevel(weather_map, repeat_linear, (p.xz + cl.wind.xy) / WEATHER_TILE, 0.0);
     let c = cl.shape.x;
-    let cov = clamp((w.r - 1.0 + c * 1.6) * 1.7, 0.0, 1.0);
-    return vec2<f32>(cov * smoothstep(0.0, 0.08, c), w.g);
+    let cov = clamp((w.r - 0.5) * 0.9 + c * 1.15 - 0.05, 0.0, 1.0);
+    return vec2<f32>(cov * smoothstep(0.0, 0.25, c), w.g);
 }
 
 // Vertical profile: rounded base, tops between half and full height depending on the type.

@@ -150,7 +150,7 @@ pub(super) fn march_uniform(m: &MarchInputs) -> MarchUniform {
         sun_dir: sun.extend(o.silver_lining.clamp(0.0, 1.0)).to_array(),
         sun_color: sun_color.extend(if has_sun { 1.0 } else { 0.0 }).to_array(),
         ambient_top: (zenith.lerp(horizon, 0.3) * ambient).extend(0.0).to_array(),
-        ambient_bottom: (horizon * 0.55 * ambient).extend(0.0).to_array(),
+        ambient_bottom: (horizon * 0.35 * ambient).extend(0.0).to_array(),
         haze: horizon.extend(HAZE_DISTANCE).to_array(),
         trace: [
             m.trace.0 as f32,

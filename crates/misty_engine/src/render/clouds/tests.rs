@@ -52,9 +52,11 @@ fn wind_and_layer() {
     assert!((north - Vec2::new(0.0, 1.0)).length() < 1e-6);
     let east = uniforms::wind_direction(90.0);
     assert!((east - Vec2::new(1.0, 0.0)).length() < 1e-6);
-    let mut o = CloudsOverride::default();
-    o.altitude = -5.0;
-    o.thickness = 1.0;
+    let mut o = CloudsOverride {
+        altitude: -5.0,
+        thickness: 1.0,
+        ..Default::default()
+    };
     assert_eq!(uniforms::layer(&o), (0.0, 50.0), "clamped to sane values");
     CloudPreset::Stormy.apply(&mut o);
     let (base, top) = uniforms::layer(&o);

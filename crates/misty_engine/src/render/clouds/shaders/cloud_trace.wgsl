@@ -50,7 +50,7 @@ fn sun_optical_depth(p: vec3<f32>, j: f32) -> f32 {
 }
 
 // Sun and sky light scattered towards the eye at a sample with extinction `sigma`.
-fn sample_light(p: vec3<f32>, h: f32, sigma: f32, cos_v: f32, j: f32) -> vec3<f32> {
+fn sample_light(p: vec3<f32>, h: f32, cov: f32, sigma: f32, cos_v: f32, j: f32) -> vec3<f32> {
     var sun = vec3<f32>(0.0);
     if (cl.sun_color.w > 0.5) {
         let od = sun_optical_depth(p, j);
@@ -60,14 +60,18 @@ fn sample_light(p: vec3<f32>, h: f32, sigma: f32, cos_v: f32, j: f32) -> vec3<f3
         for (var o = 0; o < 3; o++) {
             sun += a * cloud_phase(cos_v, f32(o)) * exp(-od * b);
             a *= 0.5;
-            b *= 0.4;
+            b *= 0.3;
         }
         // Darker, crisper edges facing the sun ("powder").
         let powder = 1.0 - exp(-sigma * 60.0);
         sun *= mix(1.0, powder, 0.5 * clamp(1.0 - cos_v, 0.0, 1.0)) * 2.0;
         sun *= cl.sun_color.rgb * PI_C;
     }
-    let ambient = mix(cl.ambient_bottom.rgb, cl.ambient_top.rgb, sqrt(h));
+    // Sky light is blocked by the cloud above: thick, dense, covered layers get dark bases,
+    // darkest in their densest pockets (structure under an overcast sheet).
+    let local = sigma / max(cl.shape.y, 1e-6);
+    let above = cl.shape.y * cov * (1.0 - h) * (cl.layer.z - cl.layer.y) * 0.02 * (0.4 + 1.2 * local);
+    let ambient = mix(cl.ambient_bottom.rgb, cl.ambient_top.rgb, sqrt(h)) / (1.0 + above * 0.5);
     return sun + ambient;
 }
 
@@ -113,7 +117,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             d *= 1.0 - smoothstep(cl.layer.w * 0.6, cl.layer.w, t);
             if (d > 0.002) {
                 let sigma = d * cl.shape.y;
-                let s = sample_light(p, h, sigma, cos_v, jl);
+                let s = sample_light(p, h, cov.x, sigma, cos_v, jl);
                 // Energy-conserving integration over the step.
                 let step_t = exp(-sigma * dt);
                 light += trans * s * (1.0 - step_t);
