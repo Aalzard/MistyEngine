@@ -1,17 +1,28 @@
 //! Project file operations: unique names, rename, move, duplicate, delete to the OS trash, and
 //! rewriting path references after a rename or move.
 //!
-//! Assets are referenced by project-relative path ("Assets/Materials/Red.mat"), so a rename or
-//! move rewrites every quoted occurrence of the old path (or of a moved folder's prefix) in the
-//! project's `.scene`, `.prefab` and `.mat` files and in `ProjectSettings/BuildSettings.json`.
-//! Text replacement keeps each file's formatting untouched.
+//! Every asset has a `.meta` sidecar holding its GUID; it moves, copies (with a new GUID) and is
+//! deleted with the asset. Files saved with a GUID table (see `misty_engine::asset_db::refs`)
+//! follow a rename on their next load, so a rename or move only rewrites the referencing files
+//! whose references to the old path are not all covered by GUIDs (older path-only files; this
+//! includes `ProjectSettings/BuildSettings.json`). Text replacement keeps each file's formatting untouched.
 
 use std::path::{Path, PathBuf};
 
+use misty_engine::asset_db::{Guid, meta, refs};
 use serde_json::Value;
 
 /// Files whose text can hold asset paths.
-const REFERENCING: [&str; 4] = ["scene", "prefab", "mat", "controller"];
+const REFERENCING: [&str; 8] = [
+    "scene",
+    "prefab",
+    "mat",
+    "controller",
+    "anim",
+    "mixer",
+    "terrain",
+    "biome",
+];
 const BUILD_SETTINGS: &str = "ProjectSettings/BuildSettings.json";
 
 /// "Assets/…" path of `abs` inside `root`, with forward slashes.
@@ -68,6 +79,7 @@ pub fn rename(from: &Path, new_stem: &str) -> Result<PathBuf, String> {
         return Err(format!("'{}' already exists.", file_name(&to)));
     }
     std::fs::rename(from, &to).map_err(|e| e.to_string())?;
+    move_meta(from, &to)?;
     Ok(to)
 }
 
@@ -84,6 +96,7 @@ pub fn move_into(from: &Path, folder: &Path) -> Result<PathBuf, String> {
         return Err(format!("'{}' already exists there.", file_name(&to)));
     }
     std::fs::rename(from, &to).map_err(|e| e.to_string())?;
+    move_meta(from, &to)?;
     Ok(to)
 }
 
@@ -105,13 +118,15 @@ pub fn duplicate(from: &Path) -> Result<PathBuf, String> {
     };
     let to = unique_path(dir, strip_number(&stem), &ext);
     copy_all(from, &to).map_err(|e| e.to_string())?;
+    copy_meta(from, &to)?;
     Ok(to)
 }
 
-/// Move files or folders to the OS recycle bin / trash (never a permanent delete).
+/// Move files or folders to the OS recycle bin / trash (never a permanent delete), with their
+/// `.meta` files.
 #[cfg(not(test))]
 pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
-    trash::delete_all(paths).map_err(|e| e.to_string())
+    trash::delete_all(with_metas(paths)).map_err(|e| e.to_string())
 }
 
 /// Tests move "deleted" files into a temp folder instead of filling the user's Recycle Bin.
@@ -119,12 +134,60 @@ pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
 pub fn delete_to_trash(paths: &[PathBuf]) -> Result<(), String> {
     let bin = std::env::temp_dir().join("misty_test_trash");
     std::fs::create_dir_all(&bin).map_err(|e| e.to_string())?;
-    for p in paths {
+    for p in with_metas(paths) {
         let name = p.file_name().ok_or("no file name")?.to_string_lossy();
         let to = unique_path(&bin, &name, "");
-        std::fs::rename(p, to).map_err(|e| e.to_string())?;
+        std::fs::rename(&p, to).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// `paths` plus the meta files next to them.
+fn with_metas(paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = paths.to_vec();
+    out.extend(
+        paths
+            .iter()
+            .map(|p| meta::meta_path(p))
+            .filter(|m| m.is_file()),
+    );
+    out
+}
+
+/// Move the meta file of `from` along with it.
+fn move_meta(from: &Path, to: &Path) -> Result<(), String> {
+    let m = meta::meta_path(from);
+    if !m.is_file() {
+        return Ok(());
+    }
+    std::fs::rename(&m, meta::meta_path(to)).map_err(|e| format!("{}: {e}", m.display()))
+}
+
+/// A copy keeps the import settings of `from` but gets new GUIDs (for a folder, everything in it).
+fn copy_meta(from: &Path, to: &Path) -> Result<(), String> {
+    let m = meta::meta_path(from);
+    if m.is_file() {
+        std::fs::copy(&m, meta::meta_path(to)).map_err(|e| format!("{}: {e}", m.display()))?;
+    }
+    let mut metas = vec![meta::meta_path(to)];
+    if to.is_dir() {
+        collect_metas(to, &mut metas);
+    }
+    for m in metas.into_iter().filter(|m| m.is_file()) {
+        meta::write_guid(&m.with_extension(""), Guid::new())?;
+    }
+    Ok(())
+}
+
+fn collect_metas(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_metas(&path, out);
+        } else if meta::is_meta(&path) {
+            out.push(path);
+        }
+    }
 }
 
 /// `path` after renaming/moving `old` to `new` (a file, or a folder and everything in it).
@@ -157,21 +220,44 @@ pub fn rewrite_value(v: &mut Value, old: &str, new: &str) -> bool {
     }
 }
 
-/// Replace quoted occurrences of `old` (and `old/…`) in JSON text.
+/// Every reference to `old` (or inside it) in the JSON `text` has a GUID in the file's table,
+/// so loading the file follows the move without rewriting it.
+pub fn covered_by_guids(text: &str, old: &str) -> bool {
+    let Ok(v) = serde_json::from_str::<Value>(text) else {
+        return false;
+    };
+    let table = refs::table(&v);
+    let mut strings = Vec::new();
+    refs::strings(&v, &mut strings);
+    !table.is_empty()
+        && strings
+            .into_iter()
+            .filter_map(refs::asset_path)
+            .filter(|p| remap(p, old, "").is_some())
+            .all(|p| table.contains_key(p))
+}
+
+/// Replace quoted occurrences of `old` (and `old/…`, `old#sub-asset`) in JSON text.
 pub fn rewrite_text(text: &str, old: &str, new: &str) -> Option<String> {
     let exact = (format!("\"{old}\""), format!("\"{new}\""));
     let prefix = (format!("\"{old}/"), format!("\"{new}/"));
-    if !text.contains(&exact.0) && !text.contains(&prefix.0) {
+    let sub = (format!("\"{old}#"), format!("\"{new}#"));
+    if ![&exact, &prefix, &sub]
+        .iter()
+        .any(|(o, _)| text.contains(o.as_str()))
+    {
         return None;
     }
     Some(
         text.replace(&exact.0, &exact.1)
-            .replace(&prefix.0, &prefix.1),
+            .replace(&prefix.0, &prefix.1)
+            .replace(&sub.0, &sub.1),
     )
 }
 
-/// Rewrite references to `old` in every referencing file of the project at `root`.
-/// Returns the project-relative paths of the files that changed.
+/// Rewrite references to `old` in every referencing file of the project at `root`, skipping
+/// files whose references are all covered by GUIDs. Returns the project-relative paths of the
+/// files that changed.
 pub fn rewrite_references(root: &Path, old: &str, new: &str) -> Result<Vec<String>, String> {
     let mut files = vec![root.join(BUILD_SETTINGS)];
     collect(&root.join("Assets"), &mut files);
@@ -180,6 +266,9 @@ pub fn rewrite_references(root: &Path, old: &str, new: &str) -> Result<Vec<Strin
         let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
         };
+        if covered_by_guids(&text, old) {
+            continue;
+        }
         if let Some(updated) = rewrite_text(&text, old, new) {
             std::fs::write(&path, updated).map_err(|e| format!("{}: {e}", path.display()))?;
             changed.push(rel(root, &path));
@@ -325,6 +414,68 @@ mod tests {
 
         let changed = rewrite_references(&root, "Assets/Level.scene", "Assets/Main.scene").unwrap();
         assert_eq!(changed, [BUILD_SETTINGS]);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn metas_move_copy_and_delete_with_their_assets() {
+        let root = temp("metas");
+        let a = root.join("Assets");
+        std::fs::write(a.join("Red.mat"), "{}").unwrap();
+        let (db, _) = misty_engine::asset_db::GuidDatabase::scan(&root);
+        let red = db.guid_of("Assets/Red.mat").unwrap();
+
+        let renamed = rename(&a.join("Red.mat"), "Crimson").unwrap();
+        assert_eq!(meta::read_guid(&renamed), Some(red), "the meta moves along");
+        assert!(!a.join("Red.mat.meta").exists());
+        let folder = a.join("Mats");
+        std::fs::create_dir(&folder).unwrap();
+        let moved = move_into(&renamed, &folder).unwrap();
+        assert_eq!(meta::read_guid(&moved), Some(red));
+
+        let copy = duplicate(&moved).unwrap();
+        let copied = meta::read_guid(&copy).unwrap();
+        assert_ne!(copied, red, "a copy gets its own GUID");
+        let folder_copy = duplicate(&folder).unwrap();
+        let inner = meta::read_guid(&folder_copy.join("Crimson.mat")).unwrap();
+        assert!(inner != red && inner != copied);
+
+        delete_to_trash(std::slice::from_ref(&copy)).unwrap();
+        assert!(!copy.exists() && !meta::meta_path(&copy).exists());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// Files saved with GUIDs are left alone by a rename; path-only files are rewritten.
+    #[test]
+    fn renames_skip_files_whose_references_have_guids() {
+        let root = temp("covered");
+        let a = root.join("Assets");
+        let g = Guid::new();
+        let with = format!(
+            "{{
+  \"m\": \"Assets/Red.mat\",
+  \"asset_guids\": {{ \"Assets/Red.mat\": \"{g}\" }}
+}}"
+        );
+        std::fs::write(a.join("New.scene"), &with).unwrap();
+        std::fs::write(
+            a.join("Old.scene"),
+            r#"{"m":"Assets/Red.mat","s":"Assets/Red.mat#0"}"#,
+        )
+        .unwrap();
+        assert!(covered_by_guids(&with, "Assets/Red.mat"));
+        assert!(!covered_by_guids(
+            &with.replace("asset_guids", "x"),
+            "Assets/Red.mat"
+        ));
+        let changed = rewrite_references(&root, "Assets/Red.mat", "Assets/Crimson.mat").unwrap();
+        assert_eq!(changed, ["Assets/Old.scene"]);
+        assert_eq!(std::fs::read_to_string(a.join("New.scene")).unwrap(), with);
+        assert_eq!(
+            std::fs::read_to_string(a.join("Old.scene")).unwrap(),
+            r#"{"m":"Assets/Crimson.mat","s":"Assets/Crimson.mat#0"}"#,
+            "sub-asset references are rewritten too"
+        );
         std::fs::remove_dir_all(root).ok();
     }
 }

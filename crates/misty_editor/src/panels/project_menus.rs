@@ -70,10 +70,21 @@ pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Reques
         ui.close();
     }
     if ui.button("Delete").clicked() {
-        req.delete = Some(p);
+        req.delete = Some(p.clone());
         ui.close();
     }
     ui.separator();
+    if path.is_file() {
+        if ui.button("Reimport").clicked() {
+            req.actions.push(Action::ReimportAsset(p.clone()));
+            ui.close();
+        }
+        if ui.button("Find References In Scene").clicked() {
+            req.actions.push(Action::FindReferencesInScene(p));
+            ui.close();
+        }
+        ui.separator();
+    }
     if let Some(rel) = rel
         && ui.button("Copy Path").clicked()
     {

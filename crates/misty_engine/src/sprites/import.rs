@@ -203,9 +203,7 @@ impl TextureImporter {
 
     /// Where the settings of `image` live.
     pub fn meta_path(image: &Path) -> PathBuf {
-        let mut name = image.as_os_str().to_owned();
-        name.push(".meta");
-        PathBuf::from(name)
+        crate::asset_db::meta::meta_path(image)
     }
 
     /// Settings of `image` (defaults when there is no `.meta` file or it can't be read).
@@ -221,9 +219,9 @@ impl TextureImporter {
         Ok(s)
     }
 
+    /// Write the settings into the `.meta` file, keeping the GUID already there.
     pub fn save(&self, image: &Path) -> Result<(), String> {
-        let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(Self::meta_path(image), text + "\n").map_err(|e| e.to_string())
+        crate::asset_db::meta::write_settings(image, self)
     }
 
     /// Keep values usable (positive PPU, pivots and rects finite).

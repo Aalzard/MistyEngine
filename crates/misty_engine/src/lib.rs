@@ -4,6 +4,7 @@
 //! +X right. Euler angles are degrees applied in Z, X, Y order.
 
 pub mod animation;
+pub mod asset_db;
 pub mod asset_deps;
 pub mod assets;
 pub mod audio;

@@ -53,6 +53,8 @@ pub struct AssetDatabase {
     /// Import messages for the Console (drained by the editor).
     pub messages: Vec<String>,
     last_poll: Option<std::time::Instant>,
+    /// Last check of the GUID map against the Assets folder.
+    last_guid_poll: Option<std::time::Instant>,
 }
 
 impl AssetDatabase {
@@ -74,6 +76,7 @@ impl AssetDatabase {
             models: BTreeMap::new(),
             messages: Vec::new(),
             last_poll: None,
+            last_guid_poll: None,
         };
         db.refresh();
         db
@@ -83,6 +86,10 @@ impl AssetDatabase {
     /// New models get their materials extracted (once) as `.mat` files next to them.
     /// Messages about imported or broken models go to [`Self::messages`].
     pub fn refresh(&mut self) {
+        // Keep the GUID map in step: new assets get meta files, copies get new GUIDs.
+        if let Some(report) = misty_engine::asset_db::rescan() {
+            self.note_guids(report);
+        }
         self.materials.clear();
         self.clips.clear();
         self.mixers.clear();
@@ -211,6 +218,41 @@ impl AssetDatabase {
             }
         }
         errors
+    }
+
+    /// GUID file watcher (at most every 2 s): rescan when assets appeared or vanished outside
+    /// the editor. Returns true when it did (the caller refreshes the Project window).
+    pub fn poll_guids(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        if self
+            .last_guid_poll
+            .is_some_and(|t| now.duration_since(t).as_secs_f32() < 2.0)
+        {
+            return false;
+        }
+        self.last_guid_poll = Some(now);
+        match misty_engine::asset_db::poll() {
+            Some(report) => {
+                self.note_guids(report);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Console messages for copies that got a new GUID and unreadable meta files.
+    pub fn note_guids(&mut self, report: misty_engine::asset_db::ScanReport) {
+        for rel in report.reassigned {
+            self.messages.push(format!(
+                "{rel} shared another asset's GUID; it was given a new one"
+            ));
+        }
+        self.messages.extend(report.errors);
+    }
+
+    /// Drop cached prefabs (read again on next use).
+    pub fn forget_prefabs(&mut self) {
+        self.prefabs.clear();
     }
 
     /// Create a new script from the template in `folder`; returns its relative path.

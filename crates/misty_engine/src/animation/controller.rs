@@ -299,7 +299,8 @@ impl AnimatorController {
     }
 
     pub fn from_json(text: &str) -> Result<Self, String> {
-        let mut c: Self = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let mut c: Self = serde_json::from_str(&crate::asset_db::resolve_json(text))
+            .map_err(|e| e.to_string())?;
         c.sanitize();
         Ok(c)
     }
@@ -312,7 +313,8 @@ impl AnimatorController {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, self.to_json()).map_err(|e| format!("{}: {e}", path.display()))
+        std::fs::write(path, crate::asset_db::embed_json(&self.to_json()))
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// Fix what a hand-edited file may get wrong: a missing default state, dangling transitions.

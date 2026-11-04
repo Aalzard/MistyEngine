@@ -124,7 +124,7 @@ pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         ui.label(RichText::new(CLIP_ICON).size(22.0));
         ui.label(RichText::new(format!("{} (Animation Clip)", clip_name(rel))).strong());
     });
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    crate::asset_guids::path_label(ui, rel);
     ui.separator();
     let clip = match state.anim_clips.get(rel) {
         Ok(c) => c.clone(),

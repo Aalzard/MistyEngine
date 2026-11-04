@@ -35,7 +35,7 @@ pub fn mixer_asset(ui: &mut Ui, s: &mut EditorState, rel: &str) {
         ui.label(RichText::new(MIXER_ICON).size(22.0));
         ui.label(RichText::new(format!("{} (Audio Mixer)", clip_name(rel))).strong());
     });
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    crate::asset_guids::path_label(ui, rel);
     ui.separator();
     Grid::new("mixer_summary").num_columns(2).show(ui, |ui| {
         ui.label("Groups");

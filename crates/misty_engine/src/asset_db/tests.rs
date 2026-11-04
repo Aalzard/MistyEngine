@@ -1,0 +1,177 @@
+use std::path::{Path, PathBuf};
+
+use super::*;
+
+fn temp(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("misty_guids_{tag}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("Assets")).unwrap();
+    dir
+}
+
+fn write(root: &Path, rel: &str, text: &str) {
+    let p = root.join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, text).unwrap();
+}
+
+#[test]
+fn guids_are_random_hex_and_parse_back() {
+    let (a, b) = (Guid::new(), Guid::new());
+    assert_ne!(a, b);
+    let s = a.to_string();
+    assert_eq!(s.len(), 32);
+    assert_eq!(s.parse::<Guid>().unwrap(), a);
+    assert_eq!(s.to_uppercase().parse::<Guid>().unwrap(), a);
+    assert!("xyz".parse::<Guid>().is_err());
+    assert!("0".repeat(32).parse::<Guid>().is_err());
+}
+
+#[test]
+fn guid_goes_first_and_other_settings_keep_their_order() {
+    let g: Guid = "0123456789abcdef0123456789abcdef".parse().unwrap();
+    let old = "{\n  \"texture_type\": \"Sprite\",\n  \"filter_mode\": \"Point\"\n}\n";
+    let text = meta::with_guid(old, g).unwrap();
+    assert_eq!(
+        text,
+        "{\n  \"guid\": \"0123456789abcdef0123456789abcdef\",\n  \"texture_type\": \"Sprite\",\n  \"filter_mode\": \"Point\"\n}\n"
+    );
+    assert_eq!(meta::guid_in(&text), Some(g));
+    // Replacing keeps everything else byte for byte.
+    let h = Guid::new();
+    let again = meta::with_guid(&text, h).unwrap();
+    assert_eq!(again, text.replace(&g.to_string(), &h.to_string()));
+    assert_eq!(
+        meta::with_guid("{}", g).unwrap(),
+        meta::compose(g, &Default::default())
+    );
+    assert!(meta::with_guid("not json", g).is_none());
+}
+
+#[test]
+fn scan_creates_metas_for_files_and_folders_and_splits_copies() {
+    let root = temp("scan");
+    write(&root, "Assets/Mats/Red.mat", "{}");
+    write(&root, "Assets/Tex/A.png", "png");
+    write(
+        &root,
+        "Assets/Tex/A.png.meta",
+        "{\n  \"texture_type\": \"Sprite\"\n}\n",
+    );
+    let (db, report) = GuidDatabase::scan(&root);
+    assert_eq!(
+        report.created,
+        [
+            "Assets/Mats",
+            "Assets/Mats/Red.mat",
+            "Assets/Tex",
+            "Assets/Tex/A.png"
+        ]
+    );
+    assert!(root.join("Assets/Mats.meta").is_file(), "folders get metas");
+    let tex = std::fs::read_to_string(root.join("Assets/Tex/A.png.meta")).unwrap();
+    assert!(
+        tex.contains("\"texture_type\": \"Sprite\""),
+        "settings kept: {tex}"
+    );
+    let red = db.guid_of("Assets/Mats/Red.mat").unwrap();
+    assert_eq!(db.path_of(red), Some("Assets/Mats/Red.mat"));
+
+    // A second scan changes nothing; a read-only load sees the same map.
+    let (again, report) = GuidDatabase::scan(&root);
+    assert_eq!(report, ScanReport::default());
+    assert_eq!(again.to_map(), db.to_map());
+    assert_eq!(GuidDatabase::read(&root).to_map(), db.to_map());
+
+    // A copy made outside the editor (file and meta) gets a new GUID; the original keeps its own.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    std::fs::copy(
+        root.join("Assets/Mats/Red.mat"),
+        root.join("Assets/Mats/Red 1.mat"),
+    )
+    .unwrap();
+    std::fs::copy(
+        root.join("Assets/Mats/Red.mat.meta"),
+        root.join("Assets/Mats/Red 1.mat.meta"),
+    )
+    .unwrap();
+    let (db, report) = GuidDatabase::scan(&root);
+    assert_eq!(report.reassigned, ["Assets/Mats/Red 1.mat"]);
+    assert_eq!(db.guid_of("Assets/Mats/Red.mat"), Some(red));
+    assert_ne!(db.guid_of("Assets/Mats/Red 1.mat"), Some(red));
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn moves_and_removals_follow_folders() {
+    let mut db = GuidDatabase::new(Path::new("p"));
+    let (a, b, c) = (Guid::new(), Guid::new(), Guid::new());
+    db.insert("Assets/M", a);
+    db.insert("Assets/M/Red.mat", b);
+    db.insert("Assets/M2.mat", c);
+    db.moved("Assets/M", "Assets/Materials");
+    assert_eq!(db.path_of(b), Some("Assets/Materials/Red.mat"));
+    assert_eq!(db.path_of(a), Some("Assets/Materials"));
+    assert_eq!(
+        db.path_of(c),
+        Some("Assets/M2.mat"),
+        "a sibling with the same prefix"
+    );
+    db.remove("Assets/Materials");
+    assert_eq!(db.len(), 1);
+    assert_eq!(db.guid_of("Assets/Materials/Red.mat"), None);
+}
+
+#[test]
+fn references_embed_and_resolve_after_a_rename() {
+    let mut db = GuidDatabase::new(Path::new("p"));
+    let (red, ramp) = (Guid::new(), Guid::new());
+    db.insert("Assets/Red.mat", red);
+    db.insert("Assets/Ramp.obj", ramp);
+    let text = "{\n  \"material\": \"Assets/Red.mat\",\n  \"mesh\": \"Assets/Ramp.obj#0\",\n  \"gone\": \"Assets/Missing.png\"\n}\n";
+    let saved = refs::embed(&db, text);
+    assert!(saved.starts_with(text.trim_end().trim_end_matches('}').trim_end()));
+    assert!(saved.ends_with("\n}\n"), "{saved}");
+    let v: serde_json::Value = serde_json::from_str(&saved).unwrap();
+    assert_eq!(refs::table(&v).len(), 2, "unknown paths get no GUID");
+    assert_eq!(
+        refs::embed(&db, &saved),
+        saved,
+        "embedding twice is a no-op"
+    );
+    assert_eq!(refs::embed(&GuidDatabase::default(), text), text);
+
+    // Not moved: same values, table dropped.
+    let same: serde_json::Value = serde_json::from_str(&refs::resolve(&db, &saved)).unwrap();
+    assert_eq!(same["material"], "Assets/Red.mat");
+    assert!(same.get(refs::KEY).is_none());
+
+    // Renamed and moved: the GUID wins over the stale path, sub-assets keep their suffix.
+    db.moved("Assets/Red.mat", "Assets/Materials/Crimson.mat");
+    db.moved("Assets/Ramp.obj", "Assets/Models/Ramp.obj");
+    let v: serde_json::Value = serde_json::from_str(&refs::resolve(&db, &saved)).unwrap();
+    assert_eq!(v["material"], "Assets/Materials/Crimson.mat");
+    assert_eq!(v["mesh"], "Assets/Models/Ramp.obj#0");
+    assert_eq!(v["gone"], "Assets/Missing.png");
+
+    // Unknown GUID (other project): the path is the fallback.
+    let v: serde_json::Value =
+        serde_json::from_str(&refs::resolve(&GuidDatabase::default(), &saved)).unwrap();
+    assert_eq!(v["material"], "Assets/Red.mat");
+    // Old files without a table are untouched.
+    assert!(matches!(refs::resolve(&db, text), Cow::Borrowed(_)));
+}
+
+#[test]
+fn settings_writes_keep_the_guid() {
+    let root = temp("settings");
+    write(&root, "Assets/A.png", "png");
+    let (db, _) = GuidDatabase::scan(&root);
+    let g = db.guid_of("Assets/A.png").unwrap();
+    let image = root.join("Assets/A.png");
+    meta::write_settings(&image, &serde_json::json!({ "srgb": false })).unwrap();
+    assert_eq!(meta::read_guid(&image), Some(g));
+    let text = std::fs::read_to_string(meta::meta_path(&image)).unwrap();
+    assert!(text.contains("\"srgb\": false"), "{text}");
+    std::fs::remove_dir_all(root).ok();
+}

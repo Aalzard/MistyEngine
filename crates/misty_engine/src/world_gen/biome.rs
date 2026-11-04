@@ -216,7 +216,8 @@ impl Biome {
 
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+        serde_json::from_str(&crate::asset_db::resolve_json(&text))
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
@@ -224,6 +225,7 @@ impl Biome {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        let text = crate::asset_db::embed_json(&text);
         std::fs::write(path, text).map_err(|e| e.to_string())
     }
 }
