@@ -3,12 +3,13 @@
 
 use glam::Vec3;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::audio::Audio;
+use crate::build::{BuildSettings, SceneRef};
 use crate::physics::Physics;
 use crate::profiler::Category;
-use crate::scene::Scene;
+use crate::scene::{Scene, SceneId};
 use crate::scripting::{Input, LogKind, Request, ScriptHost};
 use crate::settings::{ProjectSettings, TimeSettings};
 
@@ -120,6 +121,64 @@ impl Runtime {
         crate::profile_scope!("ParticleSystem.Update", Category::Others);
         let (gravity, _) = self.host.physics_config();
         crate::particles::update(scene, time.delta, gravity);
+    }
+
+    /// Add a scene file's objects as another loaded scene and start them (bodies, `Awake`).
+    pub fn load_scene_additive(
+        &mut self,
+        scene: &mut Scene,
+        rel: &str,
+        text: &str,
+    ) -> Result<SceneId, String> {
+        let (id, roots, report) = scene.load_additive(rel, text)?;
+        let warnings = report.warnings.into_iter().map(|w| format!("{rel}: {w}"));
+        self.pending.extend(warnings);
+        self.host.add_objects(scene, &roots);
+        Ok(id)
+    }
+
+    /// Remove a loaded scene and its objects (scripts and bodies go with them).
+    pub fn unload_scene(&mut self, scene: &mut Scene, id: SceneId) -> Result<(), String> {
+        if !scene.loaded_scenes().contains(&id) {
+            return Err(format!("'{}' is not loaded", scene.scene_name(id)));
+        }
+        if scene.loaded_scenes().len() <= 1 {
+            return Err("the last loaded scene can't be unloaded".into());
+        }
+        let roots = scene.roots_in(id);
+        self.host.remove_objects(scene, &roots);
+        scene.remove_scene(id)
+    }
+
+    /// Carry out a script's `LoadScene(…, Additive)` or `UnloadSceneAsync(…)` (scenes come
+    /// from the Build Settings list; files are read from `root`, or the game's pak).
+    pub fn apply_scene_request(
+        &mut self,
+        scene: &mut Scene,
+        build: &BuildSettings,
+        root: &Path,
+        request: &Request,
+    ) -> Result<(), String> {
+        match request {
+            Request::LoadSceneAdditive(which) => {
+                let (rel, _) = build.resolve(which)?;
+                let text = crate::vfs::read_to_string(&root.join(&rel))
+                    .map_err(|e| format!("{rel}: {e}"))?;
+                self.load_scene_additive(scene, &rel, &text).map(|_| ())
+            }
+            Request::UnloadScene(which) => {
+                let id = match which {
+                    SceneRef::Name(name) => scene.find_loaded(name),
+                    SceneRef::Index(_) => build
+                        .resolve(which)
+                        .ok()
+                        .and_then(|(rel, _)| scene.find_loaded(&rel)),
+                };
+                let id = id.ok_or_else(|| format!("UnloadSceneAsync: {which} is not loaded"))?;
+                self.unload_scene(scene, id)
+            }
+            _ => Ok(()),
+        }
     }
 
     /// Live Animator state of `e` (current state, cross-fade, parameter values).

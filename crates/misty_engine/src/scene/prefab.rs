@@ -200,10 +200,12 @@ impl Scene {
         let index = self.sibling_index(root);
         let mine = Prefab::from_scene(self, root);
         let link = self.prefab_link(root);
+        let scene = self.scene_of(root);
         let fresh = prefab.clone().with_root_of(&mine);
         self.despawn(root);
         let mut report = LoadReport::default();
         let new_root = self.spawn_entries(fresh.objects, parent, &mut report)[0];
+        self.set_scene_of_subtree(new_root, scene);
         self.set_parent(new_root, parent, Some(index), false);
         if let Some(path) = link {
             self.link_prefab(new_root, &path);

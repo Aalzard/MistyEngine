@@ -16,7 +16,6 @@ use mlua::{
 
 use super::particles_api::LParticleSystem;
 use super::{LogKind, Request, World};
-use crate::build::SceneRef;
 use crate::camera::{euler_to_quat, quat_to_euler};
 use crate::scene::prefab::Prefab;
 use crate::scene::{Animation, AudioSource, ParticleSystem, Rigidbody};
@@ -833,34 +832,8 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
 
-    // SceneManager / Application: requests handled after the frame.
-    let scenes = lua.create_table()?;
-    scenes.set(
-        "LoadScene",
-        lua.create_function(|lua, v: Value| {
-            let scene = match v {
-                Value::Integer(i) => SceneRef::Index(i),
-                Value::Number(n) if n.fract() == 0.0 => SceneRef::Index(n as i64),
-                Value::String(s) => SceneRef::Name(s.to_string_lossy()),
-                _ => {
-                    return Err(mlua::Error::runtime(
-                        "LoadScene expects a scene name or build index",
-                    ));
-                }
-            };
-            with_world(lua, |w| w.requests.push(Request::LoadScene(scene)))
-        })?,
-    )?;
-    scenes.set(
-        "GetActiveScene",
-        lua.create_function(|lua, ()| {
-            let name = with_world(lua, |w| w.scene.name.clone())?;
-            let t = lua.create_table()?;
-            t.set("name", name)?;
-            Ok(t)
-        })?,
-    )?;
-    g.set("SceneManager", scenes)?;
+    // SceneManager / Application: loads are requests handled after the frame.
+    super::scene_api::register(lua, &g)?;
     let app = lua.create_table()?;
     app.set(
         "Quit",

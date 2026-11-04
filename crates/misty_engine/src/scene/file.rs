@@ -127,6 +127,55 @@ fn remap_refs(
     }
 }
 
+/// Every object reference held by `e`'s components: (component name, target).
+pub(super) fn object_refs(world: &hecs::World, e: Entity) -> Vec<(&'static str, Entity)> {
+    let found = std::cell::RefCell::new(Vec::new());
+    let mut names: Vec<&'static str> = all_refs().map(|r| r.0).collect();
+    names.dedup();
+    for name in names {
+        let Some(value) = registry::find(name).and_then(|info| (info.to_json)(world, e)) else {
+            continue;
+        };
+        let mut one = BTreeMap::from([(name.to_owned(), value)]);
+        remap_refs(&mut one, |bits| {
+            if let Some(target) = Entity::from_bits(bits) {
+                found.borrow_mut().push((name, target));
+            }
+            Some(bits)
+        });
+    }
+    found.into_inner()
+}
+
+/// The parts of a `.scene` file, with lighting / navigation already read.
+pub(super) struct SceneParts {
+    pub lighting: RenderSettings,
+    pub navigation: NavigationSettings,
+    pub objects: Vec<ObjectEntry>,
+}
+
+/// Parse `.scene` JSON into its parts (bad settings blocks only warn).
+pub(super) fn read_scene_parts(text: &str) -> Result<(SceneParts, LoadReport), String> {
+    let file = read_file(text, "scene")?;
+    let mut report = LoadReport::default();
+    let lighting = read_lighting(file.lighting, &mut report);
+    let navigation = match file.navigation {
+        Some(v) => serde_json::from_value(v).unwrap_or_else(|e| {
+            report
+                .warnings
+                .push(format!("navigation settings: {e}; using defaults"));
+            NavigationSettings::default()
+        }),
+        None => NavigationSettings::default(),
+    };
+    let parts = SceneParts {
+        lighting,
+        navigation,
+        objects: file.objects,
+    };
+    Ok((parts, report))
+}
+
 /// Point references of a copied object at the copies in `map` (others stay as they are).
 pub(super) fn remap_copied_refs(
     world: &mut hecs::World,
@@ -203,11 +252,16 @@ fn read_lighting(value: Option<serde_json::Value>, report: &mut LoadReport) -> R
 impl Scene {
     /// Object entries for every scene object, or only `root` and its children.
     pub(super) fn entries(&self, root: Option<Entity>) -> Vec<ObjectEntry> {
+        self.entries_where(|e| root.is_none_or(|r| self.is_ancestor(r, e)))
+    }
+
+    /// Object entries for the objects `keep` accepts (whole subtrees, in Hierarchy order).
+    pub(super) fn entries_where(&self, keep: impl Fn(Entity) -> bool) -> Vec<ObjectEntry> {
         let order: Vec<Entity> = self
             .walk()
             .into_iter()
             .map(|(e, _)| e)
-            .filter(|e| root.is_none_or(|r| self.is_ancestor(r, *e)))
+            .filter(|e| keep(*e))
             .collect();
         let index: BTreeMap<Entity, usize> =
             order.iter().enumerate().map(|(i, e)| (*e, i)).collect();
@@ -243,9 +297,15 @@ impl Scene {
         report: &mut LoadReport,
     ) -> Vec<Entity> {
         // Spawn first so object references (by index) can point forward.
+        let scene = self.spawn_target();
         let all: Vec<Entity> = objects
             .iter()
-            .map(|_| self.world.spawn((Node::default(),)))
+            .map(|_| {
+                self.world.spawn((Node {
+                    scene,
+                    ..Default::default()
+                },))
+            })
             .collect();
         let mut entities: Vec<Entity> = Vec::with_capacity(objects.len());
         for (i, mut obj) in objects.into_iter().enumerate() {
@@ -297,19 +357,11 @@ impl Scene {
 
     /// Parse `.scene` JSON. Unknown components are skipped with a warning.
     pub fn from_json(name: &str, text: &str) -> Result<(Scene, LoadReport), String> {
-        let file = read_file(text, "scene")?;
+        let (parts, mut report) = read_scene_parts(text)?;
         let mut scene = Scene::new(name);
-        let mut report = LoadReport::default();
-        scene.render_settings = read_lighting(file.lighting, &mut report);
-        if let Some(v) = file.navigation {
-            scene.navigation = serde_json::from_value(v).unwrap_or_else(|e| {
-                report
-                    .warnings
-                    .push(format!("navigation settings: {e}; using defaults"));
-                NavigationSettings::default()
-            });
-        }
-        scene.spawn_entries(file.objects, None, &mut report);
+        scene.render_settings = parts.lighting;
+        scene.navigation = parts.navigation;
+        scene.spawn_entries(parts.objects, None, &mut report);
         Ok((scene, report))
     }
 
