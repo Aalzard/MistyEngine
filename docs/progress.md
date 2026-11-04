@@ -1898,3 +1898,25 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Merged `v001-updater` (decisions renumbered 595–603): GitHub Releases check, green Update pill, verified
   self-replace with rollback, Help ▸ Check for Updates….
 - The Hub shows the Update pill and windows too; one updater is passed Hub → editor → Hub (decision 604).
+
+## v0.0.1: license, README and the release package ✅
+
+### Done
+- LICENSE (GPL-3.0 text) + RUNTIME-EXCEPTION.md (games built with Misty Engine may use any license); Cargo
+  `license-file`; Help ▸ About license line; GitHub-facing README.md.
+- `tools/make_release.ps1` makes `MistyEngine-v0.0.1-windows-x64\` (MistyEngine.exe, misty_player.exe,
+  Examples\SampleProject from git HEAD, README.txt, CHANGELOG.txt, LICENSE.txt), the zip and its `.sha256.txt`;
+  docs/release.md describes it and the smoke test.
+- `misty --build <project> <out>`; a packaged editor uses the player shipped beside it; Ctrl+K guides open
+  without the source tree.
+- Smoke test from the unzipped package (outside the repo, throwaway Hub config): Hub, `--new Standard`,
+  SampleProject CloudsDemo, headless build of the Standard project and the built game.
+  Screenshots: docs/screenshots/v001/release_hub.png, release_new_standard.png, release_clouds_demo.png,
+  release_game.png.
+
+### Not done yet
+- Both exes are console-subsystem programs, so a console window opens behind the editor when started by
+  double-click.
+- Opening a demo scene in a project without `Library/` starts the Scene view at the default camera spot
+  (for CloudsDemo that is under the terrain); the Game view is fine.
+- The exes are not code-signed (Windows SmartScreen warns; README.txt explains "Run anyway").
