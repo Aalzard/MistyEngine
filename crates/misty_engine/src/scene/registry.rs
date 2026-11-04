@@ -214,6 +214,8 @@ pub struct ComponentInfo {
     pub clone_into: fn(&World, Entity, &mut EntityBuilder),
     pub to_json: fn(&World, Entity) -> Option<serde_json::Value>,
     pub from_json: fn(&mut World, Entity, serde_json::Value) -> Result<(), String>,
+    /// Every serialised field name, including ones left out at their defaults (for presets).
+    pub fields: fn() -> Vec<String>,
 }
 
 impl ComponentInfo {
@@ -243,6 +245,7 @@ impl ComponentInfo {
                 let c: T = serde_json::from_value(v).map_err(|err| err.to_string())?;
                 w.insert_one(e, c).map_err(|err| err.to_string())
             },
+            fields: || crate::preset::fields::names(&T::default()),
         }
     }
 
