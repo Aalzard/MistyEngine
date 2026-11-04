@@ -247,6 +247,7 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
     let create = |what| Action::Create { what, parent };
     let shortcut = if parent.is_none() { "Ctrl+Shift+N" } else { "" };
     item(ui, s, "Create Empty", shortcut, create(Create::Empty));
+    item(ui, s, "Create Folder", "", create(Create::Folder));
     sub(ui, "3D Object", |ui| {
         for p in PrimitiveMesh::ALL {
             item(ui, s, p.name(), "", create(Create::Primitive(p)));

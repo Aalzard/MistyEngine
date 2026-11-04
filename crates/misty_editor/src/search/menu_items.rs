@@ -301,6 +301,11 @@ fn gameobject(l: &mut List) {
         empty.path = "GameObject/Create Empty".into();
         empty.shortcut = "Ctrl+Shift+N";
     }
+    l.create(Create::Folder, "");
+    if let Some(folder) = l.0.last_mut() {
+        folder.title = "Create Folder".into();
+        folder.path = "GameObject/Create Folder".into();
+    }
     for p in PrimitiveMesh::ALL {
         l.create(Create::Primitive(p), "3D Object/");
     }

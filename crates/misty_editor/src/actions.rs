@@ -10,6 +10,8 @@ use crate::layouts::LayoutRef;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Create {
     Empty,
+    /// An empty object marked as a Hierarchy folder (folder icon, optional row colour).
+    Folder,
     Primitive(PrimitiveMesh),
     Light(LightType),
     Camera,
@@ -33,6 +35,7 @@ impl Create {
         match self {
             Create::Ui(el) => el.name(),
             Create::Empty => "GameObject",
+            Create::Folder => "Folder",
             Create::Primitive(p) => p.name(),
             Create::Light(LightType::Directional) => "Directional Light",
             Create::Light(LightType::Point) => "Point Light",

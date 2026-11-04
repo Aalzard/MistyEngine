@@ -113,6 +113,8 @@ pub struct HierarchyState {
     pub focused: bool,
     /// Scene headers folded closed.
     pub collapsed_scenes: HashSet<misty_engine::scene::SceneId>,
+    /// Alt+right-click on a folder row: the pastel colour wheel for that folder, and where.
+    pub folder_picker: Option<(Entity, egui::Pos2)>,
 }
 
 /// Icon shown for prefab assets and instance roots (drawn blue; plain meshes use the same grey).
@@ -128,6 +130,9 @@ pub fn object_brand_icon(scene: &Scene, e: Entity) -> Option<crate::branding::ic
     let w = &scene.world;
     if w.get::<&misty_engine::scene::PrefabLink>(e).is_ok() {
         return None;
+    }
+    if w.get::<&misty_engine::scene::HierarchyFolder>(e).is_ok() {
+        return Some(Icon::Folder);
     }
     if let Ok(light) = w.get::<&Light>(e) {
         return (light.kind == LightType::Directional).then_some(Icon::SunLight);
@@ -150,6 +155,9 @@ pub fn object_icon(scene: &Scene, e: Entity) -> &'static str {
     let w = &scene.world;
     if w.get::<&misty_engine::scene::PrefabLink>(e).is_ok() {
         return PREFAB_ICON;
+    }
+    if w.get::<&misty_engine::scene::HierarchyFolder>(e).is_ok() {
+        return "📁";
     }
     if let Ok(light) = w.get::<&Light>(e) {
         return if light.kind == LightType::Directional {

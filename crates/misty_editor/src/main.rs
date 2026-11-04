@@ -121,6 +121,7 @@ mod theme;
 mod thumbnails;
 mod title_bar;
 mod toolbar;
+mod tree_lines;
 mod tutorials;
 mod ui_create;
 mod ui_gizmos;

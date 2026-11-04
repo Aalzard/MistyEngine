@@ -87,6 +87,10 @@ impl SceneComponent for Scripts {
     const NAME: &'static str = "Scripts";
     const CATEGORY: &'static str = "";
 }
+impl SceneComponent for super::HierarchyFolder {
+    const NAME: &'static str = "Hierarchy Folder";
+    const CATEGORY: &'static str = "";
+}
 impl SceneComponent for PrefabLink {
     const NAME: &'static str = "Prefab";
     const CATEGORY: &'static str = "";
@@ -334,6 +338,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<Scripts>(),
             ComponentInfo::of::<PrefabLink>(),
+            ComponentInfo::of::<super::HierarchyFolder>(),
         ]
     })
 }

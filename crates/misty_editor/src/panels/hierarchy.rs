@@ -10,10 +10,11 @@ use crate::search::fuzzy::Mode;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
 use crate::theme::{PREFAB, PREFAB_DIM};
+use crate::tree_lines::{self, Guide};
 use crate::widgets::{panel_toolbar, search_field};
 
-const ROW_H: f32 = 18.0;
-const INDENT: f32 = 14.0;
+const ROW_H: f32 = 20.0;
+const INDENT: f32 = 16.0;
 
 /// Where a dragged row would land.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,12 +56,24 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             Row::Scene(_) => None,
         })
         .collect();
+    // Connection lines; scene headers break them.
+    let guides = tree_lines::guides(
+        &rows
+            .iter()
+            .map(|r| match r {
+                Row::Object(_, d) => Some(*d),
+                Row::Scene(_) => None,
+            })
+            .collect::<Vec<_>>(),
+    );
 
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
             // Only rows inside the visible area are laid out; the rest just take their
             // height (thousands of rows otherwise cost milliseconds every frame).
+            // Rows touch, so stripes and connection lines run without gaps.
+            ui.spacing_mut().item_spacing.y = 0.0;
             let clip = ui.clip_rect();
             let spacing = ui.spacing().item_spacing.y;
             let step = ROW_H + spacing;
@@ -72,10 +85,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             if start > 0 {
                 ui.allocate_space(vec2(width, start as f32 * step - spacing));
             }
-            for r in &rows[start..end] {
+            for (i, r) in (start..end).zip(&rows[start..end]) {
                 let hovered = match *r {
                     Row::Scene(id) => scene_row(ui, state, id, dragging.is_some()),
-                    Row::Object(e, depth) => row(ui, state, e, depth, &objects, dragging.is_some()),
+                    Row::Object(e, _) => {
+                        let line = (i, &guides[i]);
+                        row(ui, state, e, line, &objects, dragging.is_some())
+                    }
                 };
                 if let Some(d) = hovered {
                     drop = Some(d);
@@ -103,6 +119,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
     drag_and_drop(ui, state, drag_id, dragging, drop);
     keyboard(ui, state, &objects);
+    super::folder_colors::show_picker(ui, state);
 }
 
 /// Temp-data key of the Hierarchy's own drag (the dragged objects).
@@ -195,13 +212,8 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
             Id::new(("hier_scene_arrow", id)),
             Sense::click(),
         );
-        ui.painter().text(
-            arrow_rect.center(),
-            Align2::CENTER_CENTER,
-            if collapsed { "⏵" } else { "⏷" },
-            FontId::proportional(11.0),
-            theme::TEXT_DIM,
-        );
+        let color = arrow_color(&arrow);
+        tree_lines::paint_arrow(ui.painter(), arrow_rect.center(), !collapsed, color);
         if arrow.clicked() || resp.double_clicked() {
             if collapsed {
                 state.hierarchy.collapsed_scenes.remove(&id);
@@ -303,15 +315,26 @@ fn scene_menu(ui: &mut Ui, state: &mut EditorState, id: SceneId) {
     }
 }
 
-/// One object row. Returns a drop target if a drag is hovering it.
+/// Foldout triangle colour: brighter under the pointer.
+fn arrow_color(arrow: &egui::Response) -> Color32 {
+    if arrow.hovered() {
+        tree_lines::ARROW_HOVER
+    } else {
+        tree_lines::ARROW
+    }
+}
+
+/// One object row (`line`: row index for stripes, connection lines). Returns a drop target
+/// if a drag is hovering it.
 fn row(
     ui: &mut Ui,
     state: &mut EditorState,
     e: Entity,
-    depth: usize,
+    (index, guide): (usize, &Guide),
     rows: &[(Entity, usize)],
     dragging: bool,
 ) -> Option<Drop> {
+    let depth = guide.depth;
     let (rect, resp) =
         ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
     let selected = state.selection.contains(e);
@@ -322,7 +345,20 @@ fn row(
     resp.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &name)
     });
+    // Parents and folders get a soft folder tint (stronger than the stripes, weaker than
+    // selection); a coloured folder gets a wash of its colour instead.
+    let has_children = !state.scene.children(e).is_empty();
+    let is_folder = state
+        .scene
+        .world
+        .get::<&misty_engine::scene::HierarchyFolder>(e)
+        .is_ok();
+    let folder_color = super::folder_colors::color_of(state, e);
     let painter = ui.painter();
+    tree_lines::paint_background(painter, rect, index, has_children || is_folder);
+    if let Some(c) = folder_color {
+        painter.rect_filled(rect, 0.0, super::folder_colors::row_tint(c));
+    }
     if selected {
         let fill = if state.hierarchy.focused {
             theme::SELECTION
@@ -331,25 +367,26 @@ fn row(
         };
         painter.rect_filled(rect, 0.0, fill);
     } else if resp.hovered() && !dragging {
-        painter.rect_filled(rect, 0.0, Color32::from_rgb(69, 69, 69));
+        painter.rect_filled(rect, 0.0, tree_lines::HOVER);
     }
 
     let x = rect.left() + 4.0 + depth as f32 * INDENT;
-    let has_children = !state.scene.children(e).is_empty();
     let searching = !state.hierarchy.search.is_empty();
+    let foldout = has_children && !searching;
+
+    // Connection lines from the parent's triangle column; the tick stops short of this
+    // row's own triangle, or reaches towards the icon.
+    let column = |d: usize| rect.left() + 4.0 + d as f32 * INDENT + 7.0;
+    let tick_end = if foldout { x + 2.0 } else { x + 12.0 };
+    tree_lines::paint_guide(ui.painter(), rect, guide, column, tick_end, 3.5);
 
     // Foldout arrow (Alt+click opens/closes the whole subtree).
-    if has_children && !searching {
+    if foldout {
         let arrow_rect = Rect::from_min_size(pos2(x, rect.top()), vec2(14.0, ROW_H));
         let expanded = state.hierarchy.expanded.contains(&e);
         let arrow = ui.interact(arrow_rect, Id::new(("hier_arrow", e)), Sense::click());
-        ui.painter().text(
-            arrow_rect.center(),
-            Align2::CENTER_CENTER,
-            if expanded { "⏷" } else { "⏵" },
-            FontId::proportional(11.0),
-            theme::TEXT_DIM,
-        );
+        let color = arrow_color(&arrow);
+        tree_lines::paint_arrow(ui.painter(), arrow_rect.center(), expanded, color);
         if arrow.clicked() {
             let recursive = ui.input(|i| i.modifiers.alt);
             set_expanded(state, e, !expanded, recursive);
@@ -365,6 +402,7 @@ fn row(
         (true, _, _) => Color32::WHITE,
         (false, true, true) => PREFAB,
         (false, false, true) => PREFAB_DIM,
+        (false, true, false) if has_children || is_folder => tree_lines::PARENT_TEXT,
         (false, true, false) => theme::TEXT,
         (false, false, false) => theme::TEXT_DIM,
     };
@@ -385,18 +423,27 @@ fn row(
         let (x, label) = match crate::state::object_brand_icon(&state.scene, e) {
             Some(icon) => {
                 let slot = Rect::from_min_size(pos2(text_x, rect.top()), vec2(15.0, ROW_H));
-                crate::branding::icons::paint(ui, slot.shrink2(vec2(0.0, 2.0)), icon, color);
+                let tint = folder_color.unwrap_or(color);
+                crate::branding::icons::paint(ui, slot.shrink2(vec2(0.0, 2.0)), icon, tint);
                 (text_x + ICON_ADVANCE, name.to_string())
             }
             None => (text_x, format!("{} {name}", object_icon(&state.scene, e))),
         };
-        ui.painter().text(
-            pos2(x, rect.center().y),
-            Align2::LEFT_CENTER,
-            label,
-            FontId::proportional(13.0),
-            color,
-        );
+        // Parents are semi-bold: drawn twice, a hair apart (the UI font has no bold face).
+        let passes: &[f32] = if has_children || is_folder {
+            &[0.0, 0.45]
+        } else {
+            &[0.0]
+        };
+        for dx in passes {
+            ui.painter().text(
+                pos2(x + dx, rect.center().y),
+                Align2::LEFT_CENTER,
+                &label,
+                FontId::proportional(13.0),
+                color,
+            );
+        }
     }
 
     // Clicks: plain / Ctrl toggle / Shift range; double-click frames.
@@ -418,7 +465,13 @@ fn row(
     if resp.secondary_clicked() && !selected {
         state.selection.set(e);
     }
-    resp.context_menu(|ui| row_menu(ui, state, e));
+    // Alt+right-click on a folder: the colour wheel instead of the menu.
+    if is_folder && resp.secondary_clicked() && ui.input(|i| i.modifiers.alt) {
+        let at = super::folder_colors::picker_pos(rect, ui.input(|i| i.pointer.hover_pos()));
+        state.hierarchy.folder_picker = Some((e, at));
+    } else {
+        resp.context_menu(|ui| row_menu(ui, state, e));
+    }
     if let Some(payload) = resp.dnd_release_payload::<super::AssetPayload>() {
         drop_asset(state, e, &payload.0);
         drop_prefab(state, &payload.0, Some(e));
@@ -531,6 +584,19 @@ fn row_menu(ui: &mut Ui, state: &mut EditorState, e: Entity) {
         ("Rename", Action::RenameSelected),
         ("Duplicate", Action::DuplicateSelected),
         ("Delete", Action::DeleteSelected),
+    ] {
+        if ui.button(label).clicked() {
+            state.push(action);
+            ui.close();
+        }
+    }
+    // Scene view placement, as in the GameObject menu (the first two are undoable; the last
+    // moves only the view).
+    ui.separator();
+    for (label, action) in [
+        ("Move To View", Action::MoveToView),
+        ("Align With View", Action::AlignWithView),
+        ("Align View to Selected", Action::AlignViewToSelected),
     ] {
         if ui.button(label).clicked() {
             state.push(action);
@@ -979,6 +1045,58 @@ mod tests {
         let light = s.scene.roots_in(0)[0];
         apply_drop(s, &[cam], Drop::Before(light));
         assert_eq!(s.scene.roots_in(0), [cam, light]);
+    }
+
+    /// Row menu ▸ Move To View / Align With View place the object at the Scene view (undoable).
+    #[test]
+    fn view_commands_from_the_row_menu_place_the_object() {
+        use egui_kittest::kittest::Queryable;
+        use glam::{Quat, Vec3};
+        let mut s = state();
+        let rig = s.scene.spawn("Rig", None);
+        let mut t = s.scene.transform(rig);
+        t.set_rotation(Quat::from_rotation_y(0.7));
+        s.scene.set_transform(rig, t);
+        let lens = s.scene.spawn("Lens", Some(rig));
+        s.hierarchy.expanded.insert(rig);
+        let eye = Vec3::new(3.0, 4.0, -5.0);
+        let look = Quat::from_rotation_x(-0.4) * Quat::from_rotation_y(1.2);
+        s.scene_view.camera.align_to(eye, look);
+        let mut h = egui_kittest::Harness::builder()
+            .with_size([300.0, 600.0])
+            .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
+        h.run();
+        let menu = |h: &mut egui_kittest::Harness<'_, EditorState>, item: &str| {
+            h.get_by_label("Lens").click_secondary();
+            h.run();
+            h.get_by_label(item).click();
+            h.run();
+            let s = h.state_mut();
+            for a in std::mem::take(&mut s.actions) {
+                crate::commands::apply(s, a);
+            }
+            h.run();
+        };
+        menu(&mut h, "Align With View");
+        let s = h.state();
+        let (_, rot, pos) = s.scene.world_matrix(lens).to_scale_rotation_translation();
+        assert!(pos.distance(s.scene_view.camera.position()) < 1e-3);
+        assert!(rot.angle_between(s.scene_view.camera.camera().rotation) < 1e-3);
+        menu(&mut h, "Move To View");
+        let s = h.state_mut();
+        let pivot = s.scene_view.camera.pivot();
+        assert!(s.scene.world_position(lens).distance(pivot) < 1e-3);
+        assert!(
+            rot.angle_between(s.scene.world_matrix(lens).to_scale_rotation_translation().1) < 1e-3,
+            "rotation kept"
+        );
+        s.undo_step();
+        s.undo_step();
+        let lens = s.scene.find_by_name("Lens").unwrap();
+        assert!(
+            s.scene.transform(lens).position.length() < 1e-4,
+            "both undone"
+        );
     }
 
     #[test]
