@@ -1949,3 +1949,20 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - On close, the Hub thumbnail becomes the last frame of the view on screen (decision 614).
 - The Scene view camera is saved on close and restored on open. A new project starts looking through its Main
   Camera, so PP Ready opens on the film shot.
+
+## UI round: title bar, trees, Inspector cards, Gizmos and Quality ✅
+
+### Done (decisions 616–619, screenshots in docs/screenshots/ui-round/)
+- Frameless window with our own title bar (logo and project/scene name centred, flat window buttons) and
+  flat Pause / Play / Step.
+- Hierarchy and Project trees: stripes, folder-like parents, tree lines and foldable Project folders.
+  Hierarchy Folders with an Alt+right-click pastel colour wheel; Move To View / Align With View in the row
+  menu.
+- Inspector components as rounded cards with bold titles and sub-headers and an aligned label column. No
+  black outlines anywhere; soft shades separate areas instead.
+- Scene view Gizmos dropdown (icon size, tint, 3D icons) and Quality dropdown (level, FXAA, render scale,
+  Bilinear / Nearest / Sharpen). These are shared with Project Settings, the Game view and the player.
+
+### Not done yet
+- Window move, resize and maximise not tried by hand on the real window yet.
+- MSAA level is still fixed at 4×; asset inspectors (Audio Mixer, Texture import, Preset) are not cards yet.

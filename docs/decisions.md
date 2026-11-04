@@ -2989,3 +2989,39 @@ Record of choices made without asking, and why.
      view jumps there without animation. With no saved view (a new project, or an older project) it starts
      at the active scene's Main Camera instead of the fixed default spot. That also fixes the CloudsDemo
      Scene view starting under the terrain.
+616. **UI round: Scene view Gizmos and Quality dropdowns** (full notes in `docs/pending/ui-gizmos.md`).
+     - **Gizmos dropdown:** icon size 0.5–2×, an icon tint multiplied over the default grey (selected
+       icons stay orange) and optional 3D Icons. Saved per project in `EditorSettings.scene_icons`.
+     - **Quality dropdown:** it edits the previewed Project Settings ▸ Quality level, so the Scene view,
+       the Game view and the player share one set of values: level, FXAA, Render Scale 25–200%, and
+       Upscale Filter (Bilinear / Nearest / Sharpen).
+     - **FXAA as a new pass:** MSAA stays fixed at 4×, because making it switchable means rebuilding every
+       pipeline. FXAA is added as a new finish pass instead, together with Sharpen (our own
+       contrast-adaptive filter). The pass runs only when FXAA or Sharpen is on.
+     - **No DLSS option:** DLSS needs NVIDIA's proprietary SDK, so no fake option was added.
+617. **UI round: Hierarchy and Project trees** (`docs/pending/ui-trees.md`).
+     - **Shared module:** one module, `tree_lines.rs`, holds the guide computation and the painters
+       (translucent overlays, so they look right on any theme).
+     - **Row styling:** striped rows; parents have a soft tint and semi-bold names; filled triangles and
+       ├/└ connection lines; the Project folder tree can fold.
+     - **Hierarchy Folders:** a hidden `HierarchyFolder { color }` component on an empty object. Its colour
+       comes from an Alt+right-click pastel wheel (saturation 0.58, lightness 0.72–0.88). The row and
+       icon tints are undoable.
+     - **View commands:** Move To View, Align With View and Align View to Selected are in the row menu.
+618. **UI round: Inspector cards and a stroke-free theme** (`docs/pending/ui-inspector.md`).
+     - **Cards:** components are rounded cards drawn by one `card()` helper, with real bold titles
+       (Segoe UI Bold) and bold sub-headers.
+     - **Aligned layout:** labels sit in a column about 40% wide and values fill the rest, through a
+       drop-in `PropertyGrid`, so no editor's fields changed.
+     - **No outlines:** buttons, fields, popups and tabs lost their outlines. Areas are separated by soft
+       shade steps instead (buttons lighter, fields and toolbars darker, separators soft grey). The
+       text-field focus outline stays white so selected-row text stays readable.
+619. **UI round: frameless window with our own title bar** (`docs/pending/ui-titlebar.md`).
+     - **Frameless window:** both the Hub and the editor run without decorations, since they share one
+       window.
+     - **Title bar layout:** menus on the left; the logo and "Misty Engine — project — scene" in the
+       centre; flat painted minimise / maximise / close buttons on the right (close turns red).
+     - **Window controls:** dragging the bar moves the window (`StartDrag`, so Aero Snap works), and a
+       double-click maximises. Close goes through the unsaved-changes prompt. winit gives undecorated
+       windows no resize border, so 5 pt edge and 10 pt corner zones send `BeginResize`.
+     - **Play controls:** flat, in the user's reference order: Pause, Play, Step.
