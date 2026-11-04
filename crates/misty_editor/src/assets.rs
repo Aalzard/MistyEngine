@@ -317,7 +317,11 @@ impl AssetDatabase {
     }
 
     /// Write a preset and update the cache.
-    pub fn save_preset(&mut self, rel: &str, p: misty_engine::preset::Preset) -> Result<(), String> {
+    pub fn save_preset(
+        &mut self,
+        rel: &str,
+        p: misty_engine::preset::Preset,
+    ) -> Result<(), String> {
         p.save(&self.absolute(rel))?;
         self.presets.insert(rel.to_owned(), p);
         Ok(())

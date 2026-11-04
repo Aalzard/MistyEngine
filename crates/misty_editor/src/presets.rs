@@ -11,7 +11,7 @@ use crate::actions::Action;
 use crate::state::EditorState;
 
 /// Preset button and `.preset` files in the Project window.
-pub const PRESET_ICON: &str = "🎚";
+pub const PRESET_ICON: &str = "⚙";
 
 /// What the preset picker applies to.
 #[derive(Clone, Debug, PartialEq)]
@@ -257,7 +257,7 @@ mod tests {
         let mut s = state("apply");
         let rel = lamp(&mut s);
         assert!(s.assets.absolute(&rel).exists());
-        assert_eq!(s.assets.presets_for("Light"), [rel.clone()]);
+        assert_eq!(s.assets.presets_for("Light"), std::slice::from_ref(&rel));
         // A second save gets a numbered name.
         assert_eq!(new_preset_path(&s, "Lamp"), "Assets/Presets/Lamp 1.preset");
 
@@ -360,8 +360,10 @@ mod tests {
     #[test]
     fn default_material_preset_on_create() {
         let mut s = state("material");
-        let mut m = misty_engine::assets::Material::default();
-        m.metallic = 0.8;
+        let m = misty_engine::assets::Material {
+            metallic: 0.8,
+            ..Default::default()
+        };
         let rel = save_new(&mut s, Preset::of_value(preset::MATERIAL, &m), "Shiny").unwrap();
         s.project_settings
             .default_presets

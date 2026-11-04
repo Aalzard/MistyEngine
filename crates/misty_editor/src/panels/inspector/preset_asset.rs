@@ -5,7 +5,7 @@
 use egui::{RichText, Ui};
 use misty_engine::preset::{self, Preset};
 
-use super::preset_fields::{Fields, Seg, nice};
+use super::preset_fields::{Fields, Seg, name_label, nice};
 use crate::actions::Action;
 use crate::presets::{PRESET_ICON, preset_name};
 use crate::state::EditorState;
@@ -86,7 +86,7 @@ fn values(ui: &mut Ui, draft: &mut Preset) {
                     fields.row(ui, &mut path, &nice(&field), &field, v);
                 }
                 None => {
-                    ui.add_sized([130.0, 18.0], egui::Label::new(nice(&field)).truncate());
+                    name_label(ui, &nice(&field));
                     ui.weak("Default");
                 }
             });
@@ -118,7 +118,9 @@ fn apply_row(ui: &mut Ui, state: &mut EditorState, rel: &str, p: &Preset) {
                     });
                 }
                 if count == 0 {
-                    ui.weak(format!("Lock the Inspector and select objects with a {name}."));
+                    ui.weak(format!(
+                        "Lock the Inspector and select objects with a {name}."
+                    ));
                 } else {
                     ui.weak(format!("{count} selected"));
                 }

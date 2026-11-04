@@ -95,7 +95,8 @@ pub fn window(ctx: &egui::Context, state: &mut EditorState) {
             ui.label("Save current to…");
             ui.horizontal(|ui| {
                 let field = egui::TextEdit::singleline(&mut picker.save_name).desired_width(150.0);
-                let enter = ui.add(field).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let enter =
+                    ui.add(field).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if ui.button("Save").clicked() || enter {
                     pick = Some(Pick::Save);
                 }

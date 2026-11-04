@@ -1537,7 +1537,7 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - `.preset` assets (`misty_engine::preset`): a component type or asset kind (Material, Texture Importer) plus its
   serialised values and a list of excluded fields. Applying sets every included field (fields the preset leaves
   out reset to their defaults) and leaves excluded ones alone (decisions 479–481).
-- 🎚 preset button next to ⋮ in every component header (and on material and texture import Inspectors) opens the
+- ⚙ preset button next to ⋮ in every component header (and on material and texture import Inspectors) opens the
   Select Preset window: None (back to the values from when it opened), the project's matching presets, and
   "Save current to…" (`Assets/Presets/<Name>.preset`). Picks apply to every Inspector target in one undo step.
 - `.preset` Inspector: what it targets, Apply to Selection (or to a chosen material / texture), "Default for new …",

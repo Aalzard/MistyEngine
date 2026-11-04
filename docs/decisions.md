@@ -2278,7 +2278,7 @@ Record of choices made without asking, and why.
 482. **The preset picker is a small floating window ("Select Preset")**, not a dropdown menu: it stays open so
      presets can be compared, each pick is one undo step ("Apply Preset X") applied to every Inspector target
      that has the component, and **None** puts back the values from when the window opened (one undo step,
-     "Revert X Preset"). Escape or ✕ closes it. The 🎚 button sits next to ⋮ in every component header, in the
+     "Revert X Preset"). Escape or ✕ closes it. The ⚙ button sits next to ⋮ in every component header, in the
      material asset header and on the texture import page.
 483. **Save current to…** is a name field in the picker (default "<Type> Preset"); the file goes to
      `Assets/Presets/<Name>.preset`, numbered when the name is taken. Texture presets untick `sprites` (slices
@@ -2315,3 +2315,5 @@ Record of choices made without asking, and why.
      goes through `serde_json::to_value`, which widens f32 to f64, so `Preset::new` rounds every number that is
      an exact f32 back to the f32's shortest form. Numbers that aren't exact f32s are left alone; a true f64
      field that happens to hold an exact f32 would be rounded the same way (no component has f64 fields).
+491. **Preset button glyph is ⚙**, dimmed, left of ⋮: a sliders glyph (🎚) isn't in the editor's fonts (it drew
+     as a box). Its tooltip says "Presets for <type>"; `.preset` files use the same icon in the Project window.

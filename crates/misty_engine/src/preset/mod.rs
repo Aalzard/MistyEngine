@@ -107,8 +107,8 @@ impl Preset {
     pub fn apply(&self, world: &mut World, e: Entity, keep: &[&str]) -> Result<(), String> {
         let info = registry::find(&self.target)
             .ok_or_else(|| format!("Unknown component '{}'", self.target))?;
-        let current = (info.to_json)(world, e)
-            .ok_or_else(|| format!("The object has no {}", self.target))?;
+        let current =
+            (info.to_json)(world, e).ok_or_else(|| format!("The object has no {}", self.target))?;
         (info.from_json)(world, e, self.applied_to(&current, keep))
     }
 
@@ -274,8 +274,10 @@ mod tests {
 
     #[test]
     fn asset_presets_apply_to_settings_structs() {
-        let mut m = Material::default();
-        m.metallic = 0.9;
+        let m = Material {
+            metallic: 0.9,
+            ..Default::default()
+        };
         let mut preset = Preset::of_value(MATERIAL, &m);
         preset.set_included("color", false);
         let target = Material {
@@ -286,7 +288,9 @@ mod tests {
         assert_eq!(out.metallic, 0.9);
         assert_eq!(out.color, [1.0, 0.0, 0.0, 1.0]);
         assert!(fields_of(TEXTURE_IMPORTER).contains(&"pixels_per_unit".to_owned()));
-        preset.values.insert("metallic".into(), Value::String("x".into()));
+        preset
+            .values
+            .insert("metallic".into(), Value::String("x".into()));
         assert!(preset.check().is_err());
     }
 }

@@ -181,7 +181,9 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
                         });
                         edited
                     }
-                    Category::PresetManager => crate::project_settings_presets::page(ui, p, presets),
+                    Category::PresetManager => {
+                        crate::project_settings_presets::page(ui, p, presets)
+                    }
                     Category::Time => time(ui, p),
                 })
                 .inner;

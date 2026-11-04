@@ -96,7 +96,9 @@ fn presets() -> Vec<(&'static str, Preset)> {
 }
 
 fn path(stem: &str) -> PathBuf {
-    project().join(preset::FOLDER).join(format!("{stem}.preset"))
+    project()
+        .join(preset::FOLDER)
+        .join(format!("{stem}.preset"))
 }
 
 #[test]
@@ -136,6 +138,8 @@ fn sample_presets_apply_as_described() {
     assert!(v.clouds.active && v.fog.active && v.bloom.active);
     let s = w.get::<&SphereCollider>(e).unwrap();
     assert_eq!((s.radius, s.surface.bounciness), (2.0, 0.9));
-    let t = pixel_art().apply_value(&TextureImporter::default()).unwrap();
+    let t = pixel_art()
+        .apply_value(&TextureImporter::default())
+        .unwrap();
     assert_eq!(t.filter_mode, FilterMode::Nearest);
 }

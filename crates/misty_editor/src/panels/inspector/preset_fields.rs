@@ -92,9 +92,16 @@ impl Fields<'_> {
     }
 
     /// Label + editor.
-    pub fn row(&self, ui: &mut Ui, path: &mut Vec<Seg>, label: &str, key: &str, v: &mut Value) -> bool {
+    pub fn row(
+        &self,
+        ui: &mut Ui,
+        path: &mut Vec<Seg>,
+        label: &str,
+        key: &str,
+        v: &mut Value,
+    ) -> bool {
         ui.horizontal_top(|ui| {
-            ui.add_sized([130.0, 18.0], egui::Label::new(label).truncate());
+            name_label(ui, label);
             self.value(ui, path, key, v)
         })
         .inner
@@ -125,6 +132,19 @@ impl Fields<'_> {
             });
         ch
     }
+}
+
+/// Left-aligned field name in a fixed-width column.
+pub fn name_label(ui: &mut Ui, text: &str) {
+    let size = egui::vec2(130.0, 18.0);
+    ui.allocate_ui_with_layout(
+        size,
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.set_min_width(size.x);
+            ui.add(egui::Label::new(text).truncate());
+        },
+    );
 }
 
 fn is_scalar(v: &Value) -> bool {
@@ -201,7 +221,10 @@ fn variants(preset: &Preset, path: &[Seg]) -> Option<Vec<String>> {
     }
     *slot = Value::String("\u{1}".into());
     let err = probe.check().err()?;
-    let list = err.split("expected one of ").nth(1).or_else(|| err.split("expected ").nth(1))?;
+    let list = err
+        .split("expected one of ")
+        .nth(1)
+        .or_else(|| err.split("expected ").nth(1))?;
     let names: Vec<String> = list
         .split('`')
         .skip(1)

@@ -39,7 +39,9 @@ pub fn page(ui: &mut Ui, p: &mut ProjectSettings, presets: &BTreeMap<String, Pre
             }
         });
     ui.add_space(4.0);
-    ui.weak("Unticked fields of a preset are not applied; a Light's type comes from the Create menu.");
+    ui.weak(
+        "Unticked fields of a preset are not applied; a Light's type comes from the Create menu.",
+    );
     edited
 }
 

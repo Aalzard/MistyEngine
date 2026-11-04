@@ -887,15 +887,13 @@ mod tests {
         crate::presets::save_new(&mut s, wide, "Wide").unwrap();
         s.selection.set(a);
         s.selection.toggle(b);
-        let mut h = Harness::builder()
-            .with_size([700.0, 700.0])
-            .build_ui_state(
-                |ui, s: &mut EditorState| {
-                    show(ui, s);
-                    preset_window(ui.ctx(), s);
-                },
-                s,
-            );
+        let mut h = Harness::builder().with_size([700.0, 700.0]).build_ui_state(
+            |ui, s: &mut EditorState| {
+                show(ui, s);
+                preset_window(ui.ctx(), s);
+            },
+            s,
+        );
         h.run();
         h.get_all_by_label(crate::presets::PRESET_ICON)
             .last()
