@@ -202,6 +202,32 @@ pub fn apply_env(
         s.search.index.build_now();
         crate::search::open(s, &text.to_string_lossy());
     }
+    // `MISTY_GIZMOS_MENU=1` opens the Scene view Gizmos ▾ dropdown; `MISTY_ICON_SIZE=1.5`
+    // and `MISTY_ICON_COLOR=255,220,0` set the icon size and tint.
+    if std::env::var_os("MISTY_GIZMOS_MENU").is_some() {
+        s.scene_view.open_icon_menu = true;
+    }
+    if let Some(size) = std::env::var("MISTY_ICON_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+    {
+        s.scene_view.icons.size = size;
+    }
+    if let Ok(color) = std::env::var("MISTY_ICON_COLOR")
+        && let [r, g, b] = color
+            .split(',')
+            .filter_map(|n| n.trim().parse().ok())
+            .collect::<Vec<u8>>()[..]
+    {
+        s.scene_view.icons.color = [r, g, b];
+    }
+    // `MISTY_QUALITY_MENU=1` opens the Scene view Quality dropdown; `MISTY_RENDER_SCALE=0.25`,
+    // `MISTY_UPSCALE=Nearest|Bilinear|Sharpen` and `MISTY_FXAA=1` change the previewed level in
+    // memory only (Project Settings are not saved).
+    if std::env::var_os("MISTY_QUALITY_MENU").is_some() {
+        s.scene_view.open_quality_menu = true;
+    }
+    quality_env(s);
     // `MISTY_ABOUT=1` opens Help ▸ About Misty Engine.
     if std::env::var_os("MISTY_ABOUT").is_some() {
         s.about_open = true;
@@ -317,4 +343,32 @@ fn undo_demo(s: &mut crate::state::EditorState) {
     s.undo_step();
     // Demo edits are never saved: closing after the screenshot must not write the scene.
     s.scene_dirty = false;
+}
+
+/// `MISTY_RENDER_SCALE` / `MISTY_UPSCALE` / `MISTY_FXAA` on the previewed quality level.
+fn quality_env(s: &mut crate::state::EditorState) {
+    use misty_engine::quality::{self, UpscaleFilter};
+    let scale = std::env::var("MISTY_RENDER_SCALE").ok();
+    let filter = std::env::var("MISTY_UPSCALE").ok();
+    let fxaa = std::env::var_os("MISTY_FXAA").is_some();
+    if scale.is_none() && filter.is_none() && !fxaa {
+        return;
+    }
+    let q = &mut s.project_settings.quality;
+    let i = quality::level().min(q.levels.len().saturating_sub(1));
+    let Some(level) = q.levels.get_mut(i) else {
+        return;
+    };
+    if let Some(v) = scale.and_then(|v| v.parse().ok()) {
+        level.render_scale = v;
+    }
+    if let Some(f) = filter.and_then(|f| {
+        UpscaleFilter::ALL
+            .into_iter()
+            .find(|u| format!("{u:?}") == f)
+    }) {
+        level.upscale_filter = f;
+    }
+    level.fxaa |= fxaa;
+    quality::install(q, i);
 }

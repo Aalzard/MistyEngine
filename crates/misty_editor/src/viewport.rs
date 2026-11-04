@@ -11,6 +11,8 @@ use misty_engine::wgpu;
 pub struct Viewport {
     target: Option<RenderTarget>,
     texture: Option<egui::TextureId>,
+    /// Filter the texture is registered with (Quality ▸ Upscale Filter).
+    filter: Option<wgpu::FilterMode>,
     /// When this view last drew a frame (the Hub thumbnail takes the most recent one).
     last_render: Option<std::time::Instant>,
 }
@@ -25,6 +27,8 @@ pub struct Gpu {
     pub game: Viewport,
     /// [`misty_engine::quality::generation`] the renderer was set up for.
     quality: u64,
+    /// How view images are stretched to their panel (Quality ▸ Upscale Filter).
+    filter: wgpu::FilterMode,
 }
 
 impl Gpu {
@@ -38,6 +42,7 @@ impl Gpu {
             scene: Viewport::default(),
             game: Viewport::default(),
             quality: u64::MAX,
+            filter: wgpu::FilterMode::Linear,
         }
     }
 
@@ -71,18 +76,29 @@ impl Gpu {
             self.quality = generation;
             let level = misty_engine::quality::active();
             self.renderer.set_quality(&self.state.device, &level);
+            self.filter = if level.upscale_filter.nearest() {
+                wgpu::FilterMode::Nearest
+            } else {
+                wgpu::FilterMode::Linear
+            };
         }
+        let filter = self.filter;
         let vp = match view {
             ViewId::Scene => &mut self.scene,
             ViewId::Game => &mut self.game,
         };
         let size = (size_px[0].max(1), size_px[1].max(1));
         if vp.target.as_ref().map(|t| t.size()) != Some(size) {
-            let target = self
-                .renderer
-                .create_target(&self.state.device, size.0, size.1);
+            vp.target = Some(
+                self.renderer
+                    .create_target(&self.state.device, size.0, size.1),
+            );
+            vp.filter = None;
+        }
+        // (Re)register the image with egui when the target or the filter changed.
+        if vp.filter != Some(filter) {
+            let target = vp.target.as_ref().expect("target created above");
             let mut egui_renderer = self.state.renderer.write();
-            let filter = wgpu::FilterMode::Linear;
             vp.texture = Some(match vp.texture {
                 Some(id) => {
                     egui_renderer.update_egui_texture_from_wgpu_texture(
@@ -97,7 +113,7 @@ impl Gpu {
                     egui_renderer.register_native_texture(&self.state.device, target.view(), filter)
                 }
             });
-            vp.target = Some(target);
+            vp.filter = Some(filter);
         }
         let target = vp.target.as_ref().expect("target created above");
         self.renderer

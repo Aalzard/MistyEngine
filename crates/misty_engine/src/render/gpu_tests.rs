@@ -219,6 +219,16 @@ fn render_with(
     queue: &wgpu::Queue,
     options: RenderOptions,
 ) -> (Vec<u8>, RenderStats) {
+    render_with_quality(device, queue, options, None)
+}
+
+/// The test scene rendered with `quality` (None = the renderer's default level).
+pub(crate) fn render_with_quality(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    options: RenderOptions,
+    quality: Option<&crate::quality::QualityLevel>,
+) -> (Vec<u8>, RenderStats) {
     let camera = Camera {
         position: Vec3::new(0.0, 7.0, -12.0),
         rotation: Quat::from_rotation_x(28f32.to_radians()),
@@ -246,6 +256,9 @@ fn render_with(
     };
     let mut renderer = Renderer::with_queue(device, queue);
     renderer.set_options(options);
+    if let Some(q) = quality {
+        renderer.set_quality(device, q);
+    }
     let target = renderer.create_target(device, 320, 200);
     renderer.render(device, queue, &target, &frame);
     (read_back(device, queue, &target), renderer.stats())

@@ -140,6 +140,8 @@ pub struct Pipelines {
     pub bloom_down: wgpu::RenderPipeline,
     pub bloom_up: wgpu::RenderPipeline,
     pub composite: wgpu::RenderPipeline,
+    /// FXAA / sharpening after the composite.
+    pub finish: super::finish::FinishPipelines,
 }
 
 /// Depth state; `None` in [`Spec::depth`] means the pass has no depth attachment.
@@ -616,7 +618,9 @@ impl Pipelines {
             },
         );
 
+        let finish = super::finish::FinishPipelines::new(device, &post_layouts);
         Self {
+            finish,
             view_layout,
             post_layout,
             composite_layout,
@@ -735,6 +739,7 @@ mod tests {
             ("outline", include_str!("shaders/outline.wgsl")),
             ("bloom", include_str!("shaders/bloom.wgsl")),
             ("composite", include_str!("shaders/composite.wgsl")),
+            ("finish", super::super::finish::SRC),
             ("particles", include_str!("shaders/particles.wgsl")),
             ("terrain", super::TERRAIN_SRC),
             ("ao prepass", super::super::screen_space::PREPASS_SRC),

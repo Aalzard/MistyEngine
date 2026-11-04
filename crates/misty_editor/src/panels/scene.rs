@@ -166,7 +166,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 lights: &lights,
                 water: &water,
             };
-            let size = [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32];
+            // Quality ▸ Render Scale: render smaller (or larger) and stretch to the panel.
+            let px = ppp * misty_engine::quality::active().render_scale;
+            let size = [(rect.width() * px) as u32, (rect.height() * px) as u32];
             gpu.renderer
                 .set_cascade_debug(sv.draw_mode == CASCADES_MODE);
             let texture = gpu.render(ViewId::Scene, size, &frame);
@@ -204,7 +206,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         && !ui.input(|i| i.modifiers.alt)
         && let Some(click) = response.interact_pointer_pos()
     {
-        let hit = picking::pick(&state.scene, &camera, rect, click);
+        let hit = picking::pick(&state.scene, &camera, rect, click, &state.scene_view.icons);
         let mods = ui.input(|i| i.modifiers);
         match hit {
             Some(e) if mods.command => state.selection.toggle(e),
@@ -243,7 +245,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         });
     } else if let Some(payload) = payload
         && let Some(at) = ui.input(|i| i.pointer.hover_pos())
-        && let Some(e) = picking::pick(&state.scene, &camera, rect, at)
+        && let Some(e) = picking::pick(&state.scene, &camera, rect, at, &state.scene_view.icons)
     {
         super::hierarchy::drop_asset(state, e, &payload.0);
     }
@@ -280,14 +282,16 @@ fn draw_icons(ui: &Ui, rect: Rect, state: &EditorState, camera: &misty_engine::c
         let Some(p) = picking::to_screen(camera, rect, state.scene.world_position(e)) else {
             continue;
         };
+        let icons = &state.scene_view.icons;
+        let side = icons.side(camera.position, state.scene.world_position(e));
         let color = if state.selection.contains(e) {
             Color32::from_rgb(255, 160, 40)
         } else {
-            Color32::from_gray(235)
+            icons.tint()
         };
         match crate::state::object_brand_icon(&state.scene, e) {
             Some(icon) => {
-                let r = Rect::from_center_size(p, vec2(24.0, 24.0));
+                let r = Rect::from_center_size(p, vec2(side, side));
                 icons::paint_with(&painter, r, icon, color);
             }
             None => {
@@ -295,7 +299,7 @@ fn draw_icons(ui: &Ui, rect: Rect, state: &EditorState, camera: &misty_engine::c
                     p,
                     Align2::CENTER_CENTER,
                     object_icon(&state.scene, e),
-                    FontId::proportional(22.0),
+                    FontId::proportional(side * (22.0 / 24.0)),
                     color,
                 );
             }
@@ -472,6 +476,7 @@ fn draw_cone(painter: &egui::Painter, center: Pos2, base: Pos2, color: Color32) 
 
 fn toolbar(ui: &mut Ui, state: &mut EditorState) {
     let s = &mut *state;
+    let mut quality_edited = false;
     panel_toolbar(ui, |ui| {
         let pivot = if s.pivot_center { "Center" } else { "Pivot" };
         egui::ComboBox::from_id_salt("scene_pivot")
@@ -500,9 +505,18 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             crate::snap_window::changed(s);
         }
         let sv = &mut s.scene_view;
+        let quality = &mut s.project_settings.quality;
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             search_field(ui, &mut sv.search, 110.0);
+            // Right-to-left: the ▾ dropdown sits right of the Gizmos toggle.
+            let icon_menu = ui
+                .menu_button("⏷", |ui| crate::scene_icons::menu(ui, &mut sv.icons))
+                .response
+                .on_hover_text("Gizmo icon size and color");
+            if std::mem::take(&mut sv.open_icon_menu) {
+                egui::Popup::open_id(ui.ctx(), egui::Popup::default_response_id(&icon_menu));
+            }
             if toggle_button(ui, sv.gizmos, "Gizmos", "Toggle gizmos").clicked() {
                 sv.gizmos = !sv.gizmos;
             }
@@ -545,6 +559,15 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             if toggle_button(ui, sv.is_2d, "2D", "Toggle 2D view").clicked() {
                 sv.is_2d = !sv.is_2d;
             }
+            let quality_menu = ui
+                .menu_button("Quality ⏷", |ui| {
+                    quality_edited |= crate::scene_quality::menu(ui, quality)
+                })
+                .response
+                .on_hover_text("Quality level, anti-aliasing, render scale and upscale filter");
+            if std::mem::take(&mut sv.open_quality_menu) {
+                egui::Popup::open_id(ui.ctx(), egui::Popup::default_response_id(&quality_menu));
+            }
             egui::ComboBox::from_id_salt("scene_draw_mode")
                 .selected_text(DRAW_MODES[sv.draw_mode])
                 .width(110.0)
@@ -555,6 +578,10 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 });
         });
     });
+    // Same save and live update as Project Settings ▸ Quality.
+    if quality_edited {
+        crate::project_settings::changed(state);
+    }
 }
 
 /// Camera settings dropdown: field of view, clipping and fly speed.
@@ -803,6 +830,54 @@ mod tests {
             Modifiers::NONE,
         );
         assert!(h.state().selection.is_empty());
+    }
+
+    /// Bigger icons are easier to hit: 20 px off the light only selects at 2× size.
+    #[test]
+    fn icon_size_scales_the_click_area() {
+        let mut h = harness();
+        let light = h.state().scene.find_by_name("Directional Light").unwrap();
+        let p = h.state().scene.world_position(light);
+        let view = h.state().scene_view.view_rect;
+        let (uv, _) = cam(&h)
+            .camera()
+            .world_to_screen(view.width() / view.height(), p)
+            .unwrap();
+        let at = pos2(
+            view.left() + uv.x * view.width() + 20.0,
+            view.top() + uv.y * view.height(),
+        );
+        for (size, hit) in [(1.0, false), (2.0, true)] {
+            h.state_mut().selection.clear();
+            h.state_mut().scene_view.icons.size = size;
+            button(&mut h, at, PointerButton::Primary, true, Modifiers::NONE);
+            button(&mut h, at, PointerButton::Primary, false, Modifiers::NONE);
+            assert_eq!(
+                h.state().selection.active() == Some(light),
+                hit,
+                "size {size}"
+            );
+        }
+    }
+
+    #[test]
+    fn gizmos_dropdown_shows_icon_size_and_color() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness();
+        h.state_mut().scene_view.open_icon_menu = true;
+        h.run_steps(3);
+        assert!(h.query_by_label("Icon Size").is_some());
+        assert!(h.query_by_label("Icon Color").is_some());
+    }
+
+    #[test]
+    fn quality_dropdown_shows_render_scale_and_filter() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness();
+        h.state_mut().scene_view.open_quality_menu = true;
+        h.run_steps(3);
+        assert!(h.query_by_label("Render Scale").is_some());
+        assert!(h.query_by_label("Upscale Filter").is_some());
     }
 
     fn gizmo_center(h: &Harness<'_, EditorState>) -> Pos2 {

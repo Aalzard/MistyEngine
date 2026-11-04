@@ -6,7 +6,7 @@ use misty_engine::camera::Camera;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Camera as CameraComponent, Light, MeshFilter, Scene};
 
-const ICON_RADIUS: f32 = 16.0;
+use crate::scene_icons::IconSettings;
 
 /// World point to screen position inside `rect`, or None if behind the camera.
 pub fn to_screen(camera: &Camera, rect: Rect, p: Vec3) -> Option<Pos2> {
@@ -52,14 +52,24 @@ pub fn icon_objects(scene: &Scene) -> Vec<Entity> {
         .collect()
 }
 
-/// Object under the cursor: icons first (closest on screen), then the nearest mesh hit.
-pub fn pick(scene: &Scene, camera: &Camera, rect: Rect, at: Pos2) -> Option<Entity> {
+/// Object under the cursor: icons first (closest on screen, hit area sized like the drawn
+/// icon), then the nearest mesh hit.
+pub fn pick(
+    scene: &Scene,
+    camera: &Camera,
+    rect: Rect,
+    at: Pos2,
+    icons: &IconSettings,
+) -> Option<Entity> {
     let icon = icon_objects(scene)
         .into_iter()
         .filter_map(|e| {
-            to_screen(camera, rect, scene.world_position(e)).map(|p| (e, p.distance(at)))
+            let w = scene.world_position(e);
+            let radius = icons.side(camera.position, w) * (2.0 / 3.0);
+            to_screen(camera, rect, w).map(|p| (e, p.distance(at), radius))
         })
-        .filter(|(_, d)| *d < ICON_RADIUS)
+        .filter(|(_, d, r)| d < r)
+        .map(|(e, d, _)| (e, d))
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(e, _)| e);
     if icon.is_some() {
@@ -244,7 +254,13 @@ mod tests {
             far: 100.0,
         };
         let rect = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(400.0, 300.0));
-        assert_eq!(pick(&scene, &camera, rect, rect.center()), Some(near));
-        assert_eq!(pick(&scene, &camera, rect, pos2(5.0, 5.0)), None);
+        assert_eq!(
+            pick(&scene, &camera, rect, rect.center(), &Default::default()),
+            Some(near)
+        );
+        assert_eq!(
+            pick(&scene, &camera, rect, pos2(5.0, 5.0), &Default::default()),
+            None
+        );
     }
 }

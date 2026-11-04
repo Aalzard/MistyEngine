@@ -40,6 +40,9 @@ pub struct RenderTarget {
     /// The final image (copy source for thumbnails).
     output: wgpu::Texture,
     display_view: wgpu::TextureView,
+    /// Composite result when a finish pass (FXAA, sharpen) runs before the output.
+    pre_finish_view: wgpu::TextureView,
+    pub(crate) pre_finish_group: wgpu::BindGroup,
     mask_view: wgpu::TextureView,
     /// Outline pass input (selection mask).
     pub(crate) mask_bind_group: wgpu::BindGroup,
@@ -131,6 +134,7 @@ impl RenderTarget {
             sampled | wgpu::TextureUsages::COPY_SRC,
             &[DISPLAY_FORMAT],
         );
+        let pre_finish = make("misty pre-finish", full, COLOR_FORMAT, 1, sampled, &[]);
         let mask = make("misty selection mask", full, MASK_FORMAT, 1, sampled, &[]);
 
         let sample_group = |label, layout: &wgpu::BindGroupLayout, tex: &wgpu::TextureView| {
@@ -186,6 +190,8 @@ impl RenderTarget {
             ],
         });
 
+        let pre_finish_view = view(&pre_finish);
+        let pre_finish_group = sample_group("misty finish group", layouts.post, &pre_finish_view);
         let mask_view = view(&mask);
         let mask_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("misty mask bind group"),
@@ -214,6 +220,8 @@ impl RenderTarget {
             output_view: view(&output),
             output,
             display_view,
+            pre_finish_view,
+            pre_finish_group,
             mask_view,
             mask_bind_group,
             hdr_group,
@@ -259,6 +267,11 @@ impl RenderTarget {
     /// Final 8-bit sRGB image (composite pass output).
     pub(crate) fn output_view(&self) -> &wgpu::TextureView {
         &self.output_view
+    }
+
+    /// Composite output when a finish pass follows.
+    pub(crate) fn pre_finish_view(&self) -> &wgpu::TextureView {
+        &self.pre_finish_view
     }
 
     pub(crate) fn glow_msaa_view(&self) -> &wgpu::TextureView {

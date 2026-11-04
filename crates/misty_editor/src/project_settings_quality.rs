@@ -3,7 +3,7 @@
 
 use egui::Ui;
 use misty_engine::quality::{
-    Anisotropic, AntiAliasing, QualityLevel, ShadowResolution, TextureQuality, Tier,
+    Anisotropic, AntiAliasing, QualityLevel, ShadowResolution, TextureQuality, Tier, UpscaleFilter,
 };
 use misty_engine::settings::ProjectSettings;
 use misty_engine::sprites::import::{MAX_SIZES, max_size_label};
@@ -195,12 +195,32 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     );
     edited |= row(
         ui,
+        "FXAA",
+        "Post-process edge smoothing on the final image; also catches edges MSAA misses          (alpha cut-outs, shading).",
+        |ui| ui.checkbox(&mut l.fxaa, "").changed(),
+    );
+    edited |= row(
+        ui,
         "Render Scale",
         "Draws the game at this fraction of the window size and stretches it. Below 1 = \
          faster on weak GPUs, blurrier.",
         |ui| {
             ui.add(egui::Slider::new(&mut l.render_scale, 0.25..=2.0).max_decimals(2))
                 .changed()
+        },
+    );
+    edited |= row(
+        ui,
+        "Upscale Filter",
+        "How the Render Scale image is stretched: Bilinear is smooth, Nearest keeps hard          pixels (pixel-art look), Sharpen adds contrast-adaptive sharpening.",
+        |ui| {
+            combo(
+                ui,
+                "q_upscale",
+                &mut l.upscale_filter,
+                &UpscaleFilter::ALL,
+                UpscaleFilter::label,
+            )
         },
     );
     edited |= row(

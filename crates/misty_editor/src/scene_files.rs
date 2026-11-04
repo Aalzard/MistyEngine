@@ -36,6 +36,8 @@ pub struct EditorSettings {
     pub active_scene: Option<String>,
     /// Where the Scene view camera was when the project closed.
     pub scene_view: Option<SavedView>,
+    /// Scene view icon gizmo size and tint.
+    pub scene_icons: crate::scene_icons::IconSettings,
 }
 
 /// A Scene view eye position and rotation (quaternion x, y, z, w).
@@ -48,7 +50,9 @@ pub struct SavedView {
 /// Open the Scene view where it was when the project closed; a project that never saved one
 /// (a new project) starts looking through its Main Camera.
 pub fn restore_scene_view(s: &mut EditorState) {
-    let (position, rotation) = match EditorSettings::load(&s.project.root).scene_view {
+    let settings = EditorSettings::load(&s.project.root);
+    s.scene_view.icons = settings.scene_icons;
+    let (position, rotation) = match settings.scene_view {
         Some(v) => (
             glam::Vec3::from(v.position),
             glam::Quat::from_array(v.rotation).normalize(),
@@ -66,17 +70,17 @@ pub fn restore_scene_view(s: &mut EditorState) {
     }
 }
 
-/// Remember the Scene view camera for the next launch (3D views only).
+/// Remember the Scene view camera (3D views only) and icon settings for the next launch.
 pub fn remember_scene_view(s: &EditorState) {
     let cam = &s.scene_view.camera;
-    if cam.is_2d() {
-        return;
-    }
     let mut settings = EditorSettings::load(&s.project.root);
-    settings.scene_view = Some(SavedView {
-        position: cam.position().to_array(),
-        rotation: cam.rotation().to_array(),
-    });
+    settings.scene_icons = s.scene_view.icons;
+    if !cam.is_2d() {
+        settings.scene_view = Some(SavedView {
+            position: cam.position().to_array(),
+            rotation: cam.rotation().to_array(),
+        });
+    }
     settings.save(&s.project.root);
 }
 
