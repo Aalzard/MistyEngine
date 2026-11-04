@@ -210,6 +210,7 @@ fn contact_shadows_darken_the_floor_beside_a_cube() {
         shadow: Default::default(),
         volumetric: Default::default(),
         contact_shadows,
+        area: Default::default(),
     };
     let post = PostSettings {
         contact_shadows: ContactShadowSettings::from_override(&ContactShadowsOverride {
@@ -254,6 +255,7 @@ fn effects_off_render_exactly_as_without_them() {
         shadow: Default::default(),
         volumetric: Default::default(),
         contact_shadows,
+        area: Default::default(),
     };
     let fresh = |lights: &[LightData], post| {
         let mut renderer = Renderer::new(&gpu.0);

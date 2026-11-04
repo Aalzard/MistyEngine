@@ -102,6 +102,13 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                     shadow_dimmer: l.volumetric_shadow_dimmer,
                 },
                 contact_shadows: l.contact_shadows,
+                area: crate::render::AreaShape {
+                    size: glam::Vec2::new(l.width, l.height),
+                    right: rot * Vec3::X,
+                    up: rot * Vec3::Y,
+                    two_sided: l.two_sided,
+                    show_emitter: l.show_emitter,
+                },
             })
         })
         .collect()
@@ -205,6 +212,7 @@ pub fn headlight(camera: &Camera) -> Vec<LightData> {
         shadow: Default::default(),
         volumetric: Default::default(),
         contact_shadows: false,
+        area: Default::default(),
     }]
 }
 

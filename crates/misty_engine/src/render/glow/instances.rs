@@ -78,7 +78,9 @@ fn light_color(s: &GlowSource) -> Vec3 {
 
 /// The halo instance of `s`, or `None` when it would not show.
 pub(super) fn halo(frame: &Frame, s: &GlowSource, h: &LightHalo) -> Option<GlowInstance> {
-    if !h.enabled || s.kind == LightType::Directional || h.size <= 0.0 || h.intensity <= 0.0 {
+    // Directional lights have no position; rectangles show their emitter quad instead.
+    let pointlike = matches!(s.kind, LightType::Point | LightType::Spot);
+    if !h.enabled || !pointlike || h.size <= 0.0 || h.intensity <= 0.0 {
         return None;
     }
     let cam = frame.camera;

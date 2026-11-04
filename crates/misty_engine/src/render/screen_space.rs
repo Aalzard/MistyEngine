@@ -246,7 +246,7 @@ impl Renderer {
         let (lit, _) = draw_groups(
             device,
             &self.pipelines,
-            &self.lights_buffer,
+            [&self.lights_buffer, &self.ltc_table],
             [&self.draws_buffer, &self.slots_buffer],
             &self.shadows,
             &self.probes,

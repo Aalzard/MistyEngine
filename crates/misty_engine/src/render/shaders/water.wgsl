@@ -220,6 +220,32 @@ fn water_sun_shadow(world: vec3<f32>, n: vec3<f32>) -> f32 {
     return 1.0;
 }
 
+struct WaterRect {
+    spec: vec3<f32>,
+    body: vec3<f32>,
+};
+
+// Rectangle lights (area_light.wgsl) on the surface: GGX reflection with water's F0 and the
+// diffuse light reaching the body.
+fn water_rect_lights(world: vec3<f32>, n: vec3<f32>, v: vec3<f32>, perceptual: f32) -> WaterRect {
+    var out: WaterRect;
+    let count = u32(lights.info.x);
+    for (var i = 0u; i < count; i++) {
+        let li = lights.items[i];
+        if (u32(li.dir_type.w) != 3u) {
+            continue;
+        }
+        let w = rect_window(li, world);
+        if (w <= 0.0) {
+            continue;
+        }
+        let t = rect_light(li, world, n, v, perceptual, vec3<f32>(0.02));
+        out.spec += t.specular * li.color.rgb * w;
+        out.body += t.diffuse * li.color.rgb * w;
+    }
+    return out;
+}
+
 fn sun_light() -> vec3<f32> {
     return view.sun_color.rgb * view.sun_dir.w;
 }
@@ -346,7 +372,10 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
         behind += behind * caustics(along, t) * water.p3.w * fade * max(l.y, 0.0) * 2.0;
     }
     let depth_tint = 1.0 - exp(-depth / max(water.p2.y * 0.6, 0.05));
-    let body_light = water_ambient(vec3<f32>(0.0, 1.0, 0.0)) + sun * max(l.y, 0.0) * 0.35 * shadow;
+    // Rectangle lights: glints on the surface and light into the body.
+    let smooth_ = clamp(water.p1.y - (1.0 - far) * 0.12, 0.0, 1.0);
+    let rect = water_rect_lights(in.world, n, v, 1.0 - smooth_);
+    let body_light = water_ambient(vec3<f32>(0.0, 1.0, 0.0)) + sun * max(l.y, 0.0) * 0.35 * shadow + rect.body * 0.35;
     let body = mix(water.shallow.rgb, water.deep.rgb, depth_tint) * body_light;
     let trans = transmittance(thickness);
     var refracted = behind * trans + body * (1.0 - trans);
@@ -367,12 +396,12 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
     let fresnel = (0.02 + 0.98 * pow(1.0 - n_dot_v, 5.0)) * water.p1.z;
 
     // ---- Sun glitter (GGX, roughened with distance against sparkle aliasing) ----
-    let smooth_ = clamp(water.p1.y - (1.0 - far) * 0.12, 0.0, 1.0);
     let rough = max((1.0 - smooth_) * (1.0 - smooth_), 0.0015);
     let h = normalize(l + v);
     let n_dot_l = max(dot(n, l), 0.0);
     let spec_f = 0.02 + 0.98 * pow(1.0 - max(dot(l, h), 0.0), 5.0);
-    let spec = sun * d_ggx(max(dot(n, h), 0.0), rough) * spec_f * n_dot_l * 0.25 * shadow * water.p1.z;
+    let sun_spec = sun * d_ggx(max(dot(n, h), 0.0), rough) * spec_f * n_dot_l * 0.25 * shadow;
+    let spec = (sun_spec + rect.spec) * water.p1.z;
 
     // ---- Subsurface scattering: sunlight through thin crests ----
     let crest = clamp(in.info.x * 0.5 + 0.5, 0.0, 1.0);

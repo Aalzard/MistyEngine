@@ -36,7 +36,7 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, _name: &str, on: bool) {
 
 /// Light ▸ Halo (point and spot lights), folded away until the halo is on.
 pub fn halo_section(ui: &mut Ui, l: &mut Light) -> bool {
-    if l.kind == LightType::Directional {
+    if !matches!(l.kind, LightType::Point | LightType::Spot) {
         return false;
     }
     let light_color = l.color;

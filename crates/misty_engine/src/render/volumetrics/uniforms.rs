@@ -317,18 +317,22 @@ fn froxel_light(l: &LightData, layer: Option<i32>) -> Option<FroxelLight> {
     if strength <= 0.0 {
         return None;
     }
-    let kind = match l.kind {
-        LightType::Directional => 0.0,
-        LightType::Point => 1.0,
-        LightType::Spot => 2.0,
-    };
+    let kind = crate::render::light_kind_index(l.kind);
     let half = (l.spot_angle * 0.5).to_radians();
+    let spot = if l.kind == LightType::Rectangle {
+        // Area and sides of the rectangle (froxel_light.wgsl).
+        let a = &l.area;
+        let sides = if a.two_sided { 1.0 } else { 0.0 };
+        [a.size.x.max(0.0) * a.size.y.max(0.0), sides, 0.0, 0.0]
+    } else {
+        [half.cos(), (half * 0.8).cos(), 0.0, 0.0]
+    };
     let shadowed = layer.is_some() && l.shadows != Shadows::None;
     Some(FroxelLight {
         pos_range: v4(l.position, l.range),
         dir_type: v4(l.direction.normalize_or(Vec3::Z), kind),
         color: v4(linear(l.color) * strength, 0.0),
-        spot: [half.cos(), (half * 0.8).cos(), 0.0, 0.0],
+        spot,
         shadow: [
             if shadowed { 1.0 } else { 0.0 },
             layer.unwrap_or(0) as f32,

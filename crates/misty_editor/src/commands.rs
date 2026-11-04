@@ -265,16 +265,19 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
             }
         }
         Create::Light(kind) => {
-            let light = if kind == LightType::Directional {
-                Light::directional()
-            } else {
-                Light {
+            let light = match kind {
+                LightType::Directional => Light::directional(),
+                LightType::Rectangle => Light::rectangle(),
+                _ => Light {
                     kind,
                     ..Default::default()
-                }
+                },
             };
-            if kind != LightType::Point {
-                t.set_euler(Vec3::new(50.0, -30.0, 0.0));
+            match kind {
+                LightType::Point => {}
+                // Rectangle lights start as a ceiling panel shining down.
+                LightType::Rectangle => t.set_euler(Vec3::new(90.0, 0.0, 0.0)),
+                _ => t.set_euler(Vec3::new(50.0, -30.0, 0.0)),
             }
             s.scene.add(e, light);
         }

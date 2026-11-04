@@ -1,6 +1,7 @@
 //! wgpu renderer: sky, lit meshes with shadows, grid, particles, gizmo lines and selection outline.
 
 pub mod ao;
+pub mod area;
 mod batch;
 mod cascades;
 pub mod contact_shadows;
@@ -41,6 +42,7 @@ mod water;
 
 pub use crate::terrain::TerrainDraw;
 pub use ao::AoSettings;
+pub use area::AreaShape;
 pub use contact_shadows::ContactShadowSettings;
 pub use environment::{Environment, Sun};
 pub use glow::GlowSource;
@@ -244,6 +246,8 @@ pub struct LightData {
     pub volumetric: VolumetricLight,
     /// Screen-space contact shadows (used when the view's Contact Shadows are on).
     pub contact_shadows: bool,
+    /// Rectangle lights: size, axes, sides and the emitter quad.
+    pub area: AreaShape,
 }
 
 /// How the main pass is split: GPU culling draws it in two phases (`Some(0)`, `Some(1)`)
@@ -322,6 +326,10 @@ struct LightItem {
     color: [f32; 4],
     spot: [f32; 4],
     shadow: [f32; 4],
+    /// Rectangle: xyz = half-width axis, w = 1 when two-sided.
+    area_x: [f32; 4],
+    /// Rectangle: xyz = half-height axis.
+    area_y: [f32; 4],
 }
 
 #[repr(C)]
@@ -361,6 +369,8 @@ pub struct Renderer {
     /// Group 2 of the terrain pass (no bindings).
     empty_group: wgpu::BindGroup,
     lights_buffer: wgpu::Buffer,
+    /// Rectangle lights' LTC lookup table (storage, mesh group binding 7).
+    ltc_table: wgpu::Buffer,
     draws_buffer: wgpu::Buffer,
     draws_capacity: usize,
     /// Instance → draw slot indices (see [`batch`]).
@@ -441,10 +451,11 @@ impl Renderer {
         let draws_buffer = draws_buffer(device, draws_capacity);
         let slots_capacity = 1024;
         let slots_buffer = slots_buffer(device, slots_capacity);
+        let ltc_table = area::table_buffer(device);
         let (mesh_bind_group, draws_bind_group) = draw_groups(
             device,
             &pipelines,
-            &lights_buffer,
+            [&lights_buffer, &ltc_table],
             [&draws_buffer, &slots_buffer],
             &shadows,
             &probes,
@@ -472,6 +483,7 @@ impl Renderer {
                 entries: &[],
             }),
             lights_buffer,
+            ltc_table,
             draws_buffer,
             draws_capacity,
             slots_buffer,
@@ -543,7 +555,7 @@ impl Renderer {
             (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
                 device,
                 &self.pipelines,
-                &self.lights_buffer,
+                [&self.lights_buffer, &self.ltc_table],
                 lists,
                 &self.shadows,
                 &self.probes,
@@ -725,8 +737,32 @@ impl Renderer {
         }
     }
 
-    /// Draw a frame into `target` and submit it.
+    /// Draw a frame into `target` and submit it. Rectangle lights with Show Emitter on add
+    /// their emissive quads to the frame's meshes.
     pub fn render(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &RenderTarget,
+        frame: &Frame,
+    ) {
+        let emitters = if frame.shaded {
+            area::emitter_draws(frame.lights)
+        } else {
+            Vec::new()
+        };
+        if emitters.is_empty() {
+            return self.render_frame(device, queue, target, frame);
+        }
+        let meshes: Vec<MeshDraw> = frame.meshes.iter().cloned().chain(emitters).collect();
+        let with_emitters = Frame {
+            meshes: &meshes,
+            ..*frame
+        };
+        self.render_frame(device, queue, target, &with_emitters);
+    }
+
+    fn render_frame(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -983,7 +1019,7 @@ impl Renderer {
             (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
                 device,
                 &self.pipelines,
-                &self.lights_buffer,
+                [&self.lights_buffer, &self.ltc_table],
                 [&self.draws_buffer, &self.slots_buffer],
                 &self.shadows,
                 &self.probes,
@@ -1637,17 +1673,19 @@ fn slots_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
-/// Group 1 of the lit mesh pass and of the shadow/mask passes; `buffers` = draws, slots;
-/// `screen` = screen-space texels (AO, contact shadows).
+/// Group 1 of the lit mesh pass and of the shadow/mask passes; `lights` = the lights uniform
+/// and the LTC table; `buffers` = draws, slots; `screen` = screen-space texels (AO, contact
+/// shadows).
 fn draw_groups(
     device: &wgpu::Device,
     p: &pipelines::Pipelines,
-    lights: &wgpu::Buffer,
+    lights: [&wgpu::Buffer; 2],
     buffers: [&wgpu::Buffer; 2],
     shadows: &shadows::ShadowMaps,
     probes: &probes::gpu::ProbeGpu,
     screen: &wgpu::Buffer,
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
+    let [lights, ltc] = lights;
     let [draws, slots] = buffers;
     let [p0, p1, p2, p3, p4] = probes.entries();
     let mesh = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1682,6 +1720,11 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 6,
                 resource: shadows.params_buffer.as_entire_binding(),
+            },
+            // Rectangle lights' LTC table (area_light.wgsl).
+            wgpu::BindGroupEntry {
+                binding: 7,
+                resource: ltc.as_entire_binding(),
             },
             p0,
             p1,
@@ -1789,6 +1832,16 @@ fn draw_uniform(d: &MeshDraw, lod_fade: f32) -> DrawUniform {
     }
 }
 
+/// Light type index of the shaders (`LightItem.dir_type.w`, `FroxelLight.dir_type.w`).
+pub(crate) fn light_kind_index(kind: LightType) -> f32 {
+    match kind {
+        LightType::Directional => 0.0,
+        LightType::Point => 1.0,
+        LightType::Spot => 2.0,
+        LightType::Rectangle => 3.0,
+    }
+}
+
 /// `soft` = false draws Soft lights with hard shadows (Quality ▸ Soft Shadows Off).
 fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan, soft: bool) -> LightsUniform {
     let mut u = LightsUniform::zeroed();
@@ -1798,11 +1851,7 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan, soft: bool) -> Ligh
             continue;
         }
         let c = srgb_to_linear(l.color);
-        let kind = match l.kind {
-            LightType::Directional => 0.0,
-            LightType::Point => 1.0,
-            LightType::Spot => 2.0,
-        };
+        let kind = light_kind_index(l.kind);
         let half = (l.spot_angle * 0.5).to_radians();
         let (mode, layer) = match plan.light_layers.get(i).copied().flatten() {
             Some(layer) => (
@@ -1833,7 +1882,15 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan, soft: bool) -> Ligh
                 0.0,
             ],
             shadow: [mode, layer, 0.0, 0.0],
+            area_x: [0.0; 4],
+            area_y: [0.0; 4],
         };
+        if l.kind == LightType::Rectangle {
+            let (hx, hy) = l.area.half_axes();
+            let sides = if l.area.two_sided { 1.0 } else { 0.0 };
+            u.items[n].area_x = hx.extend(sides).to_array();
+            u.items[n].area_y = hy.extend(0.0).to_array();
+        }
         n += 1;
     }
     let env = &frame.environment.settings;
@@ -1916,10 +1973,10 @@ mod tests {
     #[test]
     fn gpu_struct_sizes_match_wgsl() {
         assert_eq!(std::mem::size_of::<DrawUniform>(), 224);
-        assert_eq!(std::mem::size_of::<LightItem>(), 80);
+        assert_eq!(std::mem::size_of::<LightItem>(), 112);
         assert_eq!(
             std::mem::size_of::<LightsUniform>(),
-            16 + 64 + 48 + 80 * MAX_LIGHTS + 64 * shadows::MAX_LOCAL_LAYERS
+            16 + 64 + 48 + 112 * MAX_LIGHTS + 64 * shadows::MAX_LOCAL_LAYERS
         );
         // Matrices, camera/grid/background, 8 environment and 6 post vec4s (common.wgsl).
         assert_eq!(std::mem::size_of::<ViewUniform>(), 128 + 48 + 16 * 14);

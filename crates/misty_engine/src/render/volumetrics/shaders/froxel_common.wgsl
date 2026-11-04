@@ -5,11 +5,12 @@
 struct FroxelLight {
     // xyz = position, w = range.
     pos_range: vec4<f32>,
-    // xyz = direction the light travels, w = type (0 directional, 1 point, 2 spot).
+    // xyz = direction the light travels, w = type (0 directional, 1 point, 2 spot, 3 rectangle).
     dir_type: vec4<f32>,
     // rgb = linear colour × intensity × volumetric multiplier.
     color: vec4<f32>,
-    // x = cos(outer half angle), y = cos(inner half angle).
+    // Spot: x = cos(outer half angle), y = cos(inner half angle).
+    // Rectangle: x = area (m²), y = 1 when two-sided.
     spot: vec4<f32>,
     // x = 1 when shadowed, y = shadow layer (-1 = directional map), z = shadow dimmer.
     shadow: vec4<f32>,

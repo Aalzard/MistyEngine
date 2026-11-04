@@ -171,6 +171,7 @@ fn ocean_frame_render(
         shadow: Default::default(),
         volumetric: Default::default(),
         contact_shadows: false,
+        area: Default::default(),
     };
     let lights = [sun];
     let environment = Environment::new(Default::default(), &lights);

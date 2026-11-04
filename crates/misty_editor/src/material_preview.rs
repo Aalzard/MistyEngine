@@ -124,6 +124,7 @@ fn frame_parts(
         shadow: Default::default(),
         volumetric: Default::default(),
         contact_shadows: false,
+        area: Default::default(),
     };
     let lights = vec![
         light(Vec3::new(0.6, -0.6, 0.8), 1.0),

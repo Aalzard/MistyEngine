@@ -136,6 +136,7 @@ fn red_room() -> (Vec<MeshDraw>, Vec<LightData>) {
         spot_angle: 30.0,
         shadows: Shadows::None,
         contact_shadows: false,
+        area: Default::default(),
         shadow: Default::default(),
         volumetric: Default::default(),
     };

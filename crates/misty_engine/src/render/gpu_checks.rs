@@ -36,6 +36,7 @@ fn sun(shadows: Shadows) -> Vec<LightData> {
         shadow: Default::default(),
         volumetric: Default::default(),
         contact_shadows: false,
+        area: Default::default(),
     }]
 }
 
