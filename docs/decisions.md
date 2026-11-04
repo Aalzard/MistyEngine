@@ -2953,3 +2953,13 @@ Record of choices made without asking, and why.
      (bsdtar: deflate, forward slashes; Windows PowerShell 5.1's `Compress-Archive` and .NET Framework's
      `ZipFile` can write backslash entry names) and writes `<zip>.sha256.txt` as the updater expects. The
      version comes from the workspace `Cargo.toml`.
+612. **Windows installer: Inno Setup 6, per-user by default.** The user asked for a real installer next to the
+     zip. `tools/installer/MistyEngine.iss` packs the same release folder into
+     `MistyEngine-Setup-v<version>-windows-x64.exe`: license page, Start menu shortcut, optional desktop
+     shortcut, uninstaller, "launch now". It installs to `%LOCALAPPDATA%\Programs\Misty Engine` without an
+     admin prompt (the dialog still offers "all users"), so the in-app updater can replace files in place; a
+     Program Files install falls back to the updater's "download the new version" button. A fixed AppId lets
+     later installers upgrade the same install. `make_release.ps1` runs it as step 4 and only warns when Inno
+     Setup is missing (`-NoInstaller` skips it). The uninstaller also removes the folders the engine creates
+     inside the install (sample `Library\`/`Builds\`, updater backups); user projects are never touched.
+     The zip stays: the updater uses it, and some people prefer a portable copy.

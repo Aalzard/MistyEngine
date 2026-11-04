@@ -13,6 +13,9 @@
      no Library\ or Builds\), README.txt, CHANGELOG.txt and LICENSE.txt
   3. <OutDir>\MistyEngine-v<version>-windows-x64.zip (the folder inside, deflate) and
      <zip>.sha256.txt ("<hash>  <zip name>", what the updater checks)
+  4. <OutDir>\MistyEngine-Setup-v<version>-windows-x64.exe, the installer, built with Inno Setup 6
+     from tools\installer\MistyEngine.iss (skipped with a warning if Inno Setup is not
+     installed, or with -NoInstaller)
 
   The version is the workspace version in Cargo.toml.
 
@@ -28,7 +31,8 @@
 param(
     [string]$OutDir,
     [string]$TargetDir,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$NoInstaller
 )
 
 $ErrorActionPreference = 'Stop'
@@ -101,3 +105,22 @@ $sumFile = "$Zip.sha256.txt"
 
 $size = (Get-Item $Zip).Length
 Write-Host ("{0}.zip  {1:N1} MB  sha256 {2}" -f $Name, ($size / 1MB), $hash)
+
+# --- the installer (Inno Setup 6) --------------------------------------------------------
+if (-not $NoInstaller) {
+    $iscc = @(
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $iscc) {
+        Write-Warning 'Inno Setup 6 not found; skipping the installer (https://jrsoftware.org/isinfo.php).'
+    } else {
+        $iss = Join-Path $Repo 'tools\installer\MistyEngine.iss'
+        $ico = Join-Path $Repo 'crates\misty_editor\assets\branding\misty.ico'
+        & $iscc /Q "/DVersion=$Version" "/DPkgDir=$Pkg" "/DIconFile=$ico" "/O$OutDir" $iss
+        if ($LASTEXITCODE -ne 0) { throw 'Inno Setup (ISCC) failed.' }
+        $setup = Join-Path $OutDir "MistyEngine-Setup-v$Version-windows-x64.exe"
+        Write-Host ("{0}  {1:N1} MB" -f (Split-Path -Leaf $setup), ((Get-Item $setup).Length / 1MB))
+    }
+}

@@ -105,6 +105,15 @@ From the unzipped folder, somewhere outside the repository, with a throwaway Hub
    `real_build` with `MISTY_BUILD_PROJECT` / `MISTY_BUILD_OUT`; it uses the repository's player), then
    run the game exe from the build folder with `MISTY_SCREENSHOT=game.png`.
 
+
+### The installer
+
+`make_release.ps1` also writes `MistyEngine-Setup-v<version>-windows-x64.exe` with Inno Setup 6
+(`tools/installer/MistyEngine.iss`; install Inno Setup from https://jrsoftware.org/isinfo.php, or pass
+`-NoInstaller`). It installs per user to `%LOCALAPPDATA%\Programs\Misty Engine` (no admin prompt) with a
+Start menu shortcut, an optional desktop shortcut and an uninstaller. Upload it to the release next to the
+zip; the updater keeps using the zip.
+
 ## Changing the repository / testing
 
 - The repository is the constant `REPO` in `crates/misty_editor/src/updater/mod.rs`
