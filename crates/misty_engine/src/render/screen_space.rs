@@ -18,6 +18,14 @@ use crate::camera::{Camera, Projection};
 mod resources;
 
 const PREPASS_SRC: &str = include_str!("shaders/ao_prepass.wgsl");
+/// The prepass with terrain vertex pulling (terrain_vertex.wgsl).
+pub(super) const TERRAIN_PREPASS_SRC: &str = concat!(
+    include_str!("shaders/ao_prepass.wgsl"),
+    "\n",
+    include_str!("shaders/terrain_vertex.wgsl"),
+    "\n",
+    include_str!("shaders/ao_prepass_terrain.wgsl")
+);
 const AO_SRC: &str = include_str!("shaders/ao.wgsl");
 const NORMAL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 /// AO images: x = occlusion, y = linear depth.
@@ -63,6 +71,8 @@ struct AoParams {
 struct Passes {
     /// Prepass variants by (cutout, double sided).
     prepass: Vec<(ShadowKey, wgpu::RenderPipeline)>,
+    /// Terrains (heightmap vertex pulling).
+    terrain: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     gtao: wgpu::ComputePipeline,
     denoise: wgpu::ComputePipeline,
@@ -331,12 +341,12 @@ impl Renderer {
             m.draw(&mut pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
         }
-        let opaque = ShadowKey {
-            cutout: false,
-            double_sided: false,
-        };
-        if let Some(pipeline) = passes.prepass_variant(opaque) {
-            pass.set_pipeline(pipeline);
+        // Terrains pull heights from their own textures (group 3; group 2 unused).
+        if !frame.terrains.is_empty()
+            && let Some(material) = self.textures.get(None, None)
+        {
+            pass.set_pipeline(&passes.terrain);
+            pass.set_bind_group(2, material, &[]);
             let first = frame.meshes.len();
             self.terrains.draw(
                 &mut pass,

@@ -43,6 +43,34 @@ impl Passes {
             }
         }
 
+        let terrain = pipelines::build(
+            device,
+            Spec {
+                vs: "vs_terrain_prepass",
+                fs: Some("fs_normal"),
+                cull: Some(wgpu::Face::Back),
+                depth: Some(Depth {
+                    format: DEPTH_FORMAT,
+                    write: true,
+                    compare: wgpu::CompareFunction::Less,
+                    bias: Default::default(),
+                }),
+                color: Some(NORMAL_FORMAT),
+                samples: 1,
+                glow: None,
+                ..Spec::new(
+                    "ao terrain prepass",
+                    TERRAIN_PREPASS_SRC,
+                    &[
+                        &p.view_layout,
+                        &p.draws_layout,
+                        &p.material_layout,
+                        &p.terrain_layout,
+                    ],
+                )
+            },
+        );
+
         use wgpu::BindingType as B;
         let entry = |binding, ty| wgpu::BindGroupLayoutEntry {
             binding,
@@ -108,6 +136,7 @@ impl Passes {
         };
         Self {
             prepass,
+            terrain,
             gtao: compute("cs_gtao"),
             denoise: compute("cs_denoise"),
             resolve: compute("cs_resolve"),

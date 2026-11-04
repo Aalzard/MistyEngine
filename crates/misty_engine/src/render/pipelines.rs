@@ -40,7 +40,7 @@ pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
         attributes: &MESH_ATTRIBUTES,
     }]
 }
-/// The terrain fragment stage reuses the mesh shader's vertex stage and lighting.
+/// The terrain shader reuses the mesh shader's draws and lighting.
 const TERRAIN_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
     "\n",
@@ -50,7 +50,29 @@ const TERRAIN_SRC: &str = concat!(
     "\n",
     include_str!("shaders/screen_space.wgsl"),
     "\n",
+    include_str!("shaders/terrain_vertex.wgsl"),
+    "\n",
+    include_str!("shaders/terrain_layers.wgsl"),
+    "\n",
     include_str!("shaders/terrain.wgsl")
+);
+/// Terrain shadow casters: the depth shader plus terrain vertex pulling.
+const TERRAIN_SHADOW_SRC: &str = concat!(
+    include_str!("shaders/depth.wgsl"),
+    "\n",
+    include_str!("shaders/terrain_vertex.wgsl")
+);
+/// Grass blades, lit like meshes (same includes as `MESH_SRC`).
+const GRASS_SRC: &str = concat!(
+    include_str!("shaders/mesh.wgsl"),
+    "\n",
+    include_str!("shaders/shadows.wgsl"),
+    "\n",
+    include_str!("probes/probes.wgsl"),
+    "\n",
+    include_str!("shaders/screen_space.wgsl"),
+    "\n",
+    include_str!("shaders/grass.wgsl")
 );
 
 pub struct Pipelines {
@@ -86,6 +108,11 @@ pub struct Pipelines {
     /// No bindings: the terrain's unused group 2 (keeps it under 16 textures per stage).
     pub empty_layout: wgpu::BindGroupLayout,
     pub terrain: wgpu::RenderPipeline,
+    /// Terrain shadow casters (vertex pulling from the heightmap texture).
+    pub terrain_shadow: wgpu::RenderPipeline,
+    /// Grass parameters (group 2 of the grass pipeline).
+    pub grass_layout: wgpu::BindGroupLayout,
+    pub grass: wgpu::RenderPipeline,
     pub bloom_prefilter: wgpu::RenderPipeline,
     pub bloom_down: wgpu::RenderPipeline,
     pub bloom_up: wgpu::RenderPipeline,
@@ -421,22 +448,35 @@ impl Pipelines {
             particles("particles additive", "fs_additive", add_light),
         );
 
-        // Terrain: mesh layouts plus its own textures at group 3.
-        let mut terrain_entries = vec![
-            entry(0, S::FRAGMENT, uniform()),
+        // Terrain: mesh layouts plus its own textures at group 3 (see terrain_vertex.wgsl).
+        let array = wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2Array,
+            multisampled: false,
+        };
+        let unfiltered = wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        };
+        let terrain_entries = [
+            entry(0, S::VERTEX_FRAGMENT, uniform()),
             entry(1, S::FRAGMENT, filtered),
             entry(2, S::FRAGMENT, filtering),
-            entry(11, S::FRAGMENT, filtering),
+            entry(3, S::FRAGMENT, array),
+            entry(4, S::FRAGMENT, array),
+            entry(5, S::FRAGMENT, array),
+            entry(6, S::FRAGMENT, filtering),
+            entry(12, S::VERTEX, unfiltered),
+            entry(13, S::VERTEX_FRAGMENT, filtered),
         ];
-        terrain_entries.extend((3..11).map(|b| entry(b, S::FRAGMENT, filtered)));
         let terrain_layout = layout("misty terrain", &terrain_entries);
         let empty_layout = layout("misty empty", &[]);
         let terrain = build(
             device,
             Spec {
-                vs: "vs_main",
+                vs: "vs_terrain",
                 fs: Some("fs_terrain"),
-                buffers: &mesh_buffers,
                 cull: Some(wgpu::Face::Back),
                 depth: Depth::main(true, wgpu::CompareFunction::Less),
                 glow: Some(true),
@@ -444,6 +484,59 @@ impl Pipelines {
                     "terrain",
                     TERRAIN_SRC,
                     &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
+                )
+            },
+        );
+        let terrain_shadow = build(
+            device,
+            Spec {
+                vs: "vs_terrain_depth",
+                fs: None,
+                cull: Some(wgpu::Face::Back),
+                depth: Some(Depth {
+                    format: super::SHADOW_FORMAT,
+                    write: true,
+                    compare: wgpu::CompareFunction::LessEqual,
+                    bias: wgpu::DepthBiasState {
+                        constant: 1,
+                        slope_scale: 1.0,
+                        clamp: 0.0,
+                    },
+                }),
+                color: None,
+                samples: 1,
+                glow: None,
+                ..Spec::new(
+                    "terrain shadow",
+                    TERRAIN_SHADOW_SRC,
+                    &[
+                        &shadow_view_layout,
+                        &draws_layout,
+                        &material_layout,
+                        &terrain_layout,
+                    ],
+                )
+            },
+        );
+        let grass_layout = layout("misty grass", &[entry(0, S::VERTEX_FRAGMENT, uniform())]);
+        let blade_buffers = [wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<crate::terrain::details::Blade>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4],
+        }];
+        let grass = build(
+            device,
+            Spec {
+                vs: "vs_grass",
+                fs: Some("fs_grass"),
+                buffers: &blade_buffers,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                depth: Depth::main(true, wgpu::CompareFunction::Less),
+                glow: Some(true),
+                ..Spec::new(
+                    "grass",
+                    GRASS_SRC,
+                    &[&view_layout, &mesh_layout, &grass_layout],
                 )
             },
         );
@@ -520,6 +613,9 @@ impl Pipelines {
             terrain_layout,
             empty_layout,
             terrain,
+            terrain_shadow,
+            grass_layout,
+            grass,
         }
     }
 }
@@ -614,6 +710,12 @@ mod tests {
             ("particles", include_str!("shaders/particles.wgsl")),
             ("terrain", super::TERRAIN_SRC),
             ("ao prepass", include_str!("shaders/ao_prepass.wgsl")),
+            (
+                "ao terrain prepass",
+                super::super::screen_space::TERRAIN_PREPASS_SRC,
+            ),
+            ("terrain shadow", super::TERRAIN_SHADOW_SRC),
+            ("grass", super::GRASS_SRC),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));

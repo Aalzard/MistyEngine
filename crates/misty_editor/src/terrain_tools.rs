@@ -10,7 +10,7 @@ use misty_engine::camera::Camera;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Terrain, TerrainCollider, Transform};
 use misty_engine::terrain::brush::{self, Brush};
-use misty_engine::terrain::{TerrainData, store};
+use misty_engine::terrain::{TerrainData, auto_paint, store};
 
 use crate::gizmos::Lines;
 use crate::state::EditorState;
@@ -61,7 +61,9 @@ impl TerrainTool {
             }
             TerrainTool::SetHeight => "Left click to move the terrain towards the target height.",
             TerrainTool::Smooth => "Left click to average out nearby heights.",
-            TerrainTool::Paint => "Select a layer, then left click to paint it onto the terrain.",
+            TerrainTool::Paint => {
+                "Select a layer, then left click to paint it. Auto Paint Rules and Generate paint the whole terrain."
+            }
             TerrainTool::Settings => "Size, resolution and rendering of this terrain.",
         }
     }
@@ -111,6 +113,8 @@ pub struct TerrainTools {
     pub target_height: f32,
     /// Paint Texture layer.
     pub layer: usize,
+    /// Paint Texture paints the Auto Paint result (layers and grass) instead of `layer`.
+    pub generate_in_brush: bool,
     /// Brush centre on the selected terrain under the mouse.
     pub hover: Option<(Entity, Vec3)>,
     pending: Option<PendingEdit>,
@@ -127,6 +131,7 @@ impl Default for TerrainTools {
             falloff: 0.7,
             target_height: 10.0,
             layer: 0,
+            generate_in_brush: false,
             hover: None,
             pending: None,
             painting: false,
@@ -246,11 +251,17 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
         strength: t.strength,
         falloff: t.falloff,
     };
-    let (tool, target, layer) = (t.tool, t.target_height, t.layer);
-    store::modify(path, |d| match tool {
+    let (tool, target, layer, generated) = (t.tool, t.target_height, t.layer, t.generate_in_brush);
+    misty_engine::profile_scope!("Terrain.Brush");
+    // Only the brush's square is re-uploaded by the renderer.
+    let Some(region) = store::get(path).map(|(d, _)| b.region(&d)) else {
+        return;
+    };
+    store::modify_region(path, region, |d| match tool {
         TerrainTool::RaiseLower => brush::raise(d, &b, dt, shift),
         TerrainTool::SetHeight => brush::set_height(d, &b, dt, target),
         TerrainTool::Smooth => brush::smooth(d, &b, dt),
+        TerrainTool::Paint if generated => auto_paint::generate_in_brush(d, &b, dt),
         TerrainTool::Paint => brush::paint(d, &b, dt, layer),
         TerrainTool::Settings => {}
     });

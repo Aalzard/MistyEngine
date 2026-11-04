@@ -73,6 +73,8 @@ mod sample_stress;
 #[cfg(test)]
 mod sample_terrain;
 #[cfg(test)]
+mod sample_terrain2;
+#[cfg(test)]
 mod sample_ui;
 #[cfg(test)]
 mod sample_ui_widgets;
@@ -86,6 +88,7 @@ mod snap_window;
 mod sprite_handles;
 mod state;
 mod status_bar;
+mod terrain_rules;
 mod terrain_tools;
 mod theme;
 mod thumbnails;

@@ -1675,3 +1675,78 @@ Record of choices made without asking, and why.
      presets). The AO, Volumetric Fog and Reflection Probes tiers were already fields of `QualityLevel`;
      AO Off turns screen-space AO off. The fog and probe tiers are stored for now; per-volume Fog Quality and
      the probes' own resolution still decide those passes.
+
+375. **Auto Paint rules live on each layer** (`TerrainLayer.rules`, serde defaults so old `.terrain` files
+     load): slope band (degrees), optional height band (metres above the terrain base), Spread 0..1 (falloff
+     past the band edges: 0.5° + 30° × spread for slope, 1 % + 15 % of the terrain height for height), Breakup
+     strength + scale (seeded 4-octave value-noise fBm that shifts the band edges by up to strength × (falloff
+     + 10°) / (falloff + 6 % height)), Priority. `rules.enabled` *is* the rule-driven flag: disabled layers
+     are manual and Generate keeps their weight per texel; the rule-driven layers share what is left, stacked
+     by priority (higher covers lower), with the lowest rule-driven layer filling the remainder. One seed per
+     terrain (`rule_seed`); each layer offsets it so edges differ.
+376. **Generate is CPU, multithreaded with `std::thread::scope`** (rows split over all cores, no new
+     dependency) and one undo step (a full snapshot like the other terrain edits). "Generate in brush" is a
+     Paint Texture mode, not a separate tool: the brush moves texels towards the rule result at the paint
+     rate, for layers and grass, and is undoable as a stroke.
+377. **Grass uses the same rules** (`DetailSettings.rules`) plus an optional layer to grow on, a density map
+     per splat texel filled by Generate (`detail_map`, base64 in the file) and a hard slope limit (band max +
+     spread: breakup can thin grass but never push it onto cliffs). Blades are scattered deterministically per
+     16 m chunk around the camera only (within the draw distance, 24 chunks per frame), so huge terrains never
+     hold millions of blades. There are no tree instances in Misty terrains yet, so Generate scatters grass only.
+378. **Grass renderer:** one instanced 7-vertex strip per blade (3 tapered segments + tip), lit by the mesh
+     shader's `shade` (shadows, fog), wind as two sine waves travelling along a fixed breeze direction, and a
+     distance fade that shrinks blades to nothing between 60 % and 100 % of the draw distance (no alpha
+     sorting). Blades do not cast shadows. Colours, wind and draw distance are uniforms (no re-scatter).
+379. **Terrain rendering moved to vertex pulling:** the heightmap is an R32Float texture and normals an RGBA8
+     snorm texture; there is no terrain vertex buffer. Chunks of up to 64 cells draw shared index patterns with
+     the chunk's first sample as base vertex (WGSL `vertex_index` includes it). LOD halves the sample density
+     per level by distance (1.5 chunk sizes per level); neighbours differ by at most one level and the finer
+     side snaps its odd edge vertices onto the coarse grid (16 edge variants per LOD, no skirts, no cracks).
+     Shading uses the per-pixel normal texture, so LOD changes the silhouette only. Shadow casters use a
+     dedicated `terrain_shadow` pipeline with the same vertex code (`terrain_vertex.wgsl`).
+380. **Partial uploads via a store change log:** `store::modify_region` records the normalised rectangle a
+     brush touched; the renderer asks `changes_since(its version)` and re-uploads only those heights, normals
+     and splat texels (`queue.write_texture` of the rectangle), updates the bounds incrementally and drops
+     the grass chunks there. `modify_settings` (empty region) is used for layer/cliff/harmony/detail settings
+     so dragging a slider re-uploads nothing; plain `modify`, `insert` (undo) and file loads are full uploads.
+     The log keeps 256 entries; readers older than that do a full upload.
+381. **Heightmap resolutions 2049 and 4097, splat 1024 and 2048** were added for large terrains. The `.terrain`
+     format stays JSON + base64 (a 4097² file is ~45 MB); saving it on mouse-up is the remaining hitch.
+382. **Layer textures are 2D arrays** (albedo sRGB, normal, height; one slice per layer, resized to one
+     power-of-two side ≤ 1024 with CPU mips), loaded by the terrain renderer itself and polled for file
+     changes twice a second. This keeps the terrain pipeline at 5 fragment textures instead of 9 (the default
+     limit of 16 per stage was already reached with the material and shadow groups). Texture import settings
+     are not applied to terrain layers.
+383. **Cliffs:** `CliffSettings { triplanar (on), triplanar_angle 45°, sharpness 4, height_blend 0.5 }`.
+     Projection weights are |n|^sharpness, blended in from the top projection over ±5° around the angle and
+     dropped below 2 % (each skipped projection saves 3 texture reads); gentle slopes sample only the top
+     projection, and with triplanar off the shader never takes the side branches (the cheap path). Texture
+     gradients come from world-position derivatives so per-pixel branches can use `textureSampleGrad`. Side
+     normals use a whiteout blend per axis. Height Blend is the classic height-lerp: weights become
+     max(h + w − (max(h + w) − window), 0) with window = 1 − 0.97 × contrast; contrast 0 is the plain blend.
+     Layers without a Height Map use their albedo luminance stretched to 0..1.
+384. **Color Harmony is analysis on the CPU, adjustment in the shader:** each layer's mean albedo (linear,
+     from the loaded image) and its splat coverage give a shared target in HSV: hue = circular mean weighted by
+     coverage × saturation (greys carry no hue), saturation and value = weighted means. Tint and Lighting
+     targets replace only the hue (sun colour for Lighting). Per layer the shader gets a hue shift and
+     saturation / brightness scales = Strength × the Hue/Saturation/Brightness weights of the way to the
+     target, applied per sample in HSV; Strength 0 (or Preview Before, which is not saved) passes the exact
+     identity and the shader skips the conversion. Source textures are never modified.
+385. **UI stays in the existing tabs:** everything procedural is in Paint Texture as collapsible sections
+     (the selected layer's Auto Paint Rules, Generate row with Seed and "Generate in brush", Grass & Details,
+     Cliffs & Blending, Color Harmony); no new tool tabs. Slope / height / blade-height ranges use a small
+     two-handle slider with numeric fields.
+386. **TerrainDemo2 is generated by code** (`sample_terrain2`, ignored writer + check + rules test + headless
+     play): 512 m, 513² heightmap of ridged fBm mountains around a meadow with terraced cliffs, four
+     rule-driven layers (Meadow, Scree, Cliff with height + normal map, Snow on a height band), meadow-only
+     grass, Color Harmony on (0.45). Tileable textures are generated into `Assets/Textures/Terrain/`. An
+     ignored `write_terrain_demo2_variants` writes before/after projects for the screenshots.
+387. **Terrain merge with fog, probes, AO and cascades:** the terrain and grass shaders get the same
+     includes as meshes (soft shadows, probes, screen-space), so `shade` keeps fog, probe reflections, AO and
+     contact shadows. `terrain_surface` sets `Surface.draw` to the terrain's draw slot; grass has no draw of
+     its own, so its uniform carries the terrain's slot (probe list) in a new `draw` lane. Terrain shadow
+     casters use the vertex-pulling `terrain_shadow` pipeline in every cascade and local layer. The AO depth +
+     normal prepass draws terrains through a `vs_terrain_prepass` entry (ao_prepass.wgsl + terrain_vertex.wgsl
+     + ao_prepass_terrain.wgsl) with the terrain group at 3, instead of the old vertex-buffer prepass variant.
+     The terrain fragment stage samples 10 textures (fog volume, two shadow arrays, probe atlas and BRDF LUT,
+     splat map, three layer arrays, normals; group 2 stays empty), under the default 16.
