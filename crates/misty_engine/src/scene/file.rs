@@ -225,8 +225,8 @@ pub(super) fn read_json(text: &str, what: &str) -> Result<Vec<ObjectEntry>, Stri
 }
 
 fn read_file(text: &str, what: &str) -> Result<SceneFile, String> {
-    let file: SceneFile =
-        serde_json::from_str(text).map_err(|e| format!("invalid {what} file: {e}"))?;
+    let file: SceneFile = serde_json::from_str(&crate::asset_db::resolve_json(text))
+        .map_err(|e| format!("invalid {what} file: {e}"))?;
     if file.version > VERSION {
         return Err(format!(
             "{what} was saved by a newer version (format {}, this editor reads {VERSION})",
@@ -370,7 +370,8 @@ impl Scene {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, self.to_json()).map_err(|e| format!("{}: {e}", path.display()))
+        std::fs::write(path, crate::asset_db::embed_json(&self.to_json()))
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// Read a scene file; its name is the file name without extension.

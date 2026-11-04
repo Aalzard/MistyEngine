@@ -1642,3 +1642,26 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - The menu table is separate from the menu bar's inline egui menus (kept in sync by hand; see decision 520).
 - No search inside asset contents, component values or scripts; no saved searches or search-to-Hierarchy view.
 - Help opens the Markdown guide in the system viewer, not at the heading.
+
+## Round 10 — Asset GUIDs and .meta files ✅
+
+### Done
+- `misty_engine::asset_db`: random 128-bit GUIDs, `<asset>.meta` sidecars for every file and folder under `Assets/`
+  (GUID first, texture import settings after it), and a `GuidDatabase` mapping GUID ↔ path, built by scanning on
+  project open (missing metas created, copied GUIDs split) and kept in step by every asset refresh plus a 2 s poll.
+- Scenes, prefabs, materials, terrains, clips, controllers, mixers, biomes and Build Settings save an
+  `"asset_guids"` table next to their path references; loading follows a renamed or moved asset by GUID and falls
+  back to the path. Old path-only files load unchanged and are upgraded when saved.
+- Project window: rename / move carry the meta along, duplicate gives copies new GUIDs, delete trashes the meta.
+  Files saved with GUIDs are no longer rewritten on rename. New Reimport and Find References In Scene entries.
+- Inspector: every asset shows its GUID (small, selectable, copy button) under its path.
+- Builds pack `AssetGuids.json`; the player resolves references with it.
+- Sample assets have committed `.meta` files (except the six protected user files); generated samples stay
+  path-only so their generator tests are unchanged (decision 532).
+- Decisions 527–536.
+
+### Not done yet
+- No OS file-system watcher (polling only, in Edit mode); a meta changed outside the editor (e.g. a git checkout
+  changing a GUID) is only picked up by the next refresh.
+- Orphan `.meta` files (asset deleted outside the editor) are left on disk.
+- References inside Lua scripts and `.obj`/`.gltf` files stay plain paths.

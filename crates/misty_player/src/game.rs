@@ -35,6 +35,8 @@ impl Game {
         let mut logs = Vec::new();
         // Textures and models are resolved against the project folder.
         misty_engine::assets::set_project_root(root);
+        // References saved with GUIDs follow renamed or moved assets (packed map or meta files).
+        misty_engine::asset_db::open_built(root);
         let settings = ProjectSettings::load(root).unwrap_or_else(|e| {
             logs.push((LogKind::Warning, format!("ProjectSettings.json: {e}")));
             ProjectSettings::default()
@@ -236,6 +238,12 @@ return Loader
         root
     }
 
+    /// `Game::open` installs the project's GUID map (a global), so tests opening games take turns.
+    fn one_game_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn scripts(file: &str) -> Scripts {
         Scripts {
             list: vec![ScriptRef {
@@ -248,6 +256,7 @@ return Loader
 
     #[test]
     fn frames_run_physics_and_scripts_then_load_the_next_scene() {
+        let _turn = one_game_at_a_time();
         let root = project("frames");
         let mut game = Game::open(&root).unwrap();
         assert_eq!(game.product_name(), "Test Game");
@@ -365,6 +374,7 @@ return H
     /// A build plays from its pak: nothing but `data.pak` exists in the data folder.
     #[test]
     fn plays_from_a_mounted_pak() {
+        let _turn = one_game_at_a_time();
         let project = project("pak");
         let data =
             std::env::temp_dir().join(format!("misty_player_pak_data_{}", std::process::id()));
@@ -399,6 +409,7 @@ return H
 
     #[test]
     fn unknown_scenes_are_errors_and_an_empty_build_list_fails_to_open() {
+        let _turn = one_game_at_a_time();
         let root = project("unknown");
         let mut game = Game::open(&root).unwrap();
         assert!(game.load_scene(&SceneRef::Name("Nope".into())).is_err());
@@ -407,5 +418,49 @@ return H
 
         BuildSettings::default().save(&root).unwrap();
         assert!(Game::open(&root).is_err());
+    }
+
+    /// A material renamed and moved (with its meta file) after the scene was saved with GUIDs:
+    /// the player follows the GUID.
+    #[test]
+    fn references_follow_guids_to_moved_assets() {
+        use misty_engine::asset_db::{GuidDatabase, refs};
+        use misty_engine::assets::Material;
+        use misty_engine::render_scene::MaterialSource;
+
+        let _turn = one_game_at_a_time();
+        let root = project("guids");
+        let red = Material {
+            color: [1.0, 0.0, 0.0, 1.0],
+            ..Default::default()
+        };
+        red.save(&root.join("Assets/Red.mat")).unwrap();
+        let scene_path = root.join("Assets/Scenes/Menu.scene");
+        let (menu, _) = Scene::load(&scene_path).unwrap();
+        let cube = menu.find_by_name("Cube").unwrap();
+        menu.world.get::<&mut MeshRenderer>(cube).unwrap().material = Some("Assets/Red.mat".into());
+        let (db, _) = GuidDatabase::scan(&root);
+        std::fs::write(&scene_path, refs::embed(&db, &menu.to_json())).unwrap();
+
+        std::fs::create_dir_all(root.join("Assets/Materials")).unwrap();
+        for ext in ["", ".meta"] {
+            std::fs::rename(
+                root.join(format!("Assets/Red.mat{ext}")),
+                root.join(format!("Assets/Materials/Crimson.mat{ext}")),
+            )
+            .unwrap();
+        }
+        let game = Game::open(&root).unwrap();
+        misty_engine::asset_db::close();
+        let cube = game.scene.find_by_name("Cube").unwrap();
+        let material = game
+            .scene
+            .world
+            .get::<&MeshRenderer>(cube)
+            .unwrap()
+            .material
+            .clone();
+        assert_eq!(material.as_deref(), Some("Assets/Materials/Crimson.mat"));
+        assert_eq!(game.assets.params(material.as_deref()).color, red.color);
     }
 }

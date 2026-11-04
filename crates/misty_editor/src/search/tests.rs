@@ -281,4 +281,14 @@ fn other_round_features_are_searchable() {
     s.actions.clear();
     dispatch::run(&mut s, &h, Command::ApplyPreset);
     assert!(matches!(&s.actions[..], [Action::ApplyPreset { .. }]));
+    // GUID tools on files: Reimport and Find References In Scene.
+    let h = first(&s, "p:warm street lamp", Provider::Project);
+    s.actions.clear();
+    dispatch::run(&mut s, &h, Command::Reimport);
+    assert!(matches!(&s.actions[..], [Action::ReimportAsset(_)]));
+    let h = first(&s, "p:t:material", Provider::Project);
+    assert!(dispatch::commands(&h).contains(&Command::FindReferences));
+    s.actions.clear();
+    dispatch::run(&mut s, &h, Command::FindReferences);
+    assert!(matches!(&s.actions[..], [Action::FindReferencesInScene(_)]));
 }

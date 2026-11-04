@@ -231,7 +231,8 @@ impl BuildSettings {
     }
 
     pub fn from_json(text: &str) -> Result<Self, String> {
-        let mut s: Self = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let mut s: Self = serde_json::from_str(&crate::asset_db::resolve_json(text))
+            .map_err(|e| e.to_string())?;
         s.sanitize();
         Ok(s)
     }
@@ -251,7 +252,8 @@ impl BuildSettings {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(path, text + "\n").map_err(|e| e.to_string())
+        let text = crate::asset_db::embed_json(&(text + "\n"));
+        std::fs::write(path, text).map_err(|e| e.to_string())
     }
 
     /// Keep the window size usable and the App ID numeric.

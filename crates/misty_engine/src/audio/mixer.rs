@@ -133,7 +133,8 @@ impl AudioMixer {
     }
 
     pub fn from_json(text: &str) -> Result<Self, String> {
-        let mut m: Self = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let mut m: Self = serde_json::from_str(&crate::asset_db::resolve_json(text))
+            .map_err(|e| e.to_string())?;
         m.sanitize();
         Ok(m)
     }
@@ -146,7 +147,8 @@ impl AudioMixer {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, self.to_json()).map_err(|e| format!("{}: {e}", path.display()))
+        std::fs::write(path, crate::asset_db::embed_json(&self.to_json()))
+            .map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// Repair hand-edited files: Master first, valid parents, at least one snapshot.

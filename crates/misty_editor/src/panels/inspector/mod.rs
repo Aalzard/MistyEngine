@@ -598,7 +598,7 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             });
         }
     });
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    crate::asset_guids::path_label(ui, rel);
     ui.separator();
     if rel.ends_with(".mat") {
         material::material_asset(ui, state, rel);
@@ -614,7 +614,7 @@ fn audio_clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         ui.label(RichText::new(crate::state::AUDIO_ICON).size(22.0));
         ui.label(RichText::new(format!("{} (Audio Clip)", editors::clip_name(rel))).strong());
     });
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    crate::asset_guids::path_label(ui, rel);
     ui.separator();
     let abs = state.assets.absolute(rel);
     if let Some(info) = clip_info(&abs) {
@@ -676,7 +676,7 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         );
         ui.label(RichText::new(format!("{name} (Prefab Asset)")).strong());
     });
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    crate::asset_guids::path_label(ui, rel);
     ui.separator();
     match state.assets.prefab(rel) {
         Ok(prefab) => {

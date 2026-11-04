@@ -11,7 +11,6 @@ use misty_engine::sprites::slice::{self, GridSlice};
 use misty_engine::sprites::{self, FilterMode, SpriteMode, TextureImporter, TextureType, WrapMode};
 
 use crate::state::EditorState;
-use crate::theme;
 
 /// Unapplied settings and slicer values of one texture.
 #[derive(Clone)]
@@ -66,7 +65,7 @@ pub fn texture_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         ui.label(RichText::new("🖼").size(22.0));
         ui.label(RichText::new(format!("{name} (Texture 2D) Import Settings")).strong());
     });
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    crate::asset_guids::path_label(ui, rel);
     ui.separator();
 
     let on_disk = saved(state, rel);

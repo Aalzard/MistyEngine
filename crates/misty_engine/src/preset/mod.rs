@@ -137,6 +137,8 @@ impl Preset {
 
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = crate::vfs::read_to_string(path).map_err(|e| e.to_string())?;
+        // Asset paths in the values follow renames through the file's GUID table.
+        let text = crate::asset_db::resolve_json(&text);
         let p: Self = serde_json::from_str(&text).map_err(|e| e.to_string())?;
         if p.target.is_empty() {
             return Err("not a preset (no target)".into());
@@ -149,6 +151,8 @@ impl Preset {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        // Values naming assets (a material's textures, a sprite) get the GUID table.
+        let text = crate::asset_db::embed_json(&text);
         std::fs::write(path, text + "\n").map_err(|e| e.to_string())
     }
 }

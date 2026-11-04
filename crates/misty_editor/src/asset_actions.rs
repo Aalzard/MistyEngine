@@ -35,6 +35,8 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         },
         Action::DeleteAsset(path) => delete(s, &path),
         Action::Refresh => s.refresh_assets(),
+        Action::ReimportAsset(path) => crate::asset_guids::reimport(s, &path),
+        Action::FindReferencesInScene(path) => crate::asset_guids::find_references(s, &path),
         Action::ShowInExplorer(path) => {
             if let Err(e) = show_in_explorer(&path) {
                 s.console
@@ -185,6 +187,8 @@ fn finish_move(s: &mut EditorState, from: &Path, result: Result<PathBuf, String>
         return;
     }
     let (old, new) = (s.assets.relative(from), s.assets.relative(&to));
+    // GUIDs follow first, so files saved with them resolve to the new path.
+    misty_engine::asset_db::moved(&old, &new);
     match asset_ops::rewrite_references(&s.project.root, &old, &new) {
         Ok(files) if !files.is_empty() => s.console.info(format!(
             "Updated references to {old} in {}",
@@ -195,6 +199,8 @@ fn finish_move(s: &mut EditorState, from: &Path, result: Result<PathBuf, String>
     }
     update_memory(s, &old, &new, from, &to);
     s.refresh_assets();
+    // Cached prefabs may hold the old path (their files are only rewritten without GUIDs).
+    s.assets.forget_prefabs();
     s.console.info(format!("{old} → {new}"));
 }
 
@@ -261,6 +267,7 @@ fn delete(s: &mut EditorState, path: &Path) {
     let rel = s.assets.relative(path);
     match asset_ops::delete_to_trash(&[path.to_path_buf()]) {
         Ok(()) => {
+            misty_engine::asset_db::removed(&rel);
             let under = |p: &Path| p.starts_with(path);
             if s.project.selected.as_deref().is_some_and(under) {
                 s.project.selected = None;

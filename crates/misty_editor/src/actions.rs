@@ -277,6 +277,10 @@ pub enum Action {
     /// Move to the OS trash (after the confirm dialog).
     DeleteAsset(std::path::PathBuf),
     ShowInExplorer(std::path::PathBuf),
+    /// Load the asset again (its importers see it as changed).
+    ReimportAsset(std::path::PathBuf),
+    /// Select the open scene's objects that reference the asset.
+    FindReferencesInScene(std::path::PathBuf),
     /// Assets ▸ Refresh (Ctrl+R): re-scan the project.
     Refresh,
     /// Component > Add... (opens the Inspector's search popup).

@@ -23,6 +23,10 @@ pub enum Command {
     ApplyPreset,
     ShowInExplorer,
     CopyPath,
+    /// Files: load again (Project ▸ Reimport).
+    Reimport,
+    /// Files: select the loaded scenes' objects that use the asset.
+    FindReferences,
     /// Menu commands.
     Run,
     /// Settings pages and guides.
@@ -45,6 +49,8 @@ impl Command {
             Command::ApplyPreset => "Apply to selection",
             Command::ShowInExplorer => crate::panels::project_menus::explorer_label(),
             Command::CopyPath => "Copy path",
+            Command::Reimport => "Reimport",
+            Command::FindReferences => "Find References In Scene",
             Command::Run => "Run",
             Command::OpenPage => "Open",
             Command::CopyResult => "Copy result",
@@ -59,10 +65,20 @@ pub fn commands(hit: &Hit) -> Vec<Command> {
     match &hit.target {
         Target::Object(_) => vec![SelectAndFrame, Select, CopyName],
         Target::Asset { rel, is_dir: false } if rel.ends_with(".scene") => {
-            vec![Ping, Open, OpenAdditive, ShowInExplorer, CopyPath]
+            vec![Ping, Open, OpenAdditive, ShowInExplorer, CopyPath, Reimport]
         }
         Target::Asset { rel, is_dir: false } if rel.ends_with(".preset") => {
-            vec![Ping, ApplyPreset, ShowInExplorer, CopyPath]
+            vec![Ping, ApplyPreset, ShowInExplorer, CopyPath, Reimport]
+        }
+        Target::Asset { is_dir: false, .. } => {
+            vec![
+                Ping,
+                Open,
+                ShowInExplorer,
+                CopyPath,
+                Reimport,
+                FindReferences,
+            ]
         }
         Target::Asset { .. } => vec![Ping, Open, ShowInExplorer, CopyPath],
         Target::Menu(_) => vec![Run],
@@ -116,6 +132,14 @@ pub fn run(s: &mut EditorState, hit: &Hit, cmd: Command) -> After {
                     preset: rel.clone(),
                 });
             }
+        }
+        (Target::Asset { rel, .. }, Command::Reimport) => {
+            let abs = s.assets.absolute(rel);
+            s.push(Action::ReimportAsset(abs));
+        }
+        (Target::Asset { rel, .. }, Command::FindReferences) => {
+            let abs = s.assets.absolute(rel);
+            s.push(Action::FindReferencesInScene(abs));
         }
         (Target::Asset { rel, .. }, Command::ShowInExplorer) => {
             let abs = s.assets.absolute(rel);

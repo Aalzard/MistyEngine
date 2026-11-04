@@ -152,10 +152,18 @@ pub fn package(
         target: target.triple().into(),
         version: player_settings.version.clone(),
     };
+    // GUID → path of the packed assets, so the player resolves references like the editor.
+    let guids: std::collections::BTreeMap<String, String> =
+        misty_engine::asset_db::GuidDatabase::read(&req.project)
+            .to_map()
+            .into_iter()
+            .filter(|(_, p)| deps.files.contains(p))
+            .collect();
     for (rel, text) in [
         (misty_engine::settings::SETTINGS_FILE, json(&settings)),
         (build::BUILD_SETTINGS_FILE, json(&req.build)),
         (BUILD_INFO_FILE, json(&info)),
+        (misty_engine::asset_db::MAP_FILE, json(&guids)),
     ] {
         pak.add(rel, text?.as_bytes())
             .map_err(|e| io(&pak_path, e))?;
@@ -395,6 +403,7 @@ mod tests {
         assert_eq!(
             paths,
             [
+                "AssetGuids.json",
                 "Assets/Red.mat",
                 "Assets/Scenes/A.scene",
                 "ProjectSettings/BuildInfo.json",

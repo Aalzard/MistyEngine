@@ -10,6 +10,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
 
+use crate::asset_db::{GuidDatabase, refs};
+
 /// The result of a walk.
 #[derive(Debug, Default, PartialEq)]
 pub struct Dependencies {
@@ -44,6 +46,8 @@ fn ext(rel: &str) -> String {
 /// Every file `roots` (project-relative) need, plus `Resources` folders under `Assets/`.
 pub fn collect(project: &Path, roots: &[String]) -> Dependencies {
     let mut deps = Dependencies::default();
+    // Stale paths in files saved with GUIDs follow the renamed or moved asset.
+    let guids = GuidDatabase::read(project);
     let mut queue: VecDeque<(String, String)> =
         roots.iter().map(|r| (r.clone(), String::new())).collect();
     for p in crate::vfs::files_under(&project.join("Assets")) {
@@ -70,7 +74,7 @@ pub fn collect(project: &Path, roots: &[String]) -> Dependencies {
         if crate::vfs::is_file(&project.join(&meta)) {
             deps.files.insert(meta);
         }
-        for r in references(project, &rel) {
+        for r in references(project, &rel, &guids) {
             if !deps.files.contains(&r) {
                 queue.push_back((r, rel.clone()));
             }
@@ -95,7 +99,7 @@ fn normalize(rel: &str) -> String {
 }
 
 /// Project paths named inside the file `rel`.
-fn references(project: &Path, rel: &str) -> Vec<String> {
+fn references(project: &Path, rel: &str, guids: &GuidDatabase) -> Vec<String> {
     let abs = project.join(rel);
     let dir = Path::new(rel).parent().map_or(String::new(), |d| {
         let d = d.to_string_lossy().replace('\\', "/");
@@ -105,7 +109,9 @@ fn references(project: &Path, rel: &str) -> Vec<String> {
     let read = || crate::vfs::read_to_string(&abs).unwrap_or_default();
     let mut out = Vec::new();
     if JSON_ASSETS.contains(&ext.as_str()) {
-        let Ok(json) = serde_json::from_str::<serde_json::Value>(&read()) else {
+        let text = read();
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&refs::resolve(guids, &text))
+        else {
             return out;
         };
         let mut strings = Vec::new();
@@ -139,8 +145,7 @@ fn references(project: &Path, rel: &str) -> Vec<String> {
 
 /// "Assets/…" (with any `#sub-asset` removed) when `s` names a project asset.
 fn asset_path(s: &str) -> Option<String> {
-    let s = s.split('#').next().unwrap_or(s);
-    (s.starts_with("Assets/") && Path::new(s).extension().is_some()).then(|| s.to_owned())
+    refs::asset_path(s).map(str::to_owned)
 }
 
 fn json_strings(v: &serde_json::Value, key: Option<&str>, out: &mut Vec<(Option<String>, String)>) {

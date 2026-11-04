@@ -35,7 +35,10 @@ pub struct EditorApp {
 impl EditorApp {
     pub fn new(cc: &eframe::CreationContext<'_>, project: PathBuf) -> Self {
         theme::apply(&cc.egui_ctx);
+        // Asset GUIDs: scan the meta files (creating missing ones) before anything loads.
+        let guids = misty_engine::asset_db::open(&project);
         let mut state = EditorState::new(ProjectBrowser::open(project));
+        state.assets.note_guids(guids);
         scene_files::open_initial(&mut state);
         let (saved_layouts, dock) = layouts::load(&state.project.root);
         state.layouts = saved_layouts;
@@ -414,6 +417,10 @@ impl EditorApp {
             // Scripts reload when their files change; syntax errors go to the Console.
             for err in s.assets.poll_scripts() {
                 s.console.log(LogLevel::Error, err);
+            }
+            // Assets added, copied or moved outside the editor get meta files and show up.
+            if s.assets.poll_guids() {
+                s.refresh_assets();
             }
             return;
         }

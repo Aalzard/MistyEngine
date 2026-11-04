@@ -376,7 +376,9 @@ impl Scene {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(path, self.scene_to_json(id)).map_err(|e| format!("{}: {e}", path.display()))
+        // With a project open, the asset GUID table goes in too (like `Scene::save`).
+        let text = crate::asset_db::embed_json(&self.scene_to_json(id));
+        std::fs::write(path, text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// References from objects of `id` to objects in other scenes (not allowed: they are

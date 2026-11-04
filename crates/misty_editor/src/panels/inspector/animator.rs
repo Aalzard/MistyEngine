@@ -133,7 +133,7 @@ fn header(ui: &mut Ui, title: &str, kind: &str) {
 
 fn summary(ui: &mut Ui, state: &mut EditorState, rel: &str, c: &AnimatorController) {
     header(ui, &clip_name(rel), " (Animator Controller)");
-    ui.label(RichText::new(rel).color(theme::TEXT_DIM).small());
+    crate::asset_guids::path_label(ui, rel);
     grid(ui, "controller_summary", |ui| {
         ui.label("States");
         ui.label(c.states.len().to_string());

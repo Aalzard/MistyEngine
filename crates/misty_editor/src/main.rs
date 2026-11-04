@@ -6,6 +6,7 @@ mod anim_controllers;
 mod app;
 mod area_light_handles;
 mod asset_actions;
+mod asset_guids;
 mod asset_ops;
 mod assets;
 mod audio_mixers;
