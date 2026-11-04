@@ -9,6 +9,7 @@ mod game;
 mod hierarchy;
 mod inspector;
 mod lighting;
+mod lighting_hdri;
 pub mod navigation;
 pub mod profiler;
 pub mod project;

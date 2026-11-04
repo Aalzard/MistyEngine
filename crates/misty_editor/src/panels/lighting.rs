@@ -8,6 +8,7 @@ use misty_engine::scene::render_settings::{
     AmbientSource, FogMode, RenderSettings, SkyboxKind, SunDisk,
 };
 
+use super::lighting_hdri;
 use crate::state::EditorState;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -19,7 +20,13 @@ enum Page {
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let id = ui.id().with("lighting_page");
-    let mut page: Page = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    // `MISTY_LIGHTING_PAGE=Environment` opens that page first (screenshots).
+    let mut page: Page = ui.data(|d| d.get_temp(id)).unwrap_or_else(|| {
+        match std::env::var("MISTY_LIGHTING_PAGE").as_deref() {
+            Ok("Environment") => Page::Environment,
+            _ => Page::Scene,
+        }
+    });
     ui.horizontal(|ui| {
         ui.selectable_value(&mut page, Page::Scene, "Scene");
         ui.selectable_value(&mut page, Page::Environment, "Environment");
@@ -60,14 +67,26 @@ fn environment_page(ui: &mut Ui, state: &mut EditorState) {
     let sun = render_scene::lights(&state.scene)
         .iter()
         .any(|l| l.kind == misty_engine::scene::LightType::Directional);
-    if edit_environment(ui, &mut s, sun) {
+    let hdri = (s.skybox.kind == SkyboxKind::Hdri).then(|| lighting_hdri::context(ui, state, sun));
+    let mut align_sun = false;
+    if edit_environment(ui, &mut s, sun, hdri.as_ref(), &mut align_sun) {
         state.scene.render_settings = s;
         state.mark_edited("Lighting");
     }
+    if align_sun {
+        lighting_hdri::align_sun(state);
+    }
 }
 
-/// All Environment tab fields; true when something changed.
-fn edit_environment(ui: &mut Ui, s: &mut RenderSettings, has_sun: bool) -> bool {
+/// All Environment tab fields; true when something changed. `hdri` is given while the skybox
+/// is an HDRI; `align_sun` is set when its sun button is clicked.
+fn edit_environment(
+    ui: &mut Ui,
+    s: &mut RenderSettings,
+    has_sun: bool,
+    hdri: Option<&lighting_hdri::HdriContext>,
+    align_sun: &mut bool,
+) -> bool {
     let mut ch = false;
     ui.label(RichText::new("Environment").strong());
     ch |= grid(ui, "lighting_skybox", |ui| {
@@ -106,6 +125,14 @@ fn edit_environment(ui: &mut Ui, s: &mut RenderSettings, has_sun: bool) -> bool 
             }
             SkyboxKind::SolidColor => {
                 ch |= row(ui, "Color", |ui| color(ui, &mut sky.color));
+            }
+            SkyboxKind::Hdri => {
+                // The context is built for the kind stored at the start of the frame.
+                if let Some(cx) = hdri {
+                    let edit = lighting_hdri::rows(ui, &mut sky.hdri, cx);
+                    ch |= edit.changed;
+                    *align_sun |= edit.align_sun;
+                }
             }
         }
         row(ui, "Sun Source", |ui| {
@@ -198,7 +225,7 @@ fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
 }
 
 /// Label + widget on one grid row.
-fn row(ui: &mut Ui, label: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {
+pub(super) fn row(ui: &mut Ui, label: &str, widget: impl FnOnce(&mut Ui) -> bool) -> bool {
     ui.label(label);
     let ch = widget(ui);
     ui.end_row();
@@ -234,7 +261,7 @@ fn drag(ui: &mut Ui, v: &mut f32) -> bool {
 }
 
 /// sRGB float colour through egui's sRGB colour picker.
-fn color(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
+pub(super) fn color(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
     let mut srgb = c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
     let changed = ui.color_edit_button_srgb(&mut srgb).changed();
     if changed {
@@ -278,6 +305,40 @@ mod tests {
             matches!(actions.as_slice(), [Action::FocusTab(Tab::Lighting)]),
             "{actions:?}"
         );
+    }
+
+    /// Dropping an HDRI on the Scene view sets the sky and undoes; the HDRI rows show, with
+    /// the load error for a missing file.
+    #[test]
+    fn hdri_sky_rows_and_scene_drop() {
+        use misty_engine::scene::render_settings::SkyboxKind;
+        let mut s = state("misty_lighting_hdri_test");
+        s.undo.begin_frame(true, &s.scene, &s.selection, || None);
+        assert!(!lighting_hdri::drop_on_scene(&mut s, "Assets/a.png"));
+        assert!(lighting_hdri::drop_on_scene(
+            &mut s,
+            "Assets/HDRI/Missing.hdr"
+        ));
+        s.undo.end_frame(false);
+        let sky = &s.scene.render_settings.skybox;
+        assert_eq!(sky.kind, SkyboxKind::Hdri);
+        assert_eq!(sky.hdri.texture.as_deref(), Some("Assets/HDRI/Missing.hdr"));
+        crate::commands::apply(&mut s, Action::Undo);
+        assert_eq!(s.scene.render_settings.skybox.kind, SkyboxKind::Procedural);
+        crate::commands::apply(&mut s, Action::Redo);
+
+        let mut h = Harness::builder()
+            .with_size([520.0, 700.0])
+            .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
+        h.run();
+        h.get_by_label("Environment").click();
+        h.run();
+        h.get_by_label("Rotation");
+        h.get_by_label("Exposure");
+        h.get_by_label("Tint");
+        // The error line names the missing file.
+        assert!(h.query_all_by_label_contains("Missing.hdr").count() >= 1);
+        assert!(h.query_by_label("Atmosphere Thickness").is_none());
     }
 
     #[test]

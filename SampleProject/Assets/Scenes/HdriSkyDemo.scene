@@ -1,0 +1,629 @@
+{
+  "lighting": {
+    "environment_lighting": {
+      "equator_color": [
+        0.114,
+        0.125,
+        0.133
+      ],
+      "ground_color": [
+        0.047,
+        0.043,
+        0.035
+      ],
+      "intensity": 1.0,
+      "sky_color": [
+        0.212,
+        0.227,
+        0.259
+      ],
+      "source": "Skybox"
+    },
+    "fog": {
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "density": 0.01,
+      "enabled": false,
+      "end": 300.0,
+      "mode": "ExponentialSquared",
+      "start": 0.0
+    },
+    "reflection_intensity": 1.0,
+    "skybox": {
+      "atmosphere_thickness": 1.0,
+      "color": [
+        0.19,
+        0.3,
+        0.47
+      ],
+      "exposure": 1.0,
+      "ground": [
+        0.32,
+        0.3,
+        0.29
+      ],
+      "hdri": {
+        "exposure": 0.0,
+        "rotation": 0.0,
+        "texture": "Assets/HDRI/Sunset Clouds.hdr",
+        "tint": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "kind": "Hdri",
+      "sky_tint": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "sun_disk": "HighQuality",
+      "sun_size": 0.04
+    }
+  },
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            12.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.9,
+            -4.2
+          ],
+          "rotation": [
+            0.104528464,
+            0.0,
+            0.0,
+            0.9945219
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.72,
+            0.48
+          ],
+          "enabled": true,
+          "intensity": 1.4,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            7.0000014,
+            -152.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.014768982,
+            -0.96848595,
+            0.059235148,
+            0.24147066
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Floor",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Floor.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            10.0,
+            1.0,
+            10.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Chrome",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Chrome.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -2.25,
+            0.5,
+            1.4
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Brushed Steel",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Brushed Steel.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.75,
+            0.5,
+            1.4
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Satin Steel",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Satin Steel.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.75,
+            0.5,
+            1.4
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rough Steel",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Rough Steel.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            2.25,
+            0.5,
+            1.4
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Glossy White",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Glossy White.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.5,
+            0.5,
+            -0.8
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Satin White",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Satin White.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.5,
+            -0.8
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Matte White",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Matte White.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.5,
+            0.5,
+            -0.8
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Gold",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/HDRI/Gold.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            3.6,
+            1.0,
+            2.6
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.0,
+            2.0,
+            2.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

@@ -206,9 +206,16 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         }
     }
 
-    // Drop a prefab or model into the view (instantiated at the pivot) or a material onto an object.
+    // Drop a prefab or model into the view (instantiated at the pivot), a material onto an
+    // object, or an HDRI to make it the sky.
     let payload = response.dnd_release_payload::<AssetPayload>();
-    if let Some(p) = payload.as_ref().filter(|p| p.0.ends_with(".prefab")) {
+    if let Some(p) = payload
+        .as_ref()
+        .filter(|p| misty_engine::hdri::is_hdri(&p.0))
+    {
+        // An HDRI anywhere in the view becomes the sky.
+        super::lighting_hdri::drop_on_scene(state, &p.0);
+    } else if let Some(p) = payload.as_ref().filter(|p| p.0.ends_with(".prefab")) {
         state.push(crate::actions::Action::InstantiatePrefab {
             path: p.0.clone(),
             parent: None,

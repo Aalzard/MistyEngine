@@ -19,7 +19,7 @@ impl AssetEntry {
             "rs" | "lua" | "wasm" => "📜",
             "mat" => "⚪",
             "prefab" => crate::state::PREFAB_ICON,
-            "png" | "jpg" | "jpeg" | "tga" => "🖼",
+            "png" | "jpg" | "jpeg" | "tga" | "hdr" | "exr" => "🖼",
             "obj" | "gltf" | "glb" | "fbx" => "📦",
             "wav" | "ogg" | "mp3" => "🔊",
             "anim" => "⏵",
@@ -41,8 +41,11 @@ pub struct FolderNode {
 }
 
 impl AssetEntry {
+    /// Images with a thumbnail: textures and HDR images (`.hdr`, `.exr`).
     pub fn is_texture(&self) -> bool {
-        !self.is_dir && misty_engine::assets::is_texture(&self.path.to_string_lossy())
+        let path = self.path.to_string_lossy();
+        !self.is_dir
+            && (misty_engine::assets::is_texture(&path) || misty_engine::hdri::is_hdri(&path))
     }
 
     /// Icon tint in the Project window (prefabs are blue).
@@ -207,7 +210,7 @@ pub fn asset_type(entry: &AssetEntry) -> &'static str {
         "lua" | "rs" | "wasm" => "script",
         "scene" | "mscene" => "scene",
         "prefab" => "prefab",
-        "png" | "jpg" | "jpeg" | "tga" => "texture",
+        "png" | "jpg" | "jpeg" | "tga" | "hdr" | "exr" => "texture",
         "obj" | "gltf" | "glb" | "fbx" => "model",
         "wav" | "ogg" | "mp3" => "audioclip",
         "anim" => "animationclip",

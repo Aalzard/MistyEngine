@@ -10,7 +10,8 @@ use super::HdrImage;
 /// RGBE bytes of a linear colour (mantissas share the largest component's exponent).
 pub fn rgbe(c: Vec3) -> [u8; 4] {
     let m = c.max_element();
-    if !(m > 1e-32) {
+    // Zero, tiny and NaN colours are black.
+    if m.is_nan() || m <= 1e-32 {
         return [0; 4];
     }
     // m = f · 2^e with f in [0.5, 1).
