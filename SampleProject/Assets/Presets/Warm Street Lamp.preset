@@ -3,16 +3,16 @@
   "values": {
     "color": [
       1.0,
-      0.7200000286102295,
-      0.41999998688697815
+      0.72,
+      0.42
     ],
     "enabled": true,
     "halo": {
       "enabled": true,
       "fog_response": 1.0,
-      "intensity": 1.2000000476837158,
-      "size": 0.6000000238418579,
-      "softness": 0.6000000238418579
+      "intensity": 1.2,
+      "size": 0.6,
+      "softness": 0.6
     },
     "intensity": 2.5,
     "kind": "Point",

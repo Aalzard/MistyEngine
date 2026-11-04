@@ -2311,3 +2311,7 @@ Record of choices made without asking, and why.
      it keeps a volume's bloom or tonemapping), Bouncy (Sphere Collider with only Surface ticked: friction 0.15,
      bounciness 0.9 — colliders own their physics surface, there is no physics material asset) and Pixel Art
      (Sprite, 16 PPU, nearest filtering, no mipmaps).
+490. **Preset files write f32 values as their shortest decimal** (`0.9`, not `0.8999999761581421`): capturing
+     goes through `serde_json::to_value`, which widens f32 to f64, so `Preset::new` rounds every number that is
+     an exact f32 back to the f32's shortest form. Numbers that aren't exact f32s are left alone; a true f64
+     field that happens to hold an exact f32 would be rounded the same way (no component has f64 fields).

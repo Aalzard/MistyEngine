@@ -39,7 +39,8 @@ pub struct Preset {
 
 impl Preset {
     /// A preset of `target` holding `value` (a serialised struct).
-    pub fn new(target: &str, value: Value) -> Self {
+    pub fn new(target: &str, mut value: Value) -> Self {
+        tidy_floats(&mut value);
         Self {
             target: target.to_owned(),
             values: match value {
@@ -152,6 +153,25 @@ impl Preset {
     }
 }
 
+/// Write f32 values as their shortest decimal (0.9, not 0.8999999761581421): `to_value`
+/// widens f32 to f64, unlike the scene serializer writing straight to text.
+fn tidy_floats(v: &mut Value) {
+    match v {
+        Value::Number(n) if n.is_f64() => {
+            let x = n.as_f64().unwrap_or(0.0);
+            let short = (x as f32).to_string().parse::<f64>().ok();
+            if let Some(t) = short.filter(|t| (*t as f32) as f64 == x)
+                && let Some(t) = serde_json::Number::from_f64(t)
+            {
+                *n = t;
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(tidy_floats),
+        Value::Object(m) => m.values_mut().for_each(tidy_floats),
+        _ => {}
+    }
+}
+
 /// Field names of a preset target type.
 pub fn fields_of(target: &str) -> Vec<String> {
     match target {
@@ -199,6 +219,7 @@ mod tests {
         assert_eq!(loaded, preset);
         loaded.check().unwrap();
 
+        assert_eq!(loaded.values["color"], serde_json::json!([1.0, 0.7, 0.4]));
         let (mut w, dst) = world_with(Light::directional());
         loaded.apply(&mut w, dst, &[]).unwrap();
         let got = w.get::<&Light>(dst).unwrap();
