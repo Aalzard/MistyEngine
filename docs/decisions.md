@@ -2300,4 +2300,5 @@ Record of choices made without asking, and why.
      the step so the diff sees it. Scene edits made in the same interaction as a terrain edit join its step.
 486. **Edit menu** shows "Undo {name}" / "Redo {name}" (unchanged) and gains the Undo History entry under them.
 487. **`MISTY_UNDO_DEMO=1`** (capture.rs) makes a few real named edits (create, drag, Inspector change, rename,
-     duplicate, delete, then two undos) for Undo History screenshots.
+     duplicate, delete, then two undos) for Undo History screenshots, then clears the dirty flag so closing after
+     the capture never writes the demo edits into the scene file.

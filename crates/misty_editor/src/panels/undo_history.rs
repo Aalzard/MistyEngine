@@ -29,15 +29,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .auto_shrink([false, false])
         .max_height((ui.available_height() - footer).max(40.0))
         .show(ui, |ui| {
-            // Newest first; row i is applied once i + 1 steps are.
-            for (i, name) in steps.iter().enumerate().rev() {
-                if shown(name) {
-                    row(ui, state, name, i + 1, position);
-                }
-            }
-            if shown(INITIAL) {
-                row(ui, state, INITIAL, 0, position);
-            }
+            // Full-width rows with left-aligned names, like the Hierarchy.
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                rows(ui, state, &steps, position, &shown);
+            });
         });
     ui.separator();
     let mb = state.undo.bytes() as f32 / (1024.0 * 1024.0);
@@ -50,6 +45,24 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .small()
         .color(theme::TEXT_DIM),
     );
+}
+
+/// Newest first; row i is applied once i + 1 steps are.
+fn rows(
+    ui: &mut Ui,
+    state: &mut EditorState,
+    steps: &[String],
+    position: usize,
+    shown: &dyn Fn(&str) -> bool,
+) {
+    for (i, name) in steps.iter().enumerate().rev() {
+        if shown(name) {
+            row(ui, state, name, i + 1, position);
+        }
+    }
+    if shown(INITIAL) {
+        row(ui, state, INITIAL, 0, position);
+    }
 }
 
 /// Search box and Clear History.
@@ -88,10 +101,7 @@ fn row(ui: &mut Ui, state: &mut EditorState, name: &str, target: usize, position
     } else {
         "Undo back to this step"
     };
-    let response = ui.add_sized(
-        [ui.available_width(), 18.0],
-        egui::Button::selectable(current, text),
-    );
+    let response = ui.add(egui::Button::selectable(current, text));
     if response.on_hover_text(hint).clicked() && !current {
         state.push(Action::UndoJump(target));
     }

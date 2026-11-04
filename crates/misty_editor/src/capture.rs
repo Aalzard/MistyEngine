@@ -214,4 +214,6 @@ fn undo_demo(s: &mut crate::state::EditorState) {
     crate::commands::apply(s, Action::DeleteSelected);
     s.undo_step();
     s.undo_step();
+    // Demo edits are never saved: closing after the screenshot must not write the scene.
+    s.scene_dirty = false;
 }
