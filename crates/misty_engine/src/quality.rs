@@ -176,6 +176,8 @@ pub struct QualityLevel {
     pub ambient_occlusion: Tier,
     pub volumetric_fog: Tier,
     pub reflection_probes: Tier,
+    /// Lens Flare components draw (light halos always do: they are cheap).
+    pub lens_flares: bool,
 }
 
 impl Default for QualityLevel {
@@ -203,6 +205,7 @@ impl QualityLevel {
             ambient_occlusion: Tier::Off,
             volumetric_fog: Tier::Off,
             reflection_probes: Tier::Low,
+            lens_flares: false,
         }
     }
 
@@ -224,6 +227,7 @@ impl QualityLevel {
             ambient_occlusion: Tier::Low,
             volumetric_fog: Tier::Low,
             reflection_probes: Tier::Medium,
+            lens_flares: true,
         }
     }
 
@@ -245,6 +249,7 @@ impl QualityLevel {
             ambient_occlusion: Tier::Medium,
             volumetric_fog: Tier::Medium,
             reflection_probes: Tier::High,
+            lens_flares: true,
         }
     }
 

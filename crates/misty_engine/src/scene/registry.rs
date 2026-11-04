@@ -286,6 +286,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::EventSystem>(),
             ComponentInfo::of::<Camera>(),
             ComponentInfo::of::<Light>(),
+            ComponentInfo::of::<super::LensFlare>(),
             ComponentInfo::of::<super::PostProcessVolume>(),
             ComponentInfo::of::<super::ReflectionProbe>(),
             ComponentInfo::of::<super::ReflectionProbeGroup>(),

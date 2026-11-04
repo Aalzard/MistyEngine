@@ -6,6 +6,7 @@ mod animator;
 mod audio_editors;
 mod editors;
 mod fog_editors;
+mod glow_editors;
 mod layer_mask;
 mod light_shadows;
 mod lod_editor;

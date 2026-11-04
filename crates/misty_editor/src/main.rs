@@ -53,6 +53,8 @@ mod sample_audio;
 #[cfg(test)]
 mod sample_input;
 #[cfg(test)]
+mod sample_light_glow;
+#[cfg(test)]
 mod sample_lighting;
 #[cfg(test)]
 mod sample_materials;

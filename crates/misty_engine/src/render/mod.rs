@@ -9,6 +9,7 @@ pub mod custom_shader;
 mod draw_prep;
 pub mod environment;
 mod frame_lists;
+mod glow;
 mod gpu_culling;
 mod gpu_timer;
 pub mod lod;
@@ -41,6 +42,7 @@ pub use crate::terrain::TerrainDraw;
 pub use ao::AoSettings;
 pub use contact_shadows::ContactShadowSettings;
 pub use environment::{Environment, Sun};
+pub use glow::GlowSource;
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
 pub use soft_shadows::LightShadow;
@@ -401,6 +403,8 @@ pub struct Renderer {
     volumetrics: volumetrics::Volumetrics,
     /// Ambient occlusion and contact shadows (depth/normal prepass, GTAO passes).
     screen_space: screen_space::ScreenSpace,
+    /// Light halos and lens flares.
+    glows: glow::Glows,
 }
 
 impl Renderer {
@@ -490,6 +494,7 @@ impl Renderer {
             slots_scratch: Vec::new(),
             volumetrics,
             screen_space,
+            glows: Default::default(),
         }
     }
 
@@ -783,6 +788,7 @@ impl Renderer {
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
         self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
         self.prepare_volumetrics(device, queue, target, frame, &plan);
+        self.prepare_glows(device, queue, target, frame);
 
         // Overlay triangles follow the lines in the same buffer.
         let line_vertices = frame.lines.len() + frame.overlay.len();
@@ -886,6 +892,7 @@ impl Renderer {
                 );
             }
         }
+        self.glow_passes(device, &mut encoder, target);
         self.sun_shaft_passes(device, &mut encoder, target);
         self.bloom_passes(&mut encoder, target, timing);
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
@@ -1381,8 +1388,8 @@ impl Renderer {
     ) {
         let (first, last) = (split.phase != Some(1), split.phase != Some(0));
         let copy = last && split.scene_copy;
-        // Sun shafts read the depth after the main pass to find the open sky.
-        let keep_depth = self.volumetrics.keeps_depth();
+        // Sun shafts and glow occlusion read the depth after the main pass.
+        let keep_depth = self.volumetrics.keeps_depth() || self.glows.keeps_depth();
         {
             let mut pass = self.begin_main(
                 encoder,

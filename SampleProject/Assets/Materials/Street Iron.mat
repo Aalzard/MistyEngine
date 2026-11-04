@@ -1,0 +1,29 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.08,
+    0.08,
+    0.09,
+    1.0
+  ],
+  "metallic": 0.8,
+  "smoothness": 0.45,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": null,
+  "normal_map": null,
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ]
+}

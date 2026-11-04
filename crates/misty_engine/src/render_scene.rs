@@ -10,10 +10,11 @@ use hecs::Entity;
 use crate::camera::{Camera, Projection};
 use crate::draw_cache::DrawCache;
 use crate::render::{
-    Environment, Frame, LightData, LocalFog, MaterialParams, MeshDraw, ParticleBatch, PostSettings,
+    Environment, Frame, GlowSource, LightData, LocalFog, MaterialParams, MeshDraw, ParticleBatch,
+    PostSettings,
 };
 use crate::scene::{
-    Camera as CameraComponent, ClearFlags, FogVolume, Light, LightType, MeshRenderer,
+    Camera as CameraComponent, ClearFlags, FogVolume, LensFlare, Light, LightType, MeshRenderer,
     PostProcessVolume, Scene, Shadows,
 };
 
@@ -112,7 +113,53 @@ pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
     let mut env = Environment::new(scene.render_settings.clone(), lights)
         .with_probes(crate::render::probes::scene_probes(scene));
     env.fog_volumes = fog_volumes(scene);
+    env.glows = glow_sources(scene);
     env
+}
+
+/// Enabled lights with a Halo or a Lens Flare, and Lens Flares on objects without a light
+/// (a white point source), in Hierarchy order.
+pub fn glow_sources(scene: &Scene) -> Vec<GlowSource> {
+    let mut list = scene.active_with::<Light>();
+    for e in scene.active_with::<LensFlare>() {
+        if !list.contains(&e) {
+            list.push(e);
+        }
+    }
+    scene.sort_hierarchy_order(&mut list);
+    list.into_iter()
+        .filter_map(|e| {
+            let light = scene.world.get::<&Light>(e).ok().map(|l| (*l).clone());
+            let flare = scene
+                .world
+                .get::<&LensFlare>(e)
+                .ok()
+                .filter(|f| f.enabled)
+                .map(|f| (*f).clone());
+            if light.as_ref().is_some_and(|l| !l.enabled) {
+                return None;
+            }
+            let halo = light
+                .as_ref()
+                .filter(|l| l.halo.enabled)
+                .map(|l| l.halo.clone());
+            if halo.is_none() && flare.is_none() {
+                return None;
+            }
+            let (_, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
+            let l = light.unwrap_or_default();
+            Some(GlowSource {
+                kind: l.kind,
+                position: pos,
+                direction: rot * Vec3::Z,
+                spot_angle: l.spot_angle,
+                color: l.color,
+                intensity: l.intensity,
+                halo,
+                flare,
+            })
+        })
+        .collect()
 }
 
 /// Enabled, active Fog Volumes in Hierarchy order.

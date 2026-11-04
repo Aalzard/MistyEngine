@@ -110,6 +110,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();
             }
+            // Halos and lens flares are screen effects of the scene's lights: they follow the
+            // Post Processing toggle and hide with the Lighting toggle.
+            if !(sv.skybox && fx.post_processing && sv.lighting) {
+                environment.glows.clear();
+            }
             let volume = render_scene::post_settings(&state.scene);
             let mut post = if sv.skybox && fx.post_processing {
                 volume
