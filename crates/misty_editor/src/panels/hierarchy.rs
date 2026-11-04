@@ -5,6 +5,7 @@ use misty_engine::hecs::Entity;
 
 use crate::actions::Action;
 use crate::menu_bar::create_menu_items;
+use crate::search::fuzzy::Mode;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
 use crate::theme::{PREFAB, PREFAB_DIM};
@@ -28,7 +29,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
     panel_toolbar(ui, |ui| {
         ui.menu_button("➕ ⏷", |ui| create_menu_items(ui, state, None));
-        search_field(ui, &mut state.hierarchy.search, ui.available_width());
+        search_field(ui, &mut state.hierarchy.search, ui.available_width())
+            .on_hover_text("Name words and filters: t:Light t:Camera tag:Player layer:UI");
     });
 
     let rows = visible_rows(state);
@@ -97,12 +99,12 @@ fn update_focus(ui: &Ui, state: &mut EditorState, panel: Rect) {
 /// Depth-first rows respecting foldouts, or a flat list of matches while searching.
 fn visible_rows(state: &EditorState) -> Vec<(Entity, usize)> {
     let scene = &state.scene;
-    let search = state.hierarchy.search.to_lowercase();
-    if !search.is_empty() {
-        return scene
-            .walk()
+    // Name words plus t: / tag: / layer: filters, shared with the search palette.
+    if !state.hierarchy.search.trim().is_empty() {
+        let q = crate::search::query::Query::parse(&state.hierarchy.search);
+        let tl = &state.project_settings.tags_and_layers;
+        return crate::search::scene_search::search(scene, tl, &q, Mode::Contains, 0)
             .into_iter()
-            .filter(|(e, _)| scene.name(*e).to_lowercase().contains(&search))
             .map(|(e, _)| (e, 0))
             .collect();
     }

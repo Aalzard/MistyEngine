@@ -45,7 +45,7 @@ impl Category {
     }
 
     /// One line under the page heading.
-    fn blurb(self) -> &'static str {
+    pub fn blurb(self) -> &'static str {
         match self {
             Category::Player => "Your game's name, icon and how its window opens.",
             Category::Quality => "Graphics presets players can pick from (Low to Ultra).",

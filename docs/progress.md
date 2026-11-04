@@ -1530,3 +1530,31 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Reflections of an HDRI sky ignore the volumetric clouds: under clouds the HDRI's sun still glints off the terrain
   (a streak towards the sun in merged_clouds_hdri.png). Cloud-aware sky reflections / probes are a follow-up.
 - Clouds don't hide the HDRI's own baked-in sun or clouds; pairing a clear-sky HDRI with volumetric clouds looks best.
+
+## Round 10: Global Search (Ctrl+K) ✅
+
+### Done
+- Ctrl+K opens a floating search palette near the top of the window (not a dock tab): one box, results grouped
+  under small provider headers with icons, matched characters highlighted, Up/Down/Enter/Esc, Alt+Enter or
+  right-click for more actions, recent searches when the box is empty (decisions 479–489).
+- Providers: Hierarchy objects (name + `t:Light`, `t:Camera`, any component, `tag:`, `layer:`), Project assets
+  (name + the Project window's `t:` types), Menu commands ("Create Cube", "Add Rigidbody", "Lighting",
+  "Project Settings", layouts, recent scenes), Settings pages (Project Settings pages, Preferences; blurbs as
+  keywords), Help (headings of the guides in docs/) and a calculator (`=2*3`).
+- Prefixes `h:` `p:` `m:` `s:` limit the search to one provider (and list everything it has when nothing else is
+  typed).
+- Enter: select and frame an object / ping an asset in the Project window / run a menu command / open a settings
+  page / open a guide / copy a calculation. Secondary: Select, Copy name, Open (scene, script, folder), Show in
+  Explorer, Copy path.
+- Shared matching (`search::fuzzy`, `search::query`, `search::scene_search`): the Hierarchy box keeps substring
+  matching but now also understands `t:` / `tag:` / `layer:`; the Project box parses and matches through the same
+  code.
+- Asset index built on a background thread, then kept fresh by checking a few folder times per frame (no hitch
+  with thousands of assets); results cached per query.
+- `MISTY_SEARCH=<text>` opens the palette for screenshots.
+- Screenshots: docs/screenshots/round10/search_*.png.
+
+### Not done yet
+- The menu table is separate from the menu bar's inline egui menus (kept in sync by hand; see decision 485).
+- No search inside asset contents, component values or scripts; no saved searches or search-to-Hierarchy view.
+- Help opens the Markdown guide in the system viewer, not at the heading.

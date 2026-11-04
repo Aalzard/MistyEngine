@@ -13,7 +13,7 @@ mod lighting_hdri;
 pub mod navigation;
 pub mod profiler;
 pub mod project;
-mod project_menus;
+pub(crate) mod project_menus;
 pub(crate) mod scene;
 pub mod world_builder;
 

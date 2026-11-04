@@ -100,7 +100,7 @@ pub fn folder_menu(ui: &mut Ui, folder: &Path, req: &mut Requests) {
     }
 }
 
-fn explorer_label() -> &'static str {
+pub(crate) fn explorer_label() -> &'static str {
     if cfg!(target_os = "macos") {
         "Reveal in Finder"
     } else {
