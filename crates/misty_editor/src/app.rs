@@ -39,6 +39,7 @@ impl EditorApp {
         ctx: &egui::Context,
         render_state: Option<egui_wgpu::RenderState>,
         project: PathBuf,
+        updater: crate::updater::Updater,
     ) -> Self {
         theme::apply(ctx);
         // Asset GUIDs: scan the meta files (creating missing ones) before anything loads.
@@ -55,6 +56,8 @@ impl EditorApp {
             crate::capture::apply_env(&mut state, &mut dock);
         }
         crate::tutorials::from_env(&mut state);
+        // Updater: the one this process runs (started by the launcher, passed on from the Hub).
+        state.updater = updater;
         let gpu = render_state.map(Gpu::new);
         match &gpu {
             Some(g) => {
@@ -83,6 +86,11 @@ impl EditorApp {
     /// the Hub, after calling `on_exit`).
     pub fn take_open_hub(&mut self) -> Option<bool> {
         self.state.files.open_hub.take()
+    }
+
+    /// Hand the updater on (back to the Hub); the editor keeps a disabled one.
+    pub fn take_updater(&mut self) -> crate::updater::Updater {
+        std::mem::take(&mut self.state.updater)
     }
 
     /// Start tutorial `id` (Learn ▸ Start in the Hub, once the project has loaded).
@@ -606,6 +614,7 @@ impl eframe::App for EditorApp {
         // A nav mesh bake finishing while its window is hidden.
         crate::panels::navigation::poll(&mut self.state);
         self.state.undo.end_frame(Self::interacting(&ctx));
+        crate::updater::editor::frame(&ctx, &mut self.state);
         self.scene_file_frame(&ctx);
         self.save_layout(false);
         if let Some(capture) = &mut self.capture {

@@ -467,6 +467,10 @@ fn help_menu(ui: &mut Ui, s: &mut EditorState) {
         s.about_open = true;
         ui.close();
     }
+    if ui.button("Check for Updates…").clicked() {
+        s.updater.check_now();
+        ui.close();
+    }
     todo(ui, s, "Manual", "");
     todo(ui, s, "Scripting Reference", "");
 }

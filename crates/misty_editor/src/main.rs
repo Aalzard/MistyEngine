@@ -125,6 +125,7 @@ mod ui_gizmos;
 mod undo;
 mod undo_names;
 mod undo_terrain;
+mod updater;
 mod viewport;
 mod widgets;
 
@@ -213,11 +214,16 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             Ok(Box::new(match start {
-                Start::Hub => launcher::Launcher::Hub(Box::new(hub::Hub::new(&cc.egui_ctx))),
+                Start::Hub => {
+                    let mut hub = hub::Hub::new(&cc.egui_ctx);
+                    hub.updater = launcher::Launcher::updater(&cc.egui_ctx);
+                    launcher::Launcher::Hub(Box::new(hub))
+                }
                 Start::Editor(project) => {
                     // The editor's look under the splash (the Hub sets its own).
                     theme::apply(&cc.egui_ctx);
-                    launcher::Launcher::open(project, None)
+                    let updater = launcher::Launcher::updater(&cc.egui_ctx);
+                    launcher::Launcher::open(project, None, updater)
                 }
             }))
         }),

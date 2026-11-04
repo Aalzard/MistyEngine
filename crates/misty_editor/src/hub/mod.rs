@@ -53,6 +53,9 @@ pub struct Hub {
     tutorial_pick: Option<&'static str>,
     /// The tutorial to start once the editor has opened `open`.
     open_tutorial: Option<String>,
+    /// The process's updater (`launcher::Launcher::updater`; disabled in tests). The Hub
+    /// shows its green Update button and windows, and hands it to the editor with the project.
+    pub updater: crate::updater::Updater,
 }
 
 #[derive(Default)]
@@ -91,6 +94,7 @@ impl Hub {
             tutorials_done,
             tutorial_pick: None,
             open_tutorial: None,
+            updater: crate::updater::Updater::disabled(),
         }
     }
 
@@ -176,6 +180,10 @@ impl Hub {
                     }
                 }
             });
+        // Update now: the Hub has no scenes to save, so it installs straight away.
+        if crate::updater::ui::windows(&ctx, &mut self.updater) {
+            self.updater.install();
+        }
         if let Some(capture) = &mut self.capture {
             capture.update(&ctx);
         }
@@ -218,7 +226,12 @@ impl Hub {
             }
         }
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-            ui.label(RichText::new(format!("v{VERSION}")).small().color(p.dim));
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("v{VERSION}")).small().color(p.dim));
+                if crate::updater::ui::update_button(ui, &self.updater) {
+                    self.updater.install();
+                }
+            });
         });
     }
 

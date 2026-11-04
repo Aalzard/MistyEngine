@@ -68,6 +68,8 @@ pub enum AfterPrompt {
     Remove(SceneId),
     /// Remove every scene but this one.
     CloseOthers(SceneId),
+    /// Install the available update (the editor restarts).
+    InstallUpdate,
 }
 
 /// Scene file state held by the editor.
@@ -161,7 +163,8 @@ fn at_risk(s: &EditorState, action: &AfterPrompt) -> Vec<SceneId> {
         AfterPrompt::NewScene
         | AfterPrompt::Open(_)
         | AfterPrompt::Quit
-        | AfterPrompt::OpenHub(_) => dirty,
+        | AfterPrompt::OpenHub(_)
+        | AfterPrompt::InstallUpdate => dirty,
         AfterPrompt::Unload(id) | AfterPrompt::Remove(id) => {
             dirty.into_iter().filter(|d| d == id).collect()
         }
@@ -237,6 +240,7 @@ pub fn perform(s: &mut EditorState, action: AfterPrompt) -> bool {
         AfterPrompt::Unload(id) => crate::open_scenes::unload(s, id),
         AfterPrompt::Remove(id) => crate::open_scenes::remove(s, id),
         AfterPrompt::CloseOthers(id) => crate::open_scenes::close_others(s, id),
+        AfterPrompt::InstallUpdate => s.updater.install(),
     }
     false
 }
