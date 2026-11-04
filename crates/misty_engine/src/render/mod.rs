@@ -328,6 +328,7 @@ pub struct Renderer {
     /// Linear clamp sampler for post-processing.
     post_sampler: wgpu::Sampler,
     options: RenderOptions,
+    quality: crate::quality::QualityLevel,
     stats: RenderStats,
     /// GPU time per render (when the device supports timestamp queries).
     gpu_timer: Option<gpu_timer::GpuTimer>,
@@ -421,6 +422,8 @@ impl Renderer {
             textures: texture::TextureCache::new(device),
             pipelines,
             options: RenderOptions::default(),
+            // High: the default level, with the 2048² shadow map created above.
+            quality: crate::quality::QualityLevel::default(),
             stats: RenderStats::default(),
             gpu_timer: None,
             batcher: Default::default(),
@@ -449,6 +452,33 @@ impl Renderer {
         self.options = options;
     }
 
+    /// The quality level the renderer draws with (see [`crate::quality`]).
+    pub fn quality(&self) -> &crate::quality::QualityLevel {
+        &self.quality
+    }
+
+    /// Use a quality level: resizes the directional shadow map when its resolution changes.
+    /// Effect settings (cascades, soft shadows, AO, fog, probes) are read from
+    /// [`Renderer::quality`] by the passes that implement them.
+    pub fn set_quality(&mut self, device: &wgpu::Device, quality: &crate::quality::QualityLevel) {
+        let size = quality.shadow_map_size();
+        if size != self.shadows.directional_size {
+            self.shadows =
+                shadows::ShadowMaps::with_size(device, &self.pipelines.shadow_view_layout, size);
+            let lists = [&self.draws_buffer, &self.slots_buffer];
+            (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
+                device,
+                &self.pipelines,
+                &self.lights_buffer,
+                lists,
+                &self.shadows,
+                &self.probes,
+                &self.screen_space.off_buffer,
+            );
+        }
+        self.quality = quality.clone();
+    }
+
     /// Counters of the last [`Renderer::render`] call.
     pub fn stats(&self) -> RenderStats {
         self.stats
@@ -474,7 +504,7 @@ impl Renderer {
             &self.lights_buffer,
         ];
         let shadow_bytes = 4
-            * (shadows::DIRECTIONAL_SIZE.pow(2) as u64 * cascades::MAX_CASCADES as u64
+            * (self.shadows.directional_size.pow(2) as u64 * cascades::MAX_CASCADES as u64
                 + shadows::LOCAL_SIZE.pow(2) as u64 * shadows::MAX_LOCAL_LAYERS as u64);
         RenderMemory {
             meshes: self.meshes.len() + imported.count() + terrains,
@@ -612,7 +642,11 @@ impl Renderer {
         );
 
         // Culling and batching for the camera and every shadow map.
-        let shadow_settings = crate::quality::shadows();
+        // The active Quality level's shadows, fitted to the map size actually allocated.
+        let shadow_settings = crate::quality::ShadowSettings {
+            map_size: self.shadows.directional_size,
+            ..self.quality.shadow_settings()
+        };
         let (lists, plan, probes_rebuilt) = {
             crate::profile_scope!("Render.Culling");
             let meshes = self.mesh_bounds(frame);
@@ -632,7 +666,8 @@ impl Renderer {
         let screen = self.prepare_screen_space(device, queue, target, frame);
 
         // Lights and their shadow maps (cascades first, then local layers).
-        let lights = lights_uniform(frame, &plan);
+        let soft = shadow_settings.soft != crate::quality::Tier::Off;
+        let lights = lights_uniform(frame, &plan, soft);
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
         self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
         self.prepare_volumetrics(device, queue, target, frame, &plan);
@@ -1334,7 +1369,8 @@ fn draw_uniform(d: &MeshDraw) -> DrawUniform {
     }
 }
 
-fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
+/// `soft` = false draws Soft lights with hard shadows (Quality ▸ Soft Shadows Off).
+fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan, soft: bool) -> LightsUniform {
     let mut u = LightsUniform::zeroed();
     let mut n = 0;
     for (i, l) in frame.lights.iter().enumerate() {
@@ -1353,7 +1389,8 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan) -> LightsUniform {
                 match l.shadows {
                     Shadows::None => 0.0,
                     Shadows::Hard => 1.0,
-                    Shadows::Soft => 2.0,
+                    Shadows::Soft if soft => 2.0,
+                    Shadows::Soft => 1.0,
                 },
                 layer as f32,
             ),

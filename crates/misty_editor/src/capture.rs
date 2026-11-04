@@ -96,9 +96,7 @@ pub fn apply_env(
     }
     // `MISTY_SETTINGS=Input Manager` opens Project Settings on that page.
     if let Some(page) = std::env::var_os("MISTY_SETTINGS")
-        && let Some(c) = crate::project_settings::Category::ALL
-            .into_iter()
-            .find(|c| c.title() == page.to_string_lossy())
+        && let Some(c) = crate::project_settings::Category::from_title(&page.to_string_lossy())
     {
         crate::project_settings::open_at(s, c);
     }
@@ -123,6 +121,10 @@ pub fn apply_env(
             .position(|m| *m == mode.to_string_lossy())
     {
         s.scene_view.draw_mode = i;
+    }
+    // `MISTY_BUILD=1` opens File ▸ Build Settings.
+    if std::env::var_os("MISTY_BUILD").is_some() {
+        s.build_window.open = true;
     }
     // `MISTY_2D=1` switches the Scene view to 2D (looking down +Z at the XY plane).
     if std::env::var_os("MISTY_2D").is_some() {

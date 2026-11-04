@@ -1,6 +1,6 @@
 //! Texture import settings, stored next to the image as `<image>.meta` (JSON).
 //!
-//! No `.meta` file = the Default texture type with bilinear, repeating, mipmapped sampling, which
+//! No `.meta` file = the Default texture type with trilinear, repeating, mipmapped sampling, which
 //! is how every texture behaved before import settings existed.
 
 use std::path::{Path, PathBuf};
@@ -12,18 +12,35 @@ use serde::{Deserialize, Serialize};
 pub enum TextureType {
     #[default]
     Default,
+    /// Tangent-space normal map: always linear (not sRGB).
+    NormalMap,
     /// Sprite (2D and UI): the image can be used by Sprite Renderers and UI Images.
     Sprite,
 }
 
 impl TextureType {
-    pub const ALL: [Self; 2] = [Self::Default, Self::Sprite];
+    pub const ALL: [Self; 3] = [Self::Default, Self::NormalMap, Self::Sprite];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Default => "Default",
+            Self::NormalMap => "Normal Map",
             Self::Sprite => "Sprite (2D and UI)",
         }
+    }
+}
+
+/// Max Size choices (largest side in pixels).
+pub const MAX_SIZES: [u32; 9] = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192];
+
+/// "2048 (2K)" style label of a Max Size.
+pub fn max_size_label(size: u32) -> String {
+    match size {
+        1024 => "1024 (1K)".into(),
+        2048 => "2048 (2K)".into(),
+        4096 => "4096 (4K)".into(),
+        8192 => "8192 (8K)".into(),
+        s => s.to_string(),
     }
 }
 
@@ -49,19 +66,24 @@ impl SpriteMode {
 /// Filter Mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FilterMode {
-    /// Nearest texel: crisp pixel art.
-    Point,
-    #[default]
+    /// Nearest texel: crisp pixel art. Files from before the rename say "Point".
+    #[serde(alias = "Point")]
+    Nearest,
+    /// Smooth inside a mip level, but jumps between levels.
     Bilinear,
+    /// Smooth inside and between mip levels.
+    #[default]
+    Trilinear,
 }
 
 impl FilterMode {
-    pub const ALL: [Self; 2] = [Self::Point, Self::Bilinear];
+    pub const ALL: [Self; 3] = [Self::Nearest, Self::Bilinear, Self::Trilinear];
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Point => "Point (no filter)",
+            Self::Nearest => "Nearest Neighbor (no filter)",
             Self::Bilinear => "Bilinear",
+            Self::Trilinear => "Trilinear",
         }
     }
 }
@@ -112,6 +134,13 @@ pub struct TextureImporter {
     pub generate_mip_maps: bool,
     /// Multiple mode: the sliced sprites.
     pub sprites: Vec<SpriteRect>,
+    /// Largest side on the GPU; bigger images are scaled down (Lanczos) when loaded.
+    pub max_size: u32,
+    /// Anisotropic filtering level, 0–16 (0 and 1 = off), used with the Quality page's
+    /// Anisotropic Textures setting.
+    pub aniso_level: u8,
+    /// Colour data stored in sRGB (off for masks; Normal Map textures are always linear).
+    pub srgb: bool,
 }
 
 impl Default for TextureImporter {
@@ -121,10 +150,13 @@ impl Default for TextureImporter {
             sprite_mode: SpriteMode::Single,
             pixels_per_unit: 100.0,
             pivot: [0.5, 0.5],
-            filter_mode: FilterMode::Bilinear,
+            filter_mode: FilterMode::Trilinear,
             wrap_mode: WrapMode::Repeat,
             generate_mip_maps: true,
             sprites: Vec::new(),
+            max_size: 2048,
+            aniso_level: 1,
+            srgb: true,
         }
     }
 }
@@ -140,8 +172,33 @@ impl TextureImporter {
         }
     }
 
+    /// Settings a freshly chosen texture type starts from (mips on for 3D, off for sprites;
+    /// normal maps are linear).
+    pub fn set_type(&mut self, t: TextureType) {
+        if t == self.texture_type {
+            return;
+        }
+        self.texture_type = t;
+        match t {
+            TextureType::Sprite => {
+                self.wrap_mode = WrapMode::Clamp;
+                self.generate_mip_maps = false;
+            }
+            TextureType::NormalMap => {
+                self.srgb = false;
+                self.generate_mip_maps = true;
+            }
+            TextureType::Default => self.generate_mip_maps = true,
+        }
+    }
+
     pub fn is_sprite(&self) -> bool {
         self.texture_type == TextureType::Sprite
+    }
+
+    /// Whether colour is decoded from sRGB on the GPU.
+    pub fn is_srgb(&self) -> bool {
+        self.srgb && self.texture_type != TextureType::NormalMap
     }
 
     /// Where the settings of `image` live.
@@ -158,7 +215,7 @@ impl TextureImporter {
 
     /// Settings of `image`; an error when there is no `.meta` file or it is invalid.
     pub fn try_load(image: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(Self::meta_path(image)).map_err(|e| e.to_string())?;
+        let text = crate::vfs::read_to_string(Self::meta_path(image)).map_err(|e| e.to_string())?;
         let mut s: Self = serde_json::from_str(&text).map_err(|e| e.to_string())?;
         s.sanitize();
         Ok(s)
@@ -182,6 +239,12 @@ impl TextureImporter {
             }
         };
         fix(&mut self.pivot);
+        // Snap to the nearest Max Size choice.
+        let size = self
+            .max_size
+            .clamp(MAX_SIZES[0], MAX_SIZES[MAX_SIZES.len() - 1]);
+        self.max_size = MAX_SIZES.into_iter().find(|s| *s >= size).unwrap_or(8192);
+        self.aniso_level = self.aniso_level.min(16);
         for s in &mut self.sprites {
             fix(&mut s.pivot);
             for v in &mut s.rect {

@@ -1,15 +1,17 @@
-//! File ▸ Build Settings: the "Scenes In Build" list, player options, and Build / Build And Run.
-//! Changes are saved to `ProjectSettings/BuildSettings.json` right away.
+//! File ▸ Build Settings: the "Scenes In Build" list, the platform, build options and
+//! Build / Build And Run. Changes are saved to `ProjectSettings/BuildSettings.json` right away.
 //!
-//! A build is a folder holding the player executable (named after the product) and copies of
-//! the project's `Assets` and `ProjectSettings`; the player plays the folder it sits in.
+//! Building runs in the background (see [`crate::build_pipeline`]): cargo compiles the player
+//! for the platform, then the scenes and the assets they use are packed into
+//! `<Product>_Data/data.pak` next to the renamed executable.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use egui::Ui;
-use misty_engine::build::BuildSettings;
+use egui::{RichText, Ui};
+use misty_engine::build::{BuildSettings, BuildTarget};
 
 use crate::actions::Action;
+use crate::build_pipeline::{BuildJob, PackageRequest, targets};
 use crate::console::LogLevel;
 use crate::state::EditorState;
 
@@ -19,6 +21,8 @@ pub struct BuildSettingsWindow {
     pub open: bool,
     /// Selected row of the scene list.
     pub selected: Option<usize>,
+    /// The running or last build.
+    pub job: Option<BuildJob>,
 }
 
 /// Build settings of the project at `s.project.root`; problems go to the Console.
@@ -58,14 +62,19 @@ pub fn add_open_scene(s: &mut EditorState) {
     }
 }
 
-/// Draw the window if it is open.
+/// Draw the window if it is open, and follow a running build either way.
 pub fn show(ctx: &egui::Context, s: &mut EditorState) {
+    poll(ctx, s);
     let mut open = s.build_window.open;
     egui::Window::new("Build Settings")
         .open(&mut open)
-        .default_size([560.0, 420.0])
+        .default_size([620.0, 560.0])
         .collapsible(false)
-        .show(ctx, |ui| contents(ui, s));
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, true])
+                .show(ui, |ui| contents(ui, s))
+        });
     s.build_window.open = open;
 }
 
@@ -107,61 +116,195 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
         });
     });
     ui.separator();
-    ui.strong("Player");
-    let b = &mut s.build_settings;
-    egui::Grid::new("build_player")
-        .num_columns(2)
-        .show(ui, |ui| {
-            ui.label("Product Name");
-            let hint = s
-                .project
-                .root
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned());
-            edited |= ui
-                .add(
-                    egui::TextEdit::singleline(&mut b.product_name)
-                        .hint_text(hint.unwrap_or_default()),
-                )
-                .changed();
-            ui.end_row();
-            ui.label("Resolution");
-            ui.horizontal(|ui| {
-                edited |= ui
-                    .add(egui::DragValue::new(&mut b.width).range(64..=16384))
-                    .changed();
-                ui.label("×");
-                edited |= ui
-                    .add(egui::DragValue::new(&mut b.height).range(64..=16384))
-                    .changed();
-            });
-            ui.end_row();
-            ui.label("Fullscreen");
-            edited |= ui.checkbox(&mut b.fullscreen, "").changed();
-            ui.end_row();
-        });
+    edited |= platform(ui, &mut s.build_settings);
+    ui.separator();
+    edited |= options(ui, s);
     if edited {
         changed(s);
     }
     ui.separator();
+    progress(ui, s);
+    let busy = s.build_window.job.as_ref().is_some_and(BuildJob::running);
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        if ui.button("Build And Run").clicked() {
+        if ui
+            .add_enabled(!busy, egui::Button::new("Build And Run"))
+            .on_hover_text("Build into the last folder, then start the game (Ctrl+B)")
+            .clicked()
+        {
             s.push(Action::BuildAndRun);
         }
-        if ui.button("Build").clicked() {
+        if ui
+            .add_enabled(!busy, egui::Button::new("Build"))
+            .on_hover_text("Choose a folder and build there")
+            .clicked()
+        {
             s.push(Action::Build);
         }
+        if ui.button("Player Settings…").clicked() {
+            crate::project_settings::open_at(s, crate::project_settings::Category::Player);
+        }
     });
+}
+
+/// Target list on the left, the selected target's status on the right.
+fn platform(ui: &mut Ui, b: &mut BuildSettings) -> bool {
+    let tools = targets::toolchain();
+    let host = BuildTarget::host();
+    let status = |t| {
+        let installed = tools.as_ref().and_then(|t| t.installed.as_deref());
+        targets::status(
+            t,
+            host,
+            installed,
+            tools.as_ref().is_some_and(|t| t.zigbuild),
+        )
+    };
+    let mut edited = false;
+    ui.strong("Platform");
+    ui.horizontal_top(|ui| {
+        ui.vertical(|ui| {
+            ui.set_width(190.0);
+            for t in BuildTarget::ALL {
+                let mark = match &tools {
+                    None => "…",
+                    Some(_) if status(t).ready() => "✔",
+                    Some(_) => "⚠",
+                };
+                let mut text = format!("{mark}  {}", t.label());
+                if Some(t) == host {
+                    text.push_str("  (this PC)");
+                }
+                if ui.selectable_label(b.target == t, text).clicked() && b.target != t {
+                    b.target = t;
+                    edited = true;
+                }
+            }
+        });
+        ui.add_space(12.0);
+        ui.vertical(|ui| {
+            let t = b.target;
+            ui.label(RichText::new(t.label()).strong());
+            ui.weak(format!("Rust target: {}", t.triple()));
+            let Some(_) = &tools else {
+                ui.weak("Checking installed Rust targets…");
+                return;
+            };
+            let st = status(t);
+            if !st.installed {
+                ui.colored_label(
+                    crate::theme::WARN,
+                    "This Rust target isn't installed. Run this in a terminal:",
+                );
+                let cmd = targets::install_command(t);
+                ui.horizontal(|ui| {
+                    ui.code(&cmd);
+                    if ui.small_button("Copy").clicked() {
+                        ui.ctx().copy_text(cmd.clone());
+                    }
+                });
+                if ui.small_button("Check again").clicked() {
+                    targets::refresh_toolchain();
+                }
+            }
+            if let Some(blocker) = &st.blocker {
+                ui.colored_label(crate::theme::WARN, blocker);
+            } else if st.installed {
+                ui.label("Ready to build.");
+            }
+            if let Some(note) = &st.note {
+                ui.weak(note);
+            }
+        });
+    });
+    edited
+}
+
+fn options(ui: &mut Ui, s: &mut EditorState) -> bool {
+    let b = &mut s.build_settings;
+    let mut edited = false;
+    egui::Grid::new("build_options")
+        .num_columns(2)
+        .spacing([12.0, 4.0])
+        .show(ui, |ui| {
+            ui.label("Development Build").on_hover_text(
+                "Opens a console window with the log and writes Player.log next to the game. \
+                 Turn it off for releases.",
+            );
+            edited |= ui.checkbox(&mut b.development, "").changed();
+            ui.end_row();
+            ui.label("Compress Data")
+                .on_hover_text("LZ4-compress the packed assets: a smaller download.");
+            edited |= ui.checkbox(&mut b.compression, "").changed();
+            ui.end_row();
+            ui.label("Create .zip").on_hover_text(
+                "Also write <Product>-<version>-<platform>.zip next to the build folder, \
+                 ready for itch.io and similar stores.",
+            );
+            edited |= ui.checkbox(&mut b.create_zip, "").changed();
+            ui.end_row();
+            ui.label("Steam App ID").on_hover_text(
+                "Optional. Adds SteamPipe upload scripts in steam/ and, for development \
+                 builds, steam_appid.txt.",
+            );
+            edited |= ui
+                .add(
+                    egui::TextEdit::singleline(&mut b.steam_app_id)
+                        .hint_text("none")
+                        .desired_width(120.0),
+                )
+                .changed();
+            ui.end_row();
+        });
+    let player = s.project_settings.player_or(&s.build_settings);
+    ui.weak(format!(
+        "Product \"{}\" {} · {}×{} · {}",
+        player.product_name_or(&s.project.root),
+        player.version,
+        player.width,
+        player.height,
+        player.screen_mode.label()
+    ));
+    edited
+}
+
+/// Progress bar and log of the current / last build.
+fn progress(ui: &mut Ui, s: &mut EditorState) {
+    let Some(job) = &s.build_window.job else {
+        return;
+    };
+    ui.add(
+        egui::ProgressBar::new(job.progress)
+            .text(job.stage.clone())
+            .animate(job.running()),
+    );
+    egui::CollapsingHeader::new(format!("Build Log ({} lines)", job.log.len()))
+        .id_salt("build_log")
+        .default_open(false)
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(160.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    for line in &job.log {
+                        let text = RichText::new(&line.text).monospace().small();
+                        if line.warning {
+                            ui.colored_label(crate::theme::WARN, text);
+                        } else {
+                            ui.label(text);
+                        }
+                    }
+                });
+        });
 }
 
 /// Rows: enabled checkbox, path, build index on the right. Returns true if edited.
 fn scene_list(ui: &mut Ui, s: &mut EditorState) -> bool {
     let mut edited = false;
     egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.set_min_height(140.0);
+        ui.set_min_height(100.0);
         ui.set_width(ui.available_width());
         egui::ScrollArea::vertical()
-            .max_height(200.0)
+            .max_height(160.0)
             .show(ui, |ui| {
                 if s.build_settings.scenes.is_empty() {
                     ui.weak("Add the open scene with \"Add Open Scenes\".");
@@ -203,88 +346,14 @@ fn move_selected(s: &mut EditorState, dir: isize) -> bool {
     true
 }
 
-/// Where the editor looks for the player: next to its own executable.
-pub fn player_exe(dir: &Path) -> PathBuf {
-    dir.join(format!("misty_player{}", std::env::consts::EXE_SUFFIX))
-}
-
-/// Executable name for a product ("Rolling Ball.exe"), without characters file systems reject.
-pub fn exe_name(product: &str) -> String {
-    let clean: String = product
-        .chars()
-        .map(|c| {
-            if "<>:\"/\\|?*".contains(c) || c.is_control() {
-                '_'
-            } else {
-                c
-            }
-        })
-        .collect();
-    let clean = clean.trim().trim_end_matches('.');
-    let stem = if clean.is_empty() { "Game" } else { clean };
-    format!("{stem}{}", std::env::consts::EXE_SUFFIX)
-}
-
-/// Write a build of the project at `root` into `out`; returns the built executable.
-pub fn make_build(
-    root: &Path,
-    player: &Path,
-    out: &Path,
-    product: &str,
-) -> Result<PathBuf, String> {
-    if !player.is_file() {
-        return Err(format!(
-            "Player not found at {}: build `misty_player` first: \
-             `cargo build -p misty_player --release`",
-            player.display()
-        ));
-    }
-    let out_abs = std::path::absolute(out).map_err(|e| e.to_string())?;
-    let root_abs = std::path::absolute(root).map_err(|e| e.to_string())?;
-    let inside = ["Assets", "ProjectSettings"]
-        .iter()
-        .any(|d| out_abs.starts_with(root_abs.join(d)));
-    if out_abs == root_abs || inside {
-        return Err(
-            "Choose a build folder outside the project's Assets and ProjectSettings.".into(),
-        );
-    }
-    std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
-    for dir in ["Assets", "ProjectSettings"] {
-        let dst = out.join(dir);
-        // Start clean so deleted assets don't linger in the build.
-        if dst.exists() {
-            std::fs::remove_dir_all(&dst).map_err(|e| format!("{}: {e}", dst.display()))?;
-        }
-        copy_dir(&root.join(dir), &dst)?;
-    }
-    let exe = out.join(exe_name(product));
-    std::fs::copy(player, &exe).map_err(|e| format!("{}: {e}", exe.display()))?;
-    Ok(exe)
-}
-
-fn copy_dir(src: &Path, dst: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("{}: {e}", dst.display()))?;
-    let entries = match std::fs::read_dir(src) {
-        Ok(e) => e,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(format!("{}: {e}", src.display())),
-    };
-    for entry in entries.flatten() {
-        let (from, to) = (entry.path(), dst.join(entry.file_name()));
-        if from.is_dir() {
-            copy_dir(&from, &to)?;
-        } else {
-            std::fs::copy(&from, &to).map_err(|e| format!("{}: {e}", from.display()))?;
-        }
-    }
-    Ok(())
-}
-
 /// Build (and optionally run). `pick` = ask for the folder even if one was used before.
 pub fn build(s: &mut EditorState, run: bool, pick: bool) {
     if s.play.in_play_mode() {
         s.console.warn("Stop Play mode before building.");
+        return;
+    }
+    if s.build_window.job.as_ref().is_some_and(BuildJob::running) {
+        s.console.warn("A build is already running.");
         return;
     }
     if !ensure_scenes(s) {
@@ -325,38 +394,66 @@ fn ensure_scenes(s: &mut EditorState) -> bool {
     ok
 }
 
-/// Build into `out` with the player next to the editor executable.
-pub fn build_into(s: &mut EditorState, out: &Path, run: bool) {
-    let player_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
-        .unwrap_or_default();
-    build_with_player(s, &player_exe(&player_dir), out, run);
+/// What the build thread needs, copied from the editor now.
+pub fn request(s: &EditorState, out: &Path) -> PackageRequest {
+    PackageRequest {
+        project: s.project.root.clone(),
+        out: out.to_path_buf(),
+        build: s.build_settings.clone(),
+        settings: s.project_settings.clone(),
+    }
 }
 
-fn build_with_player(s: &mut EditorState, player: &Path, out: &Path, run: bool) {
+/// Start a background build into `out`.
+pub fn build_into(s: &mut EditorState, out: &Path, run: bool) {
     if s.scene_dirty {
         s.console
             .warn("The open scene has unsaved changes; the build uses the saved file.");
     }
-    let product = s.build_settings.product_name_or(&s.project.root);
-    match make_build(&s.project.root, player, out, &product) {
-        Ok(exe) => {
-            s.files.settings.last_build_folder = Some(out.to_path_buf());
-            s.files.settings.save(&s.project.root);
-            s.console
-                .info(format!("Build succeeded: {}", exe.display()));
+    s.files.settings.last_build_folder = Some(out.to_path_buf());
+    s.files.settings.save(&s.project.root);
+    s.console.info(format!(
+        "Building for {} into {}…",
+        s.build_settings.target.label(),
+        out.display()
+    ));
+    s.build_window.job = Some(BuildJob::start(request(s, out), run));
+    s.build_window.open = true;
+}
+
+/// Follow the build: report the end in the Console and start the game for Build And Run.
+fn poll(ctx: &egui::Context, s: &mut EditorState) {
+    let Some(job) = s.build_window.job.as_mut() else {
+        return;
+    };
+    let run = job.run;
+    match job.poll() {
+        None if job.running() => ctx.request_repaint_after(std::time::Duration::from_millis(100)),
+        None => {}
+        Some(Ok(built)) => {
+            let warnings = job.log.iter().filter(|l| l.warning).count();
+            s.console.info(format!(
+                "Build succeeded: {} ({} assets, {} warnings)",
+                built.exe.display(),
+                built.files,
+                warnings
+            ));
             if run {
-                match std::process::Command::new(&exe).current_dir(out).spawn() {
-                    Ok(_) => s.console.info(format!("Running {product}")),
-                    Err(e) => s.console.log(
-                        LogLevel::Error,
-                        format!("Could not run {}: {e}", exe.display()),
-                    ),
-                }
+                launch(s, &built.exe);
             }
         }
-        Err(e) => s.console.log(LogLevel::Error, format!("Build failed: {e}")),
+        Some(Err(e)) => s.console.log(LogLevel::Error, format!("Build failed: {e}")),
+    }
+}
+
+fn launch(s: &mut EditorState, exe: &Path) {
+    let dir = exe.parent().unwrap_or(Path::new("."));
+    match std::process::Command::new(exe).current_dir(dir).spawn() {
+        Ok(_) => s.console.info(format!("Running {}", exe.display())),
+        Err(e) => s.console.log(
+            LogLevel::Error,
+            format!("Could not run {}: {e}", exe.display()),
+        ),
     }
 }
 
@@ -382,7 +479,7 @@ mod tests {
         assert!(s.build_window.open);
         s.files.path = Some("Assets/Scenes/A.scene".into());
         let mut h = Harness::builder()
-            .with_size([560.0, 420.0])
+            .with_size([620.0, 560.0])
             .build_ui_state(|ui, s: &mut EditorState| contents(ui, s), s);
         h.run();
         h.get_by_label("Add Open Scenes").click();
@@ -422,49 +519,51 @@ mod tests {
     }
 
     #[test]
-    fn build_copies_the_player_and_project_and_needs_the_player() {
-        let mut s = state("misty_build_copy");
-        let root = s.project.root.clone();
-        std::fs::write(root.join("Assets/Scenes/A.scene"), "[]").unwrap();
-        s.files.path = Some("Assets/Scenes/A.scene".into());
-        s.build_settings.product_name = "My: Game".into();
-        let out = root.with_extension("build");
-        let _ = std::fs::remove_dir_all(&out);
-
-        // No player executable: a clear Console error, nothing built.
-        let missing = root.join("nowhere").join("misty_player.exe");
-        build_with_player(&mut s, &missing, &out, false);
-        let last = s.console.last().unwrap();
-        assert_eq!(last.level, LogLevel::Error);
-        assert!(
-            last.message
-                .contains("cargo build -p misty_player --release")
-        );
-
-        let player = root.with_extension("player");
-        std::fs::write(&player, "fake exe").unwrap();
-        // An empty scene list builds the open scene.
-        assert!(ensure_scenes(&mut s));
-        assert_eq!(s.build_settings.scenes.len(), 1);
-        build_with_player(&mut s, &player, &out, false);
-        let exe = out.join(exe_name("My_ Game"));
-        assert!(exe.is_file(), "{:?}", s.console.last());
-        assert!(out.join("Assets/Scenes/A.scene").is_file());
-        assert!(out.join("ProjectSettings/BuildSettings.json").is_file());
-        assert_eq!(
-            s.files.settings.last_build_folder.as_deref(),
-            Some(out.as_path())
-        );
-
-        // Building into the project's own Assets is refused.
-        assert!(make_build(&root, &player, &root.join("Assets/Build"), "x").is_err());
+    fn platform_and_options_are_saved() {
+        let s = state("misty_build_options");
+        let mut h = Harness::builder()
+            .with_size([620.0, 700.0])
+            .build_ui_state(|ui, s: &mut EditorState| contents(ui, s), s);
+        h.run();
+        h.get_by_label_contains("Linux ARM64").click();
+        h.run();
+        h.get_by_label("Rust target: aarch64-unknown-linux-gnu");
+        h.get_by_label("Development Build");
+        h.get_by_label("Steam App ID");
+        let saved = BuildSettings::load(&h.state().project.root).unwrap();
+        assert_eq!(saved.target, BuildTarget::LinuxArm64);
     }
 
     #[test]
-    fn exe_names_are_file_system_safe() {
-        let suffix = std::env::consts::EXE_SUFFIX;
-        assert_eq!(exe_name("Rolling Ball"), format!("Rolling Ball{suffix}"));
-        assert_eq!(exe_name("a/b?"), format!("a_b_{suffix}"));
-        assert_eq!(exe_name("  "), format!("Game{suffix}"));
+    fn builds_start_in_the_background_and_report_to_the_console() {
+        let mut s = state("misty_build_job");
+        let root = s.project.root.clone();
+        std::fs::write(root.join("Assets/Scenes/A.scene"), "[]").unwrap();
+        s.files.path = Some("Assets/Scenes/A.scene".into());
+        // An empty scene list builds the open scene.
+        assert!(ensure_scenes(&mut s));
+        assert_eq!(s.build_settings.scenes.len(), 1);
+        let req = request(&s, &root.join("Out"));
+        assert_eq!(req.build.scenes.len(), 1);
+        assert_eq!(req.product(), root.file_name().unwrap().to_string_lossy());
+
+        // Building into the project's own Assets is refused (by the build thread).
+        build_into(&mut s, &root.join("Assets/Build"), false);
+        assert_eq!(
+            s.files.settings.last_build_folder.as_deref(),
+            Some(root.join("Assets/Build").as_path())
+        );
+        let ctx = egui::Context::default();
+        while s.build_window.job.as_ref().is_some_and(BuildJob::running) {
+            poll(&ctx, &mut s);
+            std::thread::yield_now();
+        }
+        let last = s.console.last().unwrap();
+        assert_eq!(last.level, LogLevel::Error);
+        assert!(
+            last.message.contains("outside the project"),
+            "{}",
+            last.message
+        );
     }
 }

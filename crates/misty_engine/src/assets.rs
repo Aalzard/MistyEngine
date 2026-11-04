@@ -230,7 +230,7 @@ impl Material {
     }
 
     pub fn load(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let text = crate::vfs::read_to_string(path).map_err(|e| e.to_string())?;
         serde_json::from_str(&text).map_err(|e| e.to_string())
     }
 
@@ -251,19 +251,13 @@ impl AssetCache {
     /// Load the materials of the project at `root`. Unreadable files are skipped.
     pub fn open(root: &Path) -> Self {
         let mut cache = Self::default();
-        let mut stack = vec![root.join("Assets")];
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    stack.push(path);
-                } else if path.extension().is_some_and(|e| e == "mat")
-                    && let Ok(m) = Material::load(&path)
-                {
-                    let rel = path.strip_prefix(root).unwrap_or(&path);
-                    let rel = rel.to_string_lossy().replace('\\', "/");
-                    cache.materials.insert(rel, m);
-                }
+        for path in crate::vfs::files_under(&root.join("Assets")) {
+            if path.extension().is_some_and(|e| e == "mat")
+                && let Ok(m) = Material::load(&path)
+            {
+                let rel = path.strip_prefix(root).unwrap_or(&path);
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                cache.materials.insert(rel, m);
             }
         }
         cache

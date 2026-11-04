@@ -155,7 +155,8 @@ impl Renderer {
         self.screen_space.frame_group = None;
         let ao = frame.post.ao;
         let contact = frame.post.contact_shadows;
-        let ao_on = ao.active();
+        // Quality ▸ Ambient Occlusion Off turns AO off whatever the volume says.
+        let ao_on = ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;
         let contact_on = contact.active() && frame.lights.iter().any(|l| l.contact_shadows);
         if !frame.shaded || !(ao_on || contact_on) {
             return None;

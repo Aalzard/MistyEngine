@@ -88,7 +88,9 @@ impl KiraBackend {
         if let Some(c) = self.clips.get(path) {
             return Ok(c.clone());
         }
-        let data = StaticSoundData::from_file(path).map_err(|e| e.to_string())?;
+        let bytes = crate::vfs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let data =
+            StaticSoundData::from_cursor(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
         self.clips.insert(path.to_owned(), data.clone());
         Ok(data)
     }

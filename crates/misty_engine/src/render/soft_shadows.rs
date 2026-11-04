@@ -10,7 +10,7 @@ use super::{Frame, LightData, MAX_LIGHTS, RenderStats, Renderer, ViewUniform};
 use crate::quality::ShadowSettings;
 use crate::scene::{LightType, light_shadow};
 
-/// A light's shadow shape (Light ▸ Shadows).
+/// A light's shadow shape (Light â–¸ Shadows).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LightShadow {
     /// Directional: angular diameter in degrees. Spot / point: source radius in metres.
@@ -61,7 +61,7 @@ fn pack(
         u.cascades[i] = c.view_proj.to_cols_array_2d();
         u.cascade_info[i] = [c.far, c.texel, c.depth_range, 2.0 * c.radius];
     }
-    let (blocker, filter) = settings.quality.samples();
+    let (blocker, filter) = settings.samples();
     let count = plan.cascades.len() as f32;
     u.settings = [count, settings.cascade_blend, blocker as f32, filter as f32];
     let forward = frame.camera.forward();
@@ -99,7 +99,7 @@ fn source_size(l: &LightData) -> f32 {
 }
 
 impl Renderer {
-    /// Tint each sun cascade in the next render only (Scene view ▸ Shadow Cascades).
+    /// Tint each sun cascade in the next render only (Scene view â–¸ Shadow Cascades).
     pub fn set_cascade_debug(&mut self, on: bool) {
         self.shadows.debug_cascades = on;
     }

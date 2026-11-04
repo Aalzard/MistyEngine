@@ -239,25 +239,15 @@ fn own_slots(scene: &Scene, e: Entity, src: &AudioSource) -> Vec<Slot> {
 
 /// Project-relative paths of every `.mixer` under `Assets/`.
 pub fn project_mixers(root: &Path) -> Vec<String> {
-    fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
-        paths.sort();
-        for p in paths {
-            if p.is_dir() {
-                walk(&p, root, out);
-            } else if let Ok(rel) = p.strip_prefix(root) {
-                let rel = rel.to_string_lossy().replace('\\', "/");
-                if super::is_mixer(&rel) {
-                    out.push(rel);
-                }
+    let mut out = Vec::new();
+    for p in crate::vfs::files_under(&root.join("Assets")) {
+        if let Ok(rel) = p.strip_prefix(root) {
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            if super::is_mixer(&rel) {
+                out.push(rel);
             }
         }
     }
-    let mut out = Vec::new();
-    walk(&root.join("Assets"), root, &mut out);
     out
 }
 

@@ -1550,3 +1550,128 @@ Record of choices made without asking, and why.
      "Ambient Occlusion" is draw mode 7 in the one Scene view list, and `MISTY_DRAW_MODE` still matches by
      name (the AO branch's numeric form was dropped). AO adds no sampled textures to the forward passes
      (storage buffer), so the 16-texture default limit still holds.
+
+## 2026-11-04 — Player, Quality and the build pipeline
+
+351. **Player settings live in ProjectSettings.json (`player`, absent until first edited).** Projects made before
+     the Player page keep working: `ProjectSettings::player_or` builds Player settings from the old Build
+     Settings fields (product name, size, fullscreen → Fullscreen Window / Windowed). The old fields stay in
+     BuildSettings.json for loading and are no longer shown; a build packs the migrated settings. New projects
+     default to Fullscreen Window, VSync on, Target Frame Rate -1, Resizable, Run In Background off, version
+     "1.0", company "DefaultCompany" (as in the reference engine).
+352. **Screen modes:** Fullscreen Window = winit borderless fullscreen; Exclusive Fullscreen = the monitor's video
+     mode closest to the default resolution (highest refresh among equals), borderless if none; Maximized =
+     a maximised window. Run In Background off pauses updates and rendering while unfocused (the paused time
+     isn't one long frame). Target Frame Rate applies only with VSync off (`ControlFlow::WaitUntil`, catching
+     up at most one frame). The splash screen is the image fitted in 80% of the window over its background
+     colour for the duration, skipped by automated `MISTY_SCREENSHOT` captures; no engine logo is forced.
+353. **Quality levels are stored in ProjectSettings.json (`quality`, left out at defaults)**: Low / Medium / High
+     / Ultra, High is the default. Fields: shadow resolution (512–4096), distance, cascades (1/2/4), soft
+     shadows, MSAA (off/2x/4x), texture quality (= the global mipmap limit: Full/Half/Quarter/Eighth),
+     anisotropic textures (Disabled / Per Texture / Forced On), max texture size, render scale, LOD bias, and
+     AO / volumetric fog / reflection probe tiers. VSync is a Player setting only (one place to look).
+354. **The active level is process-wide** (`misty_engine::quality::install/set_level/active/generation`, like the
+     Sorting Layers global), so Lua, the player and the editor preview share it. The renderer gets a copy via
+     `Renderer::set_quality` (a RenderOptions-style hook) and readers use `Renderer::quality()` and the
+     `QualityLevel` accessors (`shadow_map_size`, `local_shadow_map_size`, `soft_shadow_samples`,
+     `msaa_samples`, `ao_samples`, `fog_slices`, `reflection_probe_size`, `texture_size_limit`, `anisotropy`).
+     Wired now: the directional shadow map size (maps and bind groups rebuilt on change, the normal-offset
+     texel rescaled), render scale (player target and Game view), texture size limit and anisotropy. Stored
+     for the passes being written in parallel: shadow distance and cascades, soft shadows, AO, fog, probes,
+     LOD bias. MSAA is stored only: the pipelines use a fixed 4x sample count.
+355. **Render Scale scales the whole game image, UI included** (the UI is drawn into the same target); UI
+     clicks are mapped into target pixels in both the player and the Game view. Canvas Scaler "Scale With
+     Screen Size" keeps the same layout; Constant Pixel Size UI looks larger at scales below 1.
+356. **Quality preview in the editor is a Game view toolbar dropdown**: it switches the active level for the
+     Scene and Game views and Play mode. Opening a project activates the default level.
+357. **Texture import extended, not duplicated:** Filter Mode is Nearest Neighbor (no filter) / Bilinear /
+     Trilinear; `"Point"` in old `.meta` files loads as Nearest Neighbor. Bilinear really is bilinear now
+     (nearest mip) and Trilinear blends mips; textures without a `.meta` are Trilinear (what "Bilinear" did
+     before), so they look the same. New fields with serde defaults: Max Size (32–8192, default 2048, Lanczos3
+     downscale on load), Aniso Level (0–16, default 1), sRGB (default on) and Texture Type Normal Map (always
+     linear). Choosing Sprite turns mips off and clamps; Default / Normal Map turn mips on. The CPU mip chain
+     (linear-light box filter) already existed and is used by the Scene view, Game view and player alike.
+     No Read/Write flag (scripts can't read texture pixels, so it would do nothing).
+358. **Anisotropy needs trilinear sampling** (wgpu rejects anisotropy with any nearest filter), so Nearest and
+     Bilinear textures never get it. Quality ▸ Anisotropic Textures: Disabled = 1x, Per Texture = the texture's
+     Aniso Level, Forced On = at least 8x. High and Ultra default to Forced On, which keeps the 8x every
+     texture had before. Texture Quality and Max Texture Size cap the uploaded size on top of the texture's own
+     Max Size; changing the level reloads every texture (cache keyed by `quality::generation`). Apply in the
+     texture Inspector reloads the texture live (the `.meta` change is picked up by the texture cache).
+359. **Asset file system (`vfs`):** every asset loader (scenes, prefabs, materials, textures and `.meta`, models
+     incl. `.mtl`/`.bin`, audio, scripts, animations, controllers, mixers, terrains, nav meshes, settings) reads
+     through `misty_engine::vfs`. Unmounted it is `std::fs`; with a pak mounted, paths under its root are served
+     from the archive (directory listings merge pak and disk). Loose project folders keep working for
+     development (`misty_player <Project>`).
+360. **The pak format is custom and tiny** (`MISTYPK1` magic, index at the end: path, offset, stored size, size,
+     codec). Entries are LZ4 (lz4_flex, pure Rust, so every target builds) when that saves 1/16, never for
+     PNG/JPG/OGG/MP3/GLB. zstd was not used: its C build complicates cross-compiling. Entries are read on
+     demand, not loaded into memory at once.
+361. **Only referenced assets ship.** `asset_deps` walks from the enabled build scenes (plus the icon and splash
+     image): every "Assets/…" string (sub-asset `#…` removed) in JSON assets, string literals in Lua, `mtllib`
+     and texture maps of OBJ/MTL, buffer/image URIs of glTF, each file's `.meta`, and everything under any
+     `Resources` folder. Missing references are build-log warnings, not errors.
+362. **Build output:** `<Product>.exe` (the player renamed; no suffix on Linux; on macOS `<Product>.app` with an
+     Info.plist and the data in `Contents/Resources`), `<Product>_Data/data.pak` (assets + ProjectSettings.json
+     + BuildSettings.json + BuildInfo.json), `<Product>_Data/icon.png` (+ `icon.ico` on Windows). The player
+     finds `<exe stem>_Data/data.pak`, falling back to any `*_Data` folder with a pak (a renamed exe still
+     works). The old loose `Assets/` + `ProjectSettings/` build layout still plays.
+363. **The icon is embedded with the Win32 resource API** (`BeginUpdateResourceW/UpdateResourceW`, declared
+     inline, no crate): RT_ICON images of 16–64 px as 32-bit DIBs and 256 px as PNG, plus an RT_GROUP_ICON. It
+     works for x64 and ARM64 executables but needs a Windows host; elsewhere the build logs a warning and the
+     window icon (set at runtime from the packed PNG) still works. No `.icns` for macOS bundles yet.
+364. **Building compiles the player with cargo** in the engine workspace (`CARGO_MANIFEST_DIR` at editor compile
+     time, or `MISTY_ENGINE_SOURCE`): `cargo build -p misty_player --release --target <triple>` (or
+     `cargo zigbuild` for Linux when installed), on a background thread with stderr streamed into the window's
+     log and progress from "Compiling" lines against the Cargo.lock package count. Without the source, the
+     player next to the editor is used, for the host platform only. Always `--target`, so outputs land in
+     `target/<triple>/release` and never clash with the running editor.
+365. **Target checks:** `rustup target list --installed` (once, in the background; "Check again" re-runs it)
+     decides ✔ / ⚠ and shows `rustup target add <triple>` with a Copy button. macOS from another OS, and Linux
+     from another OS without cargo-zigbuild, are reported as blocked with the reason before cargo runs.
+     Same-OS other-CPU builds show a note about the C tools (MSVC ARM64 build tools, a cross gcc).
+366. **Development Build** = a console window (AllocConsole) and `Player.log` next to the exe, plus
+     `steam_appid.txt` when a Steam App ID is set. Release builds have no console and log to the per-user
+     folder (the install folder may be read-only). Both are optimised (`--release`).
+367. **PlayerPrefs are a JSON file per user and game** (`%APPDATA%/<Company>/<Product>/prefs.json`, macOS
+     Application Support, Linux XDG config), written on `PlayerPrefs.Save()` and when the player quits. The
+     player keeps the chosen quality level and resolution there (`Misty.*` keys) and reapplies them at
+     startup. In the editor, Play mode uses the project's `Library/PlayerPrefs.json`.
+368. **Lua:** `Screen.width/height/fullScreen/fullScreenMode/resolutions/SetResolution(w, h, mode)` with
+     `FullScreenMode.ExclusiveFullScreen/FullScreenWindow/MaximizedWindow/Windowed` (0–3) or a boolean;
+     `QualitySettings.GetQualityLevel()/SetQualityLevel(i)/names` (indices from 0); `PlayerPrefs.GetInt/
+     SetInt/GetFloat/SetFloat/GetString/SetString/HasKey/DeleteKey/DeleteAll/Save`. In the Game view
+     `SetResolution` does nothing (there is no window to resize).
+369. **Steam is upload scripts only:** with a Steam App ID the build writes `steam/app_build_<app>.vdf`,
+     `steam/depot_build_<app+1>.vdf` (content root = the build folder; excludes `steam/*`, `steam_appid.txt`,
+     `Player.log`) and `steam/README_STEAM.md` (steamcmd and Steamworks steps). Real Steamworks API
+     integration (achievements, overlay, workshop) and downloading the SDK are out of scope for now.
+370. **Zip for itch.io and the like:** a small deflate writer (flate2 + crc32fast, already in the lock file)
+     instead of the `zip` crate; entries carry Unix permissions so Linux/macOS executables stay executable.
+     Named `<Product>-<version>-<platform>.zip`, next to the build folder, without the Steam files.
+371. **Project Settings pages were merged to keep the list short** (the user asked for fewer tabs): Player,
+     Quality, Input, Physics (a "3D Physics" section plus a collapsed "2D Physics" section), Tags and Layers
+     (with a collapsed "Sorting Layers (2D draw order)" section), Time. Each page has a one-line description
+     and collapsible sections with tooltips; nothing was removed. Old page names still work for
+     `MISTY_SETTINGS` and links ("Input Manager", "Physics 2D", "Sorting Layers"). The texture Inspector keeps
+     Type, the sprite fields, Max Size, Filter Mode and mipmaps on top and puts Wrap Mode, sRGB and Aniso Level
+     under a collapsed "Advanced".
+372. **The Build window keeps Player options out:** it shows the scenes, a platform list with status, four
+     options (Development Build, Compress Data, Create .zip, Steam App ID), a one-line summary of the Player
+     settings with a "Player Settings…" button, a progress bar and a collapsible log.
+373. **One quality struct for everyone:** `QualityLevel` in `misty_engine/src/quality.rs` also carries Cascade
+     Split (0 = even … 1 = logarithmic) and Cascade Blend so the soft-shadow work's per-level fields (soft
+     shadow quality, distance, cascade count, split, blend) live on the same Quality page; the editor shows
+     split/blend only with more than one cascade. Built in parallel with the soft-shadow branch, which has
+     its own `quality.rs`: at merge, fold its fields into `QualityLevel` and read them through
+     `Renderer::quality()` / `quality::active()`.
+374. **One quality system (Player/Quality/Build merge):** the soft-shadows work's `QualitySettings { shadows }`
+     (installed by `apply_globals`, read through `quality::shadows()`) is replaced by the Build branch's
+     `QualityLevel` list (Low / Medium / High / Ultra, one default, `quality::install` / `active`, and
+     `Renderer::set_quality`). There is one Quality page. The shadow pass reads
+     `QualityLevel::shadow_settings()`: cascades (1, 2, 4), Shadow Distance, Cascade Split, Cascade Blend,
+     Shadow Resolution (the 4-layer cascade array is reallocated at that size) and Soft Shadows (Off draws
+     Soft lights hard; Low / Medium / High = 8/12, 12/20, 16/32 blocker/filter taps, the old shadow quality
+     presets). The AO, Volumetric Fog and Reflection Probes tiers were already fields of `QualityLevel`;
+     AO Off turns screen-space AO off. The fog and probe tiers are stored for now; per-volume Fog Quality and
+     the probes' own resolution still decide those passes.

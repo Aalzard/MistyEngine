@@ -20,6 +20,7 @@
 
 pub mod animator_api;
 pub mod api;
+pub mod app_api;
 pub mod audio_api;
 pub mod camera_api;
 pub mod input_api;
@@ -752,7 +753,7 @@ impl ScriptHost {
 }
 
 fn load_class(lua: &Lua, root: &std::path::Path, path: &str) -> Result<Table, String> {
-    let source = std::fs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))?;
+    let source = crate::vfs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))?;
     eval_class(lua, &source, path)
 }
 

@@ -1,5 +1,6 @@
 //! GPU side of the player: window surface, the engine renderer's offscreen target, and a
-//! fullscreen blit of that target onto the surface.
+//! fullscreen blit of that target onto the surface. The target is rendered at the quality
+//! level's Render Scale and stretched to the window; a splash image can be shown instead.
 
 use std::sync::Arc;
 
@@ -8,6 +9,7 @@ use misty_engine::render::{Frame, RenderTarget, Renderer};
 use misty_engine::scene::Scene;
 use misty_engine::ui::UiInteraction;
 use misty_engine::wgpu;
+use misty_engine::wgpu::util::DeviceExt;
 use winit::window::Window;
 
 /// Copies the target's final image (gamma-encoded bytes) unchanged to a non-sRGB colour target.
@@ -49,10 +51,15 @@ pub struct Gfx {
     /// Realtime reflection probes re-captured while the game runs.
     probes: misty_engine::render::probes::realtime::RealtimeProbes,
     pub adapter_name: String,
+    /// Fraction of the window size the game is rendered at.
+    render_scale: f32,
+    /// Splash image (bind group, pixel size) and its background colour.
+    splash: Option<(wgpu::BindGroup, [u32; 2])>,
+    splash_background: wgpu::Color,
 }
 
 impl Gfx {
-    pub fn new(window: Arc<Window>) -> Result<Self, String> {
+    pub fn new(window: Arc<Window>, vsync: bool) -> Result<Self, String> {
         let instance =
             wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let size = window.inner_size();
@@ -78,7 +85,7 @@ impl Gfx {
             .ok_or("the window surface isn't supported by the graphics adapter")?;
         let view_format = config.format.remove_srgb_suffix();
         config.view_formats = vec![view_format];
-        config.present_mode = wgpu::PresentMode::AutoVsync;
+        config.present_mode = present_mode(vsync);
         surface.configure(&device, &config);
 
         let renderer = Renderer::with_queue(&device, &queue);
@@ -131,6 +138,9 @@ impl Gfx {
             group,
             pipelines: Vec::new(),
             probes: Default::default(),
+            render_scale: 1.0,
+            splash: None,
+            splash_background: wgpu::Color::BLACK,
         };
         gfx.pipeline(view_format);
         gfx.pipeline(CAPTURE_FORMAT);
@@ -184,8 +194,144 @@ impl Gfx {
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
-        self.target = self.renderer.create_target(&self.device, width, height);
+        self.recreate_target();
+    }
+
+    fn recreate_target(&mut self) {
+        let [w, h] = self.target_size();
+        self.target = self.renderer.create_target(&self.device, w, h);
         self.group = blit_group(&self.device, &self.layout, &self.sampler, &self.target);
+    }
+
+    /// Pixel size the game renders at (window size × Render Scale).
+    pub fn target_size(&self) -> [u32; 2] {
+        let s = self.render_scale;
+        [self.config.width, self.config.height].map(|v| ((v as f32 * s).round() as u32).max(1))
+    }
+
+    pub fn render_scale(&self) -> f32 {
+        self.render_scale
+    }
+
+    /// Use a quality level: shadow map size, effects, render scale.
+    pub fn set_quality(&mut self, quality: &misty_engine::quality::QualityLevel) {
+        self.renderer.set_quality(&self.device, quality);
+        if (quality.render_scale - self.render_scale).abs() > 1e-4 {
+            self.render_scale = quality.render_scale;
+            self.recreate_target();
+        }
+    }
+
+    /// Show `image` (sRGB bytes; transparency blended over `background`) until cleared.
+    pub fn set_splash(
+        &mut self,
+        image: Option<misty_engine::image::RgbaImage>,
+        background: [f32; 3],
+    ) {
+        let bg = background.map(|c| (c.clamp(0.0, 1.0) * 255.0).round());
+        self.splash_background = wgpu::Color {
+            r: f64::from(bg[0]) / 255.0,
+            g: f64::from(bg[1]) / 255.0,
+            b: f64::from(bg[2]) / 255.0,
+            a: 1.0,
+        };
+        self.splash = image.map(|mut img| {
+            for p in img.pixels_mut() {
+                let a = f32::from(p[3]) / 255.0;
+                for c in 0..3 {
+                    p[c] = (f32::from(p[c]) * a + bg[c] * (1.0 - a)).round() as u8;
+                }
+                p[3] = 255;
+            }
+            let size = [img.width(), img.height()];
+            let texture = self.device.create_texture_with_data(
+                &self.queue,
+                &wgpu::TextureDescriptor {
+                    label: Some("misty splash"),
+                    size: wgpu::Extent3d {
+                        width: size[0],
+                        height: size[1],
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::LayerMajor,
+                img.as_raw(),
+            );
+            let view = texture.create_view(&Default::default());
+            (
+                view_group(&self.device, &self.layout, &self.sampler, &view),
+                size,
+            )
+        });
+    }
+
+    /// Draw the splash screen: the image fitted inside the window over its background.
+    pub fn draw_splash(&mut self) {
+        let Some(texture) = self.acquire() else {
+            return;
+        };
+        let view = texture.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(self.view_format),
+            ..Default::default()
+        });
+        let format = self.view_format;
+        self.pipeline(format);
+        let pipeline = &self
+            .pipelines
+            .iter()
+            .find(|(f, _)| *f == format)
+            .expect("created")
+            .1;
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("misty splash"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(self.splash_background),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            if let Some((group, [iw, ih])) = &self.splash {
+                let (w, h) = (self.config.width as f32, self.config.height as f32);
+                // Fit inside 80% of the window, never upscaled past 1:1 by more than 2x.
+                let s = (0.8 * w / *iw as f32).min(0.8 * h / *ih as f32).min(2.0);
+                let (vw, vh) = (*iw as f32 * s, *ih as f32 * s);
+                pass.set_viewport((w - vw) / 2.0, (h - vh) / 2.0, vw, vh, 0.0, 1.0);
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+        }
+        self.queue.submit([encoder.finish()]);
+        self.queue.present(texture);
+    }
+
+    /// The next surface image (`None` when the surface needs another try next frame).
+    fn acquire(&mut self) -> Option<wgpu::SurfaceTexture> {
+        match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Some(t),
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                self.surface.configure(&self.device, &self.config);
+                None
+            }
+            _ => None, // occluded / timeout: try next frame
+        }
     }
 
     /// GPU resources the renderer holds (profiler capture).
@@ -218,14 +364,8 @@ impl Gfx {
             self.ui
                 .render(&self.device, &self.queue, &self.target, scene, ui);
         }
-        let texture = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&self.device, &self.config);
-                return;
-            }
-            _ => return, // occluded / timeout: try next frame
+        let Some(texture) = self.acquire() else {
+            return;
         };
         let view = texture.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(self.view_format),
@@ -331,11 +471,28 @@ impl Gfx {
     }
 }
 
+fn present_mode(vsync: bool) -> wgpu::PresentMode {
+    if vsync {
+        wgpu::PresentMode::AutoVsync
+    } else {
+        wgpu::PresentMode::AutoNoVsync
+    }
+}
+
 fn blit_group(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
     sampler: &wgpu::Sampler,
     target: &RenderTarget,
+) -> wgpu::BindGroup {
+    view_group(device, layout, sampler, target.view())
+}
+
+fn view_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    view: &wgpu::TextureView,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("misty blit group"),
@@ -343,7 +500,7 @@ fn blit_group(
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::TextureView(target.view()),
+                resource: wgpu::BindingResource::TextureView(view),
             },
             wgpu::BindGroupEntry {
                 binding: 1,

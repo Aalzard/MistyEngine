@@ -317,7 +317,8 @@ impl Scene {
 
     /// Read a scene file; its name is the file name without extension.
     pub fn load(path: &Path) -> Result<(Scene, LoadReport), String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text =
+            crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let name = path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())

@@ -29,6 +29,8 @@ const CUBE_FACES: [(Vec3, Vec3); 6] = [
 ];
 
 pub struct ShadowMaps {
+    /// Side of each sun cascade's map in pixels (Quality ▸ Shadow Resolution).
+    pub directional_size: u32,
     /// Directional cascades (D2Array, sampled) and one view per cascade (rendered into).
     pub cascade_array_view: wgpu::TextureView,
     pub cascade_views: Vec<wgpu::TextureView>,
@@ -66,6 +68,15 @@ impl ShadowPlan {
 
 impl ShadowMaps {
     pub fn new(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Self {
+        Self::with_size(device, view_layout, DIRECTIONAL_SIZE)
+    }
+
+    /// Maps with a directional shadow map of `directional_size`² pixels.
+    pub fn with_size(
+        device: &wgpu::Device,
+        view_layout: &wgpu::BindGroupLayout,
+        directional_size: u32,
+    ) -> Self {
         let texture = |label, size: u32, layers: u32| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -85,7 +96,7 @@ impl ShadowMaps {
         };
         let directional = texture(
             "misty directional shadow",
-            DIRECTIONAL_SIZE,
+            directional_size,
             MAX_CASCADES as u32,
         );
         let local = texture("misty local shadows", LOCAL_SIZE, MAX_LOCAL_LAYERS as u32);
@@ -138,6 +149,7 @@ impl ShadowMaps {
             mapped_at_creation: false,
         });
         Self {
+            directional_size,
             cascade_array_view: directional.create_view(&wgpu::TextureViewDescriptor {
                 dimension: Some(wgpu::TextureViewDimension::D2Array),
                 ..Default::default()
@@ -161,7 +173,7 @@ pub fn plan(frame: &Frame) -> ShadowPlan {
         frame,
         &caster_bounds(frame),
         1.0,
-        &crate::quality::shadows(),
+        &crate::quality::active().shadow_settings(),
     )
 }
 
@@ -181,7 +193,7 @@ pub fn plan_with(
         let layer = match l.kind {
             _ if !wants => None,
             LightType::Directional if plan.cascades.is_empty() => {
-                let size = DIRECTIONAL_SIZE;
+                let size = settings.map_size;
                 plan.cascades =
                     cascades::fit(frame.camera, aspect, l.direction, settings, casters, size);
                 Some(-1)

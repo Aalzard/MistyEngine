@@ -26,6 +26,8 @@ epaint_default_fonts = "0.36.2"
 # Reflection probes: half-float cubemaps, zlib-compressed probe files.
 half = { version = "2.7", features = ["bytemuck"] }
 flate2 = "1.1"
+# Built games: LZ4 compression of `.pak` entries (pure Rust, so every target cross-compiles).
+lz4_flex = "0.11"
 
 [dev-dependencies]
 # Headless GPU tests (pixel comparisons, the stress benchmark).

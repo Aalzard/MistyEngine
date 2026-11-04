@@ -1,5 +1,6 @@
-//! Edit ▸ Project Settings: a floating window with a category list and that category's fields.
-//! Every change is saved to `ProjectSettings/ProjectSettings.json` right away.
+//! Edit ▸ Project Settings: a floating window with a short category list and that category's
+//! fields, grouped in collapsible sections. Every change is saved to
+//! `ProjectSettings/ProjectSettings.json` right away.
 
 use egui::Ui;
 
@@ -10,40 +11,58 @@ use misty_engine::tags_layers::TagsAndLayers;
 use crate::state::EditorState;
 use crate::widgets::vec3_row;
 
+/// Pages, in list order. Physics holds the 2D section and Tags and Layers the Sorting Layers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Category {
-    InputManager,
+    Player,
+    Quality,
+    Input,
     #[default]
     Physics,
     TagsAndLayers,
-    /// Physics 2D and Sorting Layers pages live in `project_settings_2d`.
-    Physics2D,
-    /// Shadow quality and cascades (`project_settings_quality`).
-    Quality,
-    SortingLayers,
     Time,
 }
 
 impl Category {
-    pub const ALL: [Category; 7] = [
-        Category::InputManager,
-        Category::Physics,
-        Category::Physics2D,
+    pub const ALL: [Category; 6] = [
+        Category::Player,
         Category::Quality,
-        Category::SortingLayers,
+        Category::Input,
+        Category::Physics,
         Category::TagsAndLayers,
         Category::Time,
     ];
 
     pub fn title(self) -> &'static str {
         match self {
-            Category::InputManager => "Input Manager",
+            Category::Player => "Player",
+            Category::Quality => "Quality",
+            Category::Input => "Input",
             Category::Physics => "Physics",
             Category::TagsAndLayers => "Tags and Layers",
-            Category::Physics2D => "Physics 2D",
-            Category::Quality => "Quality",
-            Category::SortingLayers => "Sorting Layers",
             Category::Time => "Time",
+        }
+    }
+
+    /// One line under the page heading.
+    fn blurb(self) -> &'static str {
+        match self {
+            Category::Player => "Your game's name, icon and how its window opens.",
+            Category::Quality => "Graphics presets players can pick from (Low to Ultra).",
+            Category::Input => "Named axes and buttons scripts read with Input.GetAxis.",
+            Category::Physics => "Gravity and which layers collide, for 3D and 2D.",
+            Category::TagsAndLayers => "Names for tags, layers and 2D drawing order.",
+            Category::Time => "Physics step length and the speed of time.",
+        }
+    }
+
+    /// The page called `title`; the names of pages that were merged still work.
+    pub fn from_title(title: &str) -> Option<Category> {
+        match title {
+            "Input Manager" => Some(Category::Input),
+            "Physics 2D" => Some(Category::Physics),
+            "Sorting Layers" => Some(Category::TagsAndLayers),
+            t => Category::ALL.into_iter().find(|c| c.title() == t),
         }
     }
 }
@@ -59,6 +78,8 @@ pub fn open_at(s: &mut EditorState, category: Category) {
 pub struct ProjectSettingsWindow {
     pub open: bool,
     pub category: Category,
+    /// Quality level being edited on the Quality page.
+    pub quality_selected: usize,
 }
 
 /// Settings of the project at `s.project.root`; problems go to the Console.
@@ -72,12 +93,18 @@ pub fn load(s: &mut EditorState) {
         }
     }
     s.project_settings.apply_globals();
+    let q = &s.project_settings.quality;
+    misty_engine::quality::install(q, q.default_level);
+    // PlayerPrefs in Play mode are kept per project, outside version control.
+    misty_engine::prefs::open(&s.project.root.join("Library/PlayerPrefs.json"));
 }
 
 /// Clamp, save, and apply what can change live (time scale while playing).
 pub fn changed(s: &mut EditorState) {
     s.project_settings.sanitize();
     s.project_settings.apply_globals();
+    // Keep previewing the same level with its new values.
+    misty_engine::quality::install(&s.project_settings.quality, misty_engine::quality::level());
     if let Err(e) = s.project_settings.save(&s.project.root) {
         s.console.log(
             crate::console::LogLevel::Error,
@@ -95,7 +122,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
     let mut open = s.project_settings_window.open;
     egui::Window::new("Project Settings")
         .open(&mut open)
-        .default_size([620.0, 380.0])
+        .default_size([640.0, 440.0])
         .collapsible(false)
         .show(ctx, |ui| contents(ui, s));
     s.project_settings_window.open = open;
@@ -105,10 +132,14 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
 pub fn contents(ui: &mut Ui, s: &mut EditorState) {
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| {
-            ui.set_width(130.0);
+            ui.set_width(120.0);
             for c in Category::ALL {
                 let selected = s.project_settings_window.category == c;
-                if ui.selectable_label(selected, c.title()).clicked() {
+                if ui
+                    .selectable_label(selected, c.title())
+                    .on_hover_text(c.blurb())
+                    .clicked()
+                {
                     s.project_settings_window.category = c;
                 }
             }
@@ -117,18 +148,33 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
         ui.vertical(|ui| {
             let category = s.project_settings_window.category;
             ui.heading(category.title());
+            ui.weak(category.blurb());
             ui.add_space(4.0);
+            let selected = &mut s.project_settings_window.quality_selected;
             let p = &mut s.project_settings;
+            let build = &s.build_settings;
+            let root = &s.project.root;
             let edited = egui::ScrollArea::vertical()
                 .auto_shrink([false, true])
                 .show(ui, |ui| match category {
-                    Category::InputManager => crate::project_settings_input::page(ui, &mut p.input),
-                    Category::Physics => physics(ui, p),
-                    Category::Physics2D => crate::project_settings_2d::physics2d(ui, p),
-                    Category::Quality => crate::project_settings_quality::page(ui, &mut p.quality),
-                    Category::SortingLayers => crate::project_settings_2d::sorting_layers(ui, p),
+                    Category::Player => crate::project_settings_player::page(ui, p, build, root),
+                    Category::Quality => crate::project_settings_quality::page(ui, p, selected),
+                    Category::Input => crate::project_settings_input::page(ui, &mut p.input),
+                    Category::Physics => {
+                        let mut edited = false;
+                        section(ui, "3D Physics", true, |ui| edited |= physics(ui, p));
+                        section(ui, "2D Physics", false, |ui| {
+                            edited |= crate::project_settings_2d::physics2d(ui, p)
+                        });
+                        edited
+                    }
                     Category::TagsAndLayers => {
-                        crate::project_settings_tags::page(ui, &mut p.tags_and_layers)
+                        let mut edited =
+                            crate::project_settings_tags::page(ui, &mut p.tags_and_layers);
+                        section(ui, "Sorting Layers (2D draw order)", false, |ui| {
+                            edited |= crate::project_settings_2d::sorting_layers(ui, p)
+                        });
+                        edited
                     }
                     Category::Time => time(ui, p),
                 })
@@ -138,6 +184,14 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
             }
         });
     });
+}
+
+/// A collapsible group of fields on a page.
+pub fn section(ui: &mut Ui, title: &str, open: bool, add: impl FnOnce(&mut Ui)) {
+    egui::CollapsingHeader::new(egui::RichText::new(title).strong())
+        .id_salt(("ps_section", title))
+        .default_open(open)
+        .show(ui, add);
 }
 
 /// Label + field row with a fixed label column.
@@ -293,13 +347,63 @@ mod tests {
         assert_eq!(h.state().project_settings_window.category, Category::Time);
         h.get_by_label("Fixed Timestep");
         h.get_by_label("Time Scale");
+        // Merged pages: 2D physics is a section of Physics.
+        h.get_by_label("Physics").click();
+        h.run();
+        h.get_by_label("2D Physics").click();
+        h.run();
+        h.get_by_label("Queries Start In Colliders");
+        assert_eq!(Category::from_title("Physics 2D"), Some(Category::Physics));
+        assert_eq!(
+            Category::from_title("Sorting Layers"),
+            Some(Category::TagsAndLayers)
+        );
+        assert_eq!(Category::from_title("Input Manager"), Some(Category::Input));
+    }
+
+    #[test]
+    fn player_and_quality_pages_edit_the_settings() {
+        let mut s = state("misty_ps_player_quality_test");
+        s.build_settings.product_name = "Legacy Name".into();
+        open_at(&mut s, Category::Player);
+        let mut h = Harness::builder()
+            .with_size([640.0, 700.0])
+            .build_ui_state(|ui, s: &mut EditorState| contents(ui, s), s);
+        h.run();
+        h.get_by_label("Product Name");
+        h.get_by_label("Screen Mode");
+        h.get_by_label("Resizable Window");
+        // The first checkbox of the page is Resizable Window (Identity has none).
+        h.query_all_by_role(egui::accesskit::Role::CheckBox)
+            .next()
+            .unwrap()
+            .click();
+        h.run();
+        let player = h.state().project_settings.player.clone().unwrap();
+        assert_eq!(
+            player.product_name, "Legacy Name",
+            "migrated from Build Settings"
+        );
+        assert!(!player.resizable);
+        h.get_by_label("Quality").click();
+        h.run();
+        h.get_by_label("Shadow Resolution");
+        h.get_by_label("Render Scale");
+        h.get_by_label("Effects");
+        h.get_by_label("Add Level").click();
+        h.run();
+        let q = &h.state().project_settings.quality;
+        assert_eq!(q.levels.len(), 5);
+        let saved = ProjectSettings::load(&h.state().project.root).unwrap();
+        assert_eq!(saved.quality.levels.len(), 5);
+        assert!(saved.player.is_some());
     }
 
     #[test]
     fn input_manager_and_tags_pages() {
         let mut s = state("misty_ps_input_tags_test");
         s.project_settings.tags_and_layers.layers[8] = "Hidden".into();
-        open_at(&mut s, Category::InputManager);
+        open_at(&mut s, Category::Input);
         let mut h = Harness::builder()
             .with_size([620.0, 600.0])
             .build_ui_state(|ui, s: &mut EditorState| contents(ui, s), s);
