@@ -66,7 +66,8 @@ fn vertex(v: VertexData) -> VertexData {
 
 With `// @shader unlit`, write `fn fragment(input: SurfaceInput) -> vec4<f32>` and return the final
 linear colour and alpha. No lighting is applied. Call `apply_fog(color, input.world_pos)` if you
-want fog.
+want fog: it applies the Lighting window's fog, then the volumetric / height fog and the clouds' haze of
+the Post-process Volume, like the built-in shaders.
 
 ## Header syntax
 

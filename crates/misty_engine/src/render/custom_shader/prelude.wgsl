@@ -93,9 +93,11 @@ fn object_to_world(input: SurfaceInput) -> mat4x4<f32> {
     return draws[input.draw].model;
 }
 
-// Fog of the Lighting window applied to a colour at a world position.
+// Fog applied to a colour at a world position: the Lighting window's, then the volumetric /
+// height fog and the clouds' haze (fog_apply.wgsl), as the built-in shaders do.
 fn apply_fog(color: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
-    return mix(view.fog_color.rgb, color, fog_visibility(fog_distance(world)));
+    let c = mix(view.fog_color.rgb, color, fog_visibility(fog_distance(world)));
+    return vfog_blend(c, vfog_eval(world), 1.0);
 }
 
 fn scene_pixel(uv: vec2<f32>, size: vec2<u32>) -> vec2<i32> {

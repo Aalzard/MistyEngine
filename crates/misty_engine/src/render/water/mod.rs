@@ -6,6 +6,8 @@
 //! their Gerstner waves, colours and foam are their own.
 
 mod fft;
+#[cfg(test)]
+mod gpu_tests;
 pub mod mesh;
 
 use std::collections::HashMap;
@@ -269,6 +271,17 @@ fn ocean_origin(camera: Vec3) -> Vec2 {
 pub fn camera_under(d: &WaterDraw, camera: Vec3) -> bool {
     let p = Vec2::new(camera.x, camera.z);
     d.settings.underwater && d.contains(p) && camera.y < d.height(p)
+}
+
+/// Does this view draw the underwater pass? Air fog (Lighting and volumetric) is off then.
+pub(super) fn camera_underwater(frame: &Frame) -> bool {
+    let eye = frame.camera.position;
+    frame.shaded
+        && frame
+            .water
+            .iter()
+            .take(MAX_SURFACES)
+            .any(|d| camera_under(d, eye))
 }
 
 fn uniform(
