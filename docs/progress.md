@@ -1920,3 +1920,21 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Opening a demo scene in a project without `Library/` starts the Scene view at the default camera spot
   (for CloudsDemo that is under the terrain); the Game view is fine.
 - The exes are not code-signed (Windows SmartScreen warns; README.txt explains "Run anyway").
+
+## v0.0.1: published on GitHub ✅
+
+### Done
+- Source pushed to https://github.com/Aalzard/MistyEngine (public). Commit emails hidden behind the GitHub
+  noreply address. The repo's auto-created Apache-2.0 commit was joined with `-s ours`, so GPL-3.0 + the
+  runtime exception stays the license.
+- Release **v0.0.1** is a full release marked Latest, with three downloads:
+  `MistyEngine-Setup-v0.0.1-windows-x64.exe` (the recommended one), the portable zip, and its `.sha256.txt`
+  (the updater needs it).
+- Windows installer (decision 612): `tools/installer/MistyEngine.iss` (Inno Setup 6), built by
+  `make_release.ps1`. It installs per user without an admin prompt and adds a Start menu shortcut, an
+  optional desktop shortcut and an uninstaller. Install, launch and uninstall were tested.
+- The history was rewritten to remove the "Co-Authored-By" assistant lines; no commit's code changed. The
+  old history is kept locally in `backup/with-claude-trailers`.
+
+### Not done yet
+- Code signing (SmartScreen still warns) and the console window behind the editor (see above).
