@@ -46,6 +46,8 @@ pub struct Gfx {
     group: wgpu::BindGroup,
     /// One pipeline per colour format (surface, screenshot).
     pipelines: Vec<(wgpu::TextureFormat, wgpu::RenderPipeline)>,
+    /// Realtime reflection probes re-captured while the game runs.
+    probes: misty_engine::render::probes::realtime::RealtimeProbes,
     pub adapter_name: String,
 }
 
@@ -128,6 +130,7 @@ impl Gfx {
             sampler,
             group,
             pipelines: Vec::new(),
+            probes: Default::default(),
         };
         gfx.pipeline(view_format);
         gfx.pipeline(CAPTURE_FORMAT);
@@ -193,6 +196,17 @@ impl Gfx {
     /// Texture problems found while drawing the UI.
     pub fn take_warnings(&mut self) -> Vec<String> {
         self.ui.take_warnings()
+    }
+
+    /// One frame of Realtime reflection probe captures (before the view gathers its probes).
+    pub fn update_probes(
+        &mut self,
+        scene: &Scene,
+        materials: &dyn misty_engine::render_scene::MaterialSource,
+    ) {
+        let (device, queue) = (&self.device, &self.queue);
+        self.probes
+            .update(&mut self.renderer, device, queue, scene, materials);
     }
 
     /// Render `frame` (or black when no camera renders) with `scene`'s UI on top, and present it.

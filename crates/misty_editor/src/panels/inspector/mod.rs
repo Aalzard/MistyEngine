@@ -14,6 +14,7 @@ mod nav_editors;
 mod particles;
 mod physics_editors;
 mod post_volume;
+mod probe_editor;
 mod slots;
 mod sprite_editors;
 mod terrain;

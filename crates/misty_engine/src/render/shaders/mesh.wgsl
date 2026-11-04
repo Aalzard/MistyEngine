@@ -142,6 +142,8 @@ struct Surface {
     occlusion: f32,
     // Transparent mode: diffuse × alpha, specular kept (premultiplied blending).
     premultiply: bool,
+    // Draw slot (its reflection probe list).
+    draw: u32,
 };
 
 // Standard shader inputs of a fragment; back faces (Cull Off) are lit from their side.
@@ -169,6 +171,7 @@ fn standard_surface(in: MeshOut, front: bool) -> Surface {
     s.receive_shadows = d.params.z > 0.5;
     s.occlusion = mix(1.0, occlusion, d.surface.z);
     s.premultiply = d.surface.x > 2.5;
+    s.draw = in.draw;
     return s;
 }
 
@@ -244,7 +247,16 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     let env = mix(sky_color(r), ambient * 1.6, perceptual);
     let fresnel_env = mix(f0, vec3<f32>(grazing), pow(1.0 - n_dot_v, 5.0));
     let surface_reduction = 1.0 / (roughness * roughness + 1.0);
-    color += env * fresnel_env * surface_reduction * lights.info.w * smoothness * s.occlusion;
+    // Reflection probes replace the sky inside their boxes (probes.wgsl).
+    let probe = probe_lighting(s.draw, world, n, r, perceptual);
+    if (probe.weight > 0.0) {
+        let sky_spec = env * fresnel_env * surface_reduction * lights.info.w * smoothness;
+        let probe_spec = probe_specular(probe, f0, n_dot_v, perceptual) * lights.info.w;
+        color = mix(color, probe.diffuse * diffuse_color * s.occlusion, probe.weight);
+        color += mix(sky_spec, probe_spec, probe.weight) * s.occlusion;
+    } else {
+        color += env * fresnel_env * surface_reduction * lights.info.w * smoothness * s.occlusion;
+    }
 
     let count = u32(lights.info.x);
     for (var i = 0u; i < count; i++) {
@@ -284,6 +296,9 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     }
     color = cascade_debug(world, color);
     color += s.emission;
+    if (probes.header.y > 0.5) {
+        color = probe_debug_color(probe, n);
+    }
     let fog = fog_visibility(fog_distance(world));
     // Premultiplied colour gets premultiplied fog.
     let fog_color = select(view.fog_color.rgb, view.fog_color.rgb * alpha, s.premultiply);

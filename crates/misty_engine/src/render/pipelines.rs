@@ -5,11 +5,15 @@ use super::particles::ParticleInstance;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
 
 const COMMON: &str = include_str!("shaders/common.wgsl");
-/// Lit/unlit meshes (all material variants), with the soft-shadow include.
+/// Lit/unlit meshes (all material variants), with the soft-shadow and reflection probe includes.
 pub(super) const MESH_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
-    "\n",
-    include_str!("shaders/shadows.wgsl")
+    "
+",
+    include_str!("shaders/shadows.wgsl"),
+    "
+",
+    include_str!("probes/probes.wgsl")
 );
 /// Shadow-map depth and the selection mask.
 pub(super) const DEPTH_SRC: &str = include_str!("shaders/depth.wgsl");
@@ -35,6 +39,9 @@ const TERRAIN_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/shadows.wgsl"),
+    "
+",
+    include_str!("probes/probes.wgsl"),
     "\n",
     include_str!("shaders/terrain.wgsl")
 );
@@ -69,6 +76,8 @@ pub struct Pipelines {
     pub particles_additive: wgpu::RenderPipeline,
     /// Splat map + layer textures + params (terrain pass, group 3).
     pub terrain_layout: wgpu::BindGroupLayout,
+    /// No bindings: the terrain's unused group 2 (keeps it under 16 textures per stage).
+    pub empty_layout: wgpu::BindGroupLayout,
     pub terrain: wgpu::RenderPipeline,
     pub bloom_prefilter: wgpu::RenderPipeline,
     pub bloom_down: wgpu::RenderPipeline,
@@ -174,6 +183,7 @@ impl Pipelines {
             })
         };
         let view_layout = layout("misty view", &[entry(0, S::VERTEX_FRAGMENT, uniform())]);
+        let probe = super::probes::gpu::layout_entries();
         let mesh_layout = layout(
             "misty mesh",
             &[
@@ -207,6 +217,12 @@ impl Pipelines {
                 entry(5, S::VERTEX, storage()),
                 // Soft-shadow parameters (shadows.wgsl).
                 entry(6, S::FRAGMENT, uniform()),
+                // Reflection probes (bindings 20–24, see probes/gpu.rs).
+                probe[0],
+                probe[1],
+                probe[2],
+                probe[3],
+                probe[4],
             ],
         );
         let draws_layout = layout(
@@ -402,6 +418,7 @@ impl Pipelines {
         ];
         terrain_entries.extend((3..11).map(|b| entry(b, S::FRAGMENT, filtered)));
         let terrain_layout = layout("misty terrain", &terrain_entries);
+        let empty_layout = layout("misty empty", &[]);
         let terrain = build(
             device,
             Spec {
@@ -414,12 +431,7 @@ impl Pipelines {
                 ..Spec::new(
                     "terrain",
                     TERRAIN_SRC,
-                    &[
-                        &view_layout,
-                        &mesh_layout,
-                        &material_layout,
-                        &terrain_layout,
-                    ],
+                    &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
                 )
             },
         );
@@ -494,6 +506,7 @@ impl Pipelines {
             particles_alpha,
             particles_additive,
             terrain_layout,
+            empty_layout,
             terrain,
         }
     }

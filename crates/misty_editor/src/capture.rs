@@ -102,6 +102,20 @@ pub fn apply_env(
     {
         crate::project_settings::open_at(s, c);
     }
+    // `MISTY_VIEW=x,y,z,pitch,yaw` places the Scene view camera.
+    if let Some(view) = std::env::var_os("MISTY_VIEW") {
+        let v: Vec<f32> = view
+            .to_string_lossy()
+            .split(',')
+            .filter_map(|n| n.trim().parse().ok())
+            .collect();
+        if let [x, y, z, pitch, yaw] = v[..] {
+            let rotation = misty_engine::camera::euler_to_quat(glam::Vec3::new(pitch, yaw, 0.0));
+            s.scene_view
+                .camera
+                .align_to(glam::Vec3::new(x, y, z), rotation);
+        }
+    }
     // `MISTY_DRAW_MODE=Shadow Cascades` picks a Scene view draw mode.
     if let Some(mode) = std::env::var_os("MISTY_DRAW_MODE")
         && let Some(i) = crate::panels::scene::DRAW_MODES

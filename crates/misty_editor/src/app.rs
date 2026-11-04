@@ -507,8 +507,11 @@ impl eframe::App for EditorApp {
                     );
             });
 
-        // Material previews asked for while drawing the panels.
+        // Material previews asked for while drawing the panels; probe bakes and Realtime probes.
         if let Some(gpu) = self.gpu.as_mut() {
+            if crate::probe_tools::gpu_frame(gpu, &mut self.state) {
+                ctx.request_repaint();
+            }
             let previews = &mut self.state.project.thumbnails.materials;
             crate::material_preview::render(gpu, previews);
             if previews.pending() {

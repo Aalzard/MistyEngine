@@ -111,6 +111,7 @@ impl Player {
             return;
         }
         let Some(gfx) = self.gfx.as_mut() else { return };
+        gfx.update_probes(&self.game.scene, &self.game.assets);
         let view = self.game.view();
         let frame = view.as_ref().map(|v| v.frame());
         gfx.draw(frame.as_ref(), &self.game.scene, self.game.ui_interaction());

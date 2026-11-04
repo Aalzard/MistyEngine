@@ -1346,3 +1346,70 @@ Record of choices made without asking, and why.
      20° sun with a 1° disc. It has its own materials (Shadow Ground / Pole / Figure). There is no play test
      (nothing is scripted); instead an engine GPU test renders it and checks all four cascade tints, and another
      measures the penumbra (≤ 8 px at a pole's base, at least 3× wider 11 m away; hard shadows don't widen).
+
+## 2026-11-04 — Reflection probes and automatic placement
+
+314. **Reflection Probe component** (GameObject ▸ Light ▸ Reflection Probe, Rendering category): Type Baked /
+     Realtime, refresh interval (frames, 0 = on demand) and time slicing, importance, intensity, box projection,
+     blend distance, box size and offset, resolution 64–512, near / far clip, clear flags Skybox / Solid Color,
+     and the baked file path. The box is axis-aligned in world space (rotation and scale ignored), like the
+     reference engine. Every field is `serde(default)`, so old scenes load unchanged.
+315. **Baking uses the engine's own renderer:** six 90° views from the probe into an HDR target, read back
+     before bloom and tonemapping (the target's HDR texture gained `COPY_SRC`). The camera rotation per face is
+     chosen so the rendered image *is* the cube face in wgpu's convention (no flipping). The first pass sees no
+     probes; the optional second pass (generator setting, on by default) re-captures with the first results,
+     so probes see each other's reflections. Every active renderer is captured, not only Static ones.
+316. **Prefiltering and SH on the CPU** (`render/probes/prefilter.rs`, `sh.rs`): seven roughness levels
+     (perceptual roughness i/6), GGX importance sampling with N = V = R and filtered importance sampling from a
+     box-filtered source chain (64 samples per texel for bakes, 24 for realtime), split over threads by face.
+     SH9 is projected from a 32² copy and convolved with the cosine lobe so it evaluates to irradiance / π.
+     CPU code is easy to test and leaves the GPU passes (which three other agents are editing) alone; a bake of
+     the demo's 10 probes × 2 bounces takes ~13 s in a dev build.
+317. **Probe file `ReflectionProbe-N.probe`** next to the scene (`Assets/Scenes/<Scene>/`, like the nav mesh):
+     `MPRB` header, SH as f32, then zlib of every level as RGB half floats with the bytes split into low/high
+     planes (about 3× smaller than raw halves; ~280 KB per 128² probe). No EXR dependency. Files are loaded
+     through a cache that re-checks the modification time twice a second, in the editor and the player; stale
+     higher-numbered files are deleted after a bake.
+318. **GPU layout:** one cube-array atlas (Rgba16Float, 7 mips, face size = the largest probe, others resampled)
+     holding every probe of the view, a uniform with up to 64 probes (position, box, blend, flags, SH), a
+     storage buffer with each draw's four best probes, and a 32² split-sum BRDF LUT computed on the CPU. They
+     are bindings 20–24 of the lit-mesh group (`probes/gpu.rs`), far from the existing numbers so other
+     renderer changes merge cleanly. `Frame` is unchanged: probes travel in `Environment::probes`.
+319. **The terrain pass binds an empty layout at group 2.** It never used the material textures, and with the
+     probe atlas and LUT the terrain pipeline would exceed the default 16 sampled textures per stage.
+320. **Per-draw lists, per-pixel blending:** the CPU gives each draw the up-to-four probes whose boxes touch its
+     bounds, most important first, then smaller box first. The shader walks that list, weighting each probe by
+     its blend distance inside the box and giving the remainder to the next; whatever is left falls back to
+     the sky. No clustered grid: scenes have tens of probes, not thousands.
+321. **Shading:** specular samples the cube level of the surface's perceptual roughness along the box-projected
+     reflection (ray against the box, seen from the capture point) and multiplies by the split-sum
+     `F0·A + B` with a multiple-scattering energy term; diffuse ambient is the probes' SH instead of the
+     hemisphere sky colour, so rooms get darker, wall-tinted ambient. Where no probe covers a pixel the old
+     sky code runs unchanged, so scenes without probes render exactly as before.
+322. **Automatic placement** (`placement.rs`): candidate columns on a grid at the spacing over the bounds of every
+     active renderer and terrain; a BVH ray down each column finds every up-facing floor; probes sit at the
+     height setting (1.5 m) above it, lower under low ceilings; candidates inside solids (four of six axis rays
+     hit back faces) or within 0.2 m of a surface are dropped. Each box side is the median of a 3 × 3 fan of
+     rays (offset 0.25 × spacing, at most 1 m), so a doorway or a chair doesn't decide alone; box faces sit
+     0.1 m beyond the walls so the walls are fully inside. A side that hits nothing within 4 × spacing is open
+     and reaches 0.75 × spacing (4 m upwards).
+323. **Merging and roles:** fully enclosed probes that sit inside each other's boxes are one room and merge into
+     one probe at their mean (refitted); open probes merge with neighbours up to two cells away at the same
+     height and cover their members' boxes. Enclosed probes get box projection, importance 2 and a 0.1 m blend;
+     open ones get no box projection, importance 1 and a quarter-spacing blend. Roofs count as floors (a probe
+     above a flat roof is kept).
+324. **Generate Probes is undoable and re-generatable:** it replaces the root object carrying a
+     `Reflection Probe Group` component ("Reflection Probes", which also stores spacing, height, merge,
+     resolution, second bounce) and then bakes when the scene is saved. Bakes run one probe per frame through
+     `probe_tools::gpu_frame` after the panels (like material previews), with a progress bar in the Lighting
+     window; Realtime probes are captured there too (one face per frame with time slicing, prefiltered on a
+     worker thread).
+325. **Gizmos:** each probe shows a small chrome sphere drawn with the normal lit shader (so it reflects exactly
+     what the probes give that point), selected probes show the box and the inner blend box, and the
+     Inspector's Edit Bounding Volume toggles six face handles. The Scene view draw mode "Reflection Probes"
+     colours pixels by the probe(s) lighting them (dark grey = sky) and shows every box.
+326. **ReflectionsDemo is generated by code** (`sample_reflections`): a room with red/green/blue walls, a doorway,
+     chrome / gold / copper spheres on glossy tiles, a lamp, an outdoor lawn with a big chrome ball; probes from
+     the placement code with the files baked by the ignored writer on the GPU. The check test re-runs the
+     placement and compares the scene; a headless render checks the probes change and darken the room. The
+     capture also takes `MISTY_VIEW=x,y,z,pitch,yaw` and `MISTY_DRAW_MODE=3`.

@@ -49,9 +49,14 @@ pub fn is_nav_static(scene: &Scene, e: Entity) -> bool {
 
 /// Static triangles of `scene`.
 pub fn collect(scene: &Scene) -> BakeGeometry {
+    collect_where(scene, is_nav_static)
+}
+
+/// Triangles of the objects `keep` accepts (reflection probe placement takes every active one).
+pub fn collect_where(scene: &Scene, keep: impl Fn(&Scene, Entity) -> bool) -> BakeGeometry {
     let mut g = BakeGeometry::default();
     for (e, _) in scene.walk() {
-        if !is_nav_static(scene, e) {
+        if !keep(scene, e) {
             continue;
         }
         let before = g.triangles.len();

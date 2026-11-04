@@ -119,6 +119,15 @@ impl SceneComponent for super::PostProcessVolume {
     const CATEGORY: &'static str = "Rendering";
 }
 
+impl SceneComponent for super::ReflectionProbe {
+    const NAME: &'static str = "Reflection Probe";
+    const CATEGORY: &'static str = "Rendering";
+}
+impl SceneComponent for super::ReflectionProbeGroup {
+    const NAME: &'static str = "Reflection Probe Group";
+    const CATEGORY: &'static str = "";
+}
+
 impl SceneComponent for ParticleSystem {
     const NAME: &'static str = "Particle System";
     const CATEGORY: &'static str = "Effects";
@@ -253,6 +262,8 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<Camera>(),
             ComponentInfo::of::<Light>(),
             ComponentInfo::of::<super::PostProcessVolume>(),
+            ComponentInfo::of::<super::ReflectionProbe>(),
+            ComponentInfo::of::<super::ReflectionProbeGroup>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
             ComponentInfo::of::<SpriteRenderer>(),
