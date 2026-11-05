@@ -855,7 +855,17 @@ pub fn register(lua: &Lua) -> Result<()> {
         lua.create_function(|lua, ()| with_world(lua, |w| w.requests.push(Request::Quit)))?,
     )?;
     g.set("Application", app)?;
+    super::assets_api::register(lua)?;
     Ok(())
+}
+
+/// `Instantiate(path [, position])` for other APIs (`Assets.InstantiateAsync`).
+pub(super) fn instantiate_prefab_path(
+    w: &mut World,
+    path: &str,
+    position: Option<Vec3>,
+) -> Result<Entity> {
+    instantiate(w, Source::Prefab(path.to_owned()), position)
 }
 
 enum Source {

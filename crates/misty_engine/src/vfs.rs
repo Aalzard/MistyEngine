@@ -3,6 +3,8 @@
 //! Asset loaders read through these functions instead of `std::fs`. With nothing mounted they
 //! are plain file reads, so the editor and loose-folder development builds work as before.
 //! When a pak is mounted, paths inside its project root are looked up in the archive first.
+//! Asset bundles loaded at runtime (see [`crate::asset_groups`]) are extra archives mounted on
+//! top with [`mount_bundle`]; they are looked up after the main pak, before the disk.
 
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -19,6 +21,45 @@ struct Mount {
 }
 
 static MOUNT: RwLock<Option<Mount>> = RwLock::new(None);
+
+/// Loaded asset bundles: (id, mount).
+static BUNDLES: RwLock<Vec<(u64, Mount)>> = RwLock::new(Vec::new());
+static NEXT_BUNDLE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Serve the files of an asset bundle under `root` until [`unmount_bundle`] with the returned id.
+pub fn mount_bundle(root: &Path, pak: Pak) -> u64 {
+    let id = NEXT_BUNDLE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    BUNDLES.write().unwrap_or_else(|e| e.into_inner()).push((
+        id,
+        Mount {
+            root: root.to_path_buf(),
+            pak: Arc::new(pak),
+            stamp: SystemTime::UNIX_EPOCH,
+        },
+    ));
+    id
+}
+
+/// Stop serving a bundle's files.
+pub fn unmount_bundle(id: u64) {
+    BUNDLES
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .retain(|(i, _)| *i != id);
+}
+
+/// Whether a mounted bundle serves `path`.
+pub fn in_bundle(path: &Path) -> bool {
+    bundle_lookup(path).is_some()
+}
+
+fn bundle_lookup(path: &Path) -> Option<(Arc<Pak>, String, SystemTime)> {
+    let bundles = BUNDLES.read().unwrap_or_else(|e| e.into_inner());
+    bundles.iter().rev().find_map(|(_, m)| {
+        let k = key(&m.root, path)?;
+        m.pak.contains(&k).then(|| (m.pak.clone(), k, m.stamp))
+    })
+}
 
 fn mounted() -> std::sync::RwLockReadGuard<'static, Option<Mount>> {
     MOUNT.read().unwrap_or_else(|e| e.into_inner())
@@ -65,10 +106,14 @@ pub fn key(root: &Path, path: &Path) -> Option<String> {
 
 /// The pak and key for `path`, when a mounted pak has it.
 fn lookup(path: &Path) -> Option<(Arc<Pak>, String, SystemTime)> {
-    let m = mounted();
-    let m = m.as_ref()?;
-    let k = key(&m.root, path)?;
-    m.pak.contains(&k).then(|| (m.pak.clone(), k, m.stamp))
+    let main = {
+        let m = mounted();
+        m.as_ref().and_then(|m| {
+            let k = key(&m.root, path)?;
+            m.pak.contains(&k).then(|| (m.pak.clone(), k, m.stamp))
+        })
+    };
+    main.or_else(|| bundle_lookup(path))
 }
 
 pub fn read(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {

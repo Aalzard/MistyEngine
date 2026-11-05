@@ -2,6 +2,7 @@
 
 pub mod animation;
 pub mod animator;
+pub mod asset_groups;
 pub mod audio_mixer;
 pub mod code_editor;
 mod console;
@@ -17,6 +18,7 @@ mod lighting_hdri;
 pub mod memory_profiler;
 pub mod navigation;
 pub mod occlusion;
+pub mod packages;
 pub mod profiler;
 pub mod project;
 pub(crate) mod project_menus;
@@ -89,6 +91,8 @@ impl TabViewer for PanelViewer<'_> {
             Tab::FrameDebugger => frame_debugger::show(ui, self.state),
             Tab::MemoryProfiler => memory_profiler::show(ui, self.state, self.gpu.as_deref()),
             Tab::TestRunner => test_runner::show(ui, self.state),
+            Tab::AssetGroups => asset_groups::show(ui, self.state),
+            Tab::PackageManager => packages::show(ui, self.state),
         }
     }
 

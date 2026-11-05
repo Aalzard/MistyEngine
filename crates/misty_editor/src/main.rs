@@ -32,6 +32,7 @@ mod mesh_builder;
 mod model_import;
 mod object_clipboard;
 mod open_scenes;
+mod packages;
 mod panels;
 mod particle_preview;
 mod picking;
@@ -52,6 +53,8 @@ mod project_thumbnail;
 mod render_scene;
 #[cfg(test)]
 mod sample_2d;
+#[cfg(test)]
+mod sample_addressables;
 #[cfg(test)]
 mod sample_animation;
 #[cfg(test)]

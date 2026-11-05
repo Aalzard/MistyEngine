@@ -29,6 +29,9 @@ half = { version = "2.7", features = ["bytemuck"] }
 flate2 = "1.1"
 # Built games: LZ4 compression of `.pak` entries (pure Rust, so every target cross-compiles).
 lz4_flex = "0.11"
+# Asset bundles: remote downloads over HTTPS (rustls, as the editor's updater) and SHA-256 checks.
+ureq = { version = "3.1", default-features = false, features = ["rustls"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 # Headless GPU tests (pixel comparisons, the stress benchmark).

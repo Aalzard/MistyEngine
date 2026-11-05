@@ -1,0 +1,11 @@
+{
+  "name": "com.misty.example-effects",
+  "displayName": "Example Effects",
+  "version": "0.2.0",
+  "description": "A Pulse script that scales objects in and out; builds on Example Tools.",
+  "author": "Misty Engine",
+  "license": "MIT",
+  "dependencies": {
+    "com.misty.example-tools": "^1.0.0"
+  }
+}

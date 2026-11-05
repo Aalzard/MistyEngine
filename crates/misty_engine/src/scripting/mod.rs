@@ -21,6 +21,7 @@
 pub mod animator_api;
 pub mod api;
 pub mod app_api;
+pub mod assets_api;
 pub mod audio_api;
 pub mod camera_api;
 pub mod input_api;
@@ -289,6 +290,7 @@ impl ScriptHost {
         if let Err(e) = api::register(&lua) {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
         }
+        lua.set_app_data(crate::asset_groups::AssetSystem::auto(&project_root));
         let mut world = World::new(
             std::mem::take(scene),
             physics,
@@ -705,6 +707,11 @@ impl ScriptHost {
         }
 
         {
+            // Before Start, so objects loaded this frame get Start before their first Update.
+            profile_scope!("Assets.Update", Category::Scripts);
+            self.assets_update();
+        }
+        {
             profile_scope!("Scripts.Start", Category::Scripts);
             for i in 0..self.instances.len() {
                 if !self.instances[i].started && self.runnable(&self.instances[i]) {
@@ -1048,6 +1055,8 @@ return {class_name}
     )
 }
 
+#[cfg(test)]
+mod assets_tests;
 #[cfg(test)]
 mod input_tests;
 #[cfg(test)]

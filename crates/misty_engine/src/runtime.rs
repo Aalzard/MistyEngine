@@ -106,6 +106,16 @@ impl Runtime {
         }
     }
 
+    /// Load addressables with `assets` (the editor's Play Mode Script).
+    pub fn set_assets(&mut self, assets: crate::asset_groups::AssetSystem) {
+        self.host.set_assets(assets);
+    }
+
+    /// Addressable load counters (handles, bundles).
+    pub fn asset_stats(&self) -> crate::asset_groups::AssetStats {
+        self.host.with_assets(|s| s.stats()).unwrap_or_default()
+    }
+
     /// One game frame.
     pub fn update(&mut self, scene: &mut Scene, time: &Time, input: Input) {
         crate::profile_scope!("PlayerLoop", Category::Others);

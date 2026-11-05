@@ -38,17 +38,29 @@ pub fn show(
     let tree = browser.tree.clone();
     let mut rows: Vec<(&FolderNode, usize)> = Vec::new();
     visit(&tree, 0, &browser.expanded, &mut rows);
-    let mut depths: Vec<Option<usize>> = rows.iter().map(|(_, d)| Some(*d)).collect();
-    depths.push(Some(0));
+    let packages_root = FolderNode {
+        path: browser.packages_dir(),
+        name: "Packages".into(),
+        children: browser.packages.clone(),
+    };
+    let first_package = rows.len();
+    visit(&packages_root, 0, &browser.expanded, &mut rows);
+    let depths: Vec<Option<usize>> = rows.iter().map(|(_, d)| Some(*d)).collect();
     let guides = tree_lines::guides(&depths);
 
     for (i, (node, depth)) in rows.iter().enumerate() {
-        folder_row(ui, browser, node, *depth, (i, &guides[i]), open, req);
+        // The Packages root and registry packages can't be renamed, moved into or deleted.
+        let locked = i >= first_package && (*depth == 0 || browser.is_read_only(&node.path));
+        folder_row(
+            ui,
+            browser,
+            node,
+            *depth,
+            (i, &guides[i], locked),
+            open,
+            req,
+        );
     }
-    // Packages: a placeholder root without contents yet.
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
-    tree_lines::paint_background(ui.painter(), rect, rows.len(), false);
-    paint_label(ui, rect, 0, "Packages", theme::TEXT_DIM, false);
 }
 
 fn visit<'a>(
@@ -101,7 +113,7 @@ fn folder_row(
     browser: &mut ProjectBrowser,
     node: &FolderNode,
     depth: usize,
-    (index, guide): (usize, &Guide),
+    (index, guide, locked): (usize, &Guide, bool),
     open: &mut Option<PathBuf>,
     req: &mut Requests,
 ) {
@@ -163,6 +175,9 @@ fn folder_row(
 
     if resp.clicked() {
         *open = Some(node.path.clone());
+    }
+    if locked {
+        return;
     }
     drop_target(&resp, &browser.root, &node.path, req);
     if depth > 0 {

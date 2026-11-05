@@ -443,12 +443,15 @@ fn item_interaction(
         *open = Some(e.path.clone());
     }
     let rel = asset_relative(&e.path);
-    resp.context_menu(|ui| project_menus::item_menu(ui, &e.path, rel.clone(), req));
+    let read_only = browser.is_read_only(&e.path);
+    if !read_only {
+        resp.context_menu(|ui| project_menus::item_menu(ui, &e.path, rel.clone(), req));
+    }
     // Assets can be dragged onto objects (Scene view, Hierarchy, Inspector slots) or folders.
     if let Some(rel) = rel {
         resp.dnd_set_drag_payload(AssetPayload(rel));
     }
-    if e.is_dir {
+    if e.is_dir && !read_only {
         drop_target(resp, &browser.root, &e.path, req);
     }
 }
@@ -456,7 +459,13 @@ fn item_interaction(
 /// "Assets/…" for a path inside the project's Assets folder.
 pub(super) fn asset_relative(path: &std::path::Path) -> Option<String> {
     let s = path.to_string_lossy().replace('\\', "/");
-    s.find("Assets/").map(|i| s[i..].to_owned())
+    let assets = s.find("Assets/");
+    let packages = s.find("/Packages/").map(|i| i + 1);
+    match (assets, packages) {
+        (Some(a), Some(p)) => Some(s[a.min(p)..].to_owned()),
+        (Some(i), None) | (None, Some(i)) => Some(s[i..].to_owned()),
+        (None, None) => None,
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {

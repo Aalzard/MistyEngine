@@ -83,6 +83,10 @@ pub struct ProjectBrowser {
     pub focused: bool,
     /// Folders open in the folder tree (Assets starts open).
     pub expanded: std::collections::HashSet<PathBuf>,
+    /// The project's packages (`Packages/<name>` folders), shown under the Packages root.
+    pub packages: Vec<FolderNode>,
+    /// Package folders that came from a registry: no renaming, moving or deleting inside.
+    pub read_only: Vec<PathBuf>,
 }
 
 impl ProjectBrowser {
@@ -107,6 +111,8 @@ impl ProjectBrowser {
             confirm_delete: None,
             focused: false,
             expanded: [assets.clone()].into(),
+            packages: Vec::new(),
+            read_only: Vec::new(),
         };
         browser.refresh();
         browser
@@ -120,13 +126,25 @@ impl ProjectBrowser {
     pub fn refresh(&mut self) {
         self.tree = build_tree(&self.assets_dir(), "Assets");
         self.entries = list_dir(&self.current);
+        self.packages = package_trees(&self.packages_dir());
+        self.read_only = crate::packages::read_only_roots(&self.root);
+    }
+
+    pub fn packages_dir(&self) -> PathBuf {
+        self.root.join("Packages")
+    }
+
+    /// Inside a registry package (read-only).
+    pub fn is_read_only(&self, path: &Path) -> bool {
+        self.read_only.iter().any(|r| path.starts_with(r))
     }
 
     pub fn open_folder(&mut self, path: PathBuf) {
         // The folder tree shows where we are: open every folder above it.
         let assets = self.assets_dir();
+        let packages = self.packages_dir();
         for dir in path.ancestors().skip(1) {
-            if !dir.starts_with(&assets) {
+            if !dir.starts_with(&assets) && !dir.starts_with(&packages) {
                 break;
             }
             self.expanded.insert(dir.to_path_buf());
@@ -138,6 +156,16 @@ impl ProjectBrowser {
 
     /// Breadcrumb segments from `Assets` to the current folder.
     pub fn breadcrumb(&self) -> Vec<(String, PathBuf)> {
+        let packages = self.packages_dir();
+        if let Ok(rel) = self.current.strip_prefix(&packages) {
+            let mut out = vec![("Packages".to_owned(), packages.clone())];
+            let mut acc = packages;
+            for part in rel.components() {
+                acc = acc.join(part);
+                out.push((part.as_os_str().to_string_lossy().into_owned(), acc.clone()));
+            }
+            return out;
+        }
         let assets = self.assets_dir();
         let mut out = vec![("Assets".to_owned(), assets.clone())];
         if let Ok(rel) = self.current.strip_prefix(&assets) {
@@ -279,6 +307,22 @@ fn build_tree(dir: &Path, name: &str) -> FolderNode {
         name: name.to_owned(),
         children,
     }
+}
+
+/// One node per `Packages/<folder>` with a package.json, named by its display name.
+fn package_trees(dir: &Path) -> Vec<FolderNode> {
+    let mut out: Vec<FolderNode> = list_dir(dir)
+        .into_iter()
+        .filter(|e| e.is_dir && e.path.join("package.json").is_file())
+        .map(|e| {
+            let title = crate::packages::manifest::PackageJson::read(&e.path)
+                .map(|p| p.title().to_owned())
+                .unwrap_or(e.name.clone());
+            build_tree(&e.path, &title)
+        })
+        .collect();
+    out.sort_by_key(|n| n.name.to_lowercase());
+    out
 }
 
 fn collect_matches(dir: &Path, filter: &SearchFilter, out: &mut Vec<AssetEntry>) {

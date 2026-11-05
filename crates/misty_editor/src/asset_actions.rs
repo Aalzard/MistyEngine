@@ -53,7 +53,12 @@ pub fn redirect(s: &mut EditorState, action: Action) -> Option<Action> {
     if !s.project.focused {
         return Some(action);
     }
-    let selected = s.project.selected.clone();
+    // Registry packages are read-only.
+    let selected = s
+        .project
+        .selected
+        .clone()
+        .filter(|p| !s.project.is_read_only(p) || matches!(action, Action::DuplicateSelected));
     match (action, selected) {
         (Action::DuplicateSelected, Some(p)) => Some(Action::DuplicateAsset(p)),
         (Action::RenameSelected, Some(p)) => {

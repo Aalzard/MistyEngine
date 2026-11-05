@@ -483,7 +483,18 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
     });
-    todo(ui, s, "Package Manager", "");
+    sub(ui, "Asset Management", |ui| {
+        let tab = Tab::AssetGroups;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
+    ui.separator();
+    item(
+        ui,
+        s,
+        "Package Manager…",
+        "",
+        Action::FocusTab(Tab::PackageManager),
+    );
 }
 
 /// Window ▸ Layouts, also used by the toolbar's Layout dropdown.

@@ -128,6 +128,18 @@ return Spawner
 ```
 Create the prefab by dragging an object from the Hierarchy into the Project window.
 
+### Loading addressable assets
+
+```lua
+Assets.Run(function()
+    local h = Assets.InstantiateAsync("Enemies/Ghost", self.transform):Await()
+    Debug.Log("spawned", h.result.name)
+    Assets.Release(h)   -- destroys the instance, unloads unused bundles
+end)
+Assets.LoadAsync("props"):OnCompleted(function(h) Debug.Log(#h.results, "props") end)
+```
+Mark assets Addressable in the Inspector or the Asset Groups window; see `docs/asset_groups.md`.
+
 ### Playing sounds
 
 ```lua

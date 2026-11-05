@@ -44,6 +44,10 @@ pub enum Tab {
     MemoryProfiler,
     /// Window ▸ General ▸ Test Runner.
     TestRunner,
+    /// Window ▸ Asset Management ▸ Asset Groups.
+    AssetGroups,
+    /// Window ▸ Package Manager.
+    PackageManager,
 }
 
 impl Tab {
@@ -60,7 +64,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 15] = [
+    pub const ON_DEMAND: [Tab; 17] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -76,6 +80,8 @@ impl Tab {
         Tab::FrameDebugger,
         Tab::MemoryProfiler,
         Tab::TestRunner,
+        Tab::AssetGroups,
+        Tab::PackageManager,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -99,11 +105,13 @@ impl Tab {
             Tab::Timeline => Some(Tab::Animation),
             // Docks with the Project and Console like the reference editor; the Profiler too,
             // so the Game view keeps rendering (and reporting its counters) while profiling.
-            Tab::AudioMixer | Tab::Profiler => Some(Tab::Project),
+            Tab::AudioMixer | Tab::Profiler | Tab::AssetGroups => Some(Tab::Project),
             // Analysis windows keep the Game view visible (the Frame Debugger replays into it).
             Tab::FrameDebugger | Tab::MemoryProfiler => Some(Tab::Project),
             // A tree with failure details below wants height: it docks with the Scene view.
             Tab::TestRunner => Some(Tab::Scene),
+            // A two-pane browser that wants room, like the graphs.
+            Tab::PackageManager => Some(Tab::Scene),
             _ => None,
         }
     }
@@ -133,6 +141,8 @@ impl Tab {
             Tab::FrameDebugger => "Frame Debugger",
             Tab::MemoryProfiler => "Memory Profiler",
             Tab::TestRunner => "Test Runner",
+            Tab::AssetGroups => "Asset Groups",
+            Tab::PackageManager => "Package Manager",
         }
     }
 
@@ -161,6 +171,8 @@ impl Tab {
             Tab::FrameDebugger => crate::panels::frame_debugger::ICON,
             Tab::MemoryProfiler => crate::panels::memory_profiler::ICON,
             Tab::TestRunner => crate::panels::test_runner::ICON,
+            Tab::AssetGroups => crate::panels::asset_groups::ICON,
+            Tab::PackageManager => crate::panels::packages::ICON,
         }
     }
 
@@ -189,7 +201,9 @@ impl Tab {
             | Tab::OcclusionCulling
             | Tab::FrameDebugger
             | Tab::MemoryProfiler
-            | Tab::TestRunner => "",
+            | Tab::TestRunner
+            | Tab::AssetGroups
+            | Tab::PackageManager => "",
         }
     }
 }

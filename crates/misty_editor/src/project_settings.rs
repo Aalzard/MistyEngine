@@ -22,10 +22,11 @@ pub enum Category {
     PresetManager,
     TagsAndLayers,
     Time,
+    PackageManager,
 }
 
 impl Category {
-    pub const ALL: [Category; 7] = [
+    pub const ALL: [Category; 8] = [
         Category::Player,
         Category::Quality,
         Category::Input,
@@ -33,6 +34,7 @@ impl Category {
         Category::PresetManager,
         Category::TagsAndLayers,
         Category::Time,
+        Category::PackageManager,
     ];
 
     pub fn title(self) -> &'static str {
@@ -44,6 +46,7 @@ impl Category {
             Category::PresetManager => "Preset Manager",
             Category::TagsAndLayers => "Tags and Layers",
             Category::Time => "Time",
+            Category::PackageManager => "Package Manager",
         }
     }
 
@@ -57,6 +60,7 @@ impl Category {
             Category::PresetManager => "Presets new components and materials start from.",
             Category::TagsAndLayers => "Names for tags, layers and 2D drawing order.",
             Category::Time => "Physics step length and the speed of time.",
+            Category::PackageManager => "The package registry the Package Manager lists.",
         }
     }
 
@@ -159,6 +163,7 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
             let build = &s.build_settings;
             let root = &s.project.root;
             let presets = &s.assets.presets;
+            let packages = &mut s.packages;
             let edited = egui::ScrollArea::vertical()
                 .auto_shrink([false, true])
                 .show(ui, |ui| match category {
@@ -185,6 +190,10 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
                         crate::project_settings_presets::page(ui, p, presets)
                     }
                     Category::Time => time(ui, p),
+                    Category::PackageManager => {
+                        package_manager(ui, packages, root);
+                        false
+                    }
                 })
                 .inner;
             if edited {
@@ -192,6 +201,52 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
             }
         });
     });
+}
+
+/// Package Manager page: the registry URL (kept in `Packages/manifest.json`).
+fn package_manager(ui: &mut Ui, w: &mut crate::packages::PackagesWindow, root: &std::path::Path) {
+    w.ensure_loaded(root);
+    w.poll();
+    let current = w.manifest.registry.clone();
+    let text = w.registry_edit.get_or_insert_with(|| current.clone());
+    let mut apply = false;
+    row(
+        ui,
+        "Registry URL",
+        "JSON index of packages (https:// or file://); empty = none",
+        |ui| {
+            let r = ui.add(
+                egui::TextEdit::singleline(text)
+                    .hint_text("https://example.com/misty-packages/index.json")
+                    .desired_width(320.0),
+            );
+            apply = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            false
+        },
+    );
+    ui.horizontal(|ui| {
+        apply |= ui
+            .add_enabled(*text != current, egui::Button::new("Apply"))
+            .clicked();
+        if ui.button("Clear").clicked() {
+            text.clear();
+            apply = true;
+        }
+    });
+    if apply {
+        let url = text.clone();
+        w.set_registry(root, &url);
+        w.registry_edit = None;
+    }
+    use crate::packages::RegistryState;
+    match &w.registry {
+        RegistryState::NotConfigured => ui.weak("No registry configured."),
+        RegistryState::Loading(_) => ui.weak("Loading the registry index…"),
+        RegistryState::Loaded(i) => {
+            ui.weak(format!("{} packages in the registry.", i.packages.len()))
+        }
+        RegistryState::Failed(e) => ui.colored_label(crate::theme::WARN, e),
+    };
 }
 
 /// A collapsible group of fields on a page.
