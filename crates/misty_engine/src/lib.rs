@@ -27,6 +27,7 @@ pub mod profiler;
 pub mod quality;
 pub mod render;
 pub mod render_scene;
+pub mod rigging;
 pub mod runtime;
 pub mod scene;
 pub mod screen;

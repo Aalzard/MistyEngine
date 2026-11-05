@@ -82,6 +82,8 @@ pub fn pre_frame(s: &mut EditorState, dt: f32) {
         }
     }
     binding::sample(&mut s.scene, root, &clip, w.time);
+    // Rigs on the previewed object run on the sampled pose, as in Play mode.
+    misty_engine::rigging::evaluate(&mut s.scene, &mut w.rigs, dt, Some(root));
     if w.recording {
         let subtree: Vec<Entity> = s
             .scene
@@ -174,6 +176,7 @@ fn record_changes(s: &mut EditorState, interacting: bool) {
 /// End the preview: animated values go back to what they were before it started.
 pub fn stop_preview(s: &mut EditorState) {
     let w = &mut s.animation;
+    w.rigs.restore(&mut s.scene);
     for ((e, p), v) in std::mem::take(&mut w.backup) {
         binding::write(&mut s.scene, e, p, v);
     }

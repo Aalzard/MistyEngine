@@ -80,6 +80,7 @@ fn all_refs() -> impl Iterator<Item = &'static (&'static str, &'static str, &'st
         .iter()
         .chain(super::ui_widgets::WIDGET_REFS)
         .chain(super::ui_widgets::SELECTABLE_REFS)
+        .chain(crate::rigging::RIG_REFS)
 }
 
 /// Rewrite every object reference with `f` (entity bits ↔ object index); unmapped → null.
