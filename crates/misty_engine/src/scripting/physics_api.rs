@@ -221,6 +221,9 @@ impl UserData for LCharacterController {
 
 /// `GetComponent` for the physics components handled here.
 pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
+    if name == "WheelCollider" {
+        return super::vehicle_api::component(lua, e, name);
+    }
     if name != "CharacterController" {
         return Ok(None);
     }

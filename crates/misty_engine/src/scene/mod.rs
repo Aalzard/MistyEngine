@@ -26,6 +26,7 @@ pub mod ui_components;
 pub mod ui_layout_components;
 pub mod ui_widgets;
 pub mod water;
+pub mod wheel_collider;
 
 use glam::{Mat4, Vec3};
 use hecs::{Entity, EntityBuilder, World};
@@ -50,6 +51,7 @@ pub use ui_components::*;
 pub use ui_layout_components::*;
 pub use ui_widgets::*;
 pub use water::{Floater, WaterKind, WaterSurface};
+pub use wheel_collider::{WheelCollider, WheelFrictionCurve, WheelHit, WheelState};
 
 pub struct Scene {
     pub name: String,

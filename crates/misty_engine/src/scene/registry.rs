@@ -83,6 +83,10 @@ impl SceneComponent for SpringJoint {
     const NAME: &'static str = "Spring Joint";
     const CATEGORY: &'static str = "Physics";
 }
+impl SceneComponent for super::WheelCollider {
+    const NAME: &'static str = "Wheel Collider";
+    const CATEGORY: &'static str = "Physics";
+}
 impl SceneComponent for Scripts {
     const NAME: &'static str = "Scripts";
     const CATEGORY: &'static str = "";
@@ -311,6 +315,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<FixedJoint>(),
             ComponentInfo::of::<HingeJoint>(),
             ComponentInfo::of::<SpringJoint>(),
+            ComponentInfo::of::<super::WheelCollider>(),
             ComponentInfo::of::<Rigidbody2D>(),
             ComponentInfo::of::<BoxCollider2D>(),
             ComponentInfo::of::<CircleCollider2D>(),

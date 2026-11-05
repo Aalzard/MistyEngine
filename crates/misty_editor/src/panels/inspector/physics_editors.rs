@@ -1,4 +1,5 @@
-//! Inspector editors for the Character Controller and the Fixed, Hinge and Spring Joints.
+//! Inspector editors for the Character Controller and the Fixed, Hinge and Spring Joints (the
+//! Wheel Collider's is in `vehicle_editors`).
 
 use egui::Ui;
 use glam::Vec3;
@@ -11,17 +12,19 @@ use crate::state::EditorState;
 use crate::widgets::vec3_row;
 
 /// Names of the components handled here.
-pub const NAMES: [&str; 4] = [
+pub const NAMES: [&str; 5] = [
     "Character Controller",
     "Fixed Joint",
     "Hinge Joint",
     "Spring Joint",
+    "Wheel Collider",
 ];
 
 pub fn icon(name: &str) -> Option<&'static str> {
     Some(match name {
         "Character Controller" => "🚶",
         "Fixed Joint" | "Hinge Joint" | "Spring Joint" => "🔗",
+        "Wheel Collider" => "◎",
         _ => return None,
     })
 }
@@ -42,6 +45,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
         "Fixed Joint" => edit_copy::<FixedJoint>(state, e, |j| fixed(ui, j, &bodies)),
         "Hinge Joint" => edit_copy::<HingeJoint>(state, e, |j| hinge(ui, j, &bodies)),
         "Spring Joint" => edit_copy::<SpringJoint>(state, e, |j| spring(ui, j, &bodies)),
+        "Wheel Collider" => super::vehicle_editors::wheel_collider(ui, state, e),
         _ => false,
     }
 }

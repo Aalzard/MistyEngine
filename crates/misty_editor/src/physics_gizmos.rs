@@ -1,14 +1,18 @@
 //! Scene-view gizmos of the selected object's joints (anchor, hinge axis and limit arc, spring
-//! line) and its Character Controller capsule.
+//! line), its Character Controller capsule and its Wheel Collider (suspension, tyre, contact).
 
 use glam::{Mat4, Quat, Vec3};
 use misty_engine::hecs::Entity;
 use misty_engine::physics::collider_matrix;
-use misty_engine::scene::{CharacterController, FixedJoint, HingeJoint, Scene, SpringJoint};
+use misty_engine::scene::{
+    CharacterController, FixedJoint, HingeJoint, Scene, SpringJoint, WheelCollider,
+};
 
 use super::{COLLIDER, Lines};
 
 const JOINT: [f32; 4] = [1.0, 0.6, 0.15, 0.95];
+/// Ground contact of a Wheel Collider while playing.
+const CONTACT: [f32; 4] = [1.0, 0.25, 0.2, 1.0];
 
 /// World point of a connected anchor (the connected body's local space, or world space).
 fn connected_point(scene: &Scene, body: Option<Entity>, local: Vec3) -> Vec3 {
@@ -126,5 +130,37 @@ impl Lines {
         let half = (c.height * s.y * 0.5 - r).max(0.0);
         let m: Mat4 = collider_matrix(scene, e, c.center);
         self.capsule(&m, 1, r, half, COLLIDER);
+    }
+}
+
+impl Lines {
+    /// Wheel Collider: suspension travel, the tyre at its current (or rest) position with one
+    /// spoke showing its roll, and the ground contact while playing.
+    pub(super) fn wheel(&mut self, scene: &Scene, e: Entity) {
+        let Ok(c) = scene.world.get::<&WheelCollider>(e) else {
+            return;
+        };
+        let (_, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
+        let up = rot * Vec3::Y;
+        let attach = pos + rot * c.center;
+        let (dist, _) = c.travel();
+        self.line(attach, attach - up * dist, COLLIDER);
+        self.cross(attach, 0.04, COLLIDER);
+        let Some((centre, wheel_rot)) = misty_engine::physics::wheel_world_pose(scene, e) else {
+            return;
+        };
+        let m = Mat4::from_rotation_translation(wheel_rot, centre);
+        self.circle(&m, Vec3::ZERO, c.radius.max(0.0), 0, COLLIDER);
+        self.line(
+            m.transform_point3(Vec3::Y * c.radius),
+            m.transform_point3(-Vec3::Y * c.radius),
+            COLLIDER,
+        );
+        if c.state.simulated
+            && let Some(hit) = c.state.hit
+        {
+            self.cross(hit.point, 0.06, CONTACT);
+            self.line(hit.point, hit.point + hit.normal * 0.3, CONTACT);
+        }
     }
 }

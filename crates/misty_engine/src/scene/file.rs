@@ -71,6 +71,7 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Fixed Joint", "", "connected_body"),
     ("Hinge Joint", "", "connected_body"),
     ("Spring Joint", "", "connected_body"),
+    ("Wheel Collider", "", "wheel_model"),
     ("LOD Group", "lods", "renderers"),
 ];
 

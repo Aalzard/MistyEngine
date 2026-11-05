@@ -4,7 +4,7 @@
 //! Rigidbody on themselves or a parent, otherwise they are static. Collider sizes include the
 //! object's world scale. Character Controllers are kinematic capsules moved by scripts; joints
 //! connect bodies to each other or to the world. Submodules: `colliders` (shapes and layers),
-//! `joints`, `character`, `queries` (raycasts and overlaps), `layers`.
+//! `joints`, `character`, `queries` (raycasts and overlaps), `layers`, `vehicles` (Wheel Colliders).
 
 mod character;
 mod colliders;
@@ -12,6 +12,7 @@ mod convert;
 mod joints;
 pub mod layers;
 mod queries;
+mod vehicles;
 
 use std::collections::HashMap;
 
@@ -26,6 +27,7 @@ use convert::{gv, parts, pose, rv};
 pub use character::ControllerHit;
 pub use layers::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, LAYERS};
 pub use queries::RaycastHit;
+pub use vehicles::world_pose_of as wheel_world_pose;
 
 struct Body {
     handle: rp::RigidBodyHandle,
@@ -100,6 +102,7 @@ pub struct Physics {
     controller_hits: Vec<ControllerHit>,
     /// Contacts found while building, reported by the next step.
     pending: Vec<rp::CollisionEvent>,
+    wheels: Vec<vehicles::Wheel>,
 }
 
 /// Rigid (unscaled) world pose and world scale of an object.
@@ -137,6 +140,7 @@ impl Physics {
             controllers: HashMap::new(),
             controller_hits: Vec::new(),
             pending: Vec::new(),
+            wheels: Vec::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -166,6 +170,7 @@ impl Physics {
         }
         self.add_colliders(scene, &objects);
         self.add_joints(scene, &objects);
+        self.add_wheels(scene, &objects);
         // A zero-length step registers the new bodies and fills the broad phase, so queries
         // work before the first real step; contacts found now are reported by that step.
         let dt = self.world.integration_parameters.dt;
@@ -251,8 +256,9 @@ impl Physics {
     pub fn step(&mut self, scene: &Scene) -> Vec<Contact> {
         self.push_kinematic(scene);
         self.apply_springs();
-        // Floaters on water surfaces.
         let dt = self.world.integration_parameters.dt;
+        self.apply_wheels(scene, dt);
+        // Floaters on water surfaces.
         crate::water::buoyancy::apply(self, scene, dt);
         for b in self.bodies.values_mut().filter(|b| b.interpolate) {
             if let Some(body) = self.world.bodies.get(b.handle) {
@@ -297,6 +303,7 @@ impl Physics {
             scene.set_world_position(*e, p);
             scene.set_world_rotation(*e, r);
         }
+        self.sync_wheels(scene);
     }
 
     fn body_mut(&mut self, e: Entity) -> Option<&mut rp::RigidBody> {
@@ -419,6 +426,7 @@ impl Physics {
         }
         self.controllers.remove(&e);
         self.remove_springs(e);
+        self.remove_wheels(e);
         let handles: Vec<_> = self
             .colliders
             .iter()
@@ -486,3 +494,5 @@ mod joint_tests;
 mod query_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod vehicle_tests;

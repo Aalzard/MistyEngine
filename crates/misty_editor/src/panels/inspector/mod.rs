@@ -32,6 +32,7 @@ mod sprite_editors;
 mod terrain;
 mod texture_import;
 mod ui_editors;
+mod vehicle_editors;
 mod water;
 
 use egui::{RichText, Ui};

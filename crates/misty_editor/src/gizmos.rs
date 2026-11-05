@@ -334,6 +334,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.colliders_2d(scene, e);
         lines.character(scene, e);
         lines.joints(scene, e);
+        lines.wheel(scene, e);
         lines.nav_shapes(scene, e);
         lines.fog_volume(scene, e);
     }
