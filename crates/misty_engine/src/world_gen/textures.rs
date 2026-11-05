@@ -101,6 +101,24 @@ pub fn generate(stem: &str, size: u32) -> Option<RgbaImage> {
                 .sin();
             shade([150.0, 82.0, 56.0], 0.62 + 0.4 * n + 0.12 * band)
         }),
+        "Basalt" => img(&|x, y| {
+            let n = fbm(x, y, size, 4, 5, 211);
+            // Dark rock with small vesicles and a faint sheen of cracks.
+            let pits = (fbm(x, y, size, 16, 2, 213) - 0.62).max(0.0) * 3.0;
+            let crack = 1.0 - (fbm(x, y, size, 6, 3, 217) * 2.0 - 1.0).abs();
+            shade(
+                [62.0, 60.0, 62.0],
+                0.65 + 0.4 * n - 0.35 * pits + 0.25 * crack.powi(6) + 0.08 * grain(x, y, 13),
+            )
+        }),
+        "Ash" => img(&|x, y| {
+            let n = fbm(x, y, size, 4, 4, 231);
+            let tint = fbm(x, y, size, 2, 2, 233);
+            shade(
+                [92.0 + 10.0 * tint, 86.0 + 4.0 * tint, 82.0],
+                0.75 + 0.3 * n + 0.14 * grain(x, y, 17),
+            )
+        }),
         _ => return None,
     })
 }

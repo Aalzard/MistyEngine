@@ -1,0 +1,131 @@
+{
+  "name": "Coast",
+  "tone": [
+    0.55,
+    0.7,
+    0.4
+  ],
+  "flat": {
+    "texture": "Assets/WorldBuilder/Textures/Grass.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "slope": {
+    "texture": "Assets/WorldBuilder/Textures/Dirt.png",
+    "normal_map": null,
+    "tiling": 8.0
+  },
+  "cliff": {
+    "texture": "Assets/WorldBuilder/Textures/Rock.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "shore": {
+    "texture": "Assets/WorldBuilder/Textures/Sand.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "peak": {
+    "texture": "Assets/WorldBuilder/Textures/Rock.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "slope_angle": 22.0,
+  "cliff_angle": 40.0,
+  "peak_height": 0.8,
+  "shore_width": 7.0,
+  "scatter": [
+    {
+      "name": "Palm",
+      "prefab": null,
+      "shape": "BroadleafTree",
+      "color": [
+        0.3,
+        0.55,
+        0.22
+      ],
+      "density": 1.5,
+      "min_spacing": 7.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 25.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Bush",
+      "prefab": null,
+      "shape": "Bush",
+      "color": [
+        0.3,
+        0.5,
+        0.2
+      ],
+      "density": 2.0,
+      "min_spacing": 3.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 28.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Beach Grass",
+      "prefab": null,
+      "shape": "Grass",
+      "color": [
+        0.6,
+        0.65,
+        0.35
+      ],
+      "density": 3.0,
+      "min_spacing": 1.5,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 25.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Rock",
+      "prefab": null,
+      "shape": "Rock",
+      "color": [
+        0.55,
+        0.52,
+        0.48
+      ],
+      "density": 0.3,
+      "min_spacing": 6.0,
+      "scale": [
+        0.6,
+        1.8
+      ],
+      "random_rotation": true,
+      "max_slope": 55.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": true
+    }
+  ]
+}

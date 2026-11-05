@@ -1,22 +1,26 @@
-//! World Builder window (Window ▸ Terrain ▸ World Builder): one scrolling window of collapsible
-//! sections — Base Heightmap (with erosion), Stamps & Areas, Biomes and Generate. It works on the
-//! World Builder object of the open scene (or creates one, with a terrain), regenerates a
-//! low-resolution preview while you edit and runs full generations on a worker thread.
+//! World Builder window (Window ▸ Terrain ▸ World Builder, or the Terrain Inspector's World
+//! Builder button): a Preview card (live image of the world while you edit), Templates, then
+//! collapsible sections — Base Heightmap (with erosion), Stamps & Areas, Biomes and Generate. It
+//! works on the World Builder object of the open scene (or creates one, with a terrain) and runs
+//! full generations on a worker thread.
 
 mod biome_ui;
 pub mod gizmos;
 mod job;
+pub mod preview;
 mod stamp_ui;
+pub mod templates;
 #[cfg(test)]
 mod tests;
 
-use std::time::Instant;
+use std::sync::{Arc, Mutex};
 
 use egui::{CollapsingHeader, RichText, Ui};
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Terrain, TerrainCollider, Transform};
 use misty_engine::terrain::{HEIGHTMAP_RESOLUTIONS, TerrainData, store};
+use misty_engine::world_gen::generate::Cache;
 use misty_engine::world_gen::{
     self, Generator, ScatterSet, ScatterStorage, Stages, WorldBuilder, WorldStamp,
 };
@@ -37,20 +41,26 @@ pub struct WorldBuilderWindow {
     pub status: String,
     /// Stage timings of the last run (ms).
     pub timings: Vec<(&'static str, f32)>,
+    /// Stages the last run took from the cache.
+    pub reused: Vec<&'static str>,
     /// Biome asset open in the Biomes section.
     pub biome: Option<String>,
     job: Option<job::Job>,
     /// Terrain data from before the first preview (undo and Revert go back to it).
     preview_base: Option<TerrainSnapshot>,
-    /// Settings + stamps last generated or previewed (change detection).
-    signature: Option<String>,
-    changed_at: Option<Instant>,
     builder: Option<Entity>,
+    /// The Preview card.
+    pub preview: preview::PreviewState,
+    /// Stage cache of full generations (incremental Generate).
+    full_cache: Arc<Mutex<Cache>>,
+    /// Template waiting for "Replace the current setup?".
+    pub confirm_template: Option<world_gen::templates::Template>,
 }
 
 impl WorldBuilderWindow {
+    /// A full generation is running.
     pub fn busy(&self) -> bool {
-        self.job.as_ref().is_some_and(|j| !j.preview())
+        self.job.is_some()
     }
 }
 
@@ -63,10 +73,16 @@ pub fn is_open(state: &EditorState, ctx: &egui::Context) -> bool {
 /// The builder the window edits: the selection's, else the last one, else the first.
 pub fn current_builder(state: &EditorState) -> Option<Entity> {
     let scene = &state.scene;
+    // A selected terrain picks the builder that generates it.
+    let for_terrain = |e: Entity| {
+        world_gen::builders(scene)
+            .into_iter()
+            .find(|b| world_gen::terrain_of(scene, *b) == Some(e))
+    };
     state
         .selection
         .active()
-        .and_then(|e| world_gen::builder_of(scene, e))
+        .and_then(|e| world_gen::builder_of(scene, e).or_else(|| for_terrain(e)))
         .or(state
             .world_builder
             .builder
@@ -86,15 +102,19 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         empty(ui, state);
         return;
     };
-    job::preview_tick(state, builder);
-    if state.world_builder.changed_at.is_some() {
-        ui.ctx().request_repaint();
-    }
+    state.world_builder.builder = Some(builder);
+    preview::tick(state, builder, ui.ctx());
     header(ui, state, builder);
+    templates::confirm_dialog(ui, state, builder);
     ui.separator();
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            card(ui, "Preview", true, |ui| preview::show(ui, state, builder));
+            let fresh = !templates::is_edited(state, builder);
+            card(ui, "Templates", fresh, |ui| {
+                templates::picker(ui, state, Some(builder))
+            });
             section(ui, 1, "Base Heightmap", |ui| {
                 base_section(ui, state, builder)
             });
@@ -104,6 +124,18 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             section(ui, 3, "Biomes", |ui| biome_ui::show(ui, state, builder));
             section(ui, 4, "Generate", |ui| generate_section(ui, state, builder));
         });
+}
+
+/// An unnumbered, collapsible card above the sections (a tutorial target too).
+fn card(ui: &mut Ui, title: &str, open: bool, body: impl FnOnce(&mut Ui)) {
+    let r = CollapsingHeader::new(RichText::new(title).strong())
+        .id_salt(("wb_card", title))
+        .default_open(open)
+        .show(ui, |ui| {
+            let _scope = targets::scope(title);
+            body(ui)
+        });
+    targets::row(ui, title, r.header_response.rect);
 }
 
 /// A numbered, collapsible section (a tutorial target too).
@@ -136,6 +168,13 @@ fn empty(ui: &mut Ui, state: &mut EditorState) {
     if create.clicked() {
         create_builder(state, terrain);
     }
+    if terrain.is_none() {
+        ui.add_space(8.0);
+        ui.label(RichText::new("Or start from a template").strong());
+        ui.weak("Makes a terrain and a World Builder set up for it.");
+        ui.add_space(4.0);
+        templates::picker(ui, state, None);
+    }
     if !state.world_builder.status.is_empty() {
         ui.weak(&state.world_builder.status);
     }
@@ -144,6 +183,15 @@ fn empty(ui: &mut Ui, state: &mut EditorState) {
 /// Add a "World Builder" object for `terrain` (or a new terrain) and make sure the biome presets
 /// exist.
 pub fn create_builder(state: &mut EditorState, terrain: Option<Entity>) -> Option<Entity> {
+    create_builder_named(state, terrain, "World")
+}
+
+/// [`create_builder`] with a new terrain asset named after `name` ("Desert World.terrain").
+pub fn create_builder_named(
+    state: &mut EditorState,
+    terrain: Option<Entity>,
+    name: &str,
+) -> Option<Entity> {
     let root = state.project.root.clone();
     if let Err(e) = biome_ui::ensure_presets(&root) {
         state.console.warn(format!("World Builder presets: {e}"));
@@ -169,8 +217,7 @@ pub fn create_builder(state: &mut EditorState, terrain: Option<Entity>) -> Optio
         None => {
             let dir = root.join(world_gen::biome::FOLDER);
             let _ = std::fs::create_dir_all(&dir);
-            let file =
-                crate::asset_ops::unique_path(&dir, "World", misty_engine::terrain::EXTENSION);
+            let file = crate::asset_ops::unique_path(&dir, name, misty_engine::terrain::EXTENSION);
             let rel = misty_engine::assets::relative(&file);
             let rel = file
                 .strip_prefix(&root)
@@ -206,9 +253,25 @@ pub fn create_builder(state: &mut EditorState, terrain: Option<Entity>) -> Optio
     state.scene.add(b, settings);
     state.select(b);
     state.world_builder.builder = Some(b);
-    state.world_builder.signature = None;
     state.refresh_assets();
     Some(b)
+}
+
+/// The Terrain Inspector's World Builder button: open the World Builder of `terrain`, creating
+/// one for it first when there is none.
+pub fn open_for_terrain(state: &mut EditorState, terrain: Entity) {
+    let existing = world_gen::builders(&state.scene)
+        .into_iter()
+        .find(|b| world_gen::terrain_of(&state.scene, *b) == Some(terrain));
+    let b = existing.or_else(|| create_builder(state, Some(terrain)));
+    if let Some(b) = b {
+        state.world_builder.builder = Some(b);
+        // Keep the terrain selected: the window follows it to its builder.
+        state.select(terrain);
+    }
+    state.push(crate::actions::Action::FocusTab(
+        crate::layout::Tab::WorldBuilder,
+    ));
 }
 
 fn header(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
@@ -467,10 +530,13 @@ fn generate_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
         let big = ui.add_enabled(!busy, big);
         targets::header(ui, "Generate", big.rect);
         if big
-            .on_hover_text("Height → erosion → stamps → water → textures → scatter")
+            .on_hover_text(
+                "Height → erosion → stamps → water → textures → scatter. \
+                 Stages your edits did not touch are reused from the last run.",
+            )
             .clicked()
         {
-            job::start(state, builder, Stages::All, false);
+            job::start(state, builder, Stages::All);
         }
         for (label, stages) in [
             ("Heights Only", Stages::Heights),
@@ -478,18 +544,13 @@ fn generate_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
             ("Scatter Only", Stages::Scatter),
         ] {
             if ui.add_enabled(!busy, egui::Button::new(label)).clicked() {
-                job::start(state, builder, stages, false);
+                job::start(state, builder, stages);
             }
         }
     });
     with_settings(state, builder, |s| {
         grid(ui, "wb_generate", |ui| {
             let mut ch = false;
-            ui.label("Live Preview");
-            ch |= ui
-                .checkbox(&mut s.live_preview, "Low-res preview while editing")
-                .changed();
-            ui.end_row();
             ui.label("Scatter Storage");
             ch |= stamp_ui::combo(
                 ui,
@@ -503,25 +564,16 @@ fn generate_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
         })
     });
     if let Some(job) = &state.world_builder.job {
-        let (stage, f) = job.progress.get();
-        let preview = job.preview();
-        let label = job.label;
+        let f = job.progress.overall();
+        let text = format!("{}: {}", job.label, job.eta_text());
         ui.horizontal(|ui| {
             ui.add(
                 egui::ProgressBar::new(f)
-                    .desired_width(220.0)
-                    .text(format!("{label}: {stage}")),
+                    .desired_width(ui.available_width().min(300.0) - 70.0)
+                    .text(text),
             );
-            if !preview && ui.button("Cancel").clicked() {
+            if ui.button("Cancel").clicked() {
                 job.progress.cancel();
-            }
-        });
-    }
-    if state.world_builder.preview_base.is_some() && !state.world_builder.busy() {
-        ui.horizontal(|ui| {
-            ui.weak("Showing a preview.");
-            if ui.small_button("Revert Preview").clicked() {
-                job::revert_preview(state);
             }
         });
     }
@@ -529,13 +581,24 @@ fn generate_section(ui: &mut Ui, state: &mut EditorState, builder: Entity) {
         ui.weak(&state.world_builder.status);
     }
     if !state.world_builder.timings.is_empty() {
-        let t: Vec<String> = state
+        let mut t: Vec<String> = state
             .world_builder
             .timings
             .iter()
             .map(|(n, ms)| format!("{n} {ms:.0} ms"))
             .collect();
-        ui.weak(t.join(" · "));
+        if !state.world_builder.reused.is_empty() {
+            t.push(format!("reused {}", state.world_builder.reused.len()));
+        }
+        ui.weak(t.join(" · "))
+            .on_hover_text(if state.world_builder.reused.is_empty() {
+                "Every stage ran.".to_owned()
+            } else {
+                format!(
+                    "Reused from the last run: {}",
+                    state.world_builder.reused.join(", ")
+                )
+            });
     }
 }
 
@@ -549,7 +612,7 @@ pub fn add_stamp(state: &mut EditorState, builder: Entity, name: &str) -> Option
 
 /// Start a full generation, as the Generate button does (tutorial demos).
 pub fn generate(state: &mut EditorState, builder: Entity) {
-    job::start(state, builder, Stages::All, false);
+    job::start(state, builder, Stages::All);
 }
 
 /// Inspector bodies of the World Builder components.

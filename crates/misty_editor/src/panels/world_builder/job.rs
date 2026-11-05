@@ -1,13 +1,16 @@
 //! Generation jobs: requests gathered from the scene, run on a worker thread, and their results
-//! put back (terrain asset, water, scatter) as one undo step. Also the debounced live preview.
+//! put back (terrain asset, water, scatter) as one undo step. Full runs share a stage cache, so
+//! Generate after a small edit only re-runs the stages that edit affects. (The Preview card has
+//! its own passes, see `preview`.)
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use misty_engine::hecs::Entity;
 use misty_engine::terrain::store;
+use misty_engine::world_gen::generate::Cache;
 use misty_engine::world_gen::{
     self, Biome, Output, Progress, Request, Stages, WorldBuilder, WorldStamp,
 };
@@ -15,21 +18,40 @@ use misty_engine::world_gen::{
 use crate::state::EditorState;
 use crate::terrain_tools::TerrainSnapshot;
 
-/// Quiet time after the last edit before the preview regenerates.
-const DEBOUNCE: Duration = Duration::from_millis(350);
-
 pub struct Job {
     handle: JoinHandle<Option<Output>>,
     pub progress: Arc<Progress>,
     req: Request,
     builder: Entity,
+    /// The terrain asset, resolved against this editor's project when the job started.
+    path: String,
     pub label: &'static str,
-    started: Instant,
+    pub started: Instant,
 }
 
 impl Job {
-    pub fn preview(&self) -> bool {
-        self.req.preview
+    /// "Hydraulic erosion · 3 s left" (after the first moments, once the rate is known).
+    pub fn eta_text(&self) -> String {
+        let (stage, _) = self.progress.get();
+        let f = self.progress.overall();
+        let elapsed = self.started.elapsed().as_secs_f32();
+        if f > 0.03 && elapsed > 0.4 && f < 1.0 {
+            let left = elapsed * (1.0 - f) / f;
+            format!("{stage} · {} left", seconds(left))
+        } else {
+            stage.to_owned()
+        }
+    }
+}
+
+/// "0.4 s", "12 s", "2 min".
+fn seconds(s: f32) -> String {
+    if s < 1.0 {
+        format!("{s:.1} s")
+    } else if s < 90.0 {
+        format!("{s:.0} s")
+    } else {
+        format!("{:.0} min", s / 60.0)
     }
 }
 
@@ -42,14 +64,10 @@ pub fn stage_label(stages: Stages) -> &'static str {
     }
 }
 
-/// Start generating for `builder` (cancels a running preview; a full run waits for nothing).
-pub fn start(state: &mut EditorState, builder: Entity, stages: Stages, preview: bool) {
-    if let Some(job) = &state.world_builder.job {
-        if job.preview() {
-            job.progress.cancel();
-        } else {
-            return;
-        }
+/// Start generating for `builder` (does nothing while another generation runs).
+pub fn start(state: &mut EditorState, builder: Entity, stages: Stages) {
+    if state.world_builder.job.is_some() {
+        return;
     }
     let Ok(settings) = state
         .scene
@@ -63,19 +81,17 @@ pub fn start(state: &mut EditorState, builder: Entity, stages: Stages, preview: 
     let root = state.project.root.clone();
     let load = |p: &str| Biome::load(&root.join(p));
     let (req, warnings) =
-        match world_gen::request(&state.scene, builder, stages, preview, current, &load) {
+        match world_gen::request(&state.scene, builder, stages, false, current, &load) {
             Ok(r) => r,
             Err(e) => {
                 state.world_builder.status = e;
                 return;
             }
         };
-    if !preview {
-        for w in warnings {
-            state.console.warn(w);
-        }
+    for w in warnings {
+        state.console.warn(w);
     }
-    // Remember the data from before the first preview: undo and Revert go back to it.
+    // Remember the data from before any preview: undo and Revert go back to it.
     if state.world_builder.preview_base.is_none()
         && let Some((d, _)) = store::get(&settings.terrain_data)
     {
@@ -87,17 +103,28 @@ pub fn start(state: &mut EditorState, builder: Entity, stages: Stages, preview: 
     let progress = Arc::new(Progress::default());
     let shared = progress.clone();
     let run = req.clone();
-    let handle = std::thread::spawn(move || world_gen::generate::run(&run, &shared));
+    let cache: Arc<Mutex<Cache>> = state.world_builder.full_cache.clone();
+    let handle = std::thread::spawn(move || {
+        let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+        world_gen::generate::run_cached(&run, &shared, &mut cache)
+    });
+    let path = if std::path::Path::new(&settings.terrain_data).is_absolute() {
+        settings.terrain_data.clone()
+    } else {
+        state
+            .project
+            .root
+            .join(&settings.terrain_data)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
     state.world_builder.job = Some(Job {
         handle,
         progress,
         req,
         builder,
-        label: if preview {
-            "Preview"
-        } else {
-            stage_label(stages)
-        },
+        path,
+        label: stage_label(stages),
         started: Instant::now(),
     });
 }
@@ -115,21 +142,14 @@ pub fn poll(state: &mut EditorState) {
     let job = state.world_builder.job.take().expect("checked");
     let secs = job.started.elapsed().as_secs_f32();
     let Ok(Some(out)) = job.handle.join() else {
-        if !job.req.preview {
-            state.world_builder.status = "Cancelled.".into();
-        }
+        state.world_builder.status = "Cancelled.".into();
         return;
     };
-    let path = job.req.settings.terrain_data.clone();
-    state.world_builder.timings = out.timings.clone();
-    if job.req.preview {
-        store::insert(&path, out.data);
-        state.world_builder.status = format!("Preview updated in {secs:.2} s.");
-        return;
-    }
+    let path = job.path.clone();
     if !state.scene.contains(job.builder) {
         return;
     }
+    let apply_start = Instant::now();
     let res = out.data.heightmap_resolution;
     let before = state
         .world_builder
@@ -170,22 +190,28 @@ pub fn poll(state: &mut EditorState) {
         prefabs.get(p).cloned()
     });
     state.refresh_assets();
+    let mut timings = out.timings.clone();
+    timings.push(("Apply", apply_start.elapsed().as_secs_f32() * 1000.0));
+    state.world_builder.timings = timings;
+    state.world_builder.reused = out.reused.clone();
     let scatter = if out.scatter.is_some() {
         format!(", {count} scatter instances")
     } else {
         String::new()
     };
-    state.world_builder.status = format!("{} done: {res}² in {secs:.1} s{scatter}.", job.label);
+    let total = secs + apply_start.elapsed().as_secs_f32();
+    state.world_builder.status = format!("{} done: {res}² in {total:.1} s{scatter}.", job.label);
     state.console.info(state.world_builder.status.clone());
-    // What was generated is the new baseline for the preview.
-    state.world_builder.signature = signature(state, job.builder);
 }
 
 /// Everything that changes a generation: settings, stamps and where they are.
 pub fn signature(state: &EditorState, builder: Entity) -> Option<String> {
     let scene = &state.scene;
     let s = scene.world.get::<&WorldBuilder>(builder).ok()?;
-    let mut out = serde_json::to_string(&*s).ok()?;
+    // Live in Scene view only decides where the preview shows.
+    let mut s = (*s).clone();
+    s.live_preview = false;
+    let mut out = serde_json::to_string(&s).ok()?;
     for e in world_gen::stamps_of(scene, builder) {
         if let Ok(st) = scene.world.get::<&WorldStamp>(e) {
             out += &serde_json::to_string(&*st).unwrap_or_default();
@@ -196,43 +222,14 @@ pub fn signature(state: &EditorState, builder: Entity) -> Option<String> {
             scene.active_in_hierarchy(e)
         );
     }
+    if let Some(t) = world_gen::terrain_of(scene, builder) {
+        out += &format!("{:?}", scene.world_position(t));
+    }
     Some(out)
-}
-
-/// Live preview: regenerate at low resolution shortly after the last change.
-pub fn preview_tick(state: &mut EditorState, builder: Entity) {
-    let enabled = state
-        .scene
-        .world
-        .get::<&WorldBuilder>(builder)
-        .is_ok_and(|s| s.live_preview);
-    let sig = signature(state, builder);
-    let w = &mut state.world_builder;
-    if w.signature.is_none() || w.builder != Some(builder) {
-        // First look at this builder: nothing to preview yet.
-        w.signature = sig;
-        w.builder = Some(builder);
-        return;
-    }
-    if sig != w.signature {
-        w.signature = sig;
-        w.changed_at = Some(Instant::now());
-    }
-    let busy = w.job.as_ref().is_some_and(|j| !j.preview());
-    let due = w.changed_at.is_some_and(|t| t.elapsed() >= DEBOUNCE);
-    if enabled && due && !busy && !state.play.in_play_mode() {
-        state.world_builder.changed_at = None;
-        start(state, builder, Stages::All, true);
-    }
 }
 
 /// Put the terrain back as it was before the preview.
 pub fn revert_preview(state: &mut EditorState) {
-    if let Some(job) = &state.world_builder.job
-        && job.preview()
-    {
-        job.progress.cancel();
-    }
     if let Some(base) = state.world_builder.preview_base.take() {
         store::insert(&base.path, base.data);
         state.world_builder.status = "Preview reverted.".into();

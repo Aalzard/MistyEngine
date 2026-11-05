@@ -4,17 +4,35 @@ The World Builder makes a whole landscape from a few settings: a base landform, 
 (mountains, rivers, lakes, flat areas…) and biomes that texture the ground and scatter trees and rocks.
 Everything is a recipe saved in the scene, so you can move a stamp and press **Generate** again.
 
-Open it from **Window ▸ Terrain ▸ World Builder**. To see a finished example, open
-`Assets/Scenes/WorldBuilderDemo.scene`.
+Open it from **Window ▸ Terrain ▸ World Builder**, or click **World Builder** at the top of a
+terrain's Inspector. For a ready-made world in one click, use **GameObject ▸ 3D Object ▸ World** and
+pick a template. To see a finished example, open `Assets/Scenes/WorldBuilderDemo.scene`.
 
 ## 1. Start
 
 - With a terrain selected, click **Create World Builder for the Selected Terrain**. With nothing selected, click
   **Create World Builder (with a new Terrain)**.
+- Or click one of the **templates** under the button: it makes the terrain and a World Builder set up
+  for that kind of world.
 - This adds a **World Builder** object to the Hierarchy. It also writes the biome presets and their textures
   into `Assets/WorldBuilder/`.
 
-The window has four sections, from top to bottom. Click a section title to fold it away.
+At the top of the window are two cards, **Preview** and **Templates**, then four sections. Click a title
+to fold it away.
+
+### Preview
+
+A top-down picture of the world that updates while you drag any setting or stamp: a quick rough
+version while you edit, then a sharper one a moment after you stop. Switch between **Height**
+(grayscale), **Relief** (shading, slopes, snow and water) and **Biomes** (the ground textures the
+terrain will get). **Live in Scene view** also shows the rough result on the terrain itself; **Generate**
+replaces it with the full one, and **Revert** puts the terrain back.
+
+### Templates
+
+Desert, Forest, Mountains, Plains, Islands, Canyon, Tundra and Volcanic. Each sets the landform,
+erosion, stamps and biomes for that kind of world (your terrain's size and resolution stay). If you
+have changed the setup, the World Builder asks before replacing it; **Ctrl+Z** brings it back.
 
 ## 2. Base Heightmap
 
@@ -30,8 +48,7 @@ The window has four sections, from top to bottom. Click a section title to fold 
   - *Hydraulic*: water droplets carve gullies and fill valleys. Set *Iterations* and *Strength*.
   - *Thermal*: steep slopes crumble down to the *Talus Angle*.
 
-While **Live Preview** is on (in the Generate section), every change redraws a quick low-resolution
-preview after a moment.
+Every change shows up in the Preview card straight away.
 
 ## 3. Stamps & Areas
 
@@ -71,8 +88,10 @@ Stamps are applied in Hierarchy order, so drag them in the Hierarchy to change w
 - **Generate** runs everything: height → erosion → stamps → water → textures → scatter. It saves the
   terrain asset and places water and scatter under *World Builder ▸ Generated*.
 - **Heights Only**, **Textures Only** and **Scatter Only** redo one part and keep the rest.
-- The progress bar has a **Cancel** button. **Ctrl+Z** undoes a whole Generate. **Revert Preview** throws a
-  preview away.
+- Generate remembers each step, so after a small change only the steps it affects run again (moving a
+  Biome Zone, for example, skips the heightmap and erosion).
+- The progress bar shows the current step and the time left, with a **Cancel** button. **Ctrl+Z** undoes a
+  whole Generate.
 - **Scatter Storage**: *Objects* places one object per tree. *Compact* stores each item in a single
   **Scatter** component, which keeps scene files small and handles huge counts. *Auto* switches to Compact
   above 20 000 objects.

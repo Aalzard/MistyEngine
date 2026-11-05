@@ -13,9 +13,11 @@ pub mod erosion;
 pub mod generate;
 pub mod noise;
 pub mod paint;
+pub mod preview;
 pub mod scatter;
 pub mod scatter_set;
 pub mod stamps;
+pub mod templates;
 #[cfg(test)]
 mod tests;
 pub mod textures;
@@ -84,7 +86,8 @@ pub struct WorldBuilder {
     pub default_biome: String,
     /// Noise breakup of biome and area edges (metres).
     pub biome_breakup: f32,
-    /// Regenerate a low-resolution preview while editing.
+    /// Live in Scene view: also show the Preview card's low-resolution result on the terrain
+    /// while editing.
     pub live_preview: bool,
     pub scatter_storage: ScatterStorage,
 }
@@ -100,7 +103,7 @@ impl Default for WorldBuilder {
             erosion: ErosionSettings::default(),
             default_biome: Preset::Forest.path(),
             biome_breakup: 12.0,
-            live_preview: true,
+            live_preview: false,
             scatter_storage: ScatterStorage::Auto,
         }
     }
@@ -112,12 +115,37 @@ pub struct Progress {
     fraction: AtomicU32,
     stage: Mutex<&'static str>,
     cancel: AtomicBool,
+    /// Stages that will run and their expected relative cost (overall fraction and ETA).
+    plan: Mutex<Vec<(&'static str, f32)>>,
 }
 
 impl Progress {
     pub fn set(&self, stage: &'static str, fraction: f32) {
         *self.stage.lock().unwrap_or_else(|e| e.into_inner()) = stage;
         self.set_fraction(fraction);
+    }
+
+    /// The stages about to run with their relative costs.
+    pub fn set_plan(&self, plan: Vec<(&'static str, f32)>) {
+        *self.plan.lock().unwrap_or_else(|e| e.into_inner()) = plan;
+    }
+
+    /// Fraction (0..1) of the whole run: finished stages' costs plus the current one's part.
+    pub fn overall(&self) -> f32 {
+        let (stage, f) = self.get();
+        if stage == "Done" {
+            return 1.0;
+        }
+        let plan = self.plan.lock().unwrap_or_else(|e| e.into_inner());
+        let total: f32 = plan.iter().map(|p| p.1).sum();
+        if total <= 0.0 {
+            return f;
+        }
+        let Some(i) = plan.iter().position(|p| p.0 == stage) else {
+            return 0.0;
+        };
+        let done: f32 = plan[..i].iter().map(|p| p.1).sum();
+        ((done + plan[i].1 * f.clamp(0.0, 1.0)) / total).clamp(0.0, 1.0)
     }
 
     pub fn set_fraction(&self, f: f32) {
@@ -139,27 +167,17 @@ impl Progress {
     }
 }
 
-/// Run `f(row_index, row)` over the rows of `out` on all cores. Rows are independent, so the
-/// result doesn't depend on the thread count.
+/// Run `f(row_index, row)` over the rows of `out` on all cores (rayon's pool, so short passes
+/// don't pay for spawning threads). Rows are independent, so the result doesn't depend on the
+/// thread count.
 pub(crate) fn par_rows<T: Send>(out: &mut [T], row_len: usize, f: impl Fn(usize, &mut [T]) + Sync) {
-    let rows = out.len() / row_len.max(1);
-    if rows == 0 {
+    use rayon::prelude::*;
+    if row_len == 0 || out.is_empty() {
         return;
     }
-    let threads = std::thread::available_parallelism()
-        .map_or(4, |n| n.get())
-        .min(rows);
-    let per = rows.div_ceil(threads);
-    let f = &f;
-    std::thread::scope(|s| {
-        for (c, chunk) in out.chunks_mut(per * row_len).enumerate() {
-            s.spawn(move || {
-                for (r, row) in chunk.chunks_mut(row_len).enumerate() {
-                    f(c * per + r, row);
-                }
-            });
-        }
-    });
+    out.par_chunks_mut(row_len)
+        .enumerate()
+        .for_each(|(i, row)| f(i, row));
 }
 
 // ---- scene integration --------------------------------------------------------------------
@@ -273,6 +291,7 @@ pub fn request(
             stages,
             current,
             preview,
+            preview_resolution: generate::PREVIEW_RESOLUTION,
         },
         warnings,
     ))

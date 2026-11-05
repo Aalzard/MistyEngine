@@ -44,7 +44,7 @@ fn settings() -> WorldBuilder {
         erosion: ErosionSettings::default(),
         default_biome: Preset::Forest.path(),
         biome_breakup: 14.0,
-        live_preview: true,
+        live_preview: false,
         scatter_storage: ScatterStorage::Compact,
     }
 }

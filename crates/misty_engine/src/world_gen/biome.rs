@@ -1,5 +1,5 @@
 //! Biomes: small `.biome` JSON assets (in `Assets/WorldBuilder/`) with a texture per terrain
-//! feature, scatter lists and a colour tone, plus the six built-in presets.
+//! feature, scatter lists and a colour tone, plus the built-in presets.
 
 use std::path::Path;
 
@@ -239,10 +239,18 @@ pub enum Preset {
     SnowyMountains,
     BeachCoast,
     RockyBadlands,
+    /// Meadows below the tree line, rock and snow above (World Builder Mountains template).
+    Alpine,
+    /// Snowfields, frozen ground and sparse conifers.
+    Tundra,
+    /// Ash plains and basalt flows.
+    Volcanic,
+    /// Green coast with wide sandy beaches.
+    Coast,
 }
 
 /// Procedural textures the presets use (see [`super::textures`]), by file stem.
-pub const TEXTURES: [&str; 7] = [
+pub const TEXTURES: [&str; 9] = [
     "Grass",
     "Dirt",
     "Rock",
@@ -250,6 +258,8 @@ pub const TEXTURES: [&str; 7] = [
     "Snow",
     "DesertSand",
     "RedRock",
+    "Basalt",
+    "Ash",
 ];
 
 /// Project path of a generated preset texture ("Assets/WorldBuilder/Textures/Rock.png").
@@ -288,13 +298,17 @@ fn item(
 }
 
 impl Preset {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 10] = [
         Self::Forest,
         Self::Desert,
         Self::Grassland,
         Self::SnowyMountains,
         Self::BeachCoast,
         Self::RockyBadlands,
+        Self::Alpine,
+        Self::Tundra,
+        Self::Volcanic,
+        Self::Coast,
     ];
 
     pub fn name(self) -> &'static str {
@@ -305,6 +319,10 @@ impl Preset {
             Self::SnowyMountains => "Snowy Mountains",
             Self::BeachCoast => "Beach",
             Self::RockyBadlands => "Rocky Badlands",
+            Self::Alpine => "Alpine",
+            Self::Tundra => "Tundra",
+            Self::Volcanic => "Volcanic",
+            Self::Coast => "Coast",
         }
     }
 
@@ -399,6 +417,74 @@ impl Preset {
                 scatter: vec![
                     item("Boulder", S::Boulder, [0.55, 0.36, 0.26], 0.4, 6.0, 60.0),
                     item("Shrub", S::Bush, [0.45, 0.45, 0.25], 0.4, 4.0, 25.0),
+                ],
+                ..base
+            },
+            Self::Alpine => Biome {
+                tone: [0.38, 0.55, 0.32],
+                flat: tex("Grass", 6.0),
+                slope: tex("Dirt", 8.0),
+                peak: tex("Snow", 10.0),
+                slope_angle: 26.0,
+                cliff_angle: 38.0,
+                peak_height: 0.58,
+                scatter: vec![
+                    ScatterItem {
+                        height_range: [0.0, 0.5],
+                        ..item("Pine", S::PineTree, [0.1, 0.28, 0.15], 7.0, 4.5, 30.0)
+                    },
+                    ScatterItem {
+                        height_range: [0.0, 0.42],
+                        ..item("Bush", S::Bush, [0.28, 0.45, 0.2], 2.0, 3.0, 30.0)
+                    },
+                    item("Boulder", S::Boulder, [0.5, 0.5, 0.5], 0.7, 6.0, 55.0),
+                ],
+                ..base
+            },
+            Self::Tundra => Biome {
+                tone: [0.82, 0.86, 0.9],
+                flat: tex("Snow", 10.0),
+                slope: tex("Dirt", 8.0),
+                peak: tex("Snow", 10.0),
+                shore: tex("Rock", 8.0),
+                slope_angle: 18.0,
+                cliff_angle: 34.0,
+                peak_height: 0.8,
+                scatter: vec![
+                    item("Pine", S::PineTree, [0.12, 0.26, 0.18], 0.8, 8.0, 25.0),
+                    item("Boulder", S::Boulder, [0.55, 0.56, 0.6], 0.9, 6.0, 50.0),
+                    item("Dry Grass", S::Grass, [0.62, 0.6, 0.42], 2.5, 1.5, 25.0),
+                ],
+                ..base
+            },
+            Self::Volcanic => Biome {
+                tone: [0.32, 0.3, 0.29],
+                flat: tex("Ash", 8.0),
+                slope: tex("Basalt", 10.0),
+                cliff: tex("Basalt", 12.0),
+                peak: tex("Ash", 8.0),
+                shore: tex("Ash", 6.0),
+                slope_angle: 20.0,
+                cliff_angle: 34.0,
+                peak_height: 0.9,
+                scatter: vec![
+                    item("Boulder", S::Boulder, [0.2, 0.19, 0.19], 1.2, 5.0, 60.0),
+                    item("Shrub", S::Bush, [0.35, 0.38, 0.22], 0.5, 4.0, 25.0),
+                ],
+                ..base
+            },
+            Self::Coast => Biome {
+                tone: [0.55, 0.7, 0.4],
+                flat: tex("Grass", 6.0),
+                slope: tex("Dirt", 8.0),
+                peak: tex("Rock", 12.0),
+                shore_width: 7.0,
+                peak_height: 0.8,
+                scatter: vec![
+                    item("Palm", S::BroadleafTree, [0.3, 0.55, 0.22], 1.5, 7.0, 25.0),
+                    item("Bush", S::Bush, [0.3, 0.5, 0.2], 2.0, 3.0, 28.0),
+                    item("Beach Grass", S::Grass, [0.6, 0.65, 0.35], 3.0, 1.5, 25.0),
+                    item("Rock", S::Rock, [0.55, 0.52, 0.48], 0.3, 6.0, 55.0),
                 ],
                 ..base
             },

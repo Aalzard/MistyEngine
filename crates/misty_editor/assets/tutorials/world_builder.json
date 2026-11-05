@@ -21,7 +21,7 @@
     },
     {
       "title": "Pick a landform",
-      "text": "Under Base Heightmap, pick a Generator, like Mountains or Islands. A quick preview of the land updates as you edit.",
+      "text": "Under Base Heightmap, pick a Generator, like Mountains or Islands. The Preview card at the top shows the land as you edit.",
       "targets": ["World Builder/Base Heightmap/Generator", "panel.World Builder"],
       "done_when": "wb:generator",
       "demo": "wb:generator"
