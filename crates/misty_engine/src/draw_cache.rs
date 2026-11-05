@@ -537,6 +537,12 @@ impl DrawCache {
                 if let Some(o) = r.overrides_at(i) {
                     o.apply(&mut material);
                 }
+                // Baked lightmap of the renderer (the bake sets the index; -1 = none).
+                material.lightmap =
+                    (r.lightmap_index >= 0).then_some(crate::lightmap::DrawLightmap {
+                        index: r.lightmap_index as u32,
+                        scale_offset: r.lightmap_scale_offset,
+                    });
                 MeshDraw {
                     mesh: match split {
                         true => crate::mesh_builder::submesh(mesh, i),

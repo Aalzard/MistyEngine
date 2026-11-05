@@ -7,7 +7,7 @@
 //! Realtime probes one face per frame.
 
 pub mod brdf;
-mod bvh;
+pub(crate) mod bvh;
 pub mod capture;
 pub mod cube;
 pub mod data;

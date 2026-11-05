@@ -125,6 +125,50 @@ impl Model {
     }
 }
 
+/// Import settings of a model file (its `.meta`).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct ModelImporter {
+    /// Generate lightmap UVs (the second UV set) for every non-skinned mesh on import.
+    pub generate_lightmap_uvs: bool,
+}
+
+impl Default for ModelImporter {
+    fn default() -> Self {
+        Self {
+            generate_lightmap_uvs: true,
+        }
+    }
+}
+
+impl ModelImporter {
+    /// Settings of `model` (defaults without a readable `.meta`).
+    pub fn load(model: &Path) -> Self {
+        crate::vfs::read_to_string(crate::asset_db::meta::meta_path(model))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    /// Write the settings into the `.meta` file, keeping its GUID.
+    pub fn save(&self, model: &Path) -> Result<(), String> {
+        crate::asset_db::meta::write_settings(model, self)
+    }
+}
+
+/// Apply import settings to a freshly read model.
+fn import(mut model: Model, settings: &ModelImporter) -> Model {
+    if settings.generate_lightmap_uvs {
+        for m in &mut model.meshes {
+            // Skins and blend shapes index the vertices: those meshes keep their own uv2.
+            if m.skin.is_none() && m.blend_shapes.is_empty() {
+                m.data = crate::lightmap::uv::unwrap(&m.data, crate::lightmap::uv::MARGIN);
+            }
+        }
+    }
+    model
+}
+
 /// Read a model file.
 pub fn load(path: &Path) -> Result<Model, String> {
     let ext = path
@@ -174,8 +218,10 @@ fn library() -> std::sync::MutexGuard<'static, Library> {
     LIBRARY.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Newest of the model file and its `.meta` (import settings re-import the model too).
 fn mtime(path: &Path) -> Option<SystemTime> {
-    crate::vfs::modified(path)
+    let meta = crate::vfs::modified(crate::asset_db::meta::meta_path(path).as_path());
+    crate::vfs::modified(path).max(meta)
 }
 
 /// The model at a project-relative path (read once, then cached until the file changes).
@@ -186,7 +232,9 @@ pub fn model(rel: &str) -> Result<Arc<Model>, String> {
     let abs = assets::absolute(rel);
     let entry = Entry {
         modified: mtime(&abs),
-        model: load(&abs).map(Arc::new),
+        model: load(&abs)
+            .map(|m| import(m, &ModelImporter::load(&abs)))
+            .map(Arc::new),
     };
     let result = entry.model.clone();
     library().entries.insert(rel.to_owned(), entry);

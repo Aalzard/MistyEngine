@@ -25,6 +25,7 @@ pub fn build(d: &TerrainData) -> MeshData {
                 ],
                 normal: n.into(),
                 uv: [ix as f32 / cells, iz as f32 / cells],
+                uv2: [0.0; 2],
                 tangent: [t.x, t.y, t.z, 1.0],
             });
         }

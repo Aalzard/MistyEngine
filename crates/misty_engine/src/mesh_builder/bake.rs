@@ -41,6 +41,7 @@ pub fn bake(mesh: &EditableMesh, world: Option<&Mat4>) -> Vec<MeshData> {
                     position: p.to_array(),
                     normal: normal.to_array(),
                     uv: uvs[k].to_array(),
+                    uv2: [0.0; 2],
                     tangent: [1.0, 0.0, 0.0, 1.0],
                 });
             }

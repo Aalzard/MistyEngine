@@ -14,7 +14,7 @@ use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
 /// Scene view draw modes, indexed by `SceneView::draw_mode` (see the `*_MODE` constants).
-pub const DRAW_MODES: [&str; 8] = [
+pub const DRAW_MODES: [&str; 10] = [
     "Shaded",
     "Wireframe",
     "Shaded Wireframe",
@@ -23,6 +23,8 @@ pub const DRAW_MODES: [&str; 8] = [
     "Fog Density",
     "Fog Lighting",
     "Ambient Occlusion",
+    "Baked Lightmap",
+    "UV Charts",
 ];
 /// Wireframe only, no shading.
 const WIREFRAME_MODE: usize = 1;
@@ -38,6 +40,10 @@ const FOG_DENSITY_MODE: usize = 5;
 const FOG_LIGHTING_MODE: usize = 6;
 /// The screen-space AO term alone.
 const AO_DRAW_MODE: usize = 7;
+/// Lightmapped surfaces show their baked lightmap only (others dark grey).
+const LIGHTMAP_MODE: usize = 8;
+/// The lightmap texel grid of lightmapped surfaces.
+const UV_CHARTS_MODE: usize = 9;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -118,6 +124,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             // The sky follows the scene's sun even when the view uses the headlight.
             let mut environment = render_scene::environment(&state.scene, &scene_lights);
             environment.probes.debug = sv.draw_mode == PROBES_MODE;
+            environment.lightmaps.debug = match sv.draw_mode {
+                LIGHTMAP_MODE => misty_engine::lightmap::LightmapDebug::Baked,
+                UV_CHARTS_MODE => misty_engine::lightmap::LightmapDebug::Charts,
+                _ => misty_engine::lightmap::LightmapDebug::Off,
+            };
             let fx = sv.effects;
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();

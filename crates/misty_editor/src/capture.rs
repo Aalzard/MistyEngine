@@ -198,6 +198,10 @@ pub fn apply_env(
     {
         s.scene_view.draw_mode = i;
     }
+    // `MISTY_GENERATE_LIGHTING=1` starts a lightmap bake (Lighting window progress bar).
+    if std::env::var_os("MISTY_GENERATE_LIGHTING").is_some() {
+        crate::lightmap_tools::start(s);
+    }
     // `MISTY_BUILD=1` opens File ▸ Build Settings.
     if std::env::var_os("MISTY_BUILD").is_some() {
         s.build_window.open = true;

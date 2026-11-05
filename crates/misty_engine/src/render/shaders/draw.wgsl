@@ -1,6 +1,6 @@
 // Per-draw values, `draws[slots[instance_index]]`: the one definition shared by mesh.wgsl,
 // depth.wgsl and terrain.wgsl (prepended by pipelines.rs). Rust side: `DrawUniform` in
-// render/mod.rs, 224 bytes. Every field is per object, so draws that differ only here
+// render/mod.rs, 256 bytes. Every field is per object, so draws that differ only here
 // (transform, colour, material values, per-object overrides) still share one instanced call.
 //
 //   offset  field     contents
@@ -15,6 +15,8 @@
 //   208     extra     x = cos, y = sin of the UV rotation (about the texture centre),
 //                     z = LOD cross-fade (0 none; > 0 keep dither < z; < 0 keep dither >= 1 + z),
 //                     w = 2D lighting: Sorting Layer bit + 1 (0 = not 2D lit)
+//   224     lightmap_st  lightmap uv = uv2 * xy + zw
+//   240     lightmap  x = lightmap layer + 1 (0 = not lightmapped)
 struct Draw {
     model: mat4x4<f32>,
     normal: mat4x4<f32>,
@@ -24,6 +26,8 @@ struct Draw {
     uv_st: vec4<f32>,
     surface: vec4<f32>,
     extra: vec4<f32>,
+    lightmap_st: vec4<f32>,
+    lightmap: vec4<f32>,
 };
 
 // Texture coordinates of a draw: rotate about (0.5, 0.5), then tile and offset.

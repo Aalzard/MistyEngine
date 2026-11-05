@@ -250,6 +250,7 @@ impl Renderer {
             [&self.draws_buffer, &self.slots_buffer],
             &self.shadows,
             &self.probes,
+            &self.lightmaps,
             buffer,
         );
         self.screen_space.frame_group = Some(lit);

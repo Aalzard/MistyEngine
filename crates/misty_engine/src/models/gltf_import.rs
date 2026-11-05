@@ -46,6 +46,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
                     position: p,
                     normal: [0.0; 3],
                     uv: [0.0; 2],
+                    uv2: [0.0; 2],
                     tangent: [1.0, 0.0, 0.0, 1.0],
                 })
                 .collect();
@@ -57,6 +58,12 @@ pub fn load(path: &Path) -> Result<Model, String> {
             if let Some(uvs) = reader.read_tex_coords(0) {
                 for (v, uv) in vertices.iter_mut().zip(uvs.into_f32()) {
                     v.uv = uv;
+                }
+            }
+            // A second UV set from the file (lightmap UVs when not generated on import).
+            if let Some(uvs) = reader.read_tex_coords(1) {
+                for (v, uv) in vertices.iter_mut().zip(uvs.into_f32()) {
+                    v.uv2 = uv;
                 }
             }
             let mut indices: Vec<u32> = match reader.read_indices() {

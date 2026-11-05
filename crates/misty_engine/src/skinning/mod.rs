@@ -286,6 +286,7 @@ pub fn deform(
                 position: p.into(),
                 normal: n.normalize_or(Vec3::Y).into(),
                 uv: v.uv,
+                uv2: v.uv2,
                 tangent: [
                     t.normalize_or(Vec3::X).x,
                     t.normalize_or(Vec3::X).y,

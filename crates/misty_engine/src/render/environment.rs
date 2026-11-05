@@ -32,6 +32,8 @@ pub struct Environment {
     pub hdri: Option<crate::hdri::HdriHandle>,
     /// 2D lights and their shadow maps (see [`crate::light2d`]); empty = sprites unlit.
     pub lights_2d: crate::light2d::Lights2D,
+    /// Baked lightmaps of the scene (see [`crate::lightmap`]).
+    pub lightmaps: crate::lightmap::LightmapSet,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -74,6 +76,7 @@ impl Environment {
             glows: Vec::new(),
             hdri,
             lights_2d: Default::default(),
+            lightmaps: Default::default(),
         }
     }
 

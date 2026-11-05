@@ -29,6 +29,8 @@ pub struct Hit {
     pub t: f32,
     /// Face normal (on the side the mesh's normals point to).
     pub normal: Vec3,
+    /// Index of the triangle in the input geometry (the lightmapper's material lookup).
+    pub index: u32,
 }
 
 const LEAF: usize = 4;
@@ -117,6 +119,7 @@ impl Bvh {
                     best = Some(Hit {
                         t: d,
                         normal: self.normals[t as usize],
+                        index: t,
                     });
                 }
             }

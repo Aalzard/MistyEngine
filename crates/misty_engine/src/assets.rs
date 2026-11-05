@@ -268,6 +268,7 @@ impl Material {
             emission_map: self.emission_map.clone().filter(|_| self.emission_enabled),
             custom: None,
             lit_2d: false,
+            lightmap: None,
         }
     }
 

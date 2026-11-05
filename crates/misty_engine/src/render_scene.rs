@@ -71,12 +71,14 @@ pub fn mesh_draws_culled(
 
 /// Enabled lights in the scene.
 pub fn lights(scene: &Scene) -> Vec<LightData> {
+    let baked = crate::lightmap::scene_has_lightmaps(scene);
     scene
         .active_with::<Light>()
         .into_iter()
         .filter_map(|e| {
             let l = scene.world.get::<&Light>(e).ok()?;
-            if !l.enabled {
+            // Baked lights live in the lightmaps once the scene has them.
+            if !l.enabled || (l.mode == crate::scene::LightMode::Baked && baked) {
                 return None;
             }
             let (_, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
@@ -122,6 +124,7 @@ pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
     env.fog_volumes = fog_volumes(scene);
     env.glows = glow_sources(scene);
     env.lights_2d = crate::light2d::collect(scene);
+    env.lightmaps = crate::lightmap::scene_lightmaps(scene);
     env
 }
 
