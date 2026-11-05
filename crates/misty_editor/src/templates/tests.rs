@@ -262,3 +262,72 @@ fn write_template_thumbnails() {
         cleanup(&root);
     }
 }
+
+/// New Project ▸ Include sample scenes: the demo scenes and their assets come along, the
+/// template's own scene stays first, and only committed sample files are copied.
+#[test]
+fn include_samples_copies_the_demo_scenes() {
+    let Some(source) = super::samples::source() else {
+        eprintln!("no sample project here: skipped");
+        return;
+    };
+    let root = temp_project("Samples");
+    super::create_with(&root, Template::Standard, true).unwrap();
+    for rel in [
+        SCENE,
+        "Assets/Scenes/VehicleDemo.scene",
+        "Assets/Scenes/LightmapDemo.scene",
+        "Assets/Scripts/CarController.lua",
+        super::scenes::PLATFORM_MAT,
+    ] {
+        assert!(root.join(rel).is_file(), "{rel}");
+    }
+    // Only committed sample files come along: never untracked or work-in-progress ones.
+    if let super::samples::Source::Git(repo) = &source {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(["ls-files", "SampleProject/Assets"])
+            .output()
+            .unwrap();
+        let tracked: std::collections::HashSet<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(|l| l.trim_start_matches("SampleProject/").to_owned())
+            .collect();
+        let ours = [
+            SCENE,
+            super::scenes::PLATFORM_MAT,
+            super::scenes::ACCENT_MAT,
+        ];
+        let mut stack = vec![root.join("Assets")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                assert!(
+                    tracked.contains(&rel) || ours.contains(&rel.as_str()),
+                    "{rel} is not a committed sample file"
+                );
+            }
+        }
+    }
+    let build = BuildSettings::load(&root).unwrap();
+    assert_eq!(build.scenes[0].path, SCENE);
+    assert!(build.scenes[0].enabled);
+    assert!(build.scenes.len() > 10, "{}", build.scenes.len());
+    assert!(build.scenes[1..].iter().all(|s| !s.enabled));
+    let settings = misty_engine::settings::ProjectSettings::load(&root).unwrap();
+    assert_eq!(settings.player.unwrap().product_name, root_name(&root));
+    // The project still opens on the template's scene.
+    let (scene, _) = Scene::load(&root.join(SCENE)).unwrap();
+    assert!(scene.find_by_name("Platform").is_some());
+    cleanup(&root);
+}

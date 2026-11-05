@@ -2,6 +2,7 @@
 //! generated in code: `Assets/`, `ProjectSettings/` (with Build Settings listing the starting
 //! scene), the starting scene itself and `Library/EditorSettings.json` so it opens first.
 
+pub mod samples;
 mod scenes;
 #[cfg(test)]
 mod tests;
@@ -82,6 +83,20 @@ impl Template {
 /// Create a new project from `template` at `root`, which must not exist yet (or be empty).
 /// The folder name is the product name.
 pub fn create(root: &Path, template: Template) -> Result<(), String> {
+    create_with(root, template, false)
+}
+
+/// [`create`], optionally adding every sample scene (New Project ▸ Include sample scenes).
+pub fn create_with(root: &Path, template: Template, include_samples: bool) -> Result<(), String> {
+    create_template(root, template)?;
+    if include_samples {
+        let source = samples::source().ok_or("this install has no sample scenes to copy")?;
+        samples::add(root, &source)?;
+    }
+    Ok(())
+}
+
+fn create_template(root: &Path, template: Template) -> Result<(), String> {
     if root.exists()
         && std::fs::read_dir(root)
             .map_err(|e| e.to_string())?

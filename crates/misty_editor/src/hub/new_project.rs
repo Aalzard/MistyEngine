@@ -13,6 +13,8 @@ pub struct NewProject {
     pub template: Template,
     pub name: String,
     pub location: String,
+    /// Copy all sample scenes into the new project as well.
+    pub include_samples: bool,
     error: Option<String>,
     job: Option<JoinHandle<Result<PathBuf, String>>>,
 }
@@ -23,6 +25,7 @@ impl NewProject {
             template: Template::default(),
             name: validate::unique_name("My project", location),
             location: location.display().to_string(),
+            include_samples: false,
             error: None,
             job: None,
         }
@@ -41,9 +44,10 @@ impl NewProject {
         match self.target() {
             Ok(folder) => {
                 let template = self.template;
+                let samples = self.include_samples;
                 self.error = None;
                 self.job = Some(std::thread::spawn(move || {
-                    let result = templates::create(&folder, template);
+                    let result = templates::create_with(&folder, template, samples);
                     if result.is_err() {
                         // Don't leave a half-made project behind (the folder was new).
                         let _ = std::fs::remove_dir_all(&folder);
@@ -247,6 +251,20 @@ fn details(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette, np: &mut NewPro
             });
             ui.end_row();
         });
+    ui.add_space(6.0);
+    // Off by default: a fresh project stays small.
+    let have_samples = templates::samples::source().is_some();
+    let samples = ui
+        .add_enabled(
+            !busy && have_samples,
+            egui::Checkbox::new(&mut np.include_samples, "Include sample scenes"),
+        )
+        .on_hover_text(
+            "Adds every demo scene (vehicles, Timeline, terrain, effects…) and what they use              under Assets, and lists them in Build Settings (unticked). About 30 MB.",
+        );
+    if !have_samples {
+        samples.on_disabled_hover_text("This install has no sample scenes.");
+    }
     ui.add_space(4.0);
     match np.error.clone().map(Err).unwrap_or_else(|| np.target()) {
         Err(e) => {

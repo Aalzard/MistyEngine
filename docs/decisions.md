@@ -3131,3 +3131,12 @@ Record of choices made without asking, and why.
        additive.
      - **Renderer entry:** effects reach the renderer through `render_with_effects`, so `Frame` literals stay
        untouched.
+636. **New Project ▸ "Include sample scenes" (user's request, off by default).** When ticked, the new project
+     also gets every demo scene and what it uses under `Assets`. The samples' project settings are taken
+     over (input axes, tags, layers and quality that the demos need), keeping the new product name. The demo
+     scenes are listed in Build Settings unticked, after the template's own scene, which still opens first.
+     - **Source:** the release package's `Examples/SampleProject` next to the exe. In a development build it
+       is `git archive HEAD` of the source tree's `SampleProject` instead, so uncommitted edits and untracked
+       files are never copied.
+     - **Collisions:** existing files from the template are never overwritten.
+     - **Command line:** `misty --new <Template> <folder> --with-samples`.

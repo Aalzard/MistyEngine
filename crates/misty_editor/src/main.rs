@@ -184,7 +184,9 @@ fn parse_args() -> Result<Start, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
         [] => Ok(Start::Hub),
-        [flag, template, folder] if flag == "--new" => {
+        [flag, template, folder, rest @ ..]
+            if flag == "--new" && rest.iter().all(|a| a == "--with-samples") =>
+        {
             let t = templates::Template::from_name(template).ok_or_else(|| {
                 let names: Vec<&str> = templates::Template::ALL.iter().map(|t| t.name()).collect();
                 format!(
@@ -193,7 +195,7 @@ fn parse_args() -> Result<Start, String> {
                 )
             })?;
             let folder = PathBuf::from(folder);
-            templates::create(&folder, t)?;
+            templates::create_with(&folder, t, !rest.is_empty())?;
             Ok(Start::Editor(folder))
         }
         [flag, project, out] if flag == "--build" => {
@@ -206,7 +208,7 @@ fn parse_args() -> Result<Start, String> {
             }
         }
         [flag, ..] if flag.starts_with("--") => Err(format!(
-            "usage: misty [<project folder>] | misty --new <Template> <folder> | misty --build <project folder> <output folder> ({flag}?)"
+            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> <output folder> ({flag}?)"
         )),
         [project, ..] => Ok(Start::Editor(PathBuf::from(project))),
     }
