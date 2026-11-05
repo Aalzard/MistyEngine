@@ -11,6 +11,7 @@ pub mod custom_shader;
 mod draw_prep;
 pub mod environment;
 mod finish;
+mod frame_debug;
 mod frame_lists;
 mod glow;
 mod gpu_culling;
@@ -19,6 +20,7 @@ mod hdri_sky;
 mod light2d;
 mod lightmap_gpu;
 pub mod lod;
+mod memory_items;
 pub mod mesh;
 pub mod overrides;
 pub mod particles;
@@ -51,6 +53,9 @@ pub use ao::AoSettings;
 pub use area::AreaShape;
 pub use contact_shadows::ContactShadowSettings;
 pub use environment::{Environment, Sun};
+pub use frame_debug::{
+    CaptureRequest, DrawLabel, EventKind, EventTarget, FrameCapture, FrameEvent, TargetInfo,
+};
 pub use glow::GlowSource;
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
@@ -452,6 +457,10 @@ pub struct Renderer {
     skins: skinning::Skins,
     /// Visual Effect particles (GPU simulation and indirect draws, see [`vfx`]).
     effects: vfx::Effects,
+    /// Frame Debugger recorder (`None` = not capturing; every hook is then a no-op).
+    capture: frame_debug::Capture,
+    /// Replay display pipelines (made on the first replay).
+    debug_blit: Option<frame_debug::DebugBlit>,
 }
 
 impl Renderer {
@@ -562,6 +571,8 @@ impl Renderer {
             sky,
             skins: Default::default(),
             effects: Default::default(),
+            capture: None,
+            debug_blit: None,
         }
     }
 
@@ -629,6 +640,29 @@ impl Renderer {
     /// Counters of the last [`Renderer::render`] call.
     pub fn stats(&self) -> RenderStats {
         self.stats
+    }
+
+    /// Record the next renders' passes and draw calls for the Frame Debugger (and stop after
+    /// `request.stop_after`). GPU culling and GPU timing are off while capturing.
+    pub fn begin_capture(&mut self, request: CaptureRequest) {
+        self.capture = Some(std::sync::Mutex::new(frame_debug::Recorder::new(request)));
+    }
+
+    /// Stop capturing and return what was recorded since [`Renderer::begin_capture`].
+    pub fn end_capture(&mut self) -> Option<FrameCapture> {
+        let r = self.capture.take()?;
+        Some(r.into_inner().unwrap_or_else(|e| e.into_inner()).finish())
+    }
+
+    pub fn capturing(&self) -> bool {
+        self.capture.is_some()
+    }
+
+    /// Record an event drawn outside [`Renderer::render`] (the Game view's canvas UI) under
+    /// `path`; true = draw it (not past the replay stop).
+    pub fn capture_event(&self, path: &[&str], event: FrameEvent) -> bool {
+        let target = || frame_debug::target("Final Image", (0, 0), "Rgba8UnormSrgb");
+        frame_debug::whole(&self.capture, path, target, EventTarget::Output, || event)
     }
 
     /// Time the last HDRI → cubemap conversion took (upload, GPU passes and the wait), in ms.
@@ -972,7 +1006,12 @@ impl Renderer {
         }
 
         let particle_draws = self.upload_particles(device, queue, frame, &lists.particles);
-        let timing = self.gpu_timer.as_mut().and_then(|t| t.begin());
+        // No GPU timing while capturing: a replay may skip the pass that ends the timing.
+        let timing = match self.capture {
+            Some(_) => None,
+            None => self.gpu_timer.as_mut().and_then(|t| t.begin()),
+        };
+        frame_debug::set_size(&self.capture, target.size());
 
         crate::profile_scope!("Render.Encode");
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -981,7 +1020,16 @@ impl Renderer {
         let any_outline = frame.meshes.iter().any(|m| m.outline);
         // First pass: starts the GPU timing.
         self.mask_pass(&mut encoder, target, frame, timing);
-        if frame.shaded && !frame.water.is_empty() {
+        if frame.shaded
+            && !frame.water.is_empty()
+            && frame_debug::whole(
+                &self.capture,
+                &["Water", "Simulation"],
+                TargetInfo::default,
+                EventTarget::None,
+                || FrameEvent::new(EventKind::Compute, "Dispatch Water FFT"),
+            )
+        {
             self.water.simulate(&mut encoder);
         }
         self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
@@ -990,7 +1038,24 @@ impl Renderer {
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see
         // `gpu_culling_active`), so it always sees the CPU-culled opaque batches.
-        if let Some(ss) = &screen {
+        if let Some(ss) = &screen
+            && frame_debug::whole(
+                &self.capture,
+                &["Ambient Occlusion"],
+                || {
+                    frame_debug::target(
+                        "Normals + Depth",
+                        target.size(),
+                        "Rgba8Unorm / Depth32Float",
+                    )
+                },
+                EventTarget::None,
+                || FrameEvent {
+                    shader: "ao_prepass.wgsl, ao.wgsl (GTAO, denoise, resolve)".to_owned(),
+                    ..FrameEvent::new(EventKind::Compute, "Depth Normal Prepass + GTAO")
+                },
+            )
+        {
             self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
         }
         let prepass = self.prepass_active(frame);
@@ -1059,6 +1124,9 @@ impl Renderer {
         self.glow_passes(device, &mut encoder, target);
         self.sun_shaft_passes(device, &mut encoder, target);
         self.bloom_passes(&mut encoder, target, timing);
+        if let Some(display) = frame_debug::stop_display(&self.capture) {
+            self.frame_debug_blit(device, &mut encoder, target, display);
+        }
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.resolve(&mut encoder, slot);
         }
@@ -1170,6 +1238,12 @@ impl Renderer {
             let Some(group) = self.textures.get(b.texture.as_deref(), None) else {
                 continue;
             };
+            let n = d.instances.len() as u32;
+            if !frame_debug::record(&self.capture, |_| {
+                frame_debug::events::particle_event(d.batch, n, b.additive, b.texture.as_deref())
+            }) {
+                continue;
+            }
             pass.set_pipeline(if b.additive {
                 &self.pipelines.particles_additive
             } else {
@@ -1232,33 +1306,53 @@ impl Renderer {
     ) {
         let levels = &target.bloom;
         let p = &self.pipelines;
-        self.fullscreen(
-            encoder,
-            &levels[0].view,
-            &p.bloom_prefilter,
-            &target.hdr_group,
-            true,
-            None,
-        );
-        for i in 1..levels.len() {
+        let (w, h) = target.size();
+        let level_size = |i: usize| ((w >> (i + 1)).max(1), (h >> (i + 1)).max(1));
+        let step = |name: String, shader: &str, i: usize| {
+            let target =
+                || frame_debug::target(&format!("Bloom Mip {i}"), level_size(i), "Rgba16Float");
+            let display = EventTarget::Bloom(i as u32);
+            frame_debug::whole(&self.capture, &["Post", "Bloom"], target, display, || {
+                frame_debug::events::post_event(name, shader)
+            })
+        };
+        if step("Bloom Prefilter".to_owned(), "bloom.wgsl fs_prefilter", 0) {
             self.fullscreen(
                 encoder,
-                &levels[i].view,
-                &p.bloom_down,
-                &levels[i - 1].group,
+                &levels[0].view,
+                &p.bloom_prefilter,
+                &target.hdr_group,
                 true,
                 None,
             );
         }
+        for i in 1..levels.len() {
+            if step(format!("Bloom Downsample {i}"), "bloom.wgsl fs_down", i) {
+                self.fullscreen(
+                    encoder,
+                    &levels[i].view,
+                    &p.bloom_down,
+                    &levels[i - 1].group,
+                    true,
+                    None,
+                );
+            }
+        }
         for i in (1..levels.len()).rev() {
-            self.fullscreen(
-                encoder,
-                &levels[i - 1].view,
-                &p.bloom_up,
-                &levels[i].group,
-                false,
-                None,
-            );
+            if step(
+                format!("Bloom Upsample {i}"),
+                "bloom.wgsl fs_up (additive)",
+                i - 1,
+            ) {
+                self.fullscreen(
+                    encoder,
+                    &levels[i - 1].view,
+                    &p.bloom_up,
+                    &levels[i].group,
+                    false,
+                    None,
+                );
+            }
         }
         // FXAA / sharpening read the composite from a second image and write the output.
         let finish = p.finish.pick(&self.quality);
@@ -1266,6 +1360,34 @@ impl Renderer {
             Some(_) => target.pre_finish_view(),
             None => target.output_view(),
         };
+        let composite_display = match finish {
+            Some(_) => EventTarget::PreFinish,
+            None => EventTarget::Output,
+        };
+        let final_image = || frame_debug::target("Final Image", (w, h), "Rgba8UnormSrgb");
+        let composite = frame_debug::whole(
+            &self.capture,
+            &["Post", "Tonemap"],
+            final_image,
+            composite_display,
+            || {
+                frame_debug::events::post_event(
+                    "Composite (bloom, grading, tonemap, vignette)".to_owned(),
+                    "composite.wgsl fs_main",
+                )
+            },
+        );
+        let finish_allowed = finish.is_some()
+            && frame_debug::whole(
+                &self.capture,
+                &["Post", "Anti-aliasing / Sharpen"],
+                final_image,
+                EventTarget::Output,
+                || frame_debug::events::post_event("FXAA / Sharpen".to_owned(), "finish.wgsl"),
+            );
+        if !composite {
+            return;
+        }
         self.fullscreen(
             encoder,
             composite_to,
@@ -1278,7 +1400,7 @@ impl Renderer {
                 None
             },
         );
-        if let Some(pipeline) = finish {
+        if let Some(pipeline) = finish.filter(|_| finish_allowed) {
             self.fullscreen(
                 encoder,
                 target.output_view(),
@@ -1322,6 +1444,15 @@ impl Renderer {
         scene: Option<u64>,
         stats: &mut RenderStats,
     ) {
+        use frame_debug::events::{BatchContext, ListKind};
+        let kind = match prepass || !std::ptr::eq(batches, &lists.transparent[..]) {
+            true => ListKind::Opaque,
+            false => ListKind::Transparent,
+        };
+        let ctx = self
+            .capture
+            .is_some()
+            .then(|| BatchContext::new(frame, batches, self.options.instancing, kind));
         let (mut pipeline_at, mut group_at) = (0, 0);
         for b in batches {
             let d = &frame.meshes[b.draw];
@@ -1339,6 +1470,12 @@ impl Renderer {
             let (Some((pipeline, group)), Some(m)) = (resources, self.gpu_mesh(&d.mesh)) else {
                 continue;
             };
+            let after_prepass = prepass && prepass::applies(key);
+            if !frame_debug::record(&self.capture, |r| {
+                frame_debug::events::main_event(r, frame, b, m, ctx.as_ref(), key, after_prepass)
+            }) {
+                continue;
+            }
             if batch::addr(pipeline) != pipeline_at {
                 pipeline_at = batch::addr(pipeline);
                 pass.set_pipeline(pipeline);
@@ -1425,6 +1562,11 @@ impl Renderer {
         pass.set_bind_group(0, &self.shadows.view_bind_group, &[offset]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
         let mut pipeline_at = 0;
+        let ctx = self.capture.is_some().then(|| {
+            let kind = frame_debug::events::ListKind::Shadow;
+            let instancing = self.options.instancing;
+            frame_debug::events::BatchContext::new(frame, &list.batches, instancing, kind)
+        });
         for b in &list.batches {
             let d = &frame.meshes[b.draw];
             let Some(key) = lists.prep.shadow[b.draw] else {
@@ -1435,6 +1577,24 @@ impl Renderer {
             else {
                 continue;
             };
+            if !frame_debug::record(&self.capture, |r| {
+                let shader = frame_debug::events::shadow_label(key);
+                let depth = "LessEqual, write on (slope bias)";
+                let e = frame_debug::events::mesh_event;
+                e(
+                    r,
+                    frame,
+                    b,
+                    m,
+                    ctx.as_ref(),
+                    shader,
+                    depth,
+                    None,
+                    key.double_sided,
+                )
+            }) {
+                continue;
+            }
             if key.cutout {
                 let Some(group) = self.textures.get_set(&d.material.textures()) else {
                     continue;
@@ -1454,6 +1614,7 @@ impl Renderer {
         let Some(material) = self.textures.get(None, None) else {
             return;
         };
+        let terrains = self.terrain_events(frame, |i| list.terrains[i], "Terrain Shadow Caster");
         pass.set_pipeline(&self.pipelines.terrain_shadow);
         pass.set_bind_group(2, material, &[]);
         self.terrains.draw(
@@ -1461,7 +1622,7 @@ impl Renderer {
             frame.terrains,
             first,
             false,
-            |i| list.terrains[i],
+            |i| terrains[i],
             stats,
         );
     }
@@ -1492,8 +1653,16 @@ impl Renderer {
         pass.set_pipeline(&self.pipelines.mask);
         pass.set_bind_group(0, &self.view_bind_group, &[]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
+        if frame.meshes.iter().any(|d| d.outline) {
+            let mask = || frame_debug::target("Selection Mask", target.size(), "R8Unorm");
+            frame_debug::pass(&self.capture, &["Selection Mask"], mask, EventTarget::None);
+        }
         for (i, d) in frame.meshes.iter().enumerate() {
-            if d.outline {
+            if d.outline
+                && frame_debug::record(&self.capture, |r| {
+                    frame_debug::events::simple_draw(r, i, d, "mask.wgsl (selection mask)")
+                })
+            {
                 self.draw_mesh(&mut pass, i, d);
             }
         }
@@ -1586,8 +1755,19 @@ impl Renderer {
                 !last || copy || keep_depth,
             );
             if first {
-                pass.set_pipeline(&self.pipelines.sky);
-                pass.draw(0..3, 0..1);
+                let main = || main_target(target);
+                frame_debug::pass(&self.capture, &["Sky"], main, EventTarget::Hdr);
+                let what = match split.prepass {
+                    true => "Clear (color)",
+                    false => "Clear (color, depth)",
+                };
+                frame_debug::record(&self.capture, |_| FrameEvent::new(EventKind::Clear, what));
+                if frame_debug::record(&self.capture, |_| {
+                    frame_debug::events::post_event("Draw Sky".to_owned(), "sky.wgsl fs_main")
+                }) {
+                    pass.set_pipeline(&self.pipelines.sky);
+                    pass.draw(0..3, 0..1);
+                }
             }
 
             // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches).
@@ -1599,6 +1779,8 @@ impl Renderer {
                 }
             }
             if frame.shaded && !lists.opaque.is_empty() {
+                let main = || main_target(target);
+                frame_debug::pass(&self.capture, &["Opaque"], main, EventTarget::Hdr);
                 pass.set_bind_group(1, self.lit_group(), &[]);
                 let opaque = &lists.opaque;
                 self.draw_batches(&mut pass, frame, lists, opaque, split.prepass, None, stats);
@@ -1609,21 +1791,36 @@ impl Renderer {
                 pass.set_bind_group(1, self.lit_group(), &[]);
                 pass.set_bind_group(2, &self.empty_group, &[]);
                 let first = frame.meshes.len();
+                let main = || main_target(target);
+                frame_debug::pass(&self.capture, &["Terrain"], main, EventTarget::Hdr);
+                let visible = self.terrain_events(frame, |i| lists.terrains[i], "Draw Terrain");
                 self.terrains.draw(
                     &mut pass,
                     frame.terrains,
                     first,
                     true,
-                    |i| lists.terrains[i],
+                    |i| visible[i],
                     stats,
                 );
-                if self.terrains.has_grass() {
+                if self.terrains.has_grass()
+                    && frame_debug::record(&self.capture, |_| {
+                        frame_debug::events::post_event("Draw Grass".to_owned(), "grass.wgsl")
+                    })
+                {
                     pass.set_pipeline(&self.pipelines.grass);
                     self.terrains.draw_grass(&mut pass, frame.terrains, stats);
                 }
             }
 
             if frame.grid.is_some() {
+                let main = || main_target(target);
+                frame_debug::pass(&self.capture, &["Gizmos"], main, EventTarget::Hdr);
+            }
+            if frame.grid.is_some()
+                && frame_debug::record(&self.capture, |_| {
+                    frame_debug::events::post_event("Draw Grid".to_owned(), "grid.wgsl")
+                })
+            {
                 pass.set_pipeline(&self.pipelines.grid);
                 pass.draw(0..3, 0..1);
             }
@@ -1642,10 +1839,23 @@ impl Renderer {
             }
         }
         // The opaque scene, sampled by water refraction and scene-reading shaders.
+        let main = || main_target(target);
+        frame_debug::pass(&self.capture, &["Scene Copy"], main, EventTarget::Hdr);
+        frame_debug::record(&self.capture, |_| {
+            FrameEvent::new(EventKind::Copy, "Copy Opaque Color + Depth")
+        });
         self.scene_copies.record(device, encoder, target);
         let scene = self.scene_copies.current(target.size()).map(|c| c.id);
         let mut pass = self.begin_main(encoder, target, false, false, true, false, keep_depth);
-        if frame.shaded {
+        if frame.shaded && !frame.water.is_empty() {
+            frame_debug::pass(&self.capture, &["Water"], main, EventTarget::Hdr);
+        }
+        if frame.shaded
+            && (frame.water.is_empty()
+                || frame_debug::record(&self.capture, |_| {
+                    frame_debug::events::post_event("Draw Water Surfaces".to_owned(), "water.wgsl")
+                }))
+        {
             pass.set_bind_group(1, self.lit_group(), &[]);
             self.water.draw(&mut pass, frame, stats);
         }
@@ -1674,8 +1884,10 @@ impl Renderer {
         scene: Option<u64>,
         stats: &mut RenderStats,
     ) {
+        let main = || main_target(target);
         // Fade / Transparent meshes back to front, after the grid (they don't write depth).
         if frame.shaded && !lists.transparent.is_empty() {
+            frame_debug::pass(&self.capture, &["Transparent"], main, EventTarget::Hdr);
             pass.set_bind_group(1, self.lit_group(), &[]);
             let transparent = &lists.transparent;
             self.draw_batches(pass, frame, lists, transparent, false, scene, stats);
@@ -1683,26 +1895,47 @@ impl Renderer {
 
         // After the grid: particles don't write depth, so the grid would draw over them.
         if frame.shaded && !particle_draws.is_empty() {
+            frame_debug::pass(&self.capture, &["Particles"], main, EventTarget::Hdr);
             self.draw_particles(pass, frame, particle_draws, stats);
         }
-        if frame.shaded {
+        if frame.shaded
+            && (!self.effects.has_draws()
+                || frame_debug::whole(
+                    &self.capture,
+                    &["Visual Effects"],
+                    main,
+                    EventTarget::Hdr,
+                    || {
+                        let name = "Draw Visual Effects (indirect)".to_owned();
+                        frame_debug::events::post_event(name, "generated effect shaders")
+                    },
+                ))
+        {
             self.effects.draw(pass, &self.textures, scene, stats);
         }
 
-        if !frame.overlay.is_empty() {
+        if !frame.overlay.is_empty() || !frame.lines.is_empty() || outline {
+            frame_debug::pass(&self.capture, &["Gizmos"], main, EventTarget::Hdr);
+        }
+        let gizmo = |name: &str, shader: &str| {
+            frame_debug::record(&self.capture, |_| {
+                frame_debug::events::post_event(name.to_owned(), shader)
+            })
+        };
+        if !frame.overlay.is_empty() && gizmo("Draw Overlay Triangles", "lines.wgsl") {
             let first = frame.lines.len() as u32;
             pass.set_pipeline(&self.pipelines.overlay);
             pass.set_vertex_buffer(0, self.line_buffer.slice(..));
             pass.draw(first..first + frame.overlay.len() as u32, 0..1);
         }
 
-        if !frame.lines.is_empty() {
+        if !frame.lines.is_empty() && gizmo("Draw Gizmo Lines", "lines.wgsl") {
             pass.set_pipeline(&self.pipelines.lines);
             pass.set_vertex_buffer(0, self.line_buffer.slice(..));
             pass.draw(0..frame.lines.len() as u32, 0..1);
         }
 
-        if outline {
+        if outline && gizmo("Draw Selection Outline", "outline.wgsl") {
             pass.set_pipeline(&self.pipelines.outline);
             pass.set_bind_group(1, &target.mask_bind_group, &[]);
             pass.draw(0..3, 0..1);
@@ -1779,6 +2012,15 @@ impl GpuMesh {
         self.vertex_count as u64 * std::mem::size_of::<mesh::Vertex>() as u64
             + self.count as u64 * 4
     }
+}
+
+/// The main pass's attachments (Frame Debugger details).
+fn main_target(target: &RenderTarget) -> TargetInfo {
+    frame_debug::target(
+        "HDR Color (MSAA ×4) + Emission + Depth",
+        target.size(),
+        "Rgba16Float / Depth32Float",
+    )
 }
 
 fn draws_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {

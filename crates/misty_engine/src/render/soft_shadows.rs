@@ -141,6 +141,35 @@ impl Renderer {
                 None => &self.shadows.cascade_views[slot],
                 Some(layer) => &self.shadows.local_layer_views[layer],
             };
+            if self.capture.is_some() {
+                use super::frame_debug::{self, EventKind, EventTarget, FrameEvent};
+                let (name, size, display) = match slot.checked_sub(cascades) {
+                    None => (
+                        format!("Cascade {slot}"),
+                        self.shadows.directional_size,
+                        EventTarget::Shadow {
+                            local: false,
+                            layer: slot as u32,
+                        },
+                    ),
+                    Some(layer) => (
+                        format!("Local Light Layer {layer}"),
+                        shadows::LOCAL_SIZE,
+                        EventTarget::Shadow {
+                            local: true,
+                            layer: layer as u32,
+                        },
+                    ),
+                };
+                let target = || {
+                    let t = format!("Shadow Map ({name})");
+                    frame_debug::target(&t, (size, size), "Depth32Float")
+                };
+                frame_debug::pass(&self.capture, &["Shadows", &name], target, display);
+                frame_debug::record(&self.capture, |_| {
+                    FrameEvent::new(EventKind::Clear, "Clear (depth)")
+                });
+            }
             self.shadow_pass(encoder, frame, view, slot, lists, Some(list), stats);
         }
     }

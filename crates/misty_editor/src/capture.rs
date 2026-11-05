@@ -183,6 +183,24 @@ pub fn apply_env(
             _ => Page::Bake,
         };
     }
+    // `MISTY_FRAME_DEBUGGER=1` enables the Frame Debugger (whole frame); a number selects that
+    // event, other text the first event whose name contains it (e.g. `Draw Mesh Cube`).
+    if let Some(v) = std::env::var_os("MISTY_FRAME_DEBUGGER") {
+        let v = v.to_string_lossy().into_owned();
+        crate::panels::frame_debugger::set_enabled(s, true);
+        s.frame_debugger.pending_select = (v != "1").then_some(v);
+    }
+    // `MISTY_MEMORY_CAPTURE=2` takes that many Memory Profiler snapshots once the views have
+    // drawn; `MISTY_MEMORY_VIEW=Tree Map` picks the view.
+    if let Some(n) = std::env::var("MISTY_MEMORY_CAPTURE")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+    {
+        s.memory_profiler.pending_captures = n;
+    }
+    if let Some(view) = std::env::var_os("MISTY_MEMORY_VIEW") {
+        s.memory_profiler.set_view_named(&view.to_string_lossy());
+    }
     // `MISTY_STATS=1` shows the Game view's Stats box.
     if std::env::var_os("MISTY_STATS").is_some() {
         s.game_view.stats = true;

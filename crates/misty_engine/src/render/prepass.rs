@@ -106,6 +106,22 @@ impl Renderer {
         pass.set_bind_group(0, &self.view_bind_group, &[]);
         pass.set_bind_group(1, &self.mesh_bind_group, &[]);
         let mut pipeline_at = 0;
+        use super::frame_debug::{self, EventKind, EventTarget, FrameEvent, events};
+        let ctx = self.capture.is_some().then(|| {
+            let kind = events::ListKind::Prepass;
+            events::BatchContext::new(frame, &lists.opaque, self.options.instancing, kind)
+        });
+        if self.capture.is_some() {
+            let size = depth.texture().size();
+            let target = || {
+                let size = (size.width, size.height);
+                frame_debug::target("Depth (MSAA ×4)", size, "Depth32Float")
+            };
+            frame_debug::pass(&self.capture, &["Depth Prepass"], target, EventTarget::None);
+            frame_debug::record(&self.capture, |_| {
+                FrameEvent::new(EventKind::Clear, "Clear (depth)")
+            });
+        }
         for b in &lists.opaque {
             let key = lists.prep.pipeline[b.draw];
             if !applies(key) {
@@ -117,6 +133,14 @@ impl Renderer {
             ) else {
                 continue;
             };
+            if !frame_debug::record(&self.capture, |r| {
+                let shader = "Depth Only · depth.wgsl".to_owned();
+                let depth = "Less, write on";
+                let ds = key.double_sided;
+                events::mesh_event(r, frame, b, m, ctx.as_ref(), shader, depth, None, ds)
+            }) {
+                continue;
+            }
             if batch::addr(pipeline) != pipeline_at {
                 pipeline_at = batch::addr(pipeline);
                 pass.set_pipeline(pipeline);

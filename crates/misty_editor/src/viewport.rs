@@ -134,6 +134,25 @@ impl Gpu {
         vp.texture.expect("texture registered above")
     }
 
+    /// The Scene and Game views' render targets (Memory Profiler).
+    pub fn view_target_items(&self) -> Vec<misty_engine::memory_snapshot::MemItem> {
+        use misty_engine::memory_snapshot::{MemCategory, MemItem};
+        [("Scene View", &self.scene), ("Game View", &self.game)]
+            .into_iter()
+            .filter_map(|(name, vp)| {
+                let t = vp.target.as_ref()?;
+                let (w, h) = t.size();
+                let name = format!("{name} target ({w}×{h})");
+                Some(MemItem::new(
+                    MemCategory::RenderTargets,
+                    "RenderTexture",
+                    name,
+                    t.memory_bytes(),
+                ))
+            })
+            .collect()
+    }
+
     /// The last frame of the view the user was looking at: the one drawn most recently, the
     /// Scene view when both were on screen. `(width, height, RGBA8)`.
     pub fn last_view_pixels(&self) -> Option<(u32, u32, Vec<u8>)> {

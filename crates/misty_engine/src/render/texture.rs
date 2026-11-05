@@ -276,6 +276,48 @@ struct Cached {
     view: Option<wgpu::TextureView>,
 }
 
+/// One loaded texture (see [`TextureCache::entries`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextureEntry {
+    pub path: String,
+    pub kind: String,
+    pub width: u32,
+    pub height: u32,
+    pub format: wgpu::TextureFormat,
+    pub mips: u32,
+    /// Material texture sets using it.
+    pub refs: u32,
+}
+
+impl TextureEntry {
+    /// GPU bytes of the whole mip chain (block-compressed formats by their block size).
+    pub fn bytes(&self) -> u64 {
+        texture_bytes(self.format, self.width, self.height, self.mips, 1)
+    }
+}
+
+/// Bytes of a `width`×`height`×`layers` texture with `mips` levels in `format`.
+pub fn texture_bytes(
+    format: wgpu::TextureFormat,
+    width: u32,
+    height: u32,
+    mips: u32,
+    layers: u32,
+) -> u64 {
+    let (bw, bh) = format.block_dimensions();
+    let block = format
+        .block_copy_size(None)
+        .or_else(|| format.block_copy_size(Some(wgpu::TextureAspect::DepthOnly)))
+        .unwrap_or(4) as u64;
+    (0..mips.max(1))
+        .map(|m| {
+            let (w, h) = ((width >> m).max(1), (height >> m).max(1));
+            w.div_ceil(bw) as u64 * h.div_ceil(bh) as u64 * block
+        })
+        .sum::<u64>()
+        * layers.max(1) as u64
+}
+
 /// Loaded textures and one bind group per material texture set.
 pub struct TextureCache {
     textures: HashMap<(String, TextureKind), Cached>,
@@ -516,6 +558,38 @@ impl TextureCache {
             let base = size.width as u64 * size.height as u64 * 4;
             (n + 1, bytes + base * 4 / 3)
         })
+    }
+
+    /// Loaded textures for the Memory Profiler: (path, kind label, size, format, mip count,
+    /// material texture sets that use it).
+    pub fn entries(&self) -> Vec<TextureEntry> {
+        let mut out: Vec<TextureEntry> = self
+            .textures
+            .iter()
+            .filter_map(|((rel, kind), c)| {
+                let t = c.view.as_ref()?.texture();
+                let refs = self
+                    .sets
+                    .keys()
+                    .filter(|s| {
+                        [&s.albedo, &s.normal, &s.metallic, &s.occlusion, &s.emission]
+                            .into_iter()
+                            .any(|p| p.as_deref() == Some(rel.as_str()))
+                    })
+                    .count() as u32;
+                Some(TextureEntry {
+                    path: rel.clone(),
+                    kind: format!("{kind:?}"),
+                    width: t.width(),
+                    height: t.height(),
+                    format: t.format(),
+                    mips: t.mip_level_count(),
+                    refs,
+                })
+            })
+            .collect();
+        out.sort_by(|a, b| a.path.cmp(&b.path).then(a.kind.cmp(&b.kind)));
+        out
     }
 
     /// Whether a texture loaded successfully (false for files that failed to load).

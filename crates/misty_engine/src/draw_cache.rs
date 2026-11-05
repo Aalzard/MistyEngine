@@ -617,6 +617,7 @@ impl DrawCache {
     }
 }
 
+mod labels;
 mod occlusion;
 #[cfg(test)]
 mod tests;
