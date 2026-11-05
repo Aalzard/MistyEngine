@@ -38,8 +38,16 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         .game_draws
         .set_static_batching(state.runtime.is_some());
     let game = GameView::cached(&state.scene, &state.assets, &mut state.game_draws);
+    // Window ▸ Analysis ▸ Frame Debugger: capture (and replay up to the selected event).
+    crate::panels::frame_debugger::sync(state, ui.ctx());
     match (game, gpu) {
         (Some(game), Some(gpu)) => {
+            let debug = state.frame_debugger.request(ui.ctx(), Vec::new());
+            let debugging = debug.is_some();
+            if let Some(mut request) = debug {
+                request.labels = state.game_draws.labels(&state.scene);
+                gpu.renderer.begin_capture(request);
+            }
             let frame = game.frame();
             // Quality ▸ Render Scale changes the pixel size the game renders at.
             let ppp = ui.ctx().pixels_per_point() * misty_engine::quality::active().render_scale;
@@ -60,7 +68,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 });
             }
             let interaction = state.runtime.as_ref().map(|r| r.ui_interaction());
-            gpu.render_ui(&state.scene, interaction);
+            if !debugging || ui_event(gpu, &state.scene) {
+                gpu.render_ui(&state.scene, interaction);
+            }
+            if let Some(capture) = gpu.renderer.end_capture() {
+                state.frame_debugger.set_capture(capture);
+            }
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             ui.painter().image(texture, view, uv, Color32::WHITE);
             crate::gizmos::vcam_overlay(ui, state, view);
@@ -80,6 +93,26 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             );
         }
     }
+}
+
+/// The canvas UI as a Frame Debugger event (when the scene has canvases); true = draw it.
+fn ui_event(gpu: &Gpu, scene: &misty_engine::scene::Scene) -> bool {
+    use misty_engine::render::{EventKind, FrameEvent};
+    let canvases = scene.active_with::<misty_engine::scene::Canvas>().len();
+    canvases == 0
+        || gpu.renderer.capture_event(
+            &["UI"],
+            FrameEvent {
+                shader: "ui.wgsl".to_owned(),
+                blend: "SrcAlpha OneMinusSrcAlpha".to_owned(),
+                depth: "Off".to_owned(),
+                cull: "Off".to_owned(),
+                ..FrameEvent::new(
+                    EventKind::Ui,
+                    format!("Draw Canvas UI ({canvases} canvases)"),
+                )
+            },
+        )
 }
 
 /// Text of the Stats box: frame rate, CPU/GPU times, draw counters, audio voices.

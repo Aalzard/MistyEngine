@@ -38,6 +38,10 @@ pub enum Tab {
     EffectGraph,
     /// Window ▸ Rendering ▸ Occlusion Culling.
     OcclusionCulling,
+    /// Window ▸ Analysis ▸ Frame Debugger.
+    FrameDebugger,
+    /// Window ▸ Analysis ▸ Memory Profiler.
+    MemoryProfiler,
 }
 
 impl Tab {
@@ -54,7 +58,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 12] = [
+    pub const ON_DEMAND: [Tab; 14] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -67,6 +71,8 @@ impl Tab {
         Tab::ShaderGraph,
         Tab::EffectGraph,
         Tab::OcclusionCulling,
+        Tab::FrameDebugger,
+        Tab::MemoryProfiler,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -91,6 +97,8 @@ impl Tab {
             // Docks with the Project and Console like the reference editor; the Profiler too,
             // so the Game view keeps rendering (and reporting its counters) while profiling.
             Tab::AudioMixer | Tab::Profiler => Some(Tab::Project),
+            // Analysis windows keep the Game view visible (the Frame Debugger replays into it).
+            Tab::FrameDebugger | Tab::MemoryProfiler => Some(Tab::Project),
             _ => None,
         }
     }
@@ -117,6 +125,8 @@ impl Tab {
             Tab::ShaderGraph => "Shader Graph",
             Tab::EffectGraph => "Effect Graph",
             Tab::OcclusionCulling => "Occlusion Culling",
+            Tab::FrameDebugger => "Frame Debugger",
+            Tab::MemoryProfiler => "Memory Profiler",
         }
     }
 
@@ -142,6 +152,8 @@ impl Tab {
             Tab::ShaderGraph => crate::panels::shader_graph::ICON,
             Tab::EffectGraph => crate::panels::effect_graph::ICON,
             Tab::OcclusionCulling => "◩",
+            Tab::FrameDebugger => crate::panels::frame_debugger::ICON,
+            Tab::MemoryProfiler => crate::panels::memory_profiler::ICON,
         }
     }
 
@@ -167,7 +179,9 @@ impl Tab {
             | Tab::TilePalette
             | Tab::ShaderGraph
             | Tab::EffectGraph
-            | Tab::OcclusionCulling => "",
+            | Tab::OcclusionCulling
+            | Tab::FrameDebugger
+            | Tab::MemoryProfiler => "",
         }
     }
 }

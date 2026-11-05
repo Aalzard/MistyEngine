@@ -262,6 +262,11 @@ impl Runtime {
         self.host.physics_settings()
     }
 
+    /// Bytes the scripts' Lua state holds (Memory Profiler).
+    pub fn lua_memory(&self) -> usize {
+        self.host.lua_memory()
+    }
+
     pub fn stats(&self) -> RuntimeStats {
         let (bodies, colliders) = self.host.physics_counts();
         RuntimeStats {

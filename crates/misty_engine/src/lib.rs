@@ -17,6 +17,7 @@ pub mod input;
 pub mod light2d;
 pub mod light_probes;
 pub mod lightmap;
+pub mod memory_snapshot;
 pub mod mesh_builder;
 pub mod models;
 pub mod navigation;

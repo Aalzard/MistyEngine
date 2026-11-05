@@ -55,6 +55,8 @@ impl Renderer {
         (self.options.gpu_culling || dynamic && self.options.culling)
             && self.culler.is_some()
             && frame.shaded
+            // The Frame Debugger lists CPU-side draws.
+            && self.capture.is_none()
             && !self.screen_space_wanted(frame)
             && !super::super::custom_shader::any_in(frame)
     }

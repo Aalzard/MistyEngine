@@ -233,6 +233,8 @@ pub struct ComponentInfo {
     pub name: &'static str,
     pub category: &'static str,
     pub removable: bool,
+    /// `size_of` the component struct (Memory Profiler estimates).
+    pub size: usize,
     pub has: fn(&World, Entity) -> bool,
     pub add_default: fn(&mut World, Entity),
     pub remove: fn(&mut World, Entity),
@@ -249,6 +251,7 @@ impl ComponentInfo {
             name: T::NAME,
             category: T::CATEGORY,
             removable: T::REMOVABLE,
+            size: std::mem::size_of::<T>(),
             has: |w, e| w.entity(e).is_ok_and(|r| r.has::<T>()),
             add_default: |w, e| {
                 let _ = w.insert_one(e, T::default());

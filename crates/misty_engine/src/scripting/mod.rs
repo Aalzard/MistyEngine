@@ -204,6 +204,11 @@ pub struct ScriptHost {
 }
 
 impl ScriptHost {
+    /// Bytes allocated by the Lua state.
+    pub fn lua_memory(&self) -> usize {
+        self.lua.used_memory()
+    }
+
     /// Create script instances for every script in the scene and run `Awake` (silent audio).
     pub fn start(scene: &mut Scene, physics: Physics, project_root: PathBuf) -> Self {
         let (audio, _) = Audio::null(project_root.clone());

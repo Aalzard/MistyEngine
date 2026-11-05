@@ -412,6 +412,21 @@ impl Renderer {
         else {
             return;
         };
+        if !super::frame_debug::whole(
+            &self.capture,
+            &["Volumetric Fog"],
+            Default::default,
+            super::frame_debug::EventTarget::None,
+            || super::frame_debug::FrameEvent {
+                shader: "froxel light + integrate kernels".to_owned(),
+                ..super::frame_debug::FrameEvent::new(
+                    super::frame_debug::EventKind::Compute,
+                    "Dispatch Froxel Lighting",
+                )
+            },
+        ) {
+            return;
+        }
         let (read, write) = history.pair();
         pipelines.encode(
             device,
@@ -438,6 +453,18 @@ impl Renderer {
         encoder: &mut wgpu::CommandEncoder,
         target: &RenderTarget,
     ) {
+        let v = &self.volumetrics;
+        if (v.sharp_now || v.shafts_now)
+            && !super::frame_debug::whole(
+                &self.capture,
+                &["Sun Shafts"],
+                || super::main_target(target),
+                super::frame_debug::EventTarget::Hdr,
+                || super::frame_debug::events::post_event("Sun Shafts".to_owned(), "sun shafts"),
+            )
+        {
+            return;
+        }
         self.sharp_shaft_passes(device, encoder, target);
         let v = &self.volumetrics;
         if !v.shafts_now {

@@ -266,6 +266,21 @@ impl Renderer {
         let Some(state) = c.targets.get_mut(&now.target) else {
             return;
         };
+        if !super::frame_debug::whole(
+            &self.capture,
+            &["Clouds"],
+            Default::default,
+            super::frame_debug::EventTarget::None,
+            || super::frame_debug::FrameEvent {
+                shader: "cloud shadow map, raymarch and temporal resolve kernels".to_owned(),
+                ..super::frame_debug::FrameEvent::new(
+                    super::frame_debug::EventKind::Compute,
+                    "Dispatch Volumetric Clouds",
+                )
+            },
+        ) {
+            return;
+        }
         let (history, resolved) = state.pair();
         let shadow = match (now.shadow, &c.shadow_map) {
             (Some(size), Some((_, view))) => Some((view, size)),

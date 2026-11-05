@@ -180,6 +180,23 @@ impl Renderer {
         let Some(gpu) = g.gpu.as_ref().filter(|_| g.keeps_depth()) else {
             return;
         };
+        if !super::frame_debug::whole(
+            &self.capture,
+            &["Halos & Flares"],
+            || super::main_target(target),
+            super::frame_debug::EventTarget::Hdr,
+            || super::frame_debug::FrameEvent {
+                instances: g.halos + g.flares,
+                vertices: 6,
+                blend: "One One (additive)".to_owned(),
+                ..super::frame_debug::events::post_event(
+                    format!("Draw {} Halos, {} Flares", g.halos, g.flares),
+                    "glow.wgsl",
+                )
+            },
+        ) {
+            return;
+        }
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("misty glow group"),
             layout: &gpu.layout,

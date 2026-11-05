@@ -724,6 +724,11 @@ impl Effects {
     }
 
     /// Does an output drawn this render fade against the scene depth (needs the scene copy)?
+    /// Any effect output to draw this render (Frame Debugger).
+    pub fn has_draws(&self) -> bool {
+        !self.frame.is_empty()
+    }
+
     pub fn needs_scene(&self) -> bool {
         self.frame.iter().any(|f| f.soft)
     }

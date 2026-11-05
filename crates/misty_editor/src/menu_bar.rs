@@ -477,8 +477,9 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
     ui.menu_button("Analysis", |ui| {
-        let tab = Tab::Profiler;
-        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+        for tab in [Tab::Profiler, Tab::FrameDebugger, Tab::MemoryProfiler] {
+            item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+        }
     });
     todo(ui, s, "Package Manager", "");
 }

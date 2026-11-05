@@ -366,6 +366,10 @@ pub struct EditorState {
     pub game_view: GameViewSettings,
     /// Window ▸ Analysis ▸ Profiler state.
     pub profiler: crate::panels::profiler::ProfilerWindow,
+    /// Window ▸ Analysis ▸ Frame Debugger state (the captured frame and selected event).
+    pub frame_debugger: crate::panels::frame_debugger::FrameDebuggerWindow,
+    /// Window ▸ Analysis ▸ Memory Profiler snapshots.
+    pub memory_profiler: crate::panels::memory_profiler::MemoryProfilerWindow,
     /// Saved window layouts and the Save Layout prompt.
     pub layouts: crate::layouts::Layouts,
     /// Ctrl+K search palette, its asset index and recent searches.
@@ -476,6 +480,8 @@ impl EditorState {
                 gizmos: false,
             },
             profiler: Default::default(),
+            frame_debugger: Default::default(),
+            memory_profiler: Default::default(),
             layouts: Default::default(),
             search: crate::search::SearchPalette::new(&root),
             tutorials: Default::default(),
