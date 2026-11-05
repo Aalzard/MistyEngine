@@ -145,6 +145,10 @@ impl SceneComponent for super::ReflectionProbe {
     const NAME: &'static str = "Reflection Probe";
     const CATEGORY: &'static str = "Rendering";
 }
+impl SceneComponent for crate::light_probes::LightProbeGroup {
+    const NAME: &'static str = "Light Probe Group";
+    const CATEGORY: &'static str = "Rendering";
+}
 impl SceneComponent for super::ReflectionProbeGroup {
     const NAME: &'static str = "Reflection Probe Group";
     const CATEGORY: &'static str = "";
@@ -316,6 +320,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::PostProcessVolume>(),
             ComponentInfo::of::<super::ReflectionProbe>(),
             ComponentInfo::of::<super::ReflectionProbeGroup>(),
+            ComponentInfo::of::<crate::light_probes::LightProbeGroup>(),
             ComponentInfo::of::<super::FogVolume>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),

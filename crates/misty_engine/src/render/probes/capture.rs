@@ -213,6 +213,7 @@ pub fn probe_set(
             .map(|((e, p), d)| ProbeInstance::new(p, scene.world_position(*e), d.clone()))
             .collect(),
         debug: false,
+        light_probes: None,
     }
 }
 

@@ -15,6 +15,7 @@ pub mod draw_cache;
 pub mod hdri;
 pub mod input;
 pub mod light2d;
+pub mod light_probes;
 pub mod mesh_builder;
 pub mod models;
 pub mod navigation;

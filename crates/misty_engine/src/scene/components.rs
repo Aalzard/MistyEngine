@@ -492,6 +492,13 @@ pub struct MeshRenderer {
     /// of files when there are none). See [`crate::render::overrides`].
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub overrides: std::collections::BTreeMap<usize, crate::render::overrides::MaterialOverrides>,
+    /// Light Probes: Blend Probes lights a non-static object with the baked light probes
+    /// instead of the ambient light (left out of files when default).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::light_probes::LightProbeUsage::is_default"
+    )]
+    pub light_probes: crate::light_probes::LightProbeUsage,
 }
 
 impl Default for MeshRenderer {
@@ -504,6 +511,7 @@ impl Default for MeshRenderer {
             extra_materials: Vec::new(),
             instances: Vec::new(),
             overrides: Default::default(),
+            light_probes: Default::default(),
         }
     }
 }

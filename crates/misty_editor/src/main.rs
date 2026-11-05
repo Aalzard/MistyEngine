@@ -24,6 +24,7 @@ mod hub;
 mod launcher;
 mod layout;
 mod layouts;
+mod light_probe_tools;
 mod material_preview;
 mod menu_bar;
 mod mesh_builder;
@@ -70,6 +71,8 @@ mod sample_hdri;
 mod sample_input;
 #[cfg(test)]
 mod sample_light_glow;
+#[cfg(test)]
+mod sample_light_probes;
 #[cfg(test)]
 mod sample_lighting;
 #[cfg(test)]

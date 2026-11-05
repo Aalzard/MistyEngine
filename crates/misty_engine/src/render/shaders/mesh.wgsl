@@ -197,6 +197,11 @@ fn fs_unlit(in: MeshOut) -> MeshTargets {
     if (d.extra.w > 0.5 && lights2d.info.x > 0.5) {
         color *= light2d_sum(in.world.xy, u32(d.extra.w + 0.5) - 1u);
     }
+    // Light probe gizmos: an unlit sphere flagged for light probes shows the baked light.
+    let light_probe = light_probe_block(in.draw);
+    if (light_probe != PROBE_NONE) {
+        color *= light_probe_irradiance(light_probe, normalize(in.normal));
+    }
     let fog = fog_visibility(fog_distance(in.world));
     let vf = vfog_eval(in.world);
     var out: MeshTargets;
@@ -232,16 +237,22 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
     let grazing = clamp(smoothness + (1.0 - (1.0 - metallic) * 0.96), 0.0, 1.0);
 
-    // Ambient diffuse from the environment (sky / equator / ground).
+    // Ambient diffuse from the environment (sky / equator / ground), or from the baked light
+    // probes for moving objects that blend them (probes.wgsl).
     var ambient: vec3<f32>;
-    if (n.y >= 0.0) {
+    var ambient_scale = lights.info.z;
+    let light_probe = light_probe_block(s.draw);
+    if (light_probe != PROBE_NONE) {
+        ambient = light_probe_irradiance(light_probe, n);
+        ambient_scale = 1.0;
+    } else if (n.y >= 0.0) {
         ambient = mix(lights.equator.rgb, lights.sky.rgb, n.y);
     } else {
         ambient = mix(lights.equator.rgb, lights.ground.rgb, -n.y);
     }
     // Screen-space AO (screen_space.wgsl) joins the material occlusion on ambient light.
     let ssao = screen_ao(world);
-    var color = ambient * lights.info.z * diffuse_color * indirect_occlusion(s.occlusion, ssao, diffuse_color);
+    var color = ambient * ambient_scale * diffuse_color * indirect_occlusion(s.occlusion, ssao, diffuse_color);
 
     // Reflection of the sky: sharp when smooth, blurred towards the ambient colour when rough.
     let r = reflect(-v, n);
@@ -255,7 +266,10 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
         let sky_spec = env * fresnel_env * surface_reduction * lights.info.w * smoothness;
         let probe_spec = probe_specular(probe, f0, n_dot_v, perceptual) * lights.info.w;
         let probe_diffuse = probe.diffuse * diffuse_color * indirect_occlusion(s.occlusion, ssao, diffuse_color);
-        color = mix(color, probe_diffuse, probe.weight);
+        // Light probes keep the diffuse; reflection probes then only add reflections.
+        if (light_probe == PROBE_NONE) {
+            color = mix(color, probe_diffuse, probe.weight);
+        }
         color += mix(sky_spec, probe_spec, probe.weight) * spec_occlusion;
     } else {
         color += env * fresnel_env * surface_reduction * lights.info.w * smoothness * spec_occlusion;

@@ -153,6 +153,9 @@ pub struct MaterialParams {
     /// Sprite-Lit-Default: unlit sprites and tiles multiplied by the 2D lights of their
     /// Sorting Layer (only while the scene has 2D lights, see [`crate::light2d`]).
     pub lit_2d: bool,
+    /// Per-object: ambient light comes from the baked light probes (see
+    /// [`crate::light_probes`]); set by the draw list for non-static Blend Probes renderers.
+    pub light_probes: bool,
 }
 
 impl Default for MaterialParams {
@@ -180,6 +183,7 @@ impl Default for MaterialParams {
             emission_map: None,
             custom: None,
             lit_2d: false,
+            light_probes: false,
         }
     }
 }
@@ -2039,7 +2043,7 @@ mod benchmark;
 #[cfg(test)]
 mod gpu_checks;
 #[cfg(test)]
-mod gpu_tests;
+pub(crate) mod gpu_tests;
 #[cfg(test)]
 mod terrain_gpu_tests;
 

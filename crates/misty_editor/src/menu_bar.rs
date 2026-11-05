@@ -303,6 +303,10 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
             crate::probe_tools::generate(s);
             ui.close();
         }
+        if ui.button("Light Probe Group").clicked() {
+            crate::light_probe_tools::create_group(s, parent);
+            ui.close();
+        }
     });
     ui.menu_button("Audio", |ui| {
         item(ui, s, "Audio Source", "", create(Create::AudioSource));

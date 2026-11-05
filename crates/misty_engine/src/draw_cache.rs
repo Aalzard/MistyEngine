@@ -15,6 +15,7 @@ use std::sync::Arc;
 use glam::{Mat4, Vec3};
 use hecs::Entity;
 
+use crate::light_probes::LightProbeUsage;
 use crate::render::lod::LodRange;
 use crate::render::{MaterialParams, MeshDraw};
 use crate::render_scene::MaterialSource;
@@ -55,6 +56,8 @@ struct RendererEntry {
     call: u64,
     /// Merged into a static batch (Static object, no LOD Group, not outlined).
     batched: bool,
+    /// Static objects don't use light probes.
+    is_static: bool,
 }
 
 /// A distinct material path's resolved values.
@@ -425,12 +428,14 @@ impl DrawCache {
             let old = self.renderers[id]
                 .take()
                 .filter(|o| o.entity == e && o.call + 1 == calls);
+            let batched = item.is_static && lod.is_none() && !item.outline;
             let same_inputs = old.as_ref().is_some_and(|o| {
                 !item.world_changed
                     && o.mesh == *mesh
                     && o.renderer == *r
                     && o.outline == item.outline
                     && o.lod == lod
+                    && o.is_static == item.is_static
             });
             // Material slots: keep the table indices while the renderer is unchanged.
             let slots: Vec<Option<(u32, u64)>> = (0..r.material_count())
@@ -451,13 +456,13 @@ impl DrawCache {
                 .collect();
             let dirty = !same_inputs || old.as_ref().is_some_and(|o| o.materials != slots);
             let (first, count) = old.as_ref().map_or((0, 0), |o| (o.first, o.count));
-            let batched = item.is_static && lod.is_none() && !item.outline;
             if dirty && (batched || old.as_ref().is_some_and(|o| o.batched)) {
                 self.batching.dirty = true;
             }
             if dirty {
                 let world = self.nodes[id].world;
-                let draws = self.build(mesh, r, world, item.outline, lod, &slots);
+                let probes = r.light_probes == LightProbeUsage::BlendProbes && !item.is_static;
+                let draws = self.build(mesh, r, world, item.outline, lod, &slots, probes);
                 in_place &= old.is_some() && draws.len() as u32 == count;
                 fresh.push(Some(draws));
                 self.stats.rebuilt += 1;
@@ -476,6 +481,7 @@ impl DrawCache {
                 count,
                 call: calls,
                 batched,
+                is_static: item.is_static,
             });
         }
         if in_place {
@@ -515,7 +521,9 @@ impl DrawCache {
         self.out = Arc::new(out);
     }
 
-    /// One draw per Materials element, with the object's overrides applied.
+    /// One draw per Materials element, with the object's overrides applied; `light_probes` =
+    /// lit by the baked light probes.
+    #[allow(clippy::too_many_arguments)]
     fn build(
         &self,
         mesh: &MeshRef,
@@ -524,6 +532,7 @@ impl DrawCache {
         outline: bool,
         lod: Option<LodRange>,
         slots: &[Option<(u32, u64)>],
+        light_probes: bool,
     ) -> Vec<MeshDraw> {
         // A baked Editable Mesh draws each element's faces only (its submeshes).
         let split = crate::mesh_builder::is_baked_key(mesh);
@@ -537,6 +546,8 @@ impl DrawCache {
                 if let Some(o) = r.overrides_at(i) {
                     o.apply(&mut material);
                 }
+                // Unlit materials ignore probes (the probe gizmos use that pairing).
+                material.light_probes = light_probes && !material.unlit;
                 MeshDraw {
                     mesh: match split {
                         true => crate::mesh_builder::submesh(mesh, i),

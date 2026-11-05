@@ -244,6 +244,10 @@ pub struct RenderSettings {
     /// Multiplier on sky reflections.
     pub reflection_intensity: f32,
     pub fog: Fog,
+    /// Baked light probes file (`Assets/Scenes/<Scene>/LightProbes.probes`, see
+    /// [`crate::light_probes`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub light_probes: Option<String>,
 }
 
 impl Default for RenderSettings {
@@ -253,6 +257,7 @@ impl Default for RenderSettings {
             environment_lighting: EnvironmentLighting::default(),
             reflection_intensity: 1.0,
             fog: Fog::default(),
+            light_probes: None,
         }
     }
 }

@@ -262,6 +262,10 @@ impl EditorApp {
             {
                 continue;
             }
+            // Delete / Ctrl+D act on the light probes being edited.
+            if matches!(key, Key::Delete | Key::D) && self.state.light_probes.wants_keys() {
+                continue;
+            }
             if key == Key::Delete
                 && (self.state.animation.wants_delete()
                     || self.state.animator.wants_delete()
@@ -648,6 +652,9 @@ impl eframe::App for EditorApp {
         // Material previews asked for while drawing the panels; probe bakes and Realtime probes.
         if let Some(gpu) = self.gpu.as_mut() {
             if crate::probe_tools::gpu_frame(gpu, &mut self.state) {
+                ctx.request_repaint();
+            }
+            if crate::light_probe_tools::gpu_frame(gpu, &mut self.state) {
                 ctx.request_repaint();
             }
             let previews = &mut self.state.project.thumbnails.materials;
