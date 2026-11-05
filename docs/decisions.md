@@ -3040,3 +3040,42 @@ Record of choices made without asking, and why.
      - larger spacing;
      - a rounded faint tint over the panel under the mouse;
      - the rest of the dock dimmed less (0.35).
+623. **Round 11: Wheel Collider is our own raycast suspension** (full notes in `docs/pending/r11-vehicles.md`).
+     rapier's vehicle controller has no per-wheel friction curves.
+     - **Suspension:** each fixed step casts one ray per wheel, loaded with the wheel's share of the body's
+       weight plus spring and damper force.
+     - **Friction:** clamped impulses over 4 passes, with a combined forward/sideways limit so the handbrake
+       slides the rear.
+     - **Rest correction:** offsets rapier's substep gravity so parked cars don't creep.
+     - **Runtime values** (rpm, grounded, hit) are not saved.
+     - **Still missing:** anti-roll bars and an engine/differential model; torque is set per wheel.
+624. **Round 11: skinned meshes are skinned on the GPU in a compute pass** (`docs/pending/r11-skinning.md`).
+     - **Order:** blend shapes first, then 4-bone skinning.
+     - **Output:** a normal vertex buffer under a `skinned://` mesh key, so every existing pass (shadows,
+       prepass, culling, outlines) draws it unchanged. A mesh is re-skinned only when its pose version changes.
+     - **Bones are scene objects** referenced by the Skinned Mesh Renderer.
+     - **Animations:** glTF clips are extracted as `.anim` (30 fps, Euler curves) and never overwritten.
+       Blend-shape weights are an animatable property.
+     - **Check:** a GPU readback test compares against a CPU reference within 1e-4.
+625. **Round 11: animation rigging works on plain Transforms** (`docs/pending/r11-rigging.md`).
+     - **Components:** Rig Builder, Rig, Two Bone IK (law of cosines with hint), Multi-Aim, Chain IK
+       (FABRIK default, CCD), Damped Transform and Override Transform.
+     - **When it runs:** after Animation/Animator and before LateUpdate.
+     - **No drift:** `RigState` restores each bone's pre-rig pose unless something else moved it, so partial
+       weights don't pile up frame after frame.
+     - **Skinned rigs** work automatically because bones are Transforms.
+626. **Round 11: Timeline** (`docs/pending/r11-timeline.md`).
+     - **Asset:** a `.timeline` JSON file with a GUID; one module per track kind (Activation, Animation,
+       Audio, Signal), so new kinds such as Camera Cut slot in.
+     - **Playable Director:** keeps per-track object bindings that are remapped like other references.
+       Timelines evaluate after Animation/Animator, so they win on shared properties.
+     - **Editor:** the Timeline window's scrub preview restores the scene like the Animation window does.
+       Edits are undoable, one step per drag.
+     - **Still missing:** a record button, Loop/PingPong post-extrapolation and a Camera Cut track.
+627. **Round 11: virtual cameras ("Camera Brain" + "Virtual Camera", our own names)** (`docs/pending/r11-vcam.md`).
+     - **Choosing the live camera:** the brain picks the highest priority; ties go to the most recently
+       enabled. An interrupted blend continues from the current pose.
+     - **Pose solving:** body (Transposer, Third Person, Orbital), then aim (Composer, Hard Look At), then
+       extensions (Collider raycast from the target, Perlin noise seeded per camera). The virtual camera's
+       own Transform keeps the unmodified pose.
+     - **Play mode only.** Edit-mode Game view preview of the live virtual camera is left for later.

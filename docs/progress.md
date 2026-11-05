@@ -1966,3 +1966,25 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Window move, resize and maximise not tried by hand on the real window yet.
 - MSAA level is still fixed at 4×; asset inspectors (Audio Mixer, Texture import, Preset) are not cards yet.
+
+## Round 11: gameplay ✅
+
+### Done (decisions 623–627; screenshots in docs/screenshots/round11/; detailed notes in docs/pending/r11-*.md)
+- **Wheel Collider and VehicleDemo:** raycast suspension, friction curves, motor, brake and steering; Lua
+  `WheelCollider`.
+- **Skinned meshes:** glTF skins and morph targets, GPU skinning (compute), animation import to `.anim`, the Skinned
+  Mesh Renderer with blend-shape sliders, a bone gizmo, and SkinningDemo.
+- **Animation rigging:** Rig Builder / Rig, Two Bone IK, Multi-Aim, Chain IK, Damped and Override Transform, and
+  RiggingDemo.
+- **Timeline:** `.timeline` assets with Activation, Animation, Audio and Signal tracks; the Playable Director; the
+  Timeline window (scrub preview, trim, blends, markers); Lua; TimelineDemo.
+- **Virtual cameras:** the Camera Brain with priority blends; Virtual Camera with Transposer, Third Person,
+  Orbital, Composer, Hard Look At, Collider and Noise; VirtualCameraDemo.
+- **UI fixes:** toolbar dropdowns stay open while their controls are used; the Project toolbar is one row; the tab
+  drag guide is restyled.
+
+### Not done yet
+- Timeline record button and Camera Cut track.
+- Live virtual-camera preview in the edit-mode Game view.
+- Anti-roll bars.
+- Blend-shape keys in Record mode.
