@@ -313,6 +313,7 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     let spec_occlusion = specular_occlusion(s.occlusion, ssao, n_dot_v, roughness);
     // Reflection probes replace the sky inside their boxes (probes.wgsl).
     let probe = probe_lighting(s.draw, world, n, r, perceptual);
+    var reflection: vec3<f32>;
     if (probe.weight > 0.0) {
         let sky_spec = env * fresnel_env * surface_reduction * lights.info.w * smoothness;
         let probe_spec = probe_specular(probe, f0, n_dot_v, perceptual) * lights.info.w;
@@ -321,10 +322,15 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
         if (!lightmapped && light_probe == PROBE_NONE) {
             color = mix(color, probe_diffuse, probe.weight);
         }
-        color += mix(sky_spec, probe_spec, probe.weight) * spec_occlusion;
+        reflection = mix(sky_spec, probe_spec, probe.weight) * spec_occlusion;
     } else {
-        color += env * fresnel_env * surface_reduction * lights.info.w * smoothness * spec_occlusion;
+        reflection = env * fresnel_env * surface_reduction * lights.info.w * smoothness * spec_occlusion;
     }
+    // Screen-space GI and reflections (screen_trace.wgsl); unchanged while both are off.
+    let traced = screen_trace_sample(world);
+    color = screen_gi_apply(traced, color, diffuse_color, s.occlusion, lightmapped);
+    let reflection_weight = fresnel_env * surface_reduction * lights.info.w * smoothness;
+    color += screen_reflection_apply(traced, reflection, reflection_weight);
 
     let count = u32(lights.info.x);
     for (var i = 0u; i < count; i++) {

@@ -138,6 +138,12 @@ pub struct PostProcessVolume {
     pub ambient_occlusion: AmbientOcclusionOverride,
     #[serde(skip_serializing_if = "is_default")]
     pub contact_shadows: ContactShadowsOverride,
+    /// Screen Space Global Illumination (render/screen_trace).
+    #[serde(skip_serializing_if = "is_default")]
+    pub screen_space_gi: super::ScreenSpaceGlobalIlluminationOverride,
+    /// Screen Space Reflections (render/screen_trace).
+    #[serde(skip_serializing_if = "is_default")]
+    pub screen_space_reflections: super::ScreenSpaceReflectionsOverride,
     /// Raymarched cloud layer (left out of files while untouched).
     #[serde(skip_serializing_if = "is_default")]
     pub clouds: super::CloudsOverride,
@@ -156,6 +162,8 @@ impl Default for PostProcessVolume {
             sun_shafts: Default::default(),
             ambient_occlusion: Default::default(),
             contact_shadows: Default::default(),
+            screen_space_gi: Default::default(),
+            screen_space_reflections: Default::default(),
             clouds: Default::default(),
         }
     }

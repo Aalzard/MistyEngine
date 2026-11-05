@@ -175,6 +175,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             } else {
                 Default::default()
             };
+            // SSGI and SSR follow their own toggle (and Post Processing, through `post`).
+            if !(sv.skybox && fx.screen_space) {
+                post.ssgi = Default::default();
+                post.ssr = Default::default();
+            }
             // The AO debug view shows the AO term alone (no other effects).
             if sv.draw_mode == AO_DRAW_MODE {
                 post = ao_debug_post(&state.scene);
@@ -580,6 +585,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                 ui.checkbox(&mut fx.fog, "Fog");
                 ui.checkbox(&mut fx.clouds, "Clouds");
                 ui.checkbox(&mut fx.glows, "Halos & Flares");
+                ui.checkbox(&mut fx.screen_space, "Screen Space GI & Reflections");
                 ui.checkbox(&mut fx.post_processing, "Post Processing");
             })
             .0

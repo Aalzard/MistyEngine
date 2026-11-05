@@ -31,6 +31,7 @@ pub mod probes;
 mod runtime_tex;
 mod scene_copy;
 mod screen_space;
+mod screen_trace;
 mod shadows;
 mod skinning;
 mod soft_shadows;
@@ -60,6 +61,7 @@ pub use frame_debug::{
 pub use glow::GlowSource;
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use post::PostSettings;
+pub use screen_trace::{SsgiSettings, SsrSettings};
 pub use soft_shadows::LightShadow;
 pub use stats::{RenderMemory, RenderOptions, RenderStats};
 pub use surface::{RenderingMode, ShaderKind, SortingKey};
@@ -282,6 +284,8 @@ struct MainSplit<'a> {
     prepass: bool,
     /// The transparent part follows a copy of the opaque scene (water, scene-reading shaders).
     scene_copy: bool,
+    /// SSGI / SSR: the opaque scene is also copied into their lit colour history.
+    trace: Option<&'a screen_trace::TraceFrame>,
 }
 
 /// Everything needed to draw one view.
@@ -450,6 +454,8 @@ pub struct Renderer {
     view_group_dirty: bool,
     /// Ambient occlusion and contact shadows (depth/normal prepass, GTAO passes).
     screen_space: screen_space::ScreenSpace,
+    /// Screen-space GI and reflections (trace passes, lit colour history).
+    screen_trace: screen_trace::ScreenTrace,
     /// Light halos and lens flares.
     glows: glow::Glows,
     /// HDRI sky cubes and uniform (view group bindings 4–7).
@@ -493,6 +499,7 @@ impl Renderer {
         let probes = probes::gpu::ProbeGpu::new(device);
         let lightmaps = lightmap_gpu::LightmapGpu::new(device);
         let screen_space = screen_space::ScreenSpace::new(device);
+        let screen_trace = screen_trace::ScreenTrace::new(device);
 
         let draws_capacity = 256;
         let draws_buffer = draws_buffer(device, draws_capacity);
@@ -508,7 +515,7 @@ impl Renderer {
             &shadows,
             &probes,
             &lightmaps,
-            &screen_space.off_buffer,
+            [&screen_space.off_buffer, &screen_trace.off_buffer],
         );
 
         let meshes = GpuMesh::primitives(device);
@@ -568,6 +575,7 @@ impl Renderer {
             clouds,
             view_group_dirty: false,
             screen_space,
+            screen_trace,
             glows: Default::default(),
             sky,
             skins: Default::default(),
@@ -630,7 +638,7 @@ impl Renderer {
                 &self.shadows,
                 &self.probes,
                 &self.lightmaps,
-                &self.screen_space.off_buffer,
+                [&self.screen_space.off_buffer, &self.screen_trace.off_buffer],
             );
         }
         // Quality ▸ LOD Bias scales every LOD Group's switch heights.
@@ -1060,6 +1068,10 @@ impl Renderer {
         {
             self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
         }
+        let trace = screen.as_ref().and_then(|s| s.trace.as_ref());
+        if let Some(t) = trace {
+            self.screen_trace_passes(&mut encoder, target, t);
+        }
         let prepass = self.prepass_active(frame);
         if prepass {
             self.depth_prepass(&mut encoder, target.depth_view(), frame, &lists, &mut stats);
@@ -1069,6 +1081,7 @@ impl Renderer {
             culled: None,
             prepass,
             scene_copy,
+            trace,
         };
         match (&culled, self.culler.as_ref()) {
             (Some(c), Some(culler)) => {
@@ -1196,7 +1209,7 @@ impl Renderer {
                 &self.shadows,
                 &self.probes,
                 &self.lightmaps,
-                &self.screen_space.off_buffer,
+                [&self.screen_space.off_buffer, &self.screen_trace.off_buffer],
             );
         }
         let meshes = &lists.prep.uniforms;
@@ -1743,7 +1756,7 @@ impl Renderer {
         split: MainSplit,
     ) {
         let (first, last) = (split.phase != Some(1), split.phase != Some(0));
-        let copy = last && split.scene_copy;
+        let copy = last && (split.scene_copy || split.trace.is_some());
         // Sun shafts and glow occlusion read the depth after the main pass.
         let keep_depth = self.volumetrics.keeps_depth() || self.glows.keeps_depth();
         {
@@ -1842,12 +1855,21 @@ impl Renderer {
         }
         // The opaque scene, sampled by water refraction and scene-reading shaders.
         let main = || main_target(target);
-        frame_debug::pass(&self.capture, &["Scene Copy"], main, EventTarget::Hdr);
-        frame_debug::record(&self.capture, |_| {
-            FrameEvent::new(EventKind::Copy, "Copy Opaque Color + Depth")
-        });
-        self.scene_copies.record(device, encoder, target);
-        let scene = self.scene_copies.current(target.size()).map(|c| c.id);
+        if split.scene_copy {
+            frame_debug::pass(&self.capture, &["Scene Copy"], main, EventTarget::Hdr);
+            frame_debug::record(&self.capture, |_| {
+                FrameEvent::new(EventKind::Copy, "Copy Opaque Color + Depth")
+            });
+            self.scene_copies.record(device, encoder, target);
+        }
+        // Next render's SSGI / SSR read this frame's lit opaque scene.
+        if let Some(t) = split.trace {
+            self.screen_trace_history(encoder, target, t);
+        }
+        let scene = split
+            .scene_copy
+            .then(|| self.scene_copies.current(target.size()).map(|c| c.id))
+            .flatten();
         let mut pass = self.begin_main(encoder, target, false, false, true, false, keep_depth);
         if frame.shaded && !frame.water.is_empty() {
             frame_debug::pass(&self.capture, &["Water"], main, EventTarget::Hdr);
@@ -2045,7 +2067,7 @@ fn slots_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
 
 /// Group 1 of the lit mesh pass and of the shadow/mask passes; `lights` = the lights uniform
 /// and the LTC table; `buffers` = draws, slots; `screen` = screen-space texels (AO, contact
-/// shadows).
+/// shadows) and the screen-space trace texels (SSGI, SSR).
 #[allow(clippy::too_many_arguments)]
 fn draw_groups(
     device: &wgpu::Device,
@@ -2055,7 +2077,7 @@ fn draw_groups(
     shadows: &shadows::ShadowMaps,
     probes: &probes::gpu::ProbeGpu,
     lightmaps: &lightmap_gpu::LightmapGpu,
-    screen: &wgpu::Buffer,
+    [screen, trace]: [&wgpu::Buffer; 2],
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [lights, ltc, lights_2d] = lights;
     let [draws, slots] = buffers;
@@ -2109,6 +2131,11 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 16,
                 resource: screen.as_entire_binding(),
+            },
+            // Screen-space GI and reflection texels (screen_trace).
+            wgpu::BindGroupEntry {
+                binding: 17,
+                resource: trace.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: light2d::BINDING,

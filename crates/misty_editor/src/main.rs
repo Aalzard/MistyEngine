@@ -114,6 +114,8 @@ mod sample_skinning;
 #[cfg(test)]
 mod sample_splines;
 #[cfg(test)]
+mod sample_ssgi;
+#[cfg(test)]
 mod sample_stress;
 #[cfg(test)]
 mod sample_terrain;

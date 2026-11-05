@@ -24,6 +24,7 @@ pub mod reflection_probe;
 pub mod registry;
 pub mod render_settings;
 pub mod screen_space_overrides;
+pub mod screen_trace_overrides;
 pub mod skinned_mesh;
 pub mod sprite_components;
 pub mod static_flags;
@@ -55,6 +56,9 @@ pub use post_process::*;
 pub use reflection_probe::{ReflectionProbe, ReflectionProbeGroup};
 pub use registry::SceneComponent;
 pub use screen_space_overrides::{AmbientOcclusionOverride, ContactShadowsOverride};
+pub use screen_trace_overrides::{
+    ScreenSpaceGlobalIlluminationOverride, ScreenSpaceQuality, ScreenSpaceReflectionsOverride,
+};
 pub use skinned_mesh::SkinnedMeshRenderer;
 pub use sprite_components::*;
 pub use static_flags::StaticFlags;

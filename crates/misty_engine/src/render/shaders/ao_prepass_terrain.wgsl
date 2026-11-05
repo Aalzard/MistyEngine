@@ -13,6 +13,6 @@ fn vs_terrain_prepass(
     // Terrains are only translated, so the local normal is the world normal.
     out.normal = textureLoad(terrain_normals, c, 0).xyz;
     out.uv = vec2<f32>(0.0);
-    out.alpha = vec3<f32>(1.0, 0.0, 0.0);
+    out.alpha = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     return out;
 }
