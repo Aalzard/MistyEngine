@@ -389,8 +389,15 @@ impl UserData for LGameObject {
                                         None => match super::rigging_api::component(lua, e, &name)?
                                         {
                                             Some(v) => v,
-                                            None => super::vcam_api::component(lua, e, &name)?
-                                                .unwrap_or(Value::Nil),
+                                            None => {
+                                                match super::vcam_api::component(lua, e, &name)? {
+                                                    Some(v) => v,
+                                                    None => super::timeline_api::component(
+                                                        lua, e, &name,
+                                                    )?
+                                                    .unwrap_or(Value::Nil),
+                                                }
+                                            }
                                         },
                                     },
                                 },

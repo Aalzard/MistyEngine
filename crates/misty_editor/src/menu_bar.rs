@@ -418,6 +418,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
     });
+    ui.menu_button("Sequencing", |ui| {
+        let tab = Tab::Timeline;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
     ui.menu_button("Audio", |ui| {
         let tab = Tab::AudioMixer;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));

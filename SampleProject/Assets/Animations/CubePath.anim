@@ -1,0 +1,102 @@
+{
+  "length": 8.0,
+  "loop": false,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -3.0
+        },
+        {
+          "time": 2.0,
+          "value": 3.0
+        },
+        {
+          "time": 4.0,
+          "value": 3.0
+        },
+        {
+          "time": 6.0,
+          "value": -3.0
+        },
+        {
+          "time": 8.0,
+          "value": -3.0
+        }
+      ]
+    },
+    {
+      "path": "",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.5
+        },
+        {
+          "time": 2.0,
+          "value": 0.5
+        },
+        {
+          "time": 4.0,
+          "value": 0.5
+        },
+        {
+          "time": 6.0,
+          "value": 0.5
+        },
+        {
+          "time": 8.0,
+          "value": 0.5
+        }
+      ]
+    },
+    {
+      "path": "",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -2.0
+        },
+        {
+          "time": 2.0,
+          "value": -2.0
+        },
+        {
+          "time": 4.0,
+          "value": 2.0
+        },
+        {
+          "time": 6.0,
+          "value": 2.0
+        },
+        {
+          "time": 8.0,
+          "value": -2.0
+        }
+      ]
+    },
+    {
+      "path": "",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        },
+        {
+          "time": 8.0,
+          "value": 360.0,
+          "tangent": "Linear"
+        }
+      ]
+    }
+  ],
+  "events": []
+}

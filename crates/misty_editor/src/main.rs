@@ -98,6 +98,8 @@ mod sample_terrain;
 #[cfg(test)]
 mod sample_terrain2;
 #[cfg(test)]
+mod sample_timeline;
+#[cfg(test)]
 mod sample_ui;
 #[cfg(test)]
 mod sample_ui_widgets;
@@ -125,6 +127,7 @@ mod terrain_rules;
 mod terrain_tools;
 mod theme;
 mod thumbnails;
+mod timelines;
 mod title_bar;
 mod toolbar;
 mod tree_lines;

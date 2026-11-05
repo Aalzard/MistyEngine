@@ -138,6 +138,14 @@ pub fn apply_env(
             }
         }
     }
+    // `MISTY_TIMELINE_TIME=4.5` previews the Timeline window's director at that time.
+    if let Some(t) = std::env::var_os("MISTY_TIMELINE_TIME")
+        .and_then(|v| v.to_string_lossy().parse::<f32>().ok())
+    {
+        crate::panels::timeline::sync_target(s);
+        s.timeline.time = t.max(0.0);
+        s.timeline.preview = true;
+    }
     // `MISTY_UNDO_DEMO=1` makes a few named edits (for Undo History screenshots).
     if std::env::var_os("MISTY_UNDO_DEMO").is_some() {
         undo_demo(s);

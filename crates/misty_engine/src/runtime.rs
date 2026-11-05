@@ -197,6 +197,11 @@ impl Runtime {
             .with_animator(|a| a.set_param(scene, e, name, &ParamKind::ALL, value));
     }
 
+    /// Playback time and state of the Playable Director on `e` (the Timeline window's playhead).
+    pub fn director_status(&self, e: hecs::Entity) -> (f64, crate::timeline::PlayState) {
+        self.host.with_timeline(|t| (t.time(e), t.state(e)))
+    }
+
     /// Corners left on `e`'s Nav Mesh Agent path, from the agent (editor path gizmo).
     pub fn nav_path(&self, e: hecs::Entity) -> Option<Vec<Vec3>> {
         self.host.with_navigation(|n| n.path_of(e))

@@ -3,7 +3,7 @@
 
 pub mod preview;
 mod rows;
-mod timeline;
+pub(crate) mod timeline;
 
 use std::collections::{BTreeSet, HashMap};
 

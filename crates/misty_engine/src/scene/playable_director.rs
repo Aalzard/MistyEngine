@@ -1,0 +1,111 @@
+//! The Playable Director component: plays a `.timeline` asset in Play mode, with the scene
+//! objects each track drives (evaluated by `timeline::DirectorPlayer`).
+
+use hecs::Entity;
+use serde::{Deserialize, Serialize};
+
+/// Which clock moves the director.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DirectorUpdateMode {
+    /// Scaled game time (pauses with Time Scale 0).
+    #[default]
+    GameTime,
+    UnscaledGameTime,
+    /// Only moves when a script sets `time` and calls `Evaluate()`.
+    Manual,
+}
+
+impl DirectorUpdateMode {
+    pub const ALL: [DirectorUpdateMode; 3] = [Self::GameTime, Self::UnscaledGameTime, Self::Manual];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::GameTime => "Game Time",
+            Self::UnscaledGameTime => "Unscaled Game Time",
+            Self::Manual => "Manual",
+        }
+    }
+}
+
+/// What happens when playback reaches the end of the timeline.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DirectorWrapMode {
+    /// Stay on the last frame (still playing).
+    Hold,
+    /// Start over.
+    Loop,
+    /// Stop.
+    #[default]
+    None,
+}
+
+impl DirectorWrapMode {
+    pub const ALL: [DirectorWrapMode; 3] = [Self::Hold, Self::Loop, Self::None];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Hold => "Hold",
+            Self::Loop => "Loop",
+            Self::None => "None",
+        }
+    }
+}
+
+/// A track and the scene object it drives.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TrackBinding {
+    /// The track's id in the timeline asset.
+    pub track: String,
+    #[serde(with = "super::components::entity_bits::option")]
+    pub object: Option<Entity>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PlayableDirector {
+    pub enabled: bool,
+    /// Timeline asset path ("Assets/Timelines/Intro.timeline").
+    pub playable: Option<String>,
+    pub update_method: DirectorUpdateMode,
+    pub play_on_awake: bool,
+    pub wrap_mode: DirectorWrapMode,
+    /// Seconds playback starts at.
+    pub initial_time: f32,
+    pub bindings: Vec<TrackBinding>,
+}
+
+impl Default for PlayableDirector {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            playable: None,
+            update_method: DirectorUpdateMode::GameTime,
+            play_on_awake: true,
+            wrap_mode: DirectorWrapMode::None,
+            initial_time: 0.0,
+            bindings: Vec::new(),
+        }
+    }
+}
+
+impl PlayableDirector {
+    /// The object bound to track `id`.
+    pub fn binding(&self, id: &str) -> Option<Entity> {
+        self.bindings
+            .iter()
+            .find(|b| b.track == id)
+            .and_then(|b| b.object)
+    }
+
+    /// Bind track `id` (`None` clears it).
+    pub fn set_binding(&mut self, id: &str, object: Option<Entity>) {
+        match self.bindings.iter_mut().find(|b| b.track == id) {
+            Some(b) => b.object = object,
+            None => self.bindings.push(TrackBinding {
+                track: id.to_owned(),
+                object,
+            }),
+        }
+    }
+}

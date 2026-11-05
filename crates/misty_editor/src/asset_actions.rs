@@ -100,6 +100,15 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .create(&rel, Default::default())
                 .map(|_| path)
         }
+        AssetKind::Timeline => {
+            let ext = misty_engine::timeline::EXTENSION;
+            let path = asset_ops::unique_path(&dir, "New Timeline", ext);
+            let rel = s.assets.relative(&path);
+            s.anim_clips
+                .timelines
+                .create(&rel, Default::default())
+                .map(|_| path)
+        }
         AssetKind::SurfaceShader | AssetKind::UnlitShader => {
             let (stem, text) = if kind == AssetKind::SurfaceShader {
                 ("New Surface Shader", shader_asset::templates::SURFACE)

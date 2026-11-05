@@ -1,0 +1,144 @@
+{
+  "frame_rate": 60.0,
+  "duration_mode": "BasedOnClips",
+  "fixed_duration": 5.0,
+  "tracks": [
+    {
+      "id": "t1",
+      "name": "Cube",
+      "kind": "Animation",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [
+        {
+          "name": "CubePath",
+          "start": 0.0,
+          "duration": 8.0,
+          "asset": "Assets/Animations/CubePath.anim",
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.5,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0
+        },
+        {
+          "name": "CubeHop",
+          "start": 7.0,
+          "duration": 3.0,
+          "asset": "Assets/Animations/CubeHop.anim",
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0
+        }
+      ],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t2",
+      "name": "Light & Sound",
+      "kind": "Group",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t3",
+      "name": "Lamp",
+      "kind": "Activation",
+      "group": "t2",
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [
+        {
+          "name": "Active",
+          "start": 3.0,
+          "duration": 7.0,
+          "asset": null,
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0
+        }
+      ],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t4",
+      "name": "Chime",
+      "kind": "Audio",
+      "group": "t2",
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [
+        {
+          "name": "Chime",
+          "start": 3.0,
+          "duration": 1.5,
+          "asset": "Assets/Audio/Chime.wav",
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0
+        }
+      ],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t5",
+      "name": "Cues",
+      "kind": "Signal",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [],
+      "markers": [
+        {
+          "time": 3.0,
+          "method": "OnCue",
+          "parameter": "The light is on",
+          "retroactive": false
+        },
+        {
+          "time": 9.0,
+          "method": "OnCue",
+          "parameter": "Last hop",
+          "retroactive": false
+        }
+      ],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    }
+  ],
+  "markers": [
+    {
+      "time": 0.0,
+      "method": "OnCue",
+      "parameter": "Action!",
+      "retroactive": false
+    }
+  ]
+}

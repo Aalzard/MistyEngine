@@ -255,7 +255,9 @@ impl EditorApp {
             }
             // Delete removes selected keys / states when the Animation / Animator window has focus.
             if key == Key::Delete
-                && (self.state.animation.wants_delete() || self.state.animator.wants_delete())
+                && (self.state.animation.wants_delete()
+                    || self.state.animator.wants_delete()
+                    || self.state.timeline.wants_delete())
             {
                 continue;
             }
@@ -344,6 +346,7 @@ impl EditorApp {
                     | Action::OpenHub { .. }
             ) {
                 animation::preview::stop_preview(&mut self.state);
+                crate::panels::timeline::preview::stop_preview(&mut self.state);
             }
             if let Some(action) = commands::apply(&mut self.state, action) {
                 self.apply(ctx, action);
@@ -587,6 +590,7 @@ impl eframe::App for EditorApp {
         self.shortcuts(&ctx);
         self.game_frame(&ctx);
         animation::preview::pre_frame(&mut self.state, ctx.input(|i| i.stable_dt));
+        crate::panels::timeline::preview::pre_frame(&mut self.state, ctx.input(|i| i.stable_dt));
 
         let bar_frame = egui::Frame::new()
             .fill(theme::TAB_BAR_BG)

@@ -63,6 +63,7 @@ pub enum AssetKind {
     Animation,
     AnimatorController,
     AudioMixer,
+    Timeline,
     /// Shader ▸ Surface Shader (lit, from the template).
     SurfaceShader,
     /// Shader ▸ Unlit Shader.
@@ -72,7 +73,7 @@ pub enum AssetKind {
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 7] = [
+    pub const ALL: [AssetKind; 8] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
@@ -80,6 +81,7 @@ impl AssetKind {
         AssetKind::Animation,
         AssetKind::AnimatorController,
         AssetKind::AudioMixer,
+        AssetKind::Timeline,
     ];
 
     /// Menu label.
@@ -92,6 +94,7 @@ impl AssetKind {
             AssetKind::Animation => "Animation",
             AssetKind::AnimatorController => "Animator Controller",
             AssetKind::AudioMixer => "Audio Mixer",
+            AssetKind::Timeline => "Timeline",
             AssetKind::SurfaceShader => "Surface Shader",
             AssetKind::UnlitShader => "Unlit Shader",
             AssetKind::MaterialFromShader => "Material from Shader",

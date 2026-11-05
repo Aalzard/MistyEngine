@@ -35,6 +35,7 @@ pub mod rigging_api;
 pub mod scene_api;
 pub mod syntax;
 pub mod terrain_api;
+pub mod timeline_api;
 pub mod ui_api;
 mod ui_dispatch;
 pub mod ui_widgets_api;
@@ -166,6 +167,8 @@ pub struct World {
     pub animator: AnimatorPlayer,
     /// Animation Rigging memory (pre-rig poses, bind offsets, damping).
     pub rigging: crate::rigging::RigState,
+    /// Playable Directors playing timelines (`Play`, `Pause`, `Stop`, …).
+    pub timeline: crate::timeline::DirectorPlayer,
     /// Nav Mesh Agents and the scene's nav mesh.
     pub navigation: crate::navigation::NavRuntime,
     /// Input Manager axes (`Input.GetAxis`, `GetButton`).
@@ -256,6 +259,7 @@ impl ScriptHost {
             animation: AnimationPlayer::new(project_root.clone()),
             animator: AnimatorPlayer::new(project_root.clone()),
             rigging: Default::default(),
+            timeline: crate::timeline::DirectorPlayer::new(project_root.clone()),
             axes: crate::input::InputManager::new(&settings.input),
             tags_layers: settings.tags_and_layers.clone(),
             cameras: Default::default(),
@@ -290,6 +294,7 @@ impl ScriptHost {
         host.with_world(|w| {
             w.audio.play_on_awake(&w.scene, None);
             w.animation.play_automatically(&w.scene, None);
+            w.timeline.play_on_awake(&w.scene, None);
         });
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
         host
@@ -298,6 +303,11 @@ impl ScriptHost {
     /// Run `f` on the Animator state machines between frames (the Animator window's live view).
     pub fn with_animator<R>(&self, f: impl FnOnce(&mut AnimatorPlayer) -> R) -> R {
         self.with_world(|w| f(&mut w.animator))
+    }
+
+    /// The Playable Directors of this game (between frames).
+    pub fn with_timeline<R>(&self, f: impl FnOnce(&mut crate::timeline::DirectorPlayer) -> R) -> R {
+        self.with_world(|w| f(&mut w.timeline))
     }
 
     /// Nav Mesh Agents of this game (between frames).
@@ -479,6 +489,7 @@ impl ScriptHost {
         self.with_world(|w| {
             w.audio.play_on_awake(&w.scene, Some(root));
             w.animation.play_automatically(&w.scene, Some(root));
+            w.timeline.play_on_awake(&w.scene, Some(root));
         });
     }
 
@@ -505,13 +516,63 @@ impl ScriptHost {
             }
             self.flush_spawned();
         }
+        // Timelines run last: like the reference engine, they override other animation.
+        let unscaled = self.with_world(|w| w.time.unscaled_delta);
+        let events = self.with_world(|w| {
+            let World {
+                timeline,
+                scene,
+                audio,
+                ..
+            } = w;
+            timeline.update(scene, audio, dt, unscaled)
+        });
+        self.director_events(events);
         let logs = self.with_world(|w| {
             let mut l = w.animation.take_logs();
             l.extend(w.animator.take_logs());
+            l.extend(w.timeline.take_logs());
             l
         });
         for l in logs {
             self.log(LogKind::Warning, l);
+        }
+    }
+
+    /// Signals call their method on the target's scripts; `stopped` runs the listeners added
+    /// with `director.stopped:AddListener(f)`.
+    fn director_events(&mut self, events: Vec<crate::timeline::DirectorEvent>) {
+        use crate::timeline::DirectorEvent;
+        for ev in events {
+            match ev {
+                DirectorEvent::Signal {
+                    target,
+                    method,
+                    parameter,
+                } => {
+                    let arg = parameter
+                        .and_then(|p| self.lua.create_string(&p).ok())
+                        .map(Value::String);
+                    self.send_message_with(target, &method, arg, "Signal");
+                }
+                DirectorEvent::Stopped(e) => {
+                    let arg = self
+                        .lua
+                        .create_userdata(timeline_api::LDirector(e))
+                        .map(Value::UserData)
+                        .ok();
+                    for f in ui_widgets_api::listeners(&self.lua, e, "stopped") {
+                        let result = match &arg {
+                            Some(a) => f.call::<()>(a.clone()),
+                            None => f.call::<()>(()),
+                        };
+                        if let Err(err) = result {
+                            self.log(LogKind::Error, format!("stopped listener: {err}"));
+                        }
+                        self.flush_spawned();
+                    }
+                }
+            }
         }
     }
 

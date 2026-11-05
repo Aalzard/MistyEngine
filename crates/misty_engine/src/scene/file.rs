@@ -74,6 +74,7 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("LOD Group", "lods", "renderers"),
     ("Virtual Camera", "", "follow"),
     ("Virtual Camera", "", "look_at"),
+    ("Playable Director", "bindings", "object"),
 ];
 
 /// Every object-reference field: the ones above plus the UI widgets' (see `ui_widgets`).
