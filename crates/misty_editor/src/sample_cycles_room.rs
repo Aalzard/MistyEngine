@@ -414,12 +414,14 @@ fn scene(variant: Variant) -> Scene {
     ceiling_light(&mut s, mode);
     room_probe(&mut s, path);
     let fx = s.spawn("Global Volume", None);
-    s.add(fx, volume());
+    s.add(fx, volume(variant));
     s
 }
 
-/// Post-processing of the demo (see the step log for why each value).
-fn volume() -> PostProcessVolume {
+/// Post-processing of the demo (see the step log for why each value). The baked variant is
+/// the reference: its path-traced lightmap already holds the room's occlusion, so it keeps
+/// the lighter AO and the exposure the room was first tuned with.
+fn volume(variant: Variant) -> PostProcessVolume {
     let mut v = PostProcessVolume::default();
     v.tonemapping.active = true;
     v.tonemapping.mode = TonemapMode::Agx;
@@ -428,14 +430,32 @@ fn volume() -> PostProcessVolume {
     v.bloom.threshold = 1.0;
     v.bloom.scatter = 0.7;
     v.color_adjustments.active = true;
-    v.color_adjustments.post_exposure = 1.0;
+    // 0.08 stop less than without SSGI: its bounce off the walls and floor lifts the room
+    // a little (see docs/pending/gfx-polish.md).
+    v.color_adjustments.post_exposure = 0.92;
     let ao = &mut v.ambient_occlusion;
     ao.active = true;
-    ao.intensity = 2.0;
-    ao.radius = 1.2;
+    // Darker seams and wider contact shade under the boxes (also on the direct light a
+    // little), as in the path-traced room.
+    ao.intensity = 3.5;
+    ao.radius = 1.6;
+    ao.direct_lighting_strength = 0.6;
+    if variant == Variant::Baked {
+        v.color_adjustments.post_exposure = 1.0;
+        ao.intensity = 2.0;
+        ao.radius = 1.2;
+        ao.direct_lighting_strength = 0.0;
+    }
     ao.step_count = 10;
     ao.full_resolution = true;
     ao.temporal = true;
+    // Per-surface bounce light (the probes' diffuse fills the rays that leave the screen) and
+    // the glossy floor's reflection. Below 1: rays that leave the screen towards the dark
+    // opening still get the probes' room-average diffuse, which brightens surfaces facing
+    // the camera; a weaker bounce keeps the pillar and cube fronts nearer the path tracer.
+    v.screen_space_gi.active = true;
+    v.screen_space_gi.intensity = 0.6;
+    v.screen_space_reflections.active = true;
     v
 }
 
@@ -454,9 +474,35 @@ fn screenshots() -> PathBuf {
 fn render_rgba(gpu: &Gpu, view: &GameView, frames: u32) -> Vec<u8> {
     let (device, queue) = gpu;
     let mut renderer = misty_engine::render::Renderer::new(device);
+    // `MISTY_GFX_OFF=ssgi,ssr,ao,mask,soft`: turn effects off to isolate one (debugging).
+    let off = std::env::var("MISTY_GFX_OFF").unwrap_or_default();
+    let off = |name: &str| off.split(',').any(|o| o.trim() == name);
+    let mut quality = renderer.quality().clone();
+    if off("mask") {
+        quality.shadow_temporal = false;
+        quality.shadow_denoise = false;
+    }
+    if off("soft") {
+        quality.soft_shadows = misty_engine::quality::Tier::Off;
+    }
+    renderer.set_quality(device, &quality);
     let target = renderer.create_target(device, SIZE, SIZE);
+    let mut frame = view.frame();
+    frame.post.ssgi.enabled &= !off("ssgi");
+    frame.post.ssr.enabled &= !off("ssr");
+    frame.post.ao.enabled &= !off("ao");
+    let unlit: Vec<_>;
+    if off("panel") {
+        unlit = frame
+            .meshes
+            .iter()
+            .filter(|m| m.material.emission_intensity <= 0.0)
+            .cloned()
+            .collect();
+        frame.meshes = &unlit;
+    }
     for _ in 0..frames.max(1) {
-        renderer.render(device, queue, &target, &view.frame());
+        renderer.render(device, queue, &target, &frame);
     }
     crate::project_thumbnail::read_pixels(device, queue, &target)
 }
@@ -688,6 +734,105 @@ fn render_template_tonemappers() {
             .unwrap();
     }
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Luminance banding of a flat region of a `SIZE`² RGBA8 image: RMS of the luminance
+/// band-passed by a difference of box means (5×5 minus 31×31), i.e. the energy at roughly
+/// 10–60 px wavelengths. Pixel noise averages out in the small box, the room's smooth
+/// gradients in the difference.
+fn banding(rgba: &[u8], (x0, y0, x1, y1): (i32, i32, i32, i32)) -> f32 {
+    let n = SIZE as usize;
+    // Summed-area table of the luminance (one row and column of zeros in front).
+    let mut sat = vec![0.0f64; (n + 1) * (n + 1)];
+    for y in 0..n {
+        for x in 0..n {
+            let p = &rgba[(y * n + x) * 4..];
+            let l = 0.2126 * p[0] as f64 + 0.7152 * p[1] as f64 + 0.0722 * p[2] as f64;
+            sat[(y + 1) * (n + 1) + x + 1] =
+                l + sat[y * (n + 1) + x + 1] + sat[(y + 1) * (n + 1) + x] - sat[y * (n + 1) + x];
+        }
+    }
+    let mean = |x: i32, y: i32, r: i32| {
+        let at = |x: i32, y: i32| sat[y as usize * (n + 1) + x as usize];
+        let (a, b) = ((x - r, y - r), (x + r + 1, y + r + 1));
+        (at(b.0, b.1) - at(a.0, b.1) - at(b.0, a.1) + at(a.0, a.1)) / ((2 * r + 1).pow(2) as f64)
+    };
+    let mut sum = 0.0;
+    let mut count = 0.0;
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let d = mean(x, y, 2) - mean(x, y, 15);
+            sum += d * d;
+            count += 1.0;
+        }
+    }
+    (sum / count).sqrt() as f32
+}
+
+/// Regression: half-resolution SSGI took its interleaved-gradient noise at full-pixel
+/// coordinates (every other pixel), which aliases into regular diagonal bands (~20–40 px
+/// apart, ~30°) that 24 frames of accumulation and the à-trous filter left on every wall of
+/// this room. With SSGI on, the back wall must stay about as smooth as without it. The
+/// quality level is set explicitly so temporal anti-aliasing (which would only blur the
+/// bands) stays out of it.
+#[test]
+fn cycles_room_ssgi_leaves_no_bands_on_the_walls() {
+    let Some(gpu) = crate::sample_render::headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let root = project();
+    let (scene, _) = Scene::load(&root.join(SCENE)).unwrap();
+    let probe: Vec<_> = (0..2)
+        .map(|i| Arc::new(ProbeData::load(&root.join(probes::asset_path_for(SCENE, i))).unwrap()))
+        .collect();
+    let view = view_of(&scene, &Default::default(), &probe);
+    // The light panel sends its glow through SSGI here (Contribute GI on): rays that find it
+    // bring back far more than the others, the hardest case for the ray pattern.
+    let meshes: Vec<_> = view
+        .frame()
+        .meshes
+        .iter()
+        .cloned()
+        .map(|mut m| {
+            m.material.contribute_gi = true;
+            m
+        })
+        .collect();
+    let render = |ssgi: bool| {
+        let (device, queue) = &gpu;
+        let mut renderer = misty_engine::render::Renderer::new(device);
+        renderer.set_quality(device, &misty_engine::quality::QualityLevel::high());
+        let target = renderer.create_target(device, SIZE, SIZE);
+        let mut frame = view.frame();
+        frame.meshes = &meshes;
+        frame.post.ssgi = misty_engine::render::SsgiSettings {
+            enabled: ssgi,
+            full_resolution: false,
+            temporal: true,
+            denoise: true,
+            intensity: 1.0,
+            ..frame.post.ssgi
+        };
+        frame.post.ssr.enabled = false;
+        for _ in 0..24 {
+            renderer.render(device, queue, &target, &frame);
+        }
+        crate::project_thumbnail::read_pixels(device, queue, &target)
+    };
+    // The back wall above the boxes and the left wall (clear of edges by the 15 px box).
+    let back = (270, 250, 760, 420);
+    let left = (40, 200, 190, 600);
+    let (off, on) = (render(false), render(true));
+    for (name, region) in [("back wall", back), ("left wall", left)] {
+        let (b_off, b_on) = (banding(&off, region), banding(&on, region));
+        eprintln!("{name} banding: SSGI off {b_off:.2}, on {b_on:.2}");
+        // Before the fix: back wall 1.5, left wall 1.6 (SSGI off: 0.2, 0.5; after: 0.4, 0.4).
+        assert!(
+            b_on < b_off + 0.6,
+            "{name}: SSGI bands the wall ({b_off} → {b_on})"
+        );
+    }
 }
 
 /// On a GPU: both committed variants render with their committed probes / lightmap, the room

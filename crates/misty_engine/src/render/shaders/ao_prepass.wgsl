@@ -17,6 +17,8 @@ struct PrepassOut {
     // x = colour alpha, y = cutoff, z = 1 when the albedo alpha holds smoothness,
     // w = material smoothness (screen-space reflections).
     @location(2) @interpolate(flat) alpha: vec4<f32>,
+    // 1 when the surface sends no light through Screen Space GI.
+    @location(3) @interpolate(flat) no_gi: f32,
 };
 
 @vertex
@@ -32,19 +34,22 @@ fn vs_main(
     out.normal = (d.normal * vec4<f32>(normal, 0.0)).xyz;
     out.uv = draw_uv(d, uv);
     out.alpha = vec4<f32>(d.color.a, d.surface.y, d.surface.w, d.params.y);
+    out.no_gi = d.lightmap.y;
     return out;
 }
 
 // Back faces (Cull Off) face the camera like the main pass lights them. w = 1 + smoothness
-// (0 = cleared, no surface), read by the screen-space reflections.
-fn encode_normal(n: vec3<f32>, front: bool, smoothness: f32) -> vec4<f32> {
+// (0 = cleared, no surface), read by the screen-space reflections; negative when the surface
+// sends no light through Screen Space GI (render/screen_trace).
+fn encode_normal(n: vec3<f32>, front: bool, smoothness: f32, no_gi: f32) -> vec4<f32> {
     let m = normalize(n);
-    return vec4<f32>(select(-m, m, front), 1.0 + clamp(smoothness, 0.0, 1.0));
+    let w = 1.0 + clamp(smoothness, 0.0, 1.0);
+    return vec4<f32>(select(-m, m, front), select(w, -w, no_gi > 0.5));
 }
 
 @fragment
 fn fs_normal(in: PrepassOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    return encode_normal(in.normal, front, in.alpha.w);
+    return encode_normal(in.normal, front, in.alpha.w, in.no_gi);
 }
 
 // Cutout: the same holes as the main pass.
@@ -55,5 +60,5 @@ fn fs_normal_cutout(in: PrepassOut, @builtin(front_facing) front: bool) -> @loca
     if (alpha < in.alpha.y) {
         discard;
     }
-    return encode_normal(in.normal, front, in.alpha.w);
+    return encode_normal(in.normal, front, in.alpha.w, in.no_gi);
 }

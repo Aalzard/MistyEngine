@@ -911,6 +911,28 @@
           },
           "enabled": true,
           "priority": 0.0,
+          "screen_space_gi": {
+            "active": true,
+            "denoise": true,
+            "full_resolution": false,
+            "intensity": 0.6,
+            "lightmapped_surfaces": false,
+            "quality": "Medium",
+            "radius": 3.0,
+            "temporal": true,
+            "thickness": 0.5
+          },
+          "screen_space_reflections": {
+            "active": true,
+            "edge_fade": 0.1,
+            "full_resolution": true,
+            "intensity": 1.0,
+            "max_distance": 50.0,
+            "max_roughness": 0.6,
+            "quality": "Medium",
+            "temporal": true,
+            "thickness": 0.3
+          },
           "tonemapping": {
             "active": true,
             "mode": "AgX"

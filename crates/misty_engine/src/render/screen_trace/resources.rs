@@ -74,7 +74,11 @@ impl Passes {
         );
         let color_down_layout = layout(
             "misty colour history mips",
-            &[entry(1, texture(false)), entry(3, storage(IMAGE_FORMAT))],
+            &[
+                entry(1, texture(false)),
+                entry(3, storage(IMAGE_FORMAT)),
+                entry(4, texture(false)),
+            ],
         );
 
         let module = |label, src: String| {
