@@ -370,6 +370,8 @@ pub struct EditorState {
     pub frame_debugger: crate::panels::frame_debugger::FrameDebuggerWindow,
     /// Window ▸ Analysis ▸ Memory Profiler snapshots.
     pub memory_profiler: crate::panels::memory_profiler::MemoryProfilerWindow,
+    /// Window ▸ General ▸ Test Runner: test list, results and the run in progress.
+    pub test_runner: crate::panels::test_runner::TestRunnerWindow,
     /// Saved window layouts and the Save Layout prompt.
     pub layouts: crate::layouts::Layouts,
     /// Ctrl+K search palette, its asset index and recent searches.
@@ -482,6 +484,7 @@ impl EditorState {
             profiler: Default::default(),
             frame_debugger: Default::default(),
             memory_profiler: Default::default(),
+            test_runner: Default::default(),
             layouts: Default::default(),
             search: crate::search::SearchPalette::new(&root),
             tutorials: Default::default(),

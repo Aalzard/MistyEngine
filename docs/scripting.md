@@ -483,3 +483,91 @@ local grounded = Physics2D.Raycast(self.transform.position + Vector2.down * 0.5,
 ```
 
 Sample: `Assets/Scripts/PlayerController2D.lua`, `Assets/Scripts/CameraFollow2D.lua` (Platformer2D scene).
+
+## Testing (Test Runner)
+Project tests are Lua files under `Assets/Tests/` (sub-folders too): `*.test.lua` are **EditMode**
+tests and `*.playtest.lua` are **PlayMode** tests. Create them with Assets ▸ Create ▸ Testing ▸
+EditMode Test / PlayMode Test and run them from Window ▸ General ▸ Test Runner (or the command
+line, below).
+
+```lua
+describe("Inventory", function()
+    local items
+    beforeEach(function() items = {} end)
+
+    it("starts empty", function()
+        assert.equal(#items, 0)
+    end)
+
+    it.skip("is not written yet", function() end)
+end)
+```
+
+| | |
+|---|---|
+| Declaring | `describe(name, fn)` (nests), `it(name, fn)` / `test(name, fn)`; `it.skip` / `xit`, `describe.skip` / `xdescribe`, `it(name)` without a function (pending); `it.only` / `describe.only` run just those tests of the file |
+| Hooks | `beforeAll(fn)`, `afterAll(fn)`, `beforeEach(fn)`, `afterEach(fn)` at the top level or inside a `describe`; outer `beforeEach` first, inner `afterEach` first; `afterEach` runs even when the test or a `beforeEach` failed; a failing `beforeAll` fails every test of its block |
+| `assert` | `equal(a, b [, msg])` (tables compared deeply), `notEqual`, `near(a, b [, eps [, msg]])` (numbers, Vector2/3, default eps 1e-6), `isTrue`, `isFalse`, `isNil`, `notNil`, `greater(a, b)`, `less(a, b)`, `contains(stringOrTable, x)`, `throws(fn [, textInMessage])` → the message, `fail(msg)`; `assert(v, msg)` still works |
+| `expect(x)` | `.toBe(y)`, `.toEqual(y)`, `.toBeNear(y [, eps])`, `.toBeTruthy()`, `.toBeFalsy()`, `.toBeNil()`, `.toBeGreaterThan(n)`, `.toBeLessThan(n)`, `.toContain(x)`, `.toThrow([text])`, and `.never.toBe/toEqual/toBeNil/toContain`; `expect(x):toBe(y)` works too |
+
+A failure reports the test file line that made it (click it in the Test Runner to open the Code
+Editor there) and a Lua traceback. One failing test doesn't stop the others. Lua code that runs for
+10 s without yielding (an endless loop) fails its test.
+
+**EditMode** tests run with the game API against a scratch copy of the open scene (a fresh copy for
+every test; nothing plays, no `Awake`/`Update`). `loadScene(name)` swaps the scratch scene for a
+scene file. Edits never reach the real scene.
+
+**PlayMode** tests each get their own play session, started on an empty scene and torn down after
+the test; frames run at a fixed 1/60 s, so tests are deterministic. The test code is a coroutine
+that uses the full game API on the running game:
+
+| | |
+|---|---|
+| `loadScene(name)` | Restart the session on a scene (name in Build Settings, any `<name>.scene` under Assets, or a path); its `Awake` runs at once, `Start` on the next frame, then the test goes on |
+| `yield(seconds)` | Let the game run for that much game time (at least one frame) |
+| `yieldFrames(n)` | Let the game run `n` frames (1 by default) |
+| `waitUntil(fn [, timeout])` | Run frames until `fn()` is true; fails after `timeout` s of game time (10) |
+| `Input.simulateKeyDown(key)` / `simulateKeyUp(key)` | Hold / release a key from the next frame (`GetKey`, `GetKeyDown`, `GetAxis` see it) |
+| `Input.simulateKeyPress(key)` | Press for one frame, released on the next |
+| `Input.simulateMouseDown([button])` / `simulateMouseUp` / `simulateMousePosition(x, y)` | Mouse buttons and pointer (game-image pixels, 1280×720) |
+| `Input.simulateReset()` | Release everything |
+| `setTimeout(seconds)` | Longest game time the test may take (30 s by default) |
+| `ignoreErrorLogs()` | Errors logged by the game or the test (`Debug.LogError`, script errors) fail a PlayMode or EditMode test unless it calls this |
+
+```lua
+describe("PlayerController2D", function()
+    local player
+    beforeEach(function()
+        loadScene("Platformer2D")
+        player = GameObject.Find("Player")
+        yield(0.5)                       -- settle on the ground
+    end)
+
+    it("runs right while D is held", function()
+        local start = player.transform.position.x
+        Input.simulateKeyDown("d")
+        yield(1)
+        expect(player.transform.position.x):toBeGreaterThan(start + 3)
+    end)
+end)
+```
+
+Lua state (locals at the top of the file, upvalues) is shared by the tests of one file within a
+run, like a test class; the scene and the play session are not. In PlayMode, `beforeAll` runs in the
+first test's session, so objects it finds are gone in the next test; find them in `beforeEach`.
+
+**Test Runner window**: EditMode / PlayMode tabs; a tree of files ▸ describe blocks ▸ tests with
+pass/fail/skipped icons and durations; Run All, Run Selected (a file, a block or a test),
+Run Failed, Cancel, Rerun on save; a search field; the selected test's message, file:line link,
+traceback and output below; a summary bar that turns green or red. Tests run a slice per editor
+frame, so the editor keeps responding (PlayMode tests step through game frames). Runs are refused
+while the editor is in Play mode.
+
+**Command line** (CI): `misty --run-tests <project> [--filter <text>] [--mode EditMode|PlayMode]
+[--results results.xml]` runs every test (EditMode first) without a window against the first Build
+Settings scene, prints PASS/FAIL lines, writes JUnit XML and exits with 0 (all passed), 1 (a test
+failed) or 2 (bad arguments or project). `--filter` matches `file::Suite > test` case-insensitively.
+
+Samples: `Assets/Tests/MathTests.test.lua`, `PlayerControllerTests.playtest.lua` (Platformer2D),
+`VehicleTests.playtest.lua` (VehicleDemo).

@@ -42,6 +42,8 @@ pub enum Tab {
     FrameDebugger,
     /// Window ▸ Analysis ▸ Memory Profiler.
     MemoryProfiler,
+    /// Window ▸ General ▸ Test Runner.
+    TestRunner,
 }
 
 impl Tab {
@@ -58,7 +60,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 14] = [
+    pub const ON_DEMAND: [Tab; 15] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -73,6 +75,7 @@ impl Tab {
         Tab::OcclusionCulling,
         Tab::FrameDebugger,
         Tab::MemoryProfiler,
+        Tab::TestRunner,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -99,6 +102,8 @@ impl Tab {
             Tab::AudioMixer | Tab::Profiler => Some(Tab::Project),
             // Analysis windows keep the Game view visible (the Frame Debugger replays into it).
             Tab::FrameDebugger | Tab::MemoryProfiler => Some(Tab::Project),
+            // A tree with failure details below wants height: it docks with the Scene view.
+            Tab::TestRunner => Some(Tab::Scene),
             _ => None,
         }
     }
@@ -127,6 +132,7 @@ impl Tab {
             Tab::OcclusionCulling => "Occlusion Culling",
             Tab::FrameDebugger => "Frame Debugger",
             Tab::MemoryProfiler => "Memory Profiler",
+            Tab::TestRunner => "Test Runner",
         }
     }
 
@@ -154,6 +160,7 @@ impl Tab {
             Tab::OcclusionCulling => "◩",
             Tab::FrameDebugger => crate::panels::frame_debugger::ICON,
             Tab::MemoryProfiler => crate::panels::memory_profiler::ICON,
+            Tab::TestRunner => crate::panels::test_runner::ICON,
         }
     }
 
@@ -181,7 +188,8 @@ impl Tab {
             | Tab::EffectGraph
             | Tab::OcclusionCulling
             | Tab::FrameDebugger
-            | Tab::MemoryProfiler => "",
+            | Tab::MemoryProfiler
+            | Tab::TestRunner => "",
         }
     }
 }

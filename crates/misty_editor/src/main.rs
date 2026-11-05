@@ -179,7 +179,8 @@ enum Start {
 }
 
 /// `misty [<project>]`, `misty --new <Template> <folder>` (creates the project, then opens it)
-/// or `misty --build <project> <output folder>` (builds the game without a window, then exits).
+/// or `misty --build <project> <output folder>` (builds the game without a window, then exits)
+/// or `misty --run-tests <project> [--filter X] [--results out.xml]` (runs the project's tests).
 fn parse_args() -> Result<Start, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
@@ -207,8 +208,14 @@ fn parse_args() -> Result<Start, String> {
                 Err(e) => Err(format!("build failed: {e}")),
             }
         }
+        [flag, rest @ ..] if flag == "--run-tests" => {
+            // Headless test run for CI: JUnit XML and the exit code (see `testing::cli`).
+            let code = misty_engine::testing::cli::run(rest, &mut std::io::stdout());
+            std::process::exit(code)
+        }
         [flag, ..] if flag.starts_with("--") => Err(format!(
-            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> <output folder> ({flag}?)"
+            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> <output folder> | {} ({flag}?)",
+            misty_engine::testing::cli::USAGE
         )),
         [project, ..] => Ok(Start::Editor(PathBuf::from(project))),
     }

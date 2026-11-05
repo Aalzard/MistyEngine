@@ -23,6 +23,7 @@ pub(crate) mod project_menus;
 mod project_tree;
 pub(crate) mod scene;
 pub mod shader_graph;
+pub mod test_runner;
 pub mod tile_palette;
 pub mod timeline;
 pub mod undo_history;
@@ -87,6 +88,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::OcclusionCulling => occlusion::show(ui, self.state),
             Tab::FrameDebugger => frame_debugger::show(ui, self.state),
             Tab::MemoryProfiler => memory_profiler::show(ui, self.state, self.gpu.as_deref()),
+            Tab::TestRunner => test_runner::show(ui, self.state),
         }
     }
 
