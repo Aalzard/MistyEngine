@@ -339,6 +339,13 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<CapsuleCollider2D>(),
             ComponentInfo::of::<PolygonCollider2D>(),
             ComponentInfo::of::<EdgeCollider2D>(),
+            // Tilemaps and 2D lights (tilemap, light2d).
+            ComponentInfo::of::<crate::tilemap::Grid>(),
+            ComponentInfo::of::<crate::tilemap::Tilemap>(),
+            ComponentInfo::of::<crate::tilemap::TilemapRenderer>(),
+            ComponentInfo::of::<crate::tilemap::TilemapCollider2D>(),
+            ComponentInfo::of::<crate::light2d::Light2D>(),
+            ComponentInfo::of::<crate::light2d::ShadowCaster2D>(),
             ComponentInfo::of::<AudioSource>(),
             ComponentInfo::of::<AudioListener>(),
             ComponentInfo::of::<super::AudioReverbZone>(),

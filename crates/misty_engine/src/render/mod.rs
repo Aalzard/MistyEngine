@@ -16,6 +16,7 @@ mod glow;
 mod gpu_culling;
 mod gpu_timer;
 mod hdri_sky;
+mod light2d;
 pub mod lod;
 pub mod mesh;
 pub mod overrides;
@@ -149,6 +150,9 @@ pub struct MaterialParams {
     pub emission_map: Option<String>,
     /// A `.shader` asset replaces the built-in shading (see [`custom_shader`]).
     pub custom: Option<custom_shader::CustomMaterial>,
+    /// Sprite-Lit-Default: unlit sprites and tiles multiplied by the 2D lights of their
+    /// Sorting Layer (only while the scene has 2D lights, see [`crate::light2d`]).
+    pub lit_2d: bool,
 }
 
 impl Default for MaterialParams {
@@ -175,6 +179,7 @@ impl Default for MaterialParams {
             occlusion_strength: 1.0,
             emission_map: None,
             custom: None,
+            lit_2d: false,
         }
     }
 }
@@ -317,7 +322,8 @@ struct DrawUniform {
     /// x = rendering mode index, y = alpha cutoff, z = occlusion strength,
     /// w = 1 when smoothness comes from the albedo alpha.
     surface: [f32; 4],
-    /// x = cos, y = sin of the UV rotation, z = LOD cross-fade, w = reserved.
+    /// x = cos, y = sin of the UV rotation, z = LOD cross-fade, w = 2D-lit layer flag
+    /// ([`light2d::draw_flag`]).
     extra: [f32; 4],
 }
 
@@ -372,6 +378,8 @@ pub struct Renderer {
     /// Group 2 of the terrain pass (no bindings).
     empty_group: wgpu::BindGroup,
     lights_buffer: wgpu::Buffer,
+    /// 2D lights and shadow maps (storage, mesh group binding 30, see [`light2d`]).
+    lights_2d: wgpu::Buffer,
     /// Rectangle lights' LTC lookup table (storage, mesh group binding 7).
     ltc_table: wgpu::Buffer,
     draws_buffer: wgpu::Buffer,
@@ -463,10 +471,11 @@ impl Renderer {
         let slots_capacity = 1024;
         let slots_buffer = slots_buffer(device, slots_capacity);
         let ltc_table = area::table_buffer(device);
+        let lights_2d = light2d::buffer(device);
         let (mesh_bind_group, draws_bind_group) = draw_groups(
             device,
             &pipelines,
-            [&lights_buffer, &ltc_table],
+            [&lights_buffer, &ltc_table, &lights_2d],
             [&draws_buffer, &slots_buffer],
             &shadows,
             &probes,
@@ -494,6 +503,7 @@ impl Renderer {
                 entries: &[],
             }),
             lights_buffer,
+            lights_2d,
             ltc_table,
             draws_buffer,
             draws_capacity,
@@ -582,7 +592,7 @@ impl Renderer {
             (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
                 device,
                 &self.pipelines,
-                [&self.lights_buffer, &self.ltc_table],
+                [&self.lights_buffer, &self.ltc_table, &self.lights_2d],
                 lists,
                 &self.shadows,
                 &self.probes,
@@ -622,6 +632,7 @@ impl Renderer {
             &self.line_buffer,
             &self.view_buffer,
             &self.lights_buffer,
+            &self.lights_2d,
         ];
         let shadow_bytes = 4
             * (self.shadows.directional_size.pow(2) as u64 * cascades::MAX_CASCADES as u64
@@ -877,6 +888,7 @@ impl Renderer {
         let soft = shadow_settings.soft != crate::quality::Tier::Off;
         let lights = lights_uniform(frame, &plan, soft);
         queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&lights));
+        light2d::upload(queue, &self.lights_2d, &frame.environment.lights_2d);
         self.write_shadow_uniforms(queue, frame, &plan, &shadow_settings, target.size());
         self.prepare_volumetrics(device, queue, target, frame, &plan);
         self.prepare_glows(device, queue, target, frame);
@@ -1050,7 +1062,7 @@ impl Renderer {
             (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
                 device,
                 &self.pipelines,
-                [&self.lights_buffer, &self.ltc_table],
+                [&self.lights_buffer, &self.ltc_table, &self.lights_2d],
                 [&self.draws_buffer, &self.slots_buffer],
                 &self.shadows,
                 &self.probes,
@@ -1730,13 +1742,13 @@ fn slots_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
 fn draw_groups(
     device: &wgpu::Device,
     p: &pipelines::Pipelines,
-    lights: [&wgpu::Buffer; 2],
+    lights: [&wgpu::Buffer; 3],
     buffers: [&wgpu::Buffer; 2],
     shadows: &shadows::ShadowMaps,
     probes: &probes::gpu::ProbeGpu,
     screen: &wgpu::Buffer,
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
-    let [lights, ltc] = lights;
+    let [lights, ltc, lights_2d] = lights;
     let [draws, slots] = buffers;
     let [p0, p1, p2, p3, p4] = probes.entries();
     let mesh = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1785,6 +1797,10 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 16,
                 resource: screen.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: light2d::BINDING,
+                resource: lights_2d.as_entire_binding(),
             },
         ],
     });
@@ -1879,7 +1895,12 @@ fn draw_uniform(d: &MeshDraw, lod_fade: f32) -> DrawUniform {
             },
             if m.smoothness_from_albedo { 1.0 } else { 0.0 },
         ],
-        extra: [cos, sin, lod_fade, 0.0],
+        extra: [
+            cos,
+            sin,
+            lod_fade,
+            light2d::draw_flag(m.lit_2d, d.sorting.layer),
+        ],
     }
 }
 

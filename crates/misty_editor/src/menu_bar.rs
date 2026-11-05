@@ -266,6 +266,18 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
                 item(ui, s, shape, "", create(Create::Sprite(Some(shape))));
             }
         });
+        ui.menu_button("Tilemap", |ui| {
+            for layout in misty_engine::tilemap::GridLayout::ALL {
+                let label = match layout {
+                    misty_engine::tilemap::GridLayout::Rectangle => "Rectangular",
+                    misty_engine::tilemap::GridLayout::Isometric => "Isometric",
+                };
+                if ui.button(label).clicked() {
+                    crate::tile_palette::create_tilemap(s, parent, layout);
+                    ui.close();
+                }
+            }
+        });
     });
     ui.menu_button("Effects", |ui| {
         item(ui, s, "Particle System", "", create(Create::ParticleSystem));
@@ -274,6 +286,13 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
         for l in LightType::ALL {
             let what = Create::Light(l);
             item(ui, s, what.default_name(), "", create(what));
+        }
+        ui.separator();
+        for kind in misty_engine::light2d::Light2DType::ALL {
+            if ui.button(format!("{} Light 2D", kind.label())).clicked() {
+                crate::tile_palette::create_light_2d(s, parent, kind);
+                ui.close();
+            }
         }
         ui.separator();
         if ui.button("Reflection Probe").clicked() {
@@ -436,6 +455,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
     });
     ui.menu_button("AI", |ui| {
         let tab = Tab::Navigation;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
+    ui.menu_button("2D", |ui| {
+        let tab = Tab::TilePalette;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
     sub(ui, "Terrain", |ui| {

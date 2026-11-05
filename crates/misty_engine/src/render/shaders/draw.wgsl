@@ -14,7 +14,7 @@
 //                     w = 1 when smoothness comes from the albedo alpha
 //   208     extra     x = cos, y = sin of the UV rotation (about the texture centre),
 //                     z = LOD cross-fade (0 none; > 0 keep dither < z; < 0 keep dither >= 1 + z),
-//                     w = reserved (0)
+//                     w = 2D lighting: Sorting Layer bit + 1 (0 = not 2D lit)
 struct Draw {
     model: mat4x4<f32>,
     normal: mat4x4<f32>,

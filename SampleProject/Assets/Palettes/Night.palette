@@ -1,0 +1,19 @@
+{
+  "tiles": [
+    {
+      "x": 0,
+      "y": 0,
+      "tile": "Assets/Tiles/Ground.tile"
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "tile": "Assets/Tiles/Water.tile"
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "tile": "Assets/Tiles/Stone Wall.tile"
+    }
+  ]
+}

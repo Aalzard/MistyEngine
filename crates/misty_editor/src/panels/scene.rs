@@ -66,6 +66,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     // Terrain brushes take the left mouse button while a brush tool is active.
     let brush_active = crate::terrain_tools::brush_active(state);
     let brush_click = crate::terrain_tools::scene_view(ui, state, &camera, rect, &response);
+    // Tile Palette tools paint on the active Tilemap while the palette window is open.
+    let tiles_active = crate::tile_palette::tools_active(state, ui.ctx());
+    let tile_click = crate::tile_palette::scene_view(ui, state, &camera, rect, &response);
+    let brush_active = brush_active || tiles_active;
+    let brush_click = brush_click || tile_click;
     match gpu {
         Some(gpu) => {
             let mut meshes = render_scene::cached_draws(state);
@@ -97,6 +102,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 _ => {}
             }
             crate::terrain_tools::brush_lines(&mut lines, state);
+            crate::tile_palette::lines(&mut lines, state);
+            if sv.gizmos {
+                crate::tile_palette::light_2d_lines(&mut lines, state);
+            }
             if sv.gizmos {
                 crate::panels::world_builder::gizmos::lines(&mut lines, state, ui.ctx());
             }

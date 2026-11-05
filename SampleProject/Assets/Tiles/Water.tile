@@ -1,0 +1,20 @@
+{
+  "kind": "AnimatedTile",
+  "sprite": null,
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "collider": "None",
+  "rules": [],
+  "frames": [
+    "Assets/Sprites/Tilemap/Water.png#Water_0",
+    "Assets/Sprites/Tilemap/Water.png#Water_1",
+    "Assets/Sprites/Tilemap/Water.png#Water_2",
+    "Assets/Sprites/Tilemap/Water.png#Water_3"
+  ],
+  "speed": 5.0,
+  "start_time": 0.0
+}

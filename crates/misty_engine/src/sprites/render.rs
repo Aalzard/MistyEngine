@@ -33,6 +33,7 @@ fn material(r: &SpriteRenderer, s: &Sprite) -> MaterialParams {
         unlit: true,
         mode: RenderingMode::Fade,
         double_sided: true,
+        lit_2d: true,
         ..Default::default()
     }
 }

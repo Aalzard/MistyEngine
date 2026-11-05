@@ -29,6 +29,8 @@ impl AssetEntry {
             "terrain" => "⛰",
             "navmesh" => "🚶",
             "preset" => crate::presets::PRESET_ICON,
+            "tile" => "▦",
+            "palette" => "🎨",
             _ => "📄",
         }
     }

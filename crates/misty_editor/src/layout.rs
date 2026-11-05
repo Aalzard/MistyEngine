@@ -30,6 +30,8 @@ pub enum Tab {
     UndoHistory,
     /// Window ▸ Sequencing ▸ Timeline.
     Timeline,
+    /// Window ▸ 2D ▸ Tile Palette.
+    TilePalette,
 }
 
 impl Tab {
@@ -46,7 +48,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 8] = [
+    pub const ON_DEMAND: [Tab; 9] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -55,6 +57,7 @@ impl Tab {
         Tab::WorldBuilder,
         Tab::UndoHistory,
         Tab::Timeline,
+        Tab::TilePalette,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -66,6 +69,8 @@ impl Tab {
     fn opens_beside(self) -> Option<Tab> {
         match self {
             Tab::Lighting | Tab::Navigation | Tab::WorldBuilder => Some(Tab::Inspector),
+            // Painting needs the Scene view visible, so the palette docks by the Inspector.
+            Tab::TilePalette => Some(Tab::Inspector),
             // A list window, like the Hierarchy.
             Tab::UndoHistory => Some(Tab::Hierarchy),
             // The graph wants room: it docks with the Scene and Game views.
@@ -97,6 +102,7 @@ impl Tab {
             Tab::WorldBuilder => "World Builder",
             Tab::UndoHistory => "Undo History",
             Tab::Timeline => "Timeline",
+            Tab::TilePalette => "Tile Palette",
         }
     }
 
@@ -118,6 +124,7 @@ impl Tab {
             Tab::WorldBuilder => "⛰",
             Tab::UndoHistory => "⟲",
             Tab::Timeline => crate::panels::timeline::ICON,
+            Tab::TilePalette => crate::panels::tile_palette::ICON,
         }
     }
 
@@ -139,7 +146,8 @@ impl Tab {
             | Tab::Navigation
             | Tab::CodeEditor
             | Tab::WorldBuilder
-            | Tab::Timeline => "",
+            | Tab::Timeline
+            | Tab::TilePalette => "",
         }
     }
 }

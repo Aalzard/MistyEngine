@@ -155,6 +155,12 @@ impl Physics2D {
                 )),
             }
         }
+        if let Ok(c) = w.get::<&crate::tilemap::TilemapCollider2D>(e)
+            && c.common.enabled
+            && let Some(b) = crate::tilemap::collider::builder(scene, e, &c, s)
+        {
+            out.push((b, c.common));
+        }
         if let Ok(c) = w.get::<&EdgeCollider2D>(e)
             && c.common.enabled
         {

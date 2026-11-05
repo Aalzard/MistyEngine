@@ -191,8 +191,12 @@ fn fs_cutout(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
 fn fs_unlit(in: MeshOut) -> MeshTargets {
     let d = draws[in.draw];
     let base = textureSample(albedo_map, material_sampler, in.uv);
-    let color = srgb_to_linear(d.color.rgb) * base.rgb;
+    var color = srgb_to_linear(d.color.rgb) * base.rgb;
     let alpha = d.color.a * base.a;
+    // Sprite-Lit-Default: 2D lights of the draw's Sorting Layer (none in the scene = unlit).
+    if (d.extra.w > 0.5 && lights2d.info.x > 0.5) {
+        color *= light2d_sum(in.world.xy, u32(d.extra.w + 0.5) - 1u);
+    }
     let fog = fog_visibility(fog_distance(in.world));
     let vf = vfog_eval(in.world);
     var out: MeshTargets;
@@ -321,4 +325,84 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     }
     return out;
 
+}
+
+// ---- 2D lights (render/light2d.rs, light2d/mod.rs) ---------------------------------------------
+
+struct Light2DItem {
+    // xy = position, z = inner radius, w = outer radius.
+    pos_radius: vec4<f32>,
+    // rgb = linear colour * intensity, w = kind (0 global, 1 point, 2 spot).
+    color_kind: vec4<f32>,
+    // xy = spot direction, z = cos(outer half angle), w = cos(inner half angle).
+    dir_angle: vec4<f32>,
+    // x = falloff exponent, y = shadow row (-1 none), z = shadow strength, w = softness (bins).
+    params: vec4<f32>,
+    // x = Sorting Layer mask (bit = layer value + 16).
+    mask: vec4<u32>,
+};
+
+struct Lights2D {
+    // x = light count, y = bins per shadow row.
+    info: vec4<f32>,
+    items: array<Light2DItem, 16>,
+    // Per shadowed light: distance where the shadow starts, by direction (polar map).
+    shadows: array<f32, 4096>,
+};
+
+@group(1) @binding(30) var<storage, read> lights2d: Lights2D;
+
+// Fraction of light reaching `dist` along direction `d` of shadow row `row` (1 = lit).
+fn light2d_shadow(row: u32, d: vec2<f32>, dist: f32, soft: f32) -> f32 {
+    let bins = lights2d.info.y;
+    let t = (atan2(d.y, d.x) + PI) / (2.0 * PI);
+    let center = i32(min(floor(t * bins), bins - 1.0));
+    let n = i32(bins);
+    let k = i32(round(soft));
+    var lit = 0.0;
+    var total = 0.0;
+    for (var i = -k; i <= k; i++) {
+        let b = u32((center + i + n) % n);
+        let occ = lights2d.shadows[row * u32(bins) + b];
+        // A short blend along the ray hides the map's stair steps.
+        let edge = 0.04 + soft * 0.02 * dist;
+        lit += 1.0 - smoothstep(occ, occ + edge, dist);
+        total += 1.0;
+    }
+    return lit / total;
+}
+
+// Sum of the 2D lights reaching a world XY point on Sorting Layer bit `layer`.
+fn light2d_sum(p: vec2<f32>, layer: u32) -> vec3<f32> {
+    var sum = vec3<f32>(0.0);
+    let count = u32(lights2d.info.x);
+    for (var i = 0u; i < count; i++) {
+        let l = lights2d.items[i];
+        if (((l.mask.x >> layer) & 1u) == 0u) {
+            continue;
+        }
+        if (l.color_kind.w < 0.5) {
+            sum += l.color_kind.rgb;
+            continue;
+        }
+        let d = p - l.pos_radius.xy;
+        let dist = length(d);
+        let outer = l.pos_radius.w;
+        if (dist >= outer) {
+            continue;
+        }
+        let t = clamp((outer - dist) / max(outer - l.pos_radius.z, 1e-4), 0.0, 1.0);
+        var a = pow(t, l.params.x);
+        if (l.color_kind.w > 1.5 && dist > 1e-5) {
+            let c = dot(d / dist, l.dir_angle.xy);
+            let s = clamp((c - l.dir_angle.z) / max(l.dir_angle.w - l.dir_angle.z, 1e-4), 0.0, 1.0);
+            a *= s * s * (3.0 - 2.0 * s);
+        }
+        if (l.params.y >= 0.0 && a > 0.0) {
+            let lit = light2d_shadow(u32(l.params.y), d, dist, l.params.w);
+            a *= 1.0 - l.params.z * (1.0 - lit);
+        }
+        sum += l.color_kind.rgb * a;
+    }
+    return sum;
 }

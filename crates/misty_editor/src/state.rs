@@ -279,6 +279,8 @@ pub struct EditorState {
     pub terrain_tools: crate::terrain_tools::TerrainTools,
     /// Mesh Builder edit mode, element selection and operation settings.
     pub mesh_builder: crate::mesh_builder::MeshBuilder,
+    /// Tile Palette window: palette, brush, tool and the stroke in progress.
+    pub tile_palette: crate::tile_palette::TilePaletteState,
     /// Navigation window settings and the bake in progress.
     pub navigation: crate::panels::navigation::NavigationWindow,
     /// Reflection probe generator settings, the bake in progress and Realtime probes.
@@ -386,6 +388,7 @@ impl EditorState {
             particle_preview: Default::default(),
             terrain_tools: Default::default(),
             mesh_builder: Default::default(),
+            tile_palette: Default::default(),
             navigation: Default::default(),
             probes: Default::default(),
             world_builder: Default::default(),

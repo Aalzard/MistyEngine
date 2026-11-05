@@ -77,3 +77,53 @@ pub fn unregister_exact(name: &str) {
         lib.generation += 1;
     }
 }
+
+/// [`register`] for meshes that get a new name whenever they change (tilemap chunks): a name
+/// not seen before needs no re-upload of the other meshes, so the cache generation only moves
+/// when an existing name is replaced.
+pub fn register_new(name: &str, data: MeshData) -> String {
+    let path = format!("{PREFIX}{name}");
+    if library().entries.contains_key(&path) {
+        return register(name, data);
+    }
+    let model = Model {
+        meshes: vec![ModelMesh {
+            name: name.to_owned(),
+            bounds: data.bounds(),
+            data,
+            material: None,
+            edges: OnceLock::new(),
+            skin: None,
+            blend_shapes: Vec::new(),
+            default_weights: Vec::new(),
+        }],
+        ..Default::default()
+    };
+    library().entries.insert(
+        path.clone(),
+        Entry {
+            modified: None,
+            model: Ok(Arc::new(model)),
+        },
+    );
+    format!("{path}#0")
+}
+
+/// Drop meshes made by [`register_new`] (keys as it returned them). GPU copies are released in
+/// batches: every so many retired meshes the cache generation moves.
+pub fn retire(keys: &[String]) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static RETIRED: AtomicUsize = AtomicUsize::new(0);
+    if keys.is_empty() {
+        return;
+    }
+    let mut lib = library();
+    for k in keys {
+        let path = k.rsplit_once('#').map_or(k.as_str(), |(p, _)| p);
+        lib.entries.remove(path);
+    }
+    if RETIRED.fetch_add(keys.len(), Ordering::Relaxed) + keys.len() >= 256 {
+        RETIRED.store(0, Ordering::Relaxed);
+        lib.generation += 1;
+    }
+}
