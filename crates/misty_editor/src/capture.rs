@@ -162,6 +162,15 @@ pub fn apply_env(
     if std::env::var_os("MISTY_UNDO_DEMO").is_some() {
         undo_demo(s);
     }
+    // `MISTY_OCCLUSION_PAGE=Object|Bake|Visualization` picks the Occlusion Culling window's page.
+    if let Some(page) = std::env::var_os("MISTY_OCCLUSION_PAGE") {
+        use crate::panels::occlusion::Page;
+        s.occlusion.page = match page.to_string_lossy().as_ref() {
+            "Object" => Page::Object,
+            "Visualization" => Page::Visualization,
+            _ => Page::Bake,
+        };
+    }
     // `MISTY_STATS=1` shows the Game view's Stats box.
     if std::env::var_os("MISTY_STATS").is_some() {
         s.game_view.stats = true;

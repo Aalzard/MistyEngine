@@ -35,8 +35,8 @@ Occlusion culling like the reference engine's Occlusion Culling window:
 - **Lua**: `Camera.main.useOcclusionCulling` (get/set).
 - **OcclusionDemo** (`sample_occlusion.rs`): 5 × 5 walled city blocks with courtyard statues,
   parked cars, floating drones (dynamic, Hi-Z) and an Occlusion Area; `OcclusionTour.lua` drives
-  the camera round the streets (O toggles culling). Its bake: 35 × 1 × 35 cells of 4 m, 940
-  distinct sets for 380+ occludees, about 3 s on 16 threads; along the tour most of the city is
+  the camera round the streets (O toggles culling). Its bake: 35 × 1 × 35 cells of 4 m, 1202
+  distinct sets for 383 occludees (70 KB), about 4 s on 16 threads; along the tour most of the city is
   culled (test: mean culled fraction > 50 %).
 
 ## Decisions
@@ -64,8 +64,10 @@ Occlusion culling like the reference engine's Occlusion Culling window:
    through the open +Y (sky) face. The farthest-corner texels are conservative but coarse: with
    a large Smallest Hole (few rays) gaps under or beside walls can widen a set; the cost is extra
    draws, never a wrong cull.
-5. **Sample points are nudged by a few millimetres** off the exact cell planes: floors and wall
-   faces often lie on them and rays grazing along a surface slipped between its triangles.
+5. **Sample points are nudged by a few millimetres** off the exact cell planes (floors and wall
+   faces often lie on them and grazing rays slipped between triangles) and **kept a little
+   inside the view bounds**: the grid overhangs the volumes, and points past the edge of a floor
+   saw under it, which made the whole first row of the demo see everything.
 6. **Occludees are matched by Hierarchy order and box.** Scenes have no stable object ids, so
    the bake stores each occludee's world box; at runtime the n-th Occludee Static renderer uses
    bit n only while its box still matches (1 mm tolerance). Moved, added or removed objects are
@@ -95,3 +97,11 @@ Occlusion culling like the reference engine's Occlusion Culling window:
 - Per-renderer Dynamic Occlusion checkbox (it is per scene).
 - Occlusion data is not split per scene for additive multi-scene setups (each scene keeps its own
   file; only the active scene's data is used).
+
+## Screenshots
+
+- `docs/screenshots/round13/occlusion_play.png` — Play mode, Game view Stats: 73 visible meshes,
+  194 occlusion-culled; Occlusion Culling window on its Bake page.
+- `docs/screenshots/round13/occlusion_visualization.png` — Visualization page: the Scene view
+  from above hides what the game camera's cell culls (263 of 383 occludees), with the cell box,
+  the view volume and the summary box.

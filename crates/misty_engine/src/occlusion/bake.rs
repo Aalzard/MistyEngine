@@ -119,14 +119,19 @@ fn overlaps(a: &Aabb, b: &Aabb) -> bool {
     a.min.cmple(b.max).all() && b.min.cmple(a.max).all()
 }
 
+/// Where the camera can be: the View Volumes, else the static geometry's bounds.
+pub fn view_bounds(input: &BakeInput) -> Option<Aabb> {
+    if input.volumes.is_empty() {
+        let geo = input.occluders.bounds().map(|(lo, hi)| Aabb::new(lo, hi));
+        union(geo.into_iter().chain(input.occludees.iter().copied()))
+    } else {
+        union(input.volumes.iter().copied())
+    }
+}
+
 /// The view cell grid: origin, cell size and cell counts.
 pub fn grid(input: &BakeInput) -> Option<(Vec3, f32, UVec3)> {
-    let bounds = if input.volumes.is_empty() {
-        let geo = input.occluders.bounds().map(|(lo, hi)| Aabb::new(lo, hi));
-        union(geo.into_iter().chain(input.occludees.iter().copied()))?
-    } else {
-        union(input.volumes.iter().copied())?
-    };
+    let bounds = view_bounds(input)?;
     let extent = (bounds.max - bounds.min).max(Vec3::splat(1e-3));
     let mut size = input.settings.cell_size();
     loop {
@@ -323,6 +328,11 @@ pub fn bake(input: &BakeInput, progress: &Progress) -> Option<OcclusionData> {
     let threshold = s.backface_threshold;
     let half = size * 0.5;
     let nudge = Vec3::new(0.0031, 0.0047, 0.0023) * size;
+    // Points stay a little inside the view bounds: the grid overhangs them, and points past
+    // the edge of a floor see under it.
+    let view = view_bounds(input).expect("the grid exists");
+    let inset = (view.max - view.min).min(Vec3::splat(size * 0.1)) * 0.5;
+    let (keep_lo, keep_hi) = (view.min + inset, view.max - inset);
     let point_sets: Vec<Option<Vec<u64>>> = needed
         .par_iter()
         .map(|&pi| {
@@ -337,7 +347,7 @@ pub fn bake(input: &BakeInput, progress: &Progress) -> Option<OcclusionData> {
             );
             // Nudged off the exact cell planes, which floors and wall faces often lie on (rays
             // grazing along a surface can slip through the seams between its triangles).
-            let p = origin + c.as_vec3() * half + nudge;
+            let p = (origin + c.as_vec3() * half).clamp(keep_lo, keep_hi) + nudge;
             let cube = depth_cube(&bvh, p, rays, far, threshold);
             progress.done.fetch_add(1, Ordering::Relaxed);
             let cube = cube?;
