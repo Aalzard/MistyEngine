@@ -195,6 +195,8 @@ fn layout_size(s: &mut EditorState, e: Entity, w: Option<f32>, h: Option<f32>, f
             preferred_width: w,
             preferred_height: h,
             flexible_width: flex.then_some(1.0),
+            // Rows keep their height (their groups would make them flexible).
+            flexible_height: Some(0.0),
             ..Default::default()
         },
     );
@@ -399,7 +401,7 @@ fn demo_scene() -> Scene {
         anchor_max: Vec2::new(0.0, 0.5),
         pivot: Vec2::new(0.0, 0.5),
         anchored_position: Vec2::new(24.0, 0.0),
-        size_delta: Vec2::new(430.0, 600.0),
+        size_delta: Vec2::new(430.0, 470.0),
     };
     s.scene.world.get::<&mut UiImage>(panel).unwrap().color = PANEL;
     s.scene.add(

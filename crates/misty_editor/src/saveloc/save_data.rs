@@ -51,6 +51,11 @@ pub fn rescan(s: &mut EditorState) {
 pub fn open(s: &mut EditorState) {
     s.saveloc.save_data_open = true;
     rescan(s);
+    // Show the newest slot right away.
+    let st = &mut s.saveloc.save_data;
+    if st.selected.is_none() {
+        st.selected = st.slots.first().map(|i| i.slot.clone());
+    }
 }
 
 pub fn show(ctx: &egui::Context, s: &mut EditorState) {
@@ -60,7 +65,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
     }
     egui::Window::new("Save Data")
         .open(&mut open)
-        .default_size([620.0, 460.0])
+        .default_size([640.0, 520.0])
         .collapsible(false)
         .show(ctx, |ui| contents(ui, s));
     s.saveloc.save_data_open = open;

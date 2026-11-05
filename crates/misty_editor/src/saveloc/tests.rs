@@ -72,10 +72,21 @@ fn save_data_window_lists_views_and_deletes_slots() {
         s,
     );
     h.run();
+    // Opening selects the newest slot, so its details show next to the list.
+    assert_eq!(
+        h.state().saveloc.save_data.selected.as_deref(),
+        Some("newer")
+    );
     h.get_by_label("older");
-    h.get_by_label("Level 2");
+    assert_eq!(h.get_all_by_label("Level 2").count(), 2, "list + details");
     h.get_by_label(&save::format_time(1_700_000_000));
-    assert_eq!(h.get_all_by_label("2:05").count(), 2, "play time column");
+    assert_eq!(
+        h.get_all_by_label("2:05").count(),
+        3,
+        "play time column + details"
+    );
+    h.state_mut().saveloc.save_data.selected = None;
+    h.run();
 
     // View: details and the save's JSON.
     h.get_all_by_label("View").next().unwrap().click();

@@ -775,7 +775,7 @@
           ],
           "size_delta": [
             430.0,
-            600.0
+            470.0
           ]
         },
         "Transform": {
@@ -838,7 +838,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,
@@ -933,7 +933,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,
@@ -1045,7 +1045,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,
@@ -1710,7 +1710,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,
@@ -2375,7 +2375,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,
@@ -2449,7 +2449,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,
@@ -2610,7 +2610,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": 1.0,
           "ignore_layout": false,
           "min_height": null,
@@ -3642,7 +3642,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,
@@ -3739,7 +3739,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,
@@ -3834,7 +3834,7 @@
         },
         "Layout Element": {
           "enabled": true,
-          "flexible_height": null,
+          "flexible_height": 0.0,
           "flexible_width": null,
           "ignore_layout": false,
           "min_height": null,

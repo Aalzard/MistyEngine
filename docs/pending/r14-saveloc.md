@@ -91,6 +91,10 @@
 - Sample: `SaveLocDemo.scene` (generator `sample_saveloc.rs`), `SaveLocMenu.lua`, `CoinCounter.lua`,
   `CubeMover.lua`, `Localization/SaveLocDemo.strings`, `Prefabs/SaveLocCoin.prefab`.
 - Docs: `docs/scripting.md` ▸ Save games, Localization.
+- Screenshots (`docs/screenshots/round14/`, all with `MISTY_SCENE=Assets/Scenes/SaveLocDemo.scene`):
+  `saveloc_tables.png` (`MISTY_WINDOW=Localization Tables`), `saveloc_save_data.png`
+  (`MISTY_PLAY=1 MISTY_SAVE_SLOT=demo MISTY_WINDOW=Save Data MISTY_CAPTURE_FRAME=90`),
+  `saveloc_play_fr.png` (`MISTY_PLAY=1 MISTY_LOCALE=fr`).
 
 ### Left for later
 - RTL layout/shaping and a font with Arabic glyphs (text rendering work).

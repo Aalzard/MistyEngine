@@ -163,7 +163,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
     }
     egui::Window::new("Localization Tables")
         .open(&mut open)
-        .default_size([760.0, 480.0])
+        .default_size([980.0, 560.0])
         .collapsible(false)
         .show(ctx, |ui| contents(ui, s));
     s.saveloc.tables_open = open;
@@ -431,10 +431,9 @@ fn grid(ui: &mut Ui, s: &mut EditorState) {
                             continue;
                         }
                         let mut key = e.key.clone();
-                        let r = ui.add(
-                            egui::TextEdit::singleline(&mut key)
-                                .desired_width(140.0)
-                                .font(egui::TextStyle::Monospace),
+                        let r = ui.add_sized(
+                            [150.0, 20.0],
+                            egui::TextEdit::singleline(&mut key).font(egui::TextStyle::Monospace),
                         );
                         if r.changed() {
                             edits.push(GridEdit::Rename(e.key.clone(), key));
@@ -451,7 +450,7 @@ fn grid(ui: &mut Ui, s: &mut EditorState) {
                             if empty {
                                 edit = edit.background_color(MISSING);
                             }
-                            if ui.add(edit).changed() {
+                            if ui.add_sized([180.0, 20.0], edit).changed() {
                                 edits.push(GridEdit::Cell(e.key.clone(), l.clone(), text));
                             }
                         }
