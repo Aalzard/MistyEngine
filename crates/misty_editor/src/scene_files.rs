@@ -479,11 +479,12 @@ pub fn window_title(s: &EditorState) -> String {
 /// The project folder's name and the scene name (with `*` while anything is unsaved), for the
 /// taskbar title and the title bar.
 pub fn title_parts(s: &EditorState) -> (String, String) {
-    let project = s
-        .project
-        .root
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+    // A root like `SampleProject\.` or `.` has no file name of its own: use the real folder's.
+    let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().into_owned());
+    let root = &s.project.root;
+    let project = name(root)
+        .filter(|n| !n.is_empty() && n != ".")
+        .or_else(|| root.canonicalize().ok().and_then(|p| name(&p)))
         .unwrap_or_default();
     let dirty = if s.files.dirty.is_empty() { "" } else { "*" };
     (project, format!("{}{dirty}", s.scene.name))

@@ -553,7 +553,12 @@ impl EditorApp {
             hover: egui::Color32::from_white_alpha(18),
         };
         let (project, scene) = scene_files::title_parts(&self.state);
-        let rest = format!("  —  {project}  —  {scene}");
+        // Empty parts are left out, so there is never a "— —" gap.
+        let rest: String = [project, scene]
+            .iter()
+            .filter(|p| !p.is_empty())
+            .map(|p| format!("  —  {p}"))
+            .collect();
         let title = title_bar::title_job(crate::branding::PRODUCT, &rest, &style);
         title_bar::show(ui, &style, title, |ui| {
             menu_bar::show_menus(ui, &mut self.state)
