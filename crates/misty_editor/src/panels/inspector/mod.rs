@@ -14,6 +14,7 @@ mod light_area;
 mod light_shadows;
 mod lod_editor;
 mod material;
+mod mesh_builder_editor;
 mod mixed;
 mod mixer_inspector;
 mod nav_editors;

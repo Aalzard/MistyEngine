@@ -78,6 +78,15 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     else {
         return false;
     };
+    // Baked from an Editable Mesh: the Mesh Builder owns the mesh.
+    if crate::mesh_builder::has_editable(state, e) {
+        crate::panels::inspector::card::PropertyGrid::new("meshfilter_grid").show(ui, |ui| {
+            ui.label("Mesh");
+            ui.weak("▦ Editable Mesh (Mesh Builder)");
+            ui.end_row();
+        });
+        return false;
+    }
     let choices = mesh_choices(state);
     let mut ch = false;
     crate::panels::inspector::card::PropertyGrid::new("meshfilter_grid").show(ui, |ui| {
@@ -111,6 +120,17 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         }
         ui.end_row();
     });
+    if f.mesh.is_some()
+        && !ch
+        && ui
+            .button("Convert to Editable Mesh")
+            .on_hover_text("Model this mesh with the Mesh Builder (an editable copy)")
+            .clicked()
+    {
+        // Its own undo step (not an Inspector edit).
+        crate::mesh_builder::convert_to_editable(state, e);
+        return false;
+    }
     if ch {
         let _ = state.scene.world.insert_one(e, f);
     }

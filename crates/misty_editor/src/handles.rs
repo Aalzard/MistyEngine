@@ -73,6 +73,15 @@ fn axis_color(i: usize) -> Color32 {
 }
 
 fn handle_frame(state: &EditorState, camera: &Camera, rect: Rect, local: bool) -> Option<Frame> {
+    // Mesh Builder element modes: the handles sit on the selected vertices / edges / faces.
+    if let Some(pivot) = crate::mesh_builder::handle_pivot(state, local) {
+        let (origin, rot) = pivot?;
+        return Some(Frame {
+            origin,
+            axes: [rot * Vec3::X, rot * Vec3::Y, rot * Vec3::Z],
+            length: camera.world_per_pixel(origin, rect.height()) * AXIS_PX,
+        });
+    }
     let active = state.selection.active()?;
     let targets = state.selection.top_level(&state.scene);
     if targets.is_empty() {
@@ -163,6 +172,7 @@ pub fn show(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, view_
             .map(|e| (e, state.scene.world_matrix(e), state.scene.transform(e)))
             .collect();
         let start_point = grab_point(part, camera, rect, &frame, m).unwrap_or(frame.origin);
+        crate::mesh_builder::begin_drag(state);
         state.handles.drag = Some(Drag {
             part,
             origin: frame.origin,
@@ -408,9 +418,13 @@ fn apply_drag(ui: &Ui, state: &mut EditorState, camera: &Camera, rect: Rect, dra
         Part::RotateAxis(_) | Part::RotateView => "Rotate",
         Part::ScaleAxis(_) | Part::ScaleUniform => "Scale",
     };
-    let who = match drag.targets.as_slice() {
-        [(one, _, _)] => state.scene.name(*one),
-        many => format!("{} Objects", many.len()),
+    let who = match (
+        crate::mesh_builder::drag_label(state),
+        drag.targets.as_slice(),
+    ) {
+        (Some(elements), _) => elements.to_owned(),
+        (None, [(one, _, _)]) => state.scene.name(*one),
+        (None, many) => format!("{} Objects", many.len()),
     };
     state.mark_edited(&format!("{verb} {who}"));
 }
@@ -431,6 +445,9 @@ fn selected_subtrees(state: &EditorState, drag: &Drag) -> Vec<Entity> {
 }
 
 fn translate(state: &mut EditorState, drag: &Drag, delta: Vec3) {
+    if crate::mesh_builder::drag(state, Mat4::from_translation(delta)) {
+        return;
+    }
     for (e, world, _) in &drag.targets {
         state
             .scene
@@ -439,6 +456,12 @@ fn translate(state: &mut EditorState, drag: &Drag, delta: Vec3) {
 }
 
 fn rotate(state: &mut EditorState, drag: &Drag, q: Quat) {
+    let about = Mat4::from_translation(drag.origin)
+        * Mat4::from_quat(q)
+        * Mat4::from_translation(-drag.origin);
+    if crate::mesh_builder::drag(state, about) {
+        return;
+    }
     for (e, world, _) in &drag.targets {
         let (_, rot, pos) = world.to_scale_rotation_translation();
         state.scene.set_world_rotation(*e, q * rot);
@@ -451,6 +474,10 @@ fn rotate(state: &mut EditorState, drag: &Drag, q: Quat) {
 }
 
 fn scale(state: &mut EditorState, drag: &Drag, factor: Vec3) {
+    let about = crate::mesh_builder::scale_about(drag.origin, drag.axes, factor);
+    if crate::mesh_builder::drag(state, about) {
+        return;
+    }
     for (e, _, start) in &drag.targets {
         let mut t = state.scene.transform(*e);
         t.scale = start.scale * factor;

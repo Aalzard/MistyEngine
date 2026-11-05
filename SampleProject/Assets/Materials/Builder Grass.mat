@@ -1,0 +1,29 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.75,
+    0.85,
+    0.6,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 0.15,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Textures/TerrainGrass.png",
+  "normal_map": null,
+  "normal_scale": 1.0,
+  "tiling": [
+    0.25,
+    0.25
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ]
+}

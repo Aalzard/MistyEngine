@@ -26,6 +26,7 @@ mod layout;
 mod layouts;
 mod material_preview;
 mod menu_bar;
+mod mesh_builder;
 mod model_import;
 mod object_clipboard;
 mod open_scenes;
@@ -73,6 +74,8 @@ mod sample_light_glow;
 mod sample_lighting;
 #[cfg(test)]
 mod sample_materials;
+#[cfg(test)]
+mod sample_mesh_builder;
 #[cfg(test)]
 mod sample_multiscene;
 #[cfg(test)]

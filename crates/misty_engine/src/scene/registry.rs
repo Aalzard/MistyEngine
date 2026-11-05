@@ -55,6 +55,10 @@ impl SceneComponent for super::SkinnedMeshRenderer {
     const NAME: &'static str = "Skinned Mesh Renderer";
     const CATEGORY: &'static str = "Mesh";
 }
+impl SceneComponent for crate::mesh_builder::EditableMesh {
+    const NAME: &'static str = "Editable Mesh";
+    const CATEGORY: &'static str = "Mesh";
+}
 impl SceneComponent for Rigidbody {
     const NAME: &'static str = "Rigidbody";
     const CATEGORY: &'static str = "Physics";
@@ -316,6 +320,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
             ComponentInfo::of::<super::SkinnedMeshRenderer>(),
+            ComponentInfo::of::<crate::mesh_builder::EditableMesh>(),
             ComponentInfo::of::<SpriteRenderer>(),
             ComponentInfo::of::<LodGroup>(),
             ComponentInfo::of::<Rigidbody>(),
@@ -373,6 +378,7 @@ pub fn components() -> &'static [ComponentInfo] {
 pub fn requires(name: &str) -> &'static [&'static str] {
     match name {
         "Fixed Joint" | "Hinge Joint" | "Spring Joint" => &["Rigidbody"],
+        "Editable Mesh" => &["Mesh Filter", "Mesh Renderer"],
         _ => &[],
     }
 }

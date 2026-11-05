@@ -62,6 +62,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     }
 
     let camera = cam.camera();
+    crate::mesh_builder::sync_frame(state);
     // Terrain brushes take the left mouse button while a brush tool is active.
     let brush_active = crate::terrain_tools::brush_active(state);
     let brush_click = crate::terrain_tools::scene_view(ui, state, &camera, rect, &response);
@@ -99,7 +100,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             if sv.gizmos {
                 crate::panels::world_builder::gizmos::lines(&mut lines, state, ui.ctx());
             }
-            let overlay = gizmos::nav_overlay(state, ui.ctx(), &mut lines);
+            let mut overlay = gizmos::nav_overlay(state, ui.ctx(), &mut lines);
+            crate::mesh_builder::lines(state, &camera, &mut lines, &mut overlay);
             let terrains = misty_engine::terrain::draws(&state.scene);
             let water = misty_engine::water::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
@@ -200,7 +202,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         handles::show(ui, state, &camera, rect, hovered);
     }
     let suppressed = state.handles.click_suppressed() || brush_click;
+    // Mesh Builder element modes pick vertices / edges / faces instead of objects.
+    let element_click =
+        crate::mesh_builder::scene_view(ui, state, &camera, rect, &response, suppressed);
+    crate::mesh_builder::paint_vertices(ui, state, &camera, rect);
     if response.clicked()
+        && !element_click
         && !suppressed
         && !view_tool
         && !ui.input(|i| i.modifiers.alt)
@@ -254,6 +261,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         gizmos::paint_bones(ui, rect, &camera, &state.scene, &state.selection);
     }
     tools_overlay(ui, rect, state);
+    crate::mesh_builder::strip(ui, rect, state);
     crate::particle_preview::overlay(ui, rect, state);
     if !state.scene_view.camera.is_2d() {
         scene_gizmo(ui, rect, &mut state.scene_view.camera);

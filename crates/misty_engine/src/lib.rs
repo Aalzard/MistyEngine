@@ -14,6 +14,7 @@ pub mod clock;
 pub mod draw_cache;
 pub mod hdri;
 pub mod input;
+pub mod mesh_builder;
 pub mod models;
 pub mod navigation;
 pub mod pak;

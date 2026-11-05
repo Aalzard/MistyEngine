@@ -48,6 +48,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::lod_editor::icon(other))
             .or_else(|| super::rig_editors::icon(other))
             .or_else(|| super::water::icon(other))
+            .or_else(|| super::mesh_builder_editor::icon(other))
             .unwrap_or("▣"),
     }
 }
@@ -277,6 +278,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
             crate::panels::world_builder::inspector(ui, state, e, wb)
         }
         water if super::water::NAMES.contains(&water) => super::water::edit(ui, state, e, water),
+        mb if super::mesh_builder_editor::NAMES.contains(&mb) => {
+            super::mesh_builder_editor::edit(ui, state, e, mb)
+        }
         _ => {
             ui.weak("No editor for this component.");
             false
