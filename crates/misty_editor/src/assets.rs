@@ -38,6 +38,8 @@ pub struct AssetDatabase {
     pub controllers: BTreeSet<String>,
     /// Project-relative paths of Timeline assets (.timeline).
     pub timelines: BTreeSet<String>,
+    /// Project-relative paths of Effect Graphs (.effect).
+    pub effects: BTreeSet<String>,
     /// Project-relative paths of audio clips (.wav/.ogg/.mp3).
     pub clips: BTreeSet<String>,
     /// Project-relative paths of Audio Mixers (.mixer).
@@ -74,6 +76,7 @@ impl AssetDatabase {
             anims: BTreeSet::new(),
             controllers: BTreeSet::new(),
             timelines: BTreeSet::new(),
+            effects: BTreeSet::new(),
             presets: BTreeMap::new(),
             prefabs: BTreeMap::new(),
             textures: Vec::new(),
@@ -103,6 +106,7 @@ impl AssetDatabase {
         self.anims.clear();
         self.controllers.clear();
         self.timelines.clear();
+        self.effects.clear();
         self.textures.clear();
         self.shaders.clear();
         self.hdris.clear();
@@ -141,6 +145,8 @@ impl AssetDatabase {
                     self.controllers.insert(self.relative(&path));
                 } else if misty_engine::timeline::is_timeline(&path.to_string_lossy()) {
                     self.timelines.insert(self.relative(&path));
+                } else if misty_engine::vfx::is_effect_path(&path.to_string_lossy()) {
+                    self.effects.insert(self.relative(&path));
                 } else if misty_engine::audio::is_clip(&path.to_string_lossy()) {
                     self.clips.insert(self.relative(&path));
                 } else if misty_engine::audio::is_mixer(&path.to_string_lossy()) {

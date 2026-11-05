@@ -34,6 +34,8 @@ pub enum Tab {
     TilePalette,
     /// Window ▸ Rendering ▸ Shader Graph (or double-click a `.shadergraph`).
     ShaderGraph,
+    /// Window ▸ Rendering ▸ Effect Graph (or double-click an `.effect`).
+    EffectGraph,
 }
 
 impl Tab {
@@ -50,7 +52,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 10] = [
+    pub const ON_DEMAND: [Tab; 11] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -61,6 +63,7 @@ impl Tab {
         Tab::Timeline,
         Tab::TilePalette,
         Tab::ShaderGraph,
+        Tab::EffectGraph,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -77,7 +80,7 @@ impl Tab {
             // A list window, like the Hierarchy.
             Tab::UndoHistory => Some(Tab::Hierarchy),
             // The graph wants room: it docks with the Scene and Game views.
-            Tab::Animator | Tab::ShaderGraph => Some(Tab::Scene),
+            Tab::Animator | Tab::ShaderGraph | Tab::EffectGraph => Some(Tab::Scene),
             // A wide time strip, like the Animation window it sits beside.
             Tab::Timeline => Some(Tab::Animation),
             // Docks with the Project and Console like the reference editor; the Profiler too,
@@ -107,6 +110,7 @@ impl Tab {
             Tab::Timeline => "Timeline",
             Tab::TilePalette => "Tile Palette",
             Tab::ShaderGraph => "Shader Graph",
+            Tab::EffectGraph => "Effect Graph",
         }
     }
 
@@ -130,6 +134,7 @@ impl Tab {
             Tab::Timeline => crate::panels::timeline::ICON,
             Tab::TilePalette => crate::panels::tile_palette::ICON,
             Tab::ShaderGraph => crate::panels::shader_graph::ICON,
+            Tab::EffectGraph => crate::panels::effect_graph::ICON,
         }
     }
 
@@ -153,7 +158,8 @@ impl Tab {
             | Tab::WorldBuilder
             | Tab::Timeline
             | Tab::TilePalette
-            | Tab::ShaderGraph => "",
+            | Tab::ShaderGraph
+            | Tab::EffectGraph => "",
         }
     }
 }

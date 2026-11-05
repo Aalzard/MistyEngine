@@ -484,7 +484,7 @@ fn navigate(ui: &Ui, w: &mut ShaderGraphWindow, area: Rect, resp: &Response) {
     }
 }
 
-fn draw_grid(painter: &egui::Painter, area: Rect, view: View) {
+pub(crate) fn draw_grid(painter: &egui::Painter, area: Rect, view: View) {
     for (step, alpha) in [(20.0, 10u8), (100.0, 18u8)] {
         let px = step * view.zoom;
         if px < 6.0 {
@@ -506,7 +506,7 @@ fn draw_grid(painter: &egui::Painter, area: Rect, view: View) {
 }
 
 /// A connection curve.
-fn wire(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, zoom: f32) {
+pub(crate) fn wire(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, zoom: f32) {
     let dx = ((b.x - a.x).abs() * 0.5).max(40.0 * zoom);
     let shape = CubicBezierShape::from_points_stroke(
         [a, a + vec2(dx, 0.0), b - vec2(dx, 0.0), b],

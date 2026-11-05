@@ -142,6 +142,13 @@ pub fn apply_env(
         s.shader_graph.open(&file, &rel);
         crate::layout::focus_or_open(dock, crate::layout::Tab::ShaderGraph);
     }
+    // `MISTY_EFFECTGRAPH=Assets/Effects/Fireflies.effect` opens it in the Effect Graph window.
+    if let Some(rel) = std::env::var_os("MISTY_EFFECTGRAPH") {
+        let rel = rel.to_string_lossy().into_owned();
+        let file = s.assets.absolute(&rel);
+        s.effect_graph.open(&file, &rel);
+        crate::layout::focus_or_open(dock, crate::layout::Tab::EffectGraph);
+    }
     // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
     if let Some(titles) = std::env::var_os("MISTY_TAB") {
         for title in titles.to_string_lossy().split(',') {

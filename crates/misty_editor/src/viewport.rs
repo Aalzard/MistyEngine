@@ -68,8 +68,15 @@ pub enum ViewId {
 }
 
 impl Gpu {
-    /// Render `frame` at `size_px` and return the texture to show with `ui.image`.
-    pub fn render(&mut self, view: ViewId, size_px: [u32; 2], frame: &Frame) -> egui::TextureId {
+    /// Render `frame` (and the Visual Effects in `effects`) at `size_px` and return the texture
+    /// to show with `ui.image`.
+    pub fn render(
+        &mut self,
+        view: ViewId,
+        size_px: [u32; 2],
+        frame: &Frame,
+        effects: &[misty_engine::vfx::EffectDraw],
+    ) -> egui::TextureId {
         // The previewed quality level (shadow resolution, effects).
         let generation = misty_engine::quality::generation();
         if generation != self.quality {
@@ -116,8 +123,13 @@ impl Gpu {
             vp.filter = Some(filter);
         }
         let target = vp.target.as_ref().expect("target created above");
-        self.renderer
-            .render(&self.state.device, &self.state.queue, target, frame);
+        self.renderer.render_with_effects(
+            &self.state.device,
+            &self.state.queue,
+            target,
+            frame,
+            effects,
+        );
         vp.last_render = Some(std::time::Instant::now());
         vp.texture.expect("texture registered above")
     }

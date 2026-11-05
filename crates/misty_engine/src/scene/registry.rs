@@ -364,6 +364,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<crate::rigging::OverrideTransform>(),
             ComponentInfo::of::<super::PlayableDirector>(),
             ComponentInfo::of::<ParticleSystem>(),
+            ComponentInfo::of::<crate::vfx::VisualEffect>(),
             // Splines (splines).
             ComponentInfo::of::<crate::splines::SplineContainer>(),
             ComponentInfo::of::<crate::splines::SplineExtrude>(),

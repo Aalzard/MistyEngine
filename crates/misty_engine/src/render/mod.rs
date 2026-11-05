@@ -41,6 +41,7 @@ mod terrain_lod;
 pub mod texture;
 pub mod ui;
 mod variants;
+pub(crate) mod vfx;
 mod volumetrics;
 mod water;
 
@@ -435,6 +436,8 @@ pub struct Renderer {
     sky: hdri_sky::SkyGpu,
     /// Posed Skinned Mesh Renderers (GPU skinning output, see [`skinning`]).
     skins: skinning::Skins,
+    /// Visual Effect particles (GPU simulation and indirect draws, see [`vfx`]).
+    effects: vfx::Effects,
 }
 
 impl Renderer {
@@ -541,6 +544,7 @@ impl Renderer {
             glows: Default::default(),
             sky,
             skins: Default::default(),
+            effects: Default::default(),
         }
     }
 
@@ -643,7 +647,8 @@ impl Renderer {
             buffer_bytes: mesh_bytes
                 + terrain_bytes
                 + buffers.iter().map(|b| b.size()).sum::<u64>()
-                + self.particle_instances.buffer.size(),
+                + self.particle_instances.buffer.size()
+                + self.effects.bytes(),
             texture_bytes: texture_bytes
                 + shadow_bytes
                 + self.probes.bytes()
@@ -662,6 +667,7 @@ impl Renderer {
         }
         models::poll_changes();
         crate::shader_asset::poll_changes();
+        crate::vfx::library::poll_changes();
     }
 
     /// Shader compile errors since the last call (Console lines with file and line).
@@ -808,6 +814,34 @@ impl Renderer {
         self.render_frame(device, queue, target, &with_emitters);
     }
 
+    /// [`Renderer::render`] with Visual Effects: simulates the visible ones that have a new
+    /// step (once per step, whichever view renders first) and draws them after transparent
+    /// geometry.
+    pub fn render_with_effects(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &RenderTarget,
+        frame: &Frame,
+        effects: &[crate::vfx::EffectDraw],
+    ) {
+        if frame.shaded && !effects.is_empty() {
+            let view_proj = frame.camera.view_projection(target.aspect());
+            let cull = self.options.culling;
+            self.effects.prepare(
+                device,
+                queue,
+                &self.pipelines,
+                &mut self.textures,
+                effects,
+                &view_proj,
+                cull,
+            );
+        }
+        self.render(device, queue, target, frame);
+        self.effects.end_frame();
+    }
+
     fn render_frame(
         &mut self,
         device: &wgpu::Device,
@@ -838,6 +872,9 @@ impl Renderer {
         }
         let scene_copy = self.needs_scene_copy(frame);
         self.prepare_scene_inputs(device, queue, target, frame, scene_copy);
+        if scene_copy && let Some(c) = self.scene_copies.current(target.size()) {
+            self.effects.scene_depth(device, c.id, &c.depth_view);
+        }
 
         // Culling and batching for the camera and every shadow map.
         // The active Quality level's shadows, fitted to the map size actually allocated.
@@ -1318,7 +1355,7 @@ impl Renderer {
         if !frame.shaded {
             return false;
         }
-        if !frame.water.is_empty() {
+        if !frame.water.is_empty() || self.effects.needs_scene() {
             return true;
         }
         let Some(custom) = self.custom.as_ref() else {
@@ -1624,6 +1661,9 @@ impl Renderer {
         // After the grid: particles don't write depth, so the grid would draw over them.
         if frame.shaded && !particle_draws.is_empty() {
             self.draw_particles(pass, frame, particle_draws, stats);
+        }
+        if frame.shaded {
+            self.effects.draw(pass, &self.textures, scene, stats);
         }
 
         if !frame.overlay.is_empty() {

@@ -281,6 +281,7 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
     });
     ui.menu_button("Effects", |ui| {
         item(ui, s, "Particle System", "", create(Create::ParticleSystem));
+        item(ui, s, "Visual Effect", "", create(Create::VisualEffect));
     });
     ui.menu_button("Light", |ui| {
         for l in LightType::ALL {
@@ -450,7 +451,7 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
     ui.menu_button("Rendering", |ui| {
-        for tab in [Tab::Lighting, Tab::ShaderGraph] {
+        for tab in [Tab::Lighting, Tab::ShaderGraph, Tab::EffectGraph] {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
     });

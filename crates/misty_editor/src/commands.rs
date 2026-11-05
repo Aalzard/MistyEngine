@@ -335,6 +335,18 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
             s.scene
                 .add(e, misty_engine::scene::ParticleSystem::default());
         }
+        Create::VisualEffect => {
+            // Plays the project's first Effect Graph, if any (like the default asset the
+            // reference editor assigns).
+            let first = s.assets.effects.iter().next().cloned();
+            s.scene.add(
+                e,
+                misty_engine::vfx::VisualEffect {
+                    effect: first,
+                    ..Default::default()
+                },
+            );
+        }
     }
     crate::presets::apply_defaults(s, e);
     s.scene.set_transform(e, t);

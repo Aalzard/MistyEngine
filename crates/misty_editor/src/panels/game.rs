@@ -49,7 +49,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             misty_engine::screen::set_size(size[0], size[1], mode);
             // The Game view has no window to resize: Screen.SetResolution is a no-op here.
             misty_engine::screen::take_requests();
-            let texture = gpu.render(ViewId::Game, size, &frame);
+            let texture = gpu.render(ViewId::Game, size, &frame, &game.effects);
             let render = gpu.renderer.stats();
             // The Profiler's Rendering and Memory modules report the Game view.
             if misty_engine::profiler::enabled() {

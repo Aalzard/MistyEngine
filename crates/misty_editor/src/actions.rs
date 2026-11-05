@@ -20,6 +20,8 @@ pub enum Create {
     Ui(crate::ui_create::UiElement),
     /// GameObject ▸ Effects ▸ Particle System.
     ParticleSystem,
+    /// GameObject ▸ Effects ▸ Visual Effect.
+    VisualEffect,
     /// GameObject ▸ 3D Object ▸ Terrain (see `terrain_tools`).
     Terrain,
     /// GameObject ▸ 2D Object ▸ Sprite (None) or Sprites ▸ a built-in shape.
@@ -44,6 +46,7 @@ impl Create {
             Create::Camera => "Camera",
             Create::AudioSource => "Audio Source",
             Create::ParticleSystem => "Particle System",
+            Create::VisualEffect => "Visual Effect",
             Create::Terrain => "Terrain",
             Create::Sprite(None) => "New Sprite",
             Create::Sprite(Some(shape)) => shape,
@@ -76,6 +79,8 @@ pub enum AssetKind {
     LitShaderGraph,
     /// Shader Graph ▸ Unlit Shader Graph.
     UnlitShaderGraph,
+    /// Visual Effects ▸ Effect Graph.
+    EffectGraph,
 }
 
 impl AssetKind {
@@ -107,6 +112,7 @@ impl AssetKind {
             AssetKind::Tile2D(k) => k.label(),
             AssetKind::LitShaderGraph => "Lit Shader Graph",
             AssetKind::UnlitShaderGraph => "Unlit Shader Graph",
+            AssetKind::EffectGraph => "Effect Graph",
         }
     }
 }

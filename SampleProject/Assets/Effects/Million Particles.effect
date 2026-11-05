@@ -1,0 +1,331 @@
+{
+  "version": 1,
+  "properties": [],
+  "contexts": [
+    {
+      "id": 1,
+      "type": "Spawn",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "id": 2,
+          "type": "ConstantRate",
+          "values": {
+            "Rate": {
+              "Float": 260000.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Initialize",
+      "capacity": 1048576,
+      "bounds_center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "bounds_size": [
+        8.0,
+        8.0,
+        8.0
+      ],
+      "space": "Local",
+      "position": [
+        0.0,
+        182.0
+      ],
+      "blocks": [
+        {
+          "id": 4,
+          "type": "PositionSphere",
+          "mode": "Surface",
+          "values": {
+            "Radius": {
+              "Float": 2.5
+            }
+          }
+        },
+        {
+          "id": 5,
+          "type": "VelocityFromDirection",
+          "values": {
+            "Max Speed": {
+              "Float": 0.3
+            },
+            "Min Speed": {
+              "Float": 0.0
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 3.5
+            },
+            "B": {
+              "Float": 4.5
+            }
+          }
+        },
+        {
+          "id": 7,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Size": {
+              "Float": 0.04
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "position": [
+        0.0,
+        761.0
+      ],
+      "blocks": [
+        {
+          "id": 9,
+          "type": "Turbulence",
+          "values": {
+            "Frequency": {
+              "Float": 0.55
+            },
+            "Intensity": {
+              "Float": 1.5
+            },
+            "Scroll": {
+              "Float": 0.2
+            }
+          }
+        },
+        {
+          "id": 10,
+          "type": "ConformToSphere",
+          "values": {
+            "Attraction": {
+              "Float": 8.0
+            },
+            "Radius": {
+              "Float": 2.5
+            },
+            "Stick": {
+              "Float": 3.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Output",
+      "kind": "Quad",
+      "blend": "Additive",
+      "flipbook": [
+        1,
+        1
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": false,
+      "soft_distance": 0.5,
+      "line_length": 0.05,
+      "position": [
+        0.0,
+        1136.0
+      ],
+      "blocks": [
+        {
+          "id": 12,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": false,
+          "composition": "Overwrite"
+        },
+        {
+          "id": 17,
+          "type": "ColorOverLife",
+          "values": {
+            "Gradient": {
+              "Gradient": {
+                "color_keys": [
+                  {
+                    "time": 0.0,
+                    "color": [
+                      0.6,
+                      0.6,
+                      0.6
+                    ]
+                  },
+                  {
+                    "time": 1.0,
+                    "color": [
+                      0.6,
+                      0.6,
+                      0.6
+                    ]
+                  }
+                ],
+                "alpha_keys": [
+                  {
+                    "time": 0.0,
+                    "alpha": 0.0
+                  },
+                  {
+                    "time": 0.1,
+                    "alpha": 1.0
+                  },
+                  {
+                    "time": 0.85,
+                    "alpha": 1.0
+                  },
+                  {
+                    "time": 1.0,
+                    "alpha": 0.0
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "operators": [
+    {
+      "id": 13,
+      "type": "GetAttribute",
+      "attribute": "Position",
+      "position": [
+        -1040.0,
+        1421.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Split",
+      "position": [
+        -780.0,
+        1394.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "Remap",
+      "position": [
+        -520.0,
+        1367.0
+      ],
+      "values": {
+        "In Max": {
+          "Float": 2.8
+        },
+        "In Min": {
+          "Float": -2.8
+        },
+        "Out Max": {
+          "Float": 1.0
+        },
+        "Out Min": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "SampleGradient",
+      "position": [
+        -260.0,
+        1318.0
+      ],
+      "values": {
+        "Gradient": {
+          "Gradient": {
+            "color_keys": [
+              {
+                "time": 0.0,
+                "color": [
+                  0.15,
+                  0.55,
+                  1.0
+                ]
+              },
+              {
+                "time": 0.5,
+                "color": [
+                  0.75,
+                  0.3,
+                  1.0
+                ]
+              },
+              {
+                "time": 1.0,
+                "color": [
+                  1.0,
+                  0.45,
+                  0.6
+                ]
+              }
+            ],
+            "alpha_keys": [
+              {
+                "time": 0.0,
+                "alpha": 0.9
+              },
+              {
+                "time": 1.0,
+                "alpha": 0.9
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "from": 13,
+      "output": "Out",
+      "to": 14,
+      "input": "Input"
+    },
+    {
+      "from": 14,
+      "output": "Y",
+      "to": 15,
+      "input": "Input"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 16,
+      "input": "Time"
+    },
+    {
+      "from": 16,
+      "output": "Out",
+      "to": 12,
+      "input": "Color"
+    }
+  ],
+  "next_id": 18
+}

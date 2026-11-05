@@ -237,6 +237,18 @@ Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a 
 #ParticleSystem|Emit|Emit(count)|Emit particles now
 #ParticleSystem|isPlaying|isPlaying|Playing
 #ParticleSystem|particleCount|particleCount|Live particles
+#VisualEffect|Play|Play()|Start spawning
+#VisualEffect|Stop|Stop()|Stop spawning (live particles finish)
+#VisualEffect|Reinit|Reinit()|Clear the particles and restart
+#VisualEffect|SendEvent|SendEvent(name)|"OnPlay" or "OnStop"
+#VisualEffect|SetFloat|SetFloat(name, value)|Override a Float property
+#VisualEffect|SetVector3|SetVector3(name, v)|Override a Vector3 property
+#VisualEffect|SetColor|SetColor(name, color)|Override a Color property
+#VisualEffect|GetFloat|GetFloat(name)|Read a Float property
+#VisualEffect|HasProperty|HasProperty(name)|The effect exposes it
+#VisualEffect|ResetOverride|ResetOverride(name)|Back to the graph's default
+#VisualEffect|aliveCount|aliveCount|Live particles (read back from the GPU)
+#VisualEffect|isPlaying|isPlaying|Spawning
 #Text|text|text|Shown text
 #Text|fontSize|fontSize|Font size
 #Text|color|color|Text colour
@@ -270,6 +282,7 @@ pub const COMPONENTS: &[&str] = &[
     "MeshRenderer",
     "Renderer",
     "ParticleSystem",
+    "VisualEffect",
     "Terrain",
     "Text",
     "Image",

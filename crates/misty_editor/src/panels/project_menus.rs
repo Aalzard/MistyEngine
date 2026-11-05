@@ -50,6 +50,12 @@ fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
             }
         }
     });
+    ui.menu_button("Visual Effects", |ui| {
+        if ui.button(AssetKind::EffectGraph.label()).clicked() {
+            actions.push(Action::CreateAsset(AssetKind::EffectGraph));
+            ui.close();
+        }
+    });
     ui.menu_button("Shader Graph", |ui| {
         for kind in [AssetKind::LitShaderGraph, AssetKind::UnlitShaderGraph] {
             if ui.button(kind.label()).clicked() {

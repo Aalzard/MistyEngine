@@ -338,6 +338,11 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         {
             lines.particle_shape(&m, &ps.shape);
         }
+        // A Visual Effect's culling bounds (world box).
+        if let Some((lo, hi)) = misty_engine::vfx::bounds_of(scene, e) {
+            let half = (hi - lo) * 0.5;
+            lines.wire_box(&Mat4::IDENTITY, lo + half, half, PARTICLES);
+        }
         lines.colliders(scene, e);
         lines.colliders_2d(scene, e);
         lines.character(scene, e);

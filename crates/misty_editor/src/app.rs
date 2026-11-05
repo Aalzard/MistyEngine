@@ -257,7 +257,7 @@ impl EditorApp {
             }
             // Delete removes selected keys / states when the Animation / Animator window has focus.
             // The Shader Graph window handles its own Delete, undo/redo, save and duplicate.
-            if self.state.shader_graph.wants_keys()
+            if (self.state.shader_graph.wants_keys() || self.state.effect_graph.wants_keys())
                 && matches!(key, Key::Delete | Key::Z | Key::Y | Key::S | Key::D)
             {
                 continue;
@@ -286,7 +286,11 @@ impl EditorApp {
         }
         // Transform tools: plain Q/W/E/R/T/Y, unless typing or flying with right mouse.
         let flying = ctx.input(|i| i.pointer.secondary_down());
-        if !typing && !flying && !self.state.shader_graph.wants_keys() {
+        if !typing
+            && !flying
+            && !self.state.shader_graph.wants_keys()
+            && !self.state.effect_graph.wants_keys()
+        {
             for tool in Tool::ALL {
                 if ctx.input(|i| i.modifiers.is_none() && i.key_pressed(tool.key())) {
                     self.state.tool = tool;
@@ -486,6 +490,10 @@ impl EditorApp {
             misty_engine::splines::update(&mut s.scene);
             // Selected Particle Systems play in the Scene view.
             if crate::particle_preview::tick(s, ctx.input(|i| i.stable_dt)) {
+                ctx.request_repaint();
+            }
+            // Visual Effects simulate in the Scene view while editing.
+            if crate::vfx_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();
             }
             // Scripts reload when their files change; syntax errors go to the Console.

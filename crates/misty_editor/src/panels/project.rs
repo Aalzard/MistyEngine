@@ -188,6 +188,9 @@ pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     } else if misty_engine::audio::is_mixer(&path.to_string_lossy()) {
         state.audio_mixer.open(Some(state.assets.relative(&path)));
         state.push(Action::FocusTab(crate::layout::Tab::AudioMixer));
+    } else if misty_engine::vfx::is_effect_path(&path.to_string_lossy()) {
+        let rel = state.assets.relative(&path);
+        crate::panels::effect_graph::open(state, &rel);
     } else if misty_engine::shader_graph::is_graph_path(&path.to_string_lossy()) {
         let rel = state.assets.relative(&path);
         crate::panels::shader_graph::open(state, &rel);

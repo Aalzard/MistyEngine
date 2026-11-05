@@ -47,6 +47,7 @@ pub mod timeline;
 pub mod ui;
 pub mod vcam;
 pub mod vfs;
+pub mod vfx;
 pub mod water;
 pub mod world_gen;
 

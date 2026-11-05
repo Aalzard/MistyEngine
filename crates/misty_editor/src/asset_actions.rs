@@ -134,6 +134,13 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .save(&path)
                 .map(|_| path)
         }
+        AssetKind::EffectGraph => {
+            let ext = misty_engine::vfx::EXTENSION;
+            let path = asset_ops::unique_path(&dir, "New Effect Graph", ext);
+            crate::panels::effect_graph::new_graph()
+                .save(&path)
+                .map(|_| path)
+        }
         AssetKind::AudioMixer => {
             let path = asset_ops::unique_path(&dir, "New Audio Mixer", "mixer");
             let rel = s.assets.relative(&path);
