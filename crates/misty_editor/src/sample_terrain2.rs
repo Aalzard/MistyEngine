@@ -56,7 +56,7 @@ fn tile_noise(x: f32, y: f32, period: i32, seed: u32) -> f32 {
 }
 
 /// Tileable fBm over a `size` px image, 0..1.
-fn tile_fbm(px: u32, py: u32, size: u32, period: i32, octaves: u32, seed: u32) -> f32 {
+pub(crate) fn tile_fbm(px: u32, py: u32, size: u32, period: i32, octaves: u32, seed: u32) -> f32 {
     let (mut sum, mut amp, mut norm) = (0.0, 1.0, 0.0);
     for o in 0..octaves {
         let p = period << o;
@@ -68,7 +68,7 @@ fn tile_fbm(px: u32, py: u32, size: u32, period: i32, octaves: u32, seed: u32) -
     sum / norm
 }
 
-fn rgb(c: [f32; 3], k: f32) -> Rgba<u8> {
+pub(crate) fn rgb(c: [f32; 3], k: f32) -> Rgba<u8> {
     let c = c.map(|v| (v * k).clamp(0.0, 255.0).round() as u8);
     Rgba([c[0], c[1], c[2], 255])
 }

@@ -1,0 +1,754 @@
+{
+  "lighting": {
+    "environment_lighting": {
+      "equator_color": [
+        0.114,
+        0.125,
+        0.133
+      ],
+      "ground_color": [
+        0.047,
+        0.043,
+        0.035
+      ],
+      "intensity": 1.3,
+      "sky_color": [
+        0.212,
+        0.227,
+        0.259
+      ],
+      "source": "Skybox"
+    },
+    "fog": {
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "density": 0.01,
+      "enabled": false,
+      "end": 300.0,
+      "mode": "ExponentialSquared",
+      "start": 0.0
+    },
+    "reflection_intensity": 1.0,
+    "skybox": {
+      "atmosphere_thickness": 1.0,
+      "color": [
+        0.19,
+        0.3,
+        0.47
+      ],
+      "exposure": 1.0,
+      "ground": [
+        0.42,
+        0.31,
+        0.21
+      ],
+      "kind": "Procedural",
+      "sky_tint": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "sun_disk": "HighQuality",
+      "sun_size": 0.04
+    }
+  },
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 600.0,
+          "fov": 40.0,
+          "near": 0.02,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            7.0,
+            -3.0,
+            0.0
+          ],
+          "position": [
+            0.12,
+            0.42061716,
+            -1.5
+          ],
+          "rotation": [
+            0.061027624,
+            -0.026128124,
+            0.0015980646,
+            0.9977928
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.74,
+            0.48
+          ],
+          "contact_shadows": true,
+          "enabled": true,
+          "intensity": 3.2,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            12.0,
+            195.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            10.0,
+            0.0
+          ],
+          "rotation": [
+            -0.013643704,
+            0.98601365,
+            -0.10363421,
+            -0.12981118
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": false,
+          "far": 600.0,
+          "fov": 42.0,
+          "near": 0.02,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Wide Camera",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            24.0,
+            38.0,
+            0.0
+          ],
+          "position": [
+            -2.3,
+            1.5636021,
+            -2.9
+          ],
+          "rotation": [
+            0.19658437,
+            0.3184537,
+            -0.067689426,
+            0.9248567
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Terrain",
+            "Terrain Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Terrain",
+          "tag": "Untagged"
+        },
+        "Terrain": {
+          "cast_shadows": true,
+          "enabled": true,
+          "terrain_data": "Assets/Terrains/FoliageLightingDemo.terrain"
+        },
+        "Terrain Collider": {
+          "enabled": true,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          },
+          "terrain_data": ""
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -20.0,
+            -1.0,
+            -20.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Terrain"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Tall Grass",
+          "tag": "Untagged"
+        },
+        "Terrain": {
+          "cast_shadows": false,
+          "enabled": true,
+          "terrain_data": "Assets/Terrains/FoliageLightingDemo Tall Grass.terrain"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -20.0,
+            -1.0,
+            -20.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pebbles",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pebble 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Foliage/Pebble.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.38,
+            -0.0023815408,
+            -0.92
+          ],
+          "rotation": [
+            -0.032344334,
+            0.21400924,
+            -0.14589587,
+            0.9653333
+          ],
+          "scale": [
+            0.11,
+            0.055,
+            0.08
+          ]
+        }
+      },
+      "parent": 5
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pebble 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Foliage/Pebble.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.52,
+            -0.010794443,
+            -0.82
+          ],
+          "rotation": [
+            0.025627468,
+            -0.34105864,
+            -0.07041089,
+            0.93705094
+          ],
+          "scale": [
+            0.05,
+            0.03,
+            0.045
+          ]
+        }
+      },
+      "parent": 5
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pebble 3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Foliage/Pebble.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.55,
+            -0.0026902119,
+            -1.05
+          ],
+          "rotation": [
+            0.0,
+            0.57357645,
+            0.0,
+            0.81915206
+          ],
+          "scale": [
+            0.07,
+            0.04,
+            0.06
+          ]
+        }
+      },
+      "parent": 5
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pebble 4",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Foliage/Pebble.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.15,
+            0.0065525193,
+            0.2
+          ],
+          "rotation": [
+            0.006530554,
+            0.086910725,
+            0.07464458,
+            0.9933942
+          ],
+          "scale": [
+            0.14,
+            0.07,
+            0.1
+          ]
+        }
+      },
+      "parent": 5
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pebble 5",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Foliage/Pebble.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.2,
+            -0.018194664,
+            0.55
+          ],
+          "rotation": [
+            -0.019505592,
+            -0.12906054,
+            0.14815968,
+            0.98031205
+          ],
+          "scale": [
+            0.09,
+            0.05,
+            0.07
+          ]
+        }
+      },
+      "parent": 5
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Post-process Volume"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Global Volume",
+          "tag": "Untagged"
+        },
+        "Post-process Volume": {
+          "ambient_occlusion": {
+            "active": true,
+            "direct_lighting_strength": 0.25,
+            "full_resolution": true,
+            "intensity": 1.6,
+            "radius": 0.3,
+            "step_count": 8,
+            "temporal": true
+          },
+          "bloom": {
+            "active": true,
+            "intensity": 0.25,
+            "scatter": 0.65,
+            "threshold": 1.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "color_adjustments": {
+            "active": true,
+            "color_filter": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "contrast": 0.0,
+            "post_exposure": -0.4,
+            "saturation": 0.0,
+            "temperature": 10.0
+          },
+          "contact_shadows": {
+            "active": true,
+            "distance_fade": 12.0,
+            "length": 0.1,
+            "opacity": 0.9,
+            "sample_count": 16
+          },
+          "enabled": true,
+          "fog": {
+            "active": true,
+            "albedo": [
+              1.0,
+              0.95,
+              0.88
+            ],
+            "ambient_dimmer": 1.0,
+            "anisotropy": 0.55,
+            "attenuation_distance": 1200.0,
+            "base_height": 0.0,
+            "denoising": true,
+            "enabled": true,
+            "max_fog_distance": 800.0,
+            "maximum_height": 6.0,
+            "noise_intensity": 0.0,
+            "noise_scale": 8.0,
+            "noise_scroll": [
+              0.6,
+              0.0,
+              0.3
+            ],
+            "quality": "Medium",
+            "volumetric": true,
+            "volumetric_distance": 40.0
+          },
+          "priority": 0.0,
+          "screen_space_gi": {
+            "active": true,
+            "denoise": true,
+            "full_resolution": false,
+            "intensity": 1.0,
+            "lightmapped_surfaces": false,
+            "quality": "Medium",
+            "radius": 0.8,
+            "temporal": true,
+            "thickness": 0.08
+          },
+          "tonemapping": {
+            "active": true,
+            "look": "Punchy",
+            "mode": "AgX"
+          },
+          "vignette": {
+            "active": true,
+            "color": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "intensity": 0.18,
+            "smoothness": 0.35
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}
