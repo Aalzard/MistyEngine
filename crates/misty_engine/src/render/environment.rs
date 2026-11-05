@@ -30,6 +30,8 @@ pub struct Environment {
     pub glows: Vec<super::GlowSource>,
     /// The decoded HDRI while the skybox is HDRI and its file loads.
     pub hdri: Option<crate::hdri::HdriHandle>,
+    /// 2D lights and their shadow maps (see [`crate::light2d`]); empty = sprites unlit.
+    pub lights_2d: crate::light2d::Lights2D,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -71,6 +73,7 @@ impl Environment {
             fog_volumes: Vec::new(),
             glows: Vec::new(),
             hdri,
+            lights_2d: Default::default(),
         }
     }
 

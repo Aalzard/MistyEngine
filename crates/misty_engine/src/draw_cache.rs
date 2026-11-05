@@ -201,6 +201,8 @@ impl DrawCache {
         };
         let view = self.skin_view;
         crate::skinning::draws(scene, materials, view, keep, &world, outline, &mut scatter);
+        // Tilemap Renderers: chunk meshes cached by content, animated tiles posed every call.
+        crate::tilemap::chunks::draws(scene, &keep, &world, &outline, &mut scatter);
         if !sprites.is_empty() || !scatter.is_empty() || target.len() > meshes {
             let out = Arc::make_mut(target);
             out.truncate(meshes);

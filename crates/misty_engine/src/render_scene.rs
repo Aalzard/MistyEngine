@@ -121,6 +121,7 @@ pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
         .with_probes(crate::render::probes::scene_probes(scene));
     env.fog_volumes = fog_volumes(scene);
     env.glows = glow_sources(scene);
+    env.lights_2d = crate::light2d::collect(scene);
     env
 }
 

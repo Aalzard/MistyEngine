@@ -36,6 +36,7 @@ pub mod scene_api;
 pub mod skinning_api;
 pub mod syntax;
 pub mod terrain_api;
+pub mod tilemap_api;
 pub mod timeline_api;
 pub mod ui_api;
 mod ui_dispatch;
@@ -674,7 +675,10 @@ impl ScriptHost {
             let contacts = self.with_world(|w| w.physics.step(&w.scene));
             self.dispatch(&contacts);
             self.flush_spawned();
-            let contacts_2d = self.with_world(|w| w.physics2d.step());
+            let contacts_2d = self.with_world(|w| {
+                w.physics2d.refresh_tilemaps(&w.scene);
+                w.physics2d.step()
+            });
             self.dispatch_2d(&contacts_2d);
         }
         {
@@ -994,3 +998,5 @@ mod input_tests;
 mod material_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tilemap_tests;

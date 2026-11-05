@@ -309,7 +309,8 @@ pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
         "EdgeCollider2D" if has(|w, e| w.get::<&EdgeCollider2D>(e).is_ok())? => {
             ud(lua.create_userdata(LCollider2D(e, "EdgeCollider2D")))
         }
-        _ => Ok(None),
+        // Tilemap and Light2D (tilemap_api.rs).
+        _ => super::tilemap_api::component(lua, e, name),
     }
 }
 

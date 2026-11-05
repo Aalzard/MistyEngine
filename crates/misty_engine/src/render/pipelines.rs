@@ -292,6 +292,8 @@ impl Pipelines {
                 probe[4],
                 // Screen-space AO and contact shadow texels (screen_space.rs).
                 entry(16, S::FRAGMENT, storage()),
+                // 2D lights and shadow maps (light2d.rs).
+                entry(super::light2d::BINDING, S::FRAGMENT, storage()),
             ],
         );
         let draws_layout = layout(

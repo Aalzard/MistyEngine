@@ -291,6 +291,15 @@ fn assets(l: &mut List) {
             Action::CreateAsset(kind),
         );
     }
+    for k in crate::tile_palette::TileCreate::ALL {
+        let name = k.label();
+        l.action(
+            &format!("Create {name}"),
+            &format!("Assets/Create/2D/{name}"),
+            "",
+            Action::CreateAsset(AssetKind::Tile2D(k)),
+        );
+    }
     l.add("Refresh", "Assets/Refresh", MenuRun::RefreshAssets);
 }
 
@@ -361,6 +370,7 @@ fn window(l: &mut List, s: &EditorState) {
             Tab::WorldBuilder => "Terrain",
             Tab::Profiler => "Analysis",
             Tab::Timeline => "Sequencing",
+            Tab::TilePalette => "2D",
             _ => "General",
         };
         let path = format!("Window/{menu}/{}", tab.title());

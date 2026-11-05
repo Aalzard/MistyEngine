@@ -1,0 +1,301 @@
+{
+  "kind": "RuleTile",
+  "sprite": "Assets/Sprites/Tilemap/Ground.png#Ground_5",
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "collider": "Grid",
+  "rules": [
+    {
+      "neighbors": [
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "NotThis",
+        "NotThis",
+        "DontCare",
+        "NotThis",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_15"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "NotThis",
+        "This",
+        "DontCare",
+        "NotThis",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_12"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "This",
+        "NotThis",
+        "DontCare",
+        "NotThis",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_14"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "This",
+        "This",
+        "DontCare",
+        "NotThis",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_13"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "NotThis",
+        "NotThis",
+        "DontCare",
+        "This",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_3"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "NotThis",
+        "This",
+        "DontCare",
+        "DontCare",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_0"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "This",
+        "NotThis",
+        "DontCare",
+        "DontCare",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_2"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_1"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "This",
+        "DontCare",
+        "NotThis",
+        "NotThis",
+        "DontCare",
+        "NotThis",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_11"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "NotThis",
+        "This",
+        "DontCare",
+        "NotThis",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_8"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "This",
+        "NotThis",
+        "DontCare",
+        "NotThis",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_10"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "NotThis",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_9"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "NotThis",
+        "NotThis",
+        "DontCare",
+        "DontCare",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_7"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_4"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    },
+    {
+      "neighbors": [
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "DontCare",
+        "NotThis",
+        "DontCare",
+        "DontCare",
+        "DontCare"
+      ],
+      "sprites": [
+        "Assets/Sprites/Tilemap/Ground.png#Ground_6"
+      ],
+      "output": "Single",
+      "transform": "Fixed",
+      "collider": "Grid",
+      "animation_speed": 1.0
+    }
+  ],
+  "frames": [],
+  "speed": 4.0,
+  "start_time": 0.0
+}

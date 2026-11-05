@@ -1,0 +1,15 @@
+{
+  "kind": "Tile",
+  "sprite": "Assets/Sprites/Tilemap/Props.png#Props_0",
+  "color": [
+    0.85,
+    0.85,
+    0.95,
+    1.0
+  ],
+  "collider": "None",
+  "rules": [],
+  "frames": [],
+  "speed": 4.0,
+  "start_time": 0.0
+}

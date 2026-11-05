@@ -30,6 +30,14 @@ pub fn create_items(ui: &mut Ui, actions: &mut Vec<Action>) {
             create_shader_items(ui, actions);
         }
     }
+    ui.menu_button("2D", |ui| {
+        for k in crate::tile_palette::TileCreate::ALL {
+            if ui.button(k.label()).clicked() {
+                actions.push(Action::CreateAsset(AssetKind::Tile2D(k)));
+                ui.close();
+            }
+        }
+    });
 }
 
 /// Shader ▸ Surface / Unlit Shader, and Material from Shader.

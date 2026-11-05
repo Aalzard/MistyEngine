@@ -100,6 +100,8 @@ mod sample_terrain;
 #[cfg(test)]
 mod sample_terrain2;
 #[cfg(test)]
+mod sample_tilemap;
+#[cfg(test)]
 mod sample_timeline;
 #[cfg(test)]
 mod sample_ui;
@@ -131,6 +133,7 @@ mod terrain_rules;
 mod terrain_tools;
 mod theme;
 mod thumbnails;
+mod tile_palette;
 mod timelines;
 mod title_bar;
 mod toolbar;

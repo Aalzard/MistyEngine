@@ -70,6 +70,8 @@ pub struct Physics2D {
     /// Problems found while building (shown in the Console).
     pub warnings: Vec<String>,
     contacts: contacts::Tracker,
+    /// Content signature of each Tilemap Collider 2D's tilemap (rebuilt when it changes).
+    tilemaps: HashMap<Entity, u64>,
 }
 
 /// World X/Y position, Z angle, world scale (absolute) and depth of an object.
@@ -102,9 +104,11 @@ impl Physics2D {
             fixed_dt: layers.fixed_timestep,
             warnings: Vec::new(),
             contacts: Default::default(),
+            tilemaps: HashMap::new(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         p.add_objects(scene, &objects);
+        p.refresh_tilemaps(scene);
         p
     }
 
@@ -383,6 +387,48 @@ impl Physics2D {
         let world = &self.world;
         self.colliders
             .retain(|h, _| world.colliders.get(*h).is_some());
+        self.contacts.forget(&self.colliders);
+    }
+
+    /// Rebuild the colliders of Tilemap Collider 2D objects whose tiles changed (scripts painting
+    /// tiles while playing). Call before a step.
+    pub fn refresh_tilemaps(&mut self, scene: &Scene) {
+        let list = scene.active_with::<crate::tilemap::TilemapCollider2D>();
+        if list.is_empty() && self.tilemaps.is_empty() {
+            return;
+        }
+        for e in list {
+            let Ok(map) = scene.world.get::<&crate::tilemap::Tilemap>(e) else {
+                continue;
+            };
+            let sig = crate::tilemap::collider::signature(&map);
+            drop(map);
+            match self.tilemaps.insert(e, sig) {
+                Some(old) if old != sig => {
+                    self.remove_colliders(e);
+                    self.add_colliders(scene, &[e]);
+                    // Bodies resting on removed tiles must notice.
+                    for (_, b) in self.world.bodies.iter_mut() {
+                        b.wake_up(true);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Remove an object's colliders (its body stays).
+    fn remove_colliders(&mut self, e: Entity) {
+        let handles: Vec<_> = self
+            .colliders
+            .iter()
+            .filter(|(_, o)| **o == e)
+            .map(|(h, _)| *h)
+            .collect();
+        for h in handles {
+            self.world.remove_collider(h);
+            self.colliders.remove(&h);
+        }
         self.contacts.forget(&self.colliders);
     }
 

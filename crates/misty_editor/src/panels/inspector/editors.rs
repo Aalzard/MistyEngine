@@ -39,6 +39,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::terrain::icon(other))
             .or_else(|| super::nav_editors::icon(other))
             .or_else(|| super::sprite_editors::icon(other))
+            .or_else(|| super::tilemap_editors::icon(other))
             .or_else(|| super::probe_editor::icon(other))
             .or_else(|| super::fog_editors::icon(other))
             .or_else(|| super::glow_editors::icon(other))
@@ -69,6 +70,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::sprite_editors::NAMES.contains(&name) {
         return super::sprite_editors::enabled_flag(state, e, name);
+    }
+    if super::tilemap_editors::NAMES.contains(&name) {
+        return super::tilemap_editors::enabled_flag(state, e, name);
     }
     if super::probe_editor::NAMES.contains(&name) {
         return super::probe_editor::enabled_flag(state, e, name);
@@ -133,6 +137,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::sprite_editors::NAMES.contains(&name) {
         return super::sprite_editors::set_enabled(state, e, name, on);
+    }
+    if super::tilemap_editors::NAMES.contains(&name) {
+        return super::tilemap_editors::set_enabled(state, e, name, on);
     }
     if super::probe_editor::NAMES.contains(&name) {
         return super::probe_editor::set_enabled(state, e, name, on);
@@ -251,6 +258,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         two_d if super::sprite_editors::NAMES.contains(&two_d) => {
             super::sprite_editors::edit(ui, state, e, two_d)
+        }
+        tiles if super::tilemap_editors::NAMES.contains(&tiles) => {
+            super::tilemap_editors::edit(ui, state, e, tiles)
         }
         probe if super::probe_editor::NAMES.contains(&probe) => {
             super::probe_editor::edit(ui, state, e, probe)

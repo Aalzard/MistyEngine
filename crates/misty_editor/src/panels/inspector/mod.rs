@@ -33,6 +33,7 @@ mod slots;
 mod sprite_editors;
 mod terrain;
 mod texture_import;
+mod tilemap_editors;
 mod timeline_editors;
 mod ui_editors;
 mod vcam_editors;
@@ -633,6 +634,14 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::timeline::is_timeline(rel) {
         timeline_editors::timeline_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::tilemap::tile::is_tile(rel) {
+        tilemap_editors::tile_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::tilemap::palette::is_palette(rel) {
+        tilemap_editors::palette_asset(ui, state, rel);
         return;
     }
     if misty_engine::assets::is_texture(rel) {
