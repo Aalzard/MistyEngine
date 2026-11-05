@@ -86,6 +86,13 @@ struct Passes {
     resolve: wgpu::ComputePipeline,
 }
 
+impl ScreenFrame {
+    /// The prepass depth and world normals (the shadow mask reads them too).
+    pub(super) fn views(&self) -> (&wgpu::TextureView, &wgpu::TextureView) {
+        (&self.depth_view, &self.normal_view)
+    }
+}
+
 /// The renderer's part: pipelines, the "off" buffer and this render's lit-pass group.
 pub(super) struct ScreenSpace {
     passes: Option<Passes>,
@@ -166,7 +173,7 @@ impl Renderer {
             frame.post.ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;
         let contact =
             frame.post.contact_shadows.active() && frame.lights.iter().any(|l| l.contact_shadows);
-        frame.shaded && (ao || contact)
+        frame.shaded && (ao || contact || self.shadow_mask_wanted(frame))
     }
 
     /// Set up this render's screen-space effects; `None` when they are off (or the view is
@@ -251,7 +258,7 @@ impl Renderer {
             &self.shadows,
             &self.probes,
             &self.lightmaps,
-            buffer,
+            [buffer, self.shadow_denoise.lit_buffer()],
         );
         self.screen_space.frame_group = Some(lit);
 

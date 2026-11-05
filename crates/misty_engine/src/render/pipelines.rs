@@ -24,6 +24,8 @@ pub(super) const MESH_SRC: &str = concat!(
     "\n",
     include_str!("shaders/shadows.wgsl"),
     "\n",
+    include_str!("shadow_denoise/shaders/shadow_lookup.wgsl"),
+    "\n",
     include_str!("area/area_light.wgsl"),
     "\n",
     include_str!("probes/probes.wgsl"),
@@ -62,6 +64,8 @@ const TERRAIN_SRC: &str = concat!(
     "\n",
     include_str!("shaders/shadows.wgsl"),
     "\n",
+    include_str!("shadow_denoise/shaders/shadow_lookup.wgsl"),
+    "\n",
     include_str!("area/area_light.wgsl"),
     "\n",
     include_str!("probes/probes.wgsl"),
@@ -89,6 +93,8 @@ const GRASS_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/shadows.wgsl"),
+    "\n",
+    include_str!("shadow_denoise/shaders/shadow_lookup.wgsl"),
     "\n",
     include_str!("area/area_light.wgsl"),
     "\n",
@@ -297,6 +303,8 @@ impl Pipelines {
                 lightmap[1],
                 // Screen-space AO and contact shadow texels (screen_space.rs).
                 entry(16, S::FRAGMENT, storage()),
+                // Temporal soft-shadow mask (shadow_denoise).
+                entry(super::shadow_denoise::BINDING, S::FRAGMENT, storage()),
                 // 2D lights and shadow maps (light2d.rs).
                 entry(super::light2d::BINDING, S::FRAGMENT, storage()),
             ],

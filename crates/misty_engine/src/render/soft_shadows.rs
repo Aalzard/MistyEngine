@@ -20,6 +20,8 @@ pub struct LightShadow {
     pub bias: f32,
     /// Normal offset in shadow-map texels.
     pub normal_bias: f32,
+    /// Multiplier on the penumbra (Light ▸ Shadow Softness; 1 = physical size).
+    pub softness: f32,
 }
 
 impl Default for LightShadow {
@@ -28,6 +30,7 @@ impl Default for LightShadow {
             size: 0.0,
             bias: light_shadow::BIAS,
             normal_bias: light_shadow::NORMAL_BIAS,
+            softness: light_shadow::SOFTNESS,
         }
     }
 }
@@ -45,7 +48,9 @@ pub(super) struct ShadowUniform {
     view_axis: [f32; 4],
     /// xy = target size (pixels), z = 1 to tint cascades, w = camera near.
     misc: [f32; 4],
-    /// Per light: [size, depth bias, normal bias, 0], [near, far, tan(half fov), 0].
+    /// x = widest filter radius (texels), y = narrowest, z = depth bias per metre of radius.
+    filter: [f32; 4],
+    /// Per light: [size, depth bias, normal bias, 0], [near, far, tan(half fov), faces].
     lights: [[f32; 4]; 2 * MAX_LIGHTS],
 }
 
@@ -74,6 +79,9 @@ fn pack(
         debug,
         frame.camera.near.max(0.01),
     ];
+    let (widest, narrowest) = settings.filter_texels();
+    u.filter = [widest, narrowest, FILTER_BIAS, 0.0];
+    let soft = settings.soft != crate::quality::Tier::Off;
     // The same lights in the same order as `lights_uniform`.
     let lit = frame.lights.iter().filter(|l| l.intensity > 0.0);
     for (n, l) in lit.take(MAX_LIGHTS).enumerate() {
@@ -83,21 +91,29 @@ fn pack(
             l.shadow.normal_bias.max(0.0),
             0.0,
         ];
-        let (near, far, tan_half) = shadows::local_clip(l);
-        u.lights[2 * n + 1] = [near, far, tan_half, 0.0];
+        let faces = shadows::rect_faces(l, soft);
+        let (near, far, tan_half) = shadows::local_clip(l, faces);
+        u.lights[2 * n + 1] = [near, far, tan_half, faces as f32];
     }
     u
 }
 
-/// Directional: tan(half the angular diameter). Spot / point: the radius. Rectangle: half its
-/// mean side, so the penumbra grows with the light's size.
+/// Depth bias per metre of filter radius: wide kernels reach parts of a curved receiver that
+/// bend away from its tangent plane (a 30 cm penumbra adds 6 mm).
+const FILTER_BIAS: f32 = 0.02;
+
+/// Directional: tan(half the angular diameter). Spot / point: the radius. Rectangle: just the
+/// softness, since the shader projects the rectangle's own half axes. All scaled by the
+/// light's softness.
 fn source_size(l: &LightData) -> f32 {
     let size = l.shadow.size.max(0.0);
-    match l.kind {
-        LightType::Directional => (size.min(20.0).to_radians() * 0.5).tan(),
-        LightType::Rectangle => l.area.shadow_radius(),
-        _ => size,
-    }
+    let softness = l.shadow.softness.max(0.0);
+    softness
+        * match l.kind {
+            LightType::Directional => (size.min(20.0).to_radians() * 0.5).tan(),
+            LightType::Rectangle => 1.0,
+            _ => size,
+        }
 }
 
 impl Renderer {
@@ -185,10 +201,10 @@ mod tests {
 
     #[test]
     fn uniform_matches_wgsl_and_sizes_convert() {
-        // 4 matrices, 4 cascade rows, 3 vec4s, 2 vec4s per light (shadows.wgsl).
+        // 4 matrices, 4 cascade rows, 4 vec4s, 2 vec4s per light (shadows.wgsl).
         assert_eq!(
             std::mem::size_of::<ShadowUniform>(),
-            64 * MAX_CASCADES + 16 * MAX_CASCADES + 48 + 32 * MAX_LIGHTS
+            64 * MAX_CASCADES + 16 * MAX_CASCADES + 64 + 32 * MAX_LIGHTS
         );
         let mut l = LightData {
             kind: LightType::Directional,
@@ -210,5 +226,9 @@ mod tests {
         assert!((source_size(&l) - 1f32.to_radians().tan()).abs() < 1e-6);
         l.kind = LightType::Point;
         assert_eq!(source_size(&l), 2.0);
+        l.shadow.softness = 0.5;
+        assert_eq!(source_size(&l), 1.0);
+        l.kind = LightType::Rectangle;
+        assert_eq!(source_size(&l), 0.5);
     }
 }

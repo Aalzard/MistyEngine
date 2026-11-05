@@ -257,10 +257,18 @@ fn gpu_culling_and_depth_prepass_render_identically() {
     let lights = sun(Shadows::Soft);
     let cam = camera(Vec3::new(0.0, 2.0, -9.0), 5.0);
     let mut plain = Renderer::with_queue(&device, &queue);
+    // The temporal shadow mask needs the screen-space prepass, which turns GPU culling off.
+    let no_mask = crate::quality::QualityLevel {
+        shadow_temporal: false,
+        shadow_denoise: false,
+        ..Default::default()
+    };
+    plain.set_quality(&device, &no_mask);
     let (reference, _) = render(&device, &queue, &mut plain, &cam, &meshes, &lights, 1);
     save("occlusion_cpu", &reference);
 
     let mut gpu = Renderer::with_queue(&device, &queue);
+    gpu.set_quality(&device, &no_mask);
     if gpu.culler.is_none() {
         eprintln!("no INDIRECT_FIRST_INSTANCE: GPU culling skipped");
     } else {
@@ -285,6 +293,7 @@ fn gpu_culling_and_depth_prepass_render_identically() {
     }
 
     let mut pre = Renderer::with_queue(&device, &queue);
+    pre.set_quality(&device, &no_mask);
     pre.set_options(RenderOptions {
         depth_prepass: true,
         ..Default::default()

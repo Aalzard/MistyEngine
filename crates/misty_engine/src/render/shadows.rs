@@ -11,9 +11,11 @@ use crate::scene::{LightType, Shadows};
 
 pub const DIRECTIONAL_SIZE: u32 = 2048;
 pub const LOCAL_SIZE: u32 = 1024;
-/// Spot and rectangle = 1 layer, point = 6 layers.
+/// Spot = 1 layer, point = 6 layers, rectangle = 5 (one-sided) or 6 (two-sided) with soft
+/// shadows on, else 1.
 pub const MAX_LOCAL_LAYERS: usize = 16;
-/// Field of view of a rectangle light's shadow map (points further off its axis are unshadowed).
+/// Field of view of a rectangle light's single shadow map (soft shadows off: points further off
+/// its axis are unshadowed).
 pub const RECT_SHADOW_FOV: f32 = 120.0;
 /// Dynamic-offset stride for the per-pass view uniforms.
 pub const VIEW_STRIDE: u64 = 512;
@@ -201,11 +203,23 @@ pub fn plan_with(
                 Some(-1)
             }
             LightType::Directional => None,
-            // Rectangles: one perspective map from the centre, like a wide spot light.
-            LightType::Spot | LightType::Rectangle if plan.local.len() < MAX_LOCAL_LAYERS => {
+            LightType::Spot if plan.local.len() < MAX_LOCAL_LAYERS => {
                 let first = plan.local.len() as i32;
                 plan.local.push(spot_matrix(l));
                 Some(first)
+            }
+            // Rectangles: a hemicube in their own frame (soft shadows), else one wide map.
+            LightType::Rectangle => {
+                let faces = rect_faces(l, settings.soft != crate::quality::Tier::Off);
+                (plan.local.len() + faces <= MAX_LOCAL_LAYERS).then(|| {
+                    let first = plan.local.len() as i32;
+                    if faces == 1 {
+                        plan.local.push(spot_matrix(l));
+                    } else {
+                        plan.local.extend(rect_matrices(l, faces));
+                    }
+                    first
+                })
             }
             LightType::Point if plan.local.len() + 6 <= MAX_LOCAL_LAYERS => {
                 let first = plan.local.len() as i32;
@@ -252,11 +266,23 @@ fn mesh_bounds(m: &MeshDraw) -> (Vec3, Vec3) {
     (lo, hi)
 }
 
-/// Near and far plane and tan(half field of view) of a spot or point light's shadow frusta.
-pub fn local_clip(light: &LightData) -> (f32, f32, f32) {
+/// Shadow-map layers of a rectangle light: a hemicube in its own frame with soft shadows
+/// (6 faces when it lights both sides), else one wide perspective map.
+pub fn rect_faces(light: &LightData, soft: bool) -> usize {
+    match (soft, light.area.two_sided) {
+        (false, _) => 1,
+        (true, false) => 5,
+        (true, true) => 6,
+    }
+}
+
+/// Near and far plane and tan(half field of view) of a local light's shadow frusta
+/// (`faces` = a rectangle's layer count, see [`rect_faces`]).
+pub fn local_clip(light: &LightData, faces: usize) -> (f32, f32, f32) {
     let near = (light.range * 0.005).clamp(0.02, 0.2);
     let fov: f32 = match light.kind {
         LightType::Point => 92.0,
+        LightType::Rectangle if faces > 1 => 92.0,
         LightType::Rectangle => RECT_SHADOW_FOV,
         _ => (light.spot_angle + 2.0).min(170.0),
     };
@@ -267,8 +293,8 @@ pub fn local_clip(light: &LightData) -> (f32, f32, f32) {
     )
 }
 
-fn local_projection(light: &LightData) -> Mat4 {
-    let (near, far, tan_half) = local_clip(light);
+fn local_projection(light: &LightData, faces: usize) -> Mat4 {
+    let (near, far, tan_half) = local_clip(light, faces);
     glam::camera::lh::proj::directx::perspective(tan_half.atan() * 2.0, 1.0, near, far)
 }
 
@@ -276,13 +302,28 @@ fn spot_matrix(light: &LightData) -> Mat4 {
     let dir = light.direction.normalize_or(Vec3::Z);
     let up = if dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
     let view = glam::camera::lh::view::look_to_mat4(light.position, dir, up);
-    local_projection(light) * view
+    local_projection(light, 1) * view
 }
 
 /// Six 90° frusta (slightly wider to hide seams).
 fn point_matrices(light: &LightData) -> Vec<Mat4> {
-    let proj = local_projection(light);
+    let proj = local_projection(light, 6);
     CUBE_FACES
+        .iter()
+        .map(|(dir, up)| proj * glam::camera::lh::view::look_to_mat4(light.position, *dir, *up))
+        .collect()
+}
+
+/// A rectangle's hemicube: 90° frusta along its forward, right, -right, up, -up (and back
+/// when two-sided) axes. Forward comes first, so code that only reads a light's first layer
+/// (the fog) sees the faces right under the light.
+fn rect_matrices(light: &LightData, faces: usize) -> Vec<Mat4> {
+    let proj = local_projection(light, faces);
+    let f = light.direction.normalize_or(Vec3::Z);
+    let r = light.area.right.normalize_or(f.any_orthonormal_vector());
+    let u = f.cross(r).normalize_or(light.area.up);
+    let dirs = [(f, u), (r, u), (-r, u), (u, f), (-u, f), (-f, u)];
+    dirs[..faces]
         .iter()
         .map(|(dir, up)| proj * glam::camera::lh::view::look_to_mat4(light.position, *dir, *up))
         .collect()

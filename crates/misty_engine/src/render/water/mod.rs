@@ -36,6 +36,8 @@ const WATER_SRC: &str = concat!(
     "\n",
     include_str!("../shaders/shadows.wgsl"),
     "\n",
+    include_str!("../shadow_denoise/shaders/shadow_lookup.wgsl"),
+    "\n",
     include_str!("../area/area_light.wgsl"),
     "\n",
     include_str!("../probes/probes.wgsl"),

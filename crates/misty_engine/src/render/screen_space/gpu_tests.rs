@@ -257,8 +257,15 @@ fn effects_off_render_exactly_as_without_them() {
         contact_shadows,
         area: Default::default(),
     };
+    // Shadows straight from the maps (the temporal shadow mask changes a little per frame).
+    let no_mask = crate::quality::QualityLevel {
+        shadow_temporal: false,
+        shadow_denoise: false,
+        ..Default::default()
+    };
     let fresh = |lights: &[LightData], post| {
         let mut renderer = Renderer::new(&gpu.0);
+        renderer.set_quality(&gpu.0, &no_mask);
         let target = renderer.create_target(&gpu.0, W, H);
         render(&mut renderer, &gpu, &target, &meshes, lights, post)
     };
@@ -271,6 +278,7 @@ fn effects_off_render_exactly_as_without_them() {
 
     // Turning the effects on and off again leaves nothing behind.
     let mut renderer = Renderer::new(&gpu.0);
+    renderer.set_quality(&gpu.0, &no_mask);
     let target = renderer.create_target(&gpu.0, W, H);
     let mut on = ao_on(true);
     on.contact_shadows.enabled = true;

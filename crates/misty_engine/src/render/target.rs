@@ -53,6 +53,8 @@ pub struct RenderTarget {
     pub(crate) composite_group: wgpu::BindGroup,
     /// Screen-space effects' textures and AO history (created when first needed).
     pub(crate) screen_space: super::screen_space::TargetSlot,
+    /// Temporal shadow mask buffers and history (created when first needed).
+    pub(crate) shadow_mask: super::shadow_denoise::TargetSlot,
     /// GPU culling's Hi-Z pyramid and last frame's visibility (made on first use).
     pub(in crate::render) culling: std::sync::Mutex<Option<super::gpu_culling::TargetState>>,
 }
@@ -228,6 +230,7 @@ impl RenderTarget {
             bloom,
             composite_group,
             screen_space: Default::default(),
+            shadow_mask: Default::default(),
             culling: Default::default(),
         }
     }

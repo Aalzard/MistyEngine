@@ -1,10 +1,15 @@
 // Shadows: appended to mesh.wgsl (uses its `lights`, `shadow_map`, `local_shadow_map` and
 // `shadow_sampler`). The sun uses up to four cascades blended across their borders; spot and
-// point lights use one perspective layer per face.
+// point lights use one perspective layer per face, rectangle lights a hemicube in their own
+// frame (or one wide map with soft shadows off).
 // Hard = one bilinear compare. Soft = percentage-closer soft shadows: a blocker search, a
-// penumbra estimate from the light's size (sun angle or source radius) and a filter of that
-// size on a Vogel disk rotated per pixel. Shadows stay sharp where a caster touches the
-// receiver and widen with the distance between them.
+// penumbra estimate from the light's size and a filter of that size. Local lights project
+// their real shape through the receiver (a sphere's disk, a rectangle's area), so a long
+// rectangle softens its shadows more across its long side. Shadows stay sharp where a
+// caster touches the receiver and widen with the distance between them.
+// The render/shadow_denoise compute pass runs the same functions with a pattern that moves
+// every frame and accumulates the result; `shadow_mask_lookup` then hands the lit shaders
+// that smooth value instead (it returns -1 where it has none).
 
 struct ShadowParams {
     cascades: array<mat4x4<f32>, 4>,
@@ -16,20 +21,28 @@ struct ShadowParams {
     view_axis: vec4<f32>,
     // xy = target size (pixels), z = 1 to tint the cascades, w = camera near.
     misc: vec4<f32>,
-    // Per light: [size, depth bias, normal bias, -], [near, far, tan(half fov), -].
-    // Size = tan(half angular diameter) for the sun, the source radius (m) otherwise.
+    // x = widest filter radius (texels), y = narrowest, z = extra depth bias per metre of
+    // filter radius (curved receivers under wide kernels).
+    filtering: vec4<f32>,
+    // Per light: [size, depth bias, normal bias, -], [near, far, tan(half fov), faces].
+    // Size = tan(half angular diameter) for the sun, the source radius (m) for spot / point
+    // lights and the softness multiplier for rectangles (their half axes give the shape).
+    // Faces = shadow-map layers of a rectangle light (1 = one wide map, 5 / 6 = hemicube).
     light_params: array<vec4<f32>, 16>,
 };
 
 @group(1) @binding(6) var<uniform> shadow_params: ShadowParams;
 
 const GOLDEN_ANGLE: f32 = 2.39996323;
-// Widest blocker search / filter radius, in texels.
-const MAX_FILTER_TEXELS: f32 = 48.0;
-// Narrowest soft filter radius, in texels (anti-aliases contact shadows).
-const MIN_FILTER_TEXELS: f32 = 1.5;
 // Blockers further above the receiver than this (m) are not searched for (sun).
 const MAX_BLOCKER_DISTANCE: f32 = 60.0;
+
+// Temporal shadow mask (render/shadow_denoise): the frame number (0 = the fixed pattern the
+// lit shaders use), the radial offset of the samples, and the world radius of the last
+// filter at the receiver (how far the screen-space denoiser may blur).
+var<private> shadow_frame: u32 = 0u;
+var<private> shadow_radial: f32 = 0.5;
+var<private> shadow_radius_out: f32 = 0.0;
 
 // Shadow-map coordinates (uv, depth) of a world point, or depth > 1 when outside.
 fn shadow_coords(m: mat4x4<f32>, p: vec3<f32>) -> vec3<f32> {
@@ -42,19 +55,89 @@ fn shadow_coords(m: mat4x4<f32>, p: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(uv, ndc.z);
 }
 
+// Shadow-map uv of a world point, unclipped.
+fn shadow_uv(m: mat4x4<f32>, p: vec3<f32>) -> vec2<f32> {
+    let c = m * vec4<f32>(p, 1.0);
+    let ndc = c.xy / max(c.w, 1e-6);
+    return vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+}
+
+fn interleaved_gradient(px: vec2<f32>) -> f32 {
+    return fract(52.9829189 * fract(dot(px, vec2<f32>(0.06711056, 0.00583715))));
+}
+
 // Interleaved gradient noise of the pixel a world point lands on (rotates the sample disk).
+// With a frame number (temporal mask) the pattern moves every frame (Jimenez 2014) and the
+// samples' radii are jittered too, so the accumulated frames fill the whole disk.
 fn shadow_noise(world: vec3<f32>) -> f32 {
     let clip = view.view_proj * vec4<f32>(world, 1.0);
     let ndc = clip.xy / clip.w;
     let px = floor((ndc * vec2<f32>(0.5, -0.5) + 0.5) * shadow_params.misc.xy);
-    return fract(52.9829189 * fract(dot(px, vec2<f32>(0.06711056, 0.00583715))));
+    if (shadow_frame == 0u) {
+        shadow_radial = 0.5;
+        return interleaved_gradient(px);
+    }
+    let f = f32(shadow_frame % 64u);
+    shadow_radial = fract(interleaved_gradient(px.yx + vec2<f32>(29.0, 71.0)) + 0.61803399 * f);
+    return interleaved_gradient(px + 5.588238 * f);
 }
 
 // Sample `i` of `n` on a unit Vogel disk turned by `phi`.
 fn vogel(i: u32, n: u32, phi: f32) -> vec2<f32> {
-    let r = sqrt((f32(i) + 0.5) / f32(n));
+    let r = sqrt((f32(i) + shadow_radial) / f32(n));
     let a = f32(i) * GOLDEN_ANGLE + phi;
     return vec2<f32>(cos(a), sin(a)) * r;
+}
+
+// A unit-disk point moved to the [-1, 1]² square, keeping areas (the inverse of Shirley and
+// Chiu's concentric map), so rectangle lights are sampled over their whole area.
+fn disk_to_square(d: vec2<f32>) -> vec2<f32> {
+    let r = length(d);
+    if (r < 1e-6) {
+        return vec2<f32>(0.0);
+    }
+    let quarter = 0.78539816;
+    // Rotate into the sector around +X, map, rotate back.
+    let a = atan2(d.y, d.x);
+    let k = round(a / (2.0 * quarter));
+    let s = vec2<f32>(r, r * (a - k * 2.0 * quarter) / quarter);
+    let c = cos(k * 2.0 * quarter);
+    let n = sin(k * 2.0 * quarter);
+    return vec2<f32>(s.x * c - s.y * n, s.x * n + s.y * c);
+}
+
+// Sample `i` of `n` over the source's shape (disk or square), mapped to shadow-map uv by `k`.
+fn shape_sample(i: u32, n: u32, phi: f32, k: mat2x2<f32>, square: bool) -> vec2<f32> {
+    var s = vogel(i, n, phi);
+    if (square) {
+        s = disk_to_square(s);
+    }
+    return k * s;
+}
+
+// Kernel axes (uv): the widest kept to `hi`, each at least `lo` long.
+fn kernel_axes(a0: vec2<f32>, b0: vec2<f32>, lo: f32, hi: f32) -> mat2x2<f32> {
+    var a = a0;
+    var b = b0;
+    let widest = max(length(a), length(b));
+    if (widest > hi) {
+        a *= hi / widest;
+        b *= hi / widest;
+    }
+    let la = length(a);
+    if (la < lo) {
+        a = select(vec2<f32>(lo, 0.0), a * (lo / max(la, 1e-12)), la > 1e-9);
+    }
+    let lb = length(b);
+    if (lb < lo) {
+        let side = vec2<f32>(-a.y, a.x) * (lo / length(a));
+        b = select(side, b * (lo / max(lb, 1e-12)), lb > 1e-9);
+    }
+    return mat2x2<f32>(a, b);
+}
+
+fn isotropic(r: f32) -> mat2x2<f32> {
+    return mat2x2<f32>(vec2<f32>(r, 0.0), vec2<f32>(0.0, r));
 }
 
 // Depth change of the receiver's plane per unit of shadow-map uv, so wide kernels compare
@@ -85,15 +168,15 @@ fn receiver_slope(m: mat4x4<f32>, p: vec3<f32>, n: vec3<f32>, n_dot_l: f32) -> v
     return g * min(1.0, 8.0 / max(tan_now, 1e-4));
 }
 
-// Average depth of the texels closer to the light than the receiver within `radius` (uv),
-// and how many there were.
-fn find_blockers(map: texture_depth_2d_array, uv: vec2<f32>, layer: i32, z: f32, slope: vec2<f32>, radius: f32, phi: f32) -> vec2<f32> {
+// Average depth of the texels closer to the light than the receiver over the kernel `k`
+// (uv), and how many there were.
+fn find_blockers(map: texture_depth_2d_array, uv: vec2<f32>, layer: i32, z: f32, slope: vec2<f32>, k: mat2x2<f32>, square: bool, phi: f32) -> vec2<f32> {
     let size = vec2<f32>(textureDimensions(map));
     let n = u32(shadow_params.settings.z);
     var sum = 0.0;
     var count = 0.0;
     for (var i = 0u; i < n; i++) {
-        let o = vogel(i, n, phi) * radius;
+        let o = shape_sample(i, n, phi, k, square);
         let t = vec2<i32>(clamp((uv + o) * size, vec2<f32>(0.0), size - 1.0));
         let d = textureLoad(map, t, layer, 0);
         if (d < z + dot(slope, o)) {
@@ -104,13 +187,16 @@ fn find_blockers(map: texture_depth_2d_array, uv: vec2<f32>, layer: i32, z: f32,
     return vec2<f32>(sum / max(count, 1.0), count);
 }
 
-// Lit fraction over a disk of `radius` (uv): bilinear compares on the receiver's plane.
-fn filter_disk(map: texture_depth_2d_array, uv: vec2<f32>, layer: i32, z: f32, slope: vec2<f32>, radius: f32, phi: f32) -> f32 {
+// Lit fraction over the kernel `k` (uv): bilinear compares on the receiver's plane. Samples
+// further from the receiver's own point get a little more bias (`bias_per_uv` = depth per uv
+// of distance), so wide kernels don't shadow curved receivers.
+fn filter_kernel(map: texture_depth_2d_array, uv: vec2<f32>, layer: i32, z: f32, slope: vec2<f32>, k: mat2x2<f32>, square: bool, phi: f32, bias_per_uv: f32) -> f32 {
     let n = u32(shadow_params.settings.w);
     var lit = 0.0;
     for (var i = 0u; i < n; i++) {
-        let o = vogel(i, n, phi) * radius;
-        lit += textureSampleCompareLevel(map, shadow_sampler, uv + o, layer, z + dot(slope, o));
+        let o = shape_sample(i, n, phi, k, square);
+        let zc = z + dot(slope, o) - bias_per_uv * length(o);
+        lit += textureSampleCompareLevel(map, shadow_sampler, uv + o, layer, zc);
     }
     return lit / f32(n);
 }
@@ -132,18 +218,22 @@ fn sun_cascade(c: u32, light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32,
         return textureSampleCompareLevel(shadow_map, shadow_sampler, sc.xy, layer, z);
     }
     let texel = 1.0 / f32(textureDimensions(shadow_map).x);
+    let widest = shadow_params.filtering.x * texel;
+    let narrowest = shadow_params.filtering.y * texel;
     let slope = receiver_slope(m, p, n, n_dot_l);
     // Blockers up to MAX_BLOCKER_DISTANCE above the receiver can reach this far.
     let reach = lp.x * min(z * info.z, MAX_BLOCKER_DISTANCE) / info.w;
-    let search = clamp(reach, 2.0 * texel, MAX_FILTER_TEXELS * texel);
-    let blockers = find_blockers(shadow_map, sc.xy, layer, z, slope, search, phi);
+    let search = clamp(reach, 2.0 * texel, widest);
+    let blockers = find_blockers(shadow_map, sc.xy, layer, z, slope, isotropic(search), false, phi);
     if (blockers.y < 0.5) {
         return 1.0;
     }
     // Penumbra radius = blocker-to-receiver distance × tan(half the sun's angle).
     let distance = max(z - blockers.x, 0.0) * info.z;
-    let radius = clamp(distance * lp.x / info.w, MIN_FILTER_TEXELS * texel, MAX_FILTER_TEXELS * texel);
-    return filter_disk(shadow_map, sc.xy, layer, z, slope, radius, phi);
+    let radius = clamp(distance * lp.x / info.w, narrowest, widest);
+    shadow_radius_out = max(shadow_radius_out, radius * info.w);
+    let bias_per_uv = shadow_params.filtering.z * info.w / info.z;
+    return filter_kernel(shadow_map, sc.xy, layer, z, slope, isotropic(radius), false, phi, bias_per_uv);
 }
 
 // View depth of a world point (the axis the cascades are split along).
@@ -206,25 +296,46 @@ fn linear_depth(z: f32, near: f32, far: f32) -> f32 {
     return near * far / (far - z * (far - near));
 }
 
+// Cube face (0..5: +X, -X, +Y, -Y, +Z, -Z) of a direction given in the cube's own axes.
+fn cube_face(q: vec3<f32>) -> i32 {
+    let a = abs(q);
+    if (a.x >= a.y && a.x >= a.z) {
+        return select(1, 0, q.x > 0.0);
+    }
+    if (a.y >= a.z) {
+        return select(3, 2, q.y > 0.0);
+    }
+    return select(5, 4, q.z > 0.0);
+}
+
 fn local_shadow(light: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode: f32) -> f32 {
     var layer = i32(li.shadow.y);
     if (layer < 0) {
         return 1.0;
     }
-    let to_point = world - li.pos_range.xyz;
-    if (u32(li.dir_type.w) == 1u) {
-        // Pick the cube face by the major axis.
-        let a = abs(to_point);
-        if (a.x >= a.y && a.x >= a.z) {
-            layer += select(1, 0, to_point.x > 0.0);
-        } else if (a.y >= a.z) {
-            layer += select(3, 2, to_point.y > 0.0);
-        } else {
-            layer += select(5, 4, to_point.z > 0.0);
-        }
-    }
+    let kind = u32(li.dir_type.w);
     let lp = shadow_params.light_params[light * 2u];
     let clip = shadow_params.light_params[light * 2u + 1u];
+    let to_point = world - li.pos_range.xyz;
+    if (kind == 1u) {
+        // Point: pick the cube face by the major axis.
+        layer += cube_face(to_point);
+    } else if (kind == 3u && clip.w > 1.5) {
+        // Rectangle hemicube: faces along its own right, up and forward axes.
+        if (length(li.area_x.xyz) < 1e-6 || length(li.area_y.xyz) < 1e-6) {
+            return 1.0;
+        }
+        let r = normalize(li.area_x.xyz);
+        let u = normalize(li.area_y.xyz);
+        let f = normalize(li.dir_type.xyz);
+        let face = cube_face(vec3<f32>(dot(to_point, r), dot(to_point, u), dot(to_point, f)));
+        if (face == 5 && clip.w < 5.5) {
+            // Behind a one-sided rectangle: no light to shadow.
+            return 1.0;
+        }
+        // Layers: forward first (what the fog samples), then +right, -right, +up, -up, back.
+        layer += select(select(face + 1, 5, face == 5), 0, face == 4);
+    }
     let near = clip.x;
     let far = clip.y;
     let tan_half = clip.z;
@@ -239,29 +350,74 @@ fn local_shadow(light: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, n_dot
         return 1.0;
     }
     let d = linear_depth(sc.z, near, far);
+    // Depth (map units) of one metre at this distance.
+    let depth_per_metre = near * far / ((far - near) * d * d);
     // `bias` texels of depth, converted to the map's non-linear depth.
-    let z = sc.z - lp.y * texel_world * near * far / ((far - near) * d * d);
+    let z = sc.z - lp.y * texel_world * depth_per_metre;
     if (mode < 1.5) {
         return textureSampleCompareLevel(local_shadow_map, shadow_sampler, sc.xy, layer, z);
     }
     let phi = shadow_noise(world) * 6.2831853;
     let slope = receiver_slope(m, p, n, n_dot_l);
-    // The source's radius seen at the receiver, doubled: finds blockers down to a third of the way.
-    let uv_per_metre = 1.0 / (2.0 * tan_half * d);
-    let search = clamp(2.0 * lp.x * uv_per_metre, 2.0 * texel, MAX_FILTER_TEXELS * texel);
-    let blockers = find_blockers(local_shadow_map, sc.xy, layer, z, slope, search, phi);
+    // The source's half axes: a rectangle's own, else a disk of the source radius facing
+    // the receiver.
+    var a1: vec3<f32>;
+    var a2: vec3<f32>;
+    let square = kind == 3u;
+    if (square) {
+        a1 = li.area_x.xyz * lp.x;
+        a2 = li.area_y.xyz * lp.x;
+    } else {
+        let w = normalize(to_point);
+        var t = cross(w, vec3<f32>(0.0, 1.0, 0.0));
+        if (dot(t, t) < 1e-4) {
+            t = cross(w, vec3<f32>(1.0, 0.0, 0.0));
+        }
+        t = normalize(t);
+        a1 = t * lp.x;
+        a2 = cross(w, t) * lp.x;
+    }
+    // Through the receiver, a source point at `s` (shape units) lines up with the blocker
+    // texel at uv(p + s · axes · (d - d_blocker) / d_blocker): `j1`, `j2` = the uv of each
+    // axis at the receiver (linearised around p).
+    let base = shadow_uv(m, p);
+    let j1 = (shadow_uv(m, p + a1 * 0.01) - base) * 100.0;
+    let j2 = (shadow_uv(m, p + a2 * 0.01) - base) * 100.0;
+    let widest = shadow_params.filtering.x * texel;
+    let narrowest = shadow_params.filtering.y * texel;
+    // Blockers down to a third of the way to the light: (d - d / 3) / (d / 3) = 2.
+    let search = kernel_axes(j1 * 2.0, j2 * 2.0, 2.0 * texel, widest);
+    let blockers = find_blockers(local_shadow_map, sc.xy, layer, z, slope, search, square, phi);
     if (blockers.y < 0.5) {
         return 1.0;
     }
-    // Similar triangles: penumbra = radius × (receiver - blocker) / blocker.
+    // Similar triangles: penumbra = source size × (receiver - blocker) / blocker.
     let db = linear_depth(blockers.x, near, far);
-    let radius_uv = lp.x * max(d - db, 0.0) / max(db, 1e-3) * uv_per_metre;
-    let radius = clamp(radius_uv, MIN_FILTER_TEXELS * texel, MAX_FILTER_TEXELS * texel);
-    return filter_disk(local_shadow_map, sc.xy, layer, z, slope, radius, phi);
+    let ratio = max(d - db, 0.0) / max(db, 1e-3);
+    let kernel = kernel_axes(j1 * ratio, j2 * ratio, narrowest, widest);
+    let uv_per_metre = 1.0 / (2.0 * tan_half * d);
+    let radius_uv = max(length(kernel[0]), length(kernel[1]));
+    shadow_radius_out = max(shadow_radius_out, radius_uv / uv_per_metre);
+    let bias_per_uv = shadow_params.filtering.z * depth_per_metre / uv_per_metre;
+    return filter_kernel(local_shadow_map, sc.xy, layer, z, slope, kernel, square, phi, bias_per_uv);
 }
 
-// Visibility of light `i` (0 = fully shadowed).
+// Visibility of light `i` (0 = fully shadowed): the temporal mask's smooth value when it
+// covers this light and surface, else the shadow maps directly.
 fn shadow_factor(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) -> f32 {
+    let mode = li.shadow.x;
+    if (mode < 0.5) {
+        return 1.0;
+    }
+    let masked = shadow_mask_lookup(i, world);
+    if (masked >= 0.0) {
+        return masked;
+    }
+    return shadow_direct(i, li, world, n, l);
+}
+
+// Visibility of light `i` straight from the shadow maps.
+fn shadow_direct(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) -> f32 {
     let mode = li.shadow.x;
     if (mode < 0.5) {
         return 1.0;

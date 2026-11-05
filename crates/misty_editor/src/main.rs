@@ -112,6 +112,8 @@ mod sample_shadows;
 #[cfg(test)]
 mod sample_skinning;
 #[cfg(test)]
+mod sample_soft_shadows;
+#[cfg(test)]
 mod sample_splines;
 #[cfg(test)]
 mod sample_stress;

@@ -174,6 +174,22 @@ fn shadows(ui: &mut Ui, l: &mut QualityLevel) -> bool {
         "How smooth shadow edges are (Off = hard edges, fastest).",
         |ui| combo(ui, "q_soft", &mut l.soft_shadows, &Tier::ALL, Tier::label),
     );
+    if l.soft_shadows != Tier::Off {
+        edited |= row(
+            ui,
+            "Temporal Shadows",
+            "Soft shadows build up over a few frames from a pattern that moves every frame: \
+             many more samples, no visible grain. Costs one screen-space pass.",
+            |ui| ui.checkbox(&mut l.shadow_temporal, "").changed(),
+        );
+        edited |= row(
+            ui,
+            "Shadow Denoise",
+            "Edge-aware blur of soft shadows, as wide as half their penumbra (contact \
+             shadows stay crisp).",
+            |ui| ui.checkbox(&mut l.shadow_denoise, "").changed(),
+        );
+    }
     edited
 }
 

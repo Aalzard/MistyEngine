@@ -193,6 +193,11 @@ pub struct QualityLevel {
     pub cascade_blend: f32,
     /// Soft shadow filtering (Off = hard edges).
     pub soft_shadows: Tier,
+    /// Soft shadows accumulate over frames (a sample pattern that moves every frame, blended
+    /// with the reprojected history): many more effective samples, no visible pattern.
+    pub shadow_temporal: bool,
+    /// Edge-aware screen-space blur of soft shadows, as wide as half their penumbra.
+    pub shadow_denoise: bool,
     pub anti_aliasing: AntiAliasing,
     /// FXAA post pass on the final image (smooths edges MSAA misses: alpha cut-outs, shading).
     pub fxaa: bool,
@@ -234,6 +239,8 @@ impl QualityLevel {
             cascade_split: 0.75,
             cascade_blend: 0.1,
             soft_shadows: Tier::Off,
+            shadow_temporal: false,
+            shadow_denoise: false,
             anti_aliasing: AntiAliasing::Off,
             fxaa: false,
             texture_quality: TextureQuality::Half,
@@ -260,6 +267,8 @@ impl QualityLevel {
             cascade_split: 0.75,
             cascade_blend: 0.1,
             soft_shadows: Tier::Low,
+            shadow_temporal: false,
+            shadow_denoise: false,
             anti_aliasing: AntiAliasing::X2,
             fxaa: false,
             texture_quality: TextureQuality::Full,
@@ -286,6 +295,8 @@ impl QualityLevel {
             cascade_split: 0.75,
             cascade_blend: 0.1,
             soft_shadows: Tier::Medium,
+            shadow_temporal: true,
+            shadow_denoise: true,
             anti_aliasing: AntiAliasing::X4,
             fxaa: false,
             texture_quality: TextureQuality::Full,
@@ -358,6 +369,8 @@ impl QualityLevel {
             split_lambda: self.cascade_split,
             cascade_blend: self.cascade_blend,
             map_size: self.shadow_map_size(),
+            temporal: self.shadow_temporal,
+            denoise: self.shadow_denoise,
         }
     }
 
@@ -412,6 +425,10 @@ pub struct ShadowSettings {
     pub cascade_blend: f32,
     /// Side of each sun cascade's map in pixels.
     pub map_size: u32,
+    /// Accumulate soft shadows over frames (render/shadow_denoise).
+    pub temporal: bool,
+    /// Edge-aware screen-space blur of soft shadows.
+    pub denoise: bool,
 }
 
 impl Default for ShadowSettings {
@@ -429,6 +446,21 @@ impl ShadowSettings {
             Tier::Medium => (12, 20),
             Tier::High => (16, 32),
         }
+    }
+
+    /// (widest, narrowest) soft filter radius in shadow-map texels. Higher tiers allow wider
+    /// penumbrae (their noise is averaged away by more taps and the temporal mask).
+    pub fn filter_texels(&self) -> (f32, f32) {
+        match self.soft {
+            Tier::Off | Tier::Low => (48.0, 1.5),
+            Tier::Medium => (64.0, 1.5),
+            Tier::High => (96.0, 1.5),
+        }
+    }
+
+    /// The temporal / denoised shadow mask runs (soft shadows on and either option set).
+    pub fn mask(&self) -> bool {
+        self.soft != Tier::Off && (self.temporal || self.denoise)
     }
 }
 

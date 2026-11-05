@@ -121,7 +121,11 @@ fn contact_shadow(li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) -
         if (behind > 0.002 * surface + 0.005 && behind < screen.misc.y + 0.01 * surface) {
             // Grazing light (the terminator of round shapes) can't be told from self-hits.
             let grazing = smoothstep(0.05, 0.3, dot(n, l));
-            return 1.0 - screen.contact.z * fade * grazing;
+            // Contact hardening: darkest where the occluder is closest, fading out towards
+            // the end of the ray (the soft shadow map takes over from there).
+            let t = (f32(i) + jitter) / f32(steps);
+            let near = 1.0 - 0.6 * t * t;
+            return 1.0 - screen.contact.z * fade * grazing * near;
         }
     }
     return 1.0;
