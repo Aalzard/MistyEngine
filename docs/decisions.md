@@ -3140,3 +3140,33 @@ Record of choices made without asking, and why.
        files are never copied.
      - **Collisions:** existing files from the template are never overwritten.
      - **Command line:** `misty --new <Template> <folder> --with-samples`.
+637. **Round 14: the Frame Debugger replays the frame up to an event** (`docs/pending/r14-debugtools.md`).
+     - **Capture hook:** an optional `Renderer::begin_capture` hook (one `is_none` check when off) records
+       passes and draws.
+     - **Replay:** re-renders the frame, skipping draws after the selected event, and shows that event's
+       target in the Game view.
+     - **GPU culling and GPU timing** are off while capturing, so every draw can be listed.
+     - **Memory Profiler:** snapshots estimate sizes from known formats in 9 categories, with a table,
+       tree map and diff.
+638. **Round 14: tests are Lua files in `Assets/Tests`** (`docs/pending/r14-testrunner.md`).
+     - **File kinds:** `*.test.lua` run in EditMode on a scratch World copy; `*.playtest.lua` run in a real
+       play session, with yields and simulated input.
+     - **Command line:** `misty --run-tests` writes JUnit XML and an exit code for CI.
+639. **Round 14: save games are JSON keyed by stable Save IDs** (`docs/pending/r14-saveloc.md`).
+     - **Saveable component:** holds a GUID that is regenerated when the object is duplicated.
+     - **Load:** reloads the saved scene, then applies object states, re-spawns prefabs by GUID, and keeps
+       destroyed objects destroyed.
+     - **Localization:** String Tables (CSV-friendly) with fallback locale and smart format arguments, plus
+       the Localized Text component.
+640. **Round 14: Video Player decodes Motion-JPEG AVI and animated GIF in pure Rust**
+     (`docs/pending/r14-videotext.md`).
+     - **Other formats:** show the ffmpeg command needed to convert them. A modern codec waits for a pure-Rust
+       decoder.
+     - **Rich text:** an opt-in markup on UI Text with an on-demand SDF atlas, effects, links, and right-to-left
+       text through unicode-bidi plus rustybuzz shaping. Both are MIT/Apache licensed.
+     - **Plain texts:** keep the old bitmap path, so existing scenes are unchanged.
+641. **Round 14: "Asset Groups" and "Packages" (our own names)** (`docs/pending/r14-packages.md`).
+     - **Bundles:** addressable assets build into bundles plus a catalog; `Assets.LoadAsync` handles are
+       ref-counted, and remote bundles are hash-checked.
+     - **Packages:** live under `Packages/` with `manifest.json` and a lock file. Version ranges resolve with
+       semver, and conflicts are shown.

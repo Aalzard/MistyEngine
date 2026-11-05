@@ -2039,3 +2039,19 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Probes on skinned meshes and terrain.
 - Portal/adaptive occlusion cells.
 - Alpha-sorted particles and mesh output.
+
+## Round 14: systems ✅ and v0.1.0
+
+### Done (decisions 636–641; screenshots in docs/screenshots/round14/)
+- **Frame Debugger** (step through a frame draw by draw) and **Memory Profiler** (snapshots, tree map, diff).
+- **Test Runner:** Lua EditMode/PlayMode tests, the window, and `--run-tests` with JUnit XML.
+- **Save system:** Saveable, slots and thumbnails. **Localization:** String Tables, Localized Text, and the
+  language switch.
+- **Video Player** (MJPEG AVI, GIF) and **Misty Rich Text** (tags, SDF, effects, links, Arabic/Hebrew RTL).
+- **Asset Groups** (addressable bundles, async loading) and **Packages** (manifest, semver, window).
+- New Project ▸ **Include sample scenes**.
+- README for 0.1.0, and the changelog.
+
+### Not done yet
+- Linux/macOS builds: the `crossplatform` branch is paused, as the user asked.
+- Round 15 is on hold: the next focus is Cycles-like lighting without ray tracing.
