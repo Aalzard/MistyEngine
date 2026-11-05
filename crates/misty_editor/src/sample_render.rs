@@ -20,6 +20,16 @@ thread_local! {
 
 /// A device without a window (`None` = no adapter); the calling test holds the GPU lock.
 pub fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
+    device(false)
+}
+
+/// Like [`headless`], with GPU timestamp queries when the adapter has them (for
+/// [`Renderer::with_queue`] and its `gpu_ms`).
+pub fn headless_timed() -> Option<(wgpu::Device, wgpu::Queue)> {
+    device(true)
+}
+
+fn device(timed: bool) -> Option<(wgpu::Device, wgpu::Queue)> {
     GPU_HELD.with(|held| {
         let mut held = held.borrow_mut();
         if held.is_none() {
@@ -31,7 +41,14 @@ pub fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .ok()?;
-    pollster::block_on(adapter.request_device(&Default::default())).ok()
+    let desc = wgpu::DeviceDescriptor {
+        required_features: match timed {
+            true => misty_engine::render::timestamp_features(&adapter),
+            false => wgpu::Features::empty(),
+        },
+        ..Default::default()
+    };
+    pollster::block_on(adapter.request_device(&desc)).ok()
 }
 
 /// The final 8-bit sRGB image of a render.

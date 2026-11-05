@@ -1,0 +1,29 @@
+{
+  "shader": "Standard",
+  "color": [
+    1.0,
+    0.8,
+    0.6,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 0.22,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Textures/Terrain/Cliff.png",
+  "normal_map": null,
+  "normal_scale": 1.0,
+  "tiling": [
+    0.6,
+    0.6
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ]
+}
