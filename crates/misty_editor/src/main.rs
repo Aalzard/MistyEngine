@@ -100,6 +100,8 @@ mod sample_ui;
 #[cfg(test)]
 mod sample_ui_widgets;
 #[cfg(test)]
+mod sample_vcam;
+#[cfg(test)]
 mod sample_volumetric_fog;
 #[cfg(test)]
 mod sample_water;
@@ -131,6 +133,7 @@ mod undo;
 mod undo_names;
 mod undo_terrain;
 mod updater;
+mod vcam_tools;
 mod viewport;
 mod widgets;
 

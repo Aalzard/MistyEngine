@@ -32,6 +32,7 @@ mod sprite_editors;
 mod terrain;
 mod texture_import;
 mod ui_editors;
+mod vcam_editors;
 mod water;
 
 use egui::{RichText, Ui};
@@ -323,7 +324,7 @@ fn prefab_row(ui: &mut Ui, state: &mut EditorState, e: Entity) {
 /// The designer's icon for a component header (the Light's only when it is Directional).
 fn component_brand_icon(state: &EditorState, e: Entity, name: &str) -> Option<Icon> {
     match name {
-        "Camera" => Some(Icon::Camera),
+        "Camera" | "Virtual Camera" => Some(Icon::Camera),
         "Character Controller" => Some(Icon::CharacterController),
         "Post-process Volume" => Some(Icon::SkyVolume),
         "Light" => state

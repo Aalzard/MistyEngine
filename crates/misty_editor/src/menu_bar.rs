@@ -301,7 +301,16 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
             }
         }
     });
-    item(ui, s, "Camera", "", create(Create::Camera));
+    ui.menu_button("Camera", |ui| {
+        item(ui, s, "Camera", "", create(Create::Camera));
+        ui.separator();
+        for (label, free_look) in [("Virtual Camera", false), ("Free Look Camera", true)] {
+            if ui.button(label).clicked() {
+                crate::vcam_tools::create(s, parent, free_look);
+                ui.close();
+            }
+        }
+    });
 }
 
 fn gameobject_menu(ui: &mut Ui, s: &mut EditorState) {

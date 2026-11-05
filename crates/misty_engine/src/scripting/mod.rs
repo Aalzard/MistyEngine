@@ -37,6 +37,7 @@ pub mod terrain_api;
 pub mod ui_api;
 mod ui_dispatch;
 pub mod ui_widgets_api;
+pub mod vcam_api;
 pub mod water_api;
 
 use std::collections::{HashMap, HashSet};
@@ -168,6 +169,8 @@ pub struct World {
     pub axes: crate::input::InputManager,
     /// Project tags and layer names (`LayerMask.NameToLayer`, `FindWithTag`).
     pub tags_layers: crate::tags_layers::TagsAndLayers,
+    /// Camera Brains and Virtual Cameras.
+    pub cameras: crate::vcam::CameraRig,
 }
 
 struct Instance {
@@ -251,6 +254,7 @@ impl ScriptHost {
             animator: AnimatorPlayer::new(project_root.clone()),
             axes: crate::input::InputManager::new(&settings.input),
             tags_layers: settings.tags_and_layers.clone(),
+            cameras: Default::default(),
         });
         let mut host = Self {
             lua,
@@ -613,6 +617,10 @@ impl ScriptHost {
                 w.physics2d.sync_out(&mut w.scene);
             });
         }
+        if steps > 0 {
+            let dt = steps as f32 * self.with_world(|w| w.physics.fixed_dt);
+            self.update_cameras(crate::vcam::BrainUpdate::FixedUpdate, dt);
+        }
 
         {
             profile_scope!("Scripts.Update", Category::Scripts);
@@ -635,9 +643,44 @@ impl ScriptHost {
             profile_scope!("Scripts.LateUpdate", Category::Scripts);
             self.call_all("LateUpdate");
         }
+        self.update_cameras(crate::vcam::BrainUpdate::LateUpdate, time.delta);
         self.process_destroy();
 
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
+    }
+
+    /// Virtual cameras and brains whose Update Method is `pass`.
+    fn update_cameras(&mut self, pass: crate::vcam::BrainUpdate, dt: f32) {
+        profile_scope!("Cameras.Update", Category::Others);
+        self.with_world(|w| {
+            let World {
+                scene,
+                physics,
+                axes,
+                input,
+                cameras,
+                ..
+            } = w;
+            let size = input.screen_size;
+            let aspect = if size.x > 0.0 && size.y > 0.0 {
+                size.x / size.y
+            } else {
+                16.0 / 9.0
+            };
+            let axis = |name: &str| axes.axis(name).unwrap_or(0.0);
+            let cx = crate::vcam::SolveContext {
+                dt,
+                aspect,
+                physics: Some(physics),
+                axis: &axis,
+            };
+            cameras.update(scene, pass, &cx);
+        });
+    }
+
+    /// Camera Brains and Virtual Cameras between frames (live camera, blends).
+    pub fn with_cameras<R>(&self, f: impl FnOnce(&crate::vcam::CameraRig) -> R) -> R {
+        self.with_world(|w| f(&w.cameras))
     }
 
     /// UI events (before FixedUpdate/Update, like an event system): hover/press/selection,
