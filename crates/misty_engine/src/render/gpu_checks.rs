@@ -261,6 +261,8 @@ fn gpu_culling_and_depth_prepass_render_identically() {
     let no_mask = crate::quality::QualityLevel {
         shadow_temporal: false,
         shadow_denoise: false,
+        // Renders are compared exactly: no TAA jitter.
+        temporal_aa: false,
         ..Default::default()
     };
     plain.set_quality(&device, &no_mask);
