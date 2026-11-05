@@ -330,6 +330,68 @@ fn temporal_accumulation_settles() {
     assert!(late < early * 0.6, "{late} vs {early}");
 }
 
+/// A light's emitter mesh with Contribute GI off sends nothing through SSGI (its light is
+/// already the light's direct lighting): the floor under it isn't lit twice. With
+/// Contribute GI on the same glow does bounce onto the floor.
+#[test]
+fn emitters_without_contribute_gi_send_no_bounce() {
+    let Some(gpu) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut meshes = room();
+    meshes[0].material.color = [0.4, 0.4, 0.4, 1.0];
+    meshes[1].material.color = [0.4, 0.4, 0.4, 1.0];
+    // A bright emissive panel standing on the floor, facing the camera's side of the room.
+    let mut panel = boxed(
+        Vec3::new(0.0, 0.6, 1.6),
+        Vec3::new(1.6, 1.2, 0.05),
+        [1.0; 3],
+        0.0,
+    );
+    panel.material.emission = [1.0; 3];
+    panel.material.emission_intensity = 4.0;
+    let lights = [LightData {
+        intensity: 0.3,
+        ..sun()
+    }];
+    let floor = Vec3::new(0.0, 0.0, 0.9);
+    let brightness = |contribute_gi: bool, post: PostSettings| {
+        let mut m = meshes.clone();
+        let mut p = panel.clone();
+        p.material.contribute_gi = contribute_gi;
+        m.push(p);
+        let view = View {
+            meshes: &m,
+            lights: &lights,
+        };
+        let mut renderer = Renderer::new(&gpu.0);
+        renderer.set_quality(&gpu.0, &crate::quality::QualityLevel::high());
+        let target = renderer.create_target(&gpu.0, W, H);
+        let image = settle(&mut renderer, &gpu, &target, &view, post, 16);
+        let gi = if post.ssgi.active() { "on" } else { "off" };
+        save(&format!("ssgi_emitter_gi_{contribute_gi}_{gi}"), &image);
+        rgb(&image, floor).element_sum() / 3.0
+    };
+    // No bloom: only the light that reaches the floor counts.
+    let no_bloom = |p: PostSettings| PostSettings {
+        bloom_intensity: 0.0,
+        ..p
+    };
+    let off = brightness(false, no_bloom(Default::default()));
+    let excluded = brightness(false, no_bloom(ssgi(true)));
+    let included = brightness(true, no_bloom(ssgi(true)));
+    eprintln!("floor before the panel: off {off}, excluded {excluded}, included {included}");
+    assert!(
+        included > off + 15.0,
+        "the glow bounces: {off} → {included}"
+    );
+    assert!(
+        excluded < off + 6.0,
+        "an emitter without GI adds nothing: {off} → {excluded}"
+    );
+}
+
 #[test]
 fn nothing_runs_while_both_are_off() {
     let Some(gpu) = headless() else {

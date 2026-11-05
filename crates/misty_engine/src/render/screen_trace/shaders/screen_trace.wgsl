@@ -18,6 +18,8 @@ struct TraceSample {
     gi: vec4<f32>,
     // rgb = reflected radiance, a = confidence.
     ssr: vec4<f32>,
+    // Screen-space AO at the point (1 = none or AO off).
+    ao: f32,
     valid: bool,
 };
 
@@ -41,6 +43,7 @@ fn screen_trace_sample(world: vec3<f32>) -> TraceSample {
     var s: TraceSample;
     s.gi = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     s.ssr = vec4<f32>(0.0);
+    s.ao = 1.0;
     s.valid = false;
     if (screen_trace.flags.x < 0.5 && screen_trace.flags.z < 0.5) {
         return s;
@@ -57,19 +60,24 @@ fn screen_trace_sample(world: vec3<f32>) -> TraceSample {
     let e = screen_trace.texels[p.y * u32(screen.misc.z) + p.x];
     s.gi = vec4<f32>(screen_trace_unpack(e.x), screen_trace_unpack(e.y));
     s.ssr = vec4<f32>(screen_trace_unpack(e.z), screen_trace_unpack(e.w));
+    s.ao = screen_ao(world);
     s.valid = true;
     return s;
 }
 
 // Ambient diffuse with one screen-space bounce: rays that hit a surface bring its light (×
-// albedo) instead of the ambient. When SSAO is on it already darkens the ambient, so the
-// traced visibility is not applied again (no double darkening).
+// albedo) instead of the ambient, so the ambient keeps only the share of rays that saw no
+// surface. Without that the probes' diffuse (which already holds the room's bounce) and the
+// traced bounce would both light the same directions: in a closed room every surface came
+// out too bright and flat. When SSAO is on it has already darkened the ambient by `t.ao`;
+// the darker of the two visibilities wins instead of their product (no double darkening).
 fn screen_gi_apply(t: TraceSample, ambient_diffuse: vec3<f32>, diffuse_color: vec3<f32>, occlusion: f32, lightmapped: bool) -> vec3<f32> {
     if (!t.valid || screen_trace.flags.x < 0.5 || (lightmapped && screen_trace.misc.x < 0.5)) {
         return ambient_diffuse;
     }
     let intensity = screen_trace.flags.y;
-    let visibility = select(mix(1.0, t.gi.a, min(intensity, 1.0)), 1.0, screen.ao.x > 0.5);
+    let traced = mix(1.0, t.gi.a, min(intensity, 1.0));
+    let visibility = select(traced, min(traced / max(t.ao, 0.05), 1.0), screen.ao.x > 0.5);
     return ambient_diffuse * visibility + t.gi.rgb * diffuse_color * occlusion * intensity;
 }
 

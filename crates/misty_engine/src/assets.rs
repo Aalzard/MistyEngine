@@ -270,6 +270,7 @@ impl Material {
             lit_2d: false,
             lightmap: None,
             light_probes: false,
+            contribute_gi: true,
         }
     }
 

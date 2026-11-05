@@ -563,6 +563,7 @@ impl DrawCache {
                     });
                 // Unlit materials ignore probes (the probe gizmos use that pairing).
                 material.light_probes = light_probes && !material.unlit;
+                material.contribute_gi = r.contribute_gi;
                 MeshDraw {
                     mesh: match split {
                         true => crate::mesh_builder::submesh(mesh, i),

@@ -169,6 +169,10 @@ pub struct MaterialParams {
     /// Per-object: ambient light comes from the baked light probes (see
     /// [`crate::light_probes`]); set by the draw list for non-static Blend Probes renderers.
     pub light_probes: bool,
+    /// Per-object (Mesh Renderer ▸ Contribute Global Illumination): the surface sends its
+    /// light to others through Screen Space GI. Off for meshes that only show a light's
+    /// emitter (the light already lights the scene; tracing its glow too counts it twice).
+    pub contribute_gi: bool,
 }
 
 impl Default for MaterialParams {
@@ -198,6 +202,7 @@ impl Default for MaterialParams {
             lit_2d: false,
             lightmap: None,
             light_probes: false,
+            contribute_gi: true,
         }
     }
 }
@@ -2269,7 +2274,7 @@ fn draw_uniform(d: &MeshDraw, lod_fade: f32) -> DrawUniform {
         lightmap_st: m.lightmap.map_or([1.0, 1.0, 0.0, 0.0], |l| l.scale_offset),
         lightmap: [
             m.lightmap.map_or(0.0, |l| l.index as f32 + 1.0),
-            0.0,
+            if m.contribute_gi { 0.0 } else { 1.0 },
             0.0,
             0.0,
         ],

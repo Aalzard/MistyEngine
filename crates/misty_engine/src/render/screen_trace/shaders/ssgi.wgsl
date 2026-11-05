@@ -71,6 +71,11 @@ fn gi_march(pos: vec3<f32>, n: vec3<f32>, dir: vec3<f32>, z0: f32, jitter: f32, 
             if (p.prev_forward.w < 0.5) {
                 return vec4<f32>(0.0, 0.0, 0.0, 1.0);
             }
+            // An emitter that stands for a light: its light is already the light's direct
+            // lighting, so the ray brings nothing back (and no ambient either: it hit).
+            if (!bounce_source(px)) {
+                return vec4<f32>(0.0);
+            }
             let hit = world_at(vec2<f32>(px) + 0.5, sd);
             let prev = project(hit, p.prev_view_proj);
             if (prev.w < 0.5) {
@@ -105,9 +110,14 @@ fn cs_gi_trace(@builtin(global_invocation_id) id: vec3<u32>) {
     let frame = basis(n);
     let rays = u32(p.gi.y);
     let f = p.forward.w;
-    // Per-pixel rotation of an R2 sequence that advances every frame (temporal accumulation
-    // integrates the hemisphere over a few frames).
-    let noise = vec2<f32>(ign(pc + f * 5.588238), ign(pc.yx + f * 7.11));
+    // Per-texel rotation of an R2 sequence that advances every frame (temporal accumulation
+    // integrates the hemisphere over a few frames). The noise is taken on the GI image's own
+    // texel grid: interleaved gradient noise sampled every other full pixel (half
+    // resolution) aliases into wide diagonal bands that the accumulation and the à-trous
+    // filter can't remove. Its per-frame offset (Jimenez 2014) wraps every 64 frames.
+    let tc = vec2<f32>(t);
+    let shift = f32(u32(f) % 64u) * 5.588238;
+    let noise = vec2<f32>(ign(tc + shift), ign(tc.yx + vec2<f32>(17.0, 31.0) + shift));
     var sum = vec4<f32>(0.0);
     for (var r = 0u; r < rays; r++) {
         let k = f32(r) + f * f32(rays);

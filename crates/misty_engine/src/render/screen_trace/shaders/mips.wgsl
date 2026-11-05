@@ -2,13 +2,17 @@
 //   cs_hiz_copy  - prepass depth → level 0 of the closest-depth pyramid;
 //   cs_hiz_down  - level k → k + 1, the closest (smallest) depth of the texels it covers
 //                  (three per axis where level k has an odd size, so nothing is skipped);
-//   cs_color_down - lit colour history level k → k + 1, 2×2 box filter.
+//   cs_color_down - lit colour history level k → k + 1, 2×2 box filter; from level 0 it
+//                  leaves out the pixels whose prepass normal is marked "no GI source"
+//                  (negative w: Contribute GI off), e.g. a light's emitter mesh.
 // Each entry point uses its own bindings (separate pipeline layouts).
 
 @group(0) @binding(0) var depth_src: texture_depth_2d;
 @group(0) @binding(1) var src: texture_2d<f32>;
 @group(0) @binding(2) var hiz_dst: texture_storage_2d<r32float, write>;
 @group(0) @binding(3) var color_dst: texture_storage_2d<rgba16float, write>;
+// Prepass normals for level 0 → 1 (a 1×1 placeholder for deeper levels: no mask).
+@group(0) @binding(4) var mask_src: texture_2d<f32>;
 
 @compute @workgroup_size(8, 8)
 fn cs_hiz_copy(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -50,10 +54,17 @@ fn cs_color_down(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     let last = vec2<i32>(textureDimensions(src)) - 1;
+    let masked = all(textureDimensions(mask_src) == textureDimensions(src));
     let base = vec2<i32>(id.xy) * 2;
     var c = vec4<f32>(0.0);
+    var w = 0.0;
     for (var k = 0; k < 4; k++) {
-        c += textureLoad(src, min(base + vec2<i32>(k & 1, k >> 1u), last), 0);
+        let q = min(base + vec2<i32>(k & 1, k >> 1u), last);
+        if (masked && textureLoad(mask_src, q, 0).w < 0.0) {
+            continue;
+        }
+        c += textureLoad(src, q, 0);
+        w += 1.0;
     }
-    textureStore(color_dst, vec2<i32>(id.xy), c * 0.25);
+    textureStore(color_dst, vec2<i32>(id.xy), select(vec4<f32>(0.0), c / w, w > 0.0));
 }

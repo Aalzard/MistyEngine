@@ -101,10 +101,16 @@ fn project(world: vec3<f32>, m: mat4x4<f32>) -> vec4<f32> {
 // xyz = normal, w = smoothness (-1 = no surface).
 fn surface_at(px: vec2<i32>) -> vec4<f32> {
     let t = textureLoad(normal_tex, clamp(px, vec2<i32>(0), full_size() - 1), 0);
-    if (t.w < 0.5) {
+    if (abs(t.w) < 0.5) {
         return vec4<f32>(0.0, 1.0, 0.0, -1.0);
     }
-    return vec4<f32>(normalize(t.xyz), clamp(t.w - 1.0, 0.0, 1.0));
+    return vec4<f32>(normalize(t.xyz), clamp(abs(t.w) - 1.0, 0.0, 1.0));
+}
+
+// The surface at full pixel `px` sends its light through SSGI (false for Contribute GI off,
+// e.g. a light's emitter mesh: the light itself already lights the scene).
+fn bounce_source(px: vec2<i32>) -> bool {
+    return textureLoad(normal_tex, clamp(px, vec2<i32>(0), full_size() - 1), 0).w >= 0.0;
 }
 
 // Direction from a surface towards the eye.

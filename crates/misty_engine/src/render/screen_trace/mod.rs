@@ -300,7 +300,7 @@ impl ScreenTrace {
                 size: full,
             }
         });
-        let color_steps = color_steps(device, passes, state);
+        let color_steps = color_steps(device, passes, state, normal_view);
 
         state.frame = state.frame.wrapping_add(1);
         state.history = Some(History {
@@ -631,8 +631,15 @@ fn ssr_steps<'a>(
     (steps, Some(&images.out))
 }
 
-/// Box-filtered mips of the colour history (after the copy into level 0).
-fn color_steps(device: &wgpu::Device, passes: &Passes, state: &TargetState) -> Vec<Step> {
+/// Box-filtered mips of the colour history (after the copy into level 0). The first step
+/// also reads the prepass normals and leaves out surfaces that send no light through SSGI
+/// (a light's emitter mesh), so wide cones near them don't pick up their glow.
+fn color_steps(
+    device: &wgpu::Device,
+    passes: &Passes,
+    state: &TargetState,
+    normal: &wgpu::TextureView,
+) -> Vec<Step> {
     use resources::tex;
     (1..state.color_mips.len())
         .map(|i| {
@@ -645,6 +652,7 @@ fn color_steps(device: &wgpu::Device, passes: &Passes, state: &TargetState) -> V
                     entries: &[
                         tex(1, &state.color_mips[i - 1]),
                         tex(3, &state.color_mips[i]),
+                        tex(4, if i == 1 { normal } else { &passes.dummy_in }),
                     ],
                 }),
                 size: ((w >> i).max(1), (h >> i).max(1)),

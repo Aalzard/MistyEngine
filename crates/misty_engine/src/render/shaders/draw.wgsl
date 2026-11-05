@@ -16,7 +16,8 @@
 //                     z = LOD cross-fade (0 none; > 0 keep dither < z; < 0 keep dither >= 1 + z),
 //                     w = 2D lighting: Sorting Layer bit + 1 (0 = not 2D lit)
 //   224     lightmap_st  lightmap uv = uv2 * xy + zw
-//   240     lightmap  x = lightmap layer + 1 (0 = not lightmapped)
+//   240     lightmap  x = lightmap layer + 1 (0 = not lightmapped), y = 1 when the surface
+//                     sends no light through Screen Space GI (Contribute GI off)
 struct Draw {
     model: mat4x4<f32>,
     normal: mat4x4<f32>,
