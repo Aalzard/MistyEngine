@@ -45,6 +45,7 @@ pub mod splines;
 pub mod sprites;
 pub mod tags_layers;
 pub mod terrain;
+pub mod testing;
 pub mod tilemap;
 pub mod timeline;
 pub mod ui;

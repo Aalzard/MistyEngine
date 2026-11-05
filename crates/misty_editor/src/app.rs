@@ -474,6 +474,10 @@ impl EditorApp {
         for msg in std::mem::take(&mut s.assets.messages) {
             s.console.info(msg);
         }
+        // Window ▸ General ▸ Test Runner: a slice of the running tests per frame.
+        if crate::panels::test_runner::tick(s) {
+            ctx.request_repaint();
+        }
         if let Some(gpu) = self.gpu.as_mut() {
             // Textures and models reload when their files change (Edit mode only).
             if !s.play.in_play_mode() {

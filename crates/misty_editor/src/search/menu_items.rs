@@ -283,10 +283,15 @@ fn assets(l: &mut List) {
         AssetKind::UnlitShaderGraph,
         AssetKind::EffectGraph,
         AssetKind::MaterialFromShader,
+        AssetKind::Test(misty_engine::testing::TestMode::EditMode),
+        AssetKind::Test(misty_engine::testing::TestMode::PlayMode),
     ]);
     for kind in kinds {
         let name = kind.label();
-        let path = format!("Assets/Create/{name}");
+        let path = match kind {
+            AssetKind::Test(_) => format!("Assets/Create/Testing/{name}"),
+            _ => format!("Assets/Create/{name}"),
+        };
         l.action(
             &format!("Create {name}"),
             &path,

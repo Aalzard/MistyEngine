@@ -186,6 +186,17 @@ impl Runtime {
         }
     }
 
+    /// Run `f` with the game's world (and `scene`) installed in another Lua state between
+    /// frames (PlayMode tests use the game API this way; see [`ScriptHost::lend_world`]).
+    pub fn lend_world<R>(
+        &mut self,
+        scene: &mut Scene,
+        other: &mlua::Lua,
+        f: impl FnOnce() -> R,
+    ) -> R {
+        self.host.lend_world(scene, other, f)
+    }
+
     /// Live Animator state of `e` (current state, cross-fade, parameter values).
     pub fn animator_status(
         &self,

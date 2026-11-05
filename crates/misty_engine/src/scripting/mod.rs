@@ -185,6 +185,42 @@ pub struct World {
     pub cameras: crate::vcam::CameraRig,
 }
 
+impl World {
+    /// A world around `scene` with nothing playing yet (the script host's starting state; the
+    /// Test Runner gives EditMode tests one built from a scratch copy of the scene).
+    pub fn new(
+        scene: Scene,
+        physics: Physics,
+        physics2d: Physics2D,
+        project_root: PathBuf,
+        audio: Audio,
+        settings: &crate::settings::ProjectSettings,
+    ) -> Self {
+        let navigation = crate::navigation::NavRuntime::load(&scene, &project_root);
+        World {
+            navigation,
+            scene,
+            physics,
+            physics2d,
+            time: Time::default(),
+            input: Input::default(),
+            logs: Vec::new(),
+            destroy: Vec::new(),
+            root: project_root.clone(),
+            spawned: Vec::new(),
+            requests: Vec::new(),
+            audio,
+            animation: AnimationPlayer::new(project_root.clone()),
+            animator: AnimatorPlayer::new(project_root.clone()),
+            rigging: Default::default(),
+            timeline: crate::timeline::DirectorPlayer::new(project_root),
+            axes: crate::input::InputManager::new(&settings.input),
+            tags_layers: settings.tags_and_layers.clone(),
+            cameras: Default::default(),
+        }
+    }
+}
+
 struct Instance {
     entity: Entity,
     /// Index into the object's `Scripts` list.
@@ -248,28 +284,16 @@ impl ScriptHost {
         if let Err(e) = api::register(&lua) {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
         }
-        let navigation = crate::navigation::NavRuntime::load(scene, &project_root);
-        lua.set_app_data(World {
-            navigation,
-            scene: std::mem::take(scene),
+        let mut world = World::new(
+            std::mem::take(scene),
             physics,
             physics2d,
-            time: Time::default(),
-            input: Input::default(),
-            logs,
-            destroy: Vec::new(),
-            root: project_root.clone(),
-            spawned: Vec::new(),
-            requests: Vec::new(),
+            project_root.clone(),
             audio,
-            animation: AnimationPlayer::new(project_root.clone()),
-            animator: AnimatorPlayer::new(project_root.clone()),
-            rigging: Default::default(),
-            timeline: crate::timeline::DirectorPlayer::new(project_root.clone()),
-            axes: crate::input::InputManager::new(&settings.input),
-            tags_layers: settings.tags_and_layers.clone(),
-            cameras: Default::default(),
-        });
+            settings,
+        );
+        world.logs = logs;
+        lua.set_app_data(world);
         let mut host = Self {
             lua,
             root: project_root,
@@ -304,6 +328,29 @@ impl ScriptHost {
         });
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
         host
+    }
+
+    /// Between frames, install this game's world (holding `scene`) in another Lua state and run
+    /// `f`: the Test Runner resumes PlayMode tests this way, so test code uses the full game API
+    /// on the running game. Objects the code instantiated get their scripts and `Awake` after.
+    pub fn lend_world<R>(&mut self, scene: &mut Scene, other: &Lua, f: impl FnOnce() -> R) -> R {
+        let mut world = self
+            .lua
+            .remove_app_data::<World>()
+            .expect("world is installed");
+        world.scene = std::mem::take(scene);
+        if let Err(e) = api::refresh_time(other, &world) {
+            world.logs.push((LogKind::Error, format!("Time: {e}")));
+        }
+        other.set_app_data(world);
+        let result = f();
+        let world = other
+            .remove_app_data::<World>()
+            .expect("the lent world comes back");
+        self.lua.set_app_data(world);
+        self.flush_spawned();
+        *scene = self.with_world(|w| std::mem::take(&mut w.scene));
+        result
     }
 
     /// Run `f` on the Animator state machines between frames (the Animator window's live view).

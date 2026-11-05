@@ -81,6 +81,8 @@ pub enum AssetKind {
     UnlitShaderGraph,
     /// Visual Effects ▸ Effect Graph.
     EffectGraph,
+    /// Testing ▸ EditMode Test / PlayMode Test (in `Assets/Tests`).
+    Test(misty_engine::testing::TestMode),
 }
 
 impl AssetKind {
@@ -113,6 +115,8 @@ impl AssetKind {
             AssetKind::LitShaderGraph => "Lit Shader Graph",
             AssetKind::UnlitShaderGraph => "Unlit Shader Graph",
             AssetKind::EffectGraph => "Effect Graph",
+            AssetKind::Test(misty_engine::testing::TestMode::EditMode) => "EditMode Test",
+            AssetKind::Test(misty_engine::testing::TestMode::PlayMode) => "PlayMode Test",
         }
     }
 }

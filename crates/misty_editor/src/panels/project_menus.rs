@@ -38,6 +38,15 @@ pub fn create_items(ui: &mut Ui, actions: &mut Vec<Action>) {
             }
         }
     });
+    ui.menu_button("Testing", |ui| {
+        for mode in misty_engine::testing::TestMode::ALL {
+            let kind = AssetKind::Test(mode);
+            if ui.button(kind.label()).clicked() {
+                actions.push(Action::CreateAsset(kind));
+                ui.close();
+            }
+        }
+    });
 }
 
 /// Shader ▸ Surface / Unlit Shader, and Material from Shader.

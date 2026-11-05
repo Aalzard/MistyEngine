@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
+//! `MISTY_PLAY` / `MISTY_RUN_TESTS` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 
 use std::path::PathBuf;
@@ -153,6 +153,13 @@ pub fn apply_env(
         let file = s.assets.absolute(&rel);
         s.effect_graph.open(&file, &rel);
         crate::layout::focus_or_open(dock, crate::layout::Tab::EffectGraph);
+    }
+    // `MISTY_RUN_TESTS=EditMode|PlayMode|1` runs the project's tests (both modes, to the end)
+    // and opens the Test Runner on that mode; `MISTY_TEST_SELECT=<test name>` selects a test.
+    if let Some(mode) = std::env::var_os("MISTY_RUN_TESTS") {
+        let select = std::env::var("MISTY_TEST_SELECT").ok();
+        crate::panels::test_runner::run_from_env(s, &mode.to_string_lossy(), select.as_deref());
+        crate::layout::focus_or_open(dock, crate::layout::Tab::TestRunner);
     }
     // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
     if let Some(titles) = std::env::var_os("MISTY_TAB") {

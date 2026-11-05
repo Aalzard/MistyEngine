@@ -366,6 +366,8 @@ pub struct EditorState {
     pub game_view: GameViewSettings,
     /// Window ▸ Analysis ▸ Profiler state.
     pub profiler: crate::panels::profiler::ProfilerWindow,
+    /// Window ▸ General ▸ Test Runner: test list, results and the run in progress.
+    pub test_runner: crate::panels::test_runner::TestRunnerWindow,
     /// Saved window layouts and the Save Layout prompt.
     pub layouts: crate::layouts::Layouts,
     /// Ctrl+K search palette, its asset index and recent searches.
@@ -476,6 +478,7 @@ impl EditorState {
                 gizmos: false,
             },
             profiler: Default::default(),
+            test_runner: Default::default(),
             layouts: Default::default(),
             search: crate::search::SearchPalette::new(&root),
             tutorials: Default::default(),

@@ -141,6 +141,9 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .save(&path)
                 .map(|_| path)
         }
+        AssetKind::Test(mode) => {
+            crate::panels::test_runner::create_test_file(&s.project.root, &dir, mode)
+        }
         AssetKind::AudioMixer => {
             let path = asset_ops::unique_path(&dir, "New Audio Mixer", "mixer");
             let rel = s.assets.relative(&path);
@@ -160,7 +163,10 @@ fn create(s: &mut EditorState, kind: AssetKind) {
             // New scripts and shaders open in the Code Editor; the name field keeps the keyboard.
             if matches!(
                 kind,
-                AssetKind::Script | AssetKind::SurfaceShader | AssetKind::UnlitShader
+                AssetKind::Script
+                    | AssetKind::SurfaceShader
+                    | AssetKind::UnlitShader
+                    | AssetKind::Test(_)
             ) {
                 let rel = s.assets.relative(&path);
                 crate::panels::code_editor::open_script(s, &rel, None);

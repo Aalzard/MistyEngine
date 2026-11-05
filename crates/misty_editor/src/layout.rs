@@ -38,6 +38,8 @@ pub enum Tab {
     EffectGraph,
     /// Window ▸ Rendering ▸ Occlusion Culling.
     OcclusionCulling,
+    /// Window ▸ General ▸ Test Runner.
+    TestRunner,
 }
 
 impl Tab {
@@ -54,7 +56,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 12] = [
+    pub const ON_DEMAND: [Tab; 13] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -67,6 +69,7 @@ impl Tab {
         Tab::ShaderGraph,
         Tab::EffectGraph,
         Tab::OcclusionCulling,
+        Tab::TestRunner,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -91,6 +94,8 @@ impl Tab {
             // Docks with the Project and Console like the reference editor; the Profiler too,
             // so the Game view keeps rendering (and reporting its counters) while profiling.
             Tab::AudioMixer | Tab::Profiler => Some(Tab::Project),
+            // A tree with failure details below wants height: it docks with the Scene view.
+            Tab::TestRunner => Some(Tab::Scene),
             _ => None,
         }
     }
@@ -117,6 +122,7 @@ impl Tab {
             Tab::ShaderGraph => "Shader Graph",
             Tab::EffectGraph => "Effect Graph",
             Tab::OcclusionCulling => "Occlusion Culling",
+            Tab::TestRunner => "Test Runner",
         }
     }
 
@@ -142,6 +148,7 @@ impl Tab {
             Tab::ShaderGraph => crate::panels::shader_graph::ICON,
             Tab::EffectGraph => crate::panels::effect_graph::ICON,
             Tab::OcclusionCulling => "◩",
+            Tab::TestRunner => crate::panels::test_runner::ICON,
         }
     }
 
@@ -167,7 +174,8 @@ impl Tab {
             | Tab::TilePalette
             | Tab::ShaderGraph
             | Tab::EffectGraph
-            | Tab::OcclusionCulling => "",
+            | Tab::OcclusionCulling
+            | Tab::TestRunner => "",
         }
     }
 }
