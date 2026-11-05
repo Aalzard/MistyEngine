@@ -48,6 +48,7 @@ fn request(res: usize, stamps: Vec<PlacedStamp>) -> Request {
         stages: Stages::All,
         current: None,
         preview: false,
+        preview_resolution: generate::PREVIEW_RESOLUTION,
     }
 }
 
@@ -521,4 +522,375 @@ fn erosion_benchmark_1k() {
     let t = std::time::Instant::now();
     erosion::thermal(&mut h, res, 1.0, &s, &Progress::default());
     println!("1025²: hydraulic {hyd:?}, thermal {:?}", t.elapsed());
+}
+
+/// The WorldBuilderDemo's request (see the editor's `sample_world_builder.rs`) at `res`.
+pub(super) fn demo_request(res: usize) -> Request {
+    use super::stamps::{BiomeZone, Mountain, MountainShape, RockArea, Water, WaterMode};
+    let stamp = |radius, falloff, kind| WorldStamp {
+        enabled: true,
+        radius,
+        falloff,
+        kind,
+    };
+    // World positions; the terrain's corner is at (-300, 0, -300).
+    let at = |x: f32, y: f32, z: f32, st: WorldStamp, seed: u32| PlacedStamp {
+        stamp: st,
+        at: Placement::at(Vec2::new(x + 300.0, z + 300.0), y),
+        seed: 2024u32.wrapping_add(seed * 7919),
+    };
+    let stamps = vec![
+        at(
+            30.0,
+            0.0,
+            40.0,
+            stamp(
+                115.0,
+                0.6,
+                StampKind::Mountain(Mountain {
+                    shape: MountainShape::Volcano,
+                    height: 115.0,
+                    blend: BlendMode::Replace,
+                    roughness: 0.25,
+                }),
+            ),
+            0,
+        ),
+        at(
+            30.0,
+            50.0,
+            40.0,
+            stamp(
+                30.0,
+                0.0,
+                StampKind::Water(Water {
+                    mode: WaterMode::Lake,
+                }),
+            ),
+            1,
+        ),
+        at(
+            -130.0,
+            0.0,
+            -70.0,
+            stamp(38.0, 0.45, StampKind::Flatten(Flatten { sample: true })),
+            2,
+        ),
+        at(
+            30.0,
+            0.0,
+            40.0,
+            stamp(
+                0.0,
+                0.0,
+                StampKind::River(River {
+                    points: vec![
+                        [20.0, -90.0],
+                        [50.0, -140.0],
+                        [40.0, -200.0],
+                        [70.0, -260.0],
+                        [80.0, -330.0],
+                    ],
+                    width: 10.0,
+                    depth: 3.5,
+                    bank: 14.0,
+                    water: true,
+                }),
+            ),
+            3,
+        ),
+        at(
+            140.0,
+            0.0,
+            90.0,
+            stamp(60.0, 0.5, StampKind::RockArea(RockArea { strength: 1.0 })),
+            4,
+        ),
+        at(
+            30.0,
+            0.0,
+            40.0,
+            stamp(
+                95.0,
+                0.4,
+                StampKind::BiomeZone(BiomeZone {
+                    biome: Preset::SnowyMountains.path(),
+                    polygon: Vec::new(),
+                }),
+            ),
+            5,
+        ),
+        at(
+            -170.0,
+            0.0,
+            -170.0,
+            stamp(
+                110.0,
+                0.5,
+                StampKind::BiomeZone(BiomeZone {
+                    biome: Preset::BeachCoast.path(),
+                    polygon: Vec::new(),
+                }),
+            ),
+            6,
+        ),
+        at(
+            0.0,
+            9.0,
+            0.0,
+            stamp(
+                40.0,
+                0.0,
+                StampKind::Water(Water {
+                    mode: WaterMode::Sea,
+                }),
+            ),
+            7,
+        ),
+    ];
+    Request {
+        settings: WorldBuilder {
+            size: [600.0, 160.0, 600.0],
+            heightmap_resolution: res,
+            alphamap_resolution: (res - 1).clamp(256, 1024),
+            base: BaseSettings {
+                generator: Generator::Islands,
+                height: 0.45,
+                scale: 220.0,
+                noise_amount: 0.5,
+                octaves: 7,
+                ridge_sharpness: 2.2,
+                seed: 2024,
+            },
+            biome_breakup: 14.0,
+            scatter_storage: ScatterStorage::Compact,
+            ..Default::default()
+        },
+        zone_biome: vec![0, 0, 0, 0, 0, 1, 2, 0],
+        stamps,
+        biomes: vec![
+            Preset::Forest.biome(),
+            Preset::SnowyMountains.biome(),
+            Preset::BeachCoast.biome(),
+        ],
+        stages: Stages::All,
+        current: None,
+        preview: false,
+        preview_resolution: generate::PREVIEW_RESOLUTION,
+    }
+}
+
+/// Stage timings of the demo at 513² and 1025² (`cargo test --release -p misty_engine
+/// world_gen_profile -- --ignored --nocapture`).
+#[test]
+#[ignore = "benchmark"]
+fn world_gen_profile() {
+    for res in [513, 1025] {
+        let req = demo_request(res);
+        let t = std::time::Instant::now();
+        let out = run(&req);
+        let total = t.elapsed().as_secs_f32() * 1000.0;
+        let stages: Vec<String> = out
+            .timings
+            .iter()
+            .map(|(n, ms)| format!("{n} {ms:.0}"))
+            .collect();
+        println!("{res}²: total {total:.0} ms | {}", stages.join(" | "));
+    }
+}
+
+#[test]
+fn preview_matches_the_full_result_at_large_scale() {
+    let full = run(&demo_request(513));
+    let mut req = demo_request(513);
+    req.preview = true;
+    req.preview_resolution = 129;
+    let coarse = run(&req);
+    assert_eq!(coarse.data.heightmap_resolution, 129);
+    assert!(coarse.scatter.is_none());
+    let a = preview::resample(&full.data.heights, 513, 48);
+    let b = preview::resample(&coarse.data.heights, 129, 48);
+    let r = preview::correlation(&a, &b);
+    // The sharp pass (257²) is closer still.
+    req.preview_resolution = 257;
+    let sharp = run(&req);
+    let c = preview::resample(&sharp.data.heights, 257, 48);
+    let r2 = preview::correlation(&a, &c);
+    eprintln!("preview correlation: 129² {r}, 257² {r2}");
+    assert!(r > 0.93, "coarse correlation {r}");
+    assert!(r2 > r && r2 > 0.96, "sharp correlation {r2}");
+    // Images in every mode have the requested size and are not blank.
+    for mode in preview::PreviewMode::ALL {
+        let img = preview::render(&coarse.data, Some(&coarse.wet), mode, 64, &|_| {
+            [0.4, 0.6, 0.3]
+        });
+        assert_eq!(img.rgba.len(), 64 * 64);
+        let first = img.rgba[0];
+        assert!(img.rgba.iter().any(|p| *p != first), "{mode:?} is flat");
+    }
+    // Relief shows the sea in blue at the island's edge.
+    let img = preview::render(
+        &coarse.data,
+        Some(&coarse.wet),
+        preview::PreviewMode::Relief,
+        64,
+        &|_| [0.5; 3],
+    );
+    let corner = img.rgba[0];
+    assert!(corner[2] > corner[0] + 20, "sea at the corner: {corner:?}");
+}
+
+#[test]
+fn incremental_regeneration_reuses_stages_and_matches_a_full_run() {
+    let mut cache = generate::Cache::default();
+    let p = Progress::default();
+    let mut req = demo_request(129);
+    let first = generate::run_cached(&req, &p, &mut cache).unwrap();
+    assert!(first.reused.is_empty());
+    // Nothing changed: everything comes from the cache, identical.
+    let again = generate::run_cached(&req, &p, &mut cache).unwrap();
+    assert_eq!(again.reused.len(), generate::STAGES.len());
+    assert!(again.timings.is_empty(), "{:?}", again.timings);
+    assert_eq!(again.data, first.data);
+    assert_eq!(again.scatter, first.scatter);
+    // Move a Biome Zone: heights and water are reused, the rest re-runs.
+    let zone = req
+        .stamps
+        .iter()
+        .position(|s| matches!(s.stamp.kind, StampKind::BiomeZone(_)))
+        .unwrap();
+    req.stamps[zone].at.center += Vec2::new(40.0, -25.0);
+    let moved = generate::run_cached(&req, &p, &mut cache).unwrap();
+    assert_eq!(&moved.reused[..], &generate::STAGES[..5]);
+    let fresh = run(&req);
+    assert_eq!(moved.data, fresh.data);
+    assert_eq!(moved.scatter, fresh.scatter);
+    assert_eq!(moved.water, fresh.water);
+    assert_ne!(moved.data.alphamap, first.data.alphamap);
+    // Move a mountain: base and erosion are reused.
+    req.stamps[0].at.center += Vec2::new(10.0, 0.0);
+    let stamped = generate::run_cached(&req, &p, &mut cache).unwrap();
+    assert_eq!(&stamped.reused[..], &generate::STAGES[..3]);
+    let fresh = run(&req);
+    assert_eq!(stamped.data, fresh.data);
+    assert_eq!(stamped.scatter, fresh.scatter);
+    // Change erosion: base is reused.
+    req.settings.erosion.thermal_iterations += 3;
+    let eroded = generate::run_cached(&req, &p, &mut cache).unwrap();
+    assert_eq!(&eroded.reused[..], &generate::STAGES[..2]);
+    assert_eq!(eroded.data, run(&req).data);
+    // Overall progress ends at 1.
+    assert_eq!(p.overall(), 1.0);
+}
+
+#[test]
+fn progress_plan_covers_the_stages_that_run() {
+    let p = Progress::default();
+    p.set_plan(vec![("A", 1.0), ("B", 3.0)]);
+    p.set("A", 0.5);
+    assert!((p.overall() - 0.125).abs() < 1e-6);
+    p.set("B", 0.5);
+    assert!((p.overall() - 0.625).abs() < 1e-6);
+    p.set("Done", 1.0);
+    assert_eq!(p.overall(), 1.0);
+}
+
+/// 16-bin histogram of normalised heights (fractions).
+fn histogram(d: &crate::terrain::TerrainData) -> [f32; 16] {
+    let mut h = [0.0f32; 16];
+    for v in &d.heights {
+        h[((v * 16.0) as usize).min(15)] += 1.0;
+    }
+    let n = d.heights.len() as f32;
+    h.map(|c| c / n)
+}
+
+#[test]
+fn templates_generate_distinct_worlds_deterministically() {
+    use super::templates::Template;
+    let mut results = Vec::new();
+    for t in Template::ALL {
+        let req = t.request([600.0, 0.0, 600.0], 129);
+        // Every biome the template uses is a preset (no missing-biome warnings).
+        for st in &req.stamps {
+            if let StampKind::BiomeZone(z) = &st.stamp.kind {
+                assert!(
+                    Preset::ALL.iter().any(|p| p.path() == z.biome),
+                    "{t:?}: {}",
+                    z.biome
+                );
+            }
+        }
+        assert_eq!(req.biomes.len(), t.presets().len(), "{t:?}");
+        let a = run(&req);
+        let b = run(&req);
+        assert_eq!(a.data, b.data, "{t:?} is deterministic");
+        assert_eq!(a.scatter, b.scatter, "{t:?}");
+        let (lo, hi) = a.data.height_range();
+        assert!(hi - lo > 0.05, "{t:?} has relief: {lo}..{hi}");
+        assert!(!a.data.layers.is_empty(), "{t:?} is painted");
+        let count: usize = a.scatter.iter().flatten().map(|b| b.instances.len()).sum();
+        assert!(count > 0, "{t:?} scatters something");
+        results.push((t, histogram(&a.data), a));
+    }
+    for (i, (ta, ha, a)) in results.iter().enumerate() {
+        for (tb, hb, b) in results.iter().skip(i + 1) {
+            let l1: f32 = ha.iter().zip(hb).map(|(x, y)| (x - y).abs()).sum();
+            let metres = (a.data.size.y - b.data.size.y).abs();
+            assert!(
+                l1 > 0.3 || metres > 20.0 || a.data.layers != b.data.layers,
+                "{ta:?} and {tb:?} look alike (histogram distance {l1})"
+            );
+        }
+    }
+    // Water where promised.
+    let has = |t: Template, name: &str| {
+        results
+            .iter()
+            .find(|r| r.0 == t)
+            .is_some_and(|r| r.2.water.iter().any(|w| w.name == name))
+    };
+    assert!(has(Template::Islands, "Sea"));
+    assert!(has(Template::Volcanic, "Sea"));
+    assert!(has(Template::Tundra, "Lake"));
+    assert!(has(Template::Forest, "River"));
+}
+
+#[test]
+fn templates_keep_the_terrain_asset_and_scale_with_it() {
+    use super::templates::Template;
+    let current = WorldBuilder {
+        terrain_data: "Assets/World.terrain".into(),
+        size: [1200.0, 50.0, 1200.0],
+        heightmap_resolution: 1025,
+        ..Default::default()
+    };
+    let small = Template::Mountains.setup(&WorldBuilder::default());
+    let big = Template::Mountains.setup(&current);
+    assert_eq!(big.settings.terrain_data, current.terrain_data);
+    assert_eq!(big.settings.heightmap_resolution, 1025);
+    assert_eq!(big.settings.size[0], 1200.0);
+    assert_eq!(
+        big.settings.size[1], small.settings.size[1],
+        "height comes from the template"
+    );
+    assert!(big.stamps[0].stamp.radius > small.stamps[0].stamp.radius * 1.9);
+    for t in &big.stamps {
+        assert!((0.0..=1200.0).contains(&t.position.x) && (0.0..=1200.0).contains(&t.position.z));
+    }
+}
+
+/// Render the template picker's thumbnails into the editor's assets (`cargo test --release -p
+/// misty_engine write_template_thumbnails -- --ignored`).
+#[test]
+#[ignore = "writes the editor's template thumbnails; run on purpose"]
+fn write_template_thumbnails() {
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../misty_editor/assets/world_templates");
+    std::fs::create_dir_all(&dir).unwrap();
+    for t in super::templates::Template::ALL {
+        t.thumbnail(96)
+            .save(dir.join(format!("{}.png", t.label())))
+            .unwrap();
+    }
 }

@@ -255,6 +255,17 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
         }
         ui.separator();
         item(ui, s, "Terrain", "", create(Create::Terrain));
+        sub(ui, "World", |ui| {
+            ui.weak("Terrain + World Builder from a template");
+            for t in misty_engine::world_gen::templates::Template::ALL {
+                let b = ui.button(t.label()).on_hover_text(t.description());
+                targets::header(ui, t.label(), b.rect);
+                if b.clicked() {
+                    crate::panels::world_builder::templates::create_world(s, t, parent, true);
+                    ui.close();
+                }
+            }
+        });
         if ui.button("Mesh Builder Shape…").clicked() {
             crate::mesh_builder::open_new_shape(s);
             ui.close();

@@ -275,6 +275,30 @@ pub fn apply_env(
     if std::env::var_os("MISTY_BUILD").is_some() {
         s.build_window.open = true;
     }
+    // `MISTY_WORLD_TEMPLATE=Mountains` makes a terrain + World Builder from that template and
+    // generates it (GameObject ▸ 3D Object ▸ World); `MISTY_WB_PREVIEW=Height|Relief|Biomes`
+    // picks the World Builder's preview mode.
+    if let Some(name) = std::env::var_os("MISTY_WORLD_TEMPLATE")
+        && let Some(t) = misty_engine::world_gen::templates::Template::ALL
+            .into_iter()
+            .find(|t| t.label() == name.to_string_lossy())
+    {
+        crate::panels::world_builder::templates::create_world(s, t, None, true);
+        crate::layout::focus_or_open(dock, crate::layout::Tab::WorldBuilder);
+        // `MISTY_SELECT` still wins (the new world selects itself).
+        if let Some(name) = std::env::var_os("MISTY_SELECT")
+            && let Some(e) = s.scene.find_by_name(&name.to_string_lossy())
+        {
+            s.select(e);
+        }
+    }
+    if let Some(mode) = std::env::var_os("MISTY_WB_PREVIEW")
+        && let Some(m) = misty_engine::world_gen::preview::PreviewMode::ALL
+            .into_iter()
+            .find(|m| m.label() == mode.to_string_lossy())
+    {
+        s.world_builder.preview.mode = m;
+    }
     // `MISTY_TERRAIN_TOOL=Paint Texture` picks a Terrain Inspector tool tab.
     if let Some(tool) = std::env::var_os("MISTY_TERRAIN_TOOL")
         && let Some(t) = crate::terrain_tools::TerrainTool::ALL

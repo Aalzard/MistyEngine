@@ -178,9 +178,21 @@ fn river_water(r: &RiverPath, out: &mut Vec<WaterBody>, map: &mut WaterMap, size
         });
         i = j;
     }
-    // Wet texels: within half the width of the line.
-    for tz in 0..n {
-        for tx in 0..n {
+    // Wet texels: within half the width of the line (only rows and columns near it).
+    if r.points.is_empty() || n == 0 {
+        return;
+    }
+    let lo = r.points.iter().fold(Vec2::MAX, |a, p| a.min(*p)) - Vec2::splat(half);
+    let hi = r.points.iter().fold(Vec2::MIN, |a, p| a.max(*p)) + Vec2::splat(half);
+    let texel = |v: f32, extent: f32| ((v / extent * n as f32).floor().max(0.0) as usize).min(n);
+    let (x0, x1) = (texel(lo.x, size.x), (texel(hi.x, size.x) + 1).min(n));
+    let (z0, z1) = (texel(lo.y, size.y), (texel(hi.y, size.y) + 1).min(n));
+    if x0 >= x1 || z0 >= z1 {
+        return;
+    }
+    super::par_rows(&mut map.level[z0 * n..z1 * n], n, |row, out| {
+        let tz = z0 + row;
+        for (tx, cell) in out.iter_mut().enumerate().take(x1).skip(x0) {
             let p = Vec2::new(
                 (tx as f32 + 0.5) / n as f32 * size.x,
                 (tz as f32 + 0.5) / n as f32 * size.y,
@@ -188,13 +200,12 @@ fn river_water(r: &RiverPath, out: &mut Vec<WaterBody>, map: &mut WaterMap, size
             for k in 0..r.points.len().saturating_sub(1) {
                 let (d, t) = super::stamps::segment_distance(p, r.points[k], r.points[k + 1]);
                 if d < half {
-                    let level = r.water[k] + (r.water[k + 1] - r.water[k]) * t;
-                    map.level[tz * n + tx] = Some(level);
+                    *cell = Some(r.water[k] + (r.water[k + 1] - r.water[k]) * t);
                     break;
                 }
             }
         }
-    }
+    });
 }
 
 /// Place a Water Surface for `body` under `parent` (`corner` = the terrain's world corner): the

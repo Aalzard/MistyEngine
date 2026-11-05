@@ -1,0 +1,85 @@
+{
+  "name": "Volcanic",
+  "tone": [
+    0.32,
+    0.3,
+    0.29
+  ],
+  "flat": {
+    "texture": "Assets/WorldBuilder/Textures/Ash.png",
+    "normal_map": null,
+    "tiling": 8.0
+  },
+  "slope": {
+    "texture": "Assets/WorldBuilder/Textures/Basalt.png",
+    "normal_map": null,
+    "tiling": 10.0
+  },
+  "cliff": {
+    "texture": "Assets/WorldBuilder/Textures/Basalt.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "shore": {
+    "texture": "Assets/WorldBuilder/Textures/Ash.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "peak": {
+    "texture": "Assets/WorldBuilder/Textures/Ash.png",
+    "normal_map": null,
+    "tiling": 8.0
+  },
+  "slope_angle": 20.0,
+  "cliff_angle": 34.0,
+  "peak_height": 0.9,
+  "shore_width": 2.5,
+  "scatter": [
+    {
+      "name": "Boulder",
+      "prefab": null,
+      "shape": "Boulder",
+      "color": [
+        0.2,
+        0.19,
+        0.19
+      ],
+      "density": 1.2,
+      "min_spacing": 5.0,
+      "scale": [
+        0.6,
+        1.8
+      ],
+      "random_rotation": true,
+      "max_slope": 60.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": true
+    },
+    {
+      "name": "Shrub",
+      "prefab": null,
+      "shape": "Bush",
+      "color": [
+        0.35,
+        0.38,
+        0.22
+      ],
+      "density": 0.5,
+      "min_spacing": 4.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 25.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": false
+    }
+  ]
+}

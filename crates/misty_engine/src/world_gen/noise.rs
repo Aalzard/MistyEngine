@@ -87,14 +87,22 @@ impl Default for Fractal {
     }
 }
 
+/// Per-octave rotation (sin, cos of 0.5 × octave), computed once.
+static ROTATIONS: std::sync::LazyLock<[(f32, f32); 16]> =
+    std::sync::LazyLock::new(|| std::array::from_fn(|o| (0.5f32 * o as f32).sin_cos()));
+
 /// Fractal noise: Fbm in -1..1, Ridged and Billow in 0..1.
 pub fn fractal(x: f32, y: f32, seed: u32, f: &Fractal) -> f32 {
+    let rotations = &*ROTATIONS;
     let (mut sum, mut amp, mut norm, mut freq) = (0.0, 1.0, 0.0, 1.0);
     // Ridged octaves are weighted by the previous one, so crests carry the detail.
     let mut weight = 1.0f32;
     for o in 0..f.octaves.max(1) {
         // Rotate each octave a little to hide the lattice.
-        let (s, c) = (0.5f32 * o as f32).sin_cos();
+        let (s, c) = match rotations.get(o as usize) {
+            Some(r) => *r,
+            None => (0.5f32 * o as f32).sin_cos(),
+        };
         let (px, py) = (x * c - y * s, x * s + y * c);
         let n = gradient(px * freq, py * freq, seed.wrapping_add(o * 1013));
         let v = match f.kind {

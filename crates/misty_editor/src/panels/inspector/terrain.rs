@@ -126,6 +126,18 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 state.terrain_tools.tool = tool;
             }
         }
+        // The World Builder generates whole terrains: make it easy to find from here.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let b = ui
+                .add(egui::Button::new("⛰ World Builder").min_size(egui::vec2(0.0, 26.0)))
+                .on_hover_text(
+                    "Generate this terrain from a template, noise, erosion, stamps and biomes                      (opens the World Builder; creates one for this terrain if needed)",
+                );
+            targets::header(ui, "World Builder", b.rect);
+            if b.clicked() {
+                crate::panels::world_builder::open_for_terrain(state, e);
+            }
+        });
     });
     let tool = state.terrain_tools.tool;
     super::card::sub_header(ui, tool.label());

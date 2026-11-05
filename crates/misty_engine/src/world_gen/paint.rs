@@ -10,6 +10,7 @@ use super::par_rows;
 use crate::terrain::{MAX_LAYERS, TerrainLayer};
 
 /// Layers and splat map for a terrain.
+#[derive(Clone, Debug)]
 pub struct Painted {
     pub layers: Vec<TerrainLayer>,
     /// RGBA weights per texel (channel n = layer n), on the fields' grid.

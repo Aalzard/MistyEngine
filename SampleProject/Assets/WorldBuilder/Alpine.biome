@@ -1,0 +1,108 @@
+{
+  "name": "Alpine",
+  "tone": [
+    0.38,
+    0.55,
+    0.32
+  ],
+  "flat": {
+    "texture": "Assets/WorldBuilder/Textures/Grass.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "slope": {
+    "texture": "Assets/WorldBuilder/Textures/Dirt.png",
+    "normal_map": null,
+    "tiling": 8.0
+  },
+  "cliff": {
+    "texture": "Assets/WorldBuilder/Textures/Rock.png",
+    "normal_map": null,
+    "tiling": 12.0
+  },
+  "shore": {
+    "texture": "Assets/WorldBuilder/Textures/Sand.png",
+    "normal_map": null,
+    "tiling": 6.0
+  },
+  "peak": {
+    "texture": "Assets/WorldBuilder/Textures/Snow.png",
+    "normal_map": null,
+    "tiling": 10.0
+  },
+  "slope_angle": 26.0,
+  "cliff_angle": 38.0,
+  "peak_height": 0.58,
+  "shore_width": 2.5,
+  "scatter": [
+    {
+      "name": "Pine",
+      "prefab": null,
+      "shape": "PineTree",
+      "color": [
+        0.1,
+        0.28,
+        0.15
+      ],
+      "density": 7.0,
+      "min_spacing": 4.5,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 30.0,
+      "height_range": [
+        0.0,
+        0.5
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Bush",
+      "prefab": null,
+      "shape": "Bush",
+      "color": [
+        0.28,
+        0.45,
+        0.2
+      ],
+      "density": 2.0,
+      "min_spacing": 3.0,
+      "scale": [
+        0.8,
+        1.3
+      ],
+      "random_rotation": true,
+      "max_slope": 30.0,
+      "height_range": [
+        0.0,
+        0.42
+      ],
+      "align_to_normal": false
+    },
+    {
+      "name": "Boulder",
+      "prefab": null,
+      "shape": "Boulder",
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "density": 0.7,
+      "min_spacing": 6.0,
+      "scale": [
+        0.6,
+        1.8
+      ],
+      "random_rotation": true,
+      "max_slope": 55.0,
+      "height_range": [
+        0.0,
+        1.0
+      ],
+      "align_to_normal": true
+    }
+  ]
+}

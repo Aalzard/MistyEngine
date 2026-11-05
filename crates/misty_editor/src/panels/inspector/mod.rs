@@ -38,7 +38,7 @@ mod skinned_editors;
 pub(in crate::panels) mod slots;
 mod spline_editors;
 mod sprite_editors;
-mod terrain;
+pub(crate) mod terrain;
 mod texture_import;
 mod tilemap_editors;
 mod timeline_editors;

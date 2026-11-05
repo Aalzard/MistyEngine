@@ -93,6 +93,26 @@ fn brush(radius: i32) -> Vec<(i32, i32, f32)> {
     out
 }
 
+/// Erosion brush: offsets with weights, its radius and the weight sum when it lies fully
+/// inside the map (summed in the same order as the edge case, so results match exactly).
+struct Brush {
+    cells: Vec<(i32, i32, f32)>,
+    radius: i32,
+    interior_sum: f32,
+}
+
+impl Brush {
+    fn new(radius: i32) -> Self {
+        let cells = brush(radius);
+        let interior_sum = cells.iter().map(|w| w.2).sum();
+        Self {
+            cells,
+            radius,
+            interior_sum,
+        }
+    }
+}
+
 /// One chunk's view of the map: the batch snapshot plus its own changes.
 struct Local<'a> {
     base: &'a [f32],
@@ -133,11 +153,23 @@ impl Local<'_> {
     }
 
     /// Remove `amount` with the brush around the cell nearest a point.
-    fn erode(&mut self, px: f32, pz: f32, amount: f32, brush: &[(i32, i32, f32)]) {
+    fn erode(&mut self, px: f32, pz: f32, amount: f32, brush: &Brush) {
         let (cx, cz) = (px.round() as i32, pz.round() as i32);
         let r = self.res as i32;
+        let b = brush.radius;
+        if cx >= b && cz >= b && cx + b < r && cz + b < r {
+            // Fully inside: no per-cell bounds checks.
+            let sum = brush.interior_sum;
+            let centre = (cz * r + cx) as isize;
+            for (dx, dz, w) in &brush.cells {
+                let i = (centre + (*dz * r + *dx) as isize) as usize;
+                self.delta[i] -= amount * w / sum;
+            }
+            return;
+        }
         let inside = |x: i32, z: i32| x >= 0 && z >= 0 && x < r && z < r;
         let sum: f32 = brush
+            .cells
             .iter()
             .filter(|(dx, dz, _)| inside(cx + dx, cz + dz))
             .map(|w| w.2)
@@ -145,7 +177,7 @@ impl Local<'_> {
         if sum <= 0.0 {
             return;
         }
-        for (dx, dz, w) in brush {
+        for (dx, dz, w) in &brush.cells {
             let (x, z) = (cx + dx, cz + dz);
             if inside(x, z) {
                 self.delta[(z * r + x) as usize] -= amount * w / sum;
@@ -155,13 +187,7 @@ impl Local<'_> {
 }
 
 /// Simulate `count` droplets on one chunk.
-fn run_droplets(
-    map: &mut Local,
-    rng: &mut Rng,
-    count: usize,
-    p: &Droplet,
-    brush: &[(i32, i32, f32)],
-) {
+fn run_droplets(map: &mut Local, rng: &mut Rng, count: usize, p: &Droplet, brush: &Brush) {
     let max = (map.res - 1) as f32 - 1e-3;
     for _ in 0..count {
         let (mut x, mut z) = (rng.range(0.0, max), rng.range(0.0, max));
@@ -236,7 +262,7 @@ pub fn hydraulic(
     } else {
         1
     };
-    let brush = brush(radius);
+    let brush = Brush::new(radius);
     let mut deltas: Vec<Vec<f32>> = (0..CHUNKS).map(|_| vec![0.0; res * res]).collect();
     let mut finished = true;
     for batch in 0..batches {
@@ -245,18 +271,15 @@ pub fn hydraulic(
             break;
         }
         let base: &[f32] = heights;
-        std::thread::scope(|scope| {
-            for (c, delta) in deltas.iter_mut().enumerate() {
-                let (params, brush) = (&params, &brush);
-                scope.spawn(move || {
-                    let mut rng = Rng::new(
-                        (seed as u64) << 32 ^ (batch as u64) << 8 ^ c as u64 ^ 0x6a09_e667,
-                    );
-                    let mut local = Local { base, delta, res };
-                    run_droplets(&mut local, &mut rng, per_chunk, params, brush);
-                });
-            }
-        });
+        {
+            use rayon::prelude::*;
+            deltas.par_iter_mut().enumerate().for_each(|(c, delta)| {
+                let mut rng =
+                    Rng::new((seed as u64) << 32 ^ (batch as u64) << 8 ^ c as u64 ^ 0x6a09_e667);
+                let mut local = Local { base, delta, res };
+                run_droplets(&mut local, &mut rng, per_chunk, &params, &brush);
+            });
+        }
         merge(heights, &mut deltas, res);
         progress.set_fraction((batch + 1) as f32 / batches as f32);
     }
@@ -264,20 +287,30 @@ pub fn hydraulic(
     finished
 }
 
-/// Add every chunk's changes to the map (fixed order) and clear them.
+/// Shared pointers to the chunk deltas: rows are merged in parallel, each row by one thread.
+struct Deltas(Vec<*mut f32>);
+// SAFETY: every thread touches only its own rows of each delta (see `merge`).
+unsafe impl Sync for Deltas {}
+
+/// Add every chunk's changes to the map (fixed order, so the sum is the same on every machine)
+/// and clear them, in one pass.
 fn merge(heights: &mut [f32], deltas: &mut [Vec<f32>], res: usize) {
-    let deltas_ref: &[Vec<f32>] = deltas;
+    let n = heights.len();
+    assert!(deltas.iter().all(|d| d.len() == n));
+    let ptrs = Deltas(deltas.iter_mut().map(|d| d.as_mut_ptr()).collect());
+    let ptrs = &ptrs;
     par_rows(heights, res, |z, row| {
-        for (x, h) in row.iter_mut().enumerate() {
-            let i = z * res + x;
-            for d in deltas_ref {
-                *h += d[i];
+        let start = z * res;
+        for p in &ptrs.0 {
+            // SAFETY: rows [start, start + row.len()) of each delta belong to this call only,
+            // and every delta is as long as `heights` (checked above).
+            let d = unsafe { std::slice::from_raw_parts_mut(p.add(start), row.len()) };
+            for (h, v) in row.iter_mut().zip(d.iter_mut()) {
+                *h += *v;
+                *v = 0.0;
             }
         }
     });
-    for d in deltas.iter_mut() {
-        d.fill(0.0);
-    }
 }
 
 /// Thermal erosion of `heights` (metres). False when cancelled.
@@ -293,56 +326,72 @@ pub fn thermal(
     }
     let talus = s.talus_angle.clamp(1.0, 89.0).to_radians().tan() * cell;
     let k = s.thermal_strength.clamp(0.0, 1.0) * 0.5;
-    const N: [(i32, i32, f32); 8] = [
+    const SQRT2: f32 = std::f32::consts::SQRT_2;
+    const N: [(isize, isize, f32); 8] = [
         (-1, 0, 1.0),
         (1, 0, 1.0),
         (0, -1, 1.0),
         (0, 1, 1.0),
-        (-1, -1, std::f32::consts::SQRT_2),
-        (1, -1, std::f32::consts::SQRT_2),
-        (-1, 1, std::f32::consts::SQRT_2),
-        (1, 1, std::f32::consts::SQRT_2),
+        (-1, -1, SQRT2),
+        (1, -1, SQRT2),
+        (-1, 1, SQRT2),
+        (1, 1, SQRT2),
     ];
-    let r = res as i32;
-    let mut scale = vec![0.0f32; res * res];
+    // Height drop allowed towards each neighbour.
+    let limit = N.map(|n| talus * n.2);
+    let r = res as isize;
+    // Neighbour `j` of cell (x, z) at index `i`, if inside: interior cells just add an offset.
+    let offset = N.map(|(dx, dz, _)| dz * r + dx);
+    let neighbour = |i: isize, x: isize, z: isize, j: usize| -> Option<usize> {
+        if x > 0 && z > 0 && x < r - 1 && z < r - 1 {
+            return Some((i + offset[j]) as usize);
+        }
+        let (nx, nz) = (x + N[j].0, z + N[j].1);
+        (nx >= 0 && nz >= 0 && nx < r && nz < r).then_some((nz * r + nx) as usize)
+    };
+    // Per cell: the share of each unit of excess it sheds, and the total it sheds.
+    let mut shed = vec![(0.0f32, 0.0f32); res * res];
     let mut next = vec![0.0f32; res * res];
     for it in 0..s.thermal_iterations {
         if progress.cancelled() {
             return false;
         }
         let h: &[f32] = heights;
-        let excess = |x: i32, z: i32, nx: i32, nz: i32, dist: f32| {
-            if nx < 0 || nz < 0 || nx >= r || nz >= r {
-                return 0.0;
-            }
-            (h[(z * r + x) as usize] - h[(nz * r + nx) as usize] - talus * dist).max(0.0)
-        };
-        // Pass 1: how much each cell sheds, per unit of excess.
-        par_rows(&mut scale, res, |z, row| {
+        // Pass 1: how much each cell sheds.
+        par_rows(&mut shed, res, |z, row| {
+            let z = z as isize;
             for (x, out) in row.iter_mut().enumerate() {
-                let (x, z) = (x as i32, z as i32);
+                let x = x as isize;
+                let i = z * r + x;
+                let hc = h[i as usize];
                 let (mut total, mut most) = (0.0f32, 0.0f32);
-                for (dx, dz, d) in N {
-                    let e = excess(x, z, x + dx, z + dz, d);
-                    total += e;
-                    most = most.max(e);
+                for (j, lim) in limit.iter().enumerate() {
+                    if let Some(n) = neighbour(i, x, z, j) {
+                        let e = (hc - h[n] - lim).max(0.0);
+                        total += e;
+                        most = most.max(e);
+                    }
                 }
-                *out = if total > 0.0 { k * most / total } else { 0.0 };
+                *out = if total > 0.0 {
+                    (k * most / total, k * most)
+                } else {
+                    (0.0, 0.0)
+                };
             }
         });
-        // Pass 2: gather what neighbours shed onto each cell.
-        let sc: &[f32] = &scale;
+        // Pass 2: each cell loses what it sheds and gathers its share of its neighbours'
+        // (a neighbour's excess towards this cell: same distance both ways).
+        let sh: &[(f32, f32)] = &shed;
         par_rows(&mut next, res, |z, row| {
+            let z = z as isize;
             for (x, out) in row.iter_mut().enumerate() {
-                let (xi, zi) = (x as i32, z as i32);
-                let i = z * res + x;
-                let mut v = h[i];
-                for (dx, dz, d) in N {
-                    let (nx, nz) = (xi + dx, zi + dz);
-                    // Outflow to the neighbour, inflow from it.
-                    v -= sc[i] * excess(xi, zi, nx, nz, d);
-                    if nx >= 0 && nz >= 0 && nx < r && nz < r {
-                        v += sc[(nz * r + nx) as usize] * excess(nx, nz, xi, zi, d);
+                let x = x as isize;
+                let i = z * r + x;
+                let hc = h[i as usize];
+                let mut v = hc - sh[i as usize].1;
+                for (j, lim) in limit.iter().enumerate() {
+                    if let Some(n) = neighbour(i, x, z, j) {
+                        v += sh[n].0 * (h[n] - hc - lim).max(0.0);
                     }
                 }
                 *out = v;

@@ -28,6 +28,7 @@ pub struct TexelInfo {
 }
 
 /// Water surfaces sampled onto the splat grid: the level per texel where the texel is wet.
+#[derive(Clone, Debug, PartialEq)]
 pub struct WaterMap {
     pub res: usize,
     /// Water surface height (metres, terrain-local) or `None` where dry.
@@ -44,6 +45,7 @@ impl WaterMap {
 }
 
 /// Everything the painter and scatter read, on the splat grid.
+#[derive(Clone, Debug)]
 pub struct Fields {
     pub res: usize,
     /// Terrain size in metres (x, max height, z).
