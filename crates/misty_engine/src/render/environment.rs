@@ -36,6 +36,26 @@ pub struct Environment {
     pub lightmaps: crate::lightmap::LightmapSet,
     /// Draws the camera's baked occlusion data hides (see [`crate::occlusion`]).
     pub occlusion: Option<crate::occlusion::OcclusionMask>,
+    /// The scene's Wind Zone (grass bends with it; None = each terrain's own wind).
+    pub wind: Option<Wind>,
+    /// Fixed clock for the grass wind in seconds (tests, recordings); None = the renderer's.
+    pub grass_time: Option<f32>,
+}
+
+/// A Wind Zone as the grass sees it: where it blows and its multipliers of the grass's own
+/// wind settings.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Wind {
+    /// World direction the wind blows towards (only xz is used).
+    pub direction: Vec3,
+    /// × wind strength.
+    pub main: f32,
+    /// × flutter.
+    pub turbulence: f32,
+    /// × gust strength.
+    pub pulse_magnitude: f32,
+    /// × gust travel speed.
+    pub pulse_frequency: f32,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -80,6 +100,8 @@ impl Environment {
             lights_2d: Default::default(),
             lightmaps: Default::default(),
             occlusion: None,
+            wind: None,
+            grass_time: None,
         }
     }
 

@@ -18,6 +18,14 @@ struct TerrainParams {
     // x = triplanar on, y = |normal.xz| where triplanar starts, z = projection sharpness,
     // w = height-blend window (1 = plain weights).
     cliff: vec4<f32>,
+    // Ground under grass: rgb = linear healthy grass colour, w = ground tint (0 = none).
+    grass_healthy: vec4<f32>,
+    // rgb = linear dry colour, w = patch size (m).
+    grass_dry: vec4<f32>,
+    // rgb = linear lush colour, w = grass draw distance.
+    grass_lush: vec4<f32>,
+    // x = lush amount, y = dry amount.
+    grass_amounts: vec4<f32>,
 };
 
 @group(3) @binding(0) var<uniform> terrain: TerrainParams;

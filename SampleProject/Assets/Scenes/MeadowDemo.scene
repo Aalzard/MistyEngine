@@ -310,6 +310,52 @@
         }
       },
       "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Wind Zone"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Wind Zone",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            75.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            10.0,
+            -504.0
+          ],
+          "rotation": [
+            0.0,
+            0.6087614,
+            0.0,
+            0.7933533
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Wind Zone": {
+          "enabled": true,
+          "main": 1.0,
+          "pulse_frequency": 1.0,
+          "pulse_magnitude": 1.0,
+          "turbulence": 1.0
+        }
+      },
+      "parent": null
     }
   ],
   "version": 1

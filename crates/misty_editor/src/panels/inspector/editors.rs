@@ -53,6 +53,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::lod_editor::icon(other))
             .or_else(|| super::rig_editors::icon(other))
             .or_else(|| super::water::icon(other))
+            .or_else(|| super::wind_editors::icon(other))
             .or_else(|| super::mesh_builder_editor::icon(other))
             .or_else(|| super::spline_editors::icon(other))
             .unwrap_or("▣"),
@@ -121,6 +122,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::water::NAMES.contains(&name) {
         return super::water::enabled_flag(state, e, name);
+    }
+    if super::wind_editors::NAMES.contains(&name) {
+        return super::wind_editors::enabled_flag(state, e, name);
     }
     match name {
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
@@ -203,6 +207,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::water::NAMES.contains(&name) {
         return super::water::set_enabled(state, e, name, on);
+    }
+    if super::wind_editors::NAMES.contains(&name) {
+        return super::wind_editors::set_enabled(state, e, name, on);
     }
     let w = &mut state.scene.world;
     match name {
@@ -336,6 +343,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
             crate::panels::world_builder::inspector(ui, state, e, wb)
         }
         water if super::water::NAMES.contains(&water) => super::water::edit(ui, state, e, water),
+        wind if super::wind_editors::NAMES.contains(&wind) => {
+            super::wind_editors::edit(ui, state, e, wind)
+        }
         mb if super::mesh_builder_editor::NAMES.contains(&mb) => {
             super::mesh_builder_editor::edit(ui, state, e, mb)
         }

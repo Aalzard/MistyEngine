@@ -391,5 +391,19 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
         "Lens Flare components draw (light halos always do).",
         |ui| ui.checkbox(&mut l.lens_flares, "").changed(),
     );
+    edited |= row(
+        ui,
+        "Grass Shadows",
+        "Terrain grass near the camera casts shadows: Low 12 m, Medium 20 m, High 32 m (Off = none cast; grass still receives shadows).",
+        |ui| {
+            combo(
+                ui,
+                "q_grass_shadows",
+                &mut l.grass_shadows,
+                &Tier::ALL,
+                Tier::label,
+            )
+        },
+    );
     edited
 }

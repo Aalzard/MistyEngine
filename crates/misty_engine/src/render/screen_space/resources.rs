@@ -71,6 +71,31 @@ impl Passes {
             },
         );
 
+        let blade_buffers = pipelines::blade_buffers();
+        let grass = pipelines::build(
+            device,
+            Spec {
+                vs: "vs_grass_prepass",
+                fs: Some("fs_grass_prepass"),
+                buffers: &blade_buffers,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                depth: Some(Depth {
+                    format: DEPTH_FORMAT,
+                    write: true,
+                    compare: wgpu::CompareFunction::Less,
+                    bias: Default::default(),
+                }),
+                color: Some(NORMAL_FORMAT),
+                samples: 1,
+                glow: None,
+                ..Spec::new(
+                    "ao grass prepass",
+                    GRASS_PREPASS_SRC,
+                    &[&p.view_layout, &p.draws_layout, &p.grass_layout],
+                )
+            },
+        );
+
         use wgpu::BindingType as B;
         let entry = |binding, ty| wgpu::BindGroupLayoutEntry {
             binding,
@@ -137,6 +162,7 @@ impl Passes {
         Self {
             prepass,
             terrain,
+            grass,
             gtao: compute("cs_gtao"),
             denoise: compute("cs_denoise"),
             resolve: compute("cs_resolve"),

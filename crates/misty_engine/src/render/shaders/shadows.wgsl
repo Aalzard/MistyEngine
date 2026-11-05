@@ -439,7 +439,8 @@ fn fast_shadow_factor(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: 
         // Four hardware-filtered taps spread across the light (a soft, stable edge).
         var t = normalize(cross(l, vec3<f32>(0.0, 1.0, 0.0) + vec3<f32>(1e-3, 0.0, 0.0)));
         let b = cross(l, t);
-        let r = 0.12 * (1.0 + 0.02 * length(world - view.camera_pos.xyz));
+        // Narrow enough for single blades to cast blade-shaped shadows close up.
+        let r = 0.025 * (1.0 + 0.08 * length(world - view.camera_pos.xyz));
         var sum = 0.0;
         sum += sun_shadow(i, world + (t + b * 0.5) * r, n, n_dot_l, 1.0);
         sum += sun_shadow(i, world + (-t - b * 0.5) * r, n, n_dot_l, 1.0);

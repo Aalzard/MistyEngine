@@ -126,6 +126,7 @@ pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
     env.glows = glow_sources(scene);
     env.lights_2d = crate::light2d::collect(scene);
     env.lightmaps = crate::lightmap::scene_lightmaps(scene);
+    env.wind = crate::scene::wind_zone::scene_wind(scene);
     env
 }
 

@@ -47,6 +47,8 @@ pub struct ShadowMaps {
     pub params_buffer: wgpu::Buffer,
     /// Tint the cascades in the next render (Scene view debug mode).
     pub debug_cascades: bool,
+    /// The near-camera grass shadow map (Quality ▸ Grass Shadow Map).
+    pub grass_near: super::grass_near_shadow::GrassNearShadow,
 }
 
 /// Which shadow maps to render this frame.
@@ -72,7 +74,7 @@ impl ShadowPlan {
 
 impl ShadowMaps {
     pub fn new(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Self {
-        Self::with_size(device, view_layout, DIRECTIONAL_SIZE)
+        Self::with_size(device, view_layout, DIRECTIONAL_SIZE, 1)
     }
 
     /// Maps with a directional shadow map of `directional_size`² pixels.
@@ -80,6 +82,7 @@ impl ShadowMaps {
         device: &wgpu::Device,
         view_layout: &wgpu::BindGroupLayout,
         directional_size: u32,
+        grass_near_size: u32,
     ) -> Self {
         let texture = |label, size: u32, layers: u32| {
             device.create_texture(&wgpu::TextureDescriptor {
@@ -166,6 +169,11 @@ impl ShadowMaps {
             view_bind_group,
             params_buffer,
             debug_cascades: false,
+            grass_near: super::grass_near_shadow::GrassNearShadow::new(
+                device,
+                view_layout,
+                grass_near_size,
+            ),
         }
     }
 }
