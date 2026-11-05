@@ -32,6 +32,7 @@ pub mod physics2d_api;
 pub mod physics_api;
 pub mod render_settings_api;
 pub mod scene_api;
+pub mod skinning_api;
 pub mod syntax;
 pub mod terrain_api;
 pub mod ui_api;

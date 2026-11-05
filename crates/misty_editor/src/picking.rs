@@ -128,6 +128,9 @@ fn object_bounds(scene: &Scene, e: Entity) -> Option<(Vec3, Vec3)> {
     match mesh {
         Some(mesh) => misty_engine::models::bounds(&mesh),
         None => {
+            if let Some(b) = skinned_bounds(scene, e) {
+                return Some(b);
+            }
             let (min, max) = misty_engine::sprites::local_bounds(scene, e)?;
             Some((min.extend(-0.005), max.extend(0.005)))
         }
@@ -206,6 +209,17 @@ fn ray_box(origin: Vec3, dir: Vec3, half: Vec3) -> Option<f32> {
     let near = t0.min(t1).max_element();
     let far = t0.max(t1).min_element();
     (far >= near.max(0.0)).then_some(near.max(0.0))
+}
+
+/// A Skinned Mesh Renderer's posed bounds in its object's space.
+fn skinned_bounds(scene: &Scene, e: Entity) -> Option<(Vec3, Vec3)> {
+    let r = scene
+        .world
+        .get::<&misty_engine::scene::SkinnedMeshRenderer>(e)
+        .ok()?
+        .clone();
+    let pose = misty_engine::skinning::compute_pose(scene, e, &r, &|x| scene.world_matrix(x))?;
+    Some(pose.bounds)
 }
 
 #[cfg(test)]

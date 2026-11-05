@@ -5,9 +5,11 @@
 //! (positions, normals, node translations and rotations) and flips triangle winding.
 
 mod extract;
+mod gltf_anim;
 mod gltf_import;
 mod obj_import;
 pub mod runtime;
+pub mod skin;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -20,7 +22,10 @@ use crate::assets::{self, Material};
 use crate::render::mesh::{self, MeshData};
 use crate::scene::MeshRef;
 
-pub use extract::{extract_materials, material_asset_path};
+pub use extract::{
+    animation_asset_path, extract_animations, extract_materials, material_asset_path,
+};
+pub use skin::{BlendShape, MeshSkin, ModelAnimation, ModelSkin};
 
 /// Model file extensions.
 pub const EXTENSIONS: [&str; 3] = ["gltf", "glb", "obj"];
@@ -37,6 +42,11 @@ pub struct ModelMesh {
     pub material: Option<usize>,
     pub bounds: (Vec3, Vec3),
     edges: OnceLock<Vec<[Vec3; 2]>>,
+    /// Bone influences (skinned glTF meshes).
+    pub skin: Option<MeshSkin>,
+    /// Morph targets; the file's default weights (0–100) alongside.
+    pub blend_shapes: Vec<BlendShape>,
+    pub default_weights: Vec<f32>,
 }
 
 impl ModelMesh {
@@ -51,6 +61,9 @@ impl ModelMesh {
             data,
             material,
             edges: OnceLock::new(),
+            skin: None,
+            blend_shapes: Vec::new(),
+            default_weights: Vec::new(),
         }
     }
 
@@ -68,6 +81,8 @@ pub struct ModelNode {
     pub scale: Vec3,
     /// Meshes drawn by this node (indices into [`Model::meshes`]).
     pub meshes: Vec<usize>,
+    /// Skin deforming this node's meshes (index into [`Model::skins`]).
+    pub skin: Option<usize>,
 }
 
 /// Where a material's texture comes from.
@@ -92,6 +107,22 @@ pub struct Model {
     /// Parents come before their children.
     pub nodes: Vec<ModelNode>,
     pub materials: Vec<ModelMaterial>,
+    pub skins: Vec<ModelSkin>,
+    pub animations: Vec<ModelAnimation>,
+}
+
+impl Model {
+    /// Curve path of node `i` below the model's root object ("Bone0/Bone1").
+    pub fn node_path(&self, i: usize) -> String {
+        let mut names = Vec::new();
+        let mut cur = Some(i);
+        while let Some(n) = cur.and_then(|k| self.nodes.get(k)) {
+            names.push(n.name.as_str());
+            cur = n.parent;
+        }
+        names.reverse();
+        names.join("/")
+    }
 }
 
 /// Read a model file.
@@ -209,6 +240,10 @@ impl std::ops::Deref for MeshHandle {
 pub fn mesh(r: &MeshRef) -> Option<MeshHandle> {
     match r {
         MeshRef::Primitive(p) => Some(MeshHandle::Builtin(mesh::primitive(*p))),
+        // A posed Skinned Mesh Renderer: its source mesh (bind pose).
+        MeshRef::Asset(key) if crate::skinning::is_pose_key(key) => {
+            mesh(&crate::skinning::pose(key)?.mesh)
+        }
         MeshRef::Asset(_) => {
             let (path, index) = r.split_asset()?;
             let model = model(path).ok()?;
@@ -221,6 +256,9 @@ pub fn mesh(r: &MeshRef) -> Option<MeshHandle> {
 pub fn bounds(r: &MeshRef) -> Option<(Vec3, Vec3)> {
     match r {
         MeshRef::Primitive(p) => Some((-p.half_extents(), p.half_extents())),
+        MeshRef::Asset(key) if crate::skinning::is_pose_key(key) => {
+            Some(crate::skinning::pose(key)?.bounds)
+        }
         MeshRef::Asset(_) => match mesh(r)? {
             MeshHandle::Imported(model, i) => Some(model.meshes[i].bounds),
             MeshHandle::Builtin(m) => Some(m.bounds()),

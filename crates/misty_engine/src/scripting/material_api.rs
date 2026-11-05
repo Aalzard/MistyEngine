@@ -511,6 +511,9 @@ impl UserData for LMeshRenderer {
 
 /// `GetComponent("MeshRenderer")` / `GetComponent("Renderer")`.
 pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
+    if name == "SkinnedMeshRenderer" {
+        return super::skinning_api::component(lua, e, name);
+    }
     if !matches!(name, "MeshRenderer" | "Renderer")
         || !with_world(lua, |w| w.scene.world.get::<&MeshRenderer>(e).is_ok())?
     {

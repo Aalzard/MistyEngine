@@ -18,6 +18,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
     let dir = path.parent().unwrap_or(Path::new("."));
 
     let mut model = Model::default();
+    let target_names = super::gltf_anim::target_names(&bytes);
     // glTF mesh index → our mesh indices (one per triangle primitive).
     let mut mesh_map: Vec<Vec<usize>> = Vec::new();
     for mesh in doc.meshes() {
@@ -25,6 +26,11 @@ pub fn load(path: &Path) -> Result<Model, String> {
             .name()
             .map(str::to_owned)
             .unwrap_or_else(|| format!("Mesh{}", mesh.index()));
+        let names = target_names.get(mesh.index()).cloned().unwrap_or_default();
+        let default_weights: Vec<f32> = mesh
+            .weights()
+            .map(|w| w.iter().map(|x| x * 100.0).collect())
+            .unwrap_or_default();
         let count = mesh.primitives().len();
         let mut ours = Vec::new();
         for (k, prim) in mesh.primitives().enumerate() {
@@ -66,6 +72,9 @@ pub fn load(path: &Path) -> Result<Model, String> {
             {
                 return Err(format!("{}: index out of range", path.display()));
             }
+            let n = data.vertices.len();
+            let skin = super::gltf_anim::read_skin(&reader, n);
+            let shapes = super::gltf_anim::read_shapes(&reader, n, &names);
             mirror_x(&mut data);
             let name = if count > 1 {
                 format!("{base} ({k})")
@@ -73,9 +82,13 @@ pub fn load(path: &Path) -> Result<Model, String> {
                 base.clone()
             };
             ours.push(model.meshes.len());
-            model
-                .meshes
-                .push(ModelMesh::new(name, data, prim.material().index()));
+            let mut m = ModelMesh::new(name, data, prim.material().index());
+            m.skin = skin;
+            m.default_weights = (0..shapes.len())
+                .map(|i| default_weights.get(i).copied().unwrap_or(0.0))
+                .collect();
+            m.blend_shapes = shapes;
+            model.meshes.push(m);
         }
         mesh_map.push(ours);
     }
@@ -95,9 +108,14 @@ pub fn load(path: &Path) -> Result<Model, String> {
     };
     let mut stack: Vec<(gltf::Node, Option<usize>)> =
         roots.into_iter().rev().map(|n| (n, None)).collect();
+    // glTF node index → our node index.
+    let mut node_map: Vec<Option<usize>> = vec![None; doc.nodes().len()];
     while let Some((node, parent)) = stack.pop() {
         let (t, r, s) = node.transform().decomposed();
         let index = model.nodes.len();
+        if let Some(slot) = node_map.get_mut(node.index()) {
+            *slot = Some(index);
+        }
         model.nodes.push(ModelNode {
             name: node
                 .name()
@@ -111,12 +129,33 @@ pub fn load(path: &Path) -> Result<Model, String> {
                 .mesh()
                 .map(|m| mesh_map[m.index()].clone())
                 .unwrap_or_default(),
+            skin: node.skin().map(|s| s.index()),
         });
         let children: Vec<_> = node.children().collect();
         for c in children.into_iter().rev() {
             stack.push((c, Some(index)));
         }
     }
+    model.skins = super::gltf_anim::skins(doc, &buffers, &node_map);
+    // Meshes keep their skin's bind poses (like a mesh asset's bindposes).
+    for node in &model.nodes {
+        let Some(skin) = node.skin.and_then(|s| model.skins.get(s)) else {
+            continue;
+        };
+        for &m in &node.meshes {
+            let mesh = &mut model.meshes[m];
+            let pad = mesh
+                .blend_shapes
+                .iter()
+                .map(|s| s.max_offset())
+                .sum::<f32>();
+            let positions: Vec<[f32; 3]> = mesh.data.vertices.iter().map(|v| v.position).collect();
+            if let Some(s) = mesh.skin.as_mut().filter(|s| s.bind_poses.is_empty()) {
+                s.bind(&skin.inverse_bind, &positions, pad);
+            }
+        }
+    }
+    model.animations = super::gltf_anim::animations(doc, &buffers, &node_map, &model);
 
     // Listed in index order, so `model.materials[i]` is glTF material i.
     for m in doc.materials() {

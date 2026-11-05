@@ -34,6 +34,13 @@ pub fn path_of(scene: &Scene, root: Entity, e: Entity) -> Option<String> {
 pub fn has(scene: &Scene, e: Entity, p: Property) -> bool {
     match p.component() {
         "Light" => scene.world.get::<&Light>(e).is_ok(),
+        "SkinnedMeshRenderer" => scene
+            .world
+            .get::<&crate::scene::SkinnedMeshRenderer>(e)
+            .is_ok_and(|r| match p {
+                Property::BlendShape(i) => (i as usize) < r.blend_shape_count(),
+                _ => false,
+            }),
         _ => scene.contains(e),
     }
 }
@@ -46,6 +53,11 @@ pub fn read(scene: &Scene, e: Entity, p: Property) -> Option<f32> {
     let t = scene.world.get::<&crate::scene::Transform>(e).ok()?;
     let axis = |v: Vec3, i: u8| v.to_array().get(i as usize).copied();
     match p {
+        Property::BlendShape(i) => scene
+            .world
+            .get::<&crate::scene::SkinnedMeshRenderer>(e)
+            .ok()
+            .map(|r| r.blend_shape_weight(i as usize)),
         Property::Position(i) => axis(t.position, i),
         Property::Rotation(i) => axis(t.euler(), i),
         Property::Scale(i) => axis(t.scale, i),
@@ -88,6 +100,11 @@ pub fn write(scene: &mut Scene, e: Entity, p: Property, value: f32) {
             scene.set_transform(e, t);
         }
         Property::Active => scene.game_object_mut(e).active = value >= 0.5,
+        Property::BlendShape(i) => {
+            if let Ok(mut r) = scene.world.get::<&mut crate::scene::SkinnedMeshRenderer>(e) {
+                r.set_blend_shape_weight(i as usize, value);
+            }
+        }
         Property::LightIntensity | Property::LightRange | Property::LightColor(_) => {
             if let Ok(mut l) = scene.world.get::<&mut Light>(e) {
                 match p {

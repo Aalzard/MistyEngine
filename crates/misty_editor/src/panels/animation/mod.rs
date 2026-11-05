@@ -355,13 +355,23 @@ fn add_property_menu(ui: &mut Ui, s: &mut EditorState, root: Entity) {
                 seen.push(p);
             }
         }
+        // One entry per blend shape of a Skinned Mesh Renderer.
+        let shapes = s
+            .scene
+            .world
+            .get::<&misty_engine::scene::SkinnedMeshRenderer>(e)
+            .map_or(0, |r| r.blend_shape_count());
+        seen.extend((0..shapes.min(256)).map(|i| Property::BlendShape(i as u8)));
         seen
     };
     let mut add = None;
     for (e, path) in &objects {
         let mut entries = |ui: &mut Ui, s: &EditorState| {
             for p in groups(s, *e) {
-                let label = format!("{} ▸ {}", p.component(), p.group());
+                let label = match p {
+                    Property::BlendShape(_) => format!("Skinned Mesh Renderer ▸ {}", p.label()),
+                    _ => format!("{} ▸ {}", p.component(), p.group()),
+                };
                 if ui.button(label).clicked() {
                     add = Some((path.clone(), p.siblings()));
                     ui.close();

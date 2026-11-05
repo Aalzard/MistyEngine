@@ -20,6 +20,8 @@ pub enum Property {
     LightColor(u8),
     /// GameObject active flag (on when the value is ≥ 0.5).
     Active,
+    /// Skinned Mesh Renderer blend shape weight (0–100) by shape index.
+    BlendShape(u8),
 }
 
 const AXES: [&str; 3] = ["x", "y", "z"];
@@ -51,6 +53,7 @@ impl Property {
             Self::Position(_) | Self::Rotation(_) | Self::Scale(_) => "Transform",
             Self::LightIntensity | Self::LightRange | Self::LightColor(_) => "Light",
             Self::Active => "GameObject",
+            Self::BlendShape(_) => "SkinnedMeshRenderer",
         }
     }
 
@@ -64,11 +67,15 @@ impl Property {
             Self::LightRange => "Range",
             Self::LightColor(_) => "Color",
             Self::Active => "Is Active",
+            Self::BlendShape(_) => "BlendShape",
         }
     }
 
     /// Short label: "Position.x", "Color.r", "Intensity".
     pub fn label(self) -> String {
+        if let Self::BlendShape(i) = self {
+            return format!("BlendShape.{i}");
+        }
         match self.channel() {
             Some(c) => format!("{}.{c}", self.group()),
             None => self.group().to_owned(),
@@ -93,6 +100,7 @@ impl Property {
             Self::LightRange => "range",
             Self::LightColor(_) => "color",
             Self::Active => "active",
+            Self::BlendShape(i) => return format!("{}.blendShape.{i}", self.component()),
         };
         match self.channel() {
             Some(c) => format!("{}.{field}.{c}", self.component()),
@@ -101,11 +109,17 @@ impl Property {
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
+        if let Some(i) = name.strip_prefix("SkinnedMeshRenderer.blendShape.") {
+            return i.parse().ok().map(Self::BlendShape);
+        }
         Self::ALL.into_iter().find(|p| p.name() == name)
     }
 
     /// Properties shown as one row group (Position.x/y/z share "Position").
     pub fn siblings(self) -> Vec<Property> {
+        if let Self::BlendShape(_) = self {
+            return vec![self];
+        }
         Self::ALL
             .into_iter()
             .filter(|p| p.group() == self.group() && p.component() == self.component())

@@ -72,6 +72,8 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Hinge Joint", "", "connected_body"),
     ("Spring Joint", "", "connected_body"),
     ("LOD Group", "lods", "renderers"),
+    ("Skinned Mesh Renderer", "", "root_bone"),
+    ("Skinned Mesh Renderer", "", "bones"),
 ];
 
 /// Every object-reference field: the ones above plus the UI widgets' (see `ui_widgets`).

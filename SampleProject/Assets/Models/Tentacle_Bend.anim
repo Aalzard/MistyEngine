@@ -1,0 +1,847 @@
+{
+  "length": 2.0,
+  "loop": true,
+  "sample_rate": 30.0,
+  "curves": [
+    {
+      "path": "Bone0",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.1,
+          "value": -2.1049104,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.13333334,
+          "value": -2.7798426,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.23333333,
+          "value": -4.5642986,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.26666668,
+          "value": -5.0604305,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.36666667,
+          "value": -6.252766,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.4,
+          "value": -6.456801,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.5,
+          "value": -6.875493,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6,
+          "value": -6.456801,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6333333,
+          "value": -6.252766,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.73333335,
+          "value": -5.0604305,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.76666665,
+          "value": -4.564298,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.8666667,
+          "value": -2.779841,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.9,
+          "value": -2.1049094,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1,
+          "value": 2.1049106,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1333333,
+          "value": 2.7798421,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2333333,
+          "value": 4.5642986,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2666667,
+          "value": 5.0604315,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.3666667,
+          "value": 6.252768,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.4,
+          "value": 6.456802,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.5,
+          "value": 6.875493,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6,
+          "value": 6.4568005,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6333333,
+          "value": 6.252766,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7333333,
+          "value": 5.060429,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7666667,
+          "value": 4.564297,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.8666667,
+          "value": 2.779842,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.9,
+          "value": 2.1049101,
+          "tangent": "Linear"
+        },
+        {
+          "time": 2.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 16.609928,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.1,
+          "value": 9.56123,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.13333334,
+          "value": 7.132507,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.23333333,
+          "value": -0.8660603,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.26666668,
+          "value": -3.4876103,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.36666667,
+          "value": -11.218334,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.4,
+          "value": -13.43405,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.5,
+          "value": -19.720001,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6,
+          "value": -23.604202,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6333333,
+          "value": -24.64951,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.73333335,
+          "value": -25.540623,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.76666665,
+          "value": -25.3162,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.8666667,
+          "value": -23.07856,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.9,
+          "value": -21.63566,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.0,
+          "value": -16.60993,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1,
+          "value": -9.561228,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1333333,
+          "value": -7.1325083,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2333333,
+          "value": 0.8660634,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2666667,
+          "value": 3.4876108,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.3666667,
+          "value": 11.218341,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.4,
+          "value": 13.434056,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.5,
+          "value": 19.720005,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6,
+          "value": 23.604206,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6333333,
+          "value": 24.649511,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7333333,
+          "value": 25.540623,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7666667,
+          "value": 25.316198,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.8666667,
+          "value": 23.07856,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.9,
+          "value": 21.635658,
+          "tangent": "Linear"
+        },
+        {
+          "time": 2.0,
+          "value": 16.609919,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1/Bone2",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1/Bone2",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1/Bone2",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 25.407948,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.1,
+          "value": 22.519077,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.13333334,
+          "value": 21.334888,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.23333333,
+          "value": 15.791322,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.26666668,
+          "value": 13.641672,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.36666667,
+          "value": 6.287361,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.4,
+          "value": 3.663145,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.5,
+          "value": -4.3822813,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6,
+          "value": -11.89398,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6333333,
+          "value": -14.258101,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.73333335,
+          "value": -20.09248,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.76666665,
+          "value": -21.609678,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.8666667,
+          "value": -24.878508,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.9,
+          "value": -25.20232,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.0,
+          "value": -25.407948,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1,
+          "value": -22.519077,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1333333,
+          "value": -21.334896,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2333333,
+          "value": -15.791322,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2666667,
+          "value": -13.641673,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.3666667,
+          "value": -6.2873554,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.4,
+          "value": -3.6631439,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.5,
+          "value": 4.3822775,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6,
+          "value": 11.893978,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6333333,
+          "value": 14.258101,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7333333,
+          "value": 20.092482,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7666667,
+          "value": 21.609678,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.8666667,
+          "value": 24.878508,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.9,
+          "value": 25.202318,
+          "tangent": "Linear"
+        },
+        {
+          "time": 2.0,
+          "value": 25.407948,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1/Bone2/Bone3",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1/Bone2/Bone3",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Bone0/Bone1/Bone2/Bone3",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 22.256216,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.1,
+          "value": 24.885855,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.13333334,
+          "value": 25.503145,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.23333333,
+          "value": 25.021797,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.26666668,
+          "value": 24.355066,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.36666667,
+          "value": 20.836016,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.4,
+          "value": 19.037508,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.5,
+          "value": 13.016495,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6,
+          "value": 5.4101663,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6333333,
+          "value": 2.8391168,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.73333335,
+          "value": -5.194528,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.76666665,
+          "value": -7.739788,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.8666667,
+          "value": -14.977708,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.9,
+          "value": -16.915934,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.0,
+          "value": -22.256216,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1,
+          "value": -24.885855,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1333333,
+          "value": -25.503145,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2333333,
+          "value": -25.021801,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2666667,
+          "value": -24.355066,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.3666667,
+          "value": -20.83601,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.4,
+          "value": -19.037506,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.5,
+          "value": -13.016495,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6,
+          "value": -5.4101644,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6333333,
+          "value": -2.8391147,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7333333,
+          "value": 5.194536,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7666667,
+          "value": 7.7397947,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.8666667,
+          "value": 14.977704,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.9,
+          "value": 16.915934,
+          "tangent": "Linear"
+        },
+        {
+          "time": 2.0,
+          "value": 22.256216,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "TentacleMesh",
+      "property": "SkinnedMeshRenderer.blendShape.0",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.1,
+          "value": 3.0448198,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.13333334,
+          "value": 4.528601,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.23333333,
+          "value": 13.199512,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.26666668,
+          "value": 16.807486,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.36666667,
+          "value": 29.78442,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.4,
+          "value": 34.692665,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6,
+          "value": 65.30734,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.6333333,
+          "value": 70.21558,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.73333335,
+          "value": 83.19252,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.76666665,
+          "value": 86.80049,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.8666667,
+          "value": 95.471405,
+          "tangent": "Linear"
+        },
+        {
+          "time": 0.9,
+          "value": 96.955185,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.0,
+          "value": 100.0,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1,
+          "value": 96.95518,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.1333333,
+          "value": 95.4714,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2333333,
+          "value": 86.800476,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.2666667,
+          "value": 83.19251,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.3666667,
+          "value": 70.21557,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.4,
+          "value": 65.30733,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6,
+          "value": 34.69265,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.6333333,
+          "value": 29.784409,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7333333,
+          "value": 16.80747,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.7666667,
+          "value": 13.199501,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.8666667,
+          "value": 4.5285964,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.9,
+          "value": 3.0448182,
+          "tangent": "Linear"
+        },
+        {
+          "time": 2.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "TentacleMesh",
+      "property": "SkinnedMeshRenderer.blendShape.1",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        }
+      ]
+    }
+  ],
+  "events": []
+}

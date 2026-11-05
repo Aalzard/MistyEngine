@@ -9,6 +9,8 @@ mod nav;
 mod physics;
 #[path = "physics2d_gizmos.rs"]
 mod physics2d;
+#[path = "skin_gizmos.rs"]
+mod skin;
 
 use glam::{Mat4, Vec3};
 use misty_engine::models;
@@ -24,6 +26,7 @@ use misty_engine::scene::{
 use crate::selection::Selection;
 
 pub use nav::nav_overlay;
+pub use skin::paint_bones;
 
 const COLLIDER: [f32; 4] = [0.57, 0.96, 0.55, 0.9];
 /// Wireframe draw-mode colour (dark lines).
@@ -336,6 +339,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.joints(scene, e);
         lines.nav_shapes(scene, e);
         lines.fog_volume(scene, e);
+        lines.bones(scene, e);
     }
     lines
 }

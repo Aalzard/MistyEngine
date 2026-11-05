@@ -27,6 +27,7 @@ pub mod probes;
 mod scene_copy;
 mod screen_space;
 mod shadows;
+mod skinning;
 mod soft_shadows;
 pub mod static_batch;
 pub mod stats;
@@ -424,6 +425,8 @@ pub struct Renderer {
     glows: glow::Glows,
     /// HDRI sky cubes and uniform (view group bindings 4–7).
     sky: hdri_sky::SkyGpu,
+    /// Posed Skinned Mesh Renderers (GPU skinning output, see [`skinning`]).
+    skins: skinning::Skins,
 }
 
 impl Renderer {
@@ -527,6 +530,7 @@ impl Renderer {
             screen_space,
             glows: Default::default(),
             sky,
+            skins: Default::default(),
         }
     }
 
@@ -609,7 +613,7 @@ impl Renderer {
     pub fn memory(&self) -> RenderMemory {
         let imported = self.imported.values().flatten();
         let meshes = self.meshes.iter().chain(imported.clone());
-        let mesh_bytes: u64 = meshes.map(GpuMesh::bytes).sum();
+        let mesh_bytes: u64 = meshes.map(GpuMesh::bytes).sum::<u64>() + self.skins.bytes();
         let (terrains, terrain_bytes) = self.terrains.memory();
         let (textures, texture_bytes) = self.textures.memory();
         let buffers = [
@@ -676,9 +680,15 @@ impl Renderer {
             self.imported.clear();
             self.imported_generation = generation;
         }
+        let poses = frame.meshes.iter().filter_map(|d| match &d.mesh {
+            MeshRef::Asset(k) if crate::skinning::is_pose_key(k) => Some(k.as_str()),
+            _ => None,
+        });
+        self.skins.prepare(device, queue, poses);
         for (d, state) in frame.meshes.iter().zip(lod) {
             if let MeshRef::Asset(key) = &d.mesh
                 && !self.imported.contains_key(key)
+                && !crate::skinning::is_pose_key(key)
             {
                 let gpu = models::mesh(&d.mesh)
                     .filter(|m| !m.indices.is_empty())
@@ -757,6 +767,7 @@ impl Renderer {
             MeshRef::Primitive(p) => {
                 Some(&self.meshes[PrimitiveMesh::ALL.iter().position(|m| m == p).unwrap_or(0)])
             }
+            MeshRef::Asset(key) if crate::skinning::is_pose_key(key) => self.skins.get(key),
             MeshRef::Asset(key) => self.imported.get(key)?.as_ref(),
         }
     }

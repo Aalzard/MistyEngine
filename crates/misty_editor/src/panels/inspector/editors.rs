@@ -42,6 +42,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::probe_editor::icon(other))
             .or_else(|| super::fog_editors::icon(other))
             .or_else(|| super::glow_editors::icon(other))
+            .or_else(|| super::skinned_editors::icon(other))
             .or_else(|| super::lod_editor::icon(other))
             .or_else(|| super::water::icon(other))
             .unwrap_or("▣"),
@@ -74,6 +75,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::glow_editors::NAMES.contains(&name) {
         return super::glow_editors::enabled_flag(state, e, name);
+    }
+    if super::skinned_editors::NAMES.contains(&name) {
+        return super::skinned_editors::enabled_flag(state, e, name);
     }
     if super::lod_editor::NAMES.contains(&name) {
         return super::lod_editor::enabled_flag(state, e, name);
@@ -125,6 +129,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::glow_editors::NAMES.contains(&name) {
         return super::glow_editors::set_enabled(state, e, name, on);
+    }
+    if super::skinned_editors::NAMES.contains(&name) {
+        return super::skinned_editors::set_enabled(state, e, name, on);
     }
     if super::lod_editor::NAMES.contains(&name) {
         return super::lod_editor::set_enabled(state, e, name, on);
@@ -227,6 +234,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         glow if super::glow_editors::NAMES.contains(&glow) => {
             super::glow_editors::edit(ui, state, e, glow)
+        }
+        skinned if super::skinned_editors::NAMES.contains(&skinned) => {
+            super::skinned_editors::edit(ui, state, e, skinned)
         }
         wb if crate::panels::world_builder::NAMES.contains(&wb) => {
             crate::panels::world_builder::inspector(ui, state, e, wb)

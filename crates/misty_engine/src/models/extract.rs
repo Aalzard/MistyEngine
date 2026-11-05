@@ -97,3 +97,34 @@ fn write_png(bytes: &[u8], path: &Path) -> Result<(), String> {
         .and_then(|img| img.save_with_format(path, image::ImageFormat::Png))
         .map_err(|e| format!("{}: {e}", path.display()))
 }
+
+/// Project-relative `.anim` path for animation `index` of the model ("Tentacle_Bend.anim").
+pub fn animation_asset_path(model_rel: &str, model: &Model, index: usize) -> Option<String> {
+    let a = model.animations.get(index)?;
+    let (dir, stem) = base(model_rel);
+    let dupes = model.animations.iter().filter(|o| o.name == a.name).count();
+    let name = if dupes > 1 {
+        format!("{stem}_{} {index}", clean(&a.name))
+    } else {
+        format!("{stem}_{}", clean(&a.name))
+    };
+    Some(assets::relative(&dir.join(format!("{name}.anim"))))
+}
+
+/// Write missing `.anim` clips for the model's animations (existing files are kept, so edits
+/// survive re-imports). Returns the project-relative paths of the files created.
+pub fn extract_animations(model_rel: &str, model: &Model) -> Result<Vec<String>, String> {
+    let mut created = Vec::new();
+    for (i, a) in model.animations.iter().enumerate() {
+        let Some(rel) = animation_asset_path(model_rel, model, i) else {
+            continue;
+        };
+        let path = assets::absolute(&rel);
+        if path.exists() {
+            continue;
+        }
+        a.clip.save(&path)?;
+        created.push(rel);
+    }
+    Ok(created)
+}

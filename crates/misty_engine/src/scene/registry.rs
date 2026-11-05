@@ -51,6 +51,10 @@ impl SceneComponent for MeshRenderer {
     const NAME: &'static str = "Mesh Renderer";
     const CATEGORY: &'static str = "Mesh";
 }
+impl SceneComponent for super::SkinnedMeshRenderer {
+    const NAME: &'static str = "Skinned Mesh Renderer";
+    const CATEGORY: &'static str = "Mesh";
+}
 impl SceneComponent for Rigidbody {
     const NAME: &'static str = "Rigidbody";
     const CATEGORY: &'static str = "Physics";
@@ -300,6 +304,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::FogVolume>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),
+            ComponentInfo::of::<super::SkinnedMeshRenderer>(),
             ComponentInfo::of::<SpriteRenderer>(),
             ComponentInfo::of::<LodGroup>(),
             ComponentInfo::of::<Rigidbody>(),
