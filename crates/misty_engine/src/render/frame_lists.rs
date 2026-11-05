@@ -34,6 +34,8 @@ pub(super) struct FrameLists {
     pub visible: Vec<bool>,
     /// Opaque draws in front-to-back order (GPU culling batches these itself).
     pub opaque_order: Vec<usize>,
+    /// Per mesh draw: hidden by baked occlusion culling (empty = none).
+    pub occluded: Vec<bool>,
     pub prep: DrawPrep,
 }
 
@@ -97,9 +99,23 @@ impl Renderer {
         slots.extend(0..(frame.meshes.len() + frame.terrains.len()) as u32);
         let mut batcher = std::mem::take(&mut self.batcher);
 
-        let visible = map_draws(meshes.len(), |i| {
+        let in_frustum = map_draws(meshes.len(), |i| {
             meshes[i].is_some_and(|b| inside(&camera, &b))
         });
+        // Baked occlusion culling hides draws for the camera only (shadows keep them).
+        let occluded: Vec<bool> = match frame.environment.occlusion.as_ref() {
+            Some(o) if culling => (0..meshes.len())
+                .map(|i| o.hidden.get(i).copied().unwrap_or(false))
+                .collect(),
+            _ => Vec::new(),
+        };
+        let mut visible = in_frustum;
+        for (v, o) in visible.iter_mut().zip(&occluded) {
+            if *v && *o {
+                *v = false;
+                stats.occlusion_culled += 1;
+            }
+        }
         let loaded = meshes.iter().filter(|b| b.is_some()).count() as u32;
         stats.visible = visible.iter().filter(|v| **v).count() as u32;
         stats.culled = loaded - stats.visible;
@@ -185,6 +201,7 @@ impl Renderer {
             shadows,
             visible,
             opaque_order,
+            occluded,
             prep,
         }
     }

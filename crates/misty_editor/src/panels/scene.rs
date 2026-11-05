@@ -79,6 +79,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let brush_click = brush_click || tile_click;
     match gpu {
         Some(gpu) => {
+            let occlusion_view = crate::panels::occlusion::visualizing(state, ui.ctx());
             let mut meshes = render_scene::cached_draws(state);
             let sv = &state.scene_view;
             // Probe gizmo spheres join a copy of the cached draws (only while probes exist).
@@ -132,6 +133,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 UV_CHARTS_MODE => misty_engine::lightmap::LightmapDebug::Charts,
                 _ => misty_engine::lightmap::LightmapDebug::Off,
             };
+            if occlusion_view {
+                gizmos::occlusion_visualize(
+                    &state.scene,
+                    &mut state.scene_draws,
+                    &state.occlusion,
+                    &mut lines,
+                    &mut environment,
+                );
+            }
             let fx = sv.effects;
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();
@@ -210,6 +220,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         }
     }
 
+    if crate::panels::occlusion::visualizing(state, ui.ctx()) {
+        let lines = crate::panels::occlusion::summary(state);
+        gizmos::occlusion_overlay(ui, rect, &lines);
+    }
     // Object icons and click-to-select (Ctrl toggles, Shift adds).
     if state.scene_view.gizmos {
         draw_icons(ui, rect, state, &camera);

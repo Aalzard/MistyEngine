@@ -34,6 +34,8 @@ pub struct Environment {
     pub lights_2d: crate::light2d::Lights2D,
     /// Baked lightmaps of the scene (see [`crate::lightmap`]).
     pub lightmaps: crate::lightmap::LightmapSet,
+    /// Draws the camera's baked occlusion data hides (see [`crate::occlusion`]).
+    pub occlusion: Option<crate::occlusion::OcclusionMask>,
 }
 
 /// Linear sky colours of the default gradient (zenith, horizon).
@@ -77,6 +79,7 @@ impl Environment {
             hdri,
             lights_2d: Default::default(),
             lightmaps: Default::default(),
+            occlusion: None,
         }
     }
 

@@ -43,6 +43,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::probe_editor::icon(other))
             .or_else(|| super::light_probe_editor::icon(other))
             .or_else(|| super::fog_editors::icon(other))
+            .or_else(|| super::occlusion_editors::icon(other))
             .or_else(|| super::glow_editors::icon(other))
             .or_else(|| super::vcam_editors::icon(other))
             .or_else(|| super::timeline_editors::icon(other))
@@ -88,6 +89,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::fog_editors::NAMES.contains(&name) {
         return super::fog_editors::enabled_flag(state, e, name);
+    }
+    if super::occlusion_editors::NAMES.contains(&name) {
+        return super::occlusion_editors::enabled_flag(state, e, name);
     }
     if super::glow_editors::NAMES.contains(&name) {
         return super::glow_editors::enabled_flag(state, e, name);
@@ -161,6 +165,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::fog_editors::NAMES.contains(&name) {
         return super::fog_editors::set_enabled(state, e, name, on);
+    }
+    if super::occlusion_editors::NAMES.contains(&name) {
+        return super::occlusion_editors::set_enabled(state, e, name, on);
     }
     if super::glow_editors::NAMES.contains(&name) {
         return super::glow_editors::set_enabled(state, e, name, on);
@@ -286,6 +293,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         fog if super::fog_editors::NAMES.contains(&fog) => {
             super::fog_editors::edit(ui, state, e, fog)
+        }
+        area if super::occlusion_editors::NAMES.contains(&area) => {
+            super::occlusion_editors::edit(ui, state, e, area)
         }
         glow if super::glow_editors::NAMES.contains(&glow) => {
             super::glow_editors::edit(ui, state, e, glow)
@@ -482,6 +492,9 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
         ui.end_row();
         ui.label("Culling Mask");
         ch |= super::layer_mask::mask_field(ui, "cam_cull", &mut c.culling_mask);
+        ui.end_row();
+        ui.label("Occlusion Culling");
+        ch |= mixed::checkbox(ui, "occlusion_culling", &mut c.occlusion_culling, "").changed();
         ui.end_row();
         ui.label("Projection");
         let mut ortho = c.orthographic;

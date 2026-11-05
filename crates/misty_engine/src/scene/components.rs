@@ -23,6 +23,33 @@ pub struct GameObject {
     pub layer: u8,
     /// Component names in Inspector order (Transform first).
     pub component_order: Vec<String>,
+    /// Which static uses apply while Static is ticked (all by default, then left out of files).
+    #[serde(skip_serializing_if = "super::static_flags::StaticFlags::is_all")]
+    pub static_flags: super::static_flags::StaticFlags,
+}
+
+impl GameObject {
+    /// Static is ticked and `flag` is one of its static uses.
+    pub fn has_static(&self, flag: super::static_flags::StaticFlags) -> bool {
+        self.is_static && self.static_flags.contains(flag)
+    }
+
+    /// Turn one static use on or off: the first flag of a non-static object makes it static with
+    /// only that use; clearing the last one makes it non-static again (all uses ready for the
+    /// next tick of Static).
+    pub fn set_static_flag(&mut self, flag: super::static_flags::StaticFlags, on: bool) {
+        use super::static_flags::StaticFlags;
+        if on && !self.is_static {
+            self.is_static = true;
+            self.static_flags = flag;
+        } else if self.is_static {
+            self.static_flags.set(flag, on);
+            if self.static_flags == StaticFlags::NOTHING {
+                self.is_static = false;
+                self.static_flags = StaticFlags::ALL;
+            }
+        }
+    }
 }
 
 impl Default for GameObject {
@@ -34,6 +61,7 @@ impl Default for GameObject {
             tag: "Untagged".into(),
             layer: 0,
             component_order: Vec::new(),
+            static_flags: Default::default(),
         }
     }
 }
@@ -202,6 +230,13 @@ pub struct Camera {
     /// Layers this camera renders (bit per layer; all by default, left out of files then).
     #[serde(skip_serializing_if = "is_everything")]
     pub culling_mask: u32,
+    /// Skip renderers hidden behind Occluder Static geometry (needs baked occlusion data).
+    #[serde(skip_serializing_if = "is_true")]
+    pub occlusion_culling: bool,
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
 }
 
 fn is_everything(mask: &u32) -> bool {
@@ -222,6 +257,7 @@ impl Default for Camera {
             viewport: [0.0, 0.0, 1.0, 1.0],
             depth: 0.0,
             culling_mask: u32::MAX,
+            occlusion_culling: true,
         }
     }
 }

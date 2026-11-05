@@ -262,6 +262,21 @@ pub struct GameView {
     pub water: Vec<crate::water::WaterDraw>,
     pub environment: Environment,
     pub post: PostSettings,
+    /// Baked occlusion culling of this camera (`None` = off or no data).
+    pub occlusion: Option<crate::occlusion::runtime::OcclusionResult>,
+}
+
+/// The camera's occlusion culling through `cache`'s draws (`None` when the camera has it off or
+/// the scene has no baked data).
+pub fn camera_occlusion(
+    scene: &Scene,
+    cache: &mut DrawCache,
+    eye: Vec3,
+    on: bool,
+) -> Option<crate::occlusion::runtime::OcclusionResult> {
+    let data = crate::occlusion::store::for_scene(scene).filter(|_| on)?;
+    let dynamic = scene.render_settings.occlusion.dynamic_occlusion;
+    Some(cache.occlusion(scene, &data, eye, dynamic))
 }
 
 impl GameView {
@@ -282,10 +297,18 @@ impl GameView {
         // Only the layers in the camera's Culling Mask are drawn (lights light everything).
         let mask = settings.culling_mask;
         let keep = |e: Entity| in_mask(scene, e, mask);
+        // Baked occlusion culling: occludees stay out of static batches so each can be hidden.
+        let culls = settings.occlusion_culling && scene.render_settings.occlusion.data.is_some();
+        cache.set_occlusion_split(culls);
+        let meshes = cache.update(scene, materials, mask, |_| false);
+        let occlusion = camera_occlusion(scene, cache, camera.position, culls);
+        let mut environment = environment(scene, &lights);
+        environment.occlusion = occlusion.as_ref().map(|o| o.mask.clone());
         Some(Self {
             camera,
-            meshes: cache.update(scene, materials, mask, |_| false),
-            environment: environment(scene, &lights),
+            meshes,
+            environment,
+            occlusion,
             post: post_settings(scene),
             lights,
             particles: crate::particles::batches_where(scene, keep),

@@ -46,7 +46,13 @@ impl Renderer {
     /// Is GPU culling on for this frame?
     pub(in crate::render) fn gpu_culling_active(&self, frame: &Frame) -> bool {
         // Off while AO / contact shadows run: their prepass draws the CPU-culled batches.
-        self.options.gpu_culling
+        // Dynamic occlusion (baked occlusion data in use) turns the Hi-Z pass on for the view.
+        let dynamic = frame
+            .environment
+            .occlusion
+            .as_ref()
+            .is_some_and(|o| o.dynamic);
+        (self.options.gpu_culling || dynamic && self.options.culling)
             && self.culler.is_some()
             && frame.shaded
             && !self.screen_space_wanted(frame)
@@ -70,7 +76,8 @@ impl Renderer {
         let mut batcher = std::mem::take(&mut self.batcher);
         let mut batches = batcher.build(
             lists.opaque_order.iter().copied(),
-            |i| prep.main_keys[i],
+            // Draws the baked occlusion data hides are not candidates.
+            |i| prep.main_keys[i].filter(|_| !lists.occluded.get(i).copied().unwrap_or(false)),
             merge,
             &mut candidates,
         );

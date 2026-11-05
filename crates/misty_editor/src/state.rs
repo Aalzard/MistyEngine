@@ -283,6 +283,7 @@ pub struct EditorState {
     pub tile_palette: crate::tile_palette::TilePaletteState,
     /// Navigation window settings and the bake in progress.
     pub navigation: crate::panels::navigation::NavigationWindow,
+    pub occlusion: crate::panels::occlusion::OcclusionWindow,
     /// Reflection probe generator settings, the bake in progress and Realtime probes.
     pub probes: crate::probe_tools::ProbeTools,
     /// Lightmap bakes (Lighting window ▸ Generate Lighting).
@@ -400,6 +401,7 @@ impl EditorState {
             mesh_builder: Default::default(),
             tile_palette: Default::default(),
             navigation: Default::default(),
+            occlusion: Default::default(),
             probes: Default::default(),
             lightmapper: Default::default(),
             light_probes: Default::default(),

@@ -73,6 +73,22 @@ impl UserData for LCamera {
                 }
             })
         });
+        // Baked occlusion culling for this camera.
+        f.add_field_method_get("useOcclusionCulling", |lua, c| {
+            with_world(lua, |w| {
+                w.scene
+                    .world
+                    .get::<&CameraComponent>(c.0)
+                    .is_ok_and(|cam| cam.occlusion_culling)
+            })
+        });
+        f.add_field_method_set("useOcclusionCulling", |lua, c, on: bool| {
+            with_world(lua, |w| {
+                if let Ok(mut cam) = w.scene.world.get::<&mut CameraComponent>(c.0) {
+                    cam.occlusion_culling = on;
+                }
+            })
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {

@@ -369,7 +369,7 @@ fn window(l: &mut List, s: &EditorState) {
         let menu = match tab {
             Tab::Animation | Tab::Animator => "Animation",
             Tab::AudioMixer => "Audio",
-            Tab::Lighting => "Rendering",
+            Tab::Lighting | Tab::OcclusionCulling => "Rendering",
             Tab::Navigation => "AI",
             Tab::WorldBuilder => "Terrain",
             Tab::Profiler => "Analysis",

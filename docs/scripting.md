@@ -107,6 +107,8 @@ Sample: `Scenes/InputDemo.scene` with `InputMover.lua` and `GamepadHint.lua`.
 the names from Project Settings ▸ Tags and Layers (layers 0–7 built in, 8–31 user layers). A camera's
 `cullingMask` (from `Camera.main`) is a bit mask of the layers it draws: `cam.cullingMask = ~(1 << 8)` hides
 layer 8.
+`cam.useOcclusionCulling` (true by default) turns the camera's baked occlusion culling on or off (Window ▸
+Rendering ▸ Occlusion Culling; see `Assets/Scripts/OcclusionTour.lua`).
 
 Samples: `Assets/Scripts/Rotator.lua`, `Assets/Scripts/PlayerController.lua`.
 

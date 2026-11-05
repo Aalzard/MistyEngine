@@ -20,6 +20,7 @@ pub mod lightmap;
 pub mod mesh_builder;
 pub mod models;
 pub mod navigation;
+pub mod occlusion;
 pub mod pak;
 pub mod particles;
 pub mod physics;

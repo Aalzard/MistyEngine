@@ -14,6 +14,7 @@ pub mod effect_graph;
 mod lighting;
 mod lighting_hdri;
 pub mod navigation;
+pub mod occlusion;
 pub mod profiler;
 pub mod project;
 pub(crate) mod project_menus;
@@ -81,6 +82,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::TilePalette => tile_palette::show(ui, self.state),
             Tab::ShaderGraph => shader_graph::show(ui, self.state),
             Tab::EffectGraph => effect_graph::show(ui, self.state),
+            Tab::OcclusionCulling => occlusion::show(ui, self.state),
         }
     }
 

@@ -251,6 +251,9 @@ pub struct RenderSettings {
     /// [`crate::light_probes`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub light_probes: Option<String>,
+    /// Occlusion Culling window: bake parameters and the baked data (left out while default).
+    #[serde(skip_serializing_if = "crate::occlusion::OcclusionSettings::is_default")]
+    pub occlusion: crate::occlusion::OcclusionSettings,
 }
 
 impl Default for RenderSettings {
@@ -262,6 +265,7 @@ impl Default for RenderSettings {
             fog: Fog::default(),
             lightmapping: Default::default(),
             light_probes: None,
+            occlusion: Default::default(),
         }
     }
 }

@@ -21,6 +21,8 @@ pub struct RenderStats {
     /// Mesh draws inside the camera frustum / outside it.
     pub visible: u32,
     pub culled: u32,
+    /// Of `culled`: inside the frustum but outside the camera cell's baked visible set.
+    pub occlusion_culled: u32,
     /// Shadow-map draws skipped because the caster was outside the light's frustum.
     pub shadow_culled: u32,
     /// CPU time of the call (preparing, culling, encoding, submitting).

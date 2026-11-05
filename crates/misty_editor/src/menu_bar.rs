@@ -455,7 +455,12 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
     ui.menu_button("Rendering", |ui| {
-        for tab in [Tab::Lighting, Tab::ShaderGraph, Tab::EffectGraph] {
+        for tab in [
+            Tab::Lighting,
+            Tab::ShaderGraph,
+            Tab::EffectGraph,
+            Tab::OcclusionCulling,
+        ] {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
     });
