@@ -33,6 +33,7 @@ pub mod wheel_collider;
 use glam::{Mat4, Vec3};
 use hecs::{Entity, EntityBuilder, World};
 
+pub use crate::mesh_builder::EditableMesh;
 pub use animator_component::Animator;
 pub use audio_components::*;
 pub use clouds::{CloudPreset, CloudsOverride};

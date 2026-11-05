@@ -161,6 +161,7 @@ impl DrawCache {
         crate::profile_scope!("DrawCache.Update", crate::profiler::Category::Rendering);
         self.calls += 1;
         self.stats = CacheStats::default();
+        crate::mesh_builder::sync(scene);
         let (renderables, sprites, groups) = self.walk(scene, culling_mask, &selected);
         let lods = self.lod_ranges(scene, &groups);
         self.update_meshes(scene, materials, &renderables, &lods);
@@ -522,6 +523,8 @@ impl DrawCache {
         lod: Option<LodRange>,
         slots: &[Option<(u32, u64)>],
     ) -> Vec<MeshDraw> {
+        // A baked Editable Mesh draws each element's faces only (its submeshes).
+        let split = crate::mesh_builder::is_baked_key(mesh);
         (0..r.material_count())
             .map(|i| {
                 let mut material = match (r.instance(i), slots[i]) {
@@ -533,13 +536,16 @@ impl DrawCache {
                     o.apply(&mut material);
                 }
                 MeshDraw {
-                    mesh: mesh.clone(),
+                    mesh: match split {
+                        true => crate::mesh_builder::submesh(mesh, i),
+                        false => mesh.clone(),
+                    },
                     model: world,
                     material,
                     cast_shadows: r.cast_shadows,
                     receive_shadows: r.receive_shadows,
-                    // The outline mask needs each mesh once.
-                    outline: outline && i == 0,
+                    // The outline mask needs each mesh once (each part of a split mesh).
+                    outline: outline && (i == 0 || split),
                     sorting: Default::default(),
                     lod,
                 }

@@ -94,6 +94,11 @@ pub fn apply_env(
     {
         s.select(e);
     }
+    // `MISTY_MESH_MODE=face` (vertex / edge / face, optionally `face:3,4` to select elements)
+    // opens a Mesh Builder mode on the selected Editable Mesh.
+    if let Some(mode) = std::env::var_os("MISTY_MESH_MODE") {
+        crate::mesh_builder::apply_env(s, &mode.to_string_lossy());
+    }
     // `MISTY_EXPAND_ALL=1` opens every Hierarchy parent and Project folder (tree screenshots).
     if std::env::var_os("MISTY_EXPAND_ALL").is_some() {
         expand_all(s);

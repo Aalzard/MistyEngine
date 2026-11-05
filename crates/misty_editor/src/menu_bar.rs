@@ -254,6 +254,10 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
         }
         ui.separator();
         item(ui, s, "Terrain", "", create(Create::Terrain));
+        if ui.button("Mesh Builder Shape…").clicked() {
+            crate::mesh_builder::open_new_shape(s);
+            ui.close();
+        }
     });
     ui.menu_button("2D Object", |ui| {
         item(ui, s, "Sprite", "", create(Create::Sprite(None)));

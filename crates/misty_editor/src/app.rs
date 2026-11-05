@@ -237,6 +237,8 @@ impl EditorApp {
         // Plain keys belong to text fields while typing, and to the game while it has focus.
         let typing = ctx.egui_wants_keyboard_input()
             || (self.state.play.in_play_mode() && self.state.game_view.focused);
+        // Mesh Builder modes (1–4) and operations first, so Delete removes elements.
+        crate::mesh_builder::shortcuts(ctx, &mut self.state, typing || code_editor);
         for (mods, key, action) in sorted {
             // While typing, text fields own plain keys, Shift+keys and their own undo.
             let text_key = mods == Modifiers::NONE
@@ -643,6 +645,7 @@ impl eframe::App for EditorApp {
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
+        crate::mesh_builder::shape_window(&ctx, &mut self.state);
         crate::panels::preset_window(&ctx, &mut self.state);
         crate::branding::about::show(&ctx, &mut self.state.about_open);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);

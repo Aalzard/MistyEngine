@@ -351,6 +351,8 @@ impl Scene {
             self.attach(e, p.or(parent), None);
             entities.push(e);
         }
+        // Editable Meshes are baked into the runtime mesh cache, not saved as meshes.
+        crate::mesh_builder::sync(self);
         entities
     }
 
