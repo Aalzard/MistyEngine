@@ -3102,3 +3102,32 @@ Record of choices made without asking, and why.
      - **Mesh cache:** registering a new runtime mesh bumps the GPU cache generation only when it replaces an
        existing key, so live edits don't re-upload every imported mesh. Mesh Builder and Tilemap use the
        same rule.
+632. **Round 13: the lightmapper is a multi-threaded CPU path tracer** (`docs/pending/r13-lightmapper.md`).
+     - **Why the CPU:** it never competes with the editor's GPU queue or risks a driver timeout, it reuses the
+       probe BVH, and it is deterministic and testable without a GPU. The demo bakes in about 1 s.
+     - **UV2:** our own chart unwrap (flat charts by normal, shelf packing with margins); `Vertex` gained `uv2`.
+     - **Output:** half-float, zlib-compressed `Lightmap-N.lightmap` files next to the scene.
+     - **Shading:** a lightmap replaces the realtime ambient and the reflection-probe diffuse; reflections
+       stay.
+     - **Mixed lighting:** only Baked Indirect for now.
+633. **Round 13: light probes are L2 SH baked from cube captures** (`docs/pending/r13-lightprobes.md`).
+     - **Bake:** reuses the reflection-probe capture on static objects, within a 30 ms per-frame budget.
+     - **Interpolation:** our own Bowyer–Watson tetrahedralization, with cached-tetra walking and barycentric
+       blending.
+     - **Upload:** per-draw SH rides the existing probe list buffer, so no new binding is needed.
+     - **In the shader:** both lightmaps and light probes replace the ambient term. Reflection probes then
+       add reflections only for those objects, which is the merge rule chosen when both branches met in
+       mesh.wgsl.
+634. **Round 13: occlusion culling is a baked PVS plus the existing GPU Hi-Z** (`docs/pending/r13-occlusion.md`).
+     - **Bake:** uniform cells, 27 shared sample points each, ray depth cubes against Occluder Static triangles.
+       Each cell's set is widened by its neighbours so it stays conservative.
+     - **Dynamic Occlusion:** reuses the renderer's existing two-phase Hi-Z pass.
+     - **Batching:** Occludee Static objects stay out of static batches while occlusion is in use.
+     - **Static Editor Flags:** added; all on by default and left out of files.
+635. **Round 13: Visual Effects run entirely on the GPU** (`docs/pending/r13-vfx.md`).
+     - **Graph compiler:** turns an `.effect` graph into compute kernels for emit, update, args and finish,
+       using dead/alive lists with indirect dispatch and draw.
+     - **Limits:** a fixed 64-byte particle, up to 2M per effect. No alpha sorting yet; the samples are
+       additive.
+     - **Renderer entry:** effects reach the renderer through `render_with_effects`, so `Frame` literals stay
+       untouched.

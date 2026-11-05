@@ -2015,3 +2015,27 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Hex grids and Freeform 2D lights.
 - Sub-graphs and copy/paste between graphs.
 - Spline knot links.
+
+## Round 13: global illumination, baking and GPU effects ✅
+
+### Done (decisions 632–635; screenshots in docs/screenshots/round13/; detailed notes in docs/pending/r13-*.md)
+- **Lightmapper:**
+  - Lightmap UVs; Light Mode (Realtime/Mixed/Baked); Contribute/Receive GI.
+  - CPU path-traced bake (bounces, sky, emissive, denoise, dilation), with Generate Lighting in the Lighting
+    window.
+  - Baked Lightmap and UV Charts draw modes; LightmapDemo.
+- **Light Probes:**
+  - Light Probe Group with Scene view editing and Fill Box.
+  - L2 SH bake and Delaunay interpolation for moving objects; Lua; LightProbesDemo.
+- **Occlusion culling:**
+  - Static Editor Flags, Occlusion Area, and the Occlusion Culling window (Object/Bake/Visualization).
+  - Baked PVS and Dynamic Occlusion via Hi-Z; Stats; OcclusionDemo.
+- **Visual Effects:**
+  - The Effect Graph (spawn/init/update/output blocks, operators) compiled to GPU compute.
+  - The Visual Effect component, the Effect Graph window, Lua; VfxDemo with a million particles.
+
+### Not done yet
+- Subtractive/Shadowmask modes and a GPU baker.
+- Probes on skinned meshes and terrain.
+- Portal/adaptive occlusion cells.
+- Alpha-sorted particles and mesh output.

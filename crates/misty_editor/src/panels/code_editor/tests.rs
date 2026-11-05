@@ -54,6 +54,8 @@ fn focus_tab_requested(s: &EditorState) -> bool {
 fn double_click_in_project_opens_the_script() {
     let (mut s, root) = sample_copy("project");
     s.project.open_folder(root.join("Assets/Scripts"));
+    // Filter to the one script so it stays on screen however many samples the folder holds.
+    s.project.search = "Rotator".into();
     let mut h = Harness::builder().with_size([800.0, 500.0]).build_ui_state(
         |ui, s: &mut EditorState| crate::panels::project::show(ui, s),
         s,
