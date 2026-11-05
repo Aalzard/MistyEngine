@@ -42,7 +42,8 @@ fn combo<T: PartialEq + Copy>(
 pub fn page(ui: &mut Ui, s: &mut ProjectSettings, selected: &mut usize) -> bool {
     let q = &mut s.quality;
     let mut edited = false;
-    *selected = (*selected).min(q.levels.len().saturating_sub(1));
+    // The page edits the level the views are showing, so every change is visible at once.
+    *selected = misty_engine::quality::level().min(q.levels.len().saturating_sub(1));
     ui.weak("Players start on the Default level; scripts and your options menu can switch.");
     egui::Grid::new("quality_levels")
         .num_columns(3)
@@ -54,8 +55,13 @@ pub fn page(ui: &mut Ui, s: &mut ProjectSettings, selected: &mut usize) -> bool 
             ui.end_row();
             for i in 0..q.levels.len() {
                 let name = q.levels[i].name.clone();
-                if ui.selectable_label(*selected == i, &name).clicked() {
+                if ui
+                    .selectable_label(*selected == i, &name)
+                    .on_hover_text("Edit and preview this level")
+                    .clicked()
+                {
                     *selected = i;
+                    misty_engine::quality::set_level(i);
                 }
                 if ui
                     .radio(q.default_level == i, "")
@@ -79,6 +85,7 @@ pub fn page(ui: &mut Ui, s: &mut ProjectSettings, selected: &mut usize) -> bool 
             level.name = format!("{} Copy", level.name);
             q.levels.push(level);
             *selected = q.levels.len() - 1;
+            misty_engine::quality::install(q, *selected);
             edited = true;
         }
         let can_remove = q.levels.len() > 1;
@@ -91,6 +98,7 @@ pub fn page(ui: &mut Ui, s: &mut ProjectSettings, selected: &mut usize) -> bool 
                 q.default_level -= 1;
             }
             *selected = (*selected).min(q.levels.len() - 1);
+            misty_engine::quality::install(q, *selected);
             edited = true;
         }
     });
