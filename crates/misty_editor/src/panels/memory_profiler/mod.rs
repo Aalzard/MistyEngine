@@ -18,7 +18,7 @@ use crate::theme;
 use crate::viewport::Gpu;
 use crate::widgets::{panel_toolbar, search_field, toggle_button};
 
-pub const ICON: &str = "🧠";
+pub const ICON: &str = "▦";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum View {
