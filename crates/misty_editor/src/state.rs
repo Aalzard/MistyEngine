@@ -352,6 +352,8 @@ pub struct EditorState {
     pub snap: crate::snap::SnapSettings,
     /// Grid and Snap window is open.
     pub snap_window_open: bool,
+    /// Save Data and Localization Tables windows.
+    pub saveloc: crate::saveloc::SaveLocWindows,
     pub project: ProjectBrowser,
     /// Edit ▸ Project Settings values (saved in the project).
     pub project_settings: ProjectSettings,
@@ -439,6 +441,7 @@ impl EditorState {
             scale_locked: false,
             snap: crate::snap::SnapSettings::load(&project.root),
             snap_window_open: false,
+            saveloc: Default::default(),
             assets: AssetDatabase::open(&project.root),
             inspector_asset: None,
             project,

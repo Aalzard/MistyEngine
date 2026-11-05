@@ -440,6 +440,15 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         for tab in Tab::ALL.into_iter().filter(|t| *t != Tab::Animation) {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
         }
+        ui.separator();
+        if ui.button("Save Data").clicked() {
+            crate::saveloc::save_data::open(s);
+            ui.close();
+        }
+        if ui.button("Localization Tables").clicked() {
+            crate::saveloc::tables::open_window(s);
+            ui.close();
+        }
     });
     ui.menu_button("Animation", |ui| {
         for tab in [Tab::Animation, Tab::Animator] {

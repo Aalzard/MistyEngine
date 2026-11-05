@@ -420,6 +420,8 @@ impl Scene {
         let index = self.sibling_index(e) + 1;
         self.detach(copy);
         self.attach(copy, parent, Some(index));
+        // A copy is a different object for save games.
+        crate::save::fresh_ids_in(self, copy);
         copy
     }
 

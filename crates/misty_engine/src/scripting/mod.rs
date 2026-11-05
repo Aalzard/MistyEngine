@@ -25,6 +25,7 @@ pub mod audio_api;
 pub mod camera_api;
 pub mod input_api;
 pub mod light_probes_api;
+pub mod localization_api;
 pub mod material_api;
 pub mod navigation_api;
 mod override_api;
@@ -33,6 +34,8 @@ pub mod physics2d_api;
 pub mod physics_api;
 pub mod render_settings_api;
 pub mod rigging_api;
+pub mod save_api;
+mod save_host;
 pub mod scene_api;
 pub mod skinning_api;
 pub mod spline_api;
@@ -183,6 +186,10 @@ pub struct World {
     pub tags_layers: crate::tags_layers::TagsAndLayers,
     /// Camera Brains and Virtual Cameras.
     pub cameras: crate::vcam::CameraRig,
+    /// Save games: the scene's Save IDs at start, spawned prefabs, a pending `Load`.
+    pub save: crate::save::SaveRuntime,
+    /// String Tables and the current locale (`Localization`, Localized Text).
+    pub localization: crate::localization::Localizer,
 }
 
 struct Instance {
@@ -249,7 +256,13 @@ impl ScriptHost {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
         }
         let navigation = crate::navigation::NavRuntime::load(scene, &project_root);
+        let save = crate::save::SaveRuntime::begin(scene);
+        let (localization, table_warnings) =
+            crate::localization::Localizer::load(&project_root, &settings.localization);
+        logs.extend(table_warnings.into_iter().map(|w| (LogKind::Warning, w)));
         lua.set_app_data(World {
+            save,
+            localization,
             navigation,
             scene: std::mem::take(scene),
             physics,
@@ -297,6 +310,7 @@ impl ScriptHost {
         }
         host.call_all("Awake");
         host.flush_spawned();
+        host.localization_frame();
         host.with_world(|w| {
             w.audio.play_on_awake(&w.scene, None);
             w.animation.play_automatically(&w.scene, None);
@@ -358,6 +372,15 @@ impl ScriptHost {
         let Some(class) = self.class(&script.path) else {
             return;
         };
+        // How save games name this script on its object.
+        let key = self.with_world(|w| {
+            w.scene
+                .world
+                .get::<&Scripts>(e)
+                .ok()
+                .and_then(|s| crate::save::script_keys(&s).get(slot).cloned())
+                .unwrap_or_else(|| script.path.clone())
+        });
         let build = || -> mlua::Result<Table> {
             let t = self.lua.create_table()?;
             for (k, v) in &script.fields {
@@ -370,7 +393,11 @@ impl ScriptHost {
             t.set_metatable(Some(meta))?;
             Ok(t)
         };
-        match build().and_then(|t| self.lua.create_registry_value(t)) {
+        let tracked = build().and_then(|t| {
+            save_api::track(&self.lua, e, &key, &t)?;
+            Ok(t)
+        });
+        match tracked.and_then(|t| self.lua.create_registry_value(t)) {
             Ok(table) => self.instances.push(Instance {
                 entity: e,
                 slot,
@@ -641,6 +668,7 @@ impl ScriptHost {
         self.with_world(|w| {
             w.scene = scene_in;
             w.time = *time;
+            w.save.mark_time(time.time);
             // Axis smoothing runs on real time, so it works while the game is paused.
             w.axes.update(&input, time.unscaled_delta);
             w.input = input;
@@ -652,6 +680,7 @@ impl ScriptHost {
             self.log(LogKind::Error, format!("Time: {e}"));
         }
 
+        self.localization_frame();
         {
             profile_scope!("Scripts.Start", Category::Scripts);
             for i in 0..self.instances.len() {
@@ -727,6 +756,7 @@ impl ScriptHost {
         }
         self.update_cameras(crate::vcam::BrainUpdate::LateUpdate, time.delta);
         self.process_destroy();
+        self.localization_frame();
 
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
     }
@@ -875,6 +905,7 @@ impl ScriptHost {
                 all
             });
             self.instances.retain(|i| !doomed.contains(&i.entity));
+            save_api::untrack(&self.lua, &doomed);
         }
     }
 

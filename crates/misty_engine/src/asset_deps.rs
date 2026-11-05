@@ -22,7 +22,7 @@ pub struct Dependencies {
 }
 
 /// Extensions whose files are JSON documents that can reference other assets.
-const JSON_ASSETS: [&str; 15] = [
+const JSON_ASSETS: [&str; 16] = [
     "scene",
     "prefab",
     "mat",
@@ -38,6 +38,7 @@ const JSON_ASSETS: [&str; 15] = [
     "tile",
     "palette",
     "effect",
+    "strings",
 ];
 
 fn ext(rel: &str) -> String {
@@ -59,7 +60,9 @@ pub fn collect(project: &Path, roots: &[String]) -> Dependencies {
             continue;
         };
         let rel = rel.to_string_lossy().replace('\\', "/");
-        if rel.split('/').any(|part| part == "Resources") && !rel.ends_with(".meta") {
+        // String Tables are found by name at runtime, like Resources.
+        let table = rel.ends_with(".strings");
+        if (table || rel.split('/').any(|part| part == "Resources")) && !rel.ends_with(".meta") {
             queue.push_back((rel, String::new()));
         }
     }

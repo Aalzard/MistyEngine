@@ -76,6 +76,13 @@ fn main() {
     if let Some(p) = &prefs_file {
         prefs::open(p);
     }
+    // Save games go to the per-user folder next to PlayerPrefs.
+    misty_engine::save::set_folder_override(misty_engine::save::player_folder(
+        &player.company_name,
+        &product,
+    ));
+    // The startup locale may come from PlayerPrefs, which are only open now.
+    misty_engine::localization::reset_session();
     game.apply_saved_quality();
     let source = if launch.packed { "pak" } else { "folder" };
     log.write(
@@ -205,6 +212,14 @@ impl Player {
             });
         }
         misty_engine::profiler::end_frame();
+        // SaveSystem.Save asked for a thumbnail of this frame.
+        if let Some(path) = misty_engine::save::take_thumbnail_request() {
+            let (w, h, pixels) = gfx.capture();
+            if let Err(e) = misty_engine::save::write_thumbnail(&path, w, h, pixels) {
+                self.log
+                    .write(LogKind::Warning, &format!("save thumbnail: {e}"));
+            }
+        }
         self.frames += 1;
         if self.frames == SCREENSHOT_FRAME
             && let Some(path) = self.screenshot.take()

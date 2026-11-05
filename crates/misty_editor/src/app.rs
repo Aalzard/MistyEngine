@@ -678,6 +678,7 @@ impl eframe::App for EditorApp {
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
+        crate::saveloc::show(&ctx, &mut self.state);
         crate::mesh_builder::shape_window(&ctx, &mut self.state);
         crate::panels::preset_window(&ctx, &mut self.state);
         crate::branding::about::show(&ctx, &mut self.state.about_open);
@@ -685,6 +686,14 @@ impl eframe::App for EditorApp {
         // Last, so the tutorial card and highlight sit on top of everything drawn above.
         crate::tutorials::frame(&ctx, &mut self.state);
         self.apply_actions(&ctx);
+        crate::saveloc::frame(&mut self.state);
+        // SaveSystem.Save asked for a thumbnail of the game's last frame.
+        if let Some(path) = misty_engine::save::take_thumbnail_request()
+            && let Some((w, h, rgba)) = self.gpu.as_ref().and_then(|g| g.game_view_pixels())
+            && let Err(e) = misty_engine::save::write_thumbnail(&path, w, h, rgba)
+        {
+            self.state.console.warn(format!("Save thumbnail: {e}"));
+        }
         if let Some(text) = self.state.os_clipboard_out.take() {
             ctx.copy_text(text);
         }

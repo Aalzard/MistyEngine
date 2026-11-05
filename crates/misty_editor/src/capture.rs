@@ -286,6 +286,8 @@ pub fn apply_env(
     if std::env::var_os("MISTY_PLAY").is_some() {
         crate::play::start(s);
     }
+    // `MISTY_WINDOW` / `MISTY_LOCALE` / `MISTY_SAVE_SLOT` (see `saveloc::apply_env`).
+    crate::saveloc::apply_env(s);
 }
 
 /// Folders for screenshots: three coloured, one plain; the scene's top-level objects are

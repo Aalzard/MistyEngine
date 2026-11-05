@@ -1,0 +1,162 @@
+{
+  "locales": [
+    "en",
+    "fr",
+    "es",
+    "ar"
+  ],
+  "entries": [
+    {
+      "key": "title",
+      "values": {
+        "ar": "الحفظ واللغات",
+        "en": "Save & Localization",
+        "es": "Guardado e idiomas",
+        "fr": "Sauvegarde et langues"
+      }
+    },
+    {
+      "key": "button.save",
+      "values": {
+        "ar": "حفظ",
+        "en": "Save",
+        "es": "Guardar",
+        "fr": "Sauvegarder"
+      }
+    },
+    {
+      "key": "button.load",
+      "values": {
+        "ar": "تحميل",
+        "en": "Load",
+        "es": "Cargar",
+        "fr": "Charger"
+      }
+    },
+    {
+      "key": "button.delete",
+      "values": {
+        "ar": "حذف",
+        "en": "Delete",
+        "es": "Borrar",
+        "fr": "Supprimer"
+      }
+    },
+    {
+      "key": "button.coin",
+      "values": {
+        "ar": "+1 عملة",
+        "en": "+1 Coin",
+        "es": "+1 moneda",
+        "fr": "+1 pièce"
+      }
+    },
+    {
+      "key": "button.push",
+      "values": {
+        "ar": "ادفع الصناديق",
+        "en": "Push Crates",
+        "es": "Empujar",
+        "fr": "Pousser"
+      }
+    },
+    {
+      "key": "button.spawn",
+      "values": {
+        "ar": "أنشئ عملة",
+        "en": "Spawn Coin",
+        "es": "Crear moneda",
+        "fr": "Nouvelle pièce"
+      }
+    },
+    {
+      "key": "label.language",
+      "values": {
+        "ar": "اللغة",
+        "en": "Language",
+        "es": "Idioma",
+        "fr": "Langue"
+      }
+    },
+    {
+      "key": "coins",
+      "values": {
+        "ar": "{0:plural:لا عملات|عملة واحدة|عملتان|{} عملات|{} عملة|{} عملة}",
+        "en": "{0:plural:{} coin|{} coins}",
+        "es": "{0:plural:{} moneda|{} monedas}",
+        "fr": "{0:plural:{} pièce|{} pièces}"
+      }
+    },
+    {
+      "key": "status.ready",
+      "values": {
+        "ar": "حرّك المكعب بالأسهم.",
+        "en": "Move the cube with WASD or the arrow keys.",
+        "es": "Mueve el cubo con WASD o las flechas.",
+        "fr": "Déplacez le cube avec ZQSD ou les flèches."
+      }
+    },
+    {
+      "key": "status.saved",
+      "values": {
+        "ar": "تم الحفظ في «{0}».",
+        "en": "Saved to slot \"{0}\".",
+        "es": "Guardado en «{0}».",
+        "fr": "Sauvegardé dans « {0} »."
+      }
+    },
+    {
+      "key": "status.loaded",
+      "values": {
+        "ar": "تم تحميل «{0}».",
+        "en": "Loaded slot \"{0}\".",
+        "es": "«{0}» cargado.",
+        "fr": "« {0} » chargé."
+      }
+    },
+    {
+      "key": "status.deleted",
+      "values": {
+        "ar": "تم حذف «{0}».",
+        "en": "Deleted slot \"{0}\".",
+        "es": "«{0}» borrado.",
+        "fr": "« {0} » supprimé."
+      }
+    },
+    {
+      "key": "status.nosave",
+      "values": {
+        "ar": "لا يوجد حفظ في «{0}».",
+        "en": "No save in slot \"{0}\" yet.",
+        "es": "No hay partida en «{0}».",
+        "fr": "Aucune sauvegarde dans « {0} »."
+      }
+    },
+    {
+      "key": "slot.info",
+      "values": {
+        "ar": "آخر حفظ: {0}\n{1}، مدة اللعب {2}",
+        "en": "Last save: {0}\n{1}, played {2}",
+        "es": "Última partida: {0}\n{1}, jugado {2}",
+        "fr": "Dernière sauvegarde : {0}\n{1}, joué {2}"
+      }
+    },
+    {
+      "key": "slot.empty",
+      "values": {
+        "ar": "لا يوجد حفظ بعد.",
+        "en": "No save yet.",
+        "es": "Aún no hay partida.",
+        "fr": "Pas encore de sauvegarde."
+      }
+    },
+    {
+      "key": "tip",
+      "values": {
+        "ar": "الحفظ يحتفظ بالصناديق والمكعب والعملات.",
+        "en": "Saves keep the crates, the cube, your coins and spawned coins.",
+        "fr": "Les sauvegardes gardent les caisses, le cube et vos pièces."
+      }
+    }
+  ]
+}

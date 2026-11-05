@@ -48,6 +48,8 @@ pub fn start(s: &mut EditorState) {
     if let Some(p) = s.clip_preview.as_mut() {
         p.stop_all();
     }
+    // Each Play session picks its locale like a game launch (Localization ▸ Startup Locale).
+    misty_engine::localization::reset_session();
     let mut audio = Audio::with_device(s.project.root.clone());
     audio.set_muted(s.game_view.mute);
     s.runtime = Some(Runtime::start_with_audio(
@@ -105,6 +107,11 @@ pub fn tick(s: &mut EditorState, real_dt: f32) {
     let input = std::mem::take(&mut s.game_input);
     if let Some(runtime) = s.runtime.as_mut() {
         runtime.update(&mut s.scene, &s.time, input);
+        // SaveSystem.Load reloaded the scene: its objects are new.
+        if runtime.take_scene_reloaded() {
+            s.selection.clear();
+            s.inspector_targets.clear();
+        }
     }
     flush_logs(s);
     handle_requests(s);

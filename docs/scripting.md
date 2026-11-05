@@ -23,6 +23,8 @@ return Rotator                     -- a script must return its class table
 (`other` is a GameObject), `OnControllerColliderHit(hit)` (see Character Controller below). Fields starting
 with `_` stay private.
 Animation events call a function by name (no arguments) on the scripts of the object with the Animation.
+Save games call `OnSave(data)` / `OnLoad(data)` and locale switches `OnLocaleChanged(code)` (see Save games
+and Localization below).
 
 ## API
 | | |
@@ -483,3 +485,65 @@ local grounded = Physics2D.Raycast(self.transform.position + Vector2.down * 0.5,
 ```
 
 Sample: `Assets/Scripts/PlayerController2D.lua`, `Assets/Scripts/CameraFollow2D.lua` (Platformer2D scene).
+
+### Save games
+Give each object whose state should be saved a **Saveable** component (Component ▸ Miscellaneous). It has a
+stable **Save ID** (a GUID; copies, duplicates and prefab instances get new ones) and options: Transform,
+Active State, Rigidbody Velocity, and extra component data (`"Light"` = the whole component,
+`"Light.intensity"` = one field).
+
+| | |
+|---|---|
+| `SaveSystem.Save(slot)` | writes every Saveable's state, the prefab instances spawned with `Instantiate("….prefab")`, the scene objects destroyed since the scene started and the scripts' `OnSave` tables; returns true/false |
+| `SaveSystem.Load(slot)` | after the current frame, reloads the saved scene from its file, then destroys the destroyed objects, recreates spawned prefabs (by GUID), applies the states and calls `OnLoad(data)` (after `Awake`, before `Start`); returns false when the slot can't be read |
+| `SaveSystem.Delete(slot)` / `Exists(slot)` | |
+| `SaveSystem.ListSlots()` | newest first: `{ slot, time, date, scene, playTime, playTimeText, version, size, thumbnail }` (`thumbnail` = PNG path or nil) |
+| `SaveSystem.GetPlayTime()` | seconds played, carried over from the loaded save |
+| `SaveSystem.version` | the game's data version written to saves (default 1) |
+| `SaveSystem.OnMigrate = function(data, fromVersion) … return data end` | runs when an older save is loaded |
+| `SaveSystem.compress` | gzip the save file (default false; loading detects either) |
+| `SaveSystem.thumbnails` | save a PNG of the last frame next to the save (default true) |
+
+Scripts on Saveable objects keep their own values:
+
+```lua
+function Counter:OnSave(data) data.coins = self.coins; data.spawn = self.transform.position end
+function Counter:OnLoad(data) self.coins = data.coins or 0 end
+```
+`data` holds numbers, strings, booleans, Vector3 and nested tables. Slots are names or numbers. Saves go to
+`Library/Saves` in the editor (Window ▸ General ▸ Save Data lists, shows and deletes them) and to the
+player's user folder in built games (`%APPDATA%\<Company>\<Product>\saves` on Windows, per Player Settings).
+Each slot is `<slot>.save` (JSON), `<slot>.info.json` and an optional `<slot>.png`.
+`GetComponent("Saveable").saveId` reads the Save ID.
+
+### Localization
+Project Settings ▸ Localization lists the locales (empty = every column of the String Tables), the
+default and fallback locale and the **Startup Locale** (Saved Preference — the player's last choice, else
+the system language —, System Language, or Default Locale). Texts live in **String Tables** (`.strings`
+files anywhere under `Assets/`, edited in Window ▸ General ▸ Localization Tables, CSV import/export).
+
+| | |
+|---|---|
+| `Localization.locale` | current locale code; set it to switch (also remembered in PlayerPrefs) |
+| `Localization.locales` | `{ code, name }` list |
+| `Localization.Get(key [, args [, table]])` | the text in the current locale, else the fallback, else the key itself |
+| `Localization.GetAsset(key [, table])` | Asset Tables (`"kind": "assets"`): the asset path for the locale |
+| `Localization.HasKey(key [, table])`, `Localization.isRightToLeft` | |
+| `Localization.OnLocaleChanged:AddListener(f)` | `f(code)` after a switch; scripts may also define `OnLocaleChanged(code)` |
+| `GetComponent("LocalizedText")` | `key`, `table`, `args` (table), `enabled`, `text` (read-only), `RefreshString()` |
+
+Smart strings: `{0}`, `{1}` (positional `args`), `{name}` (`args.name`), `{{`/`}}` for braces, and plurals
+`{0:plural:one apple|{} apples}` — forms in the language's order (French: 0 and 1 singular; Arabic:
+zero|one|two|few|many|other; Russian/Polish: one|few|many; Japanese/Chinese: one form).
+
+```lua
+Localization.Get("score", { 12 })                 -- "{0} points"
+Localization.Get("greeting", { name = "Ana" })    -- "Hello, {name}!"
+self.gameObject:GetComponent("LocalizedText").args = { self.coins }
+```
+The **Localized Text** component (Component ▸ UI) sets the UI Text on its object from a key and arguments
+(Inspector entries `name=value` fill `{name}`) and follows locale changes. Right-to-left scripts are not
+laid out right to left yet, and the built-in UI font has no Arabic glyphs.
+
+Sample: `Scenes/SaveLocDemo.scene` with `SaveLocMenu.lua`, `CoinCounter.lua` and
+`Assets/Localization/SaveLocDemo.strings`.

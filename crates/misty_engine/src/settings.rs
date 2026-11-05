@@ -134,6 +134,9 @@ pub struct ProjectSettings {
     /// Preset Manager: component or asset kind → preset applied when one is added or created.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub default_presets: std::collections::BTreeMap<String, String>,
+    /// Locales and startup locale (Localization page).
+    #[serde(skip_serializing_if = "is_default")]
+    pub localization: crate::localization::LocalizationSettings,
 }
 
 impl Default for ProjectSettings {
@@ -148,6 +151,7 @@ impl Default for ProjectSettings {
             player: None,
             quality: Default::default(),
             default_presets: Default::default(),
+            localization: Default::default(),
         }
     }
 }
