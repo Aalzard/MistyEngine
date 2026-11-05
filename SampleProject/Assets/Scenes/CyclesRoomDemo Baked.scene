@@ -1,0 +1,957 @@
+{
+  "lighting": {
+    "environment_lighting": {
+      "equator_color": [
+        0.114,
+        0.125,
+        0.133
+      ],
+      "ground_color": [
+        0.047,
+        0.043,
+        0.035
+      ],
+      "intensity": 0.0,
+      "sky_color": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "source": "Color"
+    },
+    "fog": {
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "density": 0.01,
+      "enabled": false,
+      "end": 300.0,
+      "mode": "ExponentialSquared",
+      "start": 0.0
+    },
+    "lightmapping": {
+      "baked_gi": true,
+      "bounces": 4,
+      "indirect_intensity": 1.0,
+      "lightmaps": [
+        "Assets/Scenes/CyclesRoomDemo Baked/Lightmap-0.lightmap"
+      ],
+      "max_size": 512,
+      "mixed_mode": "BakedIndirect",
+      "padding": 2,
+      "resolution": 32.0,
+      "samples": 1024
+    },
+    "reflection_intensity": 1.0,
+    "skybox": {
+      "atmosphere_thickness": 1.0,
+      "color": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "exposure": 1.0,
+      "ground": [
+        0.32,
+        0.3,
+        0.29
+      ],
+      "kind": "SolidColor",
+      "sky_tint": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "sun_disk": "HighQuality",
+      "sun_size": 0.04
+    }
+  },
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 50.0,
+          "fov": 42.0,
+          "near": 0.1,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.2,
+            -3.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Room",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Floor",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "lightmap_index": 0,
+          "lightmap_scale_offset": [
+            0.31054688,
+            0.31054688,
+            0.33203125,
+            0.00390625
+          ],
+          "material": "Assets/Materials/CyclesRoom/Floor.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -0.05,
+            1.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.6000001,
+            0.1,
+            2.4
+          ]
+        }
+      },
+      "parent": 1
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Ceiling",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "lightmap_index": 0,
+          "lightmap_scale_offset": [
+            0.31054688,
+            0.31054688,
+            0.6464844,
+            0.00390625
+          ],
+          "material": "Assets/Materials/CyclesRoom/Wall.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            2.45,
+            1.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.6000001,
+            0.1,
+            2.4
+          ]
+        }
+      },
+      "parent": 1
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Back Wall",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "lightmap_index": 0,
+          "lightmap_scale_offset": [
+            0.32421875,
+            0.32421875,
+            0.00390625,
+            0.00390625
+          ],
+          "material": "Assets/Materials/CyclesRoom/Wall.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.2,
+            2.45
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.6000001,
+            2.6000001,
+            0.1
+          ]
+        }
+      },
+      "parent": 1
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Left Wall",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "lightmap_index": 0,
+          "lightmap_scale_offset": [
+            0.29882813,
+            0.29882813,
+            0.00390625,
+            0.33203125
+          ],
+          "material": "Assets/Materials/CyclesRoom/Wall.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.25,
+            1.2,
+            1.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.1,
+            2.4,
+            2.4
+          ]
+        }
+      },
+      "parent": 1
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Right Wall",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "lightmap_index": 0,
+          "lightmap_scale_offset": [
+            0.29882813,
+            0.29882813,
+            0.30664063,
+            0.33203125
+          ],
+          "material": "Assets/Materials/CyclesRoom/Wall.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.25,
+            1.2,
+            1.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.1,
+            2.4,
+            2.4
+          ]
+        }
+      },
+      "parent": 1
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Pillar",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "lightmap_index": 0,
+          "lightmap_scale_offset": [
+            0.171875,
+            0.171875,
+            0.609375,
+            0.33203125
+          ],
+          "material": "Assets/Materials/CyclesRoom/Box.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -0.45,
+            0.7,
+            1.45
+          ],
+          "rotation": [
+            0.0,
+            0.17364818,
+            0.0,
+            0.9848077
+          ],
+          "scale": [
+            0.6,
+            1.4,
+            0.6
+          ]
+        }
+      },
+      "parent": 1
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Cube",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "lightmap_index": 0,
+          "lightmap_scale_offset": [
+            0.14648438,
+            0.14648438,
+            0.00390625,
+            0.6347656
+          ],
+          "material": "Assets/Materials/CyclesRoom/Box.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.5,
+            0.35,
+            0.75
+          ],
+          "rotation": [
+            0.0,
+            -0.15643448,
+            0.0,
+            0.98768836
+          ],
+          "scale": [
+            0.7,
+            0.7,
+            0.7
+          ]
+        }
+      },
+      "parent": 1
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": true,
+          "layer": 0,
+          "name": "Canvas",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "lightmap_index": 0,
+          "lightmap_scale_offset": [
+            0.1484375,
+            0.1484375,
+            0.78515625,
+            0.33203125
+          ],
+          "material": "Assets/Materials/CyclesRoom/Canvas.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.35,
+            0.6,
+            2.3000002
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.2,
+            1.2,
+            0.04
+          ]
+        }
+      },
+      "parent": 1
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ceiling Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "height": 0.6,
+          "intensity": 16.0,
+          "kind": "Rectangle",
+          "mode": "Mixed",
+          "range": 8.0,
+          "shadows": "Soft",
+          "show_emitter": false,
+          "spot_angle": 30.0,
+          "width": 0.6
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            2.385,
+            1.2
+          ],
+          "rotation": [
+            0.70710677,
+            0.0,
+            0.0,
+            0.70710677
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Light Panel",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Quad"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "contribute_gi": false,
+          "enabled": true,
+          "material": "Assets/Materials/CyclesRoom/Light Panel.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            2.395,
+            1.2
+          ],
+          "rotation": [
+            -0.70710677,
+            0.0,
+            0.0,
+            0.70710677
+          ],
+          "scale": [
+            0.6,
+            0.6,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Reflection Probe"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Room Probe",
+          "tag": "Untagged"
+        },
+        "Reflection Probe": {
+          "background": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "baked": "Assets/Scenes/CyclesRoomDemo Baked/ReflectionProbe-0.probe",
+          "blend_distance": 0.05,
+          "box_projection": true,
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "clear_flags": "SolidColor",
+          "enabled": true,
+          "far_clip": 40.0,
+          "importance": 1,
+          "intensity": 1.0,
+          "mode": "Baked",
+          "near_clip": 0.05,
+          "refresh_interval": 1,
+          "resolution": 128,
+          "size": [
+            2.6000001,
+            2.6000001,
+            2.6000001
+          ],
+          "time_slicing": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.2,
+            1.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Reflection Probe"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Front Probe",
+          "tag": "Untagged"
+        },
+        "Reflection Probe": {
+          "background": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "baked": "Assets/Scenes/CyclesRoomDemo Baked/ReflectionProbe-1.probe",
+          "blend_distance": 0.35,
+          "box_projection": false,
+          "center": [
+            0.0,
+            0.0,
+            -0.4
+          ],
+          "clear_flags": "SolidColor",
+          "enabled": true,
+          "far_clip": 40.0,
+          "importance": 2,
+          "intensity": 1.0,
+          "mode": "Baked",
+          "near_clip": 0.05,
+          "refresh_interval": 1,
+          "resolution": 128,
+          "size": [
+            4.0,
+            4.0,
+            1.7
+          ],
+          "time_slicing": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.2,
+            0.45
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Post-process Volume"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Global Volume",
+          "tag": "Untagged"
+        },
+        "Post-process Volume": {
+          "ambient_occlusion": {
+            "active": true,
+            "direct_lighting_strength": 0.0,
+            "full_resolution": true,
+            "intensity": 2.0,
+            "radius": 1.2,
+            "step_count": 10,
+            "temporal": true
+          },
+          "bloom": {
+            "active": true,
+            "intensity": 0.15,
+            "scatter": 0.7,
+            "threshold": 1.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "color_adjustments": {
+            "active": true,
+            "color_filter": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "contrast": 0.0,
+            "post_exposure": 1.0,
+            "saturation": 0.0
+          },
+          "enabled": true,
+          "priority": 0.0,
+          "tonemapping": {
+            "active": true,
+            "mode": "AgX"
+          },
+          "vignette": {
+            "active": false,
+            "color": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "intensity": 0.25,
+            "smoothness": 0.2
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}
