@@ -254,6 +254,12 @@ impl EditorApp {
                 continue;
             }
             // Delete removes selected keys / states when the Animation / Animator window has focus.
+            // The Shader Graph window handles its own Delete, undo/redo, save and duplicate.
+            if self.state.shader_graph.wants_keys()
+                && matches!(key, Key::Delete | Key::Z | Key::Y | Key::S | Key::D)
+            {
+                continue;
+            }
             if key == Key::Delete
                 && (self.state.animation.wants_delete()
                     || self.state.animator.wants_delete()
@@ -277,7 +283,7 @@ impl EditorApp {
         }
         // Transform tools: plain Q/W/E/R/T/Y, unless typing or flying with right mouse.
         let flying = ctx.input(|i| i.pointer.secondary_down());
-        if !typing && !flying {
+        if !typing && !flying && !self.state.shader_graph.wants_keys() {
             for tool in Tool::ALL {
                 if ctx.input(|i| i.modifiers.is_none() && i.key_pressed(tool.key())) {
                     self.state.tool = tool;

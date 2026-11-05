@@ -18,8 +18,9 @@ use serde::{Deserialize, Serialize};
 pub const EXTENSION: &str = "shader";
 
 /// Does a material's `shader` field name a shader asset (rather than a built-in shader)?
+/// Shader Graphs (`.shadergraph`) count: they load as the shader they generate.
 pub fn is_shader_path(shader: &str) -> bool {
-    crate::assets::has_extension(shader, &[EXTENSION])
+    crate::assets::has_extension(shader, &[EXTENSION, crate::shader_graph::EXTENSION])
 }
 
 /// Lit surface shaders go through the engine's lighting; unlit ones output the final colour.
@@ -123,13 +124,15 @@ pub enum PropertyKind {
     /// `texture_2d<f32>` named after the property; colour textures are sRGB-decoded unless the
     /// default is `normal`.
     Texture(TextureDefault),
+    /// A checkbox in the Inspector; the shader reads an `f32` that is 0 or 1.
+    Toggle,
 }
 
 impl PropertyKind {
     /// WGSL type in the generated `MaterialProperties` struct (`None` = a texture binding).
     pub fn wgsl(self) -> Option<&'static str> {
         match self {
-            Self::Float | Self::Range(..) => Some("f32"),
+            Self::Float | Self::Range(..) | Self::Toggle => Some("f32"),
             Self::Color | Self::Vector => Some("vec4<f32>"),
             Self::Texture(_) => None,
         }
@@ -174,7 +177,7 @@ impl PropertyValue {
             (self, kind),
             (
                 Self::Float(_),
-                PropertyKind::Float | PropertyKind::Range(..)
+                PropertyKind::Float | PropertyKind::Range(..) | PropertyKind::Toggle
             ) | (Self::Vector(_), PropertyKind::Color | PropertyKind::Vector)
                 | (Self::Texture(_), PropertyKind::Texture(_))
         )

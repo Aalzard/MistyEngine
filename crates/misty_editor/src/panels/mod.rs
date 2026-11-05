@@ -18,6 +18,7 @@ pub mod project;
 pub(crate) mod project_menus;
 mod project_tree;
 pub(crate) mod scene;
+pub mod shader_graph;
 pub mod timeline;
 pub mod undo_history;
 pub mod world_builder;
@@ -75,6 +76,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::WorldBuilder => world_builder::show(ui, self.state),
             Tab::UndoHistory => undo_history::show(ui, self.state),
             Tab::Timeline => timeline::show(ui, self.state),
+            Tab::ShaderGraph => shader_graph::show(ui, self.state),
         }
     }
 

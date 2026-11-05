@@ -70,6 +70,10 @@ pub enum AssetKind {
     UnlitShader,
     /// A material using the shader selected in the Project window.
     MaterialFromShader,
+    /// Shader Graph ▸ Lit Shader Graph.
+    LitShaderGraph,
+    /// Shader Graph ▸ Unlit Shader Graph.
+    UnlitShaderGraph,
 }
 
 impl AssetKind {
@@ -98,6 +102,8 @@ impl AssetKind {
             AssetKind::SurfaceShader => "Surface Shader",
             AssetKind::UnlitShader => "Unlit Shader",
             AssetKind::MaterialFromShader => "Material from Shader",
+            AssetKind::LitShaderGraph => "Lit Shader Graph",
+            AssetKind::UnlitShaderGraph => "Unlit Shader Graph",
         }
     }
 }

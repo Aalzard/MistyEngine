@@ -44,12 +44,32 @@ fn read(rel: &str) -> Entry {
             column: 0,
             message: format!("could not read the shader: {e}"),
         })
+        .and_then(|text| {
+            if crate::shader_graph::is_graph_path(rel) {
+                graph_source(&text)
+            } else {
+                Ok(text)
+            }
+        })
         .and_then(|text| parse(&text).map(Arc::new));
     Entry {
         modified: mtime(rel),
         generation: next_generation(),
         shader,
     }
+}
+
+/// The shader text a `.shadergraph` file generates.
+fn graph_source(text: &str) -> Result<String, ShaderError> {
+    let error = |message: String| ShaderError {
+        line: 0,
+        column: 0,
+        message,
+    };
+    let graph = crate::shader_graph::ShaderGraph::from_json(text).map_err(error)?;
+    crate::shader_graph::generate(&graph)
+        .map(|g| g.source)
+        .map_err(|e| error(format!("Shader Graph: {}", e.message)))
 }
 
 /// The shader at a project path ("Assets/Shaders/Water.shader"), read on first use.

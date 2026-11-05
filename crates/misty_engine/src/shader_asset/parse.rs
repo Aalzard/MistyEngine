@@ -9,6 +9,7 @@
 //! // @property _Color color "Tint" = (1, 1, 1, 1)
 //! // @property _Speed float range(0, 10) = 1   // tooltip shown in the Inspector
 //! // @property _MainTex texture2d = white
+//! // @property _Glow toggle = 1             (a checkbox; the shader reads 0 or 1)
 //! ```
 
 use super::{
@@ -196,6 +197,7 @@ fn parse_kind(ty: &str) -> Option<PropertyKind> {
         "float" | "number" => PropertyKind::Float,
         "color" | "colour" => PropertyKind::Color,
         "vector" | "vec4" => PropertyKind::Vector,
+        "toggle" | "bool" | "boolean" => PropertyKind::Toggle,
         "texture2d" | "texture" | "2d" | "tex2d" => PropertyKind::Texture(TextureDefault::White),
         _ => {
             let inner = ty.strip_prefix("range(")?.strip_suffix(')')?;
@@ -220,7 +222,7 @@ fn texture_default(name: &str) -> Option<TextureDefault> {
 
 fn parse_default(kind: PropertyKind, text: Option<&str>) -> Option<PropertyValue> {
     match kind {
-        PropertyKind::Float | PropertyKind::Range(..) => {
+        PropertyKind::Float | PropertyKind::Range(..) | PropertyKind::Toggle => {
             let v = match text {
                 Some(t) => t.parse().ok()?,
                 None => match kind {

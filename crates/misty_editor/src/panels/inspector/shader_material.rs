@@ -101,6 +101,14 @@ pub fn custom_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String
                 .add(egui::Slider::new(v, lo..=hi))
                 .on_hover_text(tip)
                 .changed(),
+            (PropertyValue::Float(v), PropertyKind::Toggle) => {
+                let mut on = *v > 0.5;
+                let changed = ui.checkbox(&mut on, "").on_hover_text(tip).changed();
+                if changed {
+                    *v = if on { 1.0 } else { 0.0 };
+                }
+                changed
+            }
             (PropertyValue::Float(v), _) => ui
                 .add(egui::DragValue::new(v).speed(0.01))
                 .on_hover_text(tip)
