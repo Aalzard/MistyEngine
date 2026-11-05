@@ -332,6 +332,8 @@ pub struct TextureCache {
     warnings: Vec<String>,
     /// [`crate::quality::generation`] the textures were loaded for.
     quality: u64,
+    /// Video frames and other textures published at runtime (`video://…`).
+    runtime: super::runtime_tex::RuntimeTextures,
 }
 
 impl TextureCache {
@@ -350,6 +352,14 @@ impl TextureCache {
             last_poll: None,
             warnings: Vec::new(),
             quality: crate::quality::generation(),
+            runtime: Default::default(),
+        }
+    }
+
+    /// Upload runtime textures (video frames) published since the last frame.
+    pub fn sync_runtime(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        if self.runtime.sync(device, queue) {
+            self.sets.clear();
         }
     }
 
@@ -360,6 +370,9 @@ impl TextureCache {
         rel: &str,
         kind: TextureKind,
     ) -> Option<wgpu::TextureView> {
+        if crate::video::textures::is_runtime(rel) {
+            return Some(self.runtime.view(device, queue, rel));
+        }
         let key = (rel.to_owned(), kind);
         if let Some(c) = self.textures.get(&key) {
             return c.view.clone();

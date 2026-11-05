@@ -28,6 +28,7 @@ mod pipelines;
 pub mod post;
 mod prepass;
 pub mod probes;
+mod runtime_tex;
 mod scene_copy;
 mod screen_space;
 mod shadows;
@@ -745,6 +746,7 @@ impl Renderer {
         frame: &Frame,
         lod: &[lod::LodState],
     ) {
+        self.textures.sync_runtime(device, queue);
         let generation = models::generation();
         if generation != self.imported_generation {
             self.imported.clear();

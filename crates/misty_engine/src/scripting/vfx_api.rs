@@ -15,7 +15,7 @@ pub struct LVisualEffect(pub Entity);
 /// `GetComponent("VisualEffect")` (or "Visual Effect").
 pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
     if name != "VisualEffect" && name != "Visual Effect" {
-        return Ok(None);
+        return super::video_api::component(lua, e, name);
     }
     let has = with_world(lua, |w| w.scene.world.get::<&VisualEffect>(e).is_ok())?;
     if !has {

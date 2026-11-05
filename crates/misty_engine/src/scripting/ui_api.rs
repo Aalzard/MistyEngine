@@ -151,6 +151,21 @@ impl UserData for LText {
         f.add_field_method_set("enabled", |lua, t, v: bool| {
             set(lua, t.0, |c: &mut UiText| c.enabled = v)
         });
+        f.add_field_method_get("richText", |lua, t| get(lua, t.0, |c: &UiText| c.rich_text));
+        f.add_field_method_set("richText", |lua, t, v: bool| {
+            set(lua, t.0, |c: &mut UiText| c.rich_text = v)
+        });
+        f.add_field_method_get("page", |lua, t| get(lua, t.0, |c: &UiText| c.page));
+        f.add_field_method_set("page", |lua, t, v: u32| {
+            set(lua, t.0, |c: &mut UiText| c.page = v.max(1))
+        });
+        // `text.onLinkClicked:AddListener(function(id) … end)`.
+        f.add_field_method_get("onLinkClicked", |_, t| {
+            Ok(super::ui_widgets_api::LUiEvent {
+                entity: t.0,
+                event: "onLinkClicked",
+            })
+        });
         f.add_field_method_get("gameObject", |_, t| Ok(LGameObject(t.0)));
     }
 }

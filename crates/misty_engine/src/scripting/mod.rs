@@ -50,6 +50,7 @@ pub mod ui_widgets_api;
 pub mod vcam_api;
 pub mod vehicle_api;
 pub mod vfx_api;
+pub mod video_api;
 pub mod water_api;
 
 use std::collections::{HashMap, HashSet};
@@ -191,6 +192,10 @@ pub struct World {
     pub save: crate::save::SaveRuntime,
     /// String Tables and the current locale (`Localization`, Localized Text).
     pub localization: crate::localization::Localizer,
+    /// Video Players (`Play`, `Pause`, `time`, …).
+    pub video: crate::video::VideoPlayback,
+    /// Video events raised by script calls, dispatched with the frame's own.
+    pub video_events: Vec<crate::video::VideoEvent>,
 }
 
 impl World {
@@ -205,6 +210,7 @@ impl World {
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
         let navigation = crate::navigation::NavRuntime::load(&scene, &project_root);
+        let project_root_for_video = project_root.clone();
         let save = crate::save::SaveRuntime::begin(&scene);
         let (localization, table_warnings) =
             crate::localization::Localizer::load(&project_root, &settings.localization);
@@ -234,6 +240,8 @@ impl World {
             axes: crate::input::InputManager::new(&settings.input),
             tags_layers: settings.tags_and_layers.clone(),
             cameras: Default::default(),
+            video: crate::video::VideoPlayback::new(project_root_for_video),
+            video_events: Vec::new(),
         }
     }
 }
@@ -350,6 +358,8 @@ impl ScriptHost {
             w.audio.play_on_awake(&w.scene, None);
             w.animation.play_automatically(&w.scene, None);
             w.timeline.play_on_awake(&w.scene, None);
+            let ev = w.video.play_on_awake(&mut w.scene, &mut w.audio, None);
+            w.video_events.extend(ev);
         });
         *scene = host.with_world(|w| std::mem::take(&mut w.scene));
         host
@@ -581,6 +591,10 @@ impl ScriptHost {
             w.audio.play_on_awake(&w.scene, Some(root));
             w.animation.play_automatically(&w.scene, Some(root));
             w.timeline.play_on_awake(&w.scene, Some(root));
+            let ev = w
+                .video
+                .play_on_awake(&mut w.scene, &mut w.audio, Some(root));
+            w.video_events.extend(ev);
         });
     }
 
@@ -627,6 +641,49 @@ impl ScriptHost {
         });
         for l in logs {
             self.log(LogKind::Warning, l);
+        }
+    }
+
+    /// Advance Video Players and run their event listeners (`started`, `loopPointReached`,
+    /// `prepareCompleted`, `errorReceived`).
+    fn update_video(&mut self, dt: f32) {
+        let (events, logs) = self.with_world(|w| {
+            let World {
+                video,
+                scene,
+                audio,
+                video_events,
+                ..
+            } = w;
+            let mut events = std::mem::take(video_events);
+            events.extend(video.update(scene, audio, dt));
+            (events, video.take_logs())
+        });
+        for l in logs {
+            self.log(LogKind::Warning, l);
+        }
+        use crate::video::VideoEvent;
+        for ev in events {
+            let (e, name, message) = match ev {
+                VideoEvent::Started(e) => (e, "started", None),
+                VideoEvent::LoopPointReached(e) => (e, "loopPointReached", None),
+                VideoEvent::PrepareCompleted(e) => (e, "prepareCompleted", None),
+                VideoEvent::Error(e, m) => (e, "errorReceived", Some(m)),
+            };
+            let vp = self
+                .lua
+                .create_userdata(video_api::LVideoPlayer(e))
+                .map(Value::UserData)
+                .unwrap_or(Value::Nil);
+            let msg = message
+                .and_then(|m| self.lua.create_string(&m).ok())
+                .map_or(Value::Nil, Value::String);
+            for f in ui_widgets_api::listeners(&self.lua, e, name) {
+                if let Err(err) = f.call::<()>((vp.clone(), msg.clone())) {
+                    self.log(LogKind::Error, format!("{name} listener: {err}"));
+                }
+                self.flush_spawned();
+            }
         }
     }
 
@@ -805,6 +862,10 @@ impl ScriptHost {
             profile_scope!("Animation.Update", Category::Animation);
             self.animate(time.delta);
             self.with_world(|w| crate::splines::animate::update(&mut w.scene, time.delta));
+        }
+        {
+            profile_scope!("Video.Update", Category::Others);
+            self.update_video(time.delta);
         }
         {
             // Rigs run on the animated pose, before LateUpdate and rendering.

@@ -16,6 +16,7 @@ fn persistent_calls(w: &World, e: Entity, event: &str) -> Vec<ButtonCall> {
     let calls = match event {
         "onClick" => world.get::<&UiButton>(e).map(|c| c.on_click.clone()),
         "onEndEdit" => world.get::<&UiInputField>(e).map(|c| c.on_end_edit.clone()),
+        "onLinkClicked" => return Vec::new(),
         _ => world
             .get::<&UiToggle>(e)
             .map(|c| c.on_value_changed.clone())
@@ -44,11 +45,41 @@ fn persistent_calls(w: &World, e: Entity, event: &str) -> Vec<ButtonCall> {
 }
 
 impl ScriptHost {
+    /// Call `method` on `target`'s scripts that define it (no warning when none does).
+    fn call_if_defined(&mut self, target: Entity, method: &str, arg: Option<Value>) {
+        for i in 0..self.instances.len() {
+            let inst = &self.instances[i];
+            if inst.entity != target || !self.runnable(inst) {
+                continue;
+            }
+            let defined = self
+                .lua
+                .registry_value::<mlua::Table>(&inst.table)
+                .and_then(|t| t.get::<Option<mlua::Function>>(method))
+                .is_ok_and(|f| f.is_some());
+            if defined {
+                self.call(i, method, arg.clone());
+                self.flush_spawned();
+            }
+        }
+    }
+
     pub(super) fn ui_event(&mut self, ev: UiEvent) {
         let (e, event, label, arg) = match ev {
             UiEvent::Click(b) => (b, "onClick", "On Click", None),
             UiEvent::ValueChanged(e, v) => (e, "onValueChanged", "On Value Changed", Some(v)),
             UiEvent::EndEdit(e, t) => (e, "onEndEdit", "On End Edit", Some(UiValue::Text(t))),
+            UiEvent::LinkClicked(e, id) => {
+                // Scripts on the text object hear it as OnLinkClicked(id) too.
+                let arg = self.lua.create_string(&id).ok().map(Value::String);
+                self.call_if_defined(e, "OnLinkClicked", arg);
+                (
+                    e,
+                    "onLinkClicked",
+                    "On Link Clicked",
+                    Some(UiValue::Text(id)),
+                )
+            }
         };
         let to_lua = |v: &UiValue| -> Value {
             match v {

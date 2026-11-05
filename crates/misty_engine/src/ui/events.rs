@@ -58,6 +58,8 @@ pub enum UiEvent {
     ValueChanged(Entity, UiValue),
     /// An Input Field finished editing with this text.
     EndEdit(Entity, String),
+    /// A `<link="id">` of a rich text was clicked.
+    LinkClicked(Entity, String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -103,6 +105,8 @@ pub struct UiInteraction {
     values: HashMap<Entity, UiValue>,
     /// Scrollbars moved by the pointer this frame (their Scroll Rect follows them).
     moved_bars: HashSet<Entity>,
+    /// The rich text link a press started on (clicked when released over the same link).
+    link_press: Option<(Entity, String)>,
     started: bool,
 }
 
@@ -179,9 +183,12 @@ impl UiInteraction {
         self.hovered = hit.and_then(|h| ancestor(scene, h, is_selectable));
         self.moved_bars.clear();
 
+        let link_under =
+            |p: Vec2| hit.and_then(|h| super::rich::link_at(scene, &l, h, p).map(|id| (h, id)));
         if input.down
             && let Some(p) = input.position
         {
+            self.link_press = link_under(p);
             self.pointer_down(scene, &l, hit, p, &mut events);
         } else if input.down {
             self.end_edit(scene, &mut events);
@@ -193,6 +200,15 @@ impl UiInteraction {
             self.pointer_drag(scene, &l, p, input.dt);
         }
         if input.up {
+            if let Some((e, id)) = self.link_press.take()
+                && input
+                    .position
+                    .and_then(|p| super::rich::link_at(scene, &l, e, p))
+                    .is_some_and(|now| now == id)
+                && hit == Some(e)
+            {
+                events.push(UiEvent::LinkClicked(e, id));
+            }
             self.pointer_up(scene, &l, &mut events);
         }
         if input.scroll != Vec2::ZERO

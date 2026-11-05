@@ -32,6 +32,9 @@ lz4_flex = "0.11"
 # Asset bundles: remote downloads over HTTPS (rustls, as the editor's updater) and SHA-256 checks.
 ureq = { version = "3.1", default-features = false, features = ["rustls"] }
 sha2 = "0.10"
+# Rich text: right-to-left reordering (UAX #9) and complex-script shaping (Arabic joining).
+unicode-bidi = "0.3.18"
+rustybuzz = "0.20.1"
 
 [dev-dependencies]
 # Headless GPU tests (pixel comparisons, the stress benchmark).

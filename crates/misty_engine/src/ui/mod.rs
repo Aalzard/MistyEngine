@@ -11,6 +11,7 @@ pub mod input;
 pub mod input_field;
 pub mod layout;
 pub mod presets;
+pub mod rich;
 pub mod scroll;
 pub mod text;
 pub mod tree;
