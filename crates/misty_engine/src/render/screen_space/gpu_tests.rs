@@ -261,6 +261,8 @@ fn effects_off_render_exactly_as_without_them() {
     let no_mask = crate::quality::QualityLevel {
         shadow_temporal: false,
         shadow_denoise: false,
+        // Renders are compared exactly: no TAA jitter.
+        temporal_aa: false,
         ..Default::default()
     };
     let fresh = |lights: &[LightData], post| {

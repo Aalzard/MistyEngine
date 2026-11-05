@@ -12,7 +12,9 @@ use super::data::TerrainData;
 use super::noise;
 
 /// Most blades per square metre.
-pub const MAX_DENSITY: f32 = 64.0;
+pub const MAX_DENSITY: f32 = 600.0;
+/// Coarsest density level of far chunks (each level keeps half the blades of the one before).
+pub const MAX_LEVEL: u32 = 6;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -34,6 +36,20 @@ pub struct DetailSettings {
     pub dry_color: [f32; 3],
     pub wind_strength: f32,
     pub wind_speed: f32,
+    /// Share of stems that carry a seed head (0..1).
+    pub seed_heads: f32,
+    /// sRGB colour of the seed heads.
+    pub seed_color: [f32; 3],
+    /// How strongly blades gather in tufts that lean outwards (0..1).
+    pub clumping: f32,
+    /// How far blades curve over (0 = straight up, 1 = strongly arched).
+    pub bend: f32,
+    /// Sunlight shining through backlit blades (0..1).
+    pub translucency: f32,
+    /// How much blade tips dry out towards the dry colour (0..1).
+    pub tip_dryness: f32,
+    /// Full density up to this distance; further away fewer, wider blades are drawn.
+    pub lod_distance: f32,
 }
 
 impl Default for DetailSettings {
@@ -57,6 +73,13 @@ impl Default for DetailSettings {
             dry_color: [0.66, 0.62, 0.32],
             wind_strength: 0.35,
             wind_speed: 1.2,
+            seed_heads: 0.0,
+            seed_color: [0.78, 0.69, 0.45],
+            clumping: 0.5,
+            bend: 0.35,
+            translucency: 0.6,
+            tip_dryness: 0.35,
+            lod_distance: 20.0,
         }
     }
 }
@@ -135,23 +158,60 @@ pub struct Blade {
     pub position: [f32; 4],
     /// x = facing angle (radians), y = width, z = dry mix 0..1, w = random phase 0..1.
     pub shape: [f32; 4],
+    /// x = kind (0 blade, 1 seed head stem), y = bend, z = lean angle (radians),
+    /// w = tuft tint -1..1.
+    pub extra: [f32; 4],
+}
+
+/// Share of blades kept at density `level`: a blade stays when its drop-out key is below
+/// `0.5^level` (the renderer also draws prefixes of key-sorted chunks for finer thinning).
+pub fn level_keep(level: u32) -> f32 {
+    0.5f32.powi(level.min(MAX_LEVEL) as i32)
+}
+
+/// Tuft (clump) nearest to `p`: its centre and a random id 0..1 (jittered grid of `cell` m).
+fn tuft(p: Vec2, cell: f32, seed: u32) -> (Vec2, f32) {
+    let g = (p / cell).floor();
+    let mut best = (f32::MAX, Vec2::ZERO, 0.0);
+    for dz in -1..=1 {
+        for dx in -1..=1 {
+            let (ix, iz) = (g.x as i32 + dx, g.y as i32 + dz);
+            let jitter = Vec2::new(noise::hash(ix, iz, seed), noise::hash(ix, iz, seed ^ 0x9e37));
+            let c = (Vec2::new(ix as f32, iz as f32) + jitter) * cell;
+            let d = c.distance_squared(p);
+            if d < best.0 {
+                best = (d, c, noise::hash(ix, iz, seed ^ 0x3c6e));
+            }
+        }
+    }
+    (best.1, best.2)
 }
 
 /// Blades rooted in the local rectangle `[lo, hi)` (metres), deterministic per seed.
 pub fn scatter(d: &TerrainData, lo: Vec2, hi: Vec2) -> Vec<Blade> {
+    scatter_level(d, lo, hi, 0)
+}
+
+/// Like [`scatter`] but only the blades kept at density `level` (see [`level_keep`]),
+/// sorted by drop-out key so any prefix of the result is an even thinning.
+pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Blade> {
     let s = &d.details;
     let n = d.alphamap_resolution;
     if !s.enabled || d.detail_map.len() != n * n {
         return Vec::new();
     }
+    let keep = level_keep(level);
     let texel = Vec2::new(d.size.x, d.size.z) / n as f32;
     let per_texel = s.density.clamp(0.0, MAX_DENSITY) * texel.x * texel.y;
     let (t0, t1) = (
         (lo / texel).floor().max(Vec2::ZERO),
         (hi / texel).ceil().min(Vec2::splat(n as f32)),
     );
-    let mut out = Vec::new();
+    let mut out: Vec<(f32, Blade)> = Vec::new();
     let seed = d.rule_seed;
+    let clumping = s.clumping.clamp(0.0, 1.0);
+    // Tufts a little closer together than the tallest blades.
+    let cell = (s.height[1].max(0.05) * 0.8).max(0.25);
     for tz in t0.y as usize..t1.y as usize {
         for tx in t0.x as usize..t1.x as usize {
             let density = d.detail_map[tz * n + tx];
@@ -165,25 +225,76 @@ pub fn scatter(d: &TerrainData, lo: Vec2, hi: Vec2) -> Vec<Blade> {
                 want.floor() as u32 + u32::from(noise::hash(ix, iz, seed ^ 0x51) < want.fract());
             for k in 0..count {
                 let r = |salt: u32| noise::hash(ix, iz, seed.wrapping_add(k * 97 + salt));
-                let p = Vec2::new(tx as f32 + r(1), tz as f32 + r(2)) * texel;
-                if p.x < lo.x || p.y < lo.y || p.x >= hi.x || p.y >= hi.y {
+                let key = r(11);
+                if key >= keep {
                     continue;
                 }
-                let tall = s.height[0] + (s.height[1] - s.height[0]) * r(3);
+                let root = Vec2::new(tx as f32 + r(1), tz as f32 + r(2)) * texel;
+                if root.x < lo.x || root.y < lo.y || root.x >= hi.x || root.y >= hi.y {
+                    continue;
+                }
+                // Tufts: blades are pulled towards their tuft's centre and lean away from it
+                // (a root pulled out of the rectangle stays put, so chunks still add up).
+                let (centre, id) = tuft(root, cell, seed ^ 0x7f4a);
+                let pulled = centre + (root - centre) * (1.0 - 0.6 * clumping);
+                let inside = pulled.cmpge(lo).all() && pulled.cmplt(hi).all();
+                let p = if inside { pulled } else { root };
+                let away = p - centre;
+                let lean = if away.length_squared() > 1e-6 {
+                    away.y.atan2(away.x)
+                } else {
+                    r(8) * std::f32::consts::TAU
+                };
+                let spread = (away.length() / (cell * 0.5)).min(1.0);
+                // Patches of taller and shorter grass at two scales; tufts and single blades
+                // vary around them, and a few stems stand well above the rest.
+                let patch = noise::fbm(p.x, p.y, 7.0, 3, seed ^ 0x2b) * 0.5 + 0.5;
+                let field = noise::fbm(p.x, p.y, 28.0, 2, seed ^ 0x5d) * 0.5 + 0.5;
+                let tuft_scale = 1.0 + (id - 0.5) * 0.8 * clumping;
+                let mix = (0.3 * r(3) * r(3) + 0.35 * patch + 0.35 * field).clamp(0.0, 1.0);
+                let outlier = if r(15) < 0.06 { 1.35 + 0.3 * r(16) } else { 1.0 };
+                let mut tall = (s.height[0] + (s.height[1] - s.height[0]) * mix)
+                    * tuft_scale
+                    * outlier;
+                // Most blades are short undergrowth below the taller ones.
+                if r(17) < 0.55 {
+                    tall *= 0.35 + 0.3 * r(18);
+                }
                 let dry = (noise::fbm(p.x, p.y, 9.0, 3, seed ^ 0x77) * 0.5 + 0.5).clamp(0.0, 1.0);
-                out.push(Blade {
-                    position: [p.x, d.sample_height(p.x, p.y), p.y, tall],
-                    shape: [
-                        r(4) * std::f32::consts::TAU,
-                        s.width * (0.7 + 0.6 * r(5)),
-                        (dry * 1.4 - 0.2 + 0.2 * r(6)).clamp(0.0, 1.0),
-                        r(7),
-                    ],
-                });
+                let seed_head = r(9) < s.seed_heads.clamp(0.0, 1.0) * (0.4 + 1.2 * patch);
+                let mut width = s.width * (0.7 + 0.6 * r(5));
+                if seed_head {
+                    tall *= 1.1 + 0.35 * r(10);
+                    width = s.width.min(0.02) * 0.3;
+                }
+                let bend = s.bend.clamp(0.0, 1.5)
+                    * (0.35 + 0.65 * r(12))
+                    * (1.0 + clumping * spread)
+                    * if seed_head { 0.35 } else { 1.0 };
+                let tint = (id - 0.5) * 2.0 * clumping + (r(14) - 0.5) * 0.6;
+                out.push((
+                    key,
+                    Blade {
+                        position: [p.x, d.sample_height(p.x, p.y), p.y, tall],
+                        shape: [
+                            r(4) * std::f32::consts::TAU,
+                            width,
+                            (dry * 1.4 - 0.2 + 0.2 * r(6)).clamp(0.0, 1.0),
+                            r(7),
+                        ],
+                        extra: [
+                            if seed_head { 1.0 } else { 0.0 },
+                            bend,
+                            lean + (r(13) - 0.5) * 1.2,
+                            tint.clamp(-1.0, 1.0),
+                        ],
+                    },
+                ));
             }
         }
     }
-    out
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    out.into_iter().map(|(_, b)| b).collect()
 }
 
 #[cfg(test)]

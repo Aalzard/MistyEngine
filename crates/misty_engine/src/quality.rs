@@ -201,6 +201,9 @@ pub struct QualityLevel {
     pub anti_aliasing: AntiAliasing,
     /// FXAA post pass on the final image (smooths edges MSAA misses: alpha cut-outs, shading).
     pub fxaa: bool,
+    /// Temporal anti-aliasing: jittered frames blended over time (smooth edges, thin grass
+    /// and foliage that stop crawling; a little softer in motion).
+    pub temporal_aa: bool,
     pub texture_quality: TextureQuality,
     pub anisotropic_textures: Anisotropic,
     /// Largest texture side on the GPU, whatever the textures' own Max Size.
@@ -243,6 +246,7 @@ impl QualityLevel {
             shadow_denoise: false,
             anti_aliasing: AntiAliasing::Off,
             fxaa: false,
+            temporal_aa: false,
             texture_quality: TextureQuality::Half,
             anisotropic_textures: Anisotropic::Disabled,
             max_texture_size: 1024,
@@ -271,6 +275,7 @@ impl QualityLevel {
             shadow_denoise: false,
             anti_aliasing: AntiAliasing::X2,
             fxaa: false,
+            temporal_aa: true,
             texture_quality: TextureQuality::Full,
             anisotropic_textures: Anisotropic::PerTexture,
             max_texture_size: 2048,
@@ -299,6 +304,7 @@ impl QualityLevel {
             shadow_denoise: true,
             anti_aliasing: AntiAliasing::X4,
             fxaa: false,
+            temporal_aa: true,
             texture_quality: TextureQuality::Full,
             anisotropic_textures: Anisotropic::ForcedOn,
             max_texture_size: 4096,

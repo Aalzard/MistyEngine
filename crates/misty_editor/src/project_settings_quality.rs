@@ -217,6 +217,12 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     );
     edited |= row(
         ui,
+        "Temporal Anti-aliasing",
+        "Jitters the camera each frame and blends the frames over time: smooth edges, and thin          grass, foliage and shading that stop crawling. A little softer while moving.",
+        |ui| ui.checkbox(&mut l.temporal_aa, "").changed(),
+    );
+    edited |= row(
+        ui,
         "Render Scale",
         "Draws the game at this fraction of the window size and stretches it. Below 1 = \
          faster on weak GPUs, blurrier.",

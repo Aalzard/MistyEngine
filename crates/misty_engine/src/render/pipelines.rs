@@ -193,6 +193,8 @@ pub(super) struct Spec<'a> {
     /// Main-pass glow target: None = not in the main pass, Some(true) = writes emission
     /// (blended like the colour target).
     pub glow: Option<bool>,
+    /// MSAA coverage from the fragment's alpha (grass cards).
+    pub alpha_to_coverage: bool,
 }
 
 impl<'a> Spec<'a> {
@@ -212,6 +214,7 @@ impl<'a> Spec<'a> {
             blend: None,
             samples: SAMPLE_COUNT,
             glow: Some(false),
+            alpha_to_coverage: false,
         }
     }
 }
@@ -571,11 +574,31 @@ impl Pipelines {
                 )
             },
         );
-        let grass_layout = layout("misty grass", &[entry(0, S::VERTEX_FRAGMENT, uniform())]);
+        // Grass parameters, the grass atlas and its sampler.
+        let grass_layout = layout(
+            "misty grass",
+            &[
+                entry(0, S::VERTEX_FRAGMENT, uniform()),
+                entry(
+                    1,
+                    S::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
+                entry(
+                    2,
+                    S::FRAGMENT,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ),
+            ],
+        );
         let blade_buffers = [wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<crate::terrain::details::Blade>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4],
+            attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4],
         }];
         let grass = build(
             device,
@@ -586,6 +609,7 @@ impl Pipelines {
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 depth: Depth::main(true, wgpu::CompareFunction::Less),
                 glow: Some(true),
+                alpha_to_coverage: true,
                 ..Spec::new(
                     "grass",
                     GRASS_SRC,
@@ -732,6 +756,7 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
         }),
         multisample: wgpu::MultisampleState {
             count: spec.samples,
+            alpha_to_coverage_enabled: spec.alpha_to_coverage && spec.samples > 1,
             ..Default::default()
         },
         fragment: spec.fs.map(|fs| wgpu::FragmentState {
