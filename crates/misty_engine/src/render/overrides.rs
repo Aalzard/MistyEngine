@@ -35,6 +35,12 @@ pub struct MaterialOverrides {
     /// Multiplies the material's emission intensity.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emission: Option<f32>,
+    /// Replaces the albedo texture (a Video Player's frames; a runtime texture name).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main_texture: Option<String>,
+    /// Replaces the emission map (a Video Player's frames on a glowing screen).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emission_texture: Option<String>,
 }
 
 /// One override property's value (scripts and the Inspector).
@@ -83,6 +89,12 @@ impl MaterialOverrides {
         }
         if let Some(e) = self.emission {
             p.emission_intensity *= e.max(0.0);
+        }
+        if let Some(t) = &self.main_texture {
+            p.albedo_map = Some(t.clone());
+        }
+        if let Some(t) = &self.emission_texture {
+            p.emission_map = Some(t.clone());
         }
     }
 

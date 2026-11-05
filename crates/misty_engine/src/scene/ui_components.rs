@@ -221,7 +221,115 @@ impl Default for UiImage {
     }
 }
 
-/// Text drawn with the built-in font.
+/// What happens to text that doesn't fit its rect.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TextOverflow {
+    /// Draw past the rect.
+    #[default]
+    Overflow,
+    /// Cut the last line that fits with "…".
+    Ellipsis,
+    /// Hide lines that don't fit.
+    Truncate,
+    /// Show one rect-full at a time (`page` picks which).
+    Page,
+}
+
+impl TextOverflow {
+    pub const ALL: [TextOverflow; 4] = [
+        TextOverflow::Overflow,
+        TextOverflow::Ellipsis,
+        TextOverflow::Truncate,
+        TextOverflow::Page,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            TextOverflow::Overflow => "Overflow",
+            TextOverflow::Ellipsis => "Ellipsis",
+            TextOverflow::Truncate => "Truncate",
+            TextOverflow::Page => "Page",
+        }
+    }
+}
+
+/// Outline, drop shadow and gradient of a text (drawn from its distance field glyphs).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TextEffects {
+    /// Outline thickness in canvas units (0 = none).
+    pub outline_width: f32,
+    pub outline_color: [f32; 4],
+    pub shadow: bool,
+    /// Shadow offset in canvas units (x right, y up).
+    pub shadow_offset: [f32; 2],
+    pub shadow_color: [f32; 4],
+    /// Shadow blur, 0 (sharp) to 1 (very soft).
+    pub shadow_softness: f32,
+    /// Colour each glyph with a gradient (multiplied with the text colour).
+    pub gradient: bool,
+    /// Top-left, top-right, bottom-left, bottom-right colours.
+    pub gradient_colors: [[f32; 4]; 4],
+}
+
+impl Default for TextEffects {
+    fn default() -> Self {
+        Self {
+            outline_width: 0.0,
+            outline_color: [0.0, 0.0, 0.0, 1.0],
+            shadow: false,
+            shadow_offset: [1.5, -1.5],
+            shadow_color: [0.0, 0.0, 0.0, 0.5],
+            shadow_softness: 0.2,
+            gradient: false,
+            gradient_colors: [
+                [1.0; 4],
+                [1.0; 4],
+                [0.6, 0.6, 0.6, 1.0],
+                [0.6, 0.6, 0.6, 1.0],
+            ],
+        }
+    }
+}
+
+impl TextEffects {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Any effect switched on?
+    pub fn any(&self) -> bool {
+        self.outline_width > 0.0 || self.shadow || self.gradient
+    }
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
+}
+
+fn is_one(v: &u32) -> bool {
+    *v == 1
+}
+
+fn is_default_overflow(o: &TextOverflow) -> bool {
+    *o == TextOverflow::Overflow
+}
+
+fn is_min_size(v: &f32) -> bool {
+    *v == UiText::AUTO_MIN
+}
+
+fn is_max_size(v: &f32) -> bool {
+    *v == UiText::AUTO_MAX
+}
+
+/// Text: the built-in font or a font asset, with rich text markup, effects and overflow modes.
+/// The rich text settings are left out of files while at their defaults, so older scenes load
+/// and save unchanged.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiText {
@@ -236,6 +344,35 @@ pub struct UiText {
     /// Wrap lines at the rect's width (else they overflow it).
     pub wrap: bool,
     pub raycast_target: bool,
+    /// Interpret `<b>`, `<color=…>`, `<link=…>` and the other tags.
+    #[serde(skip_serializing_if = "is_true")]
+    pub rich_text: bool,
+    /// Font asset (`.ttf` / `.otf`); None = the built-in font.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+    /// Texture whose sliced sprites `<sprite name=…>` shows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sprite_asset: Option<String>,
+    /// Extra space after each character, hundredths of an em.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub character_spacing: f32,
+    /// Extra space added to spaces, hundredths of an em.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub word_spacing: f32,
+    #[serde(skip_serializing_if = "is_default_overflow")]
+    pub overflow: TextOverflow,
+    /// Page shown in Page overflow mode (1 = first).
+    #[serde(skip_serializing_if = "is_one")]
+    pub page: u32,
+    /// Pick the largest size between the limits that fits the rect.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub auto_size: bool,
+    #[serde(skip_serializing_if = "is_min_size")]
+    pub font_size_min: f32,
+    #[serde(skip_serializing_if = "is_max_size")]
+    pub font_size_max: f32,
+    #[serde(skip_serializing_if = "TextEffects::is_default")]
+    pub effects: TextEffects,
 }
 
 impl Default for UiText {
@@ -250,8 +387,24 @@ impl Default for UiText {
             alignment: TextAnchor::UpperLeft,
             wrap: true,
             raycast_target: true,
+            rich_text: true,
+            font: None,
+            sprite_asset: None,
+            character_spacing: 0.0,
+            word_spacing: 0.0,
+            overflow: TextOverflow::Overflow,
+            page: 1,
+            auto_size: false,
+            font_size_min: Self::AUTO_MIN,
+            font_size_max: Self::AUTO_MAX,
+            effects: TextEffects::default(),
         }
     }
+}
+
+impl UiText {
+    pub const AUTO_MIN: f32 = 10.0;
+    pub const AUTO_MAX: f32 = 72.0;
 }
 
 /// One On Click entry: call `method` on the scripts of `target`.

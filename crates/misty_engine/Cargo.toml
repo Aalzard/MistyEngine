@@ -29,6 +29,9 @@ half = { version = "2.7", features = ["bytemuck"] }
 flate2 = "1.1"
 # Built games: LZ4 compression of `.pak` entries (pure Rust, so every target cross-compiles).
 lz4_flex = "0.11"
+# Rich text: right-to-left reordering (UAX #9) and complex-script shaping (Arabic joining).
+unicode-bidi = "0.3.18"
+rustybuzz = "0.20.1"
 
 [dev-dependencies]
 # Headless GPU tests (pixel comparisons, the stress benchmark).

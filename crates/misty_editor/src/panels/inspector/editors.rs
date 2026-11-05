@@ -47,6 +47,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::glow_editors::icon(other))
             .or_else(|| super::vcam_editors::icon(other))
             .or_else(|| super::timeline_editors::icon(other))
+            .or_else(|| super::video_editors::icon(other))
             .or_else(|| super::skinned_editors::icon(other))
             .or_else(|| super::lod_editor::icon(other))
             .or_else(|| super::rig_editors::icon(other))
@@ -101,6 +102,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::timeline_editors::NAMES.contains(&name) {
         return super::timeline_editors::enabled_flag(state, e, name);
+    }
+    if super::video_editors::NAMES.contains(&name) {
+        return super::video_editors::enabled_flag(state, e, name);
     }
     if super::skinned_editors::NAMES.contains(&name) {
         return super::skinned_editors::enabled_flag(state, e, name);
@@ -177,6 +181,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::timeline_editors::NAMES.contains(&name) {
         return super::timeline_editors::set_enabled(state, e, name, on);
+    }
+    if super::video_editors::NAMES.contains(&name) {
+        return super::video_editors::set_enabled(state, e, name, on);
     }
     if super::skinned_editors::NAMES.contains(&name) {
         return super::skinned_editors::set_enabled(state, e, name, on);
@@ -308,6 +315,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         tl if super::timeline_editors::NAMES.contains(&tl) => {
             super::timeline_editors::edit(ui, state, e, tl)
+        }
+        vp if super::video_editors::NAMES.contains(&vp) => {
+            super::video_editors::edit(ui, state, e, vp)
         }
         skinned if super::skinned_editors::NAMES.contains(&skinned) => {
             super::skinned_editors::edit(ui, state, e, skinned)

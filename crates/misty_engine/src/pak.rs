@@ -28,7 +28,7 @@ pub struct PakEntry {
 }
 
 /// Formats that are already compressed: LZ4 would only cost load time.
-const PRECOMPRESSED: [&str; 6] = ["png", "jpg", "jpeg", "ogg", "mp3", "glb"];
+const PRECOMPRESSED: [&str; 8] = ["png", "jpg", "jpeg", "ogg", "mp3", "glb", "avi", "gif"];
 
 /// Writes an archive entry by entry.
 pub struct PakWriter<W: Write + Seek> {

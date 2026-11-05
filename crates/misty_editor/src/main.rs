@@ -129,6 +129,8 @@ mod sample_vehicles;
 #[cfg(test)]
 mod sample_vfx;
 #[cfg(test)]
+mod sample_video_text;
+#[cfg(test)]
 mod sample_volumetric_fog;
 #[cfg(test)]
 mod sample_water;

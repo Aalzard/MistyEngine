@@ -1,0 +1,1095 @@
+{
+  "lighting": {
+    "environment_lighting": {
+      "equator_color": [
+        0.114,
+        0.125,
+        0.133
+      ],
+      "ground_color": [
+        0.047,
+        0.043,
+        0.035
+      ],
+      "intensity": 1.0,
+      "sky_color": [
+        0.12,
+        0.12,
+        0.15
+      ],
+      "source": "Color"
+    },
+    "fog": {
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "density": 0.01,
+      "enabled": false,
+      "end": 300.0,
+      "mode": "ExponentialSquared",
+      "start": 0.0
+    },
+    "reflection_intensity": 1.0,
+    "skybox": {
+      "atmosphere_thickness": 1.0,
+      "color": [
+        0.19,
+        0.3,
+        0.47
+      ],
+      "exposure": 1.0,
+      "ground": [
+        0.32,
+        0.3,
+        0.29
+      ],
+      "kind": "Procedural",
+      "sky_tint": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "sun_disk": "HighQuality",
+      "sun_size": 0.04
+    }
+  },
+  "objects": [
+    {
+      "components": {
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            4.0,
+            12.0,
+            0.0
+          ],
+          "position": [
+            -1.6,
+            1.6,
+            -5.2
+          ],
+          "rotation": [
+            0.034708314,
+            0.10446479,
+            -0.0036479908,
+            0.9939161
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ceiling Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.95,
+            0.88
+          ],
+          "enabled": true,
+          "intensity": 0.6,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            60.0,
+            20.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.5,
+            -2.0
+          ],
+          "rotation": [
+            0.49240386,
+            0.15038373,
+            -0.08682409,
+            0.8528685
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Floor",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Screening Room.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -0.05,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            14.0,
+            0.1,
+            14.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Back Wall",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Screening Room.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            2.0,
+            1.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            14.0,
+            4.0,
+            0.2
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Television",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.4,
+            1.7,
+            0.9
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Bezel",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Screen Bezel.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.08
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.4,
+            1.98,
+            0.12
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "Audio Source": {
+          "clip": null,
+          "enabled": true,
+          "loop": false,
+          "max_distance": 500.0,
+          "min_distance": 1.0,
+          "mute": false,
+          "pitch": 1.0,
+          "play_on_awake": false,
+          "rolloff": "Logarithmic",
+          "spatial_blend": 0.0,
+          "stereo_pan": 0.0,
+          "volume": 1.0
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Audio Source",
+            "Video Player"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Screen",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Quad"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": false,
+          "enabled": true,
+          "material": "Assets/Materials/Video Screen.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            -0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.2,
+            1.8,
+            1.0
+          ]
+        },
+        "Video Player": {
+          "aspect_ratio": "FitInside",
+          "audio_output": "AudioSource",
+          "audio_source": null,
+          "clip": "Assets/Video/TestPattern.avi",
+          "direct_volume": 1.0,
+          "enabled": true,
+          "looping": true,
+          "mute": false,
+          "play_on_awake": true,
+          "playback_speed": 1.0,
+          "render_mode": "MaterialOverride",
+          "skip_on_drop": true,
+          "source": "VideoClip",
+          "target_camera": null,
+          "target_camera_alpha": 1.0,
+          "target_material_index": 0,
+          "target_material_property": "MainTexture",
+          "target_renderer": null,
+          "target_texture": "",
+          "url": "",
+          "wait_for_first_frame": true
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "render_mode": "ScreenSpaceOverlay",
+          "sort_order": 0
+        },
+        "Canvas Scaler": {
+          "enabled": true,
+          "match_width_or_height": 0.5,
+          "mode": "ScaleWithScreenSize",
+          "reference_resolution": [
+            1280.0,
+            720.0
+          ],
+          "scale_factor": 1.0
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Canvas",
+            "Canvas Scaler"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Canvas",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Image"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rich Text Panel",
+          "tag": "Untagged"
+        },
+        "Image": {
+          "color": [
+            0.05,
+            0.06,
+            0.09,
+            0.82
+          ],
+          "enabled": true,
+          "raycast_target": false,
+          "texture": null
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.0,
+            0.5
+          ],
+          "anchor_min": [
+            0.0,
+            0.5
+          ],
+          "anchored_position": [
+            290.0,
+            20.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            540.0,
+            560.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 7
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Title",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.5,
+            1.0
+          ],
+          "anchor_min": [
+            0.5,
+            1.0
+          ],
+          "anchored_position": [
+            0.0,
+            -46.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            500.0,
+            60.0
+          ]
+        },
+        "Text": {
+          "alignment": "MiddleCenter",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "effects": {
+            "gradient": true,
+            "gradient_colors": [
+              [
+                1.0,
+                0.95,
+                0.6,
+                1.0
+              ],
+              [
+                1.0,
+                0.75,
+                0.45,
+                1.0
+              ],
+              [
+                0.45,
+                0.8,
+                1.0,
+                1.0
+              ],
+              [
+                0.7,
+                0.55,
+                1.0,
+                1.0
+              ]
+            ],
+            "outline_color": [
+              0.05,
+              0.1,
+              0.25,
+              1.0
+            ],
+            "outline_width": 1.5,
+            "shadow": true,
+            "shadow_color": [
+              0.0,
+              0.0,
+              0.0,
+              0.6
+            ],
+            "shadow_offset": [
+              3.0,
+              -3.0
+            ],
+            "shadow_softness": 0.4
+          },
+          "enabled": true,
+          "font_size": 40.0,
+          "line_spacing": 1.0,
+          "raycast_target": false,
+          "text": "<b>Video</b> + <i>Rich Text</i>",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 8
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Body",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.5,
+            1.0
+          ],
+          "anchor_min": [
+            0.5,
+            1.0
+          ],
+          "anchored_position": [
+            0.0,
+            -270.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            500.0,
+            360.0
+          ]
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/LinkLogger.lua"
+            }
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            0.92,
+            0.93,
+            0.96,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 24.0,
+          "line_spacing": 1.15,
+          "raycast_target": true,
+          "sprite_asset": "Assets/Video/RichIcons.png",
+          "text": "<color=#FFD24A>Colours</color>, <b>bold</b>, <i>italic</i>, <u>underline</u>, <s>strike</s>\n<size=130%>Big</size> and <size=75%>small</size>, <mark=#3AA0FF66>marked</mark>, x<sup>2</sup> H<sub>2</sub>O\nSprites <sprite name=\"Star\"> <sprite name=\"Heart\"> <sprite name=\"Coin\"> <sprite name=\"Check\"> inline\n<link=\"docs\"><u><color=#7FD0FF>Click this link</color></u></link> to log a message\n<align=right><alpha=#99>right aligned, faded</align>\nمرحبا بالعالم — שלום עולם",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 8
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ellipsis Box",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.5,
+            0.0
+          ],
+          "anchor_min": [
+            0.5,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            52.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            500.0,
+            56.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "character_spacing": 2.0,
+          "color": [
+            0.75,
+            0.8,
+            0.9,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 20.0,
+          "line_spacing": 1.0,
+          "overflow": "Ellipsis",
+          "raycast_target": true,
+          "text": "Overflow: Ellipsis cuts text that does not fit the box, so this long sentence ends with three dots instead of spilling out of its panel.",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 8
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Raw Image",
+            "Video Player"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Render Texture Picture",
+          "tag": "Untagged"
+        },
+        "Raw Image": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "raycast_target": false,
+          "texture": "runtime://Picture",
+          "uv_rect": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            1.0,
+            0.0
+          ],
+          "anchor_min": [
+            1.0,
+            0.0
+          ],
+          "anchored_position": [
+            -150.0,
+            100.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            256.0,
+            144.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Video Player": {
+          "aspect_ratio": "FitInside",
+          "audio_output": "None",
+          "audio_source": null,
+          "clip": "Assets/Video/TestPattern.avi",
+          "direct_volume": 1.0,
+          "enabled": true,
+          "looping": true,
+          "mute": false,
+          "play_on_awake": true,
+          "playback_speed": 0.5,
+          "render_mode": "RenderTexture",
+          "skip_on_drop": true,
+          "source": "VideoClip",
+          "target_camera": null,
+          "target_camera_alpha": 1.0,
+          "target_material_index": 0,
+          "target_material_property": "MainTexture",
+          "target_renderer": null,
+          "target_texture": "Picture",
+          "url": "",
+          "wait_for_first_frame": true
+        }
+      },
+      "parent": 7
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Caption",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.5,
+            0.0
+          ],
+          "anchor_min": [
+            0.5,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            -16.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            256.0,
+            24.0
+          ]
+        },
+        "Text": {
+          "alignment": "MiddleCenter",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "effects": {
+            "gradient": false,
+            "gradient_colors": [
+              [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              [
+                0.6,
+                0.6,
+                0.6,
+                1.0
+              ],
+              [
+                0.6,
+                0.6,
+                0.6,
+                1.0
+              ]
+            ],
+            "outline_color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "outline_width": 0.0,
+            "shadow": true,
+            "shadow_color": [
+              0.0,
+              0.0,
+              0.0,
+              0.5
+            ],
+            "shadow_offset": [
+              1.5,
+              -1.5
+            ],
+            "shadow_softness": 0.2
+          },
+          "enabled": true,
+          "font_size": 18.0,
+          "line_spacing": 1.0,
+          "raycast_target": false,
+          "text": "Render Texture · <b>½×</b> speed",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 12
+    }
+  ],
+  "version": 1
+}

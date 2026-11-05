@@ -131,6 +131,10 @@ impl SceneComponent for super::Animator {
     const CATEGORY: &'static str = "Miscellaneous";
 }
 
+impl SceneComponent for crate::video::VideoPlayer {
+    const NAME: &'static str = "Video Player";
+    const CATEGORY: &'static str = "Video";
+}
 impl SceneComponent for super::PlayableDirector {
     const NAME: &'static str = "Playable Director";
     const CATEGORY: &'static str = "Miscellaneous";
@@ -369,6 +373,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<crate::rigging::ChainIk>(),
             ComponentInfo::of::<crate::rigging::OverrideTransform>(),
             ComponentInfo::of::<super::PlayableDirector>(),
+            ComponentInfo::of::<crate::video::VideoPlayer>(),
             ComponentInfo::of::<ParticleSystem>(),
             ComponentInfo::of::<crate::vfx::VisualEffect>(),
             // Splines (splines).

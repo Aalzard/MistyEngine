@@ -42,6 +42,10 @@ pub struct AssetDatabase {
     pub effects: BTreeSet<String>,
     /// Project-relative paths of audio clips (.wav/.ogg/.mp3).
     pub clips: BTreeSet<String>,
+    /// Video clips (.avi, .gif, and video files that can't be played, which explain why).
+    pub videos: BTreeSet<String>,
+    /// Font assets (.ttf / .otf).
+    pub fonts: Vec<String>,
     /// Project-relative paths of Audio Mixers (.mixer).
     pub mixers: BTreeSet<String>,
     /// Project-relative path → preset (`.preset`).
@@ -72,6 +76,8 @@ impl AssetDatabase {
             materials: BTreeMap::new(),
             scripts: BTreeMap::new(),
             clips: BTreeSet::new(),
+            videos: BTreeSet::new(),
+            fonts: Vec::new(),
             mixers: BTreeSet::new(),
             anims: BTreeSet::new(),
             controllers: BTreeSet::new(),
@@ -102,6 +108,8 @@ impl AssetDatabase {
         self.materials.clear();
         self.presets.clear();
         self.clips.clear();
+        self.videos.clear();
+        self.fonts.clear();
         self.mixers.clear();
         self.anims.clear();
         self.controllers.clear();
@@ -151,6 +159,10 @@ impl AssetDatabase {
                     self.clips.insert(self.relative(&path));
                 } else if misty_engine::audio::is_mixer(&path.to_string_lossy()) {
                     self.mixers.insert(self.relative(&path));
+                } else if misty_engine::video::is_video_like(&path.to_string_lossy()) {
+                    self.videos.insert(self.relative(&path));
+                } else if misty_engine::ui::rich::fonts::is_font(&path.to_string_lossy()) {
+                    self.fonts.push(self.relative(&path));
                 } else {
                     let rel = self.relative(&path);
                     if misty_engine::assets::is_texture(&rel) {

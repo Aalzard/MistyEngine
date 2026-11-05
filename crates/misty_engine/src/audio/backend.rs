@@ -52,6 +52,12 @@ pub trait AudioBackend {
     fn remove_track(&mut self, track: TrackId);
     /// Loudest sample (linear) on the track since the last call.
     fn track_peak(&mut self, track: TrackId) -> f32;
+    /// Decode an in-memory sound file and play it whenever `path` is played (sound that has no
+    /// file, such as a video's audio track).
+    fn preload(&mut self, path: &Path, bytes: Vec<u8>) -> Result<(), String> {
+        let _ = (path, bytes);
+        Ok(())
+    }
 }
 
 // ---- kira ------------------------------------------------------------------------------------
@@ -116,6 +122,13 @@ fn rate(pitch: f32) -> f64 {
 }
 
 impl AudioBackend for KiraBackend {
+    fn preload(&mut self, path: &Path, bytes: Vec<u8>) -> Result<(), String> {
+        let data =
+            StaticSoundData::from_cursor(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+        self.clips.insert(path.to_owned(), data);
+        Ok(())
+    }
+
     fn play(
         &mut self,
         path: &Path,

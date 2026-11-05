@@ -87,7 +87,11 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
             let textures = state.assets.textures.clone();
             edit_copy::<UiImage>(state, e, |c| image(ui, c, &textures))
         }
-        "Text" => with::<UiText>(ui, state, e, text),
+        "Text" => {
+            let textures = state.assets.textures.clone();
+            let fonts = state.assets.fonts.clone();
+            edit_copy::<UiText>(state, e, |c| text(ui, c, &textures, &fonts))
+        }
         "Button" => {
             let objects: Vec<(Entity, String)> = state
                 .scene
@@ -450,7 +454,7 @@ fn image(ui: &mut Ui, img: &mut UiImage, textures: &[String]) -> bool {
     })
 }
 
-fn text(ui: &mut Ui, t: &mut UiText) -> bool {
+fn text(ui: &mut Ui, t: &mut UiText, textures: &[String], fonts: &[String]) -> bool {
     let mut ch = ui
         .add(
             egui::TextEdit::multiline(&mut t.text)
@@ -461,7 +465,11 @@ fn text(ui: &mut Ui, t: &mut UiText) -> bool {
     ch |= grid(ui, "ui_text_grid", |ui| {
         let mut c = false;
         ui.label("Font");
-        ui.label(RichText::new("Ubuntu Light (built-in)").color(theme::TEXT_DIM));
+        c |= font_slot(ui, &mut t.font, fonts);
+        ui.end_row();
+        ui.label("Rich Text")
+            .on_hover_text("<b> <i> <u> <s> <color> <size> <alpha> <mark> <sup> <sub> <br> <sprite> <link> <align> <noparse>");
+        c |= ui.checkbox(&mut t.rich_text, "").changed();
         ui.end_row();
         ui.label("Font Size");
         c |= ui
@@ -502,7 +510,177 @@ fn text(ui: &mut Ui, t: &mut UiText) -> bool {
         ui.end_row();
         c
     });
+    ch |= rich_text_settings(ui, t, textures);
     ch
+}
+
+/// Font asset picker (None = the built-in font).
+fn font_slot(ui: &mut Ui, font: &mut Option<String>, fonts: &[String]) -> bool {
+    let mut ch = false;
+    let builtin = "Ubuntu Light (built-in)";
+    let name = font
+        .as_deref()
+        .map(misty_engine::scene::clip_name)
+        .unwrap_or_else(|| builtin.into());
+    let r = egui::ComboBox::from_id_salt("ui_text_font")
+        .selected_text(name)
+        .show_ui(ui, |ui| {
+            ch |= ui.selectable_value(font, None, builtin).changed();
+            for f in fonts {
+                ch |= ui
+                    .selectable_value(font, Some(f.clone()), misty_engine::scene::clip_name(f))
+                    .changed();
+            }
+        })
+        .response;
+    if let Some(p) = r.dnd_release_payload::<crate::panels::AssetPayload>()
+        && misty_engine::ui::rich::fonts::is_font(&p.0)
+    {
+        *font = Some(p.0.clone());
+        ch = true;
+    }
+    ch
+}
+
+/// Auto size, spacing, overflow, inline sprites and the outline / shadow / gradient effects.
+fn rich_text_settings(ui: &mut Ui, t: &mut UiText, textures: &[String]) -> bool {
+    use misty_engine::scene::TextOverflow;
+    grid(ui, "ui_text_rich_grid", |ui| {
+        let mut c = false;
+        crate::panels::inspector::card::grid_sub_header(ui, "Layout");
+        ui.label("Auto Size");
+        c |= ui.checkbox(&mut t.auto_size, "").changed();
+        ui.end_row();
+        if t.auto_size {
+            ui.label("Min / Max");
+            ui.horizontal(|ui| {
+                c |= ui
+                    .add(
+                        egui::DragValue::new(&mut t.font_size_min)
+                            .speed(0.5)
+                            .range(1.0..=300.0),
+                    )
+                    .changed();
+                c |= ui
+                    .add(
+                        egui::DragValue::new(&mut t.font_size_max)
+                            .speed(0.5)
+                            .range(1.0..=300.0),
+                    )
+                    .changed();
+            });
+            ui.end_row();
+        }
+        ui.label("Character Spacing");
+        c |= ui
+            .add(
+                egui::DragValue::new(&mut t.character_spacing)
+                    .speed(0.5)
+                    .range(-50.0..=200.0),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Word Spacing");
+        c |= ui
+            .add(
+                egui::DragValue::new(&mut t.word_spacing)
+                    .speed(0.5)
+                    .range(-50.0..=200.0),
+            )
+            .changed();
+        ui.end_row();
+        ui.label("Vertical Overflow");
+        egui::ComboBox::from_id_salt("ui_text_overflow")
+            .selected_text(t.overflow.label())
+            .show_ui(ui, |ui| {
+                for o in TextOverflow::ALL {
+                    c |= ui.selectable_value(&mut t.overflow, o, o.label()).changed();
+                }
+            });
+        ui.end_row();
+        if t.overflow == TextOverflow::Page {
+            ui.label("Page");
+            c |= ui
+                .add(egui::DragValue::new(&mut t.page).range(1..=999))
+                .changed();
+            ui.end_row();
+        }
+        ui.label("Sprite Asset");
+        let name = t
+            .sprite_asset
+            .as_deref()
+            .map(misty_engine::scene::clip_name)
+            .unwrap_or_else(|| "None".into());
+        egui::ComboBox::from_id_salt("ui_text_sprite_asset")
+            .selected_text(name)
+            .show_ui(ui, |ui| {
+                c |= ui
+                    .selectable_value(&mut t.sprite_asset, None, "None")
+                    .changed();
+                for tex in textures {
+                    c |= ui
+                        .selectable_value(
+                            &mut t.sprite_asset,
+                            Some(tex.clone()),
+                            misty_engine::scene::clip_name(tex),
+                        )
+                        .changed();
+                }
+            });
+        ui.end_row();
+        crate::panels::inspector::card::grid_sub_header(ui, "Effects");
+        let fx = &mut t.effects;
+        ui.label("Outline Width");
+        c |= ui
+            .add(
+                egui::DragValue::new(&mut fx.outline_width)
+                    .speed(0.05)
+                    .range(0.0..=8.0),
+            )
+            .changed();
+        ui.end_row();
+        if fx.outline_width > 0.0 {
+            ui.label("Outline Color");
+            c |= color(ui, &mut fx.outline_color);
+            ui.end_row();
+        }
+        ui.label("Shadow");
+        c |= ui.checkbox(&mut fx.shadow, "").changed();
+        ui.end_row();
+        if fx.shadow {
+            ui.label("Shadow Offset");
+            ui.horizontal(|ui| {
+                for v in &mut fx.shadow_offset {
+                    c |= ui.add(egui::DragValue::new(v).speed(0.1)).changed();
+                }
+            });
+            ui.end_row();
+            ui.label("Shadow Color");
+            c |= color(ui, &mut fx.shadow_color);
+            ui.end_row();
+            ui.label("Shadow Softness");
+            c |= ui
+                .add(egui::Slider::new(&mut fx.shadow_softness, 0.0..=1.0))
+                .changed();
+            ui.end_row();
+        }
+        ui.label("Gradient");
+        c |= ui.checkbox(&mut fx.gradient, "").changed();
+        ui.end_row();
+        if fx.gradient {
+            for (label, k) in [
+                ("Top Left", 0),
+                ("Top Right", 1),
+                ("Bottom Left", 2),
+                ("Bottom Right", 3),
+            ] {
+                ui.label(label);
+                c |= color(ui, &mut fx.gradient_colors[k]);
+                ui.end_row();
+            }
+        }
+        c
+    })
 }
 
 /// Horizontal (left/center/right) and vertical (upper/middle/lower) toggle rows.

@@ -43,6 +43,7 @@ mod timeline_editors;
 mod ui_editors;
 mod vcam_editors;
 mod vehicle_editors;
+mod video_editors;
 mod visual_effect;
 mod water;
 
@@ -644,6 +645,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::timeline::is_timeline(rel) {
         timeline_editors::timeline_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::video::is_video_like(rel) {
+        video_editors::video_asset(ui, state, rel);
         return;
     }
     if misty_engine::tilemap::tile::is_tile(rel) {

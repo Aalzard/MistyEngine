@@ -13,6 +13,7 @@ pub mod mixer;
 pub mod mixer_state;
 mod routing;
 pub mod spatial;
+mod video_voices;
 pub mod wav;
 
 use std::collections::{HashMap, HashSet};
