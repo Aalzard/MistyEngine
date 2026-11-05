@@ -566,6 +566,18 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             LightType::label,
         );
         ui.end_row();
+        ui.label("Mode").on_hover_text(
+            "Realtime: lit every frame. Mixed: realtime direct light, baked bounce light.              Baked: direct and bounce light baked into lightmaps (Lighting ▸ Generate Lighting)",
+        );
+        ch |= combo_k(
+            ui,
+            "light_mode",
+            "mode",
+            &mut l.mode,
+            &misty_engine::scene::LightMode::ALL,
+            misty_engine::scene::LightMode::label,
+        );
+        ui.end_row();
         if l.kind != LightType::Directional {
             ui.label("Range");
             ch |= ui
@@ -688,6 +700,8 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         ui.end_row();
         ch
     });
+    let is_static = state.scene.game_object(e).is_static;
+    changed |= super::lightmap_editors::renderer_section(ui, &mut r, is_static);
     if changed {
         let _ = state.scene.world.insert_one(e, r);
     }

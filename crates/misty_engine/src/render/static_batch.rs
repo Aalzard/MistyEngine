@@ -36,9 +36,15 @@ pub fn combine(name: &str, draws: &[MeshDraw]) -> Vec<MeshDraw> {
         let (lo, hi) = mesh.bounds();
         let center = d.model.transform_point3((lo + hi) * 0.5);
         let chunk = (center / CHUNK_SIZE).floor().as_ivec3();
+        // Lightmapped: the scale-offset goes into the merged uv2, so renderers sharing a
+        // lightmap still merge.
+        let mut material = d.material.clone();
+        let st = material.lightmap.as_mut().map(|l| {
+            std::mem::replace(&mut l.scale_offset, crate::scene::lightmapping::IDENTITY_ST)
+        });
         let fits = |g: &Group| {
             g.chunk == chunk
-                && g.template.material == d.material
+                && g.template.material == material
                 && g.template.cast_shadows == d.cast_shadows
                 && g.template.receive_shadows == d.receive_shadows
                 && g.data.vertices.len() + mesh.vertices.len() <= MAX_VERTICES
@@ -47,14 +53,17 @@ pub fn combine(name: &str, draws: &[MeshDraw]) -> Vec<MeshDraw> {
             Some(i) => &mut groups[i],
             None => {
                 groups.push(Group {
-                    template: d.clone(),
+                    template: MeshDraw {
+                        material: material.clone(),
+                        ..d.clone()
+                    },
                     chunk,
                     data: MeshData::default(),
                 });
                 groups.last_mut().expect("just pushed")
             }
         };
-        append(&mut group.data, &mesh, &d.model);
+        append(&mut group.data, &mesh, &d.model, st);
     }
     for (i, g) in groups.into_iter().enumerate() {
         let key = models::runtime::register(&format!("{name}/{i}"), g.data);
@@ -70,7 +79,9 @@ pub fn combine(name: &str, draws: &[MeshDraw]) -> Vec<MeshDraw> {
 }
 
 /// Append `src` moved by `model` (normals and tangents like the vertex shader does them).
-fn append(dst: &mut MeshData, src: &MeshData, model: &Mat4) {
+/// `lightmap_st` = the renderer's lightmap scale-offset, applied to uv2.
+fn append(dst: &mut MeshData, src: &MeshData, model: &Mat4, lightmap_st: Option<[f32; 4]>) {
+    let st = lightmap_st.unwrap_or(crate::scene::lightmapping::IDENTITY_ST);
     let normal = model.inverse().transpose();
     let mirror = if model.determinant() < 0.0 { -1.0 } else { 1.0 };
     let base = dst.vertices.len() as u32;
@@ -82,6 +93,7 @@ fn append(dst: &mut MeshData, src: &MeshData, model: &Mat4) {
             position: p.xyz().into(),
             normal: n.xyz().into(),
             uv: v.uv,
+            uv2: [v.uv2[0] * st[0] + st[2], v.uv2[1] * st[1] + st[3]],
             tangent: [t.x, t.y, t.z, v.tangent[3] * mirror],
         }
     }));

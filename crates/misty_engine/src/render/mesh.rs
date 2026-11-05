@@ -23,6 +23,9 @@ pub struct Vertex {
     pub uv: [f32; 2],
     /// Tangent along +u; w = ±1 so that `cross(normal, tangent) * w` points towards −v (image up).
     pub tangent: [f32; 4],
+    /// Lightmap UVs (second UV set): non-overlapping charts inside [0, 1] with padding
+    /// (see [`crate::lightmap::uv`]); zero when the mesh has none.
+    pub uv2: [f32; 2],
 }
 
 #[derive(Default, Clone)]
@@ -37,6 +40,7 @@ impl MeshData {
             position: p.into(),
             normal: n.into(),
             uv: uv.into(),
+            uv2: [0.0; 2],
             tangent: [1.0, 0.0, 0.0, 1.0],
         });
         self.vertices.len() as u32 - 1
@@ -175,6 +179,7 @@ pub fn generate(p: PrimitiveMesh) -> MeshData {
         PrimitiveMesh::Quad => quad(),
     };
     m.compute_tangents();
+    crate::lightmap::uv::primitive(p, &mut m);
     m
 }
 

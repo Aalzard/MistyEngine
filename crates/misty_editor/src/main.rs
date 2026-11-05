@@ -24,6 +24,7 @@ mod hub;
 mod launcher;
 mod layout;
 mod layouts;
+mod lightmap_tools;
 mod material_preview;
 mod menu_bar;
 mod mesh_builder;
@@ -72,6 +73,8 @@ mod sample_input;
 mod sample_light_glow;
 #[cfg(test)]
 mod sample_lighting;
+#[cfg(test)]
+mod sample_lightmap;
 #[cfg(test)]
 mod sample_materials;
 #[cfg(test)]

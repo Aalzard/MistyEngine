@@ -47,6 +47,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
                 } else {
                     [0.0; 2]
                 },
+                uv2: [0.0; 2],
                 tangent: [1.0, 0.0, 0.0, 1.0],
             })
             .collect();

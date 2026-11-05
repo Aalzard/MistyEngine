@@ -321,6 +321,9 @@ pub struct Light {
     /// Rectangle: draw the rectangle as an emissive quad in the Scene and Game views.
     #[serde(skip_serializing_if = "super::light_area::is_yes")]
     pub show_emitter: bool,
+    /// Realtime, Mixed (baked bounce light) or Baked (see [`crate::lightmap`]).
+    #[serde(skip_serializing_if = "super::lightmapping::LightMode::is_realtime")]
+    pub mode: super::lightmapping::LightMode,
 }
 
 impl Default for Light {
@@ -345,6 +348,7 @@ impl Default for Light {
             height: super::light_area::SIZE,
             two_sided: false,
             show_emitter: true,
+            mode: Default::default(),
         }
     }
 }
@@ -492,6 +496,21 @@ pub struct MeshRenderer {
     /// of files when there are none). See [`crate::render::overrides`].
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub overrides: std::collections::BTreeMap<usize, crate::render::overrides::MaterialOverrides>,
+    /// Lighting ▸ Contribute Global Illumination: static objects with this on are baked.
+    #[serde(skip_serializing_if = "super::lightmapping::is_yes")]
+    pub contribute_gi: bool,
+    /// Lighting ▸ Receive Global Illumination.
+    #[serde(skip_serializing_if = "super::lightmapping::ReceiveGi::is_lightmaps")]
+    pub receive_gi: super::lightmapping::ReceiveGi,
+    /// Lightmapping ▸ Scale In Lightmap (texel density multiplier).
+    #[serde(skip_serializing_if = "super::lightmapping::is_one")]
+    pub scale_in_lightmap: f32,
+    /// Baked: index into the scene's lightmaps (-1 = not lightmapped).
+    #[serde(skip_serializing_if = "super::lightmapping::is_no_lightmap")]
+    pub lightmap_index: i32,
+    /// Baked: uv2 × xy + zw = lightmap coordinates.
+    #[serde(skip_serializing_if = "super::lightmapping::is_identity_st")]
+    pub lightmap_scale_offset: [f32; 4],
 }
 
 impl Default for MeshRenderer {
@@ -504,6 +523,11 @@ impl Default for MeshRenderer {
             extra_materials: Vec::new(),
             instances: Vec::new(),
             overrides: Default::default(),
+            contribute_gi: true,
+            receive_gi: Default::default(),
+            scale_in_lightmap: 1.0,
+            lightmap_index: -1,
+            lightmap_scale_offset: super::lightmapping::IDENTITY_ST,
         }
     }
 }

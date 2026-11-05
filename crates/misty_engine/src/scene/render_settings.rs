@@ -244,6 +244,9 @@ pub struct RenderSettings {
     /// Multiplier on sky reflections.
     pub reflection_intensity: f32,
     pub fog: Fog,
+    /// Lighting window ▸ Scene: lightmapping settings and the baked lightmaps.
+    #[serde(skip_serializing_if = "super::lightmapping::LightmapSettings::is_default")]
+    pub lightmapping: super::lightmapping::LightmapSettings,
 }
 
 impl Default for RenderSettings {
@@ -253,6 +256,7 @@ impl Default for RenderSettings {
             environment_lighting: EnvironmentLighting::default(),
             reflection_intensity: 1.0,
             fog: Fog::default(),
+            lightmapping: Default::default(),
         }
     }
 }

@@ -37,12 +37,13 @@ pub(super) const DEPTH_SRC: &str = concat!(
     include_str!("shaders/depth.wgsl")
 );
 
-/// Mesh vertex attributes: position, normal, uv, tangent.
-const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+/// Mesh vertex attributes: position, normal, uv, tangent, lightmap uv.
+const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Float32x3,
     1 => Float32x3,
     2 => Float32x2,
-    3 => Float32x4
+    3 => Float32x4,
+    4 => Float32x2
 ];
 
 /// Vertex buffer layout of [`Vertex`] meshes.
@@ -249,6 +250,7 @@ impl Pipelines {
         view_entries.extend(super::clouds::view_layout_entries());
         let view_layout = layout("misty view", &view_entries);
         let probe = super::probes::gpu::layout_entries();
+        let lightmap = super::lightmap_gpu::layout_entries();
         let mesh_layout = layout(
             "misty mesh",
             &[
@@ -290,6 +292,9 @@ impl Pipelines {
                 probe[2],
                 probe[3],
                 probe[4],
+                // Baked lightmaps (bindings 25–26, see lightmap_gpu.rs).
+                lightmap[0],
+                lightmap[1],
                 // Screen-space AO and contact shadow texels (screen_space.rs).
                 entry(16, S::FRAGMENT, storage()),
                 // 2D lights and shadow maps (light2d.rs).

@@ -17,6 +17,7 @@ mod gpu_culling;
 mod gpu_timer;
 mod hdri_sky;
 mod light2d;
+mod lightmap_gpu;
 pub mod lod;
 pub mod mesh;
 pub mod overrides;
@@ -153,6 +154,8 @@ pub struct MaterialParams {
     /// Sprite-Lit-Default: unlit sprites and tiles multiplied by the 2D lights of their
     /// Sorting Layer (only while the scene has 2D lights, see [`crate::light2d`]).
     pub lit_2d: bool,
+    /// Per-object: baked lightmap layer and uv2 scale-offset (see [`crate::lightmap`]).
+    pub lightmap: Option<crate::lightmap::DrawLightmap>,
 }
 
 impl Default for MaterialParams {
@@ -180,6 +183,7 @@ impl Default for MaterialParams {
             emission_map: None,
             custom: None,
             lit_2d: false,
+            lightmap: None,
         }
     }
 }
@@ -325,6 +329,10 @@ struct DrawUniform {
     /// x = cos, y = sin of the UV rotation, z = LOD cross-fade, w = 2D-lit layer flag
     /// ([`light2d::draw_flag`]).
     extra: [f32; 4],
+    /// Lightmap uv = uv2 × xy + zw.
+    lightmap_st: [f32; 4],
+    /// x = lightmap layer + 1 (0 = not lightmapped).
+    lightmap: [f32; 4],
 }
 
 #[repr(C)]
@@ -375,6 +383,8 @@ pub struct Renderer {
     shadows: shadows::ShadowMaps,
     /// Reflection probe atlas, lists and BRDF LUT (mesh group bindings 20–24).
     probes: probes::gpu::ProbeGpu,
+    /// Baked lightmaps (mesh group bindings 25–26).
+    lightmaps: lightmap_gpu::LightmapGpu,
     /// Group 2 of the terrain pass (no bindings).
     empty_group: wgpu::BindGroup,
     lights_buffer: wgpu::Buffer,
@@ -464,6 +474,7 @@ impl Renderer {
         );
         let shadows = shadows::ShadowMaps::new(device, &pipelines.shadow_view_layout);
         let probes = probes::gpu::ProbeGpu::new(device);
+        let lightmaps = lightmap_gpu::LightmapGpu::new(device);
         let screen_space = screen_space::ScreenSpace::new(device);
 
         let draws_capacity = 256;
@@ -479,6 +490,7 @@ impl Renderer {
             [&draws_buffer, &slots_buffer],
             &shadows,
             &probes,
+            &lightmaps,
             &screen_space.off_buffer,
         );
 
@@ -497,6 +509,7 @@ impl Renderer {
             view_bind_group,
             shadows,
             probes,
+            lightmaps,
             empty_group: device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("misty empty group"),
                 layout: &pipelines.empty_layout,
@@ -596,6 +609,7 @@ impl Renderer {
                 lists,
                 &self.shadows,
                 &self.probes,
+                &self.lightmaps,
                 &self.screen_space.off_buffer,
             );
         }
@@ -647,6 +661,7 @@ impl Renderer {
             texture_bytes: texture_bytes
                 + shadow_bytes
                 + self.probes.bytes()
+                + self.lightmaps.bytes()
                 + self.sky.bytes()
                 + self.volumetrics.texture_bytes()
                 + self.clouds.texture_bytes(),
@@ -854,6 +869,9 @@ impl Renderer {
             let rebuilt = self
                 .probes
                 .prepare(device, queue, frame, &prep.bounds, &terrains);
+            // Baked lightmaps (texture array upload).
+            let rebuilt =
+                (self.lightmaps).prepare(device, queue, &frame.environment.lightmaps) || rebuilt;
             let casters = Self::caster_bounds(frame, &prep.bounds, &terrains);
             let plan = shadows::plan_with(frame, &casters, aspect, &shadow_settings);
             let lists = self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats);
@@ -1066,6 +1084,7 @@ impl Renderer {
                 [&self.draws_buffer, &self.slots_buffer],
                 &self.shadows,
                 &self.probes,
+                &self.lightmaps,
                 &self.screen_space.off_buffer,
             );
         }
@@ -1739,6 +1758,7 @@ fn slots_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
 /// Group 1 of the lit mesh pass and of the shadow/mask passes; `lights` = the lights uniform
 /// and the LTC table; `buffers` = draws, slots; `screen` = screen-space texels (AO, contact
 /// shadows).
+#[allow(clippy::too_many_arguments)]
 fn draw_groups(
     device: &wgpu::Device,
     p: &pipelines::Pipelines,
@@ -1746,11 +1766,13 @@ fn draw_groups(
     buffers: [&wgpu::Buffer; 2],
     shadows: &shadows::ShadowMaps,
     probes: &probes::gpu::ProbeGpu,
+    lightmaps: &lightmap_gpu::LightmapGpu,
     screen: &wgpu::Buffer,
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [lights, ltc, lights_2d] = lights;
     let [draws, slots] = buffers;
     let [p0, p1, p2, p3, p4] = probes.entries();
+    let [l0, l1] = lightmaps.entries();
     let mesh = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("misty mesh group"),
         layout: &p.mesh_layout,
@@ -1794,6 +1816,8 @@ fn draw_groups(
             p2,
             p3,
             p4,
+            l0,
+            l1,
             wgpu::BindGroupEntry {
                 binding: 16,
                 resource: screen.as_entire_binding(),
@@ -1900,6 +1924,13 @@ fn draw_uniform(d: &MeshDraw, lod_fade: f32) -> DrawUniform {
             sin,
             lod_fade,
             light2d::draw_flag(m.lit_2d, d.sorting.layer),
+        ],
+        lightmap_st: m.lightmap.map_or([1.0, 1.0, 0.0, 0.0], |l| l.scale_offset),
+        lightmap: [
+            m.lightmap.map_or(0.0, |l| l.index as f32 + 1.0),
+            0.0,
+            0.0,
+            0.0,
         ],
     }
 }
@@ -2049,7 +2080,7 @@ mod tests {
 
     #[test]
     fn gpu_struct_sizes_match_wgsl() {
-        assert_eq!(std::mem::size_of::<DrawUniform>(), 224);
+        assert_eq!(std::mem::size_of::<DrawUniform>(), 256);
         assert_eq!(std::mem::size_of::<LightItem>(), 112);
         assert_eq!(
             std::mem::size_of::<LightsUniform>(),

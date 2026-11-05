@@ -54,6 +54,11 @@ struct Lights {
 @group(1) @binding(5) var<storage, read> slots: array<u32>;
 
 // Material textures (1×1 white / flat normal when unassigned).
+// Baked lightmaps (render/lightmap_gpu.rs): one layer per lightmap; info x = debug view
+// (1 Baked Lightmap, 2 UV Charts), y = layer count, z = bit mask of loaded layers.
+@group(1) @binding(25) var lightmaps: texture_2d_array<f32>;
+@group(1) @binding(26) var<uniform> lightmap_info: vec4<u32>;
+
 @group(2) @binding(0) var albedo_map: texture_2d<f32>;
 @group(2) @binding(1) var normal_map: texture_2d<f32>;
 @group(2) @binding(2) var material_sampler: sampler;
@@ -68,6 +73,7 @@ struct MeshIn {
     @location(2) uv: vec2<f32>,
     // xyz = tangent along +u, w = bitangent sign.
     @location(3) tangent: vec4<f32>,
+    @location(4) uv2: vec2<f32>,
 };
 
 struct MeshOut {
@@ -78,6 +84,8 @@ struct MeshOut {
     @location(2) uv: vec2<f32>,
     @location(3) @interpolate(flat) draw: u32,
     @location(4) tangent: vec4<f32>,
+    // Lightmap coordinates (uv2 × the draw's lightmap scale-offset).
+    @location(5) lightmap_uv: vec2<f32>,
 };
 
 @vertex
@@ -92,6 +100,7 @@ fn vs_main(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {
     out.uv = draw_uv(d, in.uv);
     out.draw = draw_index;
     out.tangent = vec4<f32>((d.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz, in.tangent.w * d.emission.w);
+    out.lightmap_uv = in.uv2 * d.lightmap_st.xy + d.lightmap_st.zw;
     return out;
 }
 
@@ -137,6 +146,8 @@ struct Surface {
     premultiply: bool,
     // Draw slot (its reflection probe list).
     draw: u32,
+    // Lightmap coordinates (used when the draw is lightmapped).
+    lightmap_uv: vec2<f32>,
 };
 
 // Standard shader inputs of a fragment; back faces (Cull Off) are lit from their side.
@@ -165,7 +176,41 @@ fn standard_surface(in: MeshOut, front: bool) -> Surface {
     s.occlusion = mix(1.0, occlusion, d.surface.z);
     s.premultiply = d.surface.x > 2.5;
     s.draw = in.draw;
+    s.lightmap_uv = in.lightmap_uv;
     return s;
+}
+
+// Baked light of a lightmapped surface: rgb = irradiance (× albedo = diffuse light), a = 1;
+// zero when the draw has no loaded lightmap.
+fn lightmap_sample(s: Surface) -> vec4<f32> {
+    let slot = draws[s.draw].lightmap.x;
+    if (slot < 0.5) {
+        return vec4<f32>(0.0);
+    }
+    let layer = u32(slot + 0.5) - 1u;
+    if (layer >= lightmap_info.y || (lightmap_info.z & (1u << layer)) == 0u) {
+        return vec4<f32>(0.0);
+    }
+    let c = textureSampleLevel(lightmaps, probe_sampler, s.lightmap_uv, i32(layer), 0.0).rgb;
+    return vec4<f32>(c, 1.0);
+}
+
+// Scene view Baked Lightmap / UV Charts views.
+fn lightmap_debug_color(s: Surface, lm: vec4<f32>) -> vec3<f32> {
+    if (lm.w < 0.5) {
+        return vec3<f32>(0.08);
+    }
+    if (lightmap_info.x == 1u) {
+        return lm.rgb;
+    }
+    // UV Charts: the texel grid, tinted per lightmap layer.
+    let size = vec2<f32>(textureDimensions(lightmaps).xy);
+    let t = vec2<i32>(floor(s.lightmap_uv * size));
+    let checker = f32((t.x + t.y) & 1);
+    let layer = draws[s.draw].lightmap.x;
+    let hue = fract(vec3<f32>(0.0, 0.33, 0.67) + layer * 0.37);
+    let tint = 0.5 + 0.5 * cos(6.2831853 * hue);
+    return tint * mix(0.35, 0.8, checker);
 }
 
 @fragment
@@ -242,6 +287,12 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     // Screen-space AO (screen_space.wgsl) joins the material occlusion on ambient light.
     let ssao = screen_ao(world);
     var color = ambient * lights.info.z * diffuse_color * indirect_occlusion(s.occlusion, ssao, diffuse_color);
+    // Lightmapped: baked ambient / bounce light replaces the realtime ambient and probe diffuse.
+    let lm = lightmap_sample(s);
+    let lightmapped = lm.w > 0.5;
+    if (lightmapped) {
+        color = lm.rgb * diffuse_color * indirect_occlusion(s.occlusion, ssao, diffuse_color);
+    }
 
     // Reflection of the sky: sharp when smooth, blurred towards the ambient colour when rough.
     let r = reflect(-v, n);
@@ -255,7 +306,9 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
         let sky_spec = env * fresnel_env * surface_reduction * lights.info.w * smoothness;
         let probe_spec = probe_specular(probe, f0, n_dot_v, perceptual) * lights.info.w;
         let probe_diffuse = probe.diffuse * diffuse_color * indirect_occlusion(s.occlusion, ssao, diffuse_color);
-        color = mix(color, probe_diffuse, probe.weight);
+        if (!lightmapped) {
+            color = mix(color, probe_diffuse, probe.weight);
+        }
         color += mix(sky_spec, probe_spec, probe.weight) * spec_occlusion;
     } else {
         color += env * fresnel_env * surface_reduction * lights.info.w * smoothness * spec_occlusion;
@@ -309,6 +362,9 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     color += s.emission;
     if (probes.header.y > 0.5) {
         color = probe_debug_color(probe, n);
+    }
+    if (lightmap_info.x > 0u) {
+        color = lightmap_debug_color(s, lm);
     }
     let fog = fog_visibility(fog_distance(world));
     // Premultiplied colour gets premultiplied fog.

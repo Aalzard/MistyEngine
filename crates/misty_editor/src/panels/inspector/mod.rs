@@ -12,6 +12,7 @@ mod glow_editors;
 mod layer_mask;
 mod light_area;
 mod light_shadows;
+mod lightmap_editors;
 mod lod_editor;
 mod material;
 mod mesh_builder_editor;
@@ -648,6 +649,14 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::assets::is_texture(rel) {
         texture_import::texture_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::models::is_model(rel) {
+        lightmap_editors::model_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::lightmap::is_lightmap(rel) {
+        lightmap_editors::lightmap_asset(ui, state, rel);
         return;
     }
     let name = crate::assets::AssetDatabase::material_name(Some(rel));

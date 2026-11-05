@@ -1,6 +1,6 @@
 // Skinned Mesh Renderer deformation: blend shapes, then linear blend skinning with up to four
 // bones per vertex. Reads the bind-pose vertices and writes posed ones in the same layout
-// (position, normal, uv, tangent: 12 floats), which every pass then draws as a vertex buffer.
+// (position, normal, uv, tangent, lightmap uv: 14 floats), which every pass then draws as a vertex buffer.
 
 struct Params {
     vertex_count: u32,
@@ -25,7 +25,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if v >= params.vertex_count {
         return;
     }
-    let b = v * 12u;
+    let b = v * 14u;
     var p = vec3<f32>(src[b], src[b + 1u], src[b + 2u]);
     var n = vec3<f32>(src[b + 3u], src[b + 4u], src[b + 5u]);
     let uv = vec2<f32>(src[b + 6u], src[b + 7u]);
@@ -74,4 +74,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     dst[b + 9u] = t.y;
     dst[b + 10u] = t.z;
     dst[b + 11u] = tw;
+    // Lightmap uv, unchanged.
+    dst[b + 12u] = src[b + 12u];
+    dst[b + 13u] = src[b + 13u];
 }

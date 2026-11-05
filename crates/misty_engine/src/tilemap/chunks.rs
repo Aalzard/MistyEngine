@@ -72,6 +72,7 @@ fn push_quad(data: &mut MeshData, corners: [Vec2; 4], sprite: &Sprite) {
             position: [p.x, p.y, 0.0],
             normal: [0.0, 0.0, -1.0],
             uv,
+            uv2: [0.0; 2],
             tangent: [1.0, 0.0, 0.0, 1.0],
         });
     }

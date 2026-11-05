@@ -645,6 +645,10 @@ impl eframe::App for EditorApp {
                     );
             });
 
+        // Lightmap bakes run on their own thread: pick up the result when it is done.
+        if crate::lightmap_tools::poll(&mut self.state) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
         // Material previews asked for while drawing the panels; probe bakes and Realtime probes.
         if let Some(gpu) = self.gpu.as_mut() {
             if crate::probe_tools::gpu_frame(gpu, &mut self.state) {

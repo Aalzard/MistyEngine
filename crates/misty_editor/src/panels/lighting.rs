@@ -1,9 +1,12 @@
-//! Lighting window (Window ▸ Rendering ▸ Lighting): Scene and Environment tabs. The
-//! Environment tab edits the open scene's skybox, ambient light, reflections and fog
+//! Lighting window (Window ▸ Rendering ▸ Lighting): Scene and Environment tabs. The Scene tab
+//! holds the lightmapping settings and Generate Lighting (`lightmap_tools`); the Environment
+//! tab edits the open scene's skybox, ambient light, reflections and fog
 //! (`Scene::render_settings`); edits are undoable and mark the scene dirty.
 
 use egui::{Grid, RichText, Ui};
 use misty_engine::render_scene;
+use misty_engine::scene::LightmapSettings;
+use misty_engine::scene::lightmapping::MixedLightingMode;
 use misty_engine::scene::render_settings::{
     AmbientSource, FogMode, RenderSettings, SkyboxKind, SunDisk,
 };
@@ -41,7 +44,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         });
 }
 
-/// Baked lighting isn't supported: everything is realtime.
+/// Lighting Settings of the scene: Mixed Lighting, Lightmapping Settings, Generate Lighting
+/// (background bake with progress and Cancel), Clear Baked Data; then the probe tools.
 fn scene_page(ui: &mut Ui, state: &mut EditorState) {
     ui.label(RichText::new("Lighting Settings").strong());
     ui.horizontal(|ui| {
@@ -55,11 +59,128 @@ fn scene_page(ui: &mut Ui, state: &mut EditorState) {
         egui::Checkbox::new(&mut false, "Realtime Global Illumination"),
     );
     ui.add_space(6.0);
-    ui.label(RichText::new("Lightmapping").strong());
-    ui.weak("All lights are realtime; lightmap baking is not available.");
-    ui.add_enabled(false, egui::Button::new("Generate Lighting"));
+    let mut s = state.scene.render_settings.lightmapping.clone();
+    let busy = state.lightmapper.baking();
+    let changed = ui
+        .add_enabled_ui(!busy, |ui| lightmap_settings(ui, &mut s))
+        .inner;
+    if changed {
+        let label = crate::undo_names::struct_change(
+            "Lightmapping ",
+            &state.scene.render_settings.lightmapping,
+            &s,
+        );
+        state.scene.render_settings.lightmapping = s;
+        state.mark_edited(&label);
+    }
+    ui.add_space(4.0);
+    let play = state.play.in_play_mode();
+    ui.horizontal(|ui| {
+        if busy {
+            if ui.button("Cancel").clicked() {
+                crate::lightmap_tools::cancel(state);
+            }
+        } else if ui
+            .add_enabled(!play, egui::Button::new("Generate Lighting"))
+            .on_hover_text("Bake lightmaps for the static objects (runs in the background)")
+            .clicked()
+        {
+            crate::lightmap_tools::start(state);
+        }
+        if ui
+            .add_enabled(!busy && !play, egui::Button::new("Clear Baked Data"))
+            .clicked()
+        {
+            crate::lightmap_tools::clear(state);
+        }
+    });
+    if let Some((f, label)) = state.lightmapper.progress() {
+        ui.add(egui::ProgressBar::new(f).text(label).show_percentage());
+        ui.ctx().request_repaint();
+    } else if !state.lightmapper.status.is_empty() {
+        ui.weak(&state.lightmapper.status);
+    } else {
+        let n = state.scene.render_settings.lightmapping.lightmaps.len();
+        ui.weak(match n {
+            0 => "No baked lightmaps.".to_string(),
+            1 => "1 baked lightmap.".to_string(),
+            n => format!("{n} baked lightmaps."),
+        });
+    }
     ui.add_space(8.0);
     crate::probe_tools::lighting_section(ui, state);
+}
+
+/// Mixed Lighting and Lightmapping Settings rows; true when something changed.
+fn lightmap_settings(ui: &mut Ui, s: &mut LightmapSettings) -> bool {
+    let mut ch = false;
+    ui.label(RichText::new("Mixed Lighting").strong());
+    ch |= grid(ui, "lighting_mixed", |ui| {
+        let mut ch = row(ui, "Baked Global Illumination", |ui| {
+            ui.checkbox(&mut s.baked_gi, "").changed()
+        });
+        ch |= row(ui, "Lighting Mode", |ui| {
+            combo(
+                ui,
+                "mixed_mode",
+                &mut s.mixed_mode,
+                &MixedLightingMode::ALL,
+                MixedLightingMode::label,
+            )
+        });
+        ch
+    });
+    ui.add_space(4.0);
+    ui.label(RichText::new("Lightmapping Settings").strong());
+    ch |= grid(ui, "lighting_lightmapping", |ui| {
+        let mut ch = row(ui, "Lightmapper", |ui| {
+            ui.weak("CPU Path Tracer");
+            false
+        });
+        ch |= row(ui, "Samples", |ui| {
+            ui.add(egui::DragValue::new(&mut s.samples).range(1..=4096))
+                .changed()
+        });
+        ch |= row(ui, "Bounces", |ui| {
+            ui.add(egui::Slider::new(&mut s.bounces, 0..=4)).changed()
+        });
+        ch |= row(ui, "Lightmap Resolution", |ui| {
+            ui.add(
+                egui::DragValue::new(&mut s.resolution)
+                    .speed(0.1)
+                    .range(0.1..=200.0)
+                    .suffix(" texels per unit"),
+            )
+            .changed()
+        });
+        ch |= row(ui, "Lightmap Padding", |ui| {
+            ui.add(
+                egui::DragValue::new(&mut s.padding)
+                    .range(0..=16)
+                    .suffix(" texels"),
+            )
+            .changed()
+        });
+        ch |= row(ui, "Max Lightmap Size", |ui| {
+            let mut c = false;
+            egui::ComboBox::from_id_salt("lightmap_max_size")
+                .selected_text(s.max_size.to_string())
+                .width(160.0)
+                .show_ui(ui, |ui| {
+                    for v in misty_engine::scene::lightmapping::MAX_SIZES {
+                        c |= ui
+                            .selectable_value(&mut s.max_size, v, v.to_string())
+                            .changed();
+                    }
+                });
+            c
+        });
+        ch |= row(ui, "Indirect Intensity", |ui| {
+            slider(ui, &mut s.indirect_intensity, 0.0..=5.0)
+        });
+        ch
+    });
+    ch
 }
 
 fn environment_page(ui: &mut Ui, state: &mut EditorState) {

@@ -53,6 +53,7 @@ fn vertex(p: Vec3, n: Vec3, uv: Vec2) -> Vertex {
         position: p.into(),
         normal: n.into(),
         uv: uv.into(),
+        uv2: [0.0; 2],
         tangent: [1.0, 0.0, 0.0, 1.0],
     }
 }
