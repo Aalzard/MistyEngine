@@ -618,6 +618,7 @@ fn material_previews(ui: &mut Ui, state: &mut EditorState, e: Entity) {
 
 /// Inspector for a Project asset: material editor, or a read-only prefab summary.
 fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    crate::panels::asset_groups::addressable_header(ui, state, rel);
     if rel.ends_with(".prefab") {
         prefab_asset(ui, state, rel);
         return;

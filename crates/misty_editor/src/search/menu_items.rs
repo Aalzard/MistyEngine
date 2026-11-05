@@ -375,6 +375,7 @@ fn window(l: &mut List, s: &EditorState) {
             Tab::Profiler => "Analysis",
             Tab::Timeline => "Sequencing",
             Tab::TilePalette => "2D",
+            Tab::AssetGroups => "Asset Management",
             _ => "General",
         };
         let path = format!("Window/{menu}/{}", tab.title());

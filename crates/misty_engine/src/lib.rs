@@ -6,6 +6,7 @@
 pub mod animation;
 pub mod asset_db;
 pub mod asset_deps;
+pub mod asset_groups;
 pub mod assets;
 pub mod audio;
 pub mod build;

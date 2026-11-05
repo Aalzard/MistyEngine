@@ -2494,7 +2494,9 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "sha2",
  "tobj",
+ "ureq",
  "wgpu",
 ]
 

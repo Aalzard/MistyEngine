@@ -49,12 +49,31 @@ fn ext(rel: &str) -> String {
 
 /// Every file `roots` (project-relative) need, plus `Resources` folders under `Assets/`.
 pub fn collect(project: &Path, roots: &[String]) -> Dependencies {
+    collect_with(project, roots, true, &GuidDatabase::read(project))
+}
+
+/// Every file `roots` need, without the `Resources` folders (asset bundles: one asset's
+/// dependencies), resolving GUID references with `guids`.
+pub fn collect_only(project: &Path, roots: &[String], guids: &GuidDatabase) -> Dependencies {
+    collect_with(project, roots, false, guids)
+}
+
+fn collect_with(
+    project: &Path,
+    roots: &[String],
+    resources: bool,
+    guids: &GuidDatabase,
+) -> Dependencies {
     let mut deps = Dependencies::default();
     // Stale paths in files saved with GUIDs follow the renamed or moved asset.
-    let guids = GuidDatabase::read(project);
     let mut queue: VecDeque<(String, String)> =
         roots.iter().map(|r| (r.clone(), String::new())).collect();
-    for p in crate::vfs::files_under(&project.join("Assets")) {
+    let resource_files = if resources {
+        crate::vfs::files_under(&project.join("Assets"))
+    } else {
+        Vec::new()
+    };
+    for p in resource_files {
         let Ok(rel) = p.strip_prefix(project) else {
             continue;
         };
@@ -78,7 +97,7 @@ pub fn collect(project: &Path, roots: &[String]) -> Dependencies {
         if crate::vfs::is_file(&project.join(&meta)) {
             deps.files.insert(meta);
         }
-        for r in references(project, &rel, &guids) {
+        for r in references(project, &rel, guids) {
             if !deps.files.contains(&r) {
                 queue.push_back((r, rel.clone()));
             }

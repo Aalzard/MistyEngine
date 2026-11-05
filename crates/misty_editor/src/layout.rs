@@ -38,6 +38,10 @@ pub enum Tab {
     EffectGraph,
     /// Window ▸ Rendering ▸ Occlusion Culling.
     OcclusionCulling,
+    /// Window ▸ Asset Management ▸ Asset Groups.
+    AssetGroups,
+    /// Window ▸ Package Manager.
+    PackageManager,
 }
 
 impl Tab {
@@ -54,7 +58,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 12] = [
+    pub const ON_DEMAND: [Tab; 14] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -67,6 +71,8 @@ impl Tab {
         Tab::ShaderGraph,
         Tab::EffectGraph,
         Tab::OcclusionCulling,
+        Tab::AssetGroups,
+        Tab::PackageManager,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -90,7 +96,9 @@ impl Tab {
             Tab::Timeline => Some(Tab::Animation),
             // Docks with the Project and Console like the reference editor; the Profiler too,
             // so the Game view keeps rendering (and reporting its counters) while profiling.
-            Tab::AudioMixer | Tab::Profiler => Some(Tab::Project),
+            Tab::AudioMixer | Tab::Profiler | Tab::AssetGroups => Some(Tab::Project),
+            // A two-pane browser that wants room, like the graphs.
+            Tab::PackageManager => Some(Tab::Scene),
             _ => None,
         }
     }
@@ -117,6 +125,8 @@ impl Tab {
             Tab::ShaderGraph => "Shader Graph",
             Tab::EffectGraph => "Effect Graph",
             Tab::OcclusionCulling => "Occlusion Culling",
+            Tab::AssetGroups => "Asset Groups",
+            Tab::PackageManager => "Package Manager",
         }
     }
 
@@ -142,6 +152,8 @@ impl Tab {
             Tab::ShaderGraph => crate::panels::shader_graph::ICON,
             Tab::EffectGraph => crate::panels::effect_graph::ICON,
             Tab::OcclusionCulling => "◩",
+            Tab::AssetGroups => crate::panels::asset_groups::ICON,
+            Tab::PackageManager => crate::panels::packages::ICON,
         }
     }
 
@@ -167,7 +179,9 @@ impl Tab {
             | Tab::TilePalette
             | Tab::ShaderGraph
             | Tab::EffectGraph
-            | Tab::OcclusionCulling => "",
+            | Tab::OcclusionCulling
+            | Tab::AssetGroups
+            | Tab::PackageManager => "",
         }
     }
 }

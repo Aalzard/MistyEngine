@@ -2,7 +2,7 @@
 //!
 //! Layout (little endian): the 8-byte magic, a `u64` offset of the index, the blobs, then the
 //! index: entry count (`u32`) and per entry the path (`u16` length + UTF-8), offset, stored size,
-//! original size (`u64` each) and a codec byte (0 = stored, 1 = LZ4 block).
+//! original size (`u64` each) and a codec byte (0 = stored, 1 = LZ4 block, 2 = zlib).
 //! Paths are project-relative with forward slashes ("Assets/Scenes/Level1.scene").
 
 use std::collections::BTreeMap;
@@ -17,6 +17,17 @@ pub const MAGIC: &[u8; 8] = b"MISTYPK1";
 pub enum Codec {
     Stored = 0,
     Lz4 = 1,
+    /// zlib (deflate): smaller than LZ4, slower to unpack. Asset bundles can pick it.
+    Zlib = 2,
+}
+
+/// What a writer tries for each entry (kept only when it saves at least 1/16).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Compression {
+    #[default]
+    None,
+    Lz4,
+    Zlib,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,30 +45,44 @@ const PRECOMPRESSED: [&str; 6] = ["png", "jpg", "jpeg", "ogg", "mp3", "glb"];
 pub struct PakWriter<W: Write + Seek> {
     out: W,
     index: Vec<(String, PakEntry)>,
-    compress: bool,
+    compression: Compression,
 }
 
 impl<W: Write + Seek> PakWriter<W> {
     /// Start an archive; `compress` = LZ4 for entries that shrink.
-    pub fn new(mut out: W, compress: bool) -> std::io::Result<Self> {
+    pub fn new(out: W, compress: bool) -> std::io::Result<Self> {
+        let compression = if compress {
+            Compression::Lz4
+        } else {
+            Compression::None
+        };
+        Self::with_compression(out, compression)
+    }
+
+    /// Start an archive compressing entries with `compression` (when they shrink).
+    pub fn with_compression(mut out: W, compression: Compression) -> std::io::Result<Self> {
         out.write_all(MAGIC)?;
         out.write_all(&0u64.to_le_bytes())?; // index offset, patched in `finish`
         Ok(Self {
             out,
             index: Vec::new(),
-            compress,
+            compression,
         })
     }
 
     pub fn add(&mut self, path: &str, data: &[u8]) -> std::io::Result<()> {
         let offset = self.out.stream_position()?;
         let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-        let packed = (self.compress && !PRECOMPRESSED.contains(&ext.as_str()))
-            .then(|| lz4_flex::compress_prepend_size(data))
-            // Keep it only when it saves at least 1/16.
-            .filter(|c| c.len() + data.len() / 16 < data.len());
+        let packed = match self.compression {
+            _ if PRECOMPRESSED.contains(&ext.as_str()) => None,
+            Compression::None => None,
+            Compression::Lz4 => Some((lz4_flex::compress_prepend_size(data), Codec::Lz4)),
+            Compression::Zlib => zlib(data).map(|c| (c, Codec::Zlib)),
+        }
+        // Keep it only when it saves at least 1/16.
+        .filter(|(c, _)| c.len() + data.len() / 16 < data.len());
         let (bytes, codec) = match &packed {
-            Some(c) => (c.as_slice(), Codec::Lz4),
+            Some((c, codec)) => (c.as_slice(), *codec),
             None => (data, Codec::Stored),
         };
         self.out.write_all(bytes)?;
@@ -96,6 +121,12 @@ impl<W: Write + Seek> PakWriter<W> {
         self.out.flush()?;
         Ok(self.out)
     }
+}
+
+fn zlib(data: &[u8]) -> Option<Vec<u8>> {
+    let mut enc = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(data).ok()?;
+    enc.finish().ok()
 }
 
 /// An opened archive; entries are read on demand.
@@ -149,6 +180,7 @@ impl Pak {
             let codec = match take(1)?[0] {
                 0 => Codec::Stored,
                 1 => Codec::Lz4,
+                2 => Codec::Zlib,
                 _ => return Err(bad("unknown pak codec")),
             };
             let entry = PakEntry {
@@ -193,6 +225,13 @@ impl Pak {
             Codec::Stored => Ok(buf),
             Codec::Lz4 => lz4_flex::decompress_size_prepended(&buf)
                 .map_err(|err| bad(&format!("{path}: {err}"))),
+            Codec::Zlib => {
+                let mut out = Vec::with_capacity(e.size as usize);
+                flate2::read::ZlibDecoder::new(buf.as_slice())
+                    .read_to_end(&mut out)
+                    .map_err(|err| bad(&format!("{path}: {err}")))?;
+                Ok(out)
+            }
         }
     }
 }
@@ -227,6 +266,19 @@ mod tests {
         }
         let p = pak(true);
         assert!(p.entry("Assets/a.txt").unwrap().stored < 600);
+    }
+
+    #[test]
+    fn zlib_entries_round_trip() {
+        let mut w =
+            PakWriter::with_compression(Cursor::new(Vec::new()), Compression::Zlib).unwrap();
+        w.add("Assets/a.txt", &b"misty ".repeat(200)).unwrap();
+        w.add("Assets/tiny", b"x").unwrap();
+        let p = Pak::from_reader(Box::new(Cursor::new(w.finish().unwrap().into_inner()))).unwrap();
+        assert_eq!(p.entry("Assets/a.txt").unwrap().codec, Codec::Zlib);
+        assert_eq!(p.read("Assets/a.txt").unwrap(), b"misty ".repeat(200));
+        assert_eq!(p.entry("Assets/tiny").unwrap().codec, Codec::Stored);
+        assert_eq!(p.read("Assets/tiny").unwrap(), b"x");
     }
 
     #[test]

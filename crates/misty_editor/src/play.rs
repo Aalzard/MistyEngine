@@ -50,12 +50,18 @@ pub fn start(s: &mut EditorState) {
     }
     let mut audio = Audio::with_device(s.project.root.clone());
     audio.set_muted(s.game_view.mute);
-    s.runtime = Some(Runtime::start_with_audio(
+    let mut runtime = Runtime::start_with_audio(
         &mut s.scene,
         s.project.root.clone(),
         &s.project_settings,
         audio,
+    );
+    // Addressables load per the Asset Groups window's Play Mode Script.
+    runtime.set_assets(misty_engine::asset_groups::AssetSystem::for_editor(
+        &s.project.root,
+        s.build_settings.target.slug(),
     ));
+    s.runtime = Some(runtime);
     flush_logs(s);
     s.game_view.focused = s.game_view.play_mode_target != 2;
     s.play = if s.pause_on_play {

@@ -284,6 +284,10 @@ pub struct EditorState {
     /// Navigation window settings and the bake in progress.
     pub navigation: crate::panels::navigation::NavigationWindow,
     pub occlusion: crate::panels::occlusion::OcclusionWindow,
+    /// Asset Groups window: addressables settings, last build / analysis.
+    pub asset_groups: crate::panels::asset_groups::AssetGroupsWindow,
+    /// Package Manager window: packages, manifest, lock, registry.
+    pub packages: crate::packages::PackagesWindow,
     /// Reflection probe generator settings, the bake in progress and Realtime probes.
     pub probes: crate::probe_tools::ProbeTools,
     /// Lightmap bakes (Lighting window ▸ Generate Lighting).
@@ -402,6 +406,8 @@ impl EditorState {
             tile_palette: Default::default(),
             navigation: Default::default(),
             occlusion: Default::default(),
+            asset_groups: Default::default(),
+            packages: Default::default(),
             probes: Default::default(),
             lightmapper: Default::default(),
             light_probes: Default::default(),

@@ -154,6 +154,14 @@ pub fn apply_env(
         s.effect_graph.open(&file, &rel);
         crate::layout::focus_or_open(dock, crate::layout::Tab::EffectGraph);
     }
+    // `MISTY_PACKAGE=com.misty.example-effects` selects a package in the Package Manager;
+    // `MISTY_GROUP_ENTRY=<asset path>` selects an entry in the Asset Groups window.
+    if let Some(name) = std::env::var_os("MISTY_PACKAGE") {
+        s.packages.selected = Some(name.to_string_lossy().into_owned());
+    }
+    if let Some(rel) = std::env::var_os("MISTY_GROUP_ENTRY") {
+        s.asset_groups.selected_entry = Some(rel.to_string_lossy().into_owned());
+    }
     // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
     if let Some(titles) = std::env::var_os("MISTY_TAB") {
         for title in titles.to_string_lossy().split(',') {

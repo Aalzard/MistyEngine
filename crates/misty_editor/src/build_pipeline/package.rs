@@ -176,6 +176,9 @@ pub fn package(
         if req.build.compression { " (LZ4)" } else { "" }
     )));
 
+    // Asset bundles: build the addressable groups and ship the local bundles + catalog.
+    bundles(req, &data_dir, send)?;
+
     // Icon: next to the data, and inside the .exe on Windows.
     send(Msg::Progress(0.92, "Icon".into()));
     if let Some(icon) = &player_settings.icon {
@@ -249,6 +252,39 @@ pub fn package(
 }
 
 /// JSON text of a settings value (no BOM, trailing newline).
+/// Build the project's asset bundles for the target (when it has addressables) and copy the
+/// catalog and local bundles into `<data>/Bundles`.
+fn bundles(req: &PackageRequest, data_dir: &Path, send: &mut dyn FnMut(Msg)) -> Result<(), String> {
+    use misty_engine::asset_groups::{AssetGroupSettings, build, catalog};
+    let settings = AssetGroupSettings::load(&req.project)?;
+    if settings.entries().next().is_none() {
+        return Ok(());
+    }
+    send(Msg::Progress(0.91, "Asset bundles".into()));
+    let platform = req.build.target.slug();
+    let out = build::build_dir(&req.project, platform);
+    let built = build::build_bundles(&req.project, &settings, platform, &out)?;
+    for w in &built.warnings {
+        send(Msg::Warning(format!("Asset bundles: {w}")));
+    }
+    let n = build::copy_local(&out, &data_dir.join(catalog::PLAYER_DIR))?;
+    let remote = built.catalog.bundles.iter().filter(|b| b.remote).count();
+    send(Msg::Log(format!(
+        "Asset bundles: {} local files copied{}",
+        n,
+        if remote > 0 {
+            format!(
+                "; upload {remote} remote bundles from {}/{}",
+                out.display(),
+                catalog::REMOTE_DIR
+            )
+        } else {
+            String::new()
+        }
+    )));
+    Ok(())
+}
+
 fn json<T: serde::Serialize>(v: &T) -> Result<String, String> {
     serde_json::to_string_pretty(v)
         .map(|t| t + "\n")
