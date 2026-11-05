@@ -74,8 +74,6 @@ mod sample_cycles_room;
 #[cfg(test)]
 mod sample_hdri;
 #[cfg(test)]
-mod sample_meadow;
-#[cfg(test)]
 mod sample_input;
 #[cfg(test)]
 mod sample_light_glow;
@@ -87,6 +85,8 @@ mod sample_lighting;
 mod sample_lightmap;
 #[cfg(test)]
 mod sample_materials;
+#[cfg(test)]
+mod sample_meadow;
 #[cfg(test)]
 mod sample_mesh_builder;
 #[cfg(test)]

@@ -329,6 +329,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::ReflectionProbeGroup>(),
             ComponentInfo::of::<crate::light_probes::LightProbeGroup>(),
             ComponentInfo::of::<super::FogVolume>(),
+            ComponentInfo::of::<super::WindZone>(),
             ComponentInfo::of::<super::OcclusionArea>(),
             ComponentInfo::of::<MeshFilter>(),
             ComponentInfo::of::<MeshRenderer>(),

@@ -179,9 +179,9 @@ impl Taa {
         }
         h.used = renders;
         // A jump the history can't follow (teleport, switched camera): start afresh.
-        let valid = h.prev.filter(|(_, pos, fwd)| {
-            pos.distance(camera.0) < 5.0 && fwd.dot(camera.1) > 0.85
-        });
+        let valid = h
+            .prev
+            .filter(|(_, pos, fwd)| pos.distance(camera.0) < 5.0 && fwd.dot(camera.1) > 0.85);
         let params = TaaParams {
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
             prev_view_proj: valid.map_or(view_proj, |p| p.0).to_cols_array_2d(),
@@ -330,10 +330,22 @@ mod tests {
     fn jitter_moves_projected_points_by_that_many_pixels() {
         // A plain right-handed perspective (f = 2, aspect 1.5, near 0.1).
         let vp = Mat4::from_cols_array(&[
-            2.0 / 1.5, 0.0, 0.0, 0.0, //
-            0.0, 2.0, 0.0, 0.0, //
-            0.0, 0.0, -1.0, -1.0, //
-            0.0, 0.0, -0.2, 0.0,
+            2.0 / 1.5,
+            0.0,
+            0.0,
+            0.0, //
+            0.0,
+            2.0,
+            0.0,
+            0.0, //
+            0.0,
+            0.0,
+            -1.0,
+            -1.0, //
+            0.0,
+            0.0,
+            -0.2,
+            0.0,
         ]);
         let size = (300, 200);
         let p = Vec3::new(1.0, 0.5, -10.0);

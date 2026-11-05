@@ -1,6 +1,7 @@
 //! MeadowDemo sample scene in `SampleProject`: a 2 km basin of wild meadow grass (dense
-//! tufts of photographed blades, timothy and panicle seed heads, translucent in the low sun,
-//! gusts rolling across the field) ringed by jagged mountains, under Cloudy volumetric
+//! tufts of photographed blades, timothy and panicle seed heads, translucent in the low sun;
+//! soft lush and dry patches with taller and shorter grass, gust waves rolling across the field
+//! from a Wind Zone, grass shadows) ringed by jagged mountains, under Cloudy volumetric
 //! clouds with haze and sun shafts. The ground is a PBR set (albedo, normal, height) made
 //! from a generated top-down meadow photo under `Assets/Textures/Meadow`.
 //! Regenerate with `cargo test -p misty_editor -- --ignored write_meadow_demo`; the other
@@ -12,7 +13,7 @@ use glam::Vec3;
 use misty_engine::scene::render_settings::SunDisk;
 use misty_engine::scene::{
     CloudPreset, Light, PostProcessVolume, Scene, Shadows, Terrain, TerrainCollider, TonemapMode,
-    Transform,
+    Transform, WindZone,
 };
 use misty_engine::terrain::auto_paint::{self, AutoPaintRules};
 use misty_engine::terrain::{TerrainData, TerrainLayer, details, noise};
@@ -91,6 +92,22 @@ fn grass() -> details::DetailSettings {
         translucency: 0.6,
         tip_dryness: 0.2,
         lod_distance: 15.0,
+        // Soft patches ~16 m across: lush dark-green hollows with taller, fuller tufts and
+        // paler, drier, shorter stretches; every tuft a little warmer or cooler.
+        patch_scale: 16.0,
+        lush_color: [0.17, 0.34, 0.07],
+        lush_amount: 0.6,
+        dry_amount: 0.5,
+        color_variation: 0.6,
+        height_variation: 0.65,
+        density_variation: 0.25,
+        ground_tint: 0.92,
+        cast_shadows: true,
+        // Gust waves rolling from the left across the view (the Wind Zone turns them).
+        wind_direction: 80.0,
+        gust_strength: 0.8,
+        gust_scale: 22.0,
+        turbulence: 0.45,
     }
 }
 
@@ -222,6 +239,14 @@ fn demo_scene(d: &TerrainData) -> Scene {
     s.add(terrain, TerrainCollider::default());
     let fx = s.spawn("Global Volume", None);
     s.add(fx, volume());
+    // Wind across the field from the left, slightly away from the camera.
+    let wind = s.spawn("Wind Zone", None);
+    s.set_transform(
+        wind,
+        Transform::from_position(Vec3::new(CORNER.x + EYE.0, 10.0, CORNER.z + EYE.1))
+            .with_euler(Vec3::new(0.0, 75.0, 0.0)),
+    );
+    s.add(wind, WindZone::default());
     s
 }
 
@@ -237,7 +262,14 @@ fn write_meadow_demo() {
 #[test]
 fn meadow_demo_matches_its_generator() {
     let root = project();
-    for rel in [GROUND, GROUND_NORMAL, GROUND_HEIGHT, SCREE, ROCK, ROCK_NORMAL] {
+    for rel in [
+        GROUND,
+        GROUND_NORMAL,
+        GROUND_HEIGHT,
+        SCREE,
+        ROCK,
+        ROCK_NORMAL,
+    ] {
         assert!(root.join(rel).exists(), "{rel}");
     }
     let on_disk = TerrainData::load(&root.join(DATA)).unwrap();
@@ -255,7 +287,7 @@ fn meadow_demo_matches_its_generator() {
     let lo = glam::Vec2::new(EYE.0 - 8.0, EYE.1);
     let blades = details::scatter(&generated, lo, lo + 16.0);
     assert!(blades.len() > 40_000, "{}", blades.len());
-    assert!(blades.iter().any(|b| b.extra[0] > 0.5), "seed heads");
+    assert!(blades.iter().any(|b| b.seed_head()), "seed heads");
 }
 
 /// Playing works (no scripts; the terrain collider builds).

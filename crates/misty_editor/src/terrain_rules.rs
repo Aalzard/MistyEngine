@@ -317,6 +317,100 @@ pub fn details_section(ui: &mut Ui, state: &mut EditorState, path: &str, d: &Ter
                             .changed();
                     });
                     ui.end_row();
+                    let slider = |ui: &mut Ui, label: &str, tip: &str, v: &mut f32, range| {
+                        ui.label(label).on_hover_text(tip);
+                        let c = ui
+                            .add(egui::Slider::new(v, range))
+                            .on_hover_text(tip)
+                            .changed();
+                        ui.end_row();
+                        c
+                    };
+                    ch |= slider(
+                        ui,
+                        "Wind Direction",
+                        "Compass direction the wind blows towards (a Wind Zone in the scene overrides it).",
+                        &mut s.wind_direction,
+                        0.0..=360.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Gusts",
+                        "Strength of the gust waves rolling across the field.",
+                        &mut s.gust_strength,
+                        0.0..=1.5,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Gust Size",
+                        "Metres between gust waves.",
+                        &mut s.gust_scale,
+                        4.0..=120.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Flutter",
+                        "Fast flutter of single blades.",
+                        &mut s.turbulence,
+                        0.0..=1.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Patch Size",
+                        "Size of the soft lush / dry and taller / shorter patches.",
+                        &mut s.patch_scale,
+                        2.0..=80.0,
+                    );
+                    ui.label("Lush Colour");
+                    ch |= srgb(ui, &mut s.lush_color);
+                    ui.end_row();
+                    ch |= slider(
+                        ui,
+                        "Lush Patches",
+                        "How strongly lush patches darken and green the grass.",
+                        &mut s.lush_amount,
+                        0.0..=1.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Dry Patches",
+                        "How strongly dry patches turn the grass towards the dry colour.",
+                        &mut s.dry_amount,
+                        0.0..=1.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Colour Jitter",
+                        "Hue and brightness differences between tufts and blades.",
+                        &mut s.color_variation,
+                        0.0..=1.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Height Variation",
+                        "Taller, fuller grass in lush patches, shorter elsewhere.",
+                        &mut s.height_variation,
+                        0.0..=1.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Density Variation",
+                        "How much the blade count follows the patches.",
+                        &mut s.density_variation,
+                        0.0..=1.0,
+                    );
+                    ch |= slider(
+                        ui,
+                        "Ground Tint",
+                        "The ground under grass takes the grass's shaded colour, so gaps read as deep grass.",
+                        &mut s.ground_tint,
+                        0.0..=1.0,
+                    );
+                    ui.label("Cast Shadows").on_hover_text(
+                        "Blades near the camera cast shadows (Quality ▸ Grass Shadows sets how far).",
+                    );
+                    ch |= ui.checkbox(&mut s.cast_shadows, "").changed();
+                    ui.end_row();
                     ch
                 });
                 ui.weak("Rules apply on Generate; grass never grows past the slope limit.");

@@ -48,6 +48,7 @@ mod vehicle_editors;
 mod video_editors;
 mod visual_effect;
 mod water;
+mod wind_editors;
 
 use egui::{RichText, Ui};
 use misty_engine::hecs::Entity;

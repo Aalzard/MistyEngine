@@ -7,6 +7,8 @@
 @group(3) @binding(4) var layer_normal: texture_2d_array<f32>;
 @group(3) @binding(5) var layer_height: texture_2d_array<f32>;
 @group(3) @binding(6) var layer_sampler: sampler;
+// Grass density 0..1 (the detail map, same texels as the splat map).
+@group(3) @binding(7) var grass_density: texture_2d<f32>;
 
 struct LayerSample {
     albedo: vec3<f32>,
@@ -104,6 +106,7 @@ fn terrain_surface(in: MeshOut) -> Surface {
     let dx = dpdx(in.world);
     let dy = dpdy(in.world);
     var wv = textureSample(splat_map, splat_sampler, in.uv);
+    let grass_cover = textureSample(grass_density, splat_sampler, in.uv).r;
     let res = terrain.grid.x;
     let nuv = (in.uv * (res - 1.0) + 0.5) / res;
     let n = normalize(textureSample(terrain_normals, splat_sampler, nuv).xyz);
@@ -181,6 +184,20 @@ fn terrain_surface(in: MeshOut) -> Surface {
             s.metallic += terrain.surface[i].x * w[i];
             s.smoothness += terrain.surface[i].y * w[i];
         }
+    }
+    // Under grass the ground takes the grass's own colour in deep shade, so the gaps
+    // between blades read as more grass rather than soil; far away (thin blades) it moves
+    // towards the lit canopy colour, and beyond the draw distance it stands in for the grass.
+    let tint = terrain.grass_healthy.w * grass_cover;
+    if (tint > 0.0) {
+        let patches = grass_patches(local.xz, terrain.grass_dry.w);
+        let grass = grass_base_color(patches, 0.45, terrain.grass_healthy.rgb, terrain.grass_dry.rgb, terrain.grass_lush.rgb, terrain.grass_amounts.xy);
+        let dist = distance(in.world, view.camera_pos.xyz);
+        let shade = mix(0.38, 0.8, smoothstep(0.15, 1.0, dist / terrain.grass_lush.w));
+        s.albedo = mix(s.albedo, grass * shade, tint);
+        s.smoothness *= 1.0 - tint;
+        // Soil bumps do not show through a lawn.
+        s.normal = normalize(mix(s.normal, n, 0.8 * tint));
     }
     if (count == 0u) {
         // No layers yet: plain light grey.

@@ -12,7 +12,7 @@ use super::data::TerrainData;
 use super::noise;
 
 /// Most blades per square metre.
-pub const MAX_DENSITY: f32 = 600.0;
+pub const MAX_DENSITY: f32 = 1500.0;
 /// Coarsest density level of far chunks (each level keeps half the blades of the one before).
 pub const MAX_LEVEL: u32 = 6;
 
@@ -50,6 +50,34 @@ pub struct DetailSettings {
     pub tip_dryness: f32,
     /// Full density up to this distance; further away fewer, wider blades are drawn.
     pub lod_distance: f32,
+    /// Size in metres of the soft colour / height patches across the field.
+    pub patch_scale: f32,
+    /// sRGB colour of the lush (dark, saturated) patches.
+    pub lush_color: [f32; 3],
+    /// How strongly lush patches darken and green the grass (0..1).
+    pub lush_amount: f32,
+    /// How strongly dry patches turn the grass towards the dry colour (0..1).
+    pub dry_amount: f32,
+    /// Hue and brightness jitter per tuft and blade (0..1).
+    pub color_variation: f32,
+    /// Taller, fuller tufts in lush patches and shorter, thinner grass elsewhere (0..1).
+    pub height_variation: f32,
+    /// How much the blade count follows the patches (0..1).
+    pub density_variation: f32,
+    /// The ground under grass takes the grass's shaded base colour (0..1), so gaps between
+    /// blades read as deep grass rather than soil.
+    pub ground_tint: f32,
+    /// Blades near the camera cast shadows (into the first cascades; Quality decides how far).
+    pub cast_shadows: bool,
+    /// Compass direction the wind blows towards (degrees from +Z towards +X), used without a
+    /// Wind Zone in the scene.
+    pub wind_direction: f32,
+    /// Strength of the gust waves rolling across the field (0..1.5).
+    pub gust_strength: f32,
+    /// Distance between gust waves in metres.
+    pub gust_scale: f32,
+    /// Fast flutter of single blades (0..1).
+    pub turbulence: f32,
 }
 
 impl Default for DetailSettings {
@@ -80,6 +108,19 @@ impl Default for DetailSettings {
             translucency: 0.6,
             tip_dryness: 0.35,
             lod_distance: 20.0,
+            patch_scale: 14.0,
+            lush_color: [0.2, 0.4, 0.1],
+            lush_amount: 0.5,
+            dry_amount: 0.4,
+            color_variation: 0.5,
+            height_variation: 0.5,
+            density_variation: 0.3,
+            ground_tint: 0.9,
+            cast_shadows: true,
+            wind_direction: 53.0,
+            gust_strength: 0.6,
+            gust_scale: 30.0,
+            turbulence: 0.5,
         }
     }
 }
@@ -150,6 +191,42 @@ pub fn generate_in_brush(d: &mut TerrainData, b: &Brush, k: f32) {
     }
 }
 
+/// Value noise 0..1 at `p` (lattice of 1 m): the same hash and smoothing as `grass_noise` in
+/// grass_field.wgsl, so blade heights follow the colour patches the shaders draw.
+fn field_noise(p: Vec2) -> f32 {
+    // WGSL fract: x - floor(x), never negative.
+    let fract = |x: f32| x - x.floor();
+    let hash = |q: Vec2| {
+        let q = Vec2::new(fract(q.x * 0.1031), fract(q.y * 0.1030));
+        let d = q.dot(Vec2::new(q.y, q.x) + 33.33);
+        let r = q + d;
+        fract((r.x + r.y) * r.x)
+    };
+    let i = p.floor();
+    let f = p - i;
+    let u = f * f * (Vec2::splat(3.0) - 2.0 * f);
+    let a = hash(i);
+    let b = hash(i + Vec2::X);
+    let c = hash(i + Vec2::Y);
+    let d = hash(i + Vec2::ONE);
+    let top = a + (b - a) * u.x;
+    let bottom = c + (d - c) * u.x;
+    top + (bottom - top) * u.y
+}
+
+/// Lush and dry patch weights 0..1 at terrain-local `p` (see `grass_patches` in
+/// grass_field.wgsl, which colours the blades and the ground under them).
+pub fn patches(p: Vec2, scale: f32) -> (f32, f32) {
+    let q = p / scale.max(0.5);
+    let lush = 0.65 * field_noise(q) + 0.35 * field_noise(q * 2.3 + 17.1);
+    let dry = 0.6 * field_noise(q * 0.8 + 41.7) + 0.4 * field_noise(q * 1.9 + 5.3);
+    let smooth = |e0: f32, e1: f32, x: f32| {
+        let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    };
+    (smooth(0.42, 0.78, lush), smooth(0.45, 0.8, dry))
+}
+
 /// One grass blade for the renderer (terrain-local position).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable, PartialEq)]
@@ -158,9 +235,21 @@ pub struct Blade {
     pub position: [f32; 4],
     /// x = facing angle (radians), y = width, z = dry mix 0..1, w = random phase 0..1.
     pub shape: [f32; 4],
-    /// x = kind (0 blade, 1 seed head stem), y = bend, z = lean angle (radians),
-    /// w = tuft tint -1..1.
+    /// x = drop-out key 0..1 (see [`level_keep`]) + 2 for a seed head stem, y = bend,
+    /// z = lean angle (radians), w = tuft tint -1..1.
     pub extra: [f32; 4],
+}
+
+impl Blade {
+    /// The stem carries a seed head.
+    pub fn seed_head(&self) -> bool {
+        self.extra[0] >= 2.0
+    }
+
+    /// Drop-out key: the blade is drawn while the share kept at its distance is above it.
+    pub fn key(&self) -> f32 {
+        self.extra[0] % 2.0
+    }
 }
 
 /// Share of blades kept at density `level`: a blade stays when its drop-out key is below
@@ -176,7 +265,10 @@ fn tuft(p: Vec2, cell: f32, seed: u32) -> (Vec2, f32) {
     for dz in -1..=1 {
         for dx in -1..=1 {
             let (ix, iz) = (g.x as i32 + dx, g.y as i32 + dz);
-            let jitter = Vec2::new(noise::hash(ix, iz, seed), noise::hash(ix, iz, seed ^ 0x9e37));
+            let jitter = Vec2::new(
+                noise::hash(ix, iz, seed),
+                noise::hash(ix, iz, seed ^ 0x9e37),
+            );
             let c = (Vec2::new(ix as f32, iz as f32) + jitter) * cell;
             let d = c.distance_squared(p);
             if d < best.0 {
@@ -210,6 +302,8 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
     let mut out: Vec<(f32, Blade)> = Vec::new();
     let seed = d.rule_seed;
     let clumping = s.clumping.clamp(0.0, 1.0);
+    let hv = s.height_variation.clamp(0.0, 1.0);
+    let dv = s.density_variation.clamp(0.0, 1.0);
     // Tufts a little closer together than the tallest blades.
     let cell = (s.height[1].max(0.05) * 0.8).max(0.25);
     for tz in t0.y as usize..t1.y as usize {
@@ -219,7 +313,13 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 continue;
             }
             // Expected count; the fraction becomes one more blade with that probability.
-            let want = per_texel * density as f32 / 255.0;
+            // Fuller grass in lush patches and in the taller areas, thinner elsewhere.
+            let centre = (Vec2::new(tx as f32, tz as f32) + 0.5) * texel;
+            let (lush, dry) = patches(centre, s.patch_scale);
+            let area =
+                noise::fbm(centre.x, centre.y, s.patch_scale * 0.7, 2, seed ^ 0x91) * 0.5 + 0.5;
+            let fuller = 1.0 + dv * (0.8 * lush + 0.8 * area - 0.3 * dry - 0.65);
+            let want = per_texel * density as f32 / 255.0 * fuller.max(0.15);
             let (ix, iz) = (tx as i32, tz as i32);
             let count =
                 want.floor() as u32 + u32::from(noise::hash(ix, iz, seed ^ 0x51) < want.fract());
@@ -252,17 +352,29 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let field = noise::fbm(p.x, p.y, 28.0, 2, seed ^ 0x5d) * 0.5 + 0.5;
                 let tuft_scale = 1.0 + (id - 0.5) * 0.8 * clumping;
                 let mix = (0.3 * r(3) * r(3) + 0.35 * patch + 0.35 * field).clamp(0.0, 1.0);
-                let outlier = if r(15) < 0.06 { 1.35 + 0.3 * r(16) } else { 1.0 };
-                let mut tall = (s.height[0] + (s.height[1] - s.height[0]) * mix)
-                    * tuft_scale
-                    * outlier;
+                let outlier = if r(15) < 0.06 {
+                    1.35 + 0.3 * r(16)
+                } else {
+                    1.0
+                };
+                let mut tall =
+                    (s.height[0] + (s.height[1] - s.height[0]) * mix) * tuft_scale * outlier;
+                // Areas of taller, fuller tufts (lush patches) and shorter grass (dry ones):
+                // the canopy top rolls instead of standing at one height.
+                let (lush, dry) = patches(p, s.patch_scale);
+                let area = noise::fbm(p.x, p.y, s.patch_scale * 0.7, 2, seed ^ 0x91) * 0.5 + 0.5;
+                tall *=
+                    (1.0 + hv * (0.9 * (lush - 0.35) - 0.55 * dry + 0.9 * (area - 0.5))).max(0.3);
                 // Most blades are short undergrowth below the taller ones.
-                if r(17) < 0.55 {
+                let under = r(17) < 0.55;
+                if under {
                     tall *= 0.35 + 0.3 * r(18);
                 }
                 let dry = (noise::fbm(p.x, p.y, 9.0, 3, seed ^ 0x77) * 0.5 + 0.5).clamp(0.0, 1.0);
                 let seed_head = r(9) < s.seed_heads.clamp(0.0, 1.0) * (0.4 + 1.2 * patch);
-                let mut width = s.width * (0.7 + 0.6 * r(5));
+                // Undergrowth is broader and arches over: it fills the base of the canopy so
+                // little ground shows between the stems.
+                let mut width = s.width * (0.7 + 0.6 * r(5)) * if under { 1.6 } else { 1.0 };
                 if seed_head {
                     tall *= 1.1 + 0.35 * r(10);
                     width = s.width.min(0.02) * 0.3;
@@ -270,7 +382,13 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let bend = s.bend.clamp(0.0, 1.5)
                     * (0.35 + 0.65 * r(12))
                     * (1.0 + clumping * spread)
-                    * if seed_head { 0.35 } else { 1.0 };
+                    * if seed_head {
+                        0.35
+                    } else if under {
+                        1.35
+                    } else {
+                        1.0
+                    };
                 let tint = (id - 0.5) * 2.0 * clumping + (r(14) - 0.5) * 0.6;
                 out.push((
                     key,
@@ -283,7 +401,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                             r(7),
                         ],
                         extra: [
-                            if seed_head { 1.0 } else { 0.0 },
+                            key + if seed_head { 2.0 } else { 0.0 },
                             bend,
                             lean + (r(13) - 0.5) * 1.2,
                             tint.clamp(-1.0, 1.0),

@@ -56,7 +56,7 @@ pub use crate::terrain::TerrainDraw;
 pub use ao::AoSettings;
 pub use area::AreaShape;
 pub use contact_shadows::ContactShadowSettings;
-pub use environment::{Environment, Sun};
+pub use environment::{Environment, Sun, Wind};
 pub use frame_debug::{
     CaptureRequest, DrawLabel, EventKind, EventTarget, FrameCapture, FrameEvent, TargetInfo,
 };
@@ -1009,6 +1009,8 @@ impl Renderer {
                 frame.terrains,
                 first,
                 grass_layout,
+                frame.environment,
+                self.quality.grass_shadow_casters(),
             );
             (lists, plan, rebuilt)
         };
@@ -1619,6 +1621,7 @@ impl Renderer {
         slot: usize,
         lists: &frame_lists::FrameLists,
         list: Option<&frame_lists::ShadowList>,
+        grass: Option<&glam::Mat4>,
         stats: &mut RenderStats,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1689,6 +1692,19 @@ impl Renderer {
             }
             m.draw(&mut pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
+        }
+        // Grass near the camera (the first cascades only; group 2 = the grass casters).
+        if let Some(view_proj) = grass
+            && frame_debug::record(&self.capture, |_| {
+                frame_debug::events::post_event(
+                    "Grass Shadow Casters".to_owned(),
+                    "grass_shadow.wgsl",
+                )
+            })
+        {
+            pass.set_pipeline(&self.pipelines.grass_shadow);
+            stats.set_pass += 1;
+            (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, view_proj, stats);
         }
         let first = frame.meshes.len();
         // Terrain casters pull heights from their own textures (group 3; group 2 unused).

@@ -23,6 +23,14 @@ pub(super) const PREPASS_SRC: &str = concat!(
     "\n",
     include_str!("shaders/ao_prepass.wgsl")
 );
+/// Near grass blades in the prepass (alpha tested, the lit pass's normals).
+pub(super) const GRASS_PREPASS_SRC: &str = concat!(
+    include_str!("shaders/grass_field.wgsl"),
+    "\n",
+    include_str!("shaders/grass_blade.wgsl"),
+    "\n",
+    include_str!("shaders/grass_prepass.wgsl")
+);
 /// The prepass with terrain vertex pulling (terrain_vertex.wgsl).
 pub(super) const TERRAIN_PREPASS_SRC: &str = concat!(
     include_str!("shaders/draw.wgsl"),
@@ -80,6 +88,8 @@ struct Passes {
     prepass: Vec<(ShadowKey, wgpu::RenderPipeline)>,
     /// Terrains (heightmap vertex pulling).
     terrain: wgpu::RenderPipeline,
+    /// Near terrain grass.
+    grass: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     gtao: wgpu::ComputePipeline,
     denoise: wgpu::ComputePipeline,
@@ -399,7 +409,23 @@ impl Renderer {
                 |i| lists.terrains[i],
                 stats,
             );
+            // Near grass, so the effects see blades rather than the ground behind them.
+            if let Some(range) = grass_prepass_range(self.quality.ambient_occlusion)
+                && self.terrains.has_grass()
+            {
+                pass.set_pipeline(&passes.grass);
+                (self.terrains).draw_grass_near(&mut pass, frame.terrains, range, stats);
+            }
         }
+    }
+}
+
+/// How far grass is drawn into the prepass, by AO quality.
+fn grass_prepass_range(ao: crate::quality::Tier) -> Option<f32> {
+    match ao {
+        crate::quality::Tier::Off | crate::quality::Tier::Low => Some(12.0),
+        crate::quality::Tier::Medium => Some(20.0),
+        crate::quality::Tier::High => Some(30.0),
     }
 }
 

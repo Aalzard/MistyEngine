@@ -186,7 +186,14 @@ impl Renderer {
                     FrameEvent::new(EventKind::Clear, "Clear (depth)")
                 });
             }
-            self.shadow_pass(encoder, frame, view, slot, lists, Some(list), stats);
+            // Grass casts into the cascades that start within its caster range.
+            let grass_range = self.terrains.grass_caster_range();
+            let grass = plan.cascades.get(slot).filter(|_| {
+                let start = slot.checked_sub(1).map_or(0.0, |p| plan.cascades[p].far);
+                grass_range.is_some_and(|r| start < r)
+            });
+            let grass = grass.map(|c| &c.view_proj);
+            self.shadow_pass(encoder, frame, view, slot, lists, Some(list), grass, stats);
         }
     }
 }

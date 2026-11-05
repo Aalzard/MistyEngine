@@ -224,6 +224,9 @@ pub struct QualityLevel {
     /// Sharp volumetric sun shafts: resolution and steps of the per-pixel sun march (Off =
     /// the sun stays in the froxel fog).
     pub sun_shafts: Tier,
+    /// Terrain grass casts shadows near the camera: how far and how many blades (Off = no
+    /// grass shadow casters; grass still receives shadows).
+    pub grass_shadows: Tier,
 }
 
 impl Default for QualityLevel {
@@ -259,6 +262,7 @@ impl QualityLevel {
             lens_flares: false,
             volumetric_clouds: Tier::Low,
             sun_shafts: Tier::Off,
+            grass_shadows: Tier::Off,
         }
     }
 
@@ -288,6 +292,7 @@ impl QualityLevel {
             lens_flares: true,
             volumetric_clouds: Tier::Medium,
             sun_shafts: Tier::Medium,
+            grass_shadows: Tier::Low,
         }
     }
 
@@ -317,6 +322,7 @@ impl QualityLevel {
             lens_flares: true,
             volumetric_clouds: Tier::Medium,
             sun_shafts: Tier::Medium,
+            grass_shadows: Tier::Medium,
         }
     }
 
@@ -332,6 +338,7 @@ impl QualityLevel {
             volumetric_fog: Tier::High,
             volumetric_clouds: Tier::High,
             sun_shafts: Tier::High,
+            grass_shadows: Tier::High,
             ..Self::high()
         }
     }
@@ -408,6 +415,17 @@ impl QualityLevel {
     /// Depth slices of the volumetric fog grid (0 = off).
     pub fn fog_slices(&self) -> u32 {
         [0, 32, 64, 128][self.volumetric_fog.index() as usize]
+    }
+
+    /// Grass shadow casters: range in metres from the camera and the share of the drawn blades
+    /// that cast (None = off).
+    pub fn grass_shadow_casters(&self) -> Option<(f32, f32)> {
+        match self.grass_shadows {
+            Tier::Off => None,
+            Tier::Low => Some((12.0, 0.35)),
+            Tier::Medium => Some((20.0, 0.5)),
+            Tier::High => Some((32.0, 0.6)),
+        }
     }
 
     /// Cube face size of baked/realtime reflection probes (0 = probes off).

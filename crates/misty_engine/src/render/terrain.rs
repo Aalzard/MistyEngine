@@ -14,7 +14,7 @@ use wgpu::util::DeviceExt;
 
 use super::culling::{Aabb, Frustum};
 use super::environment::Environment;
-use super::terrain_grass::{Grass, GrassParams};
+use super::terrain_grass::{Grass, GrassParams, Limit};
 use super::terrain_layers::LayerCache;
 use super::terrain_lod;
 use super::{DrawUniform, RenderStats};
@@ -36,6 +36,15 @@ struct TerrainParams {
     harmony: [[f32; 4]; MAX_LAYERS],
     /// Cliff settings (see `CliffSettings::uniform`).
     cliff: [f32; 4],
+    /// Ground under grass (terrain_layers.wgsl): rgb = linear healthy grass colour,
+    /// w = ground tint (0 = none).
+    grass_healthy: [f32; 4],
+    /// rgb = linear dry colour, w = patch size.
+    grass_dry: [f32; 4],
+    /// rgb = linear lush colour, w = grass draw distance.
+    grass_lush: [f32; 4],
+    /// x = lush amount, y = dry amount.
+    grass_amounts: [f32; 4],
 }
 
 /// One chunk drawn this frame.
@@ -61,6 +70,8 @@ struct GpuTerrain {
     heights: wgpu::Texture,
     normals: wgpu::Texture,
     splat: wgpu::Texture,
+    /// Grass density 0..1 per splat texel (the detail map; zero without grass).
+    details: wgpu::Texture,
     /// Normalised height range (min, max).
     range: (f32, f32),
     /// Per chunk: normalised height range.
@@ -162,6 +173,16 @@ fn normals(
     out
 }
 
+/// The detail map as uploaded: zeros while there is none (details off).
+fn detail_map(d: &TerrainData) -> std::borrow::Cow<'_, [u8]> {
+    let n = d.alphamap_resolution * d.alphamap_resolution;
+    if d.details.enabled && d.detail_map.len() == n {
+        std::borrow::Cow::Borrowed(&d.detail_map)
+    } else {
+        std::borrow::Cow::Owned(vec![0; n])
+    }
+}
+
 impl GpuTerrain {
     fn new(device: &wgpu::Device, d: &TerrainData) -> Self {
         let res = d.heightmap_resolution;
@@ -188,6 +209,12 @@ impl GpuTerrain {
                 d.alphamap_resolution,
                 wgpu::TextureFormat::Rgba8Unorm,
             ),
+            details: texture(
+                device,
+                "misty terrain details",
+                d.alphamap_resolution,
+                wgpu::TextureFormat::R8Unorm,
+            ),
             range: (0.0, 0.0),
             chunk_range: vec![(0.0, 0.0); per_side * per_side],
             coverage: [0.0; MAX_LAYERS],
@@ -213,6 +240,7 @@ impl GpuTerrain {
             &normals(d, &all, &all),
         );
         write(queue, &self.splat, 0, 0, self.ares, &d.alphamap);
+        write(queue, &self.details, 0, 0, self.ares, &detail_map(d));
         self.range = d.height_range();
         let per = self.per_side();
         self.update_chunks(d, 0..per, 0..per);
@@ -261,6 +289,14 @@ impl GpuTerrain {
                 sx.len(),
                 &rect(&d.alphamap, self.ares, &sx, &sz),
             );
+            write(
+                queue,
+                &self.details,
+                sx.start,
+                sz.start,
+                sx.len(),
+                &rect(&detail_map(d), self.ares, &sx, &sz),
+            );
         }
         self.coverage = harmony::coverage(d);
         self.grass.invalidate(d, Some(r));
@@ -307,6 +343,10 @@ pub(super) struct TerrainCache {
     chunks: Vec<Vec<ChunkDraw>>,
     /// Grass bind group per terrain of the current frame (None = no grass).
     grass_groups: Vec<Option<wgpu::BindGroup>>,
+    /// Grass shadow caster bind group per terrain (None = casts none).
+    grass_shadow_groups: Vec<Option<wgpu::BindGroup>>,
+    /// Range and share of this frame's grass shadow casters (Quality).
+    grass_casters: Option<(f32, f32)>,
     /// The built-in grass atlas (uploaded with the first grass).
     grass_atlas: Option<(wgpu::TextureView, wgpu::Sampler)>,
     /// Camera of the current frame (grass LOD).
@@ -330,6 +370,8 @@ impl TerrainCache {
             groups: Vec::new(),
             chunks: Vec::new(),
             grass_groups: Vec::new(),
+            grass_shadow_groups: Vec::new(),
+            grass_casters: None,
             grass_atlas: None,
             camera: Vec3::ZERO,
             frustum: None,
@@ -409,6 +451,7 @@ impl TerrainCache {
             let view = |t: &wgpu::Texture| t.create_view(&Default::default());
             let (heights, normals, splat) =
                 (view(&gpu.heights), view(&gpu.normals), view(&gpu.splat));
+            let details = view(&gpu.details);
             let tex = wgpu::BindingResource::TextureView;
             let entries = [
                 (0, buffer.as_entire_binding()),
@@ -418,6 +461,7 @@ impl TerrainCache {
                 (4, tex(&layers.normal)),
                 (5, tex(&layers.height)),
                 (6, wgpu::BindingResource::Sampler(textures.sampler())),
+                (7, tex(&details)),
                 (12, tex(&heights)),
                 (13, tex(&normals)),
             ]
@@ -442,17 +486,24 @@ impl TerrainCache {
         terrains: &[TerrainDraw],
         first_draw: usize,
         grass_layout: &wgpu::BindGroupLayout,
+        environment: &Environment,
+        casters: Option<(f32, f32)>,
     ) {
         crate::profile_scope!("Terrain.Select");
         let frustum = Frustum::from_matrix(view_proj);
         self.chunks.clear();
         self.grass_groups.clear();
+        self.grass_shadow_groups.clear();
         self.camera = camera;
-        let time = self.started.elapsed().as_secs_f32();
+        self.grass_casters = casters;
+        let time = environment
+            .grass_time
+            .unwrap_or_else(|| self.started.elapsed().as_secs_f32());
         for (i, t) in terrains.iter().enumerate() {
             let Some(g) = self.entries.get_mut(&t.key) else {
                 self.chunks.push(Vec::new());
                 self.grass_groups.push(None);
+                self.grass_shadow_groups.push(None);
                 continue;
             };
             let d = &t.data;
@@ -495,10 +546,24 @@ impl TerrainCache {
             if has_grass && self.grass_atlas.is_none() {
                 self.grass_atlas = Some(super::terrain_grass::atlas(device, queue));
             }
-            let atlas = self.grass_atlas.as_ref();
-            let grass = has_grass.then(|| {
-                let (atlas_view, atlas_sampler) = atlas.expect("uploaded above");
-                let p = GrassParams::new(&d.details, t.position, time, first_draw + i);
+            let (atlas_view, atlas_sampler) = match &self.grass_atlas {
+                Some((v, s)) if has_grass => (v, s),
+                _ => {
+                    self.grass_groups.push(None);
+                    self.grass_shadow_groups.push(None);
+                    continue;
+                }
+            };
+            let group = |shadow: Option<(f32, f32)>| {
+                let p = GrassParams::new(
+                    &d.details,
+                    t.position,
+                    time,
+                    first_draw + i,
+                    camera,
+                    environment.wind.as_ref(),
+                    shadow,
+                );
                 let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("misty grass params"),
                     contents: bytemuck::bytes_of(&p),
@@ -522,7 +587,12 @@ impl TerrainCache {
                         },
                     ],
                 })
-            });
+            };
+            let grass = Some(group(None));
+            let shadow = casters
+                .filter(|_| d.details.cast_shadows && t.cast_shadows)
+                .map(|c| group(Some(c)));
+            self.grass_shadow_groups.push(shadow);
             self.grass_groups.push(grass);
         }
         self.frustum = Some(frustum);
@@ -604,8 +674,79 @@ impl TerrainCache {
             };
             pass.set_bind_group(2, group, &[]);
             let lod = t.data.details.lod_distance;
-            gpu.grass.draw(pass, t.position, self.camera, lod, frustum, stats);
+            gpu.grass
+                .draw(pass, t.position, self.camera, lod, frustum, None, stats);
         }
+    }
+
+    /// Draw the frame's grass shadow casters into one shadow map (`view_proj`; pipeline and
+    /// groups 0–1 bound by the caller). Only for maps covering the casters' range.
+    pub fn draw_grass_shadow(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        terrains: &[TerrainDraw],
+        view_proj: &Mat4,
+        stats: &mut RenderStats,
+    ) {
+        let Some(casters) = self.grass_casters else {
+            return;
+        };
+        let frustum = Frustum::from_matrix(view_proj);
+        for (i, t) in terrains.iter().enumerate() {
+            let (Some(gpu), Some(Some(group))) =
+                (self.entries.get(&t.key), self.grass_shadow_groups.get(i))
+            else {
+                continue;
+            };
+            pass.set_bind_group(2, group, &[]);
+            let lod = t.data.details.lod_distance;
+            let limit = Some(Limit {
+                range: casters.0,
+                share: casters.1,
+                coarse: true,
+            });
+            gpu.grass
+                .draw(pass, t.position, self.camera, lod, &frustum, limit, stats);
+        }
+    }
+
+    /// Draw the grass within `range` metres of the camera with the camera pass's groups (the
+    /// screen-space prepass; pipeline and groups 0–1 bound by the caller).
+    pub fn draw_grass_near(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        terrains: &[TerrainDraw],
+        range: f32,
+        stats: &mut RenderStats,
+    ) {
+        let Some(frustum) = &self.frustum else {
+            return;
+        };
+        for (i, t) in terrains.iter().enumerate() {
+            let (Some(gpu), Some(Some(group))) =
+                (self.entries.get(&t.key), self.grass_groups.get(i))
+            else {
+                continue;
+            };
+            pass.set_bind_group(2, group, &[]);
+            let lod = t.data.details.lod_distance;
+            let limit = Some(Limit {
+                range,
+                share: 1.0,
+                coarse: false,
+            });
+            gpu.grass
+                .draw(pass, t.position, self.camera, lod, frustum, limit, stats);
+        }
+    }
+
+    /// Range of this frame's grass shadow casters (None = none cast).
+    pub fn grass_caster_range(&self) -> Option<f32> {
+        self.grass_shadow_groups
+            .iter()
+            .any(|g| g.is_some())
+            .then_some(self.grass_casters.map(|c| c.0))
+            .flatten()
     }
 
     /// Any terrain of the frame has grass to draw.
@@ -657,7 +798,26 @@ fn params(
         surface: [[0.0; 4]; MAX_LAYERS],
         harmony: [harmony::IDENTITY; MAX_LAYERS],
         cliff: d.cliffs.uniform(),
+        grass_healthy: [0.0; 4],
+        grass_dry: [0.0; 4],
+        grass_lush: [0.0; 4],
+        grass_amounts: [0.0; 4],
     };
+    let g = &d.details;
+    if g.enabled && d.detail_map.len() == d.alphamap_resolution.pow(2) {
+        let lin = |c: [f32; 3]| super::srgb_to_linear(c);
+        let ([hr, hg, hb], [dr, dg, db], [lr, lg, lb]) =
+            (lin(g.healthy_color), lin(g.dry_color), lin(g.lush_color));
+        p.grass_healthy = [hr, hg, hb, g.ground_tint.clamp(0.0, 1.0)];
+        p.grass_dry = [dr, dg, db, g.patch_scale.max(0.5)];
+        p.grass_lush = [lr, lg, lb, g.draw_distance.max(1.0)];
+        p.grass_amounts = [
+            g.lush_amount.clamp(0.0, 1.0),
+            g.dry_amount.clamp(0.0, 1.0),
+            0.0,
+            0.0,
+        ];
+    }
     for (i, l) in d.layers.iter().take(MAX_LAYERS).enumerate() {
         p.tiles[i] = [
             l.tile_size[0].max(0.01),

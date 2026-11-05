@@ -51,6 +51,17 @@ const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
 ];
 
 /// Vertex buffer layout of [`Vertex`] meshes.
+/// Grass blades: one instance per [`crate::terrain::details::Blade`].
+pub(super) fn blade_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
+        wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4];
+    [wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<crate::terrain::details::Blade>() as u64,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &ATTRIBUTES,
+    }]
+}
+
 pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
     [wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Vertex>() as u64,
@@ -77,6 +88,8 @@ const TERRAIN_SRC: &str = concat!(
     include_str!("screen_trace/shaders/screen_trace.wgsl"),
     "\n",
     include_str!("shaders/terrain_vertex.wgsl"),
+    "\n",
+    include_str!("shaders/grass_field.wgsl"),
     "\n",
     include_str!("shaders/terrain_layers.wgsl"),
     "\n",
@@ -108,7 +121,19 @@ const GRASS_SRC: &str = concat!(
     "\n",
     include_str!("screen_trace/shaders/screen_trace.wgsl"),
     "\n",
+    include_str!("shaders/grass_field.wgsl"),
+    "\n",
+    include_str!("shaders/grass_blade.wgsl"),
+    "\n",
     include_str!("shaders/grass.wgsl")
+);
+/// Grass shadow casters: the blades' geometry, alpha tested.
+const GRASS_SHADOW_SRC: &str = concat!(
+    include_str!("shaders/grass_field.wgsl"),
+    "\n",
+    include_str!("shaders/grass_blade.wgsl"),
+    "\n",
+    include_str!("shaders/grass_shadow.wgsl")
 );
 
 pub struct Pipelines {
@@ -149,6 +174,8 @@ pub struct Pipelines {
     /// Grass parameters (group 2 of the grass pipeline).
     pub grass_layout: wgpu::BindGroupLayout,
     pub grass: wgpu::RenderPipeline,
+    /// Grass shadow casters (groups: shadow view, draws, grass).
+    pub grass_shadow: wgpu::RenderPipeline,
     pub bloom_prefilter: wgpu::RenderPipeline,
     pub bloom_down: wgpu::RenderPipeline,
     pub bloom_up: wgpu::RenderPipeline,
@@ -523,6 +550,7 @@ impl Pipelines {
             entry(4, S::FRAGMENT, array),
             entry(5, S::FRAGMENT, array),
             entry(6, S::FRAGMENT, filtering),
+            entry(7, S::FRAGMENT, filtered),
             entry(12, S::VERTEX, unfiltered),
             entry(13, S::VERTEX_FRAGMENT, filtered),
         ];
@@ -595,11 +623,7 @@ impl Pipelines {
                 ),
             ],
         );
-        let blade_buffers = [wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<crate::terrain::details::Blade>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4],
-        }];
+        let blade_buffers = blade_buffers();
         let grass = build(
             device,
             Spec {
@@ -614,6 +638,35 @@ impl Pipelines {
                     "grass",
                     GRASS_SRC,
                     &[&view_layout, &mesh_layout, &grass_layout],
+                )
+            },
+        );
+        let grass_shadow = build(
+            device,
+            Spec {
+                vs: "vs_grass_shadow",
+                fs: Some("fs_grass_shadow"),
+                buffers: &blade_buffers,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                depth: Some(Depth {
+                    format: super::SHADOW_FORMAT,
+                    write: true,
+                    compare: wgpu::CompareFunction::LessEqual,
+                    // Blades shade themselves: a larger slope bias keeps a card's own shadow
+                    // off it.
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.5,
+                        clamp: 0.0,
+                    },
+                }),
+                color: None,
+                samples: 1,
+                glow: None,
+                ..Spec::new(
+                    "grass shadow",
+                    GRASS_SHADOW_SRC,
+                    &[&shadow_view_layout, &draws_layout, &grass_layout],
                 )
             },
         );
@@ -695,6 +748,7 @@ impl Pipelines {
             terrain_shadow,
             grass_layout,
             grass,
+            grass_shadow,
         }
     }
 }
@@ -797,6 +851,11 @@ mod tests {
             ),
             ("terrain shadow", super::TERRAIN_SHADOW_SRC),
             ("grass", super::GRASS_SRC),
+            ("grass shadow", super::GRASS_SHADOW_SRC),
+            (
+                "grass prepass",
+                super::super::screen_space::GRASS_PREPASS_SRC,
+            ),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));
