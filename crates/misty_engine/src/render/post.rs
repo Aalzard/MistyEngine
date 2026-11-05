@@ -7,13 +7,15 @@ use glam::Vec3;
 use super::{FogSettings, SunShaftSettings, srgb_to_linear};
 
 use super::{AoSettings, ContactShadowSettings};
-use crate::scene::{CloudsOverride, PostProcessVolume, TonemapMode};
+use crate::scene::{CloudsOverride, PostProcessVolume, TonemapLook, TonemapMode};
 
 /// Effect values for one view. `Default` is the baseline every scene gets without a volume:
 /// bloom 0.6, no grading, hue-preserving highlight compression.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PostSettings {
     pub tonemap: TonemapMode,
+    /// AgX look.
+    pub tonemap_look: TonemapLook,
     pub bloom_intensity: f32,
     pub bloom_threshold: f32,
     pub bloom_scatter: f32,
@@ -27,6 +29,9 @@ pub struct PostSettings {
     pub saturation: f32,
     /// sRGB.
     pub color_filter: [f32; 3],
+    /// White balance, -100..100 each (folded into the colour filter when packed).
+    pub temperature: f32,
+    pub tint: f32,
     pub vignette_intensity: f32,
     pub vignette_smoothness: f32,
     /// sRGB.
@@ -46,6 +51,7 @@ impl Default for PostSettings {
     fn default() -> Self {
         Self {
             tonemap: TonemapMode::None,
+            tonemap_look: TonemapLook::Base,
             bloom_intensity: 0.6,
             bloom_threshold: 0.0,
             bloom_scatter: 0.7,
@@ -54,6 +60,8 @@ impl Default for PostSettings {
             contrast: 0.0,
             saturation: 0.0,
             color_filter: [1.0; 3],
+            temperature: 0.0,
+            tint: 0.0,
             vignette_intensity: 0.0,
             vignette_smoothness: 0.2,
             vignette_color: [0.0; 3],
@@ -72,6 +80,7 @@ impl PostSettings {
         let mut s = Self::default();
         if v.tonemapping.active {
             s.tonemap = v.tonemapping.mode;
+            s.tonemap_look = v.tonemapping.look;
         }
         let b = &v.bloom;
         if b.active {
@@ -86,6 +95,8 @@ impl PostSettings {
             s.contrast = c.contrast;
             s.saturation = c.saturation;
             s.color_filter = c.color_filter;
+            s.temperature = c.temperature;
+            s.tint = c.tint;
         }
         let g = &v.vignette;
         if g.active {
@@ -116,10 +127,21 @@ impl PostSettings {
             TonemapMode::None => 0.0,
             TonemapMode::Neutral => 1.0,
             TonemapMode::Aces => 2.0,
+            TonemapMode::Agx => 3.0,
+            TonemapMode::PbrNeutral => 4.0,
         };
         let v4 = |c: [f32; 3], w: f32| {
             let l = srgb_to_linear(c);
             [l[0], l[1], l[2], w]
+        };
+        let look = match self.tonemap_look {
+            TonemapLook::Base => 0.0,
+            TonemapLook::Punchy => 1.0,
+        };
+        let balance = white_balance(self.temperature, self.tint);
+        let filter = {
+            let f = v4(self.color_filter, look);
+            [f[0] * balance.x, f[1] * balance.y, f[2] * balance.z, f[3]]
         };
         [
             [
@@ -128,7 +150,7 @@ impl PostSettings {
                 1.0 + self.contrast.clamp(-100.0, 100.0) / 100.0,
                 1.0 + self.saturation.clamp(-100.0, 100.0) / 100.0,
             ],
-            v4(self.color_filter, 0.0),
+            filter,
             [
                 self.bloom_intensity.max(0.0),
                 self.bloom_threshold.max(0.0),
@@ -189,6 +211,102 @@ pub fn tonemap_aces(c: Vec3) -> Vec3 {
     (output * (a / b)).clamp(Vec3::ZERO, Vec3::ONE)
 }
 
+/// AgX: log2 encoding of a slightly desaturated ("inset") input between -12.47 and +4.03 EV
+/// around mid grey, a sigmoid fitted to the AgX base contrast, an optional look, then the
+/// outset back and display decoding (2.2). Mid grey 0.18 lands near 0.18 after decoding.
+pub fn tonemap_agx(c: Vec3, look: TonemapLook) -> Vec3 {
+    let inset = glam::Mat3::from_cols(
+        Vec3::new(0.842_479_06, 0.042_328_24, 0.042_375_65),
+        Vec3::new(0.078_433_6, 0.878_468_6, 0.078_433_6),
+        Vec3::new(0.079_223_75, 0.079_166_13, 0.879_143),
+    );
+    let outset = glam::Mat3::from_cols(
+        Vec3::new(1.196_879, -0.052_896_85, -0.052_971_64),
+        Vec3::new(-0.098_020_88, 1.151_903_1, -0.098_043_45),
+        Vec3::new(-0.099_029_74, -0.098_961_18, 1.151_073_7),
+    );
+    let (lo, hi) = (-12.473_93_f32, 4.026_069_f32);
+    let v = inset * c.max(Vec3::ZERO);
+    let v = Vec3::from(
+        v.to_array()
+            .map(|x| ((x.max(1e-10).log2().clamp(lo, hi) - lo) / (hi - lo)).clamp(0.0, 1.0)),
+    );
+    let mut v = Vec3::from(v.to_array().map(agx_sigmoid));
+    if look == TonemapLook::Punchy {
+        let y = luminance(v);
+        v = Vec3::from(v.max(Vec3::ZERO).to_array().map(|x| x.powf(1.35)));
+        v = Vec3::splat(y) + (v - y) * 1.4;
+    }
+    let v = outset * v;
+    Vec3::from(v.max(Vec3::ZERO).to_array().map(|x| x.powf(2.2))).clamp(Vec3::ZERO, Vec3::ONE)
+}
+
+/// Polynomial fit of the AgX base contrast curve on the 0..1 log encoding.
+fn agx_sigmoid(x: f32) -> f32 {
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x
+        - 0.00232
+}
+
+/// Khronos PBR Neutral: a small toe offset, then highlights above 0.76 roll off towards white
+/// and desaturate a little; colours below stay as authored.
+pub fn tonemap_pbr_neutral(c: Vec3) -> Vec3 {
+    let start = 0.8 - 0.04;
+    let desaturation = 0.15;
+    let mut c = c.max(Vec3::ZERO);
+    let x = c.min_element();
+    let offset = if x < 0.08 { x - 6.25 * x * x } else { 0.04 };
+    c -= Vec3::splat(offset);
+    let peak = c.max_element();
+    if peak < start {
+        return c.clamp(Vec3::ZERO, Vec3::ONE);
+    }
+    let d = 1.0 - start;
+    let new_peak = 1.0 - d * d / (peak + d - start);
+    c *= new_peak / peak;
+    let g = 1.0 - 1.0 / (desaturation * (peak - new_peak) + 1.0);
+    c.lerp(Vec3::splat(new_peak), g)
+        .clamp(Vec3::ZERO, Vec3::ONE)
+}
+
+/// Linear-RGB gains of a white balance (temperature, tint in -100..100): the chromaticity of
+/// a daylight-like illuminant is shifted along the Planckian direction (temperature) and
+/// green–magenta (tint), and the von Kries ratio to D65 in LMS space is applied to white.
+/// (0, 0) gives exactly 1.
+pub fn white_balance(temperature: f32, tint: f32) -> Vec3 {
+    if temperature == 0.0 && tint == 0.0 {
+        return Vec3::ONE;
+    }
+    let t1 = temperature.clamp(-100.0, 100.0) / 65.0;
+    let t2 = tint.clamp(-100.0, 100.0) / 65.0;
+    // Illuminant chromaticity: warmer temperature = a *cooler* source to correct for, so
+    // the image warms up.
+    let x = 0.31271 - t1 * if t1 < 0.0 { 0.1 } else { 0.05 };
+    let y = 2.87 * x - 3.0 * x * x - 0.275_095_07 + t2 * 0.05;
+    let xyz = |x: f32, y: f32| Vec3::new(x / y, 1.0, (1.0 - x - y) / y);
+    // CAT02-like XYZ → LMS.
+    let to_lms = glam::Mat3::from_cols(
+        Vec3::new(0.7328, -0.7036, 0.0030),
+        Vec3::new(0.4296, 1.6975, 0.0136),
+        Vec3::new(-0.1624, 0.0061, 0.9834),
+    );
+    // Linear sRGB ↔ XYZ (D65).
+    let rgb_to_xyz = glam::Mat3::from_cols(
+        Vec3::new(0.4124, 0.2126, 0.0193),
+        Vec3::new(0.3576, 0.7152, 0.1192),
+        Vec3::new(0.1805, 0.0722, 0.9505),
+    );
+    let d65 = to_lms * xyz(0.31271, 0.32902);
+    let src = to_lms * xyz(x, y);
+    let gain = d65 / src;
+    let rgb_to_lms = to_lms * rgb_to_xyz;
+    let w = rgb_to_lms.inverse() * (gain * (rgb_to_lms * Vec3::ONE));
+    let w = w.max(Vec3::splat(0.01));
+    // Keep brightness: normalise so white's luminance is unchanged.
+    w / luminance(w)
+}
+
 pub fn luminance(c: Vec3) -> f32 {
     c.dot(Vec3::new(0.2126, 0.7152, 0.0722))
 }
@@ -211,6 +329,8 @@ pub fn grade(c: Vec3, s: &PostSettings) -> Vec3 {
         TonemapMode::None => compress(c),
         TonemapMode::Neutral => tonemap_neutral(c),
         TonemapMode::Aces => tonemap_aces(c),
+        TonemapMode::Agx => tonemap_agx(c, s.tonemap_look),
+        TonemapMode::PbrNeutral => tonemap_pbr_neutral(c),
     }
 }
 
@@ -250,6 +370,62 @@ mod tests {
         assert!((tonemap_neutral(Vec3::splat(0.18)).x - 0.18).abs() < 0.01);
         let aces = tonemap_aces(Vec3::splat(0.18)).x;
         assert!((0.08..0.15).contains(&aces), "{aces}");
+    }
+
+    #[test]
+    fn agx_and_pbr_neutral_are_monotonic_and_bounded() {
+        let agx = |c| tonemap_agx(c, TonemapLook::Base);
+        let punchy = |c| tonemap_agx(c, TonemapLook::Punchy);
+        for f in [&agx as &dyn Fn(Vec3) -> Vec3, &punchy, &tonemap_pbr_neutral] {
+            assert!(f(Vec3::ZERO).max_element() < 0.01);
+            let mut last = -1.0;
+            for i in 0..400 {
+                let v = f(Vec3::splat(i as f32 * 0.05)).x;
+                assert!(v >= last - 1e-5 && v <= 1.0, "{i}: {v}");
+                last = v;
+            }
+            assert!(f(Vec3::splat(40.0)).x > 0.9);
+        }
+        // Mid grey stays mid grey-ish; PBR Neutral keeps it nearly exact.
+        let g = agx(Vec3::splat(0.18)).x;
+        assert!((0.13..0.25).contains(&g), "{g}");
+        assert!((tonemap_pbr_neutral(Vec3::splat(0.18)).x - 0.14).abs() < 0.01);
+        // Punchy is darker in the shadows and keeps more saturation than Base.
+        assert!(punchy(Vec3::splat(0.05)).x < agx(Vec3::splat(0.05)).x);
+        let red = Vec3::new(0.5, 0.05, 0.05);
+        let sat = |c: Vec3| (c.x - c.z) / c.x.max(1e-4);
+        assert!(sat(punchy(red)) > sat(agx(red)));
+        // A very bright saturated colour goes towards white (AgX's signature).
+        let hot = agx(Vec3::new(60.0, 6.0, 1.0));
+        assert!(hot.z > 0.4, "{hot}");
+        // AgX neutral greys stay neutral.
+        let n = agx(Vec3::splat(0.7));
+        assert!((n.x - n.y).abs() < 1e-3 && (n.y - n.z).abs() < 1e-3, "{n}");
+    }
+
+    #[test]
+    fn white_balance_warms_and_cools() {
+        assert_eq!(white_balance(0.0, 0.0), Vec3::ONE);
+        let warm = white_balance(40.0, 0.0);
+        let cool = white_balance(-40.0, 0.0);
+        assert!(warm.x > 1.0 && warm.z < 1.0, "{warm}");
+        assert!(cool.x < 1.0 && cool.z > 1.0, "{cool}");
+        let magenta = white_balance(0.0, 40.0);
+        assert!(magenta.y < magenta.x && magenta.y < magenta.z, "{magenta}");
+        for w in [warm, cool, magenta] {
+            assert!((luminance(w) - 1.0).abs() < 1e-4);
+        }
+        // Folded into the packed colour filter, next to the AgX look flag.
+        let s = PostSettings {
+            temperature: 40.0,
+            tonemap: TonemapMode::Agx,
+            tonemap_look: TonemapLook::Punchy,
+            ..Default::default()
+        };
+        let p = s.pack();
+        assert_eq!(p[0][0], 3.0);
+        assert_eq!(p[1][3], 1.0);
+        assert!((p[1][0] - warm.x).abs() < 1e-5);
     }
 
     #[test]

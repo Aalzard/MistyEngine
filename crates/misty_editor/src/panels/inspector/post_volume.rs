@@ -4,7 +4,7 @@
 
 use egui::Ui;
 use misty_engine::hecs::Entity;
-use misty_engine::scene::{PostProcessVolume, TonemapMode};
+use misty_engine::scene::{PostProcessVolume, TonemapLook, TonemapMode};
 
 use super::editors::{combo, grid};
 use crate::state::EditorState;
@@ -34,7 +34,7 @@ pub fn post_process_volume(ui: &mut Ui, state: &mut EditorState, e: Entity) -> b
 
     let t = &mut v.tonemapping;
     ch |= section(ui, "Tonemapping", &mut t.active, |ui| {
-        row(ui, "Mode", |ui| {
+        let mut ch = row(ui, "Mode", |ui| {
             combo(
                 ui,
                 "ppv_tonemap",
@@ -42,7 +42,19 @@ pub fn post_process_volume(ui: &mut Ui, state: &mut EditorState, e: Entity) -> b
                 &TonemapMode::ALL,
                 TonemapMode::label,
             )
-        })
+        });
+        if t.mode == TonemapMode::Agx {
+            ch |= row(ui, "Look", |ui| {
+                combo(
+                    ui,
+                    "ppv_tonemap_look",
+                    &mut t.look,
+                    &TonemapLook::ALL,
+                    TonemapLook::label,
+                )
+            });
+        }
+        ch
     });
     let b = &mut v.bloom;
     ch |= section(ui, "Bloom", &mut b.active, |ui| {
@@ -60,6 +72,10 @@ pub fn post_process_volume(ui: &mut Ui, state: &mut EditorState, e: Entity) -> b
         ch |= row(ui, "Contrast", |ui| {
             slider(ui, &mut c.contrast, -100.0..=100.0)
         });
+        ch |= row(ui, "Temperature", |ui| {
+            slider(ui, &mut c.temperature, -100.0..=100.0)
+        });
+        ch |= row(ui, "Tint", |ui| slider(ui, &mut c.tint, -100.0..=100.0));
         ch |= row(ui, "Color Filter", |ui| color(ui, &mut c.color_filter));
         ch |= row(ui, "Saturation", |ui| {
             slider(ui, &mut c.saturation, -100.0..=100.0)

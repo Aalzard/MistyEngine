@@ -27,9 +27,9 @@ struct View {
     // x = density, y = linear start, z = linear end.
     fog: vec4<f32>,
     // ---- Post-processing (render/post.rs) ----
-    // x = tonemapper (0 none, 1 neutral, 2 ACES), y = exposure multiplier, z = contrast, w = saturation.
+    // x = tonemapper (0 none, 1 neutral, 2 ACES, 3 AgX, 4 Khronos PBR Neutral), y = exposure multiplier, z = contrast, w = saturation.
     grade: vec4<f32>,
-    // rgb = linear colour filter.
+    // rgb = linear colour filter × white balance, w = AgX look (0 base, 1 punchy).
     color_filter: vec4<f32>,
     // x = intensity, y = threshold, z = weight of smaller levels when upsampling.
     bloom: vec4<f32>,

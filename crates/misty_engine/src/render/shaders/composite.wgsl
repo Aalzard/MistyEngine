@@ -54,7 +54,60 @@ fn luminance(c: vec3<f32>) -> f32 {
     return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
 }
 
-// Exposure, colour filter, contrast (log space around mid grey), saturation, tonemapping.
+// AgX base contrast: polynomial fit of the sigmoid on the 0..1 log2 encoding.
+fn agx_sigmoid(x: vec3<f32>) -> vec3<f32> {
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+
+// AgX: inset (slight desaturation so bright colours go to white), log2 encoding from -12.47 to
+// +4.03 EV, sigmoid, optional Punchy look, outset and display decoding (2.2).
+fn tonemap_agx(c: vec3<f32>, punchy: bool) -> vec3<f32> {
+    let inset = mat3x3<f32>(
+        vec3<f32>(0.84247906, 0.04232824, 0.04237565),
+        vec3<f32>(0.0784336, 0.8784686, 0.0784336),
+        vec3<f32>(0.07922375, 0.07916613, 0.87914297),
+    );
+    let outset = mat3x3<f32>(
+        vec3<f32>(1.196879, -0.05289685, -0.05297164),
+        vec3<f32>(-0.09802088, 1.1519031, -0.09804345),
+        vec3<f32>(-0.09902974, -0.09896118, 1.1510737),
+    );
+    let lo = -12.47393;
+    let hi = 4.026069;
+    var v = inset * max(c, vec3<f32>(0.0));
+    v = clamp((clamp(log2(max(v, vec3<f32>(1e-10))), vec3<f32>(lo), vec3<f32>(hi)) - lo) / (hi - lo), vec3<f32>(0.0), vec3<f32>(1.0));
+    v = agx_sigmoid(v);
+    if (punchy) {
+        let y = luminance(v);
+        v = pow(max(v, vec3<f32>(0.0)), vec3<f32>(1.35));
+        v = vec3<f32>(y) + (v - y) * 1.4;
+    }
+    v = outset * v;
+    return clamp(pow(max(v, vec3<f32>(0.0)), vec3<f32>(2.2)), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+// Khronos PBR Neutral: small toe offset; above 0.76 highlights roll off and desaturate a little.
+fn tonemap_pbr_neutral(color: vec3<f32>) -> vec3<f32> {
+    let start = 0.76;
+    var c = max(color, vec3<f32>(0.0));
+    let x = min(c.r, min(c.g, c.b));
+    let offset = select(0.04, x - 6.25 * x * x, x < 0.08);
+    c -= offset;
+    let peak = max(c.r, max(c.g, c.b));
+    if (peak < start) {
+        return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    let d = 1.0 - start;
+    let new_peak = 1.0 - d * d / (peak + d - start);
+    c *= new_peak / peak;
+    let g = 1.0 - 1.0 / (0.15 * (peak - new_peak) + 1.0);
+    return clamp(mix(c, vec3<f32>(new_peak), g), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+// Exposure, colour filter / white balance, contrast (log space around mid grey), saturation,
+// tonemapping.
 fn grade(color: vec3<f32>) -> vec3<f32> {
     var c = color * view.grade.y * view.color_filter.rgb;
     if (view.grade.z != 1.0) {
@@ -66,6 +119,12 @@ fn grade(color: vec3<f32>) -> vec3<f32> {
         c = max(vec3<f32>(y) + (c - y) * view.grade.w, vec3<f32>(0.0));
     }
     let mode = view.grade.x;
+    if (mode > 3.5) {
+        return tonemap_pbr_neutral(c);
+    }
+    if (mode > 2.5) {
+        return tonemap_agx(c, view.color_filter.w > 0.5);
+    }
     if (mode > 1.5) {
         return tonemap_aces(c);
     }

@@ -8,7 +8,7 @@ use misty_engine::hecs::Entity;
 use misty_engine::scene::render_settings::SunDisk;
 use misty_engine::scene::{
     Camera, CloudPreset, Light, MeshFilter, MeshRenderer, PostProcessVolume, PrimitiveMesh, Scene,
-    Shadows, TonemapMode, Transform,
+    Shadows, TonemapLook, TonemapMode, Transform,
 };
 use misty_engine::water::{self, WaterKind};
 
@@ -118,11 +118,14 @@ pub fn standard() -> Scene {
 }
 
 /// Everything on, tuned for a warm sunset: clouds, light volumetric fog with sharp god rays,
-/// screen sun shafts, bloom, ACES, a touch of vignette.
+/// screen sun shafts, bloom, AgX (Punchy look), a touch of vignette.
 fn pp_ready_volume() -> PostProcessVolume {
     let mut v = PostProcessVolume::default();
     v.tonemapping.active = true;
-    v.tonemapping.mode = TonemapMode::Aces;
+    // AgX Punchy keeps the contrast the sunset was tuned with under ACES, while the sun and
+    // bright clouds roll off to white instead of skewing hue (docs/pending/gfx-room.md).
+    v.tonemapping.mode = TonemapMode::Agx;
+    v.tonemapping.look = TonemapLook::Punchy;
     v.bloom.active = true;
     v.bloom.intensity = 0.5;
     v.bloom.threshold = 1.0;
