@@ -57,6 +57,8 @@ pub(crate) struct ProbeGpu {
     lut_view: wgpu::TextureView,
     lut_ready: bool,
     scratch: Box<ProbesUniform>,
+    /// Light probes: the tetrahedron each mesh draw was in last frame (walk start).
+    light_hints: Vec<u32>,
 }
 
 /// Layout entries for the mesh group.
@@ -184,6 +186,7 @@ impl ProbeGpu {
             lut_view,
             lut_ready: false,
             scratch: Box::new(ProbesUniform::zeroed()),
+            light_hints: Vec::new(),
         }
     }
 
@@ -229,12 +232,18 @@ impl ProbeGpu {
             .map(|p| self.cube_for(queue, probes, &p.data))
             .collect();
 
+        let draws = meshes.len() + terrains.len();
+        // Light probes only while some draw uses them.
+        let light = set
+            .light_probes
+            .as_ref()
+            .filter(|_| frame.meshes.iter().any(|m| m.material.light_probes));
         let u = &mut *self.scratch;
         u.header = [
             probes.len() as f32,
             set.debug as u32 as f32,
             (LEVELS - 1) as f32,
-            0.0,
+            light.map_or(0.0, |_| draws as f32),
         ];
         for (i, (p, cube)) in probes.iter().zip(&cubes).enumerate() {
             let sh = p.data.0.sh.map(|c| c.extend(0.0).to_array());
@@ -248,17 +257,30 @@ impl ProbeGpu {
         }
         let used = 16 + probes.len() * std::mem::size_of::<ProbeItem>();
         queue.write_buffer(&self.uniform, 0, &bytemuck::bytes_of(u)[..used]);
-        if probes.is_empty() {
+        if probes.is_empty() && light.is_none() {
             return rebuilt;
         }
 
-        let draws = meshes.len() + terrains.len();
-        if draws > self.lists_capacity {
-            self.lists_capacity = draws.next_power_of_two();
+        let mut lists = if probes.is_empty() {
+            vec![[NONE; 4]; draws]
+        } else {
+            draw_lists(probes, meshes, terrains)
+        };
+        if let Some(field) = light {
+            light_probe_entries(
+                &field.0,
+                frame.meshes,
+                meshes,
+                terrains.len(),
+                &mut self.light_hints,
+                &mut lists,
+            );
+        }
+        if lists.len() > self.lists_capacity {
+            self.lists_capacity = lists.len().next_power_of_two();
             self.lists = lists_buffer(device, self.lists_capacity);
             rebuilt = true;
         }
-        let lists = draw_lists(probes, meshes, terrains);
         if !lists.is_empty() {
             queue.write_buffer(&self.lists, 0, bytemuck::cast_slice(&lists));
         }
@@ -392,6 +414,42 @@ pub(crate) fn draw_lists(
             list
         })
         .collect()
+}
+
+/// Light probes (after the draws' probe lists in the same buffer): one entry per draw, `x` =
+/// index of its SH block or [`NONE`] (ambient light), then 9 coefficients (f32 bits, irradiance
+/// / π) per block. Flagged mesh draws sample the probes at their bounds centre, walking from
+/// the tetrahedron they were in last frame.
+pub(crate) fn light_probe_entries(
+    field: &crate::light_probes::LightProbeField,
+    draws: &[crate::render::MeshDraw],
+    bounds: &[Option<Aabb>],
+    terrains: usize,
+    hints: &mut Vec<u32>,
+    out: &mut Vec<[u32; 4]>,
+) {
+    hints.resize(draws.len(), 0);
+    let mut blocks: Vec<[u32; 4]> = Vec::new();
+    let mut entries = Vec::with_capacity(draws.len() + terrains);
+    for (i, d) in draws.iter().enumerate() {
+        let sh = d.material.light_probes.then(|| {
+            let at = match bounds.get(i).copied().flatten() {
+                Some(b) => (b.min + b.max) * 0.5,
+                None => d.model.w_axis.truncate(),
+            };
+            field.sample(at, &mut hints[i])
+        });
+        match sh.flatten() {
+            Some(sh) => {
+                entries.push([(blocks.len() / 9) as u32, 0, 0, 0]);
+                blocks.extend(sh.map(|c| c.extend(0.0).to_array().map(f32::to_bits)));
+            }
+            None => entries.push([NONE; 4]),
+        }
+    }
+    entries.resize(draws.len() + terrains, [NONE; 4]);
+    out.extend(entries);
+    out.extend(blocks);
 }
 
 #[cfg(test)]

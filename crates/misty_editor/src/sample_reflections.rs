@@ -369,7 +369,7 @@ fn reflections_demo_renders_with_its_probes() {
                 ProbeInstance::new(&p, scene.world_position(e), std::sync::Arc::new(data))
             })
             .collect(),
-        debug: false,
+        ..Default::default()
     };
     let mut without = view.environment.clone();
     without.probes = ProbeSet::default();

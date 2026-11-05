@@ -11,6 +11,7 @@ mod fog_editors;
 mod glow_editors;
 mod layer_mask;
 mod light_area;
+mod light_probe_editor;
 mod light_shadows;
 mod lightmap_editors;
 mod lod_editor;

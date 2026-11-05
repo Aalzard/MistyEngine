@@ -225,7 +225,7 @@ fn a_chrome_sphere_in_a_red_room_reflects_red() {
     };
     let lit = sky.clone().with_probes(ProbeSet {
         probes: vec![probe],
-        debug: false,
+        ..Default::default()
     });
     let before = render_room(&mut renderer, &device, &queue, &sky);
     let after = render_room(&mut renderer, &device, &queue, &lit);

@@ -24,6 +24,7 @@ pub mod app_api;
 pub mod audio_api;
 pub mod camera_api;
 pub mod input_api;
+pub mod light_probes_api;
 pub mod material_api;
 pub mod navigation_api;
 mod override_api;

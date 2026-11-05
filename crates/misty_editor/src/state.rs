@@ -287,6 +287,8 @@ pub struct EditorState {
     pub probes: crate::probe_tools::ProbeTools,
     /// Lightmap bakes (Lighting window ▸ Generate Lighting).
     pub lightmapper: crate::lightmap_tools::LightmapTools,
+    /// Light probe editing (Edit Light Probes) and the bake in progress.
+    pub light_probes: crate::light_probe_tools::LightProbeTools,
     /// World Builder window state and the generation in progress.
     pub world_builder: crate::panels::world_builder::WorldBuilderWindow,
     /// Keyboard/mouse for scripts this frame (filled while the Game view has focus).
@@ -400,6 +402,7 @@ impl EditorState {
             navigation: Default::default(),
             probes: Default::default(),
             lightmapper: Default::default(),
+            light_probes: Default::default(),
             world_builder: Default::default(),
             game_input: Input::default(),
             pause_on_play: false,

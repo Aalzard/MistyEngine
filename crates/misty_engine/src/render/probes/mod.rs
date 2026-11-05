@@ -92,6 +92,8 @@ pub struct ProbeSet {
     pub probes: Vec<ProbeInstance>,
     /// Scene view "Reflection Probes" mode: colour pixels by the probes that light them.
     pub debug: bool,
+    /// Baked light probes for draws flagged `MaterialParams::light_probes`.
+    pub light_probes: Option<crate::light_probes::FieldHandle>,
 }
 
 /// Project path of the `index`-th baked probe of a scene: `Assets/Scenes/Level.scene` →
@@ -132,5 +134,6 @@ pub fn scene_probes(scene: &Scene) -> ProbeSet {
     ProbeSet {
         probes,
         debug: false,
+        light_probes: crate::light_probes::scene_field(scene),
     }
 }

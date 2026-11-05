@@ -247,6 +247,10 @@ pub struct RenderSettings {
     /// Lighting window ▸ Scene: lightmapping settings and the baked lightmaps.
     #[serde(skip_serializing_if = "super::lightmapping::LightmapSettings::is_default")]
     pub lightmapping: super::lightmapping::LightmapSettings,
+    /// Baked light probes file (`Assets/Scenes/<Scene>/LightProbes.probes`, see
+    /// [`crate::light_probes`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub light_probes: Option<String>,
 }
 
 impl Default for RenderSettings {
@@ -257,6 +261,7 @@ impl Default for RenderSettings {
             reflection_intensity: 1.0,
             fog: Fog::default(),
             lightmapping: Default::default(),
+            light_probes: None,
         }
     }
 }

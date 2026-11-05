@@ -511,6 +511,13 @@ pub struct MeshRenderer {
     /// Baked: uv2 × xy + zw = lightmap coordinates.
     #[serde(skip_serializing_if = "super::lightmapping::is_identity_st")]
     pub lightmap_scale_offset: [f32; 4],
+    /// Light Probes: Blend Probes lights a non-static object with the baked light probes
+    /// instead of the ambient light (left out of files when default).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::light_probes::LightProbeUsage::is_default"
+    )]
+    pub light_probes: crate::light_probes::LightProbeUsage,
 }
 
 impl Default for MeshRenderer {
@@ -528,6 +535,7 @@ impl Default for MeshRenderer {
             scale_in_lightmap: 1.0,
             lightmap_index: -1,
             lightmap_scale_offset: super::lightmapping::IDENTITY_ST,
+            light_probes: Default::default(),
         }
     }
 }

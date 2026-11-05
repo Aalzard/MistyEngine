@@ -20,7 +20,8 @@ struct ProbeItem {
 };
 
 struct Probes {
-    // x = count, y = debug view, z = highest roughness level.
+    // x = count, y = debug view, z = highest roughness level, w = draw count when light probes
+    // follow the probe lists (0 = none).
     header: vec4<f32>,
     items: array<ProbeItem, 64>,
 };
@@ -28,6 +29,9 @@ struct Probes {
 @group(1) @binding(20) var<uniform> probes: Probes;
 @group(1) @binding(21) var probe_atlas: texture_cube_array<f32>;
 @group(1) @binding(22) var probe_sampler: sampler;
+// Per draw: up to four probe indices. With light probes (header.w = draw count D) entries
+// [D, 2D) give each draw's light probe SH block (x, PROBE_NONE = ambient) and the blocks of 9
+// coefficients (f32 bits, irradiance / π) follow from 2D (light_probes/, probes/gpu.rs).
 @group(1) @binding(23) var<storage, read> probe_lists: array<vec4<u32>>;
 // Split-sum BRDF: (N·V, perceptual roughness) → (scale, bias) of F0.
 @group(1) @binding(24) var brdf_lut: texture_2d<f32>;
@@ -57,6 +61,30 @@ fn probe_sh(i: u32, n: vec3<f32>) -> vec3<f32> {
     r += c[4].rgb * (1.092548 * n.x * n.y) + c[5].rgb * (1.092548 * n.y * n.z);
     r += c[6].rgb * (0.315392 * (3.0 * n.z * n.z - 1.0)) + c[7].rgb * (1.092548 * n.x * n.z);
     r += c[8].rgb * (0.546274 * (n.x * n.x - n.y * n.y));
+    return max(r, vec3<f32>(0.0));
+}
+
+// Light probe SH block of draw `draw`, or PROBE_NONE (the draw uses the ambient light).
+fn light_probe_block(draw: u32) -> u32 {
+    let n = u32(probes.header.w + 0.5);
+    if (n == 0u || draw >= n) {
+        return PROBE_NONE;
+    }
+    return probe_lists[n + draw].x;
+}
+
+// Diffuse light of a light probe SH block at normal `n` (basis as in sh.rs).
+fn light_probe_irradiance(block: u32, n: vec3<f32>) -> vec3<f32> {
+    let base = 2u * u32(probes.header.w + 0.5) + block * 9u;
+    var c: array<vec3<f32>, 9>;
+    for (var k = 0u; k < 9u; k++) {
+        c[k] = bitcast<vec4<f32>>(probe_lists[base + k]).rgb;
+    }
+    var r = c[0] * 0.282095;
+    r += c[1] * (0.488603 * n.y) + c[2] * (0.488603 * n.z) + c[3] * (0.488603 * n.x);
+    r += c[4] * (1.092548 * n.x * n.y) + c[5] * (1.092548 * n.y * n.z);
+    r += c[6] * (0.315392 * (3.0 * n.z * n.z - 1.0)) + c[7] * (1.092548 * n.x * n.z);
+    r += c[8] * (0.546274 * (n.x * n.x - n.y * n.y));
     return max(r, vec3<f32>(0.0));
 }
 

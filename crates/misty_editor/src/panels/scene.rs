@@ -85,6 +85,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             if sv.gizmos {
                 let mut spheres = Vec::new();
                 crate::probe_gizmos::spheres(state, &mut spheres);
+                crate::light_probe_tools::spheres(state, &mut spheres);
                 if !spheres.is_empty() {
                     let mut all = (*meshes).clone();
                     all.extend(spheres);
@@ -96,6 +97,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 let screen = state.game_view.screen_px;
                 crate::ui_gizmos::ui_lines(&mut l, &state.scene, &state.selection, screen);
                 crate::probe_gizmos::lines(&mut l, state, sv.draw_mode == PROBES_MODE);
+                crate::light_probe_tools::lines(state, &mut l);
                 l
             } else {
                 gizmos::Lines::default()
@@ -217,6 +219,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     if !brush_active
         && !crate::sprite_handles::show(ui, state, &camera, rect, hovered)
         && !crate::probe_gizmos::handles(ui, state, &camera, rect, hovered)
+        && !crate::light_probe_tools::handles(ui, state, &camera, rect, hovered)
         && !crate::spline_tools::handles(ui, state, &camera, rect, hovered)
         && !crate::area_light_handles::handles(ui, state, &camera, rect, hovered)
         && !crate::panels::world_builder::gizmos::show(ui, state, &camera, rect, hovered)

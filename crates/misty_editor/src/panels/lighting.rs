@@ -109,6 +109,7 @@ fn scene_page(ui: &mut Ui, state: &mut EditorState) {
     }
     ui.add_space(8.0);
     crate::probe_tools::lighting_section(ui, state);
+    crate::light_probe_tools::lighting_section(ui, state);
 }
 
 /// Mixed Lighting and Lightmapping Settings rows; true when something changed.

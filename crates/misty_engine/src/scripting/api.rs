@@ -700,6 +700,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     g.set("Vector3", v3)?;
     super::ui_api::register(lua)?;
     super::render_settings_api::register(lua)?;
+    super::light_probes_api::register(lua)?;
     super::app_api::register(lua)?;
     super::terrain_api::register(lua)?;
     super::physics_api::register(lua)?;

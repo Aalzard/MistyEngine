@@ -269,6 +269,7 @@ impl Material {
             custom: None,
             lit_2d: false,
             lightmap: None,
+            light_probes: false,
         }
     }
 

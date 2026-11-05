@@ -94,6 +94,11 @@ pub fn apply_env(
     {
         s.select(e);
     }
+    // `MISTY_EDIT_LIGHT_PROBES=1` turns on Edit Light Probes for the selected group.
+    if std::env::var_os("MISTY_EDIT_LIGHT_PROBES").is_some() {
+        s.light_probes.set_editing(true);
+        s.light_probes.entity = s.selection.active();
+    }
     // `MISTY_MESH_MODE=face` (vertex / edge / face, optionally `face:3,4` to select elements)
     // opens a Mesh Builder mode on the selected Editable Mesh.
     if let Some(mode) = std::env::var_os("MISTY_MESH_MODE") {

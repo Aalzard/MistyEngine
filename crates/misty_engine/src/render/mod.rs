@@ -157,6 +157,9 @@ pub struct MaterialParams {
     pub lit_2d: bool,
     /// Per-object: baked lightmap layer and uv2 scale-offset (see [`crate::lightmap`]).
     pub lightmap: Option<crate::lightmap::DrawLightmap>,
+    /// Per-object: ambient light comes from the baked light probes (see
+    /// [`crate::light_probes`]); set by the draw list for non-static Blend Probes renderers.
+    pub light_probes: bool,
 }
 
 impl Default for MaterialParams {
@@ -185,6 +188,7 @@ impl Default for MaterialParams {
             custom: None,
             lit_2d: false,
             lightmap: None,
+            light_probes: false,
         }
     }
 }
@@ -2110,7 +2114,7 @@ mod benchmark;
 #[cfg(test)]
 mod gpu_checks;
 #[cfg(test)]
-mod gpu_tests;
+pub(crate) mod gpu_tests;
 #[cfg(test)]
 mod terrain_gpu_tests;
 
