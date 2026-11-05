@@ -1,0 +1,1051 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            22.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            4.0,
+            -8.0
+          ],
+          "rotation": [
+            0.190809,
+            0.0,
+            0.0,
+            0.98162717
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.4082179,
+            -0.23456971,
+            0.10938165,
+            0.87542605
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ground",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Checker.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            14.0,
+            0.2,
+            8.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Addressables Spawner",
+          "tag": "Untagged"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/AddressablesSpawner.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "render_mode": "ScreenSpaceOverlay",
+          "sort_order": 0
+        },
+        "Canvas Scaler": {
+          "enabled": true,
+          "match_width_or_height": 0.0,
+          "mode": "ScaleWithScreenSize",
+          "reference_resolution": [
+            800.0,
+            600.0
+          ],
+          "scale_factor": 1.0
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Canvas",
+            "Canvas Scaler"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Canvas",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            1.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            0.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            0.0,
+            0.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Title Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            20.0,
+            -16.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            760.0,
+            40.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 28.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "Asset Groups: load prefabs by address or label",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Stats Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            20.0,
+            -56.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            760.0,
+            40.0
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 22.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "Loaded: 0   Released: 0   Live handles: 0   Bundles: 0",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "Button": {
+          "color_multiplier": 1.0,
+          "disabled_color": [
+            0.78431374,
+            0.78431374,
+            0.78431374,
+            0.5
+          ],
+          "highlighted_color": [
+            0.9607843,
+            0.9607843,
+            0.9607843,
+            1.0
+          ],
+          "interactable": true,
+          "normal_color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "on_click": [
+            {
+              "method": "SpawnByAddress",
+              "target": 3
+            }
+          ],
+          "pressed_color": [
+            0.78431374,
+            0.78431374,
+            0.78431374,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Image",
+            "Button"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Spawn By Address Button",
+          "tag": "Untagged"
+        },
+        "Image": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "raycast_target": true,
+          "texture": null
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.5,
+            0.0
+          ],
+          "anchor_min": [
+            0.5,
+            0.0
+          ],
+          "anchored_position": [
+            -220.0,
+            30.0
+          ],
+          "pivot": [
+            0.5,
+            0.0
+          ],
+          "size_delta": [
+            200.0,
+            50.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            1.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            0.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            0.0,
+            0.0
+          ]
+        },
+        "Text": {
+          "alignment": "MiddleCenter",
+          "color": [
+            0.19607843,
+            0.19607843,
+            0.19607843,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 22.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "Spawn by Address",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 7
+    },
+    {
+      "components": {
+        "Button": {
+          "color_multiplier": 1.0,
+          "disabled_color": [
+            0.78431374,
+            0.78431374,
+            0.78431374,
+            0.5
+          ],
+          "highlighted_color": [
+            0.9607843,
+            0.9607843,
+            0.9607843,
+            1.0
+          ],
+          "interactable": true,
+          "normal_color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "on_click": [
+            {
+              "method": "SpawnByLabel",
+              "target": 3
+            }
+          ],
+          "pressed_color": [
+            0.78431374,
+            0.78431374,
+            0.78431374,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Image",
+            "Button"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Spawn By Label Button",
+          "tag": "Untagged"
+        },
+        "Image": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "raycast_target": true,
+          "texture": null
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.5,
+            0.0
+          ],
+          "anchor_min": [
+            0.5,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            30.0
+          ],
+          "pivot": [
+            0.5,
+            0.0
+          ],
+          "size_delta": [
+            200.0,
+            50.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            1.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            0.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            0.0,
+            0.0
+          ]
+        },
+        "Text": {
+          "alignment": "MiddleCenter",
+          "color": [
+            0.19607843,
+            0.19607843,
+            0.19607843,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 22.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "Spawn by Label",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 9
+    },
+    {
+      "components": {
+        "Button": {
+          "color_multiplier": 1.0,
+          "disabled_color": [
+            0.78431374,
+            0.78431374,
+            0.78431374,
+            0.5
+          ],
+          "highlighted_color": [
+            0.9607843,
+            0.9607843,
+            0.9607843,
+            1.0
+          ],
+          "interactable": true,
+          "normal_color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "on_click": [
+            {
+              "method": "ReleaseAll",
+              "target": 3
+            }
+          ],
+          "pressed_color": [
+            0.78431374,
+            0.78431374,
+            0.78431374,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Image",
+            "Button"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Release All Button",
+          "tag": "Untagged"
+        },
+        "Image": {
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "raycast_target": true,
+          "texture": null
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.5,
+            0.0
+          ],
+          "anchor_min": [
+            0.5,
+            0.0
+          ],
+          "anchored_position": [
+            220.0,
+            30.0
+          ],
+          "pivot": [
+            0.5,
+            0.0
+          ],
+          "size_delta": [
+            200.0,
+            50.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 4
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            1.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            0.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            0.0,
+            0.0
+          ]
+        },
+        "Text": {
+          "alignment": "MiddleCenter",
+          "color": [
+            0.19607843,
+            0.19607843,
+            0.19607843,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 22.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "Release All",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 11
+    },
+    {
+      "components": {
+        "Event System": {
+          "drag_threshold": 10.0,
+          "enabled": true,
+          "first_selected": null,
+          "send_navigation_events": true
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Event System"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "EventSystem",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

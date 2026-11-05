@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "com.misty.example-effects": {
+      "version": "0.2.0",
+      "source": "local",
+      "resolved": "Packages/com.misty.example-effects",
+      "dependencies": {
+        "com.misty.example-tools": "^1.0.0"
+      }
+    },
+    "com.misty.example-tools": {
+      "version": "1.0.0",
+      "source": "local",
+      "resolved": "Packages/com.misty.example-tools",
+      "dependencies": {
+        "com.misty.modules.scripting": "*"
+      }
+    },
+    "com.misty.modules.scripting": {
+      "version": "0.0.1",
+      "source": "builtin",
+      "indirect": true
+    }
+  }
+}

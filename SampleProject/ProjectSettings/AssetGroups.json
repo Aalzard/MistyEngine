@@ -1,0 +1,53 @@
+{
+  "groups": [
+    {
+      "name": "Default Local Group",
+      "entries": [
+        {
+          "path": "Assets/Addressables/Crystal.prefab",
+          "address": "Props/Crystal",
+          "labels": [
+            "props"
+          ]
+        },
+        {
+          "path": "Assets/Addressables/Lantern.prefab",
+          "address": "Props/Lantern",
+          "labels": [
+            "props"
+          ]
+        },
+        {
+          "path": "Packages/com.misty.example-tools/Prefabs/Beacon.prefab",
+          "address": "Tools/Beacon",
+          "labels": [
+            "props"
+          ]
+        }
+      ],
+      "bundle_mode": "PackTogether",
+      "compression": "Lz4",
+      "include_in_build": true,
+      "location": "Local",
+      "remote_url": "https://example.com/bundles/{Platform}"
+    },
+    {
+      "name": "Creatures",
+      "entries": [
+        {
+          "path": "Assets/Addressables/Ghost Orb.prefab",
+          "address": "Creatures/Orb",
+          "labels": [
+            "creatures"
+          ]
+        }
+      ],
+      "bundle_mode": "PackSeparately",
+      "compression": "Lz4",
+      "include_in_build": true,
+      "location": "Local",
+      "remote_url": "https://example.com/bundles/{Platform}"
+    }
+  ],
+  "play_mode": "UseAssetDatabase"
+}

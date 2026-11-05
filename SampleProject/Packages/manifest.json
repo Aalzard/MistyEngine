@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "com.misty.example-effects": "file:com.misty.example-effects",
+    "com.misty.example-tools": "file:com.misty.example-tools"
+  }
+}

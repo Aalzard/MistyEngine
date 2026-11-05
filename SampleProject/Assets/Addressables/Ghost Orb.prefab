@@ -1,0 +1,103 @@
+{
+  "objects": [
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ghost Orb",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Car Paint.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.8,
+            0.8,
+            0.8
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ghost Orb Part 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Car Paint.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.55,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.35,
+            0.35,
+            0.35
+          ]
+        }
+      },
+      "parent": 0
+    }
+  ],
+  "version": 1
+}
