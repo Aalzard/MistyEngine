@@ -11,6 +11,8 @@ mod physics;
 mod physics2d;
 #[path = "rig_gizmos.rs"]
 mod rig;
+#[path = "vcam_gizmos.rs"]
+mod vcam;
 
 use glam::{Mat4, Vec3};
 use misty_engine::models;
@@ -26,6 +28,7 @@ use misty_engine::scene::{
 use crate::selection::Selection;
 
 pub use nav::nav_overlay;
+pub use vcam::vcam_overlay;
 
 const COLLIDER: [f32; 4] = [0.57, 0.96, 0.55, 0.9];
 /// Wireframe draw-mode colour (dark lines).
@@ -338,6 +341,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.joints(scene, e);
         lines.nav_shapes(scene, e);
         lines.fog_volume(scene, e);
+        lines.virtual_camera(scene, e);
     }
     lines.rigging(scene, selection);
     lines

@@ -38,7 +38,12 @@ impl Capture {
         if self.light && self.frames == 1 {
             ctx.set_visuals(egui::Visuals::light());
         }
-        if self.frames == 45 && !self.requested {
+        // `MISTY_CAPTURE_FRAME=<n>` waits longer (e.g. to catch a later moment of Play mode).
+        let at = std::env::var("MISTY_CAPTURE_FRAME")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(45);
+        if self.frames >= at && !self.requested {
             self.requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }

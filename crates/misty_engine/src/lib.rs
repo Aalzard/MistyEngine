@@ -38,6 +38,7 @@ pub mod sprites;
 pub mod tags_layers;
 pub mod terrain;
 pub mod ui;
+pub mod vcam;
 pub mod vfs;
 pub mod water;
 pub mod world_gen;

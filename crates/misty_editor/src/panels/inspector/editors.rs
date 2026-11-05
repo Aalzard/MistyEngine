@@ -42,6 +42,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::probe_editor::icon(other))
             .or_else(|| super::fog_editors::icon(other))
             .or_else(|| super::glow_editors::icon(other))
+            .or_else(|| super::vcam_editors::icon(other))
             .or_else(|| super::lod_editor::icon(other))
             .or_else(|| super::rig_editors::icon(other))
             .or_else(|| super::water::icon(other))
@@ -75,6 +76,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::glow_editors::NAMES.contains(&name) {
         return super::glow_editors::enabled_flag(state, e, name);
+    }
+    if super::vcam_editors::NAMES.contains(&name) {
+        return super::vcam_editors::enabled_flag(state, e, name);
     }
     if super::lod_editor::NAMES.contains(&name) {
         return super::lod_editor::enabled_flag(state, e, name);
@@ -129,6 +133,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::glow_editors::NAMES.contains(&name) {
         return super::glow_editors::set_enabled(state, e, name, on);
+    }
+    if super::vcam_editors::NAMES.contains(&name) {
+        return super::vcam_editors::set_enabled(state, e, name, on);
     }
     if super::lod_editor::NAMES.contains(&name) {
         return super::lod_editor::set_enabled(state, e, name, on);
@@ -237,6 +244,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         rig if super::rig_editors::NAMES.contains(&rig) => {
             super::rig_editors::edit(ui, state, e, rig)
+        }
+        vcam if super::vcam_editors::NAMES.contains(&vcam) => {
+            super::vcam_editors::edit(ui, state, e, vcam)
         }
         wb if crate::panels::world_builder::NAMES.contains(&wb) => {
             crate::panels::world_builder::inspector(ui, state, e, wb)

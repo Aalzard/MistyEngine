@@ -202,6 +202,11 @@ impl Runtime {
         self.host.with_navigation(|n| n.path_of(e))
     }
 
+    /// Camera Brains and Virtual Cameras of this game (live camera, blend progress).
+    pub fn with_cameras<R>(&self, f: impl FnOnce(&crate::vcam::CameraRig) -> R) -> R {
+        self.host.with_cameras(f)
+    }
+
     /// Game view "Mute Audio" and the editor's Pause button.
     pub fn set_audio_state(&mut self, muted: bool, paused: bool) {
         self.host.with_audio(|a| {

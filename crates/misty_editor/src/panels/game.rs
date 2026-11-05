@@ -63,6 +63,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             gpu.render_ui(&state.scene, interaction);
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             ui.painter().image(texture, view, uv, Color32::WHITE);
+            crate::gizmos::vcam_overlay(ui, state, view);
             if state.game_view.stats {
                 let gpu_ms = gpu.renderer.gpu_ms();
                 stats_overlay(ui, state, view, size, &render, gpu_ms);
