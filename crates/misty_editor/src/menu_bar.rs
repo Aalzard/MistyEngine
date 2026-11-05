@@ -87,6 +87,7 @@ fn file_menu(ui: &mut Ui, s: &mut EditorState) {
     ui.separator();
     item(ui, s, "Save", "Ctrl+S", Action::SaveScene);
     item(ui, s, "Save As...", "Ctrl+Shift+S", Action::SaveSceneAs);
+    item(ui, s, "Reload Scene", "Ctrl+Shift+R", Action::ReloadScene);
     ui.separator();
     item(
         ui,
@@ -558,4 +559,5 @@ fn help_menu(ui: &mut Ui, s: &mut EditorState) {
     }
     todo(ui, s, "Manual", "");
     todo(ui, s, "Scripting Reference", "");
+    crate::live_reload::dev_build::menu(ui, s);
 }

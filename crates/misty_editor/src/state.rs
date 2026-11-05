@@ -387,6 +387,8 @@ pub struct EditorState {
     pub search: crate::search::SearchPalette,
     /// Help ▸ Tutorials: the running tutorial and finished ones.
     pub tutorials: crate::tutorials::Tutorials,
+    /// Scenes and assets reloading when their files change; dev-build restarts.
+    pub live: crate::live_reload::LiveReload,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
 }
@@ -500,6 +502,7 @@ impl EditorState {
             layouts: Default::default(),
             search: crate::search::SearchPalette::new(&root),
             tutorials: Default::default(),
+            live: Default::default(),
             actions: Vec::new(),
         };
         crate::project_settings::load(&mut s);

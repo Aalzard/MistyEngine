@@ -751,16 +751,19 @@ impl Renderer {
         }
     }
 
-    /// Reload textures and models whose files changed on disk (the editor calls this in Edit mode).
-    pub fn reload_changed_assets(&mut self) {
-        if self.textures.poll_changes()
+    /// Reload textures, models, shaders (and Shader Graphs) and effect graphs whose files changed
+    /// on disk (the editor calls this in Edit mode). Returns the reloaded paths.
+    pub fn reload_changed_assets(&mut self) -> Vec<String> {
+        let mut changed = self.textures.poll_changes();
+        if !changed.is_empty()
             && let Some(c) = self.custom.as_mut()
         {
             c.textures_changed();
         }
-        models::poll_changes();
-        crate::shader_asset::poll_changes();
-        crate::vfx::library::poll_changes();
+        changed.extend(models::poll_changes());
+        changed.extend(crate::shader_asset::poll_changes());
+        changed.extend(crate::vfx::library::poll_changes());
+        changed
     }
 
     /// Shader compile errors since the last call (Console lines with file and line).

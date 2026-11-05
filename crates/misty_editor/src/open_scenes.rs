@@ -47,6 +47,7 @@ pub fn open_additive(s: &mut EditorState, rel: &str) -> Option<SceneId> {
             mark_saved(s, id);
             s.hierarchy.collapsed_scenes.remove(&id);
             scene_files::remember(s, rel);
+            crate::live_reload::scenes::note_disk(s, rel);
             after_change(s);
             s.console.info(format!("Opened {rel} (additive)"));
             Some(id)

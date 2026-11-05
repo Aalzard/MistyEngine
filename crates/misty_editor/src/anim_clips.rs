@@ -50,6 +50,25 @@ impl ClipStore {
         Ok(&self.clips[path])
     }
 
+    /// Clips read so far (watched for changes on disk).
+    pub fn loaded_paths(&self) -> Vec<String> {
+        self.clips.keys().cloned().collect()
+    }
+
+    /// Read a clip's file again (it changed on disk). A clip with edits not written yet keeps
+    /// them. Returns whether the clip changed.
+    pub fn reload_from_disk(&mut self, path: &str) -> Result<bool, String> {
+        if self.dirty.contains(path) {
+            return Ok(false);
+        }
+        let clip = AnimationClip::load(&self.root.join(path))?;
+        if self.clips.get(path) == Some(&clip) {
+            return Ok(false);
+        }
+        self.clips.insert(path.to_owned(), clip);
+        Ok(true)
+    }
+
     /// A clip already read (see [`ClipStore::get`]), without touching the disk.
     pub fn loaded(&self, path: &str) -> Option<&AnimationClip> {
         self.clips.get(path)
