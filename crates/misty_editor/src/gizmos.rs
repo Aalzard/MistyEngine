@@ -5,6 +5,8 @@
 mod fog;
 #[path = "nav_gizmos.rs"]
 mod nav;
+#[path = "occlusion_gizmos.rs"]
+mod occlusion;
 #[path = "physics_gizmos.rs"]
 mod physics;
 #[path = "physics2d_gizmos.rs"]
@@ -30,6 +32,7 @@ use misty_engine::scene::{
 use crate::selection::Selection;
 
 pub use nav::nav_overlay;
+pub use occlusion::{occlusion_overlay, occlusion_visualize};
 pub use skin::paint_bones;
 pub use vcam::vcam_overlay;
 
@@ -345,6 +348,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.wheel(scene, e);
         lines.nav_shapes(scene, e);
         lines.fog_volume(scene, e);
+        lines.occlusion_area(scene, e);
         lines.virtual_camera(scene, e);
         lines.bones(scene, e);
     }

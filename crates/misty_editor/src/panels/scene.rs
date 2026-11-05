@@ -73,6 +73,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let brush_click = brush_click || tile_click;
     match gpu {
         Some(gpu) => {
+            let occlusion_view = crate::panels::occlusion::visualizing(state, ui.ctx());
             let mut meshes = render_scene::cached_draws(state);
             let sv = &state.scene_view;
             // Probe gizmo spheres join a copy of the cached draws (only while probes exist).
@@ -118,6 +119,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             // The sky follows the scene's sun even when the view uses the headlight.
             let mut environment = render_scene::environment(&state.scene, &scene_lights);
             environment.probes.debug = sv.draw_mode == PROBES_MODE;
+            if occlusion_view {
+                gizmos::occlusion_visualize(
+                    &state.scene,
+                    &mut state.scene_draws,
+                    &state.occlusion,
+                    &mut lines,
+                    &mut environment,
+                );
+            }
             let fx = sv.effects;
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();
@@ -196,6 +206,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         }
     }
 
+    if crate::panels::occlusion::visualizing(state, ui.ctx()) {
+        let lines = crate::panels::occlusion::summary(state);
+        gizmos::occlusion_overlay(ui, rect, &lines);
+    }
     // Object icons and click-to-select (Ctrl toggles, Shift adds).
     if state.scene_view.gizmos {
         draw_icons(ui, rect, state, &camera);

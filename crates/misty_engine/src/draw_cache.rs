@@ -71,6 +71,8 @@ struct Renderable {
     world_changed: bool,
     outline: bool,
     is_static: bool,
+    /// Occludee Static (kept out of static batches while occlusion culling needs it).
+    occludee: bool,
 }
 
 /// Static batching state (see [`crate::render::static_batch`]).
@@ -106,6 +108,8 @@ pub struct DrawCache {
     batching: Batching,
     /// Key namespace of this view's skinned mesh poses (see [`crate::skinning`]).
     skin_view: u64,
+    /// Occlusion culling state (see `draw_cache/occlusion.rs`).
+    occlusion: occlusion::State,
 }
 
 impl Drop for DrawCache {
@@ -320,6 +324,7 @@ impl DrawCache {
                         world_changed: changed,
                         outline,
                         is_static: go.is_static,
+                        occludee: go.has_static(crate::scene::StaticFlags::OCCLUDEE),
                     });
                 }
             }
@@ -451,7 +456,10 @@ impl DrawCache {
                 .collect();
             let dirty = !same_inputs || old.as_ref().is_some_and(|o| o.materials != slots);
             let (first, count) = old.as_ref().map_or((0, 0), |o| (o.first, o.count));
-            let batched = item.is_static && lod.is_none() && !item.outline;
+            let batched = item.is_static
+                && lod.is_none()
+                && !item.outline
+                && !(item.occludee && self.occlusion.split);
             if dirty && (batched || old.as_ref().is_some_and(|o| o.batched)) {
                 self.batching.dirty = true;
             }
@@ -591,5 +599,6 @@ impl DrawCache {
     }
 }
 
+mod occlusion;
 #[cfg(test)]
 mod tests;

@@ -18,6 +18,7 @@ mod mesh_builder_editor;
 mod mixed;
 mod mixer_inspector;
 mod nav_editors;
+mod occlusion_editors;
 mod overrides;
 mod particles;
 mod physics_editors;
@@ -186,7 +187,7 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
             .add(egui::Checkbox::new(&mut go.active, "").indeterminate(mixed_active))
             .changed();
         // Leave room for the Static toggle so the row never widens the Inspector.
-        let name_w = (ui.available_width() - 100.0).max(40.0);
+        let name_w = (ui.available_width() - 124.0).max(40.0);
         if multi {
             ui.add_enabled(
                 false,
@@ -200,6 +201,7 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
         changed |= ui
             .add(egui::Checkbox::new(&mut go.is_static, "Static").indeterminate(mixed_static))
             .changed();
+        changed |= occlusion_editors::static_menu(ui, &mut go);
     });
     ui.horizontal(|ui| {
         crate::widgets::input_fills(ui);
@@ -256,6 +258,9 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
         if go.is_static != before.is_static {
             g.is_static = go.is_static;
         }
+        if go.static_flags != before.static_flags {
+            g.static_flags = go.static_flags;
+        }
         if go.tag != before.tag {
             g.tag = go.tag.clone();
         }
@@ -270,7 +275,7 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
         format!("Rename {}", before.name)
     } else if go.active != before.active {
         "Toggle Active State".to_owned()
-    } else if go.is_static != before.is_static {
+    } else if go.is_static != before.is_static || go.static_flags != before.static_flags {
         "Change Static".to_owned()
     } else if go.tag != before.tag {
         "Change Tag".to_owned()

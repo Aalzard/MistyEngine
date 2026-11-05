@@ -122,6 +122,7 @@ pub fn stats_lines(
             "  Visible meshes: {}   Culled: {}",
             render.visible, render.culled
         ),
+        format!("  Occlusion culled: {}", render.occlusion_culled),
         match runtime {
             Some(r) => format!(
                 "Physics: {} bodies, {} colliders   Scripts: {}",

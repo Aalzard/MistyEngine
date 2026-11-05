@@ -244,6 +244,9 @@ pub struct RenderSettings {
     /// Multiplier on sky reflections.
     pub reflection_intensity: f32,
     pub fog: Fog,
+    /// Occlusion Culling window: bake parameters and the baked data (left out while default).
+    #[serde(skip_serializing_if = "crate::occlusion::OcclusionSettings::is_default")]
+    pub occlusion: crate::occlusion::OcclusionSettings,
 }
 
 impl Default for RenderSettings {
@@ -253,6 +256,7 @@ impl Default for RenderSettings {
             environment_lighting: EnvironmentLighting::default(),
             reflection_intensity: 1.0,
             fog: Fog::default(),
+            occlusion: Default::default(),
         }
     }
 }

@@ -34,6 +34,8 @@ pub enum Tab {
     TilePalette,
     /// Window ▸ Rendering ▸ Shader Graph (or double-click a `.shadergraph`).
     ShaderGraph,
+    /// Window ▸ Rendering ▸ Occlusion Culling.
+    OcclusionCulling,
 }
 
 impl Tab {
@@ -50,7 +52,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 10] = [
+    pub const ON_DEMAND: [Tab; 11] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -61,6 +63,7 @@ impl Tab {
         Tab::Timeline,
         Tab::TilePalette,
         Tab::ShaderGraph,
+        Tab::OcclusionCulling,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -71,7 +74,9 @@ impl Tab {
     /// Where an on-demand tab docks when first opened (Unity puts Lighting by the Inspector).
     fn opens_beside(self) -> Option<Tab> {
         match self {
-            Tab::Lighting | Tab::Navigation | Tab::WorldBuilder => Some(Tab::Inspector),
+            Tab::Lighting | Tab::Navigation | Tab::WorldBuilder | Tab::OcclusionCulling => {
+                Some(Tab::Inspector)
+            }
             // Painting needs the Scene view visible, so the palette docks by the Inspector.
             Tab::TilePalette => Some(Tab::Inspector),
             // A list window, like the Hierarchy.
@@ -107,6 +112,7 @@ impl Tab {
             Tab::Timeline => "Timeline",
             Tab::TilePalette => "Tile Palette",
             Tab::ShaderGraph => "Shader Graph",
+            Tab::OcclusionCulling => "Occlusion Culling",
         }
     }
 
@@ -130,6 +136,7 @@ impl Tab {
             Tab::Timeline => crate::panels::timeline::ICON,
             Tab::TilePalette => crate::panels::tile_palette::ICON,
             Tab::ShaderGraph => crate::panels::shader_graph::ICON,
+            Tab::OcclusionCulling => "◩",
         }
     }
 
@@ -153,7 +160,8 @@ impl Tab {
             | Tab::WorldBuilder
             | Tab::Timeline
             | Tab::TilePalette
-            | Tab::ShaderGraph => "",
+            | Tab::ShaderGraph
+            | Tab::OcclusionCulling => "",
         }
     }
 }
