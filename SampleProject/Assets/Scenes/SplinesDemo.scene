@@ -1,0 +1,1093 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            38.0,
+            4.0,
+            0.0
+          ],
+          "position": [
+            -2.0,
+            46.0,
+            -52.0
+          ],
+          "rotation": [
+            0.3253698,
+            0.032998122,
+            -0.011362164,
+            0.9449426
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.4082179,
+            -0.23456971,
+            0.10938165,
+            0.87542605
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ground",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Spline Grass.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            -0.5,
+            8.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            140.0,
+            1.0,
+            110.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Spline Container",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Spline Extrude"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Winding Road",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": null
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Spline Asphalt.mat",
+          "receive_shadows": true
+        },
+        "Spline Container": {
+          "splines": [
+            {
+              "closed": false,
+              "knots": [
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -42.0,
+                    0.03,
+                    -18.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -24.0,
+                    0.03,
+                    -26.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -4.0,
+                    0.03,
+                    -14.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    8.0,
+                    0.03,
+                    6.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    2.0,
+                    0.03,
+                    26.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -16.0,
+                    0.03,
+                    38.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -34.0,
+                    0.03,
+                    30.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -46.0,
+                    0.03,
+                    12.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                }
+              ]
+            }
+          ]
+        },
+        "Spline Extrude": {
+          "cap_ends": true,
+          "container": null,
+          "enabled": true,
+          "profile": "Road",
+          "radius": 0.25,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "segments_per_unit": 1.5,
+          "sides": 8,
+          "uv_tiling": 0.15,
+          "width": 7.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Spline Instantiate"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Lamp Posts",
+          "tag": "Untagged"
+        },
+        "Spline Instantiate": {
+          "align": "SplineElement",
+          "container": 3,
+          "count": 5,
+          "enabled": true,
+          "items": [
+            {
+              "material": null,
+              "prefab": "Assets/Prefabs/Spline Lamp Post.prefab",
+              "primitive": "Cube",
+              "probability": 1.0
+            }
+          ],
+          "method": "SplineDistance",
+          "position_max": [
+            4.6,
+            0.0,
+            0.0
+          ],
+          "position_min": [
+            4.6,
+            0.0,
+            0.0
+          ],
+          "rotation_max": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation_min": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale_max": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "scale_min": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "seed": 0,
+          "spacing": [
+            12.0,
+            12.0
+          ],
+          "spline": 0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Spline Instantiate"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Cones",
+          "tag": "Untagged"
+        },
+        "Spline Instantiate": {
+          "align": "SplineElement",
+          "container": 3,
+          "count": 5,
+          "enabled": true,
+          "items": [
+            {
+              "material": "Assets/Materials/Traffic Cone.mat",
+              "prefab": null,
+              "primitive": "Cylinder",
+              "probability": 1.0
+            }
+          ],
+          "method": "SplineDistance",
+          "position_max": [
+            -4.0,
+            0.35,
+            0.0
+          ],
+          "position_min": [
+            -4.2,
+            0.35,
+            0.0
+          ],
+          "rotation_max": [
+            0.0,
+            90.0,
+            0.0
+          ],
+          "rotation_min": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale_max": [
+            0.4,
+            0.35,
+            0.4
+          ],
+          "scale_min": [
+            0.25,
+            0.35,
+            0.25
+          ],
+          "seed": 7,
+          "spacing": [
+            5.0,
+            7.0
+          ],
+          "spline": 0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Spline Animate",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Car",
+          "tag": "Untagged"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/SplineRider.lua"
+            }
+          ]
+        },
+        "Spline Animate": {
+          "alignment": "SplineElement",
+          "container": 3,
+          "duration": 5.0,
+          "easing": "None",
+          "enabled": true,
+          "loop_mode": "PingPong",
+          "method": "Speed",
+          "play_on_awake": true,
+          "speed": 9.0,
+          "spline": 0,
+          "start_offset": 0.12
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Body",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Car Paint.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.65,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.9,
+            0.8,
+            4.2
+          ]
+        }
+      },
+      "parent": 6
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Cabin",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Car Glass.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.3,
+            -0.3
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.6,
+            0.6,
+            2.0
+          ]
+        }
+      },
+      "parent": 6
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Spline Container",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Spline Extrude"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Neon Loop",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": null
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Spline Neon.mat",
+          "receive_shadows": true
+        },
+        "Spline Container": {
+          "splines": [
+            {
+              "closed": true,
+              "knots": [
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    11.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    5.4999995,
+                    6.5,
+                    9.526279
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -5.5000005,
+                    2.0,
+                    9.526279
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -11.0,
+                    6.5,
+                    -9.616506e-7
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    -5.499999,
+                    2.0,
+                    -9.526279
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                },
+                {
+                  "mode": "AutoSmooth",
+                  "position": [
+                    5.499999,
+                    6.5,
+                    -9.526279
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tangent_in": [
+                    0.0,
+                    0.0,
+                    -1.0
+                  ],
+                  "tangent_out": [
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "tension": 0.33333334
+                }
+              ]
+            }
+          ]
+        },
+        "Spline Extrude": {
+          "cap_ends": true,
+          "container": null,
+          "enabled": true,
+          "profile": "Circle",
+          "radius": 0.35,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "segments_per_unit": 3.0,
+          "sides": 12,
+          "uv_tiling": 1.0,
+          "width": 4.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            34.0,
+            0.0,
+            14.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Spline Animate"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Orb",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Spline Orb.mat",
+          "receive_shadows": true
+        },
+        "Spline Animate": {
+          "alignment": "SplineElement",
+          "container": 9,
+          "duration": 6.0,
+          "easing": "EaseInOut",
+          "enabled": true,
+          "loop_mode": "PingPong",
+          "method": "Time",
+          "play_on_awake": true,
+          "speed": 2.0,
+          "spline": 0,
+          "start_offset": 0.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.2,
+            1.2,
+            1.2
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

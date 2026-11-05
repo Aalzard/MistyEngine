@@ -30,6 +30,7 @@ mod rig_editors;
 mod shader_material;
 mod skinned_editors;
 mod slots;
+mod spline_editors;
 mod sprite_editors;
 mod terrain;
 mod texture_import;

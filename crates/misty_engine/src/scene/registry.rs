@@ -352,6 +352,12 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<crate::rigging::OverrideTransform>(),
             ComponentInfo::of::<super::PlayableDirector>(),
             ComponentInfo::of::<ParticleSystem>(),
+            // Splines (splines).
+            ComponentInfo::of::<crate::splines::SplineContainer>(),
+            ComponentInfo::of::<crate::splines::SplineExtrude>(),
+            ComponentInfo::of::<crate::splines::SplineInstantiate>(),
+            ComponentInfo::of::<crate::splines::SplineAnimate>(),
+            ComponentInfo::of::<crate::splines::SplineInstance>(),
             ComponentInfo::of::<Terrain>(),
             ComponentInfo::of::<TerrainCollider>(),
             // World Builder (world_gen).
@@ -373,6 +379,7 @@ pub fn components() -> &'static [ComponentInfo] {
 pub fn requires(name: &str) -> &'static [&'static str] {
     match name {
         "Fixed Joint" | "Hinge Joint" | "Spring Joint" => &["Rigidbody"],
+        "Spline Extrude" => &["Mesh Filter", "Mesh Renderer"],
         _ => &[],
     }
 }

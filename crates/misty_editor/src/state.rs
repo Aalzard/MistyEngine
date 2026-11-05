@@ -313,6 +313,8 @@ pub struct EditorState {
     pub code_editor: crate::panels::code_editor::CodeEditor,
     pub hierarchy: HierarchyState,
     pub handles: HandleState,
+    /// Scene-view spline editing: knot selection and the Draw Spline tool.
+    pub splines: crate::spline_tools::SplineEdit,
     pub inspector_locked: bool,
     /// Add Component popup is open.
     pub inspector_add_open: bool,
@@ -404,6 +406,7 @@ impl EditorState {
             code_editor: crate::panels::code_editor::CodeEditor::new(&project.root),
             hierarchy: HierarchyState::default(),
             handles: HandleState::default(),
+            splines: Default::default(),
             inspector_locked: false,
             inspector_add_open: false,
             inspector_targets: Vec::new(),

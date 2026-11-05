@@ -110,6 +110,8 @@ impl Runtime {
         crate::profile_scope!("PlayerLoop", Category::Others);
         // Shaders, waves and buoyancy follow the game clock.
         crate::clock::set_play_time(time.time);
+        // Spline Extrude meshes and Spline Instantiate copies follow edits made while playing.
+        crate::splines::update(scene);
         self.host.update(scene, time, input);
         {
             crate::profile_scope!("Audio.Update", Category::Audio);

@@ -194,6 +194,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     if !brush_active
         && !crate::sprite_handles::show(ui, state, &camera, rect, hovered)
         && !crate::probe_gizmos::handles(ui, state, &camera, rect, hovered)
+        && !crate::spline_tools::handles(ui, state, &camera, rect, hovered)
         && !crate::area_light_handles::handles(ui, state, &camera, rect, hovered)
         && !crate::panels::world_builder::gizmos::show(ui, state, &camera, rect, hovered)
     {

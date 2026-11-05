@@ -257,7 +257,8 @@ impl EditorApp {
             if key == Key::Delete
                 && (self.state.animation.wants_delete()
                     || self.state.animator.wants_delete()
-                    || self.state.timeline.wants_delete())
+                    || self.state.timeline.wants_delete()
+                    || self.state.splines.wants_delete())
             {
                 continue;
             }
@@ -473,6 +474,8 @@ impl EditorApp {
             }
         }
         if !s.play.in_play_mode() {
+            // Spline Extrude meshes and Spline Instantiate copies follow their splines.
+            misty_engine::splines::update(&mut s.scene);
             // Selected Particle Systems play in the Scene view.
             if crate::particle_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();

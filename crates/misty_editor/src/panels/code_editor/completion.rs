@@ -468,7 +468,10 @@ mod tests {
         let calls = complete(&ctx("self:"), &src, 0);
         assert!(labels(&calls).contains(&"Jump") && !labels(&calls).contains(&"speed"));
         let comp = complete(&ctx("GetComponent(\"Anim"), &src, 0);
-        assert_eq!(labels(&comp), vec!["Animator", "Animation"]);
+        assert_eq!(
+            labels(&comp),
+            vec!["Animator", "Animation", "SplineAnimate"]
+        );
     }
 
     #[test]
