@@ -207,7 +207,15 @@ fn shadows_demo_shows_every_cascade() {
         assert!(tinted(&images[1], rgb), "no {name} cascade on screen");
     }
     assert!(!tinted(&images[0], [false, true, false]), "untinted image");
-    // The tint is a one-render switch.
+    // The tint is a one-render switch (the temporal shadow mask moves its pattern a little
+    // from frame to frame, so "the same" means nearly identical).
     renderer.render(&device, &queue, &target, &view.frame());
-    assert!(read_back(&device, &queue, &target) == images[0]);
+    let again = read_back(&device, &queue, &target);
+    let diff = again
+        .iter()
+        .zip(&images[0])
+        .map(|(a, b)| (*a as f32 - *b as f32).abs())
+        .sum::<f32>()
+        / again.len() as f32;
+    assert!(diff < 0.5, "untinted again: mean difference {diff}");
 }

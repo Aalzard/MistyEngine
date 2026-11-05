@@ -9,6 +9,8 @@ pub const RADIUS: f32 = 0.05;
 pub const BIAS: f32 = 1.0;
 /// Normal offset in shadow-map texels.
 pub const NORMAL_BIAS: f32 = 1.5;
+/// Penumbra multiplier (1 = the light's physical size).
+pub const SOFTNESS: f32 = 1.0;
 
 pub fn is_angle(v: &f32) -> bool {
     *v == ANGLE
@@ -21,4 +23,7 @@ pub fn is_bias(v: &f32) -> bool {
 }
 pub fn is_normal_bias(v: &f32) -> bool {
     *v == NORMAL_BIAS
+}
+pub fn is_softness(v: &f32) -> bool {
+    *v == SOFTNESS
 }

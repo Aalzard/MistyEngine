@@ -32,6 +32,7 @@ mod runtime_tex;
 mod scene_copy;
 mod screen_space;
 mod screen_trace;
+mod shadow_denoise;
 mod shadows;
 mod skinning;
 mod soft_shadows;
@@ -456,6 +457,7 @@ pub struct Renderer {
     screen_space: screen_space::ScreenSpace,
     /// Screen-space GI and reflections (trace passes, lit colour history).
     screen_trace: screen_trace::ScreenTrace,
+    shadow_denoise: shadow_denoise::ShadowDenoise,
     /// Light halos and lens flares.
     glows: glow::Glows,
     /// HDRI sky cubes and uniform (view group bindings 4–7).
@@ -500,6 +502,7 @@ impl Renderer {
         let lightmaps = lightmap_gpu::LightmapGpu::new(device);
         let screen_space = screen_space::ScreenSpace::new(device);
         let screen_trace = screen_trace::ScreenTrace::new(device);
+        let shadow_denoise = shadow_denoise::ShadowDenoise::new(device);
 
         let draws_capacity = 256;
         let draws_buffer = draws_buffer(device, draws_capacity);
@@ -515,7 +518,11 @@ impl Renderer {
             &shadows,
             &probes,
             &lightmaps,
-            [&screen_space.off_buffer, &screen_trace.off_buffer],
+            [
+                &screen_space.off_buffer,
+                &screen_trace.off_buffer,
+                shadow_denoise.off_buffer(),
+            ],
         );
 
         let meshes = GpuMesh::primitives(device);
@@ -576,6 +583,7 @@ impl Renderer {
             view_group_dirty: false,
             screen_space,
             screen_trace,
+            shadow_denoise,
             glows: Default::default(),
             sky,
             skins: Default::default(),
@@ -638,7 +646,11 @@ impl Renderer {
                 &self.shadows,
                 &self.probes,
                 &self.lightmaps,
-                [&self.screen_space.off_buffer, &self.screen_trace.off_buffer],
+                [
+                    &self.screen_space.off_buffer,
+                    &self.screen_trace.off_buffer,
+                    self.shadow_denoise.off_buffer(),
+                ],
             );
         }
         // Quality ▸ LOD Bias scales every LOD Group's switch heights.
@@ -985,7 +997,11 @@ impl Renderer {
             self.upload_culling(device, queue, target, frame, &lists, c, &view_proj);
             self.last_gpu_batches = c.batches.len();
         }
+        self.prepare_shadow_mask(device, queue, target, frame, &plan, &shadow_settings);
         let screen = self.prepare_screen_space(device, queue, target, frame);
+        if screen.is_none() {
+            self.cancel_shadow_mask();
+        }
 
         // Lights and their shadow maps (cascades first, then local layers).
         let soft = shadow_settings.soft != crate::quality::Tier::Off;
@@ -1067,6 +1083,8 @@ impl Renderer {
             )
         {
             self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
+            let (depth, normals) = ss.views();
+            self.shadow_mask_passes(device, &mut encoder, depth, normals);
         }
         let trace = screen.as_ref().and_then(|s| s.trace.as_ref());
         if let Some(t) = trace {
@@ -1209,7 +1227,11 @@ impl Renderer {
                 &self.shadows,
                 &self.probes,
                 &self.lightmaps,
-                [&self.screen_space.off_buffer, &self.screen_trace.off_buffer],
+                [
+                    &self.screen_space.off_buffer,
+                    &self.screen_trace.off_buffer,
+                    self.shadow_denoise.off_buffer(),
+                ],
             );
         }
         let meshes = &lists.prep.uniforms;
@@ -2077,7 +2099,7 @@ fn draw_groups(
     shadows: &shadows::ShadowMaps,
     probes: &probes::gpu::ProbeGpu,
     lightmaps: &lightmap_gpu::LightmapGpu,
-    [screen, trace]: [&wgpu::Buffer; 2],
+    [screen, trace, shadow_mask]: [&wgpu::Buffer; 3],
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [lights, ltc, lights_2d] = lights;
     let [draws, slots] = buffers;
@@ -2136,6 +2158,10 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 17,
                 resource: trace.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: shadow_denoise::BINDING,
+                resource: shadow_mask.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: light2d::BINDING,

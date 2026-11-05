@@ -33,6 +33,16 @@ pub fn rows(ui: &mut Ui, l: &mut Light) -> bool {
             ch |= ui.add(mixed::drag("shadow_radius", field)).changed();
             ui.end_row();
         }
+        ui.label("Shadow Softness").on_hover_text(
+            "Scales the penumbra: 1 = the light's physical size (rectangle lights: their \
+             width and height), larger = softer, 0 = as sharp as the shadow map allows.",
+        );
+        let field = DragValue::new(&mut l.shadow_softness)
+            .speed(0.01)
+            .range(0.0..=8.0)
+            .suffix("×");
+        ch |= ui.add(mixed::drag("shadow_softness", field)).changed();
+        ui.end_row();
     }
     ui.label("Bias")
         .on_hover_text("Pushes the shadow away from the surface (shadow-map texels).");

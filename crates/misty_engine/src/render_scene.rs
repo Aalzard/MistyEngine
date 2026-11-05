@@ -98,6 +98,7 @@ pub fn lights(scene: &Scene) -> Vec<LightData> {
                     },
                     bias: l.shadow_bias,
                     normal_bias: l.shadow_normal_bias,
+                    softness: l.shadow_softness,
                 },
                 volumetric: crate::render::VolumetricLight {
                     multiplier: l.volumetric_multiplier,
