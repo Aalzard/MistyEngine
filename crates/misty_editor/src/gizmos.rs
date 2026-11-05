@@ -11,6 +11,8 @@ mod physics;
 mod physics2d;
 #[path = "rig_gizmos.rs"]
 mod rig;
+#[path = "skin_gizmos.rs"]
+mod skin;
 #[path = "vcam_gizmos.rs"]
 mod vcam;
 
@@ -28,6 +30,7 @@ use misty_engine::scene::{
 use crate::selection::Selection;
 
 pub use nav::nav_overlay;
+pub use skin::paint_bones;
 pub use vcam::vcam_overlay;
 
 const COLLIDER: [f32; 4] = [0.57, 0.96, 0.55, 0.9];
@@ -343,6 +346,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.nav_shapes(scene, e);
         lines.fog_volume(scene, e);
         lines.virtual_camera(scene, e);
+        lines.bones(scene, e);
     }
     lines.rigging(scene, selection);
     lines

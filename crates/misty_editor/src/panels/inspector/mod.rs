@@ -28,6 +28,7 @@ mod preset_picker;
 mod probe_editor;
 mod rig_editors;
 mod shader_material;
+mod skinned_editors;
 mod slots;
 mod sprite_editors;
 mod terrain;

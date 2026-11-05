@@ -34,6 +34,7 @@ pub mod screen;
 pub mod scripting;
 pub mod settings;
 pub mod shader_asset;
+pub mod skinning;
 pub mod sprites;
 pub mod tags_layers;
 pub mod terrain;

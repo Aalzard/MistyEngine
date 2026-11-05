@@ -250,6 +250,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         super::hierarchy::drop_asset(state, e, &payload.0);
     }
 
+    if state.scene_view.gizmos {
+        gizmos::paint_bones(ui, rect, &camera, &state.scene, &state.selection);
+    }
     tools_overlay(ui, rect, state);
     crate::particle_preview::overlay(ui, rect, state);
     if !state.scene_view.camera.is_2d() {

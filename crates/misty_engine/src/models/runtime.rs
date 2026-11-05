@@ -20,9 +20,11 @@ pub fn register(name: &str, data: MeshData) -> String {
             data,
             material: None,
             edges: OnceLock::new(),
+            skin: None,
+            blend_shapes: Vec::new(),
+            default_weights: Vec::new(),
         }],
-        nodes: Vec::new(),
-        materials: Vec::new(),
+        ..Default::default()
     };
     let mut lib = library();
     lib.entries.insert(

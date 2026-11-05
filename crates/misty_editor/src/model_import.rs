@@ -1,11 +1,14 @@
 //! Model files dropped into the Scene view or Hierarchy: one object per model node, each with a
-//! Mesh Filter + Mesh Renderer using the materials extracted next to the model.
+//! Mesh Filter + Mesh Renderer using the materials extracted next to the model. Skinned or
+//! morphing meshes get a Skinned Mesh Renderer bound to the node objects as bones, and the
+//! file's animations (extracted as `.anim` clips) go on an Animation component on the root.
 
 use std::path::Path;
 
 use misty_engine::hecs::Entity;
 use misty_engine::models::{self, Model};
-use misty_engine::scene::{MeshFilter, MeshRef, MeshRenderer, Scene, Transform};
+use misty_engine::scene::{Animation, MeshFilter, MeshRef, MeshRenderer, Scene, Transform};
+use misty_engine::skinning;
 
 use crate::state::EditorState;
 
@@ -21,8 +24,9 @@ pub fn instantiate(s: &mut EditorState, rel: &str, parent: Option<Entity>) -> Op
     };
     let parent = parent.filter(|p| s.scene.contains(*p));
     let materials = s.assets.model_materials(rel, &model);
+    let clips = model_clips(s, rel, &model);
     s.record("Instantiate Model");
-    let root = spawn(&mut s.scene, rel, &model, &materials, parent);
+    let root = spawn_with_clips(&mut s.scene, rel, &model, &materials, &clips, parent);
     if parent.is_none() {
         let pivot = s.scene_view.camera.pivot().round();
         s.scene.set_world_position(root, pivot);
@@ -35,11 +39,36 @@ pub fn instantiate(s: &mut EditorState, rel: &str, parent: Option<Entity>) -> Op
 /// Build the objects for `model`. `materials[i]` is the `.mat` for model material `i`.
 /// A model with a single node becomes one object; otherwise a root named after the file holds
 /// the node hierarchy.
+#[cfg(test)]
 pub fn spawn(
     scene: &mut Scene,
     rel: &str,
     model: &Model,
     materials: &[Option<String>],
+    parent: Option<Entity>,
+) -> Entity {
+    spawn_with_clips(scene, rel, model, materials, &[], parent)
+}
+
+/// The model's animation clips (extracted next to it on first use), project-relative.
+fn model_clips(s: &mut EditorState, rel: &str, model: &Model) -> Vec<String> {
+    if let Err(e) = models::extract_animations(rel, model) {
+        s.console
+            .warn(format!("Could not extract animations of {rel}: {e}"));
+    }
+    (0..model.animations.len())
+        .filter_map(|i| models::animation_asset_path(rel, model, i))
+        .filter(|p| misty_engine::assets::absolute(p).exists())
+        .collect()
+}
+
+/// [`spawn`], with an Animation component on the root playing `clips` (asset paths).
+pub fn spawn_with_clips(
+    scene: &mut Scene,
+    rel: &str,
+    model: &Model,
+    materials: &[Option<String>],
+    clips: &[String],
     parent: Option<Entity>,
 ) -> Entity {
     let stem = Path::new(rel)
@@ -64,6 +93,11 @@ pub fn spawn(
             },
         );
     };
+    let material_of = |index: usize| {
+        model.meshes[index]
+            .material
+            .and_then(|m| materials.get(m).cloned().flatten())
+    };
     let node_transform = |n: &models::ModelNode| {
         let mut t = Transform::from_position(n.position);
         t.set_rotation(n.rotation);
@@ -77,14 +111,22 @@ pub fn spawn(
         let e = scene.spawn(&stem, parent);
         scene.set_transform(e, node_transform(node));
         if let Some(&i) = node.meshes.first() {
-            add_mesh(scene, e, i);
+            if skinning::is_skinned_node(model, 0) {
+                let r = skinning::renderer_for(model, rel, 0, i, &[e], material_of(i));
+                scene.add(e, r);
+            } else {
+                add_mesh(scene, e, i);
+            }
         }
+        add_clips(scene, e, clips);
         return e;
     }
 
     let root = scene.spawn(&stem, parent);
     let mut ids: Vec<Entity> = Vec::with_capacity(model.nodes.len());
-    for node in &model.nodes {
+    // Skinned meshes bind to bones made later: (object, node, mesh), added at the end.
+    let mut skinned: Vec<(Entity, usize, usize)> = Vec::new();
+    for (n, node) in model.nodes.iter().enumerate() {
         let p = node
             .parent
             .and_then(|i| ids.get(i).copied())
@@ -92,17 +134,41 @@ pub fn spawn(
         let e = scene.spawn(&node.name, Some(p));
         scene.set_transform(e, node_transform(node));
         // Extra meshes of a node (multi-material glTF meshes) become children.
+        let skin = skinning::is_skinned_node(model, n);
         for (k, &i) in node.meshes.iter().enumerate() {
-            if k == 0 {
-                add_mesh(scene, e, i);
+            let target = if k == 0 {
+                e
             } else {
-                let child = scene.spawn(&model.meshes[i].name, Some(e));
-                add_mesh(scene, child, i);
+                scene.spawn(&model.meshes[i].name, Some(e))
+            };
+            if skin {
+                skinned.push((target, n, i));
+            } else {
+                add_mesh(scene, target, i);
             }
         }
         ids.push(e);
     }
+    for (e, n, i) in skinned {
+        let r = skinning::renderer_for(model, rel, n, i, &ids, material_of(i));
+        scene.add(e, r);
+    }
+    add_clips(scene, root, clips);
     root
+}
+
+/// Animation component playing the model's clips (the first one automatically).
+fn add_clips(scene: &mut Scene, root: Entity, clips: &[String]) {
+    if let Some(first) = clips.first() {
+        scene.add(
+            root,
+            Animation {
+                clip: Some(first.clone()),
+                clips: clips.to_vec(),
+                ..Default::default()
+            },
+        );
+    }
 }
 
 #[cfg(test)]

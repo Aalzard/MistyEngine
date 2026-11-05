@@ -70,6 +70,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
             rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
             meshes: vec![model.meshes.len()],
+            skin: None,
         });
         model.meshes.push(ModelMesh::new(name, data, m.material_id));
     }

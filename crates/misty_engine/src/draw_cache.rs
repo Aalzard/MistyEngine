@@ -104,6 +104,8 @@ pub struct DrawCache {
     calls: u64,
     stats: CacheStats,
     batching: Batching,
+    /// Key namespace of this view's skinned mesh poses (see [`crate::skinning`]).
+    skin_view: u64,
 }
 
 impl Drop for DrawCache {
@@ -166,6 +168,9 @@ impl DrawCache {
             self.update_batches(&renderables);
         }
 
+        if self.skin_view == 0 {
+            self.skin_view = crate::skinning::next_view_id();
+        }
         // Sprites are few and cheap: rebuilt every call.
         let views = (scene.world.view::<&SpriteRenderer>(), &self.nodes);
         let (target, meshes) = match self.batching.on {
@@ -176,6 +181,26 @@ impl DrawCache {
         let mut scatter = Vec::new();
         let keep = |e| crate::render_scene::in_mask(scene, e, culling_mask);
         crate::world_gen::scatter_set::draws(scene, materials, keep, &mut scatter);
+        // Skinned Mesh Renderers: posed every call (bones move without touching the renderer).
+        let world = |e: Entity| {
+            views
+                .1
+                .get(e.id() as usize)
+                .filter(|n| n.entity == Some(e))
+                .map_or_else(|| scene.world_matrix(e), |n| n.world)
+        };
+        let outline = |e: Entity| {
+            let mut cur = Some(e);
+            while let Some(x) = cur {
+                if selected(x) {
+                    return true;
+                }
+                cur = scene.parent(x);
+            }
+            false
+        };
+        let view = self.skin_view;
+        crate::skinning::draws(scene, materials, view, keep, &world, outline, &mut scatter);
         if !sprites.is_empty() || !scatter.is_empty() || target.len() > meshes {
             let out = Arc::make_mut(target);
             out.truncate(meshes);

@@ -76,6 +76,8 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Virtual Camera", "", "follow"),
     ("Virtual Camera", "", "look_at"),
     ("Playable Director", "bindings", "object"),
+    ("Skinned Mesh Renderer", "", "root_bone"),
+    ("Skinned Mesh Renderer", "", "bones"),
 ];
 
 /// Every object-reference field: the ones above plus the UI widgets' (see `ui_widgets`).

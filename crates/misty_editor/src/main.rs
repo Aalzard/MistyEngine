@@ -92,6 +92,8 @@ mod sample_rigging;
 #[cfg(test)]
 mod sample_shadows;
 #[cfg(test)]
+mod sample_skinning;
+#[cfg(test)]
 mod sample_stress;
 #[cfg(test)]
 mod sample_terrain;

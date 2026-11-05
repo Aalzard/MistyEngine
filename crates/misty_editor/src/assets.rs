@@ -178,6 +178,14 @@ impl AssetDatabase {
                     }
                     Err(e) => messages.push(format!("Could not extract materials of {rel}: {e}")),
                 }
+                match models::extract_animations(&rel, &m) {
+                    Ok(created) => {
+                        for c in created {
+                            messages.push(format!("Imported {c} from {rel}"));
+                        }
+                    }
+                    Err(e) => messages.push(format!("Could not extract animations of {rel}: {e}")),
+                }
                 m.meshes.iter().map(|mesh| mesh.name.clone()).collect()
             });
             if let Err(e) = &entry {
