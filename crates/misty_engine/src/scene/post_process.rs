@@ -15,17 +15,56 @@ pub enum TonemapMode {
     Neutral,
     /// Filmic ACES curve: more contrast and saturated highlights.
     Aces,
+    /// AgX (the curve Blender uses by default): wide latitude, bright colours desaturate
+    /// smoothly towards white instead of skewing hue. Has looks (Base / Punchy).
+    #[serde(rename = "AgX")]
+    Agx,
+    /// Khronos PBR Neutral: keeps base colours almost exact below the highlights.
+    PbrNeutral,
 }
 
 impl TonemapMode {
-    pub const ALL: [TonemapMode; 3] = [Self::None, Self::Neutral, Self::Aces];
+    pub const ALL: [TonemapMode; 5] = [
+        Self::None,
+        Self::Neutral,
+        Self::Aces,
+        Self::Agx,
+        Self::PbrNeutral,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::None => "None",
             Self::Neutral => "Neutral",
             Self::Aces => "ACES",
+            Self::Agx => "AgX",
+            Self::PbrNeutral => "Khronos PBR Neutral",
         }
+    }
+}
+
+/// AgX look: a grade applied inside the curve (like Blender's AgX looks).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TonemapLook {
+    /// The plain curve: soft, low contrast.
+    #[default]
+    Base,
+    /// More contrast and saturation.
+    Punchy,
+}
+
+impl TonemapLook {
+    pub const ALL: [TonemapLook; 2] = [Self::Base, Self::Punchy];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Base => "Base",
+            Self::Punchy => "Punchy",
+        }
+    }
+
+    pub fn is_base(&self) -> bool {
+        *self == Self::Base
     }
 }
 
@@ -34,6 +73,9 @@ impl TonemapMode {
 pub struct TonemappingOverride {
     pub active: bool,
     pub mode: TonemapMode,
+    /// AgX only (left out of files while Base).
+    #[serde(skip_serializing_if = "TonemapLook::is_base")]
+    pub look: TonemapLook,
 }
 
 impl Default for TonemappingOverride {
@@ -41,6 +83,7 @@ impl Default for TonemappingOverride {
         Self {
             active: false,
             mode: TonemapMode::Aces,
+            look: TonemapLook::Base,
         }
     }
 }
@@ -82,6 +125,17 @@ pub struct ColorAdjustmentsOverride {
     pub saturation: f32,
     /// sRGB multiplier.
     pub color_filter: [f32; 3],
+    /// White balance, -100..100: negative = cooler (bluer), positive = warmer (left out of
+    /// files while 0).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub temperature: f32,
+    /// White balance, -100..100: negative = greener, positive = more magenta.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub tint: f32,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 impl Default for ColorAdjustmentsOverride {
@@ -92,6 +146,8 @@ impl Default for ColorAdjustmentsOverride {
             contrast: 0.0,
             saturation: 0.0,
             color_filter: [1.0, 1.0, 1.0],
+            temperature: 0.0,
+            tint: 0.0,
         }
     }
 }
