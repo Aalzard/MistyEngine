@@ -118,7 +118,8 @@ impl RenderTarget {
             full,
             HDR_FORMAT,
             1,
-            sampled | wgpu::TextureUsages::COPY_SRC,
+            // COPY_DST: temporal anti-aliasing writes its result back.
+            sampled | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
             &[],
         );
         let glow_msaa = make(

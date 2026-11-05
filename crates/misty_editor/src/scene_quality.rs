@@ -35,6 +35,10 @@ pub fn menu(ui: &mut Ui, q: &mut QualitySettings) -> bool {
                 .checkbox(&mut level.fxaa, "FXAA")
                 .on_hover_text("Post-process edge smoothing on top of the renderer's 4x MSAA")
                 .changed();
+            edited |= ui
+                .checkbox(&mut level.temporal_aa, "TAA")
+                .on_hover_text("Temporal anti-aliasing: smooth, stable grass and thin details")
+                .changed();
             ui.end_row();
             ui.label("Render Scale");
             edited |= ui

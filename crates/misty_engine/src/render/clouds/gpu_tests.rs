@@ -78,6 +78,8 @@ fn render(
     let mut renderer = Renderer::with_queue(&device, &queue);
     let quality = QualityLevel {
         volumetric_clouds: tier,
+        // Repeated renders are compared exactly: no TAA jitter.
+        temporal_aa: false,
         ..QualityLevel::high()
     };
     renderer.set_quality(&device, &quality);

@@ -167,6 +167,8 @@ fn sharp_shafts_off_is_the_froxel_image() {
     let off = render(&device, &queue, &mut renderer, &scene, 2);
     assert!(off != sharp, "sharp shafts change the image");
     let mut low = crate::quality::QualityLevel::high();
+    // Compared with the bare renderer's image: no TAA jitter.
+    low.temporal_aa = false;
     low.sun_shafts = crate::quality::Tier::Off;
     let mut tiered = Renderer::new(&device);
     tiered.set_quality(&device, &low);

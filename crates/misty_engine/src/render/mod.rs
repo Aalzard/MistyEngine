@@ -39,6 +39,7 @@ mod soft_shadows;
 pub mod static_batch;
 pub mod stats;
 pub mod surface;
+mod taa;
 mod target;
 mod terrain;
 mod terrain_grass;
@@ -439,6 +440,8 @@ pub struct Renderer {
     post_sampler: wgpu::Sampler,
     options: RenderOptions,
     quality: crate::quality::QualityLevel,
+    /// Temporal anti-aliasing histories per render target.
+    taa: taa::Taa,
     stats: RenderStats,
     /// GPU time per render (when the device supports timestamp queries).
     gpu_timer: Option<gpu_timer::GpuTimer>,
@@ -481,6 +484,7 @@ impl Renderer {
     /// Renderer without GPU timing (see [`Renderer::with_queue`]).
     pub fn new(device: &wgpu::Device) -> Self {
         let pipelines = pipelines::Pipelines::new(device);
+        let taa = taa::Taa::new(device, &pipelines.view_layout);
         let uniform = |label, size: usize| {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -574,7 +578,13 @@ impl Renderer {
             pipelines,
             options: RenderOptions::default(),
             // High: the default level, with the 2048² shadow map created above.
-            quality: crate::quality::QualityLevel::default(),
+            // TAA starts off: it is on once an app applies a level that wants it
+            // (repeated renders of a bare renderer stay identical).
+            quality: crate::quality::QualityLevel {
+                temporal_aa: false,
+                ..Default::default()
+            },
+            taa,
             stats: RenderStats::default(),
             gpu_timer: None,
             culler: gpu_culling::supported(device).then(|| gpu_culling::GpuCuller::new(device)),
@@ -638,6 +648,9 @@ impl Renderer {
     /// Effect settings (cascades, soft shadows, AO, fog, probes) are read from
     /// [`Renderer::quality`] by the passes that implement them.
     pub fn set_quality(&mut self, device: &wgpu::Device, quality: &crate::quality::QualityLevel) {
+        if !quality.temporal_aa {
+            self.taa.clear();
+        }
         let size = quality.shadow_map_size();
         if size != self.shadows.directional_size {
             self.shadows =
@@ -733,7 +746,8 @@ impl Renderer {
                 + self.lightmaps.bytes()
                 + self.sky.bytes()
                 + self.volumetrics.texture_bytes()
-                + self.clouds.texture_bytes(),
+                + self.clouds.texture_bytes()
+                + self.taa.bytes(),
         }
     }
 
@@ -941,10 +955,17 @@ impl Renderer {
             self.prepare_assets(device, queue, frame, &lod);
         }
         let aspect = target.aspect();
+        // Temporal anti-aliasing jitters the camera by a sub-pixel offset each frame.
+        let taa_on = self.quality.temporal_aa && frame.shaded;
+        let jitter = if taa_on {
+            self.taa.jitter(target.id)
+        } else {
+            glam::Vec2::ZERO
+        };
         queue.write_buffer(
             &self.view_buffer,
             0,
-            bytemuck::bytes_of(&view_uniform(frame, aspect)),
+            bytemuck::bytes_of(&view_uniform(frame, aspect, jitter, target.size())),
         );
         // HDRI sky: cubes built when the file changes, the uniform every render.
         if self.sky.prepare(device, queue, frame.environment) {
@@ -1162,6 +1183,23 @@ impl Renderer {
         }
         self.glow_passes(device, &mut encoder, target);
         self.sun_shaft_passes(device, &mut encoder, target);
+        if taa_on
+            && frame_debug::record(&self.capture, |_| {
+                frame_debug::events::post_event("Temporal Anti-aliasing".to_owned(), "taa.wgsl")
+            })
+        {
+            let cam = frame.camera;
+            self.taa.resolve(
+                device,
+                &mut encoder,
+                &self.view_bind_group,
+                target.id,
+                (target.hdr_texture(), target.hdr_view()),
+                target.depth_view(),
+                view_proj,
+                (cam.position, cam.forward()),
+            );
+        }
         self.bloom_passes(&mut encoder, target, timing);
         if let Some(display) = frame_debug::stop_display(&self.capture) {
             self.frame_debug_blit(device, &mut encoder, target, display);
@@ -2366,9 +2404,10 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan, soft: bool) -> Ligh
     u
 }
 
-fn view_uniform(frame: &Frame, aspect: f32) -> ViewUniform {
+/// The view uniform; `jitter` = sub-pixel camera offset in pixels of a `size` image (TAA).
+fn view_uniform(frame: &Frame, aspect: f32, jitter: glam::Vec2, size: (u32, u32)) -> ViewUniform {
     let cam = frame.camera;
-    let vp = cam.view_projection(aspect);
+    let vp = taa::jittered(cam.view_projection(aspect), jitter, size);
     let ortho = matches!(cam.projection, Projection::Orthographic { .. });
     let (axis, lod_ref) = match frame.grid {
         Some(plane) => {
