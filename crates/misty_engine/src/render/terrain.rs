@@ -307,6 +307,10 @@ pub(super) struct TerrainCache {
     chunks: Vec<Vec<ChunkDraw>>,
     /// Grass bind group per terrain of the current frame (None = no grass).
     grass_groups: Vec<Option<wgpu::BindGroup>>,
+    /// The built-in grass atlas (uploaded with the first grass).
+    grass_atlas: Option<(wgpu::TextureView, wgpu::Sampler)>,
+    /// Camera of the current frame (grass LOD).
+    camera: Vec3,
     frustum: Option<Frustum>,
     started: Instant,
 }
@@ -326,6 +330,8 @@ impl TerrainCache {
             groups: Vec::new(),
             chunks: Vec::new(),
             grass_groups: Vec::new(),
+            grass_atlas: None,
+            camera: Vec3::ZERO,
             frustum: None,
             started: Instant::now(),
         }
@@ -426,9 +432,11 @@ impl TerrainCache {
     }
 
     /// Pick each chunk's LOD and visibility for the camera, and update grass around it.
+    #[allow(clippy::too_many_arguments)]
     pub fn select(
         &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         camera: Vec3,
         view_proj: &Mat4,
         terrains: &[TerrainDraw],
@@ -439,6 +447,7 @@ impl TerrainCache {
         let frustum = Frustum::from_matrix(view_proj);
         self.chunks.clear();
         self.grass_groups.clear();
+        self.camera = camera;
         let time = self.started.elapsed().as_secs_f32();
         for (i, t) in terrains.iter().enumerate() {
             let Some(g) = self.entries.get_mut(&t.key) else {
@@ -482,7 +491,13 @@ impl TerrainCache {
                     .collect(),
             );
             g.grass.update(device, d, camera - t.position);
-            let grass = (d.details.enabled && !d.detail_map.is_empty()).then(|| {
+            let has_grass = d.details.enabled && !d.detail_map.is_empty();
+            if has_grass && self.grass_atlas.is_none() {
+                self.grass_atlas = Some(super::terrain_grass::atlas(device, queue));
+            }
+            let atlas = self.grass_atlas.as_ref();
+            let grass = has_grass.then(|| {
+                let (atlas_view, atlas_sampler) = atlas.expect("uploaded above");
                 let p = GrassParams::new(&d.details, t.position, time, first_draw + i);
                 let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("misty grass params"),
@@ -492,10 +507,20 @@ impl TerrainCache {
                 device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("misty grass group"),
                     layout: grass_layout,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: buffer.as_entire_binding(),
-                    }],
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(atlas_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(atlas_sampler),
+                        },
+                    ],
                 })
             });
             self.grass_groups.push(grass);
@@ -578,7 +603,8 @@ impl TerrainCache {
                 continue;
             };
             pass.set_bind_group(2, group, &[]);
-            gpu.grass.draw(pass, t.position, frustum, stats);
+            let lod = t.data.details.lod_distance;
+            gpu.grass.draw(pass, t.position, self.camera, lod, frustum, stats);
         }
     }
 

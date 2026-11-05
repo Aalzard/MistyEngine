@@ -982,6 +982,7 @@ impl Renderer {
             let first = frame.meshes.len();
             (self.terrains).select(
                 device,
+                queue,
                 camera,
                 &view_proj,
                 frame.terrains,

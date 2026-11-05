@@ -429,6 +429,27 @@ fn shadow_direct(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<
     return local_shadow(i, li, world, n, n_dot_l, mode);
 }
 
+// Visibility of light `i` from one hardware-filtered tap, whatever the light's mode.
+fn fast_shadow_factor(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) -> f32 {
+    if (li.shadow.x < 0.5) {
+        return 1.0;
+    }
+    let n_dot_l = max(dot(n, l), 0.0);
+    if (u32(li.dir_type.w) == 0u) {
+        // Four hardware-filtered taps spread across the light (a soft, stable edge).
+        var t = normalize(cross(l, vec3<f32>(0.0, 1.0, 0.0) + vec3<f32>(1e-3, 0.0, 0.0)));
+        let b = cross(l, t);
+        let r = 0.12 * (1.0 + 0.02 * length(world - view.camera_pos.xyz));
+        var sum = 0.0;
+        sum += sun_shadow(i, world + (t + b * 0.5) * r, n, n_dot_l, 1.0);
+        sum += sun_shadow(i, world + (-t - b * 0.5) * r, n, n_dot_l, 1.0);
+        sum += sun_shadow(i, world + (b - t * 0.5) * r, n, n_dot_l, 1.0);
+        sum += sun_shadow(i, world + (-b + t * 0.5) * r, n, n_dot_l, 1.0);
+        return sum * 0.25;
+    }
+    return local_shadow(i, li, world, n, n_dot_l, 1.0);
+}
+
 // Scene view ▸ Shadow Cascades: colour each cascade (blended across the bands).
 fn cascade_debug(world: vec3<f32>, color: vec3<f32>) -> vec3<f32> {
     let count = u32(shadow_params.settings.x);

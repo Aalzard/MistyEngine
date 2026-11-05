@@ -74,6 +74,8 @@ mod sample_cycles_room;
 #[cfg(test)]
 mod sample_hdri;
 #[cfg(test)]
+mod sample_meadow;
+#[cfg(test)]
 mod sample_input;
 #[cfg(test)]
 mod sample_light_glow;

@@ -16,10 +16,38 @@ use crate::terrain::store::Region;
 const CHUNK: f32 = 16.0;
 /// Chunks scattered per frame at most (spreads the work while flying around).
 const BUILDS_PER_FRAME: usize = 24;
+/// Blades scattered per frame at most (after the first chunk).
+const BLADES_PER_FRAME: usize = 400_000;
+/// Vertices of one blade (grass.wgsl: six segments and a tip).
+pub(super) const BLADE_VERTICES: u32 = 14;
+/// Vertices of a coarse far blade (three segments), drawn from vertex 100 on.
+const COARSE_VERTICES: u32 = 8;
+/// Chunks further than this many LOD distances draw coarse blades.
+const COARSE_FROM: f32 = 3.0;
+/// Fewest blades a far chunk keeps (share of full density).
+const MIN_KEEP: f32 = 0.02;
+
+/// Share of blades drawn at `dist` metres: all up to the LOD distance, then falling with the
+/// square of the distance (blades grow wider to cover the same ground, see grass.wgsl).
+pub(super) fn keep_at(dist: f32, lod_distance: f32) -> f32 {
+    let r = lod_distance.max(1.0) / dist.max(1e-3);
+    (r * r).clamp(MIN_KEEP, 1.0)
+}
+
+/// Coarsest density level that still has `keep` of the blades.
+fn level_for(keep: f32) -> u32 {
+    let mut l = 0;
+    while l < details::MAX_LEVEL && details::level_keep(l + 1) >= keep {
+        l += 1;
+    }
+    l
+}
 
 struct Chunk {
     buffer: Option<wgpu::Buffer>,
     count: u32,
+    /// Density level the blades were scattered at.
+    level: u32,
     /// Terrain-local bounds of the blades.
     bounds: Aabb,
 }
@@ -39,6 +67,10 @@ fn scatter_key(d: &TerrainData) -> (DetailSettings, u32) {
     s.wind_strength = 0.0;
     s.wind_speed = 0.0;
     s.draw_distance = 0.0;
+    s.seed_color = [0.0; 3];
+    s.translucency = 0.0;
+    s.tip_dryness = 0.0;
+    s.lod_distance = 0.0;
     (s, d.rule_seed)
 }
 
@@ -74,11 +106,21 @@ impl Grass {
             return;
         }
         let range = d.details.draw_distance.max(1.0);
+        let lod = d.details.lod_distance;
         let near = |x: u32, z: u32, r: f32| {
             let c = (Vec2::new(x as f32, z as f32) + 0.5) * CHUNK;
             c.distance(Vec2::new(camera.x, camera.z)) < r + CHUNK
         };
-        self.chunks.retain(|(x, z), _| near(*x, *z, range * 1.5));
+        // Level a chunk needs: from its nearest point to the camera.
+        let wanted = |x: u32, z: u32| {
+            let lo = Vec2::new(x as f32, z as f32) * CHUNK;
+            let p = Vec2::new(camera.x, camera.z).clamp(lo, lo + CHUNK);
+            let dist = Vec3::new(p.x - camera.x, 0.0, p.y - camera.z).length();
+            level_for(keep_at(dist, lod))
+        };
+        self.chunks.retain(|(x, z), c| {
+            near(*x, *z, range * 1.5) && c.level <= wanted(*x, *z) + 1
+        });
         let per_x = (d.size.x / CHUNK).ceil() as i64;
         let per_z = (d.size.z / CHUNK).ceil() as i64;
         let (cx, cz) = ((camera.x / CHUNK) as i64, (camera.z / CHUNK) as i64);
@@ -87,7 +129,11 @@ impl Grass {
         for z in (cz - reach).max(0)..(cz + reach + 1).min(per_z) {
             for x in (cx - reach).max(0)..(cx + reach + 1).min(per_x) {
                 let k = (x as u32, z as u32);
-                if !self.chunks.contains_key(&k) && near(k.0, k.1, range) {
+                let stale = self
+                    .chunks
+                    .get(&k)
+                    .is_none_or(|c| c.level > wanted(k.0, k.1));
+                if stale && near(k.0, k.1, range) {
                     todo.push(k);
                 }
             }
@@ -95,10 +141,16 @@ impl Grass {
         // Nearest first.
         let dist = |k: &(u32, u32)| (k.0 as i64 - cx).pow(2) + (k.1 as i64 - cz).pow(2);
         todo.sort_by_key(dist);
+        let mut budget = BLADES_PER_FRAME;
         for k in todo.into_iter().take(BUILDS_PER_FRAME) {
+            if budget == 0 {
+                break;
+            }
             crate::profile_scope!("Terrain.GrassScatter");
             let lo = Vec2::new(k.0 as f32, k.1 as f32) * CHUNK;
-            let blades = details::scatter(d, lo, lo + CHUNK);
+            let level = wanted(k.0, k.1);
+            let blades = details::scatter_level(d, lo, lo + CHUNK, level);
+            budget = budget.saturating_sub(blades.len());
             let top = blades
                 .iter()
                 .map(|b| b.position[1] + b.position[3])
@@ -124,17 +176,21 @@ impl Grass {
                 Chunk {
                     buffer,
                     count,
+                    level,
                     bounds,
                 },
             );
         }
     }
 
-    /// Draw visible chunks (pipeline and groups 0–2 already bound).
+    /// Draw visible chunks (pipeline and groups 0–2 already bound): far chunks draw only the
+    /// share of their key-sorted blades their distance keeps.
     pub fn draw(
         &self,
         pass: &mut wgpu::RenderPass,
         origin: Vec3,
+        camera: Vec3,
+        lod_distance: f32,
         frustum: &Frustum,
         stats: &mut super::RenderStats,
     ) {
@@ -146,9 +202,21 @@ impl Grass {
             if !frustum.intersects(&world) {
                 continue;
             }
+            let dist = camera.clamp(world.min, world.max).distance(camera);
+            let share = keep_at(dist, lod_distance) / details::level_keep(c.level);
+            let count = ((c.count as f32 * share.min(1.0)).ceil() as u32).min(c.count);
+            if count == 0 {
+                continue;
+            }
             pass.set_vertex_buffer(0, buffer.slice(..));
-            pass.draw(0..7, 0..c.count);
-            stats.draw(c.count, 15, 7);
+            let verts = if dist > lod_distance * COARSE_FROM {
+                pass.draw(100..100 + COARSE_VERTICES, 0..count);
+                COARSE_VERTICES
+            } else {
+                pass.draw(0..BLADE_VERTICES, 0..count);
+                BLADE_VERTICES
+            };
+            stats.draw(count, (verts - 2) * 3, verts);
         }
     }
 
@@ -168,8 +236,35 @@ pub(super) struct GrassParams {
     healthy: [f32; 4],
     dry: [f32; 4],
     wind: [f32; 4],
+    /// rgb = linear seed-head colour, w = translucency.
+    seed: [f32; 4],
+    /// x = full-density distance, y = tip dryness.
+    look: [f32; 4],
     /// x = the terrain's draw slot (its reflection probes), yzw unused.
     draw: [u32; 4],
+}
+
+/// The built-in grass atlas: eight photographed specimens (leaf blades, timothy heads, open
+/// panicles) in 128×1024 cells, alpha keyed (see grass.wgsl).
+const ATLAS_PNG: &[u8] = include_bytes!("assets/grass_atlas.png");
+
+/// Upload the grass atlas with mips (sRGB) and its clamped trilinear sampler.
+pub(super) fn atlas(device: &wgpu::Device, queue: &wgpu::Queue) -> (wgpu::TextureView, wgpu::Sampler) {
+    let image = image::load_from_memory(ATLAS_PNG)
+        .expect("built-in grass atlas")
+        .into_rgba8();
+    let view = super::texture::upload(device, queue, "misty grass atlas", image, true);
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("misty grass sampler"),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
+        anisotropy_clamp: 4,
+        ..Default::default()
+    });
+    (view, sampler)
 }
 
 fn lin(c: f32) -> f32 {
@@ -185,12 +280,15 @@ impl GrassParams {
         let far = s.draw_distance.max(1.0);
         let [hr, hg, hb] = s.healthy_color.map(lin);
         let [dr, dg, db] = s.dry_color.map(lin);
+        let [sr, sg, sb] = s.seed_color.map(lin);
         Self {
             origin: [origin.x, origin.y, origin.z, time],
             healthy: [hr, hg, hb, far],
             dry: [dr, dg, db, far * 0.6],
             // A fixed diagonal breeze.
             wind: [s.wind_strength, s.wind_speed, 0.8, 0.6],
+            seed: [sr, sg, sb, s.translucency.clamp(0.0, 2.0)],
+            look: [s.lod_distance.max(1.0), s.tip_dryness.clamp(0.0, 1.0), 0.0, 0.0],
             draw: [draw as u32, 0, 0, 0],
         }
     }

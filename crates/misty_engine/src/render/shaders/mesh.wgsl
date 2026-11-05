@@ -148,6 +148,12 @@ struct Surface {
     draw: u32,
     // Lightmap coordinates (used when the draw is lightmapped).
     lightmap_uv: vec2<f32>,
+    // Thin surfaces (grass, leaves): light coming through from behind, tinted by this
+    // (0 = opaque; `var s: Surface` leaves it zero).
+    transmission: vec3<f32>,
+    // Hard-filtered shadow maps without contact shadows (dense grass: soft shadows per
+    // fragment would cost several times the rest of its shading).
+    fast_shadows: bool,
 };
 
 // Standard shader inputs of a fragment; back faces (Cull Off) are lit from their side.
@@ -359,14 +365,27 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
             }
         }
         let n_dot_l = max(dot(n, l), 0.0);
-        if (n_dot_l <= 0.0 || atten <= 0.0) {
+        let thin = max(s.transmission.r, max(s.transmission.g, s.transmission.b)) > 0.0;
+        if ((n_dot_l <= 0.0 && !thin) || atten <= 0.0) {
             continue;
         }
-        if (s.receive_shadows) {
+        if (s.receive_shadows && s.fast_shadows) {
+            atten *= fast_shadow_factor(i, li, world, n, l);
+        } else if (s.receive_shadows) {
             atten *= shadow_factor(i, li, world, n, l);
             atten *= contact_shadow(li, world, n, l);
         }
         atten *= direct_occlusion(ssao);
+        if (thin) {
+            // Forward scattering towards the eye when looking into the light, plus diffuse
+            // light through the back face.
+            let back = pow(clamp(dot(v, -l), 0.0, 1.0), 5.0);
+            let through = max(dot(-n, l), 0.0);
+            color += s.transmission * li.color.rgb * atten * (back * 2.5 + through * 0.6);
+            if (n_dot_l <= 0.0) {
+                continue;
+            }
+        }
         let h = normalize(l + v);
         let n_dot_h = max(dot(n, h), 0.0);
         let l_dot_h = max(dot(l, h), 0.0);
