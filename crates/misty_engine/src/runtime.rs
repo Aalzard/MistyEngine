@@ -67,6 +67,11 @@ pub struct Runtime {
     host: ScriptHost,
     /// Warnings gathered before the first frame.
     pending: Vec<String>,
+    /// Project folder and settings, for reloading the scene of a loaded save.
+    root: PathBuf,
+    settings: ProjectSettings,
+    /// `SaveSystem.Load` replaced the scene since the last [`Runtime::take_scene_reloaded`].
+    reloaded: bool,
 }
 
 impl Runtime {
@@ -96,13 +101,16 @@ impl Runtime {
             scene,
             physics,
             physics2d,
-            project_root,
+            project_root.clone(),
             audio,
             settings,
         );
         Self {
             host,
             pending: warnings,
+            root: project_root,
+            settings: settings.clone(),
+            reloaded: false,
         }
     }
 
@@ -114,6 +122,74 @@ impl Runtime {
     /// Addressable load counters (handles, bundles).
     pub fn asset_stats(&self) -> crate::asset_groups::AssetStats {
         self.host.with_assets(|s| s.stats()).unwrap_or_default()
+    }
+
+    /// Restore a save `SaveSystem.Load` asked for: reload its scene file and start it again
+    /// (Awake), then apply the saved states. Without a scene file, the states are applied to
+    /// the current scene.
+    fn load_save(&mut self, scene: &mut Scene, data: crate::save::SaveData) {
+        let rel = data.info.scene_path.clone();
+        let loaded = rel
+            .as_ref()
+            .map(|rel| Scene::load(&self.root.join(rel)).map(|r| (rel.clone(), r)));
+        match loaded {
+            Some(Ok((rel, (mut fresh, report)))) => {
+                fresh.set_scene_path(0, &rel);
+                let audio = self.host.take_audio();
+                let folder = self.host.save_folder();
+                let mut pending = std::mem::take(&mut self.pending);
+                pending.extend(report.warnings.into_iter().map(|w| format!("{rel}: {w}")));
+                let old_logs = self.host.take_logs();
+                // Old scripts and bodies go before the reloaded scene's Awake.
+                *scene = Scene::default();
+                let mut next =
+                    Runtime::start_with_audio(&mut fresh, self.root.clone(), &self.settings, audio);
+                next.host.set_save_folder(folder);
+                next.host.apply_loaded(&mut fresh, &data, false);
+                next.host.prepend_logs(old_logs);
+                next.pending.splice(0..0, pending);
+                next.reloaded = true;
+                *scene = fresh;
+                *self = next;
+            }
+            other => {
+                if let (Some(rel), Some(Err(e))) = (&rel, other) {
+                    self.pending
+                        .push(format!("SaveSystem.Load: {rel}: {e}; restoring in place"));
+                }
+                self.host.apply_loaded(scene, &data, true);
+            }
+        }
+    }
+
+    /// Save the game to `slot` between frames (like `SaveSystem.Save`).
+    pub fn save_game(&mut self, scene: &mut Scene, slot: &str) -> Result<(), String> {
+        self.host.save_game(scene, slot)
+    }
+
+    /// Load `slot` like `SaveSystem.Load`: the scene is restored after the next frame.
+    pub fn load_game(&mut self, slot: &str) -> Result<(), String> {
+        self.host.load_game(slot)
+    }
+
+    /// Whether a loaded save replaced the scene (its objects are new) since the last call.
+    pub fn take_scene_reloaded(&mut self) -> bool {
+        std::mem::take(&mut self.reloaded)
+    }
+
+    /// Where `SaveSystem` keeps this game's saves.
+    pub fn save_folder(&self) -> PathBuf {
+        self.host.save_folder()
+    }
+
+    /// Keep this game's saves in `folder` (tests, tools).
+    pub fn set_save_folder(&self, folder: PathBuf) {
+        self.host.set_save_folder(folder);
+    }
+
+    /// The game's String Tables and current locale.
+    pub fn with_localization<R>(&self, f: impl FnOnce(&crate::localization::Localizer) -> R) -> R {
+        self.host.with_localization(f)
     }
 
     /// One game frame.
@@ -136,6 +212,9 @@ impl Runtime {
         crate::particles::update(scene, time.delta, gravity);
         crate::profile_scope!("VisualEffect.Update", Category::Others);
         crate::vfx::update(scene, time.delta);
+        if let Some(data) = self.host.take_pending_load() {
+            self.load_save(scene, data);
+        }
     }
 
     /// Add a scene file's objects as another loaded scene and start them (bodies, `Awake`).

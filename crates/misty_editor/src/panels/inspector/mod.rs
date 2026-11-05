@@ -31,6 +31,7 @@ mod preset_fields;
 mod preset_picker;
 mod probe_editor;
 mod rig_editors;
+mod saveloc_editors;
 pub(in crate::panels) mod shader_material;
 mod skinned_editors;
 pub(in crate::panels) mod slots;

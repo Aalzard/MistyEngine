@@ -104,6 +104,8 @@ mod sample_render;
 #[cfg(test)]
 mod sample_rigging;
 #[cfg(test)]
+mod sample_saveloc;
+#[cfg(test)]
 mod sample_shader_graph;
 #[cfg(test)]
 mod sample_shadows;
@@ -137,6 +139,7 @@ mod sample_volumetric_fog;
 mod sample_water;
 #[cfg(test)]
 mod sample_world_builder;
+mod saveloc;
 mod scene_camera;
 mod scene_files;
 mod scene_icons;

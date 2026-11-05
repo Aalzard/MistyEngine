@@ -153,6 +153,15 @@ impl Gpu {
             .collect()
     }
 
+    /// The Game view's last frame `(width, height, RGBA8)` (save game thumbnails).
+    pub fn game_view_pixels(&self) -> Option<(u32, u32, Vec<u8>)> {
+        let target = self.game.target.as_ref()?;
+        let (w, h) = target.size();
+        let pixels =
+            crate::project_thumbnail::read_pixels(&self.state.device, &self.state.queue, target);
+        Some((w, h, pixels))
+    }
+
     /// The last frame of the view the user was looking at: the one drawn most recently, the
     /// Scene view when both were on screen. `(width, height, RGBA8)`.
     pub fn last_view_pixels(&self) -> Option<(u32, u32, Vec<u8>)> {

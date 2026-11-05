@@ -799,6 +799,8 @@ pub fn register(lua: &Lua) -> Result<()> {
     g.set("Input", input)?;
     super::camera_api::register(lua)?;
     super::navigation_api::register(lua)?;
+    super::save_api::register(lua)?;
+    super::localization_api::register(lua)?;
 
     // GameObject.Find / Destroy
     let go = lua.create_table()?;
@@ -881,7 +883,10 @@ fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<
         Source::Prefab(path) => {
             let prefab = Prefab::load(&w.root.join(&path)).map_err(mlua::Error::runtime)?;
             // Runtime copies are plain objects, not linked instances.
-            w.scene.instantiate_prefab(&prefab, None, None)
+            let e = w.scene.instantiate_prefab(&prefab, None, None);
+            // Save games recreate it from its prefab.
+            w.save.spawned.push((e, path));
+            e
         }
         Source::Object(src) => {
             alive(w, src)?;
@@ -895,6 +900,7 @@ fn instantiate(w: &mut World, source: Source, position: Option<Vec3>) -> Result<
             t.set_rotation(rot);
             w.scene.set_transform(e, t);
             w.scene.unlink_prefab(e);
+            crate::save::fresh_ids_in(&mut w.scene, e);
             e
         }
     };

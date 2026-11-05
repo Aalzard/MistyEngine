@@ -194,6 +194,9 @@ pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     } else if misty_engine::shader_graph::is_graph_path(&path.to_string_lossy()) {
         let rel = state.assets.relative(&path);
         crate::panels::shader_graph::open(state, &rel);
+    } else if ext == misty_engine::localization::table::EXTENSION {
+        let rel = state.assets.relative(&path);
+        crate::saveloc::tables::open(state, &rel);
     } else if ext == "lua" || ext == misty_engine::shader_asset::EXTENSION {
         let rel = state.assets.relative(&path);
         crate::panels::code_editor::open_script(state, &rel, None);

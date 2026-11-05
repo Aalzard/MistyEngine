@@ -104,6 +104,12 @@ impl Prefab {
                 t[key] = serde_json::Value::Null;
             }
         }
+        // Save IDs differ per instance by design.
+        for o in &mut objects {
+            if let Some(s) = o.components.get_mut("Saveable") {
+                s["save_id"] = serde_json::Value::Null;
+            }
+        }
         objects
     }
 
@@ -136,6 +142,8 @@ impl Scene {
         let mut report = LoadReport::default();
         let root = self.spawn_entries(prefab.objects.clone(), parent, &mut report)[0];
         self.game_object_mut(root).name = name;
+        // Every instance is its own object for save games.
+        crate::save::fresh_ids_in(self, root);
         if let Some(path) = asset_path {
             let _ = self
                 .world

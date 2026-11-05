@@ -1,0 +1,97 @@
+{
+  "objects": [
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Sphere Collider",
+            "Rigidbody",
+            "Saveable"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Coin",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Stress Gold.mat",
+          "receive_shadows": true
+        },
+        "Rigidbody": {
+          "angular_drag": 0.05,
+          "continuous": false,
+          "drag": 0.0,
+          "freeze_position": [
+            false,
+            false,
+            false
+          ],
+          "freeze_rotation": [
+            false,
+            false,
+            false
+          ],
+          "interpolation": "None",
+          "is_kinematic": false,
+          "mass": 1.0,
+          "use_gravity": true
+        },
+        "Saveable": {
+          "components": [],
+          "save_active": true,
+          "save_id": "0000000000000000000000000000c01b",
+          "save_transform": true,
+          "save_velocity": true
+        },
+        "Sphere Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "radius": 0.5,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.4,
+            0.4,
+            0.4
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

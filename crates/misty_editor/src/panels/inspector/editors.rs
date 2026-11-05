@@ -44,6 +44,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::light_probe_editor::icon(other))
             .or_else(|| super::fog_editors::icon(other))
             .or_else(|| super::occlusion_editors::icon(other))
+            .or_else(|| super::saveloc_editors::icon(other))
             .or_else(|| super::glow_editors::icon(other))
             .or_else(|| super::vcam_editors::icon(other))
             .or_else(|| super::timeline_editors::icon(other))
@@ -92,6 +93,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::occlusion_editors::NAMES.contains(&name) {
         return super::occlusion_editors::enabled_flag(state, e, name);
+    }
+    if super::saveloc_editors::NAMES.contains(&name) {
+        return super::saveloc_editors::enabled_flag(state, e, name);
     }
     if super::glow_editors::NAMES.contains(&name) {
         return super::glow_editors::enabled_flag(state, e, name);
@@ -168,6 +172,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::occlusion_editors::NAMES.contains(&name) {
         return super::occlusion_editors::set_enabled(state, e, name, on);
+    }
+    if super::saveloc_editors::NAMES.contains(&name) {
+        return super::saveloc_editors::set_enabled(state, e, name, on);
     }
     if super::glow_editors::NAMES.contains(&name) {
         return super::glow_editors::set_enabled(state, e, name, on);
@@ -296,6 +303,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         area if super::occlusion_editors::NAMES.contains(&area) => {
             super::occlusion_editors::edit(ui, state, e, area)
+        }
+        sl if super::saveloc_editors::NAMES.contains(&sl) => {
+            super::saveloc_editors::edit(ui, state, e, sl)
         }
         glow if super::glow_editors::NAMES.contains(&glow) => {
             super::glow_editors::edit(ui, state, e, glow)

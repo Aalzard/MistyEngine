@@ -391,6 +391,9 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<NavMeshAgent>(),
             ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<Scripts>(),
+            // Save games and localization (save, localization).
+            ComponentInfo::of::<crate::save::Saveable>(),
+            ComponentInfo::of::<crate::localization::LocalizedText>(),
             ComponentInfo::of::<PrefabLink>(),
             ComponentInfo::of::<super::HierarchyFolder>(),
         ]

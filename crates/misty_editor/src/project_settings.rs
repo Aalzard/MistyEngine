@@ -17,6 +17,7 @@ pub enum Category {
     Player,
     Quality,
     Input,
+    Localization,
     #[default]
     Physics,
     PresetManager,
@@ -26,10 +27,11 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Category; 8] = [
+    pub const ALL: [Category; 9] = [
         Category::Player,
         Category::Quality,
         Category::Input,
+        Category::Localization,
         Category::Physics,
         Category::PresetManager,
         Category::TagsAndLayers,
@@ -42,6 +44,7 @@ impl Category {
             Category::Player => "Player",
             Category::Quality => "Quality",
             Category::Input => "Input",
+            Category::Localization => "Localization",
             Category::Physics => "Physics",
             Category::PresetManager => "Preset Manager",
             Category::TagsAndLayers => "Tags and Layers",
@@ -56,6 +59,7 @@ impl Category {
             Category::Player => "Your game's name, icon and how its window opens.",
             Category::Quality => "Graphics presets players can pick from (Low to Ultra).",
             Category::Input => "Named axes and buttons scripts read with Input.GetAxis.",
+            Category::Localization => "Languages the game is translated into.",
             Category::Physics => "Gravity and which layers collide, for 3D and 2D.",
             Category::PresetManager => "Presets new components and materials start from.",
             Category::TagsAndLayers => "Names for tags, layers and 2D drawing order.",
@@ -170,6 +174,7 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
                     Category::Player => crate::project_settings_player::page(ui, p, build, root),
                     Category::Quality => crate::project_settings_quality::page(ui, p, selected),
                     Category::Input => crate::project_settings_input::page(ui, &mut p.input),
+                    Category::Localization => crate::saveloc::settings_page::page(ui, p),
                     Category::Physics => {
                         let mut edited = false;
                         section(ui, "3D Physics", true, |ui| edited |= physics(ui, p));

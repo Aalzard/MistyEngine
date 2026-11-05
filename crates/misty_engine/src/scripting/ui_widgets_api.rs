@@ -392,7 +392,7 @@ pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
         _ => false,
     };
     if !present {
-        return Ok(None);
+        return super::localization_api::component(lua, e, name);
     }
     let ud = match name {
         "Toggle" => lua.create_userdata(LToggle(e))?,
