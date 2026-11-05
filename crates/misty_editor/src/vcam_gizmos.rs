@@ -2,7 +2,7 @@
 //! Composer's dead / soft zones over the Game view while it is selected.
 
 use egui::{Color32, Rect, Stroke, Ui, pos2};
-use glam::{Mat4, Vec3};
+use glam::Mat4;
 use misty_engine::camera::{Camera as ViewCamera, Projection};
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Camera, Scene};
@@ -53,6 +53,12 @@ pub fn vcam_overlay(ui: &Ui, state: &EditorState, view: Rect) {
         return;
     };
     if v.aim != AimKind::Composer {
+        return;
+    }
+    // While playing the Game view shows the brain's camera: only draw for the live one.
+    if let Some(rt) = state.runtime.as_ref()
+        && !rt.with_cameras(|r| r.is_live(e))
+    {
         return;
     }
     let (dead, soft) = v.composer.zones();
@@ -107,16 +113,30 @@ pub fn vcam_overlay(ui: &Ui, state: &EditorState, view: Rect) {
         .world_matrix(target)
         .to_scale_rotation_translation();
     let point = tpos + trot * v.composer.tracked_offset;
-    let (_, rot, pos) = state.scene.world_matrix(e).to_scale_rotation_translation();
+    // While playing: the pose the camera really has (collider, noise); else its Transform.
+    let solved = state
+        .runtime
+        .as_ref()
+        .and_then(|rt| rt.with_cameras(|r| r.camera_output(e)));
+    let (pos, rot) = match solved {
+        Some(out) => (out.position, out.rotation),
+        None => {
+            let (_, rot, pos) = state.scene.world_matrix(e).to_scale_rotation_translation();
+            (
+                pos,
+                rot * glam::Quat::from_rotation_z(v.lens.dutch.to_radians()),
+            )
+        }
+    };
     let cam = ViewCamera {
         position: pos,
-        rotation: rot * glam::Quat::from_rotation_z(v.lens.dutch.to_radians()),
+        rotation: rot,
         projection: Projection::Perspective { fov_y: v.lens.fov },
         near: v.lens.near,
         far: v.lens.far,
     };
     let aspect = view.width() / view.height().max(1.0);
-    if let Some((uv, _)) = cam.world_to_screen(aspect, point + Vec3::ZERO) {
+    if let Some((uv, _)) = cam.world_to_screen(aspect, point) {
         let p = at(uv.x, uv.y);
         painter.circle_filled(p, 4.0, Color32::from_rgb(255, 210, 60));
         painter.circle_stroke(p, 4.0, Stroke::new(1.0, Color32::BLACK));
