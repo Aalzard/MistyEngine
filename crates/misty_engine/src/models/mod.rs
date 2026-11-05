@@ -281,6 +281,11 @@ pub fn with_edges<R>(r: &MeshRef, f: impl FnOnce(&[[Vec3; 2]]) -> R) -> Option<R
 pub fn display_name(r: &MeshRef) -> String {
     match r {
         MeshRef::Primitive(p) => p.name().to_owned(),
+        MeshRef::Asset(s) if s.starts_with(runtime::PREFIX) => {
+            // Generated meshes: "spline-extrude" rather than a content hash.
+            let name = s.trim_start_matches(runtime::PREFIX);
+            name.split('/').next().unwrap_or(name).to_owned() + " (generated)"
+        }
         MeshRef::Asset(s) => {
             let Some((path, index)) = r.split_asset() else {
                 return s.clone();

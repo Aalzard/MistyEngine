@@ -99,6 +99,8 @@ mod sample_shadows;
 #[cfg(test)]
 mod sample_skinning;
 #[cfg(test)]
+mod sample_splines;
+#[cfg(test)]
 mod sample_stress;
 #[cfg(test)]
 mod sample_terrain;
@@ -130,6 +132,7 @@ mod search;
 mod selection;
 mod snap;
 mod snap_window;
+mod spline_tools;
 mod sprite_handles;
 mod state;
 mod status_bar;

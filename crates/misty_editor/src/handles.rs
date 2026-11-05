@@ -573,7 +573,7 @@ fn draw(
     }
 }
 
-fn arrow_head(painter: &egui::Painter, from: Pos2, tip: Pos2, color: Color32) {
+pub(crate) fn arrow_head(painter: &egui::Painter, from: Pos2, tip: Pos2, color: Color32) {
     let dir = (tip - from).normalized();
     let perp = vec2(-dir.y, dir.x) * 5.0;
     let end = tip + dir * 12.0;
@@ -615,7 +615,7 @@ fn plane_quad(camera: &Camera, rect: Rect, f: &Frame, n: usize) -> Option<[Pos2;
 
 // ---- maths -------------------------------------------------------------------------------
 
-fn dist_to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
+pub(crate) fn dist_to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
     let ab = b - a;
     let t = ((p - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
     (p - (a + ab * t)).length()
@@ -628,7 +628,7 @@ fn point_in_quad(p: Pos2, q: &[Pos2; 4]) -> bool {
 }
 
 /// Parameter along the axis line `p + t·a` closest to the ray `o + s·d`.
-fn closest_on_axis(p: Vec3, a: Vec3, o: Vec3, d: Vec3) -> Option<f32> {
+pub(crate) fn closest_on_axis(p: Vec3, a: Vec3, o: Vec3, d: Vec3) -> Option<f32> {
     let w0 = p - o;
     let (aa, ad, dd) = (a.dot(a), a.dot(d), d.dot(d));
     let denom = aa * dd - ad * ad;
@@ -638,7 +638,7 @@ fn closest_on_axis(p: Vec3, a: Vec3, o: Vec3, d: Vec3) -> Option<f32> {
     Some((ad * d.dot(w0) - dd * a.dot(w0)) / denom)
 }
 
-fn ray_plane(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
+pub(crate) fn ray_plane(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
     let denom = d.dot(n);
     if denom.abs() < 1e-6 {
         return None;

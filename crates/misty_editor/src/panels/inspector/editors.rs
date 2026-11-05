@@ -50,6 +50,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::rig_editors::icon(other))
             .or_else(|| super::water::icon(other))
             .or_else(|| super::mesh_builder_editor::icon(other))
+            .or_else(|| super::spline_editors::icon(other))
             .unwrap_or("▣"),
     }
 }
@@ -68,6 +69,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::nav_editors::NAMES.contains(&name) {
         return super::nav_editors::enabled_flag(state, e, name);
+    }
+    if super::spline_editors::NAMES.contains(&name) {
+        return super::spline_editors::enabled_flag(state, e, name);
     }
     if super::sprite_editors::NAMES.contains(&name) {
         return super::sprite_editors::enabled_flag(state, e, name);
@@ -135,6 +139,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::nav_editors::NAMES.contains(&name) {
         return super::nav_editors::set_enabled(state, e, name, on);
+    }
+    if super::spline_editors::NAMES.contains(&name) {
+        return super::spline_editors::set_enabled(state, e, name, on);
     }
     if super::sprite_editors::NAMES.contains(&name) {
         return super::sprite_editors::set_enabled(state, e, name, on);
@@ -290,6 +297,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         water if super::water::NAMES.contains(&water) => super::water::edit(ui, state, e, water),
         mb if super::mesh_builder_editor::NAMES.contains(&mb) => {
             super::mesh_builder_editor::edit(ui, state, e, mb)
+        }
+        spline if super::spline_editors::NAMES.contains(&spline) => {
+            super::spline_editors::edit(ui, state, e, spline)
         }
         _ => {
             ui.weak("No editor for this component.");

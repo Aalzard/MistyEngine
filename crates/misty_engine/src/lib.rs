@@ -38,6 +38,7 @@ pub mod settings;
 pub mod shader_asset;
 pub mod shader_graph;
 pub mod skinning;
+pub mod splines;
 pub mod sprites;
 pub mod tags_layers;
 pub mod terrain;

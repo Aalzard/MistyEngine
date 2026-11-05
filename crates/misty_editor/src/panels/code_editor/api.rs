@@ -165,6 +165,22 @@ Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a 
 #CharacterController|center|center|Capsule centre
 #CharacterController|slopeLimit|slopeLimit|Steepest climbable slope
 #CharacterController|stepOffset|stepOffset|Highest climbable step
+#SplineContainer|EvaluatePosition|EvaluatePosition(t)|World position at t (0–1 by distance); optional spline index
+#SplineContainer|EvaluateTangent|EvaluateTangent(t)|World tangent (velocity) at t
+#SplineContainer|EvaluateUpVector|EvaluateUpVector(t)|World up vector at t
+#SplineContainer|EvaluateCurvature|EvaluateCurvature(t)|Curvature (1 / radius) at t
+#SplineContainer|CalculateLength|CalculateLength()|World length of the spline
+#SplineContainer|GetNearestPoint|GetNearestPoint(position)|Closest point on the spline and its t
+#SplineContainer|KnotCount|KnotCount()|Number of knots
+#SplineContainer|GetKnotPosition|GetKnotPosition(index)|World position of a knot (from 1)
+#SplineContainer|splineCount|splineCount|Number of splines
+#SplineAnimate|Play|Play()|Start or resume moving along the spline
+#SplineAnimate|Pause|Pause()|Stop where it is
+#SplineAnimate|Restart|Restart()|Back to the start and play
+#SplineAnimate|normalizedTime|normalizedTime|Progress: passes done plus share of the current one
+#SplineAnimate|elapsedTime|elapsedTime|Seconds played
+#SplineAnimate|isPlaying|isPlaying|Moving (read-only)
+#SplineAnimate|duration|duration|Seconds per pass
 #WheelCollider|motorTorque|motorTorque|Drive torque on the axle (N·m)
 #WheelCollider|brakeTorque|brakeTorque|Braking torque (N·m)
 #WheelCollider|steerAngle|steerAngle|Steering angle in degrees
@@ -246,6 +262,8 @@ pub const COMPONENTS: &[&str] = &[
     "Rigidbody",
     "CharacterController",
     "WheelCollider",
+    "SplineContainer",
+    "SplineAnimate",
     "AudioSource",
     "Animation",
     "Animator",

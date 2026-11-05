@@ -51,14 +51,18 @@ pub fn register_meshes(name: &str, meshes: Vec<MeshData>) -> String {
         ..Default::default()
     };
     let mut lib = library();
-    lib.entries.insert(
+    let replaced = lib.entries.insert(
         path.clone(),
         Entry {
             modified: None,
             model: Ok(Arc::new(model)),
         },
     );
-    lib.generation += 1;
+    // A brand-new key can't be in any GPU cache yet (a lookup before registering leaves an
+    // error entry, which counts as replaced), so only replacements invalidate them.
+    if replaced.is_some() {
+        lib.generation += 1;
+    }
     format!("{path}#0")
 }
 
@@ -74,6 +78,25 @@ pub fn contains(name: &str) -> bool {
 pub fn unregister_exact(name: &str) {
     let mut lib = library();
     if lib.entries.remove(&format!("{PREFIX}{name}")).is_some() {
+        lib.generation += 1;
+    }
+}
+
+/// A runtime mesh key ("runtime://name#0") is registered and loaded.
+pub fn is_registered(key: &str) -> bool {
+    let path = key.rsplit_once('#').map_or(key, |(p, _)| p);
+    library().entries.get(path).is_some_and(|e| e.model.is_ok())
+}
+
+/// Drop the runtime meshes with these keys ("runtime://name#0"), bumping the generation once.
+pub fn unregister_keys(keys: &[String]) {
+    let mut lib = library();
+    let before = lib.entries.len();
+    for key in keys {
+        let path = key.rsplit_once('#').map_or(key.as_str(), |(p, _)| p);
+        lib.entries.remove(path);
+    }
+    if lib.entries.len() != before {
         lib.generation += 1;
     }
 }

@@ -224,6 +224,9 @@ pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
     if name == "WheelCollider" {
         return super::vehicle_api::component(lua, e, name);
     }
+    if name == "SplineContainer" || name == "SplineAnimate" {
+        return super::spline_api::component(lua, e, name);
+    }
     if name != "CharacterController" {
         return Ok(None);
     }

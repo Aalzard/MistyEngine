@@ -34,6 +34,7 @@ pub mod render_settings_api;
 pub mod rigging_api;
 pub mod scene_api;
 pub mod skinning_api;
+pub mod spline_api;
 pub mod syntax;
 pub mod terrain_api;
 pub mod tilemap_api;
@@ -709,6 +710,7 @@ impl ScriptHost {
         {
             profile_scope!("Animation.Update", Category::Animation);
             self.animate(time.delta);
+            self.with_world(|w| crate::splines::animate::update(&mut w.scene, time.delta));
         }
         {
             // Rigs run on the animated pose, before LateUpdate and rendering.

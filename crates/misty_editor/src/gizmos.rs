@@ -349,6 +349,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.bones(scene, e);
     }
     lines.rigging(scene, selection);
+    crate::spline_tools::lines(scene, selection, &mut lines);
     lines
 }
 
