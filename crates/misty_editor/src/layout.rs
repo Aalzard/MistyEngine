@@ -32,6 +32,8 @@ pub enum Tab {
     Timeline,
     /// Window ▸ 2D ▸ Tile Palette.
     TilePalette,
+    /// Window ▸ Rendering ▸ Shader Graph (or double-click a `.shadergraph`).
+    ShaderGraph,
 }
 
 impl Tab {
@@ -48,7 +50,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 9] = [
+    pub const ON_DEMAND: [Tab; 10] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -58,6 +60,7 @@ impl Tab {
         Tab::UndoHistory,
         Tab::Timeline,
         Tab::TilePalette,
+        Tab::ShaderGraph,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -74,7 +77,7 @@ impl Tab {
             // A list window, like the Hierarchy.
             Tab::UndoHistory => Some(Tab::Hierarchy),
             // The graph wants room: it docks with the Scene and Game views.
-            Tab::Animator => Some(Tab::Scene),
+            Tab::Animator | Tab::ShaderGraph => Some(Tab::Scene),
             // A wide time strip, like the Animation window it sits beside.
             Tab::Timeline => Some(Tab::Animation),
             // Docks with the Project and Console like the reference editor; the Profiler too,
@@ -103,6 +106,7 @@ impl Tab {
             Tab::UndoHistory => "Undo History",
             Tab::Timeline => "Timeline",
             Tab::TilePalette => "Tile Palette",
+            Tab::ShaderGraph => "Shader Graph",
         }
     }
 
@@ -125,6 +129,7 @@ impl Tab {
             Tab::UndoHistory => "⟲",
             Tab::Timeline => crate::panels::timeline::ICON,
             Tab::TilePalette => crate::panels::tile_palette::ICON,
+            Tab::ShaderGraph => crate::panels::shader_graph::ICON,
         }
     }
 
@@ -147,7 +152,8 @@ impl Tab {
             | Tab::CodeEditor
             | Tab::WorldBuilder
             | Tab::Timeline
-            | Tab::TilePalette => "",
+            | Tab::TilePalette
+            | Tab::ShaderGraph => "",
         }
     }
 }

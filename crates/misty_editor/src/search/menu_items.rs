@@ -279,6 +279,8 @@ fn assets(l: &mut List) {
     let kinds = AssetKind::ALL.into_iter().chain([
         AssetKind::SurfaceShader,
         AssetKind::UnlitShader,
+        AssetKind::LitShaderGraph,
+        AssetKind::UnlitShaderGraph,
         AssetKind::MaterialFromShader,
     ]);
     for kind in kinds {

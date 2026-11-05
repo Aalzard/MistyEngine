@@ -122,6 +122,18 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .map_err(|e| e.to_string())
         }
         AssetKind::MaterialFromShader => material_from_shader(s, &dir),
+        AssetKind::LitShaderGraph | AssetKind::UnlitShaderGraph => {
+            use misty_engine::shader_graph::{EXTENSION, TargetMaterial};
+            let (stem, material) = if kind == AssetKind::LitShaderGraph {
+                ("New Lit Shader Graph", TargetMaterial::Lit)
+            } else {
+                ("New Unlit Shader Graph", TargetMaterial::Unlit)
+            };
+            let path = asset_ops::unique_path(&dir, stem, EXTENSION);
+            crate::panels::shader_graph::new_graph(material)
+                .save(&path)
+                .map(|_| path)
+        }
         AssetKind::AudioMixer => {
             let path = asset_ops::unique_path(&dir, "New Audio Mixer", "mixer");
             let rel = s.assets.relative(&path);

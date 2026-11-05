@@ -27,6 +27,8 @@ pub enum PreviewShape {
     #[default]
     Sphere,
     Cube,
+    /// A ground plane tilted towards the camera (the Shader Graph preview).
+    Plane,
 }
 
 struct Thumb {
@@ -44,6 +46,21 @@ struct InspectorKey {
     yaw: f32,
     pitch: f32,
     shape: PreviewShape,
+    /// Load counter of a custom shader (a recompiled shader needs a new render).
+    generation: u64,
+    /// Bumped every frame for animated previews.
+    frame: u64,
+}
+
+/// A rendered preview: what it shows, its target and its egui texture.
+type Slot = Option<(InspectorKey, RenderTarget, egui::TextureId)>;
+
+fn shader_generation(m: &Material) -> u64 {
+    if m.is_custom() {
+        misty_engine::shader_asset::generation(&m.shader)
+    } else {
+        0
+    }
 }
 
 #[derive(Default)]
@@ -52,7 +69,11 @@ pub struct MaterialPreviews {
     /// Shared target the thumbnails are rendered into before being copied out.
     thumb_target: Option<RenderTarget>,
     inspector_wanted: Option<InspectorKey>,
-    inspector: Option<(InspectorKey, RenderTarget, egui::TextureId)>,
+    inspector: Slot,
+    /// The Shader Graph window's main preview.
+    graph_wanted: Option<InspectorKey>,
+    graph: Slot,
+    graph_frame: u64,
     /// Inspector preview rotation (degrees, dragged with the mouse) and shape.
     pub yaw: f32,
     pub pitch: f32,
@@ -85,8 +106,35 @@ impl MaterialPreviews {
             yaw: self.yaw,
             pitch: self.pitch,
             shape: self.shape,
+            generation: shader_generation(m),
+            frame: 0,
         });
         self.inspector.as_ref().map(|(_, _, id)| *id)
+    }
+
+    /// The Shader Graph window's main preview of `m` (re-rendered every frame when `animated`).
+    pub fn graph_preview(
+        &mut self,
+        m: &Material,
+        size: [u32; 2],
+        yaw: f32,
+        pitch: f32,
+        shape: PreviewShape,
+        animated: bool,
+    ) -> Option<egui::TextureId> {
+        if animated {
+            self.graph_frame += 1;
+        }
+        self.graph_wanted = Some(InspectorKey {
+            material: m.clone(),
+            size: [size[0].max(16), size[1].max(16)],
+            yaw,
+            pitch,
+            shape,
+            generation: shader_generation(m),
+            frame: self.graph_frame,
+        });
+        self.graph.as_ref().map(|(_, _, id)| *id)
     }
 
     /// True while some preview still waits to be rendered.
@@ -95,6 +143,7 @@ impl MaterialPreviews {
             .values()
             .any(|t| !t.rendered && t.material.is_some())
             || self.inspector_wanted.as_ref() != self.inspector.as_ref().map(|i| &i.0)
+            || self.graph_wanted.as_ref() != self.graph.as_ref().map(|i| &i.0)
     }
 }
 
@@ -133,13 +182,17 @@ fn frame_parts(
     let (mesh, scale) = match shape {
         PreviewShape::Sphere => (PrimitiveMesh::Sphere, 1.0),
         PreviewShape::Cube => (PrimitiveMesh::Cube, 0.62),
+        // The 10 m plane, scaled to the sphere's size.
+        PreviewShape::Plane => (PrimitiveMesh::Plane, 0.15),
     };
     let rotation = Quat::from_rotation_x(key_pitch.to_radians())
         * Quat::from_rotation_y(key_yaw.to_radians())
-        * if shape == PreviewShape::Cube {
-            Quat::from_euler(misty_engine::glam::EulerRot::YXZ, 0.6, 0.45, 0.0)
-        } else {
-            Quat::IDENTITY
+        * match shape {
+            PreviewShape::Cube => {
+                Quat::from_euler(misty_engine::glam::EulerRot::YXZ, 0.6, 0.45, 0.0)
+            }
+            PreviewShape::Plane => Quat::from_rotation_x(-1.0),
+            PreviewShape::Sphere => Quat::IDENTITY,
         };
     let model = Mat4::from_scale_rotation_translation(Vec3::splat(scale), rotation, Vec3::ZERO);
     (camera, lights, model, mesh)
@@ -187,7 +240,8 @@ fn draw(
 
 /// Render the previews panels asked for this frame.
 pub fn render(gpu: &mut Gpu, p: &mut MaterialPreviews) {
-    render_inspector(gpu, p);
+    render_slot(gpu, p.inspector_wanted.as_ref(), &mut p.inspector);
+    render_slot(gpu, p.graph_wanted.as_ref(), &mut p.graph);
     let waiting: Vec<PathBuf> = p
         .thumbs
         .iter()
@@ -242,23 +296,21 @@ pub fn render(gpu: &mut Gpu, p: &mut MaterialPreviews) {
     }
 }
 
-fn render_inspector(gpu: &mut Gpu, p: &mut MaterialPreviews) {
-    let Some(want) = p.inspector_wanted.clone() else {
+/// Render one preview slot if what it shows changed.
+fn render_slot(gpu: &mut Gpu, wanted: Option<&InspectorKey>, slot: &mut Slot) {
+    let Some(want) = wanted.cloned() else {
         return;
     };
-    if p.inspector.as_ref().is_some_and(|(k, _, _)| *k == want) {
+    if slot.as_ref().is_some_and(|(k, _, _)| *k == want) {
         return;
     }
     let [w, h] = want.size;
-    let resized = p
-        .inspector
-        .as_ref()
-        .is_none_or(|(_, t, _)| t.size() != (w, h));
+    let resized = slot.as_ref().is_none_or(|(_, t, _)| t.size() != (w, h));
     if resized {
         let target = gpu.renderer.create_target(&gpu.state.device, w, h);
         let mut egui_renderer = gpu.state.renderer.write();
         let filter = wgpu::FilterMode::Linear;
-        let id = match &p.inspector {
+        let id = match &*slot {
             Some((_, _, id)) => {
                 egui_renderer.update_egui_texture_from_wgpu_texture(
                     &gpu.state.device,
@@ -271,9 +323,9 @@ fn render_inspector(gpu: &mut Gpu, p: &mut MaterialPreviews) {
             None => egui_renderer.register_native_texture(&gpu.state.device, target.view(), filter),
         };
         drop(egui_renderer);
-        p.inspector = Some((want.clone(), target, id));
+        *slot = Some((want.clone(), target, id));
     }
-    let Some((key, target, _)) = p.inspector.as_mut() else {
+    let Some((key, target, _)) = slot.as_mut() else {
         return;
     };
     *key = want.clone();

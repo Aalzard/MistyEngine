@@ -1,0 +1,368 @@
+{
+  "version": 1,
+  "target": {
+    "material": "Lit",
+    "surface": "Opaque",
+    "alpha_clip": true,
+    "two_sided": true
+  },
+  "properties": [
+    {
+      "name": "_BaseColor",
+      "display": "Base Color",
+      "kind": "Color",
+      "value": [
+        0.78,
+        0.8,
+        0.85,
+        1.0
+      ]
+    },
+    {
+      "name": "_EdgeColor",
+      "display": "Edge Color",
+      "kind": "Color",
+      "value": [
+        1.0,
+        0.45,
+        0.1,
+        1.0
+      ]
+    },
+    {
+      "name": "_EdgeIntensity",
+      "display": "Edge Intensity",
+      "kind": "Float",
+      "value": [
+        6.0,
+        6.0,
+        6.0,
+        6.0
+      ]
+    },
+    {
+      "name": "_EdgeWidth",
+      "display": "Edge Width",
+      "kind": "Range",
+      "min": 0.0,
+      "max": 0.2,
+      "value": [
+        0.06,
+        0.06,
+        0.06,
+        0.06
+      ]
+    },
+    {
+      "name": "_Dissolve",
+      "display": "Dissolve",
+      "kind": "Range",
+      "min": 0.0,
+      "max": 1.0,
+      "value": [
+        0.45,
+        0.45,
+        0.45,
+        0.45
+      ]
+    },
+    {
+      "name": "_Animate",
+      "display": "Animate",
+      "kind": "Boolean",
+      "value": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "_NoiseScale",
+      "display": "Noise Scale",
+      "kind": "Float",
+      "value": [
+        8.0,
+        8.0,
+        8.0,
+        8.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "type": "Master",
+      "position": [
+        480.0,
+        -200.0
+      ],
+      "values": {
+        "Metallic": [
+          0.1,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "Smoothness": [
+          0.55,
+          0.55,
+          0.55,
+          0.55
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "type": "Property",
+      "name": "_BaseColor",
+      "position": [
+        50.0,
+        -200.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "GradientNoise",
+      "position": [
+        -790.0,
+        -120.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Property",
+      "name": "_NoiseScale",
+      "position": [
+        -1000.0,
+        -60.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Time",
+      "position": [
+        -1000.0,
+        220.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Remap",
+      "position": [
+        -790.0,
+        120.0
+      ],
+      "values": {
+        "Out Min Max": [
+          0.15,
+          0.7,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "Property",
+      "name": "_Dissolve",
+      "position": [
+        -790.0,
+        400.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Property",
+      "name": "_Animate",
+      "position": [
+        -790.0,
+        480.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Lerp",
+      "position": [
+        -580.0,
+        180.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Property",
+      "name": "_EdgeWidth",
+      "position": [
+        -580.0,
+        460.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Add",
+      "position": [
+        -370.0,
+        260.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Step",
+      "position": [
+        -160.0,
+        60.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "Property",
+      "name": "_EdgeColor",
+      "position": [
+        -160.0,
+        -60.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "Multiply",
+      "position": [
+        50.0,
+        0.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Property",
+      "name": "_EdgeIntensity",
+      "position": [
+        50.0,
+        260.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "Multiply",
+      "position": [
+        260.0,
+        60.0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 0,
+      "input": "Base Color"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 2,
+      "input": "Scale"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 0,
+      "input": "Alpha"
+    },
+    {
+      "from": 4,
+      "output": "Sine Time",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 8,
+      "input": "B"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 8,
+      "input": "T"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 0,
+      "input": "Alpha Clip Threshold"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 10,
+      "input": "A"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 10,
+      "input": "B"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 11,
+      "input": "Edge"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 11,
+      "input": "In"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 13,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Out",
+      "to": 13,
+      "input": "B"
+    },
+    {
+      "from": 13,
+      "output": "Out",
+      "to": 15,
+      "input": "A"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 15,
+      "input": "B"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 0,
+      "input": "Emission"
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        -1000.0,
+        -300.0
+      ],
+      "size": [
+        300.0,
+        120.0
+      ],
+      "text": "Pixels whose noise is below the threshold are clipped; the band just above it glows. Turn off Animate to drive Dissolve from a script or the Inspector."
+    }
+  ]
+}

@@ -311,6 +311,8 @@ pub struct EditorState {
     pub animator: crate::panels::animator::AnimatorWindow,
     /// Timeline window: the director being edited, playhead, preview and selection.
     pub timeline: crate::panels::timeline::TimelineWindow,
+    /// Shader Graph window: the graph being edited, its undo and view.
+    pub shader_graph: crate::panels::shader_graph::ShaderGraphWindow,
     /// Audio Mixer window: shown mixer, snapshot, selected group/effect, meters.
     pub audio_mixer: crate::panels::audio_mixer::MixerWindow,
     /// Code Editor window: open scripts, find state, preferences.
@@ -406,6 +408,7 @@ impl EditorState {
             animation: Default::default(),
             animator: Default::default(),
             timeline: Default::default(),
+            shader_graph: Default::default(),
             audio_mixer: Default::default(),
             code_editor: crate::panels::code_editor::CodeEditor::new(&project.root),
             hierarchy: HierarchyState::default(),

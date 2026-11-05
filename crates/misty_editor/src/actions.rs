@@ -72,6 +72,10 @@ pub enum AssetKind {
     MaterialFromShader,
     /// 2D ▸ Tile / Rule Tile / Animated Tile / Tile Palette.
     Tile2D(crate::tile_palette::TileCreate),
+    /// Shader Graph ▸ Lit Shader Graph.
+    LitShaderGraph,
+    /// Shader Graph ▸ Unlit Shader Graph.
+    UnlitShaderGraph,
 }
 
 impl AssetKind {
@@ -101,6 +105,8 @@ impl AssetKind {
             AssetKind::UnlitShader => "Unlit Shader",
             AssetKind::MaterialFromShader => "Material from Shader",
             AssetKind::Tile2D(k) => k.label(),
+            AssetKind::LitShaderGraph => "Lit Shader Graph",
+            AssetKind::UnlitShaderGraph => "Unlit Shader Graph",
         }
     }
 }

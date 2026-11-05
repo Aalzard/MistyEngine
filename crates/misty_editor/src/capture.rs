@@ -135,6 +135,13 @@ pub fn apply_env(
             crate::layout::focus_or_open(dock, crate::layout::Tab::CodeEditor);
         }
     }
+    // `MISTY_SHADERGRAPH=Assets/Shaders/Dissolve.shadergraph` opens it in the Shader Graph window.
+    if let Some(rel) = std::env::var_os("MISTY_SHADERGRAPH") {
+        let rel = rel.to_string_lossy().into_owned();
+        let file = s.assets.absolute(&rel);
+        s.shader_graph.open(&file, &rel);
+        crate::layout::focus_or_open(dock, crate::layout::Tab::ShaderGraph);
+    }
     // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
     if let Some(titles) = std::env::var_os("MISTY_TAB") {
         for title in titles.to_string_lossy().split(',') {

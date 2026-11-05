@@ -1,0 +1,394 @@
+{
+  "version": 1,
+  "target": {
+    "material": "Unlit",
+    "surface": "Transparent",
+    "alpha_clip": false,
+    "two_sided": false
+  },
+  "properties": [
+    {
+      "name": "_Color",
+      "display": "Color",
+      "kind": "Color",
+      "value": [
+        0.25,
+        0.85,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "_FresnelPower",
+      "display": "Fresnel Power",
+      "kind": "Float",
+      "value": [
+        2.0,
+        2.0,
+        2.0,
+        2.0
+      ]
+    },
+    {
+      "name": "_LineDensity",
+      "display": "Line Density",
+      "kind": "Float",
+      "value": [
+        24.0,
+        24.0,
+        24.0,
+        24.0
+      ]
+    },
+    {
+      "name": "_ScrollSpeed",
+      "display": "Scroll Speed",
+      "kind": "Float",
+      "value": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "name": "_Intensity",
+      "display": "Intensity",
+      "kind": "Float",
+      "value": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "type": "Master",
+      "position": [
+        1440.0,
+        -120.0
+      ]
+    },
+    {
+      "id": 1,
+      "type": "Position",
+      "space": "World",
+      "position": [
+        -1120.0,
+        120.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Split",
+      "position": [
+        -880.0,
+        120.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Property",
+      "name": "_LineDensity",
+      "position": [
+        -880.0,
+        360.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Multiply",
+      "position": [
+        -640.0,
+        160.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Time",
+      "position": [
+        -1120.0,
+        440.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Property",
+      "name": "_ScrollSpeed",
+      "position": [
+        -1120.0,
+        620.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Multiply",
+      "position": [
+        -880.0,
+        480.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Subtract",
+      "position": [
+        -400.0,
+        260.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Fraction",
+      "position": [
+        -160.0,
+        260.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Smoothstep",
+      "position": [
+        80.0,
+        260.0
+      ],
+      "values": {
+        "Edge1": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "type": "Multiply",
+      "position": [
+        320.0,
+        260.0
+      ],
+      "values": {
+        "B": [
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "type": "Fresnel",
+      "position": [
+        -160.0,
+        -120.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "Property",
+      "name": "_FresnelPower",
+      "position": [
+        -400.0,
+        -60.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Add",
+      "position": [
+        540.0,
+        40.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "Add",
+      "position": [
+        760.0,
+        40.0
+      ],
+      "values": {
+        "B": [
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ]
+      }
+    },
+    {
+      "id": 16,
+      "type": "Saturate",
+      "position": [
+        980.0,
+        140.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "Property",
+      "name": "_Color",
+      "position": [
+        760.0,
+        -200.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "Multiply",
+      "position": [
+        980.0,
+        -160.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "Property",
+      "name": "_Intensity",
+      "position": [
+        980.0,
+        -320.0
+      ]
+    },
+    {
+      "id": 20,
+      "type": "Multiply",
+      "position": [
+        1200.0,
+        -200.0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 2,
+      "input": "In"
+    },
+    {
+      "from": 2,
+      "output": "G",
+      "to": 4,
+      "input": "A"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 4,
+      "input": "B"
+    },
+    {
+      "from": 5,
+      "output": "Time",
+      "to": 7,
+      "input": "A"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 7,
+      "input": "B"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 8,
+      "input": "A"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 8,
+      "input": "B"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 9,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 11,
+      "input": "A"
+    },
+    {
+      "from": 13,
+      "output": "Out",
+      "to": 12,
+      "input": "Power"
+    },
+    {
+      "from": 12,
+      "output": "Out",
+      "to": 14,
+      "input": "A"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 14,
+      "input": "B"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 15,
+      "input": "A"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 16,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "Out",
+      "to": 0,
+      "input": "Alpha"
+    },
+    {
+      "from": 17,
+      "output": "Out",
+      "to": 18,
+      "input": "A"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 18,
+      "input": "B"
+    },
+    {
+      "from": 18,
+      "output": "Out",
+      "to": 20,
+      "input": "A"
+    },
+    {
+      "from": 19,
+      "output": "Out",
+      "to": 20,
+      "input": "B"
+    },
+    {
+      "from": 20,
+      "output": "Out",
+      "to": 0,
+      "input": "Base Color"
+    }
+  ]
+}

@@ -137,3 +137,53 @@ materials. Two materials with the same shader and the same values also share a b
 glow), **Wobble** (vertex displacement), **Scroll Gradient** (unlit) and **Force Field** (reads the
 scene for distortion and contact glow). They are shown in `Assets/Scenes/ShaderDemo.scene`, and a
 hologram beacon also appears in `WaterDemo`.
+
+## Shader Graph
+
+A **Shader Graph** (`.shadergraph`) builds a shader from nodes instead of WGSL. Create one with
+**Assets ▸ Create ▸ Shader Graph ▸ Lit Shader Graph** (or **Unlit Shader Graph**) and double-click
+it to open the **Shader Graph** window (also under **Window ▸ Rendering**). A graph is just another
+shader asset: it shows up in every material's **Shader** dropdown and in **Material from Shader**,
+and its Blackboard properties appear in the material Inspector like `@property` lines do.
+
+- **Canvas**: wheel zooms, middle mouse or Alt+drag pans, F frames everything. Drag nodes to move
+  them, click or drag a rubber band to select, Delete removes, Ctrl+D duplicates.
+- **Create Node**: Space, or right-click ▸ Create Node, opens a search. Dragging a wire from a port
+  and dropping it on empty canvas opens the same search and connects the new node.
+- **Connections**: drag from an output to an input. Vectors convert implicitly (a float fills every
+  component, a wider vector is truncated, a narrower one is padded with zeros); textures only go
+  into texture inputs, and connections that would make a loop are refused. Drag a connected input
+  to pick its wire up again; Alt+click a port to disconnect it. *Dynamic* ports (Add, Multiply,
+  Lerp, …) take the widest vector connected to them.
+- **Unconnected inputs** show their value in small fields left of the node (or the binding they
+  read, such as `UV0` or `World Normal`).
+- **Previews**: each node shows its first output on a small square (or a sphere for nodes reading
+  normals, positions or the view direction), evaluated live on the CPU. The **Main Preview** shows
+  the graph's material on a sphere, cube or plane (drag to rotate) with unsaved changes.
+- **Blackboard**: "+" adds a Float, Range, Color, Vector, Texture2D or Boolean property. Drag one
+  onto the canvas for a Property node. Select it to edit its label, reference name (`_Speed`, used
+  in `.mat` files), default value and options.
+- **Graph Settings**: Lit or Unlit, Opaque or Transparent (Lit uses premultiplied blending so
+  reflections stay, Unlit uses alpha blending), Alpha Clipping (discards pixels whose Alpha is
+  below the Alpha Clip Threshold) and Two Sided.
+- **Master stack**: Position Offset (object space, vertex stage), then Base Color, Normal
+  (tangent space), Metallic, Smoothness, Emission, Alpha and Alpha Clip Threshold. Unlit graphs
+  output Base Color + Emission.
+- **Undo/redo** (Ctrl+Z / Ctrl+Y) is the window's own. Nothing reaches the file, or the scene,
+  until **Save Asset** (Ctrl+S).
+- **Errors** (an unconnected texture input, a missing property, a WGSL problem) are shown on the
+  offending node with a red badge, and in the toolbar.
+
+Nodes: **Input** (Property, Color, Float, Vector 2/3/4, Time, UV, Position, Normal, View Direction,
+Vertex Color, Screen Position), **Math** (Add, Subtract, Multiply, Divide, Power, Minimum, Maximum,
+Lerp, Clamp, Saturate, One Minus, Negate, Remap, Step, Smoothstep, Sine, Cosine, Absolute, Floor,
+Fraction, Dot, Cross, Normalize, Length, Split, Combine), **Texture** (Sample Texture 2D, its Normal
+type, Tiling And Offset, Normal From Texture, Normal Strength), **Procedural** (Gradient Noise,
+Voronoi, Checkerboard, Fresnel Effect) and **Utility** (Preview, sticky notes). Meshes have no
+vertex colours yet, so Vertex Color reads white.
+
+The samples `Assets/Shaders/Dissolve.shadergraph`, `Hologram.shadergraph` and
+`Water Ripple.shadergraph` are shown in `Assets/Scenes/ShaderGraphDemo.scene`.
+
+Shader headers also accept `// @property NAME toggle = 1`: a checkbox whose value the shader reads
+as 0 or 1 (Shader Graph Booleans use it).

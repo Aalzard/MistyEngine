@@ -50,6 +50,14 @@ fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
             }
         }
     });
+    ui.menu_button("Shader Graph", |ui| {
+        for kind in [AssetKind::LitShaderGraph, AssetKind::UnlitShaderGraph] {
+            if ui.button(kind.label()).clicked() {
+                actions.push(Action::CreateAsset(kind));
+                ui.close();
+            }
+        }
+    });
     if ui
         .button(AssetKind::MaterialFromShader.label())
         .on_hover_text("A new material using the shader selected in the Project window")

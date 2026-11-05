@@ -1,0 +1,396 @@
+{
+  "version": 1,
+  "target": {
+    "material": "Lit",
+    "surface": "Opaque",
+    "alpha_clip": false,
+    "two_sided": false
+  },
+  "properties": [
+    {
+      "name": "_DeepColor",
+      "display": "Deep Color",
+      "kind": "Color",
+      "value": [
+        0.03,
+        0.2,
+        0.33,
+        1.0
+      ]
+    },
+    {
+      "name": "_CrestColor",
+      "display": "Crest Color",
+      "kind": "Color",
+      "value": [
+        0.45,
+        0.82,
+        0.9,
+        1.0
+      ]
+    },
+    {
+      "name": "_Amplitude",
+      "display": "Amplitude",
+      "kind": "Float",
+      "value": [
+        0.06,
+        0.06,
+        0.06,
+        0.06
+      ]
+    },
+    {
+      "name": "_Frequency",
+      "display": "Frequency",
+      "kind": "Float",
+      "value": [
+        9.0,
+        9.0,
+        9.0,
+        9.0
+      ]
+    },
+    {
+      "name": "_Speed",
+      "display": "Speed",
+      "kind": "Float",
+      "value": [
+        3.0,
+        3.0,
+        3.0,
+        3.0
+      ]
+    },
+    {
+      "name": "_Center",
+      "display": "Center",
+      "kind": "Vector",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "type": "Master",
+      "position": [
+        1060.0,
+        -120.0
+      ],
+      "values": {
+        "Smoothness": [
+          0.9,
+          0.9,
+          0.9,
+          0.9
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "type": "Position",
+      "space": "World",
+      "position": [
+        -1360.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Property",
+      "name": "_Center",
+      "position": [
+        -1360.0,
+        140.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Subtract",
+      "position": [
+        -1120.0,
+        40.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Split",
+      "position": [
+        -880.0,
+        40.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Combine",
+      "position": [
+        -640.0,
+        40.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Length",
+      "position": [
+        -400.0,
+        40.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Property",
+      "name": "_Frequency",
+      "position": [
+        -400.0,
+        220.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Multiply",
+      "position": [
+        -160.0,
+        60.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Time",
+      "position": [
+        -400.0,
+        320.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Property",
+      "name": "_Speed",
+      "position": [
+        -400.0,
+        500.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Multiply",
+      "position": [
+        -160.0,
+        380.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "Subtract",
+      "position": [
+        80.0,
+        160.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "Sine",
+      "position": [
+        320.0,
+        160.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Property",
+      "name": "_Amplitude",
+      "position": [
+        320.0,
+        340.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "Multiply",
+      "position": [
+        560.0,
+        220.0
+      ]
+    },
+    {
+      "id": 16,
+      "type": "Vector3",
+      "position": [
+        800.0,
+        220.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "Remap",
+      "position": [
+        560.0,
+        -160.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "Property",
+      "name": "_DeepColor",
+      "position": [
+        560.0,
+        -360.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "Property",
+      "name": "_CrestColor",
+      "position": [
+        560.0,
+        -280.0
+      ]
+    },
+    {
+      "id": 20,
+      "type": "Lerp",
+      "position": [
+        800.0,
+        -260.0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "A"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 3,
+      "input": "B"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "R",
+      "to": 5,
+      "input": "R"
+    },
+    {
+      "from": 4,
+      "output": "B",
+      "to": 5,
+      "input": "G"
+    },
+    {
+      "from": 5,
+      "output": "RG",
+      "to": 6,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "A"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 8,
+      "input": "B"
+    },
+    {
+      "from": 9,
+      "output": "Time",
+      "to": 11,
+      "input": "A"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 11,
+      "input": "B"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 12,
+      "input": "A"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 12,
+      "input": "B"
+    },
+    {
+      "from": 12,
+      "output": "Out",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 13,
+      "output": "Out",
+      "to": 15,
+      "input": "A"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 15,
+      "input": "B"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 16,
+      "input": "Y"
+    },
+    {
+      "from": 16,
+      "output": "Out",
+      "to": 0,
+      "input": "Position Offset"
+    },
+    {
+      "from": 13,
+      "output": "Out",
+      "to": 17,
+      "input": "In"
+    },
+    {
+      "from": 18,
+      "output": "Out",
+      "to": 20,
+      "input": "A"
+    },
+    {
+      "from": 19,
+      "output": "Out",
+      "to": 20,
+      "input": "B"
+    },
+    {
+      "from": 17,
+      "output": "Out",
+      "to": 20,
+      "input": "T"
+    },
+    {
+      "from": 20,
+      "output": "Out",
+      "to": 0,
+      "input": "Base Color"
+    }
+  ]
+}

@@ -93,6 +93,8 @@ mod sample_render;
 #[cfg(test)]
 mod sample_rigging;
 #[cfg(test)]
+mod sample_shader_graph;
+#[cfg(test)]
 mod sample_shadows;
 #[cfg(test)]
 mod sample_skinning;
