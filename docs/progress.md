@@ -2055,3 +2055,20 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Linux/macOS builds: the `crossplatform` branch is paused, as the user asked.
 - Round 15 is on hold: the next focus is Cycles-like lighting without ray tracing.
+
+## Graphics: Cycles-like lighting without ray tracing ✅ (first pass)
+
+### Done (decisions 642–643; screenshots in docs/screenshots/gfx/)
+- CyclesRoomDemo (realtime and baked) recreating the user's Cycles reference room, with a comparison harness
+  that measures patch brightness.
+- AgX and PBR Neutral tonemapping, and white balance.
+- SSGI with colour bleeding, and Hi-Z SSR.
+- Light-shape soft shadows, rectangle-light shadows over the full hemisphere, a temporal shadow denoise,
+  contact hardening, and Low–Ultra shadow tiers.
+- Stripe and double-counting bugs fixed. The realtime room is now close to the bake.
+
+### Not done yet
+- Per-ray probe lookup for off-screen SSGI rays.
+- Stronger contact darkening under boxes.
+- Brighter floor reflection.
+- A foliage lighting test patch: waits for the grass branch.

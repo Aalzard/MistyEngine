@@ -3170,3 +3170,24 @@ Record of choices made without asking, and why.
        ref-counted, and remote bundles are hash-checked.
      - **Packages:** live under `Packages/` with `manifest.json` and a lock file. Version ranges resolve with
        semver, and conflicts are shown.
+642. **Cycles-like look without ray tracing: the toolkit** (`docs/pending/gfx-room.md`, `gfx-ssgi.md`, `gfx-shadows.md`,
+     `gfx-polish.md`). The user's first goal is Blender-Cycles-like lighting and shadows using rasterization only.
+     - **AgX tonemapping** (Base/Punchy) plus PBR Neutral and white balance. AgX is used for the Cycles room
+       and AgX Punchy for PP Ready, because ACES crushes faces in a white room.
+     - **SSGI:** short cosine-weighted world-space marches on last frame's lit colour. It uses 24-frame temporal
+       accumulation with depth rejection, à-trous denoise and half resolution; off-screen rays fall back to
+       probes. Lightmapped surfaces skip it.
+     - **SSR:** Hi-Z mirror rays with a roughness cone blur and probe fallback.
+     - **Light-shape PCSS:** the penumbra follows the light's real disc or rectangle. Rectangle lights cast
+       shadows over the full hemisphere (5–6 maps).
+     - **Temporal shadow mask:** a rotated-noise, reprojected, neighbourhood-clamped shadow mask with an
+       edge-aware blur. It is High/Ultra only and covers up to 4 lights.
+     - **Costs at 1080p:** SSGI half resolution +2.1 ms, SSR +3.1 ms, High shadows +1.8 ms over Low.
+643. **SSGI fixes found on the Cycles room.**
+     - **Stripes:** half-resolution noise must come from the GI image's own texel grid. Reading it at full-res
+       pixel coordinates made diagonal bands.
+     - **Double ambient:** ambient keeps only the share of rays that hit nothing. With SSAO, the darker
+       visibility wins instead of the product.
+     - **Double light:** "Contribute GI off" now also keeps a surface out of SSGI (`Draw.lightmap.y`, plus a
+       negative prepass w). Emissive light panels that double a real light would otherwise be counted twice.
+     - The realtime room is now within about 10/255 of the path-traced bake on the main patches.
