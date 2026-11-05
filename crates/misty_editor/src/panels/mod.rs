@@ -10,6 +10,7 @@ mod game;
 mod hierarchy;
 mod inspector;
 pub use inspector::preset_window;
+pub mod effect_graph;
 mod lighting;
 mod lighting_hdri;
 pub mod navigation;
@@ -79,6 +80,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::Timeline => timeline::show(ui, self.state),
             Tab::TilePalette => tile_palette::show(ui, self.state),
             Tab::ShaderGraph => shader_graph::show(ui, self.state),
+            Tab::EffectGraph => effect_graph::show(ui, self.state),
         }
     }
 

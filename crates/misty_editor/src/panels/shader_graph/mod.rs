@@ -6,7 +6,7 @@
 //! private preview path, so the main preview shows unsaved changes without touching the scene.
 
 mod blackboard;
-mod canvas;
+pub(crate) mod canvas;
 mod previews;
 mod search;
 

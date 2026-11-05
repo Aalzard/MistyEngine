@@ -1,0 +1,410 @@
+{
+  "version": 1,
+  "properties": [
+    {
+      "name": "Rate",
+      "value": {
+        "Float": 40.0
+      }
+    },
+    {
+      "name": "Color",
+      "value": {
+        "Color": [
+          3.0,
+          2.6,
+          0.7,
+          1.0
+        ]
+      }
+    }
+  ],
+  "contexts": [
+    {
+      "id": 1,
+      "type": "Spawn",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "id": 2,
+          "type": "ConstantRate"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Initialize",
+      "capacity": 2048,
+      "bounds_center": [
+        0.0,
+        1.4,
+        0.0
+      ],
+      "bounds_size": [
+        9.0,
+        4.0,
+        9.0
+      ],
+      "space": "Local",
+      "position": [
+        0.0,
+        182.0
+      ],
+      "blocks": [
+        {
+          "id": 5,
+          "type": "PositionBox",
+          "mode": "Volume",
+          "values": {
+            "Center": {
+              "Vec3": [
+                0.0,
+                1.3,
+                0.0
+              ]
+            },
+            "Size": {
+              "Vec3": [
+                7.0,
+                2.2,
+                7.0
+              ]
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "SetAttribute",
+          "attribute": "Velocity",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Vec3": [
+                -0.2,
+                -0.1,
+                -0.2
+              ]
+            },
+            "B": {
+              "Vec3": [
+                0.2,
+                0.15,
+                0.2
+              ]
+            }
+          }
+        },
+        {
+          "id": 7,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 4.0
+            },
+            "B": {
+              "Float": 8.0
+            }
+          }
+        },
+        {
+          "id": 8,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 0.05
+            },
+            "B": {
+              "Float": 0.11
+            }
+          }
+        },
+        {
+          "id": 9,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": false,
+          "composition": "Overwrite"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "position": [
+        0.0,
+        882.0
+      ],
+      "blocks": [
+        {
+          "id": 12,
+          "type": "Turbulence",
+          "values": {
+            "Frequency": {
+              "Float": 0.6
+            },
+            "Intensity": {
+              "Float": 1.4
+            },
+            "Scroll": {
+              "Float": 0.15
+            }
+          }
+        },
+        {
+          "id": 13,
+          "type": "LinearDrag",
+          "values": {
+            "Drag": {
+              "Float": 0.8
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Output",
+      "kind": "Quad",
+      "blend": "Additive",
+      "flipbook": [
+        1,
+        1
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": false,
+      "soft_distance": 0.5,
+      "line_length": 0.05,
+      "position": [
+        0.0,
+        1191.0
+      ],
+      "blocks": [
+        {
+          "id": 15,
+          "type": "ColorOverLife",
+          "values": {
+            "Gradient": {
+              "Gradient": {
+                "color_keys": [
+                  {
+                    "time": 0.0,
+                    "color": [
+                      1.0,
+                      1.0,
+                      1.0
+                    ]
+                  },
+                  {
+                    "time": 1.0,
+                    "color": [
+                      1.0,
+                      1.0,
+                      1.0
+                    ]
+                  }
+                ],
+                "alpha_keys": [
+                  {
+                    "time": 0.0,
+                    "alpha": 0.0
+                  },
+                  {
+                    "time": 0.15,
+                    "alpha": 1.0
+                  },
+                  {
+                    "time": 0.8,
+                    "alpha": 1.0
+                  },
+                  {
+                    "time": 1.0,
+                    "alpha": 0.0
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 16,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": false,
+          "composition": "Multiply"
+        }
+      ]
+    }
+  ],
+  "operators": [
+    {
+      "id": 3,
+      "type": "Property",
+      "name": "Rate",
+      "position": [
+        -260.0,
+        60.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Property",
+      "name": "Color",
+      "position": [
+        -260.0,
+        760.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "Time",
+      "position": [
+        -1300.0,
+        1656.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "Multiply",
+      "position": [
+        -1040.0,
+        1629.0
+      ],
+      "values": {
+        "B": {
+          "Float": 7.0
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "GetAttribute",
+      "attribute": "ParticleRandom",
+      "position": [
+        -1300.0,
+        1558.0
+      ]
+    },
+    {
+      "id": 20,
+      "type": "Multiply",
+      "position": [
+        -1040.0,
+        1531.0
+      ],
+      "values": {
+        "B": {
+          "Float": 6.2831855
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "Add",
+      "position": [
+        -780.0,
+        1482.0
+      ]
+    },
+    {
+      "id": 22,
+      "type": "Sine",
+      "position": [
+        -520.0,
+        1455.0
+      ]
+    },
+    {
+      "id": 23,
+      "type": "Remap",
+      "position": [
+        -260.0,
+        1428.0
+      ],
+      "values": {
+        "In Max": {
+          "Float": 1.0
+        },
+        "In Min": {
+          "Float": -1.0
+        },
+        "Out Max": {
+          "Float": 1.0
+        },
+        "Out Min": {
+          "Float": 0.35
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 2,
+      "input": "Rate"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 9,
+      "input": "Color"
+    },
+    {
+      "from": 17,
+      "output": "Total",
+      "to": 18,
+      "input": "A"
+    },
+    {
+      "from": 19,
+      "output": "Out",
+      "to": 20,
+      "input": "A"
+    },
+    {
+      "from": 18,
+      "output": "Out",
+      "to": 21,
+      "input": "A"
+    },
+    {
+      "from": 20,
+      "output": "Out",
+      "to": 21,
+      "input": "B"
+    },
+    {
+      "from": 21,
+      "output": "Out",
+      "to": 22,
+      "input": "Input"
+    },
+    {
+      "from": 22,
+      "output": "Out",
+      "to": 23,
+      "input": "Input"
+    },
+    {
+      "from": 23,
+      "output": "Out",
+      "to": 16,
+      "input": "Size"
+    }
+  ],
+  "next_id": 24
+}

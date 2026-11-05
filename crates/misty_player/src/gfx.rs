@@ -361,10 +361,17 @@ impl Gfx {
     }
 
     /// Render `frame` (or black when no camera renders) with `scene`'s UI on top, and present it.
-    pub fn draw(&mut self, frame: Option<&Frame>, scene: &Scene, ui: Option<&UiInteraction>) {
+    pub fn draw(
+        &mut self,
+        frame: Option<&Frame>,
+        effects: &[misty_engine::vfx::EffectDraw],
+        scene: &Scene,
+        ui: Option<&UiInteraction>,
+    ) {
         if let Some(frame) = frame {
+            let (device, queue) = (&self.device, &self.queue);
             self.renderer
-                .render(&self.device, &self.queue, &self.target, frame);
+                .render_with_effects(device, queue, &self.target, frame, effects);
             misty_engine::profiler::set_render_stats(self.renderer.stats());
             self.ui
                 .render(&self.device, &self.queue, &self.target, scene, ui);

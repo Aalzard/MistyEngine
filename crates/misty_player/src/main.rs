@@ -188,7 +188,13 @@ impl Player {
         gfx.update_probes(&self.game.scene, &self.game.assets);
         let view = self.game.view();
         let frame = view.as_ref().map(|v| v.frame());
-        gfx.draw(frame.as_ref(), &self.game.scene, self.game.ui_interaction());
+        let effects = view.as_ref().map_or(&[][..], |v| &v.effects[..]);
+        gfx.draw(
+            frame.as_ref(),
+            effects,
+            &self.game.scene,
+            self.game.ui_interaction(),
+        );
         for w in gfx.take_warnings() {
             self.log.write(LogKind::Warning, &w);
         }

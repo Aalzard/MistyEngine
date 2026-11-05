@@ -281,6 +281,7 @@ fn assets(l: &mut List) {
         AssetKind::UnlitShader,
         AssetKind::LitShaderGraph,
         AssetKind::UnlitShaderGraph,
+        AssetKind::EffectGraph,
         AssetKind::MaterialFromShader,
     ]);
     for kind in kinds {
@@ -326,6 +327,7 @@ fn gameobject(l: &mut List) {
         l.create(Create::Sprite(Some(shape)), "2D Object/Sprites/");
     }
     l.create(Create::ParticleSystem, "Effects/");
+    l.create(Create::VisualEffect, "Effects/");
     for kind in LightType::ALL {
         l.create(Create::Light(kind), "Light/");
     }

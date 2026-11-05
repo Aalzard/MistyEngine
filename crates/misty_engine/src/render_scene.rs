@@ -256,6 +256,8 @@ pub struct GameView {
     pub meshes: Arc<Vec<MeshDraw>>,
     pub lights: Vec<LightData>,
     pub particles: Vec<ParticleBatch>,
+    /// Visual Effects (pass to [`crate::render::Renderer::render_with_effects`]).
+    pub effects: Vec<crate::vfx::EffectDraw>,
     pub terrains: Vec<crate::terrain::TerrainDraw>,
     pub water: Vec<crate::water::WaterDraw>,
     pub environment: Environment,
@@ -287,6 +289,7 @@ impl GameView {
             post: post_settings(scene),
             lights,
             particles: crate::particles::batches_where(scene, keep),
+            effects: crate::vfx::draws_where(scene, keep),
             terrains: crate::terrain::draws_where(scene, keep),
             water: crate::water::draws_where(scene, keep),
             settings,

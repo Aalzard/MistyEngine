@@ -244,6 +244,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Animation" => super::anim::animation(ui, state, e),
         "Animator" => super::animator::animator(ui, state, e),
         "Particle System" => super::particles::particle_system(ui, state, e),
+        "Visual Effect" => super::visual_effect::visual_effect(ui, state, e),
         "Post-process Volume" => super::post_volume::post_process_volume(ui, state, e),
         "Audio Listener" => {
             ui.weak("Hears every Audio Source in the scene.");

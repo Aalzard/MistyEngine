@@ -120,6 +120,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let terrains = misty_engine::terrain::draws(&state.scene);
             let water = misty_engine::water::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
+            let effects = misty_engine::vfx::draws(&state.scene);
             let scene_lights = render_scene::lights(&state.scene);
             // The sky follows the scene's sun even when the view uses the headlight.
             let mut environment = render_scene::environment(&state.scene, &scene_lights);
@@ -193,7 +194,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let size = [(rect.width() * px) as u32, (rect.height() * px) as u32];
             gpu.renderer
                 .set_cascade_debug(sv.draw_mode == CASCADES_MODE);
-            let texture = gpu.render(ViewId::Scene, size, &frame);
+            let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
             ui.painter().image(
                 texture,
                 rect,

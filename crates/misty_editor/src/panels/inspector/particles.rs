@@ -326,7 +326,7 @@ fn shape(ui: &mut Ui, s: &mut misty_engine::particles::ShapeModule) -> bool {
 }
 
 /// Gradient bar preview plus editable colour and alpha keys.
-fn gradient(ui: &mut Ui, id: &str, g: &mut Gradient) -> bool {
+pub(crate) fn gradient(ui: &mut Ui, id: &str, g: &mut Gradient) -> bool {
     let mut ch = false;
     ui.horizontal(|ui| {
         ui.label("Color");

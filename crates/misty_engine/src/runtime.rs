@@ -86,6 +86,7 @@ impl Runtime {
     ) -> Self {
         // Edit-mode particle previews don't carry into the game.
         crate::particles::clear_all(scene);
+        crate::vfx::clear_all(scene);
         let mut physics = Physics::build_with(scene, &settings.physics);
         let mut warnings = std::mem::take(&mut physics.warnings);
         let mut physics2d =
@@ -123,6 +124,8 @@ impl Runtime {
         crate::profile_scope!("ParticleSystem.Update", Category::Others);
         let (gravity, _) = self.host.physics_config();
         crate::particles::update(scene, time.delta, gravity);
+        crate::profile_scope!("VisualEffect.Update", Category::Others);
+        crate::vfx::update(scene, time.delta);
     }
 
     /// Add a scene file's objects as another loaded scene and start them (bodies, `Awake`).

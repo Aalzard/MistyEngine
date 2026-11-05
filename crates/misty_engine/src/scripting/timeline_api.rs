@@ -105,7 +105,7 @@ impl UserData for LDirector {
 /// `GetComponent("PlayableDirector")`.
 pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
     if name != "PlayableDirector" {
-        return Ok(None);
+        return super::vfx_api::component(lua, e, name);
     }
     let has = with_world(lua, |w| alive(w, e).is_ok())?;
     if !has {
