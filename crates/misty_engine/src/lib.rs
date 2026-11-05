@@ -36,6 +36,7 @@ pub mod shader_asset;
 pub mod sprites;
 pub mod tags_layers;
 pub mod terrain;
+pub mod timeline;
 pub mod ui;
 pub mod vfs;
 pub mod water;

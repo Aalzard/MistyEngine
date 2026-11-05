@@ -142,7 +142,7 @@ fn zoom_and_pan(ui: &mut Ui, s: &mut EditorState, clip: &AnimationClip, rect: Re
 }
 
 /// Frame step between labelled ticks so labels are at least ~60 px apart.
-fn tick_step(sample_rate: f32, pps: f32) -> f32 {
+pub(crate) fn tick_step(sample_rate: f32, pps: f32) -> f32 {
     let frame_px = pps / sample_rate;
     [
         1.0, 2.0, 5.0, 10.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0,

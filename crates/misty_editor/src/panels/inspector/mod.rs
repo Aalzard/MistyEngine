@@ -31,6 +31,7 @@ mod slots;
 mod sprite_editors;
 mod terrain;
 mod texture_import;
+mod timeline_editors;
 mod ui_editors;
 mod water;
 
@@ -624,6 +625,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::audio::is_mixer(rel) {
         mixer_inspector::mixer_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::timeline::is_timeline(rel) {
+        timeline_editors::timeline_asset(ui, state, rel);
         return;
     }
     if misty_engine::assets::is_texture(rel) {

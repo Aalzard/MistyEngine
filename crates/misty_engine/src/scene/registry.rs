@@ -119,6 +119,11 @@ impl SceneComponent for super::Animator {
     const CATEGORY: &'static str = "Miscellaneous";
 }
 
+impl SceneComponent for super::PlayableDirector {
+    const NAME: &'static str = "Playable Director";
+    const CATEGORY: &'static str = "Miscellaneous";
+}
+
 impl SceneComponent for super::PostProcessVolume {
     const NAME: &'static str = "Post-process Volume";
     const CATEGORY: &'static str = "Rendering";
@@ -325,6 +330,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::AudioEchoFilter>(),
             ComponentInfo::of::<Animation>(),
             ComponentInfo::of::<super::Animator>(),
+            ComponentInfo::of::<super::PlayableDirector>(),
             ComponentInfo::of::<ParticleSystem>(),
             ComponentInfo::of::<Terrain>(),
             ComponentInfo::of::<TerrainCollider>(),

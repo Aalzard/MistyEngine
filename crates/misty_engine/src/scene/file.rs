@@ -72,6 +72,7 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Hinge Joint", "", "connected_body"),
     ("Spring Joint", "", "connected_body"),
     ("LOD Group", "lods", "renderers"),
+    ("Playable Director", "bindings", "object"),
 ];
 
 /// Every object-reference field: the ones above plus the UI widgets' (see `ui_widgets`).

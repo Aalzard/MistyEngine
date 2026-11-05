@@ -360,6 +360,7 @@ fn window(l: &mut List, s: &EditorState) {
             Tab::Navigation => "AI",
             Tab::WorldBuilder => "Terrain",
             Tab::Profiler => "Analysis",
+            Tab::Timeline => "Sequencing",
             _ => "General",
         };
         let path = format!("Window/{menu}/{}", tab.title());

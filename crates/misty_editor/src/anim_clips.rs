@@ -13,6 +13,7 @@ pub enum ClipSnapshot {
     Clip(String, AnimationClip),
     Controller(String, misty_engine::animation::AnimatorController),
     Mixer(String, misty_engine::audio::AudioMixer),
+    Timeline(String, misty_engine::timeline::TimelineAsset),
 }
 
 #[derive(Default)]
@@ -25,6 +26,8 @@ pub struct ClipStore {
     pub controllers: crate::anim_controllers::ControllerStore,
     /// Audio Mixers being edited (here so undo can restore them too).
     pub mixers: crate::audio_mixers::MixerStore,
+    /// Timelines being edited.
+    pub timelines: crate::timelines::TimelineStore,
 }
 
 impl ClipStore {
@@ -32,6 +35,7 @@ impl ClipStore {
         Self {
             controllers: crate::anim_controllers::ControllerStore::new(root.clone()),
             mixers: crate::audio_mixers::MixerStore::new(root.clone()),
+            timelines: crate::timelines::TimelineStore::new(root.clone()),
             root,
             ..Default::default()
         }
@@ -44,6 +48,11 @@ impl ClipStore {
             self.clips.insert(path.to_owned(), clip);
         }
         Ok(&self.clips[path])
+    }
+
+    /// A clip already read (see [`ClipStore::get`]), without touching the disk.
+    pub fn loaded(&self, path: &str) -> Option<&AnimationClip> {
+        self.clips.get(path)
     }
 
     /// Mutable access; the clip is saved at the next [`ClipStore::save_dirty`].
@@ -65,6 +74,7 @@ impl ClipStore {
             ClipSnapshot::Clip(path, clip) => (path, clip),
             ClipSnapshot::Controller(path, c) => return self.controllers.restore(path, c),
             ClipSnapshot::Mixer(path, m) => return self.mixers.restore(path, m),
+            ClipSnapshot::Timeline(path, t) => return self.timelines.restore(path, t),
         };
         let old = self.clips.insert(path.clone(), clip).unwrap_or_default();
         self.dirty.insert(path.clone());
@@ -82,6 +92,7 @@ impl ClipStore {
     pub fn rename(&mut self, old: &str, new: &str) {
         self.controllers.rename(old, new);
         self.mixers.rename(old, new);
+        self.timelines.rename(old, new);
         let keys: Vec<String> = self.clips.keys().cloned().collect();
         for key in keys {
             if let Some(to) = crate::asset_ops::remap(&key, old, new) {

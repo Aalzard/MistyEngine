@@ -37,9 +37,41 @@ pub fn pcm16_mono(samples: &[i16], sample_rate: u32) -> Vec<u8> {
     out
 }
 
+/// Length in seconds of a WAV file's audio (`None` for other formats or a broken header).
+pub fn duration_of(path: &std::path::Path) -> Option<f32> {
+    duration_of_bytes(&crate::vfs::read(path).ok()?)
+}
+
+/// [`duration_of`] for WAV bytes: walks the RIFF chunks for `fmt ` (byte rate) and `data`.
+pub fn duration_of_bytes(b: &[u8]) -> Option<f32> {
+    if b.len() < 12 || &b[0..4] != b"RIFF" || &b[8..12] != b"WAVE" {
+        return None;
+    }
+    let u32_at = |i: usize| Some(u32::from_le_bytes(b.get(i..i + 4)?.try_into().ok()?));
+    let (mut i, mut byte_rate, mut data) = (12, None, None);
+    while i + 8 <= b.len() {
+        let len = u32_at(i + 4)? as usize;
+        match &b[i..i + 4] {
+            b"fmt " => byte_rate = u32_at(i + 16),
+            b"data" => data = Some(len),
+            _ => {}
+        }
+        i += 8 + len + (len & 1);
+    }
+    let rate = byte_rate.filter(|r| *r > 0)?;
+    Some(data? as f32 / rate as f32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn duration_reads_the_header() {
+        let d = duration_of_bytes(&sine_beep(440.0, 0.5, 8000)).unwrap();
+        assert!((d - 0.5).abs() < 1e-3);
+        assert_eq!(duration_of_bytes(b"not a wav"), None);
+    }
 
     #[test]
     fn beep_has_valid_header_and_length() {

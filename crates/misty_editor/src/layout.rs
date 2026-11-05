@@ -28,6 +28,8 @@ pub enum Tab {
     WorldBuilder,
     /// Edit ▸ Undo History.
     UndoHistory,
+    /// Window ▸ Sequencing ▸ Timeline.
+    Timeline,
 }
 
 impl Tab {
@@ -44,7 +46,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 7] = [
+    pub const ON_DEMAND: [Tab; 8] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -52,6 +54,7 @@ impl Tab {
         Tab::Profiler,
         Tab::WorldBuilder,
         Tab::UndoHistory,
+        Tab::Timeline,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -67,6 +70,8 @@ impl Tab {
             Tab::UndoHistory => Some(Tab::Hierarchy),
             // The graph wants room: it docks with the Scene and Game views.
             Tab::Animator => Some(Tab::Scene),
+            // A wide time strip, like the Animation window it sits beside.
+            Tab::Timeline => Some(Tab::Animation),
             // Docks with the Project and Console like the reference editor; the Profiler too,
             // so the Game view keeps rendering (and reporting its counters) while profiling.
             Tab::AudioMixer | Tab::Profiler => Some(Tab::Project),
@@ -91,6 +96,7 @@ impl Tab {
             Tab::Profiler => "Profiler",
             Tab::WorldBuilder => "World Builder",
             Tab::UndoHistory => "Undo History",
+            Tab::Timeline => "Timeline",
         }
     }
 
@@ -111,6 +117,7 @@ impl Tab {
             Tab::Profiler => "📈",
             Tab::WorldBuilder => "⛰",
             Tab::UndoHistory => "⟲",
+            Tab::Timeline => crate::panels::timeline::ICON,
         }
     }
 
@@ -131,7 +138,8 @@ impl Tab {
             | Tab::AudioMixer
             | Tab::Navigation
             | Tab::CodeEditor
-            | Tab::WorldBuilder => "",
+            | Tab::WorldBuilder
+            | Tab::Timeline => "",
         }
     }
 }
