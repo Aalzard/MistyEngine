@@ -6,7 +6,7 @@ use misty_engine::hecs::Entity;
 use misty_engine::scene::{
     Animation, AudioListener, AudioSource, BoxCollider, Camera, CapsuleCollider, ClearFlags,
     Interpolation, Light, LightType, MeshCollider, MeshRenderer, PhysicsSurface, PostProcessVolume,
-    Rigidbody, SceneComponent, Shadows, SphereCollider, registry,
+    Rigidbody, SceneComponent, Shadows, SphereCollider, WheelCollider, registry,
 };
 
 use misty_engine::scene::{ScriptValue, Scripts};
@@ -101,6 +101,7 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
         "Sphere Collider" => w.get::<&SphereCollider>(e).ok().map(|c| c.enabled),
         "Capsule Collider" => w.get::<&CapsuleCollider>(e).ok().map(|c| c.enabled),
         "Mesh Collider" => w.get::<&MeshCollider>(e).ok().map(|c| c.enabled),
+        "Wheel Collider" => w.get::<&WheelCollider>(e).ok().map(|c| c.enabled),
         "Audio Source" => w.get::<&AudioSource>(e).ok().map(|c| c.enabled),
         "Audio Listener" => w.get::<&AudioListener>(e).ok().map(|c| c.enabled),
         "Animation" => w.get::<&Animation>(e).ok().map(|c| c.enabled),
@@ -175,6 +176,10 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
             .ok(),
         "Mesh Collider" => w
             .get::<&mut MeshCollider>(e)
+            .map(|mut c| c.enabled = on)
+            .ok(),
+        "Wheel Collider" => w
+            .get::<&mut WheelCollider>(e)
             .map(|mut c| c.enabled = on)
             .ok(),
         "Audio Source" => w

@@ -40,6 +40,7 @@ pub mod ui_api;
 mod ui_dispatch;
 pub mod ui_widgets_api;
 pub mod vcam_api;
+pub mod vehicle_api;
 pub mod water_api;
 
 use std::collections::{HashMap, HashSet};

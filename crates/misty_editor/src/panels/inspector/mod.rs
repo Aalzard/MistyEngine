@@ -35,6 +35,7 @@ mod texture_import;
 mod timeline_editors;
 mod ui_editors;
 mod vcam_editors;
+mod vehicle_editors;
 mod water;
 
 use egui::{RichText, Ui};

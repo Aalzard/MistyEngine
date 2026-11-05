@@ -33,6 +33,7 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 | `Physics` | `Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere` (see Physics queries), `DefaultRaycastLayers`, `AllLayers`, `IgnoreRaycastLayer` |
 | `LayerMask` | `GetMask("Default", "Player", …)`, `NameToLayer(name)` (-1 if unknown), `LayerToName(index)` |
 | CharacterController | `Move(motion)`, `SimpleMove(speed)` (returns `isGrounded`), `isGrounded`, `velocity`, `height`, `radius`, `center`, `slopeLimit`, `stepOffset`, `skinWidth` (read-only) |
+| WheelCollider | `motorTorque`, `brakeTorque`, `steerAngle`, `enabled` (settable), `rpm`, `isGrounded`, `radius`, `suspensionDistance` (read-only), `GetWorldPose()` (returns position and Euler angles), `GetGroundHit()` (WheelHit or nil) |
 | AudioSource | `Play()`, `Stop()`, `Pause()`, `UnPause()`, `PlayOneShot(clipPath [, volumeScale])` (through the source's mix and Output group), `isPlaying` (read-only), `time` (seconds into the `Play()` clip; settable to seek), `volume`, `pitch`, `loop`, `mute`, `panStereo`, `spatialBlend`, `dopplerLevel`, `spread`, `reverbZoneMix`, `minDistance`, `maxDistance`, `rolloffMode` (`"Logarithmic"` / `"Linear"`), `priority` (0..256), `playOnAwake`, `bypassEffects`, `bypassListenerEffects`, `bypassReverbZones`, `enabled`, `clip` (project path like `"Assets/Audio/Beep.wav"`, or nil), `outputAudioMixerGroup` (a group, nil, or set by group name: looked up in the current Output's mixer first, then every project mixer) |
 | `AudioSource` (global) | `PlayClipAtPoint(clipPath, position [, volume])` — a fully 3D one-shot at a fixed point (default rolloff, no mixer) |
 | `AudioMixer` | `AudioMixer.Find("Main")` — the project's `.mixer` with that file name anywhere under `Assets/` (no Resources folder needed), or nil. Mixer: `name`, `SetFloat(exposedName, value)` (false if no such exposed parameter; volumes in dB), `GetFloat(name)` (current value or nil), `ClearFloat(name)` (back to the snapshot's value), `FindSnapshot(name)` (or nil), `FindMatchingGroups("SFX")` (array of groups whose path ends with it; `""` = all) |
@@ -315,6 +316,32 @@ return Walker
 right after the callback that called `Move`; `hit` has `gameObject`, `collider`, `transform`, `rigidbody`, `point`,
 `normal`, `moveDirection`, `moveLength`, `controller`. Sample: `Scenes/PhysicsDemo.scene` with
 `Assets/Scripts/CharacterWalker.lua` and `Assets/Scripts/LaserPointer.lua`.
+
+### Wheel Collider
+
+Add **Component ▸ Physics ▸ Wheel Collider** to a child of an object with a Rigidbody (one per wheel). Each
+physics step the wheel casts a ray down its suspension (the object's position is the top; the wheel hangs up to
+Suspension Distance below it), pushes the body up with the spring and damper (at rest it sits at the spring's
+Target Position, 0 = fully compressed, 1 = fully extended), and its tyre grips along the Forward and Sideways
+Friction curves. Wheels roll around their local X axis and drive along local Z; scale is ignored. Set the
+**Wheel Model** to the visible tyre's object and it follows the wheel (steering, suspension and rolling).
+
+```lua
+local Drive = { torque = 900, steer = 30 }
+function Drive:Start() self.fl = GameObject.Find("Wheel FL"):GetComponent("WheelCollider") --[[ … ]] end
+function Drive:FixedUpdate()
+    self.rl.motorTorque = Input.GetAxis("Vertical") * self.torque           -- N·m on the axle
+    self.fl.steerAngle = Input.GetAxis("Horizontal") * self.steer             -- degrees
+    self.rl.brakeTorque = Input.GetKey("space") and 6000 or 0
+end
+return Drive
+```
+`rpm`, `isGrounded` and `GetGroundHit()` describe the last physics step; the hit has `point`, `normal`, `force`
+(suspension load in N), `forwardDir`, `sidewaysDir`, `forwardSlip` (negative while accelerating, positive while
+braking), `sidewaysSlip`, `collider`/`gameObject`. `GetWorldPose()` returns the wheel centre and rotation (as
+Euler angles: there is no Quaternion type) for moving your own models. Sample: `Scenes/VehicleDemo.scene` with
+`Assets/Scripts/CarController.lua` (W/S throttle/brake, A/D steer, Space handbrake, R reset) and
+`Assets/Scripts/CarFollowCamera.lua`.
 
 ### Joints
 

@@ -165,6 +165,14 @@ Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a 
 #CharacterController|center|center|Capsule centre
 #CharacterController|slopeLimit|slopeLimit|Steepest climbable slope
 #CharacterController|stepOffset|stepOffset|Highest climbable step
+#WheelCollider|motorTorque|motorTorque|Drive torque on the axle (N·m)
+#WheelCollider|brakeTorque|brakeTorque|Braking torque (N·m)
+#WheelCollider|steerAngle|steerAngle|Steering angle in degrees
+#WheelCollider|rpm|rpm|Wheel speed in revolutions per minute (read-only)
+#WheelCollider|isGrounded|isGrounded|Touching the ground (read-only)
+#WheelCollider|radius|radius|Wheel radius (read-only)
+#WheelCollider|GetWorldPose|GetWorldPose()|Wheel centre and Euler rotation, for a wheel model
+#WheelCollider|GetGroundHit|GetGroundHit()|WheelHit table (point, normal, force, slips) or nil
 #AudioSource|Play|Play()|Play the clip from the start
 #AudioSource|Stop|Stop()|Stop playing
 #AudioSource|Pause|Pause()|Pause
@@ -237,6 +245,7 @@ pub const COMPONENTS: &[&str] = &[
     "Transform",
     "Rigidbody",
     "CharacterController",
+    "WheelCollider",
     "AudioSource",
     "Animation",
     "Animator",
