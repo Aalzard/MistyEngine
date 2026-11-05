@@ -1,13 +1,38 @@
 Misty Engine changelog
 ======================
 
-Next version
-------------
+0.1.0 - big test update (November 2026)
+---------------------------------------
 
-- New projects: two templates. Standard (a platform to build on) and PP Ready (the platform
-  on the ocean at sunset with clouds, god rays, light fog and post-processing, seen from a
-  corner like a film shot). Empty, Ocean and Landscape are gone.
-- Misty Hub: a project's picture is the last view you were looking at when you closed it.
+The editor
+- A new look: no Windows frame, our own title bar with the project name in the middle, flat
+  play buttons, Inspector components as clean cards with bold titles, no black outlines.
+- Hierarchy: striped rows, parents highlighted like folders, tree lines, and real Folders you
+  can colour with Alt + right-click. Right-click an object for Move To View / Align With View.
+- Scene view: Gizmos menu (icon size and colour) and a Quality menu (quality level, FXAA,
+  render scale, Bilinear / Nearest / Sharpen).
+- New projects: two templates, Standard and PP Ready (sunset over the ocean, clouds, god rays),
+  and an "Include sample scenes" checkbox. The Hub shows each project's last view.
+
+Gameplay
+- Vehicles with Wheel Colliders (suspension, tyre grip, motor, brakes, steering).
+- Skinned characters from glTF with blend shapes, and animation rigging (Two Bone IK, Aim,
+  Chain IK, Damped Transform).
+- Timeline for cutscenes, and virtual cameras with blends, follow, orbit, framing and shake.
+
+Content tools
+- Mesh Builder: model shapes inside the editor (extrude, inset, bevel, loop cut and more).
+- Splines (roads, tubes, objects along a path), Tilemaps with a Tile Palette and 2D lights.
+- Shader Graph, and the Effect Graph for GPU particles (millions of them).
+
+Lighting
+- Baked global illumination (lightmapper), light probes for moving objects, occlusion culling.
+
+Systems
+- Save system and localization (string tables, language switching).
+- Video Player and rich text (colours, bold/italic, icons, outlines).
+- Asset groups loaded by address, and a Package Manager.
+- Test Runner for Lua tests, Frame Debugger and Memory Profiler.
 
 0.0.1 - first test version (November 2026)
 ------------------------------------------
