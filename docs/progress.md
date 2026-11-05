@@ -1988,3 +1988,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Live virtual-camera preview in the edit-mode Game view.
 - Anti-roll bars.
 - Blend-shape keys in Record mode.
+
+## Round 12: content tools ✅
+
+### Done (decisions 628–631; screenshots in docs/screenshots/round12/; detailed notes in docs/pending/r12-*.md)
+- **Mesh Builder:**
+  - Editable Mesh and New Shape (cube, plane, cylinder, stairs, arch, prism, torus).
+  - Object/Vertex/Edge/Face editing with extrude, inset, bevel, subdivide, loop cut, bridge, merge, weld,
+    detach, flip and per-face materials.
+  - Export to Model; MeshBuilderDemo.
+- **Splines:**
+  - Spline Container (Bezier modes), Extrude (tube/road), Instantiate and Animate.
+  - Scene view knot editing and Draw Spline; Lua; SplinesDemo.
+- **Tilemaps:**
+  - Grid, Tilemap (chunked), rule and animated tiles.
+  - Tile Palette window (paint, box, fill, pick, erase, move), Tilemap Collider 2D.
+  - 2D lights with shadow casters; TilemapDemo.
+- **Shader Graph:**
+  - 50 nodes; WGSL generation through the custom shader system.
+  - The Shader Graph window (search, typed ports, blackboard, previews).
+  - Dissolve / Hologram / Water Ripple; ShaderGraphDemo.
+- **Title bar:** never shows an empty project name.
+
+### Not done yet
+- Bevel segments and a UV editor.
+- Hex grids and Freeform 2D lights.
+- Sub-graphs and copy/paste between graphs.
+- Spline knot links.

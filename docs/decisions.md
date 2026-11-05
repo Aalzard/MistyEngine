@@ -3079,3 +3079,26 @@ Record of choices made without asking, and why.
        extensions (Collider raycast from the target, Perlin noise seeded per camera). The virtual camera's
        own Transform keeps the unmodified pose.
      - **Play mode only.** Edit-mode Game view preview of the live virtual camera is left for later.
+628. **Round 12: Mesh Builder stores Editable Meshes in the scene** (`docs/pending/r12-meshbuilder.md`).
+     - **Why in the scene:** undo, prefabs and duplicate work for free.
+     - **Baking:** faces are baked into the runtime mesh cache under a content hash. The Mesh Filter points at
+       the baked mesh, so the renderer, picking and colliders are unchanged. Each per-face material is a
+       submesh.
+     - **Sharing:** Export to Model writes an OBJ for meshes that need to be shared between objects.
+629. **Round 12: Tilemaps render in 16×16-cell chunks** (`docs/pending/r12-tilemap.md`).
+     - **Chunks:** one mesh per chunk and texture. A chunk rebuilds only when it or its neighbour ring changes.
+     - **2D lights:** lit per pixel in the sprite shader rather than in a separate light-texture pass, to avoid
+       new targets and pass reordering in the shared renderer. Shadows are a CPU 256-direction map per light,
+       up to 16 lights.
+     - **No 2D lights = no change:** sprites render exactly as before.
+630. **Round 12: a Shader Graph is just another shader asset** (`docs/pending/r12-shadergraph.md`).
+     - **Loading:** a `.shadergraph` is turned into custom-shader text and parsed like a hand-written
+       `.shader`, so materials, batching and hot reload need no changes.
+     - **Errors:** each generated WGSL line remembers its node, so naga errors show on the node.
+     - **Previews:** node previews are computed on the CPU with the same noise hash as the GPU.
+631. **Round 12: Splines use an arc-length table** (`docs/pending/r12-splines.md`), so t runs by distance.
+     - **Extrude:** meshes are keyed by a hash of their inputs.
+     - **Instantiate:** copies are children, rebuilt only when inputs change.
+     - **Mesh cache:** registering a new runtime mesh bumps the GPU cache generation only when it replaces an
+       existing key, so live edits don't re-upload every imported mesh. Mesh Builder and Tilemap use the
+       same rule.
