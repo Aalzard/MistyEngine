@@ -307,6 +307,38 @@ impl Scene {
         Ok((id, roots, report))
     }
 
+    /// Replace a loaded scene's objects and settings with a new version of its file (the file
+    /// changed on disk). The scene keeps its id, name, path, place in the open set and whether
+    /// it is active; its objects are new entities. A file that doesn't parse leaves the scene
+    /// alone. Returns the new root objects.
+    pub fn reload_scene(
+        &mut self,
+        id: SceneId,
+        text: &str,
+    ) -> Result<(Vec<Entity>, LoadReport), String> {
+        if !self.entry(id).is_some_and(|s| s.loaded) {
+            return Err("the scene is not loaded".into());
+        }
+        let (file, mut report) = super::file::read_scene_parts(text)?;
+        for r in self.roots_in(id) {
+            self.despawn(r);
+        }
+        if id == self.active {
+            self.render_settings = file.lighting;
+            self.navigation = file.navigation;
+        } else if let Some(e) = self.entry_mut(id) {
+            e.stash = Some(Box::new((file.lighting, file.navigation)));
+        }
+        self.spawn_into = Some(id);
+        let spawned = self.spawn_entries(file.objects, None, &mut report);
+        self.spawn_into = None;
+        let roots = spawned
+            .into_iter()
+            .filter(|e| self.parent(*e).is_none())
+            .collect();
+        Ok((roots, report))
+    }
+
     /// Remove a scene's objects but keep it listed (greyed out). The last loaded scene can't
     /// be unloaded; unloading the active scene makes the first other loaded scene active.
     pub fn unload_scene(&mut self, id: SceneId) -> Result<(), String> {
@@ -463,6 +495,34 @@ mod tests {
         s.set_parent(light, Some(roots[0]), None, true);
         assert_eq!(s.scene_of(light), id);
         assert!(s.roots_in(0).is_empty());
+    }
+
+    #[test]
+    fn reload_scene_replaces_only_that_scenes_objects() {
+        let mut s = Scene::default_3d("Main");
+        let (id, _, _) = s.load_additive("Assets/Level.scene", &level()).unwrap();
+        // The file changed on disk: a new object and other lighting.
+        let mut changed = Scene::new("Level");
+        changed.spawn("Floor", None);
+        changed.spawn("Barrel", None);
+        let text = changed.to_json();
+        let (roots, report) = s.reload_scene(id, &text).unwrap();
+        assert!(report.warnings.is_empty());
+        assert_eq!(names(&s, &roots), ["Floor", "Barrel"]);
+        assert!(s.find_by_name("Crate").is_none());
+        assert_eq!(s.roots_in(0).len(), 2, "Main keeps its objects");
+        assert_eq!(s.scene_settings(id).0.skybox.kind, SkyboxKind::default());
+        assert_eq!(s.scene_name(id), "Level");
+        assert_eq!(s.scene_path(id).as_deref(), Some("Assets/Level.scene"));
+        // The active scene's lighting is the world's.
+        assert!(s.reload_scene(0, &level()).is_ok());
+        assert_eq!(s.render_settings.skybox.kind, SkyboxKind::SolidColor);
+        assert_eq!(s.name, "Main");
+        assert!(s.reload_scene(id, "{ broken").is_err());
+        assert!(
+            s.find_by_name("Barrel").is_some(),
+            "a broken file changes nothing"
+        );
     }
 
     #[test]

@@ -241,22 +241,26 @@ pub fn model(rel: &str) -> Result<Arc<Model>, String> {
     result
 }
 
-/// Forget models whose files changed (checked at most twice a second). Returns true if any did.
-pub fn poll_changes() -> bool {
+/// Forget models whose files changed (checked at most twice a second). Returns their paths.
+pub fn poll_changes() -> Vec<String> {
     let mut lib = library();
     let now = Instant::now();
     if lib
         .last_poll
         .is_some_and(|t| now.duration_since(t).as_secs_f32() < 0.5)
     {
-        return false;
+        return Vec::new();
     }
     lib.last_poll = Some(now);
-    let before = lib.entries.len();
-    lib.entries
-        .retain(|rel, e| e.modified == mtime(&assets::absolute(rel)));
-    let changed = lib.entries.len() != before;
-    if changed {
+    let mut changed = Vec::new();
+    lib.entries.retain(|rel, e| {
+        let same = e.modified == mtime(&assets::absolute(rel));
+        if !same {
+            changed.push(rel.clone());
+        }
+        same
+    });
+    if !changed.is_empty() {
         lib.generation += 1;
     }
     changed

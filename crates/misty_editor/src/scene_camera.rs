@@ -45,6 +45,17 @@ impl Pose {
     }
 }
 
+/// A saved Scene view camera ([`SceneCamera::state`]).
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CameraState {
+    pub pivot: [f32; 3],
+    pub yaw: f32,
+    pub pitch: f32,
+    pub distance: f32,
+    pub orthographic: bool,
+    pub in_2d: bool,
+}
+
 /// Named axis views reachable from the scene gizmo.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AxisView {
@@ -371,6 +382,44 @@ impl SceneCamera {
         if let Some((_, to, _)) = self.anim.take() {
             self.pose = to;
         }
+    }
+
+    /// Everything needed to put the view back exactly (the restore file of a restart).
+    pub fn state(&self) -> CameraState {
+        // Mid-animation, the pose being animated to is where the view is going.
+        let p = self.anim.map_or(self.pose, |(_, to, _)| to);
+        CameraState {
+            pivot: p.pivot.to_array(),
+            yaw: p.yaw,
+            pitch: p.pitch,
+            distance: p.distance,
+            orthographic: self.orthographic,
+            in_2d: self.in_2d,
+        }
+    }
+
+    /// Put the view back as [`Self::state`] gave it (non-finite values are ignored).
+    pub fn set_state(&mut self, st: &CameraState) {
+        let pivot = Vec3::from(st.pivot);
+        let ok = pivot.is_finite()
+            && st.yaw.is_finite()
+            && st.pitch.is_finite()
+            && st.distance.is_finite()
+            && st.distance > 0.0;
+        if !ok {
+            return;
+        }
+        self.pose = Pose {
+            pivot,
+            yaw: st.yaw,
+            pitch: st.pitch,
+            distance: st.distance,
+        };
+        self.anim = None;
+        self.orthographic = st.orthographic;
+        self.in_2d = st.in_2d;
+        self.snapped = None;
+        self.saved_3d = None;
     }
 
     /// Snap to an axis view (scene gizmo cone): orthographic, looking at the pivot.

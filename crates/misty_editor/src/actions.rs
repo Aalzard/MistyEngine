@@ -167,6 +167,12 @@ pub enum Action {
     OpenScenePath(String),
     SaveScene,
     SaveSceneAs,
+    /// File ▸ Reload Scene (Ctrl+Shift+R): load the open scenes from disk again.
+    ReloadScene,
+    /// Help ▸ Developer ▸ Rebuild & Restart (editors run from a source checkout).
+    RebuildAndRestart,
+    /// The "New build — Restart" pill: restart into the newer build.
+    RestartIntoNewBuild,
     /// Open a scene by path next to the open ones (Project window ▸ Open Scene Additive).
     OpenSceneAdditive(String),
     /// A Hierarchy scene header command.

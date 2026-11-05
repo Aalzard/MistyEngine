@@ -401,6 +401,16 @@ impl AssetDatabase {
         Ok(())
     }
 
+    /// Read a material's file again (it changed on disk). Returns whether its values changed.
+    pub fn reload_material(&mut self, rel: &str) -> Result<bool, String> {
+        let m = Material::load(&self.absolute(rel))?;
+        if self.materials.get(rel) == Some(&m) {
+            return Ok(false);
+        }
+        self.materials.insert(rel.to_owned(), m);
+        Ok(true)
+    }
+
     /// Store an edited material and write it to disk.
     pub fn update_material(&mut self, rel: &str, m: Material) -> Result<(), String> {
         m.save(&self.absolute(rel))?;

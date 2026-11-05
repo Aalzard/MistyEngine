@@ -4,8 +4,9 @@
 //! ([`modify_region`]) so the renderer uploads only that part; other changes count as full.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Instant, SystemTime};
 
 use super::data::TerrainData;
 use crate::assets;
@@ -59,6 +60,10 @@ struct Entry {
     log: std::collections::VecDeque<(u64, Region)>,
     /// Readers older than this version need everything again.
     full_at: u64,
+    /// File time when the data was last read from or written to disk.
+    disk: Option<SystemTime>,
+    /// `version` at that moment: a higher version has changes not on disk yet.
+    clean: u64,
 }
 
 impl Entry {
@@ -68,14 +73,27 @@ impl Entry {
             version,
             log: Default::default(),
             full_at: version,
+            disk: None,
+            clean: version,
         }
     }
+
+    /// Read from disk just now (`path` is the file).
+    fn loaded(mut self, path: &Path) -> Self {
+        self.disk = mtime(path);
+        self
+    }
+}
+
+fn mtime(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 #[derive(Default)]
 struct Store {
     entries: HashMap<PathBuf, Entry>,
     next_version: u64,
+    last_poll: Option<Instant>,
 }
 
 impl Store {
@@ -90,7 +108,8 @@ impl Store {
         if !self.entries.contains_key(&key) {
             let version = self.bump();
             let data = TerrainData::load(&key).map(Arc::new);
-            self.entries.insert(key.clone(), Entry::new(data, version));
+            self.entries
+                .insert(key.clone(), Entry::new(data, version).loaded(&key));
         }
         self.entries.get_mut(&key).expect("just inserted")
     }
@@ -122,10 +141,11 @@ pub fn error(path: &str) -> Option<String> {
 pub fn insert(path: &str, data: TerrainData) {
     let mut s = store();
     let version = s.bump();
-    s.entries.insert(
-        assets::absolute(path),
-        Entry::new(Ok(Arc::new(data)), version),
-    );
+    let key = assets::absolute(path);
+    let mut entry = Entry::new(Ok(Arc::new(data)), version).loaded(&key);
+    // Not what the file holds (until it is saved).
+    entry.clean = 0;
+    s.entries.insert(key, entry);
 }
 
 /// Change the data at `path` in place; `None` when it isn't loaded.
@@ -178,8 +198,51 @@ pub fn changes_since(path: &str, since: u64) -> Option<Region> {
 
 /// Write the data at `path` to its file.
 pub fn save(path: &str) -> Result<(), String> {
-    let (data, _) = get(path).ok_or_else(|| format!("{path} is not loaded"))?;
-    data.save(&assets::absolute(path))
+    let (data, version) = get(path).ok_or_else(|| format!("{path} is not loaded"))?;
+    let key = assets::absolute(path);
+    data.save(&key)?;
+    // The file now holds this version: it doesn't count as changed on disk.
+    if let Some(e) = store().entries.get_mut(&key)
+        && e.version == version
+    {
+        e.disk = mtime(&key);
+        e.clean = version;
+    }
+    Ok(())
+}
+
+/// Re-read terrains whose files changed on disk since they were read or saved (checked at most
+/// twice a second). A terrain with edits not saved yet keeps them (its next save wins).
+/// Returns the reloaded files.
+pub fn poll_changes() -> Vec<PathBuf> {
+    let mut s = store();
+    let now = Instant::now();
+    if s.last_poll
+        .is_some_and(|t| now.duration_since(t).as_secs_f32() < 0.5)
+    {
+        return Vec::new();
+    }
+    s.last_poll = Some(now);
+    let changed: Vec<PathBuf> = s
+        .entries
+        .iter()
+        .filter(|(key, e)| e.version == e.clean && e.disk.is_some() && mtime(key) != e.disk)
+        .map(|(key, _)| key.clone())
+        .collect();
+    let mut reloaded = Vec::new();
+    for key in changed {
+        // Still being written (or unreadable): try again on a later poll.
+        let Ok(data) = TerrainData::load(&key) else {
+            continue;
+        };
+        let version = s.bump();
+        s.entries.insert(
+            key.clone(),
+            Entry::new(Ok(Arc::new(data)), version).loaded(&key),
+        );
+        reloaded.push(key);
+    }
+    reloaded
 }
 
 /// Forget `path` so the next use reads the file again.

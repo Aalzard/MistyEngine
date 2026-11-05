@@ -26,6 +26,7 @@ mod layout;
 mod layouts;
 mod light_probe_tools;
 mod lightmap_tools;
+mod live_reload;
 mod material_preview;
 mod menu_bar;
 mod mesh_builder;
@@ -74,8 +75,6 @@ mod sample_cycles_room;
 #[cfg(test)]
 mod sample_hdri;
 #[cfg(test)]
-mod sample_meadow;
-#[cfg(test)]
 mod sample_input;
 #[cfg(test)]
 mod sample_light_glow;
@@ -87,6 +86,8 @@ mod sample_lighting;
 mod sample_lightmap;
 #[cfg(test)]
 mod sample_materials;
+#[cfg(test)]
+mod sample_meadow;
 #[cfg(test)]
 mod sample_mesh_builder;
 #[cfg(test)]
@@ -223,6 +224,11 @@ fn parse_args() -> Result<Start, String> {
                 }
                 Err(e) => Err(format!("build failed: {e}")),
             }
+        }
+        // A restart into a new build (`live_reload::dev_build`): the session to put back.
+        [flag, file] if flag == "--restore" => {
+            let project = live_reload::restore::set_pending(Path::new(file))?;
+            Ok(Start::Editor(project))
         }
         [flag, rest @ ..] if flag == "--run-tests" => {
             // Headless test run for CI: JUnit XML and the exit code (see `testing::cli`).

@@ -36,6 +36,21 @@ impl TimelineStore {
         Ok(&self.timelines[path])
     }
 
+    /// Assets read so far (watched for changes on disk).
+    pub fn loaded_paths(&self) -> Vec<String> {
+        self.timelines.keys().cloned().collect()
+    }
+
+    /// Read an asset's file again (it changed on disk). Returns whether it changed.
+    pub fn reload_from_disk(&mut self, path: &str) -> Result<bool, String> {
+        let fresh = TimelineAsset::load(&self.root.join(path))?;
+        if self.timelines.get(path) == Some(&fresh) {
+            return Ok(false);
+        }
+        self.timelines.insert(path.to_owned(), fresh);
+        Ok(true)
+    }
+
     pub fn snapshot(&mut self, path: &str) -> Option<ClipSnapshot> {
         self.get(path)
             .ok()

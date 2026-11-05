@@ -612,21 +612,26 @@ impl TextureCache {
             .is_some_and(|c| c.view.is_some())
     }
 
-    /// Drop textures whose files changed (checked at most twice a second); they reload on next use.
-    pub fn poll_changes(&mut self) -> bool {
+    /// Drop textures whose files changed (checked at most twice a second); they reload on next
+    /// use. Returns the changed paths (each once, whatever kinds of it were loaded).
+    pub fn poll_changes(&mut self) -> Vec<String> {
         let now = Instant::now();
         if self
             .last_poll
             .is_some_and(|t| now.duration_since(t).as_secs_f32() < 0.5)
         {
-            return false;
+            return Vec::new();
         }
         self.last_poll = Some(now);
-        let before = self.textures.len();
-        self.textures
-            .retain(|(rel, _), c| c.modified == stamps(rel));
-        let changed = self.textures.len() != before;
-        if changed {
+        let mut changed = Vec::new();
+        self.textures.retain(|(rel, _), c| {
+            let same = c.modified == stamps(rel);
+            if !same && !changed.contains(rel) {
+                changed.push(rel.clone());
+            }
+            same
+        });
+        if !changed.is_empty() {
             self.sets.clear();
         }
         changed

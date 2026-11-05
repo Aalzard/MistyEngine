@@ -84,7 +84,7 @@ pub fn load(root: &Path) -> (Layouts, DockState<Tab>) {
 
 /// Screen rects are recomputed every frame; zero them so files stay stable and
 /// never contain infinities (which JSON can't hold).
-fn normalized(dock: &DockState<Tab>) -> DockState<Tab> {
+pub(crate) fn normalized(dock: &DockState<Tab>) -> DockState<Tab> {
     let mut dock = dock.clone();
     for (_, node) in dock.iter_all_nodes_mut() {
         match node {

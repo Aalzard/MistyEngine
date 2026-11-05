@@ -118,6 +118,10 @@ pub enum AfterPrompt {
     CloseOthers(SceneId),
     /// Install the available update (the editor restarts).
     InstallUpdate,
+    /// File ▸ Reload Scene: load every open scene from disk again.
+    ReloadScenes,
+    /// Restart into a newer build of the editor (dev builds, see `live_reload::dev_build`).
+    Restart,
 }
 
 /// Scene file state held by the editor.
@@ -186,6 +190,19 @@ pub fn dirty_now(s: &EditorState) -> Vec<SceneId> {
         .collect()
 }
 
+/// After one scene was reloaded or saved: the editor is clean again unless another loaded scene
+/// still differs from its file.
+pub(crate) fn recheck_dirty(s: &mut EditorState) {
+    let scene = &s.scene;
+    let saved = &s.files.saved;
+    let changed = scene
+        .loaded_scenes()
+        .into_iter()
+        .any(|id| saved.get(&id) != Some(&hash(&scene.scene_to_json(id))));
+    s.scene_dirty = s.scene_dirty && changed;
+    s.files.dirty = dirty_now(s);
+}
+
 /// Update the dirty list (at most a few times a second with several scenes open).
 pub fn refresh_dirty(s: &mut EditorState) {
     // Play mode changes are thrown away on Stop: keep showing the Edit-mode state.
@@ -212,7 +229,9 @@ fn at_risk(s: &EditorState, action: &AfterPrompt) -> Vec<SceneId> {
         | AfterPrompt::Open(_)
         | AfterPrompt::Quit
         | AfterPrompt::OpenHub(_)
-        | AfterPrompt::InstallUpdate => dirty,
+        | AfterPrompt::InstallUpdate
+        | AfterPrompt::ReloadScenes
+        | AfterPrompt::Restart => dirty,
         AfterPrompt::Unload(id) | AfterPrompt::Remove(id) => {
             dirty.into_iter().filter(|d| d == id).collect()
         }
@@ -289,6 +308,8 @@ pub fn perform(s: &mut EditorState, action: AfterPrompt) -> bool {
         AfterPrompt::Remove(id) => crate::open_scenes::remove(s, id),
         AfterPrompt::CloseOthers(id) => crate::open_scenes::close_others(s, id),
         AfterPrompt::InstallUpdate => s.updater.install(),
+        AfterPrompt::ReloadScenes => crate::live_reload::scenes::reload_all(s),
+        AfterPrompt::Restart => s.live.restart_now = true,
     }
     false
 }
@@ -320,6 +341,7 @@ pub fn load(s: &mut EditorState, rel: &str) -> bool {
                 s.console.warn(format!("{rel}: {w}"));
             }
             remember(s, rel);
+            crate::live_reload::scenes::note_disk(s, rel);
             s.console.info(format!("Opened {rel}"));
             true
         }
@@ -421,6 +443,7 @@ pub(crate) fn write(s: &mut EditorState, id: SceneId, rel: &str) -> bool {
                 s.scene_dirty = false;
             }
             remember(s, rel);
+            crate::live_reload::scenes::note_disk(s, rel);
             s.project.refresh();
             s.console.info(format!("Saved {rel}"));
             true

@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_RUN_TESTS` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
+//! `MISTY_PLAY` / `MISTY_RUN_TESTS` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 
 use std::path::PathBuf;
@@ -184,6 +184,21 @@ pub fn apply_env(
         crate::panels::timeline::sync_target(s);
         s.timeline.time = t.max(0.0);
         s.timeline.preview = true;
+    }
+    // `MISTY_RELOAD_BAR=1` shows the "changed on disk — Reload / Keep mine" bar for the active
+    // scene; `MISTY_RELOAD_TOAST=3` the "Reloaded 3 assets" toast (live reload screenshots;
+    // `MISTY_FAKE_NEW_BUILD=1` shows the "New build — Restart" pill, see `live_reload`).
+    if std::env::var_os("MISTY_RELOAD_BAR").is_some()
+        && let Some(rel) = s.scene.active_path()
+    {
+        s.live.scenes.conflicts.push(rel);
+    }
+    if let Some(n) = std::env::var("MISTY_RELOAD_TOAST")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        let text = crate::live_reload::reloaded_text(n);
+        s.live.toast(text);
     }
     // `MISTY_UNDO_DEMO=1` makes a few named edits (for Undo History screenshots).
     if std::env::var_os("MISTY_UNDO_DEMO").is_some() {

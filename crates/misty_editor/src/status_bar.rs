@@ -8,15 +8,23 @@ use crate::state::EditorState;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     ui.horizontal(|ui| {
-        let text = match state.console.last() {
-            Some(e) => RichText::new(format!("{} {}", e.level.icon(), first_line(&e.message)))
-                .color(e.level.color()),
-            None => RichText::new(""),
-        };
-        let resp = ui.add(egui::Label::new(text).truncate().sense(Sense::click()));
-        if resp.clicked() {
-            state.push(Action::FocusTab(Tab::Console));
-        }
+        // Right: "Reloaded 3 assets" and rebuild progress; the console line fills the rest.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            crate::live_reload::status_items(ui, state);
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                let text = match state.console.last() {
+                    Some(e) => {
+                        RichText::new(format!("{} {}", e.level.icon(), first_line(&e.message)))
+                            .color(e.level.color())
+                    }
+                    None => RichText::new(""),
+                };
+                let resp = ui.add(egui::Label::new(text).truncate().sense(Sense::click()));
+                if resp.clicked() {
+                    state.push(Action::FocusTab(Tab::Console));
+                }
+            });
+        });
     });
 }
 

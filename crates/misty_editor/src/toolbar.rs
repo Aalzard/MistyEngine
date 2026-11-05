@@ -30,6 +30,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             if crate::updater::ui::update_button(ui, &state.updater) {
                 crate::updater::editor::request_install(state);
             }
+            // Green "New build — Restart" pill (dev builds), while a newer build is ready.
+            if crate::live_reload::dev_build::pill(ui, state) {
+                state.push(Action::RestartIntoNewBuild);
+            }
         });
     });
 

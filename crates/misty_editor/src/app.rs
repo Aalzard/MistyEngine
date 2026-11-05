@@ -52,8 +52,14 @@ impl EditorApp {
         scene_files::restore_scene_view(&mut state);
         let (saved_layouts, dock) = layouts::load(&state.project.root);
         state.layouts = saved_layouts;
-        let layout_autosave = Autosave::new(&state.layouts, &dock);
         let mut dock = dock;
+        // A restart into a new build (`misty --restore <file>`): put the session back.
+        if let Some(r) = crate::live_reload::restore::take_pending(&state.project.root) {
+            crate::live_reload::restore::apply(&mut state, &mut dock, r);
+        }
+        let layout_autosave = Autosave::new(&state.layouts, &dock);
+        // Run from a source checkout: watch target/ for newer builds of the editor.
+        state.live.dev = crate::live_reload::dev_build::DevBuild::detect();
         let capture = Capture::from_env();
         if capture.is_some() {
             crate::capture::apply_env(&mut state, &mut dock);
@@ -205,6 +211,7 @@ impl EditorApp {
             (ctrl, Key::O, Action::OpenScene),
             (ctrl, Key::S, Action::SaveScene),
             (ctrl_shift, Key::S, Action::SaveSceneAs),
+            (ctrl_shift, Key::R, Action::ReloadScene),
             (ctrl_shift, Key::B, Action::OpenBuildSettings),
             (ctrl, Key::B, Action::BuildAndRun),
             (ctrl_shift, Key::N, create_empty),
@@ -419,6 +426,15 @@ impl EditorApp {
             Action::SaveSceneAs => {
                 scene_files::save_as(s);
             }
+            Action::ReloadScene => {
+                if let Some(a) = scene_files::guard(s, AfterPrompt::ReloadScenes) {
+                    scene_files::perform(s, a);
+                }
+            }
+            Action::RebuildAndRestart => {
+                crate::live_reload::dev_build::start_rebuild(s, Some(ctx.clone()))
+            }
+            Action::RestartIntoNewBuild => crate::live_reload::dev_build::request_restart(s),
 
             Action::Build => build_settings::build(s, false, true),
             Action::BuildAndRun => build_settings::build(s, true, false),
@@ -478,10 +494,12 @@ impl EditorApp {
         if crate::panels::test_runner::tick(s) {
             ctx.request_repaint();
         }
+        let mut renderer_reloaded = Vec::new();
         if let Some(gpu) = self.gpu.as_mut() {
-            // Textures and models reload when their files change (Edit mode only).
+            // Textures, models, shaders and effect graphs reload when their files change (Edit
+            // mode only).
             if !s.play.in_play_mode() {
-                gpu.renderer.reload_changed_assets();
+                renderer_reloaded = gpu.renderer.reload_changed_assets();
             }
             for w in gpu.renderer.take_warnings() {
                 s.console.warn(w);
@@ -511,6 +529,10 @@ impl EditorApp {
             // Assets added, copied or moved outside the editor get meta files and show up.
             if s.assets.poll_guids() {
                 s.refresh_assets();
+            }
+            // Open scenes and editor-held assets follow their files (see `live_reload`).
+            if crate::live_reload::frame(s, renderer_reloaded) {
+                ctx.request_repaint();
             }
             return;
         }
@@ -590,6 +612,43 @@ impl EditorApp {
         });
     }
 
+    /// Restart into the new build: write the restore file, start the new exe with
+    /// `--restore`, then close (scenes were saved or discarded at the prompt before).
+    fn restart(&mut self, ctx: &egui::Context) {
+        let dock = self.saved_dock.as_ref().unwrap_or(&self.dock);
+        let file = match crate::live_reload::restore::write(&self.state, dock) {
+            Ok(f) => f,
+            Err(e) => {
+                self.state.console.log(
+                    LogLevel::Error,
+                    format!("Restart: could not write the restore file: {e}"),
+                );
+                return;
+            }
+        };
+        // What on_exit would save, before the new process reads it.
+        self.save_layout(true);
+        scene_files::remember_scene_view(&self.state);
+        match self.state.live.dev.launch(&file) {
+            Ok((exe, note)) => {
+                if let Some(n) = note {
+                    self.state.console.info(n);
+                }
+                self.state
+                    .console
+                    .info(format!("Restarting into {}…", exe.display()));
+                self.state.files.quit_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&file);
+                self.state
+                    .console
+                    .log(LogLevel::Error, format!("Restart failed: {e}"));
+            }
+        }
+    }
+
     /// The user is mid-interaction: a mouse button is down or a text field has focus.
     fn interacting(ctx: &egui::Context) -> bool {
         ctx.input(|i| i.pointer.any_down()) || ctx.egui_wants_keyboard_input()
@@ -638,6 +697,18 @@ impl eframe::App for EditorApp {
         egui::Panel::bottom("status_bar")
             .frame(bar_frame)
             .show(ui, |ui| status_bar::show(ui, &mut self.state));
+        // "X.scene changed on disk — Reload / Keep mine" (non-modal, under the toolbar).
+        if !self.state.live.scenes.conflicts.is_empty() {
+            egui::Panel::top("scene_changed_bar")
+                .frame(
+                    egui::Frame::new()
+                        .fill(crate::live_reload::scenes::BAR_FILL)
+                        .inner_margin(egui::Margin::symmetric(10, 4)),
+                )
+                .show(ui, |ui| {
+                    crate::live_reload::scenes::bar(ui, &mut self.state)
+                });
+        }
         // Before the panels, so arrow keys and Enter reach the palette first.
         crate::search::palette::show(&ctx, &mut self.state);
 
@@ -707,7 +778,14 @@ impl eframe::App for EditorApp {
         crate::panels::navigation::poll(&mut self.state);
         self.state.undo.end_frame(Self::interacting(&ctx));
         crate::updater::editor::frame(&ctx, &mut self.state);
+        // Dev builds: a newer exe in target/, a rebuild finishing.
+        if crate::live_reload::dev_build::frame(&mut self.state) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        }
         self.scene_file_frame(&ctx);
+        if std::mem::take(&mut self.state.live.restart_now) {
+            self.restart(&ctx);
+        }
         self.save_layout(false);
         if let Some(capture) = &mut self.capture {
             capture.update(&ctx);
