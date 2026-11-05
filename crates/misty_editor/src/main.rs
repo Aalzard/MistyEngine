@@ -88,6 +88,8 @@ mod sample_reflections;
 #[cfg(test)]
 mod sample_render;
 #[cfg(test)]
+mod sample_rigging;
+#[cfg(test)]
 mod sample_shadows;
 #[cfg(test)]
 mod sample_stress;

@@ -9,6 +9,8 @@ mod nav;
 mod physics;
 #[path = "physics2d_gizmos.rs"]
 mod physics2d;
+#[path = "rig_gizmos.rs"]
+mod rig;
 
 use glam::{Mat4, Vec3};
 use misty_engine::models;
@@ -337,6 +339,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.nav_shapes(scene, e);
         lines.fog_volume(scene, e);
     }
+    lines.rigging(scene, selection);
     lines
 }
 

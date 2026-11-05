@@ -56,6 +56,8 @@ pub struct AnimationWindow {
     pub(crate) preview_root: Option<Entity>,
     /// Original values of everything the preview touched.
     pub(crate) backup: HashMap<(Entity, Property), f32>,
+    /// Rigs evaluated on the previewed pose (put back when the preview ends).
+    pub(crate) rigs: misty_engine::rigging::RigState,
     /// Values right after sampling this frame (Record mode compares against them).
     pub(crate) baseline: Vec<(Entity, Property, f32)>,
     /// Undo/Redo ran this frame: their changes are not recorded as keys.

@@ -26,6 +26,7 @@ mod preset_asset;
 mod preset_fields;
 mod preset_picker;
 mod probe_editor;
+mod rig_editors;
 mod shader_material;
 mod slots;
 mod sprite_editors;

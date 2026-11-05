@@ -31,6 +31,7 @@ pub mod particles_api;
 pub mod physics2d_api;
 pub mod physics_api;
 pub mod render_settings_api;
+pub mod rigging_api;
 pub mod scene_api;
 pub mod syntax;
 pub mod terrain_api;
@@ -162,6 +163,8 @@ pub struct World {
     pub animation: AnimationPlayer,
     /// Animator state machines (`SetFloat`, `Play`, …).
     pub animator: AnimatorPlayer,
+    /// Animation Rigging memory (pre-rig poses, bind offsets, damping).
+    pub rigging: crate::rigging::RigState,
     /// Nav Mesh Agents and the scene's nav mesh.
     pub navigation: crate::navigation::NavRuntime,
     /// Input Manager axes (`Input.GetAxis`, `GetButton`).
@@ -249,6 +252,7 @@ impl ScriptHost {
             audio,
             animation: AnimationPlayer::new(project_root.clone()),
             animator: AnimatorPlayer::new(project_root.clone()),
+            rigging: Default::default(),
             axes: crate::input::InputManager::new(&settings.input),
             tags_layers: settings.tags_and_layers.clone(),
         });
@@ -630,6 +634,13 @@ impl ScriptHost {
         {
             profile_scope!("Animation.Update", Category::Animation);
             self.animate(time.delta);
+        }
+        {
+            // Rigs run on the animated pose, before LateUpdate and rendering.
+            profile_scope!("Animation.Rigging", Category::Animation);
+            self.with_world(|w| {
+                crate::rigging::evaluate(&mut w.scene, &mut w.rigging, time.delta, None)
+            });
         }
         {
             profile_scope!("Scripts.LateUpdate", Category::Scripts);
