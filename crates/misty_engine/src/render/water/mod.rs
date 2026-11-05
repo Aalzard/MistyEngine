@@ -42,6 +42,8 @@ const WATER_SRC: &str = concat!(
     "\n",
     include_str!("../shaders/screen_space.wgsl"),
     "\n",
+    include_str!("../screen_trace/shaders/screen_trace.wgsl"),
+    "\n",
     include_str!("../shaders/water.wgsl")
 );
 

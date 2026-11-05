@@ -43,6 +43,10 @@ pub struct PostSettings {
     /// Screen-space ambient occlusion (render/ao.rs).
     pub ao: AoSettings,
     pub contact_shadows: ContactShadowSettings,
+    /// Screen Space Global Illumination (render/screen_trace).
+    pub ssgi: super::SsgiSettings,
+    /// Screen Space Reflections (render/screen_trace).
+    pub ssr: super::SsrSettings,
     /// Volumetric clouds (off by default; drawn with the skybox).
     pub clouds: CloudsOverride,
 }
@@ -69,6 +73,8 @@ impl Default for PostSettings {
             sun_shafts: SunShaftSettings::default(),
             ao: AoSettings::default(),
             contact_shadows: ContactShadowSettings::default(),
+            ssgi: Default::default(),
+            ssr: Default::default(),
             clouds: CloudsOverride::default(),
         }
     }
@@ -112,6 +118,8 @@ impl PostSettings {
         }
         s.ao = AoSettings::from_override(&v.ambient_occlusion);
         s.contact_shadows = ContactShadowSettings::from_override(&v.contact_shadows);
+        s.ssgi = super::SsgiSettings::from_override(&v.screen_space_gi);
+        s.ssr = super::SsrSettings::from_override(&v.screen_space_reflections);
         s.clouds = v.clouds;
         s
     }

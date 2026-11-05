@@ -110,6 +110,7 @@ pub fn post_process_volume(ui: &mut Ui, state: &mut EditorState, e: Entity) -> b
     });
     v.clouds.active = active;
     ch |= super::post_volume_screen::sections(ui, &mut v);
+    ch |= super::post_volume_trace::sections(ui, &mut v);
     if ch {
         let _ = state.scene.world.insert_one(e, v);
     }

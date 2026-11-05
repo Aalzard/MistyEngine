@@ -28,7 +28,9 @@ pub(super) const MESH_SRC: &str = concat!(
     "\n",
     include_str!("probes/probes.wgsl"),
     "\n",
-    include_str!("shaders/screen_space.wgsl")
+    include_str!("shaders/screen_space.wgsl"),
+    "\n",
+    include_str!("screen_trace/shaders/screen_trace.wgsl")
 );
 /// Shadow-map depth and the selection mask.
 pub(super) const DEPTH_SRC: &str = concat!(
@@ -68,6 +70,8 @@ const TERRAIN_SRC: &str = concat!(
     "\n",
     include_str!("shaders/screen_space.wgsl"),
     "\n",
+    include_str!("screen_trace/shaders/screen_trace.wgsl"),
+    "\n",
     include_str!("shaders/terrain_vertex.wgsl"),
     "\n",
     include_str!("shaders/terrain_layers.wgsl"),
@@ -95,6 +99,8 @@ const GRASS_SRC: &str = concat!(
     include_str!("probes/probes.wgsl"),
     "\n",
     include_str!("shaders/screen_space.wgsl"),
+    "\n",
+    include_str!("screen_trace/shaders/screen_trace.wgsl"),
     "\n",
     include_str!("shaders/grass.wgsl")
 );
@@ -297,6 +303,8 @@ impl Pipelines {
                 lightmap[1],
                 // Screen-space AO and contact shadow texels (screen_space.rs).
                 entry(16, S::FRAGMENT, storage()),
+                // Screen-space GI and reflection texels (screen_trace).
+                entry(17, S::FRAGMENT, storage()),
                 // 2D lights and shadow maps (light2d.rs).
                 entry(super::light2d::BINDING, S::FRAGMENT, storage()),
             ],

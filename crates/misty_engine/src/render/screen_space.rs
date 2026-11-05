@@ -149,6 +149,8 @@ pub(super) struct ScreenFrame {
     resolve: wgpu::BindGroup,
     ao_size: (u32, u32),
     full: (u32, u32),
+    /// SSGI / SSR work of this render (they share the prepass).
+    pub trace: Option<super::screen_trace::TraceFrame>,
 }
 
 impl Renderer {
@@ -166,7 +168,8 @@ impl Renderer {
             frame.post.ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;
         let contact =
             frame.post.contact_shadows.active() && frame.lights.iter().any(|l| l.contact_shadows);
-        frame.shaded && (ao || contact)
+        // SSGI and SSR trace through the same prepass.
+        frame.shaded && (ao || contact || super::screen_trace::wanted(frame))
     }
 
     /// Set up this render's screen-space effects; `None` when they are off (or the view is
@@ -243,6 +246,17 @@ impl Renderer {
         };
         let buffer = &state.buffers[current];
         queue.write_buffer(buffer, 0, bytemuck::bytes_of(&header));
+        let trace = self.screen_trace.prepare(
+            device,
+            queue,
+            target,
+            frame,
+            &state.normal_view,
+            &state.depth_view,
+        );
+        let trace_buffer = trace
+            .as_ref()
+            .map_or(&self.screen_trace.off_buffer, |t| &t.buffer);
         let (lit, _) = draw_groups(
             device,
             &self.pipelines,
@@ -251,7 +265,7 @@ impl Renderer {
             &self.shadows,
             &self.probes,
             &self.lightmaps,
-            buffer,
+            [buffer, trace_buffer],
         );
         self.screen_space.frame_group = Some(lit);
 
@@ -270,6 +284,7 @@ impl Renderer {
             resolve: if current == 0 { resolve0 } else { resolve1 }.clone(),
             ao_size: state.ao_size,
             full,
+            trace,
         })
     }
 

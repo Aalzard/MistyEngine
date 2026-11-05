@@ -90,6 +90,8 @@
     "vignette",
     "sun_shafts",
     "ambient_occlusion",
-    "contact_shadows"
+    "contact_shadows",
+    "screen_space_gi",
+    "screen_space_reflections"
   ]
 }

@@ -224,6 +224,8 @@ pub struct SceneEffects {
     pub clouds: bool,
     /// Light halos and lens flares (also need Post Processing and Lighting).
     pub glows: bool,
+    /// Screen Space Global Illumination and Reflections (also need Post Processing).
+    pub screen_space: bool,
     pub post_processing: bool,
 }
 
@@ -234,6 +236,7 @@ impl Default for SceneEffects {
             fog: true,
             clouds: true,
             glows: true,
+            screen_space: true,
             post_processing: true,
         }
     }
