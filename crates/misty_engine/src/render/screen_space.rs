@@ -423,9 +423,9 @@ impl Renderer {
 /// How far grass is drawn into the prepass, by AO quality.
 fn grass_prepass_range(ao: crate::quality::Tier) -> Option<f32> {
     match ao {
-        crate::quality::Tier::Off | crate::quality::Tier::Low => Some(12.0),
-        crate::quality::Tier::Medium => Some(20.0),
-        crate::quality::Tier::High => Some(30.0),
+        crate::quality::Tier::Off | crate::quality::Tier::Low => Some(8.0),
+        crate::quality::Tier::Medium => Some(12.0),
+        crate::quality::Tier::High => Some(20.0),
     }
 }
 

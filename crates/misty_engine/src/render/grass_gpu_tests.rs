@@ -379,44 +379,63 @@ fn grass_shadow_proof() {
     };
     let view = shadow_proof_view();
     let (w, h) = (960, 720);
-    let mut halves = Vec::new();
-    for tier in [crate::quality::Tier::Off, crate::quality::Tier::High] {
+    use crate::quality::Tier;
+    let setups = [
+        ("off", Tier::Off, Tier::Off),
+        ("cascades", Tier::High, Tier::Off),
+        ("near map", Tier::Medium, Tier::Medium),
+    ];
+    let mut panels = Vec::new();
+    for (_, casters, map) in setups {
         let mut r = Renderer::with_queue(&device, &queue);
         let quality = QualityLevel {
-            grass_shadows: tier,
+            grass_shadows: casters,
+            grass_shadow_map: map,
             ..QualityLevel::high()
         };
         r.set_quality(&device, &quality);
         let target = r.create_target(&device, w, h);
-        halves.push(render(&device, &queue, &mut r, &target, &view, None, 24));
+        panels.push(render(&device, &queue, &mut r, &target, &view, None, 24));
     }
-    let mut out = image::RgbaImage::new(w * 2 + 8, h);
-    for (i, half) in halves.into_iter().enumerate() {
-        let img = image::RgbaImage::from_raw(w, h, half).unwrap();
-        image::imageops::replace(&mut out, &img, (i as u32 * (w + 8)) as i64, 0);
-    }
-    let path = screenshots().join("grass_shadows_on_vs_off.png");
-    out.save(&path).unwrap();
-    eprintln!(
-        "wrote {} (left: grass shadows off, right: on)",
-        path.display()
-    );
+    let strip = |names: &[usize], file: &str| {
+        let mut out =
+            image::RgbaImage::new(w * names.len() as u32 + 8 * (names.len() as u32 - 1), h);
+        for (k, &i) in names.iter().enumerate() {
+            let img = image::RgbaImage::from_raw(w, h, panels[i].clone()).unwrap();
+            image::imageops::replace(&mut out, &img, (k as u32 * (w + 8)) as i64, 0);
+        }
+        let path = screenshots().join(file);
+        out.save(&path).unwrap();
+        eprintln!("wrote {}", path.display());
+    };
+    // Off | on (High: cascades + the near map).
+    strip(&[0, 2], "grass_shadows_on_vs_off.png");
+    // The previous step (cascade casters only) | the near map.
+    strip(&[1, 2], "grass_shadows_near_map.png");
     // Cost at 1080p of the main shot, High with grass shadows off / on (a first run warms
     // the GPU clocks up).
     let view = meadow_view(Shot::WideGolden);
     gpu_median(&device, &queue, &view, &QualityLevel::high(), None);
-    for tier in [
-        crate::quality::Tier::Off,
-        crate::quality::Tier::Low,
-        crate::quality::Tier::Medium,
-        crate::quality::Tier::High,
+    for (casters, map) in [
+        (Tier::Off, Tier::Off),
+        (Tier::Medium, Tier::Off),
+        (Tier::Medium, Tier::Low),
+        (Tier::Medium, Tier::Medium),
+        (Tier::Medium, Tier::High),
+        (Tier::High, Tier::High),
     ] {
         let quality = QualityLevel {
-            grass_shadows: tier,
+            grass_shadows: casters,
+            grass_shadow_map: map,
             ..QualityLevel::high()
         };
         let ms = gpu_median(&device, &queue, &view, &quality, None);
-        eprintln!("high, grass shadows {}: {ms:.2} ms GPU", tier.label());
+        eprintln!(
+            "high, grass casters {}, near map {} ({} px): {ms:.2} ms GPU",
+            casters.label(),
+            map.label(),
+            quality.grass_shadow_map_size()
+        );
     }
 }
 

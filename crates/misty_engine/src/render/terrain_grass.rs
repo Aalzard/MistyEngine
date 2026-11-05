@@ -284,13 +284,81 @@ pub(super) struct GrassParams {
     camera: [f32; 4],
     /// x = caster range, y = caster share, z = 1 in shadow passes, w = ground tint.
     shadow: [f32; 4],
+    /// x = angle of one pixel (radians), y = 1 with temporal anti-aliasing.
+    screen: [f32; 4],
 }
 
 /// The built-in grass atlas: eight photographed specimens (leaf blades, timothy heads, open
 /// panicles) in 128×1024 cells, alpha keyed (see grass.wgsl).
 const ATLAS_PNG: &[u8] = include_bytes!("assets/grass_atlas.png");
 
-/// Upload the grass atlas with mips (sRGB) and its clamped trilinear sampler.
+/// Cells of the atlas (side by side).
+const ATLAS_CELLS: u32 = 8;
+
+/// Scale each cell's alpha in `mip` so as many texels pass the 0.5 alpha test as in the full
+/// image (`coverage` per cell): plain box filtering would let thin blades fade away (or bloat)
+/// in the distance. A binary search per cell (Castaño, "Computing Alpha Mipmaps").
+fn keep_coverage(mip: &mut image::RgbaImage, coverage: &[f32]) {
+    let (w, h) = mip.dimensions();
+    let cell_w = (w / ATLAS_CELLS).max(1);
+    for (c, &want) in coverage.iter().enumerate() {
+        let x0 = (c as u32 * cell_w).min(w - 1);
+        let x1 = (x0 + cell_w).min(w);
+        let share = |scale: f32| {
+            let mut n = 0;
+            for y in 0..h {
+                for x in x0..x1 {
+                    n += u32::from(mip.get_pixel(x, y)[3] as f32 * scale > 127.5);
+                }
+            }
+            n as f32 / ((x1 - x0) * h) as f32
+        };
+        let (mut lo, mut hi) = (0.25f32, 16.0f32);
+        for _ in 0..12 {
+            let mid = (lo * hi).sqrt();
+            if share(mid) < want {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        let scale = (lo * hi).sqrt();
+        for y in 0..h {
+            for x in x0..x1 {
+                let p = mip.get_pixel_mut(x, y);
+                p[3] = (p[3] as f32 * scale).round().min(255.0) as u8;
+            }
+        }
+    }
+}
+
+/// The atlas mip chain (sRGB), each level keeping the blades' alpha-tested coverage.
+fn atlas_mips(image: image::RgbaImage) -> Vec<image::RgbaImage> {
+    let mut chain = super::texture::mip_chain(image, true);
+    let (w, h) = chain[0].dimensions();
+    let cell_w = w / ATLAS_CELLS;
+    let coverage: Vec<f32> = (0..ATLAS_CELLS)
+        .map(|c| {
+            let mut n = 0;
+            for y in 0..h {
+                for x in c * cell_w..(c + 1) * cell_w {
+                    n += u32::from(chain[0].get_pixel(x, y)[3] > 127);
+                }
+            }
+            n as f32 / (cell_w * h) as f32
+        })
+        .collect();
+    // Down to cells two texels wide; smaller levels are only seen as specks.
+    for mip in chain.iter_mut().skip(1) {
+        if mip.width() >= ATLAS_CELLS * 2 {
+            keep_coverage(mip, &coverage);
+        }
+    }
+    chain
+}
+
+/// Upload the grass atlas with coverage-keeping mips (sRGB) and its clamped trilinear,
+/// anisotropic sampler (cards are seen at grazing angles).
 pub(super) fn atlas(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -298,7 +366,33 @@ pub(super) fn atlas(
     let image = image::load_from_memory(ATLAS_PNG)
         .expect("built-in grass atlas")
         .into_rgba8();
-    let view = super::texture::upload(device, queue, "misty grass atlas", image, true);
+    let (w, h) = image.dimensions();
+    let chain = atlas_mips(image);
+    let data: Vec<u8> = chain
+        .iter()
+        .flat_map(|m| m.as_raw().iter().copied())
+        .collect();
+    let texture = wgpu::util::DeviceExt::create_texture_with_data(
+        device,
+        queue,
+        &wgpu::TextureDescriptor {
+            label: Some("misty grass atlas"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: chain.len() as u32,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::LayerMajor,
+        &data,
+    );
+    let view = texture.create_view(&Default::default());
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
         label: Some("misty grass sampler"),
         address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -306,7 +400,7 @@ pub(super) fn atlas(
         mag_filter: wgpu::FilterMode::Linear,
         min_filter: wgpu::FilterMode::Linear,
         mipmap_filter: wgpu::MipmapFilterMode::Linear,
-        anisotropy_clamp: 4,
+        anisotropy_clamp: 16,
         ..Default::default()
     });
     (view, sampler)
@@ -345,7 +439,9 @@ pub(super) fn wind(s: &DetailSettings, zone: Option<&super::environment::Wind>) 
 }
 
 impl GrassParams {
-    /// Uniform of one terrain's grass; `shadow` = caster range and share for shadow passes.
+    /// Uniform of one terrain's grass; `shadow` = caster range and share for shadow passes,
+    /// `screen` = pixel angle, TAA on and the near shadow map's radius ([`GrassParams::screen`]).
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         s: &DetailSettings,
         origin: Vec3,
@@ -354,6 +450,7 @@ impl GrassParams {
         camera: Vec3,
         zone: Option<&super::environment::Wind>,
         shadow: Option<(f32, f32)>,
+        screen: [f32; 3],
     ) -> Self {
         let far = s.draw_distance.max(1.0);
         let [hr, hg, hb] = s.healthy_color.map(lin);
@@ -389,6 +486,7 @@ impl GrassParams {
                 if shadow.is_some() { 1.0 } else { 0.0 },
                 s.ground_tint.clamp(0.0, 1.0),
             ],
+            screen: [screen[0], screen[1], screen[2], 0.0],
         }
     }
 }

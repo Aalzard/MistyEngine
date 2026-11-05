@@ -336,7 +336,10 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 // Tufts: blades are pulled towards their tuft's centre and lean away from it
                 // (a root pulled out of the rectangle stays put, so chunks still add up).
                 let (centre, id) = tuft(root, cell, seed ^ 0x7f4a);
-                let pulled = centre + (root - centre) * (1.0 - 0.6 * clumping);
+                // Undergrowth stays spread out and fills the ground between the tufts.
+                let under = r(17) < 0.55;
+                let pull = if under { 0.15 } else { 0.6 };
+                let pulled = centre + (root - centre) * (1.0 - pull * clumping);
                 let inside = pulled.cmpge(lo).all() && pulled.cmplt(hi).all();
                 let p = if inside { pulled } else { root };
                 let away = p - centre;
@@ -366,7 +369,6 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 tall *=
                     (1.0 + hv * (0.9 * (lush - 0.35) - 0.55 * dry + 0.9 * (area - 0.5))).max(0.3);
                 // Most blades are short undergrowth below the taller ones.
-                let under = r(17) < 0.55;
                 if under {
                     tall *= 0.35 + 0.3 * r(18);
                 }
@@ -374,7 +376,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let seed_head = r(9) < s.seed_heads.clamp(0.0, 1.0) * (0.4 + 1.2 * patch);
                 // Undergrowth is broader and arches over: it fills the base of the canopy so
                 // little ground shows between the stems.
-                let mut width = s.width * (0.7 + 0.6 * r(5)) * if under { 1.6 } else { 1.0 };
+                let mut width = s.width * (0.7 + 0.6 * r(5)) * if under { 1.35 } else { 1.0 };
                 if seed_head {
                     tall *= 1.1 + 0.35 * r(10);
                     width = s.width.min(0.02) * 0.3;

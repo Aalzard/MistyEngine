@@ -227,6 +227,9 @@ pub struct QualityLevel {
     /// Terrain grass casts shadows near the camera: how far and how many blades (Off = no
     /// grass shadow casters; grass still receives shadows).
     pub grass_shadows: Tier,
+    /// A dedicated sharp shadow map of the grass around the camera (Off, 1024, 2048, 4096 px
+    /// over the nearest 12 m; full blade density).
+    pub grass_shadow_map: Tier,
 }
 
 impl Default for QualityLevel {
@@ -263,6 +266,7 @@ impl QualityLevel {
             volumetric_clouds: Tier::Low,
             sun_shafts: Tier::Off,
             grass_shadows: Tier::Off,
+            grass_shadow_map: Tier::Off,
         }
     }
 
@@ -293,6 +297,7 @@ impl QualityLevel {
             volumetric_clouds: Tier::Medium,
             sun_shafts: Tier::Medium,
             grass_shadows: Tier::Low,
+            grass_shadow_map: Tier::Low,
         }
     }
 
@@ -323,6 +328,7 @@ impl QualityLevel {
             volumetric_clouds: Tier::Medium,
             sun_shafts: Tier::Medium,
             grass_shadows: Tier::Medium,
+            grass_shadow_map: Tier::Medium,
         }
     }
 
@@ -339,6 +345,7 @@ impl QualityLevel {
             volumetric_clouds: Tier::High,
             sun_shafts: Tier::High,
             grass_shadows: Tier::High,
+            grass_shadow_map: Tier::High,
             ..Self::high()
         }
     }
@@ -426,6 +433,11 @@ impl QualityLevel {
             Tier::Medium => Some((20.0, 0.5)),
             Tier::High => Some((32.0, 0.6)),
         }
+    }
+
+    /// Side of the near-camera grass shadow map in pixels (1 = off).
+    pub fn grass_shadow_map_size(&self) -> u32 {
+        [1, 1024, 2048, 4096][self.grass_shadow_map.index() as usize]
     }
 
     /// Cube face size of baked/realtime reflection probes (0 = probes off).

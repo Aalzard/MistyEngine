@@ -78,6 +78,33 @@ Ground visible (final metric): 8.7 % wide golden, 4.4 % close golden.
     tier) write depth and the lit pass's normal, alpha tested, so GTAO, contact shadows, the shadow
     mask and SSGI/SSR see blades instead of the ground behind them.
 11. **Density cap** raised from 600 to 1500 blades/m².
+12. **Near-camera grass shadow map** (`grass_near_shadow.rs`): its own sun depth map of the grass
+    alone over a 24 m square around the camera (Quality ▸ Grass Shadow Map: Off on Low, 1024 on
+    Medium, 2048 on High, 4096 on Ultra), every blade (full density, coarse three-segment cards,
+    alpha tested), the centre snapped to whole texels of a world-fixed grid (no shimmer). Lit
+    shaders multiply a 3×3 PCF of hardware-filtered taps into the sun's shadow (`grass_near_shadow`
+    in mesh.wgsl, for meshes, terrain and grass) and fade it out over the last 30 % of its radius,
+    where the cascade casters fade in (they leave the near square to it). Group-1 bindings 8/9.
+13. **Grass density moved into the terrain normals' w** instead of its own texture: the terrain
+    pipeline hit the 16 sampled-textures-per-stage limit once the near map was added.
+14. **Blade texture:** coverage-preserving atlas mips (per cell, binary-searched alpha scale so the
+    share of texels passing the 0.5 test stays the mip-0 share; thin blades no longer fade or
+    bloat far away), 16× anisotropy, stronger photo detail (75 % instead of 40 %, fading only 60 %
+    far away), procedural veins, a midrib highlight and speckles close up, and the atlas alpha's
+    slope across the blade used as a normal map (rounded edges, midrib crease) and as a thickness
+    map (thin edges transmit more light).
+15. **Gaps:** undergrowth (55 % of blades) is no longer pulled into the tufts (15 % instead of 60 %
+    of the clumping pull), so it fills between them; tall blades stay clumped. MeadowDemo density
+    450 → 600 /m², clumping 0.6 → 0.4.
+16. **Ground under the grass:** MeadowDemo's ground is a generated tileable PBR set
+    (`MeadowThatch*.png`, 1024², 2.2 m tile): dark soil with moss under 16 000 strands of straw,
+    olive and green litter, with height and a normal map from it. Every terrain layer gets a
+    macro variation (the same texture 7× larger relative to its mean colour) against tiling. The
+    ground tint keeps the litter's light and dark spots and flattens the normal map under dense
+    grass. The old `MeadowGround*.png` are no longer referenced (left in place).
+17. **Thin stems:** blades thinner than 0.8 px are drawn 0.8 px wide and proportionally more
+    transparent, and with TAA the alpha-to-coverage value gets a per-frame noise so the history
+    averages it instead of showing a fixed dot pattern.
 
 ## Step log
 
@@ -89,3 +116,58 @@ Ground visible (final metric): 8.7 % wide golden, 4.4 % close golden.
 - Grass shadows looked absent in MeadowDemo: the golden-hour shot sits in a cloud shadow (Cloudy
   preset, shadow opacity 0.6) and the old 12 cm receive filter blurred 2 cm blade shadows away.
   Filter narrowed; the proof shot turns the cloud shadow off over the spot.
+- 02_meadow: MeadowDemo regenerated with the new settings and a Wind Zone; colour patches and wind
+  waves read at midday; the golden-hour wide shot still showed pale sparse dry patches.
+- 03_dense: density 450 → 600, clumping 0.6 → 0.4, dry 0.5 → 0.4, ground under grass darker and
+  keeping the soil's detail.
+- User feedback on 02: blades lack texture, gaps between clumps, ugly ground, low-quality shadows.
+  Steps 12–17 above answer it, in the order asked: near-camera shadow map
+  (`grass_shadows_near_map.png`: cascade casters only | near map), blade texture
+  (`grass_04_texture_vs_03_close_*.png`), gaps and ground (`grass_05_ground_*`).
+- 05_ground: final shots; `grass_05_vs_00_<shot>.png` are before (left) / after (right).
+
+## Results (MeadowDemo, 1920×1080, RTX 4060; before = 958ba90, same session, back to back)
+
+| quality | before | after | grass part before → after |
+|---|---|---|---|
+| High | 25.7 ms | 32.0 ms | 20.7 → 26.9 ms |
+| Medium | 23.6 ms | 27.8 ms | 19.5 → 23.6 ms |
+| Low | 18.7 ms | 19.1 ms | 16.6 → 16.8 ms |
+
+The after column has 33 % more blades (600/m²) and everything new on: grass in the AO prepass,
+cascade grass casters and the 2048² near grass shadow map on High (Medium: 1024² map, 12 m casters).
+Low (no grass shadows, no prepass grass) costs the same as before with the denser field, because the
+lean `shade_grass` pays for it. Earlier in the session, at the old density and without the near map
+and prepass, High was 17.3 ms (−8.4 ms).
+
+Grass shadow costs on High (proof run; GPU timings drift ±2 ms between runs): cascade casters
++0.5–1.7 ms, near map +1–3 ms (1024² ≈ 2048²; 4096² ≈ +1 ms more — the cost is the casters'
+geometry, not the resolution).
+
+Ground visible between blades (final metric): wide golden 9.1 % → 1.9 %, close golden 4.5 % →
+0.8 %. Synthetic test field: 17.3 % → 8.7 % (`grass_hides_the_ground` asserts < 20 %).
+
+## Tests (`render/grass_tests.rs`)
+
+- `grass_casts_and_receives_shadows`: grass shadows darken the field; a cube's shadow darkens the
+  grass beside it by > 15 %; casters add triangles only when on.
+- `grass_varies_across_the_field`: block colour spread (per row) > 1.3× a uniform field and > 10;
+  1 m cell mean heights spread > 2× a field without height variation.
+- `wind_waves_travel_across_the_field`: frames differ; the change between frames 1→2 reappears
+  shifted downwind between frames 2→3 (cross-correlation peak > 3 px).
+- `grass_hides_the_ground`: < 20 % ground visible in the standing shot.
+- `grass_shadows_off_cost_nothing`: Low has grass shadows off; with them off (quality or layer
+  switch) the frame draws exactly the triangles of a field that casts none.
+- `grass_near_shadow::tests`: the near map stays on its texel grid and covers the camera.
+- `wind_zone::tests`: the first enabled zone sets the wind; old files load.
+
+## Left / not done
+
+- **TAA motion vectors for wind:** there is no velocity buffer; moving blades still smear somewhat
+  under TAA (the coordinator measured ~20 % of pixels changing > 8 levels per frame at wind 0.12).
+  A per-vertex previous-frame displacement needs a motion target the TAA pass reads; not started.
+- **Faces away from a low sun going dark/blue:** not addressed beyond SSGI now seeing near blades.
+- **Several species / wildflowers per terrain:** not started (one detail layer per terrain).
+- High costs +6 ms over before at 33 % more blades; a cheaper near-map caster LOD (half density past
+  6 m) and a lower MeadowDemo density would bring it back if needed.
+- The near map is grass-only: other casters keep the cascades' resolution.

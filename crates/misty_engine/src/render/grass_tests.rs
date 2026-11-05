@@ -214,6 +214,7 @@ fn cube(at: Vec3, size: f32) -> MeshDraw {
 fn no_grass_shadows(q: &QualityLevel) -> QualityLevel {
     QualityLevel {
         grass_shadows: Tier::Off,
+        grass_shadow_map: Tier::Off,
         ..q.clone()
     }
 }
@@ -497,6 +498,11 @@ fn grass_shadows_off_cost_nothing() {
     let none = [field("cost_none", |s| s.cast_shadows = false)];
     let low = QualityLevel::low();
     assert_eq!(low.grass_shadows, Tier::Off, "Low keeps grass shadows off");
+    assert_eq!(
+        low.grass_shadow_map,
+        Tier::Off,
+        "and the near grass shadow map"
+    );
     let high = QualityLevel::high();
     let shot = Shot::standing(&grass, &[]);
     let (_, off) = shot.render(&device, &queue, &no_grass_shadows(&high));

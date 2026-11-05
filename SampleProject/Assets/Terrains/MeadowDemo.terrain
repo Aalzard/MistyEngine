@@ -10,12 +10,12 @@
   "layers": [
     {
       "name": "Meadow Ground",
-      "diffuse": "Assets/Textures/Meadow/MeadowGround.png",
-      "normal_map": "Assets/Textures/Meadow/MeadowGroundNormal.png",
+      "diffuse": "Assets/Textures/Meadow/MeadowThatch.png",
+      "normal_map": "Assets/Textures/Meadow/MeadowThatchNormal.png",
       "normal_scale": 1.0,
       "tile_size": [
-        3.5,
-        3.5
+        2.2,
+        2.2
       ],
       "tile_offset": [
         0.0,
@@ -23,7 +23,7 @@
       ],
       "metallic": 0.0,
       "smoothness": 0.05,
-      "height_map": "Assets/Textures/Meadow/MeadowGroundHeight.png",
+      "height_map": "Assets/Textures/Meadow/MeadowThatchHeight.png",
       "rules": {
         "enabled": true,
         "slope": [
@@ -150,7 +150,7 @@
       "priority": 0
     },
     "on_layer": 0,
-    "density": 450.0,
+    "density": 600.0,
     "draw_distance": 160.0,
     "height": [
       0.12,
@@ -175,7 +175,7 @@
       0.72,
       0.5
     ],
-    "clumping": 0.6,
+    "clumping": 0.4,
     "bend": 0.4,
     "translucency": 0.6,
     "tip_dryness": 0.2,
@@ -187,11 +187,11 @@
       0.07
     ],
     "lush_amount": 0.6,
-    "dry_amount": 0.5,
+    "dry_amount": 0.4,
     "color_variation": 0.6,
     "height_variation": 0.65,
-    "density_variation": 0.25,
-    "ground_tint": 0.92,
+    "density_variation": 0.2,
+    "ground_tint": 0.75,
     "cast_shadows": true,
     "wind_direction": 80.0,
     "gust_strength": 0.8,

@@ -7,8 +7,6 @@
 @group(3) @binding(4) var layer_normal: texture_2d_array<f32>;
 @group(3) @binding(5) var layer_height: texture_2d_array<f32>;
 @group(3) @binding(6) var layer_sampler: sampler;
-// Grass density 0..1 (the detail map, same texels as the splat map).
-@group(3) @binding(7) var grass_density: texture_2d<f32>;
 
 struct LayerSample {
     albedo: vec3<f32>,
@@ -25,6 +23,13 @@ fn layer_projection(i: u32, p: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>) -> Layer
     let dy = gy / t.xy;
     var s: LayerSample;
     s.albedo = textureSampleGrad(layer_albedo, layer_sampler, uv, i, dx, dy).rgb;
+    // Macro variation: the same texture ~7× larger, relative to its average colour (the last
+    // mip), breaks up the tiling without changing the mean.
+    let macro_uv = uv * 0.137 + vec2<f32>(0.31, 0.67);
+    let broad = textureSampleGrad(layer_albedo, layer_sampler, macro_uv, i, dx * 0.137, dy * 0.137).rgb;
+    let mean = textureSampleLevel(layer_albedo, layer_sampler, uv, i, 12.0).rgb;
+    let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
+    s.albedo *= clamp(mix(1.0, dot(broad, luma) / max(dot(mean, luma), 0.02), 0.6), 0.5, 1.6);
     let m = textureSampleGrad(layer_normal, layer_sampler, uv, i, dx, dy).xyz * 2.0 - 1.0;
     // Tangent-space normal here; `layer_sample` turns it into world space.
     s.normal = vec3<f32>(m.xy * terrain.surface[i].z, max(m.z, 1e-3));
@@ -106,10 +111,12 @@ fn terrain_surface(in: MeshOut) -> Surface {
     let dx = dpdx(in.world);
     let dy = dpdy(in.world);
     var wv = textureSample(splat_map, splat_sampler, in.uv);
-    let grass_cover = textureSample(grass_density, splat_sampler, in.uv).r;
     let res = terrain.grid.x;
     let nuv = (in.uv * (res - 1.0) + 0.5) / res;
-    let n = normalize(textureSample(terrain_normals, splat_sampler, nuv).xyz);
+    let normal_texel = textureSample(terrain_normals, splat_sampler, nuv);
+    let n = normalize(normal_texel.xyz);
+    // Grass density (normals w, terrain.rs).
+    let grass_cover = max(normal_texel.w, 0.0);
 
     // Channels past the layer count don't exist; normalise what's left.
     let count = u32(terrain.size.w);
@@ -193,8 +200,11 @@ fn terrain_surface(in: MeshOut) -> Surface {
         let patches = grass_patches(local.xz, terrain.grass_dry.w);
         let grass = grass_base_color(patches, 0.45, terrain.grass_healthy.rgb, terrain.grass_dry.rgb, terrain.grass_lush.rgb, terrain.grass_amounts.xy);
         let dist = distance(in.world, view.camera_pos.xyz);
-        let shade = mix(0.38, 0.8, smoothstep(0.15, 1.0, dist / terrain.grass_lush.w));
-        s.albedo = mix(s.albedo, grass * shade, tint);
+        let shade = mix(0.3, 0.7, smoothstep(0.15, 1.0, dist / terrain.grass_lush.w));
+        // The soil texture's light and dark spots stay as litter and shadowed stems.
+        let soil = dot(s.albedo, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let litter = clamp(0.55 + 1.2 * soil, 0.6, 1.4);
+        s.albedo = mix(s.albedo, grass * shade * litter, tint);
         s.smoothness *= 1.0 - tint;
         // Soil bumps do not show through a lawn.
         s.normal = normalize(mix(s.normal, n, 0.8 * tint));

@@ -328,6 +328,17 @@ impl Pipelines {
                 entry(6, S::FRAGMENT, uniform()),
                 // Rectangle lights' LTC table (area/area_light.wgsl).
                 entry(7, S::FRAGMENT, storage()),
+                // Near-camera grass shadow map and its uniform (grass_near_shadow.rs).
+                entry(
+                    8,
+                    S::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
+                entry(9, S::FRAGMENT, uniform()),
                 // Reflection probes (bindings 20–24, see probes/gpu.rs).
                 probe[0],
                 probe[1],
@@ -550,7 +561,6 @@ impl Pipelines {
             entry(4, S::FRAGMENT, array),
             entry(5, S::FRAGMENT, array),
             entry(6, S::FRAGMENT, filtering),
-            entry(7, S::FRAGMENT, filtered),
             entry(12, S::VERTEX, unfiltered),
             entry(13, S::VERTEX_FRAGMENT, filtered),
         ];

@@ -16,6 +16,7 @@ mod frame_lists;
 mod glow;
 mod gpu_culling;
 mod gpu_timer;
+mod grass_near_shadow;
 mod hdri_sky;
 mod light2d;
 mod lightmap_gpu;
@@ -652,9 +653,10 @@ impl Renderer {
             self.taa.clear();
         }
         let size = quality.shadow_map_size();
-        if size != self.shadows.directional_size {
-            self.shadows =
-                shadows::ShadowMaps::with_size(device, &self.pipelines.shadow_view_layout, size);
+        let near = quality.grass_shadow_map_size();
+        if size != self.shadows.directional_size || near != self.shadows.grass_near.size {
+            let layout = &self.pipelines.shadow_view_layout;
+            self.shadows = shadows::ShadowMaps::with_size(device, layout, size, near);
             let lists = [&self.draws_buffer, &self.slots_buffer];
             (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
                 device,
@@ -984,7 +986,7 @@ impl Renderer {
             ..self.quality.shadow_settings()
         };
         let view_proj = frame.camera.view_projection(aspect);
-        let (mut lists, plan, probes_rebuilt) = {
+        let (mut lists, plan, probes_rebuilt, near_sun) = {
             crate::profile_scope!("Render.Culling");
             let prep = self.draw_prep(frame, lod);
             let terrains = self.terrain_bounds(frame);
@@ -1000,6 +1002,20 @@ impl Renderer {
             let lists = self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats);
             let grass_layout = &self.pipelines.grass_layout;
             let camera = frame.camera.position;
+            // The sun that has the cascades gets the near grass shadow map too.
+            let near_sun = (self.shadows.grass_near.size > 1 && !plan.cascades.is_empty())
+                .then(|| {
+                    frame
+                        .lights
+                        .iter()
+                        .find(|l| {
+                            l.kind == crate::scene::LightType::Directional
+                                && l.shadows != crate::scene::Shadows::None
+                                && l.intensity > 0.0
+                        })
+                        .map(|l| l.direction)
+                })
+                .flatten();
             let first = frame.meshes.len();
             (self.terrains).select(
                 device,
@@ -1011,9 +1027,14 @@ impl Renderer {
                 grass_layout,
                 frame.environment,
                 self.quality.grass_shadow_casters(),
+                grass_screen(frame, target.size().1, taa_on),
+                near_sun.is_some(),
             );
-            (lists, plan, rebuilt)
+            (lists, plan, rebuilt, near_sun)
         };
+        // The near-camera grass shadow map follows the camera (off: its uniform says so).
+        let near_sun = near_sun.filter(|_| self.terrains.has_grass_near_shadow());
+        let grass_near = (self.shadows.grass_near).prepare(queue, near_sun, frame.camera.position);
         // GPU culling: opaque batches are built from every candidate and culled on the GPU.
         let culled = self.gpu_culling_active(frame).then(|| {
             let culled = self.gpu_batches(frame, &lists, lists.slots.len() as u32);
@@ -1088,6 +1109,9 @@ impl Renderer {
             self.water.simulate(&mut encoder);
         }
         self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+        if let Some(view_proj) = grass_near {
+            self.grass_near_shadow_pass(&mut encoder, frame, &view_proj, &mut stats);
+        }
         self.cloud_passes(device, &mut encoder);
         self.froxel_passes(device, &mut encoder, target);
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
@@ -1724,6 +1748,37 @@ impl Renderer {
         );
     }
 
+    /// Every blade near the camera into the near-camera grass shadow map.
+    fn grass_near_shadow_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        frame: &Frame,
+        view_proj: &glam::Mat4,
+        stats: &mut RenderStats,
+    ) {
+        let near = &self.shadows.grass_near;
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("misty grass near shadow"),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &near.view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_bind_group(0, &near.view_group, &[0]);
+        pass.set_bind_group(1, &self.draws_bind_group, &[]);
+        pass.set_pipeline(&self.pipelines.grass_shadow);
+        stats.set_pass += 1;
+        (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, view_proj, stats);
+    }
+
     fn mask_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -2203,6 +2258,15 @@ fn draw_groups(
                 binding: 7,
                 resource: ltc.as_entire_binding(),
             },
+            // Near-camera grass shadow map (grass_near_shadow.rs).
+            wgpu::BindGroupEntry {
+                binding: 8,
+                resource: wgpu::BindingResource::TextureView(&shadows.grass_near.view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 9,
+                resource: shadows.grass_near.uniform.as_entire_binding(),
+            },
             p0,
             p1,
             p2,
@@ -2256,6 +2320,17 @@ fn line_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
 }
 
 /// Sort distance of a world point: along the view axis when orthographic, else squared distance.
+/// Grass view values: x = angle of one pixel (radians, 0 = orthographic), y = 1 with TAA.
+fn grass_screen(frame: &Frame, height: u32, taa: bool) -> [f32; 2] {
+    let pixel = match frame.camera.projection {
+        crate::camera::Projection::Perspective { fov_y } => {
+            2.0 * (fov_y.to_radians() * 0.5).tan() / height.max(1) as f32
+        }
+        crate::camera::Projection::Orthographic { .. } => 0.0,
+    };
+    [pixel, if taa { 1.0 } else { 0.0 }]
+}
+
 fn camera_depth(cam: &Camera) -> impl Fn(Vec3) -> f32 + use<> {
     let (eye, forward) = (cam.position, cam.forward());
     let ortho = matches!(cam.projection, Projection::Orthographic { .. });

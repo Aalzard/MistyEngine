@@ -28,6 +28,9 @@ struct GrassParams {
     // x = caster range (m), y = share of the blades that cast, z = 1 in shadow passes,
     // w = ground tint.
     shadow: vec4<f32>,
+    // x = angle of one pixel (radians, 0 = orthographic), y = 1 with TAA, z = radius of the
+    // near-camera grass shadow map (cascade casters leave its inside to it; 0 = none).
+    screen: vec4<f32>,
 };
 
 @group(2) @binding(0) var<uniform> grass: GrassParams;
@@ -67,6 +70,9 @@ struct BladeVertex {
     fade: f32,
     cell: u32,
     seed_head: bool,
+    // Real width / drawn width: blades thinner than a pixel are drawn a pixel wide and this
+    // much transparent (no stippled coverage on thin stems).
+    thin: f32,
 };
 
 // Share of blades drawn at `dist` (terrain_grass.rs `keep_at`).
@@ -100,6 +106,9 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     var height = b.position.w * fade * (1.0 - smoothstep(keep * 0.7, keep, key));
     if (shadow) {
         height *= 1.0 - smoothstep(grass.shadow.x * 0.6, grass.shadow.x, dist);
+        if (grass.screen.z > 0.0) {
+            height *= smoothstep(grass.screen.z * 0.7, grass.screen.z, dist);
+        }
     }
     // Fewer blades cover the same ground by growing wider.
     let widen = min(inverseSqrt(keep), grass.look.z);
@@ -113,6 +122,12 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     if (!shadow && !seed_head) {
         let down = (grass.camera.y - root.y) / max(dist, 1e-3);
         width *= 1.0 + 0.9 * smoothstep(0.25, 0.85, down);
+    }
+    var thin = 1.0;
+    let least = dist * grass.screen.x * 0.8;
+    if (!shadow && width < least) {
+        thin = width / least;
+        width = least;
     }
 
     // Wind: gust waves rolling across the field, and a fast flutter whose phase runs along
@@ -165,5 +180,6 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     v.fade = fade;
     v.cell = cell;
     v.seed_head = seed_head;
+    v.thin = thin;
     return v;
 }
