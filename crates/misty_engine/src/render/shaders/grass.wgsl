@@ -50,12 +50,41 @@ fn canopy_top(p: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(max(top, 0.02), span * relief.yz, relief.x);
 }
 
+// Every vertex of a skipped blade lands on one point outside the view: nothing is rasterised.
+const GRASS_SKIP = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+
+// The lit grass: every blade in view, the flat fans of the blades the LOD shrank away too
+// (`grass_flat`: they test against the depth the standing blades wrote without writing their
+// own, see `vs_grass_depth`).
 @vertex
 fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
+    if (grass_outside(b, view.view_proj, true)) {
+        var out: GrassOut;
+        out.clip = GRASS_SKIP;
+        return out;
+    }
+    return grass_vertex(vi, b);
+}
+
+// The grass depth pass: the standing blades only. The flat fans of the blades the LOD shrank
+// away lie on the ground under them; the lit pass draws them against this depth without
+// writing any of their own (where fans overlap, the later one shows). Leaving them out here
+// halves what the depth pass rasterises.
+@vertex
+fn vs_grass_depth(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
+    if (grass_flat(b) || grass_outside(b, view.view_proj, true)) {
+        var out: GrassOut;
+        out.clip = GRASS_SKIP;
+        return out;
+    }
+    return grass_vertex(vi, b);
+}
+
+fn grass_vertex(vi: u32, b: BladeIn) -> GrassOut {
+    var out: GrassOut;
     let v = grass_blade(vi, b);
     let face = normalize(cross(v.across, v.tangent));
 
-    var out: GrassOut;
     out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
     // Motion vector: the blade as the wind had it last frame (terrains don't move).
     // (Only while the wind's vectors are wanted: the clock moved and TAA is on.)

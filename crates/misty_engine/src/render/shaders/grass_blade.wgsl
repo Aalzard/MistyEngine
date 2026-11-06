@@ -128,6 +128,63 @@ fn grass_keep(dist: f32) -> f32 {
     return clamp(r * r, MIN_KEEP, 1.0) * grass.canopy.w;
 }
 
+// Height a blade is drawn at: 0 = left out (shrunk away by the LOD past its key, beyond the
+// draw distance, outside a shadow caster's range). `grass_blade_at` draws it this tall.
+fn grass_drawn_height(b: BladeIn) -> f32 {
+    let seed_head = b.extra.x >= 2.0;
+    let key = b.extra.x - select(0.0, 2.0, seed_head);
+    let root = grass.origin.xyz + b.position.xyz;
+    let dist = distance(root, grass.camera.xyz);
+    let fade = 1.0 - smoothstep(grass.dry.w, grass.healthy.w, dist);
+    // Fewer blades far away: each blade shrinks away as the share kept at its own distance
+    // drops past its key (terrain_grass.rs draws the prefix of each key-sorted chunk its
+    // nearest point needs), so thinning is smooth instead of popping. Shadow casters are a
+    // fixed share of the drawn blades and fade out towards their range.
+    let shadow = grass.shadow.z > 0.5;
+    let keep = grass_keep(dist) * select(1.0, grass.shadow.y, shadow);
+    var height = b.position.w * fade * (1.0 - smoothstep(keep * 0.7, keep, key));
+    if (shadow) {
+        height *= 1.0 - smoothstep(grass.shadow.x * 0.6, grass.shadow.x, dist);
+        if (grass.screen.z > 0.0) {
+            height *= smoothstep(grass.screen.z * 0.7, grass.screen.z, dist);
+        }
+    }
+    return height;
+}
+
+// A blade shrunk away by the LOD (`grass_drawn_height` 0) still draws: its card collapses
+// onto its root as a small flat twisted fan (as wide as the widened blade), and in the
+// middle distance these fans are a good part of what keeps the ground covered. Passes that
+// can leave them out (the grass depth pass, shadow casters) skip them as a whole.
+fn grass_flat(b: BladeIn) -> bool {
+    return grass_drawn_height(b) <= 0.0;
+}
+
+// The blade lies wholly outside the view of `m` (a camera or shadow view-projection): past
+// one of its side planes (or in front of its near plane when `near`) by more than the card
+// can reach. Decided per blade, so every vertex of the card agrees and a vertex stage can
+// skip the blade's wind, colour and shading inputs.
+fn grass_outside(b: BladeIn, m: mat4x4<f32>, near: bool) -> bool {
+    let root = vec4<f32>(grass.origin.xyz + b.position.xyz, 1.0);
+    let dist = distance(root.xyz, grass.camera.xyz);
+    // Generous reach of the card around its root: bent over by the wind and the lean,
+    // widened (LOD, look-down, a pixel at least) and the seed heads.
+    let reach = b.position.w * 1.6 + 0.25 + dist * grass.screen.x * 2.0;
+    let r0 = vec4<f32>(m[0].x, m[1].x, m[2].x, m[3].x);
+    let r1 = vec4<f32>(m[0].y, m[1].y, m[2].y, m[3].y);
+    let r2 = vec4<f32>(m[0].z, m[1].z, m[2].z, m[3].z);
+    let r3 = vec4<f32>(m[0].w, m[1].w, m[2].w, m[3].w);
+    let planes = array<vec4<f32>, 5>(r3 + r0, r3 - r0, r3 + r1, r3 - r1, r2);
+    let count = select(4u, 5u, near);
+    for (var i = 0u; i < count; i++) {
+        let pl = planes[i];
+        if (dot(pl, root) < -reach * length(pl.xyz)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     return grass_blade_at(vi, b, grass.origin.w);
 }
@@ -150,19 +207,9 @@ fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
     let root = grass.origin.xyz + b.position.xyz;
     let dist = distance(root, grass.camera.xyz);
     let fade = 1.0 - smoothstep(grass.dry.w, grass.healthy.w, dist);
-    // Fewer blades far away: each blade shrinks away as the share kept at its own distance
-    // drops past its key (terrain_grass.rs draws the prefix of each key-sorted chunk its
-    // nearest point needs), so thinning is smooth instead of popping. Shadow casters are a
-    // fixed share of the drawn blades and fade out towards their range.
     let shadow = grass.shadow.z > 0.5;
     let keep = grass_keep(dist) * select(1.0, grass.shadow.y, shadow);
-    var height = b.position.w * fade * (1.0 - smoothstep(keep * 0.7, keep, key));
-    if (shadow) {
-        height *= 1.0 - smoothstep(grass.shadow.x * 0.6, grass.shadow.x, dist);
-        if (grass.screen.z > 0.0) {
-            height *= smoothstep(grass.screen.z * 0.7, grass.screen.z, dist);
-        }
-    }
+    let height = grass_drawn_height(b);
     // Fewer blades cover the same ground by growing wider: as much wider as there are fewer
     // of them, so the blade area per square metre (and the ground they hide) stays the same.
     let widen = min(1.0 / keep, grass.look.z);

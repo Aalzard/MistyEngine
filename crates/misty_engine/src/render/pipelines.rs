@@ -676,7 +676,7 @@ impl Pipelines {
         let grass_depth = build(
             device,
             Spec {
-                vs: "vs_grass",
+                vs: "vs_grass_depth",
                 fs: Some("fs_grass_depth"),
                 buffers: &blade_buffers,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
