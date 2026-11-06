@@ -47,7 +47,7 @@
           ],
           "position": [
             0.0,
-            19.240326,
+            24.172388,
             -504.0
           ],
           "rotation": [
@@ -81,9 +81,10 @@
         "Light": {
           "color": [
             1.0,
-            0.86,
-            0.66
+            0.91,
+            0.76
           ],
+          "contact_shadows": true,
           "enabled": true,
           "intensity": 2.4,
           "kind": "Directional",
@@ -93,7 +94,7 @@
         },
         "Transform": {
           "euler_hint": [
-            26.0,
+            30.0,
             205.0,
             0.0
           ],
@@ -103,10 +104,10 @@
             0.0
           ],
           "rotation": [
-            -0.04868832,
-            0.9512736,
-            -0.21961881,
-            -0.21089229
+            -0.056018695,
+            0.9430295,
+            -0.252684,
+            -0.20906462
           ],
           "scale": [
             1.0,
@@ -230,6 +231,13 @@
             "post_exposure": 0.35,
             "saturation": 4.0
           },
+          "contact_shadows": {
+            "active": true,
+            "distance_fade": 16.0,
+            "length": 0.12,
+            "opacity": 0.3,
+            "sample_count": 6
+          },
           "enabled": true,
           "fog": {
             "active": true,
@@ -239,7 +247,7 @@
               1.0
             ],
             "ambient_dimmer": 1.0,
-            "anisotropy": 0.5,
+            "anisotropy": 0.3,
             "attenuation_distance": 6000.0,
             "base_height": 0.0,
             "denoising": true,

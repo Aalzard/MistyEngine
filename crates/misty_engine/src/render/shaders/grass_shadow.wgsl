@@ -12,13 +12,14 @@ fn vs_grass_shadow(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassShadowOut
     let v = grass_blade(vi, b);
     var out: GrassShadowOut;
     out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
-    out.uv = vec2<f32>((f32(v.cell) + v.side + 0.5) / 8.0, 1.0 - v.t);
+    out.uv = vec2<f32>(grass_card_u(v.cell, v.side, v.repeat), grass_card_v(v.t, b.shape.w));
     return out;
 }
 
 @fragment
 fn fs_grass_shadow(in: GrassShadowOut) {
-    if (textureSampleLevel(grass_atlas, grass_sampler, in.uv, 1.0).a < 0.3) {
+    let leaf = grass_atlas_uv(in.uv);
+    if (textureSampleLevel(grass_atlas, grass_sampler, leaf.xy, 1.0).a * leaf.z < 0.3) {
         discard;
     }
 }

@@ -15,12 +15,32 @@ struct LayerSample {
     height: f32,
 };
 
-// One projection of layer `i`: tiled uv `p` (metres) with its screen gradients.
+// One projection of layer `i`: tiled uv `p` (metres) with its screen gradients. A second
+// copy, rotated and a little larger, is blended in by a noise of a few tiles, so the tile's
+// repeat does not show as a grid.
 fn layer_projection(i: u32, p: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>) -> LayerSample {
     let t = terrain.tiles[i];
-    let uv = (p + t.zw) / t.xy;
-    let dx = gx / t.xy;
-    let dy = gy / t.xy;
+    let a = layer_tile(i, (p + t.zw) / t.xy, gx / t.xy, gy / t.xy);
+    let w = smoothstep(0.3, 0.7, grass_noise(p / (max(t.x, 0.1) * 2.3) + 3.7));
+    if (w < 0.01) {
+        return a;
+    }
+    let c = cos(0.9);
+    let sn = sin(0.9);
+    let r = mat2x2<f32>(c, sn, -sn, c);
+    let k = 0.87 / t.xy;
+    let b = layer_tile(i, r * p * k + vec2<f32>(0.37, 0.11), r * gx * k, r * gy * k);
+    var out: LayerSample;
+    out.albedo = mix(a.albedo, b.albedo, w);
+    // The copy's tangent-space normal turned back into the first copy's frame.
+    let bn = vec3<f32>(transpose(r) * b.normal.xy, b.normal.z);
+    out.normal = mix(a.normal, bn, w);
+    out.height = mix(a.height, b.height, w);
+    return out;
+}
+
+// Layer `i` sampled at tile uv `uv` with its screen gradients.
+fn layer_tile(i: u32, uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> LayerSample {
     var s: LayerSample;
     s.albedo = textureSampleGrad(layer_albedo, layer_sampler, uv, i, dx, dy).rgb;
     // Macro variation: the same texture ~7× larger, relative to its average colour (the last
@@ -198,16 +218,37 @@ fn terrain_surface(in: MeshOut) -> Surface {
     let tint = terrain.grass_healthy.w * grass_cover;
     if (tint > 0.0) {
         let patches = grass_patches(local.xz, terrain.grass_dry.w);
-        let grass = grass_base_color(patches, 0.45, terrain.grass_healthy.rgb, terrain.grass_dry.rgb, terrain.grass_lush.rgb, terrain.grass_amounts.xy);
         let dist = distance(in.world, view.camera_pos.xyz);
-        let shade = mix(0.3, 0.7, smoothstep(0.15, 1.0, dist / terrain.grass_lush.w));
+        let far = smoothstep(0.15, 1.0, dist / terrain.grass_lush.w);
+        // The turf's own base colour: close up the green of the stems' feet deep in the
+        // canopy's shade (not pale litter in the sun between the strips of blades), far away
+        // the drier, lit colour of the canopy top it stands in for.
+        let grass = grass_swathe_tint(
+            grass_base_color(patches, mix(0.15, 0.35, far), terrain.grass_healthy.rgb, terrain.grass_dry.rgb, terrain.grass_lush.rgb, terrain.grass_amounts.xy),
+            grass_swathe(local.xz, terrain.grass_dry.w),
+        ) * grass_far_tint(dist);
+        // Far away the canopy reads darker than lit soil (blades shade each other) and
+        // mottled: tufts, dips and clumps a few metres across.
+        let mottle = 0.3 * grass_noise(local.xz / 1.3 + 8.7) + 0.4 * grass_noise(local.xz / 6.0 + 5.1)
+            + 0.3 * grass_noise(local.xz / 21.0 + 2.3);
+        let shade = mix(0.3, 0.66, far) * mix(1.0, 0.7 + 0.6 * mottle, smoothstep(8.0, 50.0, dist));
         // The soil texture's light and dark spots stay as litter and shadowed stems.
         let soil = dot(s.albedo, vec3<f32>(0.2126, 0.7152, 0.0722));
-        let litter = clamp(0.55 + 1.2 * soil, 0.6, 1.4);
-        s.albedo = mix(s.albedo, grass * shade * litter, tint);
-        s.smoothness *= 1.0 - tint;
-        // Soil bumps do not show through a lawn.
-        s.normal = normalize(mix(s.normal, n, 0.8 * tint));
+        let litter = clamp(0.7 + 0.9 * soil, 0.75, 1.25);
+        // Close up the real ground shows between the blades (soil, thatch, pebbles, moss),
+        // only nudged towards the turf's colour and darker and damper under it; worn spots
+        // are bare dirt. Far away, where single blades are lost, the ground takes the
+        // canopy's colour and stands in for it.
+        // Past a few metres single gaps are too small to read as ground: the canopy colour
+        // takes over quickly, so the pale litter does not mottle the middle distance.
+        let mid = smoothstep(4.0, 25.0, dist);
+        let worn = grass_worn(local.xz) * (1.0 - mid);
+        let take = tint * mix(0.45, 1.0, mid) * (1.0 - 0.9 * worn);
+        let under = mix(0.55, 1.0, max(worn, mid));
+        s.albedo = mix(s.albedo * under, grass * shade * litter, take);
+        s.smoothness *= 1.0 - take;
+        // The soil's relief stays close up; far away it would only shimmer under the turf.
+        s.normal = normalize(mix(s.normal, n, 0.8 * tint * far));
     }
     if (count == 0u) {
         // No layers yet: plain light grey.

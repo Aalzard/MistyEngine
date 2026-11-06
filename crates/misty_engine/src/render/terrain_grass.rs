@@ -25,8 +25,8 @@ pub(super) const UPLOAD_BUDGET: Duration = Duration::from_millis(2);
 /// Scatter jobs handed to the workers at once per terrain (more would just queue up and go
 /// stale while the camera moves on).
 const MAX_IN_FLIGHT: usize = 6;
-/// Vertices of one blade (grass.wgsl: six segments and a tip).
-pub(super) const BLADE_VERTICES: u32 = 14;
+/// Vertices of one blade (grass_blade.wgsl: four segments and a tip).
+pub(super) const BLADE_VERTICES: u32 = 10;
 /// Vertices of a coarse far blade (three segments), drawn from vertex 100 on.
 const COARSE_VERTICES: u32 = 8;
 /// Chunks further than this many LOD distances draw coarse blades.
@@ -34,7 +34,7 @@ const COARSE_FROM: f32 = 1.5;
 /// Fewest blades a far chunk keeps (share of full density).
 const MIN_KEEP: f32 = 0.02;
 /// Far blades grow at most this much wider to cover the ground of the ones left out.
-const MAX_WIDEN: f32 = 4.0;
+const MAX_WIDEN: f32 = 3.0;
 
 /// Stream chunks over frames (the default). Off, [`Grass::update`] waits for every chunk the
 /// camera needs before returning, so a render is complete on its first frame (tests,
@@ -180,6 +180,9 @@ pub(super) struct Grass {
     /// Scattered chunks waiting for the upload budget (nearest first).
     ready: VecDeque<Done>,
     pub stats: GrassStats,
+    /// Share of the blades drawn at every distance (Quality ▸ Grass Density; the rest grow
+    /// wider to cover the same ground).
+    density: f32,
 }
 
 impl Default for Grass {
@@ -195,6 +198,7 @@ impl Default for Grass {
             },
             ready: VecDeque::new(),
             stats: GrassStats::default(),
+            density: 1.0,
         }
     }
 }
@@ -230,12 +234,13 @@ fn near(x: u32, z: u32, camera: Vec3, r: f32) -> bool {
     c.distance(Vec2::new(camera.x, camera.z)) < r + CHUNK
 }
 
-/// Level a chunk needs: from its nearest point to the camera.
-fn wanted(x: u32, z: u32, camera: Vec3, lod: f32) -> u32 {
+/// Level a chunk needs: from its nearest point to the camera; `density` = the quality
+/// level's share of the blades.
+fn wanted(x: u32, z: u32, camera: Vec3, lod: f32, density: f32) -> u32 {
     let lo = Vec2::new(x as f32, z as f32) * CHUNK;
     let p = Vec2::new(camera.x, camera.z).clamp(lo, lo + CHUNK);
     let dist = Vec3::new(p.x - camera.x, 0.0, p.y - camera.z).length();
-    level_for(keep_at(dist, lod))
+    level_for(keep_at(dist, lod) * density)
 }
 
 /// Squared chunk distance from the camera's chunk (ordering key).
@@ -286,7 +291,7 @@ impl Grass {
         for z in (cz - reach).max(0)..(cz + reach + 1).min(per_z) {
             for x in (cx - reach).max(0)..(cx + reach + 1).min(per_x) {
                 let k = (x as u32, z as u32);
-                let want = wanted(k.0, k.1, camera, lod);
+                let want = wanted(k.0, k.1, camera, lod, self.density);
                 let stale = self.chunks.get(&k).is_none_or(|c| c.level > want);
                 let asked = self.in_flight.get(&k).is_some_and(|l| *l <= want)
                     || self.ready.iter().any(|r| r.key == k && r.level <= want);
@@ -299,10 +304,18 @@ impl Grass {
         todo
     }
 
-    /// Scatter missing chunks near the camera (terrain-local) and drop far ones.
-    pub fn update(&mut self, device: &wgpu::Device, d: &Arc<TerrainData>, camera: Vec3) {
+    /// Scatter missing chunks near the camera (terrain-local) and drop far ones; `density`
+    /// = the quality level's share of the blades (0..1).
+    pub fn update(
+        &mut self,
+        device: &wgpu::Device,
+        d: &Arc<TerrainData>,
+        camera: Vec3,
+        density: f32,
+    ) {
         crate::profile_scope!("Terrain.Grass");
         self.stats = GrassStats::default();
+        self.density = density.clamp(MIN_KEEP, 1.0);
         let key = scatter_key(d);
         if self.key.as_ref() != Some(&key) {
             self.chunks.clear();
@@ -329,7 +342,7 @@ impl Grass {
         // Hand out the nearest stale chunks, as many as the workers can take.
         let slots = MAX_IN_FLIGHT.saturating_sub(self.in_flight.len());
         for k in self.stale_chunks(d, camera).into_iter().take(slots) {
-            let level = wanted(k.0, k.1, camera, lod);
+            let level = wanted(k.0, k.1, camera, lod, self.density);
             let job = Job {
                 data: Arc::clone(d),
                 key: k,
@@ -369,7 +382,7 @@ impl Grass {
             self.upload(device, false);
             if !self.stale_chunks(d, camera).is_empty() {
                 let stats = self.stats;
-                self.update(device, d, camera);
+                self.update(device, d, camera, density);
                 self.stats.scheduled += stats.scheduled;
                 self.stats.uploaded += stats.uploaded;
                 self.stats.upload_ms += stats.upload_ms;
@@ -488,7 +501,8 @@ impl Grass {
             let Some(buffer) = &c.buffer else {
                 continue;
             };
-            let keep = keep_at(dist, lod_distance) * share / details::level_keep(c.level);
+            let keep =
+                keep_at(dist, lod_distance) * self.density * share / details::level_keep(c.level);
             let count = ((c.count as f32 * keep.min(1.0)).ceil() as u32).min(c.count);
             if count == 0 {
                 continue;
@@ -538,10 +552,14 @@ pub(super) struct GrassParams {
     /// x = angle of one pixel (radians), y = 1 with temporal anti-aliasing, z = radius of
     /// the near-camera grass shadow map, w = seconds since last frame (wind motion vectors).
     screen: [f32; 4],
+    /// x = shortest and y = tallest blade height of the turf (m), z = height variation,
+    /// w = the quality level's share of the blades (the rest grow wider).
+    canopy: [f32; 4],
 }
 
-/// The built-in grass atlas: eight photographed specimens (leaf blades, timothy heads, open
-/// panicles) in 128×1024 cells, alpha keyed (see grass.wgsl).
+/// The built-in grass atlas: four clumps of thin field-grass blades (`tools/grass_atlas.py`)
+/// and four photographed seed heads (timothy heads, open panicles) in 128×1024 cells, alpha
+/// keyed (see grass.wgsl).
 const ATLAS_PNG: &[u8] = include_bytes!("assets/grass_atlas.png");
 
 /// Cells of the atlas (side by side).
@@ -693,7 +711,7 @@ pub(super) fn wind(s: &DetailSettings, zone: Option<&super::environment::Wind>) 
 impl GrassParams {
     /// Uniform of one terrain's grass; `shadow` = caster range and share for shadow passes,
     /// `screen` = pixel angle, TAA on, the near shadow map's radius and the seconds since
-    /// last frame ([`GrassParams::screen`]).
+    /// last frame ([`GrassParams::screen`]), `density` = the quality level's share of the blades.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         s: &DetailSettings,
@@ -704,6 +722,7 @@ impl GrassParams {
         zone: Option<&super::environment::Wind>,
         shadow: Option<(f32, f32)>,
         screen: [f32; 4],
+        density: f32,
     ) -> Self {
         let far = s.draw_distance.max(1.0);
         let [hr, hg, hb] = s.healthy_color.map(lin);
@@ -715,7 +734,7 @@ impl GrassParams {
         Self {
             origin: [origin.x, origin.y, origin.z, time],
             healthy: [hr, hg, hb, far],
-            dry: [dr, dg, db, far * 0.6],
+            dry: [dr, dg, db, far * 0.8],
             wind: [strength, speed, dx, dz],
             seed: [sr, sg, sb, s.translucency.clamp(0.0, 2.0)],
             look: [
@@ -740,6 +759,12 @@ impl GrassParams {
                 s.ground_tint.clamp(0.0, 1.0),
             ],
             screen,
+            canopy: [
+                s.height[0].max(0.01),
+                s.height[1].max(s.height[0]).max(0.02),
+                s.height_variation.clamp(0.0, 1.0),
+                density.clamp(MIN_KEEP, 1.0),
+            ],
         }
     }
 }

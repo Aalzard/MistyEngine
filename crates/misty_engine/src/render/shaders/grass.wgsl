@@ -1,15 +1,16 @@
 // Grass: appended to mesh.wgsl, grass_field.wgsl and grass_blade.wgsl (lit by `shade_grass`,
-// receives shadows). Blades are textured from the built-in grass atlas: eight photographed
-// specimens (four leaf blades, two timothy heads, two open panicles) with alpha-to-coverage
+// receives shadows). Blades are textured from the built-in grass atlas: four clumps of thin
+// field-grass blades (tools/grass_atlas.py) and four photographed seed heads (two timothy,
+// two open panicles) with alpha-to-coverage
 // edges. Colour comes from soft lush / dry patches across the field, per tuft and per blade
 // jitter and a root-to-tip gradient; gusts that roll across the field bend the blades and
 // lift their sheen, so the waves show. Sunlight shines through backlit blades.
 
 const CELL_AVG = array<vec3<f32>, 8>(
-    vec3<f32>(0.168, 0.224, 0.021),
-    vec3<f32>(0.245, 0.326, 0.017),
-    vec3<f32>(0.288, 0.299, 0.019),
-    vec3<f32>(0.151, 0.208, 0.026),
+    vec3<f32>(0.176, 0.236, 0.038),
+    vec3<f32>(0.185, 0.244, 0.040),
+    vec3<f32>(0.175, 0.238, 0.037),
+    vec3<f32>(0.179, 0.239, 0.039),
     vec3<f32>(0.372, 0.279, 0.076),
     vec3<f32>(0.369, 0.301, 0.090),
     vec3<f32>(0.232, 0.197, 0.061),
@@ -17,7 +18,9 @@ const CELL_AVG = array<vec3<f32>, 8>(
 );
 
 struct GrassOut {
-    @builtin(position) clip: vec4<f32>,
+    // Invariant: the grass depth pass reuses this vertex stage and the lit pass tests for
+    // equal depth.
+    @builtin(position) @invariant clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) color: vec3<f32>,
@@ -26,14 +29,26 @@ struct GrassOut {
     // Atlas cell.
     @location(4) @interpolate(flat) cell: u32,
     // x = 0 close up .. 1 where blades get smaller than a few pixels (softer shading),
-    // y = height above the ground in metres (canopy shade), z = gust 0..1, w = real / drawn
-    // width (thin blades).
+    // y = height above the ground as a share of the local canopy top (canopy shade),
+    // z = gust 0..1, w = real / drawn width (thin blades).
     @location(5) misc: vec4<f32>,
     // Across the blade (world), for the normal detail.
     @location(6) across: vec3<f32>,
     // Last frame's clip position (xyw): where the wind had the vertex a frame ago.
     @location(7) clip_prev: vec3<f32>,
+    // xyz = normal of the rolling canopy top here (lit crests, shaded dips), w = its
+    // relief 0 (dip) .. 1 (crest).
+    @location(8) canopy: vec4<f32>,
 };
+
+// The canopy top over terrain-local `p`: x = its height (m), yz = its slope (m per m).
+fn canopy_top(p: vec2<f32>) -> vec4<f32> {
+    let relief = grass_canopy(p);
+    let span = grass.canopy.y - grass.canopy.x;
+    // Tufts stand a little above the tallest setting; the undergrowth under the tips.
+    let top = (grass.canopy.x + span * relief.x) * 0.95;
+    return vec4<f32>(max(top, 0.02), span * relief.yz, relief.x);
+}
 
 @vertex
 fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
@@ -54,23 +69,30 @@ fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
     out.normal = normalize(face + v.across * v.side * 0.8);
     // Far blades are a few pixels wide: their differences turn into flicker, so they move
     // towards the local average (patches stay, single blades blend in).
-    let far = smoothstep(4.0, 35.0, v.dist);
+    let far = smoothstep(5.0, 55.0, v.dist);
     let phase = b.shape.w;
-    let dry_mix = mix(b.shape.z, 0.3 + 0.4 * b.shape.z, far * 0.6);
+    // Far away a grazing view sees mostly the tips (paler, drier) and the seed stalks.
+    let dry_mix = mix(b.shape.z, 0.2 + 0.4 * b.shape.z, far * 0.7);
     let patches = grass_patches(b.position.xz, grass.lush.w);
     var base = grass_base_color(patches, dry_mix, grass.healthy.rgb, grass.dry.rgb, grass.lush.rgb, grass.amounts.xy);
+    base = grass_swathe_tint(base, grass_swathe(b.position.xz, grass.lush.w)) * grass_far_tint(v.dist);
     // Tufts and single blades: warmer / cooler hue and lighter / darker value.
     let cv = grass.look.w * (1.0 - 0.5 * far);
     let tint = b.extra.w;
     let hue = (fract(phase * 13.7) - 0.5) * 1.2 + tint * 0.4;
     let value = (fract(phase * 7.31 + 0.37) - 0.5) * 0.7 + tint * 0.3;
-    base *= vec3<f32>(1.0 + 0.24 * hue * cv, 1.0 + 0.04 * hue * cv, 1.0 - 0.35 * hue * cv)
-        * max(1.0 + 0.45 * value * cv, 0.3);
+    base *= vec3<f32>(1.0 + 0.14 * hue * cv, 1.0 + 0.02 * hue * cv, 1.0 - 0.22 * hue * cv)
+        * max(1.0 + 0.4 * value * cv, 0.3);
     let seed_color = grass.seed.rgb * (1.0 + 0.12 * tint)
         * mix(vec3<f32>(1.0), vec3<f32>(1.06, 1.0, 0.85), patches.y * grass.amounts.y);
     out.color = select(base, seed_color, v.seed_head);
-    out.misc = vec4<f32>(far, v.above, v.gust, v.thin);
-    out.uv = vec4<f32>((f32(v.cell) + v.side + 0.5) / 8.0, 1.0 - v.t, v.t, v.fade);
+    // Height within the local canopy (a tuft's tip stands above 1, a dip's below).
+    let top = canopy_top(b.position.xz);
+    out.misc = vec4<f32>(far, v.above / top.x, v.gust, v.thin);
+    // The canopy's slope, exaggerated: the turf is rougher than its smoothed height field,
+    // and the sun side of every bump reads lighter than the dip behind it.
+    out.canopy = vec4<f32>(normalize(vec3<f32>(-top.y * 8.0, 1.0, -top.z * 8.0)), top.w);
+    out.uv = vec4<f32>(grass_card_u(v.cell, v.side, v.repeat), grass_card_v(v.t, phase), v.t, v.fade);
     out.cell = v.cell;
     out.across = v.across * v.side * 2.0;
     return out;
@@ -96,7 +118,8 @@ fn shade_grass(
     } else {
         ambient = mix(lights.equator.rgb, lights.ground.rgb, -n.y);
     }
-    let ssao = screen_ao(world);
+    // Broad and gentle: the canopy depth darkens the turf, not every blade's neighbours.
+    let ssao = mix(1.0, screen_ao(world), 0.5);
     var color = ambient * lights.info.z * albedo * indirect_occlusion(occlusion, ssao, albedo);
     let perceptual = 1.0 - smoothness;
     let roughness = max(perceptual * perceptual, 0.002);
@@ -128,13 +151,16 @@ fn shade_grass(
         }
         atten *= fast_shadow_factor(i, li, world, n, l) * direct_occlusion(ssao);
         if (kind == 0u) {
-            atten *= grass_near_shadow(world, l);
+            // Blades shade each other and the ground sharply near the camera: the near grass
+            // shadow map, then the screen-space contact shadow over the first centimetres.
+            // Soft and not fully dark inside the canopy: light scatters through the blades.
+            atten *= mix(0.3, 1.0, grass_near_shadow(world, l)) * mix(1.0, contact_shadow(li, world, n, l), 0.3);
         }
         // Forward scattering towards the eye when looking into the light, plus diffuse light
         // through the back face.
         let back = pow(clamp(dot(v, -l), 0.0, 1.0), 5.0);
         let through = max(dot(-n, l), 0.0);
-        color += transmission * li.color.rgb * atten * (back * 2.5 + through * 0.6);
+        color += transmission * li.color.rgb * atten * (back * 2.5 + through * 0.8);
         let n_dot_l = dot(n, l);
         if (n_dot_l <= 0.0) {
             continue;
@@ -162,24 +188,52 @@ fn shade_grass(
     return out;
 }
 
-@fragment
-fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
-    let tex = textureSample(grass_atlas, grass_sampler, in.uv.xy);
-    // Two texels across the blade: the alpha slope is the blade's thickness profile, used as
-    // a normal map (rounded edges, a crease along the midrib) and a thickness map.
-    let across_uv = vec2<f32>(2.0 / f32(textureDimensions(grass_atlas).x), 0.0);
-    let next = textureSample(grass_atlas, grass_sampler, in.uv.xy + across_uv).a;
+// Coverage of a blade fragment from its atlas alpha (alpha to coverage): the same in the
+// depth pass and the lit pass, so both cover the same samples.
+fn grass_coverage(in: GrassOut, alpha: f32) -> f32 {
     let far = in.misc.x;
     // Sharpened alpha keeps thin shapes solid under minification (alpha to coverage).
-    let sharp = clamp((tex.a - 0.5) / max(fwidth(tex.a), 1e-4) + 0.5, 0.0, 1.0);
+    let sharp = clamp((alpha - 0.5) / max(fwidth(alpha), 1e-4) + 0.5, 0.0, 1.0);
     // Far away the filtered alpha goes straight to coverage (soft, no crawling edges).
-    var coverage = mix(sharp, clamp(tex.a * 1.6, 0.0, 1.0), mix(0.35, 1.0, far)) * in.misc.w;
+    var coverage = mix(sharp, clamp(alpha * 1.6, 0.0, 1.0), mix(0.5, 1.0, far)) * in.misc.w;
     // Alpha to coverage turns partial coverage into a fixed dot pattern; with TAA a noise that
     // changes every frame lets the history average it into smooth translucency instead.
     if (grass.screen.y > 0.5 && coverage < 0.98) {
         let n = grass_hash(in.clip.xy + fract(grass.origin.w * 13.7) * vec2<f32>(71.3, 37.9));
         coverage = clamp(coverage + (n - 0.5) * 0.3, 0.0, 1.0);
     }
+    return coverage;
+}
+
+// Grass depth, drawn right before the lit grass: only the alpha (coverage) is written.
+@fragment
+fn fs_grass_depth(in: GrassOut) -> MeshTargets {
+    let auv = grass_atlas_uv(in.uv.xy);
+    let alpha = textureSampleGrad(grass_atlas, grass_sampler, auv.xy, grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a * auv.z;
+    let coverage = grass_coverage(in, alpha);
+    if (coverage < 0.01) {
+        discard;
+    }
+    var out: MeshTargets;
+    out.color = vec4<f32>(0.0, 0.0, 0.0, coverage);
+    out.glow = vec4<f32>(0.0);
+    return out;
+}
+
+@fragment
+fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
+    let leaf = grass_atlas_uv(in.uv.xy);
+    let auv = leaf.xy;
+    let gx = grass_atlas_dx(in.uv.xy);
+    let gy = grass_atlas_dy(in.uv.xy);
+    var tex = textureSampleGrad(grass_atlas, grass_sampler, auv, gx, gy);
+    tex.a *= leaf.z;
+    // Two texels across the blade: the alpha slope is the blade's thickness profile, used as
+    // a normal map (rounded edges, a crease along the midrib) and a thickness map.
+    let across_uv = vec2<f32>(2.0 / f32(textureDimensions(grass_atlas).x), 0.0);
+    let next = textureSampleGrad(grass_atlas, grass_sampler, auv + across_uv, gx, gy).a;
+    let far = in.misc.x;
+    let coverage = grass_coverage(in, tex.a);
     if (coverage < 0.01) {
         discard;
     }
@@ -196,26 +250,26 @@ fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
         // Some tips dry out; blades are a little paler towards the tip.
         let dry_tip = smoothstep(0.55, 1.0, t) * grass.look.y * smoothstep(0.3, 0.9, fract(f32(cell) * 0.37 + in.color.g * 9.0));
         color = mix(color, grass.dry.rgb, dry_tip);
-        color *= mix(vec3<f32>(0.8, 0.84, 0.8), vec3<f32>(1.06, 1.05, 1.0), t);
+        color *= mix(vec3<f32>(0.9, 0.95, 0.88), vec3<f32>(1.1, 1.08, 1.0), t);
     } else {
         // Stems below the head stay green-ish.
         color = mix(mix(grass.healthy.rgb, grass.dry.rgb, 0.5), color, smoothstep(0.35, 0.6, t));
     }
     // Photo detail close up (veins, spikelets, browned tips), smoother far away.
-    let textured = mix(vec3<f32>(lum), detail, 0.75);
-    var albedo = clamp(color * mix(textured, vec3<f32>(1.0), far * 0.6), vec3<f32>(0.0), vec3<f32>(1.0));
+    let textured = mix(vec3<f32>(lum), detail, 0.5);
+    var albedo = clamp(color * mix(textured, vec3<f32>(1.0), 0.6 + far * 0.4), vec3<f32>(0.0), vec3<f32>(1.0));
     let near = 1.0 - far;
     let slope = next - tex.a;
     let thick = smoothstep(0.45, 1.0, tex.a);
     if (!seed_head) {
         // Leaf detail: fine parallel veins, a lighter midrib where the profile peaks and
         // a few dark speckles (fungus, dust).
-        let ul = fract(in.uv.x * 8.0);
-        let veins = pow(0.5 + 0.5 * cos(ul * 6.2831853 * 11.0), 6.0);
+        let ul = fract(auv.x * 8.0);
+        let veins = pow(0.5 + 0.5 * cos(ul * 6.2831853 * 34.0), 6.0);
         let midrib = thick * (1.0 - smoothstep(0.0, 0.08, abs(slope)));
         let size = vec2<f32>(textureDimensions(grass_atlas));
-        let speck = step(0.985, grass_hash(floor(in.uv.xy * size * vec2<f32>(0.5, 0.125))));
-        albedo *= 1.0 + near * (0.12 * midrib - 0.1 * veins - 0.35 * speck);
+        let speck = step(0.985, grass_hash(floor(auv * size * vec2<f32>(0.5, 0.125))));
+        albedo *= 1.0 + near * (0.05 * midrib - 0.03 * veins - 0.05 * speck);
     }
 
     var n = normalize(in.normal);
@@ -224,23 +278,32 @@ fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
     }
     // Normal detail from the thickness profile (rounded edges, the midrib crease).
     let side_dir = select(-in.across, in.across, front);
-    n = normalize(n - side_dir * clamp(slope * 4.0, -0.6, 0.6) * near);
-    // Lean the shading normal up: thin blades light more like the canopy than like cards
-    // (more so far away, where the canopy reads as one surface).
-    n = normalize(mix(n, vec3<f32>(0.0, 1.0, 0.0), mix(0.45, 0.8, far)));
+    n = normalize(n - side_dir * clamp(slope * 1.5, -0.3, 0.3) * near);
+    // Lean the shading normal towards the canopy top's: thin blades light more like the
+    // rolling turf than like cards (more so far away, where the canopy reads as one
+    // surface), so the sun side of every tuft and bump is lighter than the dip behind it.
+    // Not too far: seen at a grazing angle the turf shows the blades' sides, not a lawn
+    // top lit by the whole sky (which turned the far field lime).
+    // Strongly: the turf is lit as one soft volume, not as thousands of cards.
+    n = normalize(mix(n, normalize(in.canopy.xyz), mix(0.7, 0.8, far)));
 
     // Gusts flatten the blades and turn their waxy sides to the light: the waves show as
     // lighter bands moving across the field.
     let gust = in.misc.z * grass.amounts.z;
     albedo *= 1.0 + 0.16 * gust;
     // Waxy blades: a soft sheen close up, matte far away (no sparkle).
-    let smoothness = (mix(select(0.25, 0.15, seed_head), 0.05, far) + 0.12 * gust) * in.uv.w;
+    // Low and broad: a faint waxy sheen, no glints.
+    let smoothness = (mix(select(0.08, 0.06, seed_head), 0.04, far) + 0.05 * gust) * in.uv.w;
     // Canopy shade: light reaches the ground only through the blades above, so everything
-    // low in the grass (short undergrowth, the feet of tall blades) is darker.
-    let canopy = smoothstep(0.0, 0.45, in.misc.y);
-    let occlusion = mix(0.2, 1.0, canopy);
-    // Sunlight is blocked down there too (not just sky light).
-    let lit = albedo * mix(0.42, 1.0, canopy);
+    // low in the local canopy (undergrowth, the feet of the stems, a dip's blades) is
+    // darker than the tips of the tufts standing above it.
+    let canopy = smoothstep(0.0, 0.85, in.misc.y);
+    // Dips of the rolling turf lie in the shade of the crests around them.
+    let dip = mix(0.84, 1.06, in.canopy.w);
+    let occlusion = mix(0.75, 1.0, canopy) * dip;
+    // Sunlight is blocked down there too (not just sky light), though the short turf's
+    // feet are never far from the light.
+    let lit = albedo * mix(0.85, 1.0, canopy) * dip;
     // Thin edges let more light through than the thick midrib.
     let transmission = albedo * grass.seed.w * select(1.0, 0.6, seed_head) * mix(0.15, 1.0, canopy)
         * mix(1.35, 0.8, thick);

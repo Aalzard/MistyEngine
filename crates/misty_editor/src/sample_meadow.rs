@@ -50,9 +50,12 @@ fn height(x: f32, z: f32) -> f32 {
     let ring = ring * ring * (3.0 - 2.0 * ring);
     let rolling = noise::fbm(x, z, 180.0, 4, 3) * 0.5 + 0.5;
     let swells = noise::fbm(x, z, 45.0, 2, 8) * 0.5 + 0.5;
+    // Soft rolling hills a few metres high, 60–120 m across.
+    let hills = noise::fbm(x, z, 90.0, 2, 13) * 0.5 + 0.5;
     let ridges = noise::ridged(x, z, 420.0, 6, 11);
     let peaks = ridges * ridges * (0.55 + 0.45 * (noise::fbm(x, z, 900.0, 2, 4) * 0.5 + 0.5));
-    (0.03 + 0.03 * rolling + 0.004 * swells + ring * (0.06 + 0.8 * peaks)).clamp(0.0, 1.0)
+    (0.03 + 0.03 * rolling + 0.004 * swells + 0.02 * hills + ring * (0.06 + 0.8 * peaks))
+        .clamp(0.0, 1.0)
 }
 
 fn rules(slope: [f32; 2], priority: i32) -> AutoPaintRules {
@@ -79,37 +82,44 @@ fn grass() -> details::DetailSettings {
             ..Default::default()
         },
         on_layer: Some(0),
-        density: 600.0,
+        // Cards per m², each a strip of 13–18 thin blades (~11 000 blades per m²).
+        density: 700.0,
         draw_distance: 160.0,
-        height: [0.12, 0.6],
-        width: 0.02,
-        healthy_color: [0.32, 0.52, 0.14],
-        dry_color: [0.56, 0.58, 0.28],
-        wind_strength: 0.3,
-        wind_speed: 1.0,
-        seed_heads: 0.1,
+        // Short turf (ankle height): tufts rise to ~0.3 m, dips sink to ~0.05 m.
+        height: [0.07, 0.2],
+        // Cards ~4 cm across: every blade on them 2–3 mm wide.
+        width: 0.04,
+        // Warm yellow-green turf (the reference meadow), paler straw where it dries.
+        healthy_color: [0.53, 0.67, 0.21],
+        dry_color: [0.76, 0.68, 0.4],
+        wind_strength: 0.18,
+        wind_speed: 0.9,
+        seed_heads: 0.03,
         seed_color: [0.8, 0.72, 0.5],
-        clumping: 0.4,
-        bend: 0.4,
+        clumping: 0.45,
+        bend: 0.8,
         translucency: 0.6,
-        tip_dryness: 0.2,
-        lod_distance: 15.0,
-        // Soft patches ~16 m across: lush dark-green hollows with taller, fuller tufts and
-        // paler, drier, shorter stretches; every tuft a little warmer or cooler.
-        patch_scale: 16.0,
-        lush_color: [0.17, 0.34, 0.07],
+        tip_dryness: 0.28,
+        lod_distance: 7.5,
+        // Soft patches ~40 m across (sweeps of ~130 m): lush dark-green hollows with
+        // taller, fuller tufts and paler, drier, shorter stretches; every tuft a little
+        // warmer or cooler.
+        patch_scale: 40.0,
+        lush_color: [0.24, 0.34, 0.1],
         lush_amount: 0.6,
-        dry_amount: 0.4,
-        color_variation: 0.6,
-        height_variation: 0.65,
+        dry_amount: 0.6,
+        // Variation comes from the broad patches; single blades differ little.
+        color_variation: 0.2,
+        height_variation: 0.6,
         density_variation: 0.2,
-        ground_tint: 0.75,
+        ground_tint: 1.0,
         cast_shadows: true,
-        // Gust waves rolling from the left across the view (the Wind Zone turns them).
+        // A calm breeze: gentle gust waves rolling from the left across the view (the Wind
+        // Zone turns them).
         wind_direction: 80.0,
-        gust_strength: 0.8,
+        gust_strength: 0.55,
         gust_scale: 22.0,
-        turbulence: 0.45,
+        turbulence: 0.3,
     }
 }
 
@@ -130,9 +140,10 @@ fn tile_noise(u: f32, v: f32, cells: u32, seed: u32) -> f32 {
     top + (bottom - top) * sy
 }
 
-/// Meadow floor under the grass, top down, tileable: dark soil with moss, buried under a
-/// litter of dead blades and thatch (straw, olive and a few green strands) lying in every
-/// direction. Albedo (sRGB), height and a tangent-space normal map from the height.
+/// Meadow floor under the grass, top down, tileable: dark crumbly soil with damp patches and
+/// moss, small pebbles and twigs, half buried under a litter of dead blades and thatch
+/// (straw, olive and a few green strands) lying in every direction. Albedo (sRGB), height
+/// and a tangent-space normal map from the height.
 fn thatch() -> [RgbaImage; 3] {
     let n = THATCH_SIZE as usize;
     let mut color = vec![[0.0f32; 3]; n * n];
@@ -142,15 +153,46 @@ fn thatch() -> [RgbaImage; 3] {
             let (u, v) = (x as f32 / n as f32, y as f32 / n as f32);
             let big = tile_noise(u, v, 6, 3) * 0.6 + tile_noise(u, v, 23, 4) * 0.4;
             let fine = tile_noise(u, v, 97, 5);
-            let moss = ((tile_noise(u, v, 11, 6) - 0.55) * 4.0).clamp(0.0, 1.0);
-            let soil = [0.17, 0.13, 0.085].map(|c| c * (0.7 + 0.5 * big) * (0.85 + 0.3 * fine));
-            let green = [0.13, 0.17, 0.06];
+            let crumb = tile_noise(u, v, 211, 9);
+            let moss = ((tile_noise(u, v, 11, 6) - 0.6) * 4.0).clamp(0.0, 1.0);
+            // Damp, darker soil in hollows.
+            let damp = ((0.5 - big) * 3.0).clamp(0.0, 1.0);
+            let soil = [0.16, 0.115, 0.07]
+                .map(|c| c * (0.7 + 0.5 * big) * (0.75 + 0.5 * crumb) * (1.0 - 0.35 * damp));
+            let green = [0.1, 0.15, 0.04];
             color[y * n + x] = std::array::from_fn(|i| soil[i] + (green[i] - soil[i]) * moss);
-            height[y * n + x] = 0.15 * big + 0.05 * fine;
+            height[y * n + x] = 0.15 * big + 0.05 * fine + 0.04 * crumb + 0.03 * moss;
+        }
+    }
+    // Small pebbles (4–12 mm on the 2.2 m tile), domed, partly sunk in the soil.
+    for k in 0..1400 {
+        let r = |salt: u32| noise::hash(k, salt as i32, 0x5eb1);
+        let (cx, cy) = (r(1) * n as f32, r(2) * n as f32);
+        let radius = 2.0 + 4.0 * r(3) * r(3);
+        let tone = 0.75 + 0.5 * r(4);
+        let base = [0.33, 0.3, 0.26].map(|c| c * tone);
+        let reach = radius.ceil() as i32 + 1;
+        for oy in -reach..=reach {
+            for ox in -reach..=reach {
+                let d = ((ox * ox + oy * oy) as f32).sqrt() / radius;
+                if d > 1.0 {
+                    continue;
+                }
+                let px = (cx as i32 + ox).rem_euclid(n as i32) as usize;
+                let py = (cy as i32 + oy).rem_euclid(n as i32) as usize;
+                let i = py * n + px;
+                let h = 0.2 + 0.12 * (1.0 - d * d).sqrt();
+                if h > height[i] {
+                    height[i] = h;
+                    // Lit from the top left, darker rim.
+                    let lit = 1.0 - 0.3 * d * d + 0.1 * (-(ox + oy) as f32 / radius);
+                    color[i] = base.map(|c| c * lit);
+                }
+            }
         }
     }
     // Strands, later ones on top: dead straw, olive half-dry blades, a few green ones.
-    let strands = 16000;
+    let strands = 10000;
     for k in 0..strands {
         let r = |salt: u32| noise::hash(k, salt as i32, 0x7a7c);
         let (x0, y0) = (r(1) * n as f32, r(2) * n as f32);
@@ -159,12 +201,15 @@ fn thatch() -> [RgbaImage; 3] {
         let width = 0.9 + 1.8 * r(5);
         let kind = r(6);
         let tone = 0.75 + 0.5 * r(7);
-        let base = if kind < 0.55 {
-            [0.52, 0.42, 0.24]
-        } else if kind < 0.85 {
-            [0.36, 0.34, 0.16]
+        let base = if kind < 0.06 {
+            // Twigs.
+            [0.17, 0.11, 0.06]
+        } else if kind < 0.5 {
+            [0.5, 0.42, 0.24]
+        } else if kind < 0.8 {
+            [0.38, 0.36, 0.16]
         } else {
-            [0.22, 0.3, 0.09]
+            [0.28, 0.34, 0.11]
         };
         let top = 0.25 + 0.75 * k as f32 / strands as f32;
         let (dx, dy) = (angle.cos(), angle.sin());
@@ -223,7 +268,7 @@ fn thatch() -> [RgbaImage; 3] {
     });
     let normal = RgbaImage::from_fn(size, size, |x, y| {
         let (x, y) = (x as i32, y as i32);
-        let strength = 6.0;
+        let strength = 9.0;
         let ddx = (at(x + 1, y) - at(x - 1, y)) * strength;
         let ddy = (at(x, y + 1) - at(x, y - 1)) * strength;
         let v = Vec3::new(-ddx, ddy, 1.0).normalize();
@@ -292,6 +337,12 @@ fn volume() -> PostProcessVolume {
     v.color_adjustments.contrast = -4.0;
     v.color_adjustments.saturation = 4.0;
     v.ambient_occlusion.active = true;
+    let cs = &mut v.contact_shadows;
+    cs.active = true;
+    cs.length = 0.12;
+    cs.distance_fade = 16.0;
+    cs.opacity = 0.3;
+    cs.sample_count = 6;
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Cloudy.apply(c);
@@ -307,7 +358,8 @@ fn volume() -> PostProcessVolume {
     f.attenuation_distance = 6000.0;
     f.base_height = 0.0;
     f.maximum_height = 150.0;
-    f.anisotropy = 0.5;
+    // Gentle forward haze: the field stays green-gold to the mountains against the sun.
+    f.anisotropy = 0.3;
     f.volumetric_distance = 250.0;
     v.sun_shafts.active = true;
     v.sun_shafts.intensity = 0.5;
@@ -337,12 +389,14 @@ fn demo_scene(d: &TerrainData) -> Scene {
         s.set_transform(
             sun,
             Transform::from_position(Vec3::new(0.0, 200.0, 0.0))
-                .with_euler(Vec3::new(26.0, 205.0, 0.0)),
+                .with_euler(Vec3::new(30.0, 205.0, 0.0)),
         );
         let mut l = s.world.get::<&mut Light>(sun).unwrap();
-        l.color = [1.0, 0.86, 0.66];
+        l.color = [1.0, 0.91, 0.76];
         l.intensity = 2.4;
         l.shadows = Shadows::Soft;
+        // Blades shade the turf at their feet (screen-space, the first centimetres).
+        l.contact_shadows = true;
     }
     let rs = &mut s.render_settings;
     rs.skybox.sun_disk = SunDisk::HighQuality;

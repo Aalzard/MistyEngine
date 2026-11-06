@@ -84,7 +84,10 @@ pub(in crate::render) fn meadow_scene(shot: Shot) -> Scene {
 pub(in crate::render) fn meadow_view(shot: Shot) -> GameView {
     let scene = meadow_scene(shot);
     let materials = crate::assets::AssetCache::open(&root());
-    GameView::new(&scene, &materials).expect("camera")
+    let mut view = GameView::new(&scene, &materials).expect("camera");
+    // A fixed wind clock: renders compared with each other show the same blades.
+    view.environment.grass_time = Some(3.0);
+    view
 }
 
 /// The view's terrains with `edit` applied to their data (own store key, so the renderer
@@ -171,17 +174,22 @@ fn grass_ground(view: &GameView, (w, h): (u32, u32)) -> Vec<bool> {
     out
 }
 
-/// Share of the grass ground's pixels where the ground shows between blades: pixels where the
-/// image with grass matches the image without blades (same ground, same light), out of the
+/// Share of the grass ground's pixels where the ground shows between blades, out of the
 /// terrain pixels showing ground where grass grows within its draw distance (mountains and
-/// the field beyond the grass stay out).
+/// the field beyond the grass stay out). Two measures: `.0` = pixels where the image with
+/// grass matches the image without blades (same ground, same light; the original measure,
+/// which also counts blades that happen to match the ground's colour now that the ground is
+/// tinted like the grass), `.1` = pixels that change by more than 12 levels when only the
+/// ground's colour changes (ground tint off: soil instead of grass colour), with the same
+/// blades in front.
 pub(super) fn ground_visibility(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     view: &GameView,
     quality: &QualityLevel,
     (w, h): (u32, u32),
-) -> f32 {
+    shot: &str,
+) -> (f32, f32) {
     // Grass shadows on the ground would count as blades.
     let quality = QualityLevel {
         temporal_aa: false,
@@ -189,13 +197,15 @@ pub(super) fn ground_visibility(
         ..quality.clone()
     };
     let bare = edited_terrains(view, "bare", |d| d.details.density = 0.0);
+    let soil = edited_terrains(view, "soil", |d| d.details.ground_tint = 0.0);
     let none: Vec<TerrainDraw> = Vec::new();
     let mut images = Vec::new();
-    for terrains in [None, Some(&bare[..]), Some(&none[..])] {
+    for terrains in [None, Some(&bare[..]), Some(&none[..]), Some(&soil[..])] {
         let mut r = Renderer::with_queue(device, queue);
         r.set_quality(device, &quality);
         let target = r.create_target(device, w, h);
-        images.push(render(device, queue, &mut r, &target, view, terrains, 6));
+        // Chunks are scattered one per frame at full density: let them all arrive.
+        images.push(render(device, queue, &mut r, &target, view, terrains, 48));
     }
     let diff = |a: &[u8], b: &[u8], i: usize| {
         (0..3)
@@ -204,29 +214,47 @@ pub(super) fn ground_visibility(
             .unwrap()
     };
     let grass_ground = grass_ground(view, (w, h));
-    let (mut terrain, mut seen) = (0usize, 0usize);
-    // Red = ground showing, green = covered by blades.
+    let (mut terrain, mut seen, mut swapped) = (0usize, 0usize, 0usize);
+    // Red = ground showing (matches the bare render), blue = the ground's colour shows
+    // through (tint swap), green = covered by blades.
     let mut mask = vec![0u8; (w * h * 4) as usize];
     for i in 0..(w * h) as usize {
         mask[i * 4 + 3] = 255;
         if grass_ground[i] && diff(&images[1], &images[2], i) > 10 {
             terrain += 1;
+            let mut covered = true;
             if diff(&images[0], &images[1], i) <= 4 {
                 seen += 1;
                 mask[i * 4] = 255;
-            } else {
+                covered = false;
+            }
+            if diff(&images[0], &images[3], i) > 12 {
+                swapped += 1;
+                mask[i * 4 + 2] = 255;
+                covered = false;
+            }
+            if covered {
                 mask[i * 4 + 1] = 160;
             }
         }
     }
     if let Ok(name) = std::env::var("MISTY_GFX_MASK") {
-        let path = screenshots().join(format!("grass_{name}_ground_mask.png"));
+        // The ground alone (no blades), to compare its colour with the blades'.
+        let path = screenshots().join(format!("grass_{name}_{shot}_bare.png"));
+        image::RgbaImage::from_raw(w, h, images[1].clone())
+            .unwrap()
+            .save(path)
+            .unwrap();
+        let path = screenshots().join(format!("grass_{name}_{shot}_ground_mask.png"));
         image::RgbaImage::from_raw(w, h, mask)
             .unwrap()
             .save(path)
             .unwrap();
     }
-    seen as f32 / terrain.max(1) as f32
+    (
+        seen as f32 / terrain.max(1) as f32,
+        swapped as f32 / terrain.max(1) as f32,
+    )
 }
 
 #[test]
@@ -251,7 +279,7 @@ fn grass_shots() {
         }
         r.set_quality(&device, &quality);
         let target = r.create_target(&device, w, h);
-        let rgba = render(&device, &queue, &mut r, &target, &view, None, 24);
+        let rgba = render(&device, &queue, &mut r, &target, &view, None, 48);
         let path = screenshots().join(format!("grass_{step}_{}.png", shot.name()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         image::RgbaImage::from_raw(w, h, rgba)
@@ -307,11 +335,62 @@ fn grass_cost() {
             );
         }
     }
-    let seen = ground_visibility(&device, &queue, &view, &QualityLevel::high(), (960, 540));
-    eprintln!("ground visible (wide golden, high): {:.1}%", seen * 100.0);
+    if std::env::var("MISTY_GRASS_VARIANTS").is_ok() {
+        let mut plain = meadow_view(Shot::WideGolden);
+        for l in &mut plain.lights {
+            l.contact_shadows = false;
+        }
+        let high = QualityLevel::high();
+        let no_map = QualityLevel {
+            grass_shadow_map: crate::quality::Tier::Off,
+            ..high.clone()
+        };
+        let no_shadows = QualityLevel {
+            grass_shadows: crate::quality::Tier::Off,
+            ..no_map.clone()
+        };
+        let no_ao = QualityLevel {
+            ambient_occlusion: crate::quality::Tier::Off,
+            ..high.clone()
+        };
+        for (label, v, q) in [
+            ("high", &view, &high),
+            ("no contact shadows", &plain, &high),
+            ("no near map", &view, &no_map),
+            ("no grass shadows at all", &view, &no_shadows),
+            ("no AO (no prepass grass)", &view, &no_ao),
+        ] {
+            let ms = gpu_median(&device, &queue, v, q, None);
+            eprintln!("variant {label}: {ms:.2} ms GPU");
+        }
+    }
+    let seen = ground_visibility(
+        &device,
+        &queue,
+        &view,
+        &QualityLevel::high(),
+        (960, 540),
+        "wide",
+    );
+    eprintln!(
+        "ground visible (wide golden, high): {:.1}% (matches bare), {:.1}% (ground colour shows)",
+        seen.0 * 100.0,
+        seen.1 * 100.0
+    );
     let close = meadow_view(Shot::CloseGolden);
-    let seen = ground_visibility(&device, &queue, &close, &QualityLevel::high(), (960, 540));
-    eprintln!("ground visible (close golden, high): {:.1}%", seen * 100.0);
+    let seen = ground_visibility(
+        &device,
+        &queue,
+        &close,
+        &QualityLevel::high(),
+        (960, 540),
+        "close",
+    );
+    eprintln!(
+        "ground visible (close golden, high): {:.1}% (matches bare), {:.1}% (ground colour shows)",
+        seen.0 * 100.0,
+        seen.1 * 100.0
+    );
 }
 
 /// MeadowDemo crouched in the grass with a low golden sun from the right and a cube a few
@@ -395,7 +474,7 @@ fn grass_shadow_proof() {
         };
         r.set_quality(&device, &quality);
         let target = r.create_target(&device, w, h);
-        panels.push(render(&device, &queue, &mut r, &target, &view, None, 24));
+        panels.push(render(&device, &queue, &mut r, &target, &view, None, 48));
     }
     let strip = |names: &[usize], file: &str| {
         let mut out =
@@ -408,10 +487,13 @@ fn grass_shadow_proof() {
         out.save(&path).unwrap();
         eprintln!("wrote {}", path.display());
     };
+    // `MISTY_GFX_STEP=<name>` names the files `grass_<name>_shadows_*.png`.
+    let prefix =
+        std::env::var("MISTY_GFX_STEP").map_or(String::from("grass_"), |s| format!("grass_{s}_"));
     // Off | on (High: cascades + the near map).
-    strip(&[0, 2], "grass_shadows_on_vs_off.png");
+    strip(&[0, 2], &format!("{prefix}shadows_on_vs_off.png"));
     // The previous step (cascade casters only) | the near map.
-    strip(&[1, 2], "grass_shadows_near_map.png");
+    strip(&[1, 2], &format!("{prefix}shadows_near_map.png"));
     // Cost at 1080p of the main shot, High with grass shadows off / on (a first run warms
     // the GPU clocks up).
     let view = meadow_view(Shot::WideGolden);

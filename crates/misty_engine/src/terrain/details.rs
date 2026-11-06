@@ -28,7 +28,8 @@ pub struct DetailSettings {
     pub density: f32,
     /// Blades fade out (shrink) towards this distance.
     pub draw_distance: f32,
-    /// Blade height range in metres.
+    /// Blade height range in metres (the turf's shortest and tallest stems; tufts stand a
+    /// little above the top, dips a little below the bottom).
     pub height: [f32; 2],
     pub width: f32,
     /// sRGB colours of healthy and dry blades (mixed by a noise field).
@@ -218,13 +219,48 @@ fn field_noise(p: Vec2) -> f32 {
 /// grass_field.wgsl, which colours the blades and the ground under them).
 pub fn patches(p: Vec2, scale: f32) -> (f32, f32) {
     let q = p / scale.max(0.5);
-    let lush = 0.65 * field_noise(q) + 0.35 * field_noise(q * 2.3 + 17.1);
-    let dry = 0.6 * field_noise(q * 0.8 + 41.7) + 0.4 * field_noise(q * 1.9 + 5.3);
+    // Broad sweeps a few patches across, patches, and smaller mottling inside them.
+    let lush = 0.3 * field_noise(q * 0.3 + 9.4)
+        + 0.45 * field_noise(q)
+        + 0.25 * field_noise(q * 2.3 + 17.1);
+    let dry = 0.3 * field_noise(q * 0.25 + 23.8)
+        + 0.4 * field_noise(q * 0.8 + 41.7)
+        + 0.3 * field_noise(q * 1.9 + 5.3);
     let smooth = |e0: f32, e1: f32, x: f32| {
         let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
         t * t * (3.0 - 2.0 * t)
     };
-    (smooth(0.42, 0.78, lush), smooth(0.45, 0.8, dry))
+    (smooth(0.5, 0.66, lush), smooth(0.52, 0.68, dry))
+}
+
+/// Broad swathes -1..1 at terrain-local `p` for patches of `scale` metres (see
+/// `grass_swathe` in grass_field.wgsl, which makes them lighter and more golden or deeper
+/// green): bright swathes grow a little shorter, dark ones taller.
+pub fn swathe(p: Vec2, scale: f32) -> f32 {
+    let q = p / (scale * 1.5).max(1.0);
+    let v = 0.65 * field_noise(q + 61.3) + 0.35 * field_noise(q * 2.1 + 83.9);
+    ((v - 0.5) * 3.0).clamp(-1.0, 1.0)
+}
+
+/// Worn spots 0..1 at terrain-local `p`: bare dirt patches a metre or two across (see
+/// `grass_worn` in grass_field.wgsl, which shows the soil there).
+pub fn worn(p: Vec2) -> f32 {
+    let v = 0.7 * field_noise(p / 2.6 + 91.7) + 0.3 * field_noise(p / 0.9 + 17.3);
+    let t = ((v - 0.73) / 0.12).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Relief of the canopy top 0..1 at terrain-local `p`: tufts and dips a few metres across
+/// (the same noise as `grass_canopy` in grass_field.wgsl, which tilts the shading of the
+/// canopy to follow it). Blade heights follow it, so the turf rolls instead of standing at
+/// one height.
+pub fn canopy(p: Vec2) -> f32 {
+    let v = 0.55 * field_noise(p / 4.5 + 7.7)
+        + 0.3 * field_noise(p / 1.9 + 3.1)
+        + 0.15 * field_noise(p / 0.8 + 11.3);
+    // Sharpened: distinct crests and hollows rather than a gentle swell.
+    let t = ((v - 0.25) / 0.55).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// One grass blade for the renderer (terrain-local position).
@@ -318,7 +354,9 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
             let (lush, dry) = patches(centre, s.patch_scale);
             let area =
                 noise::fbm(centre.x, centre.y, s.patch_scale * 0.7, 2, seed ^ 0x91) * 0.5 + 0.5;
-            let fuller = 1.0 + dv * (0.8 * lush + 0.8 * area - 0.3 * dry - 0.65);
+            // Worn spots keep a third of the blades.
+            let fuller = (1.0 + dv * (0.8 * lush + 0.8 * area - 0.3 * dry - 0.65))
+                * (1.0 - 0.65 * worn(centre));
             let want = per_texel * density as f32 / 255.0 * fuller.max(0.15);
             let (ix, iz) = (tx as i32, tz as i32);
             let count =
@@ -337,7 +375,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 // (a root pulled out of the rectangle stays put, so chunks still add up).
                 let (centre, id) = tuft(root, cell, seed ^ 0x7f4a);
                 // Undergrowth stays spread out and fills the ground between the tufts.
-                let under = r(17) < 0.55;
+                let under = r(17) < 0.68;
                 let pull = if under { 0.15 } else { 0.6 };
                 let pulled = centre + (root - centre) * (1.0 - pull * clumping);
                 let inside = pulled.cmpge(lo).all() && pulled.cmplt(hi).all();
@@ -349,38 +387,43 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                     r(8) * std::f32::consts::TAU
                 };
                 let spread = (away.length() / (cell * 0.5)).min(1.0);
-                // Patches of taller and shorter grass at two scales; tufts and single blades
-                // vary around them, and a few stems stand well above the rest.
-                let patch = noise::fbm(p.x, p.y, 7.0, 3, seed ^ 0x2b) * 0.5 + 0.5;
+                // The canopy top rolls: tufts and dips a few metres across (shared with the
+                // shaders, which shade the canopy as that rolling surface), broad areas of
+                // taller and shorter grass, every tuft and blade a little different and a
+                // few stems standing above the rest.
+                let relief = canopy(p);
                 let field = noise::fbm(p.x, p.y, 28.0, 2, seed ^ 0x5d) * 0.5 + 0.5;
-                let tuft_scale = 1.0 + (id - 0.5) * 0.8 * clumping;
-                let mix = (0.3 * r(3) * r(3) + 0.35 * patch + 0.35 * field).clamp(0.0, 1.0);
-                let outlier = if r(15) < 0.06 {
-                    1.35 + 0.3 * r(16)
-                } else {
-                    1.0
-                };
+                let tuft_scale = 1.0 + (id - 0.5) * 0.5 * clumping;
+                // Every blade its own height too, so the top line breaks up; the relief
+                // fades out with the height variation (none: one even height).
+                let rv = (hv / 0.6).min(1.0);
+                let mix = (0.4 * r(3) + rv * (0.42 * relief + 0.18 * field) + (1.0 - rv) * 0.3)
+                    .clamp(0.0, 1.0);
+                let outlier = if r(15) < 0.05 { 1.3 + 0.3 * r(16) } else { 1.0 };
                 let mut tall =
                     (s.height[0] + (s.height[1] - s.height[0]) * mix) * tuft_scale * outlier;
-                // Areas of taller, fuller tufts (lush patches) and shorter grass (dry ones):
-                // the canopy top rolls instead of standing at one height.
+                // Areas of taller, fuller tufts (lush patches) and shorter grass (dry ones).
                 let (lush, dry) = patches(p, s.patch_scale);
                 let area = noise::fbm(p.x, p.y, s.patch_scale * 0.7, 2, seed ^ 0x91) * 0.5 + 0.5;
-                tall *=
-                    (1.0 + hv * (0.9 * (lush - 0.35) - 0.55 * dry + 0.9 * (area - 0.5))).max(0.3);
-                // Most blades are short undergrowth below the taller ones.
+                let sw = swathe(p, s.patch_scale);
+                tall *= (1.0
+                    + hv * (0.5 * (lush - 0.35) - 0.35 * dry + 0.6 * (area - 0.5) - 0.25 * sw))
+                    .max(0.6);
+                // Most blades are undergrowth a little below the tallest ones: they fill the
+                // turf between the stems.
                 if under {
-                    tall *= 0.35 + 0.3 * r(18);
+                    tall *= 0.6 + 0.3 * r(18);
                 }
                 let dry = (noise::fbm(p.x, p.y, 9.0, 3, seed ^ 0x77) * 0.5 + 0.5).clamp(0.0, 1.0);
-                let seed_head = r(9) < s.seed_heads.clamp(0.0, 1.0) * (0.4 + 1.2 * patch);
-                // Undergrowth is broader and arches over: it fills the base of the canopy so
-                // little ground shows between the stems.
-                let mut width = s.width * (0.7 + 0.6 * r(5)) * if under { 1.35 } else { 1.0 };
+                let seed_head = r(9) < s.seed_heads.clamp(0.0, 1.0) * (0.4 + 1.2 * relief);
+                // Undergrowth is broader, low and arches over: it carpets the base of the
+                // canopy so no ground shows between the thin stems above it.
+                let mut width = s.width * (0.7 + 0.6 * r(5)) * if under { 1.5 } else { 1.0 };
                 if seed_head {
-                    tall *= 1.1 + 0.35 * r(10);
+                    tall *= 1.2 + 0.4 * r(10);
                     width = s.width.min(0.02) * 0.3;
                 }
+                // Every blade leans its own way (random lean on top of the tuft's).
                 let bend = s.bend.clamp(0.0, 1.5)
                     * (0.35 + 0.65 * r(12))
                     * (1.0 + clumping * spread)
@@ -399,7 +442,9 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                         shape: [
                             r(4) * std::f32::consts::TAU,
                             width,
-                            (dry * 1.4 - 0.2 + 0.2 * r(6)).clamp(0.0, 1.0),
+                            // Mostly green: dry blades gather in a few spots (the dry
+                            // patches of the field do the rest).
+                            ((dry - 0.45) * 1.6 + 0.15 * r(6)).clamp(0.0, 1.0),
                             r(7),
                         ],
                         extra: [
