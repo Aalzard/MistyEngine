@@ -146,6 +146,21 @@ impl Game {
         }
     }
 
+    /// `Cursor.lockState` / `Cursor.visible` as the scripts set them (default when no scene runs).
+    pub fn cursor(&self) -> misty_engine::scripting::CursorState {
+        self.runtime
+            .as_ref()
+            .map(|r| r.cursor())
+            .unwrap_or_default()
+    }
+
+    /// Give the cursor back (the window lost focus).
+    pub fn release_cursor(&self) {
+        if let Some(r) = self.runtime.as_ref() {
+            r.release_cursor();
+        }
+    }
+
     /// Button hover/press state for drawing the UI.
     pub fn ui_interaction(&self) -> Option<&misty_engine::ui::UiInteraction> {
         self.runtime.as_ref().map(|r| r.ui_interaction())

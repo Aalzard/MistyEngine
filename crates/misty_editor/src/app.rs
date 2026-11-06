@@ -28,6 +28,8 @@ pub struct EditorApp {
     saved_dock: Option<DockState<Tab>>,
     /// Error count seen so far (for Error Pause).
     errors_seen: usize,
+    /// Cursor lock / visibility last sent to the window (`Cursor.lockState` while playing).
+    cursor_applied: misty_engine::scripting::CursorState,
     /// Last window title sent.
     title: String,
     /// Writes the layout to the project's Library folder.
@@ -86,6 +88,7 @@ impl EditorApp {
             capture,
             saved_dock: None,
             errors_seen: 0,
+            cursor_applied: Default::default(),
             title: String::new(),
             layout_autosave,
         }
@@ -512,6 +515,8 @@ impl EditorApp {
             }
         }
         if !s.play.in_play_mode() {
+            self.sync_cursor(ctx);
+            let s = &mut self.state;
             // Spline Extrude meshes and Spline Instantiate copies follow their splines.
             misty_engine::splines::update(&mut s.scene);
             // Selected Particle Systems play in the Scene view.
@@ -536,18 +541,31 @@ impl EditorApp {
             }
             return;
         }
-        // Clicking outside the Game view gives keyboard/mouse back to the editor.
-        if let Some(p) = ctx.input(|i| i.pointer.press_origin().filter(|_| i.pointer.any_pressed()))
+        // Clicking outside the Game view gives keyboard/mouse back to the editor (not while
+        // the game holds the cursor: it sits at the window centre then).
+        let locked = self.cursor_applied.lock == misty_engine::scripting::CursorLockMode::Locked;
+        if !locked
+            && let Some(p) =
+                ctx.input(|i| i.pointer.press_origin().filter(|_| i.pointer.any_pressed()))
         {
             s.game_view.focused = s.game_view.view_rect.contains(p);
         }
         s.game_input = if s.game_view.focused && !ctx.egui_wants_keyboard_input() {
-            game_input::capture(ctx, s.game_view.view_rect)
+            game_input::capture(ctx, s.game_view.view_rect, locked)
         } else {
             Default::default()
         };
         s.game_input.joysticks = game_input::gamepads();
+        // Escape always gives the cursor back, whatever the scripts do.
+        if locked
+            && s.game_input.key_down("escape")
+            && let Some(r) = s.runtime.as_ref()
+        {
+            r.release_cursor();
+        }
         play::tick(s, ctx.input(|i| i.stable_dt));
+        self.sync_cursor(ctx);
+        let s = &mut self.state;
         let errors = s.console.count(LogLevel::Error);
         if s.console.error_pause && errors > self.errors_seen && s.play == PlayState::Playing {
             s.play = PlayState::Paused;
@@ -556,6 +574,28 @@ impl EditorApp {
         if s.play == PlayState::Playing {
             ctx.request_repaint();
         }
+    }
+
+    /// `Cursor.lockState` / `Cursor.visible` of the running game reach the window while the
+    /// Game view has the input; Stop, pause or a lost focus give the cursor back.
+    fn sync_cursor(&mut self, ctx: &egui::Context) {
+        use misty_engine::scripting::{CursorLockMode, CursorState};
+        let s = &self.state;
+        let wanted = match s.runtime.as_ref() {
+            Some(r) if s.play == PlayState::Playing && s.game_view.focused => r.cursor(),
+            _ => CursorState::default(),
+        };
+        if wanted == self.cursor_applied {
+            return;
+        }
+        self.cursor_applied = wanted;
+        let grab = match wanted.lock {
+            CursorLockMode::None => egui::viewport::CursorGrab::None,
+            CursorLockMode::Locked => egui::viewport::CursorGrab::Locked,
+            CursorLockMode::Confined => egui::viewport::CursorGrab::Confined,
+        };
+        ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(grab));
+        ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(wanted.visible));
     }
 
     /// Save prompt, window-close interception and the window title.

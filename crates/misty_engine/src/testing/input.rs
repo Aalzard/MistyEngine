@@ -20,6 +20,9 @@ pub struct SimInput {
     mouse_pressed: [bool; 3],
     mouse_released: [bool; 3],
     mouse_position: Option<Vec2>,
+    /// `simulateMouseDelta`: pointer movement for the next frame (pixels, y down like the
+    /// window reports it).
+    mouse_delta: Vec2,
 }
 
 impl SimInput {
@@ -61,6 +64,12 @@ impl SimInput {
         }
     }
 
+    /// Mouse movement the next frame reports (`Mouse X` / `Mouse Y` axes, `Input.mouseDelta`);
+    /// `dy` > 0 moves up, like the axes.
+    pub fn mouse_delta(&mut self, dx: f32, dy: f32) {
+        self.mouse_delta += Vec2::new(dx, -dy);
+    }
+
     /// Release everything (between tests the state starts empty anyway).
     pub fn reset(&mut self) {
         let held: Vec<String> = self.held.drain().chain(self.taps.drain()).collect();
@@ -68,6 +77,7 @@ impl SimInput {
         for b in 0..3 {
             self.mouse_up(b);
         }
+        self.mouse_delta = Vec2::ZERO;
     }
 
     /// The next game frame's input; one-frame presses and releases are used up.
@@ -82,6 +92,7 @@ impl SimInput {
             mouse_pressed: std::mem::take(&mut self.mouse_pressed),
             mouse_released: std::mem::take(&mut self.mouse_released),
             mouse_position: self.mouse_position,
+            mouse_delta: std::mem::take(&mut self.mouse_delta),
             screen_size: screen,
             ..Default::default()
         };
@@ -97,8 +108,8 @@ fn with_sim(lua: &Lua, f: impl FnOnce(&mut SimInput)) {
     }
 }
 
-/// Add `Input.simulateKeyDown/Up/Press`, `simulateMouseDown/Up`, `simulateMousePosition` and
-/// `simulateReset` (and the [`SimInput`] they write to).
+/// Add `Input.simulateKeyDown/Up/Press`, `simulateMouseDown/Up`, `simulateMousePosition`,
+/// `simulateMouseDelta` and `simulateReset` (and the [`SimInput`] they write to).
 pub fn register(lua: &Lua) -> Result<()> {
     lua.set_app_data(SimInput::default());
     let input: Table = lua.globals().get("Input")?;
@@ -145,6 +156,13 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
     input.set(
+        "simulateMouseDelta",
+        lua.create_function(|lua, (dx, dy): (f32, f32)| {
+            with_sim(lua, |s| s.mouse_delta(dx, dy));
+            Ok(())
+        })?,
+    )?;
+    input.set(
         "simulateReset",
         lua.create_function(|lua, ()| {
             with_sim(lua, SimInput::reset);
@@ -185,5 +203,11 @@ mod tests {
         let f = s.frame(screen);
         assert!(f.mouse(0) && f.mouse_down(0));
         assert_eq!(f.screen_size, screen);
+
+        // Mouse movement lasts one frame; up is negative window y.
+        s.mouse_delta(10.0, 4.0);
+        s.mouse_delta(5.0, 0.0);
+        assert_eq!(s.frame(screen).mouse_delta, Vec2::new(15.0, -4.0));
+        assert_eq!(s.frame(screen).mouse_delta, Vec2::ZERO);
     }
 }

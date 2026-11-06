@@ -13,6 +13,8 @@ use crate::scene::{CharacterController, Scene};
 pub(super) struct Controller {
     settings: CharacterController,
     handle: rp::RigidBodyHandle,
+    /// The capsule collider (resized by `set_controller_size`).
+    collider: rp::ColliderHandle,
     /// Capsule without its centre offset.
     shape: rp::SharedShape,
     /// Capsule centre in the object's frame (scaled).
@@ -88,13 +90,14 @@ impl Physics {
         )
         .collision_groups(layers::groups(&self.settings, layer))
         .active_events(rp::ActiveEvents::COLLISION_EVENTS);
-        self.insert_collider(scene, e, Some(e), collider);
+        let collider = self.insert_collider(scene, e, Some(e), collider);
         self.controllers.insert(
             e,
             Controller {
                 center: cc.center * s,
                 settings: cc,
                 handle,
+                collider,
                 shape,
                 layer,
                 grounded: false,
@@ -106,6 +109,40 @@ impl Physics {
 
     pub fn is_character(&self, e: Entity) -> bool {
         self.controllers.contains_key(&e)
+    }
+
+    /// The controller's capsule follows its component again after a script changed `height`,
+    /// `radius` or `center` (crouching). The object's position stays: lower the centre too
+    /// to keep the feet on the floor.
+    pub fn set_controller_size(&mut self, scene: &Scene, e: Entity) {
+        let Ok(cc) = scene
+            .world
+            .get::<&CharacterController>(e)
+            .map(|c| CharacterController::clone(&c))
+        else {
+            return;
+        };
+        let Some(c) = self.controllers.get_mut(&e) else {
+            return;
+        };
+        let (_, _, s) = world_pose(scene, e);
+        let radius = (cc.radius * s.x.max(s.z)).max(1e-3);
+        let half = (cc.height * s.y * 0.5 - radius).max(0.0);
+        let shape = rp::SharedShape::capsule_y(half, radius);
+        let center = cc.center * s;
+        c.settings = cc;
+        c.shape = shape.clone();
+        c.center = center;
+        if let Some(col) = self.world.colliders.get_mut(c.collider) {
+            if center == Vec3::ZERO {
+                col.set_shape(shape);
+            } else {
+                col.set_shape(rp::SharedShape::compound(vec![(
+                    pose(center, glam::Quat::IDENTITY),
+                    shape,
+                )]));
+            }
+        }
     }
 
     /// CharacterController.isGrounded: touching the ground after the last move.

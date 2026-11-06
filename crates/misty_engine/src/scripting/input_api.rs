@@ -1,5 +1,5 @@
 //! Lua `Input` Manager functions (`GetAxis`, `GetAxisRaw`, `GetButton/Down/Up`,
-//! `GetJoystickNames`, `anyKey`, `anyKeyDown`, `mouseScrollDelta`) and tag lookups
+//! `GetJoystickNames`, `anyKey`, `anyKeyDown`, `mouseScrollDelta`, `mouseDelta`) and tag lookups
 //! (`GameObject.FindWithTag`, `FindGameObjectsWithTag`).
 
 use glam::Vec3;
@@ -98,6 +98,12 @@ fn property(w: &World, key: &str) -> Option<Prop> {
         "mouseScrollDelta" => {
             let n = w.input.scroll_notches();
             Prop::Vec(Vec3::new(n.x, n.y, 0.0))
+        }
+        // Pointer movement this frame in pixels, y up (what the Mouse X / Mouse Y axes read
+        // before their sensitivity); raw motion while the cursor is locked.
+        "mouseDelta" => {
+            let d = w.input.mouse_delta;
+            Prop::Vec(Vec3::new(d.x, -d.y, 0.0))
         }
         _ => return None,
     })

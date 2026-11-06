@@ -27,10 +27,10 @@ use misty_engine::player_settings::{PlayerSettings, ScreenMode};
 use misty_engine::prefs::{self, PrefValue, keys};
 use misty_engine::scripting::LogKind;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::PhysicalKey;
-use winit::window::{Window, WindowId};
+use winit::window::{CursorGrabMode, Window, WindowId};
 
 use game::Game;
 use gfx::Gfx;
@@ -119,6 +119,7 @@ fn main() {
         quality: u64::MAX,
         mode: player.screen_mode,
         screenshot,
+        cursor: Default::default(),
         player,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
@@ -155,6 +156,8 @@ struct Player {
     /// Current screen mode.
     mode: ScreenMode,
     screenshot: Option<PathBuf>,
+    /// `Cursor.lockState` / `Cursor.visible` last applied to the window.
+    cursor: misty_engine::scripting::CursorState,
 }
 
 impl Player {
@@ -191,6 +194,7 @@ impl Player {
             return;
         }
         self.apply_screen_requests();
+        self.apply_cursor();
         let Some(gfx) = self.gfx.as_mut() else { return };
         gfx.update_probes(&self.game.scene, &self.game.assets);
         let view = self.game.view();
@@ -272,6 +276,32 @@ impl Player {
         }
     }
 
+    /// `Cursor.lockState` / `Cursor.visible` from scripts reach the window when they change.
+    /// Platforms without a locked mode confine the cursor instead; scripts read raw motion
+    /// either way.
+    fn apply_cursor(&mut self) {
+        use misty_engine::scripting::CursorLockMode;
+        let wanted = self.game.cursor();
+        if wanted == self.cursor {
+            return;
+        }
+        self.cursor = wanted;
+        self.input.locked = wanted.lock == CursorLockMode::Locked;
+        let Some(window) = &self.window else { return };
+        let result = match wanted.lock {
+            CursorLockMode::None => window.set_cursor_grab(CursorGrabMode::None),
+            CursorLockMode::Confined => window.set_cursor_grab(CursorGrabMode::Confined),
+            CursorLockMode::Locked => window
+                .set_cursor_grab(CursorGrabMode::Locked)
+                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined)),
+        };
+        if let Err(e) = result {
+            self.log
+                .write(LogKind::Warning, &format!("Cursor.lockState: {e}"));
+        }
+        window.set_cursor_visible(wanted.visible);
+    }
+
     fn report_size(&mut self, width: u32, height: u32) {
         misty_engine::screen::set_size(width, height, self.mode);
         if let Some(gfx) = self.gfx.as_mut() {
@@ -337,6 +367,9 @@ impl ApplicationHandler for Player {
             WindowEvent::Focused(focused) => {
                 if !focused {
                     self.input.clear_held();
+                    // Alt-tabbing away must not leave the cursor locked.
+                    self.game.release_cursor();
+                    self.apply_cursor();
                 }
                 let pause = !focused && !self.player.run_in_background;
                 if self.paused && !pause {
@@ -376,6 +409,12 @@ impl ApplicationHandler for Player {
             }
             WindowEvent::RedrawRequested => self.frame(event_loop),
             _ => {}
+        }
+    }
+
+    fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        if let DeviceEvent::MouseMotion { delta: (x, y) } = event {
+            self.input.raw_motion(Vec2::new(x as f32, y as f32));
         }
     }
 

@@ -171,6 +171,8 @@ impl Default for InputSettings {
             InputAxis::button("Fire2", "left alt", "mouse 1"),
             InputAxis::button("Fire3", "left shift", "mouse 2"),
             InputAxis::button("Jump", "space", ""),
+            InputAxis::button("Run", "left shift", "right shift"),
+            InputAxis::button("Crouch", "left ctrl", "c"),
             InputAxis::mouse("Mouse X", 0),
             InputAxis::mouse("Mouse Y", 1),
             InputAxis::mouse("Mouse ScrollWheel", 2),
@@ -181,6 +183,9 @@ impl Default for InputSettings {
             InputAxis::button("Fire2", "joystick button 1", ""),
             InputAxis::button("Fire3", "joystick button 2", ""),
             InputAxis::button("Jump", "joystick button 3", ""),
+            // Left stick press runs, B crouches.
+            InputAxis::button("Run", "joystick button 8", ""),
+            InputAxis::button("Crouch", "joystick button 1", ""),
             InputAxis::button("Submit", "return", "joystick button 0"),
             InputAxis::button("Submit", "enter", "space"),
             InputAxis::button("Cancel", "escape", "joystick button 1"),

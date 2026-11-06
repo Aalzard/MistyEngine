@@ -331,6 +331,17 @@ impl Runtime {
     }
 
     /// Messages for the Console (script output, errors, build problems).
+    /// What scripts asked of the cursor (`Cursor.lockState`, `Cursor.visible`); the window
+    /// applies it.
+    pub fn cursor(&self) -> crate::scripting::CursorState {
+        self.host.cursor()
+    }
+
+    /// Give the cursor back (Escape in the editor, lost focus); scripts see `lockState` None.
+    pub fn release_cursor(&self) {
+        self.host.release_cursor();
+    }
+
     pub fn take_logs(&mut self) -> Vec<(LogKind, String)> {
         let mut out: Vec<(LogKind, String)> = std::mem::take(&mut self.pending)
             .into_iter()

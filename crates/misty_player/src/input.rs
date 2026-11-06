@@ -71,6 +71,10 @@ pub struct InputState {
     mouse_released: [bool; 3],
     cursor: Option<Vec2>,
     mouse_delta: Vec2,
+    /// Raw device motion (what a locked cursor reports; the pointer itself stays put).
+    raw_delta: Vec2,
+    /// `Cursor.lockState == Locked`: scripts get the raw motion.
+    pub locked: bool,
     /// Cursor in physical pixels (what the UI is laid out in); None = outside the window.
     cursor_px: Option<Vec2>,
     /// Window size in physical pixels.
@@ -129,6 +133,11 @@ impl InputState {
         self.cursor_px = pos;
     }
 
+    /// Raw mouse motion (`DeviceEvent::MouseMotion`), used while the cursor is locked.
+    pub fn raw_motion(&mut self, delta: Vec2) {
+        self.raw_delta += delta;
+    }
+
     /// Window size in physical pixels (UI layout).
     pub fn screen_resized(&mut self, width: u32, height: u32) {
         self.screen = Vec2::new(width as f32, height as f32);
@@ -152,6 +161,8 @@ impl InputState {
 
     /// This frame's input; per-frame events start over.
     pub fn frame(&mut self) -> Input {
+        let pointer = std::mem::take(&mut self.mouse_delta);
+        let raw = std::mem::take(&mut self.raw_delta);
         Input {
             held: self.held.clone(),
             pressed: std::mem::take(&mut self.pressed),
@@ -159,7 +170,7 @@ impl InputState {
             mouse_held: self.mouse_held,
             mouse_pressed: std::mem::take(&mut self.mouse_pressed),
             mouse_released: std::mem::take(&mut self.mouse_released),
-            mouse_delta: std::mem::take(&mut self.mouse_delta),
+            mouse_delta: if self.locked { raw } else { pointer },
             mouse_position: self.cursor_px,
             screen_size: self.screen,
             text: std::mem::take(&mut self.text),
@@ -207,5 +218,19 @@ mod tests {
         s.clear_held();
         let c = s.frame();
         assert!(!c.key("w") && c.key_up("w") && !c.mouse(0));
+    }
+
+    #[test]
+    fn locked_cursor_reports_raw_motion() {
+        let mut s = InputState::default();
+        s.cursor_moved(Vec2::new(10.0, 10.0));
+        s.cursor_moved(Vec2::new(11.0, 10.0));
+        s.raw_motion(Vec2::new(30.0, -5.0));
+        assert_eq!(s.frame().mouse_delta, Vec2::new(1.0, 0.0), "free: pointer");
+        s.locked = true;
+        s.cursor_moved(Vec2::new(11.0, 10.0));
+        s.raw_motion(Vec2::new(30.0, -5.0));
+        s.raw_motion(Vec2::new(2.0, 1.0));
+        assert_eq!(s.frame().mouse_delta, Vec2::new(32.0, -4.0), "locked: raw");
     }
 }

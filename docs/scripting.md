@@ -29,12 +29,13 @@ and Localization below).
 ## API
 | | |
 |---|---|
-| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none) |
-| `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
+| `self.gameObject` | `name`, `tag`, `layer` (index, settable), `activeSelf`, `transform`, `SetActive(b)`, `CompareTag(t)`, `GetComponent("Rigidbody"/"Transform"/"AudioSource"/"Animation"/"Animator"/"Camera"/"CharacterController"/"NavMeshAgent"/…)` (nil if the object has none); `GetComponent("Rotator")` is that object's `Rotator.lua` instance (its fields and functions), nil without one |
+| `self.transform` | `position`, `localPosition`, `eulerAngles`, `localEulerAngles`, `localScale`, `forward`, `right`, `up`, `parent`, `childCount`, `GetChild(i)` (0-based), `Find("Head/Camera")` (a child or a path of children, or nil), `Translate(v)`, `Rotate(v)`, `LookAt(target)` |
+| Camera | `GetComponent("Camera")` or `Camera.main`: `fieldOfView` (vertical degrees), `nearClipPlane`, `farClipPlane`, `orthographic`, `orthographicSize`, `enabled`, `cullingMask`, `useOcclusionCulling`, `ScreenPointToRay`, `WorldToScreenPoint` (see Camera and mouse) |
 | Rigidbody | `velocity`, `angularVelocity`, `mass`, `position` (physics pose, read-only), `isKinematic`, `useGravity`, `AddForce(v [, ForceMode.X])`, `AddTorque(v [, mode])`, `MovePosition(v)`, `MoveRotation(eulerDegrees)` |
 | `Physics` | `Raycast`, `RaycastAll`, `SphereCast`, `OverlapSphere` (see Physics queries), `DefaultRaycastLayers`, `AllLayers`, `IgnoreRaycastLayer` |
 | `LayerMask` | `GetMask("Default", "Player", …)`, `NameToLayer(name)` (-1 if unknown), `LayerToName(index)` |
-| CharacterController | `Move(motion)`, `SimpleMove(speed)` (returns `isGrounded`), `isGrounded`, `velocity`, `height`, `radius`, `center`, `slopeLimit`, `stepOffset`, `skinWidth` (read-only) |
+| CharacterController | `Move(motion)`, `SimpleMove(speed)` (returns `isGrounded`), `isGrounded`, `velocity`, `height`, `radius`, `center` (settable: the capsule is rebuilt, e.g. crouching), `slopeLimit`, `stepOffset`, `skinWidth` (read-only) |
 | WheelCollider | `motorTorque`, `brakeTorque`, `steerAngle`, `enabled` (settable), `rpm`, `isGrounded`, `radius`, `suspensionDistance` (read-only), `GetWorldPose()` (returns position and Euler angles), `GetGroundHit()` (WheelHit or nil) |
 | SplineContainer | `EvaluatePosition(t [, spline])`, `EvaluateTangent(t)`, `EvaluateUpVector(t)` (world space, t is 0–1 by distance, spline index from 1), `EvaluateCurvature(t)`, `CalculateLength()`, `GetNearestPoint(position)` (point and t), `KnotCount()`, `GetKnotPosition(i)`, `splineCount`, `closed` |
 | SplineAnimate | `Play()`, `Pause()`, `Restart()` (also lower-case), `normalizedTime` and `elapsedTime` (settable), `isPlaying`, `duration`, `speed`, `length`, `enabled` |
@@ -61,7 +62,8 @@ and Localization below).
 | `Color` | `new(r,g,b [,a])` (0..1), `white black red green blue yellow cyan magenta gray clear`, `Lerp(a,b,t)`; `.r .g .b .a`, `* number/Color`, `==` |
 | `Vector3` | `new(x,y,z)`, `zero one up down left right forward back`, `Distance`, `Dot`, `Cross`, `Lerp`; `+ - * /`, `.magnitude`, `.normalized` |
 | `Time` | `deltaTime`, `time`, `frameCount`, `fixedDeltaTime`, `timeScale`, `unscaledDeltaTime` (read-only; `fixedDeltaTime` and `timeScale` come from Edit ▸ Project Settings) |
-| `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseScrollDelta` (notches) — keyboard and mouse need Game view focus (click it), gamepads always reach a playing game |
+| `Input` | `GetKey/GetKeyDown/GetKeyUp("w")` (also `"mouse 0"`, `"joystick button 0"`, `"joystick 2 button 0"`), `GetMouseButton/Down/Up(0..2)`, `GetAxis(name)` (smoothed) / `GetAxisRaw(name)`, `GetButton/GetButtonDown/GetButtonUp(name)` (axes and buttons from Edit ▸ Project Settings ▸ Input Manager; an unknown name is an error), `GetJoystickNames()`, `anyKey`, `anyKeyDown`, `mousePosition`, `mouseDelta` (pixels moved this frame, y up; raw motion while the cursor is locked), `mouseScrollDelta` (notches) — keyboard and mouse need Game view focus (click it), gamepads always reach a playing game |
+| `Cursor` | `lockState` (`CursorLockMode.None` / `Locked` / `Confined`), `visible` — locking hides the cursor and holds it in the window so mouse look reads raw motion; in the editor Escape always gives it back (scripts then see `None`), Stop and a lost focus too |
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
 | `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name` |
@@ -77,9 +79,9 @@ buttons `"joystick button 0"` (any pad) / `"joystick 1 button 0"` (the first pad
 
 Edit ▸ Project Settings ▸ Input Manager lists the virtual axes. Default entries: Horizontal (←/→, A/D, left stick
 X), Vertical (↓/↑, S/W, left stick Y), Fire1 (left ctrl, mouse 0, joystick button 0), Fire2 (left alt, mouse 1,
-button 1), Fire3 (left shift, mouse 2, button 2), Jump (space, button 3), Mouse X, Mouse Y, Mouse ScrollWheel,
-Submit (return, enter, space, button 0) and Cancel (escape, button 1). Several entries can share a name; the
-one with the largest value wins.
+button 1), Fire3 (left shift, mouse 2, button 2), Jump (space, button 3), Run (left/right shift, left stick
+press), Crouch (left ctrl, C, button 1), Mouse X, Mouse Y, Mouse ScrollWheel, Submit (return, enter, space,
+button 0) and Cancel (escape, button 1). Several entries can share a name; the one with the largest value wins.
 
 - **Key or Mouse Button** axes move towards -1/0/+1 at Sensitivity units per second and fall back to 0 at Gravity
   per second (Snap jumps to 0 when the direction reverses; Invert swaps the sides). `GetAxisRaw` gives -1/0/+1.
@@ -335,6 +337,56 @@ right after the callback that called `Move`; `hit` has `gameObject`, `collider`,
 `normal`, `moveDirection`, `moveLength`, `controller`. Sample: `Scenes/PhysicsDemo.scene` with
 `Assets/Scripts/CharacterWalker.lua` and `Assets/Scripts/LaserPointer.lua`.
 
+### First Person Player
+
+**GameObject ▸ First Person Player** creates a ready-to-play first-person rig (the sample project also has it
+as `Assets/Prefabs/First Person Player.prefab`, played in `Scenes/FirstPersonDemo.scene`, a test course with
+ramps, stairs, platforms, a narrow bridge and a low tunnel):
+
+```
+Player              Character Controller (1.8 m, radius 0.35) + FirstPersonController.lua
+└ HeadBobVertical   HeadBobVertical.lua      (eye height 1.7 m)
+  └ HeadBobHorizontal  HeadBobHorizontal.lua
+    └ Camera        Camera + Audio Listener + HeadBobRotation.lua
+```
+
+The scripts are added to `Assets/Scripts` when the project has none (never overwritten), so every field below
+can be tuned in the Inspector. WASD moves (Horizontal / Vertical), Shift runs (Run), Space jumps (Jump), Ctrl
+crouches (Crouch), the mouse looks (Mouse X / Mouse Y) and Escape gives the cursor back (a click takes it
+again).
+
+**FirstPersonController** owns the pose: mouse look turns the Player (yaw) and pitches the Camera; nothing else
+rotates them. Locomotion is a small state machine (Idle, Walk, Run, Jump, Fall, Land, Crouch) whose planar
+velocity is SmoothDamp'd towards the wanted speed (`walkSpeed` 4 m/s, `runSpeed` 7, `crouchSpeed` 2;
+`accelerationTime` / `decelerationTime`, `airControl` scales it in the air), with `coyoteTime` (a jump still
+works 0.12 s after a ledge), `jumpBuffer` (a press 0.15 s before landing jumps on landing), `jumpHeight`,
+`gravity` and `terminalVelocity`, a sprint FOV kick (`sprintFov`, `fovSmoothTime`), crouching that shrinks the
+capsule (`crouchHeight`, stands up only with headroom) and slope / step handling from the Character Controller.
+It publishes a **locomotion signal** (`GetComponent("FirstPersonController").signal`) every Update: `state`,
+`speed` (measured planar m/s), `speed01`, `grounded`, `airTime`, `phase` (stride phase in radians, advanced by
+the distance walked, one stride = two footsteps of `walkStepLength` 1.6 m / `runStepLength` 2.2 m, so the bob follows the footsteps and stops with them),
+`phaseRate`, `landing` (0..1 impulse on the landing frame, from the fall speed between `landingMinSpeed` and
+`landingMaxSpeed`), `strafe`, `forward`, `turnRate` (deg/s), `crouch` (0..1) and `pitch`.
+
+The three bob scripts find that signal on a parent and only **add offsets to the base pose** they stored at
+Start (position for the two bob objects, pitch from the controller for the camera), each LateUpdate:
+
+- **HeadBobVertical**: `amplitude(speed) · sin(2·phase)` (two bounces per stride; `walkAmplitude` 3 cm,
+  `runAmplitude` 5 cm, blended with the speed through SmoothDamp over `blendTime`, 0 in the air), a
+  spring-damper dip on landing (`landingDip`, `landingFrequency`, `landingDamping`), a slow breathing sine
+  while idle (`breathingAmplitude`, `breathingRate`) and the crouch drop (`crouchDrop`). Stopping freezes the
+  phase and fades the amplitude, so the head settles instead of snapping.
+- **HeadBobHorizontal**: `amplitude(speed) · sin(phase)` (one sway per stride, `walkAmplitude` 2 cm,
+  `runAmplitude` 3.5 cm) plus a lean into strafes (`strafeLean`).
+- **HeadBobRotation** (on the Camera): a stride roll (`walkRoll` 0.8°, `runRoll` 1.6°), a lean into strafes
+  (`strafeTilt`), a counter-roll on fast mouse turns (`turnTilt`, `maxTurnTilt`), a pitch bob from the vertical
+  bob's velocity (`pitchBob`, `maxPitchBob`) and a landing pitch kick that springs back (`landingKick`), all
+  SmoothDamp'd (`smoothTime`) and clamped (`maxRoll`, `maxPitch`).
+
+The maths is in plain functions (`FirstPersonController.Locomotion`, `FirstPersonController.look`,
+`HeadBob*:Evaluate(signal, dt)`), so a script of your own can drive the bob from a different mover by
+publishing the same signal table. Tests: `Assets/Tests/FirstPersonTests.playtest.lua`.
+
 ### Wheel Collider
 
 Add **Component ▸ Physics ▸ Wheel Collider** to a child of an object with a Rigidbody (one per wheel). Each
@@ -545,6 +597,7 @@ that uses the full game API on the running game:
 | `Input.simulateKeyDown(key)` / `simulateKeyUp(key)` | Hold / release a key from the next frame (`GetKey`, `GetKeyDown`, `GetAxis` see it) |
 | `Input.simulateKeyPress(key)` | Press for one frame, released on the next |
 | `Input.simulateMouseDown([button])` / `simulateMouseUp` / `simulateMousePosition(x, y)` | Mouse buttons and pointer (game-image pixels, 1280×720) |
+| `Input.simulateMouseDelta(dx, dy)` | Mouse movement for the next frame (pixels, up positive: the Mouse X / Mouse Y axes and `Input.mouseDelta` see it) |
 | `Input.simulateReset()` | Release everything |
 | `setTimeout(seconds)` | Longest game time the test may take (30 s by default) |
 | `ignoreErrorLogs()` | Errors logged by the game or the test (`Debug.LogError`, script errors) fail a PlayMode or EditMode test unless it calls this |
@@ -584,7 +637,7 @@ Settings scene, prints PASS/FAIL lines, writes JUnit XML and exits with 0 (all p
 failed) or 2 (bad arguments or project). `--filter` matches `file::Suite > test` case-insensitively.
 
 Samples: `Assets/Tests/MathTests.test.lua`, `PlayerControllerTests.playtest.lua` (Platformer2D),
-`VehicleTests.playtest.lua` (VehicleDemo).
+`VehicleTests.playtest.lua` (VehicleDemo), `FirstPersonTests.playtest.lua` (FirstPersonDemo).
 
 ### Save games
 Give each object whose state should be saved a **Saveable** component (Component ▸ Miscellaneous). It has a
