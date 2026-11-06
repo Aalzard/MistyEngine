@@ -9,8 +9,15 @@ struct GrassShadowOut {
 
 @vertex
 fn vs_grass_shadow(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassShadowOut {
-    let v = grass_blade(vi, b);
     var out: GrassShadowOut;
+    // Blades outside this map skip the rest (its near plane is left alone: casters behind it
+    // still reach the map), and so do the flat fans of the blades the LOD shrank away
+    // (`grass_flat`): lying on the ground, they could only shade the ground under them.
+    if (grass_flat(b) || grass_outside(b, view.view_proj, false)) {
+        out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+        return out;
+    }
+    let v = grass_blade(vi, b);
     out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
     out.uv = vec2<f32>(grass_card_u(v.cell, v.side, v.repeat), grass_card_v(v.t, b.shape.w));
     return out;

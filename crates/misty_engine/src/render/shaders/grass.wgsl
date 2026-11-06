@@ -41,21 +41,51 @@ struct GrassOut {
     @location(8) canopy: vec4<f32>,
 };
 
-// The canopy top over terrain-local `p`: x = its height (m), yz = its slope (m per m).
-fn canopy_top(p: vec2<f32>) -> vec4<f32> {
-    let relief = grass_canopy(p);
+// The canopy top at a blade's root: x = its height (m), yz = its slope (m per m), w = its
+// relief 0..1 (`grass_canopy` there, worked out on the CPU with the blade).
+fn canopy_top(b: BladeIn) -> vec4<f32> {
+    let relief = vec3<f32>(b.field.w, b.slope);
     let span = grass.canopy.y - grass.canopy.x;
     // Tufts stand a little above the tallest setting; the undergrowth under the tips.
     let top = (grass.canopy.x + span * relief.x) * 0.95;
     return vec4<f32>(max(top, 0.02), span * relief.yz, relief.x);
 }
 
+// Every vertex of a skipped blade lands on one point outside the view: nothing is rasterised.
+const GRASS_SKIP = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+
+// The lit grass: every blade in view, the flat fans of the blades the LOD shrank away too
+// (`grass_flat`: they test against the depth the standing blades wrote without writing their
+// own, see `vs_grass_depth`).
 @vertex
 fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
+    if (grass_outside(b, view.view_proj, true)) {
+        var out: GrassOut;
+        out.clip = GRASS_SKIP;
+        return out;
+    }
+    return grass_vertex(vi, b);
+}
+
+// The grass depth pass: the standing blades only. The flat fans of the blades the LOD shrank
+// away lie on the ground under them; the lit pass draws them against this depth without
+// writing any of their own (where fans overlap, the later one shows). Leaving them out here
+// halves what the depth pass rasterises.
+@vertex
+fn vs_grass_depth(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
+    if (grass_flat(b) || grass_outside(b, view.view_proj, true)) {
+        var out: GrassOut;
+        out.clip = GRASS_SKIP;
+        return out;
+    }
+    return grass_vertex(vi, b);
+}
+
+fn grass_vertex(vi: u32, b: BladeIn) -> GrassOut {
+    var out: GrassOut;
     let v = grass_blade(vi, b);
     let face = normalize(cross(v.across, v.tangent));
 
-    var out: GrassOut;
     out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
     // Motion vector: the blade as the wind had it last frame (terrains don't move).
     // (Only while the wind's vectors are wanted: the clock moved and TAA is on.)
@@ -73,9 +103,9 @@ fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
     let phase = b.shape.w;
     // Far away a grazing view sees mostly the tips (paler, drier) and the seed stalks.
     let dry_mix = mix(b.shape.z, 0.2 + 0.4 * b.shape.z, far * 0.7);
-    let patches = grass_patches(b.position.xz, grass.lush.w);
+    let patches = b.field.xy;
     var base = grass_base_color(patches, dry_mix, grass.healthy.rgb, grass.dry.rgb, grass.lush.rgb, grass.amounts.xy);
-    base = grass_swathe_tint(base, grass_swathe(b.position.xz, grass.lush.w)) * grass_far_tint(v.dist);
+    base = grass_swathe_tint(base, b.field.z) * grass_far_tint(v.dist);
     // Tufts and single blades: warmer / cooler hue and lighter / darker value.
     let cv = grass.look.w * (1.0 - 0.5 * far);
     let tint = b.extra.w;
@@ -88,7 +118,7 @@ fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
         * mix(vec3<f32>(1.0), vec3<f32>(1.06, 1.0, 0.85), patches.y * grass.amounts.y);
     out.color = select(base, seed_color, v.seed_head);
     // Height within the local canopy (a tuft's tip stands above 1, a dip's below).
-    let top = canopy_top(b.position.xz);
+    let top = canopy_top(b);
     out.misc = vec4<f32>(far, v.above / top.x, v.gust, v.thin);
     // The canopy's slope, exaggerated: the turf is rougher than its smoothed height field,
     // and the sun side of every bump reads lighter than the dip behind it.

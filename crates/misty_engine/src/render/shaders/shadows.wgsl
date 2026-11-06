@@ -291,6 +291,59 @@ fn sun_shadow(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode: f3
     return mix(1.0, s, fade);
 }
 
+// Four hardware-filtered taps of the sun's cascades at `world` + `taps` (`sun_shadow` in
+// mode 1 at each, averaged), with the cascade, blend band and fade picked once at `world`:
+// the taps are a few centimetres apart, so they share them (dense grass shades many
+// fragments per pixel; picking the cascade per tap cost as much as the taps).
+fn sun_shadow_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: array<vec3<f32>, 4>) -> f32 {
+    let count = u32(shadow_params.settings.x);
+    let depth = cascade_depth(world);
+    let distance = shadow_params.view_axis.w;
+    if (count == 0u || depth > distance) {
+        return 1.0;
+    }
+    let at = cascade_at(depth);
+    var c = u32(at.x);
+    var s = sun_cascade_taps(c, light, world, n, n_dot_l, taps);
+    // Outside its cascade (e.g. an orthographic view): the next ones are larger.
+    while (s < 0.0 && c + 1u < count) {
+        c++;
+        s = sun_cascade_taps(c, light, world, n, n_dot_l, taps);
+    }
+    if (s < 0.0) {
+        return 1.0;
+    }
+    if (at.y > 0.0 && c == u32(at.x)) {
+        let next = sun_cascade_taps(c + 1u, light, world, n, n_dot_l, taps);
+        if (next >= 0.0) {
+            s = mix(s, next, at.y);
+        }
+    }
+    // Fade out over the last 10% of the shadow distance.
+    let fade = clamp((distance - depth) / (0.1 * distance), 0.0, 1.0);
+    return mix(1.0, s, fade);
+}
+
+// `sun_cascade` in mode 1 at four points around `world`, averaged (-1 = one of them falls
+// outside cascade `c`).
+fn sun_cascade_taps(c: u32, light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: array<vec3<f32>, 4>) -> f32 {
+    let info = shadow_params.cascade_info[c];
+    let lp = shadow_params.light_params[light * 2u];
+    let m = shadow_params.cascades[c];
+    // Normal offset: about `normal bias` texels, more on slopes.
+    let p = world + n * info.y * lp.z * (1.0 + 2.0 * (1.0 - n_dot_l));
+    let bias = lp.y * info.y / info.z;
+    var sum = 0.0;
+    for (var k = 0u; k < 4u; k++) {
+        let sc = shadow_coords(m, p + taps[k]);
+        if (sc.z > 1.0) {
+            return -1.0;
+        }
+        sum += textureSampleCompareLevel(shadow_map, shadow_sampler, sc.xy, i32(c), sc.z - bias);
+    }
+    return sum * 0.25;
+}
+
 // View depth of a perspective shadow-map depth.
 fn linear_depth(z: f32, near: f32, far: f32) -> f32 {
     return near * far / (far - z * (far - near));
@@ -441,12 +494,13 @@ fn fast_shadow_factor(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: 
         let b = cross(l, t);
         // Narrow enough for single blades to cast blade-shaped shadows close up.
         let r = 0.025 * (1.0 + 0.08 * length(world - view.camera_pos.xyz));
-        var sum = 0.0;
-        sum += sun_shadow(i, world + (t + b * 0.5) * r, n, n_dot_l, 1.0);
-        sum += sun_shadow(i, world + (-t - b * 0.5) * r, n, n_dot_l, 1.0);
-        sum += sun_shadow(i, world + (b - t * 0.5) * r, n, n_dot_l, 1.0);
-        sum += sun_shadow(i, world + (-b + t * 0.5) * r, n, n_dot_l, 1.0);
-        return sum * 0.25;
+        let taps = array<vec3<f32>, 4>(
+            (t + b * 0.5) * r,
+            (-t - b * 0.5) * r,
+            (b - t * 0.5) * r,
+            (-b + t * 0.5) * r,
+        );
+        return sun_shadow_taps(i, world, n, n_dot_l, taps);
     }
     return local_shadow(i, li, world, n, n_dot_l, 1.0);
 }

@@ -54,6 +54,12 @@ struct BladeIn {
     @location(1) shape: vec4<f32>,
     // x = drop-out key (+ 2 for a seed head), y = bend, z = lean angle, w = tuft tint.
     @location(2) extra: vec4<f32>,
+    // The field at the root, worked out once on the CPU (terrain/details.rs): x = lush and
+    // y = dry patch weight (`grass_patches`), z = swathe (`grass_swathe`), w = canopy relief
+    // (`grass_canopy` x).
+    @location(3) field: vec4<f32>,
+    // The canopy relief's slope per metre (`grass_canopy` yz).
+    @location(4) slope: vec2<f32>,
 };
 
 struct BladeVertex {
@@ -128,25 +134,11 @@ fn grass_keep(dist: f32) -> f32 {
     return clamp(r * r, MIN_KEEP, 1.0) * grass.canopy.w;
 }
 
-fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
-    return grass_blade_at(vi, b, grass.origin.w);
-}
-
-// The blade as it stood at `time` (last frame's position for the motion vectors).
-fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
-    let coarse = vi >= 100u;
-    let k = select(vi, vi - 100u, coarse);
-    let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
-    let side = select(-0.5, 0.5, (k & 1u) == 1u);
+// Height a blade is drawn at: 0 = left out (shrunk away by the LOD past its key, beyond the
+// draw distance, outside a shadow caster's range). `grass_blade_at` draws it this tall.
+fn grass_drawn_height(b: BladeIn) -> f32 {
     let seed_head = b.extra.x >= 2.0;
     let key = b.extra.x - select(0.0, 2.0, seed_head);
-    let phase = b.shape.w;
-    var cell = u32(phase * 4.0) & 3u;
-    if (seed_head) {
-        // The open panicles only: thin pale stalks over short turf.
-        cell = 6u + (u32(fract(phase * 7.31) * 2.0) & 1u);
-    }
-
     let root = grass.origin.xyz + b.position.xyz;
     let dist = distance(root, grass.camera.xyz);
     let fade = 1.0 - smoothstep(grass.dry.w, grass.healthy.w, dist);
@@ -163,6 +155,66 @@ fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
             height *= smoothstep(grass.screen.z * 0.7, grass.screen.z, dist);
         }
     }
+    return height;
+}
+
+// A blade shrunk away by the LOD (`grass_drawn_height` 0) still draws: its card collapses
+// onto its root as a small flat twisted fan (as wide as the widened blade), and in the
+// middle distance these fans are a good part of what keeps the ground covered. Passes that
+// can leave them out (the grass depth pass, the prepass, shadow casters) skip them whole.
+fn grass_flat(b: BladeIn) -> bool {
+    return grass_drawn_height(b) <= 0.0;
+}
+
+// The blade lies wholly outside the view of `m` (a camera or shadow view-projection): past
+// one of its side planes (or in front of its near plane when `near`) by more than the card
+// can reach. Decided per blade, so every vertex of the card agrees and a vertex stage can
+// skip the blade's wind, colour and shading inputs.
+fn grass_outside(b: BladeIn, m: mat4x4<f32>, near: bool) -> bool {
+    let root = vec4<f32>(grass.origin.xyz + b.position.xyz, 1.0);
+    let dist = distance(root.xyz, grass.camera.xyz);
+    // Generous reach of the card around its root: bent over by the wind and the lean,
+    // widened (LOD, look-down, a pixel at least) and the seed heads.
+    let reach = b.position.w * 1.6 + 0.25 + dist * grass.screen.x * 2.0;
+    let r0 = vec4<f32>(m[0].x, m[1].x, m[2].x, m[3].x);
+    let r1 = vec4<f32>(m[0].y, m[1].y, m[2].y, m[3].y);
+    let r2 = vec4<f32>(m[0].z, m[1].z, m[2].z, m[3].z);
+    let r3 = vec4<f32>(m[0].w, m[1].w, m[2].w, m[3].w);
+    let planes = array<vec4<f32>, 5>(r3 + r0, r3 - r0, r3 + r1, r3 - r1, r2);
+    let count = select(4u, 5u, near);
+    for (var i = 0u; i < count; i++) {
+        let pl = planes[i];
+        if (dot(pl, root) < -reach * length(pl.xyz)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
+    return grass_blade_at(vi, b, grass.origin.w);
+}
+
+// The blade as it stood at `time` (last frame's position for the motion vectors).
+fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
+    let coarse = vi >= 100u;
+    let k = select(vi, vi - 100u, coarse);
+    let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
+    let side = select(-0.5, 0.5, (k & 1u) == 1u);
+    let seed_head = b.extra.x >= 2.0;
+    let phase = b.shape.w;
+    var cell = u32(phase * 4.0) & 3u;
+    if (seed_head) {
+        // The open panicles only: thin pale stalks over short turf.
+        cell = 6u + (u32(fract(phase * 7.31) * 2.0) & 1u);
+    }
+
+    let root = grass.origin.xyz + b.position.xyz;
+    let dist = distance(root, grass.camera.xyz);
+    let fade = 1.0 - smoothstep(grass.dry.w, grass.healthy.w, dist);
+    let shadow = grass.shadow.z > 0.5;
+    let keep = grass_keep(dist) * select(1.0, grass.shadow.y, shadow);
+    let height = grass_drawn_height(b);
     // Fewer blades cover the same ground by growing wider: as much wider as there are fewer
     // of them, so the blade area per square metre (and the ground they hide) stays the same.
     let widen = min(1.0 / keep, grass.look.z);

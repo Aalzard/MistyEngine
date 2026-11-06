@@ -2087,6 +2087,22 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Grass look to match the user's reference photo: short uneven turf, colour patches, no visible ground,
   sharp close shadows and contact shadows.
 - TAA with motion vectors: no blur or smear, zero jitter when TAA is off, and no cloud shaking.
+- MeadowDemo performance (branch meadow-perf, details in pending/meadow-perf.md): GPU time per
+  pass (`Renderer::set_pass_timing`, `grass_pass_times`), the grass depth pass / prepass / shadow
+  casters skip the flat fans of LOD-shrunk blades, per-blade view culling, the grass sun shadow
+  taps share one cascade pick, blades carry their patch / swathe / canopy values, and the Game
+  view's VSync toggle (off by default; the 60 Hz VSync capped and halved the frame rate). The
+  look is unchanged against meadow-look-1 (diffs within the render-to-render noise).
+
+  | MeadowDemo, RTX 4060 | Low | Medium | High |
+  |---|---|---|---|
+  | editor Game view (1125×558, Play), before | 158 FPS | 71 FPS | 47 FPS |
+  | editor Game view, after | **212 FPS** (4.7 ms) | **98 FPS** (10.2 ms) | **71 FPS** (14.2 ms) |
+  | GPU 1920×1080, before | 12.5 ms | 20.2 ms | 27.3 ms |
+  | GPU 1920×1080, after | 10.6 ms | 17.6 ms | 23.2 ms |
+  | GPU full screen at the level's Render Scale, after | 8.0 ms (1440×810) | 18.2 ms | 23.8 ms |
+
+  Screenshots: `docs/screenshots/gfx/meadowperf_*.png`.
 
 ### Not done yet
 - Prefab, tree, rock and grass placement brushes for the World Builder.

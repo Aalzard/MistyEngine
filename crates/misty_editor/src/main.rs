@@ -353,8 +353,17 @@ fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
         desc.required_features |= misty_engine::render::timestamp_features(adapter);
         desc
     });
+    // The Game view's VSync toggle (saved in hub.json; `app::apply_vsync` follows changes).
+    let present_mode = match hub::config::editor_vsync() {
+        true => egui_wgpu::wgpu::PresentMode::AutoVsync,
+        false => egui_wgpu::wgpu::PresentMode::AutoNoVsync,
+    };
     egui_wgpu::WgpuConfiguration {
         wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(setup),
+        surface: egui_wgpu::SurfaceConfig {
+            present_mode,
+            ..egui_wgpu::SurfaceConfig::HIGH_THROUGHPUT
+        },
         ..Default::default()
     }
 }

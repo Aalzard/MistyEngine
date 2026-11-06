@@ -215,6 +215,42 @@ fn field_noise(p: Vec2) -> f32 {
     top + (bottom - top) * u.y
 }
 
+/// Value noise 0..1 with its gradient per metre: `grass_noise_grad` in grass_field.wgsl
+/// (the same hash, and the value in the same form as there).
+fn field_noise_grad(p: Vec2) -> (f32, Vec2) {
+    let fract = |x: f32| x - x.floor();
+    let hash = |q: Vec2| {
+        let q = Vec2::new(fract(q.x * 0.1031), fract(q.y * 0.1030));
+        let d = q.dot(Vec2::new(q.y, q.x) + 33.33);
+        let r = q + d;
+        fract((r.x + r.y) * r.x)
+    };
+    let i = p.floor();
+    let f = p - i;
+    let u = f * f * (Vec2::splat(3.0) - 2.0 * f);
+    let du = 6.0 * f * (Vec2::ONE - f);
+    let a = hash(i);
+    let b = hash(i + Vec2::X);
+    let c = hash(i + Vec2::Y);
+    let d = hash(i + Vec2::ONE);
+    let (k1, k2, k3) = (b - a, c - a, a - b - c + d);
+    let v = a + k1 * u.x + k2 * u.y + k3 * u.x * u.y;
+    (v, Vec2::new(du.x * (k1 + k3 * u.y), du.y * (k2 + k3 * u.x)))
+}
+
+/// The canopy relief 0..1 at terrain-local `p` with its slope per metre, as the shaders
+/// shade it (`grass_canopy` in grass_field.wgsl; [`canopy`] is the same relief for the blade
+/// heights).
+pub fn canopy_slope(p: Vec2) -> (f32, Vec2) {
+    let (a, ga) = field_noise_grad(p / 4.5 + 7.7);
+    let (b, gb) = field_noise_grad(p / 1.9 + 3.1);
+    let (c, gc) = field_noise_grad(p / 0.8 + 11.3);
+    let v = 0.55 * a + 0.3 * b + 0.15 * c;
+    let dv = 0.55 * ga / 4.5 + 0.3 * gb / 1.9 + 0.15 * gc / 0.8;
+    let t = ((v - 0.25) / 0.55).clamp(0.0, 1.0);
+    (t * t * (3.0 - 2.0 * t), dv * 6.0 * t * (1.0 - t) / 0.55)
+}
+
 /// Lush and dry patch weights 0..1 at terrain-local `p` (see `grass_patches` in
 /// grass_field.wgsl, which colours the blades and the ground under them).
 pub fn patches(p: Vec2, scale: f32) -> (f32, f32) {
@@ -274,6 +310,12 @@ pub struct Blade {
     /// x = drop-out key 0..1 (see [`level_keep`]) + 2 for a seed head stem, y = bend,
     /// z = lean angle (radians), w = tuft tint -1..1.
     pub extra: [f32; 4],
+    /// The field at the root, worked out once here instead of in every vertex of every
+    /// frame: x = lush and y = dry patch weight ([`patches`]), z = swathe ([`swathe`]),
+    /// w = canopy relief ([`canopy_slope`]).
+    pub field: [f32; 4],
+    /// The canopy relief's slope per metre at the root (xz).
+    pub slope: [f32; 2],
 }
 
 impl Blade {
@@ -405,11 +447,12 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let mut tall =
                     (s.height[0] + (s.height[1] - s.height[0]) * mix) * tuft_scale * outlier;
                 // Areas of taller, fuller tufts (lush patches) and shorter grass (dry ones).
-                let (lush, dry) = patches(p, s.patch_scale);
+                let (lush, dry_patch) = patches(p, s.patch_scale);
                 let area = noise::fbm(p.x, p.y, s.patch_scale * 0.7, 2, seed ^ 0x91) * 0.5 + 0.5;
                 let sw = swathe(p, s.patch_scale);
                 tall *= (1.0
-                    + hv * (0.5 * (lush - 0.35) - 0.35 * dry + 0.6 * (area - 0.5) - 0.25 * sw))
+                    + hv * (0.5 * (lush - 0.35) - 0.35 * dry_patch + 0.6 * (area - 0.5)
+                        - 0.25 * sw))
                     .max(0.6);
                 // Most blades are undergrowth a little below the tallest ones: they fill the
                 // turf between the stems.
@@ -437,6 +480,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                         1.0
                     };
                 let tint = (id - 0.5) * 2.0 * clumping + (r(14) - 0.5) * 0.2;
+                let (shade_relief, slope) = canopy_slope(p);
                 out.push((
                     key,
                     Blade {
@@ -455,6 +499,8 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                             lean + (r(13) - 0.5) * 1.2,
                             tint.clamp(-1.0, 1.0),
                         ],
+                        field: [lush, dry_patch, sw, shade_relief],
+                        slope: slope.into(),
                     },
                 ));
             }

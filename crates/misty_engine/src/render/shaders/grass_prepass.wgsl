@@ -19,9 +19,15 @@ struct GrassPrepassTargets {
 
 @vertex
 fn vs_grass_prepass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassPrepassOut {
+    var out: GrassPrepassOut;
+    // Blades out of view skip the rest, and so do the flat fans of the blades the LOD shrank
+    // away (`grass_flat`): they lie on the ground the prepass already has.
+    if (grass_flat(b) || grass_outside(b, view.view_proj, true)) {
+        out.clip = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+        return out;
+    }
     let v = grass_blade(vi, b);
     let face = normalize(cross(v.across, v.tangent));
-    var out: GrassPrepassOut;
     out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
     // (Only while the wind's vectors are wanted: the clock moved and TAA is on.)
     var prev = v.p;

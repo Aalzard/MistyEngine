@@ -60,12 +60,23 @@ pub(in crate::render) fn meadow_scene(shot: Shot) -> Scene {
     let (mut s, _) = Scene::load(&root().join(SCENE)).expect("MeadowDemo.scene");
     let close = matches!(shot, Shot::CloseGolden | Shot::CloseMidday);
     let midday = matches!(shot, Shot::WideMidday | Shot::CloseMidday);
-    if close && let Some(cam) = s.find_by_name("Main Camera") {
-        // Crouching, looking down into the grass (positive pitch looks down).
-        let p = s.world_position(cam);
+    // The camera that renders: the First Person Player's (the scene's own Main Camera is
+    // inactive since the player was placed), else the Main Camera.
+    let cam = s
+        .find_by_name("Camera")
+        .filter(|&e| s.world.get::<&crate::scene::Camera>(e).is_ok())
+        .or_else(|| s.find_by_name("Main Camera"));
+    if close && let Some(cam) = cam {
+        // Crouching, looking down into the grass (positive pitch looks down). The player's
+        // camera sits under unrotated head-bob parents: its local offset is a world offset.
+        let local = s
+            .world
+            .get::<&Transform>(cam)
+            .map(|t| t.position)
+            .unwrap_or_default();
         s.set_transform(
             cam,
-            Transform::from_position(p - Vec3::Y * 0.8).with_euler(Vec3::new(16.0, 8.0, 0.0)),
+            Transform::from_position(local - Vec3::Y * 0.8).with_euler(Vec3::new(16.0, 8.0, 0.0)),
         );
     }
     if midday && let Some(sun) = s.find_by_name("Directional Light") {
@@ -266,27 +277,39 @@ fn grass_shots() {
     };
     let step = std::env::var("MISTY_GFX_STEP").unwrap_or_else(|_| "latest".into());
     let only = std::env::var("MISTY_GFX_SHOT").unwrap_or_default();
+    // `MISTY_QUALITY=high,medium,low` renders each level (files `grass_<step>_<level>_<shot>`);
+    // unset = High only, named as before. `MISTY_GFX_DIR` writes somewhere else.
+    let levels = std::env::var("MISTY_QUALITY").ok();
+    let dir = std::env::var("MISTY_GFX_DIR").map_or_else(|_| screenshots(), PathBuf::from);
     let (w, h) = (1600, 900);
-    for shot in Shot::ALL {
-        if !only.is_empty() && !shot.name().contains(&only) {
+    for name in levels.as_deref().unwrap_or("high").split(',') {
+        let Some(mut quality) = level(name) else {
             continue;
+        };
+        for shot in Shot::ALL {
+            if !only.is_empty() && !shot.name().contains(&only) {
+                continue;
+            }
+            let view = meadow_view(shot);
+            let mut r = Renderer::with_queue(&device, &queue);
+            if std::env::var("MISTY_GRASS_SHADOWS").is_ok_and(|v| v == "0") {
+                quality.grass_shadows = crate::quality::Tier::Off;
+            }
+            r.set_quality(&device, &quality);
+            let target = r.create_target(&device, w, h);
+            let rgba = render(&device, &queue, &mut r, &target, &view, None, 48);
+            let file = match levels {
+                Some(_) => format!("grass_{step}_{name}_{}.png", shot.name()),
+                None => format!("grass_{step}_{}.png", shot.name()),
+            };
+            let path = dir.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            image::RgbaImage::from_raw(w, h, rgba)
+                .unwrap()
+                .save(&path)
+                .unwrap();
+            eprintln!("wrote {}", path.display());
         }
-        let view = meadow_view(shot);
-        let mut r = Renderer::with_queue(&device, &queue);
-        let mut quality = QualityLevel::high();
-        if std::env::var("MISTY_GRASS_SHADOWS").is_ok_and(|v| v == "0") {
-            quality.grass_shadows = crate::quality::Tier::Off;
-        }
-        r.set_quality(&device, &quality);
-        let target = r.create_target(&device, w, h);
-        let rgba = render(&device, &queue, &mut r, &target, &view, None, 48);
-        let path = screenshots().join(format!("grass_{step}_{}.png", shot.name()));
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        image::RgbaImage::from_raw(w, h, rgba)
-            .unwrap()
-            .save(&path)
-            .unwrap();
-        eprintln!("wrote {}", path.display());
     }
 }
 
@@ -548,4 +571,236 @@ fn gpu_median(
     }
     times.sort_by(f32::total_cmp);
     times.get(times.len() / 2).copied().unwrap_or(f32::NAN)
+}
+
+/// One measured setup: median GPU frame time, median CPU time of `Renderer::render`, the
+/// median GPU time of each part of the frame, and the last render's counters.
+pub(in crate::render) struct Breakdown {
+    pub gpu: f32,
+    pub cpu: f32,
+    pub parts: Vec<(&'static str, f32)>,
+    pub stats: crate::render::RenderStats,
+}
+
+impl Breakdown {
+    pub fn part(&self, label: &str) -> f32 {
+        self.parts
+            .iter()
+            .find(|(l, _)| *l == label)
+            .map_or(0.0, |p| p.1)
+    }
+
+    fn print(&self, name: &str) {
+        eprintln!(
+            "== {name}: GPU {:.2} ms, CPU render {:.2} ms, {:.1} M triangles, {} draws",
+            self.gpu,
+            self.cpu,
+            self.stats.triangles as f64 / 1e6,
+            self.stats.batches
+        );
+        let mut sum = 0.0;
+        for (label, m) in &self.parts {
+            sum += m;
+            if *m >= 0.05 {
+                eprintln!("   {label:<32} {m:6.2} ms");
+            }
+        }
+        eprintln!("   {:<32} {sum:6.2} ms", "(sum of parts)");
+    }
+}
+
+/// Measure `view` at `size` with `quality`: 60 frames to settle, 60 timed as a whole, 60
+/// timed per part (pass timestamps).
+pub(in crate::render) fn breakdown(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    view: &GameView,
+    quality: &QualityLevel,
+    (w, h): (u32, u32),
+) -> Breakdown {
+    let mut r = Renderer::with_queue(device, queue);
+    r.set_quality(device, quality);
+    let target = r.create_target(device, w, h);
+    let frame = view.frame();
+    let mut totals = Vec::new();
+    let mut cpu = Vec::new();
+    for i in 0..120 {
+        r.render(device, queue, &target, &frame);
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        if i >= 60 {
+            if let Some(ms) = r.gpu_ms() {
+                totals.push(ms);
+            }
+            cpu.push(r.stats().cpu_ms);
+        }
+    }
+    let stats = r.stats();
+    let mut parts: Vec<(&'static str, Vec<f32>)> = Vec::new();
+    if r.set_pass_timing(device, queue, true) {
+        for _ in 0..60 {
+            r.render(device, queue, &target, &frame);
+            let mut seen: Vec<(&'static str, f32)> = Vec::new();
+            for &(label, ms) in r.pass_times() {
+                match seen.iter_mut().find(|(l, _)| *l == label) {
+                    Some(s) => s.1 += ms,
+                    None => seen.push((label, ms)),
+                }
+            }
+            for (label, ms) in seen {
+                match parts.iter_mut().find(|(l, _)| *l == label) {
+                    Some(p) => p.1.push(ms),
+                    None => parts.push((label, vec![ms])),
+                }
+            }
+        }
+    }
+    let median = |mut v: Vec<f32>| {
+        v.sort_by(f32::total_cmp);
+        v.get(v.len() / 2).copied().unwrap_or(f32::NAN)
+    };
+    Breakdown {
+        gpu: median(totals),
+        cpu: median(cpu),
+        parts: parts.into_iter().map(|(l, v)| (l, median(v))).collect(),
+        stats,
+    }
+}
+
+fn level(name: &str) -> Option<QualityLevel> {
+    Some(match name {
+        "high" => QualityLevel::high(),
+        "medium" => QualityLevel::medium(),
+        "low" => QualityLevel::low(),
+        "ultra" => QualityLevel::ultra(),
+        _ => return None,
+    })
+}
+
+/// GPU time per part of the frame (pass timestamps) and the CPU time of `Renderer::render`,
+/// MeadowDemo per quality level at 1920×1080 (`MISTY_SIZE=1125x558` another size, e.g. the
+/// editor's docked Game view; `MISTY_SCALED=1`: at the level's Render Scale, as the editor
+/// and player draw it; `MISTY_GFX_SHOT=close` for the close shot; `MISTY_QUALITY=high,low`
+/// picks levels).
+#[test]
+#[ignore = "timing, prints only"]
+fn grass_pass_times() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let shot = match std::env::var("MISTY_GFX_SHOT").as_deref() {
+        Ok("close") => Shot::CloseGolden,
+        _ => Shot::WideGolden,
+    };
+    let view = meadow_view(shot);
+    let levels = std::env::var("MISTY_QUALITY").unwrap_or_else(|_| "high,medium,low".into());
+    // A first run warms the GPU clocks up.
+    breakdown(&device, &queue, &view, &QualityLevel::low(), (1920, 1080));
+    for name in levels.split(',') {
+        let Some(quality) = level(name) else {
+            continue;
+        };
+        let scale = match std::env::var("MISTY_SCALED") {
+            Ok(_) => quality.render_scale,
+            Err(_) => 1.0,
+        };
+        let (w, h) = std::env::var("MISTY_SIZE")
+            .ok()
+            .and_then(|s| {
+                let (w, h) = s.split_once('x')?;
+                Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?))
+            })
+            .unwrap_or((1920.0, 1080.0));
+        let size = ((w * scale) as u32, (h * scale) as u32);
+        let b = breakdown(&device, &queue, &view, &quality, size);
+        b.print(&format!("{name} {}x{}", size.0, size.1));
+    }
+}
+
+/// The grass passes of MeadowDemo (High, 1920×1080) with one feature at a time turned off:
+/// where the lit grass's time goes.
+#[test]
+#[ignore = "timing, prints only"]
+fn grass_variants() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    use crate::quality::Tier;
+    let view = meadow_view(Shot::WideGolden);
+    let base = level(&std::env::var("MISTY_QUALITY").unwrap_or_else(|_| "high".into()))
+        .unwrap_or_else(QualityLevel::high);
+    let mut unshadowed = meadow_view(Shot::WideGolden);
+    for l in &mut unshadowed.lights {
+        l.shadows = crate::scene::Shadows::None;
+    }
+    let variants: Vec<(&str, &GameView, QualityLevel)> = vec![
+        ("base", &view, base.clone()),
+        (
+            "no near grass map",
+            &view,
+            QualityLevel {
+                grass_shadow_map: Tier::Off,
+                ..base.clone()
+            },
+        ),
+        ("sun without shadows", &unshadowed, base.clone()),
+        (
+            "AO off",
+            &view,
+            QualityLevel {
+                ambient_occlusion: Tier::Off,
+                ..base.clone()
+            },
+        ),
+        (
+            "volumetric fog off",
+            &view,
+            QualityLevel {
+                volumetric_fog: Tier::Off,
+                sun_shafts: Tier::Off,
+                ..base.clone()
+            },
+        ),
+        (
+            "TAA off",
+            &view,
+            QualityLevel {
+                temporal_aa: false,
+                ..base.clone()
+            },
+        ),
+        (
+            "grass density 0.5",
+            &view,
+            QualityLevel {
+                grass_density: 0.5,
+                ..base.clone()
+            },
+        ),
+        (
+            "soft shadows off",
+            &view,
+            QualityLevel {
+                soft_shadows: Tier::Off,
+                shadow_temporal: false,
+                shadow_denoise: false,
+                ..base.clone()
+            },
+        ),
+    ];
+    breakdown(&device, &queue, &view, &base, (1920, 1080));
+    for (name, v, q) in variants {
+        let b = breakdown(&device, &queue, v, &q, (1920, 1080));
+        eprintln!(
+            "{name:<24} frame {:6.2}  terrain {:5.2}  grass depth {:5.2}  grass lit {:5.2}  near map {:5.2}  prepass {:5.2}  {:5.1} M tris",
+            b.gpu,
+            b.part("Main: terrain"),
+            b.part("Main: grass depth"),
+            b.part("Main: grass lit"),
+            b.part("Grass near shadow map"),
+            b.part("AO prepass + GTAO"),
+            b.stats.triangles as f64 / 1e6
+        );
+    }
 }

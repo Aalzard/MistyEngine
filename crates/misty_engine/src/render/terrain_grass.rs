@@ -470,6 +470,12 @@ impl Grass {
     /// chunks draw only the share of their key-sorted blades their nearest point keeps (the
     /// vertex shader shrinks away the rest blade by blade). `limit` draws only the chunks
     /// within a range, a share of their blades (shadow casters, the prepass).
+    ///
+    /// A blade shrunk away to nothing still has a width: its card collapses onto the root as
+    /// a small flat fan, and in the chunks around the camera most drawn blades are such fans
+    /// (they keep the ground between the standing blades covered). Only the lit pass draws
+    /// them; the depth pass, the prepass and the shadow casters skip them in the vertex
+    /// shader (grass_blade.wgsl `grass_flat`).
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &self,

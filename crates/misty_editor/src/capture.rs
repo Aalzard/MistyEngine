@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_RUN_TESTS` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
+//! `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 
 use std::path::PathBuf;
@@ -13,6 +13,8 @@ pub struct Capture {
     /// `MISTY_THEME=light`: egui's light visuals, to check theme-tinted icons (the editor
     /// itself only has the dark theme).
     light: bool,
+    /// Frame times (ms) after the warm-up, printed when the screenshot is saved.
+    times: Vec<f32>,
 }
 
 impl Capture {
@@ -23,6 +25,7 @@ impl Capture {
             requested: false,
             saved: false,
             light: std::env::var("MISTY_THEME").is_ok_and(|t| t == "light"),
+            times: Vec::new(),
         })
     }
 
@@ -43,7 +46,24 @@ impl Capture {
             .ok()
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(45);
+        // The frame rate over the last frames before the shot (after a warm-up of half of
+        // them): whole editor frames, as the Game view's Stats box counts them.
+        if self.frames > at / 2 && !self.requested {
+            self.times.push(ctx.input(|i| i.unstable_dt) * 1000.0);
+        }
         if self.frames >= at && !self.requested {
+            let mut t = self.times.clone();
+            t.sort_by(f32::total_cmp);
+            if let Some(&median) = t.get(t.len() / 2) {
+                let mean = t.iter().sum::<f32>() / t.len() as f32;
+                let p90 = t[(t.len() * 9 / 10).min(t.len() - 1)];
+                eprintln!(
+                    "frame time over {} frames: median {median:.2} ms ({:.0} FPS), mean {mean:.2} ms ({:.0} FPS), p90 {p90:.2} ms",
+                    t.len(),
+                    1000.0 / median,
+                    1000.0 / mean
+                );
+            }
             self.requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }
@@ -472,6 +492,18 @@ fn undo_demo(s: &mut crate::state::EditorState) {
 /// `MISTY_RENDER_SCALE` / `MISTY_UPSCALE` / `MISTY_FXAA` on the previewed quality level.
 fn quality_env(s: &mut crate::state::EditorState) {
     use misty_engine::quality::{self, UpscaleFilter};
+    // `MISTY_QUALITY_LEVEL=Low` (a level's name or index) previews that level.
+    if let Ok(want) = std::env::var("MISTY_QUALITY_LEVEL") {
+        let q = &s.project_settings.quality;
+        let index = want.parse::<usize>().ok().or_else(|| {
+            q.levels
+                .iter()
+                .position(|l| l.name.eq_ignore_ascii_case(want.trim()))
+        });
+        if let Some(i) = index {
+            quality::install(q, i);
+        }
+    }
     let scale = std::env::var("MISTY_RENDER_SCALE").ok();
     let filter = std::env::var("MISTY_UPSCALE").ok();
     let fxaa = std::env::var_os("MISTY_FXAA").is_some();

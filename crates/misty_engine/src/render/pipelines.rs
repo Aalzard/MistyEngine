@@ -53,8 +53,9 @@ const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
 /// Vertex buffer layout of [`Vertex`] meshes.
 /// Grass blades: one instance per [`crate::terrain::details::Blade`].
 pub(super) fn blade_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4];
+    const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+        0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x2
+    ];
     [wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<crate::terrain::details::Blade>() as u64,
         step_mode: wgpu::VertexStepMode::Instance,
@@ -676,7 +677,7 @@ impl Pipelines {
         let grass_depth = build(
             device,
             Spec {
-                vs: "vs_grass",
+                vs: "vs_grass_depth",
                 fs: Some("fs_grass_depth"),
                 buffers: &blade_buffers,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,

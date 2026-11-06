@@ -258,6 +258,9 @@ pub struct GameViewSettings {
     /// Frame times and hitches shown by the Stats overlay (kept while it is on).
     pub frame_history: misty_engine::render::FrameHistory,
     pub gizmos: bool,
+    /// The VSync preference as saved (`None` = not read yet); the window's present mode
+    /// follows it (`app::apply_vsync`).
+    pub vsync: Option<bool>,
 }
 
 pub struct EditorState {
@@ -497,6 +500,7 @@ impl EditorState {
                 stats: false,
                 frame_history: Default::default(),
                 gizmos: false,
+                vsync: None,
             },
             profiler: Default::default(),
             frame_debugger: Default::default(),
