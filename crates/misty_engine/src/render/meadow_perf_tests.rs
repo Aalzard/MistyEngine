@@ -5,7 +5,7 @@
 //!   from four views (wide = the player's start view, close = crouching into the grass,
 //!   behind = turned round to the trees behind the player, oak = towards the broad oak),
 //!   1600×900, 48 frames, wind / cloud / fog clocks fixed, written as `<level>_<shot>.png`
-//!   into `MISTY_GFX_DIR`. `MISTY_PERF_OPTS` turns on look options (see [`apply_opts`]).
+//!   into `MISTY_GFX_DIR`. `MISTY_PERF_OPTS=cover` turns on look options (see [`apply_opts`]).
 //! - `meadow_perf_times`: median GPU frame time, CPU time of `Renderer::render` and the GPU
 //!   time of every part per level (`MISTY_GFX_SHOT=wide,behind`, `MISTY_SIZE=WxH`).
 
@@ -37,10 +37,14 @@ fn levels() -> Vec<(String, QualityLevel)> {
 
 /// The look options of round 2 named in `MISTY_PERF_OPTS` (comma separated), on top of the
 /// level's own settings.
-fn apply_opts(q: QualityLevel) -> QualityLevel {
+fn apply_opts(mut q: QualityLevel) -> QualityLevel {
     let opts = std::env::var("MISTY_PERF_OPTS").unwrap_or_default();
     for o in opts.split(',').filter(|o| !o.is_empty()) {
-        eprintln!("(option {o} unknown: ignored)");
+        match o {
+            // Quality ▸ Grass Ground Cover.
+            "cover" => q.grass_ground_cover = true,
+            _ => eprintln!("(option {o} unknown: ignored)"),
+        }
     }
     q
 }
@@ -320,4 +324,119 @@ fn meadow_perf_counts() {
 fn smooth(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+
+/// Blades each grass pass draws after the GPU culling, against the chunk prefixes it tests.
+#[test]
+#[ignore = "prints only"]
+fn meadow_perf_cull_counts() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let shots = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide".into());
+    for shot in shots.split(',') {
+        let Some(v) = view(shot) else {
+            continue;
+        };
+        for (level, quality) in levels() {
+            let mut r = Renderer::with_queue(&device, &queue);
+            r.set_quality(&device, &quality);
+            let target = r.create_target(&device, 1920, 1080);
+            let frame = v.frame();
+            for _ in 0..3 {
+                r.render(&device, &queue, &target, &frame);
+            }
+            let names = [
+                "lit", "depth", "prepass", "casc0", "casc1", "casc2", "casc3", "near0", "near1",
+            ];
+            for counts in r.terrains.read_grass_cull_counts(&device, &queue) {
+                let line: Vec<String> = counts
+                    .iter()
+                    .zip(names)
+                    .filter(|(c, _)| c.1 > 0)
+                    .map(|(c, n)| format!("{n} {:.3}/{:.3} M", c.0 as f64 / 1e6, c.1 as f64 / 1e6))
+                    .collect();
+                eprintln!("{shot} {level}: {}", line.join(", "));
+            }
+        }
+    }
+}
+
+/// A/B timing in one process, the two setups alternating (other GPU work on the machine then
+/// weighs on both alike): `MISTY_AB=cull` (GPU grass culling off / on) or `cover` (Quality ▸
+/// Grass Ground Cover off / on). Median per part over `MISTY_AB_ROUNDS` (3) rounds.
+#[test]
+#[ignore = "timing, prints only"]
+fn meadow_perf_ab() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let what = std::env::var("MISTY_AB").unwrap_or_else(|_| "cull".into());
+    let rounds: usize = std::env::var("MISTY_AB_ROUNDS")
+        .ok()
+        .and_then(|r| r.parse().ok())
+        .unwrap_or(3);
+    let (w, h) = std::env::var("MISTY_SIZE")
+        .ok()
+        .and_then(|s| {
+            let (w, h) = s.split_once('x')?;
+            Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))
+        })
+        .unwrap_or((1920, 1080));
+    let shots = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide".into());
+    for shot in shots.split(',') {
+        let Some(v) = view(shot) else {
+            continue;
+        };
+        for (level, quality) in levels() {
+            let setup = |on: bool| {
+                let mut q = quality.clone();
+                match what.as_str() {
+                    "cover" => q.grass_ground_cover = on,
+                    _ => crate::render::terrain_grass::set_grass_gpu_cull(on),
+                }
+                q
+            };
+            breakdown(&device, &queue, &v, &setup(false), (w, h));
+            let mut runs: [Vec<super::terrain_grass::gpu_tests::Breakdown>; 2] = Default::default();
+            for _ in 0..rounds {
+                for on in [false, true] {
+                    let q = setup(on);
+                    runs[on as usize].push(breakdown(&device, &queue, &v, &q, (w, h)));
+                }
+            }
+            crate::render::terrain_grass::set_grass_gpu_cull(true);
+            let median = |mut x: Vec<f32>| {
+                x.sort_by(f32::total_cmp);
+                x[x.len() / 2]
+            };
+            let mut labels: Vec<&'static str> = Vec::new();
+            for b in runs.iter().flatten() {
+                for (l, _) in &b.parts {
+                    if !labels.contains(l) {
+                        labels.push(l);
+                    }
+                }
+            }
+            eprintln!("== {shot} {level} {w}x{h}: {what} off | on");
+            let gpu = |i: usize| median(runs[i].iter().map(|b| b.gpu).collect());
+            eprintln!(
+                "   {:<32} {:6.2} | {:6.2} ms  ({:.0} | {:.0} FPS)",
+                "GPU frame",
+                gpu(0),
+                gpu(1),
+                1000.0 / gpu(0),
+                1000.0 / gpu(1)
+            );
+            let cpu = |i: usize| median(runs[i].iter().map(|b| b.cpu).collect());
+            eprintln!("   {:<32} {:6.2} | {:6.2} ms", "CPU render", cpu(0), cpu(1));
+            for l in labels {
+                let part = |i: usize| median(runs[i].iter().map(|b| b.part(l)).collect());
+                let (a, b) = (part(0), part(1));
+                if a.max(b) >= 0.05 {
+                    eprintln!("   {l:<32} {a:6.2} | {b:6.2} ms");
+                }
+            }
+        }
+    }
 }

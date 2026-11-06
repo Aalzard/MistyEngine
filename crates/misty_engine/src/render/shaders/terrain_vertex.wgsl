@@ -24,7 +24,8 @@ struct TerrainParams {
     grass_dry: vec4<f32>,
     // rgb = linear lush colour, w = grass draw distance.
     grass_lush: vec4<f32>,
-    // x = lush amount, y = dry amount.
+    // x = lush amount, y = dry amount, z = the quality's share of the blades with the ground
+    // cover (Quality ▸ Grass Ground Cover; 0 = off), w = the grass's full-density distance.
     grass_amounts: vec4<f32>,
 };
 

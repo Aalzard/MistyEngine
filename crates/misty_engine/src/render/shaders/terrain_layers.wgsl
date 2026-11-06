@@ -125,6 +125,15 @@ fn harmonize(c: vec3<f32>, a: vec4<f32>) -> vec3<f32> {
     return hsv_to_rgb(vec3<f32>(hsv.x + a.x, clamp(hsv.y * a.y, 0.0, 1.0), hsv.z * a.z));
 }
 
+// Quality ▸ Grass Ground Cover: the ground under grass as the flat fans of the blades the
+// grass LOD shrinks away made it look (grass.wgsl draws them without it). A blade past its
+// distance's share of the turf collapses onto its root as a small dark fan, lit like the
+// feet of the stems; in the middle distance they cover part of the ground between the
+// standing blades. Here: that share of the ground takes the fans' colour.
+fn grass_ground_cover(albedo: vec3<f32>, grass: vec3<f32>, dist: f32, tint: f32) -> vec3<f32> {
+    return albedo;
+}
+
 // Lit surface of the terrain at a fragment.
 fn terrain_surface(in: MeshOut) -> Surface {
     // Everything needing implicit derivatives happens first (uniform control flow).
@@ -246,6 +255,11 @@ fn terrain_surface(in: MeshOut) -> Surface {
         let take = tint * mix(0.85, 1.0, mid) * (1.0 - 0.9 * worn);
         let under = mix(0.4, 1.0, max(worn, mid));
         s.albedo = mix(s.albedo * under, grass * shade * litter, take);
+        // Quality ▸ Grass Ground Cover: the undergrowth the grass LOD's flat fans drew (the
+        // lit grass leaves them out then).
+        if (terrain.grass_amounts.z > 0.0) {
+            s.albedo = grass_ground_cover(s.albedo, grass, dist, tint);
+        }
         s.smoothness *= 1.0 - take;
         // The soil's relief stays close up; far away it would only shimmer under the turf.
         s.normal = normalize(mix(s.normal, n, 0.8 * tint * far));

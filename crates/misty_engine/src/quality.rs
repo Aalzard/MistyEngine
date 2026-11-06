@@ -244,6 +244,10 @@ pub struct QualityLevel {
     /// Share of each terrain's grass blades drawn (0.1..1); the blades left out make the
     /// others wider, so the ground stays covered.
     pub grass_density: f32,
+    /// The middle distance's undergrowth is painted on the ground (the terrain shader)
+    /// instead of drawn as the flat fans of the blades the grass LOD shrinks away: faster,
+    /// and a little different (off in every preset).
+    pub grass_ground_cover: bool,
 }
 
 impl Default for QualityLevel {
@@ -284,6 +288,7 @@ impl QualityLevel {
             grass_shadows: Tier::Off,
             grass_shadow_map: Tier::Off,
             grass_density: 0.5,
+            grass_ground_cover: false,
         }
     }
 
@@ -318,6 +323,7 @@ impl QualityLevel {
             grass_shadows: Tier::Low,
             grass_shadow_map: Tier::Low,
             grass_density: 0.75,
+            grass_ground_cover: false,
         }
     }
 
@@ -352,6 +358,7 @@ impl QualityLevel {
             grass_shadows: Tier::Medium,
             grass_shadow_map: Tier::Medium,
             grass_density: 1.0,
+            grass_ground_cover: false,
         }
     }
 

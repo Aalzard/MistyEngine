@@ -409,20 +409,20 @@ impl Renderer {
             pass.set_pipeline(&passes.terrain);
             pass.set_bind_group(2, material, &[]);
             let first = frame.meshes.len();
+            // (The camera's view: chunks outside it are skipped, near ones drawn first.)
             self.terrains.draw(
                 &mut pass,
                 frame.terrains,
                 first,
-                false,
+                true,
                 |i| lists.terrains[i],
                 stats,
             );
             // Near grass, so the effects see blades rather than the ground behind them.
-            if let Some(range) = grass_prepass_range(self.quality.ambient_occlusion)
-                && self.terrains.has_grass()
-            {
+            // (Within `grass_prepass_range`, planned with the frame's grass passes.)
+            if self.terrains.has_grass() {
                 pass.set_pipeline(&passes.grass);
-                (self.terrains).draw_grass_near(&mut pass, frame.terrains, range, stats);
+                (self.terrains).draw_grass_near(&mut pass, frame.terrains, stats);
             }
             // Trees (their own pipelines; group 2 = the tree's textures).
             self.trees.draw_prepass(&mut pass, stats);
@@ -431,7 +431,7 @@ impl Renderer {
 }
 
 /// How far grass is drawn into the prepass, by AO quality.
-fn grass_prepass_range(ao: crate::quality::Tier) -> Option<f32> {
+pub(super) fn grass_prepass_range(ao: crate::quality::Tier) -> Option<f32> {
     match ao {
         crate::quality::Tier::Off | crate::quality::Tier::Low => Some(8.0),
         crate::quality::Tier::Medium => Some(12.0),

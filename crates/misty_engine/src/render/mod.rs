@@ -16,6 +16,7 @@ mod frame_lists;
 mod glow;
 mod gpu_culling;
 mod gpu_timer;
+mod grass_cull;
 mod grass_near_shadow;
 mod hdri_sky;
 mod light2d;
@@ -936,6 +937,9 @@ impl Renderer {
             // Group 2 of the terrain pipelines is unused; any material group fits.
             let layout = &self.pipelines.material_layout;
             self.textures.prepare(device, queue, layout, None, None);
+            // Quality ▸ Grass Ground Cover: the undergrowth painted on the ground, no fans.
+            let cover = self.quality.grass_ground_cover;
+            (self.terrains).set_ground_cover(cover.then(|| self.quality.grass_density()));
             self.terrains.prepare(
                 device,
                 queue,
@@ -1184,6 +1188,31 @@ impl Renderer {
         if screen.is_none() {
             self.cancel_shadow_mask();
         }
+        // This frame's grass passes, culled on the GPU before the first of them: the sun
+        // cascades that start within the grass casters' range, the near grass shadow map, the
+        // AO prepass and the camera's grass.
+        if self.terrains.has_grass() {
+            let grass_range = self.terrains.grass_caster_range();
+            let cascades: Vec<(usize, glam::Mat4)> = (plan.cascades.iter().enumerate())
+                .filter(|(slot, _)| {
+                    let start = slot.checked_sub(1).map_or(0.0, |p| plan.cascades[p].far);
+                    grass_range.is_some_and(|r| start < r)
+                })
+                .map(|(slot, c)| (slot, c.view_proj))
+                .collect();
+            let prepass = screen
+                .as_ref()
+                .and_then(|_| screen_space::grass_prepass_range(self.quality.ambient_occlusion));
+            self.terrains.plan_grass(
+                device,
+                queue,
+                &self.pipelines.grass_blades_layout,
+                frame.terrains,
+                &cascades,
+                grass_near.as_ref(),
+                prepass,
+            );
+        }
 
         // Lights and their shadow maps (cascades first, then local layers).
         let soft = shadow_settings.soft != crate::quality::Tier::Off;
@@ -1232,6 +1261,9 @@ impl Renderer {
         // First pass: starts the GPU timing.
         self.mask_pass(&mut encoder, target, frame, timing);
         self.mark(&mut encoder, "Selection mask");
+        self.terrains
+            .encode_grass_cull(frame.terrains, &mut encoder);
+        self.mark(&mut encoder, "Grass culling");
         if frame.shaded
             && !frame.water.is_empty()
             && frame_debug::whole(
@@ -1815,7 +1847,7 @@ impl Renderer {
         slot: usize,
         lists: &frame_lists::FrameLists,
         list: Option<&frame_lists::ShadowList>,
-        grass: Option<&glam::Mat4>,
+        grass: bool,
         stats: &mut RenderStats,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1888,7 +1920,7 @@ impl Renderer {
             stats.draw(b.count, m.count, m.vertex_count);
         }
         // Grass near the camera (the first cascades only; group 2 = the grass casters).
-        if let Some(view_proj) = grass
+        if grass
             && frame_debug::record(&self.capture, |_| {
                 frame_debug::events::post_event(
                     "Grass Shadow Casters".to_owned(),
@@ -1898,7 +1930,7 @@ impl Renderer {
         {
             pass.set_pipeline(&self.pipelines.grass_shadow);
             stats.set_pass += 1;
-            (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, view_proj, stats);
+            (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, slot, stats);
         }
         // Trees into the sun's cascades (group 2 = the tree's textures).
         if self.trees.has_trees() {
@@ -1932,7 +1964,7 @@ impl Renderer {
         stats: &mut RenderStats,
     ) {
         let near = &self.shadows.grass_near;
-        for (i, vp) in view_proj.iter().enumerate() {
+        for i in 0..view_proj.len() {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("misty grass near shadow"),
                 color_attachments: &[],
@@ -1956,7 +1988,7 @@ impl Renderer {
             let side = near.slice_size(i) as f32;
             pass.set_viewport(0.0, 0.0, side, side, 0.0, 1.0);
             stats.set_pass += 1;
-            (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, vp, i, stats);
+            (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, i, stats);
         }
     }
 
@@ -2167,10 +2199,14 @@ impl Renderer {
                     // dense turf overlaps each pixel many times.
                     self.mark_pass(&mut pass, "Main: terrain");
                     pass.set_pipeline(&self.pipelines.grass_depth);
-                    self.terrains.draw_grass(&mut pass, frame.terrains, stats);
+                    let depth = grass_cull::DEPTH;
+                    self.terrains
+                        .draw_grass(&mut pass, frame.terrains, depth, stats);
                     self.mark_pass(&mut pass, "Main: grass depth");
                     pass.set_pipeline(&self.pipelines.grass);
-                    self.terrains.draw_grass(&mut pass, frame.terrains, stats);
+                    let lit = grass_cull::LIT;
+                    self.terrains
+                        .draw_grass(&mut pass, frame.terrains, lit, stats);
                     self.mark_pass(&mut pass, "Main: grass lit");
                 }
             }

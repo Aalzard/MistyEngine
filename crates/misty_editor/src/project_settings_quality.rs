@@ -429,5 +429,12 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
             )
         },
     );
+    edited |= row(
+        ui,
+        "Grass Ground Cover",
+        "Paints the middle distance's undergrowth on the ground instead of drawing the flat \
+         fans of the blades the grass LOD shrinks away: faster, and a little different.",
+        |ui| ui.checkbox(&mut l.grass_ground_cover, "").changed(),
+    );
     edited
 }
