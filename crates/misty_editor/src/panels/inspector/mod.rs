@@ -42,6 +42,7 @@ pub(crate) mod terrain;
 mod texture_import;
 mod tilemap_editors;
 mod timeline_editors;
+mod tree_asset;
 mod ui_editors;
 mod vcam_editors;
 mod vehicle_editors;
@@ -629,6 +630,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::preset::is_preset(rel) {
         preset_asset::preset_asset(ui, state, rel);
+        return;
+    }
+    if rel.ends_with(&format!(".{}", misty_engine::trees::EXTENSION)) {
+        tree_asset::tree_asset(ui, state, rel);
         return;
     }
     if misty_engine::audio::is_clip(rel) {

@@ -172,6 +172,11 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let mut ch = false;
     match tool {
         TerrainTool::Settings => ch = settings(ui, state, &mut t, data.as_deref()),
+        TerrainTool::Trees => {
+            if let Some(d) = data.as_deref() {
+                crate::terrain_trees_ui::trees_tab(ui, state, &path, d);
+            }
+        }
         _ => {
             brush_settings(ui, state, data.as_deref().map(|d| d.size.y).unwrap_or(1.0));
             if tool == TerrainTool::Paint

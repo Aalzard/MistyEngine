@@ -83,10 +83,12 @@ pub enum AssetKind {
     EffectGraph,
     /// Testing ▸ EditMode Test / PlayMode Test (in `Assets/Tests`).
     Test(misty_engine::testing::TestMode),
+    /// A procedural tree (`.tree`, an oak to start from) for terrains' Paint Trees.
+    Tree,
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 8] = [
+    pub const ALL: [AssetKind; 9] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
@@ -95,6 +97,7 @@ impl AssetKind {
         AssetKind::AnimatorController,
         AssetKind::AudioMixer,
         AssetKind::Timeline,
+        AssetKind::Tree,
     ];
 
     /// Menu label.
@@ -108,6 +111,7 @@ impl AssetKind {
             AssetKind::AnimatorController => "Animator Controller",
             AssetKind::AudioMixer => "Audio Mixer",
             AssetKind::Timeline => "Timeline",
+            AssetKind::Tree => "Tree",
             AssetKind::SurfaceShader => "Surface Shader",
             AssetKind::UnlitShader => "Unlit Shader",
             AssetKind::MaterialFromShader => "Material from Shader",

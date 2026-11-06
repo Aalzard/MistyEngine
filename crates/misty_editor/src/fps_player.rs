@@ -16,7 +16,7 @@ use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::physics::layers;
 use misty_engine::scene::{
-    AudioListener, Camera, CharacterController, Scene, ScriptRef, Scripts, Transform,
+    AudioListener, Camera, CharacterController, Scene, ScriptRef, ScriptValue, Scripts, Transform,
 };
 
 use crate::state::EditorState;
@@ -55,10 +55,27 @@ pub const EYE_HEIGHT: f32 = 1.7;
 pub const CAPSULE_HEIGHT: f32 = 1.8;
 pub const CAPSULE_RADIUS: f32 = 0.35;
 
-fn script(path: &str) -> Scripts {
+/// Head bob as tuned in the MeadowDemo (script field name, value).
+const BOB_VERTICAL_FIELDS: [(&str, f64); 3] = [
+    ("breathingRate", 0.2),
+    ("runAmplitude", 0.025),
+    ("walkAmplitude", 0.015),
+];
+const BOB_HORIZONTAL_FIELDS: [(&str, f64); 3] = [
+    ("runAmplitude", 0.0175),
+    ("strafeLean", 0.025),
+    ("walkAmplitude", 0.01),
+];
+const BOB_ROTATION_FIELDS: [(&str, f64); 1] = [("pitchBob", 3.0)];
+
+fn script(path: &str, fields: &[(&str, f64)]) -> Scripts {
     Scripts {
         list: vec![ScriptRef {
             path: path.into(),
+            fields: fields
+                .iter()
+                .map(|(k, v)| ((*k).to_owned(), ScriptValue::Number(*v)))
+                .collect(),
             ..Default::default()
         }],
     }
@@ -80,17 +97,17 @@ pub fn build(scene: &mut Scene, parent: Option<Entity>) -> Entity {
             ..Default::default()
         },
     );
-    scene.add(player, script(CONTROLLER));
+    scene.add(player, script(CONTROLLER, &[]));
 
     let vertical = scene.spawn("HeadBobVertical", Some(player));
     scene.set_transform(
         vertical,
         Transform::from_position(Vec3::new(0.0, EYE_HEIGHT, 0.0)),
     );
-    scene.add(vertical, script(BOB_VERTICAL));
+    scene.add(vertical, script(BOB_VERTICAL, &BOB_VERTICAL_FIELDS));
 
     let horizontal = scene.spawn("HeadBobHorizontal", Some(vertical));
-    scene.add(horizontal, script(BOB_HORIZONTAL));
+    scene.add(horizontal, script(BOB_HORIZONTAL, &BOB_HORIZONTAL_FIELDS));
 
     let camera = scene.spawn("Camera", Some(horizontal));
     scene.game_object_mut(camera).tag = "MainCamera".into();
@@ -103,7 +120,7 @@ pub fn build(scene: &mut Scene, parent: Option<Entity>) -> Entity {
         },
     );
     scene.add(camera, AudioListener::default());
-    scene.add(camera, script(BOB_ROTATION));
+    scene.add(camera, script(BOB_ROTATION, &BOB_ROTATION_FIELDS));
     player
 }
 
@@ -407,11 +424,26 @@ mod tests {
     #[ignore = "writes into SampleProject; run on purpose to regenerate"]
     fn write_first_person_demo() {
         let root = project();
-        prefab().save(&root.join(PREFAB)).unwrap();
+        // The prefab file may carry a GUID table the editor added: keep it when the rig is
+        // the same.
+        let same = std::fs::read_to_string(root.join(PREFAB))
+            .is_ok_and(|text| without_guids(&text) == without_guids(&prefab().to_json()));
+        if !same {
+            prefab().save(&root.join(PREFAB)).unwrap();
+        }
         demo_scene().save(&root.join(SCENE)).unwrap();
         with_fps_axes(ProjectSettings::load(&root).unwrap())
             .save(&root)
             .unwrap();
+    }
+
+    /// A JSON asset file without its GUID table (added on save in the editor).
+    fn without_guids(text: &str) -> serde_json::Value {
+        let mut v: serde_json::Value = serde_json::from_str(text).expect("json");
+        if let Some(o) = v.as_object_mut() {
+            o.remove(misty_engine::asset_db::refs::KEY);
+        }
+        v
     }
 
     #[test]
@@ -419,8 +451,8 @@ mod tests {
         let root = project();
         let text = std::fs::read_to_string(root.join(PREFAB)).unwrap();
         assert_eq!(
-            text.replace("\r\n", "\n"),
-            prefab().to_json(),
+            without_guids(&text),
+            without_guids(&prefab().to_json()),
             "regenerate with write_first_person_demo"
         );
         let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
@@ -900,11 +932,13 @@ mod tests {
         }
         let walked = scene.world_position(player).z - start.z;
         assert!(walked > 4.2 && walked < 6.5, "walked {walked} m in 1.5 s");
+        // (The tuned walk amplitude is 1.5 cm.)
         assert!(
-            hi - EYE_HEIGHT > 0.015 && EYE_HEIGHT - lo > 0.015,
+            hi - EYE_HEIGHT > 0.01 && EYE_HEIGHT - lo > 0.01,
             "vertical bob {lo}..{hi}"
         );
-        assert!(xhi > 0.01 && xlo < -0.01, "horizontal sway {xlo}..{xhi}");
+        // (The tuned walk sway is 1 cm.)
+        assert!(xhi > 0.006 && xlo < -0.006, "horizontal sway {xlo}..{xhi}");
         let fov = scene.world.get::<&Camera>(camera).unwrap().fov;
         assert!((fov - 60.0).abs() < 1.0, "walking keeps the FOV: {fov}");
         assert!(roll_max > 0.3 && roll_max < 6.0, "stride roll {roll_max}");

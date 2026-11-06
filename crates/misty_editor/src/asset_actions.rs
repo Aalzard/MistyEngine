@@ -115,6 +115,7 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .map(|_| path)
         }
         AssetKind::Tile2D(k) => crate::tile_palette::create_asset(&dir, k),
+        AssetKind::Tree => crate::terrain_trees_ui::create_tree_asset(&s.project.root, &dir),
         AssetKind::SurfaceShader | AssetKind::UnlitShader => {
             let (stem, text) = if kind == AssetKind::SurfaceShader {
                 ("New Surface Shader", shader_asset::templates::SURFACE)

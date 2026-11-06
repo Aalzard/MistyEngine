@@ -1,0 +1,11 @@
+Meadow Trees - Misty Engine sample assets
+
+The files in this folder (the .tree recipes and everything in Textures/) are original works
+made with Misty Engine's own tools (the engine's procedural tree generator and
+tools/tree_textures.py). They contain no photographs and no third-party or downloaded content.
+
+They are dedicated to the public domain under CC0 1.0 Universal:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+You can copy, modify and use them in your own games and projects, commercial or not,
+without asking and without crediting anyone (a credit is welcome but not required).

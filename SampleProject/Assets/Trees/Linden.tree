@@ -1,0 +1,37 @@
+{
+  "seed": 3,
+  "height": 17.0,
+  "crown_shape": "Oval",
+  "crown_width": 0.62,
+  "crown_base": 0.22,
+  "trunk_radius": 0.34,
+  "leader": 0.6,
+  "trunk_bend": 0.15,
+  "branches": 14,
+  "branch_angle": 50.0,
+  "branch_curve": 0.45,
+  "twigs": 9,
+  "leaf_density": 1.6,
+  "leaf_size": 1.25,
+  "leaf_color": [
+    0.88,
+    0.9,
+    0.85
+  ],
+  "leaf_variation": 0.5,
+  "translucency": 0.6,
+  "bark_color": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "bark_texture": "Assets/Trees/Textures/LindenBark.png",
+  "bark_normal": "Assets/Trees/Textures/LindenBarkNormal.png",
+  "leaf_texture": "Assets/Trees/Textures/LindenLeaves.png",
+  "leaf_normal": "Assets/Trees/Textures/LindenLeavesNormal.png",
+  "wind": {
+    "trunk_bend": 0.7,
+    "branch_sway": 0.9,
+    "leaf_flutter": 1.0
+  }
+}

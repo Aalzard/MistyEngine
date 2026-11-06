@@ -3,9 +3,13 @@
 //! soft lush and dry patches with taller and shorter grass, gust waves rolling across the field
 //! from a Wind Zone, grass shadows) ringed by jagged mountains, under Cloudy volumetric
 //! clouds with haze and sun shafts. The ground is a generated PBR set (albedo, normal,
-//! height) of soil, moss and thatch under `Assets/Textures/Meadow`.
-//! Regenerate with `cargo test -p misty_editor -- --ignored write_meadow_demo`; the other
-//! tests check the committed files still match and that the scene plays.
+//! height) of soil, moss and thatch under `Assets/Textures/Meadow`. Lone broadleaf trees and
+//! small groves stand around the field (terrain trees: `Assets/Trees/*.tree`, textures from
+//! `tools/tree_textures.py`), a few near, most far away along the foot of the mountains, the
+//! view ahead kept open. A First Person Player (the sample prefab) stands where the camera was.
+//! Regenerate with `cargo test -p misty_editor -- --ignored write_meadow_demo` (the scene file
+//! is only written when missing: it holds the user's placed player); the other tests check the
+//! committed files still match and that the scene plays.
 
 use std::path::PathBuf;
 
@@ -17,7 +21,9 @@ use misty_engine::scene::{
     Transform, WindZone,
 };
 use misty_engine::terrain::auto_paint::{self, AutoPaintRules};
+use misty_engine::terrain::trees::{TreeInstance, TreePrototype};
 use misty_engine::terrain::{TerrainData, TerrainLayer, details, noise};
+use misty_engine::trees::{CrownShape, TreeAsset};
 
 const DATA: &str = "Assets/Terrains/MeadowDemo.terrain";
 const SCENE: &str = "Assets/Scenes/MeadowDemo.scene";
@@ -34,6 +40,8 @@ const SIZE: Vec3 = Vec3::new(2048.0, 420.0, 2048.0);
 const CORNER: Vec3 = Vec3::new(-1024.0, 0.0, -1024.0);
 /// Where the camera stands (terrain-local x, z), looking along +Z.
 const EYE: (f32, f32) = (1024.0, 520.0);
+/// The First Person Player as placed in the meadow (world position).
+const PLAYER: Vec3 = Vec3::new(-2.0, 22.947_496, -506.0);
 
 fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject")
@@ -278,6 +286,166 @@ fn thatch() -> [RgbaImage; 3] {
     [albedo, heights, normal]
 }
 
+/// The sample trees: file, recipe.
+fn tree_assets() -> Vec<(&'static str, TreeAsset)> {
+    vec![
+        ("Assets/Trees/Oak.tree", TreeAsset::oak()),
+        (
+            "Assets/Trees/Oak Broad.tree",
+            TreeAsset {
+                seed: 7,
+                height: 17.0,
+                crown_width: 1.15,
+                crown_base: 0.2,
+                trunk_radius: 0.5,
+                branches: 11,
+                branch_angle: 62.0,
+                twigs: 13,
+                leaf_size: 1.5,
+                ..TreeAsset::oak()
+            },
+        ),
+        ("Assets/Trees/Linden.tree", TreeAsset::linden()),
+        ("Assets/Trees/Birch.tree", TreeAsset::birch()),
+        (
+            "Assets/Trees/Young Oak.tree",
+            TreeAsset {
+                seed: 11,
+                height: 7.5,
+                crown_shape: CrownShape::Oval,
+                crown_width: 0.8,
+                crown_base: 0.3,
+                trunk_radius: 0.16,
+                leader: 0.55,
+                branches: 8,
+                twigs: 9,
+                leaf_density: 1.5,
+                leaf_size: 1.0,
+                leaf_color: [0.9, 0.92, 0.85],
+                ..TreeAsset::oak()
+            },
+        ),
+    ]
+}
+
+/// A group of trees around a point given from the camera: `bearing` degrees right of the view
+/// (+Z), `distance` metres, `count` trees within `spread` metres, drawn from `kinds`
+/// (prototype indices of [`tree_assets`]).
+struct Grove {
+    bearing: f32,
+    distance: f32,
+    count: usize,
+    spread: f32,
+    kinds: &'static [u16],
+}
+
+const fn grove(
+    bearing: f32,
+    distance: f32,
+    count: usize,
+    spread: f32,
+    kinds: &'static [u16],
+) -> Grove {
+    Grove {
+        bearing,
+        distance,
+        count,
+        spread,
+        kinds,
+    }
+}
+
+/// The meadow's trees, like the reference: the field ahead stays open; two lone trees on
+/// the left in the middle distance, a few near ones to the sides and behind the player (seen
+/// when turning round), small groves further out and many trees along the foot of the
+/// mountains far away.
+const GROVES: &[Grove] = &[
+    // The pair on the left (as in the reference).
+    grove(-37.0, 175.0, 2, 14.0, &[0, 4]),
+    // Near: a broad oak front right, just outside the first view; a birch pair and a lime
+    // to the left; oaks behind.
+    grove(58.0, 42.0, 1, 0.0, &[1]),
+    grove(-62.0, 55.0, 2, 8.0, &[3]),
+    grove(-95.0, 70.0, 1, 0.0, &[2]),
+    grove(150.0, 60.0, 3, 16.0, &[0, 4, 0]),
+    grove(-160.0, 90.0, 4, 22.0, &[1, 0, 4, 2]),
+    grove(110.0, 120.0, 3, 20.0, &[2, 0, 4]),
+    // Middle distance: small groves to the sides.
+    grove(-48.0, 300.0, 6, 35.0, &[0, 1, 4, 3]),
+    grove(42.0, 260.0, 4, 28.0, &[2, 0, 4]),
+    grove(70.0, 380.0, 7, 45.0, &[0, 1, 2, 4]),
+    grove(-80.0, 420.0, 8, 50.0, &[3, 0, 4, 2]),
+    grove(-130.0, 300.0, 6, 40.0, &[0, 1, 4]),
+    grove(135.0, 330.0, 6, 40.0, &[2, 0, 4, 3]),
+    grove(180.0, 260.0, 5, 40.0, &[1, 0, 4]),
+    // Far: woods along the foot of the mountains (the steep slopes stay bare).
+    grove(-25.0, 600.0, 14, 90.0, &[0, 1, 2, 4]),
+    grove(12.0, 700.0, 16, 110.0, &[0, 2, 1, 4]),
+    grove(35.0, 560.0, 12, 80.0, &[0, 4, 2]),
+    grove(-60.0, 620.0, 18, 110.0, &[0, 1, 3, 4]),
+    grove(70.0, 600.0, 16, 110.0, &[2, 0, 1, 4]),
+    grove(105.0, 520.0, 12, 90.0, &[0, 4, 3]),
+    grove(-105.0, 560.0, 14, 100.0, &[1, 0, 2]),
+    grove(-150.0, 480.0, 12, 100.0, &[0, 4, 2]),
+    grove(160.0, 470.0, 12, 100.0, &[0, 1, 4]),
+];
+
+/// Trees of the meadow (deterministic): every grove's trees, on gentle ground only, never
+/// within 9 m of each other or in the open view ahead of the player.
+fn trees(d: &TerrainData) -> Vec<TreeInstance> {
+    let eye = glam::Vec2::new(EYE.0, EYE.1);
+    let mut out: Vec<TreeInstance> = Vec::new();
+    let mut n = 0i32;
+    for (g, grove) in GROVES.iter().enumerate() {
+        let a = grove.bearing.to_radians();
+        let center = eye + glam::Vec2::new(a.sin(), a.cos()) * grove.distance;
+        let mut placed = 0;
+        for k in 0..grove.count * 12 {
+            if placed == grove.count {
+                break;
+            }
+            n += 1;
+            let r = |salt| noise::hash(n, salt, 0x7ee5);
+            // Denser towards the grove's middle.
+            let (angle, dist) = (r(1) * std::f32::consts::TAU, r(2).sqrt() * grove.spread);
+            let p = if k == 0 && grove.count == 1 {
+                center
+            } else {
+                center + glam::Vec2::new(angle.cos(), angle.sin()) * dist
+            };
+            // The open view: nothing within 22° of straight ahead closer than 450 m.
+            let rel = p - eye;
+            if rel.x.atan2(rel.y).to_degrees().abs() < 22.0 && rel.length() < 450.0 {
+                continue;
+            }
+            let inside = p.cmpge(glam::Vec2::splat(10.0)).all()
+                && p.cmple(glam::Vec2::new(d.size.x, d.size.z) - 10.0).all();
+            if !inside || misty_engine::terrain::trees::slope_at(d, p.x, p.y) > 20.0 {
+                continue;
+            }
+            let crowded = out.iter().any(|t| {
+                let q = t.position * glam::Vec2::new(d.size.x, d.size.z);
+                q.distance(p) < 9.0
+            });
+            if crowded {
+                continue;
+            }
+            let kind = grove.kinds[(placed + g) % grove.kinds.len()];
+            let height = 0.82 + 0.36 * r(3);
+            out.push(TreeInstance {
+                position: glam::Vec2::new(p.x / d.size.x, p.y / d.size.z),
+                prototype: kind,
+                rotation: r(4) * std::f32::consts::TAU,
+                height_scale: height,
+                width_scale: (0.88 + 0.24 * r(5)) * height.powf(0.3),
+                color: r(6),
+            });
+            placed += 1;
+        }
+    }
+    out
+}
+
 fn terrain_data() -> TerrainData {
     let mut d = TerrainData::new(513, SIZE, 512);
     let s = d.spacing();
@@ -318,6 +486,16 @@ fn terrain_data() -> TerrainData {
     d.details = grass();
     auto_paint::generate(&mut d);
     details::generate(&mut d);
+    d.trees.prototypes = tree_assets()
+        .into_iter()
+        .map(|(path, _)| TreePrototype { tree: path.into() })
+        .collect();
+    // Placed on the heights as stored (16 bits), so the file and the generator agree.
+    let stored = TerrainData {
+        heights: d.heights.iter().map(|h| (h * 65535.0).round() / 65535.0).collect(),
+        ..d.clone()
+    };
+    d.trees.instances = trees(&stored);
     d
 }
 
@@ -423,6 +601,22 @@ fn demo_scene(d: &TerrainData) -> Scene {
             .with_euler(Vec3::new(0.0, 75.0, 0.0)),
     );
     s.add(wind, WindZone::default());
+    // The First Person Player (the sample prefab, as tuned) stands in the field; its camera
+    // replaces the Main Camera (kept, switched off).
+    let prefab = misty_engine::scene::prefab::Prefab::load(&project().join(crate::fps_player::PREFAB))
+        .expect("First Person Player prefab");
+    let player = s.instantiate_prefab(&prefab, Some(crate::fps_player::PREFAB), None);
+    s.set_transform(player, Transform::from_position(PLAYER));
+    // The player's camera sees the whole basin (2 km, as set in the scene).
+    if let Some(cam) = s.find_by_name("Camera") {
+        s.world
+            .get::<&mut misty_engine::scene::Camera>(cam)
+            .unwrap()
+            .far = 2000.0;
+    }
+    if let Some(cam) = s.find_by_name("Main Camera") {
+        s.game_object_mut(cam).active = false;
+    }
     s
 }
 
@@ -438,9 +632,15 @@ fn write_meadow_demo() {
     ] {
         img.save(root.join(rel)).unwrap();
     }
+    for (rel, tree) in tree_assets() {
+        tree.save(&root.join(rel)).unwrap();
+    }
     let d = terrain_data();
     d.save(&root.join(DATA)).unwrap();
-    demo_scene(&d).save(&root.join(SCENE)).unwrap();
+    // The scene holds the user's placed player and edits: only written when missing.
+    if !root.join(SCENE).exists() {
+        demo_scene(&d).save(&root.join(SCENE)).unwrap();
+    }
 }
 
 #[test]
@@ -456,10 +656,24 @@ fn meadow_demo_matches_its_generator() {
     ] {
         assert!(root.join(rel).exists(), "{rel}");
     }
+    for (rel, tree) in tree_assets() {
+        assert_eq!(TreeAsset::load(&root.join(rel)).unwrap(), tree, "{rel}");
+        for tex in [&tree.bark_texture, &tree.bark_normal, &tree.leaf_texture, &tree.leaf_normal] {
+            assert!(root.join(tex).exists(), "{tex} (run tools/tree_textures.py)");
+        }
+    }
     let on_disk = TerrainData::load(&root.join(DATA)).unwrap();
     let generated = terrain_data();
     assert_eq!(on_disk.layers, generated.layers);
     assert_eq!(on_disk.details, generated.details);
+    assert_eq!(on_disk.trees.prototypes, generated.trees.prototypes);
+    assert_eq!(on_disk.trees.instances.len(), generated.trees.instances.len());
+    for (i, (a, b)) in on_disk.trees.instances.iter().zip(&generated.trees.instances).enumerate() {
+        assert!(
+            a.position.distance(b.position) < 1e-6 && a.prototype == b.prototype,
+            "tree {i}: {a:?} vs {b:?}"
+        );
+    }
     assert_eq!(on_disk.size, generated.size);
     for (a, b) in on_disk.heights.iter().zip(&generated.heights) {
         assert!((a - b).abs() < 3.0 / 65535.0);
@@ -467,6 +681,12 @@ fn meadow_demo_matches_its_generator() {
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert_eq!(scene.to_json(), demo_scene(&generated).to_json());
+    // Trees around, none in the open view ahead of the player.
+    assert!(generated.trees.instances.len() > 150, "{}", generated.trees.instances.len());
+    for t in &generated.trees.instances {
+        let rel = t.position * glam::Vec2::new(SIZE.x, SIZE.z) - glam::Vec2::new(EYE.0, EYE.1);
+        assert!(rel.x.atan2(rel.y).to_degrees().abs() >= 22.0 || rel.length() >= 450.0);
+    }
     // Dense grass all around the camera.
     let lo = glam::Vec2::new(EYE.0 - 8.0, EYE.1);
     let blades = details::scatter(&generated, lo, lo + 16.0);
