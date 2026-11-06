@@ -678,9 +678,10 @@ fn level(name: &str) -> Option<QualityLevel> {
 }
 
 /// GPU time per part of the frame (pass timestamps) and the CPU time of `Renderer::render`,
-/// MeadowDemo per quality level at 1920×1080 (`MISTY_SCALED=1`: at the level's Render Scale,
-/// as the editor and player draw it; `MISTY_GFX_SHOT=close` for the close shot;
-/// `MISTY_QUALITY=high,low` picks levels).
+/// MeadowDemo per quality level at 1920×1080 (`MISTY_SIZE=1125x558` another size, e.g. the
+/// editor's docked Game view; `MISTY_SCALED=1`: at the level's Render Scale, as the editor
+/// and player draw it; `MISTY_GFX_SHOT=close` for the close shot; `MISTY_QUALITY=high,low`
+/// picks levels).
 #[test]
 #[ignore = "timing, prints only"]
 fn grass_pass_times() {
@@ -704,7 +705,14 @@ fn grass_pass_times() {
             Ok(_) => quality.render_scale,
             Err(_) => 1.0,
         };
-        let size = ((1920.0 * scale) as u32, (1080.0 * scale) as u32);
+        let (w, h) = std::env::var("MISTY_SIZE")
+            .ok()
+            .and_then(|s| {
+                let (w, h) = s.split_once('x')?;
+                Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?))
+            })
+            .unwrap_or((1920.0, 1080.0));
+        let size = ((w * scale) as u32, (h * scale) as u32);
         let b = breakdown(&device, &queue, &view, &quality, size);
         b.print(&format!("{name} {}x{}", size.0, size.1));
     }

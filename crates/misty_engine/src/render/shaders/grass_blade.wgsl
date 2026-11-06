@@ -54,6 +54,12 @@ struct BladeIn {
     @location(1) shape: vec4<f32>,
     // x = drop-out key (+ 2 for a seed head), y = bend, z = lean angle, w = tuft tint.
     @location(2) extra: vec4<f32>,
+    // The field at the root, worked out once on the CPU (terrain/details.rs): x = lush and
+    // y = dry patch weight (`grass_patches`), z = swathe (`grass_swathe`), w = canopy relief
+    // (`grass_canopy` x).
+    @location(3) field: vec4<f32>,
+    // The canopy relief's slope per metre (`grass_canopy` yz).
+    @location(4) slope: vec2<f32>,
 };
 
 struct BladeVertex {
