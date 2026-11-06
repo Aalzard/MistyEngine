@@ -56,15 +56,19 @@ struct Lights {
 // Material textures (1×1 white / flat normal when unassigned).
 // Baked lightmaps (render/lightmap_gpu.rs): one layer per lightmap; info x = debug view
 // (1 Baked Lightmap, 2 UV Charts), y = layer count, z = bit mask of loaded layers.
-// Near-camera grass shadow map (render/grass_near_shadow.rs).
+// Near-camera grass shadow map (render/grass_near_shadow.rs): two slices, the sharp inner
+// square and the outer one, one map layer each.
 struct GrassNearShadow {
-    view_proj: mat4x4<f32>,
-    // x = radius (m), y = 1 when on, z = one texel in metres, w = 1 / map size.
+    view_proj: array<mat4x4<f32>, 2>,
+    // x = outer radius (m), y = 1 when on, z = inner radius (m), w = 1 / map size.
     params: vec4<f32>,
     // xyz = covered centre (the camera).
     centre: vec4<f32>,
+    // x = inner and y = outer texel in metres, z = the inner slice's side as a share of
+    // the layer (its viewport).
+    texels: vec4<f32>,
 };
-@group(1) @binding(8) var grass_near_map: texture_depth_2d;
+@group(1) @binding(8) var grass_near_map: texture_depth_2d_array;
 @group(1) @binding(9) var<uniform> grass_near: GrassNearShadow;
 @group(1) @binding(25) var lightmaps: texture_2d_array<f32>;
 @group(1) @binding(26) var<uniform> lightmap_info: vec4<u32>;
@@ -271,9 +275,34 @@ fn fs_unlit(in: MeshOut) -> MeshTargets {
     return out;
 }
 
-// Sun shade from the near-camera grass shadow map (1 = lit or outside it): a 3×3 PCF of
-// hardware-filtered taps, faded out towards the map's edge where the grass casters in the
-// cascades take over.
+// Sun shade of one slice of the near-camera grass shadow map at `world` (1 = lit or outside
+// the slice): a 2×2 of hardware-filtered taps half a texel apart (a blur of about one texel:
+// 4 mm in the inner slice at 2048², so single blades cast crisp blade-shaped shadows).
+fn grass_near_slice(slice: i32, world: vec3<f32>, l: vec3<f32>) -> f32 {
+    let texel = grass_near.texels[slice];
+    // A texel and a half towards the light: a blade doesn't shade itself.
+    let c = grass_near.view_proj[slice] * vec4<f32>(world + l * texel * 1.5, 1.0);
+    let ndc = c.xyz / c.w;
+    var uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || ndc.z < 0.0 || ndc.z > 1.0) {
+        return 1.0;
+    }
+    let t = grass_near.params.w * 0.5;
+    if (slice == 0) {
+        uv *= grass_near.texels.z;
+    }
+    let z = ndc.z - 1e-4;
+    var sum = 0.0;
+    sum += textureSampleCompareLevel(grass_near_map, shadow_sampler, uv + vec2<f32>(-t, -t), slice, z);
+    sum += textureSampleCompareLevel(grass_near_map, shadow_sampler, uv + vec2<f32>(t, -t), slice, z);
+    sum += textureSampleCompareLevel(grass_near_map, shadow_sampler, uv + vec2<f32>(-t, t), slice, z);
+    sum += textureSampleCompareLevel(grass_near_map, shadow_sampler, uv + vec2<f32>(t, t), slice, z);
+    return sum * 0.25;
+}
+
+// Sun shade from the near-camera grass shadow map (1 = lit or outside it): the sharp inner
+// slice close to the camera, blending into the outer one at its edge, faded out towards the
+// map's edge where the grass casters in the cascades take over.
 fn grass_near_shadow(world: vec3<f32>, l: vec3<f32>) -> f32 {
     if (grass_near.params.y < 0.5) {
         return 1.0;
@@ -283,22 +312,16 @@ fn grass_near_shadow(world: vec3<f32>, l: vec3<f32>) -> f32 {
     if (d >= r) {
         return 1.0;
     }
-    // A texel and a half towards the light: a blade doesn't shade itself.
-    let c = grass_near.view_proj * vec4<f32>(world + l * grass_near.params.z * 1.5, 1.0);
-    let ndc = c.xyz / c.w;
-    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || ndc.z < 0.0 || ndc.z > 1.0) {
-        return 1.0;
+    let inner = grass_near.params.z;
+    let blend = smoothstep(inner * 0.8, inner * 0.95, d);
+    var shade = 0.0;
+    if (blend < 1.0) {
+        shade = grass_near_slice(0, world, l);
     }
-    let t = grass_near.params.w;
-    let z = ndc.z - 2e-4;
-    var sum = 0.0;
-    for (var y = -1; y <= 1; y++) {
-        for (var x = -1; x <= 1; x++) {
-            sum += textureSampleCompareLevel(grass_near_map, shadow_sampler, uv + vec2<f32>(f32(x), f32(y)) * t, z);
-        }
+    if (blend > 0.0) {
+        shade = mix(shade, grass_near_slice(1, world, l), blend);
     }
-    return mix(sum / 9.0, 1.0, smoothstep(0.7 * r, r, d));
+    return mix(shade, 1.0, smoothstep(0.7 * r, r, d));
 }
 
 // Ambient, sky reflections, lights with shadows, emission and fog for one surface point.

@@ -20,12 +20,43 @@ fn grass_noise(p: vec2<f32>) -> f32 {
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
+// Value noise with its gradient: x = value 0..1, yz = d/dp (per metre).
+fn grass_noise_grad(p: vec2<f32>) -> vec3<f32> {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * (3.0 - 2.0 * f);
+    let du = 6.0 * f * (1.0 - f);
+    let a = grass_hash(i);
+    let b = grass_hash(i + vec2<f32>(1.0, 0.0));
+    let c = grass_hash(i + vec2<f32>(0.0, 1.0));
+    let d = grass_hash(i + vec2<f32>(1.0, 1.0));
+    let k1 = b - a;
+    let k2 = c - a;
+    let k3 = a - b - c + d;
+    let v = a + k1 * u.x + k2 * u.y + k3 * u.x * u.y;
+    return vec3<f32>(v, du.x * (k1 + k3 * u.y), du.y * (k2 + k3 * u.x));
+}
+
+// Relief of the canopy top at terrain-local `p` (the same noise as `details::canopy`, which
+// scatters the blade heights after it): x = 0..1, yz = its slope per metre. The shaders
+// shade the turf as this rolling surface (lit crests, shaded dips).
+fn grass_canopy(p: vec2<f32>) -> vec3<f32> {
+    let a = grass_noise_grad(p / 4.5 + 7.7);
+    let b = grass_noise_grad(p / 1.9 + 3.1);
+    let c = grass_noise_grad(p / 0.8 + 11.3);
+    return vec3<f32>(
+        0.55 * a.x + 0.3 * b.x + 0.15 * c.x,
+        (0.55 * a.yz / 4.5 + 0.3 * b.yz / 1.9 + 0.15 * c.yz / 0.8),
+    );
+}
+
 // x = lush weight, y = dry weight (0..1) at terrain-local `p` for patches of `scale` metres.
 fn grass_patches(p: vec2<f32>, scale: f32) -> vec2<f32> {
     let q = p / max(scale, 0.5);
-    let lush = 0.65 * grass_noise(q) + 0.35 * grass_noise(q * 2.3 + 17.1);
-    let dry = 0.6 * grass_noise(q * 0.8 + 41.7) + 0.4 * grass_noise(q * 1.9 + 5.3);
-    return vec2<f32>(smoothstep(0.42, 0.78, lush), smoothstep(0.45, 0.8, dry));
+    // Broad sweeps a few patches across, patches, and smaller mottling inside them.
+    let lush = 0.3 * grass_noise(q * 0.3 + 9.4) + 0.45 * grass_noise(q) + 0.25 * grass_noise(q * 2.3 + 17.1);
+    let dry = 0.3 * grass_noise(q * 0.25 + 23.8) + 0.4 * grass_noise(q * 0.8 + 41.7) + 0.3 * grass_noise(q * 1.9 + 5.3);
+    return vec2<f32>(smoothstep(0.5, 0.66, lush), smoothstep(0.52, 0.68, dry));
 }
 
 // Base colour of the grass at a point: healthy, pulled towards the lush and dry colours by the

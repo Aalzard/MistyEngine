@@ -79,37 +79,40 @@ fn grass() -> details::DetailSettings {
             ..Default::default()
         },
         on_layer: Some(0),
-        density: 600.0,
+        density: 1100.0,
         draw_distance: 160.0,
-        height: [0.12, 0.6],
-        width: 0.02,
-        healthy_color: [0.32, 0.52, 0.14],
-        dry_color: [0.56, 0.58, 0.28],
-        wind_strength: 0.3,
-        wind_speed: 1.0,
-        seed_heads: 0.1,
+        // Short turf (ankle height): tufts rise to ~0.35 m, dips sink to ~0.06 m.
+        height: [0.1, 0.25],
+        width: 0.01,
+        // Warm yellow-green turf (the reference meadow), paler straw where it dries.
+        healthy_color: [0.55, 0.58, 0.23],
+        dry_color: [0.72, 0.64, 0.36],
+        wind_strength: 0.18,
+        wind_speed: 0.9,
+        seed_heads: 0.04,
         seed_color: [0.8, 0.72, 0.5],
-        clumping: 0.4,
-        bend: 0.4,
+        clumping: 0.45,
+        bend: 0.45,
         translucency: 0.6,
-        tip_dryness: 0.2,
-        lod_distance: 15.0,
+        tip_dryness: 0.25,
+        lod_distance: 9.0,
         // Soft patches ~16 m across: lush dark-green hollows with taller, fuller tufts and
         // paler, drier, shorter stretches; every tuft a little warmer or cooler.
         patch_scale: 16.0,
-        lush_color: [0.17, 0.34, 0.07],
-        lush_amount: 0.6,
-        dry_amount: 0.4,
-        color_variation: 0.6,
-        height_variation: 0.65,
+        lush_color: [0.22, 0.36, 0.1],
+        lush_amount: 0.8,
+        dry_amount: 0.6,
+        color_variation: 0.5,
+        height_variation: 0.6,
         density_variation: 0.2,
-        ground_tint: 0.75,
+        ground_tint: 1.0,
         cast_shadows: true,
-        // Gust waves rolling from the left across the view (the Wind Zone turns them).
+        // A calm breeze: gentle gust waves rolling from the left across the view (the Wind
+        // Zone turns them).
         wind_direction: 80.0,
-        gust_strength: 0.8,
+        gust_strength: 0.55,
         gust_scale: 22.0,
-        turbulence: 0.45,
+        turbulence: 0.3,
     }
 }
 
@@ -143,14 +146,14 @@ fn thatch() -> [RgbaImage; 3] {
             let big = tile_noise(u, v, 6, 3) * 0.6 + tile_noise(u, v, 23, 4) * 0.4;
             let fine = tile_noise(u, v, 97, 5);
             let moss = ((tile_noise(u, v, 11, 6) - 0.55) * 4.0).clamp(0.0, 1.0);
-            let soil = [0.17, 0.13, 0.085].map(|c| c * (0.7 + 0.5 * big) * (0.85 + 0.3 * fine));
-            let green = [0.13, 0.17, 0.06];
+            let soil = [0.2, 0.17, 0.09].map(|c| c * (0.7 + 0.5 * big) * (0.85 + 0.3 * fine));
+            let green = [0.18, 0.22, 0.07];
             color[y * n + x] = std::array::from_fn(|i| soil[i] + (green[i] - soil[i]) * moss);
             height[y * n + x] = 0.15 * big + 0.05 * fine;
         }
     }
     // Strands, later ones on top: dead straw, olive half-dry blades, a few green ones.
-    let strands = 16000;
+    let strands = 36000;
     for k in 0..strands {
         let r = |salt: u32| noise::hash(k, salt as i32, 0x7a7c);
         let (x0, y0) = (r(1) * n as f32, r(2) * n as f32);
@@ -159,12 +162,12 @@ fn thatch() -> [RgbaImage; 3] {
         let width = 0.9 + 1.8 * r(5);
         let kind = r(6);
         let tone = 0.75 + 0.5 * r(7);
-        let base = if kind < 0.55 {
-            [0.52, 0.42, 0.24]
-        } else if kind < 0.85 {
-            [0.36, 0.34, 0.16]
+        let base = if kind < 0.4 {
+            [0.5, 0.42, 0.24]
+        } else if kind < 0.75 {
+            [0.38, 0.36, 0.16]
         } else {
-            [0.22, 0.3, 0.09]
+            [0.28, 0.34, 0.11]
         };
         let top = 0.25 + 0.75 * k as f32 / strands as f32;
         let (dx, dy) = (angle.cos(), angle.sin());
@@ -292,6 +295,12 @@ fn volume() -> PostProcessVolume {
     v.color_adjustments.contrast = -4.0;
     v.color_adjustments.saturation = 4.0;
     v.ambient_occlusion.active = true;
+    let cs = &mut v.contact_shadows;
+    cs.active = true;
+    cs.length = 0.12;
+    cs.distance_fade = 16.0;
+    cs.opacity = 0.8;
+    cs.sample_count = 6;
     let c = &mut v.clouds;
     c.active = true;
     CloudPreset::Cloudy.apply(c);
@@ -343,6 +352,8 @@ fn demo_scene(d: &TerrainData) -> Scene {
         l.color = [1.0, 0.86, 0.66];
         l.intensity = 2.4;
         l.shadows = Shadows::Soft;
+        // Blades shade the turf at their feet (screen-space, the first centimetres).
+        l.contact_shadows = true;
     }
     let rs = &mut s.render_settings;
     rs.skybox.sun_disk = SunDisk::HighQuality;

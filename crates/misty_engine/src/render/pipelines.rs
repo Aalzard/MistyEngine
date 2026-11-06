@@ -176,6 +176,9 @@ pub struct Pipelines {
     pub grass: wgpu::RenderPipeline,
     /// Grass shadow casters (groups: shadow view, draws, grass).
     pub grass_shadow: wgpu::RenderPipeline,
+    /// Grass depth before the lit grass (same pass): alpha-tested depth writes only, so each
+    /// covered sample is shaded once however many blades overlap it.
+    pub grass_depth: wgpu::RenderPipeline,
     pub bloom_prefilter: wgpu::RenderPipeline,
     pub bloom_down: wgpu::RenderPipeline,
     pub bloom_up: wgpu::RenderPipeline,
@@ -222,6 +225,9 @@ pub(super) struct Spec<'a> {
     pub glow: Option<bool>,
     /// MSAA coverage from the fragment's alpha (grass cards).
     pub alpha_to_coverage: bool,
+    /// Channels written to the colour target (a depth-only pass with alpha to coverage keeps
+    /// just the alpha).
+    pub color_writes: wgpu::ColorWrites,
 }
 
 impl<'a> Spec<'a> {
@@ -242,6 +248,7 @@ impl<'a> Spec<'a> {
             samples: SAMPLE_COUNT,
             glow: Some(false),
             alpha_to_coverage: false,
+            color_writes: wgpu::ColorWrites::ALL,
         }
     }
 }
@@ -328,13 +335,14 @@ impl Pipelines {
                 entry(6, S::FRAGMENT, uniform()),
                 // Rectangle lights' LTC table (area/area_light.wgsl).
                 entry(7, S::FRAGMENT, storage()),
-                // Near-camera grass shadow map and its uniform (grass_near_shadow.rs).
+                // Near-camera grass shadow map (one layer per slice) and its uniform
+                // (grass_near_shadow.rs).
                 entry(
                     8,
                     S::FRAGMENT,
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
                         multisampled: false,
                     },
                 ),
@@ -641,11 +649,30 @@ impl Pipelines {
                 fs: Some("fs_grass"),
                 buffers: &blade_buffers,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                depth: Depth::main(true, wgpu::CompareFunction::Less),
+                // Tests against the depth the grass depth pipeline wrote just before.
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
                 glow: Some(true),
                 alpha_to_coverage: true,
                 ..Spec::new(
                     "grass",
+                    GRASS_SRC,
+                    &[&view_layout, &mesh_layout, &grass_layout],
+                )
+            },
+        );
+        let grass_depth = build(
+            device,
+            Spec {
+                vs: "vs_grass",
+                fs: Some("fs_grass_depth"),
+                buffers: &blade_buffers,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                depth: Depth::main(true, wgpu::CompareFunction::Less),
+                glow: Some(false),
+                alpha_to_coverage: true,
+                color_writes: wgpu::ColorWrites::ALPHA,
+                ..Spec::new(
+                    "grass depth",
                     GRASS_SRC,
                     &[&view_layout, &mesh_layout, &grass_layout],
                 )
@@ -759,6 +786,7 @@ impl Pipelines {
             grass_layout,
             grass,
             grass_shadow,
+            grass_depth,
         }
     }
 }
@@ -781,7 +809,7 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
             vec![Some(wgpu::ColorTargetState {
                 format,
                 blend: spec.blend,
-                write_mask: wgpu::ColorWrites::ALL,
+                write_mask: spec.color_writes,
             })]
         })
         .unwrap_or_default();

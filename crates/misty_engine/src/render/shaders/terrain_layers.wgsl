@@ -200,10 +200,12 @@ fn terrain_surface(in: MeshOut) -> Surface {
         let patches = grass_patches(local.xz, terrain.grass_dry.w);
         let grass = grass_base_color(patches, 0.45, terrain.grass_healthy.rgb, terrain.grass_dry.rgb, terrain.grass_lush.rgb, terrain.grass_amounts.xy);
         let dist = distance(in.world, view.camera_pos.xyz);
-        let shade = mix(0.3, 0.7, smoothstep(0.15, 1.0, dist / terrain.grass_lush.w));
+        // The turf's own base colour (what the blades' feet are shaded with), a little lit
+        // litter showing through close up, the lit canopy colour far away.
+        let shade = mix(0.5, 0.85, smoothstep(0.15, 1.0, dist / terrain.grass_lush.w));
         // The soil texture's light and dark spots stay as litter and shadowed stems.
         let soil = dot(s.albedo, vec3<f32>(0.2126, 0.7152, 0.0722));
-        let litter = clamp(0.55 + 1.2 * soil, 0.6, 1.4);
+        let litter = clamp(0.7 + 0.9 * soil, 0.75, 1.25);
         s.albedo = mix(s.albedo, grass * shade * litter, tint);
         s.smoothness *= 1.0 - tint;
         // Soil bumps do not show through a lawn.

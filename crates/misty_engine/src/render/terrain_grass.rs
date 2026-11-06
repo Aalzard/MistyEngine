@@ -18,8 +18,8 @@ const CHUNK: f32 = 16.0;
 const BUILDS_PER_FRAME: usize = 24;
 /// Blades scattered per frame at most (after the first chunk).
 const BLADES_PER_FRAME: usize = 400_000;
-/// Vertices of one blade (grass.wgsl: six segments and a tip).
-pub(super) const BLADE_VERTICES: u32 = 14;
+/// Vertices of one blade (grass_blade.wgsl: four segments and a tip).
+pub(super) const BLADE_VERTICES: u32 = 10;
 /// Vertices of a coarse far blade (three segments), drawn from vertex 100 on.
 const COARSE_VERTICES: u32 = 8;
 /// Chunks further than this many LOD distances draw coarse blades.
@@ -67,6 +67,9 @@ pub(super) struct Grass {
     chunks: HashMap<(u32, u32), Chunk>,
     /// Settings the blades were scattered with (look-only fields cleared).
     key: Option<(DetailSettings, u32)>,
+    /// Share of the blades drawn at every distance (Quality ▸ Grass Density; the rest grow
+    /// wider to cover the same ground).
+    density: f32,
 }
 
 /// Settings that change where blades are and how big (colours and wind are uniforms).
@@ -114,19 +117,22 @@ impl Grass {
         });
     }
 
-    /// Scatter missing chunks near the camera (terrain-local) and drop far ones.
-    pub fn update(&mut self, device: &wgpu::Device, d: &TerrainData, camera: Vec3) {
+    /// Scatter missing chunks near the camera (terrain-local) and drop far ones; `density`
+    /// = the quality level's share of the blades (0..1).
+    pub fn update(&mut self, device: &wgpu::Device, d: &TerrainData, camera: Vec3, density: f32) {
         let key = scatter_key(d);
         if self.key.as_ref() != Some(&key) {
             self.chunks.clear();
             self.key = Some(key);
         }
+        self.density = density.clamp(MIN_KEEP, 1.0);
         if !d.details.enabled || d.detail_map.is_empty() {
             self.chunks.clear();
             return;
         }
         let range = d.details.draw_distance.max(1.0);
         let lod = d.details.lod_distance;
+        let density = self.density;
         let near = |x: u32, z: u32, r: f32| {
             let c = (Vec2::new(x as f32, z as f32) + 0.5) * CHUNK;
             c.distance(Vec2::new(camera.x, camera.z)) < r + CHUNK
@@ -136,7 +142,7 @@ impl Grass {
             let lo = Vec2::new(x as f32, z as f32) * CHUNK;
             let p = Vec2::new(camera.x, camera.z).clamp(lo, lo + CHUNK);
             let dist = Vec3::new(p.x - camera.x, 0.0, p.y - camera.z).length();
-            level_for(keep_at(dist, lod))
+            level_for(keep_at(dist, lod) * density)
         };
         self.chunks
             .retain(|(x, z), c| near(*x, *z, range * 1.5) && c.level <= wanted(*x, *z) + 1);
@@ -237,7 +243,8 @@ impl Grass {
             let Some(buffer) = &c.buffer else {
                 continue;
             };
-            let keep = keep_at(dist, lod_distance) * share / details::level_keep(c.level);
+            let keep =
+                keep_at(dist, lod_distance) * self.density * share / details::level_keep(c.level);
             let count = ((c.count as f32 * keep.min(1.0)).ceil() as u32).min(c.count);
             if count == 0 {
                 continue;
@@ -286,6 +293,9 @@ pub(super) struct GrassParams {
     shadow: [f32; 4],
     /// x = angle of one pixel (radians), y = 1 with temporal anti-aliasing.
     screen: [f32; 4],
+    /// x = shortest and y = tallest blade height of the turf (m), z = height variation,
+    /// w = the quality level's share of the blades (the rest grow wider).
+    canopy: [f32; 4],
 }
 
 /// The built-in grass atlas: eight photographed specimens (leaf blades, timothy heads, open
@@ -440,7 +450,8 @@ pub(super) fn wind(s: &DetailSettings, zone: Option<&super::environment::Wind>) 
 
 impl GrassParams {
     /// Uniform of one terrain's grass; `shadow` = caster range and share for shadow passes,
-    /// `screen` = pixel angle, TAA on and the near shadow map's radius ([`GrassParams::screen`]).
+    /// `screen` = pixel angle, TAA on and the near shadow map's radius ([`GrassParams::screen`]),
+    /// `density` = the quality level's share of the blades.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         s: &DetailSettings,
@@ -451,6 +462,7 @@ impl GrassParams {
         zone: Option<&super::environment::Wind>,
         shadow: Option<(f32, f32)>,
         screen: [f32; 3],
+        density: f32,
     ) -> Self {
         let far = s.draw_distance.max(1.0);
         let [hr, hg, hb] = s.healthy_color.map(lin);
@@ -462,7 +474,7 @@ impl GrassParams {
         Self {
             origin: [origin.x, origin.y, origin.z, time],
             healthy: [hr, hg, hb, far],
-            dry: [dr, dg, db, far * 0.6],
+            dry: [dr, dg, db, far * 0.8],
             wind: [strength, speed, dx, dz],
             seed: [sr, sg, sb, s.translucency.clamp(0.0, 2.0)],
             look: [
@@ -487,6 +499,12 @@ impl GrassParams {
                 s.ground_tint.clamp(0.0, 1.0),
             ],
             screen: [screen[0], screen[1], screen[2], 0.0],
+            canopy: [
+                s.height[0].max(0.01),
+                s.height[1].max(s.height[0]).max(0.02),
+                s.height_variation.clamp(0.0, 1.0),
+                density.clamp(MIN_KEEP, 1.0),
+            ],
         }
     }
 }

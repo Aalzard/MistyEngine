@@ -14,7 +14,7 @@ use wgpu::util::DeviceExt;
 
 use super::culling::{Aabb, Frustum};
 use super::environment::Environment;
-use super::grass_near_shadow::RADIUS as NEAR_RADIUS;
+use super::grass_near_shadow::{self, RADIUS as NEAR_RADIUS};
 use super::terrain_grass::{Grass, GrassParams, Limit};
 use super::terrain_layers::LayerCache;
 use super::terrain_lod;
@@ -330,8 +330,8 @@ pub(super) struct TerrainCache {
     grass_groups: Vec<Option<wgpu::BindGroup>>,
     /// Grass shadow caster bind group per terrain (None = casts none).
     grass_shadow_groups: Vec<Option<wgpu::BindGroup>>,
-    /// Near-camera grass shadow map casters per terrain (None = none).
-    grass_near_groups: Vec<Option<wgpu::BindGroup>>,
+    /// Near-camera grass shadow map casters per terrain, one group per slice (None = none).
+    grass_near_groups: Vec<Option<[wgpu::BindGroup; grass_near_shadow::SLICES]>>,
     /// Range and share of this frame's grass shadow casters (Quality).
     grass_casters: Option<(f32, f32)>,
     /// The built-in grass atlas (uploaded with the first grass).
@@ -476,6 +476,7 @@ impl TerrainCache {
         casters: Option<(f32, f32)>,
         screen: [f32; 2],
         near_map: bool,
+        density: f32,
     ) {
         crate::profile_scope!("Terrain.Select");
         let frustum = Frustum::from_matrix(view_proj);
@@ -531,7 +532,7 @@ impl TerrainCache {
                     })
                     .collect(),
             );
-            g.grass.update(device, d, camera - t.position);
+            g.grass.update(device, d, camera - t.position, density);
             let has_grass = d.details.enabled && !d.detail_map.is_empty();
             if has_grass && self.grass_atlas.is_none() {
                 self.grass_atlas = Some(super::terrain_grass::atlas(device, queue));
@@ -557,6 +558,7 @@ impl TerrainCache {
                     environment.wind.as_ref(),
                     shadow,
                     [screen[0], screen[1], near_radius],
+                    density,
                 );
                 let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("misty grass params"),
@@ -587,8 +589,17 @@ impl TerrainCache {
             let inner = if near { NEAR_RADIUS } else { 0.0 };
             let shadow = casters.filter(|_| casts).map(|c| group(Some(c), inner));
             self.grass_shadow_groups.push(shadow);
-            // The near map: every blade within reach, fading out well past its edge.
-            let near_group = near.then(|| group(Some((NEAR_RADIUS * 1.25, 1.0)), 0.0));
+            // The near map's slices: the blades within reach of each (fading out well past
+            // its edge), the inner slice every one, the outer a widened share.
+            let near_group = near.then(|| {
+                std::array::from_fn(|i| {
+                    let radius = grass_near_shadow::SLICE_RADII[i];
+                    group(
+                        Some((radius * 1.25, grass_near_shadow::SLICE_SHARES[i])),
+                        0.0,
+                    )
+                })
+            });
             self.grass_near_groups.push(near_group);
             self.grass_groups.push(grass);
         }
@@ -737,29 +748,31 @@ impl TerrainCache {
         }
     }
 
-    /// Draw every blade near the camera into the near-camera grass shadow map (`view_proj`;
-    /// pipeline and groups 0–1 bound by the caller). False when no terrain casts into it.
+    /// Draw the blades of slice `slice` of the near-camera grass shadow map (`view_proj`;
+    /// pipeline and groups 0–1 bound by the caller): every blade within the inner slice's
+    /// reach, a widened share within the outer's.
     pub fn draw_grass_near_shadow(
         &self,
         pass: &mut wgpu::RenderPass,
         terrains: &[TerrainDraw],
         view_proj: &Mat4,
+        slice: usize,
         stats: &mut RenderStats,
     ) {
         let frustum = Frustum::from_matrix(view_proj);
         for (i, t) in terrains.iter().enumerate() {
-            let (Some(gpu), Some(Some(group))) =
+            let (Some(gpu), Some(Some(groups))) =
                 (self.entries.get(&t.key), self.grass_near_groups.get(i))
             else {
                 continue;
             };
-            pass.set_bind_group(2, group, &[]);
+            pass.set_bind_group(2, &groups[slice], &[]);
             let lod = t.data.details.lod_distance;
-            // Every blade, as the coarse three-segment card (half the triangles; the arc
-            // keeps the shape close to the drawn blade's).
+            // Coarse three-segment cards (half the triangles; the arc keeps the shape close
+            // to the drawn blade's).
             let limit = Some(Limit {
-                range: NEAR_RADIUS * 1.25,
-                share: 1.0,
+                range: grass_near_shadow::SLICE_RADII[slice] * 1.25,
+                share: grass_near_shadow::SLICE_SHARES[slice],
                 coarse: true,
             });
             gpu.grass

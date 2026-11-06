@@ -84,6 +84,7 @@
             0.86,
             0.66
           ],
+          "contact_shadows": true,
           "enabled": true,
           "intensity": 2.4,
           "kind": "Directional",
@@ -229,6 +230,13 @@
             "contrast": -4.0,
             "post_exposure": 0.35,
             "saturation": 4.0
+          },
+          "contact_shadows": {
+            "active": true,
+            "distance_fade": 16.0,
+            "length": 0.12,
+            "opacity": 0.8,
+            "sample_count": 6
           },
           "enabled": true,
           "fog": {

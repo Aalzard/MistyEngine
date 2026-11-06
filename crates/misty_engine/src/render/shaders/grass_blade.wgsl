@@ -1,6 +1,6 @@
 // Grass blade geometry shared by the lit pass (grass.wgsl) and the shadow casters
-// (grass_shadow.wgsl). One instance per blade or seed-head stem; fourteen vertices make a
-// curved card of six segments (eight from vertex 100 on make a coarse one of three). The card
+// (grass_shadow.wgsl). One instance per blade or seed-head stem; ten vertices make a curved
+// card of four segments (eight from vertex 100 on make a coarse one of three). The card
 // bends along a circular arc, so it keeps its length however far the wind pushes it.
 // Uses grass_field.wgsl (patches, gusts).
 
@@ -31,6 +31,9 @@ struct GrassParams {
     // x = angle of one pixel (radians, 0 = orthographic), y = 1 with TAA, z = radius of the
     // near-camera grass shadow map (cascade casters leave its inside to it; 0 = none).
     screen: vec4<f32>,
+    // x = shortest and y = tallest blade of the turf (m), z = height variation, w = the
+    // quality level's share of the blades (the rest grow wider).
+    canopy: vec4<f32>,
 };
 
 @group(2) @binding(0) var<uniform> grass: GrassParams;
@@ -39,7 +42,7 @@ struct GrassParams {
 
 // Width / height of the specimen in each atlas cell, and its average linear colour.
 const CELL_ASPECT = array<f32, 8>(0.058, 0.059, 0.083, 0.067, 0.069, 0.057, 0.146, 0.151);
-const GRASS_SEGMENTS: f32 = 6.0;
+const GRASS_SEGMENTS: f32 = 4.0;
 const MIN_KEEP: f32 = 0.02;
 
 struct BladeIn {
@@ -75,10 +78,10 @@ struct BladeVertex {
     thin: f32,
 };
 
-// Share of blades drawn at `dist` (terrain_grass.rs `keep_at`).
+// Share of blades drawn at `dist` (terrain_grass.rs `keep_at` × the quality's density).
 fn grass_keep(dist: f32) -> f32 {
     let r = grass.look.x / max(dist, 1e-3);
-    return clamp(r * r, MIN_KEEP, 1.0);
+    return clamp(r * r, MIN_KEEP, 1.0) * grass.canopy.w;
 }
 
 fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
@@ -91,7 +94,8 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     let phase = b.shape.w;
     var cell = u32(phase * 4.0) & 3u;
     if (seed_head) {
-        cell = 4u + (u32(fract(phase * 7.31) * 4.0) & 3u);
+        // The open panicles only: thin pale stalks over short turf.
+        cell = 6u + (u32(fract(phase * 7.31) * 2.0) & 1u);
     }
 
     let root = grass.origin.xyz + b.position.xyz;
@@ -121,7 +125,7 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     // camera looks down on grow wider (the main pass only; shadows keep their shape).
     if (!shadow && !seed_head) {
         let down = (grass.camera.y - root.y) / max(dist, 1e-3);
-        width *= 1.0 + 0.9 * smoothstep(0.25, 0.85, down);
+        width *= 1.0 + 1.0 * smoothstep(0.2, 0.9, down);
     }
     var thin = 1.0;
     let least = dist * grass.screen.x * 0.8;

@@ -1032,6 +1032,7 @@ impl Renderer {
                 self.quality.grass_shadow_casters(),
                 grass_screen(frame, target.size().1, taa_on),
                 near_sun.is_some(),
+                self.quality.grass_density(),
             );
             (lists, plan, rebuilt, near_sun)
         };
@@ -1751,35 +1752,42 @@ impl Renderer {
         );
     }
 
-    /// Every blade near the camera into the near-camera grass shadow map.
+    /// Every blade near the camera into the near-camera grass shadow map (one pass per
+    /// slice: the sharp inner square, then the outer one).
     fn grass_near_shadow_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         frame: &Frame,
-        view_proj: &glam::Mat4,
+        view_proj: &[glam::Mat4; grass_near_shadow::SLICES],
         stats: &mut RenderStats,
     ) {
         let near = &self.shadows.grass_near;
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("misty grass near shadow"),
-            color_attachments: &[],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &near.view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
+        for (i, vp) in view_proj.iter().enumerate() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("misty grass near shadow"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &near.slice_views[i],
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
                 }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        pass.set_bind_group(0, &near.view_group, &[0]);
-        pass.set_bind_group(1, &self.draws_bind_group, &[]);
-        pass.set_pipeline(&self.pipelines.grass_shadow);
-        stats.set_pass += 1;
-        (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, view_proj, stats);
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            let offset = grass_near_shadow::GrassNearShadow::view_offset(i);
+            pass.set_bind_group(0, &near.view_group, &[offset]);
+            pass.set_bind_group(1, &self.draws_bind_group, &[]);
+            pass.set_pipeline(&self.pipelines.grass_shadow);
+            // The inner slice may use only part of its layer.
+            let side = near.slice_size(i) as f32;
+            pass.set_viewport(0.0, 0.0, side, side, 0.0, 1.0);
+            stats.set_pass += 1;
+            (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, vp, i, stats);
+        }
     }
 
     fn mask_pass(
@@ -1962,6 +1970,10 @@ impl Renderer {
                         frame_debug::events::post_event("Draw Grass".to_owned(), "grass.wgsl")
                     })
                 {
+                    // Depth first (alpha tested), then the shading once per covered sample:
+                    // dense turf overlaps each pixel many times.
+                    pass.set_pipeline(&self.pipelines.grass_depth);
+                    self.terrains.draw_grass(&mut pass, frame.terrains, stats);
                     pass.set_pipeline(&self.pipelines.grass);
                     self.terrains.draw_grass(&mut pass, frame.terrains, stats);
                 }
