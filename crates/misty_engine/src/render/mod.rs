@@ -16,7 +16,6 @@ mod frame_lists;
 mod glow;
 mod gpu_culling;
 mod gpu_timer;
-mod pass_timer;
 mod grass_near_shadow;
 mod hdri_sky;
 mod light2d;
@@ -27,6 +26,7 @@ pub mod mesh;
 mod motion;
 pub mod overrides;
 pub mod particles;
+mod pass_timer;
 mod pipelines;
 pub mod post;
 mod prepass;
@@ -748,7 +748,12 @@ impl Renderer {
     /// post...), waiting for the GPU at the end of each render: profiling only. Needs a device
     /// with `TIMESTAMP_QUERY_INSIDE_ENCODERS` (see [`timestamp_features`]); returns whether it
     /// is on.
-    pub fn set_pass_timing(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, on: bool) -> bool {
+    pub fn set_pass_timing(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        on: bool,
+    ) -> bool {
         self.pass_timer = match on {
             true => self
                 .pass_timer

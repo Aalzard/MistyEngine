@@ -235,10 +235,7 @@ fn field_noise_grad(p: Vec2) -> (f32, Vec2) {
     let d = hash(i + Vec2::ONE);
     let (k1, k2, k3) = (b - a, c - a, a - b - c + d);
     let v = a + k1 * u.x + k2 * u.y + k3 * u.x * u.y;
-    (
-        v,
-        Vec2::new(du.x * (k1 + k3 * u.y), du.y * (k2 + k3 * u.x)),
-    )
+    (v, Vec2::new(du.x * (k1 + k3 * u.y), du.y * (k2 + k3 * u.x)))
 }
 
 /// The canopy relief 0..1 at terrain-local `p` with its slope per metre, as the shaders

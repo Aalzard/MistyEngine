@@ -573,7 +573,6 @@ fn gpu_median(
     times.get(times.len() / 2).copied().unwrap_or(f32::NAN)
 }
 
-
 /// One measured setup: median GPU frame time, median CPU time of `Renderer::render`, the
 /// median GPU time of each part of the frame, and the last render's counters.
 pub(in crate::render) struct Breakdown {

@@ -75,7 +75,10 @@ impl PassTimer {
 
     /// Start a render's timing (between passes).
     pub fn begin(&self, encoder: &mut wgpu::CommandEncoder) {
-        self.labels.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.labels
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.mark(encoder, "start");
     }
 
@@ -126,8 +129,7 @@ impl PassTimer {
                     .collect();
                 for i in 1..labels.len() {
                     let dt = ticks[i].saturating_sub(ticks[i - 1]);
-                    self.last
-                        .push((labels[i], dt as f32 * self.period / 1.0e6));
+                    self.last.push((labels[i], dt as f32 * self.period / 1.0e6));
                 }
             }
             self.readback.unmap();
