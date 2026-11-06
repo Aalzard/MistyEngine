@@ -41,7 +41,8 @@ struct GrassParams {
 @group(2) @binding(2) var grass_sampler: sampler;
 
 // Width / height of the specimen in each atlas cell, and its average linear colour.
-const CELL_ASPECT = array<f32, 8>(0.058, 0.059, 0.083, 0.067, 0.069, 0.057, 0.146, 0.151);
+// The leaf cells hold clumps of thin blades: their width is the clump's.
+const CELL_ASPECT = array<f32, 8>(0.28, 0.28, 0.28, 0.28, 0.069, 0.057, 0.146, 0.151);
 const GRASS_SEGMENTS: f32 = 4.0;
 const MIN_KEEP: f32 = 0.02;
 
@@ -76,7 +77,49 @@ struct BladeVertex {
     // Real width / drawn width: blades thinner than a pixel are drawn a pixel wide and this
     // much transparent (no stippled coverage on thin stems).
     thin: f32,
+    // Leaves side by side on the card (see `grass_card_u`).
+    repeat: f32,
 };
+
+// Card coordinate across a blade: 8 × atlas cell + 0..`repeat` from edge to edge. Cards much
+// wider than their specimen (undergrowth, blades widened to cover the ground) show `repeat`
+// narrow leaves side by side instead of one stretched strap.
+fn grass_card_u(cell: u32, side: f32, repeat: f32) -> f32 {
+    return f32(cell) * 8.0 + (side + 0.5) * repeat;
+}
+
+// Card coordinate along a blade: atlas v (0 at the tip .. 1 at the root) + 2 × a random
+// blade number, so the leaves of a card can differ from blade to blade.
+fn grass_card_v(t: f32, phase: f32) -> f32 {
+    return 1.0 - t + 2.0 * floor(phase * 16.0);
+}
+
+// Atlas uv of an interpolated card coordinate (`grass_card_u`, `grass_card_v`) and z = 1
+// where a leaf is (0 above the tip of a shortened one): the first leaf of a card has the
+// full length, the others 65–100 % of it, so a card reads as a ragged tuft, not a comb.
+fn grass_atlas_uv(card: vec2<f32>) -> vec3<f32> {
+    let cell = floor(card.x / 8.0);
+    let local = card.x - cell * 8.0;
+    let leaf = floor(local);
+    let blade = floor(card.y * 0.5);
+    let v = card.y - blade * 2.0;
+    let h = grass_hash(vec2<f32>(leaf * 7.1 + cell * 1.3, blade * 3.3 + 1.7));
+    let reach = select(1.0 - 0.35 * h, 1.0, leaf < 0.5);
+    let along = 1.0 - (1.0 - v) / reach;
+    return vec3<f32>((cell + fract(local)) / 8.0, max(along, 0.0), step(0.0, along));
+}
+
+// Screen gradients of the atlas uv for `grass_atlas_uv` (taken on the card coordinate, so the
+// leaf seams do not pick the smallest mip).
+fn grass_atlas_dx(card: vec2<f32>) -> vec2<f32> {
+    let d = dpdx(card);
+    return vec2<f32>(d.x / 8.0, d.y);
+}
+
+fn grass_atlas_dy(card: vec2<f32>) -> vec2<f32> {
+    let d = dpdy(card);
+    return vec2<f32>(d.x / 8.0, d.y);
+}
 
 // Share of blades drawn at `dist` (terrain_grass.rs `keep_at` × the quality's density).
 fn grass_keep(dist: f32) -> f32 {
@@ -114,8 +157,9 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
             height *= smoothstep(grass.screen.z * 0.7, grass.screen.z, dist);
         }
     }
-    // Fewer blades cover the same ground by growing wider.
-    let widen = min(inverseSqrt(keep), grass.look.z);
+    // Fewer blades cover the same ground by growing wider: as much wider as there are fewer
+    // of them, so the blade area per square metre (and the ground they hide) stays the same.
+    let widen = min(1.0 / keep, grass.look.z);
     var width = b.shape.y;
     if (seed_head) {
         width = b.position.w * CELL_ASPECT[cell] * (0.8 + 0.4 * fract(phase * 3.7));
@@ -125,13 +169,24 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     // camera looks down on grow wider (the main pass only; shadows keep their shape).
     if (!shadow && !seed_head) {
         let down = (grass.camera.y - root.y) / max(dist, 1e-3);
-        width *= 1.0 + 1.0 * smoothstep(0.2, 0.9, down);
+        width *= 1.0 + 0.3 * smoothstep(0.2, 0.9, down);
     }
     var thin = 1.0;
     let least = dist * grass.screen.x * 0.8;
     if (!shadow && width < least) {
         thin = width / least;
         width = least;
+    }
+    // As many leaves across as the card is wider than its specimen, each at least two
+    // pixels wide (the shadow pass, without a pixel size, follows the specimen alone).
+    var repeat = 1.0;
+    if (!seed_head) {
+        let natural = max(b.position.w * CELL_ASPECT[cell], 1e-4);
+        var fit = width / natural;
+        if (!shadow && grass.screen.x > 0.0) {
+            fit = min(fit, width / (least * 2.5));
+        }
+        repeat = clamp(round(fit), 1.0, 4.0);
     }
 
     // Wind: gust waves rolling across the field, and a fast flutter whose phase runs along
@@ -170,6 +225,11 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     }
     var across = vec3<f32>(cos(facing_angle), 0.0, sin(facing_angle));
     across = normalize(across - tangent * dot(across, tangent) + vec3<f32>(1e-4, 0.0, 0.0));
+    // A slight twist along the blade (each its own way), so no card is a flat strap.
+    if (!seed_head) {
+        let twist = (fract(phase * 5.3) - 0.5) * 0.9 * t;
+        across = across * cos(twist) + cross(tangent, across) * sin(twist);
+    }
 
     var v: BladeVertex;
     v.p = centre + across * side * width;
@@ -185,5 +245,6 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     v.cell = cell;
     v.seed_head = seed_head;
     v.thin = thin;
+    v.repeat = repeat;
     return v;
 }

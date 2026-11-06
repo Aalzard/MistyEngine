@@ -239,6 +239,12 @@ pub(super) fn ground_visibility(
         }
     }
     if let Ok(name) = std::env::var("MISTY_GFX_MASK") {
+        // The ground alone (no blades), to compare its colour with the blades'.
+        let path = screenshots().join(format!("grass_{name}_{shot}_bare.png"));
+        image::RgbaImage::from_raw(w, h, images[1].clone())
+            .unwrap()
+            .save(path)
+            .unwrap();
         let path = screenshots().join(format!("grass_{name}_{shot}_ground_mask.png"));
         image::RgbaImage::from_raw(w, h, mask)
             .unwrap()

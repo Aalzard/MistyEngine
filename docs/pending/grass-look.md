@@ -104,3 +104,44 @@ shadows low quality and not sharp, no contact shadows on grass.
   nearest metres (true gaps where SSAO does not reach). Wide midday hue 51.4 ± 2.8, sat
   0.61 ± 0.04, val 0.42 ± 0.08, patch24 0.042 (reference 49.2 ± 4.3 / 0.59 ± 0.08 /
   0.46 ± 0.12 / 0.087, with the scratch script of this session).
+- look07 (lead feedback on look06: olive / mustard colour, upright sedge-like straps, weak
+  large-scale patchiness, dead-flat field, ground 2 % / 1.3 %):
+  - **Rolling hills**: MeadowDemo's height gets `0.02 × fbm(90 m, 2 octaves)` (soft swells
+    of a few metres over 60–120 m); the camera still stands 1.6 m above the ground.
+  - **Turf**: 0.07–0.20 m (was 0.08–0.22), blades 8 mm, bend 0.62 → 0.8 (more lean), every
+    blade's own height weighs 40 % (was 25 %) so the top line breaks up, undergrowth lower
+    (0.6–0.9 of the local height) and 4× wider; tip dryness 0.25 → 0.15.
+  - **Multi-leaf cards**: a card wider than its specimen (undergrowth, the look-down
+    widening, LOD widening) now shows `round(width / specimen width)` narrow leaves side by
+    side (≤ 4, each ≥ 2.5 px), the first at full length and the others 65–100 % of it, so
+    wide cards read as ragged tufts of fine leaves instead of fat straps. The card
+    coordinate carries the cell (8 × cell + 0..repeat) and a random blade number (v + 2 ×
+    n), shared by the lit, depth, prepass and shadow passes (`grass_card_u`,
+    `grass_card_v`, `grass_atlas_uv`); look-down widening 2.0 → 1.75×.
+  - **Ground coverage at the same blade count**: LOD widening was `1 / sqrt(keep)`, which
+    let the blade area per m² fall as 1 / distance; it is now `1 / keep` (area preserved;
+    `MAX_WIDEN` 4 → 8), LOD distance 9 → 7.5 m. Tint-swap ground 54 % / 37 % → 33 % / 26 %
+    in the intermediate run before the leaf variation; the ragged leaves give some back.
+  - **Colour**: per-blade dryness mostly green (`(dry − 0.45) × 1.6`), the golden share
+    only in the dry patches; broad **swathes** (`grass_swathe`, 1.5 patch sizes ≈ 60 m,
+    ±20 % value, warmer when bright; CPU `details::swathe` makes bright swathes a little
+    shorter) on blades and ground; lush patches toned down (0.24, 0.34, 0.10 at 0.6);
+    healthy (0.56, 0.65, 0.22); canopy floor brighter (lit 0.55 → 0.7, occlusion 0.35 →
+    0.5, dips 0.74 → 0.84) so the near field is not darker than the reference; far blades
+    and the ground under them take a warm far tint (tips and seed stalks, `grass_far_tint`
+    6–60 m) and the canopy-normal lean is capped at 0.6 (it lit the far field with the
+    whole blue sky: lime). The ground stand-in far away is darker (0.85 → 0.66 of the
+    base) and mottled at 1.3 / 6 / 21 m from 8 m out; blade detail and colour jitter now
+    fade over 5–55 m (was 4–35 m), so the field keeps texture to ~60 m.
+  - **Sun**: 26° → 30° high, colour (1, 0.86, 0.66) → (1, 0.91, 0.76): less sepia.
+  - Tried and dropped: `MIN_KEEP` 0.01 with `MAX_WIDEN` 16 (fewer far blades): far blades
+    got several pixels wide and the frame slower (38.9 ms), ground worse.
+  - Wide golden (the scene's own light, the closest match to the reference's): hue
+    **49.6 ± 4.4**, sat **0.59 ± 0.10**, val 0.49 ± 0.17, patch24 0.137 (reference 49.2 ±
+    4.3 / 0.59 ± 0.08 / 0.46 ± 0.12 / 0.087). Per distance band (rows 53–100 %) near
+    hue 50 / val 0.37 (reference 52 / 0.36), middle 51–55 / 0.45–0.54 (47–50 /
+    0.43–0.54). Wide midday 57.6 ± 5.5 / 0.62 / 0.42 / 0.038.
+  - Ground (look07k): 3.6 % wide / 2.3 % close (matches bare), 44 % / 37 % (tint swap).
+  - Timing in this run was not usable: another agent's GPU test shared the GPU ("no grass"
+    13.5 ms instead of 5.2). Before the leaf variation (look07e, quiet GPU): High 32.1 ms,
+    Medium 24.3, Low 15.6.

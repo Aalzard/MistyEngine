@@ -27,7 +27,7 @@ const COARSE_FROM: f32 = 1.5;
 /// Fewest blades a far chunk keeps (share of full density).
 const MIN_KEEP: f32 = 0.02;
 /// Far blades grow at most this much wider to cover the ground of the ones left out.
-const MAX_WIDEN: f32 = 4.0;
+const MAX_WIDEN: f32 = 3.0;
 
 /// Share of blades drawn at `dist` metres: all up to the LOD distance, then falling with the
 /// square of the distance (blades grow wider to cover the same ground, see grass.wgsl).
@@ -298,8 +298,8 @@ pub(super) struct GrassParams {
     canopy: [f32; 4],
 }
 
-/// The built-in grass atlas: eight photographed specimens (leaf blades, timothy heads, open
-/// panicles) in 128×1024 cells, alpha keyed (see grass.wgsl).
+/// The built-in grass atlas: four clumps of thin field-grass blades (`tools/grass_atlas.py`)
+/// and four photographed seed heads (timothy heads, open panicles) in 128×1024 cells, alpha keyed (see grass.wgsl).
 const ATLAS_PNG: &[u8] = include_bytes!("assets/grass_atlas.png");
 
 /// Cells of the atlas (side by side).
