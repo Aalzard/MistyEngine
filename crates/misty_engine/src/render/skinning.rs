@@ -128,6 +128,7 @@ impl Skins {
                 label: Some("misty skinning"),
                 source: wgpu::ShaderSource::Wgsl(SRC.into()),
             });
+            crate::render::pipelines::note_pipeline();
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some("misty skinning"),
                 layout: None,

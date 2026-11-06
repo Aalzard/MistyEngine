@@ -96,6 +96,7 @@ fn compute(
         bind_group_layouts: &[Some(layout)],
         immediate_size: 0,
     });
+    crate::render::pipelines::note_pipeline();
     device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some(entry),
         layout: Some(&pl),

@@ -16,6 +16,7 @@ impl HizPipelines {
             source: wgpu::ShaderSource::Wgsl(HIZ_SRC.into()),
         });
         let pipeline = |entry| {
+            crate::render::pipelines::note_pipeline();
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
                 layout: None,

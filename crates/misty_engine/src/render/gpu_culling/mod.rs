@@ -134,6 +134,7 @@ impl GpuCuller {
             source: wgpu::ShaderSource::Wgsl(CULL_SRC.into()),
         });
         let pipeline = |entry| {
+            crate::render::pipelines::note_pipeline();
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
                 layout: None,

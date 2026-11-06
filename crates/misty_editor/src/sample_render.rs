@@ -30,6 +30,9 @@ pub fn headless_timed() -> Option<(wgpu::Device, wgpu::Queue)> {
 }
 
 fn device(timed: bool) -> Option<(wgpu::Device, wgpu::Queue)> {
+    // Renders must be complete on their first frame: grass chunks are built in the frame
+    // that needs them rather than streamed in over several.
+    misty_engine::render::set_grass_streaming(false);
     GPU_HELD.with(|held| {
         let mut held = held.borrow_mut();
         if held.is_none() {

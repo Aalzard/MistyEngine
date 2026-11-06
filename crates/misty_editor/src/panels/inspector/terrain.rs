@@ -50,8 +50,21 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
     }
 }
 
-/// Every `.terrain` file under the project's Assets folder (project-relative).
+/// Every `.terrain` file under the project's Assets folder (project-relative). The GUID
+/// database already lists every asset, so this costs no directory walk per frame (the
+/// Inspector asks every frame a terrain is selected); without one the folder is walked.
 fn terrain_assets(state: &EditorState) -> Vec<String> {
+    let ext = format!(".{}", misty_engine::terrain::EXTENSION);
+    let listed = misty_engine::asset_db::with(|db| {
+        db.paths()
+            .filter(|p| p.ends_with(&ext))
+            .map(str::to_owned)
+            .collect::<Vec<String>>()
+    });
+    if let Some(mut out) = listed {
+        out.sort();
+        return out;
+    }
     fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
         for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
             let p = entry.path();

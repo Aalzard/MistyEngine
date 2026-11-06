@@ -175,3 +175,52 @@ fn settings_writes_keep_the_guid() {
     assert!(text.contains("\"srgb\": false"), "{text}");
     std::fs::remove_dir_all(root).ok();
 }
+
+#[test]
+fn the_watcher_walks_on_a_thread_and_reports_new_files() {
+    // The global database is shared by the process: the other tests never install one.
+    let root = temp("watch");
+    write(&root, "Assets/Mats/Red.mat", "{}");
+    open(&root);
+    assert!(is_open());
+    // Nothing changed: the first call starts a walk, the second reads it.
+    assert!(poll_now().is_none());
+    write(&root, "Assets/Mats/Blue.mat", "{}");
+    let report = poll_now().expect("a rescan for the new file");
+    assert!(
+        report.created.iter().any(|p| p.contains("Blue.mat")),
+        "{report:?}"
+    );
+    assert!(guid_of("Assets/Mats/Blue.mat").is_some());
+    close();
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// How long one walk of the sample project's Assets folder takes (prints only): the
+/// watcher used to do it on the main thread every two seconds.
+#[test]
+#[ignore = "timing, prints only"]
+fn sample_project_walk_time() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+    for _ in 0..3 {
+        let started = std::time::Instant::now();
+        let mut n = 0;
+        database::walk(&root.join("Assets"), &mut |_| n += 1);
+        eprintln!(
+            "walked {n} entries in {:.1} ms",
+            started.elapsed().as_secs_f32() * 1000.0
+        );
+    }
+    // And one stat per file, what the live-reload polls do twice a second.
+    let mut files = Vec::new();
+    database::walk(&root.join("Assets"), &mut |p| files.push(p.to_path_buf()));
+    let started = std::time::Instant::now();
+    let mut n = 0;
+    for f in files.iter().take(200) {
+        n += usize::from(std::fs::metadata(f).is_ok());
+    }
+    eprintln!(
+        "{n} stats in {:.2} ms",
+        started.elapsed().as_secs_f32() * 1000.0
+    );
+}

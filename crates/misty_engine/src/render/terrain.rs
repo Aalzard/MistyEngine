@@ -531,7 +531,7 @@ impl TerrainCache {
                     })
                     .collect(),
             );
-            g.grass.update(device, d, camera - t.position);
+            g.grass.update(device, &t.data, camera - t.position);
             let has_grass = d.details.enabled && !d.detail_map.is_empty();
             if has_grass && self.grass_atlas.is_none() {
                 self.grass_atlas = Some(super::terrain_grass::atlas(device, queue));
@@ -784,6 +784,21 @@ impl TerrainCache {
     /// Any terrain of the frame has grass to draw.
     pub fn has_grass(&self) -> bool {
         self.grass_groups.iter().any(|g| g.is_some())
+    }
+
+    /// Grass streaming counters of the last [`TerrainCache::select`], summed over terrains.
+    pub fn grass_stats(&self) -> super::GrassStats {
+        let mut out = super::GrassStats::default();
+        for g in self.entries.values() {
+            let s = g.grass.stats;
+            out.scheduled += s.scheduled;
+            out.uploaded += s.uploaded;
+            out.pending += s.pending;
+            out.upload_ms += s.upload_ms;
+            out.upload_last_start_ms = out.upload_last_start_ms.max(s.upload_last_start_ms);
+            out.scatter_ms = out.scatter_ms.max(s.scatter_ms);
+        }
+        out
     }
 }
 

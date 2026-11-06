@@ -210,7 +210,11 @@ pub(super) fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
             continue;
         }
         f(&path);
-        if path.is_dir() {
+        // The directory listing already knows the type: no extra stat per entry.
+        let is_dir = entry
+            .file_type()
+            .map_or_else(|_| path.is_dir(), |t| t.is_dir());
+        if is_dir {
             walk(&path, f);
         }
     }

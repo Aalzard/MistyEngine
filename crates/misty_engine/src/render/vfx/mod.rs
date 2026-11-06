@@ -297,6 +297,7 @@ fn create_pipelines(
         immediate_size: 0,
     });
     let compute = |entry: &str| {
+        crate::render::pipelines::note_pipeline();
         device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some(entry),
             layout: Some(&layout),

@@ -150,6 +150,7 @@ impl Passes {
             immediate_size: 0,
         });
         let compute = |entry| {
+            crate::render::pipelines::note_pipeline();
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
                 layout: Some(&pipeline_layout),

@@ -445,6 +445,7 @@ fn pipeline(
             operation: wgpu::BlendOperation::Add,
         },
     };
+    crate::render::pipelines::note_pipeline();
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("misty ui"),
         layout: Some(&pipeline_layout),

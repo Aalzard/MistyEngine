@@ -255,6 +255,8 @@ pub struct GameViewSettings {
     pub play_mode_target: usize,
     pub mute: bool,
     pub stats: bool,
+    /// Frame times and hitches shown by the Stats overlay (kept while it is on).
+    pub frame_history: misty_engine::render::FrameHistory,
     pub gizmos: bool,
 }
 
@@ -493,6 +495,7 @@ impl EditorState {
                 play_mode_target: 0,
                 mute: false,
                 stats: false,
+                frame_history: Default::default(),
                 gizmos: false,
             },
             profiler: Default::default(),

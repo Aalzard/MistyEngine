@@ -20,6 +20,9 @@ thread_local! {
 /// A device without a window (`None` = no usable adapter on this machine). The calling test
 /// holds the GPU test lock until it finishes.
 pub(crate) fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
+    // Renders must be complete on their first frame: grass chunks are built in the frame
+    // that needs them (the hitch tests turn streaming back on).
+    set_grass_streaming(false);
     GPU_HELD.with(|held| {
         let mut held = held.borrow_mut();
         if held.is_none() {

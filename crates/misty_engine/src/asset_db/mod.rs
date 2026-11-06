@@ -19,8 +19,8 @@ mod tests;
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
-use std::sync::RwLock;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, RwLock};
 
 pub use database::{GuidDatabase, ScanReport};
 pub use guid::Guid;
@@ -79,18 +79,62 @@ pub fn rescan() -> Option<ScanReport> {
     Some(open(&root))
 }
 
+/// The file watcher's walk of `Assets/`, running on its own thread: walking a project of a
+/// few thousand files takes tens of milliseconds, too long for a frame.
+static WALK: Mutex<Option<Walk>> = Mutex::new(None);
+
+/// A walk in progress: the project root it lists and every asset path found.
+type Walk = std::thread::JoinHandle<(PathBuf, BTreeSet<String>)>;
+
 /// File watcher: rescan when files or folders appeared or vanished under `Assets/` since the
 /// last scan (created, copied or moved outside the editor). Returns the scan's report then.
+/// The walk runs on a background thread: a call starts one and a later call (when it is
+/// done) compares its listing with the database, so a change shows up one poll late.
 pub fn poll() -> Option<ScanReport> {
+    let mut walk = WALK.lock().unwrap_or_else(|e| e.into_inner());
+    if walk.as_ref().is_some_and(|w| !w.is_finished()) {
+        return None;
+    }
+    let found = walk.take().and_then(|w| w.join().ok());
     let (root, known) = with(|db| {
         let known: BTreeSet<String> = db.paths().map(str::to_owned).collect();
         (db.root().to_path_buf(), known)
     })?;
-    let mut now = BTreeSet::new();
-    database::walk(&root.join("Assets"), &mut |p| {
-        now.insert(database::rel(&root, p));
-    });
-    (now != known).then(|| open(&root))
+    let changed = found.is_some_and(|(r, now)| r == root && now != known);
+    if changed {
+        return Some(open(&root));
+    }
+    let listing = std::thread::Builder::new()
+        .name("misty asset watcher".into())
+        .spawn(move || {
+            let mut now = BTreeSet::new();
+            database::walk(&root.join("Assets"), &mut |p| {
+                now.insert(database::rel(&root, p));
+            });
+            (root, now)
+        });
+    *walk = listing.ok();
+    None
+}
+
+/// [`poll`] that waits for the walk: the report of a change made since the last scan (tests).
+#[cfg(test)]
+pub fn poll_now() -> Option<ScanReport> {
+    let first = poll();
+    if first.is_some() {
+        return first;
+    }
+    loop {
+        let done = WALK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .is_none_or(|w| w.is_finished());
+        if done {
+            return poll();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 }
 
 pub fn guid_of(rel: &str) -> Option<Guid> {

@@ -135,7 +135,12 @@ impl ProbeCapture {
             shaded: true,
             lights: &inputs.lights,
         };
+        // A capture is one render: the grass around the probe must be there now, not a few
+        // frames later.
+        let streaming = super::super::grass_streaming();
+        super::super::set_grass_streaming(false);
         renderer.render(device, queue, &self.target, &frame);
+        super::super::set_grass_streaming(streaming);
         self.read(device, queue)
     }
 
