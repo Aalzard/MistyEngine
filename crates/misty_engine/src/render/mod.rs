@@ -2803,6 +2803,8 @@ mod hitch_tests;
 mod taa_gpu_tests;
 #[cfg(test)]
 mod terrain_gpu_tests;
+#[cfg(test)]
+mod grass_study;
 
 #[cfg(test)]
 mod tests {
