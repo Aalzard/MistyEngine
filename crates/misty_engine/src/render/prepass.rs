@@ -57,6 +57,7 @@ impl Prepass {
                     depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
                     blend: key.blend(),
                     glow: Some(true),
+                    velocity: true,
                     ..Spec::new("mesh after prepass", MESH_SRC, &layouts)
                 },
             )

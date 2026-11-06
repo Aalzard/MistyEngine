@@ -76,8 +76,8 @@ fn gi_march(pos: vec3<f32>, n: vec3<f32>, dir: vec3<f32>, z0: f32, jitter: f32, 
             if (!bounce_source(px)) {
                 return vec4<f32>(0.0);
             }
-            let hit = world_at(vec2<f32>(px) + 0.5, sd);
-            let prev = project(hit, p.prev_view_proj);
+            // Last frame's lit colour of the hit, through the hit pixel's motion vector.
+            let prev = reproject_px(px, vec2<f32>(px) + 0.5);
             if (prev.w < 0.5) {
                 return vec4<f32>(0.0, 0.0, 0.0, 1.0);
             }
@@ -149,7 +149,7 @@ fn cs_gi_temporal(@builtin(global_invocation_id) id: vec3<u32>) {
     let current = textureLoad(in_a, t, 0);
     var history = vec4<f32>(0.0);
     var len = 0.0;
-    let prev = project(pos, p.prev_view_proj);
+    let prev = reproject_px(fp, vec2<f32>(fp) + 0.5);
     if (p.prev_camera.w > 0.5 && prev.w > 0.5) {
         // Where this surface was last frame, and how far it was from that camera.
         let expected = dot(pos - p.prev_camera.xyz, p.prev_forward.xyz);

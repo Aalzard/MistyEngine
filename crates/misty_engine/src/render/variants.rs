@@ -32,6 +32,9 @@ impl Pipelines {
                 blend: key.blend(),
                 // Emission is blended like the colour, so glass dims the glow behind it.
                 glow: Some(true),
+                // Opaque and cutout surfaces write their motion; blended ones leave the
+                // motion of what is behind them (they don't write depth either).
+                velocity: key.depth_write(),
                 ..Spec::new("mesh", MESH_SRC, &layouts)
             },
         );

@@ -39,9 +39,52 @@ struct View {
     vignette: vec4<f32>,
     // rgb = linear vignette colour.
     vignette_color: vec4<f32>,
+    // ---- Motion (render/motion.rs) ----
+    // Last frame's view-projection without jitter: world -> last frame's clip space.
+    prev_view_proj: mat4x4<f32>,
+    // xy = this frame's TAA jitter in NDC (view_proj = translation(xy) × the unjittered
+    // matrix), zw = target size in pixels.
+    motion: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> view: View;
+
+// ---- Motion vectors (render/motion.rs) ----
+// Every main-pass and prepass shader writes where its surface was last frame, so the
+// temporal passes (TAA, AO, shadow mask, SSGI / SSR) follow moving objects and wind instead
+// of assuming a static world. Vertex stages pass `prev_clip(..)` through, fragment stages
+// turn it into a uv offset with `velocity_of`.
+
+// xyw of last frame's clip position of a world point (its previous position for moving
+// objects); z is dropped (a vec3 varying).
+fn prev_clip(world_prev: vec3<f32>) -> vec3<f32> {
+    let c = view.prev_view_proj * vec4<f32>(world_prev, 1.0);
+    return vec3<f32>(c.x, c.y, c.w);
+}
+
+// Motion vector of a fragment: last frame's uv minus this frame's uv (0..1, y down), from
+// its raster position `pos` (@builtin(position)) and the vertex stage's `prev_clip` value.
+fn velocity_of(pos: vec4<f32>, prev: vec3<f32>) -> vec2<f32> {
+    if (prev.z <= 1e-6) {
+        return vec2<f32>(0.0);
+    }
+    // The raster position is this frame's jittered NDC; take the jitter back out.
+    let now = vec2<f32>(pos.x / view.motion.z * 2.0 - 1.0, 1.0 - pos.y / view.motion.w * 2.0) - view.motion.xy;
+    let before = prev.xy / prev.z;
+    return (before - now) * vec2<f32>(0.5, -0.5);
+}
+
+// Motion vector of the sky / background seen in `dir` (camera rotation only; `ndc` = the
+// fragment's raster NDC).
+fn sky_velocity(dir: vec3<f32>, ndc: vec2<f32>) -> vec2<f32> {
+    let c = view.prev_view_proj * vec4<f32>(dir, 0.0);
+    if (c.w <= 1e-6) {
+        return vec2<f32>(0.0);
+    }
+    let before = c.xy / c.w;
+    let now = ndc - view.motion.xy;
+    return (before - now) * vec2<f32>(0.5, -0.5);
+}
 
 // ---- HDRI sky (render/hdri_sky) ----
 struct SkyEnv {

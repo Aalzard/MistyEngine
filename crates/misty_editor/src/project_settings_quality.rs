@@ -226,9 +226,33 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     edited |= row(
         ui,
         "Temporal Anti-aliasing",
-        "Jitters the camera each frame and blends the frames over time: smooth edges, and thin          grass, foliage and shading that stop crawling. A little softer while moving.",
+        "Jitters the camera each frame and blends the frames over time, following moving \
+         objects and the wind through motion vectors: smooth edges, and thin grass, foliage \
+         and shading that stop crawling.",
         |ui| ui.checkbox(&mut l.temporal_aa, "").changed(),
     );
+    if l.temporal_aa {
+        edited |= row(
+            ui,
+            "TAA Blend",
+            "Share of the newest frame in the blend: lower is smoother and slower to settle, \
+             higher is crisper and noisier.",
+            |ui| {
+                ui.add(egui::Slider::new(&mut l.taa_blend, 0.02..=0.5).max_decimals(2))
+                    .changed()
+            },
+        );
+        edited |= row(
+            ui,
+            "TAA Sharpness",
+            "Sharpens the accumulated history against the softening of blending, so a still \
+             image stays as crisp as a single frame.",
+            |ui| {
+                ui.add(egui::Slider::new(&mut l.taa_sharpness, 0.0..=1.0).max_decimals(2))
+                    .changed()
+            },
+        );
+    }
     edited |= row(
         ui,
         "Render Scale",

@@ -16,10 +16,14 @@ fn vs_terrain(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance:
     out.draw = draw_index;
     // Tangent along +x, lying in the surface (layer normal maps on the top projection).
     out.tangent = vec4<f32>(normalize(vec3<f32>(1.0, 0.0, 0.0) - n * n.x), 1.0);
+    // Terrains don't move: camera motion only.
+    out.clip_prev = prev_clip(world.xyz);
     return out;
 }
 
 @fragment
 fn fs_terrain(in: MeshOut) -> MeshTargets {
-    return shade(in.world, terrain_surface(in));
+    var out = shade(in.world, terrain_surface(in));
+    out.velocity = mesh_velocity(in);
+    return out;
 }

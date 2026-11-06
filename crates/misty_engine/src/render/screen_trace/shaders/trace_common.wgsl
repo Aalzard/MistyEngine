@@ -53,6 +53,8 @@ struct ScreenTrace {
 @group(0) @binding(9) var out_a: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(10) var out_b: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(11) var<storage, read_write> trace_out: ScreenTrace;
+// Motion vectors of the prepass (last frame's uv minus this frame's, per full pixel).
+@group(0) @binding(12) var velocity_tex: texture_2d<f32>;
 
 const PI: f32 = 3.14159265;
 
@@ -96,6 +98,15 @@ fn project(world: vec3<f32>, m: mat4x4<f32>) -> vec4<f32> {
     let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
     let inside = all(uv >= vec2<f32>(0.0)) && all(uv < vec2<f32>(1.0));
     return vec4<f32>(uv, ndc.z, select(0.0, 1.0, inside));
+}
+
+// Where full pixel `px` (centre `pc`) was last frame, through its motion vector: xy = uv
+// (0..1, y down), w = 1 when on screen (z unused).
+fn reproject_px(px: vec2<i32>, pc: vec2<f32>) -> vec4<f32> {
+    let v = textureLoad(velocity_tex, clamp(px, vec2<i32>(0), full_size() - 1), 0).xy;
+    let uv = pc / p.size.xy + v;
+    let inside = all(uv >= vec2<f32>(0.0)) && all(uv < vec2<f32>(1.0));
+    return vec4<f32>(uv, 0.0, select(0.0, 1.0, inside));
 }
 
 // xyz = normal, w = smoothness (-1 = no surface).

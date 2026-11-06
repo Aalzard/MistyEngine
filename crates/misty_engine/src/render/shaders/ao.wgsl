@@ -51,6 +51,8 @@ struct ScreenSpace {
 @group(0) @binding(4) var ao_out: texture_storage_2d<rg32float, write>;
 @group(0) @binding(5) var<storage, read> history: ScreenSpace;
 @group(0) @binding(6) var<storage, read_write> current: ScreenSpace;
+// Motion vectors of the prepass (last frame's uv minus this frame's).
+@group(0) @binding(7) var velocity_tex: texture_2d<f32>;
 
 fn load_depth(px: vec2<f32>) -> f32 {
     return textureLoad(depth_tex, vec2<i32>(px), 0);
@@ -258,20 +260,19 @@ fn cs_resolve(@builtin(global_invocation_id) id: vec3<u32>) {
     var ao = 1.0;
     if (p.proj.z > 0.5) {
         ao = upsample(px, z);
-        // Reproject into last frame and blend with its result when it saw the same surface.
+        // Reproject into last frame (through the motion vector, so moving objects keep
+        // their own AO) and blend with its result when it saw the same surface.
         if (p.temporal.x > 0.0) {
+            let velocity = textureLoad(velocity_tex, vec2<i32>(id.xy), 0).xy;
+            let prev = px + velocity * p.size.zw;
             let c = p.prev_view_proj * vec4<f32>(world, 1.0);
-            if (c.w > 0.0) {
-                let ndc = c.xy / c.w;
-                let prev = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * p.size.zw;
-                if (all(prev >= vec2<f32>(0.0)) && all(prev < p.size.zw)) {
-                    let hp = vec2<u32>(prev);
-                    let h = history.texels[hp.y * width + hp.x];
-                    // Perspective: w is last frame's view depth. Orthographic: depth barely moves.
-                    let expected = select(c.w, z, p.camera.w > 0.5);
-                    if (abs(h.y - expected) < 0.03 * expected + 0.02) {
-                        ao = mix(ao, h.x, p.temporal.x);
-                    }
+            if (c.w > 0.0 && all(prev >= vec2<f32>(0.0)) && all(prev < p.size.zw)) {
+                let hp = vec2<u32>(prev);
+                let h = history.texels[hp.y * width + hp.x];
+                // Perspective: w is last frame's view depth. Orthographic: depth barely moves.
+                let expected = select(c.w, z, p.camera.w > 0.5);
+                if (abs(h.y - expected) < 0.03 * expected + 0.02) {
+                    ao = mix(ao, h.x, p.temporal.x);
                 }
             }
         }

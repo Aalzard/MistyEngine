@@ -1,22 +1,23 @@
 //! Temporal anti-aliasing (Quality ▸ Temporal Anti-aliasing): the camera's projection is
 //! offset by a sub-pixel Halton (2, 3) jitter each frame, and `shaders/taa.wgsl` blends the
-//! resolved HDR image with a history reprojected through the depth buffer, clipped to the
-//! current neighbourhood. It runs before bloom and tonemapping, so everything after sees the
-//! converged image. Each render target keeps its own history (Scene and Game views).
+//! resolved HDR image with a history reprojected through the main pass's motion vectors
+//! (see [`super::motion`]), clipped to the variance of the current neighbourhood and
+//! sharpened so a still scene stays crisp. It runs before bloom and tonemapping, so
+//! everything after sees the converged image. Each render target keeps its own history
+//! (Scene and Game views). Quality ▸ TAA Blend and TAA Sharpness tune the blend.
 
 use std::collections::HashMap;
 
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2};
 use wgpu::util::DeviceExt;
 
 use super::HDR_FORMAT;
 use super::pipelines::{Spec, build};
+use crate::camera::{Camera, Projection};
 
 const SRC: &str = include_str!("shaders/taa.wgsl");
 /// Jitter positions before the pattern repeats.
 const PHASES: u32 = 8;
-/// Share of the current frame in the blend (lower = smoother, slower to react).
-const CURRENT_WEIGHT: f32 = 0.12;
 /// Histories of targets not rendered for this many renders are dropped.
 const STALE_AFTER: u64 = 600;
 
@@ -26,16 +27,26 @@ struct TaaParams {
     inv_view_proj: [[f32; 4]; 4],
     prev_view_proj: [[f32; 4]; 4],
     info: [f32; 4],
+    texel: [f32; 4],
+    clip: [f32; 4],
+}
+
+/// How the history is blended (Quality ▸ TAA Blend / TAA Sharpness).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct TaaSettings {
+    /// Share of the current frame in the blend (lower = smoother, slower to react).
+    pub blend: f32,
+    /// Unsharp mask applied to the reprojected history (0 = none).
+    pub sharpness: f32,
 }
 
 struct History {
     size: (u32, u32),
     /// Ping-pong history images; `current` is the one written this frame.
-    images: [wgpu::Texture; 2],
     views: [wgpu::TextureView; 2],
     current: usize,
-    /// Last frame's unjittered view-projection and camera (None = no usable history).
-    prev: Option<(Mat4, Vec3, Vec3)>,
+    /// A history image holds a converged frame that can be reprojected.
+    valid: bool,
     frame: u32,
     used: u64,
 }
@@ -43,6 +54,9 @@ struct History {
 pub(super) struct Taa {
     layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
+    /// History → image through the unsharp mask.
+    sharpen_layout: wgpu::BindGroupLayout,
+    sharpen: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     histories: HashMap<u64, History>,
     renders: u64,
@@ -65,14 +79,40 @@ pub(super) fn jitter_pixels(n: u32) -> Vec2 {
     Vec2::new(halton(i, 2), halton(i, 3)) - 0.5
 }
 
-/// `view_proj` moved by `pixels` on a `size` image (a clip-space translation, so it works
-/// for perspective and orthographic cameras alike).
-pub(super) fn jittered(view_proj: Mat4, pixels: Vec2, size: (u32, u32)) -> Mat4 {
-    let ndc = Vec2::new(
+/// A sub-pixel offset of `pixels` on a `size` image as an NDC translation.
+pub(super) fn jitter_ndc(pixels: Vec2, size: (u32, u32)) -> Vec2 {
+    Vec2::new(
         pixels.x * 2.0 / size.0.max(1) as f32,
         -pixels.y * 2.0 / size.1.max(1) as f32,
-    );
-    Mat4::from_translation(ndc.extend(0.0)) * view_proj
+    )
+}
+
+/// `view_proj` moved by `pixels` on a `size` image (a clip-space translation, so it works
+/// for perspective and orthographic cameras alike). No jitter returns the matrix unchanged,
+/// bit for bit.
+pub(super) fn jittered(view_proj: Mat4, pixels: Vec2, size: (u32, u32)) -> Mat4 {
+    if pixels == Vec2::ZERO {
+        return view_proj;
+    }
+    Mat4::from_translation(jitter_ndc(pixels, size).extend(0.0)) * view_proj
+}
+
+/// What one resolve reads.
+pub(super) struct Resolve<'a> {
+    pub view_group: &'a wgpu::BindGroup,
+    pub target: u64,
+    /// The HDR image (texture + view): read, then overwritten with the result.
+    pub current: (&'a wgpu::Texture, &'a wgpu::TextureView),
+    pub depth: &'a wgpu::TextureView,
+    /// Motion vectors of the main pass.
+    pub velocity: &'a wgpu::TextureView,
+    /// This frame's unjittered view-projection and last frame's.
+    pub view_proj: Mat4,
+    pub prev_view_proj: Mat4,
+    /// The camera moved continuously since last frame (no cut).
+    pub continuous: bool,
+    pub camera: &'a Camera,
+    pub settings: TaaSettings,
 }
 
 impl Taa {
@@ -112,6 +152,11 @@ impl Taa {
                     },
                     count: None,
                 },
+                tex(
+                    5,
+                    wgpu::TextureSampleType::Float { filterable: false },
+                    true,
+                ),
             ],
         });
         let pipeline = build(
@@ -125,6 +170,33 @@ impl Taa {
                 ..Spec::new("taa", SRC, &[view_layout, &layout])
             },
         );
+        let sharpen_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("misty taa sharpen"),
+            entries: &[
+                tex(0, float, false),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: S::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let sharpen = build(
+            device,
+            Spec {
+                fs: Some("fs_taa_sharpen"),
+                depth: None,
+                samples: 1,
+                color: Some(HDR_FORMAT),
+                glow: None,
+                ..Spec::new("taa sharpen", SRC, &[view_layout, &sharpen_layout])
+            },
+        );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("misty taa sampler"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -134,6 +206,8 @@ impl Taa {
         Self {
             layout,
             pipeline,
+            sharpen_layout,
+            sharpen,
             sampler,
             histories: HashMap::new(),
             renders: 0,
@@ -152,45 +226,45 @@ impl Taa {
         self.histories.clear();
     }
 
-    /// Resolve `current` (the HDR image) with the history into the next history image, then
-    /// copy it back over `current`. `view_proj` = this frame's unjittered camera.
-    #[allow(clippy::too_many_arguments)]
+    /// Resolve the HDR image with the history into the next history image, then write that
+    /// back over the HDR image through the sharpening pass.
     pub(super) fn resolve(
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
-        view_group: &wgpu::BindGroup,
-        target: u64,
-        current: (&wgpu::Texture, &wgpu::TextureView),
-        depth: &wgpu::TextureView,
-        view_proj: Mat4,
-        camera: (Vec3, Vec3),
+        r: &Resolve,
     ) {
         self.renders += 1;
         let renders = self.renders;
         self.histories.retain(|_, h| renders - h.used < STALE_AFTER);
-        let size = (current.0.width(), current.0.height());
+        let size = (r.current.0.width(), r.current.0.height());
         let h = self
             .histories
-            .entry(target)
+            .entry(r.target)
             .or_insert_with(|| History::new(device, size));
         if h.size != size {
             *h = History::new(device, size);
         }
         h.used = renders;
-        // A jump the history can't follow (teleport, switched camera): start afresh.
-        let valid = h
-            .prev
-            .filter(|(_, pos, fwd)| pos.distance(camera.0) < 5.0 && fwd.dot(camera.1) > 0.85);
+        let valid = h.valid && r.continuous;
+        let cam = r.camera;
+        let ortho = matches!(cam.projection, Projection::Orthographic { .. });
         let params = TaaParams {
-            inv_view_proj: view_proj.inverse().to_cols_array_2d(),
-            prev_view_proj: valid.map_or(view_proj, |p| p.0).to_cols_array_2d(),
+            inv_view_proj: r.view_proj.inverse().to_cols_array_2d(),
+            prev_view_proj: r.prev_view_proj.to_cols_array_2d(),
             info: [
-                if valid.is_some() { 1.0 } else { 0.0 },
-                CURRENT_WEIGHT,
+                if valid { 1.0 } else { 0.0 },
+                r.settings.blend.clamp(0.02, 1.0),
+                r.settings.sharpness.clamp(0.0, 1.0),
+                if ortho { 1.0 } else { 0.0 },
+            ],
+            texel: [
                 1.0 / size.0 as f32,
                 1.0 / size.1 as f32,
+                size.0 as f32,
+                size.1 as f32,
             ],
+            clip: [cam.near, cam.far, 0.0, 0.0],
         };
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("misty taa params"),
@@ -204,11 +278,11 @@ impl Taa {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(current.1),
+                    resource: wgpu::BindingResource::TextureView(r.current.1),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(depth),
+                    resource: wgpu::BindingResource::TextureView(r.depth),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -221,6 +295,10 @@ impl Taa {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(r.velocity),
                 },
             ],
         });
@@ -242,21 +320,48 @@ impl Taa {
                 multiview_mask: None,
             });
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, view_group, &[]);
+            pass.set_bind_group(0, r.view_group, &[]);
             pass.set_bind_group(1, &group, &[]);
             pass.draw(0..3, 0..1);
         }
-        encoder.copy_texture_to_texture(
-            h.images[write].as_image_copy(),
-            current.0.as_image_copy(),
-            wgpu::Extent3d {
-                width: size.0,
-                height: size.1,
-                depth_or_array_layers: 1,
-            },
-        );
+        // The history back onto the image, sharpened on the way (never fed back).
+        let sharpen_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty taa sharpen group"),
+            layout: &self.sharpen_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&h.views[write]),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffer.as_entire_binding(),
+                },
+            ],
+        });
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("misty taa sharpen"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: r.current.1,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.sharpen);
+        pass.set_bind_group(0, r.view_group, &[]);
+        pass.set_bind_group(1, &sharpen_group, &[]);
+        pass.draw(0..3, 0..1);
+        drop(pass);
         h.current = read;
-        h.prev = Some((view_proj, camera.0, camera.1));
+        h.valid = true;
         h.frame = h.frame.wrapping_add(1);
     }
 
@@ -296,10 +401,9 @@ impl History {
         ];
         Self {
             size,
-            images,
             views,
             current: 0,
-            prev: None,
+            valid: false,
             frame: 0,
             used: 0,
         }
@@ -309,6 +413,7 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glam::Vec3;
 
     #[test]
     fn jitter_covers_the_pixel_evenly() {
@@ -356,6 +461,11 @@ mod tests {
         };
         let moved = px(jittered(vp, Vec2::new(0.25, -0.5), size)) - px(vp);
         assert!((moved - Vec2::new(0.25, -0.5)).length() < 1e-3, "{moved}");
+        // No jitter is the identity, bit for bit.
+        assert_eq!(
+            jittered(vp, Vec2::ZERO, size).to_cols_array(),
+            vp.to_cols_array()
+        );
     }
 
     #[test]
@@ -370,5 +480,6 @@ mod tests {
         )
         .validate(&module)
         .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(std::mem::size_of::<TaaParams>(), 128 + 48);
     }
 }

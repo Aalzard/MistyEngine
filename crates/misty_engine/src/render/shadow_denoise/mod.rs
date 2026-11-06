@@ -138,6 +138,11 @@ impl Passes {
                 ),
                 entry(3, storage(true)),
                 entry(4, storage(false)),
+                // Motion vectors of the prepass.
+                entry(
+                    5,
+                    texture(wgpu::TextureSampleType::Float { filterable: false }, d2),
+                ),
             ],
         });
         // The lit shaders' group 1 bindings that shadows.wgsl reads.
@@ -433,6 +438,7 @@ impl Renderer {
         encoder: &mut wgpu::CommandEncoder,
         depth: &wgpu::TextureView,
         normals: &wgpu::TextureView,
+        velocity: &wgpu::TextureView,
     ) {
         let (Some(passes), Some(f)) = (&self.shadow_denoise.passes, &self.shadow_denoise.frame)
         else {
@@ -488,6 +494,10 @@ impl Renderer {
                     wgpu::BindGroupEntry {
                         binding: 4,
                         resource: dst.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(velocity),
                     },
                 ],
             })

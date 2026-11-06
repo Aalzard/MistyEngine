@@ -55,6 +55,8 @@ struct WaterOut {
     @location(2) slope: vec2<f32>,
     // x = crest factor (-1 trough .. 1 crest), y = detail fade (1 near, 0 far), z = bounded edge.
     @location(3) info: vec3<f32>,
+    // Last frame's clip position (xyw) of the vertex (camera motion; waves count as still).
+    @location(4) clip_prev: vec3<f32>,
 };
 
 struct Displaced {
@@ -128,6 +130,7 @@ fn vs_water(in: WaterIn) -> WaterOut {
     var out: WaterOut;
     out.world = rest_world + offset;
     out.clip = view.view_proj * vec4<f32>(out.world, 1.0);
+    out.clip_prev = prev_clip(out.world);
     out.rest = p;
     out.slope = g.slope * far * edge;
     let fft_crest = fft.y * water.p0.w * water.p6.x;
@@ -343,6 +346,7 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
         var out: MeshTargets;
         out.color = vec4<f32>(c, 1.0);
         out.glow = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        out.velocity = velocity_of(in.clip, in.clip_prev);
         return out;
     }
 
@@ -430,6 +434,7 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
     var out: MeshTargets;
     out.color = vec4<f32>(fogged.rgb + behind * seen, 1.0);
     out.glow = vec4<f32>(max(spec - vec3<f32>(1.0), vec3<f32>(0.0)) * 0.3 * fogged.a, 1.0);
+    out.velocity = velocity_of(in.clip, in.clip_prev);
     return out;
 }
 
@@ -472,5 +477,7 @@ fn fs_underwater(in: FullscreenOut) -> MeshTargets {
     var out: MeshTargets;
     out.color = vec4<f32>(c, 1.0);
     out.glow = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    // Not written (the pipeline masks it): the scene's own motion vectors stay.
+    out.velocity = vec2<f32>(0.0);
     return out;
 }

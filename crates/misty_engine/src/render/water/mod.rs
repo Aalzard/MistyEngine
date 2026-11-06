@@ -169,6 +169,7 @@ impl Inner {
                 cull: None,
                 depth: Depth::main(true, wgpu::CompareFunction::Less),
                 glow: Some(true),
+                velocity: true,
                 ..Spec::new("water", WATER_SRC, &layouts)
             },
         );

@@ -7,6 +7,8 @@ struct SkyTargets {
     @location(0) color: vec4<f32>,
     // The sun disc glows through bloom.
     @location(1) glow: vec4<f32>,
+    // Motion vector of the sky (camera rotation).
+    @location(2) velocity: vec2<f32>,
 };
 
 // Sun disc (and halo in High Quality) seen in `dir`; zero when there is no visible sun.
@@ -33,6 +35,7 @@ fn fs_main(in: FullscreenOut) -> SkyTargets {
     var out: SkyTargets;
     out.glow = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     let dir = normalize(unproject(in.ndc, 1.0) - unproject(in.ndc, 0.0));
+    out.velocity = sky_velocity(dir, in.ndc);
     let vf = vfog_sky(dir);
     if (view.background.w < 0.5) {
         out.color = vec4<f32>(vfog_blend(view.background.rgb, vf, 1.0), 1.0);

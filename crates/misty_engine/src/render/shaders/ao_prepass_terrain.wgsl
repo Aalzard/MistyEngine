@@ -8,11 +8,14 @@ fn vs_terrain_prepass(
 ) -> PrepassOut {
     let c = terrain_sample(vi);
     let d = draws[slots[instance]];
+    let world = d.model * vec4<f32>(terrain_local(c), 1.0);
     var out: PrepassOut;
-    out.clip = view.view_proj * d.model * vec4<f32>(terrain_local(c), 1.0);
+    out.clip = view.view_proj * world;
     // Terrains are only translated, so the local normal is the world normal.
     out.normal = textureLoad(terrain_normals, c, 0).xyz;
     out.uv = vec2<f32>(0.0);
     out.alpha = vec4<f32>(1.0, 0.0, 0.0, 0.0);
+    out.no_gi = 0.0;
+    out.clip_prev = prev_clip(world.xyz);
     return out;
 }

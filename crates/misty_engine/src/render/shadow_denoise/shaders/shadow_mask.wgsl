@@ -82,6 +82,8 @@ struct ShadowMask {
 @group(0) @binding(2) var normal_tex: texture_2d<f32>;
 @group(0) @binding(3) var<storage, read> src: ShadowMask;
 @group(0) @binding(4) var<storage, read_write> dst: ShadowMask;
+// Motion vectors of the prepass (last frame's uv minus this frame's).
+@group(0) @binding(5) var velocity_tex: texture_2d<f32>;
 
 fn world_at(px: vec2<f32>, d: f32) -> vec3<f32> {
     let ndc = vec2<f32>(px.x / mp.size.x * 2.0 - 1.0, 1.0 - px.y / mp.size.y * 2.0);
@@ -188,7 +190,7 @@ fn cs_trace(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocat
     var value = raw;
     var frames = 1u;
     if (mp.size.w > 0.5) {
-        let prev = history_at(world);
+        let prev = history_at(world, px, textureLoad(velocity_tex, vec2<i32>(id.xy), 0).xy);
         if (prev.frames > 0u) {
             let margin = vec4<f32>(0.02);
             let kept = clamp(prev.value, lo - margin, hi + margin);
@@ -210,14 +212,10 @@ struct History {
     frames: u32,
 };
 
-// Pixel of `world` in last frame's image (xy) and its expected depth (z); w = 1 when on screen.
-fn reproject(world: vec3<f32>) -> vec4<f32> {
-    let c = mp.prev_view_proj * vec4<f32>(world, 1.0);
-    if (c.w <= 0.0) {
-        return vec4<f32>(0.0);
-    }
-    let ndc = c.xy / c.w;
-    let p = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * mp.size.xy;
+// Pixel of `world` (at pixel `px` now) in last frame's image (xy), through the motion vector
+// `velocity`, and its expected depth there (z); w = 1 when on screen.
+fn reproject(world: vec3<f32>, px: vec2<f32>, velocity: vec2<f32>) -> vec4<f32> {
+    let p = px + velocity * mp.size.xy;
     let expected = dot(world - mp.prev_camera.xyz, mp.prev_forward.xyz);
     let on = all(p >= vec2<f32>(0.0)) && all(p < mp.size.xy);
     return vec4<f32>(p, expected, select(0.0, 1.0, on));
@@ -225,11 +223,11 @@ fn reproject(world: vec3<f32>) -> vec4<f32> {
 
 // Last frame's accumulated value at `world`: bilinear over the four nearest pixels that saw
 // the same surface (depth within 3%). frames = 0 when none did (disocclusion).
-fn history_at(world: vec3<f32>) -> History {
+fn history_at(world: vec3<f32>, px: vec2<f32>, velocity: vec2<f32>) -> History {
     var out: History;
     out.value = vec4<f32>(1.0);
     out.frames = 0u;
-    let r = reproject(world);
+    let r = reproject(world, px, velocity);
     if (r.w < 0.5) {
         return out;
     }

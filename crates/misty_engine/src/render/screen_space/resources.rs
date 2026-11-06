@@ -32,6 +32,7 @@ impl Passes {
                         color: Some(NORMAL_FORMAT),
                         samples: 1,
                         glow: None,
+                        velocity: true,
                         ..Spec::new("ao prepass", PREPASS_SRC, layouts)
                     },
                 );
@@ -58,6 +59,7 @@ impl Passes {
                 color: Some(NORMAL_FORMAT),
                 samples: 1,
                 glow: None,
+                velocity: true,
                 ..Spec::new(
                     "ao terrain prepass",
                     TERRAIN_PREPASS_SRC,
@@ -88,6 +90,7 @@ impl Passes {
                 color: Some(NORMAL_FORMAT),
                 samples: 1,
                 glow: None,
+                velocity: true,
                 ..Spec::new(
                     "ao grass prepass",
                     GRASS_PREPASS_SRC,
@@ -138,6 +141,8 @@ impl Passes {
                 ),
                 entry(5, storage(true)),
                 entry(6, storage(false)),
+                // Motion vectors of the prepass.
+                entry(7, texture(unfiltered)),
             ],
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -207,6 +212,12 @@ impl TargetState {
         let store = wgpu::TextureUsages::STORAGE_BINDING;
         let normal_view = texture("misty prepass normals", full, NORMAL_FORMAT, attach);
         let depth_view = texture("misty prepass depth", full, DEPTH_FORMAT, attach);
+        let velocity_view = texture(
+            "misty prepass velocity",
+            full,
+            pipelines::VELOCITY_FORMAT,
+            attach,
+        );
         let ao = [
             texture("misty ao a", ao_size, AO_FORMAT, store),
             texture("misty ao b", ao_size, AO_FORMAT, store),
@@ -239,6 +250,7 @@ impl TargetState {
                     tex(4, &ao[output]),
                     buf(5, &buffers[history]),
                     buf(6, &buffers[current]),
+                    tex(7, &velocity_view),
                 ],
             })
         };
@@ -255,6 +267,7 @@ impl TargetState {
             ao_size,
             normal_view,
             depth_view,
+            velocity_view,
             params,
             buffers,
             groups,

@@ -29,7 +29,8 @@ struct GrassParams {
     // w = ground tint.
     shadow: vec4<f32>,
     // x = angle of one pixel (radians, 0 = orthographic), y = 1 with TAA, z = radius of the
-    // near-camera grass shadow map (cascade casters leave its inside to it; 0 = none).
+    // near-camera grass shadow map (cascade casters leave its inside to it; 0 = none),
+    // w = seconds since last frame (the wind's motion vectors).
     screen: vec4<f32>,
 };
 
@@ -82,6 +83,11 @@ fn grass_keep(dist: f32) -> f32 {
 }
 
 fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
+    return grass_blade_at(vi, b, grass.origin.w);
+}
+
+// The blade as it stood at `time` (last frame's position for the motion vectors).
+fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
     let coarse = vi >= 100u;
     let k = select(vi, vi - 100u, coarse);
     let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
@@ -133,7 +139,6 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
     // Wind: gust waves rolling across the field, and a fast flutter whose phase runs along
     // the wind; tall blades give more than short stiff ones, seed stems least.
     let dir = grass.wind.zw;
-    let time = grass.origin.w;
     let gust = grass_gust(root.xz, dir, time, grass.wind.y, grass.camera.w);
     let flutter = sin(time * (4.5 + 3.0 * phase) + phase * 40.0 - dot(root.xz, dir) * 1.3);
     let give = clamp(b.position.w / 0.45, 0.35, 1.4) * select(1.0, 0.7, seed_head);

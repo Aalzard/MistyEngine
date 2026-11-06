@@ -22,6 +22,8 @@ pub(super) struct DrawPrep {
     pub main_keys: Vec<Option<BatchKey>>,
     pub shadow_keys: Vec<Option<BatchKey>>,
     pub uniforms: Vec<DrawUniform>,
+    /// Per draw: mesh fingerprint and model matrix, kept for next frame's motion vectors.
+    pub motion: Vec<(u64, glam::Mat4)>,
 }
 
 /// LOD state of every draw for `frame`'s camera.
@@ -64,13 +66,21 @@ pub(super) fn map_draws<T: Send>(n: usize, f: impl Fn(usize) -> T + Sync + Send)
 }
 
 impl Renderer {
-    pub(super) fn draw_prep(&self, frame: &Frame, lod: Vec<LodState>) -> DrawPrep {
+    /// `prev_draws` = last frame's draws of this target (object motion vectors).
+    pub(super) fn draw_prep(
+        &self,
+        frame: &Frame,
+        lod: Vec<LodState>,
+        prev_draws: &[(u64, glam::Mat4)],
+    ) -> DrawPrep {
         crate::profile_scope!("Render.DrawPrep");
         let n = frame.meshes.len();
         let shaded = frame.shaded;
         let per_draw = map_draws(n, |i| {
             let d = &frame.meshes[i];
             let state = lod[i];
+            let print = super::motion::fingerprint(d);
+            let prev_model = super::motion::prev_model(prev_draws, i, d, print);
             let mesh = self.gpu_mesh(&d.mesh);
             let bounds = match (mesh, state) {
                 (_, LodState::Hidden) | (None, _) => None,
@@ -100,12 +110,12 @@ impl Renderer {
                 LodState::Fading(f) => f,
                 _ => 0.0,
             };
-            let mut u = super::draw_uniform(d, fade);
+            let mut u = super::draw_uniform(d, fade, prev_model);
             if fade != 0.0 && d.material.mode == RenderingMode::Opaque {
                 // Opaque levels drawn with the cutout variant: only the dither clips.
                 u.surface[1] = f32::MIN;
             }
-            (bounds, pipeline, shadow, main, caster, u)
+            (bounds, pipeline, shadow, main, caster, u, (print, d.model))
         });
         let mut p = DrawPrep {
             bounds: Vec::with_capacity(n),
@@ -114,14 +124,16 @@ impl Renderer {
             main_keys: Vec::with_capacity(n),
             shadow_keys: Vec::with_capacity(n),
             uniforms: Vec::with_capacity(n),
+            motion: Vec::with_capacity(n),
         };
-        for (b, pk, sk, mk, ck, u) in per_draw {
+        for (b, pk, sk, mk, ck, u, m) in per_draw {
             p.bounds.push(b);
             p.pipeline.push(pk);
             p.shadow.push(sk);
             p.main_keys.push(mk);
             p.shadow_keys.push(ck);
             p.uniforms.push(u);
+            p.motion.push(m);
         }
         p
     }

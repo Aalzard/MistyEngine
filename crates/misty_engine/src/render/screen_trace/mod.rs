@@ -210,7 +210,8 @@ pub(in crate::render) struct TraceFrame {
 
 impl ScreenTrace {
     /// Set up this render's SSGI / SSR (`None` when both are off or the view is too large).
-    /// `normal_view` / `depth_view` = the prepass targets of this view.
+    /// `normal_view` / `depth_view` / `velocity_view` = the prepass targets of this view.
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
@@ -219,6 +220,7 @@ impl ScreenTrace {
         frame: &Frame,
         normal_view: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,
+        velocity_view: &wgpu::TextureView,
     ) -> Option<TraceFrame> {
         let (gi, ssr) = (frame.post.ssgi, frame.post.ssr);
         if !wanted(frame) {
@@ -276,6 +278,7 @@ impl ScreenTrace {
         let views = Views {
             depth: depth_view,
             normal: normal_view,
+            velocity: velocity_view,
         };
         let parity = (state.frame % 2) as usize;
         let (gi_steps, gi_final) = match (gi_on, &state.gi) {
@@ -465,6 +468,7 @@ pub(super) fn wanted(frame: &Frame) -> bool {
 struct Views<'a> {
     depth: &'a wgpu::TextureView,
     normal: &'a wgpu::TextureView,
+    velocity: &'a wgpu::TextureView,
 }
 
 /// Bindings of one trace step (layout in trace_common.wgsl); unused ones are placeholders.
@@ -473,6 +477,7 @@ struct Binds<'a> {
     params: &'a wgpu::Buffer,
     depth: &'a wgpu::TextureView,
     normal: &'a wgpu::TextureView,
+    velocity: &'a wgpu::TextureView,
     color: &'a wgpu::TextureView,
     sampler: &'a wgpu::Sampler,
     hiz: &'a wgpu::TextureView,
@@ -491,6 +496,7 @@ impl<'a> Binds<'a> {
             params: &state.params,
             depth: views.depth,
             normal: views.normal,
+            velocity: views.velocity,
             color: &state.color_all,
             sampler: &passes.sampler,
             hiz: state.ssr.as_ref().map_or(&passes.dummy_in, |s| &s.hiz_all),
@@ -524,6 +530,7 @@ impl<'a> Binds<'a> {
                 tex(9, self.out_a),
                 tex(10, self.out_b),
                 buf(11, self.buffer),
+                tex(12, self.velocity),
             ],
         })
     }

@@ -19,6 +19,14 @@ struct PrepassOut {
     @location(2) @interpolate(flat) alpha: vec4<f32>,
     // 1 when the surface sends no light through Screen Space GI.
     @location(3) @interpolate(flat) no_gi: f32,
+    // Last frame's clip position (xyw), for the motion vectors (common.wgsl).
+    @location(4) clip_prev: vec3<f32>,
+};
+
+// Normals + the motion vector the temporal passes reproject through.
+struct PrepassTargets {
+    @location(0) normal: vec4<f32>,
+    @location(1) velocity: vec2<f32>,
 };
 
 @vertex
@@ -35,6 +43,7 @@ fn vs_main(
     out.uv = draw_uv(d, uv);
     out.alpha = vec4<f32>(d.color.a, d.surface.y, d.surface.w, d.params.y);
     out.no_gi = d.lightmap.y;
+    out.clip_prev = prev_clip((d.prev_model * vec4<f32>(position, 1.0)).xyz);
     return out;
 }
 
@@ -47,18 +56,25 @@ fn encode_normal(n: vec3<f32>, front: bool, smoothness: f32, no_gi: f32) -> vec4
     return vec4<f32>(select(-m, m, front), select(w, -w, no_gi > 0.5));
 }
 
+fn prepass_targets(in: PrepassOut, front: bool) -> PrepassTargets {
+    var out: PrepassTargets;
+    out.normal = encode_normal(in.normal, front, in.alpha.w, in.no_gi);
+    out.velocity = velocity_of(in.clip, in.clip_prev);
+    return out;
+}
+
 @fragment
-fn fs_normal(in: PrepassOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
-    return encode_normal(in.normal, front, in.alpha.w, in.no_gi);
+fn fs_normal(in: PrepassOut, @builtin(front_facing) front: bool) -> PrepassTargets {
+    return prepass_targets(in, front);
 }
 
 // Cutout: the same holes as the main pass.
 @fragment
-fn fs_normal_cutout(in: PrepassOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+fn fs_normal_cutout(in: PrepassOut, @builtin(front_facing) front: bool) -> PrepassTargets {
     let base = textureSample(albedo_map, material_sampler, in.uv).a;
     let alpha = in.alpha.x * select(base, 1.0, in.alpha.z > 0.5);
     if (alpha < in.alpha.y) {
         discard;
     }
-    return encode_normal(in.normal, front, in.alpha.w, in.no_gi);
+    return prepass_targets(in, front);
 }

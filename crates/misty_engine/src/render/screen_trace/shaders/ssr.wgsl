@@ -143,11 +143,10 @@ fn cs_ssr_trace(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     let hp = vec2<i32>(hit.px);
-    let hd = load_depth(hp);
-    let world = world_at(vec2<f32>(hp) + 0.5, hd);
     // Back faces of the hit surface are not on screen.
     let facing = smoothstep(0.0, 0.2, -dot(surface_at(hp).xyz, r));
-    let prev = project(world, p.prev_view_proj);
+    // Last frame's lit colour of the hit, through the hit pixel's motion vector.
+    let prev = reproject_px(hp, vec2<f32>(hp) + 0.5);
     if (prev.w < 0.5 || facing <= 0.0) {
         textureStore(out_a, t, vec4<f32>(0.0));
         return;
@@ -181,7 +180,7 @@ fn cs_ssr_temporal(@builtin(global_invocation_id) id: vec3<u32>) {
         textureStore(out_a, t, current);
         return;
     }
-    let prev = project(world_at(vec2<f32>(fp) + 0.5, d), p.prev_view_proj);
+    let prev = reproject_px(fp, vec2<f32>(fp) + 0.5);
     if (prev.w < 0.5) {
         textureStore(out_a, t, current);
         return;

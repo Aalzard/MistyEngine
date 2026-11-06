@@ -31,6 +31,8 @@ struct GrassOut {
     @location(5) misc: vec4<f32>,
     // Across the blade (world), for the normal detail.
     @location(6) across: vec3<f32>,
+    // Last frame's clip position (xyw): where the wind had the vertex a frame ago.
+    @location(7) clip_prev: vec3<f32>,
 };
 
 @vertex
@@ -40,6 +42,8 @@ fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
 
     var out: GrassOut;
     out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
+    // Motion vector: the blade as the wind had it last frame (terrains don't move).
+    out.clip_prev = prev_clip(grass_blade_at(vi, b, grass.origin.w - grass.screen.w).p);
     out.world = v.p;
     // Rounded across the blade, so a card is not one flat shade.
     out.normal = normalize(face + v.across * v.side * 0.8);
@@ -146,6 +150,7 @@ fn shade_grass(
     var out: MeshTargets;
     out.color = vec4<f32>(color, alpha);
     out.glow = vec4<f32>(0.0, 0.0, 0.0, alpha);
+    out.velocity = vec2<f32>(0.0);
     if (ao_debug_view()) {
         out.color = vec4<f32>(vec3<f32>(ssao), alpha);
     }
@@ -234,5 +239,7 @@ fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
     // Thin edges let more light through than the thick midrib.
     let transmission = albedo * grass.seed.w * select(1.0, 0.6, seed_head) * mix(0.15, 1.0, canopy)
         * mix(1.35, 0.8, thick);
-    return shade_grass(in.world, lit, n, occlusion, transmission, smoothness, coverage);
+    var out = shade_grass(in.world, lit, n, occlusion, transmission, smoothness, coverage);
+    out.velocity = velocity_of(in.clip, in.clip_prev);
+    return out;
 }

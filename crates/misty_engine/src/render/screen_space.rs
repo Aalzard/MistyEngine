@@ -97,9 +97,9 @@ struct Passes {
 }
 
 impl ScreenFrame {
-    /// The prepass depth and world normals (the shadow mask reads them too).
-    pub(super) fn views(&self) -> (&wgpu::TextureView, &wgpu::TextureView) {
-        (&self.depth_view, &self.normal_view)
+    /// The prepass depth, world normals and motion vectors (the shadow mask reads them too).
+    pub(super) fn views(&self) -> (&wgpu::TextureView, &wgpu::TextureView, &wgpu::TextureView) {
+        (&self.depth_view, &self.normal_view, &self.velocity_view)
     }
 }
 
@@ -144,6 +144,8 @@ struct TargetState {
     ao_size: (u32, u32),
     normal_view: wgpu::TextureView,
     depth_view: wgpu::TextureView,
+    /// Motion vectors of the prepass (the temporal passes reproject through them).
+    velocity_view: wgpu::TextureView,
     params: wgpu::Buffer,
     /// Ping-pong texel buffers: one is written, the other is last frame's history.
     buffers: [wgpu::Buffer; 2],
@@ -161,6 +163,7 @@ pub(crate) struct TargetSlot(Mutex<Option<TargetState>>);
 pub(super) struct ScreenFrame {
     normal_view: wgpu::TextureView,
     depth_view: wgpu::TextureView,
+    velocity_view: wgpu::TextureView,
     /// GTAO and denoise groups (None = contact shadows only: the resolve writes depth).
     ao: Option<[wgpu::BindGroup; 2]>,
     resolve: wgpu::BindGroup,
@@ -274,6 +277,7 @@ impl Renderer {
             frame,
             &state.normal_view,
             &state.depth_view,
+            &state.velocity_view,
         );
         let trace_buffer = trace
             .as_ref()
@@ -301,6 +305,7 @@ impl Renderer {
         Some(ScreenFrame {
             normal_view: state.normal_view.clone(),
             depth_view: state.depth_view.clone(),
+            velocity_view: state.velocity_view.clone(),
             ao: ao_on.then(|| [gtao.clone(), denoise.clone()]),
             resolve: if current == 0 { resolve0 } else { resolve1 }.clone(),
             ao_size: state.ao_size,
@@ -352,17 +357,20 @@ impl Renderer {
         passes: &Passes,
         stats: &mut RenderStats,
     ) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("misty depth normal prepass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &ss.normal_view,
+        let attach = |view| {
+            Some(wgpu::RenderPassColorAttachment {
+                view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
                 },
-            })],
+            })
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("misty depth normal prepass"),
+            color_attachments: &[attach(&ss.normal_view), attach(&ss.velocity_view)],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &ss.depth_view,
                 depth_ops: Some(wgpu::Operations {

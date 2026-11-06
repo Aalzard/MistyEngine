@@ -96,7 +96,7 @@ pub(crate) fn read_back(
     pixels
 }
 
-fn material(color: [f32; 4], mode: RenderingMode) -> MaterialParams {
+pub(super) fn material(color: [f32; 4], mode: RenderingMode) -> MaterialParams {
     MaterialParams {
         color,
         mode,
@@ -105,7 +105,7 @@ fn material(color: [f32; 4], mode: RenderingMode) -> MaterialParams {
     }
 }
 
-fn draw(mesh: PrimitiveMesh, model: Mat4, material: &MaterialParams) -> MeshDraw {
+pub(super) fn draw(mesh: PrimitiveMesh, model: Mat4, material: &MaterialParams) -> MeshDraw {
     MeshDraw {
         mesh: mesh.into(),
         model,
@@ -120,7 +120,7 @@ fn draw(mesh: PrimitiveMesh, model: Mat4, material: &MaterialParams) -> MeshDraw
 
 /// A grid of cubes and spheres in four materials (opaque, metal, cutout, fade), some outside
 /// the view and behind the camera, on a ground plane.
-fn test_meshes() -> Vec<MeshDraw> {
+pub(super) fn test_meshes() -> Vec<MeshDraw> {
     let red = material([0.9, 0.2, 0.2, 1.0], RenderingMode::Opaque);
     let mut metal = material([0.3, 0.5, 0.9, 1.0], RenderingMode::Opaque);
     metal.metallic = 0.8;
@@ -156,7 +156,7 @@ fn test_meshes() -> Vec<MeshDraw> {
     out
 }
 
-fn test_lights() -> Vec<LightData> {
+pub(super) fn test_lights() -> Vec<LightData> {
     let light = |kind, position: Vec3, direction: Vec3, color| LightData {
         kind,
         position,
