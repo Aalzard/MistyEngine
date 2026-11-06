@@ -333,6 +333,14 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             if toggle_button(ui, gv.stats, "Stats", "Rendering statistics").clicked() {
                 gv.stats = !gv.stats;
             }
+            let vsync = *gv.vsync.get_or_insert_with(crate::hub::config::editor_vsync);
+            let hover = "VSync: the editor waits for the display's refresh (the frame rate                          stops at the refresh rate, and halves when a frame misses it).";
+            if toggle_button(ui, vsync, "VSync", hover).clicked() {
+                gv.vsync = Some(!vsync);
+                if let Err(e) = crate::hub::config::set_editor_vsync(!vsync) {
+                    eprintln!("could not save the VSync preference: {e}");
+                }
+            }
             if toggle_button(ui, gv.mute, "🔇", "Mute Audio").clicked() {
                 gv.mute = !gv.mute;
             }

@@ -47,6 +47,11 @@ pub struct HubConfig {
     /// Where New Project puts projects; `None` = [`default_projects_folder`].
     pub projects_folder: Option<PathBuf>,
     pub theme: HubTheme,
+    /// The editor window waits for the display's refresh (VSync). Off (the default, like
+    /// Unity's Game view) the editor draws as fast as it can, so the Game view's frame rate
+    /// shows what the game really costs (a 60 Hz display would cap it at 60 and halve it to
+    /// 30 whenever a frame misses 16.7 ms). The Game view's VSync toggle.
+    pub editor_vsync: bool,
 }
 
 impl HubConfig {
@@ -113,6 +118,24 @@ impl HubConfig {
 /// tutorial progress (`tutorials.json`). With `MISTY_HUB_CONFIG=<file>`, that file's folder.
 pub fn config_dir() -> Option<PathBuf> {
     config_path()?.parent().map(Path::to_path_buf)
+}
+
+/// The editor's VSync preference ([`HubConfig::editor_vsync`]); `MISTY_VSYNC=1` / `0`
+/// overrides it.
+pub fn editor_vsync() -> bool {
+    match std::env::var("MISTY_VSYNC").as_deref() {
+        Ok("1") | Ok("on") | Ok("true") => true,
+        Ok("0") | Ok("off") | Ok("false") => false,
+        _ => config_path().is_some_and(|p| HubConfig::load(&p).editor_vsync),
+    }
+}
+
+/// Save the editor's VSync preference.
+pub fn set_editor_vsync(on: bool) -> Result<(), String> {
+    let path = config_path().ok_or("no config folder")?;
+    let mut c = HubConfig::load(&path);
+    c.editor_vsync = on;
+    c.save(&path)
 }
 
 /// Where `hub.json` lives.

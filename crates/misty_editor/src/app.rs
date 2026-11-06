@@ -713,8 +713,9 @@ impl eframe::App for EditorApp {
         false
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        apply_vsync(&mut self.state, frame);
         let s = &mut self.state;
         let (clips, clip) = (&mut s.anim_clips, &s.animation.clip);
         s.undo
@@ -852,5 +853,24 @@ impl eframe::App for EditorApp {
         if misty_engine::profiler::enabled() {
             ctx.request_repaint();
         }
+    }
+}
+
+/// The Game view's VSync toggle (saved in `hub.json`, read once): the window's present mode
+/// follows it, switched on the next paint.
+fn apply_vsync(s: &mut crate::state::EditorState, frame: &mut eframe::Frame) {
+    let vsync = *s
+        .game_view
+        .vsync
+        .get_or_insert_with(crate::hub::config::editor_vsync);
+    let mode = match vsync {
+        true => egui_wgpu::wgpu::PresentMode::AutoVsync,
+        false => egui_wgpu::wgpu::PresentMode::AutoNoVsync,
+    };
+    if let Some(mut c) = frame.wgpu_surface_config()
+        && c.present_mode != mode
+    {
+        c.present_mode = mode;
+        frame.set_wgpu_surface_config(c);
     }
 }
