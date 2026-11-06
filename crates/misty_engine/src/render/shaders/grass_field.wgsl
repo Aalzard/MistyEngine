@@ -73,7 +73,7 @@ fn grass_swathe(p: vec2<f32>, scale: f32) -> f32 {
 // grass grows thinner (the same noise as `details::worn`, which thins the blades there).
 fn grass_worn(p: vec2<f32>) -> f32 {
     let v = 0.7 * grass_noise(p / 2.6 + 91.7) + 0.3 * grass_noise(p / 0.9 + 17.3);
-    return smoothstep(0.73, 0.85, v);
+    return smoothstep(0.78, 0.88, v);
 }
 
 // A swathe's colour: bright swathes lighter and more golden, dark ones deeper green.

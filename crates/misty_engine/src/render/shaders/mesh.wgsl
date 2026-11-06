@@ -301,20 +301,19 @@ fn grass_near_slice(slice: i32, world: vec3<f32>, l: vec3<f32>) -> f32 {
     if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || ndc.z < 0.0 || ndc.z > 1.0) {
         return 1.0;
     }
-    // A soft penumbra (light through a canopy is diffuse): six taps on two rotated rings
-    // of 1.5 and 3 texels.
-    let t = grass_near.params.w * 1.5;
+    // A soft penumbra (light through a canopy is diffuse): four taps on a rotated ring of
+    // two texels, the hardware filter blurring between them.
+    let t = grass_near.params.w * 2.0;
     if (slice == 0) {
         uv *= grass_near.texels.z;
     }
     let z = ndc.z - 1e-4;
     var sum = 0.0;
-    for (var k = 0; k < 6; k++) {
-        let a = f32(k) * 2.0944 + select(0.0, 1.0472, k >= 3);
-        let rad = select(t, t * 2.0, k >= 3);
-        sum += textureSampleCompareLevel(grass_near_map, shadow_sampler, uv + vec2<f32>(cos(a), sin(a)) * rad, slice, z);
+    for (var k = 0; k < 4; k++) {
+        let a = f32(k) * 1.5708 + 0.4636;
+        sum += textureSampleCompareLevel(grass_near_map, shadow_sampler, uv + vec2<f32>(cos(a), sin(a)) * t, slice, z);
     }
-    return sum / 6.0;
+    return sum * 0.25;
 }
 
 // Sun shade from the near-camera grass shadow map (1 = lit or outside it): the sharp inner

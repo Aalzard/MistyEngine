@@ -224,3 +224,39 @@ sun's direction (the reference keeps texture to the horizon); midday is greener 
 the reference's light; no trees. `foliage_lighting_demo_matches_its_generator` (editor)
 fails on main's FoliageLightingDemo data already (density 600 on disk vs 1500 in the
 generator); not touched here.
+
+## Round 2 (after the merge into main 18cef2b)
+
+User: "a lot of gaps between each grass, and all of the grass looks alike. Some should be
+bigger, some slightly yellowish, some greenish, and at the top they're yellowish. And
+there's no ambient occlusion, and the ground shouldn't even be that visible."
+
+- look11: cards 700 → 900 / m², clumping 0.45 → 0.6, tufts' height ±25 % with 12 % big
+  tufts (1.3×), per-tuft hue and value (the per-blade jitter cut to a fifth: hue 0.3 /
+  value 0.2 per blade, 1.0 / 0.5 per tuft, a wider green ↔ yellow-green range), every tip
+  yellowing towards straw (tip dryness 0.45, from a greener base), canopy AO back and
+  visible but broad (occlusion floor 0.4, lit floor 0.55 towards the stems' feet; SSAO on
+  grass 0.7), ground mostly the canopy colour close up (70 %), worn spots rarer,
+  undergrowth 1.8×; far cards fewer (`MIN_KEEP` 0.02 → 0.012). High **41.2 ms** (45.6 M
+  triangles) — too slow.
+- look11b/c: 750 cards / m², LOD 7.5 → 6.5 m, undergrowth 1.5×, the near grass shadow map
+  back to four taps (on a rotated ring of two texels): High 32.3 ms. Variants: contact
+  shadows on grass 2.6 ms, near map 2.0 ms, all grass shadows 3.5 ms, AO prepass 0.8 ms.
+- look12: no screen-space contact shadow on grass pixels (it was at 30 % and read as crisp
+  noise; the canopy occlusion gives the depth), which pays for 800 cards / m²: High 30.5.
+- look13: the tufts pull their blades in less (tall 0.6 → 0.45, undergrowth 0.15 → 0.08)
+  so the carpet closes between them; the ground close up 85 % canopy colour, darker.
+- final: tufts' size variety scales with height variation (uniform settings stay even:
+  `grass_varies_across_the_field`), big tufts 1.2×, lit floor 0.62.
+- **Round 2 final** (`grasslook_final_*`, overwriting round 1's; step renders
+  `grasslook_11_*`, `_12_*`, `_13_*`): High **30.1 ms**, Medium 21.1, Low 14.0 (37.4 /
+  24.6 / 12.1 M triangles; the frame without grass 6.0 ms with the GPU shared); 800 cards
+  / m² ≈ 13 000 visible blades / m² on High (Medium 0.75, Low 0.5 of that). Ground visible
+  2.9 % wide / 1.5 % close (matches bare), 46 % / 23 % (tint swap; the ground close up is
+  85 % canopy colour, so that measure now mostly sees blades' gaps of the same colour).
+  Wide golden colour: hue 54.0 ± 5.6 (reference 49.2 ± 4.3), sat 0.63 ± 0.13 (0.59),
+  val 0.48 ± 0.16 (0.46 ± 0.12), patch24 0.129 (0.087); near band hue 52.5 / val 0.38
+  (reference 52 / 0.36–0.41). Left as before: the field past the 160 m grass is a hazy
+  stand-in in the sun's direction, the middle distance is a little greener than the
+  reference, midday reads greener (64), no trees.
+

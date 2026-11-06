@@ -45,7 +45,7 @@ struct GrassParams {
 // The leaf cells hold clumps of thin blades: their width is the clump's.
 const CELL_ASPECT = array<f32, 8>(0.28, 0.28, 0.28, 0.28, 0.069, 0.057, 0.146, 0.151);
 const GRASS_SEGMENTS: f32 = 4.0;
-const MIN_KEEP: f32 = 0.02;
+const MIN_KEEP: f32 = 0.012;
 
 struct BladeIn {
     // xyz = root (terrain-local), w = height.

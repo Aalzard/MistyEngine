@@ -246,7 +246,7 @@ pub fn swathe(p: Vec2, scale: f32) -> f32 {
 /// `grass_worn` in grass_field.wgsl, which shows the soil there).
 pub fn worn(p: Vec2) -> f32 {
     let v = 0.7 * field_noise(p / 2.6 + 91.7) + 0.3 * field_noise(p / 0.9 + 17.3);
-    let t = ((v - 0.73) / 0.12).clamp(0.0, 1.0);
+    let t = ((v - 0.78) / 0.1).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
@@ -376,7 +376,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let (centre, id) = tuft(root, cell, seed ^ 0x7f4a);
                 // Undergrowth stays spread out and fills the ground between the tufts.
                 let under = r(17) < 0.68;
-                let pull = if under { 0.15 } else { 0.6 };
+                let pull = if under { 0.08 } else { 0.45 };
                 let pulled = centre + (root - centre) * (1.0 - pull * clumping);
                 let inside = pulled.cmpge(lo).all() && pulled.cmplt(hi).all();
                 let p = if inside { pulled } else { root };
@@ -393,10 +393,12 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 // few stems standing above the rest.
                 let relief = canopy(p);
                 let field = noise::fbm(p.x, p.y, 28.0, 2, seed ^ 0x5d) * 0.5 + 0.5;
-                let tuft_scale = 1.0 + (id - 0.5) * 0.5 * clumping;
-                // Every blade its own height too, so the top line breaks up; the relief
-                // fades out with the height variation (none: one even height).
+                // Every blade its own height too, so the top line breaks up; the relief and
+                // the tufts' sizes fade out with the height variation (none: one even height).
                 let rv = (hv / 0.6).min(1.0);
+                // Tufts differ clearly: some short, some big and tall.
+                let tuft_scale =
+                    1.0 + rv * ((id - 0.5) * 0.9 * clumping + if id > 0.88 { 0.2 } else { 0.0 });
                 let mix = (0.4 * r(3) + rv * (0.42 * relief + 0.18 * field) + (1.0 - rv) * 0.3)
                     .clamp(0.0, 1.0);
                 let outlier = if r(15) < 0.05 { 1.3 + 0.3 * r(16) } else { 1.0 };
@@ -434,7 +436,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                     } else {
                         1.0
                     };
-                let tint = (id - 0.5) * 2.0 * clumping + (r(14) - 0.5) * 0.6;
+                let tint = (id - 0.5) * 2.0 * clumping + (r(14) - 0.5) * 0.2;
                 out.push((
                     key,
                     Blade {

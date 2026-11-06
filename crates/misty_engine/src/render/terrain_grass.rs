@@ -32,7 +32,7 @@ const COARSE_VERTICES: u32 = 8;
 /// Chunks further than this many LOD distances draw coarse blades.
 const COARSE_FROM: f32 = 1.5;
 /// Fewest blades a far chunk keeps (share of full density).
-const MIN_KEEP: f32 = 0.02;
+const MIN_KEEP: f32 = 0.012;
 /// Far blades grow at most this much wider to cover the ground of the ones left out.
 const MAX_WIDEN: f32 = 3.0;
 

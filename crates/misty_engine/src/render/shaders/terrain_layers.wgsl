@@ -243,8 +243,8 @@ fn terrain_surface(in: MeshOut) -> Surface {
         // takes over quickly, so the pale litter does not mottle the middle distance.
         let mid = smoothstep(4.0, 25.0, dist);
         let worn = grass_worn(local.xz) * (1.0 - mid);
-        let take = tint * mix(0.45, 1.0, mid) * (1.0 - 0.9 * worn);
-        let under = mix(0.55, 1.0, max(worn, mid));
+        let take = tint * mix(0.85, 1.0, mid) * (1.0 - 0.9 * worn);
+        let under = mix(0.4, 1.0, max(worn, mid));
         s.albedo = mix(s.albedo * under, grass * shade * litter, take);
         s.smoothness *= 1.0 - take;
         // The soil's relief stays close up; far away it would only shimmer under the turf.

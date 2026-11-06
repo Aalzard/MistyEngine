@@ -82,8 +82,8 @@ fn grass() -> details::DetailSettings {
             ..Default::default()
         },
         on_layer: Some(0),
-        // Cards per m², each a strip of 13–18 thin blades (~11 000 blades per m²).
-        density: 700.0,
+        // Cards per m², each a strip of 13–18 thin blades (~13 000 blades per m²).
+        density: 800.0,
         draw_distance: 160.0,
         // Short turf (ankle height): tufts rise to ~0.3 m, dips sink to ~0.05 m.
         height: [0.07, 0.2],
@@ -96,11 +96,11 @@ fn grass() -> details::DetailSettings {
         wind_speed: 0.9,
         seed_heads: 0.03,
         seed_color: [0.8, 0.72, 0.5],
-        clumping: 0.45,
+        clumping: 0.6,
         bend: 0.8,
         translucency: 0.6,
-        tip_dryness: 0.28,
-        lod_distance: 7.5,
+        tip_dryness: 0.45,
+        lod_distance: 6.5,
         // Soft patches ~40 m across (sweeps of ~130 m): lush dark-green hollows with
         // taller, fuller tufts and paler, drier, shorter stretches; every tuft a little
         // warmer or cooler.
@@ -108,8 +108,8 @@ fn grass() -> details::DetailSettings {
         lush_color: [0.24, 0.34, 0.1],
         lush_amount: 0.6,
         dry_amount: 0.6,
-        // Variation comes from the broad patches; single blades differ little.
-        color_variation: 0.2,
+        // Each tuft its own green or yellow-green; single blades differ little.
+        color_variation: 0.5,
         height_variation: 0.6,
         density_variation: 0.2,
         ground_tint: 1.0,

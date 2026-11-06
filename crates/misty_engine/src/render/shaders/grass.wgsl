@@ -79,9 +79,10 @@ fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
     // Tufts and single blades: warmer / cooler hue and lighter / darker value.
     let cv = grass.look.w * (1.0 - 0.5 * far);
     let tint = b.extra.w;
-    let hue = (fract(phase * 13.7) - 0.5) * 1.2 + tint * 0.4;
-    let value = (fract(phase * 7.31 + 0.37) - 0.5) * 0.7 + tint * 0.3;
-    base *= vec3<f32>(1.0 + 0.14 * hue * cv, 1.0 + 0.02 * hue * cv, 1.0 - 0.22 * hue * cv)
+    // Mostly per clump (each tuft its own green or yellow-green), a little per blade.
+    let hue = (fract(phase * 13.7) - 0.5) * 0.3 + tint * 1.0;
+    let value = (fract(phase * 7.31 + 0.37) - 0.5) * 0.2 + tint * 0.5;
+    base *= vec3<f32>(1.0 + 0.22 * hue * cv, 1.0 + 0.02 * hue * cv, 1.0 - 0.32 * hue * cv)
         * max(1.0 + 0.4 * value * cv, 0.3);
     let seed_color = grass.seed.rgb * (1.0 + 0.12 * tint)
         * mix(vec3<f32>(1.0), vec3<f32>(1.06, 1.0, 0.85), patches.y * grass.amounts.y);
@@ -119,7 +120,7 @@ fn shade_grass(
         ambient = mix(lights.equator.rgb, lights.ground.rgb, -n.y);
     }
     // Broad and gentle: the canopy depth darkens the turf, not every blade's neighbours.
-    let ssao = mix(1.0, screen_ao(world), 0.5);
+    let ssao = mix(1.0, screen_ao(world), 0.7);
     var color = ambient * lights.info.z * albedo * indirect_occlusion(occlusion, ssao, albedo);
     let perceptual = 1.0 - smoothness;
     let roughness = max(perceptual * perceptual, 0.002);
@@ -151,10 +152,11 @@ fn shade_grass(
         }
         atten *= fast_shadow_factor(i, li, world, n, l) * direct_occlusion(ssao);
         if (kind == 0u) {
-            // Blades shade each other and the ground sharply near the camera: the near grass
-            // shadow map, then the screen-space contact shadow over the first centimetres.
-            // Soft and not fully dark inside the canopy: light scatters through the blades.
-            atten *= mix(0.3, 1.0, grass_near_shadow(world, l)) * mix(1.0, contact_shadow(li, world, n, l), 0.3);
+            // Blades shade each other near the camera (the near grass shadow map), softly
+            // and never fully dark inside the canopy: light scatters through the blades.
+            // No screen-space contact shadow on the blades: the canopy's own soft occlusion
+            // gives the depth, and per-blade contact darkening read as crisp noise.
+            atten *= mix(0.3, 1.0, grass_near_shadow(world, l));
         }
         // Forward scattering towards the eye when looking into the light, plus diffuse light
         // through the back face.
@@ -248,9 +250,10 @@ fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
     var color = in.color;
     if (!seed_head) {
         // Some tips dry out; blades are a little paler towards the tip.
-        let dry_tip = smoothstep(0.55, 1.0, t) * grass.look.y * smoothstep(0.3, 0.9, fract(f32(cell) * 0.37 + in.color.g * 9.0));
+        // Every tip yellows towards straw (some more), from a greener base.
+        let dry_tip = smoothstep(0.45, 1.0, t) * grass.look.y * (0.45 + 0.55 * smoothstep(0.2, 0.9, fract(f32(cell) * 0.37 + in.color.g * 9.0)));
         color = mix(color, grass.dry.rgb, dry_tip);
-        color *= mix(vec3<f32>(0.9, 0.95, 0.88), vec3<f32>(1.1, 1.08, 1.0), t);
+        color *= mix(vec3<f32>(0.82, 0.95, 0.78), vec3<f32>(1.1, 1.08, 1.0), t);
     } else {
         // Stems below the head stay green-ish.
         color = mix(mix(grass.healthy.rgb, grass.dry.rgb, 0.5), color, smoothstep(0.35, 0.6, t));
@@ -300,10 +303,11 @@ fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
     let canopy = smoothstep(0.0, 0.85, in.misc.y);
     // Dips of the rolling turf lie in the shade of the crests around them.
     let dip = mix(0.84, 1.06, in.canopy.w);
-    let occlusion = mix(0.75, 1.0, canopy) * dip;
+    // Soft depth: broad darkening towards the feet of the stems and deep in the canopy.
+    let occlusion = mix(0.4, 1.0, canopy) * dip;
     // Sunlight is blocked down there too (not just sky light), though the short turf's
     // feet are never far from the light.
-    let lit = albedo * mix(0.85, 1.0, canopy) * dip;
+    let lit = albedo * mix(0.62, 1.0, canopy) * dip;
     // Thin edges let more light through than the thick midrib.
     let transmission = albedo * grass.seed.w * select(1.0, 0.6, seed_head) * mix(0.15, 1.0, canopy)
         * mix(1.35, 0.8, thick);
