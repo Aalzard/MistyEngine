@@ -13,6 +13,7 @@ use super::auto_paint::AutoPaintRules;
 use super::cliffs::CliffSettings;
 use super::details::DetailSettings;
 use super::harmony::HarmonySettings;
+use super::trees::TreeSettings;
 
 /// Most layers a terrain blends (one splat-map channel each).
 pub const MAX_LAYERS: usize = 4;
@@ -83,6 +84,8 @@ pub struct TerrainData {
     pub details: DetailSettings,
     /// Detail density per splat texel (0..255 of `details.density`); empty = no details yet.
     pub detail_map: Vec<u8>,
+    /// Tree prototypes, placed trees and how they are drawn.
+    pub trees: TreeSettings,
 }
 
 impl Default for TerrainData {
@@ -116,6 +119,7 @@ impl TerrainData {
             harmony: HarmonySettings::default(),
             details: DetailSettings::default(),
             detail_map: Vec::new(),
+            trees: TreeSettings::default(),
         }
     }
 
@@ -266,6 +270,7 @@ impl TerrainData {
         }
         self.layers.truncate(MAX_LAYERS);
         self.size = sanitize_size(self.size);
+        self.trees.sanitize();
     }
 }
 

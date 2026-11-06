@@ -51,6 +51,7 @@ pub mod tags_layers;
 pub mod terrain;
 pub mod testing;
 pub mod tilemap;
+pub mod trees;
 pub mod timeline;
 pub mod ui;
 pub mod vcam;

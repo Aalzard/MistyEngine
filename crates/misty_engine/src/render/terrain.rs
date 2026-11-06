@@ -620,7 +620,7 @@ impl TerrainCache {
             Some(g) => {
                 let lo = Vec3::new(0.0, g.range.0 * t.data.size.y, 0.0);
                 let hi = Vec3::new(t.data.size.x, g.range.1 * t.data.size.y, t.data.size.z);
-                (lo + t.position, hi + t.position)
+                (lo + t.position, hi + t.position + Vec3::Y * tree_top(t))
             }
             None => world_bounds(t),
         }
@@ -844,7 +844,16 @@ pub(super) fn draw_uniform(t: &TerrainDraw) -> DrawUniform {
 /// World bounds of a terrain (for fitting the directional shadow map).
 pub(super) fn world_bounds(t: &TerrainDraw) -> (Vec3, Vec3) {
     let (lo, hi) = t.data.bounds();
-    (lo + t.position, hi + t.position)
+    (lo + t.position, hi + t.position + Vec3::Y * tree_top(t))
+}
+
+/// Room above the heightmap for the terrain's trees (they cast shadows and get culled with it).
+fn tree_top(t: &TerrainDraw) -> f32 {
+    if t.data.trees.instances.is_empty() {
+        0.0
+    } else {
+        crate::terrain::trees::MAX_TREE_HEIGHT
+    }
 }
 
 fn params(

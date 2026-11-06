@@ -37,6 +37,12 @@ impl Physics {
                 let h = self.world.insert_collider(c.build(), None);
                 self.colliders.insert(h, e);
             }
+            // Its trees' trunks (static capsules).
+            for c in crate::terrain::tree_colliders(scene, e) {
+                let c = c.collision_groups(groups);
+                let h = self.world.insert_collider(c.build(), None);
+                self.colliders.insert(h, e);
+            }
         }
     }
 

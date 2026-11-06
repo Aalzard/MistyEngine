@@ -42,7 +42,7 @@ pub(super) const TERRAIN_PREPASS_SRC: &str = concat!(
     include_str!("shaders/ao_prepass_terrain.wgsl")
 );
 const AO_SRC: &str = include_str!("shaders/ao.wgsl");
-const NORMAL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+pub(super) const NORMAL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 /// AO images: x = occlusion, y = linear depth.
 const AO_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg32Float;
 /// Header (four vec4s) before the per-pixel texels.
@@ -424,6 +424,8 @@ impl Renderer {
                 pass.set_pipeline(&passes.grass);
                 (self.terrains).draw_grass_near(&mut pass, frame.terrains, range, stats);
             }
+            // Trees (their own pipelines; group 2 = the tree's textures).
+            self.trees.draw_prepass(&mut pass, stats);
         }
     }
 }

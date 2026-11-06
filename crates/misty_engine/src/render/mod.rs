@@ -48,6 +48,7 @@ mod terrain_grass;
 mod terrain_layers;
 mod terrain_lod;
 pub mod texture;
+mod trees;
 pub mod ui;
 mod variants;
 pub(crate) mod vfx;
@@ -438,6 +439,8 @@ pub struct Renderer {
     line_capacity: usize,
     particle_instances: particles::InstanceBuffer,
     terrains: terrain::TerrainCache,
+    /// Terrain trees (render/trees.rs).
+    trees: trees::TreeRenderer,
     /// `.shader` materials (created on first use: needs the queue).
     custom: Option<custom_shader::CustomShaders>,
     /// Opaque scene copies for water and scene-sampling shaders.
@@ -586,6 +589,7 @@ impl Renderer {
             line_capacity,
             particle_instances: particles::InstanceBuffer::new(device),
             terrains: terrain::TerrainCache::new(device),
+            trees: trees::TreeRenderer::new(device),
             custom: None,
             scene_copies: scene_copy::SceneCopies::new(device),
             water: Default::default(),
@@ -742,6 +746,9 @@ impl Renderer {
         let meshes = self.meshes.iter().chain(imported.clone());
         let mesh_bytes: u64 = meshes.map(GpuMesh::bytes).sum::<u64>() + self.skins.bytes();
         let (terrains, terrain_bytes) = self.terrains.memory();
+        // Tree assets (meshes and textures together) count with the terrains.
+        let (_, tree_bytes) = self.trees.memory();
+        let terrain_bytes = terrain_bytes + tree_bytes;
         let (textures, texture_bytes) = self.textures.memory();
         let buffers = [
             &self.draws_buffer,
@@ -1085,6 +1092,28 @@ impl Renderer {
                 grass_time,
                 self.quality.grass_density(),
             );
+            let tree_frame = trees::TreeFrame {
+                terrains: frame.terrains,
+                camera,
+                view_proj: &view_proj,
+                cascades: &plan.cascades,
+                environment: frame.environment,
+                time: grass_time,
+                dt: if taa_on { motion.grass_dt } else { 0.0 },
+                taa: taa_on,
+                lod_bias: self.quality.lod_bias,
+                // Towards the sun that has the cascades (impostor shadows face it).
+                sun: frame
+                    .lights
+                    .iter()
+                    .find(|l| {
+                        l.kind == crate::scene::LightType::Directional
+                            && l.shadows != crate::scene::Shadows::None
+                            && l.intensity > 0.0
+                    })
+                    .map(|l| -l.direction),
+            };
+            (self.trees).prepare(device, queue, &self.pipelines, &tree_frame);
             (lists, plan, rebuilt, near_sun)
         };
         // The near-camera grass shadow map follows the camera (off: its uniform says so).
@@ -1799,6 +1828,10 @@ impl Renderer {
             stats.set_pass += 1;
             (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, view_proj, stats);
         }
+        // Trees into the sun's cascades (group 2 = the tree's textures).
+        if self.trees.has_trees() {
+            self.trees.draw_shadow(&mut pass, slot, stats);
+        }
         let first = frame.meshes.len();
         // Terrain casters pull heights from their own textures (group 3; group 2 unused).
         let Some(material) = self.textures.get(None, None) else {
@@ -2043,6 +2076,14 @@ impl Renderer {
                     |i| visible[i],
                     stats,
                 );
+                // Trees before the grass: the grass's depth pass then skips what they hide.
+                if self.trees.has_trees()
+                    && frame_debug::record(&self.capture, |_| {
+                        frame_debug::events::post_event("Draw Trees".to_owned(), "tree.wgsl")
+                    })
+                {
+                    self.trees.draw_main(&mut pass, stats);
+                }
                 if self.terrains.has_grass()
                     && frame_debug::record(&self.capture, |_| {
                         frame_debug::events::post_event("Draw Grass".to_owned(), "grass.wgsl")

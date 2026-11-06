@@ -10,6 +10,7 @@ use super::cliffs::CliffSettings;
 use super::data::{TerrainData, TerrainLayer};
 use super::details::DetailSettings;
 use super::harmony::HarmonySettings;
+use super::trees::TreeSettings;
 
 /// File extension of terrain data assets.
 pub const EXTENSION: &str = "terrain";
@@ -33,6 +34,9 @@ struct TerrainFile {
     details: DetailSettings,
     /// base64 of one detail density byte per splat texel (empty = none).
     detail_map: String,
+    /// Left out while there are no trees (older files stay as they were).
+    #[serde(skip_serializing_if = "TreeSettings::is_default")]
+    trees: TreeSettings,
 }
 
 impl Default for TerrainFile {
@@ -50,6 +54,7 @@ impl Default for TerrainFile {
             harmony: HarmonySettings::default(),
             details: DetailSettings::default(),
             detail_map: String::new(),
+            trees: TreeSettings::default(),
         }
     }
 }
@@ -76,6 +81,7 @@ impl TerrainData {
             harmony: self.harmony.clone(),
             details: self.details.clone(),
             detail_map: encode(&self.detail_map),
+            trees: self.trees.clone(),
         };
         serde_json::to_string_pretty(&file).expect("terrain serialises")
     }
@@ -102,6 +108,7 @@ impl TerrainData {
             harmony: f.harmony,
             details: f.details,
             detail_map: decode(&f.detail_map)?,
+            trees: f.trees,
         };
         d.sanitize();
         Ok(d)
