@@ -235,8 +235,8 @@ fn create_menu_makes_test_files_in_the_tests_folder() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-/// The sample project's own tests (Assets/Tests) pass: pure math, the platformer's player and
-/// the vehicle demo's car.
+/// The sample project's own tests (Assets/Tests) pass: pure math, the platformer's player, the
+/// vehicle demo's car and the first-person player.
 #[test]
 fn sample_project_tests_pass() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
@@ -246,6 +246,7 @@ fn sample_project_tests_pass() {
     assert_eq!(
         names,
         [
+            "Assets/Tests/FirstPersonTests.playtest.lua",
             "Assets/Tests/MathTests.test.lua",
             "Assets/Tests/PlayerControllerTests.playtest.lua",
             "Assets/Tests/VehicleTests.playtest.lua",

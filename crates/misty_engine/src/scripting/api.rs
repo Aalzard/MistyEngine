@@ -1,8 +1,8 @@
 //! The Lua scripting API: Vector3, Transform, GameObject, Rigidbody, AudioSource, Animation
 //! (ParticleSystem is in `particles_api`, UI components in `ui_api`, queries, LayerMask and the
 //! CharacterController in `physics_api`) and global tables
-//! (Time, Input, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy, SceneManager,
-//! Application).
+//! (Time, Input, Cursor, Debug, Mathf, ForceMode, GameObject.Find, Instantiate, Destroy,
+//! SceneManager, Application).
 //!
 //! Userdata only hold an entity id; they reach the scene through the [`World`] stored in the
 //! Lua state's app data while a game frame runs.
@@ -236,9 +236,45 @@ impl UserData for LTransform {
         f.add_field_method_get("name", |lua, t| {
             with_world(lua, |w| alive(w, t.0).map(|_| w.scene.name(t.0)))?
         });
+        f.add_field_method_get("childCount", |lua, t| {
+            with_world(lua, |w| alive(w, t.0).map(|_| w.scene.children(t.0).len()))?
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        // GetChild(i): the i-th child (0-based, Hierarchy order), or an error past the end.
+        m.add_method("GetChild", |lua, t, i: usize| {
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                w.scene
+                    .children(t.0)
+                    .get(i)
+                    .map(|c| LTransform(*c))
+                    .ok_or_else(|| {
+                        mlua::Error::runtime(format!("Transform.GetChild: no child {i}"))
+                    })
+            })?
+        });
+        // Find("Head/Camera"): a child by name, or a descendant by a slash-separated path;
+        // nil when missing.
+        m.add_method("Find", |lua, t, path: String| {
+            with_world(lua, |w| {
+                alive(w, t.0)?;
+                let mut cur = t.0;
+                for part in path.split('/').filter(|p| !p.is_empty()) {
+                    let next = w
+                        .scene
+                        .children(cur)
+                        .into_iter()
+                        .find(|c| w.scene.name(*c) == part);
+                    match next {
+                        Some(c) => cur = c,
+                        None => return Ok(None),
+                    }
+                }
+                Ok((cur != t.0).then_some(LTransform(cur)))
+            })?
+        });
         // Translate in the object's own axes (Space.Self).
         m.add_method("Translate", |lua, t, args: Variadic<Value>| {
             let v = vec_args(lua, &args)?;
@@ -374,37 +410,7 @@ impl UserData for LGameObject {
                 Some(3) => lua.create_userdata(LAnimation(e)).map(Value::UserData),
                 Some(5) => super::animator_api::component(lua, e),
                 Some(_) => lua.create_userdata(LParticleSystem(e)).map(Value::UserData),
-                None => Ok(match super::physics_api::component(lua, e, &name)? {
-                    Some(v) => v,
-                    None => match super::ui_api::component(lua, e, &name)? {
-                        Some(v) => v,
-                        None => match super::material_api::component(lua, e, &name)? {
-                            Some(v) => v,
-                            None => match super::terrain_api::component(lua, e, &name)? {
-                                Some(v) => v,
-                                None => match super::navigation_api::component(lua, e, &name)? {
-                                    Some(v) => v,
-                                    None => match super::physics2d_api::component(lua, e, &name)? {
-                                        Some(v) => v,
-                                        None => match super::rigging_api::component(lua, e, &name)?
-                                        {
-                                            Some(v) => v,
-                                            None => {
-                                                match super::vcam_api::component(lua, e, &name)? {
-                                                    Some(v) => v,
-                                                    None => super::timeline_api::component(
-                                                        lua, e, &name,
-                                                    )?
-                                                    .unwrap_or(Value::Nil),
-                                                }
-                                            }
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    },
-                }),
+                None => other_component(lua, e, &name),
             }
         });
         m.add_meta_method(MetaMethod::Eq, |_, a, b: LGameObjectArg| Ok(a.0 == b.0));
@@ -418,6 +424,30 @@ impl UserData for LGameObject {
             })
         });
     }
+}
+
+/// `GetComponent` for the components of the other API modules, then for a script by its name
+/// (`GetComponent("Rotator")` is that object's `Rotator.lua` instance table); nil otherwise.
+fn other_component(lua: &Lua, e: Entity, name: &str) -> Result<Value> {
+    type Lookup = fn(&Lua, Entity, &str) -> Result<Option<Value>>;
+    const LOOKUPS: [Lookup; 10] = [
+        super::physics_api::component,
+        super::ui_api::component,
+        super::material_api::component,
+        super::terrain_api::component,
+        super::navigation_api::component,
+        super::physics2d_api::component,
+        super::rigging_api::component,
+        super::vcam_api::component,
+        super::timeline_api::component,
+        super::camera_api::component,
+    ];
+    for lookup in LOOKUPS {
+        if let Some(v) = lookup(lua, e, name)? {
+            return Ok(v);
+        }
+    }
+    Ok(super::script_instance(lua, e, name).map_or(Value::Nil, Value::Table))
 }
 
 /// Helper to compare GameObjects with `==`.
@@ -798,6 +828,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     )?;
     g.set("Input", input)?;
     super::camera_api::register(lua)?;
+    super::cursor_api::register(lua)?;
     super::navigation_api::register(lua)?;
     super::save_api::register(lua)?;
     super::localization_api::register(lua)?;

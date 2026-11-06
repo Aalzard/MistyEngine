@@ -47,8 +47,9 @@ pub fn key_name(key: Key) -> String {
 }
 
 /// This frame's input as scripts see it; `view` = the game image's screen rect (UI clicks
-/// use its pixels).
-pub fn capture(ctx: &egui::Context, view: egui::Rect) -> Input {
+/// use its pixels). With the cursor `locked` (`Cursor.lockState`), the mouse delta is the raw
+/// device motion, since the pointer itself no longer moves.
+pub fn capture(ctx: &egui::Context, view: egui::Rect, locked: bool) -> Input {
     ctx.input(|i| {
         let mut input = Input::default();
         let ppp = i.pixels_per_point;
@@ -110,8 +111,16 @@ pub fn capture(ctx: &egui::Context, view: egui::Rect) -> Input {
             input.mouse_pressed[idx] = i.pointer.button_pressed(b);
             input.mouse_released[idx] = i.pointer.button_released(b);
         }
-        let d = i.pointer.delta();
-        input.mouse_delta = glam::Vec2::new(d.x, d.y);
+        input.mouse_delta = if locked {
+            let raw = i.events.iter().fold(egui::Vec2::ZERO, |acc, e| match e {
+                Event::MouseMoved(d) => acc + *d,
+                _ => acc,
+            });
+            glam::Vec2::new(raw.x, raw.y)
+        } else {
+            let d = i.pointer.delta();
+            glam::Vec2::new(d.x, d.y)
+        };
         input
     })
 }

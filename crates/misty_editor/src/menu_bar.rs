@@ -271,6 +271,15 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
             ui.close();
         }
     });
+    // Player ▸ HeadBobVertical ▸ HeadBobHorizontal ▸ Camera with the controller scripts.
+    let fps = ui.button(crate::fps_player::NAME).on_hover_text(
+        "A Character Controller with mouse look, walk / run / jump / crouch and head bob",
+    );
+    targets::header(ui, crate::fps_player::NAME, fps.rect);
+    if fps.clicked() {
+        crate::fps_player::create(s, parent);
+        ui.close();
+    }
     ui.menu_button("2D Object", |ui| {
         item(ui, s, "Sprite", "", create(Create::Sprite(None)));
         ui.menu_button("Sprites", |ui| {

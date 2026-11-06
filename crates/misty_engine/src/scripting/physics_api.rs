@@ -172,6 +172,19 @@ fn settings<R>(lua: &Lua, e: Entity, f: impl FnOnce(&CharacterController) -> R) 
     })?
 }
 
+/// Change the component (`height`, `radius`, `center`) and rebuild the capsule.
+fn resize(lua: &Lua, e: Entity, f: impl FnOnce(&mut CharacterController)) -> Result<()> {
+    with_world(lua, |w| {
+        match w.scene.world.get::<&mut CharacterController>(e) {
+            Ok(mut c) => f(&mut c),
+            Err(_) => return Err(mlua::Error::runtime("object was destroyed")),
+        }
+        let World { physics, scene, .. } = w;
+        physics.set_controller_size(scene, e);
+        Ok(())
+    })?
+}
+
 /// Seconds the current callback's move covers.
 fn frame_dt(w: &World) -> f32 {
     if w.time.delta > 0.0 {
@@ -190,8 +203,17 @@ impl UserData for LCharacterController {
             with_world(lua, |w| LVec3(w.physics.character_velocity(c.0)))
         });
         f.add_field_method_get("height", |lua, c| settings(lua, c.0, |s| s.height));
+        f.add_field_method_set("height", |lua, c, v: f32| {
+            resize(lua, c.0, |s| s.height = v.max(0.01))
+        });
         f.add_field_method_get("radius", |lua, c| settings(lua, c.0, |s| s.radius));
+        f.add_field_method_set("radius", |lua, c, v: f32| {
+            resize(lua, c.0, |s| s.radius = v.max(0.01))
+        });
         f.add_field_method_get("center", |lua, c| settings(lua, c.0, |s| LVec3(s.center)));
+        f.add_field_method_set("center", |lua, c, v: LVec3| {
+            resize(lua, c.0, |s| s.center = v.0)
+        });
         f.add_field_method_get("slopeLimit", |lua, c| settings(lua, c.0, |s| s.slope_limit));
         f.add_field_method_get("stepOffset", |lua, c| settings(lua, c.0, |s| s.step_offset));
         f.add_field_method_get("skinWidth", |lua, c| settings(lua, c.0, |s| s.skin_width));

@@ -1,4 +1,5 @@
-//! Lua `Camera.main` (first enabled camera tagged MainCamera) with `ScreenPointToRay` and
+//! Lua `Camera.main` (first enabled camera tagged MainCamera) and `GetComponent("Camera")`
+//! with `fieldOfView`, `nearClipPlane`, `farClipPlane`, `enabled`, `ScreenPointToRay` and
 //! `WorldToScreenPoint`, and `Input.mousePosition` (pixels from the bottom-left, like the
 //! familiar API).
 
@@ -53,10 +54,59 @@ fn main_camera(w: &World) -> Option<Entity> {
     })
 }
 
+fn get<R>(lua: &Lua, e: Entity, f: impl FnOnce(&CameraComponent) -> R) -> Result<R> {
+    with_world(lua, |w| {
+        w.scene
+            .world
+            .get::<&CameraComponent>(e)
+            .map(|c| f(&c))
+            .map_err(|_| super::api::missing())
+    })?
+}
+
+fn set(lua: &Lua, e: Entity, f: impl FnOnce(&mut CameraComponent)) -> Result<()> {
+    with_world(lua, |w| {
+        w.scene
+            .world
+            .get::<&mut CameraComponent>(e)
+            .map(|mut c| f(&mut c))
+            .map_err(|_| super::api::missing())
+    })?
+}
+
 impl UserData for LCamera {
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         f.add_field_method_get("gameObject", |_, c| Ok(LGameObject(c.0)));
         f.add_field_method_get("transform", |_, c| Ok(LTransform(c.0)));
+        // Vertical field of view in degrees (a sprint FOV kick lerps it).
+        f.add_field_method_get("fieldOfView", |lua, c| get(lua, c.0, |cam| cam.fov));
+        f.add_field_method_set("fieldOfView", |lua, c, fov: f32| {
+            set(lua, c.0, |cam| cam.fov = fov.clamp(1.0, 179.0))
+        });
+        f.add_field_method_get("nearClipPlane", |lua, c| get(lua, c.0, |cam| cam.near));
+        f.add_field_method_set("nearClipPlane", |lua, c, v: f32| {
+            set(lua, c.0, |cam| cam.near = v.max(0.001))
+        });
+        f.add_field_method_get("farClipPlane", |lua, c| get(lua, c.0, |cam| cam.far));
+        f.add_field_method_set("farClipPlane", |lua, c, v: f32| {
+            set(lua, c.0, |cam| cam.far = v.max(0.002))
+        });
+        f.add_field_method_get("orthographic", |lua, c| {
+            get(lua, c.0, |cam| cam.orthographic)
+        });
+        f.add_field_method_set("orthographic", |lua, c, on: bool| {
+            set(lua, c.0, |cam| cam.orthographic = on)
+        });
+        f.add_field_method_get("orthographicSize", |lua, c| {
+            get(lua, c.0, |cam| cam.ortho_size)
+        });
+        f.add_field_method_set("orthographicSize", |lua, c, v: f32| {
+            set(lua, c.0, |cam| cam.ortho_size = v.max(0.001))
+        });
+        f.add_field_method_get("enabled", |lua, c| get(lua, c.0, |cam| cam.enabled));
+        f.add_field_method_set("enabled", |lua, c, on: bool| {
+            set(lua, c.0, |cam| cam.enabled = on)
+        });
         // Layer bits the camera renders (`~(1 << layer)` hides one).
         f.add_field_method_get("cullingMask", |lua, c| {
             with_world(lua, |w| {
@@ -117,6 +167,18 @@ impl UserData for LCamera {
             })
         });
     }
+}
+
+/// `GetComponent("Camera")`: the object's Camera, or nil.
+pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
+    if name != "Camera" {
+        return Ok(None);
+    }
+    let has = with_world(lua, |w| w.scene.world.get::<&CameraComponent>(e).is_ok())?;
+    if !has {
+        return Ok(None);
+    }
+    Ok(Some(Value::UserData(lua.create_userdata(LCamera(e))?)))
 }
 
 /// `Camera` global and `Input.mousePosition` (call after `Input` exists).

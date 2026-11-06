@@ -24,6 +24,7 @@ pub mod app_api;
 pub mod assets_api;
 pub mod audio_api;
 pub mod camera_api;
+pub mod cursor_api;
 pub mod input_api;
 pub mod light_probes_api;
 pub mod localization_api;
@@ -141,6 +142,48 @@ impl Input {
     }
 }
 
+/// `Cursor.lockState`: how the game wants the OS cursor handled.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CursorLockMode {
+    /// Free, as usual.
+    #[default]
+    None,
+    /// Held at the window centre and hidden by default: mouse look reads raw motion.
+    Locked,
+    /// Kept inside the window.
+    Confined,
+}
+
+impl CursorLockMode {
+    pub const ALL: [Self; 3] = [Self::None, Self::Locked, Self::Confined];
+
+    /// The `CursorLockMode.X` name scripts use.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Locked => "Locked",
+            Self::Confined => "Confined",
+        }
+    }
+}
+
+/// What scripts asked of the cursor (`Cursor.lockState`, `Cursor.visible`); the editor's Game
+/// view and the player apply it to their window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CursorState {
+    pub lock: CursorLockMode,
+    pub visible: bool,
+}
+
+impl Default for CursorState {
+    fn default() -> Self {
+        Self {
+            lock: CursorLockMode::None,
+            visible: true,
+        }
+    }
+}
+
 /// Something a script asked the game (not the scene) to do; handled after the frame.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
@@ -196,6 +239,8 @@ pub struct World {
     pub video: crate::video::VideoPlayback,
     /// Video events raised by script calls, dispatched with the frame's own.
     pub video_events: Vec<crate::video::VideoEvent>,
+    /// `Cursor.lockState` / `Cursor.visible` as last set by a script.
+    pub cursor: CursorState,
 }
 
 impl World {
@@ -242,7 +287,50 @@ impl World {
             cameras: Default::default(),
             video: crate::video::VideoPlayback::new(project_root_for_video),
             video_events: Vec::new(),
+            cursor: CursorState::default(),
         }
+    }
+}
+
+/// Registry table holding every script instance table by object and script name, so
+/// `gameObject:GetComponent("Rotator")` can reach another object's script.
+const SCRIPT_INSTANCES: &str = "misty.scripts";
+
+/// The script instance table of `name` on `e`, if that object runs such a script (only from
+/// the Lua state the game scripts live in).
+pub(crate) fn script_instance(lua: &Lua, e: Entity, name: &str) -> Option<Table> {
+    let all: Table = lua.named_registry_value(SCRIPT_INSTANCES).ok()?;
+    let mine: Table = all.get(e.to_bits().get() as i64).ok()?;
+    mine.get::<Option<Table>>(name).ok().flatten()
+}
+
+fn register_script_instance(lua: &Lua, e: Entity, name: &str, t: &Table) -> mlua::Result<()> {
+    let all: Table = match lua.named_registry_value::<Option<Table>>(SCRIPT_INSTANCES)? {
+        Some(t) => t,
+        None => {
+            let t = lua.create_table()?;
+            lua.set_named_registry_value(SCRIPT_INSTANCES, t.clone())?;
+            t
+        }
+    };
+    let key = e.to_bits().get() as i64;
+    let mine: Table = match all.get::<Option<Table>>(key)? {
+        Some(t) => t,
+        None => {
+            let t = lua.create_table()?;
+            all.set(key, t.clone())?;
+            t
+        }
+    };
+    mine.set(name, t.clone())
+}
+
+fn unregister_script_instances(lua: &Lua, entities: &[Entity]) {
+    let Ok(all) = lua.named_registry_value::<Table>(SCRIPT_INSTANCES) else {
+        return;
+    };
+    for e in entities {
+        let _ = all.set(e.to_bits().get() as i64, Value::Nil);
     }
 }
 
@@ -463,6 +551,7 @@ impl ScriptHost {
         };
         let tracked = build().and_then(|t| {
             save_api::track(&self.lua, e, &key, &t)?;
+            register_script_instance(&self.lua, e, &script.name(), &t)?;
             Ok(t)
         });
         match tracked.and_then(|t| self.lua.create_registry_value(t)) {
@@ -1030,11 +1119,23 @@ impl ScriptHost {
             });
             self.instances.retain(|i| !doomed.contains(&i.entity));
             save_api::untrack(&self.lua, &doomed);
+            unregister_script_instances(&self.lua, &doomed);
         }
     }
 
     pub fn take_logs(&self) -> Vec<(LogKind, String)> {
         self.with_world(|w| std::mem::take(&mut w.logs))
+    }
+
+    /// What scripts asked of the cursor (`Cursor.lockState`, `Cursor.visible`).
+    pub fn cursor(&self) -> CursorState {
+        self.with_world(|w| w.cursor)
+    }
+
+    /// Give the cursor back (the editor's Escape, a lost window focus): scripts then read
+    /// `Cursor.lockState == CursorLockMode.None` and may lock it again on a click.
+    pub fn release_cursor(&self) {
+        self.with_world(|w| w.cursor = CursorState::default());
     }
 
     /// Scene loads and quit requests scripts made since the last call.
@@ -1128,6 +1229,24 @@ pub fn inspect_fields(source: &str, path: &str) -> Result<Vec<(String, ScriptVal
             .unwrap_or(usize::MAX)
     });
     Ok(fields)
+}
+
+/// Run a Lua `chunk` against script classes, for unit tests of script logic without a scene:
+/// each `(name, source)` of `scripts` is evaluated like a script file and stored in the global
+/// `name`; the chunk then runs with the game API registered (no world, so `Time`, `Input` and
+/// objects are unavailable, but `Vector3`, `Mathf` and the classes' own functions work).
+/// Returns the chunk's error, if any.
+pub fn test_scripts(scripts: &[(&str, &str)], chunk: &str) -> Result<(), String> {
+    let lua = Lua::new();
+    api::register(&lua).map_err(|e| e.to_string())?;
+    for (name, source) in scripts {
+        let class = eval_class(&lua, source, name)?;
+        lua.globals().set(*name, class).map_err(|e| e.to_string())?;
+    }
+    lua.load(chunk)
+        .set_name("test")
+        .exec()
+        .map_err(|e| e.to_string())
 }
 
 /// Starter script for Assets ▸ Create ▸ Script.

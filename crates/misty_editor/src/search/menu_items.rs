@@ -23,6 +23,8 @@ pub enum MenuRun {
     /// GameObject ▸ Light ▸ Reflection Probe / Generate Reflection Probes.
     CreateProbe,
     GenerateProbes,
+    /// GameObject ▸ First Person Player.
+    CreateFirstPersonPlayer,
     /// Help ▸ About.
     About,
     /// Help ▸ Tutorials.
@@ -327,6 +329,11 @@ fn gameobject(l: &mut List) {
         l.create(Create::Primitive(p), "3D Object/");
     }
     l.create(Create::Terrain, "3D Object/");
+    l.add(
+        "Create First Person Player",
+        "GameObject/First Person Player",
+        MenuRun::CreateFirstPersonPlayer,
+    );
     l.create(Create::Sprite(None), "2D Object/");
     for shape in misty_engine::sprites::builtin::SHAPES {
         l.create(Create::Sprite(Some(shape)), "2D Object/Sprites/");
@@ -414,6 +421,7 @@ pub fn run(s: &mut EditorState, run: &MenuRun) {
             s.console.info("Asset database refreshed.");
         }
         MenuRun::CreateProbe => crate::probe_tools::create_probe(s, None),
+        MenuRun::CreateFirstPersonPlayer => crate::fps_player::create(s, None),
         MenuRun::GenerateProbes => crate::probe_tools::generate(s),
         MenuRun::Tutorials => s.tutorials.window_open = true,
         MenuRun::About => s
