@@ -124,8 +124,10 @@ impl PassTimer {
         if rx.recv().unwrap_or(false) {
             if let Ok(data) = slice.get_mapped_range() {
                 let ticks: Vec<u64> = data
-                    .chunks_exact(8)
-                    .map(|c| u64::from_le_bytes(c.try_into().unwrap_or_default()))
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
+                    .map(|c| u64::from_le_bytes(*c))
                     .collect();
                 for i in 1..labels.len() {
                     let dt = ticks[i].saturating_sub(ticks[i - 1]);
