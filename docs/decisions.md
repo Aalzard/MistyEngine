@@ -3224,3 +3224,19 @@ Record of choices made without asking, and why.
      - The Stats overlay counts hitches and shows a frame-time graph.
      - Result on MeadowDemo at High: p99 frame time went from 92 ms to 30 ms, and the worst frame from 349 ms
        to 31 ms.
+648. **Terrain trees: procedural `.tree` recipes, instanced with LODs and impostors** (`docs/pending/meadow-trees.md`).
+     - A tree asset is a small JSON recipe (size, crown shape, limbs, leaves, tints, four textures, wind); the
+       engine builds two mesh LODs and an 8-view impostor from it on a worker thread (`trees::store`), so the
+       Inspector edits trees live. Presets: oak, linden, birch.
+     - Terrain data stores prototypes (`.tree` paths) and instances (xz 0..1, rotation, scale, colour; base64,
+       20 bytes each); heights always come from the heightmap. Left out of the file while empty.
+     - Rendering (`render/trees.rs`): per-frame CPU sort into instance lists (frustum, LOD with dithered
+       cross-fades), one instance buffer, drawn in the main pass (before the grass), the screen-space prepass
+       and the sun's cascades. One texture pair per bind group keeps the lit pass under 16 textures.
+     - Soft "one piece" crowns: leaf normals lean to the crown dome, baked crown occlusion, wide soft sun
+       shadows on leaves, light through the leaves; impostors baked on the CPU and lit at draw time.
+     - Wind is the grass's wind and `grass_gust()` waves (trunk bend, one phase per limb, leaf flutter),
+       evaluated a frame ago too for TAA's motion vectors.
+     - Terrain Inspector ▸ Paint Trees (brush, Shift removes, Mass Place, rendering distances), Assets ▸
+       Create ▸ Tree, trunk capsules with the Terrain Collider. Sample trees and CC0 textures in
+       `SampleProject/Assets/Trees` (textures from `tools/tree_textures.py`).

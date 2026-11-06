@@ -2091,3 +2091,20 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Prefab, tree, rock and grass placement brushes for the World Builder.
 - Linux/macOS builds are paused. Round 15 is on hold.
+
+## Meadow trees ✅ (first pass)
+
+### Done (decision 648; docs/pending/meadow-trees.md, screenshots `docs/screenshots/gfx/trees_*`)
+- Procedural tree assets (`.tree`): oak, linden and birch presets; trunk, limbs aimed at the crown outline,
+  side branches, folded leaf-cluster cards; two mesh LODs and a CPU-baked 8-view impostor.
+- Terrain trees: prototypes and instances in the terrain data, the Paint Trees tab (brush, Mass Place,
+  rendering distances), Assets ▸ Create ▸ Tree, the tree Inspector, trunk colliders.
+- GPU-instanced rendering with dithered LOD fades, shadows in the sun's cascades, the screen-space
+  prepass, wind shared with the grass gusts and motion vectors for TAA.
+- MeadowDemo: five sample trees (Oak, Oak Broad, Young Oak, Linden, Birch) placed in groves, the view ahead
+  kept open; the user's First Person Player and head bob values kept (generators reproduce them).
+- Original CC0 sample textures from `tools/tree_textures.py` (written with OpenAI Codex, reviewed).
+
+### Not done yet
+- See "What's left" in docs/pending/meadow-trees.md.
+
