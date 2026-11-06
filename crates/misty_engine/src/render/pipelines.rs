@@ -222,6 +222,11 @@ pub(super) struct Spec<'a> {
     pub glow: Option<bool>,
     /// MSAA coverage from the fragment's alpha (grass cards).
     pub alpha_to_coverage: bool,
+    /// The fragment stage writes the motion-vector target (`velocity` at the location after
+    /// the colour targets, see common.wgsl). Main-pass pipelines (glow + depth) always have
+    /// the target, masked off when they don't write it; a prepass pipeline gets it only when
+    /// this is set.
+    pub velocity: bool,
 }
 
 impl<'a> Spec<'a> {
@@ -242,9 +247,13 @@ impl<'a> Spec<'a> {
             samples: SAMPLE_COUNT,
             glow: Some(false),
             alpha_to_coverage: false,
+            velocity: false,
         }
     }
 }
+
+/// Motion vectors: last frame's uv minus this frame's, per pixel (common.wgsl `velocity_of`).
+pub const VELOCITY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg16Float;
 
 fn entry(
     binding: u32,
@@ -423,11 +432,13 @@ impl Pipelines {
             ],
         );
 
-        // The sky writes the sun disc to the glow target.
+        // The sky writes the sun disc to the glow target, and the camera's rotation to the
+        // motion vectors.
         let sky = build(
             device,
             Spec {
                 glow: Some(true),
+                velocity: true,
                 ..Spec::new("sky", include_str!("shaders/sky.wgsl"), &[&view_layout])
             },
         );
@@ -574,6 +585,7 @@ impl Pipelines {
                 cull: Some(wgpu::Face::Back),
                 depth: Depth::main(true, wgpu::CompareFunction::Less),
                 glow: Some(true),
+                velocity: true,
                 ..Spec::new(
                     "terrain",
                     TERRAIN_SRC,
@@ -644,6 +656,7 @@ impl Pipelines {
                 depth: Depth::main(true, wgpu::CompareFunction::Less),
                 glow: Some(true),
                 alpha_to_coverage: true,
+                velocity: true,
                 ..Spec::new(
                     "grass",
                     GRASS_SRC,
@@ -804,6 +817,21 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
             format: HDR_FORMAT,
             blend: if writes { spec.blend } else { None },
             write_mask: if writes {
+                wgpu::ColorWrites::ALL
+            } else {
+                wgpu::ColorWrites::empty()
+            },
+        }));
+    }
+    // The motion-vector target: every main pass pipeline has it (the pass binds it), the
+    // prepass ones that write it too. Never blended: a transparent surface leaves the
+    // motion of what is behind it.
+    let main_pass = spec.glow.is_some() && spec.depth.is_some();
+    if main_pass || spec.velocity {
+        targets.push(Some(wgpu::ColorTargetState {
+            format: VELOCITY_FORMAT,
+            blend: None,
+            write_mask: if spec.velocity {
                 wgpu::ColorWrites::ALL
             } else {
                 wgpu::ColorWrites::empty()

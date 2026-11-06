@@ -21,7 +21,9 @@ fn clouds_at(world: vec3<f32>, dist: f32) -> vec4<f32> {
     if (clip.w <= 0.0) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    let ndc = clip.xy / clip.w;
+    // The image was traced without the TAA jitter: sample it where the fragment is without
+    // it, so the clouds hold still under the jitter instead of swinging with it.
+    let ndc = clip.xy / clip.w - view.motion.xy;
     let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
     let c = textureSampleLevel(cloud_image, vfog_sampler, uv, 0, 0.0);
     let d = textureSampleLevel(cloud_image, vfog_sampler, uv, 1, 0.0).r * 1000.0;

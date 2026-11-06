@@ -3,7 +3,8 @@
 // the world's y = 0 plane under the camera.
 
 struct Clouds {
-    inv_view_proj: mat4x4<f32>,
+    // Inverse of the view-projection without the eye translation: NDC → view ray.
+    inv_rays: mat4x4<f32>,
     prev_view_proj: mat4x4<f32>,
     // xyz = eye, w = frame index.
     eye: vec4<f32>,
@@ -46,6 +47,14 @@ const PI_C: f32 = 3.14159265;
 const BASE_TILE: f32 = 5200.0;
 const DETAIL_TILE: f32 = 640.0;
 const WEATHER_TILE: f32 = 36000.0;
+
+// View ray through `ndc` (unjittered). Unprojected at the near plane through a matrix
+// without the eye translation: the far plane of a full inverse view-projection loses its
+// precision with a large near / far ratio and the clouds would shake as the view turns.
+fn view_dir(ndc: vec2<f32>) -> vec3<f32> {
+    let h = cl.inv_rays * vec4<f32>(ndc, 0.0, 1.0);
+    return normalize(h.xyz / h.w);
+}
 
 fn remap(x: f32, a: f32, b: f32, c: f32, d: f32) -> f32 {
     return c + (x - a) / (b - a) * (d - c);

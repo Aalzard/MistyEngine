@@ -535,7 +535,8 @@ pub(super) struct GrassParams {
     camera: [f32; 4],
     /// x = caster range, y = caster share, z = 1 in shadow passes, w = ground tint.
     shadow: [f32; 4],
-    /// x = angle of one pixel (radians), y = 1 with temporal anti-aliasing.
+    /// x = angle of one pixel (radians), y = 1 with temporal anti-aliasing, z = radius of
+    /// the near-camera grass shadow map, w = seconds since last frame (wind motion vectors).
     screen: [f32; 4],
 }
 
@@ -691,7 +692,8 @@ pub(super) fn wind(s: &DetailSettings, zone: Option<&super::environment::Wind>) 
 
 impl GrassParams {
     /// Uniform of one terrain's grass; `shadow` = caster range and share for shadow passes,
-    /// `screen` = pixel angle, TAA on and the near shadow map's radius ([`GrassParams::screen`]).
+    /// `screen` = pixel angle, TAA on, the near shadow map's radius and the seconds since
+    /// last frame ([`GrassParams::screen`]).
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         s: &DetailSettings,
@@ -701,7 +703,7 @@ impl GrassParams {
         camera: Vec3,
         zone: Option<&super::environment::Wind>,
         shadow: Option<(f32, f32)>,
-        screen: [f32; 3],
+        screen: [f32; 4],
     ) -> Self {
         let far = s.draw_distance.max(1.0);
         let [hr, hg, hb] = s.healthy_color.map(lin);
@@ -737,7 +739,7 @@ impl GrassParams {
                 if shadow.is_some() { 1.0 } else { 0.0 },
                 s.ground_tint.clamp(0.0, 1.0),
             ],
-            screen: [screen[0], screen[1], screen[2], 0.0],
+            screen,
         }
     }
 }

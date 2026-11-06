@@ -1,6 +1,7 @@
 //! Offscreen render target: HDR MSAA colour + depth, a bloom mip chain, and the final
 //! 8-bit image shown in the editor.
 
+use super::pipelines::VELOCITY_FORMAT;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT, SAMPLE_COUNT};
 
 /// Non-sRGB view of the final image: samplers return the stored (gamma-encoded) bytes,
@@ -32,6 +33,8 @@ pub struct RenderTarget {
     /// Emission only (bloom source), MSAA + resolved.
     glow_msaa_view: wgpu::TextureView,
     glow_view: wgpu::TextureView,
+    /// Motion vectors of the main pass (MSAA, read per sample by TAA).
+    velocity_view: wgpu::TextureView,
     depth_view: wgpu::TextureView,
     hdr_view: wgpu::TextureView,
     /// The resolved HDR image (before bloom and tonemapping).
@@ -131,6 +134,15 @@ impl RenderTarget {
             &[],
         );
         let glow = make("misty glow", full, HDR_FORMAT, 1, sampled, &[]);
+        // Sampled by TAA (sample 0, like the depth).
+        let velocity = make(
+            "misty velocity",
+            full,
+            VELOCITY_FORMAT,
+            SAMPLE_COUNT,
+            sampled,
+            &[],
+        );
         let output = make(
             "misty output",
             full,
@@ -219,6 +231,7 @@ impl RenderTarget {
             msaa_view: view(&msaa),
             glow_msaa_view: view(&glow_msaa),
             glow_view,
+            velocity_view: view(&velocity),
             depth_view: view(&depth),
             hdr_view,
             hdr,
@@ -287,6 +300,11 @@ impl RenderTarget {
 
     pub(crate) fn glow_view(&self) -> &wgpu::TextureView {
         &self.glow_view
+    }
+
+    /// Motion vectors of the main pass (MSAA).
+    pub(crate) fn velocity_view(&self) -> &wgpu::TextureView {
+        &self.velocity_view
     }
 
     pub(crate) fn mask_view(&self) -> &wgpu::TextureView {

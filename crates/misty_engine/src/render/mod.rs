@@ -23,6 +23,7 @@ mod lightmap_gpu;
 pub mod lod;
 mod memory_items;
 pub mod mesh;
+mod motion;
 pub mod overrides;
 pub mod particles;
 mod pipelines;
@@ -335,10 +336,17 @@ struct ViewUniform {
     background: [f32; 4],
     environment: [[f32; 4]; 8],
     post: [[f32; 4]; 6],
+    /// Last frame's unjittered view-projection (motion vectors, see [`motion`]).
+    prev_view_proj: [[f32; 4]; 4],
+    /// xy = this frame's jitter in NDC, zw = target size.
+    motion: [f32; 4],
+    /// Camera rotation (quaternion) and the tangents of half the field of view (x, y): view
+    /// rays without inverting the view-projection (see [`view_ray`]).
+    view_ray: [[f32; 4]; 2],
 }
 
-/// One `draws[]` entry. Its layout (and the only WGSL copy of it) is documented in
-/// shaders/draw.wgsl; new per-draw values go there and here, at the end.
+/// One `draws[]` entry (320 bytes). Its layout (and the only WGSL copy of it) is documented
+/// in shaders/draw.wgsl; new per-draw values go there and here, at the end.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct DrawUniform {
@@ -358,6 +366,8 @@ struct DrawUniform {
     lightmap_st: [f32; 4],
     /// x = lightmap layer + 1 (0 = not lightmapped).
     lightmap: [f32; 4],
+    /// Last frame's object → world (motion vectors; the same as `model` when still).
+    prev_model: [[f32; 4]; 4],
 }
 
 #[repr(C)]
@@ -445,6 +455,8 @@ pub struct Renderer {
     quality: crate::quality::QualityLevel,
     /// Temporal anti-aliasing histories per render target.
     taa: taa::Taa,
+    /// Last frame's camera, draws and grass clock per target (motion vectors).
+    motion: motion::Motion,
     stats: RenderStats,
     /// GPU time per render (when the device supports timestamp queries).
     gpu_timer: Option<gpu_timer::GpuTimer>,
@@ -481,6 +493,9 @@ pub struct Renderer {
     capture: frame_debug::Capture,
     /// Replay display pipelines (made on the first replay).
     debug_blit: Option<frame_debug::DebugBlit>,
+    /// The view-projection the last render drew with (jitter included), for tests.
+    #[cfg(test)]
+    last_view_proj: Mat4,
 }
 
 impl Renderer {
@@ -588,6 +603,7 @@ impl Renderer {
                 ..Default::default()
             },
             taa,
+            motion: Default::default(),
             stats: RenderStats::default(),
             gpu_timer: None,
             culler: gpu_culling::supported(device).then(|| gpu_culling::GpuCuller::new(device)),
@@ -608,6 +624,8 @@ impl Renderer {
             effects: Default::default(),
             capture: None,
             debug_blit: None,
+            #[cfg(test)]
+            last_view_proj: Mat4::IDENTITY,
         }
     }
 
@@ -983,11 +1001,28 @@ impl Renderer {
         } else {
             glam::Vec2::ZERO
         };
+        let view_proj = frame.camera.view_projection(aspect);
+        // Motion vectors: last frame's camera, draws and grass clock.
+        let grass_time = self.terrains.grass_time(frame.environment);
+        let motion = self.motion.begin(target.id, frame, view_proj, grass_time);
         queue.write_buffer(
             &self.view_buffer,
             0,
-            bytemuck::bytes_of(&view_uniform(frame, aspect, jitter, target.size())),
+            bytemuck::bytes_of(&view_uniform(
+                frame,
+                aspect,
+                jitter,
+                target.size(),
+                motion.prev_view_proj,
+            )),
         );
+        #[cfg(test)]
+        {
+            self.last_view_proj = Mat4::from_cols_array_2d(
+                &view_uniform(frame, aspect, jitter, target.size(), motion.prev_view_proj)
+                    .view_proj,
+            );
+        }
         // HDRI sky: cubes built when the file changes, the uniform every render.
         if self.sky.prepare(device, queue, frame.environment) {
             self.rebuild_view_group(device);
@@ -1004,10 +1039,9 @@ impl Renderer {
             map_size: self.shadows.directional_size,
             ..self.quality.shadow_settings()
         };
-        let view_proj = frame.camera.view_projection(aspect);
         let (mut lists, plan, probes_rebuilt, near_sun) = {
             crate::profile_scope!("Render.Culling");
-            let prep = self.draw_prep(frame, lod);
+            let prep = self.draw_prep(frame, lod, &motion.prev_draws);
             let terrains = self.terrain_bounds(frame);
             // Reflection probes: atlas uploads and each draw's probe list.
             let rebuilt = self
@@ -1046,8 +1080,9 @@ impl Renderer {
                 grass_layout,
                 frame.environment,
                 self.quality.grass_shadow_casters(),
-                grass_screen(frame, target.size().1, taa_on),
+                grass_screen(frame, target.size().1, taa_on, motion.grass_dt),
                 near_sun.is_some(),
+                grass_time,
             );
             (lists, plan, rebuilt, near_sun)
         };
@@ -1155,8 +1190,8 @@ impl Renderer {
             )
         {
             self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
-            let (depth, normals) = ss.views();
-            self.shadow_mask_passes(device, &mut encoder, depth, normals);
+            let (depth, normals, velocity) = ss.views();
+            self.shadow_mask_passes(device, &mut encoder, depth, normals, velocity);
         }
         let trace = screen.as_ref().and_then(|s| s.trace.as_ref());
         if let Some(t) = trace {
@@ -1233,16 +1268,24 @@ impl Renderer {
                 frame_debug::events::post_event("Temporal Anti-aliasing".to_owned(), "taa.wgsl")
             })
         {
-            let cam = frame.camera;
             self.taa.resolve(
                 device,
                 &mut encoder,
-                &self.view_bind_group,
-                target.id,
-                (target.hdr_texture(), target.hdr_view()),
-                target.depth_view(),
-                view_proj,
-                (cam.position, cam.forward()),
+                &taa::Resolve {
+                    view_group: &self.view_bind_group,
+                    target: target.id,
+                    current: (target.hdr_texture(), target.hdr_view()),
+                    depth: target.depth_view(),
+                    velocity: target.velocity_view(),
+                    view_proj,
+                    prev_view_proj: motion.prev_view_proj,
+                    continuous: motion.continuous,
+                    camera: frame.camera,
+                    settings: taa::TaaSettings {
+                        blend: self.quality.taa_blend,
+                        sharpness: self.quality.taa_sharpness,
+                    },
+                },
             );
         }
         self.bloom_passes(&mut encoder, target, timing);
@@ -1261,6 +1304,8 @@ impl Renderer {
         stats.grass_pending = grass.pending;
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
+        self.motion
+            .end(target.id, std::mem::take(&mut lists.prep.motion));
         stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
         self.stats = stats;
     }
@@ -1879,6 +1924,19 @@ impl Renderer {
                 Some(color(target.msaa_view(), target.hdr_view())),
                 // Emission only; drives bloom.
                 Some(color(target.glow_msaa_view(), target.glow_view())),
+                // Motion vectors (no resolve: TAA reads sample 0, like the depth).
+                Some(wgpu::RenderPassColorAttachment {
+                    view: target.velocity_view(),
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: match clear {
+                            true => wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                            false => wgpu::LoadOp::Load,
+                        },
+                        store: wgpu::StoreOp::Store,
+                    },
+                }),
             ],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: target.depth_view(),
@@ -2201,9 +2259,9 @@ impl GpuMesh {
 /// The main pass's attachments (Frame Debugger details).
 fn main_target(target: &RenderTarget) -> TargetInfo {
     frame_debug::target(
-        "HDR Color (MSAA ×4) + Emission + Depth",
+        "HDR Color (MSAA ×4) + Emission + Motion + Depth",
         target.size(),
-        "Rgba16Float / Depth32Float",
+        "Rgba16Float / Rg16Float / Depth32Float",
     )
 }
 
@@ -2343,15 +2401,20 @@ fn line_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
 }
 
 /// Sort distance of a world point: along the view axis when orthographic, else squared distance.
-/// Grass view values: x = angle of one pixel (radians, 0 = orthographic), y = 1 with TAA.
-fn grass_screen(frame: &Frame, height: u32, taa: bool) -> [f32; 2] {
+/// Grass view values: x = angle of one pixel (radians, 0 = orthographic), y = 1 with TAA,
+/// z = seconds the grass clock advanced since last frame (wind motion vectors).
+fn grass_screen(frame: &Frame, height: u32, taa: bool, dt: f32) -> [f32; 3] {
     let pixel = match frame.camera.projection {
         crate::camera::Projection::Perspective { fov_y } => {
             2.0 * (fov_y.to_radians() * 0.5).tan() / height.max(1) as f32
         }
         crate::camera::Projection::Orthographic { .. } => 0.0,
     };
-    [pixel, if taa { 1.0 } else { 0.0 }]
+    // The wind's motion vectors only matter to TAA (the other temporal passes reproject the
+    // grass with the camera alone, as they always did): without it the vertex stage skips
+    // the second blade evaluation.
+    let dt = if taa { dt } else { 0.0 };
+    [pixel, if taa { 1.0 } else { 0.0 }, dt]
 }
 
 fn camera_depth(cam: &Camera) -> impl Fn(Vec3) -> f32 + use<> {
@@ -2370,8 +2433,9 @@ pub(crate) fn srgb_to_linear(c: [f32; 3]) -> [f32; 3] {
     c.map(|v| v.max(0.0).powf(2.2))
 }
 
-/// `draws[]` entry of a mesh draw; `lod_fade` = its LOD cross-fade (0 = none).
-fn draw_uniform(d: &MeshDraw, lod_fade: f32) -> DrawUniform {
+/// `draws[]` entry of a mesh draw; `lod_fade` = its LOD cross-fade (0 = none),
+/// `prev_model` = last frame's model matrix (motion vectors).
+fn draw_uniform(d: &MeshDraw, lod_fade: f32, prev_model: Mat4) -> DrawUniform {
     // Colour to linear first, then scale: intensity is linear brightness.
     let e = srgb_to_linear(d.material.emission).map(|c| c * d.material.emission_intensity);
     // Mirrored transforms flip the tangent frame's handedness.
@@ -2431,6 +2495,7 @@ fn draw_uniform(d: &MeshDraw, lod_fade: f32) -> DrawUniform {
             0.0,
             0.0,
         ],
+        prev_model: prev_model.to_cols_array_2d(),
     }
 }
 
@@ -2518,8 +2583,15 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan, soft: bool) -> Ligh
     u
 }
 
-/// The view uniform; `jitter` = sub-pixel camera offset in pixels of a `size` image (TAA).
-fn view_uniform(frame: &Frame, aspect: f32, jitter: glam::Vec2, size: (u32, u32)) -> ViewUniform {
+/// The view uniform; `jitter` = sub-pixel camera offset in pixels of a `size` image (TAA),
+/// `prev_view_proj` = last frame's unjittered view-projection (motion vectors).
+fn view_uniform(
+    frame: &Frame,
+    aspect: f32,
+    jitter: glam::Vec2,
+    size: (u32, u32),
+    prev_view_proj: Mat4,
+) -> ViewUniform {
     let cam = frame.camera;
     let vp = taa::jittered(cam.view_projection(aspect), jitter, size);
     let ortho = matches!(cam.projection, Projection::Orthographic { .. });
@@ -2562,7 +2634,31 @@ fn view_uniform(frame: &Frame, aspect: f32, jitter: glam::Vec2, size: (u32, u32)
         background: [bg[0], bg[1], bg[2], if frame.skybox { 1.0 } else { 0.0 }],
         environment,
         post: frame.post.pack(),
+        prev_view_proj: prev_view_proj.to_cols_array_2d(),
+        motion: {
+            let j = taa::jitter_ndc(jitter, size);
+            [j.x, j.y, size.0 as f32, size.1 as f32]
+        },
+        view_ray: view_ray(cam, aspect),
     }
+}
+
+/// The camera's rotation and half-angle tangents, so shaders build exact view rays
+/// (`view_ray` in common.wgsl). Unprojecting the far plane through the inverse
+/// view-projection loses most of its precision when the near / far ratio is large (the
+/// Scene view's dynamic clipping reaches 1 : 500 000): the ray then wobbles by up to a pixel
+/// from one camera orientation to the next, and the sky (sun disc, clouds) shakes while
+/// turning.
+fn view_ray(cam: &Camera, aspect: f32) -> [[f32; 4]; 2] {
+    let q = cam.rotation.normalize();
+    let tan = match cam.projection {
+        Projection::Perspective { fov_y } => {
+            let t = (fov_y.to_radians() * 0.5).tan();
+            [t * aspect.max(1e-4), t, 0.0, 0.0]
+        }
+        Projection::Orthographic { .. } => [0.0, 0.0, 1.0, 0.0],
+    };
+    [q.to_array(), tan]
 }
 
 #[cfg(test)]
@@ -2574,6 +2670,8 @@ pub(crate) mod gpu_tests;
 #[cfg(test)]
 mod hitch_tests;
 #[cfg(test)]
+mod taa_gpu_tests;
+#[cfg(test)]
 mod terrain_gpu_tests;
 
 #[cfg(test)]
@@ -2582,14 +2680,18 @@ mod tests {
 
     #[test]
     fn gpu_struct_sizes_match_wgsl() {
-        assert_eq!(std::mem::size_of::<DrawUniform>(), 256);
+        assert_eq!(std::mem::size_of::<DrawUniform>(), 320);
         assert_eq!(std::mem::size_of::<LightItem>(), 112);
         assert_eq!(
             std::mem::size_of::<LightsUniform>(),
             16 + 64 + 48 + 112 * MAX_LIGHTS + 64 * shadows::MAX_LOCAL_LAYERS
         );
-        // Matrices, camera/grid/background, 8 environment and 6 post vec4s (common.wgsl).
-        assert_eq!(std::mem::size_of::<ViewUniform>(), 128 + 48 + 16 * 14);
+        // Matrices, camera/grid/background, 8 environment and 6 post vec4s, the previous
+        // view-projection, the motion vec4 and the view-ray pair (common.wgsl).
+        assert_eq!(
+            std::mem::size_of::<ViewUniform>(),
+            128 + 48 + 16 * 14 + 64 + 16 + 32
+        );
         assert!(std::mem::size_of::<ViewUniform>() as u64 <= shadows::VIEW_STRIDE);
     }
 }

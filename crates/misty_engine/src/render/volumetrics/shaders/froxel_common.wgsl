@@ -26,6 +26,8 @@ struct FogBox {
 };
 
 struct Froxels {
+    // Inverse of the view-projection without the eye translation: NDC → point relative to
+    // the eye (exact rays with a large near / far ratio).
     inv_view_proj: mat4x4<f32>,
     prev_view_proj: mat4x4<f32>,
     // Sun cascades, nearest first (counts.z of them).
@@ -80,6 +82,7 @@ fn depth_slice(d: f32) -> f32 {
     return log(max(d, fx.slices.x) / fx.slices.x) / fx.slices.y;
 }
 
+// Point at `ndc`, depth `z` relative to the eye.
 fn unproject_froxel(ndc: vec2<f32>, z: f32) -> vec3<f32> {
     let p = fx.inv_view_proj * vec4<f32>(ndc, z, 1.0);
     return p.xyz / p.w;
@@ -94,8 +97,9 @@ fn froxel_ray(uv: vec2<f32>) -> vec3<f32> {
 // World point at screen uv and view depth `d`.
 fn froxel_world(uv: vec2<f32>, d: f32) -> vec3<f32> {
     let ndc = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
-    let near = unproject_froxel(ndc, 0.0);
-    let ray = normalize(unproject_froxel(ndc, 1.0) - near);
+    let near_rel = unproject_froxel(ndc, 0.0);
+    let ray = normalize(unproject_froxel(ndc, 1.0) - near_rel);
+    let near = fx.eye.xyz + near_rel;
     let near_depth = dot(near - fx.eye.xyz, fx.forward.xyz);
     return near + ray * ((d - near_depth) / max(dot(ray, fx.forward.xyz), 1e-4));
 }

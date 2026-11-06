@@ -441,6 +441,7 @@ impl CustomShaders {
                     depth: Depth::main(settings.zwrite, wgpu::CompareFunction::Less),
                     blend: blend_state(settings.blend),
                     glow: Some(true),
+                    velocity: settings.zwrite,
                     ..Spec::new("custom shader", &wrapped.body, &layouts)
                 },
             );

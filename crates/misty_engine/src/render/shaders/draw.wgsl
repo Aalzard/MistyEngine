@@ -18,6 +18,7 @@
 //   224     lightmap_st  lightmap uv = uv2 * xy + zw
 //   240     lightmap  x = lightmap layer + 1 (0 = not lightmapped), y = 1 when the surface
 //                     sends no light through Screen Space GI (Contribute GI off)
+//   256     prev_model  last frame's object → world (motion vectors; = model when still)
 struct Draw {
     model: mat4x4<f32>,
     normal: mat4x4<f32>,
@@ -29,6 +30,7 @@ struct Draw {
     extra: vec4<f32>,
     lightmap_st: vec4<f32>,
     lightmap: vec4<f32>,
+    prev_model: mat4x4<f32>,
 };
 
 // Texture coordinates of a draw: rotate about (0.5, 0.5), then tile and offset.

@@ -177,6 +177,11 @@ impl Anisotropic {
     }
 }
 
+/// Default share of the newest frame in the TAA blend (about ten frames of history).
+pub const TAA_BLEND: f32 = 0.1;
+/// Default sharpening of the TAA history.
+pub const TAA_SHARPNESS: f32 = 0.4;
+
 /// One quality level.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -202,8 +207,14 @@ pub struct QualityLevel {
     /// FXAA post pass on the final image (smooths edges MSAA misses: alpha cut-outs, shading).
     pub fxaa: bool,
     /// Temporal anti-aliasing: jittered frames blended over time (smooth edges, thin grass
-    /// and foliage that stop crawling; a little softer in motion).
+    /// and foliage that stop crawling), reprojected through motion vectors.
     pub temporal_aa: bool,
+    /// TAA: share of the newest frame in the blend (0.02–0.5; lower = smoother and slower to
+    /// react, higher = crisper and noisier).
+    pub taa_blend: f32,
+    /// TAA: how much the reprojected history is sharpened (0–1) against the softening of
+    /// blending and resampling.
+    pub taa_sharpness: f32,
     pub texture_quality: TextureQuality,
     pub anisotropic_textures: Anisotropic,
     /// Largest texture side on the GPU, whatever the textures' own Max Size.
@@ -253,6 +264,8 @@ impl QualityLevel {
             anti_aliasing: AntiAliasing::Off,
             fxaa: false,
             temporal_aa: false,
+            taa_blend: TAA_BLEND,
+            taa_sharpness: TAA_SHARPNESS,
             texture_quality: TextureQuality::Half,
             anisotropic_textures: Anisotropic::Disabled,
             max_texture_size: 1024,
@@ -284,6 +297,8 @@ impl QualityLevel {
             anti_aliasing: AntiAliasing::X2,
             fxaa: false,
             temporal_aa: true,
+            taa_blend: TAA_BLEND,
+            taa_sharpness: TAA_SHARPNESS,
             texture_quality: TextureQuality::Full,
             anisotropic_textures: Anisotropic::PerTexture,
             max_texture_size: 2048,
@@ -315,6 +330,8 @@ impl QualityLevel {
             anti_aliasing: AntiAliasing::X4,
             fxaa: false,
             temporal_aa: true,
+            taa_blend: TAA_BLEND,
+            taa_sharpness: TAA_SHARPNESS,
             texture_quality: TextureQuality::Full,
             anisotropic_textures: Anisotropic::ForcedOn,
             max_texture_size: 4096,
@@ -366,6 +383,8 @@ impl QualityLevel {
         self.max_texture_size = self.max_texture_size.clamp(32, 8192);
         self.render_scale = finite_clamp(self.render_scale, 0.25, 2.0, 1.0);
         self.lod_bias = finite_clamp(self.lod_bias, 0.01, 10.0, 1.0);
+        self.taa_blend = finite_clamp(self.taa_blend, 0.02, 0.5, TAA_BLEND);
+        self.taa_sharpness = finite_clamp(self.taa_sharpness, 0.0, 1.0, TAA_SHARPNESS);
     }
 
     // ---- what the renderer reads ------------------------------------------------------------
@@ -662,7 +681,12 @@ mod tests {
         assert_eq!(q.levels[0].render_scale, 2.0);
         assert_eq!(q.levels[0].upscale_filter, UpscaleFilter::Bilinear);
         assert!(!q.levels[0].fxaa);
+        assert_eq!(q.levels[0].taa_blend, TAA_BLEND);
         assert_eq!(q.default_level, 0);
+        let mut taa: QualityLevel =
+            serde_json::from_str(r#"{ "taa_blend": 9, "taa_sharpness": -1 }"#).unwrap();
+        taa.sanitize();
+        assert_eq!((taa.taa_blend, taa.taa_sharpness), (0.5, 0.0));
         let mut empty: QualitySettings = serde_json::from_str(r#"{ "levels": [] }"#).unwrap();
         empty.sanitize();
         assert_eq!(empty, QualitySettings::default());

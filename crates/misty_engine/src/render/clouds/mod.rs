@@ -211,6 +211,13 @@ impl Renderer {
             }
             state.last_used = c.renders;
             let view_proj = frame.camera.view_projection(target.aspect());
+            // Rays from the rotation alone: the eye translation in an inverted
+            // view-projection costs the far plane its precision (see `view_ray`).
+            let at_origin = crate::camera::Camera {
+                position: glam::Vec3::ZERO,
+                ..*frame.camera
+            };
+            let rays = at_origin.view_projection(target.aspect()).inverse();
             let history = if state.prev_view_proj.is_some() {
                 HISTORY_WEIGHT
             } else {
@@ -220,7 +227,7 @@ impl Renderer {
                 frame,
                 o: &o,
                 q: &q,
-                view_proj,
+                rays,
                 prev_view_proj: state.prev_view_proj.unwrap_or(view_proj),
                 trace,
                 frame_index: state.frame,

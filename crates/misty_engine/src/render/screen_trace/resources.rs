@@ -62,6 +62,8 @@ impl Passes {
                         min_binding_size: None,
                     },
                 ),
+                // Motion vectors of the prepass.
+                entry(12, texture(false)),
             ],
         );
         let hiz_copy_layout = layout(

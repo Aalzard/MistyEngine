@@ -12,7 +12,8 @@ use crate::scene::CloudsOverride;
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub(super) struct MarchUniform {
-    pub inv_view_proj: [[f32; 4]; 4],
+    /// Inverse of the view-projection without the eye translation: NDC → view ray.
+    pub inv_rays: [[f32; 4]; 4],
     pub prev_view_proj: [[f32; 4]; 4],
     pub eye: [f32; 4],
     pub layer: [f32; 4],
@@ -93,7 +94,8 @@ pub(super) struct MarchInputs<'a> {
     pub frame: &'a Frame<'a>,
     pub o: &'a CloudsOverride,
     pub q: &'a CloudQuality,
-    pub view_proj: Mat4,
+    /// Inverse of the view-projection without the eye translation (view rays).
+    pub rays: Mat4,
     pub prev_view_proj: Mat4,
     pub trace: (u32, u32),
     pub frame_index: u32,
@@ -152,7 +154,7 @@ pub(super) fn march_uniform(m: &MarchInputs) -> MarchUniform {
     let (sky_top, sky_side) = ambient_sky(env, zenith, horizon);
     let origin = shadow_origin(eye, sun, base, q);
     MarchUniform {
-        inv_view_proj: m.view_proj.inverse().to_cols_array_2d(),
+        inv_rays: m.rays.to_cols_array_2d(),
         prev_view_proj: m.prev_view_proj.to_cols_array_2d(),
         eye: eye.extend((m.frame_index % 1024) as f32).to_array(),
         layer: [PLANET_RADIUS, base, top, MAX_DISTANCE],

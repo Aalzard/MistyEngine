@@ -138,6 +138,8 @@ fn vs_custom(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {{
     out.uv = v.uv * d.uv_st.xy + d.uv_st.zw;
     out.draw = draw_index;
     out.tangent = vec4<f32>((d.model * vec4<f32>(v.tangent.xyz, 0.0)).xyz, v.tangent.w * d.emission.w);
+    // Motion vectors follow the object; a vertex function's own motion is not tracked.
+    out.clip_prev = prev_clip((d.prev_model * vec4<f32>(v.position, 1.0)).xyz);
     return out;
 }}
 "#
@@ -161,7 +163,9 @@ fn fs_custom(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {{
     s.receive_shadows = draws[in.draw].params.z > 0.5;
     s.occlusion = o.occlusion;
     s.premultiply = {premultiply};
-    return shade(in.world, s);
+    var out = shade(in.world, s);
+    out.velocity = mesh_velocity(in);
+    return out;
 }}
 "#
             );
@@ -174,6 +178,7 @@ fn fs_custom(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
     var out: MeshTargets;
     out.color = c;
     out.glow = vec4<f32>(0.0, 0.0, 0.0, c.a);
+    out.velocity = mesh_velocity(in);
     return out;
 }
 "#,

@@ -96,6 +96,8 @@ struct MeshOut {
     @location(4) tangent: vec4<f32>,
     // Lightmap coordinates (uv2 × the draw's lightmap scale-offset).
     @location(5) lightmap_uv: vec2<f32>,
+    // Last frame's clip position (xyw) of this vertex, for the motion vectors (common.wgsl).
+    @location(6) clip_prev: vec3<f32>,
 };
 
 @vertex
@@ -111,7 +113,13 @@ fn vs_main(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {
     out.draw = draw_index;
     out.tangent = vec4<f32>((d.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz, in.tangent.w * d.emission.w);
     out.lightmap_uv = in.uv2 * d.lightmap_st.xy + d.lightmap_st.zw;
+    out.clip_prev = prev_clip((d.prev_model * vec4<f32>(in.position, 1.0)).xyz);
     return out;
+}
+
+// The motion vector of a mesh fragment (MeshTargets.velocity).
+fn mesh_velocity(in: MeshOut) -> vec2<f32> {
+    return velocity_of(in.clip, in.clip_prev);
 }
 
 // Surface normal with the material's normal map applied (bitangent points up in the image).
@@ -138,6 +146,8 @@ struct MeshTargets {
     @location(0) color: vec4<f32>,
     // Emission only, the bloom source.
     @location(1) glow: vec4<f32>,
+    // Motion vector (last frame's uv minus this frame's), see common.wgsl `velocity_of`.
+    @location(2) velocity: vec2<f32>,
 };
 
 // Lit surface inputs of `shade` (also used by the terrain shader).
@@ -231,7 +241,9 @@ fn lightmap_debug_color(s: Surface, lm: vec4<f32>) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
-    return shade(in.world, standard_surface(in, front));
+    var out = shade(in.world, standard_surface(in, front));
+    out.velocity = mesh_velocity(in);
+    return out;
 }
 
 // Cutout: holes where alpha is below the cutoff.
@@ -244,6 +256,7 @@ fn fs_cutout(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
     }
     var out = shade(in.world, s);
     out.color.a = 1.0;
+    out.velocity = mesh_velocity(in);
     return out;
 }
 
@@ -268,6 +281,7 @@ fn fs_unlit(in: MeshOut) -> MeshTargets {
     var out: MeshTargets;
     out.color = vec4<f32>(vfog_blend(mix(view.fog_color.rgb, color, fog), vf, 1.0), alpha);
     out.glow = vec4<f32>(0.0, 0.0, 0.0, alpha);
+    out.velocity = mesh_velocity(in);
     return out;
 }
 
@@ -455,6 +469,7 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     var out: MeshTargets;
     out.color = vec4<f32>(color, alpha);
     out.glow = vec4<f32>(s.emission * fog * vfog_glow(vf), alpha);
+    out.velocity = vec2<f32>(0.0);
     if (ao_debug_view()) {
         out.color = vec4<f32>(vec3<f32>(ssao), alpha);
         out.glow = vec4<f32>(0.0, 0.0, 0.0, alpha);

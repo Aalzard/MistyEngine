@@ -461,7 +461,16 @@ impl TerrainCache {
         }
     }
 
-    /// Pick each chunk's LOD and visibility for the camera, and update grass around it.
+    /// The grass clock this render: the environment's fixed one, else seconds since the cache
+    /// was made.
+    pub fn grass_time(&self, environment: &Environment) -> f32 {
+        environment
+            .grass_time
+            .unwrap_or_else(|| self.started.elapsed().as_secs_f32())
+    }
+
+    /// Pick each chunk's LOD and visibility for the camera, and update grass around it
+    /// (`time` = [`TerrainCache::grass_time`]).
     #[allow(clippy::too_many_arguments)]
     pub fn select(
         &mut self,
@@ -474,8 +483,9 @@ impl TerrainCache {
         grass_layout: &wgpu::BindGroupLayout,
         environment: &Environment,
         casters: Option<(f32, f32)>,
-        screen: [f32; 2],
+        screen: [f32; 3],
         near_map: bool,
+        time: f32,
     ) {
         crate::profile_scope!("Terrain.Select");
         let frustum = Frustum::from_matrix(view_proj);
@@ -485,9 +495,6 @@ impl TerrainCache {
         self.grass_near_groups.clear();
         self.camera = camera;
         self.grass_casters = casters;
-        let time = environment
-            .grass_time
-            .unwrap_or_else(|| self.started.elapsed().as_secs_f32());
         for (i, t) in terrains.iter().enumerate() {
             let Some(g) = self.entries.get_mut(&t.key) else {
                 self.chunks.push(Vec::new());
@@ -556,7 +563,7 @@ impl TerrainCache {
                     camera,
                     environment.wind.as_ref(),
                     shadow,
-                    [screen[0], screen[1], near_radius],
+                    [screen[0], screen[1], near_radius, screen[2]],
                 );
                 let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("misty grass params"),
@@ -816,6 +823,7 @@ pub(super) fn draw_uniform(t: &TerrainDraw) -> DrawUniform {
         extra: [1.0, 0.0, 0.0, 0.0],
         lightmap_st: [1.0, 1.0, 0.0, 0.0],
         lightmap: [0.0; 4],
+        prev_model: model.to_cols_array_2d(),
     }
 }
 
