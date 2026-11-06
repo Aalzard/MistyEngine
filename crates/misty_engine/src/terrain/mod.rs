@@ -16,6 +16,7 @@ pub mod noise;
 pub mod store;
 #[cfg(test)]
 mod tests;
+pub mod trees;
 
 use std::sync::Arc;
 
@@ -215,6 +216,41 @@ pub fn collider(scene: &Scene, e: Entity) -> Option<rp::ColliderBuilder> {
             .friction(c.surface.friction)
             .restitution(c.surface.bounciness),
     )
+}
+
+/// Trunk colliders of the terrain's trees (static capsules from the foot up to where the crown
+/// starts, as thick as the trunk), placed in world space with the Terrain Collider; the player
+/// can't walk through trees.
+pub fn tree_colliders(scene: &Scene, e: Entity) -> Vec<rp::ColliderBuilder> {
+    let Ok(c) = scene.world.get::<&TerrainCollider>(e).map(|c| (*c).clone()) else {
+        return Vec::new();
+    };
+    if !c.enabled {
+        return Vec::new();
+    }
+    let path = if c.terrain_data.is_empty() {
+        match scene.world.get::<&Terrain>(e) {
+            Ok(t) => t.terrain_data.clone(),
+            Err(_) => return Vec::new(),
+        }
+    } else {
+        c.terrain_data
+    };
+    let Some((d, _)) = store::get(&path) else {
+        return Vec::new();
+    };
+    let pos = scene.world_position(e);
+    trees::trunks(&d)
+        .into_iter()
+        .map(|t| {
+            let half = (t.height * 0.5 - t.radius).max(0.05);
+            let center = pos + t.foot + Vec3::Y * t.height * 0.5;
+            rp::ColliderBuilder::capsule_y(half, t.radius)
+                .translation(rp::Vector::new(center.x, center.y, center.z))
+                .friction(c.surface.friction)
+                .restitution(c.surface.bounciness)
+        })
+        .collect()
 }
 
 /// Heightfield shape centred on x/z (rapier's convention): rows along z, columns along x.

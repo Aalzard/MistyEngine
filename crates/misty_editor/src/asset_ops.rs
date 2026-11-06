@@ -13,7 +13,7 @@ use misty_engine::asset_db::{Guid, meta, refs};
 use serde_json::Value;
 
 /// Files whose text can hold asset paths.
-const REFERENCING: [&str; 11] = [
+const REFERENCING: [&str; 12] = [
     "scene",
     "prefab",
     "mat",
@@ -25,6 +25,7 @@ const REFERENCING: [&str; 11] = [
     "timeline",
     "tile",
     "palette",
+    "tree",
 ];
 const BUILD_SETTINGS: &str = "ProjectSettings/BuildSettings.json";
 

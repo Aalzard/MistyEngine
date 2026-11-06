@@ -174,6 +174,7 @@ mod status_bar;
 mod templates;
 mod terrain_rules;
 mod terrain_tools;
+mod terrain_trees_ui;
 mod theme;
 mod thumbnails;
 mod tile_palette;

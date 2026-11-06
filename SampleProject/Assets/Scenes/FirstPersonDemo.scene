@@ -2098,7 +2098,11 @@
           "list": [
             {
               "enabled": true,
-              "fields": {},
+              "fields": {
+                "breathingRate": 0.2,
+                "runAmplitude": 0.025,
+                "walkAmplitude": 0.015
+              },
               "path": "Assets/Scripts/HeadBobVertical.lua"
             }
           ]
@@ -2146,7 +2150,11 @@
           "list": [
             {
               "enabled": true,
-              "fields": {},
+              "fields": {
+                "runAmplitude": 0.0175,
+                "strafeLean": 0.025,
+                "walkAmplitude": 0.01
+              },
               "path": "Assets/Scripts/HeadBobHorizontal.lua"
             }
           ]
@@ -2221,7 +2229,9 @@
           "list": [
             {
               "enabled": true,
-              "fields": {},
+              "fields": {
+                "pitchBob": 3.0
+              },
               "path": "Assets/Scripts/HeadBobRotation.lua"
             }
           ]

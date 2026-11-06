@@ -52,6 +52,7 @@ pub mod terrain;
 pub mod testing;
 pub mod tilemap;
 pub mod timeline;
+pub mod trees;
 pub mod ui;
 pub mod vcam;
 pub mod vfs;

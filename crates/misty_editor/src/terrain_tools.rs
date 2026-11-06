@@ -1,5 +1,6 @@
 //! Terrain editing: GameObject ▸ 3D Object ▸ Terrain, the brush tools (Raise or Lower, Set
-//! Height, Smooth, Paint Texture) driven from the Scene view, the brush circle, and undo.
+//! Height, Smooth, Paint Texture, Paint Trees) driven from the Scene view, the brush circle, and
+//! undo.
 //!
 //! Every edit of terrain data (a brush stroke, a Settings change) is one undo step: the data is
 //! copied when the edit starts and pushed onto the undo stack, then saved, once the mouse is up.
@@ -22,15 +23,17 @@ pub enum TerrainTool {
     SetHeight,
     Smooth,
     Paint,
+    Trees,
     Settings,
 }
 
 impl TerrainTool {
-    pub const ALL: [TerrainTool; 5] = [
+    pub const ALL: [TerrainTool; 6] = [
         TerrainTool::RaiseLower,
         TerrainTool::SetHeight,
         TerrainTool::Smooth,
         TerrainTool::Paint,
+        TerrainTool::Trees,
         TerrainTool::Settings,
     ];
 
@@ -40,6 +43,7 @@ impl TerrainTool {
             TerrainTool::SetHeight => "⊟",
             TerrainTool::Smooth => "≈",
             TerrainTool::Paint => "🖌",
+            TerrainTool::Trees => "🌳",
             TerrainTool::Settings => "⚙",
         }
     }
@@ -50,6 +54,7 @@ impl TerrainTool {
             TerrainTool::SetHeight => "Set Height",
             TerrainTool::Smooth => "Smooth Height",
             TerrainTool::Paint => "Paint Texture",
+            TerrainTool::Trees => "Paint Trees",
             TerrainTool::Settings => "Terrain Settings",
         }
     }
@@ -64,6 +69,9 @@ impl TerrainTool {
             TerrainTool::Paint => {
                 "Select a layer, then left click to paint it. Auto Paint Rules and Generate paint the whole terrain."
             }
+            TerrainTool::Trees => {
+                "Pick a tree, then left click to plant trees. Hold Shift and click to remove them. Mass Place scatters trees over the whole terrain."
+            }
             TerrainTool::Settings => "Size, resolution and rendering of this terrain.",
         }
     }
@@ -75,6 +83,7 @@ impl TerrainTool {
             TerrainTool::SetHeight => "Set Terrain Height",
             TerrainTool::Smooth => "Smooth Terrain",
             TerrainTool::Paint => "Paint Terrain",
+            TerrainTool::Trees => "Paint Trees",
             TerrainTool::Settings => "Change Terrain Settings",
         }
     }
@@ -111,6 +120,12 @@ pub struct TerrainTools {
     pub layer: usize,
     /// Paint Texture paints the Auto Paint result (layers and grass) instead of `layer`.
     pub generate_in_brush: bool,
+    /// Paint Trees: the selected tree prototype, trees per 100 m², how new trees vary and
+    /// how many Mass Place adds.
+    pub tree: usize,
+    pub tree_density: f32,
+    pub tree_placement: misty_engine::terrain::trees::Placement,
+    pub mass_count: usize,
     /// Brush centre on the selected terrain under the mouse.
     pub hover: Option<(Entity, Vec3)>,
     pending: Option<PendingEdit>,
@@ -128,6 +143,10 @@ impl Default for TerrainTools {
             target_height: 10.0,
             layer: 0,
             generate_in_brush: false,
+            tree: 0,
+            tree_density: 1.0,
+            tree_placement: Default::default(),
+            mass_count: 200,
             hover: None,
             pending: None,
             painting: false,
@@ -249,6 +268,24 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
     };
     let (tool, target, layer, generated) = (t.tool, t.target_height, t.layer, t.generate_in_brush);
     misty_engine::profile_scope!("Terrain.Brush");
+    if tool == TerrainTool::Trees {
+        // Trees don't touch the maps: a settings edit (no terrain re-upload).
+        let (tree, density, placement) = (t.tree as u16, t.tree_density, t.tree_placement);
+        store::modify_settings(path, |d| {
+            let has = (tree as usize) < d.trees.prototypes.len();
+            let proto = (has || shift).then_some(tree).filter(|_| has);
+            misty_engine::terrain::trees::paint(
+                d,
+                b.center,
+                b.size * 0.5,
+                density,
+                proto,
+                &placement,
+                shift,
+            );
+        });
+        return;
+    }
     // Only the brush's square is re-uploaded by the renderer.
     let Some(region) = store::get(path).map(|(d, _)| b.region(&d)) else {
         return;
@@ -259,7 +296,7 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
         TerrainTool::Smooth => brush::smooth(d, &b, dt),
         TerrainTool::Paint if generated => auto_paint::generate_in_brush(d, &b, dt),
         TerrainTool::Paint => brush::paint(d, &b, dt, layer),
-        TerrainTool::Settings => {}
+        TerrainTool::Trees | TerrainTool::Settings => {}
     });
 }
 
