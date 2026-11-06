@@ -50,6 +50,7 @@ pub(super) struct FogBox {
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub(super) struct FroxelUniform {
+    /// Inverse of the view-projection without the eye translation (eye-relative points).
     pub inv_view_proj: [[f32; 4]; 4],
     pub prev_view_proj: [[f32; 4]; 4],
     /// Sun cascades, nearest first (`counts.z` of them).
@@ -250,7 +251,12 @@ pub(super) fn froxel_uniform(i: &FroxelInputs) -> FroxelUniform {
         cam.projection,
         crate::camera::Projection::Orthographic { .. }
     );
-    u.inv_view_proj = i.view_proj.inverse().to_cols_array_2d();
+    // Without the eye translation (the shaders add the eye back): a full inverse
+    // view-projection loses the far plane's precision with a large near / far ratio, and the
+    // froxel rays would wobble by pixels from one camera orientation to the next.
+    u.inv_view_proj = (i.view_proj * Mat4::from_translation(cam.position))
+        .inverse()
+        .to_cols_array_2d();
     u.eye = v4(cam.position, if ortho { 1.0 } else { 0.0 });
     u.forward = v4(cam.forward(), 0.0);
     let prev = i.prev.unwrap_or(PrevView {

@@ -43,7 +43,12 @@ fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
     var out: GrassOut;
     out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
     // Motion vector: the blade as the wind had it last frame (terrains don't move).
-    out.clip_prev = prev_clip(grass_blade_at(vi, b, grass.origin.w - grass.screen.w).p);
+    // (Only while the wind's vectors are wanted: the clock moved and TAA is on.)
+    var prev = v.p;
+    if (grass.screen.w > 0.0) {
+        prev = grass_blade_at(vi, b, grass.origin.w - grass.screen.w).p;
+    }
+    out.clip_prev = prev_clip(prev);
     out.world = v.p;
     // Rounded across the blade, so a card is not one flat shade.
     out.normal = normalize(face + v.across * v.side * 0.8);

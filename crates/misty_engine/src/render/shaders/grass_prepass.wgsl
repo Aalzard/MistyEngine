@@ -23,7 +23,12 @@ fn vs_grass_prepass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassPrepassO
     let face = normalize(cross(v.across, v.tangent));
     var out: GrassPrepassOut;
     out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
-    out.clip_prev = prev_clip(grass_blade_at(vi, b, grass.origin.w - grass.screen.w).p);
+    // (Only while the wind's vectors are wanted: the clock moved and TAA is on.)
+    var prev = v.p;
+    if (grass.screen.w > 0.0) {
+        prev = grass_blade_at(vi, b, grass.origin.w - grass.screen.w).p;
+    }
+    out.clip_prev = prev_clip(prev);
     out.normal = normalize(face + v.across * v.side * 0.8);
     out.uv = vec3<f32>((f32(v.cell) + v.side + 0.5) / 8.0, 1.0 - v.t, smoothstep(4.0, 35.0, v.dist));
     return out;

@@ -338,6 +338,9 @@ struct ViewUniform {
     prev_view_proj: [[f32; 4]; 4],
     /// xy = this frame's jitter in NDC, zw = target size.
     motion: [f32; 4],
+    /// Camera rotation (quaternion) and the tangents of half the field of view (x, y): view
+    /// rays without inverting the view-projection (see [`view_ray`]).
+    view_ray: [[f32; 4]; 2],
 }
 
 /// One `draws[]` entry (320 bytes). Its layout (and the only WGSL copy of it) is documented
@@ -2387,6 +2390,10 @@ fn grass_screen(frame: &Frame, height: u32, taa: bool, dt: f32) -> [f32; 3] {
         }
         crate::camera::Projection::Orthographic { .. } => 0.0,
     };
+    // The wind's motion vectors only matter to TAA (the other temporal passes reproject the
+    // grass with the camera alone, as they always did): without it the vertex stage skips
+    // the second blade evaluation.
+    let dt = if taa { dt } else { 0.0 };
     [pixel, if taa { 1.0 } else { 0.0 }, dt]
 }
 
@@ -2612,7 +2619,26 @@ fn view_uniform(
             let j = taa::jitter_ndc(jitter, size);
             [j.x, j.y, size.0 as f32, size.1 as f32]
         },
+        view_ray: view_ray(cam, aspect),
     }
+}
+
+/// The camera's rotation and half-angle tangents, so shaders build exact view rays
+/// (`view_ray` in common.wgsl). Unprojecting the far plane through the inverse
+/// view-projection loses most of its precision when the near / far ratio is large (the
+/// Scene view's dynamic clipping reaches 1 : 500 000): the ray then wobbles by up to a pixel
+/// from one camera orientation to the next, and the sky (sun disc, clouds) shakes while
+/// turning.
+fn view_ray(cam: &Camera, aspect: f32) -> [[f32; 4]; 2] {
+    let q = cam.rotation.normalize();
+    let tan = match cam.projection {
+        Projection::Perspective { fov_y } => {
+            let t = (fov_y.to_radians() * 0.5).tan();
+            [t * aspect.max(1e-4), t, 0.0, 0.0]
+        }
+        Projection::Orthographic { .. } => [0.0, 0.0, 1.0, 0.0],
+    };
+    [q.to_array(), tan]
 }
 
 #[cfg(test)]
@@ -2639,10 +2665,10 @@ mod tests {
             16 + 64 + 48 + 112 * MAX_LIGHTS + 64 * shadows::MAX_LOCAL_LAYERS
         );
         // Matrices, camera/grid/background, 8 environment and 6 post vec4s, the previous
-        // view-projection and the motion vec4 (common.wgsl).
+        // view-projection, the motion vec4 and the view-ray pair (common.wgsl).
         assert_eq!(
             std::mem::size_of::<ViewUniform>(),
-            128 + 48 + 16 * 14 + 64 + 16
+            128 + 48 + 16 * 14 + 64 + 16 + 32
         );
         assert!(std::mem::size_of::<ViewUniform>() as u64 <= shadows::VIEW_STRIDE);
     }

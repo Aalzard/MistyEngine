@@ -411,8 +411,11 @@ fn meadow(close: bool) -> crate::render_scene::GameView {
     crate::render_scene::GameView::new(&s, &materials).expect("camera")
 }
 
-/// Grass in the wind with TAA on: the share of pixels jumping by more than 8 levels a frame
-/// stays close to the TAA-off share (the wind moves the blades; nothing smears).
+/// Grass in the wind (MeadowDemo, wind strength 0.12) with TAA on: the share of pixels
+/// jumping by more than 8 levels a frame drops well below the TAA-off share (the shimmer of
+/// thin blades settles), and the moving blades stay about as crisp as the same view with the
+/// wind stopped (the history follows them through the wind's motion vectors instead of
+/// smearing them).
 #[test]
 fn grass_in_the_wind_does_not_smear() {
     let Some((device, queue)) = headless() else {
@@ -421,32 +424,40 @@ fn grass_in_the_wind_does_not_smear() {
     };
     let mut view = meadow(true);
     let (w, h) = (640u32, 360u32);
-    let mut shares = Vec::new();
-    for taa in [false, true] {
+    // (TAA, wind blowing): share of jumping pixels and edge contrast of the last frame.
+    let mut runs = Vec::new();
+    for (taa, blowing) in [(false, true), (true, true), (true, false)] {
         let mut renderer = Renderer::with_queue(&device, &queue);
         renderer.set_quality(&device, &quality(taa));
         let target = renderer.create_target(&device, w, h);
         let mut frames = Vec::new();
         for i in 0..26 {
-            // A fixed clock: 60 frames a second whatever the GPU takes.
-            view.environment.grass_time = Some(2.0 + i as f32 / 60.0);
+            // A fixed clock: 60 frames a second whatever the GPU takes (or stopped).
+            let t = if blowing { i as f32 / 60.0 } else { 0.0 };
+            view.environment.grass_time = Some(2.0 + t);
             renderer.render(&device, &queue, &target, &view.frame());
             if i >= 24 {
                 frames.push(read_back(&device, &queue, &target));
             }
         }
-        save(&format!("wind_taa_{taa}.png"), &frames[1], w, h);
-        shares.push(flicker(&frames[0], &frames[1]));
+        save(&format!("wind_taa_{taa}_{blowing}.png"), &frames[1], w, h);
+        runs.push((
+            flicker(&frames[0], &frames[1]),
+            edge_contrast(&frames[1], w, h),
+        ));
     }
+    let (off, on, still) = (runs[0], runs[1], runs[2]);
     eprintln!(
-        "pixels changing > 8 levels a frame: TAA off {:.2} %, TAA on {:.2} %",
-        shares[0] * 100.0,
-        shares[1] * 100.0
+        "pixels changing > 8 levels a frame: TAA off {:.2} %, TAA on {:.2} %; edge contrast of the blowing grass with TAA {:.1} % of the stopped grass's",
+        off.0 * 100.0,
+        on.0 * 100.0,
+        on.1 / still.1 * 100.0
     );
     assert!(
-        shares[1] < shares[0] * 1.5 + 0.02,
-        "grass smears under TAA: {shares:?}"
+        on.0 < off.0 * 0.5,
+        "TAA does not settle the grass: {runs:?}"
     );
+    assert!(on.1 > still.1 * 0.85, "grass smears under TAA: {runs:?}");
 }
 
 /// Crop `(x, y, w, h)` of an image, scaled up `scale` times (nearest).

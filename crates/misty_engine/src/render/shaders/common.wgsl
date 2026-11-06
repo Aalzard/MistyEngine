@@ -45,6 +45,10 @@ struct View {
     // xy = this frame's TAA jitter in NDC (view_proj = translation(xy) × the unjittered
     // matrix), zw = target size in pixels.
     motion: vec4<f32>,
+    // Camera rotation (quaternion xyzw) and x, y = tangents of half the field of view
+    // (0 when orthographic): exact view rays (`view_ray`).
+    view_rotation: vec4<f32>,
+    view_tan: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> view: View;
@@ -218,6 +222,17 @@ fn fog_distance(world: vec3<f32>) -> f32 {
 }
 
 // World position on the near (z = 0) or far (z = 1) plane under an NDC point.
+// Unit direction the pixel at (jittered) `ndc` looks along, from the camera's rotation and
+// field of view. Unlike unprojecting the far plane through `inv_view_proj` it stays exact
+// with a large near / far ratio, so the sky, the sun disc and the clouds hold still while
+// the view turns.
+fn view_ray(ndc: vec2<f32>) -> vec3<f32> {
+    let q = view.view_rotation;
+    let v = vec3<f32>((ndc - view.motion.xy) * view.view_tan.xy, 1.0);
+    let t = 2.0 * cross(q.xyz, v);
+    return normalize(v + q.w * t + cross(q.xyz, t));
+}
+
 fn unproject(ndc: vec2<f32>, z: f32) -> vec3<f32> {
     let p = view.inv_view_proj * vec4<f32>(ndc, z, 1.0);
     return p.xyz / p.w;

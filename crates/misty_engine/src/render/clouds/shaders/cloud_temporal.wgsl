@@ -38,9 +38,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
         let uv = (vec2<f32>(id.xy) + 0.5) / vec2<f32>(size);
         let ndc = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
-        let far = cl.inv_view_proj * vec4<f32>(ndc, 1.0, 1.0);
-        let near = cl.inv_view_proj * vec4<f32>(ndc, 0.0, 1.0);
-        let dir = normalize(far.xyz / far.w - near.xyz / near.w);
+        let dir = view_dir(ndc);
         let world = cl.eye.xyz + dir * cur_d.r * 1000.0;
         let clip = cl.prev_view_proj * vec4<f32>(world, 1.0);
         if (clip.w > 0.0) {

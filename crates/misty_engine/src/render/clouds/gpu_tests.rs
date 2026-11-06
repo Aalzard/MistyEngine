@@ -189,10 +189,11 @@ fn shifted_difference(a: &[u8], b: &[u8], w: u32, h: u32, dx: i32) -> f32 {
 /// across) between frame `b` seen by `cam_b` and frame `a` seen by `cam_a`, each pixel of
 /// `b` reprojected exactly (its direction through `cam_a`, bilinear in `a`).
 fn sky_difference(a: &[u8], b: &[u8], cam_a: &Camera, cam_b: &Camera, w: u32, h: u32) -> f32 {
-    band_difference(a, b, cam_a, cam_b, w, h, (0.0, 0.45))
+    band_difference(a, b, cam_a, cam_b, w, h, (0.0, 0.45)).0
 }
 
-/// [`sky_difference`] over rows `rows.0`..`rows.1` (fractions of the height).
+/// [`sky_difference`] over rows `rows.0`..`rows.1` (fractions of the height): mean
+/// difference, share of pixels off by more than 8 levels, and the difference image (×8).
 #[allow(clippy::too_many_arguments)]
 fn band_difference(
     a: &[u8],
@@ -202,10 +203,21 @@ fn band_difference(
     w: u32,
     h: u32,
     rows: (f32, f32),
-) -> f32 {
+) -> (f32, f32, Vec<u8>) {
+    window_difference(a, b, cam_a, cam_b, (w, h), rows, (0.25, 0.75))
+}
+
+/// [`band_difference`] over a window: rows and columns as fractions of the image.
+fn window_difference(
+    a: &[u8],
+    b: &[u8],
+    cam_a: &Camera,
+    cam_b: &Camera,
+    (w, h): (u32, u32),
+    rows: (f32, f32),
+    cols: (f32, f32),
+) -> (f32, f32, Vec<u8>) {
     let aspect = w as f32 / h as f32;
-    let inv_b = cam_b.view_projection(aspect).inverse();
-    let vp_a = cam_a.view_projection(aspect);
     let sample = |x: f32, y: f32, c: usize| {
         let (x0, y0) = (x.floor(), y.floor());
         let (fx, fy) = (x - x0, y - y0);
@@ -219,15 +231,21 @@ fn band_difference(
     };
     let mut sum = 0.0f32;
     let mut n = 0.0f32;
+    let mut jumps = 0.0f32;
+    let mut diff = vec![0u8; (w * h * 4) as usize];
     for y in (h as f32 * rows.0) as u32..(h as f32 * rows.1) as u32 {
-        for x in w / 4..w * 3 / 4 {
+        for x in (w as f32 * cols.0) as u32..(w as f32 * cols.1) as u32 {
             let ndc = glam::Vec2::new(
                 (x as f32 + 0.5) / w as f32 * 2.0 - 1.0,
                 1.0 - (y as f32 + 0.5) / h as f32 * 2.0,
             );
-            let far = inv_b.project_point3(ndc.extend(1.0));
-            let dir = (far - cam_b.position).normalize();
-            let p = vp_a.project_point3(cam_a.position + dir * 1000.0);
+            // Exact rays (no inverted matrices, whose far plane is imprecise).
+            let dir = cam_b.rotation * (ndc * half_tan(cam_b, aspect)).extend(1.0);
+            let v = cam_a.rotation.inverse() * dir;
+            if v.z <= 0.0 {
+                continue;
+            }
+            let p = v.truncate() / (v.z * half_tan(cam_a, aspect));
             let (ax, ay) = (
                 (p.x * 0.5 + 0.5) * w as f32 - 0.5,
                 (0.5 - p.y * 0.5) * h as f32 - 0.5,
@@ -236,13 +254,29 @@ fn band_difference(
                 continue;
             }
             let i = ((y * w + x) * 4) as usize;
+            let mut worst = 0.0f32;
             for c in 0..3 {
-                sum += (b[i + c] as f32 - sample(ax, ay, c)).abs();
+                let d = (b[i + c] as f32 - sample(ax, ay, c)).abs();
+                sum += d;
+                worst = worst.max(d);
+                diff[i + c] = (d * 8.0).min(255.0) as u8;
             }
+            diff[i + 3] = 255;
+            jumps += f32::from(u8::from(worst > 8.0));
             n += 3.0;
         }
     }
-    sum / n.max(1.0)
+    (sum / n.max(1.0), jumps / (n / 3.0).max(1.0), diff)
+}
+
+/// Tangents of half the field of view (x, y) of a perspective camera.
+fn half_tan(cam: &Camera, aspect: f32) -> glam::Vec2 {
+    let fov_y = match cam.projection {
+        Projection::Perspective { fov_y } => fov_y,
+        Projection::Orthographic { .. } => 60.0,
+    };
+    let t = (fov_y.to_radians() * 0.5).tan();
+    glam::Vec2::new(t * aspect, t)
 }
 
 /// Turning the camera by one pixel a frame moves the clouds by one pixel: frame N+1 equals
@@ -346,96 +380,6 @@ fn clouds_turning_experiment() {
                     "{tier:?} wind {wind}: {px} px/frame: still {rest:.2}, shifted {moved:.2}, unshifted {unshifted:.2}; sky exact {sky:.2} (still {sky_rest:.2})"
                 );
             }
-        }
-    }
-}
-
-/// The CloudsDemo scene as saved (fog, shafts, wind, terrain), turning at several speeds.
-#[test]
-#[ignore = "experiment: prints only"]
-fn clouds_demo_turning_experiment() {
-    use crate::render_scene::GameView;
-    use crate::scene::Scene;
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
-    crate::assets::set_project_root(&root);
-    let (scene, _) = Scene::load(&root.join("Assets/Scenes/CloudsDemo.scene")).expect("scene");
-    let materials = crate::assets::AssetCache::open(&root);
-    let Some((device, queue)) = headless() else {
-        return;
-    };
-    let (w, h) = (640u32, 360u32);
-    let mut view = GameView::new(&scene, &materials).expect("camera");
-    let fov_y = match view.camera.projection {
-        Projection::Perspective { fov_y } => fov_y,
-        Projection::Orthographic { .. } => 60.0,
-    };
-    let step = (2.0 * (fov_y.to_radians() * 0.5).tan() / h as f32).atan();
-    let base = view.camera.rotation;
-    let post = view.post;
-    // (TAA on/off, an effect switched off) × turning speeds.
-    for (taa, off) in [
-        (false, ""),
-        (false, "fog"),
-        (false, "shafts"),
-        (false, "clouds"),
-        (true, ""),
-    ] {
-        view.post = post;
-        match off {
-            "fog" => view.post.fog.volume.active = false,
-            "shafts" => view.post.sun_shafts.active = false,
-            "clouds" => view.post.clouds.active = false,
-            _ => {}
-        }
-        for px in [0i32, 1, 6, 20] {
-            let mut r = Renderer::with_queue(&device, &queue);
-            r.set_quality(
-                &device,
-                &QualityLevel {
-                    temporal_aa: taa,
-                    ..QualityLevel::high()
-                },
-            );
-            let target = r.create_target(&device, w, h);
-            let mut frames = Vec::new();
-            let mut cams = Vec::new();
-            for i in 0..24usize {
-                let yaw = step * px as f32 * i.saturating_sub(16) as f32;
-                view.camera.rotation = Quat::from_rotation_y(yaw) * base;
-                let frame = view.frame();
-                r.render(&device, &queue, &target, &frame);
-                if i >= 22 {
-                    frames.push(read_back(&device, &queue, &target));
-                    cams.push(view.camera);
-                }
-            }
-            let moved = shifted_difference(&frames[0], &frames[1], w, h, -px);
-            let unshifted = shifted_difference(&frames[0], &frames[1], w, h, 0);
-            let sky = sky_difference(&frames[0], &frames[1], &cams[0], &cams[1], w, h);
-            let horizon = band_difference(
-                &frames[0],
-                &frames[1],
-                &cams[0],
-                &cams[1],
-                w,
-                h,
-                (0.45, 0.6),
-            );
-            eprintln!(
-                "CloudsDemo taa {taa} {off:>6} off: {px:>2} px/frame: shifted {moved:.2}, unshifted {unshifted:.2}, sky exact {sky:.2}, horizon exact {horizon:.2}"
-            );
-            save_sized(
-                &format!("demo_taa{taa}_{off}_{px}px_a.png"),
-                &frames[0],
-                w,
-                h,
-            );
-            save_sized(
-                &format!("demo_taa{taa}_{off}_{px}px_b.png"),
-                &frames[1],
-                w,
-                h,
-            );
         }
     }
 }
@@ -624,4 +568,148 @@ fn clouds_benchmark() {
             eprintln!("1080p GPU {preset:?} clouds {tier:?}: {ms:?} ms");
         }
     }
+}
+
+/// MeadowDemo with TAA off, irregular mouse-look turning: per frame pair the sky and the
+/// horizon band against an exact reprojection of the frame before.
+#[test]
+#[ignore = "experiment: prints only"]
+fn meadow_mouse_look_experiment() {
+    use crate::render_scene::GameView;
+    use crate::scene::Scene;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+    crate::assets::set_project_root(&root);
+    let (scene, _) = Scene::load(&root.join("Assets/Scenes/MeadowDemo.scene")).expect("scene");
+    let materials = crate::assets::AssetCache::open(&root);
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let (w, h) = (960u32, 540u32);
+    let mut view = GameView::new(&scene, &materials).expect("camera");
+    let fov_y = match view.camera.projection {
+        Projection::Perspective { fov_y } => fov_y,
+        Projection::Orthographic { .. } => 60.0,
+    };
+    let step = (2.0 * (fov_y.to_radians() * 0.5).tan() / h as f32).atan();
+    let base = view.camera.rotation;
+    for taa in [false, true] {
+        let mut r = Renderer::with_queue(&device, &queue);
+        r.set_quality(
+            &device,
+            &QualityLevel {
+                temporal_aa: taa,
+                ..QualityLevel::high()
+            },
+        );
+        let target = r.create_target(&device, w, h);
+        let mut frames = Vec::new();
+        let mut cams = Vec::new();
+        let mut yaw = 0.0;
+        for i in 0..30usize {
+            if i >= 16 {
+                yaw += step * MOUSE_STEPS[i % MOUSE_STEPS.len()];
+            }
+            view.camera.rotation = Quat::from_rotation_y(yaw) * base;
+            view.environment.grass_time = Some(2.0 + i as f32 / 60.0);
+            let frame = view.frame();
+            r.render(&device, &queue, &target, &frame);
+            if i >= 20 {
+                frames.push(read_back(&device, &queue, &target));
+                cams.push(view.camera);
+            }
+        }
+        let mut sky = String::new();
+        let mut horizon = String::new();
+        for k in 0..frames.len() - 1 {
+            let (d, j, diff) = band_difference(
+                &frames[k],
+                &frames[k + 1],
+                &cams[k],
+                &cams[k + 1],
+                w,
+                h,
+                (0.0, 0.4),
+            );
+            sky += &format!(" {d:.2}/{:.1}%", j * 100.0);
+            let (d, j, _) = band_difference(
+                &frames[k],
+                &frames[k + 1],
+                &cams[k],
+                &cams[k + 1],
+                w,
+                h,
+                (0.4, 0.6),
+            );
+            horizon += &format!(" {d:.2}/{:.1}%", j * 100.0);
+            save_sized(&format!("meadow_taa{taa}_{k}.png"), &frames[k], w, h);
+            save_sized(&format!("meadow_taa{taa}_{k}_diff.png"), &diff, w, h);
+        }
+        eprintln!("MeadowDemo TAA {taa} sky:{sky}\n  horizon:{horizon}");
+    }
+}
+
+/// Mouse-look steps in pixels a frame (irregular, mostly sub-texel of the cloud image).
+const MOUSE_STEPS: [f32; 12] = [
+    3.3, 7.9, 2.1, 12.6, 5.5, 0.7, 9.2, 4.4, 15.1, 1.6, 6.8, 10.3,
+];
+
+/// Turning with a Scene-view fly camera (dynamic clipping close to the ground: near 1 cm, far
+/// 1 km, ~1 km from the origin) and TAA off: each frame's sky matches the frame before
+/// reprojected exactly, nearly as closely as two frames of a still camera do. With rays
+/// unprojected through the inverted view-projection the far plane was off by several pixels,
+/// differently for every camera orientation, and the clouds shook while looking around.
+#[test]
+fn clouds_hold_still_while_looking_around() {
+    let (w, h) = (480u32, 270u32);
+    let fov_y = 60f32;
+    let step = (2.0 * (fov_y.to_radians() * 0.5).tan() / h as f32).atan();
+    let yaw_at = |i: usize| -> f32 {
+        step * MOUSE_STEPS
+            .iter()
+            .cycle()
+            .take(i.saturating_sub(12))
+            .sum::<f32>()
+    };
+    let cam = |yaw: f32| Camera {
+        position: Vec3::new(500.0, 20.0, -800.0),
+        rotation: Quat::from_rotation_y(yaw) * Quat::from_rotation_x(-20f32.to_radians()),
+        projection: Projection::Perspective { fov_y },
+        near: 0.01,
+        far: 1000.0,
+    };
+    let post = clouds(CloudPreset::Cloudy);
+    let n = 22;
+    let Some(still) = render_sequence(|_| cam(0.0), post, Tier::Medium, (w, h), n, 2) else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let turning = render_sequence(|i| cam(yaw_at(i)), post, Tier::Medium, (w, h), n, 8).unwrap();
+    let window = |a: &[u8], b: &[u8], ca: &Camera, cb: &Camera| {
+        window_difference(a, b, ca, cb, (w, h), (0.0, 0.45), (0.1, 0.9))
+    };
+    let (rest, _, _) = window(&still[0], &still[1], &cam(0.0), &cam(0.0));
+    let mut worst = 0.0f32;
+    let mut jumps = 0.0f32;
+    for k in 0..turning.len() - 1 {
+        let (i0, i1) = (n - turning.len() + k, n - turning.len() + k + 1);
+        let (d, j, diff) = window(
+            &turning[k],
+            &turning[k + 1],
+            &cam(yaw_at(i0)),
+            &cam(yaw_at(i1)),
+        );
+        save_sized(&format!("looking_{k}.png"), &turning[k], w, h);
+        save_sized(&format!("looking_{k}_diff.png"), &diff, w, h);
+        worst = worst.max(d);
+        jumps = jumps.max(j);
+    }
+    eprintln!(
+        "looking around (TAA off): sky off its exact reprojection by {worst:.2} at worst ({:.2} % of pixels > 8 levels); still camera {rest:.2}",
+        jumps * 100.0
+    );
+    assert!(
+        worst < rest + 0.6,
+        "the clouds shake while turning: {worst} vs {rest}"
+    );
+    assert!(jumps < 0.005, "the clouds shake while turning: {jumps}");
 }
