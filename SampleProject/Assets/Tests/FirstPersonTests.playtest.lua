@@ -56,7 +56,8 @@ describe("First Person Player", function()
             local y = head.transform.localPosition.y
             lo, hi = math.min(lo, y), math.max(hi, y)
         end
-        assert.greater(hi - lo, 0.03, "the head moves up and down")
+        -- (The tuned walk amplitude is 1.5 cm: about 3 cm from crest to trough.)
+        assert.greater(hi - lo, 0.02, "the head moves up and down")
         Input.simulateKeyUp("w")
         yield(1)
         assert.near(head.transform.localPosition.y, 1.7, 0.01)
