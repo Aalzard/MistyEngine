@@ -79,7 +79,11 @@
           "list": [
             {
               "enabled": true,
-              "fields": {},
+              "fields": {
+                "breathingRate": 0.2,
+                "runAmplitude": 0.025,
+                "walkAmplitude": 0.015
+              },
               "path": "Assets/Scripts/HeadBobVertical.lua"
             }
           ]
@@ -127,7 +131,11 @@
           "list": [
             {
               "enabled": true,
-              "fields": {},
+              "fields": {
+                "runAmplitude": 0.0175,
+                "strafeLean": 0.025,
+                "walkAmplitude": 0.01
+              },
               "path": "Assets/Scripts/HeadBobHorizontal.lua"
             }
           ]
@@ -202,7 +210,9 @@
           "list": [
             {
               "enabled": true,
-              "fields": {},
+              "fields": {
+                "pitchBob": 3.0
+              },
               "path": "Assets/Scripts/HeadBobRotation.lua"
             }
           ]
@@ -234,5 +244,11 @@
       "parent": 2
     }
   ],
-  "version": 1
+  "version": 1,
+  "asset_guids": {
+    "Assets/Scripts/FirstPersonController.lua": "26f54e32ac4c42eb9b2ce4247b50b0b6",
+    "Assets/Scripts/HeadBobHorizontal.lua": "586d001572ad4a8ca362d8ddb8798665",
+    "Assets/Scripts/HeadBobRotation.lua": "0a7ee307706543f594b6c01818c3cba6",
+    "Assets/Scripts/HeadBobVertical.lua": "c10615a6c6894a5a93bda04dd303b711"
+  }
 }

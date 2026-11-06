@@ -28,7 +28,7 @@
           ]
         },
         "GameObject": {
-          "active": true,
+          "active": false,
           "component_order": [
             "Transform",
             "Camera",
@@ -364,7 +364,261 @@
         }
       },
       "parent": null
+    },
+    {
+      "components": {
+        "Character Controller": {
+          "center": [
+            0.0,
+            0.9,
+            0.0
+          ],
+          "height": 1.8,
+          "min_move_distance": 0.001,
+          "radius": 0.35,
+          "skin_width": 0.08,
+          "slope_limit": 50.0,
+          "step_offset": 0.35
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Character Controller",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 5,
+          "name": "Player",
+          "tag": "Player"
+        },
+        "Prefab": {
+          "path": "Assets/Prefabs/First Person Player.prefab"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/FirstPersonController.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -2.0,
+            22.947496,
+            -506.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "HeadBobVertical",
+          "tag": "Untagged"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "breathingRate": 0.2,
+                "runAmplitude": 0.025,
+                "walkAmplitude": 0.015
+              },
+              "path": "Assets/Scripts/HeadBobVertical.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.7,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 5
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "HeadBobHorizontal",
+          "tag": "Untagged"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "runAmplitude": 0.0175,
+                "strafeLean": 0.025,
+                "walkAmplitude": 0.01
+              },
+              "path": "Assets/Scripts/HeadBobHorizontal.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 6
+    },
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 2000.0,
+          "fov": 60.0,
+          "near": 0.1,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Camera",
+          "tag": "MainCamera"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "pitchBob": 3.0
+              },
+              "path": "Assets/Scripts/HeadBobRotation.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 7
     }
   ],
-  "version": 1
+  "version": 1,
+  "asset_guids": {
+    "Assets/Prefabs/First Person Player.prefab": "0146ed97c94a40aeaf4afe742ab384fb",
+    "Assets/Scripts/FirstPersonController.lua": "26f54e32ac4c42eb9b2ce4247b50b0b6",
+    "Assets/Scripts/HeadBobHorizontal.lua": "586d001572ad4a8ca362d8ddb8798665",
+    "Assets/Scripts/HeadBobRotation.lua": "0a7ee307706543f594b6c01818c3cba6",
+    "Assets/Scripts/HeadBobVertical.lua": "c10615a6c6894a5a93bda04dd303b711",
+    "Assets/Terrains/MeadowDemo.terrain": "4d1b6912f35488fc307dd59b5531357e"
+  }
 }
