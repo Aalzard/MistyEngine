@@ -212,6 +212,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             gpu.renderer
                 .set_cascade_debug(sv.draw_mode == CASCADES_MODE);
             let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
+            // Grass chunks still streaming in: keep drawing so they show up as they land.
+            if gpu.renderer.stats().grass_pending > 0 {
+                ui.ctx().request_repaint();
+            }
             ui.painter().image(
                 texture,
                 rect,

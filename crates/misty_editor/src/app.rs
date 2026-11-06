@@ -30,6 +30,8 @@ pub struct EditorApp {
     errors_seen: usize,
     /// Cursor lock / visibility last sent to the window (`Cursor.lockState` while playing).
     cursor_applied: misty_engine::scripting::CursorState,
+    /// Shader pipelines built so far (a rise shows "Preparing shaders" in the status bar).
+    shaders_seen: u64,
     /// Last window title sent.
     title: String,
     /// Writes the layout to the project's Library folder.
@@ -89,6 +91,7 @@ impl EditorApp {
             saved_dock: None,
             errors_seen: 0,
             cursor_applied: Default::default(),
+            shaders_seen: misty_engine::render::pipelines_built(),
             title: String::new(),
             layout_autosave,
         }
@@ -772,6 +775,16 @@ impl eframe::App for EditorApp {
                     );
             });
 
+        // Shader variants compile the first time a view needs them (a new scene, a material
+        // or effect first seen): say so, since that frame takes longer.
+        let shaders = misty_engine::render::pipelines_built();
+        if shaders > self.shaders_seen {
+            let n = shaders - self.shaders_seen;
+            self.shaders_seen = shaders;
+            self.state
+                .live
+                .toast(format!("Preparing shaders… ({n} compiled)"));
+        }
         // Lightmap bakes run on their own thread: pick up the result when it is done.
         if crate::lightmap_tools::poll(&mut self.state) {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));

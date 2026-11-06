@@ -1,23 +1,30 @@
 //! Grass of one terrain: blades are scattered per 16 m chunk around the camera (only within
-//! the draw distance, a few chunks per frame), kept in small instance buffers and dropped
-//! again when far away or when the terrain under them changes.
+//! the draw distance), kept in small instance buffers and dropped again when far away or when
+//! the terrain under them changes. Scattering runs on worker threads ([`pool`]): the render
+//! thread only hands out jobs (nearest chunk first) and uploads finished chunks within a
+//! small time budget per frame, so moving the camera never stalls a frame. A chunk that
+//! needs more blades keeps drawing its coarser blades until the finer scatter arrives.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
+use std::time::{Duration, Instant};
 
 use glam::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 use super::culling::{Aabb, Frustum};
 use crate::terrain::TerrainData;
-use crate::terrain::details::{self, DetailSettings};
+use crate::terrain::details::{self, Blade, DetailSettings};
 use crate::terrain::store::Region;
 
 /// Chunk side in metres.
 const CHUNK: f32 = 16.0;
-/// Chunks scattered per frame at most (spreads the work while flying around).
-const BUILDS_PER_FRAME: usize = 24;
-/// Blades scattered per frame at most (after the first chunk).
-const BLADES_PER_FRAME: usize = 400_000;
+/// Render-thread time per frame for uploading finished chunks (the first one always goes).
+pub(super) const UPLOAD_BUDGET: Duration = Duration::from_millis(2);
+/// Scatter jobs handed to the workers at once per terrain (more would just queue up and go
+/// stale while the camera moves on).
+const MAX_IN_FLIGHT: usize = 6;
 /// Vertices of one blade (grass.wgsl: six segments and a tip).
 pub(super) const BLADE_VERTICES: u32 = 14;
 /// Vertices of a coarse far blade (three segments), drawn from vertex 100 on.
@@ -28,6 +35,21 @@ const COARSE_FROM: f32 = 1.5;
 const MIN_KEEP: f32 = 0.02;
 /// Far blades grow at most this much wider to cover the ground of the ones left out.
 const MAX_WIDEN: f32 = 4.0;
+
+/// Stream chunks over frames (the default). Off, [`Grass::update`] waits for every chunk the
+/// camera needs before returning, so a render is complete on its first frame (tests,
+/// screenshots).
+static STREAMING: AtomicBool = AtomicBool::new(true);
+
+/// Build grass chunks over several frames on worker threads (true, the default) or wait for
+/// them in the frame that needs them (deterministic renders: tests, screenshots).
+pub fn set_grass_streaming(on: bool) {
+    STREAMING.store(on, Ordering::Relaxed);
+}
+
+pub fn grass_streaming() -> bool {
+    STREAMING.load(Ordering::Relaxed)
+}
 
 /// Share of blades drawn at `dist` metres: all up to the LOD distance, then falling with the
 /// square of the distance (blades grow wider to cover the same ground, see grass.wgsl).
@@ -62,11 +84,119 @@ pub(super) struct Limit {
     pub coarse: bool,
 }
 
-#[derive(Default)]
+/// A chunk to scatter on a worker thread.
+struct Job {
+    data: Arc<TerrainData>,
+    key: (u32, u32),
+    level: u32,
+    /// [`Grass::generation`] when handed out; results of older generations are dropped.
+    generation: u64,
+    reply: mpsc::Sender<Done>,
+}
+
+/// A scattered chunk, waiting to be uploaded.
+struct Done {
+    key: (u32, u32),
+    level: u32,
+    generation: u64,
+    blades: Vec<Blade>,
+    /// Worker time of the scatter.
+    scatter_ms: f32,
+}
+
+/// The scatter workers, shared by every terrain: half the cores (1–4), fed through a channel.
+struct Pool {
+    jobs: Mutex<mpsc::Sender<Job>>,
+}
+
+fn pool() -> &'static Pool {
+    static POOL: OnceLock<Pool> = OnceLock::new();
+    POOL.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Job>();
+        let rx = Arc::new(Mutex::new(rx));
+        let workers = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).clamp(1, 4));
+        for i in 0..workers {
+            let rx = Arc::clone(&rx);
+            let spawned = std::thread::Builder::new()
+                .name(format!("misty grass scatter {i}"))
+                .spawn(move || {
+                    loop {
+                        let job = rx.lock().unwrap_or_else(|e| e.into_inner()).recv();
+                        let Ok(job) = job else {
+                            return;
+                        };
+                        let started = Instant::now();
+                        let lo = Vec2::new(job.key.0 as f32, job.key.1 as f32) * CHUNK;
+                        let blades = details::scatter_level(&job.data, lo, lo + CHUNK, job.level);
+                        let done = Done {
+                            key: job.key,
+                            level: job.level,
+                            generation: job.generation,
+                            blades,
+                            scatter_ms: started.elapsed().as_secs_f32() * 1000.0,
+                        };
+                        // The terrain may be gone by now; nobody is waiting then.
+                        let _ = job.reply.send(done);
+                    }
+                });
+            if let Err(e) = spawned {
+                eprintln!("grass scatter worker: {e}");
+            }
+        }
+        Pool {
+            jobs: Mutex::new(tx),
+        }
+    })
+}
+
+/// What the last [`Grass::update`] did (Stats overlay, tests).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GrassStats {
+    /// Chunks handed to the workers / uploaded this frame.
+    pub scheduled: u32,
+    pub uploaded: u32,
+    /// Chunks still being scattered or waiting for upload.
+    pub pending: u32,
+    /// Render-thread time spent uploading this frame.
+    pub upload_ms: f32,
+    /// Time already spent when the last chunk of the frame started uploading: always under
+    /// the budget (the budget decides whether another chunk starts, not how long it takes).
+    pub upload_last_start_ms: f32,
+    /// Longest worker scatter among the chunks uploaded this frame.
+    pub scatter_ms: f32,
+}
+
 pub(super) struct Grass {
     chunks: HashMap<(u32, u32), Chunk>,
     /// Settings the blades were scattered with (look-only fields cleared).
     key: Option<(DetailSettings, u32)>,
+    /// Bumped whenever the blades must be scattered afresh (older results are dropped).
+    generation: u64,
+    /// Chunks handed to the workers and not uploaded yet: the level asked for.
+    in_flight: HashMap<(u32, u32), u32>,
+    /// The workers' replies (the receiver is locked because the renderer is shared across
+    /// threads while culling).
+    results: (mpsc::Sender<Done>, Mutex<mpsc::Receiver<Done>>),
+    /// Scattered chunks waiting for the upload budget (nearest first).
+    ready: VecDeque<Done>,
+    pub stats: GrassStats,
+}
+
+impl Default for Grass {
+    fn default() -> Self {
+        Self {
+            chunks: HashMap::new(),
+            key: None,
+            generation: 0,
+            in_flight: HashMap::new(),
+            results: {
+                let (tx, rx) = mpsc::channel();
+                (tx, Mutex::new(rx))
+            },
+            ready: VecDeque::new(),
+            stats: GrassStats::default(),
+        }
+    }
 }
 
 /// Settings that change where blades are and how big (colours and wind are uniforms).
@@ -94,9 +224,31 @@ fn scatter_key(d: &TerrainData) -> (DetailSettings, u32) {
     (s, d.rule_seed)
 }
 
+/// Chunk `(x, z)` is within `r` metres of the camera (terrain-local).
+fn near(x: u32, z: u32, camera: Vec3, r: f32) -> bool {
+    let c = (Vec2::new(x as f32, z as f32) + 0.5) * CHUNK;
+    c.distance(Vec2::new(camera.x, camera.z)) < r + CHUNK
+}
+
+/// Level a chunk needs: from its nearest point to the camera.
+fn wanted(x: u32, z: u32, camera: Vec3, lod: f32) -> u32 {
+    let lo = Vec2::new(x as f32, z as f32) * CHUNK;
+    let p = Vec2::new(camera.x, camera.z).clamp(lo, lo + CHUNK);
+    let dist = Vec3::new(p.x - camera.x, 0.0, p.y - camera.z).length();
+    level_for(keep_at(dist, lod))
+}
+
+/// Squared chunk distance from the camera's chunk (ordering key).
+fn chunk_dist(k: &(u32, u32), camera: Vec3) -> i64 {
+    let (cx, cz) = ((camera.x / CHUNK) as i64, (camera.z / CHUNK) as i64);
+    (k.0 as i64 - cx).pow(2) + (k.1 as i64 - cz).pow(2)
+}
+
 impl Grass {
-    /// Forget blades of a changed region (`None` = everything).
+    /// Forget blades of a changed region (`None` = everything). Scatters under way are
+    /// dropped too (their result would show the old terrain).
     pub fn invalidate(&mut self, d: &TerrainData, region: Option<Region>) {
+        self.restart();
         let Some(r) = region else {
             self.chunks.clear();
             return;
@@ -114,32 +266,18 @@ impl Grass {
         });
     }
 
-    /// Scatter missing chunks near the camera (terrain-local) and drop far ones.
-    pub fn update(&mut self, device: &wgpu::Device, d: &TerrainData, camera: Vec3) {
-        let key = scatter_key(d);
-        if self.key.as_ref() != Some(&key) {
-            self.chunks.clear();
-            self.key = Some(key);
-        }
-        if !d.details.enabled || d.detail_map.is_empty() {
-            self.chunks.clear();
-            return;
-        }
+    /// Drop every scatter under way or waiting: the next update asks for them again.
+    fn restart(&mut self) {
+        self.generation += 1;
+        self.in_flight.clear();
+        self.ready.clear();
+    }
+
+    /// Chunks within the draw distance that are missing or coarser than the camera needs
+    /// (and not already asked for), nearest first.
+    fn stale_chunks(&self, d: &TerrainData, camera: Vec3) -> Vec<(u32, u32)> {
         let range = d.details.draw_distance.max(1.0);
         let lod = d.details.lod_distance;
-        let near = |x: u32, z: u32, r: f32| {
-            let c = (Vec2::new(x as f32, z as f32) + 0.5) * CHUNK;
-            c.distance(Vec2::new(camera.x, camera.z)) < r + CHUNK
-        };
-        // Level a chunk needs: from its nearest point to the camera.
-        let wanted = |x: u32, z: u32| {
-            let lo = Vec2::new(x as f32, z as f32) * CHUNK;
-            let p = Vec2::new(camera.x, camera.z).clamp(lo, lo + CHUNK);
-            let dist = Vec3::new(p.x - camera.x, 0.0, p.y - camera.z).length();
-            level_for(keep_at(dist, lod))
-        };
-        self.chunks
-            .retain(|(x, z), c| near(*x, *z, range * 1.5) && c.level <= wanted(*x, *z) + 1);
         let per_x = (d.size.x / CHUNK).ceil() as i64;
         let per_z = (d.size.z / CHUNK).ceil() as i64;
         let (cx, cz) = ((camera.x / CHUNK) as i64, (camera.z / CHUNK) as i64);
@@ -148,28 +286,134 @@ impl Grass {
         for z in (cz - reach).max(0)..(cz + reach + 1).min(per_z) {
             for x in (cx - reach).max(0)..(cx + reach + 1).min(per_x) {
                 let k = (x as u32, z as u32);
-                let stale = self
-                    .chunks
-                    .get(&k)
-                    .is_none_or(|c| c.level > wanted(k.0, k.1));
-                if stale && near(k.0, k.1, range) {
+                let want = wanted(k.0, k.1, camera, lod);
+                let stale = self.chunks.get(&k).is_none_or(|c| c.level > want);
+                let asked = self.in_flight.get(&k).is_some_and(|l| *l <= want)
+                    || self.ready.iter().any(|r| r.key == k && r.level <= want);
+                if stale && !asked && near(k.0, k.1, camera, range) {
                     todo.push(k);
                 }
             }
         }
-        // Nearest first.
-        let dist = |k: &(u32, u32)| (k.0 as i64 - cx).pow(2) + (k.1 as i64 - cz).pow(2);
-        todo.sort_by_key(dist);
-        let mut budget = BLADES_PER_FRAME;
-        for k in todo.into_iter().take(BUILDS_PER_FRAME) {
-            if budget == 0 {
-                break;
+        todo.sort_by_key(|k| chunk_dist(k, camera));
+        todo
+    }
+
+    /// Scatter missing chunks near the camera (terrain-local) and drop far ones.
+    pub fn update(&mut self, device: &wgpu::Device, d: &Arc<TerrainData>, camera: Vec3) {
+        crate::profile_scope!("Terrain.Grass");
+        self.stats = GrassStats::default();
+        let key = scatter_key(d);
+        if self.key.as_ref() != Some(&key) {
+            self.chunks.clear();
+            self.restart();
+            self.key = Some(key);
+        }
+        if !d.details.enabled || d.detail_map.is_empty() {
+            self.chunks.clear();
+            self.restart();
+            return;
+        }
+        let range = d.details.draw_distance.max(1.0);
+        let lod = d.details.lod_distance;
+        // Far chunks go; chunks coarser than wanted stay until their finer scatter lands.
+        self.chunks
+            .retain(|(x, z), _| near(*x, *z, camera, range * 1.5));
+        self.in_flight
+            .retain(|(x, z), _| near(*x, *z, camera, range * 1.5));
+
+        // Finished scatters: keep the ones still worth uploading, nearest first.
+        self.collect(camera, range);
+        self.upload(device, grass_streaming());
+
+        // Hand out the nearest stale chunks, as many as the workers can take.
+        let slots = MAX_IN_FLIGHT.saturating_sub(self.in_flight.len());
+        for k in self.stale_chunks(d, camera).into_iter().take(slots) {
+            let level = wanted(k.0, k.1, camera, lod);
+            let job = Job {
+                data: Arc::clone(d),
+                key: k,
+                level,
+                generation: self.generation,
+                reply: self.results.0.clone(),
+            };
+            let sent = pool()
+                .jobs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .send(job);
+            if sent.is_ok() {
+                self.in_flight.insert(k, level);
+                self.stats.scheduled += 1;
             }
-            crate::profile_scope!("Terrain.GrassScatter");
-            let lo = Vec2::new(k.0 as f32, k.1 as f32) * CHUNK;
-            let level = wanted(k.0, k.1);
-            let blades = details::scatter_level(d, lo, lo + CHUNK, level);
-            budget = budget.saturating_sub(blades.len());
+        }
+        if !grass_streaming() {
+            // Wait for everything asked for and upload it all now; more rounds while chunks
+            // are still missing (one round covers `MAX_IN_FLIGHT` chunks).
+            while !self.in_flight.is_empty() {
+                // (A worker that died would never answer: give up rather than hang.)
+                let reply = self
+                    .results
+                    .1
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .recv_timeout(Duration::from_secs(30));
+                let Ok(done) = reply else {
+                    break;
+                };
+                if done.generation == self.generation {
+                    self.in_flight.remove(&done.key);
+                    self.ready.push_back(done);
+                }
+            }
+            self.upload(device, false);
+            if !self.stale_chunks(d, camera).is_empty() {
+                let stats = self.stats;
+                self.update(device, d, camera);
+                self.stats.scheduled += stats.scheduled;
+                self.stats.uploaded += stats.uploaded;
+                self.stats.upload_ms += stats.upload_ms;
+            }
+        }
+        self.stats.pending = (self.in_flight.len() + self.ready.len()) as u32;
+    }
+
+    /// Take the workers' results: those of the current generation that still improve a chunk
+    /// within reach wait for upload, nearest first.
+    fn collect(&mut self, camera: Vec3, range: f32) {
+        let replies = self.results.1.lock().unwrap_or_else(|e| e.into_inner());
+        while let Ok(done) = replies.try_recv() {
+            if done.generation != self.generation {
+                continue;
+            }
+            // (A finer job for the same chunk may have been handed out since: that one is
+            // still in flight.)
+            if self.in_flight.get(&done.key) == Some(&done.level) {
+                self.in_flight.remove(&done.key);
+            }
+            let finer = self
+                .chunks
+                .get(&done.key)
+                .is_none_or(|c| c.level > done.level);
+            if finer && near(done.key.0, done.key.1, camera, range * 1.5) {
+                self.ready.push_back(done);
+            }
+        }
+        if self.ready.len() > 1 {
+            self.ready
+                .make_contiguous()
+                .sort_by_key(|d| chunk_dist(&d.key, camera));
+        }
+    }
+
+    /// Upload finished chunks: within [`UPLOAD_BUDGET`] (always at least one) when
+    /// `budgeted`, else all of them.
+    fn upload(&mut self, device: &wgpu::Device, budgeted: bool) {
+        let started = Instant::now();
+        while let Some(done) = self.ready.pop_front() {
+            self.stats.scatter_ms = self.stats.scatter_ms.max(done.scatter_ms);
+            let lo = Vec2::new(done.key.0 as f32, done.key.1 as f32) * CHUNK;
+            let blades = &done.blades;
             let top = blades
                 .iter()
                 .map(|b| b.position[1] + b.position[3])
@@ -181,7 +425,7 @@ impl Grass {
             let buffer = (!blades.is_empty()).then(|| {
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("misty grass blades"),
-                    contents: bytemuck::cast_slice(&blades),
+                    contents: bytemuck::cast_slice(blades),
                     usage: wgpu::BufferUsages::VERTEX,
                 })
             });
@@ -189,17 +433,24 @@ impl Grass {
                 Vec3::new(lo.x - 1.0, bottom - 1.0, lo.y - 1.0),
                 Vec3::new(lo.x + CHUNK + 1.0, top + 1.0, lo.y + CHUNK + 1.0),
             );
-            let count = blades.len() as u32;
             self.chunks.insert(
-                k,
+                done.key,
                 Chunk {
                     buffer,
-                    count,
-                    level,
+                    count: blades.len() as u32,
+                    level: done.level,
                     bounds,
                 },
             );
+            self.stats.uploaded += 1;
+            let elapsed = started.elapsed();
+            if budgeted && elapsed >= UPLOAD_BUDGET {
+                break;
+            }
+            // The next chunk, if any, starts now: under the budget by construction.
+            self.stats.upload_last_start_ms = elapsed.as_secs_f32() * 1000.0;
         }
+        self.stats.upload_ms += started.elapsed().as_secs_f32() * 1000.0;
     }
 
     /// Draw visible chunks (pipeline and groups 0–2 already bound), nearest first: far
@@ -493,7 +744,7 @@ impl GrassParams {
 
 #[cfg(test)]
 #[path = "grass_gpu_tests.rs"]
-mod gpu_tests;
+pub(super) mod gpu_tests;
 
 #[cfg(test)]
 #[path = "grass_tests.rs"]

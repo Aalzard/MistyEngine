@@ -59,6 +59,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             misty_engine::screen::take_requests();
             let texture = gpu.render(ViewId::Game, size, &frame, &game.effects);
             let render = gpu.renderer.stats();
+            // Grass chunks still streaming in: keep drawing so they show up as they land.
+            if render.grass_pending > 0 {
+                ui.ctx().request_repaint();
+            }
             // The Profiler's Rendering and Memory modules report the Game view.
             if misty_engine::profiler::enabled() {
                 misty_engine::profiler::set_render_stats(render);
@@ -79,7 +83,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             crate::gizmos::vcam_overlay(ui, state, view);
             if state.game_view.stats {
                 let gpu_ms = gpu.renderer.gpu_ms();
+                let dt = ui.input(|i| i.stable_dt).max(1e-4);
+                state.game_view.frame_history.push(dt * 1000.0);
                 stats_overlay(ui, state, view, size, &render, gpu_ms);
+                // Keep sampling frames while the overlay is up, idle or not.
+                ui.ctx().request_repaint();
+            } else {
+                state.game_view.frame_history.clear();
             }
         }
         _ => {
@@ -156,6 +166,12 @@ pub fn stats_lines(
             render.visible, render.culled
         ),
         format!("  Occlusion culled: {}", render.occlusion_culled),
+        format!(
+            "  Grass chunks pending: {}   upload {:.1}ms   Shaders built: {}",
+            render.grass_pending,
+            render.grass_upload_ms,
+            misty_engine::render::pipelines_built()
+        ),
         match runtime {
             Some(r) => format!(
                 "Physics: {} bodies, {} colliders   Scripts: {}",
@@ -177,9 +193,12 @@ fn stats_overlay(
 ) {
     let dt = ui.input(|i| i.stable_dt).max(1e-4);
     let runtime = state.runtime.as_ref().map(|r| r.stats());
-    let lines = stats_lines(dt, render, gpu_ms, size, runtime);
+    let mut lines = stats_lines(dt, render, gpu_ms, size, runtime);
+    let history = &state.game_view.frame_history;
+    lines.push(hitch_line(history));
     let font = FontId::monospace(11.0);
-    let height = 12.0 + lines.len() as f32 * 14.0;
+    let graph_h = 36.0;
+    let height = 12.0 + lines.len() as f32 * 14.0 + graph_h + 6.0;
     let rect = egui::Rect::from_min_size(
         view.right_top() + egui::vec2(-318.0, 8.0),
         egui::vec2(310.0, height),
@@ -195,6 +214,48 @@ fn stats_overlay(
             Color32::from_gray(if i == 0 { 255 } else { 210 }),
         );
     }
+    // Frame-time graph: one bar per frame, hitches (> 2× the median) in red, the median as
+    // a line. The scale is 3× the median, so a hitch shows as a bar past the line's height.
+    let graph = egui::Rect::from_min_size(
+        rect.left_top() + egui::vec2(8.0, 8.0 + lines.len() as f32 * 14.0),
+        egui::vec2(294.0, graph_h),
+    );
+    painter.rect_filled(graph, 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 120));
+    let median = history.median_ms().max(1e-3);
+    let scale = graph_h / (median * 3.0);
+    let n = history.times().len().max(1) as f32;
+    let bar_w = graph.width() / misty_engine::render::stats::FRAME_HISTORY as f32;
+    let x0 = graph.right() - n * bar_w;
+    for (i, ms) in history.times().enumerate() {
+        let h = (ms * scale).min(graph_h);
+        let x = x0 + i as f32 * bar_w;
+        let bar = egui::Rect::from_min_max(
+            egui::pos2(x, graph.bottom() - h),
+            egui::pos2(x + bar_w.max(1.0), graph.bottom()),
+        );
+        let color = if history.is_hitch(ms) {
+            Color32::from_rgb(230, 70, 60)
+        } else {
+            Color32::from_rgb(90, 170, 110)
+        };
+        painter.rect_filled(bar, 0.0, color);
+    }
+    let y = graph.bottom() - (median * scale).min(graph_h);
+    painter.line_segment(
+        [egui::pos2(graph.left(), y), egui::pos2(graph.right(), y)],
+        egui::Stroke::new(1.0, Color32::from_gray(200)),
+    );
+}
+
+/// "Hitches: 3 (> 2× median 16.7ms)   worst 48.2ms".
+pub fn hitch_line(history: &misty_engine::render::FrameHistory) -> String {
+    format!(
+        "Hitches: {} (> {:.0}x median {:.1}ms)   worst {:.1}ms",
+        history.hitches(),
+        misty_engine::render::FrameHistory::HITCH_FACTOR,
+        history.median_ms(),
+        history.worst_ms()
+    )
 }
 
 fn fmt_k(n: usize) -> String {

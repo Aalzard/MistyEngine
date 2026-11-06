@@ -26,7 +26,7 @@ fn screenshots() -> PathBuf {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) enum Shot {
+pub(in crate::render) enum Shot {
     /// The scene camera: standing in the meadow, low sun ahead (backlit).
     WideGolden,
     /// Crouching, looking down into the grass a few metres ahead, backlit.
@@ -55,7 +55,7 @@ impl Shot {
 }
 
 /// MeadowDemo as saved, re-posed for `shot`.
-pub(super) fn meadow_scene(shot: Shot) -> Scene {
+pub(in crate::render) fn meadow_scene(shot: Shot) -> Scene {
     crate::assets::set_project_root(&root());
     let (mut s, _) = Scene::load(&root().join(SCENE)).expect("MeadowDemo.scene");
     let close = matches!(shot, Shot::CloseGolden | Shot::CloseMidday);
@@ -81,7 +81,7 @@ pub(super) fn meadow_scene(shot: Shot) -> Scene {
     s
 }
 
-pub(super) fn meadow_view(shot: Shot) -> GameView {
+pub(in crate::render) fn meadow_view(shot: Shot) -> GameView {
     let scene = meadow_scene(shot);
     let materials = crate::assets::AssetCache::open(&root());
     GameView::new(&scene, &materials).expect("camera")

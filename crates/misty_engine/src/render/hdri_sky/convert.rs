@@ -81,6 +81,7 @@ impl Converter {
             source: wgpu::ShaderSource::Wgsl(include_str!("convert.wgsl").into()),
         });
         let pipeline = |entry: &str| {
+            crate::render::pipelines::note_pipeline();
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
                 layout: None,

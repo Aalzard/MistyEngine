@@ -763,6 +763,20 @@ impl Pipelines {
     }
 }
 
+/// Pipelines built since the program started (render and compute, every module): the
+/// Stats overlay and the warm-up tests see where a shader compiled in the middle of a run.
+static BUILT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Count a pipeline build (called next to every `create_*_pipeline`).
+pub(crate) fn note_pipeline() {
+    BUILT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// How many pipelines were built so far (see [`note_pipeline`]).
+pub fn pipelines_built() -> u64 {
+    BUILT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(spec.name),
@@ -796,6 +810,7 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
             },
         }));
     }
+    crate::render::pipelines::note_pipeline();
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(spec.name),
         layout: Some(&layout),

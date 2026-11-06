@@ -106,6 +106,7 @@ impl Passes {
                        module: &wgpu::ShaderModule,
                        entry: &str,
                        constants: &[(&str, f64)]| {
+            crate::render::pipelines::note_pipeline();
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
                 layout: Some(layout),

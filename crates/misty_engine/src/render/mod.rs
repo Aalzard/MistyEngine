@@ -63,13 +63,15 @@ pub use frame_debug::{
 };
 pub use glow::GlowSource;
 pub use particles::{ParticleBatch, ParticleInstance};
+pub use pipelines::pipelines_built;
 pub use post::PostSettings;
 pub use screen_trace::{SsgiSettings, SsrSettings};
 pub use soft_shadows::LightShadow;
-pub use stats::{RenderMemory, RenderOptions, RenderStats};
+pub use stats::{FrameHistory, RenderMemory, RenderOptions, RenderStats};
 pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
 use target::TargetLayouts;
+pub use terrain_grass::{GrassStats, grass_streaming, set_grass_streaming};
 pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 
 use bytemuck::{Pod, Zeroable};
@@ -833,6 +835,15 @@ impl Renderer {
                 if self.options.depth_prepass {
                     self.prepass.ensure(device, &self.pipelines, key);
                 }
+                // A LOD Group's levels cross-fade with the cutout variants: build them now
+                // rather than in the frame the first fade starts (a shader compile mid-run).
+                if d.lod.is_some() {
+                    let fading = draw_prep::pipeline_key(d, lod::LodState::Fading(0.5));
+                    self.pipelines.ensure_mesh(device, fading);
+                    if self.options.depth_prepass {
+                        self.prepass.ensure(device, &self.pipelines, fading);
+                    }
+                }
             }
             if let Some(key) = draw_prep::shadow_key(d, *state) {
                 self.pipelines.ensure_shadow(device, key);
@@ -841,6 +852,11 @@ impl Renderer {
                     let layout = &self.pipelines.material_layout;
                     self.textures.prepare_set(device, queue, layout, &set);
                 }
+            }
+            if d.lod.is_some()
+                && let Some(key) = draw_prep::shadow_key(d, lod::LodState::Fading(0.5))
+            {
+                self.pipelines.ensure_shadow(device, key);
             }
         }
         if !frame.terrains.is_empty() {
@@ -1241,6 +1257,10 @@ impl Renderer {
             timer.submitted(slot);
         }
         self.slots_scratch = lists.slots;
+        let grass = self.terrains.grass_stats();
+        stats.grass_pending = grass.pending;
+        stats.grass_upload_ms = grass.upload_ms;
+        stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
         stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
         self.stats = stats;
     }
@@ -2551,6 +2571,8 @@ mod benchmark;
 mod gpu_checks;
 #[cfg(test)]
 pub(crate) mod gpu_tests;
+#[cfg(test)]
+mod hitch_tests;
 #[cfg(test)]
 mod terrain_gpu_tests;
 
