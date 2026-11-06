@@ -161,7 +161,7 @@ fn grass_drawn_height(b: BladeIn) -> f32 {
 // A blade shrunk away by the LOD (`grass_drawn_height` 0) still draws: its card collapses
 // onto its root as a small flat twisted fan (as wide as the widened blade), and in the
 // middle distance these fans are a good part of what keeps the ground covered. Passes that
-// can leave them out (the grass depth pass, shadow casters) skip them as a whole.
+// can leave them out (the grass depth pass, the prepass, shadow casters) skip them whole.
 fn grass_flat(b: BladeIn) -> bool {
     return grass_drawn_height(b) <= 0.0;
 }
@@ -202,7 +202,6 @@ fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
     let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
     let side = select(-0.5, 0.5, (k & 1u) == 1u);
     let seed_head = b.extra.x >= 2.0;
-    let key = b.extra.x - select(0.0, 2.0, seed_head);
     let phase = b.shape.w;
     var cell = u32(phase * 4.0) & 3u;
     if (seed_head) {

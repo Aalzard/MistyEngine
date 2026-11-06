@@ -185,3 +185,12 @@ overlap, the later one now shows instead of the nearer) and TAA noise.
   4× today).
 - The harness's clouds and fog run on the wall clock (renders compared with each other can
   differ by the clouds alone).
+
+## Checks
+
+`cargo fmt --all`, `cargo clippy --workspace --all-targets` (0 warnings), `cargo test --workspace
+--no-fail-fast`: misty_engine 851 passed (TAA GPU tests included), misty_player 9 passed,
+misty_editor 539 passed and 3 failed — `meadow_demo_matches_its_generator` and
+`first_person_demo_matches_its_generator` (the user's committed MeadowDemo / First Person
+Player edits; left for the generator update on the trees branch) and the known
+`foliage_lighting_demo_matches_its_generator`.
