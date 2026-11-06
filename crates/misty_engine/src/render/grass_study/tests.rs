@@ -197,7 +197,13 @@ fn variants() -> Vec<Variant> {
         Variant {
             name: "B4",
             label: "visibility buffer at 4x MSAA (sample-mask coverage), each blade of a pixel shaded once",
-            path: Path::Vis4,
+            path: Path::VisMs { samples: 4 },
+            ..a.clone()
+        },
+        Variant {
+            name: "B2",
+            label: "visibility buffer at 2x MSAA (sample-mask coverage)",
+            path: Path::VisMs { samples: 2 },
             ..a.clone()
         },
         Variant {
@@ -261,7 +267,7 @@ fn variants() -> Vec<Variant> {
         Variant {
             name: "B4H",
             label: "B4 + H (half the blades past 12 m per frame, 1.4x wider)",
-            path: Path::Vis4,
+            path: Path::VisMs { samples: 4 },
             split: Some((12.0, 1.4)),
             ..a.clone()
         },
@@ -808,7 +814,7 @@ fn study_calc() {
         let mut st = Study::new(&device, &queue, Arc::clone(&sc.terrain), sc.origin, sc.lighting, true);
         st.build_ground(&device, view.eye);
         let px = (SIZE.0 * SIZE.1) as f64;
-        for v in picked().into_iter().filter(|v| matches!(v.name, "A" | "A1" | "B" | "B4" | "C" | "D" | "E" | "H")) {
+        for v in picked().into_iter().filter(|v| matches!(v.name, "A" | "A1" | "B" | "B4" | "B2" | "C" | "D" | "E" | "H")) {
             prepare(&device, &queue, &mut st, &sc, &v, &view, LEVELS[0]);
             let gp = grass_params(&sc, &v, &view, 1.0, false);
             // A few frames first (pipelines, TAA), then one counted.
@@ -835,7 +841,7 @@ fn study_calc() {
                     m(c[slot::LIT_KEPT]),
                     m(c[slot::LIT_SAMPLES]),
                 ),
-                Path::Vis { .. } | Path::Vis4 => eprintln!(
+                Path::Vis { .. } | Path::VisMs { .. } => eprintln!(
                     "   {:<3} vis raster: {:.2} M frags in {:.2} M quads ({:.2} M lanes), {:.2} M kept | shaded {:.2} M pixels ({:.1} % of the screen) | swr: {:.2} M blades, {:.2} M pixels",
                     v.name,
                     m(c[slot::VIS_LANES]),

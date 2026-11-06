@@ -121,9 +121,9 @@ pub enum Path {
     /// Visibility buffer: blade id raster, then shading once per pixel (C: thin blades by
     /// the compute rasteriser; F: quarter-rate shading).
     Vis { swr: bool, quarter: bool },
-    /// B4: the visibility buffer at 4× MSAA (coverage as a sample mask), each distinct
-    /// blade of a pixel shaded once.
-    Vis4,
+    /// B4 / B2: the visibility buffer at 4× / 2× MSAA (coverage as a sample mask), each
+    /// distinct blade of a pixel shaded once.
+    VisMs { samples: u32 },
 }
 
 #[derive(Clone, Debug)]
@@ -846,6 +846,11 @@ impl Study {
             let stochastic = matches!(v.path, Path::Forward { samples: 1 } | Path::Vis { .. });
             c.push(("STOCHASTIC", b(stochastic)));
             c.push(("SWR", b(matches!(v.path, Path::Vis { swr: true, .. }))));
+            let ms = match v.path {
+                Path::VisMs { samples } => samples,
+                _ => 4,
+            };
+            c.push(("MS_SAMPLES", ms as f64));
         }
         if kind == "ground" {
             c.push(("FAR_FIELD", b(v.far_field.is_some())));
@@ -1078,12 +1083,12 @@ impl Study {
                     ));
                 }
             }
-            Path::Vis4 => {
+            Path::VisMs { samples } => {
                 made.push((
                     "ground".into(),
                     Pipeline::Render(self.render_pipeline(
                         device, "ground", v, "vs_ground", Some("fs_ground"), &g01,
-                        &[ground_layout.clone()], list, &[target(HDR, all)], depth(true, C::Less), 4, false,
+                        &[ground_layout.clone()], list, &[target(HDR, all)], depth(true, C::Less), samples, false,
                     )),
                 ));
                 made.push((
@@ -1092,7 +1097,7 @@ impl Study {
                         device, "grass", v, "vs_vis", Some("fs_vis4"), &g01,
                         &[blade_layout.clone()], strip,
                         &[target(wgpu::TextureFormat::R32Float, all), target(VELOCITY, all)],
-                        depth(true, C::Less), 4, false,
+                        depth(true, C::Less), samples, false,
                     )),
                 ));
                 made.push((
@@ -1419,7 +1424,7 @@ impl Study {
         let samples = match v.path {
             Path::Forward { samples } => samples,
             Path::Vis { .. } => 1,
-            Path::Vis4 => 4,
+            Path::VisMs { samples } => samples,
         };
         self.ensure_pipelines(device, v);
         self.ensure_targets(device, size, samples);
@@ -1726,7 +1731,7 @@ impl Study {
                 drop(pass);
                 mark(&mut enc, "grass resolve");
             }
-            Path::Vis4 => {
+            Path::VisMs { .. } => {
                 {
                     let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("study ground 4x"),

@@ -100,7 +100,8 @@ fn cs_resolve4(@builtin(global_invocation_id) gid: vec3<u32>) {
     var ids: array<u32, 4>;
     var ts: array<vec2<f32>, 4>;
     var any_grass = false;
-    for (var s = 0; s < 4; s++) {
+    let count = i32(textureNumSamples(vis_ms));
+    for (var s = 0; s < count; s++) {
         let bits = bitcast<u32>(textureLoad(vis_ms, px, s).x);
         ids[s] = select(0u, bits & 0x3fffffffu, bits != 0u);
         ts[s] = textureLoad(uv_ms, px, s).xy;
@@ -110,7 +111,7 @@ fn cs_resolve4(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     var sum = vec3<f32>(0.0);
-    for (var s = 0; s < 4; s++) {
+    for (var s = 0; s < count; s++) {
         if (ids[s] == 0u) {
             sum += textureLoad(color_ms, px, s).rgb;
             continue;
@@ -123,7 +124,7 @@ fn cs_resolve4(@builtin(global_invocation_id) gid: vec3<u32>) {
             continue;
         }
         var n = 0.0;
-        for (var k = s; k < 4; k++) {
+        for (var k = s; k < count; k++) {
             n += select(0.0, 1.0, ids[k] == ids[s]);
         }
         var smp: Sample;
@@ -134,7 +135,7 @@ fn cs_resolve4(@builtin(global_invocation_id) gid: vec3<u32>) {
         smp.soft = false;
         sum += shade_sample(px, smp) * n;
     }
-    textureStore(out_color, px, vec4<f32>(sum * 0.25, 1.0));
+    textureStore(out_color, px, vec4<f32>(sum / f32(count), 1.0));
 }
 
 var<workgroup> anchor_color: array<vec4<f32>, 16>;

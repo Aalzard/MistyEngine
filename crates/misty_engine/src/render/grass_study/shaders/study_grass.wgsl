@@ -20,6 +20,8 @@ override STOCHASTIC: bool = false;
 // The visibility raster leaves blades thinner than `study.params.x` pixels to the software
 // rasteriser (variant C).
 override SWR: bool = false;
+// Samples per pixel of the multisampled visibility raster (B4: 4, B2: 2).
+override MS_SAMPLES: u32 = 4u;
 
 // What a blade's vertex stage hands the lighting (GrassOut without the clip positions).
 struct GrassAttrs {
@@ -328,15 +330,17 @@ fn fs_vis4(in: VisOut, @builtin(sample_mask) mask_in: u32) -> Vis4Out {
     let auv = grass_atlas_uv(in.uv.xy);
     let alpha = textureSampleGrad(grass_atlas, grass_sampler, auv.xy, grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a * auv.z;
     let coverage = grass_coverage(vec4<f32>(in.misc.x, 0.0, 0.0, in.misc.y), alpha, fwidth(alpha), in.clip.xy);
-    let n = u32(clamp(round(coverage * 4.0), 0.0, 4.0));
+    let ms = f32(MS_SAMPLES);
+    let n = u32(clamp(round(coverage * ms), 0.0, ms));
     if (n == 0u) {
         discard;
     }
     count_add(10u, 1u);
-    let start = u32(study_hash(floor(in.clip.xy) * 0.731 + 5.3) * 4.0) & 3u;
+    let start = min(u32(study_hash(floor(in.clip.xy) * 0.731 + 5.3) * ms), MS_SAMPLES - 1u);
     let bits = (1u << n) - 1u;
+    let all = (1u << MS_SAMPLES) - 1u;
     var out: Vis4Out;
-    out.mask = ((bits << start) | (bits >> (4u - start))) & 15u;
+    out.mask = ((bits << start) | (bits >> (MS_SAMPLES - start))) & all;
     out.id = bitcast<f32>(in.id | 0x40000000u);
     out.ts = in.uv.zw;
     return out;

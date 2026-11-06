@@ -26,12 +26,13 @@ fn fs_msaa_resolve(in: FullOut) -> ResolveOut {
     let p = vec2<i32>(in.clip.xy);
     var c = vec4<f32>(0.0);
     var d = 1.0;
-    for (var s = 0; s < 4; s++) {
+    let n = i32(textureNumSamples(ms_color));
+    for (var s = 0; s < n; s++) {
         c += textureLoad(ms_color, p, s);
         d = min(d, textureLoad(ms_depth, p, s));
     }
     var out: ResolveOut;
-    out.color = c * 0.25;
+    out.color = c / f32(n);
     out.depth = d;
     return out;
 }
