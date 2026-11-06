@@ -121,6 +121,9 @@ pub enum Path {
     /// Visibility buffer: blade id raster, then shading once per pixel (C: thin blades by
     /// the compute rasteriser; F: quarter-rate shading).
     Vis { swr: bool, quarter: bool },
+    /// B4: the visibility buffer at 4× MSAA (coverage as a sample mask), each distinct
+    /// blade of a pixel shaded once.
+    Vis4,
 }
 
 #[derive(Clone, Debug)]
@@ -213,6 +216,10 @@ struct Targets {
     color1: wgpu::TextureView,
     depth1: wgpu::TextureView,
     vis: wgpu::TextureView,
+    /// B4's 4× visibility targets: blade id and point on the card (= `vis` when
+    /// single-sample).
+    vis_ms: wgpu::TextureView,
+    vis_uv_ms: wgpu::TextureView,
     swr: wgpu::Buffer,
     history: [wgpu::TextureView; 2],
     ldr: wgpu::Texture,
@@ -263,6 +270,7 @@ struct Layouts {
     grass: wgpu::BindGroupLayout,
     caster: wgpu::BindGroupLayout,
     resolve: wgpu::BindGroupLayout,
+    resolve4: wgpu::BindGroupLayout,
     swr: wgpu::BindGroupLayout,
     msaa: wgpu::BindGroupLayout,
     taa: wgpu::BindGroupLayout,
@@ -357,6 +365,16 @@ impl Layouts {
                     entry(1, S::COMPUTE, tex(T::Depth, D::D2, false)),
                     entry(2, S::COMPUTE, storage_tex(HDR, D::D2)),
                     entry(3, S::COMPUTE, storage(true)),
+                ],
+            ),
+            resolve4: make(
+                "study resolve4",
+                &[
+                    entry(2, S::COMPUTE, storage_tex(HDR, D::D2)),
+                    entry(4, S::COMPUTE, tex(T::Float { filterable: false }, D::D2, true)),
+                    entry(5, S::COMPUTE, tex(T::Depth, D::D2, true)),
+                    entry(6, S::COMPUTE, tex(T::Float { filterable: false }, D::D2, true)),
+                    entry(7, S::COMPUTE, tex(T::Float { filterable: false }, D::D2, true)),
                 ],
             ),
             swr: make(
@@ -825,7 +843,7 @@ impl Study {
             ("CLUMP", v.clump as f64),
         ];
         if matches!(kind, "grass" | "ground" | "resolve" | "swr") {
-            let stochastic = !matches!(v.path, Path::Forward { samples: 4 });
+            let stochastic = matches!(v.path, Path::Forward { samples: 1 } | Path::Vis { .. });
             c.push(("STOCHASTIC", b(stochastic)));
             c.push(("SWR", b(matches!(v.path, Path::Vis { swr: true, .. }))));
         }
@@ -1060,6 +1078,39 @@ impl Study {
                     ));
                 }
             }
+            Path::Vis4 => {
+                made.push((
+                    "ground".into(),
+                    Pipeline::Render(self.render_pipeline(
+                        device, "ground", v, "vs_ground", Some("fs_ground"), &g01,
+                        &[ground_layout.clone()], list, &[target(HDR, all)], depth(true, C::Less), 4, false,
+                    )),
+                ));
+                made.push((
+                    "vis".into(),
+                    Pipeline::Render(self.render_pipeline(
+                        device, "grass", v, "vs_vis", Some("fs_vis4"), &g01,
+                        &[blade_layout.clone()], strip,
+                        &[target(wgpu::TextureFormat::R32Float, all), target(VELOCITY, all)],
+                        depth(true, C::Less), 4, false,
+                    )),
+                ));
+                made.push((
+                    "msaa".into(),
+                    Pipeline::Render(self.render_pipeline(
+                        device, "post", v, "vs_full", Some("fs_msaa_resolve"),
+                        &[Some(&l.study), None, Some(&l.msaa)], &[], list,
+                        &[target(HDR, all)], depth(true, C::Always), 1, false,
+                    )),
+                ));
+                made.push((
+                    "resolve".into(),
+                    Pipeline::Compute(self.compute_pipeline(
+                        device, "resolve", v, "cs_resolve4",
+                        &[Some(&l.study), Some(&l.grass), Some(&l.resolve4)],
+                    )),
+                ));
+            }
         }
         if v.cache {
             made.push((
@@ -1121,6 +1172,14 @@ impl Study {
             (color.clone(), depth.clone())
         };
         let vis = view(texture(device, "study vis", size, 1, wgpu::TextureFormat::Rg32Uint, 1, ra));
+        let (vis_ms, vis_uv_ms) = if samples > 1 {
+            (
+                view(texture(device, "study vis ms", size, 1, wgpu::TextureFormat::R32Float, samples, ra)),
+                view(texture(device, "study vis uv ms", size, 1, VELOCITY, samples, ra)),
+            )
+        } else {
+            (vis.clone(), vis.clone())
+        };
         let swr = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("study swr"),
             size: size.0 as u64 * size.1 as u64 * 8,
@@ -1147,6 +1206,8 @@ impl Study {
             color1,
             depth1,
             vis,
+            vis_ms,
+            vis_uv_ms,
             swr,
             history: [hist(), hist()],
             ldr,
@@ -1358,6 +1419,7 @@ impl Study {
         let samples = match v.path {
             Path::Forward { samples } => samples,
             Path::Vis { .. } => 1,
+            Path::Vis4 => 4,
         };
         self.ensure_pipelines(device, v);
         self.ensure_targets(device, size, samples);
@@ -1652,6 +1714,138 @@ impl Study {
                         wgpu::BindGroupEntry {
                             binding: 3,
                             resource: t.swr.as_entire_binding(),
+                        },
+                    ],
+                });
+                let mut pass = enc.begin_compute_pass(&Default::default());
+                pass.set_pipeline(self.compute_pipe("resolve", v));
+                pass.set_bind_group(0, &self.group0, &[]);
+                pass.set_bind_group(1, grass_group, &[]);
+                pass.set_bind_group(2, &group2, &[]);
+                pass.dispatch_workgroups(groups_xy(size.0), groups_xy(size.1), 1);
+                drop(pass);
+                mark(&mut enc, "grass resolve");
+            }
+            Path::Vis4 => {
+                {
+                    let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("study ground 4x"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &t.color,
+                            depth_slice: None,
+                            resolve_target: None,
+                            ops: clear(wgpu::LoadOp::Clear(sky)),
+                        })],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &t.depth,
+                            depth_ops: Some(clear(wgpu::LoadOp::Clear(1.0))),
+                            stencil_ops: None,
+                        }),
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    pass.set_bind_group(0, &self.group0, &[]);
+                    pass.set_bind_group(1, grass_group, &[]);
+                    pass.set_pipeline(self.render_pipe("ground", v));
+                    draw_ground(&mut pass);
+                }
+                mark(&mut enc, "ground");
+                {
+                    let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("study vis 4x"),
+                        color_attachments: &[
+                            Some(wgpu::RenderPassColorAttachment {
+                                view: &t.vis_ms,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: clear(wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)),
+                            }),
+                            Some(wgpu::RenderPassColorAttachment {
+                                view: &t.vis_uv_ms,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: clear(wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)),
+                            }),
+                        ],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &t.depth,
+                            depth_ops: Some(clear(wgpu::LoadOp::Load)),
+                            stencil_ops: None,
+                        }),
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    pass.set_bind_group(0, &self.group0, &[]);
+                    pass.set_bind_group(1, grass_group, &[]);
+                    pass.set_pipeline(self.render_pipe("vis", v));
+                    draw_blades(&mut pass);
+                }
+                mark(&mut enc, "grass vis raster");
+                // Ground colour and nearest depth to one sample (TAA's inputs), then the
+                // grass samples shaded over it.
+                {
+                    let group2 = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("study msaa"),
+                        layout: &self.layouts.msaa,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&t.color),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&t.depth),
+                            },
+                        ],
+                    });
+                    let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("study msaa resolve"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &t.color1,
+                            depth_slice: None,
+                            resolve_target: None,
+                            ops: clear(wgpu::LoadOp::Clear(wgpu::Color::BLACK)),
+                        })],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &t.depth1,
+                            depth_ops: Some(clear(wgpu::LoadOp::Clear(1.0))),
+                            stencil_ops: None,
+                        }),
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    pass.set_pipeline(self.render_pipe("msaa", v));
+                    pass.set_bind_group(0, &self.group0, &[]);
+                    pass.set_bind_group(2, &group2, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+                mark(&mut enc, "msaa resolve");
+                let group2 = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("study resolve4"),
+                    layout: &self.layouts.resolve4,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(&t.color1),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&t.vis_ms),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 5,
+                            resource: wgpu::BindingResource::TextureView(&t.depth),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 6,
+                            resource: wgpu::BindingResource::TextureView(&t.color),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 7,
+                            resource: wgpu::BindingResource::TextureView(&t.vis_uv_ms),
                         },
                     ],
                 });

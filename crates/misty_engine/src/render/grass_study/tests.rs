@@ -195,6 +195,12 @@ fn variants() -> Vec<Variant> {
             ..a.clone()
         },
         Variant {
+            name: "B4",
+            label: "visibility buffer at 4x MSAA (sample-mask coverage), each blade of a pixel shaded once",
+            path: Path::Vis4,
+            ..a.clone()
+        },
+        Variant {
             name: "C",
             label: "B + compute raster for blades < 1.5 px",
             path: Path::Vis {
@@ -250,6 +256,13 @@ fn variants() -> Vec<Variant> {
                 quarter: false,
             },
             far_field: Some(40.0),
+            ..a.clone()
+        },
+        Variant {
+            name: "B4H",
+            label: "B4 + H (half the blades past 12 m per frame, 1.4x wider)",
+            path: Path::Vis4,
+            split: Some((12.0, 1.4)),
             ..a.clone()
         },
         Variant {
@@ -451,28 +464,43 @@ fn study_times() {
         let base = Variant::forward("A", "");
         prepare(&device, &queue, &mut st, &sc, &base, &view, LEVELS[0]);
         time_variant(&device, &queue, &mut st, &sc, &base, &view, 1.0);
+        let rounds: u32 = std::env::var("MISTY_ROUNDS").ok().and_then(|r| r.parse().ok()).unwrap_or(3);
         for level in LEVELS.iter().filter(|l| levels.contains(l.name)) {
+            // Interleaved rounds; each variant keeps its fastest round (other work on the
+            // GPU only ever adds time).
+            let vs = picked();
+            let mut best: Vec<Option<(f32, Vec<(&'static str, f32)>, usize, u64)>> = vec![None; vs.len()];
+            for _ in 0..rounds {
+                for (k, v) in vs.iter().enumerate() {
+                    let f = prepare(&device, &queue, &mut st, &sc, v, &view, *level);
+                    let parts = time_variant(&device, &queue, &mut st, &sc, v, &view, level.density);
+                    let total: f32 = parts.iter().map(|p| p.1).sum();
+                    if best[k].as_ref().is_none_or(|b| total < b.0) {
+                        best[k] = Some((total, parts, f.drawn.len(), f.triangles()));
+                    }
+                }
+            }
             let mut base_ms = None;
-            for v in picked() {
-                if level.name == "high" && shot == StudyShot::Wide {
+            for (v, b) in vs.iter().zip(best) {
+                let Some((total, parts, blades, tris)) = b else {
+                    continue;
+                };
+                if level.name == "high" {
                     eprintln!("-- {}: {}", v.name, v.label);
                 }
-                let f = prepare(&device, &queue, &mut st, &sc, &v, &view, *level);
-                let parts = time_variant(&device, &queue, &mut st, &sc, &v, &view, level.density);
                 let g = grass_ms(&parts);
                 let ground = parts.iter().find(|p| p.0 == "ground").map_or(0.0, |p| p.1);
-                let total: f32 = parts.iter().map(|p| p.1).sum();
                 let b = *base_ms.get_or_insert(g + ground);
                 let list: Vec<String> = parts.iter().map(|(l, m)| format!("{l} {m:.2}")).collect();
                 eprintln!(
-                    "{} {} {:<4} grass {g:6.2} ms  ground {ground:5.2}  grass+ground {:6.2} ({:+.2} vs A)  frame {total:6.2}  {:.1} M blades {:.1} M tris | {}",
+                    "{} {} {:<4} grass {g:6.2} ms  ground {ground:5.2}  grass+ground {:6.2} ({:+.2} vs A)  frame {total:6.2}  {:.2} M blades {:.1} M tris | {}",
                     shot.name(),
                     level.name,
                     v.name,
                     g + ground,
                     g + ground - b,
-                    f.drawn.len() as f64 / 1e6,
-                    f.triangles() as f64 / 1e6,
+                    blades as f64 / 1e6,
+                    tris as f64 / 1e6,
                     list.join(", ")
                 );
             }
@@ -780,7 +808,7 @@ fn study_calc() {
         let mut st = Study::new(&device, &queue, Arc::clone(&sc.terrain), sc.origin, sc.lighting, true);
         st.build_ground(&device, view.eye);
         let px = (SIZE.0 * SIZE.1) as f64;
-        for v in picked().into_iter().filter(|v| matches!(v.name, "A" | "A1" | "B" | "C" | "D" | "E" | "H")) {
+        for v in picked().into_iter().filter(|v| matches!(v.name, "A" | "A1" | "B" | "B4" | "C" | "D" | "E" | "H")) {
             prepare(&device, &queue, &mut st, &sc, &v, &view, LEVELS[0]);
             let gp = grass_params(&sc, &v, &view, 1.0, false);
             // A few frames first (pipelines, TAA), then one counted.
@@ -807,7 +835,7 @@ fn study_calc() {
                     m(c[slot::LIT_KEPT]),
                     m(c[slot::LIT_SAMPLES]),
                 ),
-                Path::Vis { .. } => eprintln!(
+                Path::Vis { .. } | Path::Vis4 => eprintln!(
                     "   {:<3} vis raster: {:.2} M frags in {:.2} M quads ({:.2} M lanes), {:.2} M kept | shaded {:.2} M pixels ({:.1} % of the screen) | swr: {:.2} M blades, {:.2} M pixels",
                     v.name,
                     m(c[slot::VIS_LANES]),

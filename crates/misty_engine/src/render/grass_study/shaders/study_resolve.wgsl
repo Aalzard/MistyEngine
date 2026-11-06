@@ -82,6 +82,61 @@ fn shade_sample(px: vec2<u32>, s: Sample) -> vec3<f32> {
     return grass_surface(a, front, vec2<f32>(px), tex, next, leaf.xy);
 }
 
+// Variant B4: the 4× visibility buffer, its depth and the ground's 4× colour.
+@group(2) @binding(4) var vis_ms: texture_multisampled_2d<f32>;
+@group(2) @binding(5) var depth_ms: texture_depth_multisampled_2d;
+@group(2) @binding(6) var color_ms: texture_multisampled_2d<f32>;
+@group(2) @binding(7) var uv_ms: texture_multisampled_2d<f32>;
+
+// Each distinct blade of the pixel's four samples is shaded once and weighted by its
+// samples; samples of the ground keep the ground's colour.
+@compute @workgroup_size(8, 8)
+fn cs_resolve4(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let size = vec2<u32>(study.screen.xy);
+    if (gid.x >= size.x || gid.y >= size.y) {
+        return;
+    }
+    let px = gid.xy;
+    var ids: array<u32, 4>;
+    var ts: array<vec2<f32>, 4>;
+    var any_grass = false;
+    for (var s = 0; s < 4; s++) {
+        let bits = bitcast<u32>(textureLoad(vis_ms, px, s).x);
+        ids[s] = select(0u, bits & 0x3fffffffu, bits != 0u);
+        ts[s] = textureLoad(uv_ms, px, s).xy;
+        any_grass = any_grass || ids[s] != 0u;
+    }
+    if (!any_grass) {
+        return;
+    }
+    var sum = vec3<f32>(0.0);
+    for (var s = 0; s < 4; s++) {
+        if (ids[s] == 0u) {
+            sum += textureLoad(color_ms, px, s).rgb;
+            continue;
+        }
+        var seen = false;
+        for (var k = 0; k < s; k++) {
+            seen = seen || ids[k] == ids[s];
+        }
+        if (seen) {
+            continue;
+        }
+        var n = 0.0;
+        for (var k = s; k < 4; k++) {
+            n += select(0.0, 1.0, ids[k] == ids[s]);
+        }
+        var smp: Sample;
+        smp.id = ids[s];
+        smp.t = clamp(ts[s].x, 0.0, 1.0);
+        smp.side = clamp(ts[s].y, 0.0, 1.0) - 0.5;
+        smp.depth = textureLoad(depth_ms, px, s);
+        smp.soft = false;
+        sum += shade_sample(px, smp) * n;
+    }
+    textureStore(out_color, px, vec4<f32>(sum * 0.25, 1.0));
+}
+
 var<workgroup> anchor_color: array<vec4<f32>, 16>;
 var<workgroup> anchor_depth: array<f32, 16>;
 

@@ -309,3 +309,35 @@ fn fs_vis(in: VisOut, @builtin(sample_mask) mask: u32) -> @location(0) vec2<u32>
     let packed = pack2x16unorm(clamp(in.uv.zw, vec2<f32>(0.0), vec2<f32>(1.0)));
     return vec2<u32>(in.id, packed);
 }
+
+// Core WebGPU can't multisample integer targets: the id goes into an R32Float target as
+// raw bits (with an exponent bit set, so it is never a denormal that could be flushed) and
+// the point on the card into an Rg16Float target.
+struct Vis4Out {
+    @location(0) id: f32,
+    @location(1) ts: vec2<f32>,
+    @builtin(sample_mask) mask: u32,
+};
+
+// Variant B4: the visibility raster at 4× MSAA. Integer targets can't use alpha to coverage,
+// so the coverage becomes an output sample mask the same way (n of 4 samples, rotated per
+// pixel), and each sample keeps its own nearest blade.
+@fragment
+fn fs_vis4(in: VisOut, @builtin(sample_mask) mask_in: u32) -> Vis4Out {
+    count_quad(8u, mask_in);
+    let auv = grass_atlas_uv(in.uv.xy);
+    let alpha = textureSampleGrad(grass_atlas, grass_sampler, auv.xy, grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a * auv.z;
+    let coverage = grass_coverage(vec4<f32>(in.misc.x, 0.0, 0.0, in.misc.y), alpha, fwidth(alpha), in.clip.xy);
+    let n = u32(clamp(round(coverage * 4.0), 0.0, 4.0));
+    if (n == 0u) {
+        discard;
+    }
+    count_add(10u, 1u);
+    let start = u32(study_hash(floor(in.clip.xy) * 0.731 + 5.3) * 4.0) & 3u;
+    let bits = (1u << n) - 1u;
+    var out: Vis4Out;
+    out.mask = ((bits << start) | (bits >> (4u - start))) & 15u;
+    out.id = bitcast<f32>(in.id | 0x40000000u);
+    out.ts = in.uv.zw;
+    return out;
+}
