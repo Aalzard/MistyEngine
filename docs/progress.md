@@ -2072,3 +2072,22 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Stronger contact darkening under boxes.
 - Brighter floor reflection.
 - A foliage lighting test patch: waits for the grass branch.
+
+## Grass, live reload, First Person Player and hitches ✅
+
+### Done (decisions 644–647)
+- Grass realism: wind waves, colour and height patches, ground fill, grass shadows with a near-camera map,
+  grass in the screen-space prepass. MeadowDemo shows it.
+- Foliage lighting test patch (gfx-foliage) with its harness.
+- Live reload: scenes and assets reload on change, Ctrl+Shift+R, and the "New build — Restart" pill.
+- First Person Player: GameObject ▸ First Person Player, the three-script head bob, FirstPersonDemo and tests.
+- Frame-time hitches fixed on MeadowDemo; hitch counter and frame graph in Stats.
+
+### In progress
+- Grass look to match the user's reference photo: short uneven turf, colour patches, no visible ground,
+  sharp close shadows and contact shadows.
+- TAA with motion vectors: no blur or smear, zero jitter when TAA is off, and no cloud shaking.
+
+### Not done yet
+- Prefab, tree, rock and grass placement brushes for the World Builder.
+- Linux/macOS builds are paused. Round 15 is on hold.

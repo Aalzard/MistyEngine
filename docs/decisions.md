@@ -3191,3 +3191,36 @@ Record of choices made without asking, and why.
      - **Double light:** "Contribute GI off" now also keeps a surface out of SSGI (`Draw.lightmap.y`, plus a
        negative prepass w). Emissive light panels that double a real light would otherwise be counted twice.
      - The realtime room is now within about 10/255 of the path-traced bake on the main patches.
+644. **Grass realism: grass is a first-class citizen of every pass** (`docs/pending/grass-realism.md`, `gfx-foliage.md`).
+     - **Shading:** `shade_grass` combines hemisphere ambient, SSAO and canopy occlusion with the scene lights,
+       with translucency on the back face.
+     - **Wind:** `grass_gust()` is broad value-noise waves travelling along the wind. It stays a pure function of
+       position, time and parameters so motion vectors can evaluate it at the previous time.
+     - **Variation:** colour patches and height/density patches come from the same noise on the GPU and the CPU.
+     - **Ground fill:** undergrowth, clumpy tufts, a terrain tinted with the grass colours, and a cap raised from
+       600 to 1500 blades/m².
+     - **Shadows:** an alpha-tested grass caster in the cascades, plus a near-camera grass shadow map so blades
+       close to the camera get sharp shadows.
+     - **Screen space:** blades within 12 to 30 m are drawn into the prepass, so SSAO and contact effects see them.
+645. **Live reload like Unity** (`docs/pending/live-reload.md`).
+     - Open scenes reload when their file changes, keeping selection and the Scene view camera.
+     - Textures, models, shaders, effects and scripts hot-reload in place.
+     - File ▸ Reload Scene is Ctrl+Shift+R.
+     - **Dev builds:** when a newer `misty.exe` appears in the target folder, a green "New build — Restart" pill
+       restarts into it with `--restore`. The open scenes, play state and view come back from
+       `Library/RestoreSession.json`.
+646. **First Person Player: one rig, four scripts, one owner of the pose** (`docs/pending/fps-controller.md`).
+     - The hierarchy is Player ▸ HeadBobVertical ▸ HeadBobHorizontal ▸ Camera. Only `FirstPersonController.lua`
+       sets rotations. The bob scripts store a base pose and write base plus offset in LateUpdate.
+     - The controller publishes a locomotion signal table. The bob scripts read it instead of calling each other.
+     - The stride phase advances by distance, so the bob matches the footsteps and stops when the feet stop.
+     - SmoothDamp blends every changing target. Landings use a sub-stepped spring-damper so they read as weight.
+     - Coyote time, a jump buffer, crouch with a headroom check, and `Cursor.lockState` for mouse look.
+647. **Frame-time hitches are CPU work moved off the render thread** (`docs/pending/perf-hitches.md`).
+     - Grass chunks scatter on worker threads. The render thread uploads finished chunks nearest first within a
+       2 ms budget, and a coarse chunk keeps drawing until its finer one arrives, so there are no holes.
+     - The asset watcher walks `Assets/` on its own thread. The terrain picker uses the GUID database.
+     - LOD cross-fade variants are built with the normal pipelines, so a fade never compiles a shader mid-run.
+     - The Stats overlay counts hitches and shows a frame-time graph.
+     - Result on MeadowDemo at High: p99 frame time went from 92 ms to 30 ms, and the worst frame from 349 ms
+       to 31 ms.
