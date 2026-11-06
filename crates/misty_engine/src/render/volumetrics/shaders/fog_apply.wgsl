@@ -99,7 +99,8 @@ fn vfog_fog(world: vec3<f32>) -> vec4<f32> {
     let p = eye + v * inside;
     let depth = inside * cos_v;
     let clip = view.view_proj * vec4<f32>(p, 1.0);
-    let ndc = clip.xy / max(clip.w, 1e-5);
+    // The froxels were lit without the TAA jitter: look them up without it too.
+    let ndc = clip.xy / max(clip.w, 1e-5) - view.motion.xy;
     let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
     // Texel k holds the sum up to the far side of slice k.
     let n = vfog.slices.z;

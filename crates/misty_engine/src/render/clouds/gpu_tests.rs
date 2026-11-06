@@ -189,6 +189,20 @@ fn shifted_difference(a: &[u8], b: &[u8], w: u32, h: u32, dx: i32) -> f32 {
 /// across) between frame `b` seen by `cam_b` and frame `a` seen by `cam_a`, each pixel of
 /// `b` reprojected exactly (its direction through `cam_a`, bilinear in `a`).
 fn sky_difference(a: &[u8], b: &[u8], cam_a: &Camera, cam_b: &Camera, w: u32, h: u32) -> f32 {
+    band_difference(a, b, cam_a, cam_b, w, h, (0.0, 0.45))
+}
+
+/// [`sky_difference`] over rows `rows.0`..`rows.1` (fractions of the height).
+#[allow(clippy::too_many_arguments)]
+fn band_difference(
+    a: &[u8],
+    b: &[u8],
+    cam_a: &Camera,
+    cam_b: &Camera,
+    w: u32,
+    h: u32,
+    rows: (f32, f32),
+) -> f32 {
     let aspect = w as f32 / h as f32;
     let inv_b = cam_b.view_projection(aspect).inverse();
     let vp_a = cam_a.view_projection(aspect);
@@ -205,7 +219,7 @@ fn sky_difference(a: &[u8], b: &[u8], cam_a: &Camera, cam_b: &Camera, w: u32, h:
     };
     let mut sum = 0.0f32;
     let mut n = 0.0f32;
-    for y in 0..h * 45 / 100 {
+    for y in (h as f32 * rows.0) as u32..(h as f32 * rows.1) as u32 {
         for x in w / 4..w * 3 / 4 {
             let ndc = glam::Vec2::new(
                 (x as f32 + 0.5) / w as f32 * 2.0 - 1.0,
@@ -357,7 +371,22 @@ fn clouds_demo_turning_experiment() {
     };
     let step = (2.0 * (fov_y.to_radians() * 0.5).tan() / h as f32).atan();
     let base = view.camera.rotation;
-    for taa in [false, true] {
+    let post = view.post;
+    // (TAA on/off, an effect switched off) × turning speeds.
+    for (taa, off) in [
+        (false, ""),
+        (false, "fog"),
+        (false, "shafts"),
+        (false, "clouds"),
+        (true, ""),
+    ] {
+        view.post = post;
+        match off {
+            "fog" => view.post.fog.volume.active = false,
+            "shafts" => view.post.sun_shafts.active = false,
+            "clouds" => view.post.clouds.active = false,
+            _ => {}
+        }
         for px in [0i32, 1, 6, 20] {
             let mut r = Renderer::with_queue(&device, &queue);
             r.set_quality(
@@ -383,11 +412,30 @@ fn clouds_demo_turning_experiment() {
             let moved = shifted_difference(&frames[0], &frames[1], w, h, -px);
             let unshifted = shifted_difference(&frames[0], &frames[1], w, h, 0);
             let sky = sky_difference(&frames[0], &frames[1], &cams[0], &cams[1], w, h);
-            eprintln!(
-                "CloudsDemo taa {taa}: {px} px/frame: shifted {moved:.2}, unshifted {unshifted:.2}, sky exact {sky:.2}"
+            let horizon = band_difference(
+                &frames[0],
+                &frames[1],
+                &cams[0],
+                &cams[1],
+                w,
+                h,
+                (0.45, 0.6),
             );
-            save_sized(&format!("demo_taa{taa}_{px}px_a.png"), &frames[0], w, h);
-            save_sized(&format!("demo_taa{taa}_{px}px_b.png"), &frames[1], w, h);
+            eprintln!(
+                "CloudsDemo taa {taa} {off:>6} off: {px:>2} px/frame: shifted {moved:.2}, unshifted {unshifted:.2}, sky exact {sky:.2}, horizon exact {horizon:.2}"
+            );
+            save_sized(
+                &format!("demo_taa{taa}_{off}_{px}px_a.png"),
+                &frames[0],
+                w,
+                h,
+            );
+            save_sized(
+                &format!("demo_taa{taa}_{off}_{px}px_b.png"),
+                &frames[1],
+                w,
+                h,
+            );
         }
     }
 }
