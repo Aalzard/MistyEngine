@@ -67,7 +67,10 @@ impl NewProject {
         match self.job.take()?.join() {
             Ok(Ok(folder)) => Some(folder),
             Ok(Err(e)) => {
-                self.error = Some(format!("Could not create the project: {e}"));
+                self.error = Some(format!(
+                    "Could not create the project: {e}{}",
+                    blocked_hint(&e)
+                ));
                 None
             }
             Err(_) => {
@@ -75,6 +78,21 @@ impl NewProject {
                 None
             }
         }
+    }
+}
+
+/// Windows Security's "Controlled folder access" (ransomware protection) blocks unknown apps
+/// from writing into Documents, Desktop and Pictures, and the app sees "file not found" or
+/// "access denied". Say so instead of leaving the user with a bare OS error.
+fn blocked_hint(error: &str) -> &'static str {
+    let blocked = ["(os error 2)", "(os error 3)", "(os error 5)"]
+        .iter()
+        .any(|code| error.contains(code));
+    if cfg!(windows) && blocked {
+        "
+If Windows Security's Controlled folder access is on, allow Misty Engine          (Windows Security ▸ Virus & threat protection ▸ Ransomware protection) or choose a          location outside Documents."
+    } else {
+        ""
     }
 }
 

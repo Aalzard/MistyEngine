@@ -114,7 +114,8 @@ fn create_template(root: &Path, template: Template) -> Result<(), String> {
         "Assets/Scripts",
         "Library",
     ] {
-        std::fs::create_dir_all(root.join(dir)).map_err(|e| e.to_string())?;
+        let path = root.join(dir);
+        std::fs::create_dir_all(&path).map_err(io_error("Could not create the folder", &path))?;
     }
     let name = root
         .file_name()
@@ -127,7 +128,12 @@ fn create_template(root: &Path, template: Template) -> Result<(), String> {
         }),
         ..Default::default()
     };
-    settings.save(root)?;
+    settings.save(root).map_err(|e| {
+        format!(
+            "Could not write the project settings in {}: {e}",
+            root.display()
+        )
+    })?;
     BuildSettings {
         scenes: vec![BuildScene {
             path: SCENE.into(),
@@ -136,17 +142,38 @@ fn create_template(root: &Path, template: Template) -> Result<(), String> {
         product_name: name,
         ..Default::default()
     }
-    .save(root)?;
+    .save(root)
+    .map_err(|e| {
+        format!(
+            "Could not write the build settings in {}: {e}",
+            root.display()
+        )
+    })?;
 
     let scene = template.build(root)?;
-    scene.save(&root.join(SCENE))?;
+    let scene_path = root.join(SCENE);
+    scene
+        .save(&scene_path)
+        .map_err(|e| format!("Could not write {}: {e}", scene_path.display()))?;
     // The editor opens the most recent scene first.
     crate::scene_files::EditorSettings {
         recent_scenes: vec![SCENE.into()],
         ..Default::default()
     }
     .save(root);
-    std::fs::write(root.join(PROJECT_THUMBNAIL), template.thumbnail_png())
-        .map_err(|e| e.to_string())?;
-    std::fs::write(root.join(".gitignore"), "Library/\nBuilds/\n").map_err(|e| e.to_string())
+    let thumbnail = root.join(PROJECT_THUMBNAIL);
+    std::fs::write(&thumbnail, template.thumbnail_png())
+        .map_err(io_error("Could not write", &thumbnail))?;
+    let gitignore = root.join(".gitignore");
+    std::fs::write(&gitignore, "Library/\nBuilds/\n")
+        .map_err(io_error("Could not write", &gitignore))
+}
+
+/// An I/O error that says what was being done and to which file, so a report from a user's
+/// machine points at the cause (a bare "os error 2" doesn't).
+pub(crate) fn io_error<'a>(
+    action: &'a str,
+    path: &'a Path,
+) -> impl FnOnce(std::io::Error) -> String + 'a {
+    move |e| format!("{action} {}: {e}", path.display())
 }

@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use misty_engine::build::{BuildScene, BuildSettings};
 use misty_engine::settings::ProjectSettings;
 
+use super::io_error;
+
 /// Where the samples come from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Source {
@@ -55,7 +57,10 @@ fn copy_folder(from: &Path, root: &Path) -> Result<usize, String> {
     let settings = from.join("ProjectSettings/ProjectSettings.json");
     if settings.is_file() {
         let dest = root.join(SAMPLE_SETTINGS);
-        std::fs::copy(&settings, &dest).map_err(|e| e.to_string())?;
+        if let Some(dir) = dest.parent() {
+            std::fs::create_dir_all(dir).map_err(io_error("Could not create the folder", dir))?;
+        }
+        std::fs::copy(&settings, &dest).map_err(io_error("Could not copy", &settings))?;
         copied += 1;
     }
     Ok(copied)
@@ -64,15 +69,15 @@ fn copy_folder(from: &Path, root: &Path) -> Result<usize, String> {
 /// Recursive copy that never overwrites a file already in `to`.
 fn copy_tree(from: &Path, to: &Path) -> Result<usize, String> {
     let mut copied = 0;
-    std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
-    for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(to).map_err(io_error("Could not create the folder", to))?;
+    for entry in std::fs::read_dir(from).map_err(io_error("Could not read the folder", from))? {
+        let entry = entry.map_err(io_error("Could not read the folder", from))?;
         let path = entry.path();
         let dest = to.join(entry.file_name());
         if path.is_dir() {
             copied += copy_tree(&path, &dest)?;
         } else if !dest.exists() {
-            std::fs::copy(&path, &dest).map_err(|e| e.to_string())?;
+            std::fs::copy(&path, &dest).map_err(io_error("Could not copy", &path))?;
             copied += 1;
         }
     }

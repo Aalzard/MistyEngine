@@ -1,5 +1,10 @@
 //! Misty Engine editor entry point.
 
+// Release builds are GUI apps: no console window behind the Hub and the editor. Started from a
+// terminal (`--build`, `--run-tests`…), the editor attaches to that terminal's console instead
+// (`attach_parent_console`), so its output still shows there.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod actions;
 mod anim_clips;
 mod anim_controllers;
@@ -246,7 +251,26 @@ fn parse_args() -> Result<Start, String> {
     }
 }
 
+/// A GUI-subsystem exe has no console; when a terminal started it, write to that terminal's.
+/// Does nothing when started from Explorer or a shortcut, or in debug builds (console exe).
+#[cfg(all(windows, not(debug_assertions)))]
+fn attach_parent_console() {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn AttachConsole(process_id: u32) -> i32;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+    // SAFETY: a plain Win32 call with a constant argument; failure (no parent console) is fine.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(not(all(windows, not(debug_assertions))))]
+fn attach_parent_console() {}
+
 fn main() -> eframe::Result<()> {
+    attach_parent_console();
     let start = match parse_args() {
         Ok(s) => s,
         Err(e) => {

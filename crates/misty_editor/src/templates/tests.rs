@@ -331,3 +331,60 @@ fn include_samples_copies_the_demo_scenes() {
     assert!(scene.find_by_name("Platform").is_some());
     cleanup(&root);
 }
+
+/// Installed editors copy the samples from `Examples/SampleProject` next to the exe (a plain
+/// folder, not git). The staged settings go into `Library/`, which a fresh project doesn't
+/// have yet (user report: "The system cannot find the file specified. (os error 2)").
+#[test]
+fn include_samples_from_a_shipped_folder() {
+    let base = temp_project("Shipped");
+    let shipped = base.parent().unwrap().join("Examples/SampleProject");
+    std::fs::create_dir_all(shipped.join("Assets/Scenes")).unwrap();
+    std::fs::create_dir_all(shipped.join("Assets/Scripts")).unwrap();
+    std::fs::create_dir_all(shipped.join("ProjectSettings")).unwrap();
+    let (demo, _) = Scene::load(&{
+        let root = temp_project("ShippedTemplate");
+        create(&root, Template::Standard).unwrap();
+        root.join(SCENE)
+    })
+    .unwrap();
+    demo.save(&shipped.join("Assets/Scenes/ShippedDemo.scene"))
+        .unwrap();
+    std::fs::write(shipped.join("Assets/Scripts/Hello.lua"), "-- hello\n").unwrap();
+    misty_engine::settings::ProjectSettings::default()
+        .save(&shipped)
+        .unwrap();
+
+    let root = base;
+    super::create_template(&root, Template::Standard).unwrap();
+    super::samples::add(&root, &super::samples::Source::Folder(shipped.clone())).unwrap();
+    assert!(root.join("Assets/Scenes/ShippedDemo.scene").is_file());
+    assert!(root.join("Assets/Scripts/Hello.lua").is_file());
+    assert!(!root.join("Library/SampleProjectSettings.json").exists());
+    let build = BuildSettings::load(&root).unwrap();
+    assert_eq!(build.scenes[0].path, SCENE);
+    assert!(
+        build
+            .scenes
+            .iter()
+            .any(|s| s.path == "Assets/Scenes/ShippedDemo.scene" && !s.enabled)
+    );
+    let settings = misty_engine::settings::ProjectSettings::load(&root).unwrap();
+    assert_eq!(settings.player.unwrap().product_name, root_name(&root));
+    let _ = std::fs::remove_dir_all(root.parent().unwrap());
+}
+
+/// A failure names the action and the path (a user's bare "os error 2" told us nothing).
+#[test]
+fn create_errors_name_the_path() {
+    let base = temp_project("Blocked");
+    let parent = base.parent().unwrap();
+    std::fs::create_dir_all(parent).unwrap();
+    // A file where the project's parent folder should be: nothing can be created under it.
+    let blocker = parent.join("not a folder");
+    std::fs::write(&blocker, "x").unwrap();
+    let err = create(&blocker.join("My Game"), Template::Standard).unwrap_err();
+    assert!(err.starts_with("Could not create the folder"), "{err}");
+    assert!(err.contains("not a folder"), "{err}");
+    let _ = std::fs::remove_dir_all(parent);
+}
