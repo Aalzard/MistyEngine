@@ -188,6 +188,7 @@ pub(super) fn ground_visibility(
     view: &GameView,
     quality: &QualityLevel,
     (w, h): (u32, u32),
+    shot: &str,
 ) -> (f32, f32) {
     // Grass shadows on the ground would count as blades.
     let quality = QualityLevel {
@@ -238,7 +239,7 @@ pub(super) fn ground_visibility(
         }
     }
     if let Ok(name) = std::env::var("MISTY_GFX_MASK") {
-        let path = screenshots().join(format!("grass_{name}_ground_mask.png"));
+        let path = screenshots().join(format!("grass_{name}_{shot}_ground_mask.png"));
         image::RgbaImage::from_raw(w, h, mask)
             .unwrap()
             .save(path)
@@ -357,14 +358,28 @@ fn grass_cost() {
             eprintln!("variant {label}: {ms:.2} ms GPU");
         }
     }
-    let seen = ground_visibility(&device, &queue, &view, &QualityLevel::high(), (960, 540));
+    let seen = ground_visibility(
+        &device,
+        &queue,
+        &view,
+        &QualityLevel::high(),
+        (960, 540),
+        "wide",
+    );
     eprintln!(
         "ground visible (wide golden, high): {:.1}% (matches bare), {:.1}% (ground colour shows)",
         seen.0 * 100.0,
         seen.1 * 100.0
     );
     let close = meadow_view(Shot::CloseGolden);
-    let seen = ground_visibility(&device, &queue, &close, &QualityLevel::high(), (960, 540));
+    let seen = ground_visibility(
+        &device,
+        &queue,
+        &close,
+        &QualityLevel::high(),
+        (960, 540),
+        "close",
+    );
     eprintln!(
         "ground visible (close golden, high): {:.1}% (matches bare), {:.1}% (ground colour shows)",
         seen.0 * 100.0,

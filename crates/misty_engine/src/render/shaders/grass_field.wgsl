@@ -44,10 +44,11 @@ fn grass_canopy(p: vec2<f32>) -> vec3<f32> {
     let a = grass_noise_grad(p / 4.5 + 7.7);
     let b = grass_noise_grad(p / 1.9 + 3.1);
     let c = grass_noise_grad(p / 0.8 + 11.3);
-    return vec3<f32>(
-        0.55 * a.x + 0.3 * b.x + 0.15 * c.x,
-        (0.55 * a.yz / 4.5 + 0.3 * b.yz / 1.9 + 0.15 * c.yz / 0.8),
-    );
+    let v = 0.55 * a.x + 0.3 * b.x + 0.15 * c.x;
+    let dv = 0.55 * a.yz / 4.5 + 0.3 * b.yz / 1.9 + 0.15 * c.yz / 0.8;
+    // Sharpened (the same smoothstep as `details::canopy`), with its slope.
+    let t = clamp((v - 0.25) / 0.55, 0.0, 1.0);
+    return vec3<f32>(t * t * (3.0 - 2.0 * t), dv * 6.0 * t * (1.0 - t) / 0.55);
 }
 
 // x = lush weight, y = dry weight (0..1) at terrain-local `p` for patches of `scale` metres.

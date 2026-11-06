@@ -238,9 +238,12 @@ pub fn patches(p: Vec2, scale: f32) -> (f32, f32) {
 /// canopy to follow it). Blade heights follow it, so the turf rolls instead of standing at
 /// one height.
 pub fn canopy(p: Vec2) -> f32 {
-    0.55 * field_noise(p / 4.5 + 7.7)
+    let v = 0.55 * field_noise(p / 4.5 + 7.7)
         + 0.3 * field_noise(p / 1.9 + 3.1)
-        + 0.15 * field_noise(p / 0.8 + 11.3)
+        + 0.15 * field_noise(p / 0.8 + 11.3);
+    // Sharpened: distinct crests and hollows rather than a gentle swell.
+    let t = ((v - 0.25) / 0.55).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// One grass blade for the renderer (terrain-local position).

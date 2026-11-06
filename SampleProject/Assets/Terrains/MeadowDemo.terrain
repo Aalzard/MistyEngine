@@ -158,14 +158,14 @@
     ],
     "width": 0.01,
     "healthy_color": [
-      0.55,
-      0.58,
-      0.23
+      0.6,
+      0.63,
+      0.25
     ],
     "dry_color": [
-      0.72,
-      0.64,
-      0.36
+      0.76,
+      0.68,
+      0.4
     ],
     "wind_strength": 0.18,
     "wind_speed": 0.9,
@@ -180,11 +180,11 @@
     "translucency": 0.6,
     "tip_dryness": 0.25,
     "lod_distance": 9.0,
-    "patch_scale": 16.0,
+    "patch_scale": 40.0,
     "lush_color": [
-      0.22,
-      0.36,
-      0.1
+      0.26,
+      0.4,
+      0.12
     ],
     "lush_amount": 0.8,
     "dry_amount": 0.6,

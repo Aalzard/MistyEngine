@@ -85,8 +85,8 @@ fn grass() -> details::DetailSettings {
         height: [0.1, 0.25],
         width: 0.01,
         // Warm yellow-green turf (the reference meadow), paler straw where it dries.
-        healthy_color: [0.55, 0.58, 0.23],
-        dry_color: [0.72, 0.64, 0.36],
+        healthy_color: [0.6, 0.63, 0.25],
+        dry_color: [0.76, 0.68, 0.4],
         wind_strength: 0.18,
         wind_speed: 0.9,
         seed_heads: 0.04,
@@ -96,10 +96,11 @@ fn grass() -> details::DetailSettings {
         translucency: 0.6,
         tip_dryness: 0.25,
         lod_distance: 9.0,
-        // Soft patches ~16 m across: lush dark-green hollows with taller, fuller tufts and
-        // paler, drier, shorter stretches; every tuft a little warmer or cooler.
-        patch_scale: 16.0,
-        lush_color: [0.22, 0.36, 0.1],
+        // Soft patches ~40 m across (sweeps of ~130 m): lush dark-green hollows with
+        // taller, fuller tufts and paler, drier, shorter stretches; every tuft a little
+        // warmer or cooler.
+        patch_scale: 40.0,
+        lush_color: [0.26, 0.4, 0.12],
         lush_amount: 0.8,
         dry_amount: 0.6,
         color_variation: 0.5,

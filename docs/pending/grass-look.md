@@ -91,3 +91,16 @@ shadows low quality and not sharp, no contact shadows on grass.
   spread and saturation match, still 15 % darker and far less large-scale patchiness: the
   16 m patches compress into a few pixel rows past 50 m, where most of the wide shot's
   field is.
+- look06: brighter healthy / dry / lush colours (0.60, 0.63, 0.25 / 0.76, 0.68, 0.40 /
+  0.26, 0.40, 0.12), patch scale 16 → 40 m (sweeps ~130 m, so the patches stay several
+  rows tall deep into the wide shot), canopy relief sharpened with a smoothstep (distinct
+  crests and hollows; CPU `details::canopy` and GPU `grass_canopy` alike, the GPU one with
+  the matching slope). High 29.6 ms, Medium 21.7, Low 12.4 (60.6 / 41.7 / 19.9 M
+  triangles). Ground: wide 3.8–4.2 % (matches bare; varies run to run with chunk arrival),
+  close 1.4 %; tint swap 54 % / 37 % — the honest measure: the gaps between blades are
+  the grass-coloured ground darkened by SSAO, which reads as more turf but is ground.
+  Masks now per shot (`grasslook_06_{wide,close}_ground_mask.png`). Rows of the wide mask:
+  the fade band at the horizon is 20 % red, but most red is spread evenly at ~3 % over the
+  nearest metres (true gaps where SSAO does not reach). Wide midday hue 51.4 ± 2.8, sat
+  0.61 ± 0.04, val 0.42 ± 0.08, patch24 0.042 (reference 49.2 ± 4.3 / 0.59 ± 0.08 /
+  0.46 ± 0.12 / 0.087, with the scratch script of this session).
