@@ -158,9 +158,9 @@
     ],
     "width": 0.04,
     "healthy_color": [
-      0.56,
-      0.65,
-      0.22
+      0.53,
+      0.67,
+      0.21
     ],
     "dry_color": [
       0.76,
@@ -169,7 +169,7 @@
     ],
     "wind_strength": 0.18,
     "wind_speed": 0.9,
-    "seed_heads": 0.05,
+    "seed_heads": 0.03,
     "seed_color": [
       0.8,
       0.72,
@@ -178,7 +178,7 @@
     "clumping": 0.45,
     "bend": 0.8,
     "translucency": 0.6,
-    "tip_dryness": 0.15,
+    "tip_dryness": 0.28,
     "lod_distance": 7.5,
     "patch_scale": 40.0,
     "lush_color": [
@@ -188,7 +188,7 @@
     ],
     "lush_amount": 0.6,
     "dry_amount": 0.6,
-    "color_variation": 0.5,
+    "color_variation": 0.2,
     "height_variation": 0.6,
     "density_variation": 0.2,
     "ground_tint": 1.0,

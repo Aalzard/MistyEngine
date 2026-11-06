@@ -33,7 +33,7 @@ fn fs_grass_prepass(in: GrassPrepassOut, @builtin(front_facing) front: bool) -> 
         n = -n;
     }
     // The lit pass leans blade normals up the same way (grass.wgsl).
-    n = normalize(mix(n, vec3<f32>(0.0, 1.0, 0.0), mix(0.5, 0.6, in.uv.z)));
+    n = normalize(mix(n, vec3<f32>(0.0, 1.0, 0.0), mix(0.7, 0.8, in.uv.z)));
     // w = 1 + smoothness (a matte sheen); grass sends light through SSGI.
     return vec4<f32>(n, 1.1);
 }

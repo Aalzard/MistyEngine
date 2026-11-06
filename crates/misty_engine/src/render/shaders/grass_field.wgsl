@@ -73,7 +73,7 @@ fn grass_swathe(p: vec2<f32>, scale: f32) -> f32 {
 // grass grows thinner (the same noise as `details::worn`, which thins the blades there).
 fn grass_worn(p: vec2<f32>) -> f32 {
     let v = 0.7 * grass_noise(p / 2.6 + 91.7) + 0.3 * grass_noise(p / 0.9 + 17.3);
-    return smoothstep(0.66, 0.8, v);
+    return smoothstep(0.73, 0.85, v);
 }
 
 // A swathe's colour: bright swathes lighter and more golden, dark ones deeper green.
@@ -84,7 +84,7 @@ fn grass_swathe_tint(c: vec3<f32>, s: f32) -> vec3<f32> {
 // The field far away takes the warmer colour of what a grazing view sees there: tips, seed
 // stalks and dry leaves (the blades and the ground standing in for them alike).
 fn grass_far_tint(dist: f32) -> vec3<f32> {
-    return mix(vec3<f32>(1.0), vec3<f32>(1.1, 0.95, 0.75), smoothstep(6.0, 60.0, dist));
+    return mix(vec3<f32>(1.0), vec3<f32>(1.16, 0.95, 0.72), smoothstep(6.0, 50.0, dist));
 }
 
 // Base colour of the grass at a point: healthy, pulled towards the lush and dry colours by the

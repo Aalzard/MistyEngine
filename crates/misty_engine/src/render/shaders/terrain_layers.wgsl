@@ -224,7 +224,7 @@ fn terrain_surface(in: MeshOut) -> Surface {
         // canopy's shade (not pale litter in the sun between the strips of blades), far away
         // the drier, lit colour of the canopy top it stands in for.
         let grass = grass_swathe_tint(
-            grass_base_color(patches, mix(0.15, 0.55, far), terrain.grass_healthy.rgb, terrain.grass_dry.rgb, terrain.grass_lush.rgb, terrain.grass_amounts.xy),
+            grass_base_color(patches, mix(0.15, 0.35, far), terrain.grass_healthy.rgb, terrain.grass_dry.rgb, terrain.grass_lush.rgb, terrain.grass_amounts.xy),
             grass_swathe(local.xz, terrain.grass_dry.w),
         ) * grass_far_tint(dist);
         // Far away the canopy reads darker than lit soil (blades shade each other) and
@@ -239,9 +239,12 @@ fn terrain_surface(in: MeshOut) -> Surface {
         // only nudged towards the turf's colour and darker and damper under it; worn spots
         // are bare dirt. Far away, where single blades are lost, the ground takes the
         // canopy's colour and stands in for it.
-        let worn = grass_worn(local.xz) * (1.0 - far);
-        let take = tint * mix(0.25, 1.0, far) * (1.0 - 0.9 * worn);
-        let under = mix(0.7, 1.0, max(worn, far));
+        // Past a few metres single gaps are too small to read as ground: the canopy colour
+        // takes over quickly, so the pale litter does not mottle the middle distance.
+        let mid = smoothstep(4.0, 25.0, dist);
+        let worn = grass_worn(local.xz) * (1.0 - mid);
+        let take = tint * mix(0.45, 1.0, mid) * (1.0 - 0.9 * worn);
+        let under = mix(0.55, 1.0, max(worn, mid));
         s.albedo = mix(s.albedo * under, grass * shade * litter, take);
         s.smoothness *= 1.0 - take;
         // The soil's relief stays close up; far away it would only shimmer under the turf.

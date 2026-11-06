@@ -22,7 +22,7 @@ ATLAS = pathlib.Path(__file__).resolve().parents[1] / (
 )
 CELL_W, H = 128, 1024
 # Blades per leaf cell.
-BLADES = [10, 12, 9, 14]
+BLADES = [14, 16, 13, 18]
 
 
 def srgb(c):

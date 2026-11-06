@@ -246,7 +246,7 @@ pub fn swathe(p: Vec2, scale: f32) -> f32 {
 /// `grass_worn` in grass_field.wgsl, which shows the soil there).
 pub fn worn(p: Vec2) -> f32 {
     let v = 0.7 * field_noise(p / 2.6 + 91.7) + 0.3 * field_noise(p / 0.9 + 17.3);
-    let t = ((v - 0.66) / 0.14).clamp(0.0, 1.0);
+    let t = ((v - 0.73) / 0.12).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
@@ -375,7 +375,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 // (a root pulled out of the rectangle stays put, so chunks still add up).
                 let (centre, id) = tuft(root, cell, seed ^ 0x7f4a);
                 // Undergrowth stays spread out and fills the ground between the tufts.
-                let under = r(17) < 0.62;
+                let under = r(17) < 0.68;
                 let pull = if under { 0.15 } else { 0.6 };
                 let pulled = centre + (root - centre) * (1.0 - pull * clumping);
                 let inside = pulled.cmpge(lo).all() && pulled.cmplt(hi).all();
@@ -394,8 +394,11 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let relief = canopy(p);
                 let field = noise::fbm(p.x, p.y, 28.0, 2, seed ^ 0x5d) * 0.5 + 0.5;
                 let tuft_scale = 1.0 + (id - 0.5) * 0.5 * clumping;
-                // Every blade its own height too, so the top line breaks up.
-                let mix = (0.4 * r(3) + 0.42 * relief + 0.18 * field).clamp(0.0, 1.0);
+                // Every blade its own height too, so the top line breaks up; the relief
+                // fades out with the height variation (none: one even height).
+                let rv = (hv / 0.6).min(1.0);
+                let mix = (0.4 * r(3) + rv * (0.42 * relief + 0.18 * field) + (1.0 - rv) * 0.3)
+                    .clamp(0.0, 1.0);
                 let outlier = if r(15) < 0.05 { 1.3 + 0.3 * r(16) } else { 1.0 };
                 let mut tall =
                     (s.height[0] + (s.height[1] - s.height[0]) * mix) * tuft_scale * outlier;
@@ -415,7 +418,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let seed_head = r(9) < s.seed_heads.clamp(0.0, 1.0) * (0.4 + 1.2 * relief);
                 // Undergrowth is broader, low and arches over: it carpets the base of the
                 // canopy so no ground shows between the thin stems above it.
-                let mut width = s.width * (0.7 + 0.6 * r(5)) * if under { 1.4 } else { 1.0 };
+                let mut width = s.width * (0.7 + 0.6 * r(5)) * if under { 1.5 } else { 1.0 };
                 if seed_head {
                     tall *= 1.2 + 0.4 * r(10);
                     width = s.width.min(0.02) * 0.3;

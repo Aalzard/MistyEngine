@@ -235,7 +235,7 @@
             "active": true,
             "distance_fade": 16.0,
             "length": 0.12,
-            "opacity": 0.8,
+            "opacity": 0.3,
             "sample_count": 6
           },
           "enabled": true,
@@ -247,7 +247,7 @@
               1.0
             ],
             "ambient_dimmer": 1.0,
-            "anisotropy": 0.5,
+            "anisotropy": 0.3,
             "attenuation_distance": 6000.0,
             "base_height": 0.0,
             "denoising": true,

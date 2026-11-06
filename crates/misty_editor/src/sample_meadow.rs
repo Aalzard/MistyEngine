@@ -82,7 +82,7 @@ fn grass() -> details::DetailSettings {
             ..Default::default()
         },
         on_layer: Some(0),
-        // Cards per m², each a strip of 9–14 thin blades (~8 000 blades per m²).
+        // Cards per m², each a strip of 13–18 thin blades (~11 000 blades per m²).
         density: 700.0,
         draw_distance: 160.0,
         // Short turf (ankle height): tufts rise to ~0.3 m, dips sink to ~0.05 m.
@@ -90,16 +90,16 @@ fn grass() -> details::DetailSettings {
         // Cards ~4 cm across: every blade on them 2–3 mm wide.
         width: 0.04,
         // Warm yellow-green turf (the reference meadow), paler straw where it dries.
-        healthy_color: [0.56, 0.65, 0.22],
+        healthy_color: [0.53, 0.67, 0.21],
         dry_color: [0.76, 0.68, 0.4],
         wind_strength: 0.18,
         wind_speed: 0.9,
-        seed_heads: 0.05,
+        seed_heads: 0.03,
         seed_color: [0.8, 0.72, 0.5],
         clumping: 0.45,
         bend: 0.8,
         translucency: 0.6,
-        tip_dryness: 0.15,
+        tip_dryness: 0.28,
         lod_distance: 7.5,
         // Soft patches ~40 m across (sweeps of ~130 m): lush dark-green hollows with
         // taller, fuller tufts and paler, drier, shorter stretches; every tuft a little
@@ -108,7 +108,8 @@ fn grass() -> details::DetailSettings {
         lush_color: [0.24, 0.34, 0.1],
         lush_amount: 0.6,
         dry_amount: 0.6,
-        color_variation: 0.5,
+        // Variation comes from the broad patches; single blades differ little.
+        color_variation: 0.2,
         height_variation: 0.6,
         density_variation: 0.2,
         ground_tint: 1.0,
@@ -164,7 +165,7 @@ fn thatch() -> [RgbaImage; 3] {
         }
     }
     // Small pebbles (4–12 mm on the 2.2 m tile), domed, partly sunk in the soil.
-    for k in 0..900 {
+    for k in 0..1400 {
         let r = |salt: u32| noise::hash(k, salt as i32, 0x5eb1);
         let (cx, cy) = (r(1) * n as f32, r(2) * n as f32);
         let radius = 2.0 + 4.0 * r(3) * r(3);
@@ -191,7 +192,7 @@ fn thatch() -> [RgbaImage; 3] {
         }
     }
     // Strands, later ones on top: dead straw, olive half-dry blades, a few green ones.
-    let strands = 22000;
+    let strands = 10000;
     for k in 0..strands {
         let r = |salt: u32| noise::hash(k, salt as i32, 0x7a7c);
         let (x0, y0) = (r(1) * n as f32, r(2) * n as f32);
@@ -340,7 +341,7 @@ fn volume() -> PostProcessVolume {
     cs.active = true;
     cs.length = 0.12;
     cs.distance_fade = 16.0;
-    cs.opacity = 0.8;
+    cs.opacity = 0.3;
     cs.sample_count = 6;
     let c = &mut v.clouds;
     c.active = true;
@@ -357,7 +358,8 @@ fn volume() -> PostProcessVolume {
     f.attenuation_distance = 6000.0;
     f.base_height = 0.0;
     f.maximum_height = 150.0;
-    f.anisotropy = 0.5;
+    // Gentle forward haze: the field stays green-gold to the mountains against the sun.
+    f.anisotropy = 0.3;
     f.volumetric_distance = 250.0;
     v.sun_shafts.active = true;
     v.sun_shafts.intensity = 0.5;
