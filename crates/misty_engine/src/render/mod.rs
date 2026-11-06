@@ -16,6 +16,7 @@ mod frame_lists;
 mod glow;
 mod gpu_culling;
 mod gpu_timer;
+mod pass_timer;
 mod grass_near_shadow;
 mod hdri_sky;
 mod light2d;
@@ -96,7 +97,11 @@ const MAX_LIGHTS: usize = 8;
 /// Device features to request when the adapter has them: timestamp queries for GPU timing
 /// (see [`Renderer::with_queue`]) and indirect draws with an instance offset (GPU culling).
 pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
-    adapter.features() & (wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::INDIRECT_FIRST_INSTANCE)
+    adapter.features()
+        & (wgpu::Features::TIMESTAMP_QUERY
+            | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
+            | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
+            | wgpu::Features::INDIRECT_FIRST_INSTANCE)
 }
 
 /// World plane the editor grid lies on.
@@ -460,6 +465,8 @@ pub struct Renderer {
     stats: RenderStats,
     /// GPU time per render (when the device supports timestamp queries).
     gpu_timer: Option<gpu_timer::GpuTimer>,
+    /// GPU time per part of a render (profiling only, see [`Renderer::set_pass_timing`]).
+    pass_timer: Option<pass_timer::PassTimer>,
     /// GPU culling pipelines and buffers (`None` when the device can't draw indirectly with
     /// an instance offset).
     culler: Option<gpu_culling::GpuCuller>,
@@ -606,6 +613,7 @@ impl Renderer {
             motion: Default::default(),
             stats: RenderStats::default(),
             gpu_timer: None,
+            pass_timer: None,
             culler: gpu_culling::supported(device).then(|| gpu_culling::GpuCuller::new(device)),
             last_gpu_batches: 0,
             prepass: Default::default(),
@@ -734,6 +742,41 @@ impl Renderer {
     /// Latest GPU time of a render, when timestamp queries are supported.
     pub fn gpu_ms(&self) -> Option<f32> {
         self.gpu_timer.as_ref().and_then(|t| t.last_ms())
+    }
+
+    /// Measure the GPU time of each part of every render (shadows, AO, main pass, grass, TAA,
+    /// post...), waiting for the GPU at the end of each render: profiling only. Needs a device
+    /// with `TIMESTAMP_QUERY_INSIDE_ENCODERS` (see [`timestamp_features`]); returns whether it
+    /// is on.
+    pub fn set_pass_timing(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, on: bool) -> bool {
+        self.pass_timer = match on {
+            true => self
+                .pass_timer
+                .take()
+                .or_else(|| pass_timer::PassTimer::new(device, queue)),
+            false => None,
+        };
+        self.pass_timer.is_some()
+    }
+
+    /// GPU milliseconds of each part of the last render (with [`Renderer::set_pass_timing`]):
+    /// the time up to the end of the named part from the end of the previous one.
+    pub fn pass_times(&self) -> &[(&'static str, f32)] {
+        self.pass_timer.as_ref().map_or(&[], |t| t.last())
+    }
+
+    /// End of a timed part of the render (between passes).
+    fn mark(&self, encoder: &mut wgpu::CommandEncoder, label: &'static str) {
+        if let Some(t) = &self.pass_timer {
+            t.mark(encoder, label);
+        }
+    }
+
+    /// End of a timed part inside a render pass.
+    fn mark_pass(&self, pass: &mut wgpu::RenderPass, label: &'static str) {
+        if let Some(t) = &self.pass_timer {
+            t.mark_pass(pass, label);
+        }
     }
 
     /// GPU resources held (Profiler Memory module).
@@ -1149,8 +1192,12 @@ impl Renderer {
             label: Some("misty frame"),
         });
         let any_outline = frame.meshes.iter().any(|m| m.outline);
+        if let Some(t) = &self.pass_timer {
+            t.begin(&mut encoder);
+        }
         // First pass: starts the GPU timing.
         self.mask_pass(&mut encoder, target, frame, timing);
+        self.mark(&mut encoder, "Selection mask");
         if frame.shaded
             && !frame.water.is_empty()
             && frame_debug::whole(
@@ -1163,12 +1210,17 @@ impl Renderer {
         {
             self.water.simulate(&mut encoder);
         }
+        self.mark(&mut encoder, "Water simulation");
         self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+        self.mark(&mut encoder, "Shadow maps (cascades, local)");
         if let Some(view_proj) = grass_near {
             self.grass_near_shadow_pass(&mut encoder, frame, &view_proj, &mut stats);
         }
+        self.mark(&mut encoder, "Grass near shadow map");
         self.cloud_passes(device, &mut encoder);
+        self.mark(&mut encoder, "Clouds");
         self.froxel_passes(device, &mut encoder, target);
+        self.mark(&mut encoder, "Froxel fog");
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see
         // `gpu_culling_active`), so it always sees the CPU-culled opaque batches.
@@ -1191,17 +1243,21 @@ impl Renderer {
             )
         {
             self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
+            self.mark(&mut encoder, "AO prepass + GTAO");
             let (depth, normals, velocity) = ss.views();
             self.shadow_mask_passes(device, &mut encoder, depth, normals, velocity);
+            self.mark(&mut encoder, "Shadow mask / denoise");
         }
         let trace = screen.as_ref().and_then(|s| s.trace.as_ref());
         if let Some(t) = trace {
             self.screen_trace_passes(&mut encoder, target, t);
         }
+        self.mark(&mut encoder, "SSGI / SSR");
         let prepass = self.prepass_active(frame);
         if prepass {
             self.depth_prepass(&mut encoder, target.depth_view(), frame, &lists, &mut stats);
         }
+        self.mark(&mut encoder, "Depth prepass");
         let split = MainSplit {
             phase: None,
             culled: None,
@@ -1262,8 +1318,11 @@ impl Renderer {
                 );
             }
         }
+        self.mark(&mut encoder, "Main pass (rest)");
         self.glow_passes(device, &mut encoder, target);
+        self.mark(&mut encoder, "Glows");
         self.sun_shaft_passes(device, &mut encoder, target);
+        self.mark(&mut encoder, "Sun shafts");
         if taa_on
             && frame_debug::record(&self.capture, |_| {
                 frame_debug::events::post_event("Temporal Anti-aliasing".to_owned(), "taa.wgsl")
@@ -1289,7 +1348,12 @@ impl Renderer {
                 },
             );
         }
+        self.mark(&mut encoder, "TAA");
         self.bloom_passes(&mut encoder, target, timing);
+        self.mark(&mut encoder, "Bloom, tonemap, finish");
+        if let Some(t) = &self.pass_timer {
+            t.resolve(&mut encoder);
+        }
         if let Some(display) = frame_debug::stop_display(&self.capture) {
             self.frame_debug_blit(device, &mut encoder, target, display);
         }
@@ -1299,6 +1363,9 @@ impl Renderer {
         queue.submit([encoder.finish()]);
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.submitted(slot);
+        }
+        if let Some(t) = self.pass_timer.as_mut() {
+            t.read(device);
         }
         self.slots_scratch = lists.slots;
         let grass = self.terrains.grass_stats();
@@ -2011,6 +2078,7 @@ impl Renderer {
                 }
             }
 
+            self.mark_pass(&mut pass, "Main: sky");
             // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches).
             if let (Some(culled), Some(phase)) = (split.culled, split.phase) {
                 pass.set_bind_group(1, self.lit_group(), &[]);
@@ -2027,6 +2095,7 @@ impl Renderer {
                 self.draw_batches(&mut pass, frame, lists, opaque, split.prepass, None, stats);
             }
 
+            self.mark_pass(&mut pass, "Main: opaque meshes");
             if frame.shaded && !frame.terrains.is_empty() {
                 pass.set_pipeline(&self.pipelines.terrain);
                 pass.set_bind_group(1, self.lit_group(), &[]);
@@ -2050,10 +2119,13 @@ impl Renderer {
                 {
                     // Depth first (alpha tested), then the shading once per covered sample:
                     // dense turf overlaps each pixel many times.
+                    self.mark_pass(&mut pass, "Main: terrain");
                     pass.set_pipeline(&self.pipelines.grass_depth);
                     self.terrains.draw_grass(&mut pass, frame.terrains, stats);
+                    self.mark_pass(&mut pass, "Main: grass depth");
                     pass.set_pipeline(&self.pipelines.grass);
                     self.terrains.draw_grass(&mut pass, frame.terrains, stats);
+                    self.mark_pass(&mut pass, "Main: grass lit");
                 }
             }
 
