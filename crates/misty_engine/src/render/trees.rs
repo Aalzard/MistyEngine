@@ -158,7 +158,15 @@ fn part_index(p: Part) -> usize {
 type Layouts<'a> = [&'a wgpu::BindGroupLayout; 3];
 
 /// A main-pass tree pipeline (lit, depth written, motion vectors).
-fn main_spec<'a>(name: &'a str, layouts: &'a Layouts<'a>, vs: &'a str, fs: &'a str, buffers: &'a [wgpu::VertexBufferLayout<'a>], cull: Option<wgpu::Face>, a2c: bool) -> Spec<'a> {
+fn main_spec<'a>(
+    name: &'a str,
+    layouts: &'a Layouts<'a>,
+    vs: &'a str,
+    fs: &'a str,
+    buffers: &'a [wgpu::VertexBufferLayout<'a>],
+    cull: Option<wgpu::Face>,
+    a2c: bool,
+) -> Spec<'a> {
     Spec {
         vs,
         fs: Some(fs),
@@ -173,7 +181,13 @@ fn main_spec<'a>(name: &'a str, layouts: &'a Layouts<'a>, vs: &'a str, fs: &'a s
 }
 
 /// A shadow-caster pipeline (depth only, biased like the grass: clusters shade themselves).
-fn shadow_spec<'a>(name: &'a str, layouts: &'a Layouts<'a>, vs: &'a str, fs: Option<&'a str>, buffers: &'a [wgpu::VertexBufferLayout<'a>]) -> Spec<'a> {
+fn shadow_spec<'a>(
+    name: &'a str,
+    layouts: &'a Layouts<'a>,
+    vs: &'a str,
+    fs: Option<&'a str>,
+    buffers: &'a [wgpu::VertexBufferLayout<'a>],
+) -> Spec<'a> {
     Spec {
         vs,
         fs,
@@ -197,7 +211,14 @@ fn shadow_spec<'a>(name: &'a str, layouts: &'a Layouts<'a>, vs: &'a str, fs: Opt
 }
 
 /// A screen-space prepass pipeline (normals + motion vectors, single sample).
-fn prepass_spec<'a>(name: &'a str, layouts: &'a Layouts<'a>, vs: &'a str, fs: &'a str, buffers: &'a [wgpu::VertexBufferLayout<'a>], cull: Option<wgpu::Face>) -> Spec<'a> {
+fn prepass_spec<'a>(
+    name: &'a str,
+    layouts: &'a Layouts<'a>,
+    vs: &'a str,
+    fs: &'a str,
+    buffers: &'a [wgpu::VertexBufferLayout<'a>],
+    cull: Option<wgpu::Face>,
+) -> Spec<'a> {
     Spec {
         vs,
         fs: Some(fs),
@@ -213,29 +234,121 @@ fn prepass_spec<'a>(name: &'a str, layouts: &'a Layouts<'a>, vs: &'a str, fs: &'
 }
 
 impl Pipelines {
-    fn new(device: &wgpu::Device, p: &super::pipelines::Pipelines, layout: &wgpu::BindGroupLayout) -> Self {
+    fn new(
+        device: &wgpu::Device,
+        p: &super::pipelines::Pipelines,
+        layout: &wgpu::BindGroupLayout,
+    ) -> Self {
         let mesh = vertex_layouts();
         let imp = [instance_layout()];
         let back = Some(wgpu::Face::Back);
         let lit = [&p.view_layout, &p.mesh_layout, layout];
         let main = [
-            build(device, main_spec("tree bark", &lit, "vs_tree", "fs_tree_bark", &mesh, back, false)),
-            build(device, main_spec("tree leaves", &lit, "vs_tree", "fs_tree_leaves", &mesh, None, true)),
-            build(device, main_spec("tree impostor", &lit, "vs_tree_impostor", "fs_tree_impostor", &imp, None, true)),
+            build(
+                device,
+                main_spec(
+                    "tree bark",
+                    &lit,
+                    "vs_tree",
+                    "fs_tree_bark",
+                    &mesh,
+                    back,
+                    false,
+                ),
+            ),
+            build(
+                device,
+                main_spec(
+                    "tree leaves",
+                    &lit,
+                    "vs_tree",
+                    "fs_tree_leaves",
+                    &mesh,
+                    None,
+                    true,
+                ),
+            ),
+            build(
+                device,
+                main_spec(
+                    "tree impostor",
+                    &lit,
+                    "vs_tree_impostor",
+                    "fs_tree_impostor",
+                    &imp,
+                    None,
+                    true,
+                ),
+            ),
         ];
         let casters = [&p.shadow_view_layout, &p.draws_layout, layout];
         let shadow = [
-            build(device, shadow_spec("tree bark shadow", &casters, "vs_tree_shadow", None, &mesh)),
-            build(device, shadow_spec("tree leaves shadow", &casters, "vs_tree_shadow", Some("fs_tree_shadow_leaves"), &mesh)),
-            build(device, shadow_spec("tree impostor shadow", &casters, "vs_tree_shadow_impostor", Some("fs_tree_shadow_impostor"), &imp)),
+            build(
+                device,
+                shadow_spec("tree bark shadow", &casters, "vs_tree_shadow", None, &mesh),
+            ),
+            build(
+                device,
+                shadow_spec(
+                    "tree leaves shadow",
+                    &casters,
+                    "vs_tree_shadow",
+                    Some("fs_tree_shadow_leaves"),
+                    &mesh,
+                ),
+            ),
+            build(
+                device,
+                shadow_spec(
+                    "tree impostor shadow",
+                    &casters,
+                    "vs_tree_shadow_impostor",
+                    Some("fs_tree_shadow_impostor"),
+                    &imp,
+                ),
+            ),
         ];
         let pre = [&p.view_layout, &p.draws_layout, layout];
         let prepass = [
-            build(device, prepass_spec("tree bark prepass", &pre, "vs_tree_prepass", "fs_tree_prepass_bark", &mesh, back)),
-            build(device, prepass_spec("tree leaves prepass", &pre, "vs_tree_prepass", "fs_tree_prepass_leaves", &mesh, None)),
-            build(device, prepass_spec("tree impostor prepass", &pre, "vs_tree_prepass_impostor", "fs_tree_prepass_impostor", &imp, None)),
+            build(
+                device,
+                prepass_spec(
+                    "tree bark prepass",
+                    &pre,
+                    "vs_tree_prepass",
+                    "fs_tree_prepass_bark",
+                    &mesh,
+                    back,
+                ),
+            ),
+            build(
+                device,
+                prepass_spec(
+                    "tree leaves prepass",
+                    &pre,
+                    "vs_tree_prepass",
+                    "fs_tree_prepass_leaves",
+                    &mesh,
+                    None,
+                ),
+            ),
+            build(
+                device,
+                prepass_spec(
+                    "tree impostor prepass",
+                    &pre,
+                    "vs_tree_prepass_impostor",
+                    "fs_tree_prepass_impostor",
+                    &imp,
+                    None,
+                ),
+            ),
         ];
-        Self { main, shadow, prepass }
+        Self {
+            main,
+            shadow,
+            prepass,
+        }
     }
 }
 
@@ -301,7 +414,10 @@ fn coverage_mips(image: image::RgbaImage, cols: u32, rows: u32) -> Vec<image::Rg
         }
         n as f32 / (cw * ch) as f32
     };
-    let want: Vec<f32> = cells(&chain[0]).into_iter().map(|c| share(&chain[0], c, 1.0)).collect();
+    let want: Vec<f32> = cells(&chain[0])
+        .into_iter()
+        .map(|c| share(&chain[0], c, 1.0))
+        .collect();
     for mip in chain.iter_mut().skip(1) {
         if mip.width() < cols * 4 || mip.height() < rows * 4 {
             break;
@@ -329,9 +445,18 @@ fn coverage_mips(image: image::RgbaImage, cols: u32, rows: u32) -> Vec<image::Rg
     chain
 }
 
-fn upload(device: &wgpu::Device, queue: &wgpu::Queue, label: &str, chain: &[image::RgbaImage], srgb: bool) -> (wgpu::TextureView, u64) {
+fn upload(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    chain: &[image::RgbaImage],
+    srgb: bool,
+) -> (wgpu::TextureView, u64) {
     let (w, h) = chain[0].dimensions();
-    let data: Vec<u8> = chain.iter().flat_map(|m| m.as_raw().iter().copied()).collect();
+    let data: Vec<u8> = chain
+        .iter()
+        .flat_map(|m| m.as_raw().iter().copied())
+        .collect();
     let bytes = data.len() as u64;
     let texture = device.create_texture_with_data(
         queue,
@@ -366,7 +491,11 @@ fn texture_or(rel: &str, normal: bool) -> image::RgbaImage {
     {
         return img;
     }
-    let p = if normal { [128, 128, 255, 255] } else { [255; 4] };
+    let p = if normal {
+        [128, 128, 255, 255]
+    } else {
+        [255; 4]
+    };
     image::RgbaImage::from_pixel(1, 1, image::Rgba(p))
 }
 
@@ -374,10 +503,18 @@ impl GpuTree {
     fn new(device: &wgpu::Device, queue: &wgpu::Queue, built: Arc<Built>) -> Self {
         let a = &built.asset;
         let m = &built.model;
-        let lods = [GpuMesh::new(device, &m.lods[0]), GpuMesh::new(device, &m.lods[1])];
-        let plain = |rel: &str, normal: bool| super::texture::mip_chain(texture_or(rel, normal), !normal);
+        let lods = [
+            GpuMesh::new(device, &m.lods[0]),
+            GpuMesh::new(device, &m.lods[1]),
+        ];
+        let plain =
+            |rel: &str, normal: bool| super::texture::mip_chain(texture_or(rel, normal), !normal);
         let leaf = texture_or(&a.leaf_texture, false);
-        let leaf = if leaf.width() >= 64 { coverage_mips(leaf, 2, 2) } else { vec![leaf] };
+        let leaf = if leaf.width() >= 64 {
+            coverage_mips(leaf, 2, 2)
+        } else {
+            vec![leaf]
+        };
         let imp = coverage_mips(m.impostor.albedo.clone(), impostor::VIEWS, 1);
         let imp_n = super::texture::mip_chain(m.impostor.normal.clone(), false);
         let chains = [
@@ -419,6 +556,9 @@ struct TerrainTrees {
     position: Vec3,
     placed: Vec<Placed>,
 }
+
+/// Instances of a frame per (bind group, tree, part, LOD).
+type Lists = HashMap<(usize, usize, Part, usize), Vec<InstanceGpu>>;
 
 /// An instanced draw of this frame.
 #[derive(Clone, Debug)]
@@ -552,19 +692,25 @@ impl TreeRenderer {
             self.pipelines = Some(Pipelines::new(device, pipelines, &self.layout));
         }
         let frustum = Frustum::from_matrix(f.view_proj);
-        let cascade_frusta: Vec<Frustum> = f.cascades.iter().map(|c| Frustum::from_matrix(&c.view_proj)).collect();
+        let cascade_frusta: Vec<Frustum> = f
+            .cascades
+            .iter()
+            .map(|c| Frustum::from_matrix(&c.view_proj))
+            .collect();
         let shadow_reach = f.cascades.last().map_or(0.0, |c| c.far);
         // Instances of this frame: per (group, part, lod) for the camera and per cascade.
-        let mut lists: HashMap<(usize, usize, Part, usize), Vec<InstanceGpu>> = HashMap::new();
-        let mut shadow_lists: Vec<HashMap<(usize, usize, Part, usize), Vec<InstanceGpu>>> =
-            vec![HashMap::new(); f.cascades.len()];
+        let mut lists: Lists = HashMap::new();
+        let mut shadow_lists: Vec<Lists> = vec![HashMap::new(); f.cascades.len()];
         for t in f.terrains {
             let s = &t.data.trees;
             if s.instances.is_empty() || s.prototypes.is_empty() {
                 continue;
             }
             // World positions, recomputed when the terrain data or its position change.
-            let cached = self.terrains.get(&t.key).is_some_and(|c| c.version == t.version && c.position == t.position);
+            let cached = self
+                .terrains
+                .get(&t.key)
+                .is_some_and(|c| c.version == t.version && c.position == t.position);
             if !cached {
                 let placed = s
                     .instances
@@ -594,9 +740,13 @@ impl TreeRenderer {
                     protos.push(None);
                     continue;
                 };
-                let stale = self.trees.get(&p.tree).is_none_or(|g| g.built.version != built.version);
+                let stale = self
+                    .trees
+                    .get(&p.tree)
+                    .is_none_or(|g| g.built.version != built.version);
                 if stale {
-                    self.trees.insert(p.tree.clone(), GpuTree::new(device, queue, built));
+                    self.trees
+                        .insert(p.tree.clone(), GpuTree::new(device, queue, built));
                 }
                 let tree = match self.frame_trees.iter().position(|k| *k == p.tree) {
                     Some(i) => i,
@@ -633,7 +783,9 @@ impl TreeRenderer {
                 };
                 // LOD with cross-fades: (lod, fade) pairs (fade 0 = fully drawn).
                 let mut chosen: [(usize, f32); 2] = [(usize::MAX, 0.0); 2];
-                let fade_at = |d: f32, edge: f32| ((d - edge * (1.0 - FADE)) / (edge * 2.0 * FADE)).clamp(0.0, 1.0);
+                let fade_at = |d: f32, edge: f32| {
+                    ((d - edge * (1.0 - FADE)) / (edge * 2.0 * FADE)).clamp(0.0, 1.0)
+                };
                 let a = fade_at(dist, lod_d);
                 let b = fade_at(dist, bb_d);
                 let far = fade_at(dist, draw_d * (1.0 - FADE));
@@ -655,24 +807,48 @@ impl TreeRenderer {
                 let visible = frustum.intersects(&bounds);
                 if visible {
                     for &(lod, fade) in chosen.iter().filter(|c| c.0 != usize::MAX) {
-                        let fade = if fade == 0.0 { 0.0 } else { fade.clamp(-0.999, 0.999) };
-                        let parts: &[Part] = if lod == 2 { &[Part::Impostor] } else { &[Part::Bark, Part::Leaves] };
+                        let fade = if fade == 0.0 {
+                            0.0
+                        } else {
+                            fade.clamp(-0.999, 0.999)
+                        };
+                        let parts: &[Part] = if lod == 2 {
+                            &[Part::Impostor]
+                        } else {
+                            &[Part::Bark, Part::Leaves]
+                        };
                         for &part in parts {
-                            lists.entry((group, tree, part, lod)).or_default().push(inst(fade));
+                            lists
+                                .entry((group, tree, part, lod))
+                                .or_default()
+                                .push(inst(fade));
                         }
                     }
                 }
                 // Shadows: within the cascades' reach, one LOD per cascade (no fades).
                 if s.cast_shadows && t.cast_shadows && dist < shadow_reach + radius {
-                    let cam_lod = if a < 0.5 { 0 } else if b < 0.5 { 1 } else { 2 };
+                    let cam_lod = if a < 0.5 {
+                        0
+                    } else if b < 0.5 {
+                        1
+                    } else {
+                        2
+                    };
                     for (slot, cf) in cascade_frusta.iter().enumerate() {
                         if !cf.intersects(&bounds) {
                             continue;
                         }
                         let lod = cam_lod.max(SHADOW_MIN_LOD[slot.min(3)] as usize);
-                        let parts: &[Part] = if lod == 2 { &[Part::Impostor] } else { &[Part::Bark, Part::Leaves] };
+                        let parts: &[Part] = if lod == 2 {
+                            &[Part::Impostor]
+                        } else {
+                            &[Part::Bark, Part::Leaves]
+                        };
                         for &part in parts {
-                            shadow_lists[slot].entry((group, tree, part, lod)).or_default().push(inst(0.0));
+                            shadow_lists[slot]
+                                .entry((group, tree, part, lod))
+                                .or_default()
+                                .push(inst(0.0));
                         }
                     }
                 }
@@ -680,7 +856,7 @@ impl TreeRenderer {
         }
         // One buffer for every list.
         let mut all: Vec<InstanceGpu> = Vec::new();
-        let mut take = |map: HashMap<(usize, usize, Part, usize), Vec<InstanceGpu>>| {
+        let mut take = |map: Lists| {
             let mut keys: Vec<_> = map.into_iter().collect();
             // Bark before leaves before impostors (fewer pipeline switches), then by group.
             keys.sort_by_key(|((g, _, part, lod), _)| (*part, *lod, *g));
@@ -698,13 +874,21 @@ impl TreeRenderer {
                 })
                 .collect::<Vec<_>>()
         };
-        self.main = take(lists);
-        self.shadows = shadow_lists.into_iter().map(&mut take).collect();
+        let mut batches: Vec<Vec<Batch>> = std::iter::once(lists)
+            .chain(shadow_lists)
+            .map(&mut take)
+            .collect();
+        self.main = batches.remove(0);
+        self.shadows = batches;
         if all.is_empty() {
             return;
         }
         let bytes = std::mem::size_of_val(all.as_slice()) as u64;
-        if self.instance_buffer.as_ref().is_none_or(|b| b.size() < bytes) {
+        if self
+            .instance_buffer
+            .as_ref()
+            .is_none_or(|b| b.size() < bytes)
+        {
             self.instance_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("misty tree instances"),
                 size: bytes.next_power_of_two().max(4096),
@@ -717,10 +901,17 @@ impl TreeRenderer {
         }
     }
 
-    fn bind_group(&self, device: &wgpu::Device, gpu: &GpuTree, t: &TerrainDraw, f: &TreeFrame) -> [wgpu::BindGroup; 3] {
+    fn bind_group(
+        &self,
+        device: &wgpu::Device,
+        gpu: &GpuTree,
+        t: &TerrainDraw,
+        f: &TreeFrame,
+    ) -> [wgpu::BindGroup; 3] {
         let a = &gpu.built.asset;
         let m = &gpu.built.model;
-        let [strength, speed, dx, dz, gusts, flutter] = super::terrain_grass::wind(&t.data.details, f.environment.wind.as_ref());
+        let [strength, speed, dx, dz, gusts, flutter] =
+            super::terrain_grass::wind(&t.data.details, f.environment.wind.as_ref());
         let lin = |c: [f32; 3]| c.map(impostor::lin);
         let [lr, lg, lb] = lin(a.leaf_color);
         let [br, bg, bb] = lin(a.bark_color);
@@ -731,8 +922,18 @@ impl TreeRenderer {
             gust: [gusts, flutter, t.data.details.gust_scale.max(1.0), f.dt],
             leaf: [lr, lg, lb, a.translucency],
             bark: [br, bg, bb, a.height],
-            motion: [a.wind.trunk_bend, a.wind.branch_sway, a.wind.leaf_flutter, a.leaf_variation],
-            impostor: [m.impostor.width, m.impostor.height, m.impostor.bottom, impostor::VIEWS as f32],
+            motion: [
+                a.wind.trunk_bend,
+                a.wind.branch_sway,
+                a.wind.leaf_flutter,
+                a.leaf_variation,
+            ],
+            impostor: [
+                m.impostor.width,
+                m.impostor.height,
+                m.impostor.bottom,
+                impostor::VIEWS as f32,
+            ],
             light: [sun.x, sun.y, sun.z, if f.taa { 1.0 } else { 0.0 }],
         };
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -767,7 +968,13 @@ impl TreeRenderer {
         })
     }
 
-    fn draw_list(&self, pass: &mut wgpu::RenderPass, list: &[Batch], pipelines: &[wgpu::RenderPipeline; 3], stats: &mut RenderStats) {
+    fn draw_list(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        list: &[Batch],
+        pipelines: &[wgpu::RenderPipeline; 3],
+        stats: &mut RenderStats,
+    ) {
         let Some(instances) = &self.instance_buffer else {
             return;
         };
@@ -784,7 +991,8 @@ impl TreeRenderer {
             pass.set_bind_group(2, &self.groups[b.group][part_index(b.part)], &[]);
             let count = b.instances.len() as u32;
             let size = std::mem::size_of::<InstanceGpu>() as u64;
-            let slice = instances.slice(b.instances.start as u64 * size..b.instances.end as u64 * size);
+            let slice =
+                instances.slice(b.instances.start as u64 * size..b.instances.end as u64 * size);
             if b.part == Part::Impostor {
                 pass.set_vertex_buffer(0, slice);
                 pass.draw(0..6, 0..count);
@@ -792,7 +1000,11 @@ impl TreeRenderer {
                 continue;
             }
             let mesh = &gpu.lods[b.lod.min(1)];
-            let range = if b.part == Part::Bark { mesh.bark.clone() } else { mesh.leaves.clone() };
+            let range = if b.part == Part::Bark {
+                mesh.bark.clone()
+            } else {
+                mesh.leaves.clone()
+            };
             if range.is_empty() {
                 continue;
             }
@@ -842,9 +1054,12 @@ mod tests {
             let full = format!("{}\n{src}", super::super::pipelines::COMMON);
             let module = naga::front::wgsl::parse_str(&full)
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(&full)));
-            naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
-                .validate(&module)
-                .unwrap_or_else(|e| panic!("{name}: {e:?}"));
+            naga::valid::Validator::new(
+                naga::valid::ValidationFlags::all(),
+                naga::valid::Capabilities::all(),
+            )
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{name}: {e:?}"));
         }
     }
 }

@@ -283,7 +283,8 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
         let a = rng.range(0.0, std::f32::consts::TAU);
         Vec3::new(a.cos(), 0.0, a.sin())
     };
-    let (w1, w2) = (rng.range(0.0, 6.28), rng.range(0.0, 6.28));
+    let tau = std::f32::consts::TAU;
+    let (w1, w2) = (rng.range(0.0, tau), rng.range(0.0, tau));
     let side = perpendicular(lean_dir.with_y(0.0).normalize_or(Vec3::X));
     let trunk_segments = 18;
     let mut trunk = Limb {
@@ -338,14 +339,16 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
         // attach point. Decurrent ones spread their limbs' ends over the whole dome (low,
         // middle and top, by index), so the crown fills without a hole on top.
         let target = if t.leader >= 0.5 {
-            let ty = (attach_y + (crown.top - attach_y) * rng.range(0.05, 0.35)).min(crown.top - 0.3);
+            let ty =
+                (attach_y + (crown.top - attach_y) * rng.range(0.05, 0.35)).min(crown.top - 0.3);
             let reach = crown.radius_at(ty) * rng.range(0.7, 0.98);
             Vec3::new(out.x * reach, ty, out.z * reach)
         } else {
             let k = (i as f32 * 0.618_034 + rng.range(0.0, 0.2)).fract();
             let elevation = (-0.1 + 1.25 * k).min(1.32);
             let c = crown.center();
-            let ty = (c.y + elevation.sin() * crown.half_height()).clamp(crown.bottom, crown.top - 0.3);
+            let ty =
+                (c.y + elevation.sin() * crown.half_height()).clamp(crown.bottom, crown.top - 0.3);
             let reach = crown.radius_at(ty) * elevation.cos().max(0.3) * rng.range(0.72, 0.95);
             Vec3::new(out.x * reach, ty, out.z * reach)
         };
@@ -402,7 +405,7 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
             let room = crown.reach(p, dir);
             let want = len * (0.6 - 0.32 * s) * rng.range(0.75, 1.15);
             let l2 = want.min(room * 1.05).max(0.35);
-            let r2 = (r * 0.62).min(0.09).max(0.008);
+            let r2 = (r * 0.62).clamp(0.008, 0.09);
             let mut b = Limb {
                 points: Vec::new(),
                 radii: Vec::new(),
@@ -432,14 +435,16 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
         // Area of the crown's ellipsoid (Knud Thomsen's approximation).
         let (a, c) = (crown.radius, crown.half_height());
         let p = 1.6;
-        4.0 * std::f32::consts::PI
-            * (((a * a).powf(p) + 2.0 * (a * c).powf(p)) / 3.0).powf(1.0 / p)
+        4.0 * std::f32::consts::PI * (((a * a).powf(p) + 2.0 * (a * c).powf(p)) / 3.0).powf(1.0 / p)
     };
     let card_area = t.leaf_size * t.leaf_size * 0.62;
     let wanted = (t.leaf_density * shell / card_area * 2.0).round().max(8.0) as usize;
     let mut stems: Vec<(&Limb, f32)> = side_branches.iter().map(|(_, b)| (b, 0.25)).collect();
     stems.extend(main.iter().map(|l| (l, 0.62)));
-    let total: f32 = stems.iter().map(|(b, from)| b.length() * (1.0 - from)).sum();
+    let total: f32 = stems
+        .iter()
+        .map(|(b, from)| b.length() * (1.0 - from))
+        .sum();
     let spacing = (total / wanted as f32).max(0.02);
     let mut cards = Vec::new();
     let mut carry = rng.f() * spacing;
@@ -457,7 +462,9 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
                 .try_normalize()
                 .unwrap_or(Vec3::Y);
             // Face outwards (seen from outside the crown), turned a little at random.
-            let across = (out - up * out.dot(up)).try_normalize().unwrap_or(perpendicular(up));
+            let across = (out - up * out.dot(up))
+                .try_normalize()
+                .unwrap_or(perpendicular(up));
             let facing = rotate(across, up, rng.range(-0.9, 0.9));
             // Clusters deep inside the crown are smaller and sparser (they get little light).
             let inner = crown.depth(anchor);

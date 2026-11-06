@@ -274,7 +274,15 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
         store::modify_settings(path, |d| {
             let has = (tree as usize) < d.trees.prototypes.len();
             let proto = (has || shift).then_some(tree).filter(|_| has);
-            misty_engine::terrain::trees::paint(d, b.center, b.size * 0.5, density, proto, &placement, shift);
+            misty_engine::terrain::trees::paint(
+                d,
+                b.center,
+                b.size * 0.5,
+                density,
+                proto,
+                &placement,
+                shift,
+            );
         });
         return;
     }

@@ -117,7 +117,9 @@ fn encode_instances(v: &[TreeInstance]) -> Vec<u8> {
 
 fn decode_instances(bytes: &[u8]) -> Vec<TreeInstance> {
     bytes
-        .chunks_exact(INSTANCE_BYTES)
+        .as_chunks::<INSTANCE_BYTES>()
+        .0
+        .iter()
         .map(|b| {
             let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
             let u = |i: usize| u16::from_le_bytes([b[i], b[i + 1]]) as f32 / 65535.0;
@@ -143,11 +145,13 @@ impl TreeSettings {
     pub fn sanitize(&mut self) {
         self.prototypes.truncate(MAX_PROTOTYPES);
         let n = self.prototypes.len() as u16;
-        self.instances.retain(|t| t.prototype < n && t.position.is_finite());
+        self.instances
+            .retain(|t| t.prototype < n && t.position.is_finite());
         for t in &mut self.instances {
             t.position = t.position.clamp(Vec2::ZERO, Vec2::ONE);
         }
-        let fix = |v: &mut f32, lo: f32, hi: f32| *v = if v.is_finite() { v.clamp(lo, hi) } else { lo };
+        let fix =
+            |v: &mut f32, lo: f32, hi: f32| *v = if v.is_finite() { v.clamp(lo, hi) } else { lo };
         fix(&mut self.draw_distance, 10.0, 20_000.0);
         fix(&mut self.lod_distance, 1.0, 1000.0);
         fix(&mut self.billboard_start, 2.0, 5000.0);
@@ -245,7 +249,14 @@ fn rand(i: u32, salt: i32, seed: u32) -> f32 {
 }
 
 /// A new instance at terrain-local `(x, z)` with random rotation, scale and colour.
-pub fn new_instance(d: &TerrainData, x: f32, z: f32, prototype: u16, p: &Placement, n: u32) -> TreeInstance {
+pub fn new_instance(
+    d: &TerrainData,
+    x: f32,
+    z: f32,
+    prototype: u16,
+    p: &Placement,
+    n: u32,
+) -> TreeInstance {
     let r = |salt| rand(n, salt, p.seed);
     let h = p.height[0] + (p.height[1] - p.height[0]) * r(11);
     let w = p.width[0] + (p.width[1] - p.width[0]) * r(12);
@@ -310,7 +321,8 @@ pub fn mass_place(d: &mut TerrainData, count: usize, prototypes: &[u16], p: &Pla
         if crowded {
             continue;
         }
-        let proto = prototypes[(rand(n, 3, p.seed) * prototypes.len() as f32) as usize % prototypes.len()];
+        let proto =
+            prototypes[(rand(n, 3, p.seed) * prototypes.len() as f32) as usize % prototypes.len()];
         d.trees.instances.push(new_instance(d, x, z, proto, p, n));
         grid.entry((kx, kz)).or_default().push(q);
         placed += 1;
@@ -321,7 +333,15 @@ pub fn mass_place(d: &mut TerrainData, count: usize, prototypes: &[u16], p: &Pla
 /// Paint trees inside a circle (local centre, radius): about `density` trees per 100 m² of
 /// free ground, one stroke step at a time. With `erase`, remove the trees of the prototype in
 /// the circle instead (all prototypes when None).
-pub fn paint(d: &mut TerrainData, center: Vec2, radius: f32, density: f32, prototype: Option<u16>, p: &Placement, erase: bool) {
+pub fn paint(
+    d: &mut TerrainData,
+    center: Vec2,
+    radius: f32,
+    density: f32,
+    prototype: Option<u16>,
+    p: &Placement,
+    erase: bool,
+) {
     let inside = |t: &TreeInstance| {
         Vec2::new(t.position.x * d.size.x, t.position.y * d.size.z).distance(center) <= radius
     };
@@ -400,7 +420,12 @@ mod tests {
         };
         let n = mass_place(&mut d, 100, &[0], &p);
         assert!(n > 50, "{n}");
-        let pts: Vec<Vec2> = d.trees.instances.iter().map(|t| t.position * 200.0).collect();
+        let pts: Vec<Vec2> = d
+            .trees
+            .instances
+            .iter()
+            .map(|t| t.position * 200.0)
+            .collect();
         for (i, a) in pts.iter().enumerate() {
             for b in &pts[i + 1..] {
                 assert!(a.distance(*b) >= 10.0 - 1e-3);
@@ -419,8 +444,10 @@ mod tests {
 
     #[test]
     fn removing_a_prototype_drops_its_trees() {
-        let mut s = TreeSettings::default();
-        s.prototypes = vec![TreePrototype::default(); 3];
+        let mut s = TreeSettings {
+            prototypes: vec![TreePrototype::default(); 3],
+            ..Default::default()
+        };
         for proto in [0, 1, 2, 1] {
             s.instances.push(TreeInstance {
                 prototype: proto,

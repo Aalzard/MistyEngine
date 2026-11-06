@@ -52,7 +52,12 @@ fn stamp(rel: &str) -> Option<SystemTime> {
 fn stamps(path: &str) -> Vec<Option<SystemTime>> {
     let mut out = vec![stamp(path)];
     if let Ok(t) = TreeAsset::load(&crate::assets::absolute(path)) {
-        for tex in [&t.bark_texture, &t.bark_normal, &t.leaf_texture, &t.leaf_normal] {
+        for tex in [
+            &t.bark_texture,
+            &t.bark_normal,
+            &t.leaf_texture,
+            &t.leaf_normal,
+        ] {
             out.push(stamp(tex));
         }
     }
@@ -84,9 +89,8 @@ fn mean(img: &RgbaImage) -> [f32; 3] {
 
 /// What the impostor bake samples from the asset's textures.
 pub fn bake_textures(t: &TreeAsset) -> BakeTextures {
-    let leaf = load_image(&t.leaf_texture).map(|img| {
-        image::imageops::resize(&img, 256, 256, image::imageops::FilterType::Triangle)
-    });
+    let leaf = load_image(&t.leaf_texture)
+        .map(|img| image::imageops::resize(&img, 256, 256, image::imageops::FilterType::Triangle));
     BakeTextures {
         leaf,
         bark_mean: load_image(&t.bark_texture).map(|b| mean(&b)),

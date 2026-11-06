@@ -34,7 +34,10 @@ const OAK_TEXTURES: [(&str, &[u8]); 4] = [
 
 /// Assets ▸ Create ▸ Tree: a new oak in `dir`, with the oak textures written into
 /// `Assets/Trees/Textures` when the project has none yet.
-pub fn create_tree_asset(root: &std::path::Path, dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+pub fn create_tree_asset(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
     let textures = root.join(misty_engine::trees::SAMPLE_TEXTURES);
     for (name, bytes) in OAK_TEXTURES {
         let path = textures.join(name);
@@ -103,12 +106,20 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
             ui.weak("No trees yet. Add a tree asset (Assets ▸ Create ▸ Tree makes one).");
         }
         for (i, p) in d.trees.prototypes.iter().enumerate() {
-            let count = d.trees.instances.iter().filter(|t| t.prototype as usize == i).count();
+            let count = d
+                .trees
+                .instances
+                .iter()
+                .filter(|t| t.prototype as usize == i)
+                .count();
             let text = format!("{TREE_ICON} {}   ({count})", stem(&p.tree));
             let r = ui
                 .selectable_label(i == selected, text)
-                .on_hover_text(format!("{}
-Double-click to edit the tree", p.tree));
+                .on_hover_text(format!(
+                    "{}
+Double-click to edit the tree",
+                    p.tree
+                ));
             if r.clicked() {
                 state.terrain_tools.tree = i;
             }
@@ -130,7 +141,11 @@ Double-click to edit the tree", p.tree));
                     ui.weak("No .tree assets in the project");
                 }
                 for a in &assets {
-                    if ui.selectable_label(false, stem(a)).on_hover_text(a).clicked() {
+                    if ui
+                        .selectable_label(false, stem(a))
+                        .on_hover_text(a)
+                        .clicked()
+                    {
                         add = Some(a.clone());
                     }
                 }
@@ -143,11 +158,16 @@ Double-click to edit the tree", p.tree));
             state.terrain_tools.tree = n;
         }
         if ui
-            .add_enabled(selected < d.trees.prototypes.len(), egui::Button::new("− Remove"))
+            .add_enabled(
+                selected < d.trees.prototypes.len(),
+                egui::Button::new("− Remove"),
+            )
             .on_hover_text("Remove this tree and every tree placed with it")
             .clicked()
         {
-            edit(state, path, "Remove Terrain Tree", |d| d.trees.remove_prototype(selected));
+            edit(state, path, "Remove Terrain Tree", |d| {
+                d.trees.remove_prototype(selected)
+            });
             state.terrain_tools.tree = selected.saturating_sub(1);
         }
     });
@@ -157,32 +177,47 @@ Double-click to edit the tree", p.tree));
     let tools = &mut state.terrain_tools;
     grid(ui, "terrain_tree_brush", |ui| {
         ui.label("Brush Size");
-        ui.add(egui::Slider::new(&mut tools.size, 2.0..=300.0).logarithmic(true).suffix(" m"));
+        ui.add(
+            egui::Slider::new(&mut tools.size, 2.0..=300.0)
+                .logarithmic(true)
+                .suffix(" m"),
+        );
         ui.end_row();
-        ui.label("Density").on_hover_text("Trees per 100 m² the brush fills up to");
+        ui.label("Density")
+            .on_hover_text("Trees per 100 m² the brush fills up to");
         ui.add(egui::Slider::new(&mut tools.tree_density, 0.05..=4.0).logarithmic(true));
         ui.end_row();
         let p = &mut tools.tree_placement;
-        ui.label("Tree Height").on_hover_text("Random height scale of new trees");
+        ui.label("Tree Height")
+            .on_hover_text("Random height scale of new trees");
         range(ui, &mut p.height, 0.2, 4.0);
         ui.end_row();
-        ui.label("Tree Width").on_hover_text("Random width scale of new trees");
+        ui.label("Tree Width")
+            .on_hover_text("Random width scale of new trees");
         range(ui, &mut p.width, 0.2, 4.0);
         ui.end_row();
-        ui.label("Spacing").on_hover_text("Closest two trees stand, trunk to trunk");
+        ui.label("Spacing")
+            .on_hover_text("Closest two trees stand, trunk to trunk");
         ui.add(egui::Slider::new(&mut p.spacing, 0.5..=40.0).suffix(" m"));
         ui.end_row();
-        ui.label("Max Slope").on_hover_text("No trees on steeper ground");
+        ui.label("Max Slope")
+            .on_hover_text("No trees on steeper ground");
         ui.add(egui::Slider::new(&mut p.max_slope, 0.0..=60.0).suffix("°"));
         ui.end_row();
     });
     ui.horizontal(|ui| {
         let tools = &mut state.terrain_tools;
-        ui.add(egui::DragValue::new(&mut tools.mass_count).range(1..=20_000).suffix(" trees"));
+        ui.add(
+            egui::DragValue::new(&mut tools.mass_count)
+                .range(1..=20_000)
+                .suffix(" trees"),
+        );
         let any = !d.trees.prototypes.is_empty();
         if ui
             .add_enabled(any, egui::Button::new("Mass Place Trees"))
-            .on_hover_text("Scatter this many trees of every tree in the list over the whole terrain")
+            .on_hover_text(
+                "Scatter this many trees of every tree in the list over the whole terrain",
+            )
             .clicked()
         {
             let count = tools.mass_count;
@@ -196,11 +231,16 @@ Double-click to edit the tree", p.tree));
             state.console.info(format!("Placed {placed} trees."));
         }
         if ui
-            .add_enabled(!d.trees.instances.is_empty(), egui::Button::new("Clear Trees"))
+            .add_enabled(
+                !d.trees.instances.is_empty(),
+                egui::Button::new("Clear Trees"),
+            )
             .on_hover_text("Remove every placed tree (the list stays)")
             .clicked()
         {
-            edit(state, path, "Clear Terrain Trees", |d| d.trees.instances.clear());
+            edit(state, path, "Clear Terrain Trees", |d| {
+                d.trees.instances.clear()
+            });
         }
     });
 

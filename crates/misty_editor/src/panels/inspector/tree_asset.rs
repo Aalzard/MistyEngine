@@ -33,9 +33,17 @@ fn srgb(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
     ch
 }
 
-fn slider(ui: &mut Ui, label: &str, tip: &str, v: &mut f32, range: std::ops::RangeInclusive<f32>, suffix: &str) {
+fn slider(
+    ui: &mut Ui,
+    label: &str,
+    tip: &str,
+    v: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+    suffix: &str,
+) {
     ui.label(label).on_hover_text(tip);
-    ui.add(egui::Slider::new(v, range).suffix(suffix)).on_hover_text(tip);
+    ui.add(egui::Slider::new(v, range).suffix(suffix))
+        .on_hover_text(tip);
     ui.end_row();
 }
 
@@ -68,7 +76,10 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         }
     };
     let id = draft_id(rel);
-    let mut t = ui.ctx().data(|d| d.get_temp::<TreeAsset>(id)).unwrap_or_else(|| saved.clone());
+    let mut t = ui
+        .ctx()
+        .data(|d| d.get_temp::<TreeAsset>(id))
+        .unwrap_or_else(|| saved.clone());
     let textures = state.assets.textures.clone();
 
     ui.horizontal(|ui| {
@@ -87,7 +98,8 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
 
     section(ui, "Shape", true, |ui| {
         grid(ui, "tree_shape", |ui| {
-            ui.label("Seed").on_hover_text("Another branching and leaf layout of the same kind of tree");
+            ui.label("Seed")
+                .on_hover_text("Another branching and leaf layout of the same kind of tree");
             ui.horizontal(|ui| {
                 ui.add(egui::DragValue::new(&mut t.seed).range(0..=999_999));
                 if ui.button("🎲").on_hover_text("New random seed").clicked() {
@@ -95,7 +107,14 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                 }
             });
             ui.end_row();
-            slider(ui, "Height", "From the foot to the top of the crown", &mut t.height, 2.0..=40.0, " m");
+            slider(
+                ui,
+                "Height",
+                "From the foot to the top of the crown",
+                &mut t.height,
+                2.0..=40.0,
+                " m",
+            );
             ui.label("Crown Shape");
             egui::ComboBox::from_id_salt("tree_crown_shape")
                 .selected_text(t.crown_shape.label())
@@ -105,9 +124,30 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                     }
                 });
             ui.end_row();
-            slider(ui, "Crown Width", "Crown diameter as a share of the height", &mut t.crown_width, 0.2..=1.6, "");
-            slider(ui, "Crown Base", "Where the crown starts (the bare trunk below)", &mut t.crown_base, 0.05..=0.8, "");
-            slider(ui, "Trunk Radius", "Trunk radius at the foot", &mut t.trunk_radius, 0.05..=1.2, " m");
+            slider(
+                ui,
+                "Crown Width",
+                "Crown diameter as a share of the height",
+                &mut t.crown_width,
+                0.2..=1.6,
+                "",
+            );
+            slider(
+                ui,
+                "Crown Base",
+                "Where the crown starts (the bare trunk below)",
+                &mut t.crown_base,
+                0.05..=0.8,
+                "",
+            );
+            slider(
+                ui,
+                "Trunk Radius",
+                "Trunk radius at the foot",
+                &mut t.trunk_radius,
+                0.05..=1.2,
+                " m",
+            );
             slider(
                 ui,
                 "Leader",
@@ -116,26 +156,81 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                 0.0..=1.0,
                 "",
             );
-            slider(ui, "Trunk Bend", "Lean and wobble of the trunk", &mut t.trunk_bend, 0.0..=1.0, "");
+            slider(
+                ui,
+                "Trunk Bend",
+                "Lean and wobble of the trunk",
+                &mut t.trunk_bend,
+                0.0..=1.0,
+                "",
+            );
         });
     });
     section(ui, "Branches", true, |ui| {
         grid(ui, "tree_branches", |ui| {
             count(ui, "Limbs", "Main limbs", &mut t.branches, 1..=30);
-            slider(ui, "Angle", "Angle between the limbs and the trunk", &mut t.branch_angle, 10.0..=100.0, "°");
-            slider(ui, "Curve", "Limbs curve up towards the light (+) or droop (−)", &mut t.branch_curve, -1.0..=1.0, "");
-            count(ui, "Side Branches", "Side branches on the longest limb", &mut t.twigs, 0..=24);
+            slider(
+                ui,
+                "Angle",
+                "Angle between the limbs and the trunk",
+                &mut t.branch_angle,
+                10.0..=100.0,
+                "°",
+            );
+            slider(
+                ui,
+                "Curve",
+                "Limbs curve up towards the light (+) or droop (−)",
+                &mut t.branch_curve,
+                -1.0..=1.0,
+                "",
+            );
+            count(
+                ui,
+                "Side Branches",
+                "Side branches on the longest limb",
+                &mut t.twigs,
+                0..=24,
+            );
         });
     });
     section(ui, "Leaves", true, |ui| {
         grid(ui, "tree_leaves", |ui| {
-            slider(ui, "Density", "How thickly the leaf clusters cover the crown", &mut t.leaf_density, 0.1..=2.5, "");
-            slider(ui, "Cluster Size", "Side of one leaf cluster card", &mut t.leaf_size, 0.2..=3.0, " m");
+            slider(
+                ui,
+                "Density",
+                "How thickly the leaf clusters cover the crown",
+                &mut t.leaf_density,
+                0.1..=2.5,
+                "",
+            );
+            slider(
+                ui,
+                "Cluster Size",
+                "Side of one leaf cluster card",
+                &mut t.leaf_size,
+                0.2..=3.0,
+                " m",
+            );
             ui.label("Tint");
             srgb(ui, &mut t.leaf_color);
             ui.end_row();
-            slider(ui, "Variation", "Colour differences between clusters and trees", &mut t.leaf_variation, 0.0..=1.0, "");
-            slider(ui, "Translucency", "Sunlight shining through the leaves", &mut t.translucency, 0.0..=2.0, "");
+            slider(
+                ui,
+                "Variation",
+                "Colour differences between clusters and trees",
+                &mut t.leaf_variation,
+                0.0..=1.0,
+                "",
+            );
+            slider(
+                ui,
+                "Translucency",
+                "Sunlight shining through the leaves",
+                &mut t.translucency,
+                0.0..=2.0,
+                "",
+            );
         });
     });
     section(ui, "Bark & Textures", false, |ui| {
@@ -160,9 +255,30 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     });
     section(ui, "Wind", false, |ui| {
         grid(ui, "tree_wind", |ui| {
-            slider(ui, "Trunk Bend", "The whole tree bending from its foot", &mut t.wind.trunk_bend, 0.0..=3.0, "");
-            slider(ui, "Branch Sway", "Limbs and their twigs swaying", &mut t.wind.branch_sway, 0.0..=3.0, "");
-            slider(ui, "Leaf Flutter", "Leaf clusters fluttering", &mut t.wind.leaf_flutter, 0.0..=3.0, "");
+            slider(
+                ui,
+                "Trunk Bend",
+                "The whole tree bending from its foot",
+                &mut t.wind.trunk_bend,
+                0.0..=3.0,
+                "",
+            );
+            slider(
+                ui,
+                "Branch Sway",
+                "Limbs and their twigs swaying",
+                &mut t.wind.branch_sway,
+                0.0..=3.0,
+                "",
+            );
+            slider(
+                ui,
+                "Leaf Flutter",
+                "Leaf clusters fluttering",
+                &mut t.wind.leaf_flutter,
+                0.0..=3.0,
+                "",
+            );
         });
         ui.weak("Multiplies the terrain's wind (Grass & Details) and the scene's Wind Zone.");
     });

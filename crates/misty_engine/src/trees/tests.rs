@@ -39,14 +39,25 @@ fn generation_is_deterministic_and_fits_its_budget() {
         assert!(!a.lods[0].leaves.is_empty() && !a.lods[0].bark.is_empty());
         // About the recipe's height (clusters stick out of the crown a little), foot at the
         // origin.
-        assert!((a.max.y - t.height).abs() < t.height * 0.2, "{} vs {}", a.max.y, t.height);
+        assert!(
+            (a.max.y - t.height).abs() < t.height * 0.2,
+            "{} vs {}",
+            a.max.y,
+            t.height
+        );
         assert!(a.min.y < 0.0 && a.min.y > -1.0);
         // The crown is about as wide as asked.
         let width = (a.max.x - a.min.x).max(a.max.z - a.min.z);
         let want = t.height * t.crown_width;
-        assert!(width > want * 0.6 && width < want * 1.4, "{width} vs {want}");
+        assert!(
+            width > want * 0.6 && width < want * 1.4,
+            "{width} vs {want}"
+        );
         // A different seed gives a different tree of the same kind.
-        let c = model(&TreeAsset { seed: t.seed + 1, ..t.clone() });
+        let c = model(&TreeAsset {
+            seed: t.seed + 1,
+            ..t.clone()
+        });
         assert_ne!(a.lods[0].vertices, c.lods[0].vertices);
     }
 }
@@ -117,7 +128,11 @@ fn impostor_covers_the_crown_in_every_view() {
 #[test]
 #[ignore = "prints only"]
 fn tree_stats() {
-    for (name, t) in [("oak", TreeAsset::oak()), ("linden", TreeAsset::linden()), ("birch", TreeAsset::birch())] {
+    for (name, t) in [
+        ("oak", TreeAsset::oak()),
+        ("linden", TreeAsset::linden()),
+        ("birch", TreeAsset::birch()),
+    ] {
         let m = model(&t);
         for (i, l) in m.lods.iter().enumerate() {
             eprintln!(
@@ -145,7 +160,15 @@ fn dump_impostors() {
         let t = TreeAsset::load(&root.join(format!("Assets/Trees/{name}.tree"))).unwrap();
         let b = super::store::build(t);
         let dir = std::path::PathBuf::from(&dir);
-        b.model.impostor.albedo.save(dir.join(format!("imp_{name}.png"))).unwrap();
-        b.model.impostor.normal.save(dir.join(format!("imp_{name}_n.png"))).unwrap();
+        b.model
+            .impostor
+            .albedo
+            .save(dir.join(format!("imp_{name}.png")))
+            .unwrap();
+        b.model
+            .impostor
+            .normal
+            .save(dir.join(format!("imp_{name}_n.png")))
+            .unwrap();
     }
 }

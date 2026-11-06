@@ -492,7 +492,11 @@ fn terrain_data() -> TerrainData {
         .collect();
     // Placed on the heights as stored (16 bits), so the file and the generator agree.
     let stored = TerrainData {
-        heights: d.heights.iter().map(|h| (h * 65535.0).round() / 65535.0).collect(),
+        heights: d
+            .heights
+            .iter()
+            .map(|h| (h * 65535.0).round() / 65535.0)
+            .collect(),
         ..d.clone()
     };
     d.trees.instances = trees(&stored);
@@ -603,8 +607,9 @@ fn demo_scene(d: &TerrainData) -> Scene {
     s.add(wind, WindZone::default());
     // The First Person Player (the sample prefab, as tuned) stands in the field; its camera
     // replaces the Main Camera (kept, switched off).
-    let prefab = misty_engine::scene::prefab::Prefab::load(&project().join(crate::fps_player::PREFAB))
-        .expect("First Person Player prefab");
+    let prefab =
+        misty_engine::scene::prefab::Prefab::load(&project().join(crate::fps_player::PREFAB))
+            .expect("First Person Player prefab");
     let player = s.instantiate_prefab(&prefab, Some(crate::fps_player::PREFAB), None);
     s.set_transform(player, Transform::from_position(PLAYER));
     // The player's camera sees the whole basin (2 km, as set in the scene).
@@ -658,8 +663,16 @@ fn meadow_demo_matches_its_generator() {
     }
     for (rel, tree) in tree_assets() {
         assert_eq!(TreeAsset::load(&root.join(rel)).unwrap(), tree, "{rel}");
-        for tex in [&tree.bark_texture, &tree.bark_normal, &tree.leaf_texture, &tree.leaf_normal] {
-            assert!(root.join(tex).exists(), "{tex} (run tools/tree_textures.py)");
+        for tex in [
+            &tree.bark_texture,
+            &tree.bark_normal,
+            &tree.leaf_texture,
+            &tree.leaf_normal,
+        ] {
+            assert!(
+                root.join(tex).exists(),
+                "{tex} (run tools/tree_textures.py)"
+            );
         }
     }
     let on_disk = TerrainData::load(&root.join(DATA)).unwrap();
@@ -667,8 +680,17 @@ fn meadow_demo_matches_its_generator() {
     assert_eq!(on_disk.layers, generated.layers);
     assert_eq!(on_disk.details, generated.details);
     assert_eq!(on_disk.trees.prototypes, generated.trees.prototypes);
-    assert_eq!(on_disk.trees.instances.len(), generated.trees.instances.len());
-    for (i, (a, b)) in on_disk.trees.instances.iter().zip(&generated.trees.instances).enumerate() {
+    assert_eq!(
+        on_disk.trees.instances.len(),
+        generated.trees.instances.len()
+    );
+    for (i, (a, b)) in on_disk
+        .trees
+        .instances
+        .iter()
+        .zip(&generated.trees.instances)
+        .enumerate()
+    {
         assert!(
             a.position.distance(b.position) < 1e-6 && a.prototype == b.prototype,
             "tree {i}: {a:?} vs {b:?}"
@@ -682,7 +704,11 @@ fn meadow_demo_matches_its_generator() {
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert_eq!(scene.to_json(), demo_scene(&generated).to_json());
     // Trees around, none in the open view ahead of the player.
-    assert!(generated.trees.instances.len() > 150, "{}", generated.trees.instances.len());
+    assert!(
+        generated.trees.instances.len() > 150,
+        "{}",
+        generated.trees.instances.len()
+    );
     for t in &generated.trees.instances {
         let rel = t.position * glam::Vec2::new(SIZE.x, SIZE.z) - glam::Vec2::new(EYE.0, EYE.1);
         assert!(rel.x.atan2(rel.y).to_degrees().abs() >= 22.0 || rel.length() >= 450.0);

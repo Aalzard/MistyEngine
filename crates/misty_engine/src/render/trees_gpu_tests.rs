@@ -146,8 +146,12 @@ fn a_terrain_tree_draws_and_casts_a_shadow() {
     let (w, h) = (320, 180);
     let mut r = Renderer::with_queue(&device, &queue);
     let target = r.create_target(&device, w, h);
-    let a = render_terrain(&device, &queue, &mut r, &target, &camera, &with, &lights, 1.0);
-    let b = render_terrain(&device, &queue, &mut r, &target, &camera, &without, &lights, 1.0);
+    let a = render_terrain(
+        &device, &queue, &mut r, &target, &camera, &with, &lights, 1.0,
+    );
+    let b = render_terrain(
+        &device, &queue, &mut r, &target, &camera, &without, &lights, 1.0,
+    );
     if let Ok(dir) = std::env::var("MISTY_TREE_DEBUG") {
         for (name, img) in [("with", &a), ("without", &b)] {
             image::RgbaImage::from_raw(w, h, img.clone())
@@ -169,8 +173,12 @@ fn a_terrain_tree_draws_and_casts_a_shadow() {
     }
     assert!(darker > 100, "shadowed ground pixels: {darker}");
     // The wind moves it.
-    let c = render_terrain(&device, &queue, &mut r, &target, &camera, &with, &lights, 2.5);
-    let moved = (0..(w * h) as usize).filter(|i| a[i * 4 + 1] != c[i * 4 + 1]).count();
+    let c = render_terrain(
+        &device, &queue, &mut r, &target, &camera, &with, &lights, 2.5,
+    );
+    let moved = (0..(w * h) as usize)
+        .filter(|i| a[i * 4 + 1] != c[i * 4 + 1])
+        .count();
     assert!(moved > 50, "pixels changed by the wind: {moved}");
 }
 
@@ -217,7 +225,10 @@ fn meadow_view(shot: Shot) -> GameView {
         );
     }
     if let Some(cam) = s.find_by_name("Camera") {
-        s.set_transform(cam, Transform::default().with_euler(Vec3::new(pitch, 0.0, 0.0)));
+        s.set_transform(
+            cam,
+            Transform::default().with_euler(Vec3::new(pitch, 0.0, 0.0)),
+        );
     }
     let materials = crate::assets::AssetCache::open(&root());
     let mut view = GameView::new(&s, &materials).expect("camera");
@@ -290,19 +301,34 @@ fn tree_shots() {
         let view = meadow_view(shot);
         let none = without_trees(&view);
         let terrains = bare.then_some(&none[..]);
-        let img = shot_image(&device, &queue, &view, &QualityLevel::high(), terrains, (w, h));
+        let img = shot_image(
+            &device,
+            &queue,
+            &view,
+            &QualityLevel::high(),
+            terrains,
+            (w, h),
+        );
         let path = screenshots().join(format!("trees_{step}_{}.png", shot.name()));
         img.save(&path).unwrap();
         eprintln!("wrote {}", path.display());
         if let Shot::Wide = shot {
-            let reference = std::env::var("MISTY_REFERENCE").map(PathBuf::from).unwrap_or_else(|_| {
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../../../MistyDesign/grass_reference.png")
-            });
+            let reference = std::env::var("MISTY_REFERENCE")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../../../MistyDesign/grass_reference.png")
+                });
             if let Ok(r) = image::open(&reference) {
                 let (pw, ph) = (800, 450);
-                let ours = image::imageops::resize(&img, pw, ph, image::imageops::FilterType::Triangle);
-                let theirs = image::imageops::resize(&r.into_rgba8(), pw, ph, image::imageops::FilterType::Triangle);
+                let ours =
+                    image::imageops::resize(&img, pw, ph, image::imageops::FilterType::Triangle);
+                let theirs = image::imageops::resize(
+                    &r.into_rgba8(),
+                    pw,
+                    ph,
+                    image::imageops::FilterType::Triangle,
+                );
                 let mut both = image::RgbaImage::new(pw * 2, ph);
                 image::imageops::replace(&mut both, &ours, 0, 0);
                 image::imageops::replace(&mut both, &theirs, pw as i64, 0);

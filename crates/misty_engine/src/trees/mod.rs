@@ -269,7 +269,11 @@ impl TreeAsset {
     /// Clamp every value into its usable range (hand-edited or older files).
     pub fn sanitize(&mut self) {
         let fix = |v: &mut f32, lo: f32, hi: f32, default: f32| {
-            *v = if v.is_finite() { v.clamp(lo, hi) } else { default };
+            *v = if v.is_finite() {
+                v.clamp(lo, hi)
+            } else {
+                default
+            };
         };
         fix(&mut self.height, 1.0, 60.0, 14.0);
         fix(&mut self.crown_width, 0.1, 2.0, 0.8);
