@@ -435,7 +435,7 @@ Mean sRGB of the ground in the canopy's shade and of the crown (`grove*`):
   design, and the trees are 50 m+ away.
 - Tree crowns are ellipsoid proxies at 75 % size, so the canopy's shade is soft.
 
-### Meadow ambient options (for the user to pick; scene defaults unchanged)
+### Meadow ambient options (the user picked C; shipped, see below)
 
 `misty_gi_scene_meadow_options` → `docs/screenshots/gfx/gi_meadow_opt_<shot>_compare.png` for
 `wide`, `grove`, `wide_golden`, `grove_golden`: **A** Misty GI off (today), **B** on with the scene
@@ -459,6 +459,29 @@ GI Intensity at 1.6. Mean sRGB of the canopy shade (`grove`) / foreground grass 
   a scene setting, and was left alone.
 - With virtual shadow maps (`gi_meadow_opt_grove*_vsm_compare.png`) Misty GI adds no light inside
   the virtual shadows; its sky occlusion darkens the canopy shade slightly, as with cascades.
+
+### MeadowDemo ships with Misty GI (option C)
+
+MeadowDemo's Lighting settings are now option C: Lighting ▸ Realtime Global Illumination on and
+Lighting ▸ Environment ▸ Intensity 0.6, in the scene and in its generator (`sample_meadow.rs`).
+Nothing else in the scene changed. Before / after at High (`misty_gi_scene_meadow_shipped` →
+`docs/screenshots/gfx/gi_meadow_shipped_compare.png`; mean sRGB of the lower third of the frame):
+wide (112, 104, 41) → (111, 101, 38), grove (33, 43, 10) → (35, 41, 8). The look is a little darker
+and less flat; the canopy shade picks up a little warmth from the bounce.
+
+Cost of the shipped scene (`misty_gi_scene_meadow_levels`, 1920×1080, RTX 4060, best of 3, golden
+view, GPU-timing lock), Quality ▸ Global Illumination at the level's tier against Off:
+
+| Level (GI tier) | GI off | GI on | Added | Misty GI passes |
+|---|---|---|---|---|
+| Low (Low) | 8.07 ms | 8.74 ms | +0.67 ms | 0.30 ms |
+| Medium (Medium) | 11.96 ms | 13.35 ms | +1.39 ms | 0.67 ms |
+| High (High) | 14.84 ms | 17.22 ms | +2.38 ms | 1.59 ms |
+| Ultra (High) | 21.51 ms | 23.83 ms | +2.32 ms | 1.60 ms |
+
+(The added time is more than the GI passes: the trees' world lookup and the GI texel compose in
+the lit shaders.) The MeadowDemo golden shots (`docs/golden/meadow_*`) were updated for the new look;
+CyclesRoomDemo's are unchanged (mean 0.00 at every level).
 
 ### Behaviour
 
@@ -505,7 +528,7 @@ GI Intensity at 1.6. Mean sRGB of the canopy shade (`grove`) / foreground grass 
   surfaces; section 10). Left: per-blade world lookup for grass beyond the prepass range.
 - **R1 — Product surface**: Lighting window switch and Quality tier done (section 9). Left:
   Inspector debug views (SDF slice, radiance cache, probe spheres), editor gizmo for the clipmap
-  bounds, and flipping the scene switch's default once the user picks a meadow option.
+  bounds. MeadowDemo ships with the switch on (option C); new scenes still start with it off.
 - **R2 — Directional radiance**: the interval merge is in (with SH L1 radiance, which is blurry
   in direction); 8×8 octahedral radiance per probe in the coarse levels would sharpen the far
   field and give rough reflections from the probes.

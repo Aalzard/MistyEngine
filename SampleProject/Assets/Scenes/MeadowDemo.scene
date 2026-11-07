@@ -1,4 +1,61 @@
 {
+  "lighting": {
+    "environment_lighting": {
+      "equator_color": [
+        0.114,
+        0.125,
+        0.133
+      ],
+      "ground_color": [
+        0.047,
+        0.043,
+        0.035
+      ],
+      "intensity": 0.6,
+      "sky_color": [
+        0.212,
+        0.227,
+        0.259
+      ],
+      "source": "Skybox"
+    },
+    "fog": {
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "density": 0.01,
+      "enabled": false,
+      "end": 300.0,
+      "mode": "ExponentialSquared",
+      "start": 0.0
+    },
+    "realtime_gi": true,
+    "reflection_intensity": 1.0,
+    "skybox": {
+      "atmosphere_thickness": 1.0,
+      "color": [
+        0.19,
+        0.3,
+        0.47
+      ],
+      "exposure": 1.0,
+      "ground": [
+        0.32,
+        0.3,
+        0.29
+      ],
+      "kind": "Procedural",
+      "sky_tint": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "sun_disk": "HighQuality",
+      "sun_size": 0.04
+    }
+  },
   "objects": [
     {
       "components": {
