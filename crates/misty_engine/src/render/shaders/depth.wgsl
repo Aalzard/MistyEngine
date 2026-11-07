@@ -39,7 +39,7 @@ fn vs_uv(
 // Cutout shadow caster: no shadow where the surface has a hole.
 @fragment
 fn fs_shadow_cutout(in: CutoutOut) {
-    let base = textureSample(albedo_map, material_sampler, in.uv).a;
+    let base = textureSampleBias(albedo_map, material_sampler, in.uv, view.view_tan.z).a;
     let alpha = in.alpha.x * select(base, 1.0, in.alpha.z > 0.5);
     if (alpha < in.alpha.y || lod_dithered_out(in.alpha.w, in.clip.xy)) {
         discard;

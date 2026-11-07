@@ -156,14 +156,19 @@ impl RenderTarget {
         use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT, SAMPLE_COUNT};
         let (w, h) = self.size();
         let at = |format, samples: u32| texture_bytes(format, w, h, 1, 1) * samples as u64;
+        // Post-processing images are output-sized (larger than the scene's when upscaled).
+        let (ow, oh) = self.output_size();
+        let out = |format| texture_bytes(format, ow, oh, 1, 1);
+        let upscaled = if self.upscaled() { out(HDR_FORMAT) } else { 0 };
         let full = at(HDR_FORMAT, SAMPLE_COUNT) * 2
             + at(DEPTH_FORMAT, SAMPLE_COUNT)
             + at(HDR_FORMAT, 1) * 2
-            + at(COLOR_FORMAT, 1) * 2
+            + out(COLOR_FORMAT) * 2
+            + upscaled
             + at(MASK_FORMAT, 1);
         let bloom: u64 = (0..self.bloom.len() as u32)
             .map(|i| {
-                let (bw, bh) = ((w >> (i + 1)).max(1), (h >> (i + 1)).max(1));
+                let (bw, bh) = ((ow >> (i + 1)).max(1), (oh >> (i + 1)).max(1));
                 texture_bytes(HDR_FORMAT, bw, bh, 1, 1)
             })
             .sum();

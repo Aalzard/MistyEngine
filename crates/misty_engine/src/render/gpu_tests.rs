@@ -48,7 +48,7 @@ pub(crate) fn read_back(
     queue: &wgpu::Queue,
     target: &RenderTarget,
 ) -> Vec<u8> {
-    let (width, height) = target.size();
+    let (width, height) = target.output_size();
     let size = wgpu::Extent3d {
         width,
         height,

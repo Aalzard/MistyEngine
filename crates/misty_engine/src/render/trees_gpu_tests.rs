@@ -183,7 +183,7 @@ fn a_terrain_tree_draws_and_casts_a_shadow() {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Shot {
+pub(in crate::render) enum Shot {
     /// The player's view as saved.
     Wide,
     /// Turned towards the broad oak on the right, close.
@@ -197,7 +197,7 @@ enum Shot {
 impl Shot {
     const ALL: [Shot; 4] = [Shot::Wide, Shot::Close, Shot::Behind, Shot::Pair];
 
-    fn name(self) -> &'static str {
+    pub(in crate::render) fn name(self) -> &'static str {
         match self {
             Shot::Wide => "wide",
             Shot::Close => "close",
@@ -208,7 +208,7 @@ impl Shot {
 }
 
 /// MeadowDemo as saved, the player turned for `shot`.
-fn meadow_view(shot: Shot) -> GameView {
+pub(in crate::render) fn meadow_view(shot: Shot) -> GameView {
     crate::assets::set_project_root(&root());
     let (mut s, _) = Scene::load(&root().join("Assets/Scenes/MeadowDemo.scene")).expect("scene");
     let (yaw, pitch) = match shot {

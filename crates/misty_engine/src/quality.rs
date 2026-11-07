@@ -128,6 +128,79 @@ impl UpscaleFilter {
     }
 }
 
+/// Temporal upscaling (Quality ▸ Upscaling): the scene renders at a share of the output
+/// resolution with a sub-pixel jitter, and the temporal resolve rebuilds the full resolution
+/// from the jittered frames (render/taa.rs). Post-processing and the UI run at the output
+/// resolution. Turns temporal anti-aliasing on (the upscaler is TAA at a lower resolution).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Upscaling {
+    /// Native resolution.
+    #[default]
+    Off,
+    /// 67 % of the output resolution per side (≈ 45 % of the pixels).
+    Quality,
+    /// 58 % per side (≈ 34 % of the pixels).
+    Balanced,
+    /// 50 % per side (25 % of the pixels).
+    Performance,
+    /// [`QualityLevel::upscaling_scale`] per side.
+    Custom,
+}
+
+impl Upscaling {
+    pub const ALL: [Self; 5] = [
+        Self::Off,
+        Self::Quality,
+        Self::Balanced,
+        Self::Performance,
+        Self::Custom,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Quality => "Quality (67%)",
+            Self::Balanced => "Balanced (58%)",
+            Self::Performance => "Performance (50%)",
+            Self::Custom => "Custom",
+        }
+    }
+
+    /// Share of the output resolution rendered per side (`custom` for Custom; 1 = Off).
+    pub fn scale(self, custom: f32) -> f32 {
+        match self {
+            Self::Off => 1.0,
+            Self::Quality => 0.67,
+            Self::Balanced => 0.58,
+            Self::Performance => 0.5,
+            Self::Custom => custom.clamp(UPSCALING_MIN, 1.0),
+        }
+    }
+}
+
+/// Smallest Custom upscaling scale.
+pub const UPSCALING_MIN: f32 = 0.33;
+
+/// Which upscaler rebuilds the output resolution. Only the built-in temporal upscaler exists;
+/// vendor upscalers (FSR, DLSS, XeSS) would be further variants taking the same inputs
+/// (jittered colour, depth, motion vectors, jitter, reset), see render/taa.rs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpscalerBackend {
+    /// Misty's temporal upscaler (render/taa.rs, `fs_taau`).
+    #[default]
+    Temporal,
+}
+
+impl UpscalerBackend {
+    pub const ALL: [Self; 1] = [Self::Temporal];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Temporal => "Misty Temporal",
+        }
+    }
+}
+
 /// Texture Quality (the global mipmap limit): how many top mip levels are skipped.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TextureQuality {
@@ -223,6 +296,13 @@ pub struct QualityLevel {
     pub render_scale: f32,
     /// How the Render Scale image is stretched to the window.
     pub upscale_filter: UpscaleFilter,
+    /// Temporal upscaling: the scene renders at a share of the output resolution and the
+    /// temporal resolve rebuilds the rest (Off = native).
+    pub upscaling: Upscaling,
+    /// Share of the output resolution per side for Upscaling ▸ Custom (0.33–1).
+    pub upscaling_scale: f32,
+    /// Which upscaler runs (only the built-in one so far).
+    pub upscaler: UpscalerBackend,
     /// Multiplier on LOD Group switch distances (`RenderOptions::lod_bias`).
     pub lod_bias: f32,
     pub ambient_occlusion: Tier,
@@ -274,6 +354,9 @@ impl QualityLevel {
             max_texture_size: 1024,
             render_scale: 0.75,
             upscale_filter: UpscaleFilter::Bilinear,
+            upscaling: Upscaling::Off,
+            upscaling_scale: 0.75,
+            upscaler: UpscalerBackend::Temporal,
             lod_bias: 0.5,
             ambient_occlusion: Tier::Off,
             volumetric_fog: Tier::Off,
@@ -308,6 +391,9 @@ impl QualityLevel {
             max_texture_size: 2048,
             render_scale: 1.0,
             upscale_filter: UpscaleFilter::Bilinear,
+            upscaling: Upscaling::Off,
+            upscaling_scale: 0.75,
+            upscaler: UpscalerBackend::Temporal,
             lod_bias: 1.0,
             ambient_occlusion: Tier::Low,
             volumetric_fog: Tier::Low,
@@ -342,6 +428,9 @@ impl QualityLevel {
             max_texture_size: 4096,
             render_scale: 1.0,
             upscale_filter: UpscaleFilter::Bilinear,
+            upscaling: Upscaling::Off,
+            upscaling_scale: 0.75,
+            upscaler: UpscalerBackend::Temporal,
             lod_bias: 1.5,
             ambient_occlusion: Tier::Medium,
             volumetric_fog: Tier::Medium,
@@ -389,6 +478,7 @@ impl QualityLevel {
         self.cascade_blend = finite_clamp(self.cascade_blend, 0.0, 0.5, 0.1);
         self.max_texture_size = self.max_texture_size.clamp(32, 8192);
         self.render_scale = finite_clamp(self.render_scale, 0.25, 2.0, 1.0);
+        self.upscaling_scale = finite_clamp(self.upscaling_scale, UPSCALING_MIN, 1.0, 0.75);
         self.lod_bias = finite_clamp(self.lod_bias, 0.01, 10.0, 1.0);
         self.taa_blend = finite_clamp(self.taa_blend, 0.02, 0.5, TAA_BLEND);
         self.taa_sharpness = finite_clamp(self.taa_sharpness, 0.0, 1.0, TAA_SHARPNESS);
@@ -418,6 +508,18 @@ impl QualityLevel {
             temporal: self.shadow_temporal,
             denoise: self.shadow_denoise,
         }
+    }
+
+    /// Share of the output resolution the 3D views render at before temporal upscaling
+    /// (1 = native, no upscaler).
+    pub fn upscale_ratio(&self) -> f32 {
+        self.upscaling.scale(self.upscaling_scale)
+    }
+
+    /// The temporal resolve runs: TAA on, or the upscaler (which is TAA at a lower
+    /// resolution).
+    pub fn temporal(&self) -> bool {
+        self.temporal_aa || self.upscaling != Upscaling::Off
     }
 
     pub fn msaa_samples(&self) -> u32 {
@@ -702,5 +804,34 @@ mod tests {
         let mut empty: QualitySettings = serde_json::from_str(r#"{ "levels": [] }"#).unwrap();
         empty.sanitize();
         assert_eq!(empty, QualitySettings::default());
+    }
+
+    #[test]
+    fn upscaling_modes_and_old_files() {
+        // Levels saved before Upscaling existed stay native.
+        let old: QualityLevel = serde_json::from_str(r#"{ "name": "Old" }"#).unwrap();
+        assert_eq!(old.upscaling, Upscaling::Off);
+        assert_eq!(old.upscale_ratio(), 1.0);
+        for l in QualitySettings::default().levels {
+            assert_eq!(l.upscaling, Upscaling::Off, "{}", l.name);
+        }
+        let at = |u: Upscaling| QualityLevel {
+            upscaling: u,
+            ..QualityLevel::high()
+        };
+        assert_eq!(at(Upscaling::Quality).upscale_ratio(), 0.67);
+        assert_eq!(at(Upscaling::Balanced).upscale_ratio(), 0.58);
+        assert_eq!(at(Upscaling::Performance).upscale_ratio(), 0.5);
+        let mut custom: QualityLevel =
+            serde_json::from_str(r#"{ "upscaling": "Custom", "upscaling_scale": 0.1 }"#).unwrap();
+        custom.sanitize();
+        assert_eq!(custom.upscale_ratio(), UPSCALING_MIN);
+        // The upscaler is TAA at a lower resolution: it runs with TAA unticked.
+        let low = QualityLevel {
+            upscaling: Upscaling::Performance,
+            ..QualityLevel::low()
+        };
+        assert!(!low.temporal_aa && low.temporal());
+        assert!(!QualityLevel::low().temporal());
     }
 }

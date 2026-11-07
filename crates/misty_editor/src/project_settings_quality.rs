@@ -3,7 +3,8 @@
 
 use egui::Ui;
 use misty_engine::quality::{
-    Anisotropic, AntiAliasing, QualityLevel, ShadowResolution, TextureQuality, Tier, UpscaleFilter,
+    Anisotropic, AntiAliasing, QualityLevel, ShadowResolution, TextureQuality, Tier, UPSCALING_MIN,
+    UpscaleFilter, UpscalerBackend, Upscaling,
 };
 use misty_engine::settings::ProjectSettings;
 use misty_engine::sprites::import::{MAX_SIZES, max_size_label};
@@ -231,7 +232,62 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
          and shading that stop crawling.",
         |ui| ui.checkbox(&mut l.temporal_aa, "").changed(),
     );
-    if l.temporal_aa {
+    edited |= row(
+        ui,
+        "Upscaling",
+        "Temporal upscaling: renders the 3D view at a share of its resolution (67, 58 or 50 \
+         percent per side, or Custom) and rebuilds the full resolution from the jittered \
+         frames of the temporal resolve. Much faster; post effects and the UI stay at full \
+         resolution. Turns temporal anti-aliasing on.",
+        |ui| {
+            combo(
+                ui,
+                "q_upscaling",
+                &mut l.upscaling,
+                &Upscaling::ALL,
+                Upscaling::label,
+            )
+        },
+    );
+    if l.upscaling == Upscaling::Custom {
+        edited |= row(
+            ui,
+            "Upscaling Scale",
+            "Share of the output resolution the 3D view renders at per side (Custom).",
+            |ui| {
+                ui.add(
+                    egui::Slider::new(&mut l.upscaling_scale, UPSCALING_MIN..=1.0)
+                        .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
+                        .custom_parser(|t| {
+                            t.trim()
+                                .trim_end_matches('%')
+                                .parse::<f64>()
+                                .ok()
+                                .map(|v| v / 100.0)
+                        }),
+                )
+                .changed()
+            },
+        );
+    }
+    if l.upscaling != Upscaling::Off {
+        edited |= row(
+            ui,
+            "Upscaler",
+            "Which upscaler rebuilds the resolution. Misty Temporal is built in; vendor \
+             upscalers can be added as further choices.",
+            |ui| {
+                combo(
+                    ui,
+                    "q_upscaler",
+                    &mut l.upscaler,
+                    &UpscalerBackend::ALL,
+                    UpscalerBackend::label,
+                )
+            },
+        );
+    }
+    if l.temporal() {
         edited |= row(
             ui,
             "TAA Blend",
@@ -257,7 +313,7 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
         ui,
         "Render Scale",
         "Draws the game at this fraction of the window size and stretches it. Below 1 = \
-         faster on weak GPUs, blurrier.",
+         faster on weak GPUs, blurrier (Upscaling rebuilds a sharper image instead).",
         |ui| {
             ui.add(egui::Slider::new(&mut l.render_scale, 0.25..=2.0).max_decimals(2))
                 .changed()

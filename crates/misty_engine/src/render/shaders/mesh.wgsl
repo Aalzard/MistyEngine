@@ -184,11 +184,11 @@ struct Surface {
 fn standard_surface(in: MeshOut, front: bool) -> Surface {
     let d = draws[in.draw];
     // Sample before any non-uniform branch (implicit derivatives).
-    let base = textureSample(albedo_map, material_sampler, in.uv);
-    let sampled_normal = textureSample(normal_map, material_sampler, in.uv).xyz;
-    let metal_gloss = textureSample(metallic_map, material_sampler, in.uv);
-    let occlusion = textureSample(occlusion_map, material_sampler, in.uv).g;
-    let emission = textureSample(emission_map, material_sampler, in.uv).rgb;
+    let base = textureSampleBias(albedo_map, material_sampler, in.uv, view.view_tan.z);
+    let sampled_normal = textureSampleBias(normal_map, material_sampler, in.uv, view.view_tan.z).xyz;
+    let metal_gloss = textureSampleBias(metallic_map, material_sampler, in.uv, view.view_tan.z);
+    let occlusion = textureSampleBias(occlusion_map, material_sampler, in.uv, view.view_tan.z).g;
+    let emission = textureSampleBias(emission_map, material_sampler, in.uv, view.view_tan.z).rgb;
     let from_albedo = d.surface.w > 0.5;
     var s: Surface;
     s.albedo = srgb_to_linear(d.color.rgb) * base.rgb;
@@ -268,7 +268,7 @@ fn fs_cutout(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
 @fragment
 fn fs_unlit(in: MeshOut) -> MeshTargets {
     let d = draws[in.draw];
-    let base = textureSample(albedo_map, material_sampler, in.uv);
+    let base = textureSampleBias(albedo_map, material_sampler, in.uv, view.view_tan.z);
     var color = srgb_to_linear(d.color.rgb) * base.rgb;
     let alpha = d.color.a * base.a;
     // Sprite-Lit-Default: 2D lights of the draw's Sorting Layer (none in the scene = unlit).

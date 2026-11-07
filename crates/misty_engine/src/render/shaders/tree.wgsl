@@ -160,8 +160,8 @@ fn tree_normal_mapped(n: vec3<f32>, world: vec3<f32>, uv: vec2<f32>, sampled: ve
 @fragment
 fn fs_tree_bark(in: TreeOut) -> MeshTargets {
     // Sample (and take derivatives) before any discard.
-    let base = textureSample(tree_albedo, tree_sampler, in.uv);
-    let sampled = textureSample(tree_normal_map, tree_sampler, in.uv).xyz;
+    let base = textureSampleBias(tree_albedo, tree_sampler, in.uv, view.view_tan.z);
+    let sampled = textureSampleBias(tree_normal_map, tree_sampler, in.uv, view.view_tan.z).xyz;
     let n = tree_normal_mapped(normalize(in.normal), in.world, in.uv, sampled, 1.0);
     if (tree_faded(in.extra.w, in.clip.xy)) {
         discard;
@@ -182,8 +182,8 @@ fn leaf_coverage(alpha: f32, clip: vec4<f32>, far: f32) -> f32 {
 
 @fragment
 fn fs_tree_leaves(in: TreeOut, @builtin(front_facing) front: bool) -> MeshTargets {
-    let tex = textureSample(tree_albedo, tree_sampler, in.uv);
-    let sampled = textureSample(tree_normal_map, tree_sampler, in.uv).xyz;
+    let tex = textureSampleBias(tree_albedo, tree_sampler, in.uv, view.view_tan.z);
+    let sampled = textureSampleBias(tree_normal_map, tree_sampler, in.uv, view.view_tan.z).xyz;
     // Mostly sharp (alpha to coverage only antialiases the edges): wide partial coverage
     // reads as a dither pattern; a little softer far away.
     let far = 0.3 * smoothstep(20.0, 90.0, length(in.world - view.camera_pos.xyz));
@@ -241,13 +241,13 @@ fn fs_tree_impostor(in: ImpostorOut) -> MeshTargets {
     // The two nearest baked views, blended (both sampled: smooth derivatives, no popping
     // while walking round a tree).
     let tex = mix(
-        textureSample(tree_albedo, tree_sampler, in.uv0),
-        textureSample(tree_albedo, tree_sampler, in.uv1),
+        textureSampleBias(tree_albedo, tree_sampler, in.uv0, view.view_tan.z),
+        textureSampleBias(tree_albedo, tree_sampler, in.uv1, view.view_tan.z),
         in.misc.x,
     );
     let nt = mix(
-        textureSample(tree_normal_map, tree_sampler, in.uv0),
-        textureSample(tree_normal_map, tree_sampler, in.uv1),
+        textureSampleBias(tree_normal_map, tree_sampler, in.uv0, view.view_tan.z),
+        textureSampleBias(tree_normal_map, tree_sampler, in.uv1, view.view_tan.z),
         in.misc.x,
     );
     let coverage = leaf_coverage(tex.a, in.clip, 0.3);

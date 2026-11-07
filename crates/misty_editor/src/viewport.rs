@@ -95,10 +95,15 @@ impl Gpu {
             ViewId::Game => &mut self.game,
         };
         let size = (size_px[0].max(1), size_px[1].max(1));
-        if vp.target.as_ref().map(|t| t.size()) != Some(size) {
+        // Quality ▸ Upscaling renders the scene smaller and rebuilds this size temporally.
+        let fits = vp
+            .target
+            .as_ref()
+            .is_some_and(|t| self.renderer.view_target_fits(t, size.0, size.1));
+        if !fits {
             vp.target = Some(
                 self.renderer
-                    .create_target(&self.state.device, size.0, size.1),
+                    .create_view_target(&self.state.device, size.0, size.1),
             );
             vp.filter = None;
         }
@@ -141,8 +146,14 @@ impl Gpu {
             .into_iter()
             .filter_map(|(name, vp)| {
                 let t = vp.target.as_ref()?;
-                let (w, h) = t.size();
-                let name = format!("{name} target ({w}×{h})");
+                let (w, h) = t.output_size();
+                let name = match t.upscaled() {
+                    true => {
+                        let (rw, rh) = t.size();
+                        format!("{name} target ({w}×{h}, rendered at {rw}×{rh})")
+                    }
+                    false => format!("{name} target ({w}×{h})"),
+                };
                 Some(MemItem::new(
                     MemCategory::RenderTargets,
                     "RenderTexture",
@@ -156,7 +167,7 @@ impl Gpu {
     /// The Game view's last frame `(width, height, RGBA8)` (save game thumbnails).
     pub fn game_view_pixels(&self) -> Option<(u32, u32, Vec<u8>)> {
         let target = self.game.target.as_ref()?;
-        let (w, h) = target.size();
+        let (w, h) = target.output_size();
         let pixels =
             crate::project_thumbnail::read_pixels(&self.state.device, &self.state.queue, target);
         Some((w, h, pixels))
@@ -173,7 +184,7 @@ impl Gpu {
             (None, None) => return None,
         };
         let target = vp.target.as_ref()?;
-        let (w, h) = target.size();
+        let (w, h) = target.output_size();
         let pixels =
             crate::project_thumbnail::read_pixels(&self.state.device, &self.state.queue, target);
         Some((w, h, pixels))

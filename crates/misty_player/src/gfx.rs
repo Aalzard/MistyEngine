@@ -92,7 +92,7 @@ impl Gfx {
 
         let renderer = Renderer::with_queue(&device, &queue);
         let ui = UiRenderer::new(&device, &queue);
-        let target = renderer.create_target(&device, config.width, config.height);
+        let target = renderer.create_view_target(&device, config.width, config.height);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("misty blit layout"),
             entries: &[
@@ -197,7 +197,8 @@ impl Gfx {
 
     fn recreate_target(&mut self) {
         let [w, h] = self.target_size();
-        self.target = self.renderer.create_target(&self.device, w, h);
+        // Quality ▸ Upscaling: the scene renders at a share of this and is rebuilt temporally.
+        self.target = self.renderer.create_view_target(&self.device, w, h);
         self.group = blit_group(&self.device, &self.layout, &self.sampler, &self.target);
     }
 
@@ -224,6 +225,11 @@ impl Gfx {
         if (quality.render_scale - self.render_scale).abs() > 1e-4 {
             self.render_scale = quality.render_scale;
             self.recreate_target();
+        } else {
+            let [w, h] = self.target_size();
+            if !self.renderer.view_target_fits(&self.target, w, h) {
+                self.recreate_target();
+            }
         }
     }
 
@@ -428,7 +434,7 @@ impl Gfx {
 
     /// Read the last rendered image back as tightly packed RGBA rows.
     pub fn capture(&mut self) -> (u32, u32, Vec<u8>) {
-        let (width, height) = self.target.size();
+        let (width, height) = self.target.output_size();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("misty capture"),
             size: wgpu::Extent3d {

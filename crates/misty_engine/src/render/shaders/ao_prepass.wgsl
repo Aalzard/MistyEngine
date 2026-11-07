@@ -71,7 +71,7 @@ fn fs_normal(in: PrepassOut, @builtin(front_facing) front: bool) -> PrepassTarge
 // Cutout: the same holes as the main pass.
 @fragment
 fn fs_normal_cutout(in: PrepassOut, @builtin(front_facing) front: bool) -> PrepassTargets {
-    let base = textureSample(albedo_map, material_sampler, in.uv).a;
+    let base = textureSampleBias(albedo_map, material_sampler, in.uv, view.view_tan.z).a;
     let alpha = in.alpha.x * select(base, 1.0, in.alpha.z > 0.5);
     if (alpha < in.alpha.y) {
         discard;
