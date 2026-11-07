@@ -2893,6 +2893,8 @@ mod gpu_checks;
 #[cfg(test)]
 pub(crate) mod gpu_tests;
 #[cfg(test)]
+mod grass_study;
+#[cfg(test)]
 mod hitch_tests;
 #[cfg(test)]
 mod meadow_perf_tests;
