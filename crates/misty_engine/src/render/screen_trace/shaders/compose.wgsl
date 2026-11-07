@@ -46,6 +46,14 @@ fn cs_compose(@builtin(global_invocation_id) id: vec3<u32>) {
         if (p.gi2.z > 0.5) {
             ssr = upsample(in_b, p.size2.xy, p.clip.w, fp);
         }
+        if (p.misty2.x > 0.5) {
+            // Misty GI's glossy reflection behind SSR's: SSR wins where it is confident.
+            let m = upsample(in_d, ceil(p.size.xy / p.misty.x), p.misty.x, fp);
+            let a = ssr.a + m.a * (1.0 - ssr.a);
+            if (a > 1e-4) {
+                ssr = vec4<f32>((ssr.rgb * ssr.a + m.rgb * m.a * (1.0 - ssr.a)) / a, a);
+            }
+        }
     }
     let i = u32(fp.y) * u32(p.size.x) + u32(fp.x);
     trace_out.texels[i] = vec4<u32>(

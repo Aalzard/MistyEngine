@@ -154,7 +154,9 @@ fn shade_grass(
     }
     // Broad and gentle: the canopy depth darkens the turf, not every blade's neighbours.
     let ssao = mix(1.0, screen_ao(world), 0.7);
-    var color = ambient * lights.info.z * albedo * indirect_occlusion(occlusion, ssao, albedo);
+    // Misty GI (when on) replaces the hemisphere: sky occlusion under trees and bounce light.
+    let indirect = misty_ambient(ambient * lights.info.z, world, n);
+    var color = indirect * albedo * indirect_occlusion(occlusion, ssao, albedo);
     let perceptual = 1.0 - smoothness;
     let roughness = max(perceptual * perceptual, 0.002);
     let count = u32(lights.info.x);

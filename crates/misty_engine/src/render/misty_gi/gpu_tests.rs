@@ -570,3 +570,213 @@ fn misty_gi_builds_the_sdf_and_lights_the_probes() {
     assert!(valid > n / 2, "probes updated");
     assert!(mean_c0 > 0.1, "probes see the sky");
 }
+
+/// With Upscaling on, Misty GI runs at the internal resolution and still bleeds the red wall.
+#[test]
+fn misty_gi_works_with_upscaling() {
+    let Some(gpu) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut renderer = Renderer::new(&gpu.0);
+    let quality = crate::quality::QualityLevel {
+        upscaling: crate::quality::Upscaling::Performance,
+        ..crate::quality::QualityLevel::high()
+    };
+    renderer.set_quality(&gpu.0, &quality);
+    let target = renderer.create_view_target(&gpu.0, W, H);
+    assert!(
+        target.upscaled() && target.size().0 < W,
+        "an upscaled target"
+    );
+    let (meshes, lights, cam) = (room(), [sun_on_red_wall()], camera());
+    let off = render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        Default::default(),
+        8,
+    );
+    let on = render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        misty(ScreenSpaceQuality::High),
+        40,
+    );
+    save("misty_upscaled_off", &off);
+    save("misty_upscaled_on", &on);
+    let beside = Vec3::new(-1.6, 0.0, 0.0);
+    let (a, b) = (rgb(&cam, &off, beside), rgb(&cam, &on, beside));
+    eprintln!("upscaled: floor beside the red wall: off {a}, on {b}");
+    assert!(
+        redness(b) > 6.0 && redness(b) > redness(a) + 6.0,
+        "{a} → {b}"
+    );
+}
+
+/// Misty GI's glossy reflections show the red cube in a glossy metal floor without SSR.
+#[test]
+fn misty_gi_reflects_the_cube_without_ssr() {
+    let Some(gpu) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut renderer = Renderer::new(&gpu.0);
+    let target = renderer.create_target(&gpu.0, W, H);
+    let cam = camera();
+    let mut floor = boxed(
+        Vec3::new(0.0, -0.05, 1.0),
+        Vec3::new(8.0, 0.1, 10.0),
+        [0.9; 3],
+    );
+    floor.material.metallic = 1.0;
+    floor.material.smoothness = 0.85;
+    let meshes = vec![
+        floor,
+        boxed(Vec3::new(0.0, 0.5, 0.0), Vec3::ONE, [0.95, 0.1, 0.05]),
+    ];
+    let lights = [sun(Vec3::new(-1.0, -0.5, 0.3))];
+    let off = render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        Default::default(),
+        2,
+    );
+    let on = render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        misty(ScreenSpaceQuality::High),
+        40,
+    );
+    save("misty_reflect_off", &off);
+    save("misty_reflect_on", &on);
+    // Mirror image of the cube's front face, seen in the floor in front of it.
+    let mirrored = Vec3::new(0.0, -0.3, -0.5);
+    let (a, b) = (rgb(&cam, &off, mirrored), rgb(&cam, &on, mirrored));
+    eprintln!("mirrored cube: off {a}, on {b}");
+    assert!(redness(b) > redness(a) + 15.0, "{a} → {b}");
+}
+
+/// A tree beside a sunlit red wall: its crown picks up the wall's red bounce through the
+/// world lookup (trees have their own lighting shader, without a GI texel).
+#[test]
+fn misty_gi_reaches_tree_crowns() {
+    use crate::terrain::trees::{TreeInstance, TreePrototype};
+    use crate::terrain::{TerrainData, TerrainDraw};
+    use crate::trees::TreeAsset;
+    let Some(gpu) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let dir = std::env::temp_dir().join("misty_gi_tree_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("Misty GI Oak.tree");
+    let tree = TreeAsset {
+        bark_texture: String::new(),
+        bark_normal: String::new(),
+        leaf_texture: String::new(),
+        leaf_normal: String::new(),
+        ..TreeAsset::oak()
+    };
+    tree.save(&path).unwrap();
+    let path = path.to_string_lossy().into_owned();
+    let mut d = TerrainData::new(65, Vec3::new(64.0, 10.0, 64.0), 64);
+    d.trees
+        .prototypes
+        .push(TreePrototype { tree: path.clone() });
+    d.trees.instances.push(TreeInstance {
+        position: glam::Vec2::splat(0.5),
+        ..Default::default()
+    });
+    let terrains = [TerrainDraw {
+        key: "misty gi tree test".into(),
+        version: 1,
+        data: std::sync::Arc::new(d),
+        position: Vec3::new(-32.0, 0.0, -32.0),
+        cast_shadows: true,
+    }];
+    for _ in 0..200 {
+        if crate::trees::store::get(&path).is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let height = crate::trees::store::get(&path)
+        .expect("tree built")
+        .asset
+        .height;
+    // A tall red wall 2 m left of the trunk, its face lit by a sun from the right.
+    let wall = boxed(
+        Vec3::new(-6.0, 8.0, 0.0),
+        Vec3::new(1.0, 16.0, 16.0),
+        [0.9, 0.08, 0.06],
+    );
+    let cam = Camera {
+        position: Vec3::new(0.0, height * 0.6, -18.0),
+        rotation: Quat::IDENTITY,
+        projection: Projection::Perspective { fov_y: 50.0 },
+        near: 0.1,
+        far: 500.0,
+    };
+    let lights = [sun(Vec3::new(-1.0, -0.4, 0.2))];
+    let (device, queue) = &gpu;
+    let shot = |post: PostSettings| {
+        let mut r = Renderer::new(device);
+        let target = r.create_target(device, W, H);
+        let environment = Environment::default();
+        let meshes = [wall.clone()];
+        let frame = Frame {
+            camera: &cam,
+            grid: None,
+            skybox: true,
+            background: [0.1; 3],
+            environment: &environment,
+            post,
+            lines: &[],
+            overlay: &[],
+            meshes: &meshes,
+            particles: &[],
+            terrains: &terrains,
+            water: &[],
+            shaded: true,
+            lights: &lights,
+        };
+        for _ in 0..40 {
+            r.render(device, queue, &target, &frame);
+        }
+        read_back(device, queue, &target)
+    };
+    let off = shot(Default::default());
+    let on = shot(misty(ScreenSpaceQuality::High));
+    save("misty_tree_off", &off);
+    save("misty_tree_on", &on);
+    // The crown's left half (towards the wall), averaged over a block.
+    let crown = Vec3::new(-1.5, height * 0.65, 0.0);
+    let mean = |img: &[u8]| {
+        let mut sum = Vec3::ZERO;
+        for dz in [-1.0, 0.0, 1.0] {
+            for dy in [-1.0, 0.0, 1.0] {
+                sum += rgb(&cam, img, crown + Vec3::new(0.0, dy, dz));
+            }
+        }
+        sum / 9.0
+    };
+    let (a, b) = (mean(&off), mean(&on));
+    eprintln!("tree crown facing the red wall: off {a}, on {b}");
+    assert!(redness(b) > redness(a) + 3.0, "{a} → {b}");
+}

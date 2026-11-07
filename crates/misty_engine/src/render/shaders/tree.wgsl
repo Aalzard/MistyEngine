@@ -76,7 +76,9 @@ fn shade_tree(world: vec3<f32>, albedo: vec3<f32>, n: vec3<f32>, occlusion: f32,
         ambient = mix(lights.equator.rgb, lights.ground.rgb, -n.y);
     }
     let ssao = mix(1.0, screen_ao(world), 0.6);
-    var color = ambient * lights.info.z * albedo * indirect_occlusion(occlusion, ssao, albedo);
+    // Misty GI (when on) replaces the hemisphere: other crowns' shade and bounce light.
+    let indirect = misty_ambient(ambient * lights.info.z, world, n);
+    var color = indirect * albedo * indirect_occlusion(occlusion, ssao, albedo);
     let perceptual = 1.0 - smoothness;
     let roughness = max(perceptual * perceptual, 0.002);
     let count = u32(lights.info.x);

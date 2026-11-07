@@ -44,6 +44,11 @@ fn buffer_bytes(texels: u64) -> u64 {
     (HEADER_BYTES + texels * TEXEL_BYTES).next_multiple_of(16)
 }
 
+/// Index (in vec4s of `texels`) where Misty GI's probe copy starts for a `full`-sized view.
+fn world_vec4(full: (u32, u32)) -> u64 {
+    full.0 as u64 * full.1 as u64
+}
+
 /// What the lit shaders read (`ScreenTrace` in screen_trace.wgsl).
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -73,6 +78,8 @@ struct TraceParams {
     /// x = full pixels per Misty GI texel, y = 1 when Misty GI is on, z = its intensity,
     /// w = SSGI intensity (folded into the composed GI when Misty GI is on).
     misty: [f32; 4],
+    /// x = 1 when Misty GI's glossy reflections join SSR's.
+    misty2: [f32; 4],
 }
 
 /// Compute kernels (index into [`Passes::pipelines`]).
@@ -152,6 +159,8 @@ struct SsrImages {
 /// What a view's resources were made for (rebuilt when it changes).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Key {
+    /// Bytes of Misty GI's probe copy after the texels (0 = none).
+    world: u64,
     full: (u32, u32),
     /// Full pixels per GI / SSR texel (`None` = effect off).
     gi: Option<u32>,
@@ -211,6 +220,8 @@ pub(in crate::render) struct TraceFrame {
     compose: Option<Step>,
     /// Misty GI work of this render (its gather feeds the compose).
     pub misty: Option<super::misty_gi::MistyFrame>,
+    /// Misty GI's probes → the texel buffer (source, destination offset, bytes).
+    world_copy: Option<(wgpu::Buffer, u64, u64)>,
     /// Lit colour history: copy destination and its mip steps.
     color: wgpu::Texture,
     color_steps: Vec<Step>,
@@ -246,8 +257,18 @@ impl ScreenTrace {
             .misty
             .prepare(device, queue, target, frame, normal_view, depth_view);
         let misty_on = misty.is_some();
+        let misty_reflections = misty.as_ref().is_some_and(|m| m.reflections);
+        // Misty GI's probes follow the texels (the lit shaders' world lookup).
+        let world_bytes = misty.as_ref().map_or(0, |m| {
+            (super::misty_gi::WORLD_HEADER_VEC4S as u64) * 16 + m.probe_bytes
+        });
+        let bytes = bytes + world_bytes;
+        if bytes > device.limits().max_storage_buffer_binding_size {
+            return None;
+        }
         let passes = self.passes.as_ref()?;
         let key = Key {
+            world: world_bytes,
             full,
             gi: gi
                 .active()
@@ -278,7 +299,9 @@ impl ScreenTrace {
             prev,
             [gi_history, ssr_history],
             [gi_on, ssr_on],
-            misty.as_ref().map(|m| (m.scale, misty_gi.intensity)),
+            misty
+                .as_ref()
+                .map(|m| (m.scale, misty_gi.intensity, m.reflections)),
         );
         queue.write_buffer(&state.params, 0, bytemuck::bytes_of(&params));
         let flag = |on: bool| if on { 1.0 } else { 0.0 };
@@ -290,11 +313,28 @@ impl ScreenTrace {
                 misc: [flag(gi.lightmapped_surfaces), 0.0, 0.0, 0.0],
             },
             true => Header {
-                flags: [1.0, 1.0, flag(ssr_on), ssr.intensity],
-                misc: [flag(misty_gi.lightmapped_surfaces), 1.0, 0.0, 0.0],
+                // Misty GI's glossy reflections fill where SSR finds nothing (or SSR is off).
+                flags: [
+                    1.0,
+                    1.0,
+                    flag(ssr_on || misty_reflections),
+                    if ssr_on { ssr.intensity } else { 1.0 },
+                ],
+                misc: [
+                    flag(misty_gi.lightmapped_surfaces),
+                    1.0,
+                    world_vec4(full) as f32,
+                    misty_gi.intensity,
+                ],
             },
         };
         queue.write_buffer(&state.texels, 0, bytemuck::bytes_of(&header));
+        let world_copy = misty.as_ref().map(|m| {
+            let at = HEADER_BYTES + world_vec4(full) * 16;
+            queue.write_buffer(&state.texels, at, bytemuck::cast_slice(&m.world_header));
+            let probes_at = at + m.world_header.len() as u64 * 16;
+            (m.probes.clone(), probes_at, m.probe_bytes)
+        });
 
         let views = Views {
             depth: depth_view,
@@ -318,6 +358,7 @@ impl ScreenTrace {
             b.in_a = gi_final.unwrap_or(&passes.dummy_in);
             b.in_b = ssr_final.unwrap_or(&passes.dummy_in);
             b.in_c = misty.as_ref().map_or(&passes.dummy_in, |m| &m.gather);
+            b.in_d = misty.as_ref().map_or(&passes.dummy_in, |m| &m.reflect);
             b.buffer = &state.texels;
             Step {
                 kernel: Kernel::Compose,
@@ -347,6 +388,7 @@ impl ScreenTrace {
             ssr_steps,
             compose,
             misty,
+            world_copy,
             color: state.color.clone(),
             color_steps,
         })
@@ -487,6 +529,9 @@ impl Renderer {
                 self.mark(encoder, stage.label());
             }
         }
+        if let Some((probes, at, bytes)) = &t.world_copy {
+            encoder.copy_buffer_to_buffer(probes, 0, &t.buffer, *at, *bytes);
+        }
     }
 
     /// Copy the opaque scene into the SSGI / SSR colour history (Frame Debugger event).
@@ -537,6 +582,7 @@ struct Binds<'a> {
     in_a: &'a wgpu::TextureView,
     in_b: &'a wgpu::TextureView,
     in_c: &'a wgpu::TextureView,
+    in_d: &'a wgpu::TextureView,
     out_a: &'a wgpu::TextureView,
     out_b: &'a wgpu::TextureView,
     buffer: &'a wgpu::Buffer,
@@ -556,6 +602,7 @@ impl<'a> Binds<'a> {
             in_a: &passes.dummy_in,
             in_b: &passes.dummy_in,
             in_c: &passes.dummy_in,
+            in_d: &passes.dummy_in,
             out_a: &passes.dummy_out[0],
             out_b: &passes.dummy_out[1],
             buffer: &passes.dummy_buffer,
@@ -584,6 +631,7 @@ impl<'a> Binds<'a> {
                 tex(10, self.out_b),
                 buf(11, self.buffer),
                 tex(12, self.velocity),
+                tex(13, self.in_d),
             ],
         })
     }
@@ -733,7 +781,7 @@ fn trace_params(
     prev: Mat4,
     [gi_history, ssr_history]: [bool; 2],
     [gi_on, ssr_on]: [bool; 2],
-    misty: Option<(u32, f32)>,
+    misty: Option<(u32, f32, bool)>,
 ) -> TraceParams {
     let cam = frame.camera;
     let (gi, ssr) = (&frame.post.ssgi, &frame.post.ssr);
@@ -787,7 +835,7 @@ fn trace_params(
             0.0,
         ],
         misty: match misty {
-            Some((scale, intensity)) => [
+            Some((scale, intensity, _)) => [
                 scale as f32,
                 1.0,
                 intensity,
@@ -795,6 +843,7 @@ fn trace_params(
             ],
             None => [1.0, 0.0, 0.0, 0.0],
         },
+        misty2: [flag(misty.is_some_and(|m| m.2)), 0.0, 0.0, 0.0],
     }
 }
 
@@ -831,7 +880,7 @@ mod tests {
             super::super::pipelines::MESH_SRC
         );
         validate("lit", &lit);
-        assert_eq!(std::mem::size_of::<TraceParams>(), 3 * 64 + 12 * 16);
+        assert_eq!(std::mem::size_of::<TraceParams>(), 3 * 64 + 13 * 16);
         assert_eq!(std::mem::size_of::<Header>() as u64, HEADER_BYTES);
     }
 
