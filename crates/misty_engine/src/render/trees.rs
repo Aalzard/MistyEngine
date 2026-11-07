@@ -499,14 +499,19 @@ fn texture_or(rel: &str, normal: bool) -> image::RgbaImage {
     image::RgbaImage::from_pixel(1, 1, image::Rgba(p))
 }
 
-impl GpuTree {
-    fn new(device: &wgpu::Device, queue: &wgpu::Queue, built: Arc<Built>) -> Self {
+/// A tree's texture mip chains (decoded and filtered on any thread), ready to upload.
+struct TreeTextures {
+    built: Arc<Built>,
+    /// Bark, bark normal, leaves, leaf normal, impostor albedo, impostor normal: (mips, sRGB).
+    chains: [(Vec<image::RgbaImage>, bool); 6],
+}
+
+impl TreeTextures {
+    /// Load the asset's textures and build every mip chain (a hundred milliseconds or so for
+    /// 2K textures: on a worker thread while streaming).
+    fn build(built: Arc<Built>) -> Self {
         let a = &built.asset;
         let m = &built.model;
-        let lods = [
-            GpuMesh::new(device, &m.lods[0]),
-            GpuMesh::new(device, &m.lods[1]),
-        ];
         let plain =
             |rel: &str, normal: bool| super::texture::mip_chain(texture_or(rel, normal), !normal);
         let leaf = texture_or(&a.leaf_texture, false);
@@ -525,6 +530,19 @@ impl GpuTree {
             (imp, true),
             (imp_n, false),
         ];
+        Self { built, chains }
+    }
+}
+
+impl GpuTree {
+    /// Upload a built tree: meshes and the texture chains.
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue, t: TreeTextures) -> Self {
+        let TreeTextures { built, chains } = t;
+        let m = &built.model;
+        let lods = [
+            GpuMesh::new(device, &m.lods[0]),
+            GpuMesh::new(device, &m.lods[1]),
+        ];
         let mut bytes = lods.iter().map(GpuMesh::bytes).sum::<u64>();
         let textures = chains.map(|(chain, srgb)| {
             let (view, b) = upload(device, queue, "misty tree texture", &chain, srgb);
@@ -538,6 +556,13 @@ impl GpuTree {
             bytes,
         }
     }
+}
+
+/// Texture chains of one version of a tree asset, being built on a worker thread.
+struct Pending {
+    version: u64,
+    /// (Behind a lock only so the renderer stays `Sync`.)
+    rx: std::sync::Mutex<std::sync::mpsc::Receiver<TreeTextures>>,
 }
 
 /// A placed tree in world space (cached per terrain version).
@@ -592,6 +617,10 @@ pub(super) struct TreeRenderer {
     sampler: wgpu::Sampler,
     pipelines: Option<Pipelines>,
     trees: HashMap<String, GpuTree>,
+    /// Texture chains being built on worker threads, per tree asset (while streaming).
+    pending: HashMap<String, Pending>,
+    /// Tree assets of the last frame not drawn yet: being built or uploaded.
+    loading: usize,
     terrains: HashMap<String, TerrainTrees>,
     instance_buffer: Option<wgpu::Buffer>,
     /// This frame's tree keys (index = `Batch::tree`), groups, and draws per pass.
@@ -651,6 +680,8 @@ impl TreeRenderer {
             sampler,
             pipelines: None,
             trees: HashMap::new(),
+            pending: HashMap::new(),
+            loading: 0,
             terrains: HashMap::new(),
             instance_buffer: None,
             frame_trees: Vec::new(),
@@ -663,6 +694,71 @@ impl TreeRenderer {
     /// Any tree to draw this frame.
     pub fn has_trees(&self) -> bool {
         !self.main.is_empty()
+    }
+
+    /// Tree assets of the last frame still being built or prepared for upload.
+    pub fn loading(&self) -> usize {
+        self.loading
+    }
+
+    /// The uploaded model of `path` for `built`: uploads it when its textures are ready (built
+    /// on a worker while streaming, so the frame never waits for image decoding), and keeps
+    /// the previous version drawing meanwhile. None until a first version is uploaded.
+    fn ensure(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        path: &str,
+        built: Arc<Built>,
+    ) -> bool {
+        let current = self
+            .trees
+            .get(path)
+            .is_some_and(|g| g.built.version == built.version);
+        if current {
+            return true;
+        }
+        if !super::grass_streaming() {
+            crate::profile_scope!("Trees.Upload");
+            let t = TreeTextures::build(built);
+            self.trees
+                .insert(path.to_owned(), GpuTree::new(device, queue, t));
+            return true;
+        }
+        let ready = match self.pending.get_mut(path) {
+            Some(p) if p.version == built.version => match p.rx.get_mut().map(|r| r.try_recv()) {
+                Ok(Ok(t)) => Some(t),
+                Ok(Err(std::sync::mpsc::TryRecvError::Empty)) => None,
+                Ok(Err(std::sync::mpsc::TryRecvError::Disconnected)) | Err(_) => {
+                    self.pending.remove(path);
+                    None
+                }
+            },
+            _ => {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let version = built.version;
+                let spawned = std::thread::Builder::new()
+                    .name("misty tree textures".into())
+                    .spawn(move || {
+                        let _ = tx.send(TreeTextures::build(built));
+                    });
+                if spawned.is_ok() {
+                    let rx = std::sync::Mutex::new(rx);
+                    self.pending
+                        .insert(path.to_owned(), Pending { version, rx });
+                }
+                None
+            }
+        };
+        if let Some(t) = ready {
+            crate::profile_scope!("Trees.Upload");
+            self.pending.remove(path);
+            self.trees
+                .insert(path.to_owned(), GpuTree::new(device, queue, t));
+        } else {
+            self.loading += 1;
+        }
+        self.trees.contains_key(path)
     }
 
     /// Uploaded tree assets and their GPU bytes (Memory module).
@@ -685,10 +781,12 @@ impl TreeRenderer {
         self.main.clear();
         self.shadows.clear();
         self.shadows.resize(f.cascades.len(), Vec::new());
+        self.loading = 0;
         if f.terrains.iter().all(|t| t.data.trees.instances.is_empty()) {
             return;
         }
         if self.pipelines.is_none() {
+            crate::profile_scope!("Trees.Pipelines");
             self.pipelines = Some(Pipelines::new(device, pipelines, &self.layout));
         }
         let frustum = Frustum::from_matrix(f.view_proj);
@@ -737,16 +835,15 @@ impl TreeRenderer {
             let mut protos: Vec<Option<(usize, usize)>> = Vec::with_capacity(s.prototypes.len());
             for p in &s.prototypes {
                 let Some(built) = store::get(&p.tree) else {
+                    if store::error(&p.tree).is_none() {
+                        self.loading += 1;
+                    }
                     protos.push(None);
                     continue;
                 };
-                let stale = self
-                    .trees
-                    .get(&p.tree)
-                    .is_none_or(|g| g.built.version != built.version);
-                if stale {
-                    self.trees
-                        .insert(p.tree.clone(), GpuTree::new(device, queue, built));
+                if !self.ensure(device, queue, &p.tree, built) {
+                    protos.push(None);
+                    continue;
                 }
                 let tree = match self.frame_trees.iter().position(|k| *k == p.tree) {
                     Some(i) => i,
@@ -756,7 +853,10 @@ impl TreeRenderer {
                     }
                 };
                 let group = self.groups.len();
-                let bind = self.bind_group(device, &self.trees[&p.tree], t, f);
+                let bind = {
+                    crate::profile_scope!("Trees.BindGroup");
+                    self.bind_group(device, &self.trees[&p.tree], t, f)
+                };
                 self.groups.push(bind);
                 protos.push(Some((group, tree)));
             }

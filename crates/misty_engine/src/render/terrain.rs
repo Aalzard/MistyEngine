@@ -529,6 +529,11 @@ impl TerrainCache {
         }
     }
 
+    /// Layer texture arrays still being built on worker threads.
+    pub fn layers_pending(&self) -> usize {
+        self.layers.pending()
+    }
+
     /// The grass clock this render: the environment's fixed one, else seconds since the cache
     /// was made.
     pub fn grass_time(&self, environment: &Environment) -> f32 {

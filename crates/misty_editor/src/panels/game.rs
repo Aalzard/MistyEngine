@@ -59,8 +59,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             misty_engine::screen::take_requests();
             let texture = gpu.render(ViewId::Game, size, &frame, &game.effects);
             let render = gpu.renderer.stats();
-            // Grass chunks still streaming in: keep drawing so they show up as they land.
-            if render.grass_pending > 0 {
+            // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
+            // show up as they land.
+            if render.grass_pending > 0 || render.loading > 0 {
                 ui.ctx().request_repaint();
             }
             // The Profiler's Rendering and Memory modules report the Game view.

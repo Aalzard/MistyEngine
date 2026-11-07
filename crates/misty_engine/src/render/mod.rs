@@ -1635,6 +1635,7 @@ impl Renderer {
         self.slots_scratch = lists.slots;
         let grass = self.terrains.grass_stats();
         stats.grass_pending = grass.pending;
+        stats.loading = (self.terrains.layers_pending() + self.trees.loading()) as u32;
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
         stats.grass_upload_piece_ms = grass.upload_piece_ms;
