@@ -168,6 +168,11 @@ run where everything was 2–5× slower; 1–2 ms in every other run).
 | new build | 2476–2514 ms | 35–60 ms |
 | warm | 613–631 ms | 37–64 ms |
 
+After merging main (round 15 networking, virtual shadow maps; VSM is opt-in and its mark
+pipeline goes through the pipeline cache too) the same runs give: load frame warm 0.32–0.49 s,
+new build 0.50–0.53 s, cold 3.3–3.8 s; worst frame after it 35–60 ms in every state; entering
+Play 13–18 ms; opening MeadowDemo 36–40 ms.
+
 The cold load frame (3.2–3.7 s) is the first launch ever on a project with no `Library/` and
 a build the driver has never seen: the core pipelines (`Renderer::with_queue`, 1.5 s with the
 terrain pipeline alone at 0.8 s) and the first frame's mesh/AO variants compile in the driver.
