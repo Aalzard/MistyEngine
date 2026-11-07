@@ -31,6 +31,8 @@ struct TraceParams {
     // x = full pixels per Misty GI texel, y = 1 when Misty GI is on, z = its intensity, w = SSGI
     // intensity (folded into the composed GI when Misty GI is on).
     misty: vec4<f32>,
+    // x = 1 when Misty GI's glossy reflections (in_d) join SSR's.
+    misty2: vec4<f32>,
 };
 
 // What the lit shaders read (screen_trace.wgsl): header + one packed texel per full pixel.
@@ -58,6 +60,7 @@ struct ScreenTrace {
 @group(0) @binding(11) var<storage, read_write> trace_out: ScreenTrace;
 // Motion vectors of the prepass (last frame's uv minus this frame's, per full pixel).
 @group(0) @binding(12) var velocity_tex: texture_2d<f32>;
+@group(0) @binding(13) var in_d: texture_2d<f32>;
 
 const PI: f32 = 3.14159265;
 

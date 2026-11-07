@@ -11,6 +11,9 @@ mod game;
 mod hierarchy;
 mod inspector;
 pub use inspector::preset_window;
+pub(crate) use inspector::script_fields;
+#[cfg(test)]
+pub(crate) use inspector::show as inspector_show;
 pub mod effect_graph;
 pub mod frame_debugger;
 mod lighting;
@@ -59,6 +62,10 @@ impl TabViewer for PanelViewer<'_> {
     }
 
     fn title(&mut self, tab: &mut Tab) -> WidgetText {
+        if let Tab::Tool(id) = tab {
+            let title = crate::editor_scripts::windows::title(self.state, *id);
+            return format!("{} {title}", tab.icon()).into();
+        }
         format!("{} {}", tab.icon(), tab.title()).into()
     }
 
@@ -93,6 +100,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::TestRunner => test_runner::show(ui, self.state),
             Tab::AssetGroups => asset_groups::show(ui, self.state),
             Tab::PackageManager => packages::show(ui, self.state),
+            Tab::Tool(id) => crate::editor_scripts::windows::show(ui, self.state, *id),
         }
     }
 

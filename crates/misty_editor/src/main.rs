@@ -22,6 +22,7 @@ mod capture;
 mod commands;
 mod component_ops;
 mod console;
+mod editor_scripts;
 mod fps_player;
 mod game_input;
 mod gizmos;
@@ -363,6 +364,7 @@ fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
     setup.device_descriptor = std::sync::Arc::new(move |adapter| {
         let mut desc = base(adapter);
         desc.required_features |= misty_engine::render::timestamp_features(adapter);
+        desc.required_limits = misty_engine::render::device_limits(adapter, desc.required_limits);
         desc
     });
     // The Game view's VSync toggle (saved in hub.json; `app::apply_vsync` follows changes).

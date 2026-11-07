@@ -38,7 +38,7 @@ pub fn register_meshes(name: &str, meshes: Vec<MeshData>) -> String {
 
 fn store(name: &str, meshes: Vec<MeshData>, virtual_geometry: bool) -> String {
     let path = format!("{PREFIX}{name}");
-    let model = Model {
+    let mut model = Model {
         meshes: meshes
             .into_iter()
             .enumerate()
@@ -60,6 +60,9 @@ fn store(name: &str, meshes: Vec<MeshData>, virtual_geometry: bool) -> String {
         virtual_geometry,
         ..Default::default()
     };
+    if virtual_geometry {
+        model.virtual_builds = super::virtual_build::now(&model);
+    }
     let mut lib = library();
     let replaced = lib.entries.insert(
         path.clone(),

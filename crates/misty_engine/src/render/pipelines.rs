@@ -368,7 +368,7 @@ impl Pipelines {
                 // Screen-space AO and contact shadow texels (screen_space.rs).
                 entry(16, lit, storage()),
                 // Screen-space GI and reflection texels (screen_trace).
-                entry(17, S::FRAGMENT, storage()),
+                entry(17, lit, storage()),
                 // Temporal soft-shadow mask (shadow_denoise).
                 entry(super::shadow_denoise::BINDING, S::FRAGMENT, storage()),
                 // 2D lights and shadow maps (light2d.rs).

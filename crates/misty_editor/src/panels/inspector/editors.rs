@@ -1218,12 +1218,21 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
             title
         };
         super::card::card(ui, id, state, header, |ui, state| {
-            script_fields(ui, state, e, slot, &script.path)
+            // A custom Inspector from an editor script replaces the field list.
+            if !crate::editor_scripts::inspector::draw(ui, state, e, slot, &script.path) {
+                script_fields(ui, state, e, slot, &script.path)
+            }
         });
     }
 }
 
-fn script_fields(ui: &mut Ui, state: &mut EditorState, e: Entity, slot: usize, path: &str) {
+pub(crate) fn script_fields(
+    ui: &mut Ui,
+    state: &mut EditorState,
+    e: Entity,
+    slot: usize,
+    path: &str,
+) {
     let meta = state.assets.scripts.get(path).cloned();
     let overrides = state
         .scene
@@ -1257,13 +1266,30 @@ fn script_fields(ui: &mut Ui, state: &mut EditorState, e: Entity, slot: usize, p
                 ui.end_row();
             }
             Some(Ok(fields)) => {
+                let attrs = meta.as_ref().map(|m| &m.attributes);
                 for (name, default) in fields {
+                    let a = attrs.and_then(|a| a.get(name)).cloned().unwrap_or_default();
+                    if a.hidden {
+                        continue;
+                    }
+                    if a.space > 0.0 {
+                        // A gap row (`add_space` does not work in a grid).
+                        ui.allocate_exact_size(egui::vec2(1.0, a.space), egui::Sense::hover());
+                        ui.end_row();
+                    }
+                    if let Some(h) = &a.header {
+                        ui.label(crate::theme::bold(ui.ctx(), h.clone()));
+                        ui.end_row();
+                    }
                     let mut value = overrides
                         .get(name)
                         .cloned()
                         .unwrap_or_else(|| default.clone());
-                    ui.label(nicify(name));
-                    if script_value_ui(ui, &format!("{slot}_{name}"), &mut value) {
+                    let label = ui.label(nicify(name));
+                    if let Some(tip) = &a.tooltip {
+                        label.on_hover_text(tip);
+                    }
+                    if script_field_ui(ui, &format!("{slot}_{name}"), &mut value, &a) {
                         edits.push((name.clone(), value));
                     }
                     ui.end_row();
@@ -1280,6 +1306,19 @@ fn script_fields(ui: &mut Ui, state: &mut EditorState, e: Entity, slot: usize, p
             }
         }
         state.mark_edited(&label);
+    }
+}
+
+/// Widget for one script field, honouring its attributes (a `Range` number is a slider).
+pub fn script_field_ui(
+    ui: &mut Ui,
+    id: &str,
+    v: &mut ScriptValue,
+    attrs: &misty_engine::scripting::attributes::FieldAttributes,
+) -> bool {
+    match (v, attrs.range) {
+        (ScriptValue::Number(n), Some((lo, hi))) => ui.add(egui::Slider::new(n, lo..=hi)).changed(),
+        (v, _) => script_value_ui(ui, id, v),
     }
 }
 

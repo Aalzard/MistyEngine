@@ -9,13 +9,24 @@ use crate::render::trees::gpu_tests::{Shot as TreeShot, meadow_view as tree_view
 use crate::render_scene::GameView;
 
 fn view(name: &str) -> Option<GameView> {
-    Some(match name {
+    let mut v = match name {
         "wide" => meadow_view(GrassShot::WideGolden),
         "close" => meadow_view(GrassShot::CloseGolden),
         "behind" => tree_view(TreeShot::Behind),
         "oak" => tree_view(TreeShot::Close),
         _ => return None,
-    })
+    };
+    // `MISTY_GI=1`: Misty GI on (High), so the grass receives its sky occlusion and bounce.
+    if std::env::var("MISTY_GI").is_ok_and(|g| g == "1") {
+        v.post.misty_gi = crate::render::MistyGiSettings::from_override(
+            &crate::scene::MistyGlobalIlluminationOverride {
+                active: true,
+                quality: crate::scene::ScreenSpaceQuality::High,
+                ..Default::default()
+            },
+        );
+    }
+    Some(v)
 }
 
 /// Grass chunks and blades held per terrain, per level and view.

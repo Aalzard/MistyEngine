@@ -84,6 +84,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     match gpu {
         Some(gpu) => {
             let occlusion_view = crate::panels::occlusion::visualizing(state, ui.ctx());
+            // Editor script gizmos (`OnDrawGizmos`) run before the view settings are borrowed.
+            let mut script_lines = gizmos::Lines::default();
+            if state.scene_view.gizmos {
+                crate::editor_scripts::gizmos::lines(state, &mut script_lines);
+            } else {
+                state.editor_scripts.gizmo_frame = Default::default();
+            }
             let mut meshes = render_scene::cached_draws(state);
             let sv = &state.scene_view;
             // Probe gizmo spheres join a copy of the cached draws (only while probes exist).
@@ -103,6 +110,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 crate::ui_gizmos::ui_lines(&mut l, &state.scene, &state.selection, screen);
                 crate::probe_gizmos::lines(&mut l, state, sv.draw_mode == PROBES_MODE);
                 crate::light_probe_tools::lines(state, &mut l);
+                l.0.extend(script_lines.0);
                 l
             } else {
                 gizmos::Lines::default()
@@ -243,6 +251,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     // Object icons and click-to-select (Ctrl toggles, Shift adds).
     if state.scene_view.gizmos {
         draw_icons(ui, rect, state, &camera);
+        crate::editor_scripts::gizmos::paint(ui, rect, &camera, state);
     }
     // 2D handles (sprite Rect tool, Edit Collider) take the mouse before the transform handles.
     let hovered = response.hovered();
@@ -253,6 +262,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         && !crate::spline_tools::handles(ui, state, &camera, rect, hovered)
         && !crate::area_light_handles::handles(ui, state, &camera, rect, hovered)
         && !crate::panels::world_builder::gizmos::show(ui, state, &camera, rect, hovered)
+        && !crate::editor_scripts::handles::scene_gui(ui, state, &camera, rect, hovered)
     {
         handles::show(ui, state, &camera, rect, hovered);
     }

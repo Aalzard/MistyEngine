@@ -394,6 +394,8 @@ pub struct EditorState {
     pub tutorials: crate::tutorials::Tutorials,
     /// Scenes and assets reloading when their files change; dev-build restarts.
     pub live: crate::live_reload::LiveReload,
+    /// Editor scripts (`Editor` folders): menu items, tool windows, Inspectors, gizmos.
+    pub editor_scripts: crate::editor_scripts::EditorScripts,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
 }
@@ -510,6 +512,7 @@ impl EditorState {
             search: crate::search::SearchPalette::new(&root),
             tutorials: Default::default(),
             live: Default::default(),
+            editor_scripts: crate::editor_scripts::EditorScripts::new(&root),
             actions: Vec::new(),
         };
         crate::project_settings::load(&mut s);

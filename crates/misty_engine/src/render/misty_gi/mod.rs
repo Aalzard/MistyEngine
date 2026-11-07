@@ -307,6 +307,8 @@ struct TargetState {
     radiance: Volume,
     normals: Volume,
     gather: wgpu::TextureView,
+    /// Glossy reflections at the gather texels (rgb, a = confidence).
+    reflect: wgpu::TextureView,
     probes: wgpu::Buffer,
     params: wgpu::Buffer,
     instances: wgpu::Buffer,
@@ -334,22 +336,26 @@ impl TargetState {
             full.0.div_ceil(sizes.apply_scale),
             full.1.div_ceil(sizes.apply_scale),
         );
-        let gather = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("misty gi gather"),
-            size: wgpu::Extent3d {
-                width: gather_size.0,
-                height: gather_size.1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: GATHER_FORMAT,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::STORAGE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let image = |label| {
+            device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d {
+                        width: gather_size.0,
+                        height: gather_size.1,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: GATHER_FORMAT,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::STORAGE_BINDING
+                        | wgpu::TextureUsages::COPY_SRC,
+                    view_formats: &[],
+                })
+                .create_view(&Default::default())
+        };
         let probe_count = sizes.levels as u64 * (sizes.probes as u64).pow(3);
         Self {
             sizes,
@@ -359,7 +365,8 @@ impl TargetState {
             emission: Volume::new(device, "misty gi emission", &sizes, VOLUME_FORMAT),
             radiance: Volume::new(device, "misty gi radiance", &sizes, VOLUME_FORMAT),
             normals: Volume::new(device, "misty gi cache normals", &sizes, NORMAL_FORMAT),
-            gather: gather.create_view(&Default::default()),
+            gather: image("misty gi gather"),
+            reflect: image("misty gi reflections"),
             probes: storage(device, "misty gi probes", probe_count * 64),
             params: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("misty gi params"),
@@ -393,7 +400,19 @@ pub(in crate::render) struct MistyFrame {
     /// Gather image (rgb = irradiance) at `scale` full pixels per texel.
     pub gather: wgpu::TextureView,
     pub scale: u32,
+    /// Glossy reflections at the same texels (rgb, a = confidence) when `reflections`.
+    pub reflect: wgpu::TextureView,
+    pub reflections: bool,
+    /// The probe clipmap the lit shaders' world lookup reads (`misty_world_irradiance` in
+    /// screen_trace.wgsl): `world_header` then a copy of `probes` (`probe_bytes`).
+    pub world_header: [[f32; 4]; WORLD_HEADER_VEC4S],
+    pub probes: wgpu::Buffer,
+    pub probe_bytes: u64,
 }
+
+/// Vec4s before the probes in the lit shaders' copy: (levels, probes per side), then one per
+/// level (first probe cell, spacing), padded to `MAX_LEVELS`.
+pub(in crate::render) const WORLD_HEADER_VEC4S: usize = 2 + MAX_LEVELS;
 
 impl MistyFrame {
     /// The stage runs this render.
@@ -571,7 +590,9 @@ impl MistyGi {
                 sizes.apply_scale as f32,
                 0.0,
             ],
-            camera: camera.extend(0.0).to_array(),
+            camera: camera
+                .extend(if sizes.reflections { 1.0 } else { 0.0 })
+                .to_array(),
             sky: (sky * k).extend(0.0).to_array(),
             equator: (equator * k).extend(0.0).to_array(),
             ground: (ground * k).extend(0.0).to_array(),
@@ -662,11 +683,14 @@ impl MistyGi {
                 &[
                     entry(0, buf(&state.params)),
                     entry(1, res(&state.sdf.view)),
+                    entry(5, res(&state.radiance.view)),
+                    entry(7, res(&state.normals.view)),
                     entry(9, sampler),
                     entry(13, buf(&state.probes)),
                     entry(16, res(depth_view)),
                     entry(17, res(normal_view)),
                     entry(18, res(&state.gather)),
+                    entry(19, res(&state.reflect)),
                 ],
             ),
             groups: [
@@ -676,10 +700,20 @@ impl MistyGi {
             ],
         });
         state.frame = state.frame.wrapping_add(1);
+        let mut world_header = [[0.0; 4]; WORLD_HEADER_VEC4S];
+        world_header[0] = [sizes.levels as f32, sizes.probes as f32, 0.0, 0.0];
+        for (k, l) in levels.iter().take(sizes.levels as usize).enumerate() {
+            world_header[1 + k] = l.probe;
+        }
         Some(MistyFrame {
             steps,
             gather: state.gather.clone(),
             scale: sizes.apply_scale,
+            reflect: state.reflect.clone(),
+            reflections: sizes.reflections,
+            world_header,
+            probes: state.probes.clone(),
+            probe_bytes: probe_count as u64 * 64,
         })
     }
 

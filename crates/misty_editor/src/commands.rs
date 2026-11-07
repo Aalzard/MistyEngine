@@ -257,6 +257,9 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
                 return Some(other);
             }
         }
+        Action::EditorMenu(path) => {
+            crate::editor_scripts::menus::run(s, &path);
+        }
         other => return crate::prefabs::apply(s, other),
     }
     s.selection.retain_existing(&s.scene);

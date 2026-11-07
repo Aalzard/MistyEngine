@@ -20,6 +20,9 @@ pub const DEFAULT_MATERIAL: &str = "Default-Material";
 #[derive(Clone, Debug)]
 pub struct ScriptMeta {
     pub fields: Result<Vec<(String, ScriptValue)>, String>,
+    /// Inspector attributes (`Header`, `Range`, …) by field name.
+    pub attributes:
+        std::collections::HashMap<String, misty_engine::scripting::attributes::FieldAttributes>,
     modified: Option<SystemTime>,
 }
 
@@ -62,6 +65,8 @@ pub struct AssetDatabase {
     pub models: BTreeMap<String, Result<Vec<String>, String>>,
     /// Import messages for the Console (drained by the editor).
     pub messages: Vec<String>,
+    /// Assets that appeared since the last frame (editor script asset processors run on them).
+    pub imported: Vec<String>,
     last_poll: Option<std::time::Instant>,
     /// Last check of the GUID map against the Assets folder.
     last_guid_poll: Option<std::time::Instant>,
@@ -90,6 +95,7 @@ impl AssetDatabase {
             hdris: Vec::new(),
             models: BTreeMap::new(),
             messages: Vec::new(),
+            imported: Vec::new(),
             last_poll: None,
             last_guid_poll: None,
         };
@@ -103,6 +109,7 @@ impl AssetDatabase {
     pub fn refresh(&mut self) {
         // Keep the GUID map in step: new assets get meta files, copies get new GUIDs.
         if let Some(report) = misty_engine::asset_db::rescan() {
+            self.imported.extend(report.created.iter().cloned());
             self.note_guids(report);
         }
         self.materials.clear();
@@ -142,6 +149,10 @@ impl AssetDatabase {
                     }
                 } else if path.extension().is_some_and(|e| e == "lua") {
                     let rel = self.relative(&path);
+                    // Editor scripts are not components (see `editor_scripts`).
+                    if misty_engine::asset_deps::is_editor_only(&rel) {
+                        continue;
+                    }
                     let meta = match old_scripts.get(&rel) {
                         Some(m) if m.modified == mtime(&path) => m.clone(),
                         _ => inspect(&path, &rel),
@@ -278,6 +289,7 @@ impl AssetDatabase {
         self.last_guid_poll = Some(now);
         match misty_engine::asset_db::poll() {
             Some(report) => {
+                self.imported.extend(report.created.iter().cloned());
                 self.note_guids(report);
                 true
             }
@@ -447,11 +459,16 @@ fn mtime(path: &Path) -> Option<SystemTime> {
 }
 
 fn inspect(path: &Path, rel: &str) -> ScriptMeta {
-    let fields = std::fs::read_to_string(path)
+    let info = std::fs::read_to_string(path)
         .map_err(|e| e.to_string())
-        .and_then(|src| misty_engine::scripting::inspect_fields(&src, rel));
+        .and_then(|src| misty_engine::scripting::inspect_script(&src, rel));
+    let (fields, attributes) = match info {
+        Ok(i) => (Ok(i.fields), i.attributes),
+        Err(e) => (Err(e), Default::default()),
+    };
     ScriptMeta {
         fields,
+        attributes,
         modified: mtime(path),
     }
 }

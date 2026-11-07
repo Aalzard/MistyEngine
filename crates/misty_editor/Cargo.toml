@@ -17,6 +17,8 @@ egui_dock.workspace = true
 glam.workspace = true
 bytemuck.workspace = true
 misty_engine = { path = "../misty_engine" }
+# Editor scripts (`editor_scripts`) run in their own Lua state.
+mlua.workspace = true
 png = "0.18"
 serde_json.workspace = true
 serde.workspace = true

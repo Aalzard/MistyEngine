@@ -37,6 +37,7 @@ pub(crate) fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("misty test device"),
         required_features: timestamp_features(&adapter),
+        required_limits: super::device_limits(&adapter, wgpu::Limits::default()),
         ..Default::default()
     }))
     .ok()

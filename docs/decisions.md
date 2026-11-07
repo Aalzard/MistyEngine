@@ -3255,4 +3255,9 @@ Record of choices made without asking, and why.
      - Chosen over a voxel clipmap (no voxelisation pipelines to touch, sphere tracing skips space) and over
        Lumen-style cards (no capture passes; voxel resolution suffices for diffuse). World-space radiance cascades
        were evaluated and rejected as the main gather (dense 3D cascade 0 is 10–50× over budget); their interval
-       merge is the planned next step on top of the probe levels.
+       merge is now applied to the probe levels: a probe's rays trace half its level's width, then take the coarser
+       probes' radiance in the same direction (High's probe trace 2.0 → 1.1–1.4 ms, lights settle faster).
+     - Grass and trees receive GI through functions in `screen_trace.wgsl`: dense grass reads the per-pixel GI texel
+       (`misty_ambient`, 2 reads; the world lookup per grass fragment cost +14 ms), tree crowns fall back to a
+       world-space probe lookup (`misty_world_irradiance`, a copy of the probe clipmap after the texels).
+     - Glossy reflections come from the same distance field and radiance cache, behind SSR's hits.

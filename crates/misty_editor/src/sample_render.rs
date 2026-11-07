@@ -49,6 +49,7 @@ fn device(timed: bool) -> Option<(wgpu::Device, wgpu::Queue)> {
             true => misty_engine::render::timestamp_features(&adapter),
             false => wgpu::Features::empty(),
         },
+        required_limits: misty_engine::render::device_limits(&adapter, Default::default()),
         ..Default::default()
     };
     pollster::block_on(adapter.request_device(&desc)).ok()

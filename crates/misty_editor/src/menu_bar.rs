@@ -61,13 +61,41 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 pub fn show_menus(ui: &mut Ui, state: &mut EditorState) -> f32 {
     egui::MenuBar::new()
         .ui(ui, |ui| {
-            top(ui, "File", |ui| file_menu(ui, state));
-            top(ui, "Edit", |ui| edit_menu(ui, state));
-            top(ui, "Assets", |ui| assets_menu(ui, state));
-            top(ui, "GameObject", |ui| gameobject_menu(ui, state));
-            top(ui, "Component", |ui| component_menu(ui, state));
-            top(ui, "Window", |ui| window_menu(ui, state));
-            top(ui, "Help", |ui| help_menu(ui, state)).right()
+            // Editor script menu items join the built-in menus at the end, and their own
+            // menus ("Tools") sit between Component and Window.
+            let scripts = crate::editor_scripts::menus::menu_ui;
+            top(ui, "File", |ui| {
+                file_menu(ui, state);
+                scripts(ui, state, "File");
+            });
+            top(ui, "Edit", |ui| {
+                edit_menu(ui, state);
+                scripts(ui, state, "Edit");
+            });
+            top(ui, "Assets", |ui| {
+                assets_menu(ui, state);
+                scripts(ui, state, "Assets");
+            });
+            top(ui, "GameObject", |ui| {
+                gameobject_menu(ui, state);
+                scripts(ui, state, "GameObject");
+            });
+            top(ui, "Component", |ui| {
+                component_menu(ui, state);
+                scripts(ui, state, "Component");
+            });
+            for name in crate::editor_scripts::menus::extra_tops(state) {
+                top(ui, &name, |ui| scripts(ui, state, &name));
+            }
+            top(ui, "Window", |ui| {
+                window_menu(ui, state);
+                scripts(ui, state, "Window");
+            });
+            top(ui, "Help", |ui| {
+                help_menu(ui, state);
+                scripts(ui, state, "Help");
+            })
+            .right()
         })
         .inner
 }
