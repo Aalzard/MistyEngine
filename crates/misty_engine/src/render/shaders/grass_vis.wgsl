@@ -76,7 +76,12 @@ fn fs_grass_vis(in: VisOut, @builtin(front_facing) front: bool) -> VisTargets {
     return out;
 }
 
-// ---- The resolve: one thread per pixel ----
+// ---- The resolve ----
+//
+// Two steps per terrain: `cs_grass_classify` (one thread per pixel) finds the distinct blade
+// fragments among each pixel's samples, writes the pixel's sample → slot table and appends
+// one job per slot of this terrain (compacted per workgroup); `cs_grass_shade` then shades
+// one job per thread, so no thread waits for a neighbour that sees four blades.
 
 // Pages 1–3 of the terrain's blades (page 0 is `grass_blades`, grass_pool.rs).
 @group(3) @binding(2) var<storage, read> grass_page1: array<vec2<f32>>;
@@ -84,18 +89,22 @@ fn fs_grass_vis(in: VisOut, @builtin(front_facing) front: bool) -> VisTargets {
 @group(3) @binding(4) var<storage, read> grass_page3: array<vec2<f32>>;
 @group(3) @binding(5) var vis_card: texture_multisampled_2d<f32>;
 @group(3) @binding(6) var vis_ids: texture_multisampled_2d<f32>;
-// Per pixel: x = 3 bits per sample (0 = no blade, k = slot k - 1), y = sample 0's motion
-// vector (pack2x16float).
-@group(3) @binding(7) var vis_px: texture_storage_2d<rg32uint, write>;
+// Per pixel: 3 bits per sample (0 = no blade, k = slot k - 1).
+@group(3) @binding(7) var vis_table: texture_storage_2d<r32uint, write>;
 // Per pixel and slot: colour rg, colour b + coverage (pack2x16float).
 @group(3) @binding(8) var vis_slots: texture_storage_2d_array<rg32uint, write>;
 
 struct VisFrame {
-    // x = this dispatch's terrain (id bits 24–26), y = 1 for the frame's first dispatch
-    // (writes every pixel), zw = target size.
+    // x = this dispatch's terrain (id bits 24–26), y unused, zw = target size.
     info: vec4<u32>,
 };
 @group(3) @binding(9) var<uniform> vis: VisFrame;
+// Shading jobs: pixel index << 4 | slot << 2 | the slot's first sample.
+@group(3) @binding(10) var<storage, read_write> vis_jobs: array<u32>;
+// x = jobs appended, yzw = the shading dispatch's workgroups (indirect arguments).
+@group(3) @binding(11) var<storage, read_write> vis_count: array<atomic<u32>, 4>;
+// Per pixel: the motion vector of sample 0's blade (pack2x16float).
+@group(3) @binding(12) var vis_vel: texture_storage_2d<r32uint, write>;
 
 fn vis_word(page: u32, i: u32) -> vec2<f32> {
     switch page {
@@ -154,6 +163,25 @@ fn vis_vertex(now: BladeFrame, before: BladeFrame, b: BladeIn, vi: u32) -> Grass
     return grass_out(v, prev, b);
 }
 
+// The parts of `grass_out` that differ between a card's vertices (the rest left unset).
+fn vis_varying(now: BladeFrame, before: BladeFrame, b: BladeIn, vi: u32) -> GrassOut {
+    let v = grass_blade_point(now, b, vi);
+    var prev = v.p;
+    if (grass.screen.w > 0.0) {
+        prev = grass_blade_point(before, b, vi).p;
+    }
+    var out: GrassOut;
+    let face = normalize(cross(v.across, v.tangent));
+    out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
+    out.clip_prev = prev_clip(prev);
+    out.world = v.p;
+    out.normal = normalize(face + v.across * v.side * 0.8);
+    out.misc.y = v.above / canopy_top(b).x;
+    out.uv = vec4<f32>(grass_card_u(v.cell, v.side, v.repeat), grass_card_v(v.t, b.shape.w), v.t, v.fade);
+    out.across = v.across * v.side * 2.0;
+    return out;
+}
+
 fn vis_card_uv(a: GrassOut, b: GrassOut, c: GrassOut, m: vec3<f32>) -> vec2<f32> {
     return a.uv.xy * m.x + b.uv.xy * m.y + c.uv.xy * m.z;
 }
@@ -169,22 +197,21 @@ fn vis_shade(px: vec2<u32>, id: u32, card: vec4<f32>) -> MeshTargets {
     if (grass.screen.w > 0.0) {
         before = grass_blade_frame(b, grass.origin.w - grass.screen.w);
     }
+    // Vertex 0 in full; of the other two only what varies along the card (colour, canopy,
+    // distance terms and the cell are the blade's: the same at every vertex).
     let v0 = vis_vertex(now, before, b, tri);
-    let v1 = vis_vertex(now, before, b, tri + 1u);
-    let v2 = vis_vertex(now, before, b, tri + 2u);
+    let v1 = vis_varying(now, before, b, tri + 1u);
+    let v2 = vis_varying(now, before, b, tri + 2u);
     let p = vec2<f32>(px) + 0.5;
     let m = vis_bary(v0.clip, v1.clip, v2.clip, p);
-    var in: GrassOut;
+    var in = v0;
     in.clip = vec4<f32>(p, 0.0, 1.0);
     in.world = v0.world * m.x + v1.world * m.y + v2.world * m.z;
     in.normal = v0.normal * m.x + v1.normal * m.y + v2.normal * m.z;
-    in.color = v0.color * m.x + v1.color * m.y + v2.color * m.z;
     in.uv = v0.uv * m.x + v1.uv * m.y + v2.uv * m.z;
-    in.cell = v0.cell;
-    in.misc = v0.misc * m.x + v1.misc * m.y + v2.misc * m.z;
+    in.misc.y = v0.misc.y * m.x + v1.misc.y * m.y + v2.misc.y * m.z;
     in.across = v0.across * m.x + v1.across * m.y + v2.across * m.z;
     in.clip_prev = v0.clip_prev * m.x + v1.clip_prev * m.y + v2.clip_prev * m.z;
-    in.canopy = v0.canopy * m.x + v1.canopy * m.y + v2.canopy * m.z;
     // Screen gradients of the card coordinate as the fragment's quad takes them (the
     // horizontal and vertical pixel pairs of its 2×2 quad).
     let q = vec2<f32>(px & vec2<u32>(~1u)) + 0.5;
@@ -209,12 +236,20 @@ fn vis_pack(c: vec4<f32>) -> vec2<u32> {
     return vec2<u32>(pack2x16float(v.xy), pack2x16float(v.zw));
 }
 
+var<workgroup> vis_group_jobs: atomic<u32>;
+var<workgroup> vis_group_base: u32;
+
 @compute @workgroup_size(8, 8)
-fn cs_grass_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
-    if (gid.x >= vis.info.z || gid.y >= vis.info.w) {
-        return;
+fn cs_grass_classify(
+    @builtin(global_invocation_id) gid: vec3<u32>,
+    @builtin(local_invocation_index) lid: u32,
+) {
+    if (lid == 0u) {
+        atomicStore(&vis_group_jobs, 0u);
     }
-    let px = gid.xy;
+    workgroupBarrier();
+    let inside = gid.x < vis.info.z && gid.y < vis.info.w;
+    let px = min(gid.xy, vis.info.zw - 1u);
     let n = textureNumSamples(vis_ids);
     var ids: array<u32, 4>;
     var cards: array<vec4<f32>, 4>;
@@ -228,7 +263,7 @@ fn cs_grass_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
         ids[s] = id;
         cards[s] = card;
         slot_of[s] = 4u;
-        if (id == 0u) {
+        if (id == 0u || !inside) {
             continue;
         }
         // The same blade fragment (same triangle, facing and coverage) in an earlier sample
@@ -246,21 +281,75 @@ fn cs_grass_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
         slot_of[s] = slot;
         table |= (slot + 1u) << (3u * s);
     }
-    var velocity = 0u;
-    var owns_first = false;
+    // This terrain's slots: room in the workgroup's run of jobs, then one global add.
+    var mine = 0u;
+    for (var k = 0u; k < slots; k++) {
+        mine += u32(((ids[first[k]] >> 24u) & 7u) == vis.info.x);
+    }
+    var at = 0u;
+    if (mine > 0u) {
+        at = atomicAdd(&vis_group_jobs, mine);
+    }
+    workgroupBarrier();
+    if (lid == 0u) {
+        let total = atomicLoad(&vis_group_jobs);
+        if (total > 0u) {
+            vis_group_base = atomicAdd(&vis_count[0], total);
+        }
+    }
+    workgroupBarrier();
+    if (!inside) {
+        return;
+    }
+    textureStore(vis_table, px, vec4<u32>(table, 0u, 0u, 0u));
+    let pixel = px.y * vis.info.z + px.x;
+    var j = vis_group_base + at;
     for (var k = 0u; k < slots; k++) {
         let s = first[k];
-        if (((ids[s] >> 24u) & 7u) != vis.info.x) {
-            continue;
-        }
-        let shaded = vis_shade(px, ids[s], cards[s]);
-        textureStore(vis_slots, px, k, vec4<u32>(vis_pack(vec4<f32>(shaded.color.rgb, cards[s].w)), 0u, 0u));
-        if (slot_of[0] == k) {
-            velocity = pack2x16float(shaded.velocity);
-            owns_first = true;
+        if (((ids[s] >> 24u) & 7u) == vis.info.x) {
+            vis_jobs[j] = (pixel << 4u) | (k << 2u) | s;
+            j += 1u;
         }
     }
-    if (vis.info.y == 1u || owns_first) {
-        textureStore(vis_px, px, vec4<u32>(table, velocity, 0u, 0u));
+}
+
+// The shading dispatch's size from the jobs appended (x up to 65535 workgroups a row).
+@compute @workgroup_size(1)
+fn cs_grass_jobs() {
+    let groups = (atomicLoad(&vis_count[0]) + 63u) / 64u;
+    let x = min(groups, 65535u);
+    atomicStore(&vis_count[1], x);
+    atomicStore(&vis_count[2], select(0u, (groups + 65534u) / 65535u, groups > 0u));
+    atomicStore(&vis_count[3], 1u);
+}
+
+@compute @workgroup_size(64)
+fn cs_grass_shade(
+    @builtin(workgroup_id) wg: vec3<u32>,
+    @builtin(num_workgroups) groups: vec3<u32>,
+    @builtin(local_invocation_index) lid: u32,
+) {
+    let i = (wg.y * groups.x + wg.x) * 64u + lid;
+    if (i >= atomicLoad(&vis_count[0])) {
+        return;
     }
+    let job = vis_jobs[i];
+    let pixel = job >> 4u;
+    let k = (job >> 2u) & 3u;
+    let s = job & 3u;
+    let px = vec2<u32>(pixel % vis.info.z, pixel / vis.info.z);
+    let id = bitcast<u32>(textureLoad(vis_ids, px, s).x);
+    let card = textureLoad(vis_card, px, s);
+    let shaded = vis_shade(px, id, card);
+    textureStore(vis_slots, px, k, vec4<u32>(vis_pack(vec4<f32>(shaded.color.rgb, card.w)), 0u, 0u));
+    // (The slot whose first sample is sample 0 owns sample 0: TAA reads its motion.)
+    if (s == 0u) {
+        textureStore(vis_vel, px, vec4<u32>(pack2x16float(shaded.velocity), 0u, 0u, 0u));
+    }
+}
+
+// Ready for the next terrain's jobs.
+@compute @workgroup_size(1)
+fn cs_grass_jobs_reset() {
+    atomicStore(&vis_count[0], 0u);
 }

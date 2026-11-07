@@ -30,8 +30,10 @@ use super::pipelines::{self, Pipelines};
 const CARD_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 /// The blade id as raw float bits (core WebGPU has no multisampled integer targets).
 const ID_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Float;
-/// Resolve output: per pixel (sample → slot table, motion) and per slot (colour, coverage).
+/// Resolve output per slot (colour, coverage as four halves).
 const OUT_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg32Uint;
+/// Resolve output per pixel: the sample → slot table, sample 0's motion vector.
+const PIXEL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
 /// Terrains with grass one frame can resolve (3 id bits).
 pub(super) const MAX_TERRAINS: usize = 8;
 /// Bytes between the per-terrain resolve uniforms.
@@ -53,7 +55,10 @@ pub fn grass_vis_enabled() -> bool {
 /// sample count).
 pub(super) struct VisPipelines {
     raster: wgpu::RenderPipeline,
-    resolve: wgpu::ComputePipeline,
+    classify: wgpu::ComputePipeline,
+    jobs: wgpu::ComputePipeline,
+    shade: wgpu::ComputePipeline,
+    jobs_reset: wgpu::ComputePipeline,
     composite: wgpu::RenderPipeline,
     resolve_layout: wgpu::BindGroupLayout,
     composite_layout: wgpu::BindGroupLayout,
@@ -186,10 +191,15 @@ impl VisPipelines {
             view_dimension: wgpu::TextureViewDimension::D2,
             multisampled: true,
         };
-        let out = |dim| wgpu::BindingType::StorageTexture {
+        let out = |format, dim| wgpu::BindingType::StorageTexture {
             access: wgpu::StorageTextureAccess::WriteOnly,
-            format: OUT_FORMAT,
+            format,
             view_dimension: dim,
+        };
+        let rw = wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only: false },
+            has_dynamic_offset: false,
+            min_binding_size: None,
         };
         let resolve_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("misty grass visibility resolve"),
@@ -200,8 +210,8 @@ impl VisPipelines {
                 entry(4, page),
                 entry(5, ms),
                 entry(6, ms),
-                entry(7, out(wgpu::TextureViewDimension::D2)),
-                entry(8, out(wgpu::TextureViewDimension::D2Array)),
+                entry(7, out(PIXEL_FORMAT, wgpu::TextureViewDimension::D2)),
+                entry(8, out(OUT_FORMAT, wgpu::TextureViewDimension::D2Array)),
                 entry(
                     9,
                     wgpu::BindingType::Buffer {
@@ -210,6 +220,9 @@ impl VisPipelines {
                         min_binding_size: None,
                     },
                 ),
+                entry(10, rw),
+                entry(11, rw),
+                entry(12, out(PIXEL_FORMAT, wgpu::TextureViewDimension::D2)),
             ],
         });
         let resolve_pipeline_layout =
@@ -223,15 +236,21 @@ impl VisPipelines {
                 ],
                 immediate_size: 0,
             });
-        pipelines::note_pipeline();
-        let resolve = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("misty grass visibility resolve"),
-            layout: Some(&resolve_pipeline_layout),
-            module: &module,
-            entry_point: Some("cs_grass_resolve"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
+        let compute = |entry: &str| {
+            pipelines::note_pipeline();
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some(entry),
+                layout: Some(&resolve_pipeline_layout),
+                module: &module,
+                entry_point: Some(entry),
+                compilation_options: Default::default(),
+                cache: None,
+            })
+        };
+        let classify = compute("cs_grass_classify");
+        let jobs = compute("cs_grass_jobs");
+        let shade = compute("cs_grass_shade");
+        let jobs_reset = compute("cs_grass_jobs_reset");
 
         let read = |binding, dim| wgpu::BindGroupLayoutEntry {
             binding,
@@ -248,6 +267,7 @@ impl VisPipelines {
             entries: &[
                 read(0, wgpu::TextureViewDimension::D2),
                 read(1, wgpu::TextureViewDimension::D2Array),
+                read(2, wgpu::TextureViewDimension::D2),
             ],
         });
         // Writes colour + coverage alpha, the glow's coverage alpha and the motion vector of
@@ -273,7 +293,10 @@ impl VisPipelines {
         });
         Self {
             raster,
-            resolve,
+            classify,
+            jobs,
+            shade,
+            jobs_reset,
             composite,
             resolve_layout,
             composite_layout,
@@ -296,7 +319,14 @@ pub(super) struct VisTargets {
     samples: u32,
     card: wgpu::TextureView,
     ids: wgpu::TextureView,
-    px: wgpu::TextureView,
+    table: wgpu::TextureView,
+    vel: wgpu::TextureView,
+    /// Shading jobs (one per pixel slot at most) and their count / indirect arguments.
+    jobs: wgpu::Buffer,
+    count: wgpu::Buffer,
+    /// The shading dispatch's arguments, copied out of `count` (a buffer can't be bound
+    /// for writing and used for the indirect dispatch at once).
+    args: wgpu::Buffer,
     slots: wgpu::TextureView,
     /// The composite's inputs (group 1).
     pub composite_group: wgpu::BindGroup,
@@ -331,38 +361,66 @@ impl VisTargets {
             attach,
         );
         let ids = make("misty grass visibility ids", ID_FORMAT, samples, 1, attach);
-        let px = make("misty grass resolve pixels", OUT_FORMAT, 1, 1, storage);
+        let table = make("misty grass resolve table", PIXEL_FORMAT, 1, 1, storage);
+        let vel = make("misty grass resolve motion", PIXEL_FORMAT, 1, 1, storage);
         let slots = make("misty grass resolve slots", OUT_FORMAT, 1, samples, storage);
         let view = |t: &wgpu::Texture| t.create_view(&Default::default());
         let slots_view = slots.create_view(&wgpu::TextureViewDescriptor {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
-        let px_view = view(&px);
+        let table_view = view(&table);
+        let vel_view = view(&vel);
         let composite_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("misty grass composite"),
             layout: &pipes.composite_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&px_view),
+                    resource: wgpu::BindingResource::TextureView(&table_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: wgpu::BindingResource::TextureView(&slots_view),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&vel_view),
+                },
             ],
         });
         let pixels = size.0 as u64 * size.1 as u64;
+        let jobs = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("misty grass shading jobs"),
+            size: (pixels * samples as u64 * 4).max(16),
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+        let count = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("misty grass shading count"),
+            size: 16,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let args = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("misty grass shading arguments"),
+            size: 12,
+            usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         Self {
             size,
             samples,
             card: view(&card),
             ids: view(&ids),
-            px: px_view,
+            table: table_view,
+            vel: vel_view,
+            jobs,
+            count,
+            args,
             slots: slots_view,
             composite_group,
-            bytes: pixels * (samples as u64 * (8 + 4 + 8) + 8),
+            bytes: pixels * (samples as u64 * (8 + 4 + 8 + 4) + 8),
         }
     }
 }
@@ -419,7 +477,7 @@ pub(super) fn write_frame(
     terrains: &[ResolveTerrain],
 ) {
     for (k, r) in terrains.iter().take(MAX_TERRAINS).enumerate() {
-        let info = [r.index, u32::from(k == 0), size.0, size.1];
+        let info = [r.index, 0, size.0, size.1];
         queue.write_buffer(
             &pipes.frame,
             k as u64 * FRAME_STRIDE,
@@ -521,7 +579,7 @@ pub(super) fn resolve(
                     },
                     wgpu::BindGroupEntry {
                         binding: 7,
-                        resource: wgpu::BindingResource::TextureView(&t.px),
+                        resource: wgpu::BindingResource::TextureView(&t.table),
                     },
                     wgpu::BindGroupEntry {
                         binding: 8,
@@ -535,20 +593,51 @@ pub(super) fn resolve(
                             size: wgpu::BufferSize::new(16),
                         }),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 10,
+                        resource: t.jobs.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 11,
+                        resource: t.count.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 12,
+                        resource: wgpu::BindingResource::TextureView(&t.vel),
+                    },
                 ],
             })
         })
         .collect();
+    for (r, group) in terrains.iter().zip(&groups) {
+        let groups = [view_group, lit_group, r.grass_group, group];
+        {
+            let mut pass = begin_resolve(encoder, &pipes.classify, groups);
+            pass.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
+            pass.set_pipeline(&pipes.jobs);
+            pass.dispatch_workgroups(1, 1, 1);
+        }
+        encoder.copy_buffer_to_buffer(&t.count, 4, &t.args, 0, 12);
+        let mut pass = begin_resolve(encoder, &pipes.shade, groups);
+        pass.dispatch_workgroups_indirect(&t.args, 0);
+        pass.set_pipeline(&pipes.jobs_reset);
+        pass.dispatch_workgroups(1, 1, 1);
+    }
+}
+
+/// A compute pass of the resolve with its pipeline and groups 0–3 set.
+fn begin_resolve<'e>(
+    encoder: &'e mut wgpu::CommandEncoder,
+    pipeline: &wgpu::ComputePipeline,
+    groups: [&wgpu::BindGroup; 4],
+) -> wgpu::ComputePass<'e> {
     let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
         label: Some("misty grass visibility resolve"),
         timestamp_writes: None,
     });
-    pass.set_pipeline(&pipes.resolve);
-    pass.set_bind_group(0, view_group, &[]);
-    pass.set_bind_group(1, lit_group, &[]);
-    for (r, group) in terrains.iter().zip(&groups) {
-        pass.set_bind_group(2, r.grass_group, &[]);
-        pass.set_bind_group(3, group, &[]);
-        pass.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
+    pass.set_pipeline(pipeline);
+    for (i, g) in groups.into_iter().enumerate() {
+        pass.set_bind_group(i as u32, g, &[]);
     }
+    pass
 }
