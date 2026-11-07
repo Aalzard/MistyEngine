@@ -472,6 +472,8 @@ impl Pipelines {
                 entry(0, S::FRAGMENT, filtered),
                 entry(1, S::FRAGMENT, filtering),
                 entry(2, S::FRAGMENT, filtered),
+                // Auto Exposure's multiplier (render/postfx).
+                entry(3, S::FRAGMENT, storage()),
             ],
         );
 

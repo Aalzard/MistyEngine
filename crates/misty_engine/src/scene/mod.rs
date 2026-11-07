@@ -4,6 +4,7 @@ pub mod animator_component;
 pub mod audio_components;
 pub mod clouds;
 pub mod components;
+pub mod decal;
 pub mod file;
 pub mod fog_volume;
 pub mod hierarchy_folder;
@@ -19,6 +20,7 @@ pub mod physics2d_components;
 pub mod physics_components;
 pub mod playable_director;
 pub mod post_process;
+pub mod postfx_overrides;
 pub mod prefab;
 pub mod reflection_probe;
 pub mod registry;
@@ -43,6 +45,7 @@ pub use animator_component::Animator;
 pub use audio_components::*;
 pub use clouds::{CloudPreset, CloudsOverride};
 pub use components::*;
+pub use decal::DecalProjector;
 pub use fog_volume::{FogOverride, FogQuality, FogVolume, SunShaftsOverride, SunShaftsQuality};
 pub use hierarchy_folder::HierarchyFolder;
 pub use light_glow::{LensFlare, LightHalo};
@@ -54,6 +57,10 @@ pub use physics_components::*;
 pub use physics2d_components::*;
 pub use playable_director::{DirectorUpdateMode, DirectorWrapMode, PlayableDirector, TrackBinding};
 pub use post_process::*;
+pub use postfx_overrides::{
+    AdaptationMode, AutoExposureOverride, DepthOfFieldOverride, DofMode, MeteringMode,
+    MotionBlurOverride, PostFxQuality,
+};
 pub use reflection_probe::{ReflectionProbe, ReflectionProbeGroup};
 pub use registry::SceneComponent;
 pub use screen_space_overrides::{AmbientOcclusionOverride, ContactShadowsOverride};

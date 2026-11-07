@@ -206,6 +206,15 @@ pub struct PostProcessVolume {
     /// Raymarched cloud layer (left out of files while untouched).
     #[serde(skip_serializing_if = "is_default")]
     pub clouds: super::CloudsOverride,
+    /// Depth of Field (render/postfx).
+    #[serde(skip_serializing_if = "is_default")]
+    pub depth_of_field: super::DepthOfFieldOverride,
+    /// Motion Blur (render/postfx).
+    #[serde(skip_serializing_if = "is_default")]
+    pub motion_blur: super::MotionBlurOverride,
+    /// Auto Exposure: eye adaptation from a luminance histogram (render/postfx).
+    #[serde(skip_serializing_if = "is_default")]
+    pub auto_exposure: super::AutoExposureOverride,
 }
 
 impl Default for PostProcessVolume {
@@ -225,6 +234,9 @@ impl Default for PostProcessVolume {
             screen_space_reflections: Default::default(),
             misty_gi: Default::default(),
             clouds: Default::default(),
+            depth_of_field: Default::default(),
+            motion_blur: Default::default(),
+            auto_exposure: Default::default(),
         }
     }
 }

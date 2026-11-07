@@ -7,7 +7,10 @@ use glam::Vec3;
 use super::{FogSettings, SunShaftSettings, srgb_to_linear};
 
 use super::{AoSettings, ContactShadowSettings};
-use crate::scene::{CloudsOverride, PostProcessVolume, TonemapLook, TonemapMode};
+use crate::scene::{
+    AutoExposureOverride, CloudsOverride, DepthOfFieldOverride, MotionBlurOverride,
+    PostProcessVolume, TonemapLook, TonemapMode,
+};
 
 /// Effect values for one view. `Default` is the baseline every scene gets without a volume:
 /// bloom 0.6, no grading, hue-preserving highlight compression.
@@ -51,6 +54,10 @@ pub struct PostSettings {
     pub misty_gi: super::MistyGiSettings,
     /// Volumetric clouds (off by default; drawn with the skybox).
     pub clouds: CloudsOverride,
+    /// Depth of Field, Motion Blur and Auto Exposure (render/postfx; off by default).
+    pub depth_of_field: DepthOfFieldOverride,
+    pub motion_blur: MotionBlurOverride,
+    pub auto_exposure: AutoExposureOverride,
 }
 
 impl Default for PostSettings {
@@ -79,6 +86,9 @@ impl Default for PostSettings {
             ssr: Default::default(),
             misty_gi: Default::default(),
             clouds: CloudsOverride::default(),
+            depth_of_field: Default::default(),
+            motion_blur: Default::default(),
+            auto_exposure: Default::default(),
         }
     }
 }
@@ -125,6 +135,9 @@ impl PostSettings {
         s.ssr = super::SsrSettings::from_override(&v.screen_space_reflections);
         s.misty_gi = super::MistyGiSettings::from_override(&v.misty_gi);
         s.clouds = v.clouds;
+        s.depth_of_field = v.depth_of_field;
+        s.motion_blur = v.motion_blur;
+        s.auto_exposure = v.auto_exposure;
         s
     }
 
