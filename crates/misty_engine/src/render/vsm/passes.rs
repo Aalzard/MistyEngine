@@ -89,6 +89,7 @@ impl Renderer {
             debug: std::mem::take(&mut self.vsm.debug),
             max_rects,
             grass_range: self.terrains.grass_caster_range(),
+            near_trees: self.trees.near_candidates() > 0,
         };
         self.vsm.prepare(device, queue, &input);
         self.vsm.stats.near_trees = self.trees.near_count() as u32;

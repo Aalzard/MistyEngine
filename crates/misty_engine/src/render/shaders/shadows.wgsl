@@ -849,12 +849,20 @@ fn vsm_sun_pages_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, 
     let lp = shadow_params.light_params[light * 2u];
     let texel = vsm_texel(lv);
     let p = world + n * texel * lp.z * (1.0 + 2.0 * (1.0 - n_dot_l));
-    let bias = lp.y * texel * shadow_params.vsm.light_z.w;
-    let centre = hit.c;
+    let c = vsm_coords(p);
+    let z = c.z - lp.y * texel * shadow_params.vsm.light_z.w;
+    // The taps lie across the light (no depth change): the same pattern laid out in light
+    // space directly (`taps[0]` = (t + b / 2) · r).
+    let r = length(taps[0]) * 0.8944272;
+    let offsets = array<vec2<f32>, 4>(
+        vec2<f32>(1.0, 0.5),
+        vec2<f32>(-1.0, -0.5),
+        vec2<f32>(-0.5, 1.0),
+        vec2<f32>(0.5, -1.0),
+    );
     var sum = 0.0;
     for (var k = 0u; k < 4u; k++) {
-        let c = vsm_coords(p + taps[k]);
-        let s = vsm_tap_c(lv, c.xy, c.z - bias, centre);
+        let s = vsm_tap_c(lv, c.xy + offsets[k] * r, z, hit.c);
         sum += select(1.0, s, s >= 0.0);
     }
     return sum * 0.25;

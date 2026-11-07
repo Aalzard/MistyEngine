@@ -1421,6 +1421,14 @@ impl Renderer {
                 near: (self.vsm.frame.as_ref())
                     .and_then(|f| f.near)
                     .map(|n| (n.view_proj, n.radius)),
+                // The radius the near layer has when on (its grass reach or the tree radius).
+                near_reach: match &self.vsm.frame {
+                    Some(_) => self
+                        .terrains
+                        .grass_caster_range()
+                        .map_or(vsm::NEAR_RADIUS, |r| r.max(vsm::NEAR_RADIUS)),
+                    None => 0.0,
+                },
             };
             (self.trees).prepare(device, queue, &self.pipelines, &tree_frame);
             (lists, plan, rebuilt, near_sun)

@@ -241,6 +241,8 @@ pub(super) struct VsmInput<'a> {
     /// Range of the grass shadow casters (None = none): past the near grass map they go into
     /// the near layer.
     pub grass_range: Option<f32>,
+    /// Trees come within reach of the near layer (else it is off unless grass needs it).
+    pub near_trees: bool,
 }
 
 /// Light direction, depth range, finest texel and level count a set of pages is drawn for;
@@ -1153,8 +1155,15 @@ impl Vsm {
             );
             proj * g.view
         };
+        // Off (not drawn, not sampled) while nothing would go into it.
+        let near_on = grass.is_some() || input.near_trees;
         u.near_view_proj = near_view_proj.to_cols_array_2d();
-        u.near = [radius, near_texel, 1.0 / NEAR_SIZE as f32, 1.0];
+        u.near = [
+            radius,
+            near_texel,
+            1.0 / NEAR_SIZE as f32,
+            near_on as u32 as f32,
+        ];
         let mut v = super::ViewUniform::zeroed();
         v.view_proj = u.near_view_proj;
         let c = input.camera.position;
@@ -1176,7 +1185,7 @@ impl Vsm {
             rects: draws,
             rounds,
             light_dir: gens[0].basis.dir,
-            near: Some(NearLayer {
+            near: near_on.then_some(NearLayer {
                 view_proj: near_view_proj,
                 radius,
                 grass: grass.is_some(),

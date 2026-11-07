@@ -603,6 +603,9 @@ pub(super) struct TreeFrame<'a> {
     /// camera go into it (their swaying leaves and limbs) instead of the cached pages. Its
     /// list follows the virtual shadow map's.
     pub near: Option<(Mat4, f32)>,
+    /// Half side the near layer would have (0 = no virtual shadow map): trees within it are
+    /// counted, so the layer is on before the first of them joins it.
+    pub near_reach: f32,
 }
 
 pub(super) struct TreeRenderer {
@@ -626,6 +629,8 @@ pub(super) struct TreeRenderer {
     near_changes: Vec<Aabb>,
     /// Trees in the near layer this frame.
     near_count: usize,
+    /// Trees within the near layer's reach this frame (it is needed).
+    near_candidates: usize,
 }
 
 /// A tree joins the near layer within this share of its half side and leaves it past
@@ -691,12 +696,18 @@ impl TreeRenderer {
             near_set: Default::default(),
             near_changes: Vec::new(),
             near_count: 0,
+            near_candidates: 0,
         }
     }
 
     /// Bounds of the trees that entered or left the near layer since the last call.
     pub fn take_near_changes(&mut self) -> Vec<Aabb> {
         std::mem::take(&mut self.near_changes)
+    }
+
+    /// Trees within the near layer's reach last frame (it must be on).
+    pub fn near_candidates(&self) -> usize {
+        self.near_candidates
     }
 
     /// Trees drawn into the near layer last frame.
@@ -729,6 +740,7 @@ impl TreeRenderer {
         self.main.clear();
         self.shadows.clear();
         self.near_count = 0;
+        self.near_candidates = 0;
         let mut near_now: std::collections::HashSet<u64> = Default::default();
         let shadow_views = f.cascades.len() + f.vsm_views.len() + f.near.is_some() as usize;
         self.shadows.resize(shadow_views, Vec::new());
@@ -910,6 +922,9 @@ impl TreeRenderer {
                 // Virtual shadow map pages: cached across frames, so whatever the camera's
                 // distance (a page rendered while the tree was far stays valid when it comes
                 // near), at the level of detail of the page's texel.
+                if s.cast_shadows && t.cast_shadows && dist - radius < f.near_reach {
+                    self.near_candidates += 1;
+                }
                 // Close to the camera: the near layer, redrawn every frame (the leaves sway),
                 // instead of the cached pages.
                 let near = f
