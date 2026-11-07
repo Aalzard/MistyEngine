@@ -42,18 +42,22 @@ fn layer_projection(i: u32, p: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>) -> Layer
 // Layer `i` sampled at tile uv `uv` with its screen gradients.
 fn layer_tile(i: u32, uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> LayerSample {
     var s: LayerSample;
-    s.albedo = textureSampleGrad(layer_albedo, layer_sampler, uv, i, dx, dy).rgb;
+    // Upscaled targets sample the output resolution's mip (view_tan.z = log2 render scale).
+    let bias = exp2(view.view_tan.z);
+    let gx = dx * bias;
+    let gy = dy * bias;
+    s.albedo = textureSampleGrad(layer_albedo, layer_sampler, uv, i, gx, gy).rgb;
     // Macro variation: the same texture ~7× larger, relative to its average colour (the last
     // mip), breaks up the tiling without changing the mean.
     let macro_uv = uv * 0.137 + vec2<f32>(0.31, 0.67);
-    let broad = textureSampleGrad(layer_albedo, layer_sampler, macro_uv, i, dx * 0.137, dy * 0.137).rgb;
+    let broad = textureSampleGrad(layer_albedo, layer_sampler, macro_uv, i, gx * 0.137, gy * 0.137).rgb;
     let mean = textureSampleLevel(layer_albedo, layer_sampler, uv, i, 12.0).rgb;
     let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
     s.albedo *= clamp(mix(1.0, dot(broad, luma) / max(dot(mean, luma), 0.02), 0.6), 0.5, 1.6);
-    let m = textureSampleGrad(layer_normal, layer_sampler, uv, i, dx, dy).xyz * 2.0 - 1.0;
+    let m = textureSampleGrad(layer_normal, layer_sampler, uv, i, gx, gy).xyz * 2.0 - 1.0;
     // Tangent-space normal here; `layer_sample` turns it into world space.
     s.normal = vec3<f32>(m.xy * terrain.surface[i].z, max(m.z, 1e-3));
-    s.height = textureSampleGrad(layer_height, layer_sampler, uv, i, dx, dy).r;
+    s.height = textureSampleGrad(layer_height, layer_sampler, uv, i, gx, gy).r;
     return s;
 }
 

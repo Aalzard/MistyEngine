@@ -109,6 +109,9 @@ pub struct Model {
     pub materials: Vec<ModelMaterial>,
     pub skins: Vec<ModelSkin>,
     pub animations: Vec<ModelAnimation>,
+    /// Import setting Virtual Geometry: its static meshes draw as clusters with per-cluster
+    /// level of detail when the Quality level has Virtual Geometry on (render/vgeo).
+    pub virtual_geometry: bool,
 }
 
 impl Model {
@@ -131,12 +134,18 @@ impl Model {
 pub struct ModelImporter {
     /// Generate lightmap UVs (the second UV set) for every non-skinned mesh on import.
     pub generate_lightmap_uvs: bool,
+    /// Build the meshes for Misty Virtual Geometry (clusters and a cluster hierarchy): dense
+    /// static meshes then draw with per-cluster level of detail. Opaque, non-skinned meshes
+    /// only; left out of the `.meta` when off.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub virtual_geometry: bool,
 }
 
 impl Default for ModelImporter {
     fn default() -> Self {
         Self {
             generate_lightmap_uvs: true,
+            virtual_geometry: false,
         }
     }
 }
@@ -158,6 +167,8 @@ impl ModelImporter {
 
 /// Apply import settings to a freshly read model.
 fn import(mut model: Model, settings: &ModelImporter) -> Model {
+    // Skinned meshes deform: no clusters for them.
+    model.virtual_geometry = settings.virtual_geometry && model.skins.is_empty();
     if settings.generate_lightmap_uvs {
         for m in &mut model.meshes {
             // Skins and blend shapes index the vertices: those meshes keep their own uv2.
@@ -301,6 +312,19 @@ pub fn mesh(r: &MeshRef) -> Option<MeshHandle> {
             let model = model(path).ok()?;
             (index < model.meshes.len()).then_some(MeshHandle::Imported(model, index))
         }
+    }
+}
+
+/// Does this mesh draw as Misty Virtual Geometry (its model imported with Virtual Geometry
+/// on, or registered with [`runtime::register_virtual`])?
+pub fn is_virtual(r: &MeshRef) -> bool {
+    match r {
+        MeshRef::Asset(key) if crate::skinning::is_pose_key(key) => false,
+        MeshRef::Asset(_) => r
+            .split_asset()
+            .and_then(|(path, _)| model(path).ok())
+            .is_some_and(|m| m.virtual_geometry),
+        MeshRef::Primitive(_) => false,
     }
 }
 

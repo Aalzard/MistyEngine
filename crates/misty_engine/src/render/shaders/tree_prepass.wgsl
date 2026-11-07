@@ -49,7 +49,7 @@ fn fs_tree_prepass_bark(in: TreePrepassOut) -> TreePrepassTargets {
 
 @fragment
 fn fs_tree_prepass_leaves(in: TreePrepassOut) -> TreePrepassTargets {
-    let alpha = textureSample(tree_albedo, tree_sampler, in.uv).a;
+    let alpha = textureSampleBias(tree_albedo, tree_sampler, in.uv, view.view_tan.z).a;
     if (alpha < 0.5 || tree_faded(in.misc.x, in.clip.xy)) {
         discard;
     }
@@ -73,13 +73,13 @@ fn vs_tree_prepass_impostor(@builtin(vertex_index) vi: u32, inst: TreeInstance) 
 @fragment
 fn fs_tree_prepass_impostor(in: TreePrepassOut) -> TreePrepassTargets {
     let tex = mix(
-        textureSample(tree_albedo, tree_sampler, in.uv),
-        textureSample(tree_albedo, tree_sampler, in.uv1),
+        textureSampleBias(tree_albedo, tree_sampler, in.uv, view.view_tan.z),
+        textureSampleBias(tree_albedo, tree_sampler, in.uv1, view.view_tan.z),
         in.misc.y,
     );
     let nt = mix(
-        textureSample(tree_normal_map, tree_sampler, in.uv),
-        textureSample(tree_normal_map, tree_sampler, in.uv1),
+        textureSampleBias(tree_normal_map, tree_sampler, in.uv, view.view_tan.z),
+        textureSampleBias(tree_normal_map, tree_sampler, in.uv1, view.view_tan.z),
         in.misc.y,
     );
     if (tex.a < 0.5 || tree_faded(in.misc.x, in.clip.xy)) {

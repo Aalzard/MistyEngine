@@ -197,7 +197,7 @@ pub(in crate::render) enum Shot {
 impl Shot {
     const ALL: [Shot; 4] = [Shot::Wide, Shot::Close, Shot::Behind, Shot::Pair];
 
-    fn name(self) -> &'static str {
+    pub(in crate::render) fn name(self) -> &'static str {
         match self {
             Shot::Wide => "wide",
             Shot::Close => "close",

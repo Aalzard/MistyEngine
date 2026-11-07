@@ -179,10 +179,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             } else {
                 Default::default()
             };
-            // SSGI and SSR follow their own toggle (and Post Processing, through `post`).
+            // SSGI, SSR and Misty GI follow their own toggle (and Post Processing, through
+            // `post`).
             if !(sv.skybox && fx.screen_space) {
                 post.ssgi = Default::default();
                 post.ssr = Default::default();
+                post.misty_gi = Default::default();
             }
             // The AO debug view shows the AO term alone (no other effects).
             if sv.draw_mode == AO_DRAW_MODE {

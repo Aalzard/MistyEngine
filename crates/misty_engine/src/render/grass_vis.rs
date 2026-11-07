@@ -372,15 +372,15 @@ impl VisTargets {
 pub(crate) struct TargetSlot(Mutex<Option<Option<VisTargets>>>);
 
 impl TargetSlot {
-    /// The images for `size` at the renderer's samples (made or remade as needed); None when
-    /// the device refuses them.
+    /// The images for `size` (the target's internal size) at `samples` (its main pass's),
+    /// made or remade as needed; None when the device refuses them.
     pub(super) fn get(
         &self,
         device: &wgpu::Device,
         pipes: &VisPipelines,
         size: (u32, u32),
+        samples: u32,
     ) -> std::sync::MutexGuard<'_, Option<Option<VisTargets>>> {
-        let samples = super::sample_count();
         let mut slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
         let fits = match &*slot {
             Some(Some(t)) => t.size == size && t.samples == samples,

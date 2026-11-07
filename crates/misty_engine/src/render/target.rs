@@ -1,5 +1,12 @@
 //! Offscreen render target: HDR MSAA colour + depth, a bloom mip chain, and the final
 //! 8-bit image shown in the editor.
+//!
+//! An upscaled target (Quality ▸ Upscaling, see [`super::taa`]) renders the scene at a lower
+//! internal resolution ([`RenderTarget::size`]): MSAA colour, depth, motion vectors, glow,
+//! the resolved HDR image and every screen-space buffer are that size. The temporal upscaler
+//! writes a sharp image at the output resolution ([`RenderTarget::output_size`]) into a
+//! second HDR image; bloom, tonemapping, FXAA / sharpening and the canvas UI run at the
+//! output resolution from there.
 
 use super::pipelines::VELOCITY_FORMAT;
 use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT};
@@ -27,8 +34,17 @@ pub(crate) struct BloomLevel {
 pub struct RenderTarget {
     /// Unique per target (per-view state such as fog history is keyed by it).
     pub(crate) id: u64,
+    /// Internal (render) resolution: the scene passes draw at this size.
     width: u32,
     height: u32,
+    /// Output resolution: post-processing and the final image.
+    out_width: u32,
+    out_height: u32,
+    /// Share of the output resolution rendered (1 = native, no upscaling).
+    scale: f32,
+    /// Output-resolution HDR image the temporal upscaler writes (None = native target: the
+    /// resolved HDR image is the post input).
+    upscaled: Option<(wgpu::Texture, wgpu::TextureView)>,
     /// MSAA samples of the main pass targets (the renderer's when made).
     samples: u32,
     msaa_view: wgpu::TextureView,
@@ -60,6 +76,8 @@ pub struct RenderTarget {
     pub(crate) screen_space: super::screen_space::TargetSlot,
     /// SSGI / SSR images, lit colour history and texels (created when first needed).
     pub(crate) screen_trace: super::screen_trace::TargetSlot,
+    /// Misty GI clipmaps and probes (created when first needed).
+    pub(crate) misty_gi: super::misty_gi::TargetSlot,
     /// Temporal shadow mask buffers and history (created when first needed).
     pub(crate) shadow_mask: super::shadow_denoise::TargetSlot,
     /// GPU culling's Hi-Z pyramid and last frame's visibility (made on first use).
@@ -69,13 +87,23 @@ pub struct RenderTarget {
 }
 
 impl RenderTarget {
+    /// A target whose final image is `out` pixels, rendering the scene at `scale` of that
+    /// (1 = native).
     pub(crate) fn new(
         device: &wgpu::Device,
-        width: u32,
-        height: u32,
+        out: (u32, u32),
+        scale: f32,
         layouts: &TargetLayouts,
     ) -> Self {
-        let (width, height) = (width.max(1), height.max(1));
+        let (out_width, out_height) = (out.0.max(1), out.1.max(1));
+        let scale = if scale.is_finite() {
+            scale.clamp(0.25, 1.0)
+        } else {
+            1.0
+        };
+        let (width, height) = render_size((out_width, out_height), scale);
+        let native = (width, height) == (out_width, out_height);
+        let scale = if native { 1.0 } else { scale };
         let make = |label,
                     size: (u32, u32),
                     format,
@@ -101,6 +129,7 @@ impl RenderTarget {
         let sampled = attach | wgpu::TextureUsages::TEXTURE_BINDING;
         let view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
         let full = (width, height);
+        let out = (out_width, out_height);
 
         let msaa = make(
             "misty msaa hdr",
@@ -149,13 +178,19 @@ impl RenderTarget {
         );
         let output = make(
             "misty output",
-            full,
+            out,
             COLOR_FORMAT,
             1,
             sampled | wgpu::TextureUsages::COPY_SRC,
             &[DISPLAY_FORMAT],
         );
-        let pre_finish = make("misty pre-finish", full, COLOR_FORMAT, 1, sampled, &[]);
+        let pre_finish = make("misty pre-finish", out, COLOR_FORMAT, 1, sampled, &[]);
+        // The upscaler's output-resolution HDR image (post-processing input).
+        let upscaled = (!native).then(|| {
+            let t = make("misty upscaled hdr", out, HDR_FORMAT, 1, sampled, &[]);
+            let v = view(&t);
+            (t, v)
+        });
         let mask = make("misty selection mask", full, MASK_FORMAT, 1, sampled, &[]);
 
         let sample_group = |label, layout: &wgpu::BindGroupLayout, tex: &wgpu::TextureView| {
@@ -179,12 +214,15 @@ impl RenderTarget {
         let glow_view = view(&glow);
         let hdr_group = sample_group("misty glow group", layouts.post, &glow_view);
 
-        // Bloom chain: stop before levels get tiny.
-        let levels =
-            MAX_BLOOM_LEVELS.min((width.min(height) as f32).log2().floor().max(2.0) as u32 - 1);
+        // Bloom chain (output resolution): stop before levels get tiny.
+        let levels = MAX_BLOOM_LEVELS
+            .min((out_width.min(out_height) as f32).log2().floor().max(2.0) as u32 - 1);
         let bloom: Vec<BloomLevel> = (0..levels)
             .map(|i| {
-                let size = ((width >> (i + 1)).max(1), (height >> (i + 1)).max(1));
+                let size = (
+                    (out_width >> (i + 1)).max(1),
+                    (out_height >> (i + 1)).max(1),
+                );
                 let tex = make("misty bloom", size, HDR_FORMAT, 1, sampled, &[]);
                 let v = view(&tex);
                 let group = sample_group("misty bloom group", layouts.post, &v);
@@ -198,7 +236,9 @@ impl RenderTarget {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&hdr_view),
+                    resource: wgpu::BindingResource::TextureView(
+                        upscaled.as_ref().map_or(&hdr_view, |u| &u.1),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -233,6 +273,10 @@ impl RenderTarget {
             samples: super::sample_count(),
             width,
             height,
+            out_width,
+            out_height,
+            scale,
+            upscaled,
             msaa_view: view(&msaa),
             glow_msaa_view: view(&glow_msaa),
             glow_view,
@@ -252,14 +296,31 @@ impl RenderTarget {
             composite_group,
             screen_space: Default::default(),
             screen_trace: Default::default(),
+            misty_gi: Default::default(),
             shadow_mask: Default::default(),
             culling: Default::default(),
             grass_vis: Default::default(),
         }
     }
 
+    /// Internal resolution the scene renders at (the output size unless upscaled).
     pub fn size(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+
+    /// Resolution of the final image.
+    pub fn output_size(&self) -> (u32, u32) {
+        (self.out_width, self.out_height)
+    }
+
+    /// Share of the output resolution the scene renders at (1 = native).
+    pub fn render_scale(&self) -> f32 {
+        self.scale
+    }
+
+    /// The scene renders below the output resolution and is upscaled temporally.
+    pub fn upscaled(&self) -> bool {
+        self.upscaled.is_some()
     }
 
     /// MSAA samples of the main pass targets (see `Renderer::target_fits`).
@@ -267,8 +328,9 @@ impl RenderTarget {
         self.samples
     }
 
+    /// Aspect ratio of the final image (the camera's).
     pub fn aspect(&self) -> f32 {
-        self.width as f32 / self.height as f32
+        self.out_width as f32 / self.out_height as f32
     }
 
     /// The final image for display in the editor (gamma-encoded bytes).
@@ -293,6 +355,12 @@ impl RenderTarget {
     /// MSAA resolve destination of the main pass.
     pub(crate) fn hdr_view(&self) -> &wgpu::TextureView {
         &self.hdr_view
+    }
+
+    /// HDR image post-processing reads (output resolution): the upscaler's result, or the
+    /// resolved HDR image of a native target.
+    pub(crate) fn post_hdr_view(&self) -> &wgpu::TextureView {
+        self.upscaled.as_ref().map_or(&self.hdr_view, |u| &u.1)
     }
 
     /// Final 8-bit sRGB image (composite pass output).
@@ -328,5 +396,25 @@ impl RenderTarget {
 
     pub(crate) fn depth_view(&self) -> &wgpu::TextureView {
         &self.depth_view
+    }
+}
+
+/// Internal resolution for an `out` image rendered at `scale` (each side rounded, at least 1).
+pub fn render_size(out: (u32, u32), scale: f32) -> (u32, u32) {
+    let side = |v: u32| ((v as f32 * scale).round() as u32).clamp(1, v.max(1));
+    (side(out.0), side(out.1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_size;
+
+    #[test]
+    fn render_size_rounds_each_side() {
+        assert_eq!(render_size((1920, 1080), 1.0), (1920, 1080));
+        assert_eq!(render_size((1920, 1080), 0.5), (960, 540));
+        assert_eq!(render_size((1920, 1080), 2.0 / 3.0), (1280, 720));
+        assert_eq!(render_size((2560, 1440), 0.58), (1485, 835));
+        assert_eq!(render_size((3, 1), 0.25), (1, 1));
     }
 }

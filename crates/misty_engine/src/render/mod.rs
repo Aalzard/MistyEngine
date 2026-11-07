@@ -26,6 +26,7 @@ mod lightmap_gpu;
 pub mod lod;
 mod memory_items;
 pub mod mesh;
+mod misty_gi;
 mod motion;
 pub mod overrides;
 pub mod particles;
@@ -56,6 +57,7 @@ mod trees;
 pub mod ui;
 mod variants;
 pub(crate) mod vfx;
+mod vgeo;
 mod volumetrics;
 mod water;
 
@@ -69,6 +71,7 @@ pub use frame_debug::{
 };
 pub use glow::GlowSource;
 pub use grass_vis::{grass_vis_enabled, set_grass_vis};
+pub use misty_gi::MistyGiSettings;
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use pipelines::pipelines_built;
 pub use post::PostSettings;
@@ -79,6 +82,7 @@ pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
 use target::TargetLayouts;
 pub use terrain_grass::{GrassStats, grass_streaming, set_grass_streaming};
+pub use vgeo::VgeoStats;
 pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 
 use bytemuck::{Pod, Zeroable};
@@ -128,14 +132,16 @@ const MAX_LIGHTS: usize = 8;
 /// Device features to request when the adapter has them: timestamp queries for GPU timing
 /// (see [`Renderer::with_queue`]), indirect draws with an instance offset (GPU culling) and
 /// the adapter's own format capabilities (2× MSAA of the HDR targets is not guaranteed by
-/// WebGPU, only 1× and 4×).
+/// WebGPU, only 1× and 4×) and indirect draw counts (virtual geometry's indexed cluster draws).
 pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     adapter.features()
         & (wgpu::Features::TIMESTAMP_QUERY
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
             | wgpu::Features::INDIRECT_FIRST_INSTANCE
-            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+            // Virtual geometry draws each cluster as an indexed sub-draw, counted on the GPU.
+            | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT)
 }
 
 /// World plane the editor grid lies on.
@@ -512,6 +518,8 @@ pub struct Renderer {
     culler: Option<gpu_culling::GpuCuller>,
     /// Batches of the last GPU-culled frame.
     last_gpu_batches: usize,
+    /// Misty Virtual Geometry: cluster culling and drawing of virtual meshes (render/vgeo).
+    vgeo: vgeo::VirtualGeometry,
     prepass: prepass::Prepass,
     // Per-frame scratch kept to avoid reallocating.
     batcher: batch::Batcher,
@@ -662,6 +670,7 @@ impl Renderer {
             pass_timer: None,
             culler: gpu_culling::supported(device).then(|| gpu_culling::GpuCuller::new(device)),
             last_gpu_batches: 0,
+            vgeo: Default::default(),
             prepass: Default::default(),
             batcher: Default::default(),
             shadow_batchers: Vec::new(),
@@ -739,7 +748,7 @@ impl Renderer {
             *self = fresh;
         }
         use_samples(self.samples);
-        if !quality.temporal_aa {
+        if !quality.temporal() {
             self.taa.clear();
         }
         let size = quality.shadow_map_size();
@@ -765,6 +774,8 @@ impl Renderer {
         }
         // Quality ▸ LOD Bias scales every LOD Group's switch heights.
         self.options.lod_bias = quality.lod_bias;
+        self.vgeo.enabled = quality.virtual_geometry;
+        self.vgeo.threshold = quality.virtual_geometry_error;
         self.quality = quality.clone();
     }
 
@@ -1032,7 +1043,38 @@ impl Renderer {
             composite: &self.pipelines.composite_layout,
             sampler: &self.post_sampler,
         };
-        RenderTarget::new(device, width, height, &layouts)
+        RenderTarget::new(device, (width, height), 1.0, &layouts)
+    }
+
+    /// A Scene / Game view or player target: its final image is `width` × `height`, and the
+    /// scene renders at the active quality level's Upscaling share of that (native when
+    /// Upscaling is Off). Thumbnails, previews and probe captures use
+    /// [`Renderer::create_target`] (always native: one-off renders have no history).
+    pub fn create_view_target(
+        &self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+    ) -> RenderTarget {
+        let layouts = TargetLayouts {
+            mask: &self.pipelines.mask_layout,
+            post: &self.pipelines.post_layout,
+            composite: &self.pipelines.composite_layout,
+            sampler: &self.post_sampler,
+        };
+        let scale = self.quality.upscale_ratio();
+        RenderTarget::new(device, (width, height), scale, &layouts)
+    }
+
+    /// `target` (made by [`Renderer::create_view_target`]) still matches a `width` ×
+    /// `height` view at the active quality level's Upscaling share and this renderer's MSAA
+    /// samples ([`Renderer::target_fits`]); false = make a new one.
+    pub fn view_target_fits(&self, target: &RenderTarget, width: u32, height: u32) -> bool {
+        let wanted =
+            target::render_size((width.max(1), height.max(1)), self.quality.upscale_ratio());
+        target.output_size() == (width.max(1), height.max(1))
+            && target.size() == wanted
+            && self.target_fits(target)
     }
 
     fn gpu_mesh(&self, r: &MeshRef) -> Option<&GpuMesh> {
@@ -1121,14 +1163,29 @@ impl Renderer {
             crate::profile_scope!("Render.PrepareAssets");
             self.prepare_assets(device, queue, frame, &lod);
         }
+        // Virtual geometry: meshes built into clusters draw through the cluster path (it needs
+        // indirect draws with an instance offset, like GPU culling; the Frame Debugger lists
+        // CPU-side draws, so it is off while capturing).
+        self.vgeo.on =
+            self.vgeo.enabled && self.culler.is_some() && frame.shaded && self.capture.is_none();
+        if self.vgeo.on {
+            crate::profile_scope!("Render.VirtualGeometry");
+            self.vgeo.ensure_gpu(device, &self.pipelines);
+            self.vgeo.prepare_meshes(device, frame);
+        }
         let aspect = target.aspect();
-        // Temporal anti-aliasing jitters the camera by a sub-pixel offset each frame.
-        let taa_on = self.quality.temporal_aa && frame.shaded;
+        // Temporal anti-aliasing jitters the camera by a sub-pixel offset each frame (of an
+        // internal pixel when the target is upscaled: the upscaler is TAA at a lower
+        // resolution, so it runs whatever Quality ▸ Temporal Anti-aliasing says).
+        let upscaled = target.upscaled();
+        let taa_on = (self.quality.temporal_aa || upscaled) && frame.shaded;
         let jitter = if taa_on {
-            self.taa.jitter(target.id)
+            self.taa.jitter(target.id, target.render_scale())
         } else {
             glam::Vec2::ZERO
         };
+        // Textures sample the mip level the output resolution would have picked.
+        let mip_bias = mip_bias(target);
         let view_proj = frame.camera.view_projection(aspect);
         // Motion vectors: last frame's camera, draws and grass clock.
         let grass_time = self.terrains.grass_time(frame.environment);
@@ -1142,13 +1199,21 @@ impl Renderer {
                 jitter,
                 target.size(),
                 motion.prev_view_proj,
+                mip_bias,
             )),
         );
         #[cfg(test)]
         {
             self.last_view_proj = Mat4::from_cols_array_2d(
-                &view_uniform(frame, aspect, jitter, target.size(), motion.prev_view_proj)
-                    .view_proj,
+                &view_uniform(
+                    frame,
+                    aspect,
+                    jitter,
+                    target.size(),
+                    motion.prev_view_proj,
+                    mip_bias,
+                )
+                .view_proj,
             );
         }
         // HDRI sky: cubes built when the file changes, the uniform every render.
@@ -1208,6 +1273,8 @@ impl Renderer {
                 grass_layout,
                 frame.environment,
                 self.quality.grass_shadow_casters(),
+                // The internal pixel: blades thinner than ~1 px are widened to it. (Sizing them
+                // by the output pixel under upscaling measured hazier, not sharper.)
                 grass_screen(frame, target.size().1, taa_on, motion.grass_dt),
                 near_sun.is_some(),
                 grass_time,
@@ -1252,6 +1319,7 @@ impl Renderer {
             self.upload_culling(device, queue, target, frame, &lists, c, &view_proj);
             self.last_gpu_batches = c.batches.len();
         }
+        self.begin_vgeo(device, queue, target, frame, &lists, &view_proj, &plan);
         self.prepare_shadow_mask(device, queue, target, frame, &plan, &shadow_settings);
         let screen = self.prepare_screen_space(device, queue, target, frame);
         if screen.is_none() {
@@ -1346,6 +1414,9 @@ impl Renderer {
             self.water.simulate(&mut encoder);
         }
         self.mark(&mut encoder, "Water simulation");
+        self.vgeo
+            .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views());
+        self.mark(&mut encoder, "Virtual geometry: shadow culling");
         self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
         self.mark(&mut encoder, "Shadow maps (cascades, local)");
         if let Some(view_proj) = grass_near {
@@ -1356,6 +1427,9 @@ impl Renderer {
         self.mark(&mut encoder, "Clouds");
         self.froxel_passes(device, &mut encoder, target);
         self.mark(&mut encoder, "Froxel fog");
+        // The first phase's clusters (also drawn by the screen-space prepass below).
+        self.vgeo.cull(&mut encoder, 0, 1);
+        self.mark(&mut encoder, "Virtual geometry: culling (first phase)");
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see
         // `gpu_culling_active`), so it always sees the CPU-culled opaque batches.
@@ -1385,6 +1459,7 @@ impl Renderer {
         }
         let trace = screen.as_ref().and_then(|s| s.trace.as_ref());
         if let Some(t) = trace {
+            self.misty_gi_passes(&mut encoder, t);
             self.screen_trace_passes(&mut encoder, target, t);
         }
         self.mark(&mut encoder, "SSGI / SSR");
@@ -1401,15 +1476,20 @@ impl Renderer {
             trace,
             vis: self.grass_vis_active(device, queue, target, frame),
         };
+        // GPU culling and virtual geometry draw the main pass in two phases around the Hi-Z
+        // pyramid of the first phase's depth.
+        let vgeo = self.vgeo.active();
         match (&culled, self.culler.as_ref()) {
-            (Some(c), Some(culler)) => {
+            (_, Some(culler)) if culled.is_some() || vgeo => {
                 let state = target.culling.lock().unwrap_or_else(|e| e.into_inner());
-                let state = state.as_ref().expect("made by upload_culling");
+                let state = state.as_ref().expect("made by upload_culling / begin_vgeo");
                 let slots = &self.slots_buffer;
-                culler.dispatch(device, &mut encoder, state, c, slots, 0);
+                if let Some(c) = &culled {
+                    culler.dispatch(device, &mut encoder, state, c, slots, 0);
+                }
                 let first = MainSplit {
                     phase: Some(0),
-                    culled: Some(c),
+                    culled: culled.as_ref(),
                     ..split
                 };
                 let parts = (&lists, &particle_draws[..]);
@@ -1424,7 +1504,11 @@ impl Renderer {
                     first,
                 );
                 culler.build_pyramid(device, &mut encoder, state, target.depth_view());
-                culler.dispatch(device, &mut encoder, state, c, slots, 1);
+                if let Some(c) = &culled {
+                    culler.dispatch(device, &mut encoder, state, c, slots, 1);
+                }
+                self.vgeo.cull(&mut encoder, 1, 2);
+                self.mark(&mut encoder, "Hi-Z + culling (second phase)");
                 let rest = MainSplit {
                     phase: Some(1),
                     ..first
@@ -1459,11 +1543,15 @@ impl Renderer {
         self.mark(&mut encoder, "Glows");
         self.sun_shaft_passes(device, &mut encoder, target);
         self.mark(&mut encoder, "Sun shafts");
-        if taa_on
+        let resolved = taa_on
             && frame_debug::record(&self.capture, |_| {
-                frame_debug::events::post_event("Temporal Anti-aliasing".to_owned(), "taa.wgsl")
-            })
-        {
+                let name = match upscaled {
+                    true => "Temporal Upscaling",
+                    false => "Temporal Anti-aliasing",
+                };
+                frame_debug::events::post_event(name.to_owned(), "taa.wgsl")
+            });
+        if resolved {
             self.taa.resolve(
                 device,
                 &mut encoder,
@@ -1471,6 +1559,8 @@ impl Renderer {
                     view_group: &self.view_bind_group,
                     target: target.id,
                     current: (target.hdr_texture(), target.hdr_view()),
+                    output: (target.post_hdr_view(), target.output_size()),
+                    jitter,
                     depth: target.depth_view(),
                     velocity: target.velocity_view(),
                     view_proj,
@@ -1483,6 +1573,10 @@ impl Renderer {
                     },
                 },
             );
+        } else if upscaled {
+            // No temporal resolve this frame (wireframe, frame debugger replay): stretch.
+            let (input, output) = (target.hdr_view(), target.post_hdr_view());
+            (self.taa).stretch(device, &mut encoder, &self.view_bind_group, input, output);
         }
         self.mark(&mut encoder, "TAA");
         self.bloom_passes(&mut encoder, target, timing);
@@ -1686,7 +1780,8 @@ impl Renderer {
     ) {
         let levels = &target.bloom;
         let p = &self.pipelines;
-        let (w, h) = target.size();
+        // Post-processing runs at the output resolution.
+        let (w, h) = target.output_size();
         let level_size = |i: usize| ((w >> (i + 1)).max(1), (h >> (i + 1)).max(1));
         let step = |name: String, shader: &str, i: usize| {
             let target =
@@ -1990,6 +2085,10 @@ impl Renderer {
             m.draw(&mut pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
         }
+        // Virtual geometry casters (culled for this map, detail chosen for the camera).
+        if self.vgeo.active() {
+            self.vgeo.draw_shadow(&mut pass, slot, &self.empty_group);
+        }
         // Grass near the camera (the first cascades only; group 2 = the grass casters).
         if grass
             && frame_debug::record(&self.capture, |_| {
@@ -2224,15 +2323,30 @@ impl Renderer {
             }
 
             self.mark_pass(&mut pass, "Main: sky");
-            // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches).
-            if let (Some(culled), Some(phase)) = (split.culled, split.phase) {
+            // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches),
+            // then this phase's virtual geometry clusters. Without GPU culling the CPU-culled
+            // batches all draw in the first phase.
+            if let Some(phase) = split.phase {
                 pass.set_bind_group(1, self.lit_group(), &[]);
-                self.draw_culled(&mut pass, frame, lists, culled, phase, stats);
+                if let Some(culled) = split.culled {
+                    self.draw_culled(&mut pass, frame, lists, culled, phase, stats);
+                } else if phase == 0 && frame.shaded && !lists.opaque.is_empty() {
+                    let opaque = &lists.opaque;
+                    self.draw_batches(&mut pass, frame, lists, opaque, split.prepass, None, stats);
+                }
+                if self.vgeo.active() {
+                    self.mark_pass(&mut pass, "Main: opaque meshes");
+                    let textures = &self.textures;
+                    let material =
+                        |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
+                    self.vgeo.draw_main(&mut pass, phase, &material);
+                    self.mark_pass(&mut pass, "Main: virtual geometry");
+                }
                 if !last {
                     return;
                 }
             }
-            if frame.shaded && !lists.opaque.is_empty() {
+            if split.phase.is_none() && frame.shaded && !lists.opaque.is_empty() {
                 let main = || main_target(target);
                 frame_debug::pass(&self.capture, &["Opaque"], main, EventTarget::Hdr);
                 pass.set_bind_group(1, self.lit_group(), &[]);
@@ -2423,7 +2537,9 @@ impl Renderer {
         let Some(Some(pipes)) = &self.grass_vis else {
             return false;
         };
-        let images = target.grass_vis.get(device, pipes, target.size());
+        let images = target
+            .grass_vis
+            .get(device, pipes, target.size(), target.samples());
         if !matches!(&*images, Some(Some(_))) {
             return false;
         }
@@ -2445,7 +2561,9 @@ impl Renderer {
         let Some(Some(pipes)) = &self.grass_vis else {
             return;
         };
-        let images = target.grass_vis.get(device, pipes, target.size());
+        let images = target
+            .grass_vis
+            .get(device, pipes, target.size(), target.samples());
         let Some(Some(t)) = &*images else {
             return;
         };
@@ -2958,12 +3076,25 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan, soft: bool) -> Ligh
 
 /// The view uniform; `jitter` = sub-pixel camera offset in pixels of a `size` image (TAA),
 /// `prev_view_proj` = last frame's unjittered view-projection (motion vectors).
+/// Mip bias of material textures for `target`: log2 of its render scale (an upscaled target
+/// samples the detail of the output resolution; the temporal resolve averages the extra
+/// aliasing away), 0 at native resolution.
+fn mip_bias(target: &RenderTarget) -> f32 {
+    let (w, _) = target.size();
+    let (ow, _) = target.output_size();
+    if w >= ow {
+        return 0.0;
+    }
+    (w as f32 / ow as f32).log2()
+}
+
 fn view_uniform(
     frame: &Frame,
     aspect: f32,
     jitter: glam::Vec2,
     size: (u32, u32),
     prev_view_proj: Mat4,
+    mip_bias: f32,
 ) -> ViewUniform {
     let cam = frame.camera;
     let vp = taa::jittered(cam.view_projection(aspect), jitter, size);
@@ -3012,7 +3143,12 @@ fn view_uniform(
             let j = taa::jitter_ndc(jitter, size);
             [j.x, j.y, size.0 as f32, size.1 as f32]
         },
-        view_ray: view_ray(cam, aspect),
+        view_ray: {
+            let mut r = view_ray(cam, aspect);
+            // view_tan.z: texture mip bias (upscaled targets, see `mip_bias`).
+            r[1][2] = mip_bias;
+            r
+        },
     }
 }
 
@@ -3052,6 +3188,8 @@ mod meadow_perf_tests;
 mod taa_gpu_tests;
 #[cfg(test)]
 mod terrain_gpu_tests;
+#[cfg(test)]
+mod upscale_gpu_tests;
 
 #[cfg(test)]
 mod tests {

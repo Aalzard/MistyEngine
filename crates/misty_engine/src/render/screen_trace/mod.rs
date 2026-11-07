@@ -15,7 +15,7 @@ use std::sync::Mutex;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
-use super::frame_debug::{self, EventKind, EventTarget, FrameEvent};
+use super::frame_debug::{self, EventKind, EventTarget, FrameEvent, TargetInfo};
 use super::{Frame, RenderTarget, Renderer};
 use crate::camera::{Camera, Projection};
 
@@ -70,6 +70,9 @@ struct TraceParams {
     gi2: [f32; 4],
     ssr: [f32; 4],
     ssr2: [f32; 4],
+    /// x = full pixels per Misty GI texel, y = 1 when Misty GI is on, z = its intensity,
+    /// w = SSGI intensity (folded into the composed GI when Misty GI is on).
+    misty: [f32; 4],
 }
 
 /// Compute kernels (index into [`Passes::pipelines`]).
@@ -106,6 +109,8 @@ struct Passes {
 /// The renderer's part: pipelines and the "off" buffer.
 pub(super) struct ScreenTrace {
     passes: Option<Passes>,
+    /// Misty GI (world-space GI composed into the same texels).
+    pub misty: super::misty_gi::MistyGi,
     /// Zero header: bound while both effects are off.
     pub off_buffer: wgpu::Buffer,
 }
@@ -114,6 +119,7 @@ impl ScreenTrace {
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
             passes: None,
+            misty: Default::default(),
             off_buffer: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("misty screen trace off"),
                 size: buffer_bytes(1),
@@ -203,6 +209,8 @@ pub(in crate::render) struct TraceFrame {
     gi_steps: Vec<Step>,
     ssr_steps: Vec<Step>,
     compose: Option<Step>,
+    /// Misty GI work of this render (its gather feeds the compose).
+    pub misty: Option<super::misty_gi::MistyFrame>,
     /// Lit colour history: copy destination and its mip steps.
     color: wgpu::Texture,
     color_steps: Vec<Step>,
@@ -222,7 +230,7 @@ impl ScreenTrace {
         depth_view: &wgpu::TextureView,
         velocity_view: &wgpu::TextureView,
     ) -> Option<TraceFrame> {
-        let (gi, ssr) = (frame.post.ssgi, frame.post.ssr);
+        let (gi, ssr, misty_gi) = (frame.post.ssgi, frame.post.ssr, frame.post.misty_gi);
         if !wanted(frame) {
             return None;
         }
@@ -234,6 +242,10 @@ impl ScreenTrace {
         if self.passes.is_none() {
             self.passes = Some(Passes::new(device));
         }
+        let misty = self
+            .misty
+            .prepare(device, queue, target, frame, normal_view, depth_view);
+        let misty_on = misty.is_some();
         let passes = self.passes.as_ref()?;
         let key = Key {
             full,
@@ -266,12 +278,21 @@ impl ScreenTrace {
             prev,
             [gi_history, ssr_history],
             [gi_on, ssr_on],
+            misty.as_ref().map(|m| (m.scale, misty_gi.intensity)),
         );
         queue.write_buffer(&state.params, 0, bytemuck::bytes_of(&params));
         let flag = |on: bool| if on { 1.0 } else { 0.0 };
-        let header = Header {
-            flags: [flag(gi_on), gi.intensity, flag(ssr_on), ssr.intensity],
-            misc: [flag(gi.lightmapped_surfaces), 0.0, 0.0, 0.0],
+        // With Misty GI on, the composed GI already holds both intensities and replaces the
+        // ambient everywhere (visibility 0); the lit shaders multiply it by the screen AO.
+        let header = match misty_on {
+            false => Header {
+                flags: [flag(gi_on), gi.intensity, flag(ssr_on), ssr.intensity],
+                misc: [flag(gi.lightmapped_surfaces), 0.0, 0.0, 0.0],
+            },
+            true => Header {
+                flags: [1.0, 1.0, flag(ssr_on), ssr.intensity],
+                misc: [flag(misty_gi.lightmapped_surfaces), 1.0, 0.0, 0.0],
+            },
         };
         queue.write_buffer(&state.texels, 0, bytemuck::bytes_of(&header));
 
@@ -292,10 +313,11 @@ impl ScreenTrace {
             (true, Some(images)) => ssr_steps(device, passes, state, &views, images, parity),
             _ => (Vec::new(), None),
         };
-        let compose = (gi_on || ssr_on).then(|| {
+        let compose = (gi_on || ssr_on || misty_on).then(|| {
             let mut b = Binds::new(passes, state, &views);
             b.in_a = gi_final.unwrap_or(&passes.dummy_in);
             b.in_b = ssr_final.unwrap_or(&passes.dummy_in);
+            b.in_c = misty.as_ref().map_or(&passes.dummy_in, |m| &m.gather);
             b.buffer = &state.texels;
             Step {
                 kernel: Kernel::Compose,
@@ -324,6 +346,7 @@ impl ScreenTrace {
             gi_steps,
             ssr_steps,
             compose,
+            misty,
             color: state.color.clone(),
             color_steps,
         })
@@ -428,12 +451,41 @@ impl Renderer {
                     )
                 },
             );
-        if (gi || ssr)
+        if (gi || ssr || t.misty.is_some())
             && frame_debug::record(&self.capture, |_| {
                 event("Compose Screen Trace Texels", "screen_trace/compose.wgsl")
             })
         {
             self.screen_trace.passes(encoder, t, (gi, ssr));
+        }
+    }
+
+    /// This render's Misty GI stages (Frame Debugger event "Misty GI"), each timed.
+    pub(super) fn misty_gi_passes(&self, encoder: &mut wgpu::CommandEncoder, t: &TraceFrame) {
+        let Some(m) = &t.misty else {
+            return;
+        };
+        let run = frame_debug::whole(
+            &self.capture,
+            &["Misty GI"],
+            TargetInfo::default,
+            EventTarget::None,
+            || FrameEvent {
+                shader: "misty_gi/sdf.wgsl, surface.wgsl, probes.wgsl, apply.wgsl".to_owned(),
+                ..FrameEvent::new(
+                    EventKind::Compute,
+                    "Scene SDF, Surface Cache, Probe Trace, Gather",
+                )
+            },
+        );
+        if !run {
+            return;
+        }
+        for stage in super::misty_gi::Stage::ALL {
+            if m.has(stage) {
+                self.screen_trace.misty.record(encoder, m, stage);
+                self.mark(encoder, stage.label());
+            }
         }
     }
 
@@ -459,9 +511,10 @@ impl Renderer {
     }
 }
 
-/// SSGI or SSR is on for this render.
+/// SSGI, SSR or Misty GI is on for this render.
 pub(super) fn wanted(frame: &Frame) -> bool {
-    frame.shaded && (frame.post.ssgi.active() || frame.post.ssr.active())
+    frame.shaded
+        && (frame.post.ssgi.active() || frame.post.ssr.active() || frame.post.misty_gi.active())
 }
 
 /// The prepass targets a step reads.
@@ -680,6 +733,7 @@ fn trace_params(
     prev: Mat4,
     [gi_history, ssr_history]: [bool; 2],
     [gi_on, ssr_on]: [bool; 2],
+    misty: Option<(u32, f32)>,
 ) -> TraceParams {
     let cam = frame.camera;
     let (gi, ssr) = (&frame.post.ssgi, &frame.post.ssr);
@@ -732,6 +786,15 @@ fn trace_params(
             0.0,
             0.0,
         ],
+        misty: match misty {
+            Some((scale, intensity)) => [
+                scale as f32,
+                1.0,
+                intensity,
+                if gi_on { gi.intensity } else { 0.0 },
+            ],
+            None => [1.0, 0.0, 0.0, 0.0],
+        },
     }
 }
 
@@ -768,7 +831,7 @@ mod tests {
             super::super::pipelines::MESH_SRC
         );
         validate("lit", &lit);
-        assert_eq!(std::mem::size_of::<TraceParams>(), 3 * 64 + 11 * 16);
+        assert_eq!(std::mem::size_of::<TraceParams>(), 3 * 64 + 12 * 16);
         assert_eq!(std::mem::size_of::<Header>() as u64, HEADER_BYTES);
     }
 

@@ -58,7 +58,8 @@ pub use reflection_probe::{ReflectionProbe, ReflectionProbeGroup};
 pub use registry::SceneComponent;
 pub use screen_space_overrides::{AmbientOcclusionOverride, ContactShadowsOverride};
 pub use screen_trace_overrides::{
-    ScreenSpaceGlobalIlluminationOverride, ScreenSpaceQuality, ScreenSpaceReflectionsOverride,
+    MistyGlobalIlluminationOverride, ScreenSpaceGlobalIlluminationOverride, ScreenSpaceQuality,
+    ScreenSpaceReflectionsOverride,
 };
 pub use skinned_mesh::SkinnedMeshRenderer;
 pub use sprite_components::*;

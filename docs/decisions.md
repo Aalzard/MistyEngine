@@ -3240,3 +3240,19 @@ Record of choices made without asking, and why.
      - Terrain Inspector ▸ Paint Trees (brush, Shift removes, Mass Place, rendering distances), Assets ▸
        Create ▸ Tree, trunk capsules with the Terrain Collider. Sample trees and CC0 textures in
        `SampleProject/Assets/Trees` (textures from `tools/tree_textures.py`).
+649. **Misty GI: fully dynamic GI from a global distance field, a radiance cache and a probe clipmap** (`docs/pending/misty-gi.md`).
+     - Prototype behind the Post-process Volume override *Misty Global Illumination* (off by default; Intensity,
+       Quality Low / Medium / High, Lightmapped Surfaces). Nothing is allocated while it is off.
+     - **Scene**: per view, 4–5 clipmap levels of 64³ (48³ at Low) signed distances around the camera, centred a quarter
+       of their width ahead of it, composed from analytic primitives, CPU-baked 32³ mesh SDFs (winding-number sign,
+       shared atlas), the terrain heightfield and tree proxies (trunk capsule + crown ellipsoid). A level is
+       recomposed only when its box moves or its shapes change (two levels a frame at most).
+     - **Surface cache**: radiance voxels in a ±2-voxel band around surfaces: every light with an SDF soft shadow, plus
+       last frame's probe irradiance × albedo (one more bounce per frame), plus emission.
+     - **Gather**: irradiance probe clipmap (SH L1, 20³ per level at High) tracing the SDF, a quarter of the probes per
+       frame with hysteresis; per pixel, trilinear probes × SDF visibility × back-face weight. Written into the lit
+       shaders' existing GI texel (no new binding); with SSGI on, SSGI's on-screen hits win and Misty GI fills the rest.
+     - Chosen over a voxel clipmap (no voxelisation pipelines to touch, sphere tracing skips space) and over
+       Lumen-style cards (no capture passes; voxel resolution suffices for diffuse). World-space radiance cascades
+       were evaluated and rejected as the main gather (dense 3D cascade 0 is 10–50× over budget); their interval
+       merge is the planned next step on top of the probe levels.

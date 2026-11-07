@@ -13,7 +13,7 @@ pub const HEIGHT: u32 = 270;
 
 /// Read a render target's final (tonemapped, sRGB) image back as tightly packed RGBA8.
 pub fn read_pixels(device: &wgpu::Device, queue: &wgpu::Queue, target: &RenderTarget) -> Vec<u8> {
-    let (width, height) = target.size();
+    let (width, height) = target.output_size();
     let size = wgpu::Extent3d {
         width,
         height,

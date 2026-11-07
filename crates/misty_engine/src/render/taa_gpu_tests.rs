@@ -11,10 +11,10 @@ use crate::camera::{Camera, Projection};
 use crate::quality::QualityLevel;
 use crate::scene::PrimitiveMesh;
 
-const W: u32 = 320;
-const H: u32 = 200;
+pub(super) const W: u32 = 320;
+pub(super) const H: u32 = 200;
 
-fn save(name: &str, px: &[u8], w: u32, h: u32) {
+pub(super) fn save(name: &str, px: &[u8], w: u32, h: u32) {
     if let Some(dir) = std::env::var_os("MISTY_TAA_TEST_DIR") {
         let path = std::path::Path::new(&dir).join(name);
         image::RgbaImage::from_raw(w, h, px.to_vec())
@@ -24,7 +24,7 @@ fn save(name: &str, px: &[u8], w: u32, h: u32) {
     }
 }
 
-fn camera(yaw: f32) -> Camera {
+pub(super) fn camera(yaw: f32) -> Camera {
     Camera {
         position: Vec3::new(0.0, 7.0, -12.0),
         rotation: Quat::from_rotation_y(yaw) * Quat::from_rotation_x(28f32.to_radians()),
@@ -34,7 +34,7 @@ fn camera(yaw: f32) -> Camera {
     }
 }
 
-fn quality(taa: bool) -> QualityLevel {
+pub(super) fn quality(taa: bool) -> QualityLevel {
     QualityLevel {
         temporal_aa: taa,
         ..QualityLevel::high()
@@ -42,18 +42,18 @@ fn quality(taa: bool) -> QualityLevel {
 }
 
 /// Yaw that moves the image centre by one pixel.
-fn pixel_yaw(fov_y: f32, height: u32) -> f32 {
+pub(super) fn pixel_yaw(fov_y: f32, height: u32) -> f32 {
     (2.0 * (fov_y.to_radians() * 0.5).tan() / height as f32).atan()
 }
 
-struct Scene {
-    meshes: Vec<MeshDraw>,
-    lights: Vec<LightData>,
-    environment: Environment,
+pub(super) struct Scene {
+    pub(super) meshes: Vec<MeshDraw>,
+    pub(super) lights: Vec<LightData>,
+    pub(super) environment: Environment,
 }
 
 impl Scene {
-    fn test() -> Self {
+    pub(super) fn test() -> Self {
         Self {
             meshes: test_meshes(),
             lights: test_lights(),
@@ -61,7 +61,7 @@ impl Scene {
         }
     }
 
-    fn frame<'a>(&'a self, camera: &'a Camera) -> Frame<'a> {
+    pub(super) fn frame<'a>(&'a self, camera: &'a Camera) -> Frame<'a> {
         Frame {
             camera,
             grid: None,
@@ -84,7 +84,7 @@ impl Scene {
 /// Render `frames` frames of `scene` with camera `cam(i)` (and `edit(i, meshes)` applied
 /// first) and return the last `keep` images.
 #[allow(clippy::too_many_arguments)]
-fn sequence(
+pub(super) fn sequence(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     quality: &QualityLevel,
@@ -96,7 +96,8 @@ fn sequence(
 ) -> Vec<Vec<u8>> {
     let mut renderer = Renderer::with_queue(device, queue);
     renderer.set_quality(device, quality);
-    let target = renderer.create_target(device, W, H);
+    // A view target: upscaled when the quality level says so (native otherwise).
+    let target = renderer.create_view_target(device, W, H);
     let mut out = Vec::new();
     for i in 0..frames {
         edit(i, &mut scene.meshes);
@@ -109,12 +110,12 @@ fn sequence(
     out
 }
 
-fn luma(px: &[u8], i: usize) -> f32 {
+pub(super) fn luma(px: &[u8], i: usize) -> f32 {
     0.2126 * px[i * 4] as f32 + 0.7152 * px[i * 4 + 1] as f32 + 0.0722 * px[i * 4 + 2] as f32
 }
 
 /// Mean gradient magnitude of the luma (edge contrast).
-fn edge_contrast(px: &[u8], w: u32, h: u32) -> f32 {
+pub(super) fn edge_contrast(px: &[u8], w: u32, h: u32) -> f32 {
     let mut sum = 0.0;
     let mut n = 0.0;
     for y in 0..h as usize - 1 {
@@ -130,7 +131,7 @@ fn edge_contrast(px: &[u8], w: u32, h: u32) -> f32 {
 
 /// Mean absolute difference (r, g, b) between `a` and `b` shifted right by `dx` pixels over
 /// the middle half of the image.
-fn shifted_difference(a: &[u8], b: &[u8], w: u32, h: u32, dx: i32) -> f32 {
+pub(super) fn shifted_difference(a: &[u8], b: &[u8], w: u32, h: u32, dx: i32) -> f32 {
     let mut sum = 0.0f32;
     let mut n = 0.0f32;
     for y in h / 4..h * 3 / 4 {
@@ -151,7 +152,12 @@ fn shifted_difference(a: &[u8], b: &[u8], w: u32, h: u32, dx: i32) -> f32 {
 }
 
 /// Mean absolute difference (r, g, b) inside a pixel rectangle.
-fn region_difference(a: &[u8], b: &[u8], w: u32, (x0, y0, x1, y1): (u32, u32, u32, u32)) -> f32 {
+pub(super) fn region_difference(
+    a: &[u8],
+    b: &[u8],
+    w: u32,
+    (x0, y0, x1, y1): (u32, u32, u32, u32),
+) -> f32 {
     let mut sum = 0.0f32;
     let mut n = 0.0f32;
     for y in y0..y1 {
@@ -167,7 +173,7 @@ fn region_difference(a: &[u8], b: &[u8], w: u32, (x0, y0, x1, y1): (u32, u32, u3
 }
 
 /// Share of pixels that change by more than 8 levels in a channel between two frames.
-fn flicker(a: &[u8], b: &[u8]) -> f32 {
+pub(super) fn flicker(a: &[u8], b: &[u8]) -> f32 {
     let jumps = a
         .chunks(4)
         .zip(b.chunks(4))
@@ -393,7 +399,7 @@ fn moving_cube_leaves_no_ghost() {
 }
 
 /// MeadowDemo as saved, or crouching in the grass (`close`).
-fn meadow(close: bool) -> crate::render_scene::GameView {
+pub(super) fn meadow(close: bool) -> crate::render_scene::GameView {
     use crate::scene::{Scene as SceneAsset, Transform};
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
     crate::assets::set_project_root(&root);
@@ -463,7 +469,12 @@ fn grass_in_the_wind_does_not_smear() {
 }
 
 /// Crop `(x, y, w, h)` of an image, scaled up `scale` times (nearest).
-fn crop(px: &[u8], width: u32, (x, y, w, h): (u32, u32, u32, u32), scale: u32) -> image::RgbaImage {
+pub(super) fn crop(
+    px: &[u8],
+    width: u32,
+    (x, y, w, h): (u32, u32, u32, u32),
+    scale: u32,
+) -> image::RgbaImage {
     let mut out = image::RgbaImage::new(w * scale, h * scale);
     for oy in 0..h * scale {
         for ox in 0..w * scale {

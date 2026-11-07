@@ -889,3 +889,7 @@ fn cycles_room_renders_from_its_baked_data() {
     let diff = realtime.brightness(&camera, back_wall) - baked.brightness(&camera, back_wall);
     assert!(diff.abs() < 25.0, "realtime and baked walls agree ({diff})");
 }
+
+#[cfg(test)]
+#[path = "sample_cycles_room_gi.rs"]
+mod misty_gi_renders;
