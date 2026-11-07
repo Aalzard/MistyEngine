@@ -186,4 +186,38 @@ mod tests {
         // Offsets of runs are 256-byte aligned (the CPU path binds them).
         assert_eq!((GRAIN as u64 * BLADE_BYTES) % 256, 0);
     }
+
+    #[test]
+    fn pool_reuses_runs_grows_and_opens_pages() {
+        let Some((device, queue)) = crate::render::gpu_tests::headless() else {
+            return;
+        };
+        let mut pool = BladePool::new(&device);
+        let a = pool.alloc(&device, &queue, 100).expect("room");
+        let b = pool.alloc(&device, &queue, 1000).expect("room");
+        assert_eq!((a.page, a.at), (0, 0));
+        // Runs are rounded up to the grain.
+        assert_eq!((b.page, b.at), (0, 128));
+        pool.free(a, 100);
+        // The hole is reused first.
+        assert_eq!(
+            pool.alloc(&device, &queue, 64),
+            Some(Slot { page: 0, at: 0 })
+        );
+        // More than the first page holds: the page grows (copying), its runs stay.
+        let generation = pool.generation;
+        let big = pool.alloc(&device, &queue, FIRST_PAGE).expect("room");
+        assert_eq!(big.page, 0);
+        assert!(pool.generation > generation);
+        // A run bigger than any page can't be held.
+        assert_eq!(pool.alloc(&device, &queue, pool.max_page + 1), None);
+        // Fill the first page up: the next run opens a second page.
+        let rest = pool.max_page - (big.at + FIRST_PAGE);
+        if rest >= GRAIN {
+            pool.alloc(&device, &queue, rest).expect("room");
+        }
+        let next = pool.alloc(&device, &queue, 1000).expect("room");
+        assert_eq!(next.page, 1);
+        assert_eq!(pool.pages(), 2);
+    }
 }

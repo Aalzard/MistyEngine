@@ -957,6 +957,20 @@ mod tests {
                 "grass prepass",
                 super::super::screen_space::GRASS_PREPASS_SRC,
             ),
+            (
+                "grass visibility",
+                format!(
+                    "{}
+{}",
+                    super::GRASS_SRC,
+                    include_str!("shaders/grass_vis.wgsl")
+                )
+                .leak(),
+            ),
+            (
+                "grass composite",
+                include_str!("shaders/grass_composite.wgsl"),
+            ),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(src)));

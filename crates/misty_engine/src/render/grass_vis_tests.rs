@@ -417,3 +417,46 @@ fn grass_vis_motion() {
         }
     }
 }
+
+/// The visibility buffer draws the same grass as the lit pass: MeadowDemo at a small size on
+/// High, both ways, nearly the same picture (the shading is the same; only float rounding of
+/// the reconstructed interpolation differs), and the visibility path really ran.
+#[test]
+fn grass_vis_matches_the_lit_pass() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let v = view("wide").expect("view");
+    let (w, h) = (480, 270);
+    let render = |on: bool| {
+        crate::render::set_grass_vis(on);
+        let mut r = Renderer::with_queue(&device, &queue);
+        r.set_quality(&device, &QualityLevel::high());
+        let target = r.create_target(&device, w, h);
+        for _ in 0..12 {
+            r.render(&device, &queue, &target, &v.frame());
+        }
+        let used = target.grass_vis.bytes() > 0;
+        crate::render::set_grass_vis(true);
+        (
+            crate::render::gpu_tests::read_back(&device, &queue, &target),
+            used,
+        )
+    };
+    let (lit, lit_used) = render(false);
+    let (vis, vis_used) = render(true);
+    assert!(!lit_used, "the lit path made visibility images");
+    assert!(vis_used, "the visibility buffer did not run");
+    let mut sum = 0u64;
+    let mut off = 0usize;
+    for (a, b) in lit.chunks(4).zip(vis.chunks(4)) {
+        let d = (0..3).map(|c| a[c].abs_diff(b[c])).max().unwrap_or(0);
+        sum += d as u64;
+        off += usize::from(d > 8);
+    }
+    let n = (w * h) as f64;
+    let mean = sum as f64 / n;
+    assert!(mean < 0.5, "mean difference {mean:.3}");
+    assert!((off as f64 / n) < 0.005, "{off} pixels off by > 8 levels");
+}

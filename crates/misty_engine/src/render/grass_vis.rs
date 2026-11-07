@@ -330,6 +330,8 @@ pub(super) struct VisTargets {
     slots: wgpu::TextureView,
     /// The composite's inputs (group 1).
     pub composite_group: wgpu::BindGroup,
+    /// GPU bytes of the images and buffers.
+    #[cfg(test)]
     bytes: u64,
 }
 
@@ -420,6 +422,7 @@ impl VisTargets {
             args,
             slots: slots_view,
             composite_group,
+            #[cfg(test)]
             bytes: pixels * (samples as u64 * (8 + 4 + 8 + 4) + 8),
         }
     }
