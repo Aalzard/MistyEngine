@@ -398,9 +398,9 @@ fn mountain_shape(shape: MountainShape, l: Vec2) -> f32 {
         }
         MountainShape::Volcano => {
             let rim = 0.25;
-            let t = (1.0 - d).max(0.0).powf(1.2);
+            let t = super::portable::powf((1.0 - d).max(0.0), 1.2);
             if d < rim {
-                let top = (1.0f32 - rim).powf(1.2);
+                let top = super::portable::powf(1.0f32 - rim, 1.2);
                 top - 0.4 * (1.0 - (d / rim).powi(2))
             } else {
                 t

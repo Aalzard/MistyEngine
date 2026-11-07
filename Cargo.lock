@@ -2525,6 +2525,7 @@ dependencies = [
  "hecs",
  "image",
  "kira",
+ "libm",
  "lz4_flex",
  "mlua",
  "pollster 0.4.0",

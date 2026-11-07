@@ -18,6 +18,8 @@ mlua.workspace = true
 kira.workspace = true
 image.workspace = true
 gltf.workspace = true
+# World Builder: OS-independent sin/cos/pow, so a seed builds the same world everywhere.
+libm = "0.2.16"
 tobj.workspace = true
 gilrs.workspace = true
 # UI text: font rasteriser + the editor UI library's bundled fonts (no font files in the repo).

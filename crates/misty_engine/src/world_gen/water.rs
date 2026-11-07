@@ -224,10 +224,10 @@ pub fn spawn_water(
     // Lakes keep their local X on `axis`; rivers flow along local +Z.
     let (yaw, size) = match body.kind {
         WaterKind::River => (
-            body.axis.x.atan2(body.axis.y),
+            super::portable::atan2(body.axis.x, body.axis.y),
             Vec2::new(body.size.y, body.size.x),
         ),
-        _ => ((-body.axis.y).atan2(body.axis.x), body.size),
+        _ => (super::portable::atan2(-body.axis.y, body.axis.x), body.size),
     };
     let mut t = scene.transform(e);
     t.rotation = Quat::from_rotation_y(yaw);
