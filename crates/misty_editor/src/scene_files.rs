@@ -38,6 +38,8 @@ pub struct EditorSettings {
     pub scene_view: Option<SavedView>,
     /// Scene view icon gizmo size and tint.
     pub scene_icons: crate::scene_icons::IconSettings,
+    /// Scene camera settings (field of view, clipping, speed, easing).
+    pub scene_camera: crate::scene_camera::CameraSettings,
 }
 
 /// A Scene view eye position and rotation (quaternion x, y, z, w).
@@ -52,6 +54,7 @@ pub struct SavedView {
 pub fn restore_scene_view(s: &mut EditorState) {
     let settings = EditorSettings::load(&s.project.root);
     s.scene_view.icons = settings.scene_icons;
+    s.scene_view.camera.settings = settings.scene_camera;
     let (position, rotation) = match settings.scene_view {
         Some(v) => (
             glam::Vec3::from(v.position),
@@ -70,11 +73,13 @@ pub fn restore_scene_view(s: &mut EditorState) {
     }
 }
 
-/// Remember the Scene view camera (3D views only) and icon settings for the next launch.
+/// Remember the Scene view camera (3D views only), its settings and the icon settings for the
+/// next launch.
 pub fn remember_scene_view(s: &EditorState) {
     let cam = &s.scene_view.camera;
     let mut settings = EditorSettings::load(&s.project.root);
     settings.scene_icons = s.scene_view.icons;
+    settings.scene_camera = cam.settings;
     if !cam.is_2d() {
         settings.scene_view = Some(SavedView {
             position: cam.position().to_array(),

@@ -232,7 +232,9 @@ impl Renderer {
                 trace,
                 frame_index: state.frame,
                 history,
-                time: c.clock.elapsed().as_secs_f32(),
+                // (A fixed clock in tests and recordings: renders compare frame for frame.)
+                time: (frame.environment.grass_time)
+                    .unwrap_or_else(|| c.clock.elapsed().as_secs_f32()),
             });
             queue.write_buffer(&c.march_buffer, 0, bytemuck::bytes_of(&m));
             state.prev_view_proj = Some(view_proj);

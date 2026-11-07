@@ -95,7 +95,8 @@ impl Gpu {
             ViewId::Game => &mut self.game,
         };
         let size = (size_px[0].max(1), size_px[1].max(1));
-        // Quality ▸ Upscaling renders the scene smaller and rebuilds this size temporally.
+        // Quality ▸ Upscaling renders the scene smaller and rebuilds this size temporally; a
+        // new target too when Quality ▸ Anti-Aliasing rebuilt the renderer (sample count).
         let fits = vp
             .target
             .as_ref()

@@ -73,13 +73,11 @@ impl Passes {
             },
         );
 
-        let blade_buffers = pipelines::blade_buffers();
         let grass = pipelines::build(
             device,
             Spec {
                 vs: "vs_grass_prepass",
                 fs: Some("fs_grass_prepass"),
-                buffers: &blade_buffers,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 depth: Some(Depth {
                     format: DEPTH_FORMAT,
@@ -94,7 +92,12 @@ impl Passes {
                 ..Spec::new(
                     "ao grass prepass",
                     GRASS_PREPASS_SRC,
-                    &[&p.view_layout, &p.draws_layout, &p.grass_layout],
+                    &[
+                        &p.view_layout,
+                        &p.draws_layout,
+                        &p.grass_layout,
+                        &p.grass_blades_layout,
+                    ],
                 )
             },
         );

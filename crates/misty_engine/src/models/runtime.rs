@@ -15,6 +15,11 @@ pub fn register(name: &str, data: MeshData) -> String {
     register_meshes(name, vec![data])
 }
 
+/// Like [`register`], drawn as Misty Virtual Geometry when the Quality level has it on.
+pub fn register_virtual(name: &str, data: MeshData) -> String {
+    store(name, vec![data], true)
+}
+
 /// Drop runtime meshes whose name starts with `prefix`.
 pub fn unregister(prefix: &str) {
     let full = format!("{PREFIX}{prefix}");
@@ -28,6 +33,10 @@ pub fn unregister(prefix: &str) {
 
 /// Store several meshes under `name` (mesh `i` is "runtime://name#i"); returns the key of mesh 0.
 pub fn register_meshes(name: &str, meshes: Vec<MeshData>) -> String {
+    store(name, meshes, false)
+}
+
+fn store(name: &str, meshes: Vec<MeshData>, virtual_geometry: bool) -> String {
     let path = format!("{PREFIX}{name}");
     let model = Model {
         meshes: meshes
@@ -48,6 +57,7 @@ pub fn register_meshes(name: &str, meshes: Vec<MeshData>) -> String {
                 default_weights: Vec::new(),
             })
             .collect(),
+        virtual_geometry,
         ..Default::default()
     };
     let mut lib = library();

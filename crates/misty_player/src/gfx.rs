@@ -222,7 +222,10 @@ impl Gfx {
             self.sampler = blit_sampler(&self.device, nearest);
             self.group = blit_group(&self.device, &self.layout, &self.sampler, &self.target);
         }
-        if (quality.render_scale - self.render_scale).abs() > 1e-4 {
+        // (Another Render Scale, or Anti-Aliasing rebuilt the renderer.)
+        if (quality.render_scale - self.render_scale).abs() > 1e-4
+            || !self.renderer.target_fits(&self.target)
+        {
             self.render_scale = quality.render_scale;
             self.recreate_target();
         } else {

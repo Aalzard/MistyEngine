@@ -58,8 +58,10 @@ const GRASS_SKIP = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 // (`grass_flat`: they test against the depth the standing blades wrote without writing their
 // own, see `vs_grass_depth`).
 @vertex
-fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
-    if (grass_outside(b, view.view_proj, true)) {
+fn vs_grass(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GrassOut {
+    let b = grass_fetch(ii);
+    let fans = grass.draw.y == 0u;
+    if ((!fans && grass_flat(b)) || grass_outside(b, view.view_proj, true)) {
         var out: GrassOut;
         out.clip = GRASS_SKIP;
         return out;
@@ -72,7 +74,8 @@ fn vs_grass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
 // writing any of their own (where fans overlap, the later one shows). Leaving them out here
 // halves what the depth pass rasterises.
 @vertex
-fn vs_grass_depth(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassOut {
+fn vs_grass_depth(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GrassOut {
+    let b = grass_fetch(ii);
     if (grass_flat(b) || grass_outside(b, view.view_proj, true)) {
         var out: GrassOut;
         out.clip = GRASS_SKIP;

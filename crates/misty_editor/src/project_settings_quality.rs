@@ -206,8 +206,8 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     let mut edited = row(
         ui,
         "Anti-Aliasing",
-        "Smooths jagged edges. The renderer currently always uses 4x; this choice is saved \
-         for when it can switch.",
+        "Multisampling of the 3D view: smooths jagged edges (4x smoother, 2x cheaper on dense \
+         grass). Disabled renders 2x for now. Changing it rebuilds the renderer (a short hitch).",
         |ui| {
             combo(
                 ui,
@@ -346,6 +346,28 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
             .changed()
         },
     );
+    edited |= row(
+        ui,
+        "Virtual Geometry",
+        "Prototype: models imported with Virtual Geometry draw as clusters with per-cluster          level of detail, culled on the GPU. Off = they draw as ordinary meshes.",
+        |ui| ui.checkbox(&mut l.virtual_geometry, "").changed(),
+    );
+    if l.virtual_geometry {
+        edited |= row(
+            ui,
+            "Virtual Geometry Error",
+            "Largest simplification error on screen, in pixels: lower draws more triangles.",
+            |ui| {
+                ui.add(
+                    egui::DragValue::new(&mut l.virtual_geometry_error)
+                        .speed(0.05)
+                        .range(0.1..=16.0)
+                        .suffix(" px"),
+                )
+                .changed()
+            },
+        );
+    }
     edited
 }
 
@@ -484,6 +506,13 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
                 Tier::label,
             )
         },
+    );
+    edited |= row(
+        ui,
+        "Grass Ground Cover",
+        "Paints the middle distance's undergrowth on the ground instead of drawing the flat \
+         fans of the blades the grass LOD shrinks away: faster, and a little different.",
+        |ui| ui.checkbox(&mut l.grass_ground_cover, "").changed(),
     );
     edited
 }

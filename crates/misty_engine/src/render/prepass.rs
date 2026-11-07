@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use super::frame_lists::FrameLists;
 use super::pipelines::{self, Depth, MESH_SRC, Pipelines, Spec};
 use super::surface::PipelineKey;
-use super::{Frame, RenderStats, Renderer, RenderingMode, SAMPLE_COUNT, batch};
+use super::{Frame, RenderStats, Renderer, RenderingMode, batch};
 
 #[derive(Default)]
 pub(super) struct Prepass {
@@ -41,7 +41,7 @@ impl Prepass {
                     depth: Depth::main(true, wgpu::CompareFunction::Less),
                     color: None,
                     glow: None,
-                    samples: SAMPLE_COUNT,
+                    samples: super::sample_count(),
                     ..Spec::new("depth prepass", MESH_SRC, &layouts[..2])
                 },
             )

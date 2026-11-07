@@ -2,7 +2,7 @@
 
 use super::mesh::Vertex;
 use super::particles::ParticleInstance;
-use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
+use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT};
 
 /// Shared view uniform + helpers, then the clouds and fog every forward shader applies.
 pub(super) const COMMON: &str = concat!(
@@ -52,17 +52,6 @@ const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
 
 /// Vertex buffer layout of [`Vertex`] meshes.
 /// Grass blades: one instance per [`crate::terrain::details::Blade`].
-pub(super) fn blade_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
-        0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x2
-    ];
-    [wgpu::VertexBufferLayout {
-        array_stride: std::mem::size_of::<crate::terrain::details::Blade>() as u64,
-        step_mode: wgpu::VertexStepMode::Instance,
-        attributes: &ATTRIBUTES,
-    }]
-}
-
 pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
     [wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Vertex>() as u64,
@@ -174,6 +163,9 @@ pub struct Pipelines {
     pub terrain_shadow: wgpu::RenderPipeline,
     /// Grass parameters (group 2 of the grass pipeline).
     pub grass_layout: wgpu::BindGroupLayout,
+    /// A chunk's blades and the list of the ones a draw shows (group 3 of the grass
+    /// pipelines).
+    pub grass_blades_layout: wgpu::BindGroupLayout,
     pub grass: wgpu::RenderPipeline,
     /// Grass shadow casters (groups: shadow view, draws, grass).
     pub grass_shadow: wgpu::RenderPipeline,
@@ -251,7 +243,7 @@ impl<'a> Spec<'a> {
             depth: Depth::main(false, wgpu::CompareFunction::Always),
             color: Some(HDR_FORMAT),
             blend: None,
-            samples: SAMPLE_COUNT,
+            samples: super::sample_count(),
             glow: Some(false),
             alpha_to_coverage: false,
             velocity: false,
@@ -654,13 +646,19 @@ impl Pipelines {
                 ),
             ],
         );
-        let blade_buffers = blade_buffers();
+        // The drawn chunk's blades and the list of the ones a draw shows (grass_cull.rs).
+        let grass_blades_layout = layout(
+            "misty grass blades",
+            &[
+                entry(0, S::VERTEX, storage()),
+                entry(1, S::VERTEX, storage()),
+            ],
+        );
         let grass = build(
             device,
             Spec {
                 vs: "vs_grass",
                 fs: Some("fs_grass"),
-                buffers: &blade_buffers,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 // Tests against the depth the grass depth pipeline wrote just before.
                 depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
@@ -670,7 +668,12 @@ impl Pipelines {
                 ..Spec::new(
                     "grass",
                     GRASS_SRC,
-                    &[&view_layout, &mesh_layout, &grass_layout],
+                    &[
+                        &view_layout,
+                        &mesh_layout,
+                        &grass_layout,
+                        &grass_blades_layout,
+                    ],
                 )
             },
         );
@@ -679,7 +682,6 @@ impl Pipelines {
             Spec {
                 vs: "vs_grass_depth",
                 fs: Some("fs_grass_depth"),
-                buffers: &blade_buffers,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 depth: Depth::main(true, wgpu::CompareFunction::Less),
                 glow: Some(false),
@@ -688,7 +690,12 @@ impl Pipelines {
                 ..Spec::new(
                     "grass depth",
                     GRASS_SRC,
-                    &[&view_layout, &mesh_layout, &grass_layout],
+                    &[
+                        &view_layout,
+                        &mesh_layout,
+                        &grass_layout,
+                        &grass_blades_layout,
+                    ],
                 )
             },
         );
@@ -697,7 +704,6 @@ impl Pipelines {
             Spec {
                 vs: "vs_grass_shadow",
                 fs: Some("fs_grass_shadow"),
-                buffers: &blade_buffers,
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 depth: Some(Depth {
                     format: super::SHADOW_FORMAT,
@@ -717,7 +723,12 @@ impl Pipelines {
                 ..Spec::new(
                     "grass shadow",
                     GRASS_SHADOW_SRC,
-                    &[&shadow_view_layout, &draws_layout, &grass_layout],
+                    &[
+                        &shadow_view_layout,
+                        &draws_layout,
+                        &grass_layout,
+                        &grass_blades_layout,
+                    ],
                 )
             },
         );
@@ -798,6 +809,7 @@ impl Pipelines {
             terrain,
             terrain_shadow,
             grass_layout,
+            grass_blades_layout,
             grass,
             grass_shadow,
             grass_depth,

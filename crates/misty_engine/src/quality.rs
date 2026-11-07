@@ -305,6 +305,13 @@ pub struct QualityLevel {
     pub upscaler: UpscalerBackend,
     /// Multiplier on LOD Group switch distances (`RenderOptions::lod_bias`).
     pub lod_bias: f32,
+    /// Misty Virtual Geometry (prototype): meshes imported with Virtual Geometry on draw as
+    /// clusters with per-cluster level of detail, culled on the GPU. Off = they draw as
+    /// ordinary meshes.
+    pub virtual_geometry: bool,
+    /// Virtual Geometry: largest simplification error allowed on screen, in pixels (lower =
+    /// more triangles).
+    pub virtual_geometry_error: f32,
     pub ambient_occlusion: Tier,
     pub volumetric_fog: Tier,
     pub reflection_probes: Tier,
@@ -324,6 +331,10 @@ pub struct QualityLevel {
     /// Share of each terrain's grass blades drawn (0.1..1); the blades left out make the
     /// others wider, so the ground stays covered.
     pub grass_density: f32,
+    /// The middle distance's undergrowth is painted on the ground (the terrain shader)
+    /// instead of drawn as the flat fans of the blades the grass LOD shrinks away: faster,
+    /// and a little different (off in every preset).
+    pub grass_ground_cover: bool,
 }
 
 impl Default for QualityLevel {
@@ -344,7 +355,9 @@ impl QualityLevel {
             soft_shadows: Tier::Off,
             shadow_temporal: false,
             shadow_denoise: false,
-            anti_aliasing: AntiAliasing::Off,
+            // (Every level renders 4× as before the renderer honoured the setting; 2× is a
+            // choice for the user, see docs/pending/meadow-perf2.md.)
+            anti_aliasing: AntiAliasing::X4,
             fxaa: false,
             temporal_aa: false,
             taa_blend: TAA_BLEND,
@@ -358,6 +371,8 @@ impl QualityLevel {
             upscaling_scale: 0.75,
             upscaler: UpscalerBackend::Temporal,
             lod_bias: 0.5,
+            virtual_geometry: false,
+            virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Off,
             volumetric_fog: Tier::Off,
             reflection_probes: Tier::Low,
@@ -367,6 +382,7 @@ impl QualityLevel {
             grass_shadows: Tier::Off,
             grass_shadow_map: Tier::Off,
             grass_density: 0.5,
+            grass_ground_cover: false,
         }
     }
 
@@ -381,7 +397,7 @@ impl QualityLevel {
             soft_shadows: Tier::Low,
             shadow_temporal: false,
             shadow_denoise: false,
-            anti_aliasing: AntiAliasing::X2,
+            anti_aliasing: AntiAliasing::X4,
             fxaa: false,
             temporal_aa: true,
             taa_blend: TAA_BLEND,
@@ -395,6 +411,8 @@ impl QualityLevel {
             upscaling_scale: 0.75,
             upscaler: UpscalerBackend::Temporal,
             lod_bias: 1.0,
+            virtual_geometry: false,
+            virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Low,
             volumetric_fog: Tier::Low,
             reflection_probes: Tier::Medium,
@@ -404,6 +422,7 @@ impl QualityLevel {
             grass_shadows: Tier::Low,
             grass_shadow_map: Tier::Low,
             grass_density: 0.75,
+            grass_ground_cover: false,
         }
     }
 
@@ -432,6 +451,8 @@ impl QualityLevel {
             upscaling_scale: 0.75,
             upscaler: UpscalerBackend::Temporal,
             lod_bias: 1.5,
+            virtual_geometry: false,
+            virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Medium,
             volumetric_fog: Tier::Medium,
             reflection_probes: Tier::High,
@@ -441,6 +462,7 @@ impl QualityLevel {
             grass_shadows: Tier::Medium,
             grass_shadow_map: Tier::Medium,
             grass_density: 1.0,
+            grass_ground_cover: false,
         }
     }
 
@@ -452,6 +474,8 @@ impl QualityLevel {
             soft_shadows: Tier::High,
             max_texture_size: 8192,
             lod_bias: 2.0,
+            virtual_geometry: false,
+            virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::High,
             volumetric_fog: Tier::High,
             volumetric_clouds: Tier::High,
@@ -480,6 +504,7 @@ impl QualityLevel {
         self.render_scale = finite_clamp(self.render_scale, 0.25, 2.0, 1.0);
         self.upscaling_scale = finite_clamp(self.upscaling_scale, UPSCALING_MIN, 1.0, 0.75);
         self.lod_bias = finite_clamp(self.lod_bias, 0.01, 10.0, 1.0);
+        self.virtual_geometry_error = finite_clamp(self.virtual_geometry_error, 0.1, 16.0, 1.0);
         self.taa_blend = finite_clamp(self.taa_blend, 0.02, 0.5, TAA_BLEND);
         self.taa_sharpness = finite_clamp(self.taa_sharpness, 0.0, 1.0, TAA_SHARPNESS);
     }
@@ -771,7 +796,12 @@ mod tests {
     fn accessors_turn_choices_into_numbers() {
         let low = QualityLevel::low();
         assert_eq!(low.shadow_map_size(), 512);
-        assert_eq!(low.msaa_samples(), 1);
+        assert_eq!(low.msaa_samples(), 4);
+        let off = QualityLevel {
+            anti_aliasing: AntiAliasing::Off,
+            ..QualityLevel::low()
+        };
+        assert_eq!(off.msaa_samples(), 1);
         assert_eq!(low.ao_samples(), 0);
         assert_eq!(low.texture_size_limit(2048), 512, "1024 cap, then half");
         assert_eq!(low.anisotropy(16), 1);

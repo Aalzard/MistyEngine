@@ -9,7 +9,7 @@
 //! output resolution from there.
 
 use super::pipelines::VELOCITY_FORMAT;
-use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT, SAMPLE_COUNT};
+use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT};
 
 /// Non-sRGB view of the final image: samplers return the stored (gamma-encoded) bytes,
 /// which is what the egui compositor expects.
@@ -45,6 +45,8 @@ pub struct RenderTarget {
     /// Output-resolution HDR image the temporal upscaler writes (None = native target: the
     /// resolved HDR image is the post input).
     upscaled: Option<(wgpu::Texture, wgpu::TextureView)>,
+    /// MSAA samples of the main pass targets (the renderer's when made).
+    samples: u32,
     msaa_view: wgpu::TextureView,
     /// Emission only (bloom source), MSAA + resolved.
     glow_msaa_view: wgpu::TextureView,
@@ -129,7 +131,7 @@ impl RenderTarget {
             "misty msaa hdr",
             full,
             HDR_FORMAT,
-            SAMPLE_COUNT,
+            super::sample_count(),
             attach,
             &[],
         );
@@ -138,7 +140,7 @@ impl RenderTarget {
             "misty depth",
             full,
             DEPTH_FORMAT,
-            SAMPLE_COUNT,
+            super::sample_count(),
             sampled,
             &[],
         );
@@ -156,7 +158,7 @@ impl RenderTarget {
             "misty msaa glow",
             full,
             HDR_FORMAT,
-            SAMPLE_COUNT,
+            super::sample_count(),
             attach,
             &[],
         );
@@ -166,7 +168,7 @@ impl RenderTarget {
             "misty velocity",
             full,
             VELOCITY_FORMAT,
-            SAMPLE_COUNT,
+            super::sample_count(),
             sampled,
             &[],
         );
@@ -264,6 +266,7 @@ impl RenderTarget {
         static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         Self {
             id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            samples: super::sample_count(),
             width,
             height,
             out_width,
@@ -312,6 +315,11 @@ impl RenderTarget {
     /// The scene renders below the output resolution and is upscaled temporally.
     pub fn upscaled(&self) -> bool {
         self.upscaled.is_some()
+    }
+
+    /// MSAA samples of the main pass targets (see `Renderer::target_fits`).
+    pub fn samples(&self) -> u32 {
+        self.samples
     }
 
     /// Aspect ratio of the final image (the camera's).
