@@ -1,6 +1,29 @@
 Misty Engine changelog
 ======================
 
+0.2.1 - rocks, flowers and smoother shadows (November 2026)
+-----------------------------------------------------------
+
+New in MeadowDemo
+- Rocks: six procedural rock types (granite boulders, a split boulder, a mossy round boulder,
+  a layered sandstone outcrop, small rocks and cobbles) with baked PBR materials, lichen and
+  moss; 64 of them placed around the meadow with colliders. Free to use (CC0).
+- Wildflowers in patches: knapweed, poppy, daisy and buttercup, drawn through the grass path
+  (wind, shadows, culling). A Flowers section in the Terrain Inspector to tune and paint them.
+  Free to use (CC0).
+- Better leaves: real leaf shapes per tree (oak lobes, linden hearts, birch serrated ovals),
+  visible veins, a soft sheen and curved leaf cards.
+
+New project template
+- MeadowDemo: the walkable meadow with a first-person player, facing the sun, with all its
+  assets. Every template card in the Hub now has a short description.
+
+Fixes
+- Shadows no longer jump or crawl on the terrain while walking (grass shadows near the player,
+  tree shadows at their detail switch, hills changing detail in the shadow pass).
+- The Scene view no longer starts under the terrain when a scene or new project opens.
+- Tooltips no longer show long runs of spaces in the middle of sentences.
+
 0.2.0 - speed, trees, multiplayer and Linux (November 2026)
 -----------------------------------------------------------
 
