@@ -398,6 +398,7 @@ fn track_object(
         },
     );
     w.network.by_entity.insert(e, id);
+    w.network.settle_due = true;
     if is_player && owner == w.network.local_client_id && w.network.is_client() {
         w.network.local_player = Some(id);
     }
@@ -1722,7 +1723,7 @@ impl ScriptHost {
         }
         let busy = self.lua.app_data_ref::<World>().is_some_and(|w| {
             let s = &w.network;
-            !s.objects.is_empty()
+            s.settle_due
                 || !s.events.is_empty()
                 || s.shutdown_requested
                 || !s.owner_changes.is_empty()
@@ -1732,8 +1733,11 @@ impl ScriptHost {
             return;
         }
         self.net.settling = true;
+        self.with_world(|w| w.network.settle_due = false);
+        let mut waiting = false;
         for _ in 0..32 {
             let mut progressed = false;
+            waiting = false;
             if self.with_world(|w| w.network.shutdown_requested) {
                 self.stop_network();
                 progressed = true;
@@ -1754,7 +1758,12 @@ impl ScriptHost {
                 let mut build = Vec::new();
                 let mut spawn = Vec::new();
                 for o in w.network.objects.values() {
-                    if !w.scene.contains(o.entity) || pending.contains(&o.entity) {
+                    if !w.scene.contains(o.entity) {
+                        continue;
+                    }
+                    // Its scripts' Awake hasn't run yet: next time.
+                    if pending.contains(&o.entity) {
+                        waiting |= !o.spawn_called;
                         continue;
                     }
                     if !o.behaviours_ready {
@@ -1834,6 +1843,9 @@ impl ScriptHost {
             if !progressed {
                 break;
             }
+        }
+        if waiting {
+            self.with_world(|w| w.network.settle_due = true);
         }
         self.net.settling = false;
     }
@@ -2366,17 +2378,19 @@ impl ScriptHost {
     /// Compare Network Variables with their synced values: writers send changes (and run
     /// callbacks); other peers get their value back (with an error).
     fn sync_vars(&mut self) {
-        let list: Vec<(
-            u64,
-            usize,
-            usize,
-            Entity,
-            String,
-            String,
-            NetVarSpec,
-            NetValue,
-            bool,
-        )> = self.with_world(|w| {
+        /// One variable to check: object, behaviour index, instance, field, spec, synced value,
+        /// and whether this peer writes it.
+        struct Row {
+            id: u64,
+            bi: usize,
+            e: Entity,
+            script: String,
+            field: String,
+            spec: NetVarSpec,
+            old: NetValue,
+            writer: bool,
+        }
+        let list: Vec<Row> = self.with_world(|w| {
             let s = &w.network;
             let mut out = Vec::new();
             for o in s.objects.values() {
@@ -2384,29 +2398,38 @@ impl ScriptHost {
                     continue;
                 }
                 for (bi, b) in o.behaviours.iter().enumerate() {
-                    for (vi, v) in b.vars.iter().enumerate() {
+                    for v in &b.vars {
                         let writer = match v.spec.write {
                             WritePermission::Server => s.is_server(),
                             WritePermission::Owner => o.owner == s.local_client_id,
                         };
-                        out.push((
-                            o.id,
+                        out.push(Row {
+                            id: o.id,
                             bi,
-                            vi,
-                            b.entity,
-                            b.script.clone(),
-                            v.field.clone(),
-                            v.spec.clone(),
-                            v.value.clone(),
+                            e: b.entity,
+                            script: b.script.clone(),
+                            field: v.field.clone(),
+                            spec: v.spec.clone(),
+                            old: v.value.clone(),
                             writer,
-                        ));
+                        });
                     }
                 }
             }
             out
         });
         let mut outgoing: HashMap<u64, Vec<(VarChange, ReadPermission)>> = HashMap::new();
-        for (id, bi, _vi, e, script, field, spec, old, writer) in list {
+        for Row {
+            id,
+            bi,
+            e,
+            script,
+            field,
+            spec,
+            old,
+            writer,
+        } in list
+        {
             let Some(t) = super::script_instance(&self.lua, e, &script) else {
                 continue;
             };

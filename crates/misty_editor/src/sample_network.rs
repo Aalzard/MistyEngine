@@ -268,8 +268,10 @@ fn demo_scene() -> Scene {
                 .with_euler(Vec3::new(48.0, 0.0, 0.0)),
         );
     }
-    let mut floor = Transform::default();
-    floor.scale = Vec3::new(2.0, 1.0, 2.0);
+    let floor = Transform {
+        scale: Vec3::new(2.0, 1.0, 2.0),
+        ..Default::default()
+    };
     mesh(s, "Floor", None, PrimitiveMesh::Plane, floor, FLOOR);
     let manager = s.spawn("Network Manager", None);
     s.add(

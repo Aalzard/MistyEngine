@@ -1,7 +1,7 @@
 //! In-process multiplayer: a host and clients, each a full game runtime, connected over
 //! in-memory links (and once over real UDP), with Lua scripts using the network API.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use glam::Vec3;
 
@@ -138,13 +138,13 @@ struct Peer {
 }
 
 impl Peer {
-    fn new(root: &PathBuf, scene: &Scene, net: &MemoryNet) -> Self {
+    fn new(root: &Path, scene: &Scene, net: &MemoryNet) -> Self {
         let mut scene = scene.clone();
         let rt = Runtime::start_with_audio(
             &mut scene,
-            root.clone(),
+            root.to_path_buf(),
             &Default::default(),
-            Audio::null(root.clone()).0,
+            Audio::null(root.to_path_buf()).0,
         );
         rt.with_network(|s| s.config.memory = Some(net.clone()));
         Self {

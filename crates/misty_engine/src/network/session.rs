@@ -326,6 +326,8 @@ pub struct NetSession {
     pub owner_changes: Vec<(u64, u64, u64)>,
     /// Objects to despawn without destroying (`NetworkObject:Despawn(false)`).
     pub despawns: Vec<u64>,
+    /// New objects wait for their scripts (`OnNetworkSpawn`, spawn messages).
+    pub settle_due: bool,
 }
 
 impl NetSession {
@@ -986,7 +988,7 @@ mod tests {
         let (_, il) = pump(&mut server, &mut late, 60);
         assert!(il.contains(&Inbound::Denied("no room".into())), "{il:?}");
         assert!(il.iter().any(|i| matches!(i, Inbound::Disconnected(_))));
-        assert!(server.clients.get(&2).is_none());
+        assert!(!server.clients.contains_key(&2));
         assert!(server.stats.packets_in > 0.0);
     }
 }

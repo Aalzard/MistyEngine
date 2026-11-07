@@ -982,7 +982,9 @@ impl Endpoint {
         if parts.is_empty() && !c.ack_due && !idle {
             return;
         }
-        let mut packets: Vec<(Vec<u8>, Vec<(Channel, u16)>)> = Vec::new();
+        // (body, reliable messages it carries)
+        type Packet = (Vec<u8>, Vec<(Channel, u16)>);
+        let mut packets: Vec<Packet> = Vec::new();
         let mut current: Option<(Writer, Vec<(Channel, u16)>)> = None;
         for part in parts {
             let len = part.encoded_len();

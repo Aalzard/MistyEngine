@@ -356,7 +356,7 @@ impl Runtime {
     /// Traffic over the last second while networking runs.
     pub fn network_stats(&self) -> Option<crate::network::NetStats> {
         self.with_network(|s| {
-            s.is_running().then(|| crate::network::NetStats {
+            s.is_running().then_some(crate::network::NetStats {
                 mode: s.mode,
                 objects: s.objects.len(),
                 ..s.stats
