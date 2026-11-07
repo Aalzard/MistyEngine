@@ -631,12 +631,12 @@ layer) and look the same as round 1's lit clusters.
 
 ## Checks
 
-`cargo fmt`, `cargo clippy --workspace --all-targets` (0 warnings), `cargo test --workspace`
-(CARGO_INCREMENTAL=0): engine 860 passed, editor 542 passed, player 9 passed. Failing:
-`foliage_lighting_demo_matches_its_generator` (known, on main too) and, in the full run on a
-machine shared with six other builds, `scripted_meadow_run_has_no_hitches` (two 60 ms
-wall-clock frames; passes when run on its own — a load flake, MeadowDemo has no virtual
-meshes and the feature is off by default).
+Round 2 (release profile, CARGO_INCREMENTAL=0): `cargo fmt`, `cargo clippy --release --workspace
+--all-targets` (0 warnings), `cargo test --workspace --release`: engine 888 passed, editor 561
+passed, player 9 passed. Failing: `foliage_lighting_demo_matches_its_generator` (known, on main
+too).
+
+Round 1: engine 860, editor 542, player 9 passed, the same known failure.
 
 ## Left to do before production
 
