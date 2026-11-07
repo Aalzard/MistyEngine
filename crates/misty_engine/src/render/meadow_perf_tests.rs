@@ -45,6 +45,8 @@ fn apply_opts(mut q: QualityLevel) -> QualityLevel {
             "cover" => q.grass_ground_cover = true,
             // Quality ▸ Anti-Aliasing 2×.
             "msaa2" => q.anti_aliasing = crate::quality::AntiAliasing::X2,
+            // Quality ▸ Shadows ▸ Virtual.
+            "vsm" => q.shadow_mode = crate::quality::ShadowMode::Virtual,
             _ => eprintln!("(option {o} unknown: ignored)"),
         }
     }
@@ -500,6 +502,163 @@ fn meadow_perf_matrix() {
             for (name, b) in setups.iter().zip(&best) {
                 let b = b.as_ref().expect("measured");
                 b.print(&format!("{shot} {level} {name}: {:.0} FPS", 1000.0 / b.gpu));
+            }
+        }
+    }
+}
+
+/// GPU frame median and parts of `view` at `size` with `quality`, the camera still or moving
+/// (4 m/s forward and turning 15°/s at 60 frames a second), and the virtual shadow map's mean
+/// page counts over the timed frames (rendered, resident).
+fn vsm_breakdown(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    view: &GameView,
+    quality: &QualityLevel,
+    size: (u32, u32),
+    moving: bool,
+) -> (crate::render::terrain_grass::gpu_tests::Breakdown, f32, f32) {
+    let mut r = Renderer::with_queue(device, queue);
+    r.set_quality(device, quality);
+    let target = r.create_view_target(device, size.0, size.1);
+    let camera_at = |i: usize| {
+        let mut c = view.camera;
+        if moving {
+            let t = i as f32 / 60.0;
+            let f = c.forward();
+            let flat = glam::Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
+            c.position += flat * 4.0 * t;
+            c.rotation = glam::Quat::from_rotation_y((15.0 * t).to_radians()) * c.rotation;
+        }
+        c
+    };
+    let (mut totals, mut cpu, mut rendered, mut resident) = (vec![], vec![], 0.0f32, 0.0f32);
+    let mut timed = 0.0f32;
+    for i in 0..120 {
+        let cam = camera_at(i);
+        let frame = crate::render::Frame {
+            camera: &cam,
+            ..view.frame()
+        };
+        r.render(device, queue, &target, &frame);
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        if i >= 60 {
+            if let Some(ms) = r.gpu_ms() {
+                totals.push(ms);
+            }
+            cpu.push(r.stats().cpu_ms);
+            if let Some(s) = r.vsm_stats() {
+                rendered += s.rendered as f32;
+                resident += s.resident as f32;
+            }
+            timed += 1.0;
+        }
+    }
+    let stats = r.stats();
+    let mut parts: Vec<(&'static str, Vec<f32>)> = Vec::new();
+    if r.set_pass_timing(device, queue, true) {
+        for i in 120..180 {
+            let cam = camera_at(i);
+            let frame = crate::render::Frame {
+                camera: &cam,
+                ..view.frame()
+            };
+            r.render(device, queue, &target, &frame);
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            let mut seen: Vec<(&'static str, f32)> = Vec::new();
+            for &(label, ms) in r.pass_times() {
+                match seen.iter_mut().find(|(l, _)| *l == label) {
+                    Some(s) => s.1 += ms,
+                    None => seen.push((label, ms)),
+                }
+            }
+            for (label, ms) in seen {
+                match parts.iter_mut().find(|(l, _)| *l == label) {
+                    Some(p) => p.1.push(ms),
+                    None => parts.push((label, vec![ms])),
+                }
+            }
+        }
+    }
+    let median = |mut v: Vec<f32>| {
+        v.sort_by(f32::total_cmp);
+        v.get(v.len() / 2).copied().unwrap_or(f32::NAN)
+    };
+    let b = crate::render::terrain_grass::gpu_tests::Breakdown {
+        gpu: median(totals),
+        cpu: median(cpu),
+        parts: parts.into_iter().map(|(l, v)| (l, median(v))).collect(),
+        stats,
+    };
+    (b, rendered / timed.max(1.0), resident / timed.max(1.0))
+}
+
+/// Cascaded against virtual sun shadows per level (`MISTY_QUALITY`) and view
+/// (`MISTY_GFX_SHOT`), the camera still and moving, the setups alternating over
+/// `MISTY_AB_ROUNDS` rounds (quietest round kept): GPU frame, the shadow parts and the virtual
+/// map's pages rendered per frame / resident.
+#[test]
+#[ignore = "timing, prints only"]
+fn meadow_perf_vsm() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let rounds: usize = std::env::var("MISTY_AB_ROUNDS")
+        .ok()
+        .and_then(|r| r.parse().ok())
+        .unwrap_or(3);
+    let (w, h) = std::env::var("MISTY_SIZE")
+        .ok()
+        .and_then(|s| {
+            let (w, h) = s.split_once('x')?;
+            Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))
+        })
+        .unwrap_or((1920, 1080));
+    let shots = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide".into());
+    let setups = [
+        (
+            "cascaded still",
+            crate::quality::ShadowMode::Cascaded,
+            false,
+        ),
+        ("virtual still", crate::quality::ShadowMode::Virtual, false),
+        (
+            "cascaded moving",
+            crate::quality::ShadowMode::Cascaded,
+            true,
+        ),
+        ("virtual moving", crate::quality::ShadowMode::Virtual, true),
+    ];
+    // Warm the GPU clocks up.
+    if let Some(v) = view("wide") {
+        breakdown(&device, &queue, &v, &QualityLevel::low(), (w, h));
+    }
+    for shot in shots.split(',') {
+        let Some(v) = view(shot) else {
+            continue;
+        };
+        for (level, quality) in levels() {
+            type Best = Option<(crate::render::terrain_grass::gpu_tests::Breakdown, f32, f32)>;
+            let mut best: Vec<Best> = (0..setups.len()).map(|_| None).collect();
+            for _ in 0..rounds {
+                for (i, (_, mode, moving)) in setups.iter().enumerate() {
+                    let q = QualityLevel {
+                        shadow_mode: *mode,
+                        ..quality.clone()
+                    };
+                    let b = vsm_breakdown(&device, &queue, &v, &q, (w, h), *moving);
+                    if best[i].as_ref().is_none_or(|x| b.0.gpu < x.0.gpu) {
+                        best[i] = Some(b);
+                    }
+                }
+            }
+            eprintln!("== {shot} {level} {w}x{h}");
+            for ((name, _, _), b) in setups.iter().zip(&best) {
+                let (b, rendered, resident) = b.as_ref().expect("measured");
+                b.print(&format!(
+                    "{shot} {level} {name}: {:.0} FPS, pages rendered/frame {rendered:.1}, resident {resident:.0}",
+                    1000.0 / b.gpu
+                ));
             }
         }
     }

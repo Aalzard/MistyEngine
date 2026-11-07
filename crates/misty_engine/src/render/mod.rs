@@ -828,10 +828,11 @@ impl Renderer {
         if !quality.temporal() {
             self.taa.clear();
         }
-        // Virtual shadow maps replace the sun's cascades (a tiny cascade texture stays bound).
+        // Virtual shadow maps replace the sun's cascades (small layers stay for the fog, filled
+        // from the virtual map).
         let virtual_sun = quality.shadow_mode == crate::quality::ShadowMode::Virtual;
         let size = if virtual_sun {
-            16
+            vsm::fog::FOG_SIZE
         } else {
             quality.shadow_map_size()
         };
@@ -1526,6 +1527,24 @@ impl Renderer {
         {
             crate::profile_scope!("Render.Encode.VirtualShadowMap");
             self.vsm_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+            // The fog and sun shafts read cascade layers: fill them from the virtual map.
+            if let (Some(fog), Some(gpu), Some(dir), true) = (
+                &self.vsm.fog,
+                &self.vsm.gpu,
+                plan.vsm.filter(|_| self.vsm.frame.is_some()),
+                self.volumetrics.reads_sun_shadow(),
+            ) {
+                fog.encode(
+                    device,
+                    queue,
+                    &mut encoder,
+                    gpu,
+                    &plan.fog_cascades,
+                    dir,
+                    frame.camera.position,
+                    &self.shadows.cascade_views,
+                );
+            }
         }
         self.mark(&mut encoder, "Virtual shadow map pages");
         if let Some(view_proj) = grass_near {

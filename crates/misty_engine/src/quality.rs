@@ -75,9 +75,9 @@ pub enum ShadowPool {
     /// 512 pages (32 MB).
     Small,
     /// 1024 pages (64 MB).
-    #[default]
     Medium,
     /// 2048 pages (128 MB).
+    #[default]
     Large,
     /// 4096 pages (256 MB).
     Huge,
@@ -105,8 +105,9 @@ impl ShadowPool {
         }
     }
 
+    /// The serde default (a level missing the field reads as High's).
     fn is_default(&self) -> bool {
-        *self == Self::Medium
+        *self == Self::Large
     }
 }
 

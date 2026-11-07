@@ -140,7 +140,8 @@ impl Renderer {
         settings: &ShadowSettings,
         size: (u32, u32),
     ) {
-        for (slot, m) in plan.matrices().enumerate() {
+        // (The virtual shadow map's rectangles have their own view buffer.)
+        for (slot, m) in plan.matrices().enumerate().take(plan.vsm_first_slot()) {
             let mut v = ViewUniform::zeroed();
             v.view_proj = m.to_cols_array_2d();
             let offset = slot as u64 * shadows::VIEW_STRIDE;

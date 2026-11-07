@@ -66,6 +66,9 @@ pub struct ShadowPlan {
     /// View-projection of each page rectangle the virtual shadow map renders this frame
     /// (after the local layers in [`ShadowPlan::matrices`]).
     pub vsm_views: Vec<Mat4>,
+    /// With the virtual shadow map: cascade boxes the fog and sun shafts read the sun's
+    /// shadow through (filled from the virtual map, not drawn; render/vsm/fog.rs).
+    pub fog_cascades: Vec<Cascade>,
 }
 
 impl ShadowPlan {
@@ -225,6 +228,9 @@ pub fn plan_with(
             LightType::Directional if !plan.has_sun() => {
                 if settings.mode == crate::quality::ShadowMode::Virtual {
                     plan.vsm = Some(l.direction);
+                    let size = super::vsm::fog::FOG_SIZE;
+                    plan.fog_cascades =
+                        cascades::fit(frame.camera, aspect, l.direction, settings, casters, size);
                 } else {
                     let size = settings.map_size;
                     plan.cascades =

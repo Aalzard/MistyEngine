@@ -26,6 +26,7 @@
 
 pub(super) mod cache;
 pub(super) mod clipmap;
+pub(super) mod fog;
 mod passes;
 pub(super) mod rects;
 
@@ -205,7 +206,7 @@ pub(super) struct VsmGpu {
     pub copy_instances: wgpu::Buffer,
     mark: wgpu::ComputePipeline,
     mark_layout: wgpu::BindGroupLayout,
-    mark_params: wgpu::Buffer,
+    pub(super) mark_params: wgpu::Buffer,
     marks: wgpu::Buffer,
     readbacks: Vec<Readback>,
     capacity: u32,
@@ -500,6 +501,8 @@ fn caster_signature(print: u64, model: &Mat4, key: u64) -> u64 {
 #[derive(Default)]
 pub(super) struct Vsm {
     pub gpu: Option<VsmGpu>,
+    /// Fills the fog's cascade layers from the virtual map.
+    pub fog: Option<fog::FogResolve>,
     cache: Option<PageCache>,
     /// Light direction, depth range, finest texel and level count the cache was rendered with.
     basis: Option<(Vec3, (f32, f32), f32, usize)>,
@@ -533,6 +536,7 @@ impl Vsm {
             return false;
         }
         let gpu = VsmGpu::new(device, p, pages);
+        self.fog = Some(fog::FogResolve::new(device, p));
         self.cache = Some(PageCache::new(gpu.capacity));
         self.basis = None;
         self.table.clear();
@@ -711,9 +715,12 @@ impl Vsm {
                 view_proj: map.rect_view_proj(&view, r.level, r.lo, r.hi(), z),
                 round,
                 at,
-                tree_lod: if texel <= 0.012 {
+                // The cascades' choice: full trees close up, the first simplified level
+                // further out, impostors only where a texel is wider than twigs anyway
+                // (impostor crowns barely shadow themselves).
+                tree_lod: if texel <= 0.03 {
                     0
-                } else if texel <= 0.05 {
+                } else if texel < 0.2 {
                     1
                 } else {
                     2
