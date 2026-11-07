@@ -25,6 +25,10 @@ struct VgVisOut {
 
 @vertex
 fn vs_cluster_vis(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> VgVisOut {
+    return vg_vis_out(vertex, instance);
+}
+
+fn vg_vis_out(vertex: u32, instance: u32) -> VgVisOut {
     let item = vg_visible[instance];
     let c = vg_clusters[item.y];
     let local = vertex - instance * 384u;
@@ -37,6 +41,30 @@ fn vs_cluster_vis(@builtin(vertex_index) vertex: u32, @builtin(instance_index) i
     return out;
 }
 
+// Cutout batches: the main pass's alpha test, so holes never reach the resolve.
+struct VgVisCutoutOut {
+    @builtin(position) @invariant clip: vec4<f32>,
+    @location(0) @interpolate(flat) ids: vec2<u32>,
+    @location(1) uv: vec2<f32>,
+    // x = colour alpha, y = cutoff, z = 1 when the albedo alpha holds smoothness.
+    @location(2) @interpolate(flat) alpha: vec3<f32>,
+};
+
+@vertex
+fn vs_cluster_vis_cutout(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> VgVisCutoutOut {
+    let base = vg_vis_out(vertex, instance);
+    let item = vg_visible[instance];
+    let c = vg_clusters[item.y];
+    let v = vg_vertex(vg_cluster_vertices[c.vertex_first + vertex - instance * 384u], item);
+    let d = draws[item.x];
+    var out: VgVisCutoutOut;
+    out.clip = base.clip;
+    out.ids = base.ids;
+    out.uv = draw_uv(d, v.uv);
+    out.alpha = vec3<f32>(d.color.a, d.surface.y, d.surface.w);
+    return out;
+}
+
 struct VgVisTargets {
     @location(0) id: f32,
     @location(1) draw: f32,
@@ -44,6 +72,19 @@ struct VgVisTargets {
 
 @fragment
 fn fs_cluster_vis(in: VgVisOut, @builtin(primitive_index) triangle: u32) -> VgVisTargets {
+    var out: VgVisTargets;
+    out.id = bitcast<f32>(in.ids.x | (triangle & 127u));
+    out.draw = bitcast<f32>(in.ids.y);
+    return out;
+}
+
+@fragment
+fn fs_cluster_vis_cutout(in: VgVisCutoutOut, @builtin(primitive_index) triangle: u32) -> VgVisTargets {
+    let base = textureSampleBias(albedo_map, material_sampler, in.uv, view.view_tan.z).a;
+    let alpha = in.alpha.x * select(base, 1.0, in.alpha.z > 0.5);
+    if (alpha < in.alpha.y) {
+        discard;
+    }
     var out: VgVisTargets;
     out.id = bitcast<f32>(in.ids.x | (triangle & 127u));
     out.draw = bitcast<f32>(in.ids.y);

@@ -7,7 +7,7 @@ use glam::Vec3;
 
 use super::cluster::{self, edge, morton};
 use super::simplify::simplify;
-use super::{Cluster, GROUP_SIZE, ROOT_ERROR, Sphere, VirtualMesh, weld};
+use super::{Cluster, GROUP_SIZE, Group, NO_GROUP, ROOT_ERROR, Sphere, VirtualMesh, weld};
 
 /// A cluster while the hierarchy is built.
 struct Node {
@@ -19,16 +19,41 @@ struct Node {
     level: u32,
     group: u32,
     parent_group: u32,
+    material: u32,
 }
 
-/// One simplified group: its member clusters, sphere, error and new clusters' triangles.
-type Made = (Vec<usize>, Sphere, f32, Vec<Vec<[u32; 3]>>);
+/// One simplified group: its member clusters, sphere, error and new clusters (part, triangles).
+type Made = (Vec<usize>, Sphere, f32, Vec<(u32, Vec<[u32; 3]>)>);
 
 /// A level stops the hierarchy when it keeps more than this share of the triangles.
 const MIN_LEVEL_REDUCTION: f32 = 0.95;
 
-pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
+/// Split triangles into clusters, each holding one part's triangles only.
+fn split(
+    tris: &[[u32; 3]],
+    positions: &[Vec3],
+    weld: &[u32],
+    part: &impl Fn(u32) -> u32,
+) -> Vec<(u32, Vec<[u32; 3]>)> {
+    let mut by_part: std::collections::BTreeMap<u32, Vec<[u32; 3]>> = Default::default();
+    for t in tris {
+        by_part.entry(part(t[0])).or_default().push(*t);
+    }
+    let mut out = Vec::new();
+    for (m, tris) in by_part {
+        for members in cluster::build(&tris, positions, weld) {
+            out.push((m, members.iter().map(|&t| tris[t]).collect()));
+        }
+    }
+    out
+}
+
+pub(super) fn build(positions: &[Vec3], indices: &[u32], part_starts: &[u32]) -> VirtualMesh {
     let weld = weld(positions);
+    // A vertex's part; a triangle's corners are all of one part (parts never share vertices,
+    // and collapses keep each corner's vertex on its own side of a seam).
+    let part = |v: u32| part_starts.partition_point(|&s| s <= v).saturating_sub(1) as u32;
+    let materials = part_starts.len().max(1) as u32;
     let tris: Vec<[u32; 3]> = indices
         .as_chunks::<3>()
         .0
@@ -46,10 +71,9 @@ pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
             .collect()
     };
 
-    let mut nodes: Vec<Node> = cluster::build(&tris, positions, &weld)
+    let mut nodes: Vec<Node> = split(&tris, positions, &weld, &part)
         .into_iter()
-        .map(|members| {
-            let tris: Vec<[u32; 3]> = members.iter().map(|&t| tris[t]).collect();
+        .map(|(material, tris)| {
             let lod = Sphere::around(&points(&tris));
             Node {
                 tris,
@@ -58,22 +82,24 @@ pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
                 parent: lod,
                 parent_error: ROOT_ERROR,
                 level: 0,
-                group: u32::MAX,
-                parent_group: u32::MAX,
+                group: NO_GROUP,
+                parent_group: NO_GROUP,
+                material,
             }
         })
         .collect();
 
     let mut current: Vec<usize> = (0..nodes.len()).collect();
-    let (mut groups_made, mut stuck) = (0u32, 0u32);
+    let mut groups: Vec<Group> = Vec::new();
+    let mut stuck = 0u32;
     let mut level = 0;
     while current.len() > 1 {
-        let groups = group(&current, &nodes, positions, &weld);
+        let grouped = group(&current, &nodes, positions, &weld);
         let before: usize = current.iter().map(|&i| nodes[i].tris.len()).sum();
         let mut made: Vec<Made> = Vec::new();
         let mut after = 0;
         let mut stuck_here = 0;
-        for members in groups {
+        for members in grouped {
             let members: Vec<usize> = members.iter().map(|&m| current[m]).collect();
             let group_tris: Vec<[u32; 3]> = members
                 .iter()
@@ -94,14 +120,17 @@ pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
             let child_error = members.iter().map(|&m| nodes[m].error).fold(0.0, f32::max);
             let spheres: Vec<Sphere> = members.iter().map(|&m| nodes[m].lod).collect();
             let sphere = Sphere::merge(&spheres);
-            // Strictly coarser than every child, so the cut is unique even for flat regions.
-            let error = child_error + s.error.max(1e-7 * (1.0 + sphere.radius));
-            let split: Vec<Vec<[u32; 3]>> = cluster::build(&s.tris, positions, &weld)
-                .into_iter()
-                .map(|c| c.iter().map(|&t| s.tris[t]).collect())
-                .collect();
+            // Strictly coarser than every child, so the cut is unique even for flat regions, by
+            // a relative margin far above float rounding: a group's decision ("fine enough")
+            // can then only be true when its children's is, however the GPU rounds.
+            let error = child_error * (1.0 + 1e-4) + s.error.max(1e-7 * (1.0 + sphere.radius));
             after += s.tris.len();
-            made.push((members, sphere, error, split));
+            made.push((
+                members,
+                sphere,
+                error,
+                split(&s.tris, positions, &weld, &part),
+            ));
         }
         if after as f32 > MIN_LEVEL_REDUCTION * before as f32 {
             break;
@@ -109,15 +138,15 @@ pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
         level += 1;
         stuck += stuck_here;
         let mut next = Vec::new();
-        for (members, sphere, error, split) in made {
-            let id = groups_made;
-            groups_made += 1;
+        for (members, sphere, error, made_clusters) in made {
+            let id = groups.len() as u32;
+            groups.push(Group { sphere, error });
             for &m in &members {
                 nodes[m].parent = sphere;
                 nodes[m].parent_error = error;
                 nodes[m].parent_group = id;
             }
-            for tris in split {
+            for (material, tris) in made_clusters {
                 next.push(nodes.len());
                 nodes.push(Node {
                     tris,
@@ -127,12 +156,23 @@ pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
                     parent_error: ROOT_ERROR,
                     level,
                     group: id,
-                    parent_group: u32::MAX,
+                    parent_group: NO_GROUP,
+                    material,
                 });
             }
         }
         current = next;
     }
+
+    // Groups by error (the GPU's binary search), renumbered.
+    let mut group_order: Vec<usize> = (0..groups.len()).collect();
+    group_order.sort_by(|&a, &b| groups[a].error.total_cmp(&groups[b].error));
+    let mut renumber = vec![NO_GROUP; groups.len()];
+    for (new, &old) in group_order.iter().enumerate() {
+        renumber[old] = new as u32;
+    }
+    let groups_out: Vec<Group> = group_order.iter().map(|&g| groups[g]).collect();
+    let id = |g: u32| renumber.get(g as usize).copied().unwrap_or(NO_GROUP);
 
     // Order by parent error (roots last), then lay out the triangles.
     let mut order: Vec<usize> = (0..nodes.len()).collect();
@@ -159,20 +199,22 @@ pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
             parent: n.parent,
             parent_error: n.parent_error,
             level: n.level,
-            group: n.group,
-            parent_group: n.parent_group,
+            group: id(n.group),
+            parent_group: id(n.parent_group),
+            material: n.material,
             cone_axis,
             cone_cutoff,
         });
     }
     VirtualMesh {
         clusters,
+        groups: groups_out,
         indices: indices_out,
         bounds: Sphere::merge(&all),
         levels: level + 1,
         source_triangles,
-        groups: groups_made,
         stuck_groups: stuck,
+        materials,
     }
 }
 

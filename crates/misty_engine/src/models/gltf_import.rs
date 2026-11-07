@@ -97,6 +97,12 @@ pub fn load(path: &Path) -> Result<Model, String> {
             m.blend_shapes = shapes;
             model.meshes.push(m);
         }
+        // Several primitives (one per material): one virtual geometry build of parts.
+        if ours.len() > 1 {
+            for (slot, &i) in ours.iter().enumerate() {
+                model.meshes[i].primitive = Some((ours[0], slot as u32));
+            }
+        }
         mesh_map.push(ours);
     }
 

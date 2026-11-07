@@ -3,22 +3,29 @@
 //
 // Per view (the main camera's two phases, then each shadow map):
 //   cs_instances  one thread per instance: frustum (and Hi-Z in the second phase) test, then
-//                 queue the instance's candidate clusters in chunks of 64. Clusters whose
-//                 parent can never be coarse enough at this distance are skipped with one
-//                 binary search (each mesh's clusters are sorted by parent error).
+//                 queue the instance's groups to decide (chunks of 64) and its candidate
+//                 clusters (chunks of 64). Groups and clusters that are surely fine enough
+//                 at this distance are skipped with one binary search each (each mesh's groups
+//                 are sorted by error, its clusters by parent error).
 //   cs_prepare    one thread: write each batch's draw arguments (its region of the visible
-//                 list is a fixed share of the view's) and the cluster dispatch.
-//   cs_clusters   one workgroup per chunk: LOD test (own error small enough on screen, the
-//                 parent's not), frustum and Hi-Z test, append to the batch's visible list
-//                 (and, for the indexed draw path, the cluster's own indexed draw arguments).
+//                 list is a fixed share of the view's) and the two indirect dispatches.
+//   cs_groups     one workgroup per group chunk: the level-of-detail decision of each group,
+//                 made once ("fine enough": its error projects to at most the threshold), as
+//                 64 bits written over the chunk's own record.
+//   cs_clusters   one workgroup per cluster chunk: drawn when its own group is fine enough and
+//                 its parent group is not (both read from cs_groups' bits: the two sides of
+//                 every group border can't disagree, so no cracks whatever the rounding), then
+//                 back-face, frustum and Hi-Z tests, append to its material slot's batch.
 //   cs_finish     clamp each batch's cluster count to its region.
 
 const ROOT_ERROR: f32 = 3.0e38;
+const NO_GROUP: u32 = 0xffffffffu;
+const NO_DRAW: u32 = 0xffffffffu;
 const CHUNK: u32 = 64u;
 const VERTICES_PER_CLUSTER: u32 = 384u;
 const MAX_GROUPS_X: u32 = 65535u;
-// Start of the dispatch arguments in `control` (after 4 counters per view, MAX_VIEWS = 8).
-const DISPATCH_BASE: u32 = 32u;
+// Start of the dispatch arguments in `control` (after 8 counters per view, MAX_VIEWS = 34).
+const DISPATCH_BASE: u32 = 272u;
 
 struct View {
     view_proj: mat4x4<f32>,
@@ -33,63 +40,69 @@ struct View {
     // z = Hi-Z mip count (0 = no occlusion test), w = batches.
     info: vec4<u32>,
     // x = view index, y = this view's first visible-list entry, z = entries per batch,
-    // w = its first chunk entry (chunks follow the visible lists in `lists`).
+    // w = its first cluster chunk entry in `lists`.
     region: vec4<u32>,
-    // x = chunk capacity; where `control` holds z = the limits and w = the draw arguments
-    // (y unused).
+    // x = cluster chunk capacity; where `control` holds z = the limits and w = the draw
+    // arguments (y unused).
     caps: vec4<u32>,
     // This view's eye (w = 1) or, orthographic, its forward direction (w = 0): back faces.
     eye: vec4<f32>,
+    // x = its first group chunk entry in `lists`, y = group chunk capacity.
+    groups: vec4<u32>,
 };
 
-struct Instance {
-    draw: u32,
-    mesh: u32,
-    batch: u32,
-    // Bit 0 = casts shadows.
-    flags: u32,
-};
+// `instances` holds the instances, then their material slot records:
+//   instance  x = the draw whose model matrix places it, y = its mesh record, z = its first
+//             slot record (`instances[z + material]`), w = bit 0: some slot casts shadows
+//   slot      x = its draw (material, per-object values; NO_DRAW = the object doesn't draw
+//             that part), y = batch, z = bit 0: casts shadows
 
-struct MeshInfo {
-    // Object-space sphere around every cluster's bounds and LOD spheres.
-    bounds: vec4<f32>,
-    first: u32,
-    count: u32,
-    pad0: u32,
-    pad1: u32,
+// Mesh records, then group records (the pool's record section, render/vgeo/mod.rs).
+//   mesh:  a = object-space sphere around every cluster, b = (first cluster, clusters,
+//          first group record, groups)
+//   group: a = sphere its error is measured from, b.x = error (f32 bits)
+struct Record {
+    a: vec4<f32>,
+    b: vec4<u32>,
 };
 
 struct Cluster {
     bounds: vec4<f32>,
-    lod: vec4<f32>,
-    parent: vec4<f32>,
-    error: f32,
+    // Mesh-local groups: the one that made it and the one it was simplified into.
+    group: u32,
+    parent_group: u32,
+    // The parent group's error (sorted on: the binary search).
     parent_error: f32,
-    triangles: u32,
-    // The cluster's own vertex list (source vertex ids) and its local indices (indexed path).
+    // Triangles (8 bits) | level << 8 (6 bits) | material slot << 14.
+    packed: u32,
+    // Its own vertex list (source vertex ids) and its local indices (indexed path).
     vertex_first: u32,
     local_first: u32,
     // Normal cone: octahedral axis (2 × snorm16) and cutoff (> 1 = never back-facing).
     cone_axis: u32,
     cone_cutoff: f32,
-    pad0: u32,
 };
 
 @group(0) @binding(0) var<uniform> vu: View;
 @group(0) @binding(1) var<storage, read> draws: array<Draw>;
-@group(0) @binding(2) var<storage, read> instances: array<Instance>;
-@group(0) @binding(3) var<storage, read> meshes: array<MeshInfo>;
+@group(0) @binding(2) var<storage, read> instances: array<vec4<u32>>;
+@group(0) @binding(3) var<storage, read> records: array<Record>;
 @group(0) @binding(4) var<storage, read> clusters: array<Cluster>;
-// Per instance: [2i] = visible at the end of last frame (main camera), [2i + 1] = drawn by
-// the first phase this frame.
+// Per instance: [4i] = visible at the end of last frame (main camera), [4i + 1] = drawn by
+// the first phase this frame, [4i + 2] = its first group chunk in this view, [4i + 3] = its
+// first decided group (the ones below are fine enough).
 @group(0) @binding(5) var<storage, read_write> instance_state: array<u32>;
-// The visible lists, (draw, cluster) per drawn cluster, every view's, then the chunks,
-// (instance, first candidate cluster) each (one buffer: 8 storage buffers per stage).
+// The visible lists, (draw, cluster) per drawn cluster, every view's; then the cluster chunks,
+// (instance, first candidate cluster) each; then the group chunks, (instance, first group)
+// each until cs_groups replaces it by its 64 decisions (one buffer: 8 storage buffers per
+// stage).
 @group(0) @binding(6) var<storage, read_write> lists: array<vec2<u32>>;
 // Counters and arguments, one buffer (the device allows 8 storage buffers per stage):
-//   [4 v ..]             per view: chunks queued, triangles drawn, clusters drawn, clusters
-//                        dropped (list full)
-//   [DISPATCH_BASE + 4 v ..]  per view: the cluster pass's workgroups (x, y, z, unused)
+//   [8 v ..]             per view: cluster chunks queued, triangles drawn, clusters drawn,
+//                        clusters dropped (list full), group chunks queued, instances dropped
+//                        (group chunks full), instances queued, unused
+//   [DISPATCH_BASE + 8 v ..]  per view: the cluster pass's workgroups (x, y, z, unused), the
+//                        group pass's (x, y, z, unused)
 //   [caps.z + v B + b]   per view and batch: entries of its region
 //   [caps.w + 4 (v B + b) ..]  per view and batch: DrawIndirectArgs (vertex count, instance
 //                        count = clusters, first vertex, first instance = first entry)
@@ -145,14 +158,13 @@ fn sphere_inside(c: vec3<f32>, r: f32) -> bool {
     return true;
 }
 
-// An error of `error` world units measured from the sphere, in pixels. Must match
-// `LodView::projected` (vgeo/mod.rs): the same inputs give the same value for a cluster's own
-// error and for its children's parent error, so exactly one level covers each spot.
+// An error of `error` world units measured from the sphere, in pixels (`LodView::projected`,
+// vgeo/mod.rs). Only cs_groups calls it: each group's decision is made once per view.
 //
 // Shadow maps of the sun (mode 2, params.z = shadow-map pixels per world unit) take the
 // coarser of the camera's level of detail and one texel of their own: the smaller of two
 // projections that both grow towards the roots still grows towards the roots, so the cut
-// stays unique and crack-free.
+// stays coherent.
 fn projected_error(center: vec3<f32>, radius: f32, error: f32) -> f32 {
     var p = 0.0;
     if (vu.params.y > 0.5) {
@@ -226,17 +238,18 @@ fn cs_instances(@builtin(global_invocation_id) id: vec3<u32>) {
     if (i >= vu.info.x) {
         return;
     }
+    let vi = vu.region.x;
     let inst = instances[i];
-    let mesh = meshes[inst.mesh];
-    let model = draws[inst.draw].model;
+    let mesh = records[inst.y];
+    let model = draws[inst.x].model;
     let s = world_scale(model);
-    let center = (model * vec4<f32>(mesh.bounds.xyz, 1.0)).xyz;
-    let radius = mesh.bounds.w * s;
+    let center = (model * vec4<f32>(mesh.a.xyz, 1.0)).xyz;
+    let radius = mesh.a.w * s;
     let inside = sphere_inside(center, radius);
     let mode = vu.info.y;
     if (mode == 0u) {
-        let go = inside && instance_state[2u * i] != 0u;
-        instance_state[2u * i + 1u] = select(0u, 1u, go);
+        let go = inside && instance_state[4u * i] != 0u;
+        instance_state[4u * i + 1u] = select(0u, 1u, go);
         if (!go) {
             return;
         }
@@ -245,16 +258,16 @@ fn cs_instances(@builtin(global_invocation_id) id: vec3<u32>) {
         if (seen && vu.info.z > 0u) {
             seen = !occluded(center - vec3<f32>(radius), center + vec3<f32>(radius));
         }
-        instance_state[2u * i] = select(0u, 1u, seen);
-        if (!seen || instance_state[2u * i + 1u] != 0u) {
+        instance_state[4u * i] = select(0u, 1u, seen);
+        if (!seen || instance_state[4u * i + 1u] != 0u) {
             return;
         }
-    } else if (!inside || (inst.flags & 1u) == 0u) {
+    } else if (!inside || (inst.w & 1u) == 0u) {
         return;
     }
-    // A cluster can only be drawn if its parent projects to more than the threshold; every
-    // parent sphere is inside the mesh's, so it is at least `near` away and clusters whose
-    // parent error is at most `skip_below` can be skipped.
+    // A cluster can only be drawn if its parent group is not fine enough; every group sphere
+    // is inside the mesh's, so it is at least `near` away, and groups (and clusters whose
+    // parent group) with an error of at most `skip_below` are surely fine enough.
     let px = vu.camera.w * s;
     var skip_below = vu.params.x / px;
     if (vu.params.y < 0.5) {
@@ -266,25 +279,57 @@ fn cs_instances(@builtin(global_invocation_id) id: vec3<u32>) {
         skip_below = max(skip_below, vu.params.x / (vu.params.z * s));
     }
     skip_below *= 0.999;
+    // Candidate clusters: parent error above `skip_below`.
     var lo = 0u;
-    var hi = mesh.count;
+    var hi = mesh.b.y;
     loop {
         if (lo >= hi) {
             break;
         }
         let mid = (lo + hi) / 2u;
-        if (clusters[mesh.first + mid].parent_error > skip_below) {
+        if (clusters[mesh.b.x + mid].parent_error > skip_below) {
             hi = mid;
         } else {
             lo = mid + 1u;
         }
     }
-    let n = mesh.count - lo;
+    let n = mesh.b.y - lo;
     if (n == 0u) {
         return;
     }
+    // Groups to decide: error above `skip_below` (the same comparison on the same values as
+    // the clusters' parent errors, so a skipped cluster's parent group is an undecided one).
+    var glo = 0u;
+    var ghi = mesh.b.w;
+    loop {
+        if (glo >= ghi) {
+            break;
+        }
+        let mid = (glo + ghi) / 2u;
+        if (bitcast<f32>(records[mesh.b.z + mid].b.x) > skip_below) {
+            ghi = mid;
+        } else {
+            glo = mid + 1u;
+        }
+    }
+    let kg = (mesh.b.w - glo + CHUNK - 1u) / CHUNK;
+    var gbase = 0u;
+    if (kg > 0u) {
+        gbase = atomicAdd(&control[vi * 8u + 4u], kg);
+        if (gbase + kg > vu.groups.y) {
+            // No room to decide its groups: not drawn in this view (counted).
+            atomicAdd(&control[vi * 8u + 5u], 1u);
+            return;
+        }
+        for (var j = 0u; j < kg; j++) {
+            lists[vu.groups.x + gbase + j] = vec2<u32>(i, glo + j * CHUNK);
+        }
+    }
+    instance_state[4u * i + 2u] = gbase;
+    instance_state[4u * i + 3u] = glo;
+    atomicAdd(&control[vi * 8u + 6u], 1u);
     let k = (n + CHUNK - 1u) / CHUNK;
-    let base = atomicAdd(&control[vu.region.x * 4u], k);
+    let base = atomicAdd(&control[vi * 8u], k);
     for (var j = 0u; j < k; j++) {
         if (base + j < vu.caps.x) {
             lists[vu.region.w + base + j] = vec2<u32>(i, lo + j * CHUNK);
@@ -306,11 +351,74 @@ fn cs_prepare() {
         atomicStore(&control[a + 2u], 0u);
         atomicStore(&control[a + 3u], vu.region.y + b * per_batch);
     }
-    let queued = min(atomicLoad(&control[vi * 4u]), vu.caps.x);
-    let d = DISPATCH_BASE + vi * 4u;
+    let d = DISPATCH_BASE + vi * 8u;
+    let queued = min(atomicLoad(&control[vi * 8u]), vu.caps.x);
     atomicStore(&control[d], min(queued, MAX_GROUPS_X));
     atomicStore(&control[d + 1u], (queued + MAX_GROUPS_X - 1u) / MAX_GROUPS_X);
     atomicStore(&control[d + 2u], 1u);
+    let groups = min(atomicLoad(&control[vi * 8u + 4u]), vu.groups.y);
+    atomicStore(&control[d + 4u], min(groups, MAX_GROUPS_X));
+    atomicStore(&control[d + 5u], (groups + MAX_GROUPS_X - 1u) / MAX_GROUPS_X);
+    atomicStore(&control[d + 6u], 1u);
+}
+
+var<workgroup> wg_bits: array<atomic<u32>, 2>;
+var<workgroup> wg_queued: u32;
+
+@compute @workgroup_size(64)
+fn cs_groups(
+    @builtin(workgroup_id) group: vec3<u32>,
+    @builtin(local_invocation_index) lane: u32,
+) {
+    let vi = vu.region.x;
+    if (lane == 0u) {
+        atomicStore(&wg_bits[0], 0u);
+        atomicStore(&wg_bits[1], 0u);
+        wg_queued = min(atomicLoad(&control[vi * 8u + 4u]), vu.groups.y);
+    }
+    let queued = workgroupUniformLoad(&wg_queued);
+    let chunk = group.y * MAX_GROUPS_X + group.x;
+    if (chunk >= queued) {
+        return;
+    }
+    let entry = vu.groups.x + chunk;
+    let item = lists[entry];
+    var fine = false;
+    if (item.x < vu.info.x) {
+        let inst = instances[item.x];
+        let mesh = records[inst.y];
+        let g = item.y + lane;
+        if (g < mesh.b.w) {
+            let model = draws[inst.x].model;
+            let s = world_scale(model);
+            let r = records[mesh.b.z + g];
+            let center = (model * vec4<f32>(r.a.xyz, 1.0)).xyz;
+            fine = projected_error(center, r.a.w * s, bitcast<f32>(r.b.x) * s) <= vu.params.x;
+        }
+    }
+    if (fine) {
+        atomicOr(&wg_bits[lane >> 5u], 1u << (lane & 31u));
+    }
+    workgroupBarrier();
+    if (lane == 0u) {
+        lists[entry] = vec2<u32>(atomicLoad(&wg_bits[0]), atomicLoad(&wg_bits[1]));
+    }
+}
+
+// The decision cs_groups made for mesh-local group `g` of an instance (its first chunk and
+// first decided group); `none` for no group (true for the source clusters' own group, false
+// for the roots' parent).
+fn group_fine(g: u32, first_chunk: u32, first_group: u32, none: bool) -> bool {
+    if (g == NO_GROUP) {
+        return none;
+    }
+    if (g < first_group) {
+        return true;
+    }
+    let k = g - first_group;
+    let bits = lists[vu.groups.x + first_chunk + (k >> 6u)];
+    let word = select(bits.x, bits.y, (k & 63u) >= 32u);
+    return ((word >> (k & 31u)) & 1u) != 0u;
 }
 
 @compute @workgroup_size(64)
@@ -320,36 +428,32 @@ fn cs_clusters(
 ) {
     let vi = vu.region.x;
     let chunk = group.y * MAX_GROUPS_X + group.x;
-    let queued = min(atomicLoad(&control[vi * 4u]), vu.caps.x);
+    let queued = min(atomicLoad(&control[vi * 8u]), vu.caps.x);
     if (chunk >= queued) {
         return;
     }
     let item = lists[vu.region.w + chunk];
     let inst = instances[item.x];
-    let mesh = meshes[inst.mesh];
+    let mesh = records[inst.y];
     let local = item.y + lane;
-    if (local >= mesh.count) {
+    if (local >= mesh.b.y) {
         return;
     }
-    let ci = mesh.first + local;
+    let ci = mesh.b.x + local;
     let c = clusters[ci];
-    let model = draws[inst.draw].model;
-    let s = world_scale(model);
-    let threshold = vu.params.x;
-    let own = projected_error((model * vec4<f32>(c.lod.xyz, 1.0)).xyz, c.lod.w * s, c.error * s);
-    if (own > threshold) {
+    let first_chunk = instance_state[4u * item.x + 2u];
+    let first_group = instance_state[4u * item.x + 3u];
+    if (!group_fine(c.group, first_chunk, first_group, true)
+        || group_fine(c.parent_group, first_chunk, first_group, false)) {
         return;
     }
-    if (c.parent_error < ROOT_ERROR) {
-        let parent = projected_error(
-            (model * vec4<f32>(c.parent.xyz, 1.0)).xyz,
-            c.parent.w * s,
-            c.parent_error * s,
-        );
-        if (parent <= threshold) {
-            return;
-        }
+    // Its material slot: which draw (material, per-object values) and batch take it.
+    let slot = instances[inst.z + (c.packed >> 14u)];
+    if (slot.x == NO_DRAW || (vu.info.y == 2u && (slot.z & 1u) == 0u)) {
+        return;
     }
+    let model = draws[inst.x].model;
+    let s = world_scale(model);
     let center = (model * vec4<f32>(c.bounds.xyz, 1.0)).xyz;
     let r = c.bounds.w * s;
     if (!sphere_inside(center, r) || backfacing(c, model, center, r)) {
@@ -358,23 +462,24 @@ fn cs_clusters(
     if (vu.info.y == 1u && vu.info.z > 0u && occluded(center - vec3<f32>(r), center + vec3<f32>(r))) {
         return;
     }
-    let at = vi * vu.info.w + inst.batch;
+    let at = vi * vu.info.w + slot.y;
     let a = vu.caps.w + at * 4u;
-    let slot = atomicAdd(&control[a + 1u], 1u);
-    if (slot >= atomicLoad(&control[vu.caps.z + at])) {
-        atomicAdd(&control[vi * 4u + 3u], 1u);
+    let at_slot = atomicAdd(&control[a + 1u], 1u);
+    if (at_slot >= atomicLoad(&control[vu.caps.z + at])) {
+        atomicAdd(&control[vi * 8u + 3u], 1u);
         return;
     }
-    let entry = atomicLoad(&control[a + 3u]) + slot;
-    lists[entry] = vec2<u32>(inst.draw, ci);
+    let triangles = c.packed & 255u;
+    let entry = atomicLoad(&control[a + 3u]) + at_slot;
+    lists[entry] = vec2<u32>(slot.x, ci);
     let k = entry * 5u;
-    cluster_args[k] = c.triangles * 3u;
+    cluster_args[k] = triangles * 3u;
     cluster_args[k + 1u] = 1u;
     cluster_args[k + 2u] = c.local_first;
     cluster_args[k + 3u] = entry * VERTICES_PER_CLUSTER;
     cluster_args[k + 4u] = entry;
-    atomicAdd(&control[vi * 4u + 1u], c.triangles);
-    atomicAdd(&control[vi * 4u + 2u], 1u);
+    atomicAdd(&control[vi * 8u + 1u], triangles);
+    atomicAdd(&control[vi * 8u + 2u], 1u);
 }
 
 @compute @workgroup_size(64)
@@ -384,6 +489,6 @@ fn cs_finish(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
     let at = vu.region.x * vu.info.w + b;
-    let a = vu.caps.w + at * 4u + 1u;
-    atomicStore(&control[a], min(atomicLoad(&control[a]), atomicLoad(&control[vu.caps.z + at])));
+    let a = vu.caps.w + at * 4u;
+    atomicStore(&control[a + 1u], min(atomicLoad(&control[a + 1u]), atomicLoad(&control[vu.caps.z + at])));
 }

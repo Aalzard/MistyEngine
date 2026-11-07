@@ -87,7 +87,7 @@ pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
 use target::TargetLayouts;
 pub use terrain_grass::{GrassStats, grass_streaming, set_grass_streaming};
-pub use vgeo::VgeoStats;
+pub use vgeo::{VgeoDebug, VgeoStats};
 pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 pub use vsm::{VsmDebug, VsmStats};
 
@@ -2274,7 +2274,10 @@ impl Renderer {
         }
         // Virtual geometry casters (culled for this map, detail chosen for the camera).
         if self.vgeo.active() {
-            self.vgeo.draw_shadow(pass, slot, &self.empty_group);
+            let textures = &self.textures;
+            let material = |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
+            self.vgeo
+                .draw_shadow(pass, slot, &self.empty_group, &material);
         }
         // Grass near the camera (the first cascades only; group 2 = the grass casters).
         if grass
@@ -2538,8 +2541,13 @@ impl Renderer {
                             &self.draws_bind_group,
                             &self.empty_group,
                         ];
-                        self.vgeo
-                            .raster_visibility(encoder, target.depth_view(), phase, groups);
+                        self.vgeo.raster_visibility(
+                            encoder,
+                            target.depth_view(),
+                            phase,
+                            groups,
+                            &material,
+                        );
                         self.mark(encoder, "Virtual geometry: visibility raster");
                         pass = self.begin_main(
                             encoder,

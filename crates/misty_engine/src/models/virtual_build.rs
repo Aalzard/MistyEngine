@@ -5,6 +5,9 @@
 //! each mesh's content hash, and packed into player builds. Missing or stale builds are made
 //! on a worker thread (meshes in parallel) and saved; until a mesh's build is ready it draws
 //! through the ordinary mesh path, so importing or loading never stalls a frame.
+//!
+//! The primitives of one glTF mesh (one per material) are built together as one hierarchy of
+//! parts ([`VirtualMesh::build_parts`]), held in the first primitive's slot.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -101,26 +104,63 @@ impl VirtualBuilds {
     }
 }
 
-/// The source of a build: positions and triangle indices.
+/// The source of a build: positions and triangle indices, and each part's first vertex.
 struct Source {
     positions: Vec<Vec3>,
     indices: Vec<u32>,
+    part_starts: Vec<u32>,
     hash: u64,
 }
 
-fn source(data: &MeshData) -> Source {
-    let positions: Vec<Vec3> = data.vertices.iter().map(|v| v.position.into()).collect();
-    let hash = file::content_hash(&positions, &data.indices);
-    Source {
-        positions,
-        indices: data.indices.clone(),
-        hash,
+/// The meshes a build in slot `i` is made of: `i` alone, or every primitive of its glTF mesh
+/// (slot order) when `i` is the first of several.
+pub fn parts(model: &Model, i: usize) -> Vec<usize> {
+    let mut parts: Vec<(u32, usize)> = model
+        .meshes
+        .iter()
+        .enumerate()
+        .filter_map(|(j, m)| match m.primitive {
+            Some((first, slot)) if first == i => Some((slot, j)),
+            _ => None,
+        })
+        .collect();
+    if parts.is_empty() {
+        return vec![i];
     }
+    parts.sort_unstable();
+    parts.into_iter().map(|(_, j)| j).collect()
+}
+
+fn source(model: &Model, i: usize) -> Source {
+    let mut src = Source {
+        positions: Vec::new(),
+        indices: Vec::new(),
+        part_starts: Vec::new(),
+        hash: 0,
+    };
+    for j in parts(model, i) {
+        let data: &MeshData = &model.meshes[j].data;
+        let base = src.positions.len() as u32;
+        src.part_starts.push(base);
+        src.positions
+            .extend(data.vertices.iter().map(|v| Vec3::from(v.position)));
+        src.indices.extend(data.indices.iter().map(|&v| v + base));
+    }
+    // The part boundaries are part of the source (they decide each triangle's material).
+    let mut keyed = src.indices.clone();
+    if src.part_starts.len() > 1 {
+        keyed.extend(&src.part_starts);
+    }
+    src.hash = file::content_hash(&src.positions, &keyed);
+    src
 }
 
 fn build(src: &Source) -> VirtualBuild {
     let t = Instant::now();
-    let mesh = VirtualMesh::build(&src.positions, &src.indices);
+    let mesh = match src.part_starts.len() {
+        0 | 1 => VirtualMesh::build(&src.positions, &src.indices),
+        _ => VirtualMesh::build_parts(&src.positions, &src.indices, &src.part_starts),
+    };
     VirtualBuild {
         mesh: Arc::new(mesh),
         hash: src.hash,
@@ -142,7 +182,15 @@ fn wanted(model: &Model) -> Vec<bool> {
     model
         .meshes
         .iter()
-        .map(|m| model.virtual_geometry && m.skin.is_none() && !m.data.indices.is_empty())
+        .enumerate()
+        .map(|(i, m)| {
+            // Later primitives of a glTF mesh are built with its first one.
+            let first = m.primitive.is_none_or(|(f, _)| f == i);
+            let indices = parts(model, i)
+                .iter()
+                .any(|&j| !model.meshes[j].data.indices.is_empty());
+            model.virtual_geometry && m.skin.is_none() && first && indices
+        })
         .collect()
 }
 
@@ -165,12 +213,12 @@ fn start_at(model: &Model, path: Option<PathBuf>, rel: &str) -> Arc<VirtualBuild
         .and_then(|b| file::read(&b))
         .unwrap_or_default();
     let mut missing = Vec::new();
-    for (i, m) in model.meshes.iter().enumerate() {
+    for i in 0..model.meshes.len() {
         if !wanted[i] {
             continue;
         }
-        let src = source(&m.data);
-        let vertices = m.data.vertices.len() as u32;
+        let src = source(model, i);
+        let vertices = src.positions.len() as u32;
         let hit = cached
             .get(i)
             .and_then(Option::as_ref)
@@ -233,9 +281,9 @@ fn save(builds: &VirtualBuilds, path: &std::path::Path) {
 /// Builds made right away (runtime meshes: tests and demos that time the build themselves).
 pub(super) fn now(model: &Model) -> Arc<VirtualBuilds> {
     let builds = VirtualBuilds::new(wanted(model));
-    for (i, m) in model.meshes.iter().enumerate() {
+    for i in 0..model.meshes.len() {
         if builds.wanted[i] {
-            let _ = builds.slots[i].set(build(&source(&m.data)));
+            let _ = builds.slots[i].set(build(&source(model, i)));
         }
     }
     Arc::new(builds)
