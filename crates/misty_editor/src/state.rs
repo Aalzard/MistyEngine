@@ -366,6 +366,8 @@ pub struct EditorState {
     pub snap_window_open: bool,
     /// Save Data and Localization Tables windows.
     pub saveloc: crate::saveloc::SaveLocWindows,
+    /// Window ▸ Multiplayer ▸ Multiplayer Play Mode and the player windows it opened.
+    pub multiplayer: crate::multiplayer::MultiplayerPlayMode,
     pub project: ProjectBrowser,
     /// Edit ▸ Project Settings values (saved in the project).
     pub project_settings: ProjectSettings,
@@ -466,6 +468,7 @@ impl EditorState {
             snap: crate::snap::SnapSettings::load(&project.root),
             snap_window_open: false,
             saveloc: Default::default(),
+            multiplayer: Default::default(),
             assets: AssetDatabase::open(&project.root),
             inspector_asset: None,
             project,

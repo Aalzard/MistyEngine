@@ -99,6 +99,64 @@ fn default_project() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// Window overrides from the command line (the editor's Multiplayer Play Mode places its
+/// player windows with them).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WindowOptions {
+    pub title: Option<String>,
+    pub size: Option<(u32, u32)>,
+    pub position: Option<(i32, i32)>,
+}
+
+/// Everything the command line asks for.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Args {
+    /// The project or data folder (the first plain argument).
+    pub project: Option<PathBuf>,
+    pub launch: crate::game::LaunchOptions,
+    pub window: WindowOptions,
+}
+
+/// Parse `misty_player [Project] [--scene Assets/…scene] [--scene-file file] [--net-host |
+/// --net-server | --net-client host[:port]] [--title text] [--size 800x450] [--pos 40,40]`.
+pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
+    use misty_engine::network::AutoStart;
+    let mut out = Args::default();
+    let mut it = args.into_iter();
+    fn value(it: &mut dyn Iterator<Item = String>, flag: &str) -> Result<String, String> {
+        it.next().ok_or_else(|| format!("{flag} needs a value"))
+    }
+    fn pair(text: &str, sep: char, flag: &str) -> Result<(i64, i64), String> {
+        let (a, b) = text
+            .split_once(sep)
+            .ok_or_else(|| format!("{flag} expects A{sep}B, got '{text}'"))?;
+        let n = |s: &str| s.trim().parse::<i64>().map_err(|e| format!("{flag}: {e}"));
+        Ok((n(a)?, n(b)?))
+    }
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--scene" => out.launch.scene = Some(value(&mut it, &a)?),
+            "--scene-file" => out.launch.scene_file = Some(PathBuf::from(value(&mut it, &a)?)),
+            "--net-host" => out.launch.network = Some(AutoStart::Host),
+            "--net-server" => out.launch.network = Some(AutoStart::Server),
+            "--net-client" => out.launch.network = Some(AutoStart::Client(value(&mut it, &a)?)),
+            "--title" => out.window.title = Some(value(&mut it, &a)?),
+            "--size" => {
+                let (w, h) = pair(&value(&mut it, &a)?, 'x', "--size")?;
+                out.window.size = Some((w.clamp(160, 16384) as u32, h.clamp(120, 16384) as u32));
+            }
+            "--pos" => {
+                let (x, y) = pair(&value(&mut it, &a)?, ',', "--pos")?;
+                out.window.position = Some((x as i32, y as i32));
+            }
+            flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
+            _ if out.project.is_none() => out.project = Some(PathBuf::from(a)),
+            _ => return Err(format!("unexpected argument '{a}'")),
+        }
+    }
+    Ok(out)
+}
+
 /// Development builds get a console window for the log (release builds have none).
 pub fn open_console() {
     #[cfg(windows)]
@@ -117,6 +175,43 @@ pub fn open_console() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_line_options() {
+        use misty_engine::network::AutoStart;
+        let args = |v: &[&str]| parse_args(v.iter().map(|s| s.to_string()));
+        let a = args(&[
+            "C:/Game",
+            "--scene",
+            "Assets/Scenes/Net.scene",
+            "--net-client",
+            "127.0.0.1:7777",
+            "--title",
+            "Player 2",
+            "--size",
+            "800x450",
+            "--pos",
+            "40,-10",
+        ])
+        .unwrap();
+        assert_eq!(a.project, Some(PathBuf::from("C:/Game")));
+        assert_eq!(a.launch.scene.as_deref(), Some("Assets/Scenes/Net.scene"));
+        assert_eq!(
+            a.launch.network,
+            Some(AutoStart::Client("127.0.0.1:7777".into()))
+        );
+        assert_eq!(a.window.title.as_deref(), Some("Player 2"));
+        assert_eq!(a.window.size, Some((800, 450)));
+        assert_eq!(a.window.position, Some((40, -10)));
+        assert_eq!(args(&[]).unwrap(), Args::default());
+        assert_eq!(
+            args(&["--net-host"]).unwrap().launch.network,
+            Some(AutoStart::Host)
+        );
+        assert!(args(&["--size", "big"]).is_err());
+        assert!(args(&["--what"]).is_err());
+        assert!(args(&["--scene"]).is_err());
+    }
 
     #[test]
     fn finds_the_data_folder_named_after_the_executable() {

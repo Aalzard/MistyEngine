@@ -147,6 +147,8 @@ pub enum Action {
     OpenProjectSettings,
     /// File ▸ Build Settings.
     OpenBuildSettings,
+    /// Window ▸ Multiplayer ▸ Multiplayer Play Mode.
+    OpenMultiplayerPlayMode,
     /// Build into a folder picked now.
     Build,
     /// Build into the last build folder (asks the first time), then run it.

@@ -397,6 +397,10 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<NavMeshAgent>(),
             ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<Scripts>(),
+            // Netcode (network).
+            ComponentInfo::of::<crate::network::NetworkManager>(),
+            ComponentInfo::of::<crate::network::NetworkObject>(),
+            ComponentInfo::of::<crate::network::NetworkTransform>(),
             // Save games and localization (save, localization).
             ComponentInfo::of::<crate::save::Saveable>(),
             ComponentInfo::of::<crate::localization::LocalizedText>(),
@@ -412,6 +416,7 @@ pub fn requires(name: &str) -> &'static [&'static str] {
         "Fixed Joint" | "Hinge Joint" | "Spring Joint" => &["Rigidbody"],
         "Editable Mesh" => &["Mesh Filter", "Mesh Renderer"],
         "Spline Extrude" => &["Mesh Filter", "Mesh Renderer"],
+        "Network Transform" => &["Network Object"],
         _ => &[],
     }
 }

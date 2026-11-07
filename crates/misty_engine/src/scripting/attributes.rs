@@ -1,11 +1,17 @@
-//! Inspector attributes on script fields: `Header`, `Tooltip`, `Space`, `Range` and
-//! `HideInInspector`, listed per field in the class's `_attributes` table.
+//! Attributes on script fields: the Inspector's `Header`, `Tooltip`, `Space`, `Range` and
+//! `HideInInspector`, and the network's `NetworkVariable`, `ServerRpc` and `ClientRpc`, listed
+//! per field (or function) in the class's `_attributes` table.
 //!
 //! ```lua
 //! local Orbiter = { radius = 3, speed = 45, label = "" }
 //! Orbiter._attributes = {
 //!     radius = { Header("Orbit"), Range(0.5, 10), Tooltip("Metres from the centre") },
 //!     label = { HideInInspector() },
+//! }
+//! Player._attributes = {
+//!     score = NetworkVariable(),                                  -- server writes, all read
+//!     nickname = NetworkVariable({ write = "Owner", onChanged = "OnNicknameChanged" }),
+//!     MoveServerRpc = ServerRpc({ requireOwnership = true, reliable = false }),
 //! }
 //! ```
 //!
@@ -29,6 +35,10 @@ pub struct FieldAttributes {
     pub range: Option<(f64, f64)>,
     /// Not shown at all (the value still saves and runs).
     pub hidden: bool,
+    /// Replicated by the network (`NetworkVariable(...)`).
+    pub network: Option<crate::network::NetVarSpec>,
+    /// A function called across the network (`ServerRpc(...)` / `ClientRpc(...)`).
+    pub rpc: Option<crate::network::RpcSpec>,
 }
 
 /// The class key holding the attributes.
@@ -79,7 +89,59 @@ pub fn register(lua: &Lua) -> Result<()> {
         "HideInInspector",
         lua.create_function(move |lua, ()| tag(lua, "HideInInspector"))?,
     )?;
+    // Network attributes keep their option table: `NetworkVariable({ write = "Owner" })`.
+    for kind in ["NetworkVariable", "ServerRpc", "ClientRpc"] {
+        g.set(
+            kind,
+            lua.create_function(move |lua, options: Option<Table>| {
+                let t = tag(lua, kind)?;
+                if let Some(o) = options {
+                    t.set("options", o)?;
+                }
+                Ok(t)
+            })?,
+        )?;
+    }
     Ok(())
+}
+
+fn option_str(a: &Table, key: &str) -> Option<String> {
+    let o: Table = a.get("options").ok()?;
+    o.get::<Option<String>>(key).ok().flatten()
+}
+
+fn option_bool(a: &Table, key: &str) -> Option<bool> {
+    let o: Table = a.get("options").ok()?;
+    o.get::<Option<bool>>(key).ok().flatten()
+}
+
+fn network_variable(a: &Table) -> crate::network::NetVarSpec {
+    use crate::network::{NetVarSpec, ReadPermission, WritePermission};
+    let is = |key: &str, v: &str| option_str(a, key).is_some_and(|s| s.eq_ignore_ascii_case(v));
+    NetVarSpec {
+        read: if is("read", "Owner") {
+            ReadPermission::Owner
+        } else {
+            ReadPermission::Everyone
+        },
+        write: if is("write", "Owner") {
+            WritePermission::Owner
+        } else {
+            WritePermission::Server
+        },
+        on_changed: option_str(a, "onChanged"),
+    }
+}
+
+fn rpc(a: &Table, kind: crate::network::RpcKind) -> crate::network::RpcSpec {
+    let mut spec = crate::network::RpcSpec::new(kind);
+    if let Some(b) = option_bool(a, "requireOwnership") {
+        spec.require_ownership = b;
+    }
+    if let Some(b) = option_bool(a, "reliable") {
+        spec.reliable = b;
+    }
+    spec
 }
 
 /// The attributes `class._attributes` lists, by field name. Unknown entries are ignored.
@@ -109,6 +171,9 @@ pub fn parse(class: &Table) -> HashMap<String, FieldAttributes> {
                     }
                 }
                 "HideInInspector" => attrs.hidden = true,
+                "NetworkVariable" => attrs.network = Some(network_variable(&a)),
+                "ServerRpc" => attrs.rpc = Some(rpc(&a, crate::network::RpcKind::Server)),
+                "ClientRpc" => attrs.rpc = Some(rpc(&a, crate::network::RpcKind::Client)),
                 _ => {}
             }
         }

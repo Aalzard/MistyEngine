@@ -20,6 +20,7 @@ mod mesh_builder_editor;
 mod mixed;
 mod mixer_inspector;
 mod nav_editors;
+mod net_editors;
 mod occlusion_editors;
 mod overrides;
 pub(in crate::panels) mod particles;

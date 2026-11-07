@@ -2243,3 +2243,23 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Medium at defaults is 11.9 ms full screen (84 FPS); 100 FPS needs 2× MSAA on Medium (a look
   change, the user's call) or more grass work (Grass Ground Cover, a cheaper composite).
+
+## Round 15 — Multiplayer networking (branch r15-networking)
+
+### Done (docs/pending/r15-networking.md, docs/scripting.md ▸ Networking)
+- UDP transport on its own thread: reliable ordered / reliable unordered / unreliable channels, handshake,
+  keep-alives, timeouts, fragmentation, a latency / jitter / loss simulator; LAN discovery by broadcast.
+- Network Manager (host / server / client, address and port, tick rate, player prefab, connection
+  approval, scene sync on connect and on scene changes), Network Object (spawn, owner, despawn, ownership
+  changes), Network Transform (server or owner authority, interpolation buffer, snapping, thresholds,
+  client-side prediction with reconciliation).
+- Network Variables (`NetworkVariable()` attribute: read / write permissions, change callbacks, only
+  changed fields sent), `…ServerRpc` / `…ClientRpc` with `RpcTarget`, the `Network` Lua API with events.
+- Editor: Netcode Inspectors (Start Host / Server / Client while playing), Window ▸ Multiplayer ▸
+  Multiplayer Play Mode launching up to three player windows as clients, a network stats overlay.
+- Player: `--net-host`, `--net-server`, `--net-client`, `--scene`, window options, stats in the title.
+- Sample: NetworkDemo (predicted capsules with names, colours and a replicated score, a server-run coin).
+
+### Not done yet
+- Relay / NAT punch-through, encryption, dedicated-server (headless) builds, Network Animator, interest
+  management, tighter bandwidth (quantisation, batching).

@@ -430,7 +430,7 @@ impl UserData for LGameObject {
 /// (`GetComponent("Rotator")` is that object's `Rotator.lua` instance table); nil otherwise.
 fn other_component(lua: &Lua, e: Entity, name: &str) -> Result<Value> {
     type Lookup = fn(&Lua, Entity, &str) -> Result<Option<Value>>;
-    const LOOKUPS: [Lookup; 10] = [
+    const LOOKUPS: [Lookup; 11] = [
         super::physics_api::component,
         super::ui_api::component,
         super::material_api::component,
@@ -441,6 +441,7 @@ fn other_component(lua: &Lua, e: Entity, name: &str) -> Result<Value> {
         super::vcam_api::component,
         super::timeline_api::component,
         super::camera_api::component,
+        super::network_api::component,
     ];
     for lookup in LOOKUPS {
         if let Some(v) = lookup(lua, e, name)? {
@@ -730,6 +731,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     g.set("Vector3", v3)?;
     super::ui_api::register(lua)?;
     super::attributes::register(lua)?;
+    super::network_api::register(lua)?;
     super::render_settings_api::register(lua)?;
     super::light_probes_api::register(lua)?;
     super::app_api::register(lua)?;

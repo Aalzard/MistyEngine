@@ -25,6 +25,8 @@ with `_` stay private.
 Animation events call a function by name (no arguments) on the scripts of the object with the Animation.
 Save games call `OnSave(data)` / `OnLoad(data)` and locale switches `OnLocaleChanged(code)` (see Save games
 and Localization below).
+Scripts on network objects get `OnNetworkSpawn`, `OnNetworkDespawn` and the ownership callbacks (see
+Networking below).
 
 ## Inspector attributes
 List attributes per field in the class's `_attributes` table to change how the Inspector shows it:
@@ -716,6 +718,126 @@ laid out right to left yet, and the built-in UI font has no Arabic glyphs.
 
 Sample: `Scenes/SaveLocDemo.scene` with `SaveLocMenu.lua`, `CoinCounter.lua` and
 `Assets/Localization/SaveLocDemo.strings`.
+
+## Networking
+Multiplayer works like a familiar netcode package: one **Network Manager** starts a host (server + local
+player), a dedicated server or a client; the server **spawns** objects with a **Network Object** on every
+client and gives each an **owner**; a **Network Transform** replicates motion; scripts replicate fields with
+**Network Variables** and call functions across the network with **RPCs**. Traffic goes over UDP (reliable
+ordered, reliable unordered and unreliable channels).
+
+**Setup**: add a Network Manager (Component ▸ Netcode) to one object in the scene: Address and Port (where
+clients connect, 127.0.0.1:7777 by default), Listen Address, Tick Rate (network updates per second), Player
+Prefab (spawned for every client that joins, owned by it), Connection Approval, Max Connections, Timeout,
+Scene Management (clients load the server's scene when they join and whenever it changes), LAN Discovery,
+and a **Network Simulator** (latency, jitter, packet loss) for testing. Give every networked object (and
+the player prefab) a Network Object.
+
+**Starting**: from a script (`Network.StartHost()`, …), from the Network Manager Inspector's Start Host /
+Start Server / Start Client buttons while playing, or with **Window ▸ Multiplayer ▸ Multiplayer Play
+Mode**: tick Player 2–4 and press Play; the editor hosts and opens a player window per ticked player that
+joins as a client on this machine (the windows load the scene as it was when Play was pressed, saved or
+not, and close on Stop). A small overlay in the Game view shows the round trip time, packets and bandwidth.
+Built games: `misty_player --net-host`, `--net-server` or `--net-client 192.168.1.20:7777`.
+
+| | |
+|---|---|
+| `Network.StartHost()` / `StartServer()` / `StartClient([address [, port]])` | start (address defaults to the Network Manager's); true when it started |
+| `Network.Shutdown()` | stop: spawned prefab copies go, scene objects stay |
+| `Network.IsServer`, `IsClient`, `IsHost`, `IsListening`, `IsConnectedClient` | |
+| `Network.LocalClientId`, `ServerClientId` (0), `Mode` ("Host"/"Server"/"Client"/"Offline") | the host's own player is client 0 |
+| `Network.ConnectedClientsIds` | client ids (server: everyone; a client: itself) |
+| `Network.LocalPlayer`, `Network.GetPlayerObject(clientId)`, `Network.GetNetworkObject(id)` | GameObjects or nil |
+| `Network.Spawn(prefabPath or gameObject [, position [, ownerClientId]])` | server: instantiate (or take) and spawn on every client; returns the GameObject |
+| `Network.DisconnectClient(clientId)` | server: kick |
+| `Network.connectionData` | text sent with the connect request (a name, a password) |
+| `Network.ConnectionApproval = function(clientId, payload) return true end` | server, with Connection Approval on: return `false, "reason"` to refuse |
+| `Network.OnClientConnected` / `OnClientDisconnected` | `:AddListener(function(clientId) end)`; on the server for every client, on a client for itself |
+| `Network.OnServerStarted` / `OnClientStarted` / `OnServerStopped` / `OnClientStopped` | `:AddListener(f)` |
+| `Network.SenderClientId` | inside a server RPC: who called it |
+| `Network.FindLanGames()`, `Network.LanGames` | broadcast a search; the list fills with `{ address, port, name, players, maxPlayers }` |
+
+**Scripts on network objects** (on the object or its children) read `self.IsOwner`, `self.IsServer`,
+`self.IsClient`, `self.IsHost`, `self.IsLocalPlayer`, `self.IsOwnedByServer`, `self.OwnerClientId`,
+`self.NetworkObjectId`, `self.IsSpawned` and `self.NetworkObject`, and get the callbacks
+`OnNetworkSpawn()` (Network Variables already hold the server's values), `OnNetworkDespawn()`,
+`OnGainedOwnership()`, `OnLostOwnership()` and `OnOwnershipChanged(previous, current)`.
+
+`GetComponent("NetworkObject")`: `NetworkObjectId`, `OwnerClientId`, `IsOwner`, `IsSpawned`,
+`IsPlayerObject`, `IsLocalPlayer`, `Spawn([owner])`, `SpawnWithOwnership(id)`, `SpawnAsPlayerObject(id)`,
+`Despawn([destroy = true])`, `ChangeOwnership(id)`, `RemoveOwnership()` (server only).
+`GetComponent("NetworkTransform")`: `authority`, `CanCommitToTransform`, `interpolate`,
+`Teleport(position [, euler])`.
+
+Objects saved in the scene are matched between server and clients by the Network Object's **Global ID**
+(copies get a new one); spawned prefab copies are built from their prefab, so spawn prefabs
+(`Network.Spawn("Assets/Prefabs/Ball.prefab")`, or `Instantiate(path)` then `:Spawn()`). On the server,
+`Destroy` of a spawned object despawns it everywhere. Only the server spawns, despawns and changes owners.
+
+### Network Transform
+**Authority** Server (the server moves it, clients follow) or Owner (the owning client moves it; the server
+relays it). Remote copies **interpolate** between received states, played *Interpolation Delay* (0.1 s)
+in the past so late packets don't show; jumps longer than **Snap Distance** teleport. Only changes larger
+than the position / rotation / scale **thresholds** are sent (and each part only when it changed), with a
+full state every second. Rigidbodies moved by another peer become kinematic there.
+
+**Predict** (server authority): the owner moves its own copy at once and also sends its input in a server
+RPC; the server moves the real object, and its states tell the owner which input frame they include, so
+the owner corrects itself by however far its prediction was off (reconciliation) without waiting a round
+trip. Move by adding deltas, the same way on both sides:
+
+```lua
+function Player:Update()
+    if not self.IsOwner then return end
+    local delta = Vector3.new(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical")) * (5 * Time.deltaTime)
+    self.transform.position = self.transform.position + delta          -- predicted here
+    if not self.IsServer then self:MoveServerRpc(delta) end
+end
+function Player:MoveServerRpc(delta)
+    if delta.magnitude < 0.5 then self.transform.position = self.transform.position + delta end
+end
+```
+
+### Network Variables
+Mark fields with `NetworkVariable()` in `_attributes`. The writer changes the field normally; the change is
+sent at the next tick (only changed fields go out), and every peer's `onChanged` method gets
+`(previous, current)`. Values: numbers, booleans, strings, Vector3, tables of those, and spawned
+GameObjects.
+
+```lua
+local Player = { score = 0, nickname = "", secret = "" }
+Player._attributes = {
+    score = NetworkVariable({ onChanged = "OnScoreChanged" }),     -- the server writes, everyone reads
+    nickname = NetworkVariable({ write = "Owner" }),               -- the owner writes
+    secret = NetworkVariable({ read = "Owner" }),                  -- only the owner (and server) read
+}
+function Player:OnScoreChanged(old, new) Debug.Log("score", new) end
+```
+A peer that may not write a variable gets the change undone with a warning.
+
+### RPCs
+Functions named `…ServerRpc` run on the server when a client calls them; `…ClientRpc` run on clients when
+the server calls them (on the host too). Call them with a colon as usual; arguments are sent like Network
+Variable values. Options in `_attributes`: `ServerRpc({ requireOwnership = false })` (by default only the
+owner may call a server RPC), `reliable = false` (send unreliably, e.g. frequent input). A client RPC goes
+to every client unless the last argument is an `RpcTarget`: `RpcTarget.Owner`, `NotOwner`, `NotServer`,
+`Client(id)`, `Clients({ ids })`.
+
+```lua
+function Gun:Update()
+    if self.IsOwner and Input.GetMouseButtonDown(0) then self:FireServerRpc(self.transform.forward) end
+end
+function Gun:FireServerRpc(dir)                     -- on the server; Network.SenderClientId is the caller
+    self:ShowShotClientRpc(dir, RpcTarget.NotOwner)
+end
+function Gun:ShowShotClientRpc(dir) end              -- on the other clients
+```
+
+Sample: `Scenes/NetworkDemo.scene` (H host, J join, WASD move; or Multiplayer Play Mode with players
+ticked): `Net Player.prefab` with `NetPlayer.lua` (predicted movement, owner-written name, server-written
+score and colour), `NetCoin.lua` (server pickups, a client RPC) and `NetHud.lua` (keys and scoreboard).
+Not done yet: relay servers and NAT punch-through (players on different networks need a reachable host),
+dedicated-server builds without a window, Network Animator / Rigidbody components.
 
 ## Editor scripting
 Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or

@@ -8,6 +8,10 @@
 //! (`MISTY_UPSCALING=Performance` etc. overrides the quality levels' Upscaling).
 //! `MISTY_PROFILE=capture.jsonl misty_player` records the profiler into a capture file
 //! (one JSON object per frame) until the player quits.
+//! Multiplayer: `--net-host`, `--net-server` or `--net-client host[:port]` start networking
+//! once the scene runs; `--scene Assets/…scene [--scene-file copy.scene]` plays that scene;
+//! `--title`, `--size 800x450` and `--pos 40,40` place the window (the editor's Multiplayer
+//! Play Mode launches its player windows this way).
 
 // Release builds are windowed apps with no console; output goes to Player.log.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -42,7 +46,14 @@ use misty_engine::input::Gamepads;
 const SCREENSHOT_FRAME: u64 = 60;
 
 fn main() {
-    let launch = match startup::locate(std::env::args().nth(1).map(PathBuf::from)) {
+    let args = match startup::parse_args(std::env::args().skip(1)) {
+        Ok(a) => a,
+        Err(e) => {
+            Log::open(None).write(LogKind::Error, &e);
+            std::process::exit(2);
+        }
+    };
+    let launch = match startup::locate(args.project.clone()) {
         Ok(l) => l,
         Err(e) => {
             Log::open(None).write(LogKind::Error, &e);
@@ -53,7 +64,7 @@ fn main() {
     if launch.info.development && launch.packed {
         startup::open_console();
     }
-    let game = Game::open(&root);
+    let game = Game::open_with(&root, &args.launch);
     let player = game
         .as_ref()
         .map(|g| g.player_settings())
@@ -122,6 +133,8 @@ fn main() {
         screenshot,
         cursor: Default::default(),
         player,
+        window_options: args.window,
+        title_updated: Instant::now(),
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         app.log.write(LogKind::Error, &e.to_string());
@@ -159,6 +172,10 @@ struct Player {
     screenshot: Option<PathBuf>,
     /// `Cursor.lockState` / `Cursor.visible` last applied to the window.
     cursor: misty_engine::scripting::CursorState,
+    /// Command-line title, size and position.
+    window_options: startup::WindowOptions,
+    /// The window title shows network stats, refreshed about once a second.
+    title_updated: Instant,
 }
 
 impl Player {
@@ -196,6 +213,7 @@ impl Player {
         }
         self.apply_screen_requests();
         self.apply_cursor();
+        self.show_network_in_title();
         let Some(gfx) = self.gfx.as_mut() else { return };
         gfx.update_probes(&self.game.scene, &self.game.assets);
         let view = self.game.view();
@@ -235,6 +253,32 @@ impl Player {
                 Err(e) => eprintln!("screenshot failed: {e}"),
             }
             event_loop.exit();
+        }
+    }
+
+    /// "Net Demo · Player 2 · Client · RTT 3 ms" while networking runs.
+    fn show_network_in_title(&mut self) {
+        if self.title_updated.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        self.title_updated = Instant::now();
+        let Some(window) = &self.window else { return };
+        let base = self
+            .window_options
+            .title
+            .clone()
+            .unwrap_or_else(|| self.game.product_name());
+        let title = match self.game.network_stats() {
+            Some(s) => format!(
+                "{base} · {} · RTT {:.0} ms · {} objects",
+                s.mode.label(),
+                s.rtt_ms,
+                s.objects
+            ),
+            None => base,
+        };
+        if window.title() != title {
+            window.set_title(&title);
         }
     }
 
@@ -320,8 +364,22 @@ impl ApplicationHandler for Player {
         if self.window.is_some() {
             return;
         }
-        let (attrs, mode) = screen::attributes(&self.player, &self.game, event_loop);
+        let (mut attrs, mode) = screen::attributes(&self.player, &self.game, event_loop);
         self.mode = mode;
+        let o = &self.window_options;
+        if let Some(t) = &o.title {
+            attrs = attrs.with_title(t.clone());
+        }
+        if let Some((w, h)) = o.size {
+            attrs = attrs
+                .with_inner_size(winit::dpi::PhysicalSize::new(w, h))
+                .with_fullscreen(None)
+                .with_maximized(false);
+            self.mode = ScreenMode::Windowed;
+        }
+        if let Some((x, y)) = o.position {
+            attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x, y));
+        }
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),
             Err(e) => {

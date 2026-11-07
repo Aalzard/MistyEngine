@@ -21,6 +21,11 @@ pub struct PlaySession {
 }
 
 impl PlaySession {
+    /// The scene as it was when Play started (Multiplayer Play Mode's players load it).
+    pub fn edit_scene(&self) -> &Scene {
+        &self.scene
+    }
+
     /// The Edit-mode scene and its undo history, restored on Stop (asset renames rewrite them).
     pub fn scenes_mut(&mut self) -> Vec<&mut Scene> {
         let mut out = vec![&mut self.scene];
@@ -65,6 +70,9 @@ pub fn start(s: &mut EditorState) {
     ));
     s.runtime = Some(runtime);
     flush_logs(s);
+    // Multiplayer Play Mode: host and open the player windows.
+    crate::multiplayer::on_play_started(s);
+    flush_logs(s);
     s.game_view.focused = s.game_view.play_mode_target != 2;
     s.play = if s.pause_on_play {
         PlayState::Paused
@@ -79,6 +87,7 @@ pub fn stop(s: &mut EditorState) {
     let Some(session) = s.play_session.take() else {
         return;
     };
+    crate::multiplayer::on_play_stopped(s);
     s.runtime = None;
     s.scene = session.scene;
     s.selection = session.selection;
@@ -130,9 +139,11 @@ fn handle_requests(s: &mut EditorState) {
     };
     // The last single LoadScene of a frame wins; additive loads and unloads run in order.
     let mut load = None;
+    let mut net_load = None;
     for r in runtime.take_requests() {
         match r {
             Request::LoadScene(scene) => load = Some(scene),
+            Request::NetworkLoadScene(path) => net_load = Some(path),
             Request::Quit => s.console.info("Application.Quit() ignored in the editor"),
             other => {
                 let root = s.project.root.clone();
@@ -152,28 +163,43 @@ fn handle_requests(s: &mut EditorState) {
     if let Some(scene) = load {
         load_scene(s, &scene);
     }
+    // A multiplayer server's scene (any project scene).
+    if let Some(path) = net_load {
+        load_scene_path(s, &path);
+    }
 }
 
 /// Swap in a build scene while playing (the edit-mode scene comes back on Stop).
 fn load_scene(s: &mut EditorState, which: &SceneRef) {
-    let loaded = s.build_settings.resolve(which).and_then(|(rel, _)| {
-        misty_engine::scene::Scene::load(&s.project.root.join(&rel)).map(|r| (rel, r))
-    });
+    match s.build_settings.resolve(which) {
+        Ok((rel, _)) => load_scene_path(s, &rel),
+        Err(e) => s.console.log(LogLevel::Error, e),
+    }
+}
+
+/// Swap in the project scene `rel` while playing; a network session carries over.
+fn load_scene_path(s: &mut EditorState, rel: &str) {
+    let loaded = misty_engine::scene::Scene::load(&s.project.root.join(rel));
     match loaded {
-        Ok((rel, (mut scene, report))) => {
+        Ok((mut scene, report)) => {
             for w in report.warnings {
                 s.console.warn(format!("{rel}: {w}"));
             }
+            scene.set_scene_path(0, rel);
+            let session = s.runtime.as_mut().map(|r| r.take_network());
             s.runtime = None;
             let mut audio = Audio::with_device(s.project.root.clone());
             audio.set_muted(s.game_view.mute);
-            s.runtime = Some(Runtime::start_with_audio(
+            let mut runtime = Runtime::start_with_audio(
                 &mut scene,
                 s.project.root.clone(),
                 &s.project_settings,
                 audio,
-            ));
-            scene.set_scene_path(0, &rel);
+            );
+            if let Some(n) = session {
+                runtime.adopt_network(&mut scene, n);
+            }
+            s.runtime = Some(runtime);
             s.scene = scene;
             s.selection.clear();
             s.inspector_targets.clear();
