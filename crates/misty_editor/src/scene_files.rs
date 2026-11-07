@@ -71,6 +71,78 @@ pub fn restore_scene_view(s: &mut EditorState) {
     if position.is_finite() && rotation.is_finite() {
         s.scene_view.camera.set_view(position, rotation);
     }
+    keep_view_above_ground(s);
+}
+
+/// How far above a terrain the Scene view eye must be to count as "above ground".
+const GROUND_CLEARANCE: f32 = 0.3;
+
+/// Terrain surface height (world y) under a world point, if the point is over a terrain.
+fn ground_under(scene: &Scene, p: glam::Vec3) -> Option<f32> {
+    use misty_engine::terrain;
+    terrain::terrains(scene)
+        .into_iter()
+        .filter_map(|(e, _)| {
+            let d = terrain::data_of(scene, e)?;
+            let origin = scene.world_position(e);
+            let (lo, hi) = d.bounds();
+            let local = p - origin;
+            let inside = local.x >= lo.x && local.x <= hi.x && local.z >= lo.z && local.z <= hi.z;
+            inside.then(|| origin.y + d.sample_height(local.x, local.z))
+        })
+        .reduce(f32::max)
+}
+
+/// The camera a scene is seen through: an active, enabled Camera tagged MainCamera, else the
+/// first active enabled Camera, else the object named "Main Camera".
+fn scene_camera_view(scene: &Scene) -> Option<(glam::Vec3, glam::Quat)> {
+    use misty_engine::scene::components::Camera;
+    let mut tagged = None;
+    let mut first = None;
+    for (e, _) in scene.walk() {
+        let Ok(cam) = scene.world.get::<&Camera>(e) else {
+            continue;
+        };
+        if !cam.enabled || !scene.active_in_hierarchy(e) {
+            continue;
+        }
+        if tagged.is_none() && scene.game_object(e).tag == "MainCamera" {
+            tagged = Some(e);
+        }
+        first.get_or_insert(e);
+    }
+    let e = tagged
+        .or(first)
+        .or_else(|| scene.find_by_name("Main Camera"))?;
+    let (_, r, p) = scene.world_matrix(e).to_scale_rotation_translation();
+    (p.is_finite() && r.is_finite()).then_some((p, r))
+}
+
+/// After opening a scene (or the project), a Scene view eye left under a terrain (the
+/// previous scene's view, or a new project's first view) moves to where the scene is seen
+/// from: its camera, or straight up above the ground keeping the direction.
+pub(crate) fn keep_view_above_ground(s: &mut EditorState) {
+    if s.scene_view.camera.is_2d() {
+        return;
+    }
+    let eye = s.scene_view.camera.position();
+    let Some(ground) = ground_under(&s.scene, eye) else {
+        return;
+    };
+    if eye.y >= ground + GROUND_CLEARANCE {
+        return;
+    }
+    if let Some((p, r)) = scene_camera_view(&s.scene) {
+        let clear = ground_under(&s.scene, p).is_none_or(|g| p.y >= g + GROUND_CLEARANCE);
+        if clear {
+            s.scene_view.camera.set_view(p, r);
+            return;
+        }
+    }
+    let rotation = s.scene_view.camera.rotation();
+    s.scene_view
+        .camera
+        .set_view(glam::Vec3::new(eye.x, ground + 2.0, eye.z), rotation);
 }
 
 /// Remember the Scene view camera (3D views only), its settings and the icon settings for the
@@ -342,6 +414,7 @@ pub fn load(s: &mut EditorState, rel: &str) -> bool {
             scene.set_scene_path(0, rel);
             s.scene = scene;
             reset_after_load(s);
+            keep_view_above_ground(s);
             for w in report.warnings {
                 s.console.warn(format!("{rel}: {w}"));
             }
@@ -577,6 +650,29 @@ mod tests {
             std::env::temp_dir().join(format!("misty_scene_files_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         EditorState::new(ProjectBrowser::open(root))
+    }
+
+    /// Opening MeadowDemo with the Scene view left under its terrain (a new project's first
+    /// view, or the last scene's) moves the eye above the ground.
+    #[test]
+    fn opening_a_scene_lifts_a_view_left_under_the_terrain() {
+        let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+        let mut s = EditorState::new(ProjectBrowser::open(sample));
+        s.scene_view
+            .camera
+            .set_view(glam::Vec3::new(0.0, -50.0, 0.0), glam::Quat::IDENTITY);
+        assert!(load(&mut s, "Assets/Scenes/MeadowDemo.scene"));
+        let eye = s.scene_view.camera.position();
+        let ground = ground_under(&s.scene, eye).expect("the eye is over the meadow terrain");
+        assert!(
+            eye.y >= ground + GROUND_CLEARANCE,
+            "eye {eye} ground {ground}"
+        );
+        // A view already above ground is left alone.
+        let above = glam::Vec3::new(eye.x, ground + 25.0, eye.z);
+        s.scene_view.camera.set_view(above, glam::Quat::IDENTITY);
+        keep_view_above_ground(&mut s);
+        assert!((s.scene_view.camera.position() - above).length() < 1e-3);
     }
 
     #[test]
