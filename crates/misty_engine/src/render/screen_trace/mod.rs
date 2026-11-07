@@ -222,6 +222,9 @@ pub(in crate::render) struct TraceFrame {
     pub misty: Option<super::misty_gi::MistyFrame>,
     /// Misty GI's probes → the texel buffer (source, destination offset, bytes).
     world_copy: Option<(wgpu::Buffer, u64, u64)>,
+    /// SSGI or SSR is on: the opaque scene is copied into the lit colour history after the
+    /// main pass (which splits for it). Misty GI alone skips both.
+    pub needs_history: bool,
     /// Lit colour history: copy destination and its mip steps.
     color: wgpu::Texture,
     color_steps: Vec<Step>,
@@ -366,7 +369,12 @@ impl ScreenTrace {
                 size: full,
             }
         });
-        let color_steps = color_steps(device, passes, state, normal_view);
+        // Only SSGI and SSR read last frame's lit colour; Misty GI alone needs no history.
+        let needs_history = key.gi.is_some() || key.ssr.is_some();
+        let color_steps = match needs_history {
+            true => color_steps(device, passes, state, normal_view),
+            false => Vec::new(),
+        };
 
         state.frame = state.frame.wrapping_add(1);
         state.history = Some(History {
@@ -389,6 +397,7 @@ impl ScreenTrace {
             compose,
             misty,
             world_copy,
+            needs_history,
             color: state.color.clone(),
             color_steps,
         })

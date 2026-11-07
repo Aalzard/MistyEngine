@@ -185,9 +185,28 @@ fn misty_world_irradiance(world: vec3<f32>, n: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(0.0);
 }
 
-// The ambient of a shader with its own lighting (grass, trees): Misty GI's irradiance where it
-// has one, else the shader's own `hemisphere` ambient (already × the environment intensity).
-fn misty_ambient(hemisphere: vec3<f32>, world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+// The ambient of a shader with its own lighting, for dense surfaces (grass): Misty GI's
+// per-pixel irradiance where the prepass saw this surface (one texel read), else the shader's
+// own `hemisphere` ambient (already × the environment intensity). The world lookup below costs
+// 32–64 storage reads per call: far too many for every grass fragment.
+fn misty_ambient(hemisphere: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+    if (screen_trace.misc.w <= 0.0) {
+        return hemisphere;
+    }
+    let t = screen_trace_sample(world);
+    return select(hemisphere, t.gi.rgb, t.valid);
+}
+
+// `misty_ambient` for sparser surfaces (tree crowns, impostors): where there is no texel, the
+// world lookup of the probe clipmap.
+fn misty_ambient_world(hemisphere: vec3<f32>, world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+    if (screen_trace.misc.w <= 0.0) {
+        return hemisphere;
+    }
+    let t = screen_trace_sample(world);
+    if (t.valid) {
+        return t.gi.rgb;
+    }
     let e = misty_world_irradiance(world, n);
     return select(hemisphere, e.rgb, e.w > 0.0);
 }
