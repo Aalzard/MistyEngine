@@ -138,12 +138,13 @@ chunks per cascade) and ±0 on Medium and Low. The CPU cost is unchanged within 
 ## Golden shots
 
 `cargo test --release -p misty_engine --lib golden_shots -- --ignored --nocapture --test-threads=1`
-on main's references (with the rocks): CyclesRoom is unchanged at every level (mean 0.00). Four
-MeadowDemo shots drift, as intended:
+on main's references (checked after merging the rocks, and again after merging the flowers):
+CyclesRoom is unchanged at every level (mean 0.00). Four MeadowDemo shots drift, as intended:
 - `medium_close`, `high_close`, `ultra_close` (mean 0.86–1.03, 0.15–0.68 % of pixels): the
   near grass shadow map's blades now stand at full height around the crouching camera, and the
   shadow cards no longer re-cut, so the grass shadows differ in fine detail.
-- `ultra_behind` (mean 0.55, 0.83 %): full tree meshes in cascade 1 shadow the crowns.
+- `ultra_behind` (mean 0.55–0.60, 0.83–0.97 %): full tree meshes in cascade 1 shadow the
+  crowns.
 
 Every other shot stays within the tolerance. Only the meadow references were updated
 (`MISTY_GOLDEN=update MISTY_GOLDEN_SHOTS=meadow`).
