@@ -254,6 +254,10 @@ pub struct RenderSettings {
     /// Occlusion Culling window: bake parameters and the baked data (left out while default).
     #[serde(skip_serializing_if = "crate::occlusion::OcclusionSettings::is_default")]
     pub occlusion: crate::occlusion::OcclusionSettings,
+    /// Lighting window ▸ Realtime Global Illumination: Misty GI for every camera of the scene
+    /// (at Quality ▸ Global Illumination; a Post-process Volume's override takes precedence).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub realtime_gi: bool,
 }
 
 impl Default for RenderSettings {
@@ -266,6 +270,7 @@ impl Default for RenderSettings {
             lightmapping: Default::default(),
             light_probes: None,
             occlusion: Default::default(),
+            realtime_gi: false,
         }
     }
 }

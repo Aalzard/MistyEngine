@@ -129,6 +129,8 @@ impl Gpu {
             vp.filter = Some(filter);
         }
         let target = vp.target.as_ref().expect("target created above");
+        // The Scene view shares the Game view's Misty GI clipmaps when its camera is near.
+        target.set_misty_gi_secondary(matches!(view, ViewId::Scene));
         self.renderer.render_with_effects(
             &self.state.device,
             &self.state.queue,

@@ -1182,6 +1182,10 @@ impl Renderer {
             // (Made before Quality ▸ Anti-Aliasing changed: the host makes a new one.)
             return;
         }
+        // Quality ▸ Global Illumination caps Misty GI whatever the scene or volume asks for.
+        let mut post = frame.post;
+        post.misty_gi = post.misty_gi.capped(self.quality.global_illumination);
+        let frame = &Frame { post, ..*frame };
         let emitters = if frame.shaded {
             area::emitter_draws(frame.lights)
         } else {

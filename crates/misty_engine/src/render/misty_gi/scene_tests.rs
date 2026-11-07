@@ -6,6 +6,8 @@
 //! - `misty_gi_scene_meadow_shots`: MeadowDemo with and without Misty GI
 //!   (`docs/screenshots/gfx/gi_meadow_<shot>_<off|misty>.png`), including a "grove" shot from
 //!   beside the tree nearest the scene camera (sky occlusion under the canopy).
+//! - `misty_gi_scene_meadow_options`: the ambient options for the user (off, on, on with the
+//!   ambient lowered) and the grove with virtual shadow maps.
 
 use std::path::PathBuf;
 
@@ -213,6 +215,126 @@ fn misty_gi_scene_meadow_shots() {
                 .expect("png");
             eprintln!("wrote {}", path.display());
         }
+    }
+}
+
+/// MeadowDemo ambient options for the user (`gi_meadow_opt_<shot>_<variant>.png`): Misty GI
+/// off; on with the scene's ambient; on with the ambient (Lighting ▸ Environment ▸ Intensity)
+/// lowered to 0.6 and 0.4 so the traced bounce carries more of the fill. The grove shots also
+/// render with virtual shadow maps (`_vsm`) to compare Misty GI's sun with their shadows. The
+/// scene file is not changed.
+#[test]
+#[ignore = "writes option renders into docs/screenshots/gfx; run on purpose"]
+fn misty_gi_scene_meadow_options() {
+    use crate::quality::ShadowMode;
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let (w, h) = (1280, 720);
+    let shots: [(ViewFn, &str); 4] = [
+        (|| meadow_view(Shot::WideMidday), "wide"),
+        (grove_view, "grove"),
+        (|| meadow_view(Shot::WideGolden), "wide_golden"),
+        (golden_grove_view, "grove_golden"),
+    ];
+    // (label, Misty GI, ambient intensity, shadow mode)
+    let variants = [
+        ("off", false, 1.0, ShadowMode::Cascaded),
+        ("misty", true, 1.0, ShadowMode::Cascaded),
+        ("misty_amb60", true, 0.6, ShadowMode::Cascaded),
+        ("misty_amb40", true, 0.4, ShadowMode::Cascaded),
+        ("off_vsm", false, 1.0, ShadowMode::Virtual),
+        ("misty_vsm", true, 1.0, ShadowMode::Virtual),
+    ];
+    for (view, name) in shots {
+        for (label, on, ambient, shadows) in variants {
+            if shadows == ShadowMode::Virtual && !name.starts_with("grove") {
+                continue;
+            }
+            let mut v = with_misty(view(), on.then_some(ScreenSpaceQuality::High));
+            v.environment.settings.environment_lighting.intensity *= ambient;
+            let mut r = Renderer::with_queue(&device, &queue);
+            r.set_quality(
+                &device,
+                &QualityLevel {
+                    shadow_mode: shadows,
+                    ..QualityLevel::high()
+                },
+            );
+            let target = r.create_target(&device, w, h);
+            let frame = v.frame();
+            for _ in 0..90 {
+                r.render(&device, &queue, &target, &frame);
+                if shadows == ShadowMode::Virtual {
+                    // (Virtual shadow pages arrive a frame after they are asked for.)
+                    let _ = device.poll(wgpu::PollType::wait_indefinitely());
+                }
+            }
+            let rgba = read_back(&device, &queue, &target);
+            let path = screenshots().join(format!("gi_meadow_opt_{name}_{label}.png"));
+            image::RgbaImage::from_raw(w, h, rgba)
+                .expect("size")
+                .save(&path)
+                .expect("png");
+            eprintln!("wrote {}", path.display());
+        }
+    }
+}
+
+/// The editor's case: a Game view and a Scene view a few metres from it, both 1920×1080 at
+/// High, rendered in turn. GPU time of the pair with the Scene view secondary (it gathers
+/// from the Game view's clipmaps) and with it updating clipmaps of its own.
+#[test]
+#[ignore = "timing, prints only"]
+fn misty_gi_scene_shared_views() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    for (name, view) in [
+        ("MeadowDemo", (|| meadow_view(Shot::WideGolden)) as ViewFn),
+        ("CyclesRoomDemo", cycles_view),
+    ] {
+        let game = with_misty(view(), Some(ScreenSpaceQuality::High));
+        let mut scene = with_misty(view(), Some(ScreenSpaceQuality::High));
+        scene.camera.position += glam::Vec3::new(1.5, 0.8, -1.0);
+        let mut times = Vec::new();
+        for secondary in [false, true] {
+            let mut r = Renderer::with_queue(&device, &queue);
+            r.set_quality(&device, &QualityLevel::high());
+            let a = r.create_view_target(&device, 1920, 1080);
+            let b = r.create_view_target(&device, 1920, 1080);
+            b.set_misty_gi_secondary(secondary);
+            let (fa, fb) = (game.frame(), scene.frame());
+            let mut ms = Vec::new();
+            for i in 0..160 {
+                r.render(&device, &queue, &a, &fa);
+                let _ = device.poll(wgpu::PollType::wait_indefinitely());
+                r.render(&device, &queue, &b, &fb);
+                let _ = device.poll(wgpu::PollType::wait_indefinitely());
+                if i >= 60 {
+                    ms.extend(r.gpu_ms());
+                }
+            }
+            // (Each reading is one view's render; two views per pair.)
+            let pair = 2.0 * ms.iter().sum::<f32>() / ms.len().max(1) as f32;
+            eprintln!(
+                "{name}: Game + Scene view {:.2} ms per pair, Scene view {} ({} worlds)",
+                pair,
+                if secondary {
+                    "secondary"
+                } else {
+                    "own clipmaps"
+                },
+                r.screen_trace.misty.worlds.len()
+            );
+            times.push(pair);
+        }
+        eprintln!(
+            "{name}: sharing saves {:.2} ms per editor frame",
+            times[0] - times[1]
+        );
     }
 }
 

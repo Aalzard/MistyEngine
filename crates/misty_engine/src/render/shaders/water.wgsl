@@ -212,6 +212,14 @@ fn water_ambient(n: vec3<f32>) -> vec3<f32> {
     return a * lights.info.z;
 }
 
+// Misty GI at a point of the water: the probe clipmap's light for normal `n` (sky occlusion,
+// bounce), else `hemisphere`. The prepass never sees the water (it is transparent), so this is
+// the world lookup, not the per-pixel GI texel.
+fn water_gi(world: vec3<f32>, n: vec3<f32>, hemisphere: vec3<f32>) -> vec3<f32> {
+    let e = misty_world_irradiance(world, n);
+    return select(hemisphere, e.rgb, e.w > 0.0);
+}
+
 // Shadow of the first directional light on a point (1 = lit).
 fn water_sun_shadow(world: vec3<f32>, n: vec3<f32>) -> f32 {
     let count = u32(lights.info.x);
@@ -380,7 +388,9 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
     // Rectangle lights: glints on the surface and light into the body.
     let smooth_ = clamp(water.p1.y - (1.0 - far) * 0.12, 0.0, 1.0);
     let rect = water_rect_lights(in.world, n, v, 1.0 - smooth_);
-    let body_light = water_ambient(vec3<f32>(0.0, 1.0, 0.0)) + sun * max(l.y, 0.0) * 0.35 * shadow + rect.body * 0.35;
+    let up = vec3<f32>(0.0, 1.0, 0.0);
+    let ambient_up = water_gi(in.world, up, water_ambient(up));
+    let body_light = ambient_up + sun * max(l.y, 0.0) * 0.35 * shadow + rect.body * 0.35;
     let body = mix(water.shallow.rgb, water.deep.rgb, depth_tint) * body_light;
     let trans = transmittance(thickness);
     // The scene behind is added after the fog (it is fogged already); see `water_fog`.
@@ -393,6 +403,12 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
     if (sky_is_hdri()) {
         // The HDRI's prefiltered cube, blurred by the surface's roughness.
         reflected = sky_hdri_specular(r, 1.0 - clamp(water.p1.y, 0.0, 1.0));
+    }
+    // Misty GI: the sky reflection dimmed or tinted by what the probes see that way (under a
+    // bridge, beside a sunlit wall); SSR's sharper hits still win where it finds something.
+    let gi_r = misty_world_irradiance(in.world, r);
+    if (gi_r.w > 0.0) {
+        reflected *= clamp(gi_r.rgb / max(water_ambient(r), vec3<f32>(1e-3)), vec3<f32>(0.0), vec3<f32>(2.0));
     }
     if (water.p1.w > 0.5) {
         let hit = screen_reflection(in.world, r);
@@ -424,7 +440,7 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> MeshTargets {
         shore = water.p3.y * band * mix(waves, 1.0, band * band);
     }
     let foam = clamp(smoothstep(0.35, 0.75, pattern + max(crest_foam, shore) * 0.9) * max(crest_foam, shore) * 1.4, 0.0, 1.0);
-    let foam_lit = water.foam_color.rgb * (water_ambient(n) + sun * (n_dot_l * 0.8 + 0.2) * shadow);
+    let foam_lit = water.foam_color.rgb * (ambient_up + sun * (n_dot_l * 0.8 + 0.2) * shadow);
 
     var color = mix(refracted, reflected, fresnel) + sss;
     color = mix(color, foam_lit, foam) + spec * (1.0 - foam);

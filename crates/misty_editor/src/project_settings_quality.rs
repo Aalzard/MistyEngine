@@ -474,6 +474,20 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     );
     edited |= row(
         ui,
+        "Global Illumination",
+        "Misty GI: realtime bounce light, sky occlusion and glossy reflections, when the scene          or a Post-process Volume turns it on. The highest quality it runs at.",
+        |ui| {
+            combo(
+                ui,
+                "q_gi",
+                &mut l.global_illumination,
+                &Tier::ALL,
+                Tier::label,
+            )
+        },
+    );
+    edited |= row(
+        ui,
         "Volumetric Fog",
         "Light shafts and fog that lights shine through.",
         |ui| combo(ui, "q_fog", &mut l.volumetric_fog, &Tier::ALL, Tier::label),
