@@ -201,6 +201,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 FogSettings::default()
             };
             post.fog.debug = debug;
+            // No motion blur while flying the editor camera (Unity's Scene view leaves it out
+            // too); the Game view shows it.
+            post.motion_blur = Default::default();
             // Clouds follow their own toggle (drawn with the skybox).
             post.clouds = if sv.skybox && fx.clouds {
                 volume.clouds

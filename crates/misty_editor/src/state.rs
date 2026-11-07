@@ -178,6 +178,9 @@ pub fn object_icon(scene: &Scene, e: Entity) -> &'static str {
     if w.get::<&misty_engine::scene::FogVolume>(e).is_ok() {
         return "☁";
     }
+    if w.get::<&misty_engine::scene::DecalProjector>(e).is_ok() {
+        return "▣";
+    }
     if w.get::<&misty_engine::scene::Terrain>(e).is_ok() {
         return "⛰";
     }

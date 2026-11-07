@@ -313,6 +313,12 @@ fn create(s: &mut EditorState, what: Create, parent: Option<Entity>) {
         }
         Create::Camera => s.scene.add(e, Camera::default()),
         Create::FogVolume => s.scene.add(e, misty_engine::scene::FogVolume::default()),
+        Create::DecalProjector => {
+            // Pointing down, so it paints the ground under where it is made.
+            t.set_euler(Vec3::new(90.0, 0.0, 0.0));
+            s.scene
+                .add(e, misty_engine::scene::DecalProjector::default());
+        }
         Create::Water(kind) => {
             // The ocean sits at sea level; lakes and rivers where the view is looking.
             if kind == misty_engine::water::WaterKind::Ocean && parent.is_none() {
