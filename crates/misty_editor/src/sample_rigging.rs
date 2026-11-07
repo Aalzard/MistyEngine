@@ -440,15 +440,15 @@ fn rigging_demo_matches_its_generator_and_plays() {
 
     let root = project();
     for (path, m) in materials() {
-        assert_eq!(Material::load(&root.join(path)).unwrap(), m, "{path}");
+        crate::test_util::assert_close(&Material::load(&root.join(path)).unwrap(), &m, path);
     }
     let script = std::fs::read_to_string(root.join(SCRIPT)).unwrap();
     assert_eq!(script.replace("\r\n", "\n"), SCRIPT_SOURCE);
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text,
-        demo_scene().to_json(),
-        "regenerate with write_rigging_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_rigging_demo",
     );
 
     let (mut scene, report) = Scene::load(&root.join(SCENE)).unwrap();

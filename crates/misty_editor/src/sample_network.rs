@@ -377,16 +377,16 @@ fn network_demo_matches_its_generator() {
         assert_eq!(on_disk.replace("\r\n", "\n"), src, "{rel}");
     }
     let text = std::fs::read_to_string(root.join(PREFAB)).unwrap();
-    assert_eq!(
-        without_guids(&text),
-        without_guids(&prefab().to_json()),
-        "regenerate with write_network_demo"
+    crate::test_util::assert_value_close(
+        &without_guids(&text),
+        &without_guids(&prefab().to_json()),
+        "regenerate with write_network_demo",
     );
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text.replace("\r\n", "\n"),
-        demo_scene().to_json(),
-        "regenerate with write_network_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_network_demo",
     );
     let (_, report) = Scene::from_json("NetworkDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

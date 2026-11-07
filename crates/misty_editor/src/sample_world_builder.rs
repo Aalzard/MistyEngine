@@ -258,36 +258,34 @@ fn write_world_builder_demo() {
 fn world_builder_demo_matches_its_generator() {
     let root = project();
     for p in Preset::ALL {
-        assert_eq!(
-            Biome::load(&root.join(p.path())).unwrap(),
-            p.biome(),
-            "{}",
-            p.path()
+        crate::test_util::assert_close(
+            &Biome::load(&root.join(p.path())).unwrap(),
+            &p.biome(),
+            p.path(),
         );
     }
     for stem in world_gen::biome::TEXTURES {
         let on_disk = misty_engine::image::open(root.join(world_gen::biome::texture_path(stem)))
             .unwrap()
             .into_rgba8();
-        assert_eq!(
-            on_disk,
-            world_gen::textures::generate(stem, 256).unwrap(),
-            "{stem}"
-        );
+        let generated = world_gen::textures::generate(stem, 256).unwrap();
+        crate::test_util::assert_image_close(&on_disk, &generated, stem);
     }
     let (data, scene) = generate();
     let on_disk = TerrainData::load(&root.join(DATA)).unwrap();
     assert_eq!(on_disk.layers, data.layers);
     assert_eq!(on_disk.heightmap_resolution, data.heightmap_resolution);
-    for (a, b) in on_disk.heights.iter().zip(&data.heights) {
-        assert!((a - b).abs() < 3.0 / 65535.0);
+    assert_eq!(on_disk.heights.len(), data.heights.len());
+    for (i, (a, b)) in on_disk.heights.iter().zip(&data.heights).enumerate() {
+        assert!((a - b).abs() < 3.0 / 65535.0, "height {i}: {a} != {b}");
     }
-    for (a, b) in on_disk.alphamap.iter().zip(&data.alphamap) {
-        assert!(a.iter().zip(b).all(|(x, y)| x.abs_diff(*y) <= 2));
+    for (i, (a, b)) in on_disk.alphamap.iter().zip(&data.alphamap).enumerate() {
+        let close = a.iter().zip(b).all(|(x, y)| x.abs_diff(*y) <= 2);
+        assert!(close, "alphamap {i}: {a:?} != {b:?}");
     }
     let (loaded, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(loaded.to_json(), scene.to_json());
+    crate::test_util::assert_json_close(&loaded.to_json(), &scene.to_json(), SCENE);
 }
 
 /// The demo has what it promises: lake in the crater, river and sea water, a flat plateau,

@@ -122,7 +122,7 @@ pub fn fields(d: &TerrainData, water: &WaterMap, regions: &Regions, biome_count:
             *out = TexelInfo {
                 height: c,
                 height01: c / size.y.max(1e-3),
-                slope: (gx * gx + gz * gz).sqrt().atan().to_degrees(),
+                slope: super::portable::atan((gx * gx + gz * gz).sqrt()).to_degrees(),
                 curvature: (l + r - 2.0 * c) / (step.x * step.x)
                     + (b + t - 2.0 * c) / (step.y * step.y),
                 water_dist: dist[i],

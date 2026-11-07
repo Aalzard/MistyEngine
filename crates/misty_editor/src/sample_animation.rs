@@ -162,8 +162,12 @@ fn write_animation_sample() {
 #[test]
 fn animation_sample_matches_its_generator_and_plays() {
     let root = project();
-    assert_eq!(AnimationClip::load(&root.join(BOB)).unwrap(), bob());
-    assert_eq!(AnimationClip::load(&root.join(BLINK)).unwrap(), blink());
+    crate::test_util::assert_close(&AnimationClip::load(&root.join(BOB)).unwrap(), &bob(), BOB);
+    crate::test_util::assert_close(
+        &AnimationClip::load(&root.join(BLINK)).unwrap(),
+        &blink(),
+        BLINK,
+    );
     let (mut scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     // Play it for a second: the cube bobs and the light blinks.

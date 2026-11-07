@@ -329,18 +329,18 @@ fn materials_demo_matches_its_generator() {
         let file = misty_engine::image::open(root.join(rel))
             .unwrap()
             .into_rgba8();
-        assert_eq!(file, img, "{rel}");
+        crate::test_util::assert_image_close(&file, &img, rel);
     }
     for (rel, m) in materials() {
-        assert_eq!(Material::load(&root.join(rel)).unwrap(), m, "{rel}");
+        crate::test_util::assert_close(&Material::load(&root.join(rel)).unwrap(), &m, rel);
     }
     let script = std::fs::read_to_string(root.join(SCRIPT)).unwrap();
     assert_eq!(script.replace("\r\n", "\n"), PULSE_LUA);
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text.replace("\r\n", "\n"),
-        demo_scene().to_json(),
-        "regenerate with write_materials_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_materials_demo",
     );
     let (_, report) = Scene::from_json("MaterialsDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

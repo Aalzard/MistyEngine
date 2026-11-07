@@ -582,17 +582,17 @@ fn write_vehicle_demo() {
 fn vehicle_demo_matches_its_generator() {
     let root = project();
     for (rel, m) in materials() {
-        assert_eq!(Material::load(&root.join(rel)).unwrap(), m, "{rel}");
+        crate::test_util::assert_close(&Material::load(&root.join(rel)).unwrap(), &m, rel);
     }
     for (rel, src) in scripts() {
         let on_disk = std::fs::read_to_string(root.join(rel)).unwrap();
         assert_eq!(on_disk.replace("\r\n", "\n"), src, "{rel}");
     }
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text.replace("\r\n", "\n"),
-        demo_scene().to_json(),
-        "regenerate with write_vehicle_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_vehicle_demo",
     );
     let (scene, report) = Scene::from_json("VehicleDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

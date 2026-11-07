@@ -2403,9 +2403,24 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   Vulkan drivers, Wayland vs X11 (`env -u WAYLAND_DISPLAY`), `WGPU_BACKEND=gl`, file dialogs
   through xdg-desktop-portal or zenity. docs/release.md describes the Linux package and workflow.
 
+- Linux test run (branch linux-tests): the first `ci/linux` run built fine; 10 sample
+  `*_matches_its_generator` tests failed because they compared regenerated files to the
+  Windows-made ones byte for byte, and Linux's libm `sin` / `cos` / `pow` differ in the last bit.
+  New `misty_editor::test_util` (test-only): `assert_json_close` (text around the numbers
+  identical, integers equal, floats within 1e-5 relative / 1e-6 absolute), `assert_value_close`,
+  `assert_close` (any `Serialize` value: materials, clips, particle systems…), `assert_glb_close`
+  (JSON chunk as above, BIN chunk exact except FLOAT accessor elements) and `assert_image_close`
+  (each channel within one step, at most 1% of them). All 50 generator tests use it; its unit
+  tests prove real changes (a moved float, an integer, a string, a key, an index) still fail.
+  Failure messages list the first differences instead of dumping whole files (the old glb
+  `assert_eq!` dump cut off the CI log).
+- World Builder erosion amplified the libm noise into different heights, so World Builder now
+  uses `world_gen::portable` (sin / cos / tan / atan / atan2 / pow from the pure-Rust `libm`
+  crate): the same seed builds the same terrain on every OS. WorldBuilderDemo regenerated.
+- CI: `--no-fail-fast` output goes to `test-results.txt` (uploaded as the `test-results`
+  artifact) and the run summary lists every crate's `test result` line and failures.
+
 ### Not done yet
-- Nothing has run on Linux yet: the first `ci/linux` run is the first real Linux build and test
-  run (expect some Windows assumptions in tests to show up there).
 - No `.desktop` file or icon install, no AppImage / Flatpak; the window icon is set at runtime
   (X11), Wayland shows the generic one.
 - Linux ARM64 has no release package (the updater sends those users to the release page).

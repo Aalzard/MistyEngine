@@ -512,16 +512,24 @@ fn tilemap_demo_matches_its_generator() {
     for (rel, img, imp) in textures() {
         let path = root.join(rel);
         let on_disk = misty_engine::image::open(&path).unwrap().into_rgba8();
-        assert_eq!(on_disk, img, "{rel}");
-        assert_eq!(TextureImporter::try_load(&path).unwrap(), imp, "{rel}.meta");
+        crate::test_util::assert_image_close(&on_disk, &img, rel);
+        crate::test_util::assert_close(
+            &TextureImporter::try_load(&path).unwrap(),
+            &imp,
+            format!("{rel}.meta"),
+        );
     }
     for (rel, t) in tiles() {
-        assert_eq!(TileAsset::load(&root.join(rel)).unwrap(), t, "{rel}");
+        crate::test_util::assert_close(&TileAsset::load(&root.join(rel)).unwrap(), &t, rel);
     }
-    assert_eq!(TilePalette::load(&root.join(PALETTE)).unwrap(), palette());
+    crate::test_util::assert_close(
+        &TilePalette::load(&root.join(PALETTE)).unwrap(),
+        &palette(),
+        PALETTE,
+    );
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(scene.to_json(), demo_scene().to_json());
+    crate::test_util::assert_json_close(&scene.to_json(), &demo_scene().to_json(), SCENE);
 }
 
 /// Rule tiles picked the edges: grass on top, corners at the ends, platforms one tall.

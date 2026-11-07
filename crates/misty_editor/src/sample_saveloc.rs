@@ -509,20 +509,24 @@ fn write_saveloc_demo() {
 fn saveloc_demo_matches_its_generator() {
     let root = project();
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text,
-        demo_scene().to_json(),
-        "regenerate with write_saveloc_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_saveloc_demo",
     );
     let (scene, report) = Scene::from_json("SaveLocDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     let t = std::fs::read_to_string(root.join(TABLE)).unwrap();
-    assert_eq!(t, table().to_json(), "regenerate with write_saveloc_demo");
+    crate::test_util::assert_json_close(
+        &t,
+        &table().to_json(),
+        "regenerate with write_saveloc_demo",
+    );
     let p = std::fs::read_to_string(root.join(COIN)).unwrap();
-    assert_eq!(
-        p,
-        coin_prefab().to_json(),
-        "regenerate with write_saveloc_demo"
+    crate::test_util::assert_json_close(
+        &p,
+        &coin_prefab().to_json(),
+        "regenerate with write_saveloc_demo",
     );
     // Every Localized Text names a key of the table.
     let table = table();

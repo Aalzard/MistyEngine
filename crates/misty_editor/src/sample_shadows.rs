@@ -210,14 +210,22 @@ fn write_shadows_demo() {
 #[test]
 fn shadows_demo_matches_its_generator() {
     let root = project();
-    assert_eq!(Material::load(&root.join(GROUND)).unwrap(), ground());
-    assert_eq!(Material::load(&root.join(POLE)).unwrap(), pole());
-    assert_eq!(Material::load(&root.join(FIGURE)).unwrap(), figure());
+    crate::test_util::assert_close(
+        &Material::load(&root.join(GROUND)).unwrap(),
+        &ground(),
+        GROUND,
+    );
+    crate::test_util::assert_close(&Material::load(&root.join(POLE)).unwrap(), &pole(), POLE);
+    crate::test_util::assert_close(
+        &Material::load(&root.join(FIGURE)).unwrap(),
+        &figure(),
+        FIGURE,
+    );
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text.replace("\r\n", "\n"),
-        demo_scene().to_json(),
-        "regenerate with write_shadows_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_shadows_demo",
     );
     let (scene, report) = Scene::from_json("ShadowsDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

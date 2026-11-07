@@ -179,6 +179,8 @@ mod templates;
 mod terrain_rules;
 mod terrain_tools;
 mod terrain_trees_ui;
+#[cfg(test)]
+mod test_util;
 mod theme;
 mod thumbnails;
 mod tile_palette;

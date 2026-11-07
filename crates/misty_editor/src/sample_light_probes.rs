@@ -280,14 +280,15 @@ fn write_light_probes_demo() {
 fn light_probes_demo_matches_its_generator() {
     let root = project();
     for (path, m) in materials() {
-        assert_eq!(Material::load(&root.join(path)).unwrap(), m, "{path}");
+        crate::test_util::assert_close(&Material::load(&root.join(path)).unwrap(), &m, path);
     }
     let script = std::fs::read_to_string(root.join(SCRIPT)).unwrap();
     assert_eq!(script.replace("\r\n", "\n"), SCRIPT_LUA);
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert!(
-        text.replace("\r\n", "\n") == demo_scene().to_json(),
-        "regenerate with write_light_probes_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_light_probes_demo",
     );
     let (scene, report) = Scene::from_json("LightProbesDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
@@ -296,7 +297,7 @@ fn light_probes_demo_matches_its_generator() {
     let data = LightProbeData::load(&root.join(&rel)).unwrap();
     let positions = light_probes::scene_positions(&scene);
     assert_eq!(positions.len(), 126);
-    assert_eq!(data.positions, positions);
+    crate::test_util::assert_close(&data.positions, &positions, &rel);
 }
 
 /// The baked probes see red by the red wall and blue by the blue wall, and the moving sphere's

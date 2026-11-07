@@ -706,7 +706,7 @@ fn meadow_demo_matches_its_generator() {
     }
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(scene.to_json(), demo_scene(&generated).to_json());
+    crate::test_util::assert_json_close(&scene.to_json(), &demo_scene(&generated).to_json(), SCENE);
     // Trees around, none in the open view ahead of the player.
     assert!(
         generated.trees.instances.len() > 150,

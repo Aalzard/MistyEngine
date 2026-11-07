@@ -356,17 +356,17 @@ fn write_splines_demo() {
 fn splines_demo_matches_its_generator() {
     let root = project();
     for (rel, m) in materials() {
-        assert_eq!(Material::load(&root.join(rel)).unwrap(), m, "{rel}");
+        crate::test_util::assert_close(&Material::load(&root.join(rel)).unwrap(), &m, rel);
     }
     let prefab = std::fs::read_to_string(root.join(LAMP_PREFAB)).unwrap();
-    assert_eq!(prefab.replace("\r\n", "\n"), lamp_prefab().to_json());
+    crate::test_util::assert_json_close(&prefab, &lamp_prefab().to_json(), LAMP_PREFAB);
     let script = std::fs::read_to_string(root.join(RIDER)).unwrap();
     assert_eq!(script.replace("\r\n", "\n"), RIDER_SRC);
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text.replace("\r\n", "\n"),
-        demo_scene().to_json(),
-        "regenerate with write_splines_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_splines_demo",
     );
     let (scene, report) = Scene::from_json("SplinesDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

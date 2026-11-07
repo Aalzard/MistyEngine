@@ -202,7 +202,7 @@ fn clouds_demo_matches_its_generator() {
     }
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(scene.to_json(), demo_scene(&generated).to_json());
+    crate::test_util::assert_json_close(&scene.to_json(), &demo_scene(&generated).to_json(), SCENE);
     let post = misty_engine::render_scene::post_settings(&scene);
     assert!(post.clouds.is_on() && post.clouds.shadows);
     // The sun is low and ahead of the camera: silver linings in view.
