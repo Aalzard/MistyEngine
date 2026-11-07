@@ -261,6 +261,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::EditorMenu(path) => {
             crate::editor_scripts::menus::run(s, &path);
         }
+        Action::VirtualGeometry(cmd) => crate::vgeo_convert::run(s, cmd),
         other => return crate::prefabs::apply(s, other),
     }
     s.selection.retain_existing(&s.scene);

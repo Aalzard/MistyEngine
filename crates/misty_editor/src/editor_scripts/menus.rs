@@ -16,12 +16,13 @@ use crate::actions::Action;
 use crate::state::EditorState;
 
 /// The menu bar's own menus, in order.
-pub const BUILTIN: [&str; 7] = [
+pub const BUILTIN: [&str; 8] = [
     "File",
     "Edit",
     "Assets",
     "GameObject",
     "Component",
+    "Tools",
     "Window",
     "Help",
 ];

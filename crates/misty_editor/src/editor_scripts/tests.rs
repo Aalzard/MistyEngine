@@ -129,7 +129,9 @@ fn menu_items_register_validate_and_run() {
             "GameObject/Script Item"
         ]
     );
-    assert_eq!(menus::extra_tops(&s), ["Tools"]);
+    // "Tools" is a built-in menu (Rendering ▸ Convert … to Virtual Geometry): the script items
+    // join it.
+    assert!(menus::extra_tops(&s).is_empty());
     // Running an item changes the scene; validate keeps the other one off without a selection.
     assert!(menus::run(&mut s, "Tools/Make Marker"));
     assert!(names(&s).contains(&"Marker".to_owned()));

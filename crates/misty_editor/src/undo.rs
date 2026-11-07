@@ -40,6 +40,44 @@ impl MaterialUndo {
     }
 }
 
+/// Model import settings (Virtual Geometry) and Quality levels as they were before a
+/// one-click conversion (see `vgeo_convert`).
+pub struct ImportUndo {
+    /// (model path, Virtual Geometry import setting).
+    pub models: Vec<(String, bool)>,
+    /// Every Quality level, when the conversion turned some on.
+    pub quality: Option<misty_engine::quality::QualitySettings>,
+}
+
+impl ImportUndo {
+    /// Put the settings back (saving the `.meta` files and Project Settings); returns the
+    /// ones they replaced.
+    fn restore(self, to: &mut Restore) -> ImportUndo {
+        let mut current = ImportUndo {
+            models: Vec::new(),
+            quality: None,
+        };
+        for (rel, on) in &self.models {
+            let abs = to.assets.absolute(rel);
+            let mut settings = misty_engine::models::ModelImporter::load(&abs);
+            current
+                .models
+                .push((rel.clone(), settings.virtual_geometry));
+            settings.virtual_geometry = *on;
+            let _ = settings.save(&abs);
+        }
+        let rels: Vec<String> = self.models.into_iter().map(|(rel, _)| rel).collect();
+        misty_engine::models::forget(&rels);
+        if let Some(q) = self.quality {
+            current.quality = Some(std::mem::replace(&mut to.project_settings.quality, q));
+            let settings = &to.project_settings;
+            let _ = settings.save(&to.assets.absolute(""));
+            misty_engine::quality::install(&settings.quality, misty_engine::quality::level());
+        }
+        current
+    }
+}
+
 pub struct Snapshot {
     pub label: String,
     pub scene: Scene,
@@ -47,6 +85,7 @@ pub struct Snapshot {
     pub clip: Option<ClipSnapshot>,
     pub terrain: Option<TerrainUndo>,
     pub material: Option<MaterialUndo>,
+    pub imports: Option<ImportUndo>,
     /// Approximate memory held (for the history cap).
     bytes: usize,
 }
@@ -63,6 +102,7 @@ impl Snapshot {
             clip: None,
             terrain: None,
             material: None,
+            imports: None,
             bytes: 0,
         }
     }
@@ -80,6 +120,7 @@ pub struct Restore<'a> {
     pub selection: &'a mut Selection,
     pub clips: &'a mut ClipStore,
     pub assets: &'a mut AssetDatabase,
+    pub project_settings: &'a mut misty_engine::settings::ProjectSettings,
 }
 
 /// History cap: the oldest steps are dropped past either limit (the newest step always stays).
@@ -145,6 +186,21 @@ impl UndoStack {
             rel: rel.to_owned(),
             material: before.clone(),
         });
+        self.commit(snap);
+        self.reset_interaction();
+    }
+
+    /// A one-click change of model import settings (and Quality levels): one step that puts
+    /// `before` back on undo. The scene is unchanged by it.
+    pub fn push_imports(
+        &mut self,
+        label: &str,
+        scene: &Scene,
+        selection: &Selection,
+        before: ImportUndo,
+    ) {
+        let mut snap = Snapshot::new(label, scene, selection);
+        snap.imports = Some(before);
         self.commit(snap);
         self.reset_interaction();
     }
@@ -329,6 +385,7 @@ impl UndoStack {
             clip: snap.clip.map(|c| to.clips.restore(c)),
             terrain: snap.terrain.map(TerrainUndo::restore),
             material: snap.material.map(|m| m.restore(to.assets)),
+            imports: snap.imports.map(|i| i.restore(to)),
             bytes: snap.bytes,
         };
         (snap.label, current)

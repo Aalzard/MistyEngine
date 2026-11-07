@@ -332,6 +332,8 @@ pub enum Action {
     Step,
     /// Menu item that exists for layout parity but is not built yet.
     NotImplemented(&'static str),
+    /// Enable / Disable Virtual Geometry on the selection, or a Convert … dialog.
+    VirtualGeometry(crate::vgeo_convert::Command),
     /// Run an editor script's menu item (its path, "Tools/Scatter Tool").
     EditorMenu(String),
     /// Close a dock tab if it is open (`ToolWindow:Close()`).

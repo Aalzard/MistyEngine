@@ -900,6 +900,7 @@ impl eframe::App for EditorApp {
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
+        crate::vgeo_convert::show(&ctx, &mut self.state);
         crate::saveloc::show(&ctx, &mut self.state);
         crate::multiplayer::show(&ctx, &mut self.state);
         crate::mesh_builder::shape_window(&ctx, &mut self.state);

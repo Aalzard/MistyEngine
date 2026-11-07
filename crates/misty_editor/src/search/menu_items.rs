@@ -93,6 +93,7 @@ pub fn all(s: &EditorState) -> Vec<MenuCommand> {
         );
     }
     presets(&mut l, s);
+    tools(&mut l);
     window(&mut l, s);
     // Editor script menu items (by their last path segment).
     for m in &s.editor_scripts.menus {
@@ -379,6 +380,23 @@ fn gameobject(l: &mut List) {
         "",
         Action::ClearParent,
     );
+}
+
+fn tools(l: &mut List) {
+    use crate::vgeo_convert::{Command, Scope};
+    for scope in [Scope::Scene, Scope::Project] {
+        let path = format!("Tools/Rendering/{}...", scope.title());
+        let action = Action::VirtualGeometry(Command::ConvertDialog(scope));
+        l.action(scope.title(), &path, "", action);
+    }
+    let selected = [
+        ("Enable Virtual Geometry", Command::EnableSelected),
+        ("Disable Virtual Geometry", Command::DisableSelected),
+    ];
+    for (title, cmd) in selected {
+        let path = format!("GameObject/{title}");
+        l.action(title, &path, "", Action::VirtualGeometry(cmd));
+    }
 }
 
 fn window(l: &mut List, s: &EditorState) {
