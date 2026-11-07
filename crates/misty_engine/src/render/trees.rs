@@ -647,6 +647,9 @@ pub(super) struct TreeRenderer {
     pending: HashMap<String, Pending>,
     /// Tree assets of the last frame not drawn yet: being built or uploaded.
     loading: usize,
+    /// A tree was uploaded this frame (one per frame while streaming: ~25 ms each, and with
+    /// the models cached on disk every tree of a scene is ready in the same frame).
+    uploaded: bool,
     terrains: HashMap<String, TerrainTrees>,
     instance_buffer: Option<wgpu::Buffer>,
     /// This frame's tree keys (index = `Batch::tree`), groups, and draws per pass.
@@ -709,6 +712,7 @@ impl TreeRenderer {
             trees: HashMap::new(),
             pending: HashMap::new(),
             loading: 0,
+            uploaded: false,
             terrains: HashMap::new(),
             instance_buffer: None,
             frame_trees: Vec::new(),
@@ -763,6 +767,8 @@ impl TreeRenderer {
             return true;
         }
         let ready = match self.pending.get_mut(path) {
+            // Already uploaded one this frame: the others wait in their channels.
+            Some(p) if p.version == built.version && self.uploaded => None,
             Some(p) if p.version == built.version => match p.rx.get_mut().map(|r| r.try_recv()) {
                 Ok(Ok(t)) => Some(t),
                 Ok(Err(std::sync::mpsc::TryRecvError::Empty)) => None,
@@ -789,6 +795,7 @@ impl TreeRenderer {
         };
         if let Some(t) = ready {
             crate::profile_scope!("Trees.Upload");
+            self.uploaded = true;
             self.pending.remove(path);
             self.trees
                 .insert(path.to_owned(), GpuTree::new(device, queue, t));
@@ -819,6 +826,7 @@ impl TreeRenderer {
         self.shadows.clear();
         self.shadows.resize(f.cascades.len(), Vec::new());
         self.loading = 0;
+        self.uploaded = false;
         if f.terrains.iter().all(|t| t.data.trees.instances.is_empty()) {
             return;
         }
