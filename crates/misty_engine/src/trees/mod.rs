@@ -8,6 +8,7 @@
 //! [`generate::build`] turns a recipe into a [`generate::TreeModel`] (deterministic for a given
 //! recipe and textures); [`store`] caches built models per asset file.
 
+mod cache;
 pub mod generate;
 pub mod impostor;
 pub mod store;
