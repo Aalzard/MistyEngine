@@ -378,6 +378,8 @@ pub(super) struct TerrainCache {
     grass_params: Vec<Option<GrassFrameParams>>,
     /// Grass culling pipelines (made with the first grass).
     grass_cull: Option<CullPipelines>,
+    /// The cull pipelines made on a worker since the renderer was made (streaming only).
+    grass_cull_prebuilt: super::prebuilt::Prebuilt<CullPipelines>,
     /// The camera's view-projection of the current frame.
     view_proj: Mat4,
     /// Quality ▸ Grass Ground Cover (with the quality's blade share): the terrain paints the
@@ -420,6 +422,7 @@ impl TerrainCache {
             grass_casters: None,
             grass_params: Vec::new(),
             grass_cull: None,
+            grass_cull_prebuilt: Default::default(),
             view_proj: Mat4::IDENTITY,
             ground_cover: None,
             grass_atlas: None,
@@ -527,6 +530,15 @@ impl TerrainCache {
                     entries: &entries,
                 })));
         }
+    }
+
+    /// Start making the grass cull pipelines on a worker thread (streaming only).
+    pub fn prebuild(&mut self, device: &wgpu::Device) {
+        let device = device.clone();
+        self.grass_cull_prebuilt =
+            super::prebuilt::Prebuilt::spawn("misty grass cull pipelines", move || {
+                CullPipelines::new(&device)
+            });
     }
 
     /// Layer texture arrays still being built on worker threads.
@@ -641,7 +653,9 @@ impl TerrainCache {
             };
             if self.grass_cull.is_none() {
                 crate::profile_scope!("Grass.CullPipelines");
-                self.grass_cull = Some(CullPipelines::new(device));
+                let built =
+                    (self.grass_cull_prebuilt.take()).unwrap_or_else(|| CullPipelines::new(device));
+                self.grass_cull = Some(built);
             }
             let casts = d.details.cast_shadows && t.cast_shadows;
             let near = near_map && casts;

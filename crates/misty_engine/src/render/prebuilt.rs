@@ -1,7 +1,8 @@
 //! Things a scene may need on its first frame, started on a worker thread as soon as the
-//! renderer exists, so opening a scene (or entering Play) does not wait for them: the tree and
-//! grass visibility pipelines (tens of milliseconds of shader compiles each) and the grass
-//! atlas mips.
+//! renderer exists, so opening a scene (or entering Play) does not wait for them: the tree,
+//! grass visibility, grass cull, volumetrics and cloud pipelines (tens of milliseconds of
+//! shader compiles each, hundreds on a first launch), the cloud noise volumes, and (process-
+//! wide, in their own modules) the grass atlas mips and the blue noise.
 //!
 //! Only while streaming (`render::grass_streaming`: the editor and the player); with it off
 //! (tests, screenshots) everything is built in place on first use, as before.

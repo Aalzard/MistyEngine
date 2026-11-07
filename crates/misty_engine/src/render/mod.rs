@@ -721,6 +721,7 @@ impl Renderer {
         // wait for on worker threads now (see `prebuilt`).
         if grass_streaming() {
             renderer.trees.prebuild(device, &renderer.pipelines);
+            renderer.terrains.prebuild(device);
             renderer.grass_vis_prebuilt =
                 grass_vis::VisPipelines::prebuild(device, &renderer.pipelines);
             terrain_grass::prewarm_atlas();
@@ -752,6 +753,7 @@ impl Renderer {
         if grass_streaming() {
             let view_layout = &renderer.pipelines.view_layout;
             (renderer.volumetrics).prebuild(device, queue, view_layout);
+            renderer.clouds.prebuild(device, queue);
         }
         renderer
     }
