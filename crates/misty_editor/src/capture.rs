@@ -39,6 +39,11 @@ struct FrameClock {
     /// Frame Play was pressed on (`MISTY_PLAY_AT`) and the worst frame since: (frame, ms).
     play_at: Option<u32>,
     play_worst: (u32, f32),
+    /// Frame the scene was opened on (`MISTY_OPEN_SCENE_AT`) and the worst frame since.
+    open_at: Option<u32>,
+    open_worst: (u32, f32),
+    /// End of the last frame over [`FREEZE_MS`] since the scene was opened, ms after start.
+    open_freeze_end: Option<f32>,
 }
 
 impl FrameClock {
@@ -54,6 +59,12 @@ impl FrameClock {
                 }
                 if self.play_at.is_some() && ms > self.play_worst.1 {
                     self.play_worst = (self.frames, ms);
+                }
+                if self.open_at.is_some() && ms > self.open_worst.1 {
+                    self.open_worst = (self.frames, ms);
+                }
+                if self.open_at.is_some() && ms > FREEZE_MS {
+                    self.open_freeze_end = Some(since_start_ms(now));
                 }
                 if ms > FREEZE_MS {
                     self.freezes += 1;
@@ -81,6 +92,15 @@ impl FrameClock {
             eprintln!(
                 "entering Play at frame {at}: worst frame since {} at {:.0} ms",
                 self.play_worst.0, self.play_worst.1
+            );
+        }
+        if let Some(at) = self.open_at {
+            eprintln!(
+                "opening the scene at frame {at}: worst frame since {} at {:.0} ms; last frame over {FREEZE_MS:.0} ms ends {}",
+                self.open_worst.0,
+                self.open_worst.1,
+                self.open_freeze_end
+                    .map_or("never".to_owned(), |t| format!("{t:.0} ms after start"))
             );
         }
     }
@@ -129,6 +149,17 @@ impl Capture {
             self.clock.play_at = Some(self.frames);
         }
         due
+    }
+
+    /// `MISTY_OPEN_SCENE_AT=<frame>:<scene path>`: open that scene on that editor frame (as
+    /// File ▸ Open Scene does), to time opening a scene in a running editor.
+    pub fn scene_due(&mut self) -> Option<String> {
+        let (at, rel) = open_scene_at()?;
+        if at != self.frames {
+            return None;
+        }
+        self.clock.open_at = Some(self.frames);
+        Some(rel)
     }
 
     /// Call once per frame; requests a screenshot after warm-up and quits once saved.
@@ -181,6 +212,13 @@ impl Capture {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
+}
+
+/// `MISTY_OPEN_SCENE_AT=<frame>:<scene path>`.
+fn open_scene_at() -> Option<(u32, String)> {
+    let v = std::env::var("MISTY_OPEN_SCENE_AT").ok()?;
+    let (at, rel) = v.split_once(':')?;
+    Some((at.trim().parse().ok()?, rel.trim().to_owned()))
 }
 
 /// Screenshot setup from the environment: `MISTY_SELECT=<object name>` selects an object,

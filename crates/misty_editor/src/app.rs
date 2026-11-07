@@ -886,6 +886,9 @@ impl eframe::App for EditorApp {
         if self.capture.as_mut().is_some_and(Capture::play_due) {
             self.state.push(Action::TogglePlay);
         }
+        if let Some(rel) = self.capture.as_mut().and_then(Capture::scene_due) {
+            self.state.push(Action::OpenScenePath(rel));
+        }
         self.apply_actions(&ctx);
         crate::saveloc::frame(&mut self.state);
         // SaveSystem.Save asked for a thumbnail of the game's last frame.
