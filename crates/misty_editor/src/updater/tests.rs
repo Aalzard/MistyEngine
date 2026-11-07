@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use super::cache::{self, CHECK_INTERVAL_SECS, Cache};
 use super::http::{self, Fetched, Source};
 use super::install;
-use super::release::{self, Asset, Update};
+use super::release::{self, Asset, Platform, Update};
 use super::version::{Version, is_newer};
 use super::{Phase, Updater};
 
@@ -147,7 +147,7 @@ const RELEASE_JSON: &str = r#"{
 #[test]
 fn release_json_parses_into_an_update() {
     let r = release::parse(RELEASE_JSON).unwrap();
-    let u = release::to_update(&r, "https://fallback").unwrap();
+    let u = release::to_update_for(&r, "https://fallback", Some(Platform::WindowsX64)).unwrap();
     assert_eq!(u.version, "0.0.2");
     assert_eq!(u.notes, "Fixes\n- one\n- two");
     assert_eq!(
@@ -158,6 +158,11 @@ fn release_json_parses_into_an_update() {
     assert_eq!(zip.name, "MistyEngine-v0.0.2-windows-x64.zip");
     assert_eq!(zip.size, 1234);
     assert!(u.checksum_url.unwrap().ends_with(".zip.sha256.txt"));
+    // A Linux build finds no Linux package in it (the release page only); so does an OS
+    // without packages.
+    let u = release::to_update_for(&r, "", Some(Platform::LinuxX64)).unwrap();
+    assert_eq!((u.zip, u.checksum_url), (None, None));
+    assert!(release::to_update_for(&r, "", None).unwrap().zip.is_none());
 
     // Drafts, pre-releases and odd tags offer nothing; a minimal JSON still parses.
     let mut d = r.clone();
@@ -185,7 +190,8 @@ fn asset_selection() {
         a("MistyEngine-v0.0.2-windows-x64.zip"),
         a("mistyengine-v0.0.2-windows-x64.ZIP.sha256.txt"),
     ];
-    let z = release::select_zip(&assets, "0.0.2").unwrap();
+    let win = Platform::WindowsX64;
+    let z = release::select_package(&assets, "0.0.2", win).unwrap();
     assert_eq!(
         z.name, "MistyEngine-v0.0.2-windows-x64.zip",
         "exact name first"
@@ -193,10 +199,42 @@ fn asset_selection() {
     let sum = release::select_checksum(&assets, &z.name).unwrap();
     assert_eq!(sum.name, "mistyengine-v0.0.2-windows-x64.ZIP.sha256.txt");
     // Pattern fallback when the tag and file name differ; none without a Windows zip.
-    let z = release::select_zip(&assets[..2], "0.0.3").unwrap();
+    let z = release::select_package(&assets[..2], "0.0.3", win).unwrap();
     assert_eq!(z.name, "MistyEngine-0.0.2-windows-x64.zip");
     assert!(release::select_checksum(&assets[..2], &z.name).is_none());
-    assert!(release::select_zip(&assets[..1], "0.0.2").is_none());
+    assert!(release::select_package(&assets[..1], "0.0.2", win).is_none());
+}
+
+#[test]
+fn linux_asset_selection() {
+    let a = |n: &str| Asset {
+        name: n.into(),
+        browser_download_url: format!("https://github.com/{n}"),
+        size: 0,
+    };
+    let assets = vec![
+        a("MistyEngine-Setup-v0.2.0-windows-x64.exe"),
+        a("MistyEngine-v0.2.0-windows-x64.zip"),
+        a("MistyEngine-v0.2.0-windows-x64.zip.sha256.txt"),
+        a("MistyEngine-v0.2.0-linux-x64.tar.gz.sha256.txt"),
+        a("MistyEngine-v0.2.0-linux-x64.tar.gz"),
+    ];
+    let linux = Platform::LinuxX64;
+    assert_eq!(
+        release::package_name("0.2.0", linux),
+        "MistyEngine-v0.2.0-linux-x64.tar.gz"
+    );
+    let z = release::select_package(&assets, "0.2.0", linux).unwrap();
+    assert_eq!(z.name, "MistyEngine-v0.2.0-linux-x64.tar.gz");
+    let sum = release::select_checksum(&assets, &z.name).unwrap();
+    assert_eq!(sum.name, "MistyEngine-v0.2.0-linux-x64.tar.gz.sha256.txt");
+    // `<stem>.sha256.txt` is accepted too; never the Windows zip, never the installer.
+    let stem_sum = [a("MistyEngine-v0.2.0-linux-x64.sha256.txt")];
+    assert!(release::select_checksum(&stem_sum, &z.name).is_some());
+    assert!(release::select_package(&assets[..3], "0.2.0", linux).is_none());
+    // The Windows build never picks the Linux package or the installer.
+    let w = release::select_package(&assets, "0.2.0", Platform::WindowsX64).unwrap();
+    assert_eq!(w.name, "MistyEngine-v0.2.0-windows-x64.zip");
 }
 
 // ---- source and URLs --------------------------------------------------------------------------
@@ -380,7 +418,7 @@ fn failed_swap_rolls_back() {
     std::fs::create_dir_all(&empty).unwrap();
     std::fs::write(empty.join("readme.txt"), b"x").unwrap();
     let err = install::apply(&empty, &inst, &inst.join("MistyEngine.exe")).unwrap_err();
-    assert!(err.contains("MistyEngine.exe"), "{err}");
+    assert!(err.contains(install::PACKAGE_EXE), "{err}");
     assert!(!inst.join("readme.txt").exists());
 }
 
@@ -390,6 +428,109 @@ fn zip_slip_is_refused() {
     std::fs::write(root.join("bad.zip"), make_zip(&[("../evil.txt", b"x")])).unwrap();
     assert!(install::extract(&root.join("bad.zip"), &root.join("out")).is_err());
     assert!(!root.join("evil.txt").exists());
+}
+
+// ---- Linux package (.tar.gz) ------------------------------------------------------------------
+
+/// A gzipped tarball of `(path, bytes, mode)`, like the Linux release package.
+fn make_tar_gz(files: &[(&str, &[u8], u32)]) -> Vec<u8> {
+    let gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut b = tar::Builder::new(gz);
+    for (name, data, mode) in files {
+        let mut h = tar::Header::new_gnu();
+        h.set_size(data.len() as u64);
+        h.set_mode(*mode);
+        b.append_data(&mut h, name, *data).unwrap();
+    }
+    b.into_inner().unwrap().finish().unwrap()
+}
+
+/// The Linux package: no `.exe` names, executables with mode 755, a long example path.
+const LINUX_PACKAGE: &[(&str, &[u8], u32)] = &[
+    (
+        "MistyEngine-v0.2.0-linux-x64/MistyEngine",
+        b"new editor",
+        0o755,
+    ),
+    (
+        "MistyEngine-v0.2.0-linux-x64/misty_player",
+        b"new player",
+        0o755,
+    ),
+    ("MistyEngine-v0.2.0-linux-x64/README.txt", b"readme", 0o644),
+    (LONG_EXAMPLE, b"stock", 0o644),
+];
+
+/// Longer than the 100 bytes of a plain tar header name (GNU long-name record).
+const LONG_EXAMPLE: &str = "MistyEngine-v0.2.0-linux-x64/Examples/SampleProject/Assets/\
+                            A folder with a rather long name/And another one/scene.scene";
+
+#[test]
+fn linux_package_extracts_and_swaps() {
+    let root = temp("linux_swap");
+    let inst = root.join("install");
+    std::fs::create_dir_all(&inst).unwrap();
+    std::fs::write(inst.join("MistyEngine"), b"old editor").unwrap();
+    std::fs::write(inst.join("misty_player"), b"old player").unwrap();
+    let pkg_file = root.join("MistyEngine-v0.2.0-linux-x64.tar.gz");
+    std::fs::write(&pkg_file, make_tar_gz(LINUX_PACKAGE)).unwrap();
+    let pkg = install::extract(&pkg_file, &root.join("work")).unwrap();
+    assert_eq!(pkg.file_name().unwrap(), "MistyEngine-v0.2.0-linux-x64");
+
+    let exe = install::apply(&pkg, &inst, &inst.join("MistyEngine")).unwrap();
+    assert_eq!(exe, inst.join("MistyEngine"));
+    assert_eq!(read(inst.join("MistyEngine")), "new editor");
+    assert_eq!(read(inst.join("misty_player")), "new player");
+    let example = LONG_EXAMPLE.split_once('/').unwrap().1;
+    assert_eq!(read(inst.join(example)), "stock");
+    // No extension: the old binaries went to the backup folder, removed after the swap.
+    assert!(!inst.join(install::BACKUP_DIR).exists());
+    assert!(!inst.join("MistyEngine.old.exe").exists());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &str| {
+            std::fs::metadata(inst.join(p))
+                .unwrap()
+                .permissions()
+                .mode()
+        };
+        assert_eq!(mode("MistyEngine") & 0o111, 0o111, "still executable");
+        assert_eq!(mode("misty_player") & 0o111, 0o111, "still executable");
+        assert_eq!(mode("README.txt") & 0o111, 0);
+    }
+}
+
+#[test]
+fn tar_slip_and_links_are_refused() {
+    let root = temp("tar_slip");
+    // `..` in a member name (written by hand: the tar crate's builder refuses such paths).
+    let gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut b = tar::Builder::new(gz);
+    let mut h = tar::Header::new_gnu();
+    h.as_gnu_mut().unwrap().name[..11].copy_from_slice(b"../evil.txt");
+    h.set_size(1);
+    h.set_mode(0o644);
+    h.set_entry_type(tar::EntryType::Regular);
+    h.set_cksum();
+    b.append(&h, &b"x"[..]).unwrap();
+    let bad = root.join("bad.tar.gz");
+    std::fs::write(&bad, b.into_inner().unwrap().finish().unwrap()).unwrap();
+    let err = install::extract(&bad, &root.join("out")).unwrap_err();
+    assert!(err.contains("unsafe path"), "{err}");
+    assert!(!root.join("evil.txt").exists());
+
+    // A symlink entry is refused (the package has only files and folders).
+    let gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut b = tar::Builder::new(gz);
+    let mut h = tar::Header::new_gnu();
+    h.set_entry_type(tar::EntryType::Symlink);
+    h.set_size(0);
+    b.append_link(&mut h, "pkg/link", "/etc/passwd").unwrap();
+    let link = root.join("link.tgz");
+    std::fs::write(&link, b.into_inner().unwrap().finish().unwrap()).unwrap();
+    let err = install::extract(&link, &root.join("out2")).unwrap_err();
+    assert!(err.contains("unsupported entry"), "{err}");
 }
 
 // ---- local HTTP server (no real network) ------------------------------------------------------
@@ -464,8 +605,12 @@ fn release_routes(base: &str, zip: Vec<u8>, sum: String) -> Routes {
 }
 
 fn fetch_update(src: &Source) -> Update {
+    fetch_update_for(src, Platform::WindowsX64)
+}
+
+fn fetch_update_for(src: &Source, platform: Platform) -> Update {
     match http::fetch_release(src).unwrap() {
-        Fetched::Release(r) => release::to_update(&r, &src.page_url).unwrap(),
+        Fetched::Release(r) => release::to_update_for(&r, &src.page_url, Some(platform)).unwrap(),
         Fetched::NoRelease => panic!("no release"),
     }
 }
@@ -509,6 +654,60 @@ fn end_to_end_download_verify_install() {
         unreachable!()
     };
     assert_eq!(Some(*received), *total);
+}
+
+#[test]
+fn end_to_end_linux_tar_gz() {
+    let pkg = make_tar_gz(LINUX_PACKAGE);
+    let sum = format!("{}  MistyEngine-v99.0.0-linux-x64.tar.gz\n", sha256(&pkg));
+    let server = serve(|base| {
+        let json = format!(
+            r#"{{"tag_name":"v99.0.0","html_url":"{base}/page","assets":[
+              {{"name":"MistyEngine-v99.0.0-windows-x64.zip","size":3,"browser_download_url":"{base}/dl/win.zip"}},
+              {{"name":"MistyEngine-v99.0.0-linux-x64.tar.gz","size":{n},"browser_download_url":"{base}/dl/linux.tar.gz"}},
+              {{"name":"MistyEngine-v99.0.0-linux-x64.tar.gz.sha256.txt","size":64,"browser_download_url":"{base}/dl/linux.sha"}}
+            ]}}"#,
+            n = pkg.len()
+        );
+        let mut r = Routes::new();
+        r.insert(
+            "/release.json".into(),
+            (200, String::new(), json.into_bytes()),
+        );
+        r.insert("/dl/linux.tar.gz".into(), (200, String::new(), pkg));
+        r.insert(
+            "/dl/linux.sha".into(),
+            (200, String::new(), sum.into_bytes()),
+        );
+        r
+    });
+    let src = Source::custom(&format!("{}/release.json", server.base)).unwrap();
+    let update = fetch_update_for(&src, Platform::LinuxX64);
+    assert_eq!(
+        update.zip.as_ref().map(|z| z.name.as_str()),
+        Some("MistyEngine-v99.0.0-linux-x64.tar.gz")
+    );
+
+    let root = temp("e2e_linux");
+    let inst = root.join("install");
+    std::fs::create_dir_all(&inst).unwrap();
+    std::fs::write(inst.join("MistyEngine"), b"old editor").unwrap();
+    let out = install::run(
+        &src,
+        &update,
+        &inst,
+        &inst.join("MistyEngine"),
+        &root.join("work"),
+        |_| {},
+    )
+    .unwrap();
+    let install::Outcome::Installed(exe) = out else {
+        panic!("expected an install")
+    };
+    assert_eq!(exe, inst.join("MistyEngine"));
+    assert_eq!(read(inst.join("MistyEngine")), "new editor");
+    assert_eq!(read(inst.join("misty_player")), "new player");
+    assert!(!root.join("work").exists(), "staging removed");
 }
 
 #[test]
