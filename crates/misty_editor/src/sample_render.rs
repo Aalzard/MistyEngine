@@ -29,20 +29,29 @@ pub fn headless_timed() -> Option<(wgpu::Device, wgpu::Queue)> {
     device(true)
 }
 
+/// One wgpu instance for every GPU test of the process, never dropped: the Vulkan loader
+/// unloads the driver with its last instance, and an instance per test unloaded and reloaded
+/// it for every test while the previous device's driver threads could still be winding down.
+fn instance() -> &'static wgpu::Instance {
+    static INSTANCE: std::sync::OnceLock<wgpu::Instance> = std::sync::OnceLock::new();
+    INSTANCE.get_or_init(|| {
+        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env())
+    })
+}
+
 fn device(timed: bool) -> Option<(wgpu::Device, wgpu::Queue)> {
-    // Renders must be complete on their first frame: grass chunks are built in the frame
-    // that needs them rather than streamed in over several.
-    misty_engine::render::set_grass_streaming(false);
     GPU_HELD.with(|held| {
         let mut held = held.borrow_mut();
         if held.is_none() {
             *held = Some(GPU_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
         }
     });
-    let instance =
-        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+    // Renders must be complete on their first frame: grass chunks are built in the frame
+    // that needs them rather than streamed in over several. (Once the lock is held: the
+    // flag is process-wide.)
+    misty_engine::render::set_grass_streaming(false);
     let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+        pollster::block_on(instance().request_adapter(&wgpu::RequestAdapterOptions::default()))
             .ok()?;
     let desc = wgpu::DeviceDescriptor {
         required_features: match timed {

@@ -17,24 +17,42 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-/// A device without a window (`None` = no usable adapter on this machine). The calling test
-/// holds the GPU test lock until it finishes.
-pub(crate) fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
+/// Take the GPU test lock for the rest of the calling test (released when its thread ends).
+pub(crate) fn hold_gpu_lock() {
     GPU_HELD.with(|held| {
         let mut held = held.borrow_mut();
         if held.is_none() {
             *held = Some(GPU_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
         }
     });
+}
+
+/// One wgpu instance for every GPU test of the process, never dropped. With an instance per
+/// test, the last device of each test took its instance down with it, and the Vulkan loader
+/// unloads the driver when its last instance goes: sixty-odd driver unloads and reloads per
+/// run, each racing whatever driver threads the previous device left winding down.
+pub(crate) fn instance() -> &'static wgpu::Instance {
+    static INSTANCE: std::sync::OnceLock<wgpu::Instance> = std::sync::OnceLock::new();
+    INSTANCE.get_or_init(|| {
+        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env())
+    })
+}
+
+/// A device without a window (`None` = no usable adapter on this machine). The calling test
+/// holds the GPU test lock until it finishes.
+pub(crate) fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
+    hold_gpu_lock();
     // Renders must be complete on their first frame: grass chunks are built in the frame
     // that needs them (the hitch tests turn streaming back on). Only once the lock is held:
     // switched off before, by a test waiting for its turn, it changed how the test holding
     // the GPU rendered (a hitch run then scattered every chunk on the render thread).
     set_grass_streaming(false);
-    let instance =
-        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+    // Workers of an earlier test's renderer (streaming tests) finish on its device first.
+    if !super::prebuilt::wait_idle(std::time::Duration::from_secs(120)) {
+        eprintln!("warning: prebuilt workers of an earlier GPU test still running");
+    }
     let adapter =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+        pollster::block_on(instance().request_adapter(&wgpu::RequestAdapterOptions::default()))
             .ok()?;
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("misty test device"),
