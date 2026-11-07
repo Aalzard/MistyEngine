@@ -6,7 +6,9 @@
 //! height) of soil, moss and thatch under `Assets/Textures/Meadow`. Lone broadleaf trees and
 //! small groves stand around the field (terrain trees: `Assets/Trees/*.tree`, textures from
 //! `tools/tree_textures.py`), a few near, most far away along the foot of the mountains, the
-//! view ahead kept open. A First Person Player (the sample prefab) stands where the camera was.
+//! view ahead kept open. Wildflowers (purple knapweed, red poppies, white oxeye daisies,
+//! yellow buttercups; `Assets/Flowers`, textures from `tools/flower_textures.py`) grow in
+//! scattered patches, more around the trees. A First Person Player (the sample prefab) stands where the camera was.
 //! Regenerate with `cargo test -p misty_editor -- --ignored write_meadow_demo` (the scene file
 //! is only written when missing: it holds the user's placed player); the other tests check the
 //! committed files still match and that the scene plays.
@@ -21,6 +23,7 @@ use misty_engine::scene::{
     Transform, WindZone,
 };
 use misty_engine::terrain::auto_paint::{self, AutoPaintRules};
+use misty_engine::terrain::flowers::FlowerSettings;
 use misty_engine::terrain::trees::{TreeInstance, TreePrototype};
 use misty_engine::terrain::{TerrainData, TerrainLayer, details, noise};
 use misty_engine::trees::{CrownShape, TreeAsset};
@@ -128,6 +131,22 @@ fn grass() -> details::DetailSettings {
         gust_strength: 0.55,
         gust_scale: 22.0,
         turbulence: 0.3,
+    }
+}
+
+/// Wildflowers in patches: a few drifts of each colour across the field, lone flowers
+/// between them, more around the trees.
+fn flowers() -> FlowerSettings {
+    FlowerSettings {
+        enabled: true,
+        kinds: FlowerSettings::wildflowers(crate::terrain_flowers_ui::FLOWER_DIR),
+        density: 40.0,
+        coverage: 0.07,
+        patch_scale: 16.0,
+        scattered: 0.001,
+        edges: 0.6,
+        lod_distance: 25.0,
+        map: Vec::new(),
     }
 }
 
@@ -484,6 +503,7 @@ fn terrain_data() -> TerrainData {
     ];
     d.rule_seed = 7;
     d.details = grass();
+    d.flowers = flowers();
     auto_paint::generate(&mut d);
     details::generate(&mut d);
     d.trees.prototypes = tree_assets()
@@ -678,6 +698,15 @@ fn meadow_demo_matches_its_generator() {
     let generated = terrain_data();
     assert_eq!(on_disk.layers, generated.layers);
     assert_eq!(on_disk.details, generated.details);
+    assert_eq!(on_disk.flowers, generated.flowers);
+    for kind in &generated.flowers.kinds {
+        for tex in kind.textures() {
+            assert!(
+                root.join(tex).exists(),
+                "{tex} (run tools/flower_textures.py)"
+            );
+        }
+    }
     assert_eq!(on_disk.trees.prototypes, generated.trees.prototypes);
     assert_eq!(
         on_disk.trees.instances.len(),
@@ -717,6 +746,26 @@ fn meadow_demo_matches_its_generator() {
     let blades = details::scatter(&generated, lo, lo + 16.0);
     assert!(blades.len() > 40_000, "{}", blades.len());
     assert!(blades.iter().any(|b| b.seed_head()), "seed heads");
+    // Flowers: patches of every kind across the field, a small share of it.
+    let mut kinds = [0usize; 4];
+    let mut flowers = 0;
+    for x in 0..8 {
+        for z in 0..8 {
+            let lo = glam::Vec2::new(
+                EYE.0 - 256.0 + x as f32 * 64.0,
+                EYE.1 - 128.0 + z as f32 * 64.0,
+            );
+            for b in misty_engine::terrain::flowers::scatter(&generated, lo, lo + 64.0) {
+                if let Some((k, 1)) = misty_engine::terrain::flowers::card_of(&b) {
+                    kinds[k as usize] += 1;
+                    flowers += 1;
+                }
+            }
+        }
+    }
+    assert!(kinds.iter().all(|&n| n > 20), "{kinds:?}");
+    let per_m2 = flowers as f32 / (512.0 * 512.0);
+    assert!(per_m2 > 0.05 && per_m2 < 2.0, "{per_m2} flowers per m²");
 }
 
 /// Playing works (no scripts; the terrain collider builds).

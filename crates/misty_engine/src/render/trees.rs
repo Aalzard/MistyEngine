@@ -409,7 +409,11 @@ struct GpuTree {
 /// Coverage-keeping mip chain of an alpha-tested atlas with `cols` × `rows` cells: each level's
 /// alpha is scaled per cell so as many texels pass 0.5 as in the full image (thin leaves and
 /// far crowns don't fade away with distance).
-fn coverage_mips(image: image::RgbaImage, cols: u32, rows: u32) -> Vec<image::RgbaImage> {
+pub(super) fn coverage_mips(
+    image: image::RgbaImage,
+    cols: u32,
+    rows: u32,
+) -> Vec<image::RgbaImage> {
     let mut chain = super::texture::mip_chain(image, true);
     let cells = |img: &image::RgbaImage| {
         let (iw, ih) = img.dimensions();

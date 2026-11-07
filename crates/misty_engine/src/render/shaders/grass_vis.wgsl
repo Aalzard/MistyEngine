@@ -36,8 +36,7 @@ struct VisOut {
 fn vs_grass_vis(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VisOut {
     let b = grass_fetch(ii);
     var out: VisOut;
-    let fans = grass.draw.y == 0u;
-    if ((!fans && grass_flat(b)) || grass_outside(b, view.view_proj, true)) {
+    if (grass_skip(b) || grass_outside(b, view.view_proj, true)) {
         out.clip = GRASS_SKIP;
         return out;
     }
@@ -61,7 +60,7 @@ struct VisTargets {
 @fragment
 fn fs_grass_vis(in: VisOut, @builtin(front_facing) front: bool) -> VisTargets {
     let leaf = grass_atlas_uv(in.uv.xy);
-    var alpha = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a;
+    var alpha = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, i32(leaf.w), grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a;
     alpha *= leaf.z;
     var g: GrassOut;
     g.clip = in.clip;
@@ -176,9 +175,12 @@ fn vis_varying(now: BladeFrame, before: BladeFrame, b: BladeIn, vi: u32) -> Gras
     out.clip_prev = prev_clip(prev);
     out.world = v.p;
     out.normal = normalize(face + v.across * v.side * 0.8);
+    if (v.cell >= 8u) {
+        out.normal = grass_flower_normal(v);
+    }
     out.misc.y = v.above / canopy_top(b).x;
-    out.uv = vec4<f32>(grass_card_u(v.cell, v.side, v.repeat), grass_card_v(v.t, b.shape.w), v.t, v.fade);
-    out.across = v.across * v.side * 2.0;
+    out.uv = vec4<f32>(v.card, v.t, v.fade);
+    out.across = grass_across(v);
     return out;
 }
 
@@ -224,7 +226,7 @@ fn vis_shade(px: vec2<u32>, id: u32, card: vec4<f32>) -> MeshTargets {
     let gx = vec2<f32>(dx.x / 8.0, dx.y);
     let gy = vec2<f32>(dy.x / 8.0, dy.y);
     let leaf = grass_atlas_uv(in.uv.xy);
-    var tex = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, gx, gy);
+    var tex = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, i32(leaf.w), gx, gy);
     tex.a *= leaf.z;
     var out = grass_lit(in, card.y > 0.0, tex, leaf.xy, gx, gy, card.w);
     out.velocity = velocity_of(in.clip, in.clip_prev);

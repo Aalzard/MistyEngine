@@ -176,6 +176,7 @@ mod sprite_handles;
 mod state;
 mod status_bar;
 mod templates;
+mod terrain_flowers_ui;
 mod terrain_rules;
 mod terrain_tools;
 mod terrain_trees_ui;

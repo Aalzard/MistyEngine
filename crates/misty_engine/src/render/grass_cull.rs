@@ -72,7 +72,11 @@ struct Lane {
 
 /// The cull record of a blade (grass_cull.wgsl `records`).
 pub(super) fn record(b: &Blade) -> [u32; 4] {
-    let key = if b.extra[0] >= 2.0 {
+    // Flowers thin out with their own curve in the vertex stage (grass_blade.wgsl): the grass
+    // share never leaves them out.
+    let key = if b.flower() {
+        0.0
+    } else if b.extra[0] >= 2.0 {
         b.extra[0] - 2.0
     } else {
         b.extra[0]

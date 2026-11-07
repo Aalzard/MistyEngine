@@ -14,6 +14,7 @@ pub use inspector::preset_window;
 pub(crate) use inspector::script_fields;
 #[cfg(test)]
 pub(crate) use inspector::show as inspector_show;
+pub(crate) use inspector::slots::texture_slot;
 pub mod effect_graph;
 pub mod frame_debugger;
 mod lighting;

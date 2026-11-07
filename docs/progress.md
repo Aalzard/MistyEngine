@@ -2443,3 +2443,25 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Bark close up is much better but still procedural (furrow pattern somewhat regular on the
   linden, oak a little dark in shade); leaf cards seen edge-on still show stretched texture.
+
+## Flowers and leaves (branch flowers-leaves)
+
+### Done (docs/pending/flowers.md; docs/pending/meadow-trees.md, "Look round 3")
+- Wildflowers: up to four kinds per terrain (Terrain Inspector ▸ Paint Texture ▸ Flowers),
+  growing in low-frequency patches per kind with clumps, a few lone flowers, more around trees
+  and where the grass thins, fewer on worn spots, plus a Paint Flowers mask. Drawn as grass
+  blades of their own kind (two crossed plant cards and a head card each), so they stream,
+  cull, go through the grass visibility buffer, cast shadows and sway with the grass's wind
+  with correct motion vectors. Four CC0 sample wildflowers in `SampleProject/Assets/Flowers`
+  (purple knapweed, red poppy, white oxeye daisy, yellow buttercup) from the Codex-written
+  `tools/flower_textures.py`; MeadowDemo grows them in patches.
+- Leaves: new Codex-drawn leaf atlases (real oak lobes, heart-shaped linden, deltoid birch
+  leaves, veins, per-leaf colour, translucent blades with darker veins), much lower roughness
+  (a waxy sheen and glints), the leaves' own normals count more, LOD 0 leaf cards curve back
+  at the top.
+
+### Not done yet
+- Flower plant cards are flat; seen from straight above only the head card shows. No flower
+  colour in the far terrain beyond the grass draw distance (160 m in MeadowDemo).
+- Leaf cards seen edge-on still show stretched texture; linden and birch leaves are still a
+  little schematic close up.

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::auto_paint::AutoPaintRules;
 use super::cliffs::CliffSettings;
 use super::details::DetailSettings;
+use super::flowers::FlowerSettings;
 use super::harmony::HarmonySettings;
 use super::trees::TreeSettings;
 
@@ -84,6 +85,8 @@ pub struct TerrainData {
     pub details: DetailSettings,
     /// Detail density per splat texel (0..255 of `details.density`); empty = no details yet.
     pub detail_map: Vec<u8>,
+    /// Wildflowers growing in patches in the grass (drawn with it).
+    pub flowers: FlowerSettings,
     /// Tree prototypes, placed trees and how they are drawn.
     pub trees: TreeSettings,
 }
@@ -119,6 +122,7 @@ impl TerrainData {
             harmony: HarmonySettings::default(),
             details: DetailSettings::default(),
             detail_map: Vec::new(),
+            flowers: FlowerSettings::default(),
             trees: TreeSettings::default(),
         }
     }
@@ -240,16 +244,21 @@ impl TerrainData {
         };
         let mut map = Vec::with_capacity(res * res);
         let mut details = Vec::new();
+        let mut flowers = Vec::new();
         for tz in 0..res {
             for tx in 0..res {
                 map.push(self.alphamap[source(tx, tz)]);
                 if !self.detail_map.is_empty() {
                     details.push(self.detail_map[source(tx, tz)]);
                 }
+                if !self.flowers.map.is_empty() {
+                    flowers.push(self.flowers.map[source(tx, tz)]);
+                }
             }
         }
         self.alphamap = map;
         self.detail_map = details;
+        self.flowers.map = flowers;
         self.alphamap_resolution = res;
     }
 
@@ -271,6 +280,7 @@ impl TerrainData {
         self.layers.truncate(MAX_LAYERS);
         self.size = sanitize_size(self.size);
         self.trees.sanitize();
+        self.flowers.sanitize(a);
     }
 }
 

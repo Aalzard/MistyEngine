@@ -10,6 +10,7 @@ pub mod cliffs;
 mod data;
 pub mod details;
 mod file;
+pub mod flowers;
 pub mod harmony;
 pub mod mesh;
 pub mod noise;
