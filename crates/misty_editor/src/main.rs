@@ -121,6 +121,8 @@ mod sample_render;
 #[cfg(test)]
 mod sample_rigging;
 #[cfg(test)]
+mod sample_rocks;
+#[cfg(test)]
 mod sample_saveloc;
 #[cfg(test)]
 mod sample_shader_graph;

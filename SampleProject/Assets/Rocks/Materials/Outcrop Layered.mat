@@ -1,0 +1,36 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.6679254,
+    0.6381983,
+    0.53899497,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 1.0,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Rocks/Textures/Outcrop Layered_Albedo.jpg",
+  "normal_map": "Assets/Rocks/Textures/Outcrop Layered_Normal.png",
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "metallic_map": "Assets/Rocks/Textures/Outcrop Layered_Mask.png",
+  "occlusion_map": "Assets/Rocks/Textures/Outcrop Layered_Mask.png",
+  "asset_guids": {
+    "Assets/Rocks/Textures/Outcrop Layered_Albedo.jpg": "fb351599d5b210af20ffd4564b2022ca",
+    "Assets/Rocks/Textures/Outcrop Layered_Mask.png": "c21bd03244cc96fe942c05835291132a",
+    "Assets/Rocks/Textures/Outcrop Layered_Normal.png": "5c8ac1154cadb46440a4684e0a1ee5c6"
+  }
+}

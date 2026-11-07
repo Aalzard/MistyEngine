@@ -6,7 +6,10 @@
 //! height) of soil, moss and thatch under `Assets/Textures/Meadow`. Lone broadleaf trees and
 //! small groves stand around the field (terrain trees: `Assets/Trees/*.tree`, textures from
 //! `tools/tree_textures.py`), a few near, most far away along the foot of the mountains, the
-//! view ahead kept open. A First Person Player (the sample prefab) stands where the camera was.
+//! view ahead kept open. Rocks (`Assets/Rocks`, `sample_rocks.rs`) lie around the field in
+//! groups: big boulders and layered outcrops near the rises and along the foot of the
+//! mountains, a few in the open meadow, small rocks and cobbles gathered round the big ones.
+//! A First Person Player (the sample prefab) stands where the camera was.
 //! Regenerate with `cargo test -p misty_editor -- --ignored write_meadow_demo` (the scene file
 //! is only written when missing: it holds the user's placed player); the other tests check the
 //! committed files still match and that the scene plays.
@@ -626,7 +629,15 @@ fn demo_scene(d: &TerrainData) -> Scene {
     if let Some(cam) = s.find_by_name("Main Camera") {
         s.game_object_mut(cam).active = false;
     }
+    add_rocks(&mut s, d);
     s
+}
+
+/// The meadow's rocks under a "Rocks" object (after the user's objects).
+fn add_rocks(s: &mut Scene, d: &TerrainData) {
+    let placed =
+        crate::sample_rocks::meadow_rocks(d, CORNER, glam::Vec2::new(EYE.0, EYE.1), PLAYER);
+    crate::sample_rocks::add_to_scene(s, &placed);
 }
 
 #[test]
@@ -646,10 +657,32 @@ fn write_meadow_demo() {
     }
     let d = terrain_data();
     d.save(&root.join(DATA)).unwrap();
-    // The scene holds the user's placed player and edits: only written when missing.
+    // The scene holds the user's placed player and edits: only written when missing; an
+    // existing scene only gets its rocks replaced.
     if !root.join(SCENE).exists() {
+        misty_engine::asset_db::install(misty_engine::asset_db::GuidDatabase::read(&root));
         demo_scene(&d).save(&root.join(SCENE)).unwrap();
+    } else {
+        replace_rocks(&root, &d);
     }
+}
+
+/// The saved scene with its "Rocks" made again (everything else as the user left it).
+fn replace_rocks(root: &std::path::Path, d: &TerrainData) {
+    misty_engine::asset_db::install(misty_engine::asset_db::GuidDatabase::read(root));
+    let (mut scene, _) = Scene::load(&root.join(SCENE)).unwrap();
+    if let Some(old) = scene.find_by_name("Rocks") {
+        scene.despawn(old);
+    }
+    add_rocks(&mut scene, d);
+    scene.save(&root.join(SCENE)).unwrap();
+}
+
+/// Only the scene's rocks (after `write_rocks` or a change to their placement).
+#[test]
+#[ignore = "writes into SampleProject; run on purpose to regenerate"]
+fn write_meadow_rocks() {
+    replace_rocks(&project(), &terrain_data());
 }
 
 #[test]
@@ -719,10 +752,11 @@ fn meadow_demo_matches_its_generator() {
     assert!(blades.iter().any(|b| b.seed_head()), "seed heads");
 }
 
-/// Playing works (no scripts; the terrain collider builds).
+/// Playing works (no scripts; the terrain and rock colliders build).
 #[test]
 fn meadow_demo_plays() {
     let root = project();
+    misty_engine::assets::set_project_root(&root);
     let data = TerrainData::load(&root.join(DATA)).unwrap();
     let scene = demo_scene(&data);
     let terrain = scene.find_by_name("Terrain").unwrap();

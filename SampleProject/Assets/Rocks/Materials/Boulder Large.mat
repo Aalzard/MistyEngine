@@ -1,0 +1,36 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.68286955,
+    0.6678616,
+    0.5701016,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 1.0,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Rocks/Textures/Boulder Large_Albedo.jpg",
+  "normal_map": "Assets/Rocks/Textures/Boulder Large_Normal.png",
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "metallic_map": "Assets/Rocks/Textures/Boulder Large_Mask.png",
+  "occlusion_map": "Assets/Rocks/Textures/Boulder Large_Mask.png",
+  "asset_guids": {
+    "Assets/Rocks/Textures/Boulder Large_Albedo.jpg": "bc5648d5604ccb2bd2d4df9058e716cf",
+    "Assets/Rocks/Textures/Boulder Large_Mask.png": "59514f40b0d0c34303ddfd08aa136402",
+    "Assets/Rocks/Textures/Boulder Large_Normal.png": "4777697d58f5a24320e593e67c415368"
+  }
+}
