@@ -605,7 +605,13 @@ pub(super) struct TreeRenderer {
     groups: Vec<[wgpu::BindGroup; 3]>,
     main: Vec<Batch>,
     shadows: Vec<Vec<Batch>>,
+    /// Crowns within [`SWAY_RANGE`] of the camera this frame (the virtual shadow map renders
+    /// the fine pages under them again so their shadows sway with the leaves).
+    sway: Vec<Aabb>,
 }
+
+/// Trees closer than this sway in the virtual shadow map's pages (metres).
+pub(super) const SWAY_RANGE: f32 = 40.0;
 
 impl TreeRenderer {
     pub fn new(device: &wgpu::Device) -> Self {
@@ -662,7 +668,13 @@ impl TreeRenderer {
             groups: Vec::new(),
             main: Vec::new(),
             shadows: Vec::new(),
+            sway: Vec::new(),
         }
+    }
+
+    /// Crowns near the camera last prepared (see [`SWAY_RANGE`]).
+    pub fn sway_bounds(&self) -> &[Aabb] {
+        &self.sway
     }
 
     /// Any tree to draw this frame.
@@ -689,6 +701,7 @@ impl TreeRenderer {
         self.groups.clear();
         self.main.clear();
         self.shadows.clear();
+        self.sway.clear();
         let shadow_views = f.cascades.len() + f.vsm_views.len();
         self.shadows.resize(shadow_views, Vec::new());
         if f.terrains.iter().all(|t| t.data.trees.instances.is_empty()) {
@@ -790,6 +803,9 @@ impl TreeRenderer {
                     continue;
                 }
                 let bounds = Aabb::new(center - Vec3::splat(radius), center + Vec3::splat(radius));
+                if s.cast_shadows && t.cast_shadows && dist < SWAY_RANGE + radius {
+                    self.sway.push(bounds);
+                }
                 let inst = |fade: f32| InstanceGpu {
                     foot: [p.foot.x, p.foot.y, p.foot.z, p.yaw],
                     scale: [p.height, p.width, p.color, fade],

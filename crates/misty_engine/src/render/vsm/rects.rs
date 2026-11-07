@@ -16,6 +16,8 @@ pub const MAX_RECT: i32 = 16;
 /// Neighbouring pages of one level drawn with one view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PageRect {
+    /// The pages' set (see `PageKey::set`).
+    pub set: u8,
     pub level: usize,
     /// First global page.
     pub lo: IVec2,
@@ -33,14 +35,14 @@ impl PageRect {
 /// Group `pages` into rectangles per level (rows first, then grown downwards while the whole
 /// row below is to render too).
 pub fn group(pages: &[PageKey]) -> Vec<PageRect> {
-    let mut levels: Vec<usize> = pages.iter().map(|k| k.level as usize).collect();
+    let mut levels: Vec<(u8, usize)> = pages.iter().map(|k| (k.set, k.level as usize)).collect();
     levels.sort_unstable();
     levels.dedup();
     let mut out = Vec::new();
-    for level in levels {
+    for (set, level) in levels {
         let mut todo: HashSet<(i32, i32)> = pages
             .iter()
-            .filter(|k| k.level as usize == level)
+            .filter(|k| k.set == set && k.level as usize == level)
             .map(|k| (k.page.x, k.page.y))
             .collect();
         let mut order: Vec<(i32, i32)> = todo.iter().copied().collect();
@@ -63,6 +65,7 @@ pub fn group(pages: &[PageKey]) -> Vec<PageRect> {
                 }
             }
             out.push(PageRect {
+                set,
                 level,
                 lo: IVec2::new(x, y),
                 size: IVec2::new(w, h),
@@ -127,6 +130,7 @@ mod tests {
         assert_eq!(covered, all.len());
         // The 5 × 3 block is one rectangle (plus the lone pages and the level 5 pair).
         assert!(rects.contains(&PageRect {
+            set: 0,
             level: 2,
             lo: IVec2::ZERO,
             size: IVec2::new(5, 3)
@@ -156,6 +160,7 @@ mod tests {
     fn packing_never_overlaps_within_a_round() {
         let rects: Vec<PageRect> = (0..30)
             .map(|i| PageRect {
+                set: 0,
                 level: 0,
                 lo: IVec2::new(i * 20, 0),
                 size: IVec2::new(1 + i % 7, 1 + (i * 3) % 5),

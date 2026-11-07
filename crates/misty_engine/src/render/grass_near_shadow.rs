@@ -28,6 +28,14 @@ const DEPTH: f32 = 60.0;
 /// Most pixels on a side of the inner slice (its square is a third of the outer one's, so at
 /// 2048² its texels are already 4 mm; a 4096² inner slice costs fill for nothing).
 pub const INNER_MAX: u32 = 2048;
+/// With the virtual shadow map (grass isn't one of its cached casters) a third layer, the
+/// "band", takes the grass shadow casters around the camera out to their range (Quality ▸
+/// Grass Shadows, 20 m at High, 32 m at Ultra), redrawn every frame like the cascades' grass
+/// casters it replaces: the same widened share of the blades, outside the near square.
+pub const BAND_LAYER: usize = SLICES;
+/// Most pixels on a side of the band (2 cm texels over ±20 m).
+pub const BAND_MAX: u32 = 2048;
+
 /// Share of the blades drawn into the outer slice (the rest widen the others, as the cascade
 /// casters do); the inner slice draws every blade.
 pub const SLICE_SHARES: [f32; SLICES] = [1.0, 0.6];
@@ -47,6 +55,15 @@ pub(super) struct NearUniform {
     texels: [f32; 4],
 }
 
+/// The band's part of `GrassNearShadow` in mesh.wgsl (written after [`NearUniform`]).
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub(super) struct BandUniform {
+    view_proj: [[f32; 4]; 4],
+    /// x = radius (0 = off), y = texel (m), z = the band's side as a share of the layer.
+    band: [f32; 4],
+}
+
 pub struct GrassNearShadow {
     /// Map side in pixels (1 = off).
     pub size: u32,
@@ -60,17 +77,25 @@ pub struct GrassNearShadow {
     /// slice).
     view_buffer: wgpu::Buffer,
     pub view_group: wgpu::BindGroup,
+    /// Has the band layer (virtual shadow maps).
+    pub band: bool,
 }
 
 impl GrassNearShadow {
-    pub fn new(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout, size: u32) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        view_layout: &wgpu::BindGroupLayout,
+        size: u32,
+        band: bool,
+    ) -> Self {
         let size = size.max(1);
+        let layers = SLICES as u32 + band as u32;
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("misty grass near shadow"),
             size: wgpu::Extent3d {
                 width: size,
                 height: size,
-                depth_or_array_layers: SLICES as u32,
+                depth_or_array_layers: layers,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -81,13 +106,13 @@ impl GrassNearShadow {
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty grass near shadow params"),
-            size: std::mem::size_of::<NearUniform>() as u64,
+            size: (std::mem::size_of::<NearUniform>() + std::mem::size_of::<BandUniform>()) as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty grass near shadow view"),
-            size: VIEW_STRIDE * SLICES as u64,
+            size: VIEW_STRIDE * (SLICES as u64 + 1),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -103,7 +128,7 @@ impl GrassNearShadow {
                 }),
             }],
         });
-        let slice_views = (0..SLICES as u32)
+        let slice_views = (0..layers)
             .map(|i| {
                 texture.create_view(&wgpu::TextureViewDescriptor {
                     label: Some("misty grass near shadow slice"),
@@ -121,6 +146,7 @@ impl GrassNearShadow {
                 ..Default::default()
             }),
             slice_views,
+            band,
             uniform,
             view_buffer,
             view_group,
@@ -181,6 +207,48 @@ impl GrassNearShadow {
             );
         }
         Some(slices.map(|(m, _)| m))
+    }
+
+    /// Pixels on a side of the band.
+    pub fn band_size(&self) -> u32 {
+        self.size.min(BAND_MAX)
+    }
+
+    /// Write the band's uniform for a sun travelling along `dir` out to `radius` metres
+    /// around `camera` (None = off). Returns the band casters' view-projection when on.
+    pub fn prepare_band(
+        &self,
+        queue: &wgpu::Queue,
+        sun: Option<Vec3>,
+        camera: Vec3,
+        radius: Option<f32>,
+    ) -> Option<Mat4> {
+        let on = sun.zip(radius).filter(|_| self.size > 1 && self.band);
+        let (m, texel) = match on {
+            Some((dir, r)) => matrix(dir, camera, self.band_size(), r),
+            None => (Mat4::IDENTITY, 0.0),
+        };
+        let u = BandUniform {
+            view_proj: m.to_cols_array_2d(),
+            band: [
+                on.map_or(0.0, |(_, r)| r),
+                texel,
+                self.band_size() as f32 / self.size as f32,
+                0.0,
+            ],
+        };
+        let offset = std::mem::size_of::<NearUniform>() as u64;
+        queue.write_buffer(&self.uniform, offset, bytemuck::bytes_of(&u));
+        on?;
+        let mut v = super::ViewUniform::zeroed();
+        v.view_proj = m.to_cols_array_2d();
+        v.camera_pos = [camera.x, camera.y, camera.z, 0.0];
+        queue.write_buffer(
+            &self.view_buffer,
+            BAND_LAYER as u64 * VIEW_STRIDE,
+            bytemuck::bytes_of(&v),
+        );
+        Some(m)
     }
 
     /// Dynamic offset of slice `i`'s view uniform in [`GrassNearShadow::view_group`].

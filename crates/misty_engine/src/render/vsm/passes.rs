@@ -85,6 +85,8 @@ impl Renderer {
             // One render only (the editor sets it per Scene view render).
             debug: std::mem::take(&mut self.vsm.debug),
             max_rects,
+            // (Last frame's crowns: the trees are prepared after the frame lists.)
+            sway: self.trees.sway_bounds(),
         };
         self.vsm.prepare(device, queue, &input);
         plan.vsm_views = self

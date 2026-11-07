@@ -319,3 +319,46 @@ fn shadow_edges_do_not_crawl_when_the_camera_slides() {
         );
     }
 }
+
+/// A sun turning like a time-of-day cycle doesn't re-render every page every frame: the shown
+/// pages stay until a set for the new light, filled in the background, takes over; the
+/// shadows never drop out meanwhile.
+#[test]
+fn a_turning_sun_refills_pages_in_the_background() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_quality(&device, &quality(ShadowMode::Virtual));
+    let t = r.create_target(&device, W, H);
+    let mut view = View::new(0.0, 1.5, Shadows::Hard);
+    render(&mut r, &device, &queue, &t, &view, 6);
+    let base = view.lights[0].direction;
+    let (mut rendered, mut switches, mut resets) = (0u32, 0, 0);
+    let mut dark_min = usize::MAX;
+    let frames = 60;
+    for i in 1..=frames {
+        // 0.03° a frame (a day in about 3 minutes at 60 frames a second).
+        let a = (0.03 * i as f32).to_radians();
+        view.lights[0].direction = Quat::from_rotation_y(a) * base;
+        let img = render(&mut r, &device, &queue, &t, &view, 1);
+        let s = r.vsm_stats().expect("virtual");
+        rendered += s.rendered;
+        switches += s.switched as u32;
+        resets += s.reset as u32;
+        let dark = (0..(W * H) as usize)
+            .filter(|&p| luma(&img, p) < 120.0)
+            .count();
+        dark_min = dark_min.min(dark);
+    }
+    let s = r.vsm_stats().expect("virtual");
+    assert_eq!(resets, 0);
+    assert!(switches >= 5, "{switches} switches");
+    // Far fewer than every wanted page every frame.
+    assert!(
+        rendered < s.wanted * frames / 3,
+        "{rendered} pages for {} wanted",
+        s.wanted
+    );
+    assert!(dark_min > 2000, "shadows dropped out ({dark_min})");
+}
