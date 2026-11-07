@@ -645,14 +645,47 @@ fn vsm_slope(n: vec3<f32>, n_dot_l: f32) -> vec2<f32> {
     return g * min(1.0, 8.0 / max(tan_now, 1e-4));
 }
 
+// The page a kernel around q starts from at level l: xy = the page (window relative), zw = its
+// first pool texel (z < 0 when it isn't rendered). Taps landing in it (most of them: kernels
+// are a few texels wide, pages 128) skip the page table.
+fn vsm_center(l: i32, q: vec2<f32>) -> vec4<f32> {
+    let lv = shadow_params.vsm.levels[l];
+    let page = floor((q - lv.xy) * lv.z * (1.0 / VSM_PAGE));
+    return vec4<f32>(page, vsm_page(l, q).xy);
+}
+
+// `vsm_tap` through the kernel's centre page `c` when q lies in it.
+fn vsm_tap_c(l: i32, q: vec2<f32>, z: f32, c: vec4<f32>) -> f32 {
+    let lv = shadow_params.vsm.levels[l];
+    let t = (q - lv.xy) * lv.z;
+    let page = floor(t * (1.0 / VSM_PAGE));
+    if (c.z >= 0.0 && all(page == c.xy)) {
+        let p = c.zw + clamp(t - page * VSM_PAGE, vec2<f32>(0.5), vec2<f32>(VSM_PAGE - 0.5));
+        return textureSampleCompareLevel(vsm_pool, shadow_sampler, p * shadow_params.vsm.pool.xy, clamp(z, 0.0, 1.0));
+    }
+    return vsm_tap(l, q, z);
+}
+
+// `vsm_depth` through the kernel's centre page `c` when q lies in it.
+fn vsm_depth_c(l: i32, q: vec2<f32>, c: vec4<f32>) -> f32 {
+    let lv = shadow_params.vsm.levels[l];
+    let t = (q - lv.xy) * lv.z;
+    let page = floor(t * (1.0 / VSM_PAGE));
+    if (c.z >= 0.0 && all(page == c.xy)) {
+        return textureLoad(vsm_pool, vec2<i32>(c.zw + floor(t - page * VSM_PAGE)), 0);
+    }
+    return vsm_depth(l, q);
+}
+
 // Average depth of the blockers over a disk of `r` metres at level l, and their count.
 fn vsm_find_blockers(l: i32, q: vec2<f32>, z: f32, slope: vec2<f32>, r: f32, phi: f32) -> vec2<f32> {
     let n = u32(shadow_params.settings.z);
+    let c = vsm_center(l, q);
     var sum = 0.0;
     var count = 0.0;
     for (var i = 0u; i < n; i++) {
         let o = vogel(i, n, phi) * r;
-        let d = vsm_depth(l, q + o);
+        let d = vsm_depth_c(l, q + o, c);
         if (d < z + dot(slope, o)) {
             sum += d;
             count += 1.0;
@@ -665,11 +698,12 @@ fn vsm_find_blockers(l: i32, q: vec2<f32>, z: f32, slope: vec2<f32>, r: f32, phi
 // further from the receiver's own point, as `filter_kernel`).
 fn vsm_filter(l: i32, q: vec2<f32>, z: f32, slope: vec2<f32>, r: f32, phi: f32, bias_per_m: f32) -> f32 {
     let n = u32(shadow_params.settings.w);
+    let c = vsm_center(l, q);
     var lit = 0.0;
     var count = 0.0;
     for (var i = 0u; i < n; i++) {
         let o = vogel(i, n, phi) * r;
-        let s = vsm_tap(l, q + o, z + dot(slope, o) - bias_per_m * length(o));
+        let s = vsm_tap_c(l, q + o, z + dot(slope, o) - bias_per_m * length(o), c);
         if (s >= 0.0) {
             lit += s;
             count += 1.0;
@@ -742,10 +776,11 @@ fn vsm_sun_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: 
     let texel = vsm_texel(lv);
     let p = world + n * texel * lp.z * (1.0 + 2.0 * (1.0 - n_dot_l));
     let bias = lp.y * texel * shadow_params.vsm.light_z.w;
+    let centre = vsm_center(lv, vsm_coords(p).xy);
     var sum = 0.0;
     for (var k = 0u; k < 4u; k++) {
         let c = vsm_coords(p + taps[k]);
-        let s = vsm_tap(lv, c.xy, c.z - bias);
+        let s = vsm_tap_c(lv, c.xy, c.z - bias, centre);
         sum += select(1.0, s, s >= 0.0);
     }
     return vsm_fade(world, sum * 0.25);

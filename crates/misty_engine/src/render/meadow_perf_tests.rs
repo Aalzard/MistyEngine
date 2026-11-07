@@ -663,3 +663,73 @@ fn meadow_perf_vsm() {
         }
     }
 }
+
+/// Cascaded against virtual sun shadows in other sample scenes (`MISTY_VSM_SCENES`, default the
+/// static-heavy StressStatic and ShadowsDemo), still and moving, per level (`MISTY_QUALITY`).
+#[test]
+#[ignore = "timing, prints only"]
+fn scene_perf_vsm() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+    let materials = crate::assets::AssetCache::open(&root);
+    let scenes =
+        std::env::var("MISTY_VSM_SCENES").unwrap_or_else(|_| "StressStatic,ShadowsDemo".into());
+    let rounds: usize = std::env::var("MISTY_AB_ROUNDS")
+        .ok()
+        .and_then(|r| r.parse().ok())
+        .unwrap_or(2);
+    for name in scenes.split(',') {
+        let path = root.join(format!("Assets/Scenes/{name}.scene"));
+        let Ok((scene, _)) = crate::scene::Scene::load(&path) else {
+            eprintln!("{name}: missing, skipped");
+            continue;
+        };
+        let Some(v) = GameView::new(&scene, &materials) else {
+            eprintln!("{name}: no camera, skipped");
+            continue;
+        };
+        for (level, quality) in levels() {
+            let mut best: Vec<Option<(f32, f32, f32, f32)>> = vec![None; 4];
+            for _ in 0..rounds {
+                for (i, (mode, moving)) in [
+                    (crate::quality::ShadowMode::Cascaded, false),
+                    (crate::quality::ShadowMode::Virtual, false),
+                    (crate::quality::ShadowMode::Cascaded, true),
+                    (crate::quality::ShadowMode::Virtual, true),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let q = QualityLevel {
+                        shadow_mode: mode,
+                        ..quality.clone()
+                    };
+                    let (b, rendered, resident) =
+                        vsm_breakdown(&device, &queue, &v, &q, (1920, 1080), moving);
+                    let shadow = b.part("Shadow maps (cascades, local)")
+                        + b.part("Virtual shadow map pages")
+                        + b.part("Virtual shadow map marking");
+                    if best[i].is_none_or(|x| b.gpu < x.0) {
+                        best[i] = Some((b.gpu, shadow, rendered, resident));
+                    }
+                }
+            }
+            for (name_i, b) in [
+                "cascaded still",
+                "virtual still",
+                "cascaded moving",
+                "virtual moving",
+            ]
+            .iter()
+            .zip(&best)
+            {
+                let (gpu, shadow, rendered, resident) = b.expect("measured");
+                eprintln!(
+                    "{name} {level} {name_i}: GPU {gpu:.2} ms, shadow passes {shadow:.2} ms, pages rendered/frame {rendered:.1}, resident {resident:.0}"
+                );
+            }
+        }
+    }
+}

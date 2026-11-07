@@ -52,16 +52,19 @@ fn vsm_mark_level(l: i32, q: vec2<f32>) {
 
 @compute @workgroup_size(8, 8)
 fn cs_vsm_mark(@builtin(global_invocation_id) id: vec3<u32>) {
+    // Every other pixel each way: neighbours a pixel apart land on the same pages (a page is
+    // 128 texels, a texel about a pixel), and the margin covers the rest.
     let size = textureDimensions(mark_depth);
-    if (any(id.xy >= size) || vsm.light_x.w < 0.5) {
+    let xy = id.xy * 2u;
+    if (any(xy >= size) || vsm.light_x.w < 0.5) {
         return;
     }
-    let px = vec2<i32>(id.xy);
+    let px = vec2<i32>(xy);
     let d = textureLoad(mark_depth, px, 0);
     if (d >= 1.0) {
         return;
     }
-    let uv = (vec2<f32>(id.xy) + 0.5) / vec2<f32>(size);
+    let uv = (vec2<f32>(xy) + 0.5) / vec2<f32>(size);
     let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d, 1.0);
     let w = view.inv_view_proj * ndc;
     let world = w.xyz / w.w;

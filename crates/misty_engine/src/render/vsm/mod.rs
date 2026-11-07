@@ -970,7 +970,8 @@ impl Vsm {
             pass.set_pipeline(&gpu.mark);
             pass.set_bind_group(0, view_group, &[]);
             pass.set_bind_group(1, &group, &[]);
-            pass.dispatch_workgroups(size.0.div_ceil(8), size.1.div_ceil(8), 1);
+            // 8 × 8 threads a group, one thread per 2 × 2 pixels.
+            pass.dispatch_workgroups(size.0.div_ceil(16), size.1.div_ceil(16), 1);
         }
         let r = &mut gpu.readbacks[slot];
         encoder.copy_buffer_to_buffer(&gpu.marks, 0, &r.buffer, 0, r.buffer.size());
