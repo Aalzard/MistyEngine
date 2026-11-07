@@ -24,6 +24,7 @@ fn vs_terrain(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance:
 @fragment
 fn fs_terrain(in: MeshOut) -> MeshTargets {
     var out = shade(in.world, terrain_surface(in));
+    out.color = vec4<f32>(out.color.rgb * ground_cover_factor, out.color.a);
     out.velocity = mesh_velocity(in);
     return out;
 }

@@ -1066,4 +1066,4 @@ mod tests {
 
 #[cfg(test)]
 #[path = "trees_gpu_tests.rs"]
-mod gpu_tests;
+pub(super) mod gpu_tests;

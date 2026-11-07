@@ -244,6 +244,10 @@ pub struct QualityLevel {
     /// Share of each terrain's grass blades drawn (0.1..1); the blades left out make the
     /// others wider, so the ground stays covered.
     pub grass_density: f32,
+    /// The middle distance's undergrowth is painted on the ground (the terrain shader)
+    /// instead of drawn as the flat fans of the blades the grass LOD shrinks away: faster,
+    /// and a little different (off in every preset).
+    pub grass_ground_cover: bool,
 }
 
 impl Default for QualityLevel {
@@ -264,7 +268,9 @@ impl QualityLevel {
             soft_shadows: Tier::Off,
             shadow_temporal: false,
             shadow_denoise: false,
-            anti_aliasing: AntiAliasing::Off,
+            // (Every level renders 4× as before the renderer honoured the setting; 2× is a
+            // choice for the user, see docs/pending/meadow-perf2.md.)
+            anti_aliasing: AntiAliasing::X4,
             fxaa: false,
             temporal_aa: false,
             taa_blend: TAA_BLEND,
@@ -284,6 +290,7 @@ impl QualityLevel {
             grass_shadows: Tier::Off,
             grass_shadow_map: Tier::Off,
             grass_density: 0.5,
+            grass_ground_cover: false,
         }
     }
 
@@ -298,7 +305,7 @@ impl QualityLevel {
             soft_shadows: Tier::Low,
             shadow_temporal: false,
             shadow_denoise: false,
-            anti_aliasing: AntiAliasing::X2,
+            anti_aliasing: AntiAliasing::X4,
             fxaa: false,
             temporal_aa: true,
             taa_blend: TAA_BLEND,
@@ -318,6 +325,7 @@ impl QualityLevel {
             grass_shadows: Tier::Low,
             grass_shadow_map: Tier::Low,
             grass_density: 0.75,
+            grass_ground_cover: false,
         }
     }
 
@@ -352,6 +360,7 @@ impl QualityLevel {
             grass_shadows: Tier::Medium,
             grass_shadow_map: Tier::Medium,
             grass_density: 1.0,
+            grass_ground_cover: false,
         }
     }
 
@@ -669,7 +678,12 @@ mod tests {
     fn accessors_turn_choices_into_numbers() {
         let low = QualityLevel::low();
         assert_eq!(low.shadow_map_size(), 512);
-        assert_eq!(low.msaa_samples(), 1);
+        assert_eq!(low.msaa_samples(), 4);
+        let off = QualityLevel {
+            anti_aliasing: AntiAliasing::Off,
+            ..QualityLevel::low()
+        };
+        assert_eq!(off.msaa_samples(), 1);
         assert_eq!(low.ao_samples(), 0);
         assert_eq!(low.texture_size_limit(2048), 512, "1024 cap, then half");
         assert_eq!(low.anisotropy(16), 1);

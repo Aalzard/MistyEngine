@@ -17,7 +17,8 @@ struct GrassParams {
     seed: vec4<f32>,
     // x = full-density distance, y = tip dryness, z = most widening, w = colour variation.
     look: vec4<f32>,
-    // x = the terrain's draw slot (reflection probes).
+    // x = the terrain's draw slot (reflection probes), y = 1 with the ground cover (the lit
+    // pass leaves the flat fans out too: the terrain paints the undergrowth).
     draw: vec4<u32>,
     // rgb = linear lush colour, w = patch size (m).
     lush: vec4<f32>,
@@ -61,6 +62,23 @@ struct BladeIn {
     // The canopy relief's slope per metre (`grass_canopy` yz).
     @location(4) slope: vec2<f32>,
 };
+
+// The drawn chunk's blades (72 bytes each, as terrain/details.rs `Blade`) and the list of
+// the ones this draw shows (grass_cull.wgsl; instance i draws blade `grass_drawn[i]`).
+@group(3) @binding(0) var<storage, read> grass_blades: array<vec2<f32>>;
+@group(3) @binding(1) var<storage, read> grass_drawn: array<u32>;
+
+// The blade of draw instance `instance`.
+fn grass_fetch(instance: u32) -> BladeIn {
+    let at = grass_drawn[instance] * 9u;
+    var b: BladeIn;
+    b.position = vec4<f32>(grass_blades[at], grass_blades[at + 1u]);
+    b.shape = vec4<f32>(grass_blades[at + 2u], grass_blades[at + 3u]);
+    b.extra = vec4<f32>(grass_blades[at + 4u], grass_blades[at + 5u]);
+    b.field = vec4<f32>(grass_blades[at + 6u], grass_blades[at + 7u]);
+    b.slope = grass_blades[at + 8u];
+    return b;
+}
 
 struct BladeVertex {
     // World position of the vertex.

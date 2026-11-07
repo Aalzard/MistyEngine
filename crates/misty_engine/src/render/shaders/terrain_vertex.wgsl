@@ -24,8 +24,16 @@ struct TerrainParams {
     grass_dry: vec4<f32>,
     // rgb = linear lush colour, w = grass draw distance.
     grass_lush: vec4<f32>,
-    // x = lush amount, y = dry amount.
+    // x = lush amount, y = dry amount, z = the quality's share of the blades with the ground
+    // cover (Quality ▸ Grass Ground Cover; 0 = off), w = the grass's full-density distance.
     grass_amounts: vec4<f32>,
+    // Quality ▸ Grass Ground Cover (terrain.rs `GROUND_COVER`): x = how much of the ground the
+    // fans cover, y / z = where that fades in, w = where it has faded out (× the grass's
+    // full-density distance).
+    ground_cover: vec4<f32>,
+    // rgb = the fans' colour against the ground's looking into the sun / with it behind.
+    ground_tint: vec4<f32>,
+    ground_front: vec4<f32>,
 };
 
 @group(3) @binding(0) var<uniform> terrain: TerrainParams;

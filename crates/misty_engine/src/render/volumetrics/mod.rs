@@ -330,7 +330,9 @@ impl Renderer {
                 frame_index: history.frame,
                 prev: history.prev,
                 history: if reuse { HISTORY_WEIGHT } else { 0.0 },
-                time: v.clock.elapsed().as_secs_f32(),
+                // (A fixed clock in tests and recordings: renders compare frame for frame.)
+                time: (frame.environment.grass_time)
+                    .unwrap_or_else(|| v.clock.elapsed().as_secs_f32()),
                 sharp: sharp_quality.is_some(),
             });
             // No sun among the froxel lights: nothing to march.

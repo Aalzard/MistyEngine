@@ -2143,3 +2143,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 
 ### Not done yet
 - Grass first-chunk uploads going over the 2 ms budget (grass renderer).
+
+## Meadow performance, round 2 (branch meadow-perf2)
+
+### Done (docs/pending/meadow-perf2.md, screenshots `docs/screenshots/gfx/perf2_*`)
+- GPU grass culling: one compute pass tests every blade the grass passes would draw (view and
+  flat-fan tests mirrored from the vertex stage) and writes ordered compact lists with indirect
+  draw arguments per chunk and pass (lit, depth, AO prepass, sun cascades, near grass shadow
+  map); the vertex stages fetch blades through the lists. Bit-identical to `meadow-trees-1`.
+  Also exact: terrain chunks front to back, the AO prepass skips off-screen terrain.
+- Renders are deterministic in tests (clouds and fog follow the fixed test clock).
+- Quality ▸ Grass Ground Cover (off in every preset): the terrain tints the middle distance's
+  ground like the LOD's flat fans did and the lit grass skips the fans.
+- Quality ▸ Anti-Aliasing is honoured (2× or 4×; Disabled renders 2× for now); the presets
+  keep 4× so the picture is unchanged until the user picks 2×.
+
+  | MeadowDemo GPU ms, 1920×1080, RTX 4060 (wide view) | Low | Medium | High |
+  |---|---|---|---|
+  | meadow-trees-1 | 11.4 | 18.3 | 23.0 |
+  | default (GPU culling) | 10.1 (99 FPS) | 15.8 (63 FPS) | 20.3 (49 FPS) |
+  | + Ground Cover | 8.5 | 13.3 | 17.4 |
+  | + 2× MSAA | 8.5 | 13.5 | 17.5 |
+  | + both | 7.6 (131 FPS) | 11.7 (86 FPS) | 15.5 (65 FPS) |
+
+### Not done yet
+- Medium at ≤ 10 ms full screen (11.7 ms with both switches): the grass visibility buffer
+  (grass study) is next; 1× MSAA; see "Left" in docs/pending/meadow-perf2.md.
+

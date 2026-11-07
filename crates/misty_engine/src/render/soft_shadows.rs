@@ -192,7 +192,7 @@ impl Renderer {
                 let start = slot.checked_sub(1).map_or(0.0, |p| plan.cascades[p].far);
                 grass_range.is_some_and(|r| start < r)
             });
-            let grass = grass.map(|c| &c.view_proj);
+            let grass = grass.is_some();
             self.shadow_pass(encoder, frame, view, slot, lists, Some(list), grass, stats);
         }
     }

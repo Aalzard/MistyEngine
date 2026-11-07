@@ -8,7 +8,8 @@ struct GrassShadowOut {
 };
 
 @vertex
-fn vs_grass_shadow(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassShadowOut {
+fn vs_grass_shadow(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GrassShadowOut {
+    let b = grass_fetch(ii);
     var out: GrassShadowOut;
     // Blades outside this map skip the rest (its near plane is left alone: casters behind it
     // still reach the map), and so do the flat fans of the blades the LOD shrank away

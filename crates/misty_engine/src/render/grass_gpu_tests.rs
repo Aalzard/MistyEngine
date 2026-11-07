@@ -590,7 +590,7 @@ impl Breakdown {
             .map_or(0.0, |p| p.1)
     }
 
-    fn print(&self, name: &str) {
+    pub fn print(&self, name: &str) {
         eprintln!(
             "== {name}: GPU {:.2} ms, CPU render {:.2} ms, {:.1} M triangles, {} draws",
             self.gpu,

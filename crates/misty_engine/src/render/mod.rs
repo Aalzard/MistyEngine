@@ -16,6 +16,7 @@ mod frame_lists;
 mod glow;
 mod gpu_culling;
 mod gpu_timer;
+mod grass_cull;
 mod grass_near_shadow;
 mod hdri_sky;
 mod light2d;
@@ -92,17 +93,46 @@ pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
-pub const SAMPLE_COUNT: u32 = 4;
+/// MSAA samples of the main pass for the pipelines and targets made from now on: the
+/// samples of the renderer at work (each `Renderer` keeps its own and sets this before it
+/// builds anything; Quality ▸ Anti-Aliasing, 2× or 4×).
+static SAMPLES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(4);
+
+pub(crate) fn sample_count() -> u32 {
+    SAMPLES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn use_samples(samples: u32) {
+    SAMPLES.store(samples, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The main pass's MSAA samples for a quality level on `device`: its Anti-Aliasing.
+/// Disabled renders 2× for now (the depth / velocity readers and the resolve need
+/// multisampled targets); 2× needs the adapter's own format features (WebGPU guarantees
+/// only 1× and 4× for the HDR targets), else 4×.
+pub fn msaa_samples(device: &wgpu::Device, quality: &crate::quality::QualityLevel) -> u32 {
+    let two = device
+        .features()
+        .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
+    match quality.msaa_samples() {
+        n if n >= 4 || !two => 4,
+        _ => 2,
+    }
+}
+
 const MAX_LIGHTS: usize = 8;
 
 /// Device features to request when the adapter has them: timestamp queries for GPU timing
-/// (see [`Renderer::with_queue`]) and indirect draws with an instance offset (GPU culling).
+/// (see [`Renderer::with_queue`]), indirect draws with an instance offset (GPU culling) and
+/// the adapter's own format capabilities (2× MSAA of the HDR targets is not guaranteed by
+/// WebGPU, only 1× and 4×).
 pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     adapter.features()
         & (wgpu::Features::TIMESTAMP_QUERY
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
-            | wgpu::Features::INDIRECT_FIRST_INSTANCE)
+            | wgpu::Features::INDIRECT_FIRST_INSTANCE
+            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
 }
 
 /// World plane the editor grid lies on.
@@ -506,6 +536,8 @@ pub struct Renderer {
     /// The view-projection the last render drew with (jitter included), for tests.
     #[cfg(test)]
     last_view_proj: Mat4,
+    /// MSAA samples of the main pass this renderer was built for (see [`sample_count`]).
+    samples: u32,
 }
 
 impl Renderer {
@@ -638,6 +670,7 @@ impl Renderer {
             debug_blit: None,
             #[cfg(test)]
             last_view_proj: Mat4::IDENTITY,
+            samples: sample_count(),
         }
     }
 
@@ -681,6 +714,20 @@ impl Renderer {
     /// Effect settings (cascades, soft shadows, AO, fog, probes) are read from
     /// [`Renderer::quality`] by the passes that implement them.
     pub fn set_quality(&mut self, device: &wgpu::Device, quality: &crate::quality::QualityLevel) {
+        // Quality ▸ Anti-Aliasing: another sample count rebuilds the renderer (pipelines and
+        // GPU caches; meshes, textures and grass load again over the next frames). Targets
+        // made before no longer fit (`target_fits`): the hosts make new ones.
+        let samples = msaa_samples(device, quality);
+        if samples != self.samples {
+            use_samples(samples);
+            let mut fresh = Self::new(device);
+            fresh.gpu_timer = self.gpu_timer.take();
+            fresh.pass_timer = self.pass_timer.take();
+            fresh.options = self.options;
+            fresh.capture = self.capture.take();
+            *self = fresh;
+        }
+        use_samples(self.samples);
         if !quality.temporal_aa {
             self.taa.clear();
         }
@@ -746,6 +793,12 @@ impl Renderer {
     /// Latest GPU time of a render, when timestamp queries are supported.
     pub fn gpu_ms(&self) -> Option<f32> {
         self.gpu_timer.as_ref().and_then(|t| t.last_ms())
+    }
+
+    /// The target was made for this renderer's MSAA samples (else make a new one: Quality ▸
+    /// Anti-Aliasing changed).
+    pub fn target_fits(&self, target: &RenderTarget) -> bool {
+        target.samples() == self.samples
     }
 
     /// Measure the GPU time of each part of every render (shadows, AO, main pass, grass, TAA,
@@ -936,6 +989,9 @@ impl Renderer {
             // Group 2 of the terrain pipelines is unused; any material group fits.
             let layout = &self.pipelines.material_layout;
             self.textures.prepare(device, queue, layout, None, None);
+            // Quality ▸ Grass Ground Cover: the undergrowth painted on the ground, no fans.
+            let cover = self.quality.grass_ground_cover;
+            (self.terrains).set_ground_cover(cover.then(|| self.quality.grass_density()));
             self.terrains.prepare(
                 device,
                 queue,
@@ -958,6 +1014,7 @@ impl Renderer {
 
     /// New offscreen target for a view.
     pub fn create_target(&self, device: &wgpu::Device, width: u32, height: u32) -> RenderTarget {
+        use_samples(self.samples);
         let layouts = TargetLayouts {
             mask: &self.pipelines.mask_layout,
             post: &self.pipelines.post_layout,
@@ -986,6 +1043,11 @@ impl Renderer {
         target: &RenderTarget,
         frame: &Frame,
     ) {
+        use_samples(self.samples);
+        if !self.target_fits(target) {
+            // (Made before Quality ▸ Anti-Aliasing changed: the host makes a new one.)
+            return;
+        }
         let emitters = if frame.shaded {
             area::emitter_draws(frame.lights)
         } else {
@@ -1184,6 +1246,31 @@ impl Renderer {
         if screen.is_none() {
             self.cancel_shadow_mask();
         }
+        // This frame's grass passes, culled on the GPU before the first of them: the sun
+        // cascades that start within the grass casters' range, the near grass shadow map, the
+        // AO prepass and the camera's grass.
+        if self.terrains.has_grass() {
+            let grass_range = self.terrains.grass_caster_range();
+            let cascades: Vec<(usize, glam::Mat4)> = (plan.cascades.iter().enumerate())
+                .filter(|(slot, _)| {
+                    let start = slot.checked_sub(1).map_or(0.0, |p| plan.cascades[p].far);
+                    grass_range.is_some_and(|r| start < r)
+                })
+                .map(|(slot, c)| (slot, c.view_proj))
+                .collect();
+            let prepass = screen
+                .as_ref()
+                .and_then(|_| screen_space::grass_prepass_range(self.quality.ambient_occlusion));
+            self.terrains.plan_grass(
+                device,
+                queue,
+                &self.pipelines.grass_blades_layout,
+                frame.terrains,
+                &cascades,
+                grass_near.as_ref(),
+                prepass,
+            );
+        }
 
         // Lights and their shadow maps (cascades first, then local layers).
         let soft = shadow_settings.soft != crate::quality::Tier::Off;
@@ -1232,6 +1319,9 @@ impl Renderer {
         // First pass: starts the GPU timing.
         self.mask_pass(&mut encoder, target, frame, timing);
         self.mark(&mut encoder, "Selection mask");
+        self.terrains
+            .encode_grass_cull(frame.terrains, &mut encoder);
+        self.mark(&mut encoder, "Grass culling");
         if frame.shaded
             && !frame.water.is_empty()
             && frame_debug::whole(
@@ -1815,7 +1905,7 @@ impl Renderer {
         slot: usize,
         lists: &frame_lists::FrameLists,
         list: Option<&frame_lists::ShadowList>,
-        grass: Option<&glam::Mat4>,
+        grass: bool,
         stats: &mut RenderStats,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1888,7 +1978,7 @@ impl Renderer {
             stats.draw(b.count, m.count, m.vertex_count);
         }
         // Grass near the camera (the first cascades only; group 2 = the grass casters).
-        if let Some(view_proj) = grass
+        if grass
             && frame_debug::record(&self.capture, |_| {
                 frame_debug::events::post_event(
                     "Grass Shadow Casters".to_owned(),
@@ -1898,7 +1988,7 @@ impl Renderer {
         {
             pass.set_pipeline(&self.pipelines.grass_shadow);
             stats.set_pass += 1;
-            (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, view_proj, stats);
+            (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, slot, stats);
         }
         // Trees into the sun's cascades (group 2 = the tree's textures).
         if self.trees.has_trees() {
@@ -1932,7 +2022,7 @@ impl Renderer {
         stats: &mut RenderStats,
     ) {
         let near = &self.shadows.grass_near;
-        for (i, vp) in view_proj.iter().enumerate() {
+        for i in 0..view_proj.len() {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("misty grass near shadow"),
                 color_attachments: &[],
@@ -1956,7 +2046,7 @@ impl Renderer {
             let side = near.slice_size(i) as f32;
             pass.set_viewport(0.0, 0.0, side, side, 0.0, 1.0);
             stats.set_pass += 1;
-            (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, vp, i, stats);
+            (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, i, stats);
         }
     }
 
@@ -2150,6 +2240,7 @@ impl Renderer {
                     |i| visible[i],
                     stats,
                 );
+                self.mark_pass(&mut pass, "Main: terrain");
                 // Trees before the grass: the grass's depth pass then skips what they hide.
                 if self.trees.has_trees()
                     && frame_debug::record(&self.capture, |_| {
@@ -2165,12 +2256,16 @@ impl Renderer {
                 {
                     // Depth first (alpha tested), then the shading once per covered sample:
                     // dense turf overlaps each pixel many times.
-                    self.mark_pass(&mut pass, "Main: terrain");
+                    self.mark_pass(&mut pass, "Main: trees");
                     pass.set_pipeline(&self.pipelines.grass_depth);
-                    self.terrains.draw_grass(&mut pass, frame.terrains, stats);
+                    let depth = grass_cull::DEPTH;
+                    self.terrains
+                        .draw_grass(&mut pass, frame.terrains, depth, stats);
                     self.mark_pass(&mut pass, "Main: grass depth");
                     pass.set_pipeline(&self.pipelines.grass);
-                    self.terrains.draw_grass(&mut pass, frame.terrains, stats);
+                    let lit = grass_cull::LIT;
+                    self.terrains
+                        .draw_grass(&mut pass, frame.terrains, lit, stats);
                     self.mark_pass(&mut pass, "Main: grass lit");
                 }
             }
@@ -2799,6 +2894,8 @@ mod gpu_checks;
 pub(crate) mod gpu_tests;
 #[cfg(test)]
 mod hitch_tests;
+#[cfg(test)]
+mod meadow_perf_tests;
 #[cfg(test)]
 mod taa_gpu_tests;
 #[cfg(test)]

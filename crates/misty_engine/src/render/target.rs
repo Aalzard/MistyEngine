@@ -2,7 +2,7 @@
 //! 8-bit image shown in the editor.
 
 use super::pipelines::VELOCITY_FORMAT;
-use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT, SAMPLE_COUNT};
+use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, MASK_FORMAT};
 
 /// Non-sRGB view of the final image: samplers return the stored (gamma-encoded) bytes,
 /// which is what the egui compositor expects.
@@ -29,6 +29,8 @@ pub struct RenderTarget {
     pub(crate) id: u64,
     width: u32,
     height: u32,
+    /// MSAA samples of the main pass targets (the renderer's when made).
+    samples: u32,
     msaa_view: wgpu::TextureView,
     /// Emission only (bloom source), MSAA + resolved.
     glow_msaa_view: wgpu::TextureView,
@@ -102,7 +104,7 @@ impl RenderTarget {
             "misty msaa hdr",
             full,
             HDR_FORMAT,
-            SAMPLE_COUNT,
+            super::sample_count(),
             attach,
             &[],
         );
@@ -111,7 +113,7 @@ impl RenderTarget {
             "misty depth",
             full,
             DEPTH_FORMAT,
-            SAMPLE_COUNT,
+            super::sample_count(),
             sampled,
             &[],
         );
@@ -129,7 +131,7 @@ impl RenderTarget {
             "misty msaa glow",
             full,
             HDR_FORMAT,
-            SAMPLE_COUNT,
+            super::sample_count(),
             attach,
             &[],
         );
@@ -139,7 +141,7 @@ impl RenderTarget {
             "misty velocity",
             full,
             VELOCITY_FORMAT,
-            SAMPLE_COUNT,
+            super::sample_count(),
             sampled,
             &[],
         );
@@ -226,6 +228,7 @@ impl RenderTarget {
         static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         Self {
             id: NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            samples: super::sample_count(),
             width,
             height,
             msaa_view: view(&msaa),
@@ -254,6 +257,11 @@ impl RenderTarget {
 
     pub fn size(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+
+    /// MSAA samples of the main pass targets (see `Renderer::target_fits`).
+    pub fn samples(&self) -> u32 {
+        self.samples
     }
 
     pub fn aspect(&self) -> f32 {

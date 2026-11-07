@@ -18,7 +18,8 @@ struct GrassPrepassTargets {
 };
 
 @vertex
-fn vs_grass_prepass(@builtin(vertex_index) vi: u32, b: BladeIn) -> GrassPrepassOut {
+fn vs_grass_prepass(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GrassPrepassOut {
+    let b = grass_fetch(ii);
     var out: GrassPrepassOut;
     // Blades out of view skip the rest, and so do the flat fans of the blades the LOD shrank
     // away (`grass_flat`): they lie on the ground the prepass already has.

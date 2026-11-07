@@ -125,6 +125,39 @@ fn harmonize(c: vec3<f32>, a: vec4<f32>) -> vec3<f32> {
     return hsv_to_rgb(vec3<f32>(hsv.x + a.x, clamp(hsv.y * a.y, 0.0, 1.0), hsv.z * a.z));
 }
 
+// Quality ▸ Grass Ground Cover: the ground under grass as the flat fans of the blades the
+// grass LOD shrinks away made it look (grass.wgsl draws them without it). A blade past its
+// distance's share of the turf collapses onto its root as a small fan, and from a little past
+// the full-density distance to where the blade share stops falling these fans cover part of
+// the ground between the standing blades. Lit like the grass, they read darker and warmer
+// than the ground when the camera looks into the sun, lighter when the sun is behind it.
+// Fitted against renders with the fans (meadow_perf_tests.rs; terrain.rs `GROUND_COVER`):
+// the factor on the lit colour of that share of the ground.
+fn grass_ground_cover(world: vec3<f32>, dist: f32, tint: f32) -> vec3<f32> {
+    let full = terrain.grass_amounts.w;
+    let c = terrain.ground_cover;
+    let band = smoothstep(c.y * full, c.z * full, dist)
+        * (1.0 - smoothstep(0.55 * c.w * full, c.w * full, dist));
+    let cover = c.x * band * tint;
+    var backlit = 0.5;
+    let count = u32(lights.info.x);
+    for (var i = 0u; i < count; i++) {
+        let li = lights.items[i];
+        if (u32(li.dir_type.w) == 0u) {
+            let to_light = -normalize(li.dir_type.xyz);
+            backlit = smoothstep(-0.4, 0.6, dot(normalize(world - view.camera_pos.xyz), to_light));
+            break;
+        }
+    }
+    let fan = mix(terrain.ground_front.rgb, terrain.ground_tint.rgb, backlit);
+    return mix(vec3<f32>(1.0), fan, cover);
+}
+
+// The ground cover's factor on the lit terrain colour of this fragment (set by
+// `terrain_surface`; 1 = none). Applied after lighting: the fans differ from the ground in
+// how they are lit (and fogged), not only in colour.
+var<private> ground_cover_factor: vec3<f32> = vec3<f32>(1.0);
+
 // Lit surface of the terrain at a fragment.
 fn terrain_surface(in: MeshOut) -> Surface {
     // Everything needing implicit derivatives happens first (uniform control flow).
@@ -246,6 +279,11 @@ fn terrain_surface(in: MeshOut) -> Surface {
         let take = tint * mix(0.85, 1.0, mid) * (1.0 - 0.9 * worn);
         let under = mix(0.4, 1.0, max(worn, mid));
         s.albedo = mix(s.albedo * under, grass * shade * litter, take);
+        // Quality ▸ Grass Ground Cover: the undergrowth the grass LOD's flat fans drew (the
+        // lit grass leaves them out then).
+        if (terrain.grass_amounts.z > 0.0) {
+            ground_cover_factor = grass_ground_cover(in.world, dist, tint);
+        }
         s.smoothness *= 1.0 - take;
         // The soil's relief stays close up; far away it would only shimmer under the turf.
         s.normal = normalize(mix(s.normal, n, 0.8 * tint * far));

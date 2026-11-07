@@ -95,7 +95,12 @@ impl Gpu {
             ViewId::Game => &mut self.game,
         };
         let size = (size_px[0].max(1), size_px[1].max(1));
-        if vp.target.as_ref().map(|t| t.size()) != Some(size) {
+        // (A new target too when Quality ▸ Anti-Aliasing rebuilt the renderer.)
+        let fits = vp
+            .target
+            .as_ref()
+            .is_some_and(|t| self.renderer.target_fits(t));
+        if vp.target.as_ref().map(|t| t.size()) != Some(size) || !fits {
             vp.target = Some(
                 self.renderer
                     .create_target(&self.state.device, size.0, size.1),

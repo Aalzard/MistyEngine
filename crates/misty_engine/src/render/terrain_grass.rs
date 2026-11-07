@@ -14,6 +14,7 @@ use glam::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
 
 use super::culling::{Aabb, Frustum};
+use super::grass_cull::{self, Arena, CullFrame, CullPipelines, JobDraw, KINDS, PlannedKind};
 use crate::terrain::TerrainData;
 use crate::terrain::details::{self, Blade, DetailSettings};
 use crate::terrain::store::Region;
@@ -40,6 +41,15 @@ const MAX_WIDEN: f32 = 3.0;
 /// camera needs before returning, so a render is complete on its first frame (tests,
 /// screenshots).
 static STREAMING: AtomicBool = AtomicBool::new(true);
+
+/// Cull grass on the GPU when the device can (the default); off, every blade of a chunk's
+/// prefix goes to the vertex stage (A/B timings in tests).
+static GPU_CULL: AtomicBool = AtomicBool::new(true);
+
+#[cfg(test)]
+pub(super) fn set_grass_gpu_cull(on: bool) {
+    GPU_CULL.store(on, Ordering::Relaxed);
+}
 
 /// Build grass chunks over several frames on worker threads (true, the default) or wait for
 /// them in the frame that needs them (deterministic renders: tests, screenshots).
@@ -68,12 +78,18 @@ fn level_for(keep: f32) -> u32 {
 }
 
 struct Chunk {
+    /// The blades (storage: the vertex stage fetches them through a draw's list).
     buffer: Option<wgpu::Buffer>,
     count: u32,
     /// Density level the blades were scattered at.
     level: u32,
     /// Terrain-local bounds of the blades.
     bounds: Aabb,
+    /// Where the blades' cull records start in the arena (None = not culled on the GPU).
+    arena: Option<u32>,
+    /// Group 3 of the grass pipelines: these blades and the list of drawn ones (with the
+    /// generation of the list buffer it was made for).
+    group: Option<(u64, wgpu::BindGroup)>,
 }
 
 /// Chunks within `range` metres only, `share` of their blades, coarse blades only.
@@ -183,6 +199,13 @@ pub(super) struct Grass {
     /// Share of the blades drawn at every distance (Quality ▸ Grass Density; the rest grow
     /// wider to cover the same ground).
     density: f32,
+    /// Cull records of every chunk (grass_cull.rs; made with the first chunk).
+    arena: Option<Arena>,
+    /// This frame's passes and their culling.
+    cull: Option<CullFrame>,
+    /// 0, 1, 2, ...: the list of the drawn blades when culling runs on the CPU (no indirect
+    /// draws with a first instance on this device): every blade of the prefix.
+    identity: Option<(u32, wgpu::Buffer)>,
 }
 
 impl Default for Grass {
@@ -199,6 +222,9 @@ impl Default for Grass {
             ready: VecDeque::new(),
             stats: GrassStats::default(),
             density: 1.0,
+            arena: None,
+            cull: None,
+            identity: None,
         }
     }
 }
@@ -255,7 +281,7 @@ impl Grass {
     pub fn invalidate(&mut self, d: &TerrainData, region: Option<Region>) {
         self.restart();
         let Some(r) = region else {
-            self.chunks.clear();
+            self.keep_chunks(|_| false);
             return;
         };
         if r.is_empty() {
@@ -264,10 +290,22 @@ impl Grass {
         let size = Vec2::new(d.size.x, d.size.z);
         let lo = Vec2::from(r.min) * size;
         let hi = Vec2::from(r.max) * size;
-        self.chunks.retain(|(x, z), _| {
-            let c0 = Vec2::new(*x as f32, *z as f32) * CHUNK;
+        self.keep_chunks(|(x, z)| {
+            let c0 = Vec2::new(x as f32, z as f32) * CHUNK;
             let c1 = c0 + CHUNK;
             c1.x < lo.x || c1.y < lo.y || c0.x > hi.x || c0.y > hi.y
+        });
+    }
+
+    /// Drop the chunks `keep` refuses (their cull records go back to the arena).
+    fn keep_chunks(&mut self, mut keep: impl FnMut((u32, u32)) -> bool) {
+        let arena = &mut self.arena;
+        self.chunks.retain(|k, c| {
+            let kept = keep(*k);
+            if !kept {
+                free_chunk(arena, c);
+            }
+            kept
         });
     }
 
@@ -309,6 +347,7 @@ impl Grass {
     pub fn update(
         &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         d: &Arc<TerrainData>,
         camera: Vec3,
         density: f32,
@@ -318,26 +357,25 @@ impl Grass {
         self.density = density.clamp(MIN_KEEP, 1.0);
         let key = scatter_key(d);
         if self.key.as_ref() != Some(&key) {
-            self.chunks.clear();
+            self.keep_chunks(|_| false);
             self.restart();
             self.key = Some(key);
         }
         if !d.details.enabled || d.detail_map.is_empty() {
-            self.chunks.clear();
+            self.keep_chunks(|_| false);
             self.restart();
             return;
         }
         let range = d.details.draw_distance.max(1.0);
         let lod = d.details.lod_distance;
         // Far chunks go; chunks coarser than wanted stay until their finer scatter lands.
-        self.chunks
-            .retain(|(x, z), _| near(*x, *z, camera, range * 1.5));
+        self.keep_chunks(|(x, z)| near(x, z, camera, range * 1.5));
         self.in_flight
             .retain(|(x, z), _| near(*x, *z, camera, range * 1.5));
 
         // Finished scatters: keep the ones still worth uploading, nearest first.
         self.collect(camera, range);
-        self.upload(device, grass_streaming());
+        self.upload(device, queue, grass_streaming());
 
         // Hand out the nearest stale chunks, as many as the workers can take.
         let slots = MAX_IN_FLIGHT.saturating_sub(self.in_flight.len());
@@ -379,10 +417,10 @@ impl Grass {
                     self.ready.push_back(done);
                 }
             }
-            self.upload(device, false);
+            self.upload(device, queue, false);
             if !self.stale_chunks(d, camera).is_empty() {
                 let stats = self.stats;
-                self.update(device, d, camera, density);
+                self.update(device, queue, d, camera, density);
                 self.stats.scheduled += stats.scheduled;
                 self.stats.uploaded += stats.uploaded;
                 self.stats.upload_ms += stats.upload_ms;
@@ -421,7 +459,7 @@ impl Grass {
 
     /// Upload finished chunks: within [`UPLOAD_BUDGET`] (always at least one) when
     /// `budgeted`, else all of them.
-    fn upload(&mut self, device: &wgpu::Device, budgeted: bool) {
+    fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, budgeted: bool) {
         let started = Instant::now();
         while let Some(done) = self.ready.pop_front() {
             self.stats.scatter_ms = self.stats.scatter_ms.max(done.scatter_ms);
@@ -439,22 +477,34 @@ impl Grass {
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("misty grass blades"),
                     contents: bytemuck::cast_slice(blades),
-                    usage: wgpu::BufferUsages::VERTEX,
+                    usage: wgpu::BufferUsages::STORAGE,
                 })
             });
+            let arena = match (&buffer, grass_cull_supported(device)) {
+                (Some(_), true) => self
+                    .arena
+                    .get_or_insert_with(|| Arena::new(device))
+                    .store(device, queue, blades),
+                _ => None,
+            };
             let bounds = Aabb::new(
                 Vec3::new(lo.x - 1.0, bottom - 1.0, lo.y - 1.0),
                 Vec3::new(lo.x + CHUNK + 1.0, top + 1.0, lo.y + CHUNK + 1.0),
             );
-            self.chunks.insert(
+            let old = self.chunks.insert(
                 done.key,
                 Chunk {
                     buffer,
                     count: blades.len() as u32,
                     level: done.level,
                     bounds,
+                    arena,
+                    group: None,
                 },
             );
+            if let Some(old) = old {
+                free_chunk(&mut self.arena, &old);
+            }
             self.stats.uploaded += 1;
             let elapsed = started.elapsed();
             if budgeted && elapsed >= UPLOAD_BUDGET {
@@ -466,62 +516,173 @@ impl Grass {
         self.stats.upload_ms += started.elapsed().as_secs_f32() * 1000.0;
     }
 
-    /// Draw visible chunks (pipeline and groups 0–2 already bound), nearest first: far
-    /// chunks draw only the share of their key-sorted blades their nearest point keeps (the
-    /// vertex shader shrinks away the rest blade by blade). `limit` draws only the chunks
-    /// within a range, a share of their blades (shadow casters, the prepass).
+    /// The chunks a pass draws, nearest first, and how many of each one's key-sorted blades:
+    /// far chunks draw only the share their nearest point keeps (the vertex shader shrinks
+    /// away the rest blade by blade). `limit` keeps only the chunks within a range, a share of
+    /// their blades (shadow casters, the prepass). With each chunk its arena offset.
     ///
     /// A blade shrunk away to nothing still has a width: its card collapses onto the root as
     /// a small flat fan, and in the chunks around the camera most drawn blades are such fans
     /// (they keep the ground between the standing blades covered). Only the lit pass draws
-    /// them; the depth pass, the prepass and the shadow casters skip them in the vertex
-    /// shader (grass_blade.wgsl `grass_flat`).
-    #[allow(clippy::too_many_arguments)]
-    pub fn draw(
+    /// them; the depth pass, the prepass and the shadow casters skip them (grass_blade.wgsl
+    /// `grass_flat`, and the GPU culling before them).
+    fn pass_chunks(
         &self,
-        pass: &mut wgpu::RenderPass,
         origin: Vec3,
         camera: Vec3,
         lod_distance: f32,
         frustum: &Frustum,
         limit: Option<Limit>,
-        stats: &mut super::RenderStats,
-    ) {
+    ) -> Vec<(JobDraw, u32)> {
         // Nearest chunks first: their blades fill the depth buffer, so the many blades
         // behind them fail the depth test before shading.
-        let mut order: Vec<(f32, &Chunk)> = self
+        let mut order: Vec<(f32, (u32, u32), &Chunk)> = self
             .chunks
-            .values()
-            .filter_map(|c| {
+            .iter()
+            .filter_map(|(k, c)| {
                 c.buffer.as_ref()?;
                 let world = Aabb::new(c.bounds.min + origin, c.bounds.max + origin);
                 let dist = camera.clamp(world.min, world.max).distance(camera);
                 let near = limit.is_none_or(|l| dist < l.range);
-                (near && frustum.intersects(&world)).then_some((dist, c))
+                (near && frustum.intersects(&world)).then_some((dist, *k, c))
             })
             .collect();
         order.sort_by(|a, b| a.0.total_cmp(&b.0));
         let share = limit.map_or(1.0, |l| l.share);
         let coarse_only = limit.is_some_and(|l| l.coarse);
-        for (dist, c) in order {
-            let Some(buffer) = &c.buffer else {
+        order
+            .into_iter()
+            .filter_map(|(dist, key, c)| {
+                let keep = keep_at(dist, lod_distance) * self.density * share
+                    / details::level_keep(c.level);
+                let count = ((c.count as f32 * keep.min(1.0)).ceil() as u32).min(c.count);
+                if count == 0 {
+                    return None;
+                }
+                let (first_vertex, verts) = if coarse_only || dist > lod_distance * COARSE_FROM {
+                    (100, COARSE_VERTICES)
+                } else {
+                    (0, BLADE_VERTICES)
+                };
+                let draw = JobDraw {
+                    key,
+                    job: 0,
+                    count,
+                    verts,
+                    first_vertex,
+                };
+                Some((draw, c.arena.unwrap_or(0)))
+            })
+            .collect()
+    }
+
+    /// Lay out this frame's grass passes (`passes[k]` = pass k's culling tests, view and
+    /// chunk limit; None = not drawn) and the groups their chunks draw with.
+    #[allow(clippy::too_many_arguments)]
+    pub fn plan(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        pipelines: &CullPipelines,
+        origin: Vec3,
+        camera: Vec3,
+        lod_distance: f32,
+        passes: &[Option<(grass_cull::Kind, Frustum, Option<Limit>)>; KINDS],
+    ) {
+        // (Every chunk needs its records: a full arena falls back to the CPU path.)
+        let gpu = GPU_CULL.load(Ordering::Relaxed)
+            && grass_cull_supported(device)
+            && self.arena.is_some()
+            && (self.chunks.values()).all(|c| c.buffer.is_none() || c.arena.is_some());
+        let planned: [Option<PlannedKind>; KINDS] = std::array::from_fn(|k| {
+            let (kind, frustum, limit) = passes[k].as_ref()?;
+            let draws = self.pass_chunks(origin, camera, lod_distance, frustum, *limit);
+            Some(PlannedKind { kind: *kind, draws })
+        });
+        let cull = self.cull.get_or_insert_with(|| CullFrame::new(device));
+        cull.plan(device, queue, pipelines, self.arena.as_ref(), &planned, gpu);
+        // The list buffer the chunks' groups bind: the culled lists, else 0, 1, 2, ...
+        let (generation, list) = if gpu {
+            (cull.indices_generation, cull.indices().clone())
+        } else {
+            let longest = self.chunks.values().map(|c| c.count).max().unwrap_or(0);
+            if self.identity.as_ref().is_none_or(|(n, _)| *n < longest) {
+                let n = longest.next_power_of_two().max(1024);
+                let ids: Vec<u32> = (0..n).collect();
+                let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("misty grass identity list"),
+                    contents: bytemuck::cast_slice(&ids),
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
+                self.identity = Some((n, buffer));
+            }
+            // (Identity lists count their generations down from u64::MAX, culled ones up.)
+            let (n, buffer) = self.identity.as_ref().expect("just made");
+            (u64::MAX - *n as u64, buffer.clone())
+        };
+        let drawn: Vec<(u32, u32)> = cull.per_kind.iter().flatten().map(|d| d.key).collect();
+        for key in drawn {
+            let Some(c) = self.chunks.get_mut(&key) else {
                 continue;
             };
-            let keep =
-                keep_at(dist, lod_distance) * self.density * share / details::level_keep(c.level);
-            let count = ((c.count as f32 * keep.min(1.0)).ceil() as u32).min(c.count);
-            if count == 0 {
+            let Some(blades) = &c.buffer else {
+                continue;
+            };
+            if c.group.as_ref().is_some_and(|(g, _)| *g == generation) {
                 continue;
             }
-            pass.set_vertex_buffer(0, buffer.slice(..));
-            let verts = if coarse_only || dist > lod_distance * COARSE_FROM {
-                pass.draw(100..100 + COARSE_VERTICES, 0..count);
-                COARSE_VERTICES
-            } else {
-                pass.draw(0..BLADE_VERTICES, 0..count);
-                BLADE_VERTICES
+            let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("misty grass blades group"),
+                layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: blades.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: list.as_entire_binding(),
+                    },
+                ],
+            });
+            c.group = Some((generation, group));
+        }
+    }
+
+    #[cfg(test)]
+    pub fn read_cull_counts(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Option<[(u64, u64); KINDS]> {
+        Some(self.cull.as_ref()?.read_counts(device, queue))
+    }
+
+    /// Record this frame's culling (before the first grass pass).
+    pub fn encode_cull(&self, pipelines: &CullPipelines, encoder: &mut wgpu::CommandEncoder) {
+        if let Some(cull) = &self.cull {
+            cull.encode(pipelines, encoder);
+        }
+    }
+
+    /// Draw pass `kind` as planned (pipeline and groups 0–2 already bound).
+    pub fn draw(&self, pass: &mut wgpu::RenderPass, kind: usize, stats: &mut super::RenderStats) {
+        let Some(cull) = &self.cull else {
+            return;
+        };
+        let indirect = cull.culled();
+        for d in &cull.per_kind[kind] {
+            let Some((_, group)) = self.chunks.get(&d.key).and_then(|c| c.group.as_ref()) else {
+                continue;
             };
-            stats.draw(count, (verts - 2) * 3, verts);
+            pass.set_bind_group(3, group, &[]);
+            if indirect {
+                pass.draw_indirect(cull.args(), d.job as u64 * 16);
+            } else {
+                pass.draw(d.first_vertex..d.first_vertex + d.verts, 0..d.count);
+            }
+            stats.draw(d.count, (d.verts - 2) * 3, d.verts);
         }
     }
 
@@ -529,8 +690,25 @@ impl Grass {
         self.chunks
             .values()
             .map(|c| c.count as u64 * std::mem::size_of::<details::Blade>() as u64)
-            .sum()
+            .sum::<u64>()
+            + self.arena.as_ref().map_or(0, Arena::bytes)
+            + self.cull.as_ref().map_or(0, CullFrame::bytes)
     }
+}
+
+/// Give a dropped chunk's cull records back.
+fn free_chunk(arena: &mut Option<Arena>, c: &Chunk) {
+    if let (Some(a), Some(at)) = (arena.as_mut(), c.arena) {
+        a.free(at, c.count);
+    }
+}
+
+/// Grass is culled on the GPU when the device draws indirect with a first instance (else
+/// the CPU picks the chunks and the vertex stage tests every blade, as before).
+pub(super) fn grass_cull_supported(device: &wgpu::Device) -> bool {
+    device
+        .features()
+        .contains(wgpu::Features::INDIRECT_FIRST_INSTANCE)
 }
 
 /// Grass uniform (see grass_blade.wgsl).
@@ -545,7 +723,8 @@ pub(super) struct GrassParams {
     seed: [f32; 4],
     /// x = full-density distance, y = tip dryness, z = most widening, w = colour variation.
     look: [f32; 4],
-    /// x = the terrain's draw slot (its reflection probes), yzw unused.
+    /// x = the terrain's draw slot (its reflection probes), y = 1 with the ground cover (the
+    /// lit pass skips the flat fans), zw unused.
     draw: [u32; 4],
     /// rgb = linear lush colour, w = patch size.
     lush: [f32; 4],
@@ -715,6 +894,37 @@ pub(super) fn wind(s: &DetailSettings, zone: Option<&super::environment::Wind>) 
 }
 
 impl GrassParams {
+    /// Quality ▸ Grass Ground Cover: the lit grass leaves the flat fans out too (the terrain
+    /// paints the undergrowth they drew).
+    pub fn with_ground_cover(mut self, on: bool) -> Self {
+        self.draw[1] = u32::from(on);
+        self
+    }
+
+    /// The culling tests of a pass drawn with this uniform through `view_proj` (the same
+    /// numbers its vertex stage reads): `camera_pass` = the near plane counts, `skip_flat`
+    /// = the pass leaves the flat fans out.
+    pub fn cull_kind(
+        &self,
+        view_proj: &glam::Mat4,
+        camera_pass: bool,
+        skip_flat: bool,
+    ) -> grass_cull::Kind {
+        grass_cull::kind(
+            view_proj,
+            self.origin,
+            self.camera,
+            self.look[0],
+            self.healthy[3],
+            self.canopy[3],
+            self.screen[0],
+            self.shadow,
+            self.screen[2],
+            camera_pass,
+            skip_flat,
+        )
+    }
+
     /// Uniform of one terrain's grass; `shadow` = caster range and share for shadow passes,
     /// `screen` = pixel angle, TAA on, the near shadow map's radius and the seconds since
     /// last frame ([`GrassParams::screen`]), `density` = the quality level's share of the blades.
