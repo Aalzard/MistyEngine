@@ -146,7 +146,11 @@ pub fn package(
     }
     // Virtual geometry cluster builds of the packed models (made now if the cache is missing),
     // so players load them instead of building at runtime.
-    for rel in deps.files.iter().filter(|r| misty_engine::models::is_model(r)) {
+    for rel in deps
+        .files
+        .iter()
+        .filter(|r| misty_engine::models::is_model(r))
+    {
         match misty_engine::models::virtual_build::bake(rel) {
             Ok(Some(path)) => {
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned());

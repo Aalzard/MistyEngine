@@ -135,6 +135,10 @@ pub(super) struct VirtualGeometry {
     /// Draw the main pass's clusters through the visibility buffer (render/vgeo/vis.rs) where
     /// the device can; else lit directly.
     pub visibility: bool,
+    /// The visibility resolve's second layer: two objects of one batch meeting inside a pixel
+    /// get a shade each (otherwise the first one's; edges against everything else keep their
+    /// MSAA coverage either way).
+    pub edge_layer: bool,
     /// This frame draws virtual meshes through clusters (set before the draw prep).
     pub on: bool,
     /// Mesh key → index in the pool (`None` = not a virtual mesh).
@@ -365,6 +369,7 @@ impl Default for VirtualGeometry {
             threshold: 1.0,
             debug: false,
             visibility: true,
+            edge_layer: false,
             on: false,
             pool_index: HashMap::new(),
             generation: u64::MAX,
@@ -709,7 +714,7 @@ impl VirtualGeometry {
             true => gpu
                 .vis
                 .as_mut()
-                .map(|v| v.begin_frame(device, queue, pool, input.size)),
+                .map(|v| v.begin_frame(device, queue, pool, input.size, self.edge_layer)),
             false => None,
         };
         self.frame = Some(FrameState {

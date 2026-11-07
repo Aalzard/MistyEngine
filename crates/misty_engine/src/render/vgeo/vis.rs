@@ -4,8 +4,8 @@
 //! 1. **Raster** (vgeo_vis.wgsl): the visible clusters with the main pass's MSAA depth write
 //!    only ids (cluster and triangle, object and batch) into two multisampled targets.
 //! 2. **Resolve** (vgeo_resolve.wgsl): back in the main pass, a full-screen triangle per batch
-//!    and layer rebuilds one triangle's surface per pixel and object from the pool and lights
-//!    it with the Standard shading, written to the samples it owns.
+//!    (and per layer with the edge layer) rebuilds one triangle's surface per pixel from the
+//!    pool and lights it with the Standard shading, written to the samples it owns.
 //!
 //! Pixel-sized triangles are what virtual geometry draws, and the lit draw shades them in 2×2
 //! quads per triangle per covered sample group: several times the work of one shade per pixel.
@@ -54,6 +54,8 @@ pub(super) struct Vis {
 pub(super) struct VisFrame {
     target: usize,
     group: wgpu::BindGroup,
+    /// Resolve draws per batch (2 with the edge layer).
+    layers: u32,
 }
 
 /// Run `f` inside a validation error scope: `None` when wgpu refused something it made.
@@ -239,6 +241,7 @@ impl Vis {
         queue: &wgpu::Queue,
         pool: &Pool,
         size: (u32, u32),
+        edge_layer: bool,
     ) -> VisFrame {
         self.frame += 1;
         let samples = crate::render::sample_count();
@@ -283,7 +286,7 @@ impl Vis {
         let w = pool.word_offsets();
         let u = ResolveUniform {
             offsets: [w[VERTICES], w[LOCAL], w[CLUSTERS], w[CLUSTER_VERTICES]],
-            info: [samples, 0, 0, 0],
+            info: [samples, edge_layer as u32, 0, 0],
         };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&u));
         let t = &self.targets[target];
@@ -309,7 +312,11 @@ impl Vis {
                 },
             ],
         });
-        VisFrame { target, group }
+        VisFrame {
+            target,
+            group,
+            layers: 1 + edge_layer as u32,
+        }
     }
 
     /// Begin the raster: ids cleared (no virtual geometry), the main pass's depth kept.
@@ -366,7 +373,7 @@ impl Vis {
             };
             pass.set_bind_group(2, group, &[]);
             let first = 2 * i as u32;
-            pass.draw(0..3, first..first + 2);
+            pass.draw(0..3, first..first + frame.layers);
         }
     }
 }

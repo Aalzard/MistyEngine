@@ -1,20 +1,21 @@
 // Misty Virtual Geometry material resolve (render/vgeo/vis.rs), after MESH_SRC: a full-screen
-// triangle in the main pass, drawn twice per batch (material texture set). Each pixel reads
-// the ids its MSAA samples got from the visibility raster (vgeo_vis.wgsl), rebuilds the
-// surface of one triangle at the pixel centre (perspective-correct barycentrics and their
-// screen derivatives, so textures get explicit gradients) and lights it with mesh.wgsl's
-// Standard shading, written only to the samples it owns (`sample_mask`):
-//   layer 0  the object (draw) of the pixel's first covered sample;
-//   layer 1  every other covered sample of the batch of the next object found (silhouettes:
-//            a third object in one pixel takes the second's shading).
-// A surface is continuous across its triangles, so one shade per object per pixel keeps the
-// look of per-triangle MSAA shading while running about once per covered pixel instead of
-// once per triangle per 2×2 quad.
+// triangle in the main pass, drawn once per batch (material texture set), or twice with the
+// edge layer. Each pixel reads the ids its MSAA samples got from the visibility raster
+// (vgeo_vis.wgsl), rebuilds the surface of one triangle at the pixel centre (perspective-correct
+// barycentrics and their screen derivatives, so textures get explicit gradients) and lights it
+// with mesh.wgsl's Standard shading, written only to the samples it owns (`sample_mask`):
+//   one layer   every covered sample of this batch, shaded as the first of them;
+//   edge layer  layer 0 = the samples of the batch's first object (draw) in the pixel,
+//               layer 1 = the batch's other samples, shaded as the first of them.
+// Edges against other batches, other geometry and the sky keep their MSAA coverage either way;
+// the edge layer also keeps it between two objects of one batch. A surface is continuous across
+// its triangles, so one shade per pixel keeps the look of per-triangle MSAA shading while
+// running about once per covered pixel instead of once per triangle per 2×2 quad.
 
 struct VgResolve {
     // Word offsets in `vg_pool` of the vertices, local indices, clusters, cluster vertices.
     offsets: vec4<u32>,
-    // x = MSAA samples.
+    // x = MSAA samples, y = 1 with the edge layer.
     info: vec4<u32>,
 };
 
@@ -134,7 +135,8 @@ fn fs_cluster_resolve(in: VgResolveIn) -> VgResolveTargets {
     let batch = in.pass_id >> 1u;
     let layer = in.pass_id & 1u;
     let p = vec2<i32>(in.pos.xy);
-    // Pick this layer's object and the samples it owns.
+    let edge = vr.info.y != 0u;
+    // This layer's samples (of this batch) and the one whose triangle shades them.
     var first = 0u;
     var key = 0u;
     var rep = 0u;
@@ -145,26 +147,23 @@ fn fs_cluster_resolve(in: VgResolveIn) -> VgResolveTargets {
             continue;
         }
         let obj = bitcast<u32>(textureLoad(vg_vis_draws, p, i32(s)).r);
+        if (vr_batch(obj) != batch) {
+            continue;
+        }
         if (first == 0u) {
             first = obj;
         }
-        if (layer == 0u) {
-            if (obj == first) {
-                mask |= 1u << s;
-                rep = select(rep, id, rep == 0u);
-            }
-        } else if (obj != first) {
+        // Without the edge layer, layer 0 takes every sample of the batch.
+        let mine = !edge || ((obj == first) == (layer == 0u));
+        if (mine) {
+            mask |= 1u << s;
             if (key == 0u) {
                 key = obj;
                 rep = id;
             }
-            if (vr_batch(obj) == vr_batch(key)) {
-                mask |= 1u << s;
-            }
         }
     }
-    key = select(key, first, layer == 0u);
-    if (mask == 0u || vr_batch(key) != batch) {
+    if (mask == 0u) {
         discard;
     }
 

@@ -203,6 +203,16 @@ fn virtual_rock_matches_the_mesh_path() {
         "fine: mean {mean}, {:.3} % off",
         off * 100.0
     );
+    // With the resolve's edge layer.
+    v.vgeo.edge_layer = true;
+    let edges = render(&device, &queue, &mut v, &target_v, &cam, &scene(&virt), 4);
+    v.vgeo.edge_layer = false;
+    let (edge_mean, edge_off) = difference(&reference, &edges);
+    assert!(
+        edge_mean < 1.5 && edge_off < 0.004,
+        "edge layer: mean {edge_mean}, {:.3} % off",
+        edge_off * 100.0
+    );
     // The same clusters drawn lit directly (no visibility buffer).
     v.set_virtual_geometry_visibility(false);
     let lit = render(&device, &queue, &mut v, &target_v, &cam, &scene(&virt), 4);
@@ -215,8 +225,9 @@ fn virtual_rock_matches_the_mesh_path() {
         lit_off * 100.0
     );
     eprintln!(
-        "against the mesh path: visibility buffer mean {mean:.3} ({:.3} % off), lit {lit_mean:.3} ({:.3} % off)",
+        "against the mesh path: visibility buffer mean {mean:.3} ({:.3} % off), with the edge layer {edge_mean:.3} ({:.3} % off), lit {lit_mean:.3} ({:.3} % off)",
         off * 100.0,
+        edge_off * 100.0,
         lit_off * 100.0
     );
     // The mesh path without virtual geometry on draws the virtual mesh as a mesh.
@@ -607,7 +618,19 @@ fn vgeo_field() {
                 ("LOD Groups", &lod_field, Path::LodGroup, false),
                 ("LOD Groups + GPU culling", &lod_field, Path::LodGroup, true),
                 (
+                    "Virtual Geometry 1 px, lit",
+                    &virtual_field,
+                    Path::Virtual,
+                    false,
+                ),
+                (
                     "Virtual Geometry 1 px",
+                    &virtual_field,
+                    Path::Virtual,
+                    false,
+                ),
+                (
+                    "Virtual Geometry 1 px, edges",
                     &virtual_field,
                     Path::Virtual,
                     false,
@@ -635,6 +658,10 @@ fn vgeo_field() {
                     gpu_culling,
                     ..Default::default()
                 });
+                // "lit": clusters drawn lit directly, without the visibility buffer.
+                r.set_virtual_geometry_visibility(!label.ends_with("lit"));
+                // "edges": the visibility resolve's edge layer.
+                r.vgeo.edge_layer = label.ends_with("edges");
                 r.set_pass_timing(&device, &queue, true);
                 let target = r.create_target(&device, size.0, size.1);
                 let m = measure(&device, &queue, &mut r, &target, &cam, draws, path);
@@ -643,7 +670,7 @@ fn vgeo_field() {
             eprintln!("\n{qname} / {} ({}x{}):", shot.name(), size.0, size.1);
             for (label, m) in &rows {
                 eprintln!(
-                    "  {label:<26} GPU {:>7.2} ms  CPU {:>6.2} ms  {:>8.2} M triangles",
+                    "  {label:<28} GPU {:>7.2} ms  CPU {:>6.2} ms  {:>8.2} M triangles",
                     m.gpu_ms, m.cpu_ms, m.triangles
                 );
             }

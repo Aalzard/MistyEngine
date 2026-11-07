@@ -133,7 +133,9 @@ fn build(src: &Source) -> VirtualBuild {
 pub fn cache_path(rel: &str) -> Option<PathBuf> {
     let guid = crate::asset_db::guid_of(rel)
         .or_else(|| crate::asset_db::meta::read_guid(&crate::assets::absolute(rel)))?;
-    Some(crate::assets::absolute(&format!("{LIBRARY_DIR}/{guid}.vgeo")))
+    Some(crate::assets::absolute(&format!(
+        "{LIBRARY_DIR}/{guid}.vgeo"
+    )))
 }
 
 fn wanted(model: &Model) -> Vec<bool> {
@@ -169,9 +171,10 @@ fn start_at(model: &Model, path: Option<PathBuf>, rel: &str) -> Arc<VirtualBuild
         }
         let src = source(&m.data);
         let vertices = m.data.vertices.len() as u32;
-        let hit = cached.get(i).and_then(Option::as_ref).filter(|e| {
-            e.hash == src.hash && e.mesh.indices.iter().all(|&v| v < vertices)
-        });
+        let hit = cached
+            .get(i)
+            .and_then(Option::as_ref)
+            .filter(|e| e.hash == src.hash && e.mesh.indices.iter().all(|&v| v < vertices));
         match hit {
             Some(e) => {
                 let _ = builds.slots[i].set(VirtualBuild {
@@ -192,8 +195,10 @@ fn start_at(model: &Model, path: Option<PathBuf>, rel: &str) -> Arc<VirtualBuild
         .name("misty vgeo build".into())
         .spawn(move || {
             use rayon::prelude::*;
-            let made: Vec<(usize, VirtualBuild)> =
-                missing.par_iter().map(|(i, src)| (*i, build(src))).collect();
+            let made: Vec<(usize, VirtualBuild)> = missing
+                .par_iter()
+                .map(|(i, src)| (*i, build(src)))
+                .collect();
             for (i, b) in made {
                 let _ = worker.slots[i].set(b);
             }
@@ -263,7 +268,9 @@ mod tests {
             virtual_geometry: true,
             ..Default::default()
         };
-        model.meshes.push(super::super::ModelMesh::new("rock".into(), data, None));
+        model
+            .meshes
+            .push(super::super::ModelMesh::new("rock".into(), data, None));
         model
     }
 

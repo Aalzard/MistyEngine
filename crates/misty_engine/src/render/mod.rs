@@ -2344,7 +2344,11 @@ impl Renderer {
                         |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
                     if vis {
                         drop(pass);
-                        let groups = [&self.view_bind_group, &self.draws_bind_group, &self.empty_group];
+                        let groups = [
+                            &self.view_bind_group,
+                            &self.draws_bind_group,
+                            &self.empty_group,
+                        ];
                         self.vgeo
                             .raster_visibility(encoder, target.depth_view(), phase, groups);
                         self.mark(encoder, "Virtual geometry: visibility raster");

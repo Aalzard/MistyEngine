@@ -284,7 +284,11 @@ fn normal_cones_only_cull_clusters_facing_away() {
         // Eyes all around the rock, near (inside a few radii) and far.
         let a = k as f32 * 2.399;
         let y = 1.0 - 2.0 * (k as f32 + 0.5) / 48.0;
-        let dir = Vec3::new(a.cos() * (1.0 - y * y).sqrt(), y, a.sin() * (1.0 - y * y).sqrt());
+        let dir = Vec3::new(
+            a.cos() * (1.0 - y * y).sqrt(),
+            y,
+            a.sin() * (1.0 - y * y).sqrt(),
+        );
         let eye = mesh.bounds.center + dir * r * if k % 2 == 0 { 1.6 } else { 12.0 };
         for (i, c) in mesh.clusters.iter().enumerate() {
             tested += 1;
