@@ -76,7 +76,9 @@ impl GrassNearShadow {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: SHADOW_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | super::shadows::TEST_COPY,
             view_formats: &[],
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
