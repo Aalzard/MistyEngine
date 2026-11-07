@@ -31,6 +31,7 @@ pub mod light_probes_api;
 pub mod localization_api;
 pub mod material_api;
 pub mod navigation_api;
+pub mod network_api;
 mod override_api;
 pub mod particles_api;
 pub mod physics2d_api;
@@ -196,6 +197,9 @@ pub enum Request {
     UnloadScene(crate::build::SceneRef),
     /// `Application.Quit()`.
     Quit,
+    /// Networking: load the server's scene (any project scene, not only the Build Settings
+    /// list); the connection carries over to it.
+    NetworkLoadScene(String),
 }
 
 /// What scripts can reach during a frame (stored in the Lua state's app data).
@@ -242,6 +246,8 @@ pub struct World {
     pub video_events: Vec<crate::video::VideoEvent>,
     /// `Cursor.lockState` / `Cursor.visible` as last set by a script.
     pub cursor: CursorState,
+    /// Multiplayer: mode, connections, spawned network objects.
+    pub network: crate::network::NetSession,
 }
 
 impl World {
@@ -260,6 +266,12 @@ impl World {
         let save = crate::save::SaveRuntime::begin(&scene);
         let (localization, table_warnings) =
             crate::localization::Localizer::load(&project_root, &settings.localization);
+        let mut network = crate::network::NetSession::default();
+        network.config.game_name = settings
+            .player
+            .clone()
+            .unwrap_or_default()
+            .product_name_or(&project_root);
         World {
             save,
             localization,
@@ -289,6 +301,7 @@ impl World {
             video: crate::video::VideoPlayback::new(project_root_for_video),
             video_events: Vec::new(),
             cursor: CursorState::default(),
+            network,
         }
     }
 }
@@ -351,6 +364,8 @@ pub struct ScriptHost {
     instances: Vec<Instance>,
     /// UI button hover/press state.
     ui: UiInteraction,
+    /// Network class info cache and settle state.
+    net: network_api::NetHostState,
 }
 
 impl ScriptHost {
@@ -421,6 +436,7 @@ impl ScriptHost {
             classes: HashMap::new(),
             instances: Vec::new(),
             ui: UiInteraction::default(),
+            net: Default::default(),
         };
         let scripted: Vec<(Entity, Vec<crate::scene::ScriptRef>)> = host.with_world(|w| {
             w.scene
@@ -538,6 +554,9 @@ impl ScriptHost {
                 .and_then(|s| crate::save::script_keys(&s).get(slot).cloned())
                 .unwrap_or_else(|| script.path.clone())
         });
+        let info = self.net_class_info(&script.path);
+        let networked = self.with_world(|w| network_api::is_networked(&w.scene, e));
+        let script_name = script.name();
         let build = || -> mlua::Result<Table> {
             let t = self.lua.create_table()?;
             for (k, v) in &script.fields {
@@ -551,6 +570,7 @@ impl ScriptHost {
             Ok(t)
         };
         let tracked = build().and_then(|t| {
+            network_api::prepare_instance(&self.lua, &t, &class, &script_name, &info, networked)?;
             save_api::track(&self.lua, e, &key, &t)?;
             register_script_instance(&self.lua, e, &script.name(), &t)?;
             Ok(t)
@@ -634,6 +654,8 @@ impl ScriptHost {
         for _ in 0..64 {
             let spawned = self.with_world(|w| std::mem::take(&mut w.spawned));
             if spawned.is_empty() {
+                // Network objects need their scripts' Awake before OnNetworkSpawn.
+                self.network_settle();
                 return;
             }
             for root in spawned {
@@ -885,6 +907,11 @@ impl ScriptHost {
             self.log(LogKind::Error, format!("Time: {e}"));
         }
 
+        {
+            // Before Start: objects the server spawned this frame get Start like any other.
+            profile_scope!("Network.Receive", Category::Scripts);
+            self.network_begin(f64::from(time.unscaled_delta));
+        }
         self.localization_frame();
         {
             // Before Start, so objects loaded this frame get Start before their first Update.
@@ -970,6 +997,10 @@ impl ScriptHost {
         }
         self.update_cameras(crate::vcam::BrainUpdate::LateUpdate, time.delta);
         self.process_destroy();
+        {
+            profile_scope!("Network.Send", Category::Scripts);
+            self.network_end();
+        }
         self.localization_frame();
 
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
@@ -1100,17 +1131,24 @@ impl ScriptHost {
     fn process_destroy(&mut self) {
         let queued = self.with_world(|w| std::mem::take(&mut w.destroy));
         for e in queued {
-            let doomed: Vec<Entity> = self.with_world(|w| {
+            let subtree: Vec<Entity> = self.with_world(|w| {
                 if !w.scene.contains(e) {
                     return Vec::new();
                 }
-                let all: Vec<Entity> = w
-                    .scene
+                w.scene
                     .walk()
                     .into_iter()
                     .map(|(x, _)| x)
                     .filter(|x| w.scene.is_ancestor(e, *x))
-                    .collect();
+                    .collect()
+            });
+            // Spawned network objects are despawned first (OnNetworkDespawn, clients told).
+            self.network_destroying(&subtree);
+            let doomed: Vec<Entity> = self.with_world(|w| {
+                if !w.scene.contains(e) {
+                    return Vec::new();
+                }
+                let all = subtree;
                 for x in &all {
                     w.physics.remove(*x);
                     w.physics2d.remove(*x);
@@ -1292,6 +1330,8 @@ mod assets_tests;
 mod input_tests;
 #[cfg(test)]
 mod material_tests;
+#[cfg(test)]
+mod network_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

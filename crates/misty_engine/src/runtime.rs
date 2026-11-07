@@ -144,6 +144,9 @@ impl Runtime {
                 *scene = Scene::default();
                 let mut next =
                     Runtime::start_with_audio(&mut fresh, self.root.clone(), &self.settings, audio);
+                // A multiplayer game keeps its connection across the reload.
+                let session = self.host.take_network();
+                next.host.adopt_network(&mut fresh, session);
                 next.host.set_save_folder(folder);
                 next.host.apply_loaded(&mut fresh, &data, false);
                 next.host.prepend_logs(old_logs);
@@ -330,7 +333,43 @@ impl Runtime {
         self.host.with_audio(f)
     }
 
-    /// Messages for the Console (script output, errors, build problems).
+    /// Start networking between frames (Multiplayer Play Mode, the player's `--net-client`,
+    /// the Network Manager Inspector's buttons).
+    pub fn network_start(
+        &mut self,
+        scene: &mut Scene,
+        start: &crate::network::AutoStart,
+    ) -> Result<(), String> {
+        self.host.network_start(scene, start)
+    }
+
+    /// Stop networking between frames (spawned copies go, scene objects stay).
+    pub fn network_shutdown(&mut self, scene: &mut Scene) {
+        self.host.network_shutdown(scene);
+    }
+
+    /// The network session between frames (status, settings before starting, tests).
+    pub fn with_network<R>(&self, f: impl FnOnce(&mut crate::network::NetSession) -> R) -> R {
+        self.host.with_network(f)
+    }
+
+    /// Traffic over the last second while networking runs.
+    pub fn network_stats(&self) -> Option<crate::network::NetStats> {
+        self.with_network(|s| s.is_running().then_some(s.stats))
+    }
+
+    /// Take the network session out (before the next scene's runtime starts; this runtime
+    /// is left offline).
+    pub fn take_network(&mut self) -> crate::network::NetSession {
+        self.host.take_network()
+    }
+
+    /// Continue a session taken from the previous scene's runtime, so a multiplayer game stays
+    /// connected across scene loads (a server sends the new scene to its clients).
+    pub fn adopt_network(&mut self, scene: &mut Scene, session: crate::network::NetSession) {
+        self.host.adopt_network(scene, session);
+    }
+
     /// What scripts asked of the cursor (`Cursor.lockState`, `Cursor.visible`); the window
     /// applies it.
     pub fn cursor(&self) -> crate::scripting::CursorState {
