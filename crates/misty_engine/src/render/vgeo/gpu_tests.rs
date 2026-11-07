@@ -192,11 +192,32 @@ fn virtual_rock_matches_the_mesh_path() {
         fine_stats.triangles > 0 && fine_stats.shadow_triangles > 0,
         "{fine_stats:?}"
     );
+    // Where the device can, the main pass resolves the clusters from the visibility buffer.
+    let f = device.features();
+    let can_vis = f.contains(wgpu::Features::PRIMITIVE_INDEX)
+        && f.contains(wgpu::Features::MULTI_DRAW_INDIRECT_COUNT);
+    assert_eq!(fine_stats.visibility, can_vis, "{fine_stats:?}");
     let (mean, off) = difference(&reference, &fine);
     assert!(
         mean < 1.5 && off < 0.004,
         "fine: mean {mean}, {:.3} % off",
         off * 100.0
+    );
+    // The same clusters drawn lit directly (no visibility buffer).
+    v.set_virtual_geometry_visibility(false);
+    let lit = render(&device, &queue, &mut v, &target_v, &cam, &scene(&virt), 4);
+    assert!(!v.virtual_geometry_stats(&device, &queue).visibility);
+    v.set_virtual_geometry_visibility(true);
+    let (lit_mean, lit_off) = difference(&reference, &lit);
+    assert!(
+        lit_mean < 1.5 && lit_off < 0.004,
+        "lit: mean {lit_mean}, {:.3} % off",
+        lit_off * 100.0
+    );
+    eprintln!(
+        "against the mesh path: visibility buffer mean {mean:.3} ({:.3} % off), lit {lit_mean:.3} ({:.3} % off)",
+        off * 100.0,
+        lit_off * 100.0
     );
     // The mesh path without virtual geometry on draws the virtual mesh as a mesh.
     let mut o = Renderer::with_queue(&device, &queue);

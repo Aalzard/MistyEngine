@@ -77,7 +77,10 @@ impl Gfx {
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("misty player"),
             required_features: misty_engine::render::timestamp_features(&adapter),
-            required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
+            required_limits: misty_engine::render::device_limits(
+                &adapter,
+                wgpu::Limits::default().using_resolution(adapter.limits()),
+            ),
             ..Default::default()
         }))
         .map_err(|e| format!("graphics device: {e}"))?;
