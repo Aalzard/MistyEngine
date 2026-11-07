@@ -826,6 +826,7 @@ impl eframe::App for EditorApp {
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
         crate::saveloc::show(&ctx, &mut self.state);
+        crate::multiplayer::show(&ctx, &mut self.state);
         crate::mesh_builder::shape_window(&ctx, &mut self.state);
         crate::panels::preset_window(&ctx, &mut self.state);
         crate::branding::about::show(&ctx, &mut self.state.about_open);

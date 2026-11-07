@@ -462,6 +462,7 @@ fn component_menu(ui: &mut Ui, s: &mut EditorState) {
         "Rendering",
         "Layout",
         "Miscellaneous",
+        "Netcode",
         "Scripts",
         "UI",
     ] {
@@ -544,6 +545,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
     sub(ui, "Asset Management", |ui| {
         let tab = Tab::AssetGroups;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
+    sub(ui, "Multiplayer", |ui| {
+        let open = Action::OpenMultiplayerPlayMode;
+        item(ui, s, "Multiplayer Play Mode", "", open);
     });
     ui.separator();
     item(

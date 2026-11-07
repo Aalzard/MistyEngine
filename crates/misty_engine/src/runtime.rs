@@ -355,7 +355,13 @@ impl Runtime {
 
     /// Traffic over the last second while networking runs.
     pub fn network_stats(&self) -> Option<crate::network::NetStats> {
-        self.with_network(|s| s.is_running().then_some(s.stats))
+        self.with_network(|s| {
+            s.is_running().then(|| crate::network::NetStats {
+                mode: s.mode,
+                objects: s.objects.len(),
+                ..s.stats
+            })
+        })
     }
 
     /// Take the network session out (before the next scene's runtime starts; this runtime

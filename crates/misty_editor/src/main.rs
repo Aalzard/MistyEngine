@@ -38,6 +38,7 @@ mod material_preview;
 mod menu_bar;
 mod mesh_builder;
 mod model_import;
+mod multiplayer;
 mod object_clipboard;
 mod open_scenes;
 mod packages;
