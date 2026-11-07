@@ -735,7 +735,7 @@ impl Renderer {
             *self = fresh;
         }
         use_samples(self.samples);
-        if !quality.temporal_aa {
+        if !quality.temporal() {
             self.taa.clear();
         }
         let size = quality.shadow_map_size();
@@ -1030,7 +1030,38 @@ impl Renderer {
             composite: &self.pipelines.composite_layout,
             sampler: &self.post_sampler,
         };
-        RenderTarget::new(device, width, height, &layouts)
+        RenderTarget::new(device, (width, height), 1.0, &layouts)
+    }
+
+    /// A Scene / Game view or player target: its final image is `width` × `height`, and the
+    /// scene renders at the active quality level's Upscaling share of that (native when
+    /// Upscaling is Off). Thumbnails, previews and probe captures use
+    /// [`Renderer::create_target`] (always native: one-off renders have no history).
+    pub fn create_view_target(
+        &self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+    ) -> RenderTarget {
+        let layouts = TargetLayouts {
+            mask: &self.pipelines.mask_layout,
+            post: &self.pipelines.post_layout,
+            composite: &self.pipelines.composite_layout,
+            sampler: &self.post_sampler,
+        };
+        let scale = self.quality.upscale_ratio();
+        RenderTarget::new(device, (width, height), scale, &layouts)
+    }
+
+    /// `target` (made by [`Renderer::create_view_target`]) still matches a `width` ×
+    /// `height` view at the active quality level's Upscaling share and this renderer's MSAA
+    /// samples ([`Renderer::target_fits`]); false = make a new one.
+    pub fn view_target_fits(&self, target: &RenderTarget, width: u32, height: u32) -> bool {
+        let wanted =
+            target::render_size((width.max(1), height.max(1)), self.quality.upscale_ratio());
+        target.output_size() == (width.max(1), height.max(1))
+            && target.size() == wanted
+            && self.target_fits(target)
     }
 
     fn gpu_mesh(&self, r: &MeshRef) -> Option<&GpuMesh> {
@@ -1130,13 +1161,18 @@ impl Renderer {
             self.vgeo.prepare_meshes(device, frame);
         }
         let aspect = target.aspect();
-        // Temporal anti-aliasing jitters the camera by a sub-pixel offset each frame.
-        let taa_on = self.quality.temporal_aa && frame.shaded;
+        // Temporal anti-aliasing jitters the camera by a sub-pixel offset each frame (of an
+        // internal pixel when the target is upscaled: the upscaler is TAA at a lower
+        // resolution, so it runs whatever Quality ▸ Temporal Anti-aliasing says).
+        let upscaled = target.upscaled();
+        let taa_on = (self.quality.temporal_aa || upscaled) && frame.shaded;
         let jitter = if taa_on {
-            self.taa.jitter(target.id)
+            self.taa.jitter(target.id, target.render_scale())
         } else {
             glam::Vec2::ZERO
         };
+        // Textures sample the mip level the output resolution would have picked.
+        let mip_bias = mip_bias(target);
         let view_proj = frame.camera.view_projection(aspect);
         // Motion vectors: last frame's camera, draws and grass clock.
         let grass_time = self.terrains.grass_time(frame.environment);
@@ -1150,13 +1186,21 @@ impl Renderer {
                 jitter,
                 target.size(),
                 motion.prev_view_proj,
+                mip_bias,
             )),
         );
         #[cfg(test)]
         {
             self.last_view_proj = Mat4::from_cols_array_2d(
-                &view_uniform(frame, aspect, jitter, target.size(), motion.prev_view_proj)
-                    .view_proj,
+                &view_uniform(
+                    frame,
+                    aspect,
+                    jitter,
+                    target.size(),
+                    motion.prev_view_proj,
+                    mip_bias,
+                )
+                .view_proj,
             );
         }
         // HDRI sky: cubes built when the file changes, the uniform every render.
@@ -1216,6 +1260,8 @@ impl Renderer {
                 grass_layout,
                 frame.environment,
                 self.quality.grass_shadow_casters(),
+                // The internal pixel: blades thinner than ~1 px are widened to it. (Sizing them
+                // by the output pixel under upscaling measured hazier, not sharper.)
                 grass_screen(frame, target.size().1, taa_on, motion.grass_dt),
                 near_sun.is_some(),
                 grass_time,
@@ -1482,11 +1528,15 @@ impl Renderer {
         self.mark(&mut encoder, "Glows");
         self.sun_shaft_passes(device, &mut encoder, target);
         self.mark(&mut encoder, "Sun shafts");
-        if taa_on
+        let resolved = taa_on
             && frame_debug::record(&self.capture, |_| {
-                frame_debug::events::post_event("Temporal Anti-aliasing".to_owned(), "taa.wgsl")
-            })
-        {
+                let name = match upscaled {
+                    true => "Temporal Upscaling",
+                    false => "Temporal Anti-aliasing",
+                };
+                frame_debug::events::post_event(name.to_owned(), "taa.wgsl")
+            });
+        if resolved {
             self.taa.resolve(
                 device,
                 &mut encoder,
@@ -1494,6 +1544,8 @@ impl Renderer {
                     view_group: &self.view_bind_group,
                     target: target.id,
                     current: (target.hdr_texture(), target.hdr_view()),
+                    output: (target.post_hdr_view(), target.output_size()),
+                    jitter,
                     depth: target.depth_view(),
                     velocity: target.velocity_view(),
                     view_proj,
@@ -1506,6 +1558,10 @@ impl Renderer {
                     },
                 },
             );
+        } else if upscaled {
+            // No temporal resolve this frame (wireframe, frame debugger replay): stretch.
+            let (input, output) = (target.hdr_view(), target.post_hdr_view());
+            (self.taa).stretch(device, &mut encoder, &self.view_bind_group, input, output);
         }
         self.mark(&mut encoder, "TAA");
         self.bloom_passes(&mut encoder, target, timing);
@@ -1708,7 +1764,8 @@ impl Renderer {
     ) {
         let levels = &target.bloom;
         let p = &self.pipelines;
-        let (w, h) = target.size();
+        // Post-processing runs at the output resolution.
+        let (w, h) = target.output_size();
         let level_size = |i: usize| ((w >> (i + 1)).max(1), (h >> (i + 1)).max(1));
         let step = |name: String, shader: &str, i: usize| {
             let target =
@@ -2864,12 +2921,25 @@ fn lights_uniform(frame: &Frame, plan: &shadows::ShadowPlan, soft: bool) -> Ligh
 
 /// The view uniform; `jitter` = sub-pixel camera offset in pixels of a `size` image (TAA),
 /// `prev_view_proj` = last frame's unjittered view-projection (motion vectors).
+/// Mip bias of material textures for `target`: log2 of its render scale (an upscaled target
+/// samples the detail of the output resolution; the temporal resolve averages the extra
+/// aliasing away), 0 at native resolution.
+fn mip_bias(target: &RenderTarget) -> f32 {
+    let (w, _) = target.size();
+    let (ow, _) = target.output_size();
+    if w >= ow {
+        return 0.0;
+    }
+    (w as f32 / ow as f32).log2()
+}
+
 fn view_uniform(
     frame: &Frame,
     aspect: f32,
     jitter: glam::Vec2,
     size: (u32, u32),
     prev_view_proj: Mat4,
+    mip_bias: f32,
 ) -> ViewUniform {
     let cam = frame.camera;
     let vp = taa::jittered(cam.view_projection(aspect), jitter, size);
@@ -2918,7 +2988,12 @@ fn view_uniform(
             let j = taa::jitter_ndc(jitter, size);
             [j.x, j.y, size.0 as f32, size.1 as f32]
         },
-        view_ray: view_ray(cam, aspect),
+        view_ray: {
+            let mut r = view_ray(cam, aspect);
+            // view_tan.z: texture mip bias (upscaled targets, see `mip_bias`).
+            r[1][2] = mip_bias;
+            r
+        },
     }
 }
 
@@ -2956,6 +3031,8 @@ mod meadow_perf_tests;
 mod taa_gpu_tests;
 #[cfg(test)]
 mod terrain_gpu_tests;
+#[cfg(test)]
+mod upscale_gpu_tests;
 
 #[cfg(test)]
 mod tests {

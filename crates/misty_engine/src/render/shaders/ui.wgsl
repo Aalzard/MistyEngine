@@ -15,6 +15,9 @@ struct VOut {
     @location(1) color: vec4<f32>,
     @location(2) mask: f32,
     @location(3) sdf: vec2<f32>,
+    // Screen position (NDC): Camera Far Plane videos look the scene depth up with it, which
+    // may be smaller than the image when the 3D view is upscaled.
+    @location(4) ndc: vec2<f32>,
 };
 
 @vertex
@@ -25,6 +28,7 @@ fn vs(v: VIn) -> VOut {
     o.color = v.color;
     o.mask = v.mask;
     o.sdf = v.sdf;
+    o.ndc = v.pos;
     return o;
 }
 
@@ -60,7 +64,8 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
 fn fs_far(i: VOut) -> @location(0) vec4<f32> {
     let c = shade(i);
     let size = vec2<i32>(textureDimensions(scene_depth));
-    let p = min(vec2<i32>(i.pos.xy), size - vec2<i32>(1));
+    let uv = vec2<f32>(i.ndc.x * 0.5 + 0.5, 0.5 - i.ndc.y * 0.5);
+    let p = clamp(vec2<i32>(uv * vec2<f32>(size)), vec2<i32>(0), size - vec2<i32>(1));
     let d = textureLoad(scene_depth, p, 0);
     if (d < 0.99999) {
         discard;

@@ -489,9 +489,10 @@ fn undo_demo(s: &mut crate::state::EditorState) {
     s.scene_dirty = false;
 }
 
-/// `MISTY_RENDER_SCALE` / `MISTY_UPSCALE` / `MISTY_FXAA` on the previewed quality level.
+/// `MISTY_RENDER_SCALE` / `MISTY_UPSCALE` / `MISTY_FXAA` / `MISTY_UPSCALING` (`Off`,
+/// `Quality`, `Balanced`, `Performance`) on the previewed quality level.
 fn quality_env(s: &mut crate::state::EditorState) {
-    use misty_engine::quality::{self, UpscaleFilter};
+    use misty_engine::quality::{self, UpscaleFilter, Upscaling};
     // `MISTY_QUALITY_LEVEL=Low` (a level's name or index) previews that level.
     if let Ok(want) = std::env::var("MISTY_QUALITY_LEVEL") {
         let q = &s.project_settings.quality;
@@ -507,7 +508,12 @@ fn quality_env(s: &mut crate::state::EditorState) {
     let scale = std::env::var("MISTY_RENDER_SCALE").ok();
     let filter = std::env::var("MISTY_UPSCALE").ok();
     let fxaa = std::env::var_os("MISTY_FXAA").is_some();
-    if scale.is_none() && filter.is_none() && !fxaa {
+    let upscaling = std::env::var("MISTY_UPSCALING").ok().and_then(|u| {
+        Upscaling::ALL
+            .into_iter()
+            .find(|m| format!("{m:?}").eq_ignore_ascii_case(u.trim()))
+    });
+    if scale.is_none() && filter.is_none() && !fxaa && upscaling.is_none() {
         return;
     }
     let q = &mut s.project_settings.quality;
@@ -526,5 +532,8 @@ fn quality_env(s: &mut crate::state::EditorState) {
         level.upscale_filter = f;
     }
     level.fxaa |= fxaa;
+    if let Some(u) = upscaling {
+        level.upscaling = u;
+    }
     quality::install(q, i);
 }

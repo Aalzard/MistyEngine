@@ -235,7 +235,8 @@ impl UiRenderer {
         interaction: Option<&UiInteraction>,
     ) {
         crate::profile_scope!("UI.Render", crate::profiler::Category::Ui);
-        let (w, h) = target.size();
+        // The canvas covers the final image (output resolution, also when upscaled).
+        let (w, h) = target.output_size();
         let screen = Vec2::new(w as f32, h as f32);
         // Video Players on camera planes: behind the scene (sky only), then in front of it.
         let far = camera_plane_list(scene, screen, true);

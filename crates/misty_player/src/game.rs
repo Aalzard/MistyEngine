@@ -75,8 +75,20 @@ impl Game {
     }
 
     /// Install the quality levels on the player's saved choice (else the default level).
+    /// `MISTY_UPSCALING=Off|Quality|Balanced|Performance` overrides every level's Upscaling
+    /// (automated checks, like `MISTY_SCREENSHOT`).
     pub fn apply_saved_quality(&self) {
-        let q = &self.settings.quality;
+        let mut q = self.settings.quality.clone();
+        if let Some(u) = std::env::var("MISTY_UPSCALING").ok().and_then(|u| {
+            misty_engine::quality::Upscaling::ALL
+                .into_iter()
+                .find(|m| format!("{m:?}").eq_ignore_ascii_case(u.trim()))
+        }) {
+            for l in &mut q.levels {
+                l.upscaling = u;
+            }
+        }
+        let q = &q;
         let saved = misty_engine::prefs::get_int(
             misty_engine::prefs::keys::QUALITY,
             q.default_level as i64,

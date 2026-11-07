@@ -4,7 +4,8 @@
 //! (`<Product>_Data/data.pak` next to the executable), else the nearest `SampleProject`.
 //! Project Settings ▸ Player (window, VSync, frame rate, icon, splash) and the chosen quality
 //! level and resolution (kept in the per-user prefs file) are applied at startup.
-//! `MISTY_SCREENSHOT=out.png misty_player` saves the game image after warm-up and exits.
+//! `MISTY_SCREENSHOT=out.png misty_player` saves the game image after warm-up and exits
+//! (`MISTY_UPSCALING=Performance` etc. overrides the quality levels' Upscaling).
 //! `MISTY_PROFILE=capture.jsonl misty_player` records the profiler into a capture file
 //! (one JSON object per frame) until the player quits.
 
