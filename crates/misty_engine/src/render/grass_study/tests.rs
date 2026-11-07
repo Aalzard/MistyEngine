@@ -55,9 +55,13 @@ fn study_device() -> Option<(wgpu::Device, wgpu::Queue)> {
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .ok()?;
+    // Subgroup quad ops and forced early depth (counters), 64-bit atomics (C), 2× MSAA (B2:
+    // not in core WebGPU).
     let wanted = wgpu::Features::SUBGROUP
+        | wgpu::Features::SHADER_EARLY_DEPTH_TEST
         | wgpu::Features::SHADER_INT64
-        | wgpu::Features::SHADER_INT64_ATOMIC_MIN_MAX;
+        | wgpu::Features::SHADER_INT64_ATOMIC_MIN_MAX
+        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES;
     let features = crate::render::timestamp_features(&adapter) | (adapter.features() & wanted);
     let info = adapter.get_info();
     eprintln!(
@@ -118,7 +122,7 @@ fn scene(shot: StudyShot) -> Scene {
         StudyShot::Close => Shot::CloseGolden,
         _ => Shot::WideGolden,
     });
-    let mut camera = game.camera.clone();
+    let mut camera = game.camera;
     if shot == StudyShot::Behind {
         camera.rotation = Quat::from_rotation_y(std::f32::consts::PI) * camera.rotation;
     }
@@ -144,7 +148,7 @@ fn scene(shot: StudyShot) -> Scene {
         terrain: Arc::clone(&t.data),
         origin: t.position,
         details: t.data.details.clone(),
-        wind: game.environment.wind.clone(),
+        wind: game.environment.wind,
         lighting,
         game,
     }
@@ -298,6 +302,9 @@ fn variants() -> Vec<Variant> {
     ]
 }
 
+/// A variant's fastest round: frame total, GPU ms per pass, blades drawn, triangles.
+type Best = Option<(f32, Vec<(&'static str, f32)>, usize, u64)>;
+
 /// Variants picked by `MISTY_STUDY=A,B,...` (all when unset).
 fn picked() -> Vec<Variant> {
     let only = std::env::var("MISTY_STUDY").unwrap_or_default();
@@ -392,7 +399,12 @@ fn prepare(
     st.lighting.shadows = level.shadows;
     let f0 = field(sc, &base, view, level.density);
     st.set_field(device, &f0);
-    st.bake_shadows(device, queue, view.eye, &grass_params(sc, &base, view, level.density, true));
+    st.bake_shadows(
+        device,
+        queue,
+        view.eye,
+        &grass_params(sc, &base, view, level.density, true),
+    );
     let f = field(sc, v, view, level.density);
     st.set_field(device, &f);
     f
@@ -427,7 +439,18 @@ fn time_variant(
     };
     let mut parts: Vec<(&'static str, Vec<f32>)> = Vec::new();
     for i in 30..90 {
-        st.frame(device, queue, v, view, jitter(i), i, SIZE, &gp, 0.0, Some(&timer));
+        st.frame(
+            device,
+            queue,
+            v,
+            view,
+            jitter(i),
+            i,
+            SIZE,
+            &gp,
+            0.0,
+            Some(&timer),
+        );
         timer.read(device);
         for &(label, ms) in timer.last() {
             match parts.iter_mut().find(|(l, _)| *l == label) {
@@ -464,22 +487,33 @@ fn study_times() {
     for shot in shots {
         let sc = scene(shot);
         let view = view_of(&sc.camera, SIZE);
-        let mut st = Study::new(&device, &queue, Arc::clone(&sc.terrain), sc.origin, sc.lighting, false);
+        let mut st = Study::new(
+            &device,
+            &queue,
+            Arc::clone(&sc.terrain),
+            sc.origin,
+            sc.lighting,
+            false,
+        );
         st.build_ground(&device, view.eye);
         // Warm the GPU clocks up.
         let base = Variant::forward("A", "");
         prepare(&device, &queue, &mut st, &sc, &base, &view, LEVELS[0]);
         time_variant(&device, &queue, &mut st, &sc, &base, &view, 1.0);
-        let rounds: u32 = std::env::var("MISTY_ROUNDS").ok().and_then(|r| r.parse().ok()).unwrap_or(3);
+        let rounds: u32 = std::env::var("MISTY_ROUNDS")
+            .ok()
+            .and_then(|r| r.parse().ok())
+            .unwrap_or(3);
         for level in LEVELS.iter().filter(|l| levels.contains(l.name)) {
             // Interleaved rounds; each variant keeps its fastest round (other work on the
             // GPU only ever adds time).
             let vs = picked();
-            let mut best: Vec<Option<(f32, Vec<(&'static str, f32)>, usize, u64)>> = vec![None; vs.len()];
+            let mut best: Vec<Best> = vec![None; vs.len()];
             for _ in 0..rounds {
                 for (k, v) in vs.iter().enumerate() {
                     let f = prepare(&device, &queue, &mut st, &sc, v, &view, *level);
-                    let parts = time_variant(&device, &queue, &mut st, &sc, v, &view, level.density);
+                    let parts =
+                        time_variant(&device, &queue, &mut st, &sc, v, &view, level.density);
                     let total: f32 = parts.iter().map(|p| p.1).sum();
                     if best[k].as_ref().is_none_or(|b| total < b.0) {
                         best[k] = Some((total, parts, f.drawn.len(), f.triangles()));
@@ -569,7 +603,18 @@ fn render_images(
     for i in 0..frames {
         let view = view_of(&cams(i), SIZE);
         let gp = grass_params(sc, v, &view, density, false);
-        st.frame(device, queue, v, &view, jitter(i), i, SIZE, &gp, cloud(i), None);
+        st.frame(
+            device,
+            queue,
+            v,
+            &view,
+            jitter(i),
+            i,
+            SIZE,
+            &gp,
+            cloud(i),
+            None,
+        );
         if i == 0 && v.cache {
             st.fill_cache(device, queue, v);
         }
@@ -626,8 +671,18 @@ fn write_strip(file: &str, v: &[u8], a: &[u8]) {
     for (k, img) in full.iter().enumerate() {
         let crop = image::imageops::crop_imm(img, cx, cy, cw, ch).to_image();
         image::imageops::replace(&mut out, &crop, (k as u32 * (cw + 8)) as i64, 0);
-        let small = image::imageops::resize(img, size.0 / 3, size.1 / 3, image::imageops::FilterType::Triangle);
-        image::imageops::replace(&mut out, &small, (k as u32 * (cw + 8)) as i64, (ch + 8) as i64);
+        let small = image::imageops::resize(
+            img,
+            size.0 / 3,
+            size.1 / 3,
+            image::imageops::FilterType::Triangle,
+        );
+        image::imageops::replace(
+            &mut out,
+            &small,
+            (k as u32 * (cw + 8)) as i64,
+            (ch + 8) as i64,
+        );
     }
     let path = screenshots().join(file);
     out.save(&path).expect("save");
@@ -646,21 +701,44 @@ fn study_shots() {
     for shot in StudyShot::ALL {
         let sc = scene(shot);
         let view = view_of(&sc.camera, SIZE);
-        let mut st = Study::new(&device, &queue, Arc::clone(&sc.terrain), sc.origin, sc.lighting, false);
+        let mut st = Study::new(
+            &device,
+            &queue,
+            Arc::clone(&sc.terrain),
+            sc.origin,
+            sc.lighting,
+            false,
+        );
         st.build_ground(&device, view.eye);
-        let cam = sc.camera.clone();
-        let cams = move |_: u32| cam.clone();
+        let cam = sc.camera;
+        let cams = move |_: u32| cam;
         let mut base: Option<Vec<u8>> = None;
         for v in picked() {
             prepare(&device, &queue, &mut st, &sc, &v, &view, level);
-            let imgs = render_images(&device, &queue, &mut st, &sc, &v, &cams, level.density, 64, 16, &|_| 0.0);
+            let imgs = render_images(
+                &device,
+                &queue,
+                &mut st,
+                &sc,
+                &v,
+                &cams,
+                level.density,
+                64,
+                16,
+                &|_| 0.0,
+            );
             let last = imgs.last().expect("image").clone();
             let sh = shimmer(&imgs, SIZE);
             let a = base.get_or_insert_with(|| last.clone()).clone();
             let (mean, o8, o24) = diff_stats(&last, &a);
             let bands: Vec<String> = [(0.45, 0.55), (0.55, 0.65), (0.65, 0.8), (0.8, 1.0)]
                 .iter()
-                .map(|&(f, t)| format!("{:.1}", band_luma(&last, SIZE, f, t) - band_luma(&a, SIZE, f, t)))
+                .map(|&(f, t)| {
+                    format!(
+                        "{:.1}",
+                        band_luma(&last, SIZE, f, t) - band_luma(&a, SIZE, f, t)
+                    )
+                })
                 .collect();
             eprintln!(
                 "{} {:<4} vs A: mean {mean:.2}, >8 {o8:.2}%, >24 {o24:.3}% | luma delta rows 45-55/55-65/65-80/80-100%: {} | shimmer (temporal std, lower half) {sh:.2} levels",
@@ -679,43 +757,98 @@ fn study_shots() {
     }
     // Overview per shot: every variant at a quarter size, in the order of `variants()`.
     for shot in StudyShot::ALL {
-        let imgs: Vec<&(StudyShot, &str, Vec<u8>)> = finals.iter().filter(|f| f.0 == shot).collect();
+        let imgs: Vec<&(StudyShot, &str, Vec<u8>)> =
+            finals.iter().filter(|f| f.0 == shot).collect();
         let (w, h) = (SIZE.0 / 4, SIZE.1 / 4);
         let cols = 4u32;
         let rows = (imgs.len() as u32).div_ceil(cols);
         let mut out = image::RgbaImage::new(cols * (w + 4), rows * (h + 4));
         for (k, f) in imgs.iter().enumerate() {
-            let small = image::imageops::resize(&to_image(&f.2, SIZE), w, h, image::imageops::FilterType::Triangle);
+            let small = image::imageops::resize(
+                &to_image(&f.2, SIZE),
+                w,
+                h,
+                image::imageops::FilterType::Triangle,
+            );
             let (x, y) = (k as u32 % cols, k as u32 / cols);
             image::imageops::replace(&mut out, &small, (x * (w + 4)) as i64, (y * (h + 4)) as i64);
         }
         let path = screenshots().join(format!("study_overview_{}.png", shot.name()));
         out.save(&path).expect("save");
-        eprintln!("wrote {} ({})", path.display(), imgs.iter().map(|f| f.1).collect::<Vec<_>>().join(", "));
+        eprintln!(
+            "wrote {} ({})",
+            path.display(),
+            imgs.iter().map(|f| f.1).collect::<Vec<_>>().join(", ")
+        );
     }
-    // Next to the reference photo: the reference | A | the recommended combination (wide).
+}
+
+/// `study_vs_reference.png`: the reference photo | A | the recommended variant
+/// (`MISTY_STUDY_PICK`, default B4), wide shot.
+#[test]
+#[ignore = "writes a comparison render into docs/screenshots/gfx; run on purpose"]
+fn study_vs_reference() {
+    let Some((device, queue)) = study_device() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let pick = std::env::var("MISTY_STUDY_PICK").unwrap_or_else(|_| "B4".into());
+    let sc = scene(StudyShot::Wide);
+    let view = view_of(&sc.camera, SIZE);
+    let mut st = Study::new(
+        &device,
+        &queue,
+        Arc::clone(&sc.terrain),
+        sc.origin,
+        sc.lighting,
+        false,
+    );
+    st.build_ground(&device, view.eye);
+    let mut images = Vec::new();
+    for v in variants()
+        .into_iter()
+        .filter(|v| v.name == "A" || v.name == pick)
+    {
+        prepare(&device, &queue, &mut st, &sc, &v, &view, LEVELS[0]);
+        let cam = sc.camera;
+        let imgs = render_images(
+            &device,
+            &queue,
+            &mut st,
+            &sc,
+            &v,
+            &move |_| cam,
+            1.0,
+            64,
+            1,
+            &|_| 0.0,
+        );
+        images.push(imgs[0].clone());
+    }
     let reference = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../MistyDesign/grass_reference.png");
-    let pick = std::env::var("MISTY_STUDY_PICK").unwrap_or_else(|_| "BE".into());
-    if let (Ok(r), Some(a), Some(p)) = (
-        image::open(&reference),
-        finals.iter().find(|f| f.0 == StudyShot::Wide && f.1 == "A"),
-        finals.iter().find(|f| f.0 == StudyShot::Wide && f.1 == pick),
-    ) {
-        let h = 540;
-        let r = r.to_rgba8();
-        let rw = r.width() * h / r.height();
-        let r = image::imageops::resize(&r, rw, h, image::imageops::FilterType::Triangle);
-        let a = image::imageops::resize(&to_image(&a.2, SIZE), 960, h, image::imageops::FilterType::Triangle);
-        let p = image::imageops::resize(&to_image(&p.2, SIZE), 960, h, image::imageops::FilterType::Triangle);
-        let mut out = image::RgbaImage::new(rw + 8 + 960 + 8 + 960, h);
-        image::imageops::replace(&mut out, &r, 0, 0);
-        image::imageops::replace(&mut out, &a, (rw + 8) as i64, 0);
-        image::imageops::replace(&mut out, &p, (rw + 16 + 960) as i64, 0);
-        let path = screenshots().join("study_vs_reference.png");
-        out.save(&path).expect("save");
-        eprintln!("wrote {}", path.display());
+        .join("../../../../MistyDesign/grass_reference.png");
+    let Ok(r) = image::open(&reference) else {
+        eprintln!("no reference image at {}", reference.display());
+        return;
+    };
+    let h = 540;
+    let r = r.to_rgba8();
+    let rw = r.width() * h / r.height();
+    let r = image::imageops::resize(&r, rw, h, image::imageops::FilterType::Triangle);
+    let mut out = image::RgbaImage::new(rw + 2 * (960 + 8), h);
+    image::imageops::replace(&mut out, &r, 0, 0);
+    for (k, img) in images.iter().enumerate() {
+        let small = image::imageops::resize(
+            &to_image(img, SIZE),
+            960,
+            h,
+            image::imageops::FilterType::Triangle,
+        );
+        image::imageops::replace(&mut out, &small, (rw + 8 + k as u32 * 968) as i64, 0);
     }
+    let path = screenshots().join("study_vs_reference.png");
+    out.save(&path).expect("save");
+    eprintln!("wrote {}", path.display());
 }
 
 /// The live renderer's own frame of the wide golden shot (High, 1920×1080) next to the
@@ -739,12 +872,30 @@ fn study_live_vs_study() {
         }
         let live = crate::render::gpu_tests::read_back(&device, &queue, &target);
         let view = view_of(&sc.camera, SIZE);
-        let mut st = Study::new(&device, &queue, Arc::clone(&sc.terrain), sc.origin, sc.lighting, false);
+        let mut st = Study::new(
+            &device,
+            &queue,
+            Arc::clone(&sc.terrain),
+            sc.origin,
+            sc.lighting,
+            false,
+        );
         st.build_ground(&device, view.eye);
         let a = Variant::forward("A", "");
         prepare(&device, &queue, &mut st, &sc, &a, &view, LEVELS[0]);
-        let cam = sc.camera.clone();
-        let imgs = render_images(&device, &queue, &mut st, &sc, &a, &move |_| cam.clone(), 1.0, 48, 1, &|_| 0.0);
+        let cam = sc.camera;
+        let imgs = render_images(
+            &device,
+            &queue,
+            &mut st,
+            &sc,
+            &a,
+            &move |_| cam,
+            1.0,
+            48,
+            1,
+            &|_| 0.0,
+        );
         let study = &imgs[0];
         eprintln!(
             "{}: mean luma rows 50-100%: live {:.1}, study {:.1}",
@@ -754,8 +905,18 @@ fn study_live_vs_study() {
         );
         let (w, h) = (SIZE.0 / 2, SIZE.1 / 2);
         let mut out = image::RgbaImage::new(w * 2 + 8, h);
-        let l = image::imageops::resize(&to_image(&live, SIZE), w, h, image::imageops::FilterType::Triangle);
-        let s = image::imageops::resize(&to_image(study, SIZE), w, h, image::imageops::FilterType::Triangle);
+        let l = image::imageops::resize(
+            &to_image(&live, SIZE),
+            w,
+            h,
+            image::imageops::FilterType::Triangle,
+        );
+        let s = image::imageops::resize(
+            &to_image(study, SIZE),
+            w,
+            h,
+            image::imageops::FilterType::Triangle,
+        );
         image::imageops::replace(&mut out, &l, 0, 0);
         image::imageops::replace(&mut out, &s, (w + 8) as i64, 0);
         let path = screenshots().join(format!("study_live_vs_study_{}.png", shot.name()));
@@ -784,8 +945,17 @@ fn study_calc() {
         );
         let a = Variant::forward("A", "");
         let f = field(&sc, &a, &view, 1.0);
-        let bands = band_stats(&f, &sc.terrain, sc.origin, view.eye, view.pixel, field_settings(&sc, &a, 1.0));
-        eprintln!("   band (m)   blades  standing  triangles  vertices  width px  height px  <1px  <2px");
+        let bands = band_stats(
+            &f,
+            &sc.terrain,
+            sc.origin,
+            view.eye,
+            view.pixel,
+            field_settings(&sc, &a, 1.0),
+        );
+        eprintln!(
+            "   band (m)   blades  standing  triangles  vertices  width px  height px  <1px  <2px"
+        );
         for b in &bands {
             eprintln!(
                 "   {:>4}-{:<4} {:>8} {:>8} {:>10} {:>9} {:>8.2} {:>9.1} {:>5.0}% {:>4.0}%",
@@ -811,19 +981,53 @@ fn study_calc() {
             eprintln!("   (no subgroup ops: no fragment counters)");
             continue;
         }
-        let mut st = Study::new(&device, &queue, Arc::clone(&sc.terrain), sc.origin, sc.lighting, true);
+        let mut st = Study::new(
+            &device,
+            &queue,
+            Arc::clone(&sc.terrain),
+            sc.origin,
+            sc.lighting,
+            true,
+        );
         st.build_ground(&device, view.eye);
         let px = (SIZE.0 * SIZE.1) as f64;
-        for v in picked().into_iter().filter(|v| matches!(v.name, "A" | "A1" | "B" | "B4" | "B2" | "C" | "D" | "E" | "H")) {
+        for v in picked().into_iter().filter(|v| {
+            matches!(
+                v.name,
+                "A" | "A1" | "B" | "B4" | "B2" | "C" | "D" | "E" | "H"
+            )
+        }) {
             prepare(&device, &queue, &mut st, &sc, &v, &view, LEVELS[0]);
             let gp = grass_params(&sc, &v, &view, 1.0, false);
             // A few frames first (pipelines, TAA), then one counted.
             for i in 0..4 {
-                st.frame(&device, &queue, &v, &view, jitter(i), i, SIZE, &gp, 0.0, None);
+                st.frame(
+                    &device,
+                    &queue,
+                    &v,
+                    &view,
+                    jitter(i),
+                    i,
+                    SIZE,
+                    &gp,
+                    0.0,
+                    None,
+                );
             }
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
             st.reset_counters(&queue);
-            st.frame(&device, &queue, &v, &view, jitter(4), 4, SIZE, &gp, 0.0, None);
+            st.frame(
+                &device,
+                &queue,
+                &v,
+                &view,
+                jitter(4),
+                4,
+                SIZE,
+                &gp,
+                0.0,
+                None,
+            );
             let c = st.read_counters(&device, &queue);
             let m = |x: u32| x as f64 / 1e6;
             match v.path {
@@ -868,10 +1072,10 @@ fn study_motion() {
         return;
     };
     let sc = scene(StudyShot::Wide);
-    let start = sc.camera.clone();
+    let start = sc.camera;
     let path = move |i: u32| {
         let t = i as f32 / 60.0;
-        let mut c = start.clone();
+        let mut c = start;
         let fwd = c.forward();
         let flat = Vec3::new(fwd.x, 0.0, fwd.z).normalize_or_zero();
         c.position += flat * 1.4 * t;
@@ -879,17 +1083,38 @@ fn study_motion() {
         c
     };
     let view = view_of(&sc.camera, SIZE);
-    let mut st = Study::new(&device, &queue, Arc::clone(&sc.terrain), sc.origin, sc.lighting, false);
+    let mut st = Study::new(
+        &device,
+        &queue,
+        Arc::clone(&sc.terrain),
+        sc.origin,
+        sc.lighting,
+        false,
+    );
     st.build_ground(&device, view.eye);
     let frames = 90;
     let mut base: Option<Vec<Vec<u8>>> = None;
-    let names = std::env::var("MISTY_STUDY").unwrap_or_else(|_| "A,A1,B,F,H,H2,G,E".into());
-    for v in variants().into_iter().filter(|v| names.split(',').any(|n| n == v.name)) {
+    let names =
+        std::env::var("MISTY_STUDY").unwrap_or_else(|_| "A,A1,B,B2,B4,F,H,H2,B4H,Gc".into());
+    for v in variants()
+        .into_iter()
+        .filter(|v| names.split(',').any(|n| n == v.name))
+    {
         // The field of the start position (the walk is short: the chunks' prefixes would
         // hardly change).
         prepare(&device, &queue, &mut st, &sc, &v, &view, LEVELS[0]);
-        let clouds = |i: u32| if v.cache { i as f32 * 4.0 / 60.0 } else { 0.0 };
-        let imgs = render_images(&device, &queue, &mut st, &sc, &v, &path, 1.0, frames, 60, &clouds);
+        let imgs = render_images(
+            &device,
+            &queue,
+            &mut st,
+            &sc,
+            &v,
+            &path,
+            1.0,
+            frames,
+            60,
+            &|_| 0.0,
+        );
         let a = base.get_or_insert_with(|| imgs.clone()).clone();
         let mut d = Vec::new();
         let mut step = Vec::new();
@@ -899,7 +1124,8 @@ fn study_motion() {
                 step.push(diff_stats(&imgs[k], &imgs[k - 1]).0);
             }
         }
-        let mean = |f: &dyn Fn(&(f32, f32, f32)) -> f32| d.iter().map(f).sum::<f32>() / d.len() as f32;
+        let mean =
+            |f: &dyn Fn(&(f32, f32, f32)) -> f32| d.iter().map(f).sum::<f32>() / d.len() as f32;
         eprintln!(
             "motion {:<4} vs A: mean {:.2}, >8 {:.2}%, >24 {:.3}% | frame-to-frame change {:.2}",
             v.name,
@@ -916,13 +1142,32 @@ fn study_motion() {
     // G with clouds moving 4x faster than in the other runs vs A with the same clouds.
     if names.contains("Gc") {
         let mut runs = Vec::new();
-        for v in variants().into_iter().filter(|v| v.name == "A" || v.name == "G") {
+        for v in variants()
+            .into_iter()
+            .filter(|v| v.name == "A" || v.name == "G")
+        {
             prepare(&device, &queue, &mut st, &sc, &v, &view, LEVELS[0]);
-            let cam = sc.camera.clone();
-            let imgs = render_images(&device, &queue, &mut st, &sc, &v, &move |_| cam.clone(), 1.0, 90, 30, &|i| i as f32 * 8.0 / 60.0);
+            let cam = sc.camera;
+            let imgs = render_images(
+                &device,
+                &queue,
+                &mut st,
+                &sc,
+                &v,
+                &move |_| cam,
+                1.0,
+                90,
+                30,
+                &|i| i as f32 * 8.0 / 60.0,
+            );
             runs.push(imgs);
         }
-        let d: Vec<f32> = (0..runs[0].len()).map(|k| diff_stats(&runs[1][k], &runs[0][k]).0).collect();
-        eprintln!("G vs A with clouds moving (8x speed): mean {:.2}", d.iter().sum::<f32>() / d.len() as f32);
+        let d: Vec<f32> = (0..runs[0].len())
+            .map(|k| diff_stats(&runs[1][k], &runs[0][k]).0)
+            .collect();
+        eprintln!(
+            "G vs A with clouds moving (8x speed): mean {:.2}",
+            d.iter().sum::<f32>() / d.len() as f32
+        );
     }
 }

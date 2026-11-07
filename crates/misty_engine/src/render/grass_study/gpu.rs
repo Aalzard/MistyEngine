@@ -61,18 +61,26 @@ fn count_add(slot: u32, n: u32) {}
 ";
 
 /// Kinds of shader module (`module_source`).
-pub const KINDS: [&str; 7] = ["grass", "ground", "resolve", "swr", "shadow", "post", "cache"];
+pub const KINDS: [&str; 7] = [
+    "grass", "ground", "resolve", "swr", "shadow", "post", "cache",
+];
 
 /// The WGSL of one kind of module (`count` = the counting build).
 pub fn module_source(kind: &str, count: bool) -> String {
     let extra = match kind {
         "grass" => GRASS.to_string(),
-        "ground" => format!("{GRASS}
-{GROUND}"),
-        "resolve" => format!("{GRASS}
-{RESOLVE}"),
-        "swr" => format!("{GRASS}
-{SWR}"),
+        "ground" => format!(
+            "{GRASS}
+{GROUND}"
+        ),
+        "resolve" => format!(
+            "{GRASS}
+{RESOLVE}"
+        ),
+        "swr" => format!(
+            "{GRASS}
+{SWR}"
+        ),
         "shadow" => SHADOW.to_string(),
         "post" => POST.to_string(),
         "cache" => CACHE.to_string(),
@@ -82,19 +90,24 @@ pub fn module_source(kind: &str, count: bool) -> String {
     // so forcing it keeps the count to the fragments the timing build really shades.
     let (extra, count) = if count {
         (
-            extra.replace("@fragment
-fn fs_grass(", "@fragment @early_depth_test(force)
-fn fs_grass("),
+            extra.replace(
+                "@fragment
+fn fs_grass(",
+                "@fragment @early_depth_test(force)
+fn fs_grass(",
+            ),
             COUNT_ON,
         )
     } else {
         (extra, COUNT_OFF)
     };
-    format!("{COMMON}
+    format!(
+        "{COMMON}
 {FIELD}
 {BLADE}
 {extra}
-{count}")
+{count}"
+    )
 }
 
 /// Counter slots (see the shaders).
@@ -277,7 +290,11 @@ struct Layouts {
     cache: wgpu::BindGroupLayout,
 }
 
-fn entry(binding: u32, vis: wgpu::ShaderStages, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry {
+fn entry(
+    binding: u32,
+    vis: wgpu::ShaderStages,
+    ty: wgpu::BindingType,
+) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
         visibility: vis,
@@ -286,7 +303,11 @@ fn entry(binding: u32, vis: wgpu::ShaderStages, ty: wgpu::BindingType) -> wgpu::
     }
 }
 
-fn tex(sample_type: wgpu::TextureSampleType, dim: wgpu::TextureViewDimension, ms: bool) -> wgpu::BindingType {
+fn tex(
+    sample_type: wgpu::TextureSampleType,
+    dim: wgpu::TextureViewDimension,
+    ms: bool,
+) -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type,
         view_dimension: dim,
@@ -338,13 +359,25 @@ impl Layouts {
                 &[
                     entry(0, all, uniform()),
                     entry(1, all, tex(T::Depth, D::D2Array, false)),
-                    entry(2, all, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison)),
+                    entry(
+                        2,
+                        all,
+                        wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    ),
                     entry(3, all, tex(float, D::D2, false)),
-                    entry(4, all, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                    entry(
+                        4,
+                        all,
+                        wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    ),
                     entry(5, all, tex(float, D::D2, false)),
                     entry(6, all, tex(float, D::D3, false)),
                     entry(7, all, tex(float, D::D2Array, false)),
-                    entry(8, all, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                    entry(
+                        8,
+                        all,
+                        wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    ),
                     entry(9, fc, storage(false)),
                 ],
             ),
@@ -353,7 +386,11 @@ impl Layouts {
                 &[
                     entry(0, all, uniform()),
                     entry(1, all, tex(float, D::D2, false)),
-                    entry(2, all, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
+                    entry(
+                        2,
+                        all,
+                        wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    ),
                     entry(3, all, storage(true)),
                 ],
             ),
@@ -371,10 +408,22 @@ impl Layouts {
                 "study resolve4",
                 &[
                     entry(2, S::COMPUTE, storage_tex(HDR, D::D2)),
-                    entry(4, S::COMPUTE, tex(T::Float { filterable: false }, D::D2, true)),
+                    entry(
+                        4,
+                        S::COMPUTE,
+                        tex(T::Float { filterable: false }, D::D2, true),
+                    ),
                     entry(5, S::COMPUTE, tex(T::Depth, D::D2, true)),
-                    entry(6, S::COMPUTE, tex(T::Float { filterable: false }, D::D2, true)),
-                    entry(7, S::COMPUTE, tex(T::Float { filterable: false }, D::D2, true)),
+                    entry(
+                        6,
+                        S::COMPUTE,
+                        tex(T::Float { filterable: false }, D::D2, true),
+                    ),
+                    entry(
+                        7,
+                        S::COMPUTE,
+                        tex(T::Float { filterable: false }, D::D2, true),
+                    ),
                 ],
             ),
             swr: make(
@@ -388,24 +437,40 @@ impl Layouts {
             msaa: make(
                 "study msaa",
                 &[
-                    entry(0, S::FRAGMENT, tex(T::Float { filterable: false }, D::D2, true)),
+                    entry(
+                        0,
+                        S::FRAGMENT,
+                        tex(T::Float { filterable: false }, D::D2, true),
+                    ),
                     entry(1, S::FRAGMENT, tex(T::Depth, D::D2, true)),
                 ],
             ),
             taa: make(
                 "study taa",
                 &[
-                    entry(0, S::COMPUTE, tex(T::Float { filterable: false }, D::D2, false)),
+                    entry(
+                        0,
+                        S::COMPUTE,
+                        tex(T::Float { filterable: false }, D::D2, false),
+                    ),
                     entry(1, S::COMPUTE, tex(T::Depth, D::D2, false)),
                     entry(2, S::COMPUTE, tex(float, D::D2, false)),
                     entry(3, S::COMPUTE, storage_tex(HDR, D::D2)),
-                    entry(4, S::COMPUTE, storage_tex(wgpu::TextureFormat::Rgba8Unorm, D::D2)),
+                    entry(
+                        4,
+                        S::COMPUTE,
+                        storage_tex(wgpu::TextureFormat::Rgba8Unorm, D::D2),
+                    ),
                 ],
             ),
             cache: make(
                 "study cache",
                 &[
-                    entry(0, S::COMPUTE, storage_tex(wgpu::TextureFormat::Rgba8Unorm, D::D2Array)),
+                    entry(
+                        0,
+                        S::COMPUTE,
+                        storage_tex(wgpu::TextureFormat::Rgba8Unorm, D::D2Array),
+                    ),
                     entry(1, S::COMPUTE, storage(true)),
                 ],
             ),
@@ -441,7 +506,9 @@ fn texture(
 /// Tileable value-noise clouds (0..1), `n`².
 fn cloud_noise(n: u32) -> Vec<u8> {
     let hash = |x: i32, y: i32, o: i32| {
-        let mut h = (x.wrapping_mul(374_761_393) ^ y.wrapping_mul(668_265_263) ^ o.wrapping_mul(2_147_483_647)) as u32;
+        let mut h = (x.wrapping_mul(374_761_393)
+            ^ y.wrapping_mul(668_265_263)
+            ^ o.wrapping_mul(2_147_483_647)) as u32;
         h = (h ^ (h >> 13)).wrapping_mul(1_274_126_177);
         (h ^ (h >> 16)) as f32 / u32::MAX as f32
     };
@@ -492,9 +559,17 @@ impl Study {
             })
         };
         let u = wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST;
-        let study_buf = buf("study uniform", std::mem::size_of::<StudyUniform>() as u64, u);
+        let study_buf = buf(
+            "study uniform",
+            std::mem::size_of::<StudyUniform>() as u64,
+            u,
+        );
         let grass_buf = buf("study grass", std::mem::size_of::<GrassParams>() as u64, u);
-        let caster_grass_buf = buf("study grass casters", std::mem::size_of::<GrassParams>() as u64, u);
+        let caster_grass_buf = buf(
+            "study grass casters",
+            std::mem::size_of::<GrassParams>() as u64,
+            u,
+        );
         let caster_bufs = [buf("study caster 0", 64, u), buf("study caster 1", 64, u)];
         let shadow = texture(
             device,
@@ -625,7 +700,9 @@ impl Study {
         let counters = buf(
             "study counters",
             128,
-            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
         );
         let counters_read = buf(
             "study counters read",
@@ -835,7 +912,11 @@ impl Study {
     }
 
     /// The override constants of `variant` that `kind`'s module declares.
-    fn constants(kind: &str, v: &Variant, extra: &[(&'static str, f64)]) -> Vec<(&'static str, f64)> {
+    fn constants(
+        kind: &str,
+        v: &Variant,
+        extra: &[(&'static str, f64)],
+    ) -> Vec<(&'static str, f64)> {
         let b = |x: bool| if x { 1.0 } else { 0.0 };
         let mut c = vec![
             ("CACHE", b(v.cache)),
@@ -867,7 +948,11 @@ impl Study {
         c
     }
 
-    fn layout(&self, device: &wgpu::Device, groups: &[Option<&wgpu::BindGroupLayout>]) -> wgpu::PipelineLayout {
+    fn layout(
+        &self,
+        device: &wgpu::Device,
+        groups: &[Option<&wgpu::BindGroupLayout>],
+    ) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("study"),
             bind_group_layouts: groups,
@@ -1021,31 +1106,70 @@ impl Study {
                 made.push((
                     "ground".into(),
                     Pipeline::Render(self.render_pipeline(
-                        device, "ground", v, "vs_ground", Some("fs_ground_mrt"), &g01,
-                        &[ground_layout.clone()], list, &mrt, depth(true, C::Less), samples, false,
+                        device,
+                        "ground",
+                        v,
+                        "vs_ground",
+                        Some("fs_ground_mrt"),
+                        &g01,
+                        std::slice::from_ref(&ground_layout),
+                        list,
+                        &mrt,
+                        depth(true, C::Less),
+                        samples,
+                        false,
                     )),
                 ));
                 made.push((
                     "grass depth".into(),
                     Pipeline::Render(self.render_pipeline(
-                        device, "grass", v, "vs_grass_depth", Some("fs_grass_depth"), &g01,
-                        &[blade_layout.clone()], strip, &mrt_depth, depth(true, C::Less), samples, true,
+                        device,
+                        "grass",
+                        v,
+                        "vs_grass_depth",
+                        Some("fs_grass_depth"),
+                        &g01,
+                        std::slice::from_ref(&blade_layout),
+                        strip,
+                        &mrt_depth,
+                        depth(true, C::Less),
+                        samples,
+                        true,
                     )),
                 ));
                 made.push((
                     "grass lit".into(),
                     Pipeline::Render(self.render_pipeline(
-                        device, "grass", v, "vs_grass", Some("fs_grass"), &g01,
-                        &[blade_layout.clone()], strip, &mrt, depth(false, C::LessEqual), samples, true,
+                        device,
+                        "grass",
+                        v,
+                        "vs_grass",
+                        Some("fs_grass"),
+                        &g01,
+                        std::slice::from_ref(&blade_layout),
+                        strip,
+                        &mrt,
+                        depth(false, C::LessEqual),
+                        samples,
+                        true,
                     )),
                 ));
                 if samples > 1 {
                     made.push((
                         "msaa".into(),
                         Pipeline::Render(self.render_pipeline(
-                            device, "post", v, "vs_full", Some("fs_msaa_resolve"),
-                            &[Some(&l.study), None, Some(&l.msaa)], &[], list,
-                            &[target(HDR, all)], depth(true, C::Always), 1, false,
+                            device,
+                            "post",
+                            v,
+                            "vs_full",
+                            Some("fs_msaa_resolve"),
+                            &[Some(&l.study), None, Some(&l.msaa)],
+                            &[],
+                            list,
+                            &[target(HDR, all)],
+                            depth(true, C::Always),
+                            1,
+                            false,
                         )),
                     ));
                 }
@@ -1054,22 +1178,44 @@ impl Study {
                 made.push((
                     "ground".into(),
                     Pipeline::Render(self.render_pipeline(
-                        device, "ground", v, "vs_ground", Some("fs_ground"), &g01,
-                        &[ground_layout.clone()], list, &[target(HDR, all)], depth(true, C::Less), 1, false,
+                        device,
+                        "ground",
+                        v,
+                        "vs_ground",
+                        Some("fs_ground"),
+                        &g01,
+                        std::slice::from_ref(&ground_layout),
+                        list,
+                        &[target(HDR, all)],
+                        depth(true, C::Less),
+                        1,
+                        false,
                     )),
                 ));
                 made.push((
                     "vis".into(),
                     Pipeline::Render(self.render_pipeline(
-                        device, "grass", v, "vs_vis", Some("fs_vis"), &g01,
-                        &[blade_layout.clone()], strip,
-                        &[target(wgpu::TextureFormat::Rg32Uint, all)], depth(true, C::Less), 1, false,
+                        device,
+                        "grass",
+                        v,
+                        "vs_vis",
+                        Some("fs_vis"),
+                        &g01,
+                        std::slice::from_ref(&blade_layout),
+                        strip,
+                        &[target(wgpu::TextureFormat::Rg32Uint, all)],
+                        depth(true, C::Less),
+                        1,
+                        false,
                     )),
                 ));
                 made.push((
                     "resolve".into(),
                     Pipeline::Compute(self.compute_pipeline(
-                        device, "resolve", v, "cs_resolve",
+                        device,
+                        "resolve",
+                        v,
+                        "cs_resolve",
                         &[Some(&l.study), Some(&l.grass), Some(&l.resolve)],
                     )),
                 ));
@@ -1077,7 +1223,10 @@ impl Study {
                     made.push((
                         "swr".into(),
                         Pipeline::Compute(self.compute_pipeline(
-                            device, "swr", v, "cs_swr",
+                            device,
+                            "swr",
+                            v,
+                            "cs_swr",
                             &[Some(&l.study), Some(&l.grass), Some(&l.swr)],
                         )),
                     ));
@@ -1087,31 +1236,64 @@ impl Study {
                 made.push((
                     "ground".into(),
                     Pipeline::Render(self.render_pipeline(
-                        device, "ground", v, "vs_ground", Some("fs_ground"), &g01,
-                        &[ground_layout.clone()], list, &[target(HDR, all)], depth(true, C::Less), samples, false,
+                        device,
+                        "ground",
+                        v,
+                        "vs_ground",
+                        Some("fs_ground"),
+                        &g01,
+                        std::slice::from_ref(&ground_layout),
+                        list,
+                        &[target(HDR, all)],
+                        depth(true, C::Less),
+                        samples,
+                        false,
                     )),
                 ));
                 made.push((
                     "vis".into(),
                     Pipeline::Render(self.render_pipeline(
-                        device, "grass", v, "vs_vis", Some("fs_vis4"), &g01,
-                        &[blade_layout.clone()], strip,
-                        &[target(wgpu::TextureFormat::R32Float, all), target(VELOCITY, all)],
-                        depth(true, C::Less), samples, false,
+                        device,
+                        "grass",
+                        v,
+                        "vs_vis",
+                        Some("fs_vis4"),
+                        &g01,
+                        std::slice::from_ref(&blade_layout),
+                        strip,
+                        &[
+                            target(wgpu::TextureFormat::R32Float, all),
+                            target(VELOCITY, all),
+                        ],
+                        depth(true, C::Less),
+                        samples,
+                        false,
                     )),
                 ));
                 made.push((
                     "msaa".into(),
                     Pipeline::Render(self.render_pipeline(
-                        device, "post", v, "vs_full", Some("fs_msaa_resolve"),
-                        &[Some(&l.study), None, Some(&l.msaa)], &[], list,
-                        &[target(HDR, all)], depth(true, C::Always), 1, false,
+                        device,
+                        "post",
+                        v,
+                        "vs_full",
+                        Some("fs_msaa_resolve"),
+                        &[Some(&l.study), None, Some(&l.msaa)],
+                        &[],
+                        list,
+                        &[target(HDR, all)],
+                        depth(true, C::Always),
+                        1,
+                        false,
                     )),
                 ));
                 made.push((
                     "resolve".into(),
                     Pipeline::Compute(self.compute_pipeline(
-                        device, "resolve", v, "cs_resolve4",
+                        device,
+                        "resolve",
+                        v,
+                        "cs_resolve4",
                         &[Some(&l.study), Some(&l.grass), Some(&l.resolve4)],
                     )),
                 ));
@@ -1121,7 +1303,10 @@ impl Study {
             made.push((
                 "cache".into(),
                 Pipeline::Compute(self.compute_pipeline(
-                    device, "cache", v, "cs_cache",
+                    device,
+                    "cache",
+                    v,
+                    "cs_cache",
                     &[Some(&l.study), Some(&l.grass), Some(&l.cache)],
                 )),
             ));
@@ -1129,7 +1314,10 @@ impl Study {
         made.push((
             "taa".into(),
             Pipeline::Compute(self.compute_pipeline(
-                device, "post", v, "cs_taa",
+                device,
+                "post",
+                v,
+                "cs_taa",
                 &[Some(&l.study), None, None, Some(&l.taa)],
             )),
         ));
@@ -1163,24 +1351,76 @@ impl Study {
         use wgpu::TextureUsages as U;
         let ra = U::RENDER_ATTACHMENT | U::TEXTURE_BINDING;
         let view = |t: wgpu::Texture| t.create_view(&Default::default());
-        let single = if samples == 1 { U::STORAGE_BINDING } else { U::empty() };
-        let color = view(texture(device, "study color", size, 1, HDR, samples, ra | single));
+        let single = if samples == 1 {
+            U::STORAGE_BINDING
+        } else {
+            U::empty()
+        };
+        let color = view(texture(
+            device,
+            "study color",
+            size,
+            1,
+            HDR,
+            samples,
+            ra | single,
+        ));
         let glow = view(texture(device, "study glow", size, 1, HDR, samples, ra));
-        let velocity = view(texture(device, "study velocity", size, 1, VELOCITY, samples, ra));
+        let velocity = view(texture(
+            device,
+            "study velocity",
+            size,
+            1,
+            VELOCITY,
+            samples,
+            ra,
+        ));
         let depth = view(texture(device, "study depth", size, 1, DEPTH, samples, ra));
         let (color1, depth1) = if samples > 1 {
             (
-                view(texture(device, "study color1", size, 1, HDR, 1, ra | U::STORAGE_BINDING)),
+                view(texture(
+                    device,
+                    "study color1",
+                    size,
+                    1,
+                    HDR,
+                    1,
+                    ra | U::STORAGE_BINDING,
+                )),
                 view(texture(device, "study depth1", size, 1, DEPTH, 1, ra)),
             )
         } else {
             (color.clone(), depth.clone())
         };
-        let vis = view(texture(device, "study vis", size, 1, wgpu::TextureFormat::Rg32Uint, 1, ra));
+        let vis = view(texture(
+            device,
+            "study vis",
+            size,
+            1,
+            wgpu::TextureFormat::Rg32Uint,
+            1,
+            ra,
+        ));
         let (vis_ms, vis_uv_ms) = if samples > 1 {
             (
-                view(texture(device, "study vis ms", size, 1, wgpu::TextureFormat::R32Float, samples, ra)),
-                view(texture(device, "study vis uv ms", size, 1, VELOCITY, samples, ra)),
+                view(texture(
+                    device,
+                    "study vis ms",
+                    size,
+                    1,
+                    wgpu::TextureFormat::R32Float,
+                    samples,
+                    ra,
+                )),
+                view(texture(
+                    device,
+                    "study vis uv ms",
+                    size,
+                    1,
+                    VELOCITY,
+                    samples,
+                    ra,
+                )),
             )
         } else {
             (vis.clone(), vis.clone())
@@ -1191,7 +1431,17 @@ impl Study {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let hist = || view(texture(device, "study history", size, 1, HDR, 1, U::STORAGE_BINDING | U::TEXTURE_BINDING));
+        let hist = || {
+            view(texture(
+                device,
+                "study history",
+                size,
+                1,
+                HDR,
+                1,
+                U::STORAGE_BINDING | U::TEXTURE_BINDING,
+            ))
+        };
         let ldr = texture(
             device,
             "study ldr",
@@ -1221,7 +1471,13 @@ impl Study {
 
     /// Render the sun's cascades around `eye` (ground everywhere, grass casters in cascade 0)
     /// and fill the lighting cache's ground heights. Once per camera position.
-    pub fn bake_shadows(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, eye: Vec3, grass: &GrassParams) {
+    pub fn bake_shadows(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        eye: Vec3,
+        grass: &GrassParams,
+    ) {
         let dir = self.lighting.sun_dir.normalize();
         let up = if dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
         let ground_y = self.origin.y
@@ -1236,12 +1492,20 @@ impl Study {
             let vp = proj * view;
             let o = vp.project_point3(Vec3::ZERO);
             let texel = 2.0 / SHADOW_SIZE as f32;
-            let snap = Vec3::new((o.x / texel).round() * texel - o.x, (o.y / texel).round() * texel - o.y, 0.0);
+            let snap = Vec3::new(
+                (o.x / texel).round() * texel - o.x,
+                (o.y / texel).round() * texel - o.y,
+                0.0,
+            );
             Mat4::from_translation(snap) * vp
         };
         self.sun_vp = [make(CASCADE0), make(CASCADE1)];
         for (i, vp) in self.sun_vp.iter().enumerate() {
-            queue.write_buffer(&self.caster_bufs[i], 0, bytemuck::bytes_of(&vp.to_cols_array()));
+            queue.write_buffer(
+                &self.caster_bufs[i],
+                0,
+                bytemuck::bytes_of(&vp.to_cols_array()),
+            );
         }
         queue.write_buffer(&self.caster_grass_buf, 0, bytemuck::bytes_of(grass));
         let v = Variant::forward("shadow", "");
@@ -1261,7 +1525,11 @@ impl Study {
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &ground_attrs,
             };
-            let groups = [Some(&self.layouts.study), Some(&self.layouts.grass), Some(&self.layouts.caster)];
+            let groups = [
+                Some(&self.layouts.study),
+                Some(&self.layouts.grass),
+                Some(&self.layouts.caster),
+            ];
             let depth = |slope: f32| {
                 Some(wgpu::DepthStencilState {
                     format: DEPTH,
@@ -1276,15 +1544,37 @@ impl Study {
                 })
             };
             let grass_p = self.render_pipeline(
-                device, "shadow", &v, "vs_grass_shadow", Some("fs_grass_shadow"), &groups,
-                &[blade_layout], wgpu::PrimitiveTopology::TriangleStrip, &[], depth(2.5), 1, false,
+                device,
+                "shadow",
+                &v,
+                "vs_grass_shadow",
+                Some("fs_grass_shadow"),
+                &groups,
+                &[blade_layout],
+                wgpu::PrimitiveTopology::TriangleStrip,
+                &[],
+                depth(2.5),
+                1,
+                false,
             );
             let ground_p = self.render_pipeline(
-                device, "shadow", &v, "vs_ground_shadow", None, &groups,
-                &[ground_layout], wgpu::PrimitiveTopology::TriangleList, &[], depth(1.5), 1, false,
+                device,
+                "shadow",
+                &v,
+                "vs_ground_shadow",
+                None,
+                &groups,
+                &[ground_layout],
+                wgpu::PrimitiveTopology::TriangleList,
+                &[],
+                depth(1.5),
+                1,
+                false,
             );
-            self.pipelines.insert(key.clone(), Pipeline::Render(grass_p));
-            self.pipelines.insert(Self::key("shadow ground", &v), Pipeline::Render(ground_p));
+            self.pipelines
+                .insert(key.clone(), Pipeline::Render(grass_p));
+            self.pipelines
+                .insert(Self::key("shadow ground", &v), Pipeline::Render(ground_p));
         }
         let mut encoder = device.create_command_encoder(&Default::default());
         for i in 0..2 {
@@ -1380,7 +1670,11 @@ impl Study {
                 pass.set_bind_group(0, &self.group0_cache, &[]);
                 pass.set_bind_group(1, self.grass_group.as_ref().expect("field"), &[]);
                 pass.set_bind_group(2, &group2, &[]);
-                pass.dispatch_workgroups(CACHE_TEXELS.div_ceil(8), (CACHE_TEXELS / CACHE_SLICES).div_ceil(8), 2);
+                pass.dispatch_workgroups(
+                    CACHE_TEXELS.div_ceil(8),
+                    (CACHE_TEXELS / CACHE_SLICES).div_ceil(8),
+                    2,
+                );
             }
             queue.submit([enc.finish()]);
         }
@@ -1400,7 +1694,9 @@ impl Study {
         slice.map_async(wgpu::MapMode::Read, |_| {});
         let _ = device.poll(wgpu::PollType::wait_indefinitely());
         let mut out = [0u32; 32];
-        out.copy_from_slice(bytemuck::cast_slice(&slice.get_mapped_range().expect("mapped")));
+        out.copy_from_slice(bytemuck::cast_slice(
+            &slice.get_mapped_range().expect("mapped"),
+        ));
         self.counters_read.unmap();
         out
     }
@@ -1448,13 +1744,22 @@ impl Study {
             sun_vp0: self.sun_vp[0].to_cols_array_2d(),
             sun_vp1: self.sun_vp[1].to_cols_array_2d(),
             camera: [view.eye.x, view.eye.y, view.eye.z, cloud_clock],
-            sun_dir: lit.sun_dir.normalize().extend(if lit.shadows { 1.0 } else { 0.0 }).into(),
+            sun_dir: lit
+                .sun_dir
+                .normalize()
+                .extend(if lit.shadows { 1.0 } else { 0.0 })
+                .into(),
             sun_color: lit.sun.extend(CASCADE0).into(),
             sky: lit.sky.extend(lit.ambient).into(),
             equator: lit.equator.extend(0.0).into(),
             ground: lit.ground.extend(0.0).into(),
             fog: lit.fog.into(),
-            screen: [size.0 as f32, size.1 as f32, 1.0 / size.0 as f32, 1.0 / size.1 as f32],
+            screen: [
+                size.0 as f32,
+                size.1 as f32,
+                1.0 / size.0 as f32,
+                1.0 / size.1 as f32,
+            ],
             frame: [index, 1, CACHE_SLICES, 0],
             params: [
                 v.swr_px,
@@ -1514,7 +1819,11 @@ impl Study {
             pass.set_bind_group(0, &self.group0_cache, &[]);
             pass.set_bind_group(1, grass_group, &[]);
             pass.set_bind_group(2, &group2, &[]);
-            pass.dispatch_workgroups(groups_xy(CACHE_TEXELS), groups_xy(CACHE_TEXELS / CACHE_SLICES), 2);
+            pass.dispatch_workgroups(
+                groups_xy(CACHE_TEXELS),
+                groups_xy(CACHE_TEXELS / CACHE_SLICES),
+                2,
+            );
             drop(pass);
             mark(&mut enc, "G cache update");
         }
@@ -1533,7 +1842,10 @@ impl Study {
         match v.path {
             Path::Forward { samples } => {
                 {
-                    fn att(view: &wgpu::TextureView, c: wgpu::Color) -> Option<wgpu::RenderPassColorAttachment<'_>> {
+                    fn att(
+                        view: &wgpu::TextureView,
+                        c: wgpu::Color,
+                    ) -> Option<wgpu::RenderPassColorAttachment<'_>> {
                         Some(wgpu::RenderPassColorAttachment {
                             view,
                             depth_slice: None,
@@ -1865,7 +2177,10 @@ impl Study {
             }
         }
         // TAA (history ping-pong) and tonemapping.
-        let (hist_in, hist_out) = (&t.history[(index % 2) as usize], &t.history[((index + 1) % 2) as usize]);
+        let (hist_in, hist_out) = (
+            &t.history[(index % 2) as usize],
+            &t.history[((index + 1) % 2) as usize],
+        );
         let ldr = t.ldr.create_view(&Default::default());
         let group3 = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("study taa"),

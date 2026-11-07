@@ -135,7 +135,8 @@ impl Field {
         };
         for (dist, level, blades) in chunks {
             let keep = keep_of(dist) / details::level_keep(level);
-            let count = ((blades.len() as f32 * keep.min(1.0)).ceil() as u32).min(blades.len() as u32);
+            let count =
+                ((blades.len() as f32 * keep.min(1.0)).ceil() as u32).min(blades.len() as u32);
             if count == 0 {
                 continue;
             }

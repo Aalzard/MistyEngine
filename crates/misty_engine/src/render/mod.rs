@@ -2798,13 +2798,13 @@ mod gpu_checks;
 #[cfg(test)]
 pub(crate) mod gpu_tests;
 #[cfg(test)]
+mod grass_study;
+#[cfg(test)]
 mod hitch_tests;
 #[cfg(test)]
 mod taa_gpu_tests;
 #[cfg(test)]
 mod terrain_gpu_tests;
-#[cfg(test)]
-mod grass_study;
 
 #[cfg(test)]
 mod tests {
