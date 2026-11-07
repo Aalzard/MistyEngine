@@ -512,6 +512,38 @@ fn texture_or(rel: &str, normal: bool) -> image::RgbaImage {
     image::RgbaImage::from_pixel(1, 1, image::Rgba(p))
 }
 
+/// Write a grayscale map (its red channel, resized to `dst`'s size) into `channel` of `dst`,
+/// or `fallback` everywhere when the map is missing or can't be read.
+fn pack_channel(dst: &mut image::RgbaImage, rel: &str, channel: usize, fallback: u8) {
+    let src = (!rel.is_empty())
+        .then(|| super::texture::load_image(&crate::assets::absolute(rel)).ok())
+        .flatten()
+        .map(|img| {
+            if img.dimensions() == dst.dimensions() {
+                img
+            } else {
+                image::imageops::resize(
+                    &img,
+                    dst.width(),
+                    dst.height(),
+                    image::imageops::FilterType::Triangle,
+                )
+            }
+        });
+    match src {
+        Some(src) => {
+            for (d, s) in dst.pixels_mut().zip(src.pixels()) {
+                d[channel] = s[0];
+            }
+        }
+        None => {
+            for d in dst.pixels_mut() {
+                d[channel] = fallback;
+            }
+        }
+    }
+}
+
 /// A tree's texture mip chains (decoded and filtered on any thread), ready to upload.
 struct TreeTextures {
     built: Arc<Built>,
@@ -525,8 +557,17 @@ impl TreeTextures {
     fn build(built: Arc<Built>) -> Self {
         let a = &built.asset;
         let m = &built.model;
-        let plain =
-            |rel: &str, normal: bool| super::texture::mip_chain(texture_or(rel, normal), !normal);
+        // The material maps ride in the spare channels (one texture pair per draw): bark
+        // albedo alpha = height; normal maps = (x, y, roughness, occlusion / translucency),
+        // z rebuilt in the shader.
+        let mut bark = texture_or(&a.bark_texture, false);
+        pack_channel(&mut bark, &a.bark_height, 3, 128);
+        let mut bark_n = texture_or(&a.bark_normal, true);
+        pack_channel(&mut bark_n, &a.bark_roughness, 2, 222);
+        pack_channel(&mut bark_n, &a.bark_occlusion, 3, 255);
+        let mut leaf_n = texture_or(&a.leaf_normal, true);
+        pack_channel(&mut leaf_n, &a.leaf_roughness, 2, 150);
+        pack_channel(&mut leaf_n, &a.leaf_translucency, 3, 255);
         let leaf = texture_or(&a.leaf_texture, false);
         let leaf = if leaf.width() >= 64 {
             coverage_mips(leaf, 2, 2)
@@ -536,10 +577,10 @@ impl TreeTextures {
         let imp = coverage_mips(m.impostor.albedo.clone(), impostor::VIEWS, 1);
         let imp_n = super::texture::mip_chain(m.impostor.normal.clone(), false);
         let chains = [
-            (plain(&a.bark_texture, false), true),
-            (plain(&a.bark_normal, true), false),
+            (super::texture::mip_chain(bark, true), true),
+            (super::texture::mip_chain(bark_n, false), false),
             (leaf, true),
-            (plain(&a.leaf_normal, true), false),
+            (super::texture::mip_chain(leaf_n, false), false),
             (imp, true),
             (imp_n, false),
         ];

@@ -266,6 +266,9 @@ fn rotate(v: Vec3, axis: Vec3, angle: f32) -> Vec3 {
     glam::Quat::from_axis_angle(axis, angle) * v
 }
 
+/// Trunk rings: height share = (ring share)^this (closer together at the foot).
+const TRUNK_RINGS: f32 = 1.4;
+
 pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
     let mut rng = Rng::new(t.seed as u64 * 7919 + 17);
     let crown = Crown::new(t);
@@ -296,16 +299,17 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
     };
     let top_radius = if t.leader >= 0.5 { 0.12 } else { 0.62 };
     for i in 0..=trunk_segments {
-        let s = i as f32 / trunk_segments as f32;
+        // Rings closer together at the foot (the root flare's shape).
+        let s = (i as f32 / trunk_segments as f32).powf(TRUNK_RINGS);
         let y = -0.4 + (trunk_top + 0.4) * s;
         let k = (y.max(0.0) / h).powf(1.5);
         let wobble = (s * 7.0 + w1).sin() * 0.5 + (s * 13.0 + w2).sin() * 0.25;
         let offset = lean_dir * t.trunk_bend * h * 0.07 * k
             + side * wobble * t.trunk_bend * t.trunk_radius * 0.8 * s;
         trunk.points.push(Vec3::new(0.0, y, 0.0) + offset);
-        // Taper, plus the root flare at the foot.
+        // Taper, plus the root flare at the foot (its buttresses are added when meshing).
         let taper = 1.0 - (1.0 - top_radius) * s.powf(0.9);
-        let flare = 1.0 + 0.55 * (-(y.max(0.0)) / 0.45).exp();
+        let flare = 1.0 + 0.4 * (-(y.max(0.0)) / 0.5).exp();
         trunk.radii.push(t.trunk_radius * taper * flare);
         trunk.weights.push(0.0);
     }
@@ -326,7 +330,7 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
             start_y + (trunk_top - start_y) * f.powf(0.55)
         };
         let s = ((attach_y + 0.4) / (trunk_top + 0.4)).clamp(0.0, 1.0);
-        let (base, _, trunk_r, _) = limbs[0].at(s);
+        let (base, _, trunk_r, _) = limbs[0].at(s.powf(1.0 / TRUNK_RINGS));
         let azimuth = i as f32 * golden + rng.range(-0.35, 0.35);
         let out = Vec3::new(azimuth.cos(), 0.0, azimuth.sin());
         // Lower limbs leave flatter, upper ones steeper.
@@ -364,7 +368,14 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
             phase: rng.f(),
             level: 1,
         };
-        let r0 = trunk_r * if t.leader >= 0.5 { 0.42 } else { 0.62 } * rng.range(0.8, 1.1);
+        // Decurrent trees (oaks) divide into a few heavy limbs that stay thick a long way out.
+        let r0 = trunk_r * if t.leader >= 0.5 { 0.42 } else { 0.72 } * rng.range(0.85, 1.1);
+        let taper = if t.leader >= 0.5 { 0.85 } else { 1.2 };
+        // A slow, irregular kink sideways and up and down (gnarled, not a smooth arc).
+        let kink_a = perpendicular((target - base).normalize_or(Vec3::Y));
+        let kink_b = (target - base).normalize_or(Vec3::Y).cross(kink_a);
+        let (k1, k2) = (rng.range(0.0, tau), rng.range(0.0, tau));
+        let gnarl = len * (0.025 + 0.03 * (1.0 - t.leader));
         let segments = 10;
         for j in 0..=segments {
             let u = j as f32 / segments as f32;
@@ -374,13 +385,16 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
             } else {
                 Vec3::ZERO
             };
-            let mut p = cubic(base, p1, p2, target, u) + sag;
+            let bend = (std::f32::consts::PI * u).sin() * gnarl;
+            let kink =
+                kink_a * (u * 9.0 + k1).sin() * bend + kink_b * (u * 6.5 + k2).sin() * bend * 0.7;
+            let mut p = cubic(base, p1, p2, target, u) + sag + kink;
             if j == 0 {
                 // Start inside the trunk so the joint is hidden.
                 p = base - leave * trunk_r * 0.3;
             }
             limb.points.push(p);
-            limb.radii.push(r0 * (1.0 - 0.86 * u.powf(0.85)));
+            limb.radii.push(r0 * (1.0 - 0.86 * u.powf(taper)));
             limb.weights.push(u.powf(1.5) * len / h);
         }
         main.push(limb);
@@ -405,7 +419,7 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
             let room = crown.reach(p, dir);
             let want = len * (0.6 - 0.32 * s) * rng.range(0.75, 1.15);
             let l2 = want.min(room * 1.05).max(0.35);
-            let r2 = (r * 0.62).clamp(0.008, 0.09);
+            let r2 = (r * 0.6).clamp(0.008, 0.13);
             let mut b = Limb {
                 points: Vec::new(),
                 radii: Vec::new(),
@@ -466,8 +480,12 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
                 .try_normalize()
                 .unwrap_or(perpendicular(up));
             let facing = rotate(across, up, rng.range(-0.9, 0.9));
-            // Clusters deep inside the crown are smaller and sparser (they get little light).
+            // Clusters deep inside the crown are sparser (they get little light); towards the
+            // outline they get smaller and closer together (the same cover), so the silhouette
+            // breaks up into many small sprays instead of a few big puffs.
             let inner = crown.depth(anchor);
+            let rim = smoothstep(0.7, 1.05, inner);
+            let scale = 1.08 - 0.43 * rim;
             if inner < 0.55 && rng.f() > inner / 0.55 {
                 d += spacing * rng.range(0.6, 1.4);
                 continue;
@@ -476,13 +494,13 @@ pub(super) fn skeleton(t: &TreeAsset) -> Skeleton {
                 anchor,
                 up,
                 facing,
-                size: t.leaf_size * rng.range(0.8, 1.2) * (0.75 + 0.25 * inner.min(1.0)),
+                size: t.leaf_size * rng.range(0.8, 1.2) * scale,
                 cell: (rng.next() % 4) as u32,
                 weight: w,
                 phase: b.phase,
                 variation: rng.f(),
             });
-            d += spacing * rng.range(0.6, 1.4);
+            d += spacing * rng.range(0.6, 1.4) * scale * scale;
         }
         carry = d - len;
     }
@@ -509,7 +527,7 @@ struct Detail {
 }
 
 const LOD0: Detail = Detail {
-    sides: [14, 7, 4],
+    sides: [16, 8, 5],
     min_radius: 0.0,
     card_stride: 1,
     ring_step: 1,
@@ -521,6 +539,9 @@ const LOD1: Detail = Detail {
     ring_step: 2,
 };
 
+/// Metres of bark one texture repeat covers round a 0.4 m trunk.
+const BARK_TILE: f32 = 0.9;
+
 fn encode(v: f32) -> u8 {
     (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
@@ -528,8 +549,14 @@ fn encode(v: f32) -> u8 {
 fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
     let mut m = TreeMesh::default();
     let h = t.height;
-    // Bark: a tube per limb, its texture wrapped once around per ~1.6 m of girth and keeping
-    // the texture's 1 : 2 aspect along the limb.
+    // Bark: a tube per limb. The (square) texture repeats every `tile` metres round the
+    // trunk, a whole number of times round each limb: coarser bark on thicker trunks, finer on
+    // thin branches.
+    let tile = BARK_TILE * (t.trunk_radius / 0.4).clamp(0.3, 3.0).sqrt();
+    // Buttresses: a few rounded lobes round the trunk's foot.
+    let lobes = 4.0 + (t.seed % 3) as f32;
+    let lobe_phase = t.seed as f32 * 1.7;
+    let tau = std::f32::consts::TAU;
     for limb in &sk.limbs {
         let sides = detail.sides[limb.level as usize];
         if sides == 0 || (limb.level == 2 && limb.radii[0] < detail.min_radius) {
@@ -545,9 +572,9 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
             phase: limb.phase,
             level: limb.level,
         };
-        let girth = std::f32::consts::TAU * limb.radii[0].max(0.01);
-        let wraps = (girth / 1.6).round().max(1.0);
-        let v_per_m = wraps / (girth * 2.0);
+        let girth = tau * limb.radii[0].max(0.01);
+        let wraps = (girth / tile).round().max(1.0);
+        let v_per_m = wraps / girth;
         let first = m.vertices.len() as u32;
         let mut v_acc = 0.0;
         let mut frame_n = perpendicular(
@@ -556,6 +583,20 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
                 .unwrap_or(Vec3::Y),
         );
         let rings = limb.points.len();
+        let n_sides = sides as usize;
+        let ring = n_sides + 1;
+        // Ring positions first, then the vertices with normals from the surface itself (the
+        // flare, the buttresses and the taper tilt them).
+        let mut pos = Vec::with_capacity(rings * ring);
+        let mut radial = Vec::with_capacity(rings * ring);
+        let mut shade = Vec::with_capacity(rings * ring);
+        let mut v_of = Vec::with_capacity(rings);
+        // Lobes need enough sides to be round (LOD 1 gets a hint of them).
+        let lobe_amount = if limb.level == 0 {
+            0.5 * (sides as f32 / 14.0).min(1.0)
+        } else {
+            0.0
+        };
         for i in 0..rings {
             let p = limb.points[i];
             let dir = if i + 1 < rings {
@@ -573,27 +614,54 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
             if i > 0 {
                 v_acc += limb.points[i - 1].distance(p) * v_per_m;
             }
-            let ao = sk.crown.occlusion(p) * if limb.level == 0 { 1.0 } else { 0.95 };
+            v_of.push(v_acc);
+            // The crown's occlusion is meant for the leaf shell: the bark (near the axis, deep
+            // "inside" by that measure) gets a milder share of it, or shaded trunks go black.
+            let ao = (0.6 + 0.4 * sk.crown.occlusion(p)) * if limb.level == 0 { 1.0 } else { 0.95 };
             // The trunk's foot is darker where it meets the grass.
             let foot = smoothstep(-0.3, 1.2, p.y) * 0.35 + 0.65;
-            for k in 0..=sides {
-                let a = k as f32 / sides as f32 * std::f32::consts::TAU;
+            let buttress = lobe_amount * (-(p.y.max(0.0)) / 0.7).exp();
+            for k in 0..ring {
+                let a = k as f32 / sides as f32 * tau;
                 let n = frame_n * a.cos() + frame_b * a.sin();
+                let wave = 0.5 + 0.5 * (lobes * a + lobe_phase + 0.7 * (2.0 * a).sin()).cos();
+                pos.push(p + n * limb.radii[i] * (1.0 + wave * wave * buttress));
+                radial.push(n);
+                // Darker in the hollows between the buttresses.
+                shade.push(ao * foot * (1.0 - 0.3 * buttress * (1.0 - wave)));
+            }
+        }
+        let at = |i: usize, k: usize| pos[i * ring + k];
+        for i in 0..rings {
+            for k in 0..ring {
+                // Around (growing angle: `dir × n`) × along (`dir`) points outwards.
+                let around = at(i, (k + 1) % n_sides) - at(i, (k + n_sides - 1) % n_sides);
+                let along = at((i + 1).min(rings - 1), k) - at(i.saturating_sub(1), k);
+                let r = radial[i * ring + k];
+                let n = around
+                    .cross(along)
+                    .try_normalize()
+                    .filter(|n| n.dot(r) > 0.2)
+                    .unwrap_or(r);
+                let y = limb.points[i].y;
                 m.vertices.push(TreeVertex {
-                    position: (p + n * limb.radii[i]).to_array(),
+                    position: at(i, k).to_array(),
                     normal: n.to_array(),
-                    uv: [k as f32 / sides as f32 * wraps, -v_acc],
-                    wind: [limb.weights[i], limb.phase, 0.0, (p.y / h).clamp(0.0, 1.0)],
-                    extra: [encode(ao * foot), 0, 0, 0],
+                    uv: [k as f32 / sides as f32 * wraps, -v_of[i]],
+                    wind: [limb.weights[i], limb.phase, 0.0, (y / h).clamp(0.0, 1.0)],
+                    extra: [encode(shade[i * ring + k]), 0, 0, 0],
                 });
             }
         }
-        let ring = sides + 1;
+        // Outward faces: `cross(b - a, c - a)` points out of the tube (the engine's winding,
+        // clockwise on screen; the bark pipelines cull back faces). Around the ring is
+        // `dir × n`, along it `dir`, and `(dir × n) × dir = n`.
+        let ring = ring as u32;
         for i in 0..rings as u32 - 1 {
             for k in 0..sides {
                 let a = first + i * ring + k;
                 let b = a + ring;
-                m.indices.extend([a, b, a + 1, a + 1, b, b + 1]);
+                m.indices.extend([a, a + 1, b, a + 1, b + 1, b]);
             }
         }
     }
@@ -638,10 +706,12 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
                 });
             }
         }
+        // Front faces towards `facing` (outside the crown), so `front_facing` in the leaf shader
+        // knows which side of the card it sees.
         let i = |r: u32, col: u32| first + r * 3 + col;
         for col in 0..2 {
             let (a, b, c2, d) = (i(0, col), i(0, col + 1), i(1, col), i(1, col + 1));
-            m.indices.extend([a, c2, b, b, c2, d]);
+            m.indices.extend([a, b, c2, b, d, c2]);
         }
     }
     m.leaves = m.bark.end..m.indices.len() as u32;

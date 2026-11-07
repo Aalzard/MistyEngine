@@ -135,6 +135,64 @@ but its crown is still somewhat clumpy (cards visible as puffs at the outline), 
 below the crown look thin and young for an old oak, and the bark texture is stylised (dark
 outlined ridges). `trees_final_behind.png` (front-lit) shows the soft "one piece" crowns best.
 
+## Look round 2 (branch tree-look)
+
+The user: the trees looked ugly, the bark rendered inside-out, the bark material looked
+unrealistic; asked for Codex-made PBR textures, better leaves and a little more detail.
+
+- **Bark inside-out (the cause).** The engine's front faces are those where
+  `cross(b - a, c - a)` points out (clockwise on screen, `FrontFace::Cw`, see `render/mesh.rs`),
+  and the bark pipelines cull back faces. The tube triangles in `generate.rs` were wound
+  `[a, b, a+1]` (ring i, ring i+1, next side): `cross(b - a, c - a)` = along × around =
+  `dir × (dir × n)` = `-n`, so their face normal pointed into the tube. Culling therefore removed the outside and drew the
+  inner walls: the dark "seams" and lit back walls of the screenshot. Fixed by winding
+  `[a, a+1, b]`; the vertex normals were already outward. Leaf cards were wound backwards too
+  (front face away from `facing`), so the leaf shader's `front_facing` flipped the leaf normal
+  map when seen from outside; fixed the same way. Not affected: shadows (no culling), impostor
+  bake (depth test, no culling), prepass (same index buffer), the derivative tangent frame
+  (built from the outward normal; checked analytically for the outside view), the trunk
+  capsule (radius only). Test `bark_faces_point_out_of_the_limbs`: every bark triangle of both
+  LODs and all presets winds with its normals, trunk faces point away from the trunk axis, leaf
+  cards face out of the crown.
+- **Geometry.** Decurrent trees (oaks): limbs 0.72 × the trunk radius (was 0.62), taper
+  `u^1.2` (stay thick further out), a slow gnarl (sideways kinks); side branches up to 13 cm
+  (was 9); root buttresses (4–6 lobes at the foot, darker hollows), trunk rings closer
+  together at the foot; bark normals now come from the surface (flare, buttresses and taper
+  tilt them). Bark sides 16 / 8 / 5 (LOD 0). Bark texture: square, one repeat per
+  0.9 m × √(trunk radius / 0.4) round the trunk, a whole number of times round each limb
+  (coarser on old trunks, finer on twigs). Leaf cards near the crown outline 35 % smaller and
+  closer together (same cover): the outline breaks into small sprays. Triangles (LOD 0 / 1):
+  oak 11.7 k / 3.4 k, linden 13.6 k / 2.7 k, birch 11.8 k / 2.1 k (were ~10 k / 3 k).
+- **PBR textures** (`tools/tree_textures.py`, rewritten by Codex, NumPy + SciPy + Pillow,
+  deterministic, ~45 s): per species 1024² tileable bark albedo, normal, roughness, AO and
+  height, and 1024² leaf atlases with normal, roughness and translucency. New optional
+  recipe slots (`bark_roughness`, `bark_occlusion`, `bark_height`, `leaf_roughness`,
+  `leaf_translucency`; empty = plain values; in the Inspector). The renderer packs them into
+  the spare channels so each draw still binds one texture pair: bark albedo alpha = height,
+  normal maps = (x, y, roughness, occlusion / translucency), z rebuilt in the shader. Bark
+  shader: roughness, occlusion (ambient, plus a little cavity darkening), one-step offset
+  parallax (2.5 cm, fades out by 20 m, derivative tangents); leaves: roughness (a soft sheen)
+  and translucency (veins and twigs pass less light); softer light through the leaves (wider
+  forward lobe, wrapped diffuse through the back). The cache key and the live reload cover every
+  texture.
+- **Codex rounds** (scratch folder, model gpt-5.6-sol, each reviewed on preview sheets and
+  100 % lit crops): (1) rewrite to the full PBR spec: still vector-like strokes, leaf sprays
+  sparse fans of sticks; (2) field-based bark brief: plates from anisotropic Worley, dense but
+  ball-shaped leaf clusters; (3) remove the "crocodile" hairline network, irregular sprays:
+  bark regressed to strokes, leaves improved (stopped after ~55 min); (4) back to plates,
+  leaves accepted; (5) the oak rebuilt on a reviewer prototype (zero-crossings of
+  domain-warped anisotropic gradient fBm for the furrows, ridged fibres, cross breaks, pits),
+  linden from the same machinery, birch peel bands and dark patches. Then the oak albedo was
+  brightened by hand (linear mean 0.045 → 0.10: shaded trunks went black in the filmic toe) and
+  the texture AO and the crown occlusion count less on bark (0.5 and 0.6 + 0.4 × crown).
+- **Cost** (`tree_cost`, 1920 × 1080, trees vs no trees, GPU shared with the user's editor,
+  ±0.3 ms): High wide 0.07 → 0.35, close 0.42 → 0.44, behind 1.40 → 1.28 ms; Medium wide 0.29
+  → 0.02, behind 0.66 → 0.62; Low close 0.08 → 0.20, behind 0.15 → 0.40 (one before-run
+  Medium close sample was a 420 ms outlier). Within noise of before.
+- **Shots**: `treelook_before_*` (main) and `treelook_after_*` (this branch, after merging main
+  with GI option C): trunk side (towards the player), trunk sun (sunlit side, after only), trunk
+  low, crown, wide, behind; `trees_treelook_final_*` are the usual tree shots.
+
 ## What's left
 
 - Crowns: more natural massing (bigger, overlapping clumps; fewer visible card edges), older
@@ -147,5 +205,4 @@ outlined ridges). `trees_final_behind.png` (front-lit) shows the soft "one piece
 - The World Builder's Broadleaf / Pine scatter still makes primitive objects: route it to
   terrain trees.
 - Tree colliders are always on with the Terrain Collider (no per-prototype toggle yet).
-- `.tree` assets and textures have no `.meta` files yet (the editor makes them on open).
 - The screenshots and timings ran in release; the E: drive had only 2–8 GB free during the work.

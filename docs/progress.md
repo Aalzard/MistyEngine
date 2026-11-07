@@ -2424,3 +2424,22 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - No `.desktop` file or icon install, no AppImage / Flatpak; the window icon is set at runtime
   (X11), Wayland shows the generic one.
 - Linux ARM64 has no release package (the updater sends those users to the release page).
+
+## Tree look round 2 (branch tree-look)
+
+### Done (docs/pending/meadow-trees.md, "Look round 2")
+- Bark no longer renders inside-out: the trunk and branch tubes were wound against the engine's
+  clockwise front face, so back-face culling drew the inner walls; leaf cards' front faces now
+  face out of the crown too. Test `bark_faces_point_out_of_the_limbs`.
+- Codex-written PBR texture generator (`tools/tree_textures.py`, 5 review rounds): 1024²
+  tileable bark per species (albedo, normal, roughness, AO, height) and new leaf atlases
+  (albedo, normal, roughness, translucency). New optional recipe slots; packed into spare
+  channels (one texture pair per draw); bark roughness, occlusion and offset parallax, leaf
+  roughness and translucency, softer light through the leaves.
+- Thicker, gnarled oak limbs, root buttresses, surface bark normals, bark texture scaled to the
+  trunk, smaller and denser cards towards the crown outline. Tree cost unchanged within noise
+  (0.0–1.3 ms on High).
+
+### Not done yet
+- Bark close up is much better but still procedural (furrow pattern somewhat regular on the
+  linden, oak a little dark in shade); leaf cards seen edge-on still show stretched texture.

@@ -29,6 +29,11 @@
   "bark_normal": "Assets/Trees/Textures/BirchBarkNormal.png",
   "leaf_texture": "Assets/Trees/Textures/BirchLeaves.png",
   "leaf_normal": "Assets/Trees/Textures/BirchLeavesNormal.png",
+  "bark_roughness": "Assets/Trees/Textures/BirchBarkRoughness.png",
+  "bark_occlusion": "Assets/Trees/Textures/BirchBarkAO.png",
+  "bark_height": "Assets/Trees/Textures/BirchBarkHeight.png",
+  "leaf_roughness": "Assets/Trees/Textures/BirchLeavesRoughness.png",
+  "leaf_translucency": "Assets/Trees/Textures/BirchLeavesTranslucency.png",
   "wind": {
     "trunk_bend": 1.2,
     "branch_sway": 1.3,

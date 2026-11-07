@@ -128,12 +128,25 @@ pub struct TreeAsset {
     pub translucency: f32,
     /// Bark tint (sRGB, multiplies the bark texture).
     pub bark_color: [f32; 3],
-    /// Project-relative textures: bark albedo and normal map (tileable; u around the trunk),
-    /// leaf atlas (2 × 2 clusters, alpha = cut-out) and its normal map.
+    /// Project-relative textures: bark albedo and normal map (square, tileable; u around the
+    /// trunk), leaf atlas (2 × 2 clusters, alpha = cut-out) and its normal map.
     pub bark_texture: String,
     pub bark_normal: String,
     pub leaf_texture: String,
     pub leaf_normal: String,
+    /// Optional grayscale maps (empty = plain values): bark roughness, ambient occlusion and
+    /// height (parallax; 0 = deepest furrow), leaf roughness and translucency (how much
+    /// sunlight the leaf lets through).
+    #[serde(default)]
+    pub bark_roughness: String,
+    #[serde(default)]
+    pub bark_occlusion: String,
+    #[serde(default)]
+    pub bark_height: String,
+    #[serde(default)]
+    pub leaf_roughness: String,
+    #[serde(default)]
+    pub leaf_translucency: String,
     pub wind: TreeWind,
 }
 
@@ -177,6 +190,11 @@ impl TreeAsset {
             bark_normal: sample_texture("OakBarkNormal"),
             leaf_texture: sample_texture("OakLeaves"),
             leaf_normal: sample_texture("OakLeavesNormal"),
+            bark_roughness: sample_texture("OakBarkRoughness"),
+            bark_occlusion: sample_texture("OakBarkAO"),
+            bark_height: sample_texture("OakBarkHeight"),
+            leaf_roughness: sample_texture("OakLeavesRoughness"),
+            leaf_translucency: sample_texture("OakLeavesTranslucency"),
             wind: TreeWind {
                 trunk_bend: 0.7,
                 branch_sway: 0.9,
@@ -207,6 +225,11 @@ impl TreeAsset {
             bark_normal: sample_texture("LindenBarkNormal"),
             leaf_texture: sample_texture("LindenLeaves"),
             leaf_normal: sample_texture("LindenLeavesNormal"),
+            bark_roughness: sample_texture("LindenBarkRoughness"),
+            bark_occlusion: sample_texture("LindenBarkAO"),
+            bark_height: sample_texture("LindenBarkHeight"),
+            leaf_roughness: sample_texture("LindenLeavesRoughness"),
+            leaf_translucency: sample_texture("LindenLeavesTranslucency"),
             ..Self::oak()
         }
     }
@@ -233,6 +256,11 @@ impl TreeAsset {
             bark_normal: sample_texture("BirchBarkNormal"),
             leaf_texture: sample_texture("BirchLeaves"),
             leaf_normal: sample_texture("BirchLeavesNormal"),
+            bark_roughness: sample_texture("BirchBarkRoughness"),
+            bark_occlusion: sample_texture("BirchBarkAO"),
+            bark_height: sample_texture("BirchBarkHeight"),
+            leaf_roughness: sample_texture("BirchLeavesRoughness"),
+            leaf_translucency: sample_texture("BirchLeavesTranslucency"),
             wind: TreeWind {
                 trunk_bend: 1.2,
                 branch_sway: 1.3,
@@ -240,6 +268,21 @@ impl TreeAsset {
             },
             ..Self::oak()
         }
+    }
+
+    /// Every texture the recipe names (empty ones included).
+    pub fn textures(&self) -> [&String; 9] {
+        [
+            &self.bark_texture,
+            &self.bark_normal,
+            &self.bark_roughness,
+            &self.bark_occlusion,
+            &self.bark_height,
+            &self.leaf_texture,
+            &self.leaf_normal,
+            &self.leaf_roughness,
+            &self.leaf_translucency,
+        ]
     }
 
     pub fn from_json(text: &str) -> Result<Self, String> {
