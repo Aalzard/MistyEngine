@@ -59,11 +59,14 @@ pub const MAX_ROUNDS: usize = 2;
 /// Most pages rendered per frame (the rest wait for the next frames, sampled from coarser
 /// levels meanwhile).
 pub const PAGE_BUDGET: usize = 384;
-/// Pages under swaying tree crowns are rendered again up to this texel size (metres): finer
-/// levels than this show the leaves' sway, coarser ones keep a cached pose.
-pub const SWAY_TEXEL: f32 = 0.04;
-/// Most swaying pages rendered again per frame (round-robin, oldest first).
-pub const SWAY_BUDGET: usize = 96;
+/// The near layer: a small shadow map around the camera redrawn every frame for the casters
+/// that move on their own and so can't be cached in pages — grass past the near grass map
+/// (out to its caster range) and the trees close to the camera (their leaves and limbs sway).
+/// Its side in texels.
+pub const NEAR_SIZE: u32 = 2048;
+/// Half the near layer's side when no grass reaches further (metres): trees within 70 % of
+/// it go into the layer instead of the cached pages (`trees.rs` `near`).
+pub const NEAR_RADIUS: f32 = 24.0;
 /// The sun may turn this far (radians) from the light the pages were drawn for before a new
 /// set starts filling in the background (shadows lag the sun by at most about this much).
 pub const SUN_START: f32 = 0.1 * std::f32::consts::PI / 180.0;
@@ -87,6 +90,7 @@ const FLAG_RENDERED: u32 = 1 << 16;
 /// Request the neighbours of marked pages too (on by default; off for A/B measurements).
 static GUARD_BAND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
+#[cfg(test)]
 pub fn set_guard_band(on: bool) {
     GUARD_BAND.store(on, Ordering::Relaxed);
 }
@@ -142,6 +146,10 @@ pub(super) struct VsmUniform {
     pub levels: [[f32; 4]; MAX_LEVELS],
     /// Per level: xy = window origin page mod 64.
     pub wrap: [[f32; 4]; MAX_LEVELS],
+    /// The near layer's view-projection (world → its clip space).
+    pub near_view_proj: [[f32; 4]; 4],
+    /// x = half its side (m), y = texel (m), z = 1 / side (texels), w = 1 when on.
+    pub near: [f32; 4],
 }
 
 /// Counters of the last frame (Stats, perf harness).
@@ -165,8 +173,8 @@ pub struct VsmStats {
     pub pending: u32,
     /// The whole cache was dropped (light turned, depth range changed).
     pub reset: bool,
-    /// Pages under swaying tree crowns rendered again this frame.
-    pub swaying: u32,
+    /// Trees drawn into the near layer this frame (swaying, not cached).
+    pub near_trees: u32,
     /// Pages rendered for the set filling in the background (the sun turned).
     pub catching_up: u32,
     /// The background set took over this frame.
@@ -198,6 +206,18 @@ pub(super) struct VsmFrame {
     pub rounds: Vec<std::ops::Range<u32>>,
     /// The light the shown pages were drawn for (the sun may have turned a little since).
     pub light_dir: Vec3,
+    /// The near layer this frame.
+    pub near: Option<NearLayer>,
+}
+
+/// The near layer of one frame (see [`NEAR_SIZE`]).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct NearLayer {
+    pub view_proj: Mat4,
+    /// Half its side (metres).
+    pub radius: f32,
+    /// Grass casters go into it (their range reaches past the near grass map).
+    pub grass: bool,
 }
 
 /// Inputs of [`Vsm::prepare`].
@@ -218,9 +238,9 @@ pub(super) struct VsmInput<'a> {
     pub debug: VsmDebug,
     /// Most rectangles this frame (virtual geometry has a few shadow views only).
     pub max_rects: usize,
-    /// World bounds of tree crowns near the camera: their leaves sway, so the fine pages
-    /// under them are rendered again round-robin.
-    pub sway: &'a [Aabb],
+    /// Range of the grass shadow casters (None = none): past the near grass map they go into
+    /// the near layer.
+    pub grass_range: Option<f32>,
 }
 
 /// Light direction, depth range, finest texel and level count a set of pages is drawn for;
@@ -277,6 +297,10 @@ struct Readback {
 
 /// GPU objects (made when the mode first turns on).
 pub(super) struct VsmGpu {
+    /// The near layer (sampled) and its view uniform.
+    pub near_view: wgpu::TextureView,
+    near_view_buffer: wgpu::Buffer,
+    pub near_view_group: wgpu::BindGroup,
     pub pool_view: wgpu::TextureView,
     pool_size: (u32, u32),
     pub table_view: wgpu::TextureView,
@@ -371,6 +395,25 @@ impl VsmGpu {
             })
         };
         let pool = depth("misty vsm pool", pool_size);
+        let near = depth("misty vsm near layer", (NEAR_SIZE, NEAR_SIZE));
+        let near_view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("misty vsm near view"),
+            size: VIEW_STRIDE,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let near_view_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty vsm near view group"),
+            layout: &p.shadow_view_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &near_view_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(VIEW_STRIDE),
+                }),
+            }],
+        });
         let scratch_side = SCRATCH_PAGES as u32 * PAGE;
         let scratch = depth("misty vsm scratch", (scratch_side, scratch_side));
         let (table, table_view) = table_texture(device, PAGES as u32);
@@ -550,6 +593,9 @@ impl VsmGpu {
             })
             .collect();
         Self {
+            near_view: near.create_view(&Default::default()),
+            near_view_buffer,
+            near_view_group,
             pool_view: pool.create_view(&Default::default()),
             pool_size,
             table_view,
@@ -574,7 +620,8 @@ impl VsmGpu {
         let pool = self.pool_size.0 as u64 * self.pool_size.1 as u64 * 4;
         let scratch = (SCRATCH_PAGES as u64 * PAGE as u64).pow(2) * 4;
         let table = (PAGES * PAGES) as u64 * MAX_LEVELS as u64 * 4;
-        pool + scratch + table
+        let near = (NEAR_SIZE as u64).pow(2) * 4;
+        pool + scratch + table + near
     }
 }
 
@@ -851,24 +898,6 @@ impl Vsm {
                 }
             }
         }
-        // Swaying leaves: the pages fine enough to show the sway (texel up to SWAY_TEXEL) under
-        // crowns near the camera are rendered again, oldest first, SWAY_BUDGET a frame.
-        let g0 = &gens[0];
-        let mut sway: Vec<PageKey> = Vec::new();
-        for b in input.sway {
-            let columns = g0.columns(b);
-            for (l, (a, c)) in columns.into_iter().enumerate() {
-                if g0.map.texel(l) > SWAY_TEXEL {
-                    break;
-                }
-                for y in a.y..=c.y {
-                    for x in a.x..=c.x {
-                        sway.push(PageKey::of(active.set, l, IVec2::new(x, y)));
-                    }
-                }
-            }
-        }
-        stats.swaying = cache.refresh(sway.into_iter(), SWAY_BUDGET) as u32;
         let all = cache.update(
             input.frame,
             KEEP_FRAMES,
@@ -1090,6 +1119,8 @@ impl Vsm {
                 ],
                 levels: [[0.0; 4]; MAX_LEVELS],
                 wrap: [[0.0; 4]; MAX_LEVELS],
+                near_view_proj: [[0.0; 4]; 4],
+                near: [0.0; 4],
             };
             for l in 0..levels {
                 let o = g.map.origin_offset(l);
@@ -1100,7 +1131,35 @@ impl Vsm {
             }
             u
         };
-        let u = uniform(&gens[0]);
+        let mut u = uniform(&gens[0]);
+        // The near layer around the camera, for the shown set's light.
+        let grass = input
+            .grass_range
+            .filter(|r| *r > super::grass_near_shadow::RADIUS + 0.5);
+        let radius = grass.map_or(NEAR_RADIUS, |r| r.max(NEAR_RADIUS));
+        let near_texel = 2.0 * radius / NEAR_SIZE as f32;
+        let near_view_proj = {
+            let g = &gens[0];
+            let c = g.map.camera;
+            let x = (c.x / near_texel).floor() * near_texel;
+            let y = (c.y / near_texel).floor() * near_texel;
+            let proj = glam::camera::lh::proj::directx::orthographic(
+                x - radius,
+                x + radius,
+                y - radius,
+                y + radius,
+                g.basis.z.0,
+                g.basis.z.1,
+            );
+            proj * g.view
+        };
+        u.near_view_proj = near_view_proj.to_cols_array_2d();
+        u.near = [radius, near_texel, 1.0 / NEAR_SIZE as f32, 1.0];
+        let mut v = super::ViewUniform::zeroed();
+        v.view_proj = u.near_view_proj;
+        let c = input.camera.position;
+        v.camera_pos = [c.x, c.y, c.z, 0.0];
+        queue.write_buffer(&gpu.near_view_buffer, 0, bytemuck::bytes_of(&v));
         let marks = [u, gens.get(1).map_or(VsmUniform::zeroed(), uniform)];
         queue.write_buffer(&gpu.mark_params, 0, bytemuck::cast_slice(&marks));
         stats.wanted = cstats.wanted;
@@ -1117,6 +1176,11 @@ impl Vsm {
             rects: draws,
             rounds,
             light_dir: gens[0].basis.dir,
+            near: Some(NearLayer {
+                view_proj: near_view_proj,
+                radius,
+                grass: grass.is_some(),
+            }),
         });
     }
 
@@ -1246,10 +1310,11 @@ mod tests {
 
     #[test]
     fn uniform_matches_wgsl() {
-        // 6 vec4s, then two arrays of MAX_LEVELS vec4s (vsm_common.wgsl `VsmParams`).
+        // 6 vec4s, two arrays of MAX_LEVELS vec4s, a matrix and a vec4 (vsm_common.wgsl
+        // `VsmParams`).
         assert_eq!(
             std::mem::size_of::<VsmUniform>(),
-            16 * 6 + 2 * 16 * MAX_LEVELS
+            16 * 6 + 2 * 16 * MAX_LEVELS + 64 + 16
         );
     }
 

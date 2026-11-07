@@ -254,27 +254,6 @@ impl PageCache {
         }
     }
 
-    /// Render again, oldest first, at most `budget` of the wanted, rendered `pages` (pages
-    /// whose casters move on their own, like swaying leaves); returns how many.
-    pub fn refresh(&mut self, pages: impl Iterator<Item = PageKey>, budget: usize) -> usize {
-        let mut due: Vec<(u64, PageKey)> = pages
-            .filter(|k| self.wanted.contains_key(k))
-            .filter_map(|k| {
-                let e = self.pages.get(&k)?;
-                (e.rendered && !e.dirty).then_some((e.rendered_at, k))
-            })
-            .collect();
-        due.sort_unstable();
-        due.dedup_by_key(|d| d.1);
-        due.truncate(budget);
-        for (_, k) in &due {
-            if let Some(e) = self.pages.get_mut(k) {
-                e.dirty = true;
-            }
-        }
-        due.len()
-    }
-
     /// The page holds rendered depth (it may be dirty).
     pub fn is_rendered(&self, key: &PageKey) -> bool {
         self.pages.get(key).is_some_and(|e| e.rendered)
@@ -383,51 +362,6 @@ mod tests {
         assert_eq!(c.resident(), 1);
         c.clear();
         assert_eq!(c.resident(), 0);
-    }
-
-    #[test]
-    fn swaying_pages_refresh_oldest_first_within_the_budget() {
-        let mut c = PageCache::new(16);
-        for x in 0..6 {
-            c.request(key(4, x, 0), 1);
-        }
-        for (i, k) in c.update(1, 10, |_| true, 100).iter().enumerate() {
-            c.rendered(k, i as u64);
-        }
-        let pages = (0..6).map(|x| key(4, x, 0)).chain([key(4, 99, 0)]);
-        assert_eq!(c.refresh(pages, 4), 4);
-        let todo = c.update(2, 10, |_| true, 100);
-        assert_eq!(todo, (0..4).map(|x| key(4, x, 0)).collect::<Vec<_>>());
-        for k in &todo {
-            c.rendered(k, 10);
-        }
-        // Next round: the two not refreshed yet come first.
-        assert_eq!(c.refresh((0..6).map(|x| key(4, x, 0)), 2), 2);
-        let todo = c.update(3, 10, |_| true, 100);
-        assert_eq!(todo, vec![key(4, 4, 0), key(4, 5, 0)]);
-    }
-
-    #[test]
-    fn a_second_set_fills_beside_the_first_and_replaces_it() {
-        let mut c = PageCache::new(8);
-        c.request(PageKey::of(0, 2, IVec2::ZERO), 1);
-        for k in c.update(1, 10, |_| true, 100) {
-            c.rendered(&k, 1);
-        }
-        c.request(PageKey::of(0, 2, IVec2::ZERO), 2);
-        c.request(PageKey::of(1, 2, IVec2::ZERO), 2);
-        c.request(PageKey::of(1, 3, IVec2::ZERO), 2);
-        assert_eq!(c.unrendered_wanted(1), 2);
-        let todo = c.update(2, 10, |_| true, 100);
-        assert_eq!(todo.len(), 2);
-        assert!(todo.iter().all(|k| k.set == 1));
-        for k in &todo {
-            c.rendered(k, 2);
-        }
-        assert_eq!(c.unrendered_wanted(1), 0);
-        c.drop_set(0);
-        assert_eq!(c.resident(), 2);
-        assert_eq!(c.free.len(), 6);
     }
 
     #[test]

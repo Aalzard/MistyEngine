@@ -637,7 +637,11 @@ impl Renderer {
                 &screen_trace.off_buffer,
                 shadow_denoise.off_buffer(),
             ],
-            [&vsm_dummy.table_view, &vsm_dummy.pool_view],
+            [
+                &vsm_dummy.table_view,
+                &vsm_dummy.pool_view,
+                &vsm_dummy.pool_view,
+            ],
         );
 
         let meshes = GpuMesh::primitives(device);
@@ -741,6 +745,14 @@ impl Renderer {
             .map_or(&self.vsm_dummy.pool_view, |g| &g.pool_view)
     }
 
+    /// The virtual shadow map's near layer (or the dummy while it is off).
+    fn vsm_near_view(&self) -> &wgpu::TextureView {
+        self.vsm
+            .gpu
+            .as_ref()
+            .map_or(&self.vsm_dummy.pool_view, |g| &g.near_view)
+    }
+
     /// Rebuild the lit pass's group 1 (shadow maps or buffers changed).
     fn rebuild_draw_groups(&mut self, device: &wgpu::Device) {
         (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
@@ -756,7 +768,11 @@ impl Renderer {
                 &self.screen_trace.off_buffer,
                 self.shadow_denoise.off_buffer(),
             ],
-            [self.vsm_table_view(), self.vsm_pool_view()],
+            [
+                self.vsm_table_view(),
+                self.vsm_pool_view(),
+                self.vsm_near_view(),
+            ],
         );
     }
 
@@ -838,14 +854,9 @@ impl Renderer {
         };
         let near = quality.grass_shadow_map_size();
         let mut rebuild = false;
-        // The grass band layer is only made for the virtual shadow map.
-        let band = virtual_sun;
-        if size != self.shadows.directional_size
-            || near != self.shadows.grass_near.size
-            || band != self.shadows.grass_near.band
-        {
+        if size != self.shadows.directional_size || near != self.shadows.grass_near.size {
             let layout = &self.pipelines.shadow_view_layout;
-            self.shadows = shadows::ShadowMaps::with_size(device, layout, size, near, band);
+            self.shadows = shadows::ShadowMaps::with_size(device, layout, size, near);
             rebuild = true;
         }
         rebuild |= if virtual_sun {
@@ -1407,6 +1418,9 @@ impl Renderer {
                     })
                     .map(|l| -l.direction),
                 vsm_views: &vsm_views,
+                near: (self.vsm.frame.as_ref())
+                    .and_then(|f| f.near)
+                    .map(|n| (n.view_proj, n.radius)),
             };
             (self.trees).prepare(device, queue, &self.pipelines, &tree_frame);
             (lists, plan, rebuilt, near_sun)
@@ -1415,13 +1429,11 @@ impl Renderer {
         let near_sun = near_sun.filter(|_| self.terrains.has_grass_near_shadow());
         let grass_near = (self.shadows.grass_near).prepare(queue, near_sun, frame.camera.position);
         // Virtual shadow maps leave grass out of their cached pages: the grass casters past the
-        // near map go into its band layer instead (when their range reaches past it).
-        let band = (self.vsm.frame.is_some() && grass_near.is_some())
-            .then(|| self.terrains.grass_caster_range())
-            .flatten()
-            .filter(|r| *r > grass_near_shadow::RADIUS + 0.5);
-        let grass_band =
-            (self.shadows.grass_near).prepare_band(queue, near_sun, frame.camera.position, band);
+        // near map go into the virtual map's near layer instead.
+        let grass_band = (self.vsm.frame.as_ref())
+            .and_then(|f| f.near)
+            .filter(|n| n.grass)
+            .map(|n| n.view_proj);
         // GPU culling: opaque batches are built from every candidate and culled on the GPU.
         let culled = self.gpu_culling_active(frame).then(|| {
             let culled = self.gpu_batches(frame, &lists, lists.slots.len() as u32);
@@ -1452,7 +1464,7 @@ impl Renderer {
                 })
                 .map(|(slot, c)| (slot, c.view_proj))
                 .collect();
-            // (No cascades with the virtual shadow map: the band takes the first lane.)
+            // (No cascades with the virtual shadow map: its near layer takes the first lane.)
             if let Some(m) = grass_band {
                 cascades.push((0, m));
             }
@@ -1566,7 +1578,7 @@ impl Renderer {
         }
         self.mark(&mut encoder, "Virtual shadow map pages");
         if let Some(view_proj) = grass_near {
-            self.grass_near_shadow_pass(&mut encoder, frame, &view_proj, grass_band, &mut stats);
+            self.grass_near_shadow_pass(&mut encoder, frame, &view_proj, &mut stats);
         }
         self.mark(&mut encoder, "Grass near shadow map");
         self.cloud_passes(device, &mut encoder);
@@ -2331,12 +2343,10 @@ impl Renderer {
         encoder: &mut wgpu::CommandEncoder,
         frame: &Frame,
         view_proj: &[glam::Mat4; grass_near_shadow::SLICES],
-        band: Option<glam::Mat4>,
         stats: &mut RenderStats,
     ) {
         let near = &self.shadows.grass_near;
-        let layers = view_proj.len() + band.is_some() as usize;
-        for i in 0..layers {
+        for i in 0..view_proj.len() {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("misty grass near shadow"),
                 color_attachments: &[],
@@ -2356,17 +2366,10 @@ impl Renderer {
             pass.set_bind_group(0, &near.view_group, &[offset]);
             pass.set_bind_group(1, &self.draws_bind_group, &[]);
             pass.set_pipeline(&self.pipelines.grass_shadow);
-            stats.set_pass += 1;
-            if i == grass_near_shadow::BAND_LAYER {
-                // The band: the grass shadow casters (the cascades' first lane).
-                let side = near.band_size() as f32;
-                pass.set_viewport(0.0, 0.0, side, side, 0.0, 1.0);
-                (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, 0, stats);
-                continue;
-            }
             // The inner slice may use only part of its layer.
             let side = near.slice_size(i) as f32;
             pass.set_viewport(0.0, 0.0, side, side, 0.0, 1.0);
+            stats.set_pass += 1;
             (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, i, stats);
         }
     }
@@ -3036,7 +3039,7 @@ fn draw_groups(
     probes: &probes::gpu::ProbeGpu,
     lightmaps: &lightmap_gpu::LightmapGpu,
     [screen, trace, shadow_mask]: [&wgpu::Buffer; 3],
-    [vsm_table, vsm_pool]: [&wgpu::TextureView; 2],
+    [vsm_table, vsm_pool, vsm_near]: [&wgpu::TextureView; 3],
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [lights, ltc, lights_2d] = lights;
     let [draws, slots] = buffers;
@@ -3097,6 +3100,10 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 11,
                 resource: wgpu::BindingResource::TextureView(vsm_pool),
+            },
+            wgpu::BindGroupEntry {
+                binding: 12,
+                resource: wgpu::BindingResource::TextureView(vsm_near),
             },
             p0,
             p1,

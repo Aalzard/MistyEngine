@@ -67,10 +67,6 @@ struct GrassNearShadow {
     // x = inner and y = outer texel in metres, z = the inner slice's side as a share of
     // the layer (its viewport).
     texels: vec4<f32>,
-    // Virtual shadow maps: the grass casters out to their range (layer 2; the cascades take
-    // them otherwise). band.x = radius (0 = off), y = texel (m), z = side share of the layer.
-    band_view_proj: mat4x4<f32>,
-    band: vec4<f32>,
 };
 @group(1) @binding(8) var grass_near_map: texture_depth_2d_array;
 @group(1) @binding(9) var<uniform> grass_near: GrassNearShadow;
@@ -78,6 +74,8 @@ struct GrassNearShadow {
 // physical page + 1) and the physical page pool.
 @group(1) @binding(10) var vsm_table: texture_2d_array<u32>;
 @group(1) @binding(11) var vsm_pool: texture_depth_2d;
+// Its near layer (the casters that sway, redrawn every frame).
+@group(1) @binding(12) var vsm_near: texture_depth_2d;
 @group(1) @binding(25) var lightmaps: texture_2d_array<f32>;
 @group(1) @binding(26) var<uniform> lightmap_info: vec4<u32>;
 
@@ -368,46 +366,19 @@ fn grass_near_shadow(world: vec3<f32>, l: vec3<f32>) -> f32 {
     }
     let r = grass_near.params.x;
     let d = length(world.xz - grass_near.centre.xz);
-    var near = 1.0;
-    if (d < r) {
-        let inner = grass_near.params.z;
-        let blend = smoothstep(inner * 0.8, inner * 0.95, d);
-        var shade = 0.0;
-        if (blend < 1.0) {
-            shade = grass_near_slice(0, world, l);
-        }
-        if (blend > 0.0) {
-            shade = mix(shade, grass_near_slice(1, world, l), blend);
-        }
-        near = mix(shade, 1.0, smoothstep(0.7 * r, r, d));
-    }
-    // The band's casters leave the near square to the slices (as the cascades' do).
-    let rb = grass_near.band.x;
-    if (rb > 0.0 && d < rb) {
-        near *= mix(grass_band_shadow(world, l), 1.0, smoothstep(0.8 * rb, rb, d));
-    }
-    return near;
-}
-
-// Sun shade from the band (virtual shadow maps' grass casters out to their range): the
-// slices' four-tap ring at the band's texel.
-fn grass_band_shadow(world: vec3<f32>, l: vec3<f32>) -> f32 {
-    let texel = grass_near.band.y;
-    let c = grass_near.band_view_proj * vec4<f32>(world + l * texel * 1.5, 1.0);
-    let ndc = c.xyz / c.w;
-    var uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || ndc.z < 0.0 || ndc.z > 1.0) {
+    if (d >= r) {
         return 1.0;
     }
-    uv *= grass_near.band.z;
-    let t = grass_near.params.w * 2.0;
-    let z = ndc.z - 1e-4;
-    var sum = 0.0;
-    for (var k = 0; k < 4; k++) {
-        let a = f32(k) * 1.5708 + 0.4636;
-        sum += textureSampleCompareLevel(grass_near_map, shadow_sampler, uv + vec2<f32>(cos(a), sin(a)) * t, 2, z);
+    let inner = grass_near.params.z;
+    let blend = smoothstep(inner * 0.8, inner * 0.95, d);
+    var shade = 0.0;
+    if (blend < 1.0) {
+        shade = grass_near_slice(0, world, l);
     }
-    return sum * 0.25;
+    if (blend > 0.0) {
+        shade = mix(shade, grass_near_slice(1, world, l), blend);
+    }
+    return mix(shade, 1.0, smoothstep(0.7 * r, r, d));
 }
 
 // Ambient, sky reflections, lights with shadows, emission and fog for one surface point.

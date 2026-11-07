@@ -95,7 +95,7 @@ impl ShadowPlan {
 
 impl ShadowMaps {
     pub fn new(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Self {
-        Self::with_size(device, view_layout, DIRECTIONAL_SIZE, 1, false)
+        Self::with_size(device, view_layout, DIRECTIONAL_SIZE, 1)
     }
 
     /// Maps with a directional shadow map of `directional_size`² pixels.
@@ -104,7 +104,6 @@ impl ShadowMaps {
         view_layout: &wgpu::BindGroupLayout,
         directional_size: u32,
         grass_near_size: u32,
-        grass_band: bool,
     ) -> Self {
         let texture = |label, size: u32, layers: u32| {
             device.create_texture(&wgpu::TextureDescriptor {
@@ -195,7 +194,6 @@ impl ShadowMaps {
                 device,
                 view_layout,
                 grass_near_size,
-                grass_band,
             ),
         }
     }

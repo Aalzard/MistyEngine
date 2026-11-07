@@ -44,6 +44,9 @@ impl Renderer {
                 Some((caster_signature(print, &d.model, key), b, posed))
             });
         let mut changed = self.vsm.caster_changes(now);
+        // Trees that entered or left the near layer (last frame's trees: they are prepared
+        // after the frame lists): their pages render again without or with them.
+        changed.extend(self.trees.take_near_changes());
         let states = self.terrains.chunk_states(frame.terrains);
         let terrains = &self.terrains;
         let (chunks, reset) = self
@@ -85,10 +88,10 @@ impl Renderer {
             // One render only (the editor sets it per Scene view render).
             debug: std::mem::take(&mut self.vsm.debug),
             max_rects,
-            // (Last frame's crowns: the trees are prepared after the frame lists.)
-            sway: self.trees.sway_bounds(),
+            grass_range: self.terrains.grass_caster_range(),
         };
         self.vsm.prepare(device, queue, &input);
+        self.vsm.stats.near_trees = self.trees.near_count() as u32;
         plan.vsm_views = self
             .vsm
             .frame
@@ -153,6 +156,36 @@ impl Renderer {
                 }
             }
             self.vsm.encode_copy(encoder, copies.clone());
+        }
+        // The near layer: grass past the near grass map and the swaying trees near the camera.
+        let Some(near) = f.near else {
+            return;
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("misty vsm near layer"),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &gpu.near_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_bind_group(0, &gpu.near_view_group, &[0]);
+        pass.set_bind_group(1, &self.draws_bind_group, &[]);
+        if near.grass {
+            pass.set_pipeline(&self.pipelines.grass_shadow);
+            stats.set_pass += 1;
+            (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, 0, stats);
+        }
+        if self.trees.has_trees() {
+            let index = plan.cascades.len() + f.rects.len();
+            self.trees.draw_shadow(&mut pass, index, stats);
         }
     }
 }

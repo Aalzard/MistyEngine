@@ -589,7 +589,7 @@ fn vsm_breakdown(
                 rendered += s.rendered as f32;
                 resident += s.resident as f32;
                 late += s.late as f32;
-                swaying += s.swaying as f32;
+                swaying += s.near_trees as f32;
                 catching_up += s.catching_up as f32;
             }
             timed += 1.0;
@@ -666,11 +666,11 @@ fn vsm_setups() -> Vec<VsmSetup> {
 
 fn vsm_line(name: &str, r: &VsmRun) -> String {
     format!(
-        "{name}: {:.0} FPS, pages rendered/frame {:.1} (swaying {:.1}, catching up {:.1}), resident {:.0}, late {:.1}",
+        "{name}: {:.0} FPS, pages rendered/frame {:.1} (catching up {:.1}), near-layer trees {:.1}, resident {:.0}, late {:.1}",
         1000.0 / r.b.gpu,
         r.rendered,
-        r.swaying,
         r.catching_up,
+        r.swaying,
         r.resident,
         r.late
     )

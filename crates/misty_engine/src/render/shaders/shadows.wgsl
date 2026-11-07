@@ -735,7 +735,53 @@ fn vsm_fade(world: vec3<f32>, s: f32) -> f32 {
     return mix(1.0, s, clamp((distance - depth) / (0.1 * distance), 0.0, 1.0));
 }
 
+// The sun's shadow from the virtual shadow map: its cached pages times its near layer, faded
+// out at the shadow distance.
 fn vsm_sun_shadow(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode: f32) -> f32 {
+    if (cascade_depth(world) > shadow_params.view_axis.w) {
+        return 1.0;
+    }
+    let s = vsm_sun_pages(light, world, n, n_dot_l, mode);
+    return vsm_fade(world, s * vsm_near_shadow(world, n, n_dot_l, mode > 1.5));
+}
+
+// `sun_shadow_taps` from the virtual shadow map.
+fn vsm_sun_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: array<vec3<f32>, 4>) -> f32 {
+    if (cascade_depth(world) > shadow_params.view_axis.w) {
+        return 1.0;
+    }
+    let s = vsm_sun_pages_taps(light, world, n, n_dot_l, taps);
+    return vsm_fade(world, s * vsm_near_shadow(world, n, n_dot_l, false));
+}
+
+// The near layer's shade (1 = lit or outside it): the casters that sway, redrawn every frame.
+// Soft: four hardware-filtered taps on a ring of a texel and a half; else one.
+fn vsm_near_shadow(world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, soft: bool) -> f32 {
+    let nr = shadow_params.vsm.near;
+    if (nr.w < 0.5) {
+        return 1.0;
+    }
+    let p = world + n * nr.y * (1.0 + 2.0 * (1.0 - n_dot_l));
+    let c = shadow_params.vsm.near_view_proj * vec4<f32>(p, 1.0);
+    let ndc = c.xyz / c.w;
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || ndc.z > 1.0) {
+        return 1.0;
+    }
+    let z = clamp(ndc.z, 0.0, 1.0) - 1.5 * nr.y * shadow_params.vsm.light_z.w;
+    if (!soft) {
+        return textureSampleCompareLevel(vsm_near, shadow_sampler, uv, z);
+    }
+    let t = nr.z * 1.5;
+    var sum = 0.0;
+    for (var k = 0; k < 4; k++) {
+        let a = f32(k) * 1.5708 + 0.4636;
+        sum += textureSampleCompareLevel(vsm_near, shadow_sampler, uv + vec2<f32>(cos(a), sin(a)) * t, z);
+    }
+    return sum * 0.25;
+}
+
+fn vsm_sun_pages(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode: f32) -> f32 {
     let dist = length(world - view.camera_pos.xyz);
     if (cascade_depth(world) > shadow_params.view_axis.w) {
         return 1.0;
@@ -754,7 +800,7 @@ fn vsm_sun_shadow(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode
     let z = c.z - lp.y * texel * inv_range;
     if (mode < 1.5) {
         let s = vsm_tap_c(lv, c.xy, z, hit.c);
-        return vsm_fade(world, select(1.0, s, s >= 0.0));
+        return select(1.0, s, s >= 0.0);
     }
     let phi = shadow_noise(world) * 6.2831853;
     let slope = vsm_slope(n, n_dot_l);
@@ -783,12 +829,12 @@ fn vsm_sun_shadow(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode
     } else if (lf != lv) {
         cf = vsm_center(lf, c.xy);
     }
-    return vsm_fade(world, vsm_filter(lf, c.xy, z, slope, radius, phi, bias_per_m, cf));
+    return vsm_filter(lf, c.xy, z, slope, radius, phi, bias_per_m, cf);
 }
 
-// `sun_shadow_taps` from the virtual shadow map: the four taps at the level whose texel suits
+// The cached pages' part of `vsm_sun_taps`: the four taps at the level whose texel suits
 // their spread.
-fn vsm_sun_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: array<vec3<f32>, 4>) -> f32 {
+fn vsm_sun_pages_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: array<vec3<f32>, 4>) -> f32 {
     let dist = length(world - view.camera_pos.xyz);
     if (cascade_depth(world) > shadow_params.view_axis.w) {
         return 1.0;
@@ -811,7 +857,7 @@ fn vsm_sun_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: 
         let s = vsm_tap_c(lv, c.xy, c.z - bias, centre);
         sum += select(1.0, s, s >= 0.0);
     }
-    return vsm_fade(world, sum * 0.25);
+    return sum * 0.25;
 }
 
 // Scene view debug views of the virtual shadow map (vsm.misc.x): 1 = levels and page borders,

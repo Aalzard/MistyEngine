@@ -160,6 +160,7 @@ impl Passes {
                 // The sun's virtual shadow map (render/vsm).
                 entry(10, texture(wgpu::TextureSampleType::Uint, array)),
                 entry(11, texture(depth, d2)),
+                entry(12, texture(depth, d2)),
             ],
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -482,6 +483,10 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 11,
                     resource: wgpu::BindingResource::TextureView(self.vsm_pool_view()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 12,
+                    resource: wgpu::BindingResource::TextureView(self.vsm_near_view()),
                 },
             ],
         });

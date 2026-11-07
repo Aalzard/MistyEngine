@@ -573,6 +573,15 @@ struct Batch {
     instances: Range<u32>,
 }
 
+/// A placed tree's key for the near layer's membership.
+fn near_key(p: &Placed) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for v in [p.foot.x, p.foot.y, p.foot.z, p.yaw] {
+        h = (h ^ v.to_bits() as u64).wrapping_mul(0x0100_0000_01b3);
+    }
+    h ^ p.prototype as u64
+}
+
 /// Per-frame quality inputs.
 pub(super) struct TreeFrame<'a> {
     pub terrains: &'a [TerrainDraw],
@@ -590,6 +599,10 @@ pub(super) struct TreeFrame<'a> {
     /// The virtual shadow map's page rectangles this frame (render/vsm): view-projection and
     /// the level of detail for their texel. Their lists follow the cascades'.
     pub vsm_views: &'a [(Mat4, u8)],
+    /// The virtual shadow map's near layer (view-projection, half side): trees close to the
+    /// camera go into it (their swaying leaves and limbs) instead of the cached pages. Its
+    /// list follows the virtual shadow map's.
+    pub near: Option<(Mat4, f32)>,
 }
 
 pub(super) struct TreeRenderer {
@@ -605,13 +618,20 @@ pub(super) struct TreeRenderer {
     groups: Vec<[wgpu::BindGroup; 3]>,
     main: Vec<Batch>,
     shadows: Vec<Vec<Batch>>,
-    /// Crowns within [`SWAY_RANGE`] of the camera this frame (the virtual shadow map renders
-    /// the fine pages under them again so their shadows sway with the leaves).
-    sway: Vec<Aabb>,
+    /// Trees in the virtual shadow map's near layer (by placement), kept across frames for
+    /// the hysteresis.
+    near_set: std::collections::HashSet<u64>,
+    /// Bounds of trees that entered or left the near layer since the virtual shadow map last
+    /// asked (its pages under them render again).
+    near_changes: Vec<Aabb>,
+    /// Trees in the near layer this frame.
+    near_count: usize,
 }
 
-/// Trees closer than this sway in the virtual shadow map's pages (metres).
-pub(super) const SWAY_RANGE: f32 = 40.0;
+/// A tree joins the near layer within this share of its half side and leaves it past
+/// [`NEAR_OUT`] (hysteresis, so a tree on the edge doesn't flip every frame).
+const NEAR_IN: f32 = 0.7;
+const NEAR_OUT: f32 = 0.8;
 
 impl TreeRenderer {
     pub fn new(device: &wgpu::Device) -> Self {
@@ -668,13 +688,20 @@ impl TreeRenderer {
             groups: Vec::new(),
             main: Vec::new(),
             shadows: Vec::new(),
-            sway: Vec::new(),
+            near_set: Default::default(),
+            near_changes: Vec::new(),
+            near_count: 0,
         }
     }
 
-    /// Crowns near the camera last prepared (see [`SWAY_RANGE`]).
-    pub fn sway_bounds(&self) -> &[Aabb] {
-        &self.sway
+    /// Bounds of the trees that entered or left the near layer since the last call.
+    pub fn take_near_changes(&mut self) -> Vec<Aabb> {
+        std::mem::take(&mut self.near_changes)
+    }
+
+    /// Trees drawn into the near layer last frame.
+    pub fn near_count(&self) -> usize {
+        self.near_count
     }
 
     /// Any tree to draw this frame.
@@ -701,8 +728,9 @@ impl TreeRenderer {
         self.groups.clear();
         self.main.clear();
         self.shadows.clear();
-        self.sway.clear();
-        let shadow_views = f.cascades.len() + f.vsm_views.len();
+        self.near_count = 0;
+        let mut near_now: std::collections::HashSet<u64> = Default::default();
+        let shadow_views = f.cascades.len() + f.vsm_views.len() + f.near.is_some() as usize;
         self.shadows.resize(shadow_views, Vec::new());
         if f.terrains.iter().all(|t| t.data.trees.instances.is_empty()) {
             return;
@@ -803,9 +831,7 @@ impl TreeRenderer {
                     continue;
                 }
                 let bounds = Aabb::new(center - Vec3::splat(radius), center + Vec3::splat(radius));
-                if s.cast_shadows && t.cast_shadows && dist < SWAY_RANGE + radius {
-                    self.sway.push(bounds);
-                }
+
                 let inst = |fade: f32| InstanceGpu {
                     foot: [p.foot.x, p.foot.y, p.foot.z, p.yaw],
                     scale: [p.height, p.width, p.color, fade],
@@ -884,7 +910,32 @@ impl TreeRenderer {
                 // Virtual shadow map pages: cached across frames, so whatever the camera's
                 // distance (a page rendered while the tree was far stays valid when it comes
                 // near), at the level of detail of the page's texel.
-                if s.cast_shadows && t.cast_shadows {
+                // Close to the camera: the near layer, redrawn every frame (the leaves sway),
+                // instead of the cached pages.
+                let near = f
+                    .near
+                    .filter(|_| s.cast_shadows && t.cast_shadows)
+                    .filter(|(_, r)| {
+                        let key = near_key(p);
+                        let reach = if self.near_set.contains(&key) {
+                            NEAR_OUT
+                        } else {
+                            NEAR_IN
+                        };
+                        dist + radius < r * reach
+                    });
+                if near.is_some() {
+                    near_now.insert(near_key(p));
+                    self.near_count += 1;
+                    let list = f.cascades.len() + f.vsm_views.len();
+                    for part in [Part::Bark, Part::Leaves] {
+                        shadow_lists[list]
+                            .entry((group, tree, part, 0))
+                            .or_default()
+                            .push(inst(0.0));
+                    }
+                }
+                if s.cast_shadows && t.cast_shadows && near.is_none() {
                     for (j, (vf, lod)) in vsm_frusta.iter().enumerate() {
                         if !vf.intersects(&bounds) {
                             continue;
@@ -904,6 +955,34 @@ impl TreeRenderer {
                     }
                 }
             }
+        }
+        // Trees that entered or left the near layer: the virtual shadow map's pages under them
+        // render again (without or with them).
+        if f.near.is_some() || !self.near_set.is_empty() {
+            let changed: Vec<u64> = near_now
+                .symmetric_difference(&self.near_set)
+                .copied()
+                .collect();
+            if !changed.is_empty() {
+                for t in f.terrains {
+                    let Some(cache) = self.terrains.get(&t.key) else {
+                        continue;
+                    };
+                    for p in cache
+                        .placed
+                        .iter()
+                        .filter(|p| changed.contains(&near_key(p)))
+                    {
+                        // Generous bounds: the tree's height and width, any prototype.
+                        let r = 20.0 * p.height.max(p.width).max(0.5);
+                        self.near_changes.push(Aabb::new(
+                            p.foot - Vec3::new(r, 1.0, r),
+                            p.foot + Vec3::new(r, 2.0 * r, r),
+                        ));
+                    }
+                }
+            }
+            self.near_set = near_now;
         }
         // One buffer for every list.
         let mut all: Vec<InstanceGpu> = Vec::new();
