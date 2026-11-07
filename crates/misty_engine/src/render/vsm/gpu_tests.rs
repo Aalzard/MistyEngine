@@ -265,3 +265,57 @@ fn debug_views_render() {
     assert!(r.vsm_stats().is_none());
     render(&mut r, &device, &queue, &t, &v, 1);
 }
+
+/// Shadow edges stay put while the camera slides (no crawling): a top-down orthographic view
+/// moved by whole pixels must show the same shadows shifted by those pixels, because pages sit
+/// on a grid fixed in light space (the cascades get the same from snapping to whole texels).
+#[test]
+fn shadow_edges_do_not_crawl_when_the_camera_slides() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    const S: u32 = 256;
+    let half = 8.0;
+    let pixel = 2.0 * half / S as f32;
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_quality(&device, &quality(ShadowMode::Virtual));
+    let t = r.create_target(&device, S, S);
+    let mut view = View::new(0.0, 1.5, Shadows::Hard);
+    let mut images = Vec::new();
+    for step in 0..4 {
+        view.camera = Camera {
+            position: Vec3::new(step as f32 * pixel * 3.0, 30.0, 0.0),
+            rotation: Quat::from_rotation_x(90f32.to_radians()),
+            projection: Projection::Orthographic { size: half },
+            near: 0.3,
+            far: 100.0,
+        };
+        for _ in 0..4 {
+            r.render(&device, &queue, &t, &view.frame());
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+        images.push(read_back(&device, &queue, &t));
+    }
+    // Image `k` is image 0 moved left by 3k pixels.
+    for (k, img) in images.iter().enumerate().skip(1) {
+        let shift = 3 * k;
+        let (mut sum, mut n, mut worst) = (0.0f64, 0usize, 0u8);
+        for y in 0..S as usize {
+            for x in 16..(S as usize - 16 - shift) {
+                let a = (y * S as usize + x + shift) * 4;
+                let b = (y * S as usize + x) * 4;
+                for c in 0..3 {
+                    let d = images[0][a + c].abs_diff(img[b + c]);
+                    sum += d as f64;
+                    worst = worst.max(d);
+                    n += 1;
+                }
+            }
+        }
+        let mean = sum / n as f64;
+        assert!(
+            mean < 0.25 && worst < 64,
+            "step {k}: mean {mean:.3}, worst {worst}"
+        );
+    }
+}

@@ -733,3 +733,55 @@ fn scene_perf_vsm() {
         }
     }
 }
+
+/// Cascaded and virtual renders of sample scenes (`MISTY_VSM_SCENES`) per level, 1600×900,
+/// written as `vsm_<scene>_<level>_<mode>.png` into `MISTY_GFX_DIR` (look checks).
+#[test]
+#[ignore = "writes look-check renders; run on purpose"]
+fn scene_shots_vsm() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let dir = PathBuf::from(std::env::var("MISTY_GFX_DIR").expect("MISTY_GFX_DIR"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject");
+    let materials = crate::assets::AssetCache::open(&root);
+    let scenes =
+        std::env::var("MISTY_VSM_SCENES").unwrap_or_else(|_| "ShadowsDemo,StressStatic".into());
+    let (w, h) = (1600, 900);
+    for name in scenes.split(',') {
+        let path = root.join(format!("Assets/Scenes/{name}.scene"));
+        let Ok((scene, _)) = crate::scene::Scene::load(&path) else {
+            continue;
+        };
+        let Some(v) = GameView::new(&scene, &materials) else {
+            continue;
+        };
+        for (level, quality) in levels() {
+            for mode in [
+                crate::quality::ShadowMode::Cascaded,
+                crate::quality::ShadowMode::Virtual,
+            ] {
+                let mut r = Renderer::with_queue(&device, &queue);
+                r.set_quality(
+                    &device,
+                    &QualityLevel {
+                        shadow_mode: mode,
+                        ..quality.clone()
+                    },
+                );
+                let target = r.create_target(&device, w, h);
+                for _ in 0..32 {
+                    r.render(&device, &queue, &target, &v.frame());
+                    let _ = device.poll(wgpu::PollType::wait_indefinitely());
+                }
+                let img = image::RgbaImage::from_raw(w, h, read_back(&device, &queue, &target))
+                    .expect("read back");
+                let mode = format!("{mode:?}").to_lowercase();
+                let path = dir.join(format!("vsm_{name}_{level}_{mode}.png"));
+                img.save(&path).unwrap();
+                eprintln!("wrote {}", path.display());
+            }
+        }
+    }
+}
