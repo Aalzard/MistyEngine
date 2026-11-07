@@ -34,6 +34,8 @@ const TREE_SRC: &str = concat!(
     "\n",
     include_str!("shaders/shadows.wgsl"),
     "\n",
+    include_str!("vsm/shaders/vsm_common.wgsl"),
+    "\n",
     include_str!("shadow_denoise/shaders/shadow_lookup.wgsl"),
     "\n",
     include_str!("area/area_light.wgsl"),
@@ -621,6 +623,9 @@ pub(super) struct TreeFrame<'a> {
     pub lod_bias: f32,
     /// Direction towards the sun that casts the cascades.
     pub sun: Option<Vec3>,
+    /// The virtual shadow map's page rectangles this frame (render/vsm): view-projection and
+    /// the level of detail for their texel. Their lists follow the cascades'.
+    pub vsm_views: &'a [(Mat4, u8)],
 }
 
 pub(super) struct TreeRenderer {
@@ -811,7 +816,8 @@ impl TreeRenderer {
         self.groups.clear();
         self.main.clear();
         self.shadows.clear();
-        self.shadows.resize(f.cascades.len(), Vec::new());
+        let shadow_views = f.cascades.len() + f.vsm_views.len();
+        self.shadows.resize(shadow_views, Vec::new());
         self.loading = 0;
         self.uploaded = false;
         if f.terrains.iter().all(|t| t.data.trees.instances.is_empty()) {
@@ -831,10 +837,15 @@ impl TreeRenderer {
             .iter()
             .map(|c| Frustum::from_matrix(&c.view_proj))
             .collect();
+        let vsm_frusta: Vec<(Frustum, u8)> = f
+            .vsm_views
+            .iter()
+            .map(|(m, lod)| (Frustum::from_matrix(m), *lod))
+            .collect();
         let shadow_reach = f.cascades.last().map_or(0.0, |c| c.far);
         // Instances of this frame: per (group, part, lod) for the camera and per cascade.
         let mut lists: Lists = HashMap::new();
-        let mut shadow_lists: Vec<Lists> = vec![HashMap::new(); f.cascades.len()];
+        let mut shadow_lists: Vec<Lists> = vec![HashMap::new(); shadow_views];
         for t in f.terrains {
             let s = &t.data.trees;
             if s.instances.is_empty() || s.prototypes.is_empty() {
@@ -909,7 +920,9 @@ impl TreeRenderer {
                 let center = p.foot + Vec3::Y * (m.max.y * 0.5 * p.height);
                 let radius = m.bounding_radius() * scale;
                 let dist = center.distance(f.camera);
-                if dist > draw_d + radius {
+                // Past the draw distance only the virtual shadow map's pages take the tree.
+                let beyond = dist > draw_d + radius;
+                if beyond && vsm_frusta.is_empty() {
                     continue;
                 }
                 let bounds = Aabb::new(center - Vec3::splat(radius), center + Vec3::splat(radius));
@@ -940,7 +953,7 @@ impl TreeRenderer {
                 }
                 // `fade` > 0 keeps noise < fade (fading out), < 0 keeps noise >= 1 + fade.
                 // A level that is fading out keeps its share 1 - x; the one fading in, x.
-                let visible = frustum.intersects(&bounds);
+                let visible = !beyond && frustum.intersects(&bounds);
                 if visible {
                     for &(lod, fade) in chosen.iter().filter(|c| c.0 != usize::MAX) {
                         let fade = if fade == 0.0 {
@@ -962,7 +975,7 @@ impl TreeRenderer {
                     }
                 }
                 // Shadows: within the cascades' reach, one LOD per cascade (no fades).
-                if s.cast_shadows && t.cast_shadows && dist < shadow_reach + radius {
+                if s.cast_shadows && t.cast_shadows && !beyond && dist < shadow_reach + radius {
                     let cam_lod = if a < 0.5 {
                         0
                     } else if b < 0.5 {
@@ -982,6 +995,28 @@ impl TreeRenderer {
                         };
                         for &part in parts {
                             shadow_lists[slot]
+                                .entry((group, tree, part, lod))
+                                .or_default()
+                                .push(inst(0.0));
+                        }
+                    }
+                }
+                // Virtual shadow map pages: cached across frames, so whatever the camera's
+                // distance (a page rendered while the tree was far stays valid when it comes
+                // near), at the level of detail of the page's texel.
+                if s.cast_shadows && t.cast_shadows {
+                    for (j, (vf, lod)) in vsm_frusta.iter().enumerate() {
+                        if !vf.intersects(&bounds) {
+                            continue;
+                        }
+                        let lod = *lod as usize;
+                        let parts: &[Part] = if lod == 2 {
+                            &[Part::Impostor]
+                        } else {
+                            &[Part::Bark, Part::Leaves]
+                        };
+                        for &part in parts {
+                            shadow_lists[f.cascades.len() + j]
                                 .entry((group, tree, part, lod))
                                 .or_default()
                                 .push(inst(0.0));

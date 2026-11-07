@@ -38,6 +38,7 @@ mod material_preview;
 mod menu_bar;
 mod mesh_builder;
 mod model_import;
+mod multiplayer;
 mod object_clipboard;
 mod open_scenes;
 mod packages;
@@ -103,6 +104,8 @@ mod sample_mesh_builder;
 mod sample_multiscene;
 #[cfg(test)]
 mod sample_navigation;
+#[cfg(test)]
+mod sample_network;
 #[cfg(test)]
 mod sample_occlusion;
 #[cfg(test)]

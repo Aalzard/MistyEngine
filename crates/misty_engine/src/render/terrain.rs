@@ -81,6 +81,9 @@ fn ground_cover_values() -> [[f32; 4]; 3] {
     [GROUND_COVER, GROUND_TINT, GROUND_FRONT]
 }
 
+/// Per terrain: key, version (and position), (lod, edge mask) of every chunk this frame.
+pub(super) type ChunkStates = Vec<(String, u64, Vec<(u8, u8)>)>;
+
 /// One chunk drawn this frame.
 #[derive(Clone, Copy)]
 struct ChunkDraw {
@@ -91,6 +94,8 @@ struct ChunkDraw {
     visible: bool,
     /// Distance from the camera (the camera pass draws near chunks first).
     dist: f32,
+    /// World bounds (the virtual shadow map culls chunks per page rectangle).
+    bounds: Aabb,
 }
 
 /// Shared index patterns for one heightmap resolution.
@@ -627,6 +632,7 @@ impl TerrainCache {
                             mask: masks[c],
                             visible: frustum.intersects(&b),
                             dist: camera.clamp(b.min, b.max).distance(camera),
+                            bounds: b,
                         }
                     })
                     .collect(),
@@ -807,6 +813,72 @@ impl TerrainCache {
                 stats.draw(1, count, count / 6 + 1);
             }
         }
+    }
+
+    /// Draw the chunks of the frame's terrains `filter(i)` keeps that meet `frustum` (a virtual
+    /// shadow map page rectangle; same groups and pipeline as [`TerrainCache::draw`]).
+    pub fn draw_in(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        terrains: &[TerrainDraw],
+        first: usize,
+        filter: impl Fn(usize) -> bool,
+        frustum: &Frustum,
+        stats: &mut RenderStats,
+    ) {
+        for (i, t) in terrains.iter().enumerate() {
+            let (Some(gpu), Some(Some(group)), Some(chunks)) = (
+                self.entries.get(&t.key),
+                self.groups.get(i),
+                self.chunks.get(i),
+            ) else {
+                continue;
+            };
+            let Some(p) = self.patterns.get(&gpu.res) else {
+                continue;
+            };
+            if !filter(i) {
+                continue;
+            }
+            let mut bound = false;
+            let index = (first + i) as u32;
+            for c in chunks.iter().filter(|c| frustum.intersects(&c.bounds)) {
+                if !bound {
+                    pass.set_bind_group(3, group, &[]);
+                    pass.set_index_buffer(p.buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    bound = true;
+                }
+                let range = p.ranges[c.lod as usize][c.mask as usize].clone();
+                let count = range.len() as u32;
+                pass.draw_indexed(range, c.base, index..index + 1);
+                stats.draw(1, count, count / 6 + 1);
+            }
+        }
+    }
+
+    /// This frame's chunk detail of every terrain: (key, version, (lod, edge mask) per chunk)
+    /// — the virtual shadow map renders the pages under a chunk again when it changes.
+    pub fn chunk_states(&self, terrains: &[TerrainDraw]) -> ChunkStates {
+        terrains
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let chunks = self
+                    .chunks
+                    .get(i)
+                    .map_or(Vec::new(), |c| c.iter().map(|c| (c.lod, c.mask)).collect());
+                let pos = t.position;
+                let moved = (pos.x.to_bits() as u64)
+                    ^ ((pos.y.to_bits() as u64) << 21)
+                    ^ ((pos.z.to_bits() as u64) << 42);
+                (t.key.clone(), t.version ^ moved.rotate_left(7), chunks)
+            })
+            .collect()
+    }
+
+    /// World bounds of chunk `c` of terrain `i` this frame.
+    pub fn chunk_bounds(&self, i: usize, c: usize) -> Option<Aabb> {
+        self.chunks.get(i)?.get(c).map(|c| c.bounds)
     }
 
     /// Plan this frame's grass passes and their GPU culling (after `select`): the camera's

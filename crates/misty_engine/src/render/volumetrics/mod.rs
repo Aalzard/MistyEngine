@@ -233,6 +233,11 @@ impl Volumetrics {
         }
     }
 
+    /// This render's fog or sun shafts read the sun's shadow maps.
+    pub fn reads_sun_shadow(&self) -> bool {
+        self.froxels_now.is_some() || self.keeps_depth()
+    }
+
     /// The main pass must keep its depth (both kinds of sun shafts read it).
     pub fn keeps_depth(&self) -> bool {
         self.shafts_now || self.sharp_now

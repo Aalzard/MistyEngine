@@ -54,6 +54,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::rig_editors::icon(other))
             .or_else(|| super::water::icon(other))
             .or_else(|| super::wind_editors::icon(other))
+            .or_else(|| super::net_editors::icon(other))
             .or_else(|| super::mesh_builder_editor::icon(other))
             .or_else(|| super::spline_editors::icon(other))
             .unwrap_or("▣"),
@@ -345,6 +346,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         water if super::water::NAMES.contains(&water) => super::water::edit(ui, state, e, water),
         wind if super::wind_editors::NAMES.contains(&wind) => {
             super::wind_editors::edit(ui, state, e, wind)
+        }
+        net if super::net_editors::NAMES.contains(&net) => {
+            super::net_editors::edit(ui, state, e, net)
         }
         mb if super::mesh_builder_editor::NAMES.contains(&mb) => {
             super::mesh_builder_editor::edit(ui, state, e, mb)

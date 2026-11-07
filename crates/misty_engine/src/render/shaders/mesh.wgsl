@@ -70,6 +70,10 @@ struct GrassNearShadow {
 };
 @group(1) @binding(8) var grass_near_map: texture_depth_2d_array;
 @group(1) @binding(9) var<uniform> grass_near: GrassNearShadow;
+// The sun's virtual shadow map (render/vsm): page table (one layer per clipmap level, R32Uint
+// physical page + 1) and the physical page pool.
+@group(1) @binding(10) var vsm_table: texture_2d_array<u32>;
+@group(1) @binding(11) var vsm_pool: texture_depth_2d;
 @group(1) @binding(25) var lightmaps: texture_2d_array<f32>;
 @group(1) @binding(26) var<uniform> lightmap_info: vec4<u32>;
 

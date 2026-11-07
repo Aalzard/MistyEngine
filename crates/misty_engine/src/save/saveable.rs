@@ -42,7 +42,8 @@ pub fn new_id() -> String {
     Guid::new().to_string()
 }
 
-/// Give every Saveable in `root`'s subtree a fresh Save ID (copies, prefab instances).
+/// Give every Saveable in `root`'s subtree a fresh Save ID (copies, prefab instances), and
+/// every Network Object a fresh global id.
 pub fn fresh_ids_in(scene: &mut Scene, root: Entity) {
     let subtree: Vec<Entity> = scene
         .walk()
@@ -53,6 +54,9 @@ pub fn fresh_ids_in(scene: &mut Scene, root: Entity) {
     for e in subtree {
         if let Ok(mut s) = scene.world.get::<&mut Saveable>(e) {
             s.save_id = new_id();
+        }
+        if let Ok(mut n) = scene.world.get::<&mut crate::network::NetworkObject>(e) {
+            n.global_id = new_id();
         }
     }
 }

@@ -213,6 +213,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::OpenAddComponent => s.inspector_add_open = true,
         Action::OpenProjectSettings => s.project_settings_window.open = true,
         Action::OpenBuildSettings => s.build_window.open = true,
+        Action::OpenMultiplayerPlayMode => crate::multiplayer::open(s),
         Action::Undo => {
             // Undone values are not new edits for Record mode.
             s.animation.skip_record = true;

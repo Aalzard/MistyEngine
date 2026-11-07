@@ -82,6 +82,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             ui.painter().image(texture, view, uv, Color32::WHITE);
             crate::gizmos::vcam_overlay(ui, state, view);
+            let net = crate::multiplayer::overlay_lines(state);
+            if !net.is_empty() {
+                net_overlay(ui, view, &net);
+                // The numbers refresh about once a second.
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(500));
+            }
             if state.game_view.stats {
                 let gpu_ms = gpu.renderer.gpu_ms();
                 let dt = ui.input(|i| i.stable_dt).max(1e-4);
@@ -246,6 +253,37 @@ fn stats_overlay(
         [egui::pos2(graph.left(), y), egui::pos2(graph.right(), y)],
         egui::Stroke::new(1.0, Color32::from_gray(200)),
     );
+}
+
+/// The network session's round trip, packets and bandwidth, bottom left of the Game view.
+fn net_overlay(ui: &Ui, view: egui::Rect, lines: &[String]) {
+    let font = FontId::monospace(11.0);
+    let painter = ui.painter().with_clip_rect(view);
+    let width = lines
+        .iter()
+        .map(|l| {
+            painter
+                .layout_no_wrap(l.clone(), font.clone(), Color32::WHITE)
+                .size()
+                .x
+        })
+        .fold(0.0, f32::max)
+        + 16.0;
+    let height = 8.0 + lines.len() as f32 * 14.0;
+    let rect = egui::Rect::from_min_size(
+        view.left_bottom() + egui::vec2(8.0, -8.0 - height),
+        egui::vec2(width, height),
+    );
+    painter.rect_filled(rect, 4.0, Color32::from_rgba_unmultiplied(20, 20, 20, 190));
+    for (i, line) in lines.iter().enumerate() {
+        painter.text(
+            rect.left_top() + egui::vec2(8.0, 4.0 + i as f32 * 14.0),
+            Align2::LEFT_TOP,
+            line,
+            font.clone(),
+            Color32::from_gray(if i == 0 { 240 } else { 200 }),
+        );
+    }
 }
 
 /// "Hitches: 3 (> 2× median 16.7ms)   worst 48.2ms".

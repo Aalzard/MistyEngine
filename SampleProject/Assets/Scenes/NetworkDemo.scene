@@ -1,0 +1,513 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            48.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            13.0,
+            -12.0
+          ],
+          "rotation": [
+            0.40673664,
+            0.0,
+            0.0,
+            0.9135454
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.4082179,
+            -0.23456971,
+            0.10938165,
+            0.87542605
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Floor",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Checker.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.0,
+            1.0,
+            2.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Network Manager"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Network Manager",
+          "tag": "Untagged"
+        },
+        "Network Manager": {
+          "address": "127.0.0.1",
+          "connection_approval": false,
+          "lan_discovery": true,
+          "listen_address": "0.0.0.0",
+          "max_connections": 16,
+          "player_prefab": "Assets/Prefabs/Net Player.prefab",
+          "port": 7777,
+          "scene_management": true,
+          "simulated_jitter_ms": 0.0,
+          "simulated_latency_ms": 0.0,
+          "simulated_packet_loss": 0.0,
+          "tick_rate": 30,
+          "timeout": 10.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Network Object",
+            "Network Transform",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Coin",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Stress Gold.mat",
+          "receive_shadows": true
+        },
+        "Network Object": {
+          "destroy_with_owner": true,
+          "global_id": "6e65747764656d6f636f696e00000001"
+        },
+        "Network Transform": {
+          "authority": "Server",
+          "interpolate": true,
+          "interpolation_delay": 0.1,
+          "position_threshold": 0.001,
+          "predict": false,
+          "rotation_threshold": 0.01,
+          "scale_threshold": 0.01,
+          "snap_distance": 3.0,
+          "sync_position": true,
+          "sync_rotation": false,
+          "sync_scale": false
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/NetCoin.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            3.0,
+            0.6,
+            2.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.6,
+            0.6,
+            0.6
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "render_mode": "ScreenSpaceOverlay",
+          "sort_order": 0
+        },
+        "Canvas Scaler": {
+          "enabled": true,
+          "match_width_or_height": 0.0,
+          "mode": "ScaleWithScreenSize",
+          "reference_resolution": [
+            800.0,
+            600.0
+          ],
+          "scale_factor": 1.0
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Canvas",
+            "Canvas Scaler"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Canvas",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            1.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            0.0
+          ],
+          "anchored_position": [
+            0.0,
+            0.0
+          ],
+          "pivot": [
+            0.5,
+            0.5
+          ],
+          "size_delta": [
+            0.0,
+            0.0
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Rect Transform",
+            "Text",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 4,
+          "name": "Hud Text",
+          "tag": "Untagged"
+        },
+        "Rect Transform": {
+          "anchor_max": [
+            0.0,
+            1.0
+          ],
+          "anchor_min": [
+            0.0,
+            1.0
+          ],
+          "anchored_position": [
+            20.0,
+            -20.0
+          ],
+          "pivot": [
+            0.0,
+            1.0
+          ],
+          "size_delta": [
+            1000.0,
+            260.0
+          ]
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/NetHud.lua"
+            }
+          ]
+        },
+        "Text": {
+          "alignment": "UpperLeft",
+          "color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "enabled": true,
+          "font_size": 24.0,
+          "line_spacing": 1.0,
+          "raycast_target": true,
+          "text": "H  host a game      J  join 127.0.0.1",
+          "wrap": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 5
+    },
+    {
+      "components": {
+        "Event System": {
+          "drag_threshold": 10.0,
+          "enabled": true,
+          "first_selected": null,
+          "send_navigation_events": true
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Event System"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "EventSystem",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

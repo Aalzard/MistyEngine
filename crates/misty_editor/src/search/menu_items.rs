@@ -399,6 +399,12 @@ fn window(l: &mut List, s: &EditorState) {
         let path = format!("Window/{menu}/{}", tab.title());
         l.action(tab.title(), &path, tab.shortcut(), Action::FocusTab(tab));
     }
+    l.action(
+        "Multiplayer Play Mode",
+        "Window/Multiplayer/Multiplayer Play Mode",
+        "",
+        Action::OpenMultiplayerPlayMode,
+    );
     for b in BuiltinLayout::ALL {
         let path = format!("Window/Layouts/{}", b.name());
         let action = Action::LoadLayout(LayoutRef::Builtin(b));

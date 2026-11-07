@@ -23,6 +23,7 @@ pub mod memory_snapshot;
 pub mod mesh_builder;
 pub mod models;
 pub mod navigation;
+pub mod network;
 pub mod occlusion;
 pub mod pak;
 pub mod particles;

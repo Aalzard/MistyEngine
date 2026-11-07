@@ -1238,7 +1238,13 @@ impl super::Renderer {
                     .map(|(i, m)| {
                         // Orthographic: row 0 maps world x to -1..1 over the map's width.
                         let size = self.shadows.directional_size as f32;
-                        (i < plan.cascades.len()).then(|| 0.5 * size * m.row(0).truncate().length())
+                        if i < plan.cascades.len() {
+                            return Some(0.5 * size * m.row(0).truncate().length());
+                        }
+                        // Virtual shadow map rectangles: their level's texel.
+                        let rects = self.vsm.frame.as_ref().map(|f| &f.rects[..]);
+                        let j = i.checked_sub(plan.vsm_first_slot())?;
+                        rects?.get(j).map(|r| r.texels_per_metre)
                     })
                     .collect(),
                 state,

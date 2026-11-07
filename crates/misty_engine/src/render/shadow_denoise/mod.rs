@@ -27,7 +27,10 @@ use crate::scene::{LightType, Shadows};
 const MASK_SRC: &str = concat!(
     include_str!("shaders/shadow_mask.wgsl"),
     "\n",
-    include_str!("../shaders/shadows.wgsl")
+    include_str!("../shaders/shadows.wgsl"),
+    "
+",
+    include_str!("../vsm/shaders/vsm_common.wgsl")
 );
 
 /// Lights one mask covers (RGBA channels).
@@ -154,6 +157,9 @@ impl Passes {
                 entry(3, B::Sampler(wgpu::SamplerBindingType::Comparison)),
                 entry(4, texture(depth, array)),
                 entry(6, uniform),
+                // The sun's virtual shadow map (render/vsm).
+                entry(10, texture(wgpu::TextureSampleType::Uint, array)),
+                entry(11, texture(depth, d2)),
             ],
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -468,6 +474,14 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: self.shadows.params_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::TextureView(self.vsm_table_view()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 11,
+                    resource: wgpu::BindingResource::TextureView(self.vsm_pool_view()),
                 },
             ],
         });

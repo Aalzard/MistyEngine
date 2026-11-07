@@ -24,6 +24,8 @@ pub(super) const MESH_SRC: &str = concat!(
     "\n",
     include_str!("shaders/shadows.wgsl"),
     "\n",
+    include_str!("vsm/shaders/vsm_common.wgsl"),
+    "\n",
     include_str!("shadow_denoise/shaders/shadow_lookup.wgsl"),
     "\n",
     include_str!("area/area_light.wgsl"),
@@ -67,6 +69,8 @@ const TERRAIN_SRC: &str = concat!(
     "\n",
     include_str!("shaders/shadows.wgsl"),
     "\n",
+    include_str!("vsm/shaders/vsm_common.wgsl"),
+    "\n",
     include_str!("shadow_denoise/shaders/shadow_lookup.wgsl"),
     "\n",
     include_str!("area/area_light.wgsl"),
@@ -100,6 +104,8 @@ pub(super) const GRASS_SRC: &str = concat!(
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/shadows.wgsl"),
+    "\n",
+    include_str!("vsm/shaders/vsm_common.wgsl"),
     "\n",
     include_str!("shadow_denoise/shaders/shadow_lookup.wgsl"),
     "\n",
@@ -356,6 +362,25 @@ impl Pipelines {
                     },
                 ),
                 entry(9, lit, uniform()),
+                // The sun's virtual shadow map: page table and physical pool (render/vsm).
+                entry(
+                    10,
+                    lit,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                ),
+                entry(
+                    11,
+                    lit,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
                 // Reflection probes (bindings 20–24, see probes/gpu.rs).
                 probe[0],
                 probe[1],

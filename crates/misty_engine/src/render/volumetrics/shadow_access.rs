@@ -12,7 +12,12 @@ pub(super) fn views(maps: &ShadowMaps) -> (&wgpu::TextureView, &wgpu::TextureVie
 
 /// World → clip space of each sun cascade, nearest first (empty = no sun shadows this frame).
 pub(super) fn sun_cascades(plan: &ShadowPlan) -> Vec<Mat4> {
-    plan.cascades.iter().map(|c| c.view_proj).collect()
+    // With the virtual shadow map the layers are filled from it (render/vsm/fog.rs).
+    let cascades = match plan.vsm {
+        Some(_) => &plan.fog_cascades,
+        None => &plan.cascades,
+    };
+    cascades.iter().map(|c| c.view_proj).collect()
 }
 
 /// World → clip space of each local layer.

@@ -2244,6 +2244,49 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Medium at defaults is 11.9 ms full screen (84 FPS); 100 FPS needs 2× MSAA on Medium (a look
   change, the user's call) or more grass work (Grass Ground Cover, a cheaper composite).
 
+## Round 15 — Multiplayer networking (branch r15-networking)
+
+### Done (docs/pending/r15-networking.md, docs/scripting.md ▸ Networking)
+- UDP transport on its own thread: reliable ordered / reliable unordered / unreliable channels, handshake,
+  keep-alives, timeouts, fragmentation, a latency / jitter / loss simulator; LAN discovery by broadcast.
+- Network Manager (host / server / client, address and port, tick rate, player prefab, connection
+  approval, scene sync on connect and on scene changes), Network Object (spawn, owner, despawn, ownership
+  changes), Network Transform (server or owner authority, interpolation buffer, snapping, thresholds,
+  client-side prediction with reconciliation).
+- Network Variables (`NetworkVariable()` attribute: read / write permissions, change callbacks, only
+  changed fields sent), `…ServerRpc` / `…ClientRpc` with `RpcTarget`, the `Network` Lua API with events.
+- Editor: Netcode Inspectors (Start Host / Server / Client while playing), Window ▸ Multiplayer ▸
+  Multiplayer Play Mode launching up to three player windows as clients, a network stats overlay.
+- Player: `--net-host`, `--net-server`, `--net-client`, `--scene`, window options, stats in the title.
+- Sample: NetworkDemo (predicted capsules with names, colours and a replicated score, a server-run coin).
+
+### Not done yet
+- Relay / NAT punch-through, encryption, dedicated-server (headless) builds, Network Animator, interest
+  management, tighter bandwidth (quantisation, batching).
+
+## Virtual shadow maps (branch vsm)
+
+### Done (docs/pending/vsm.md, screenshots `docs/screenshots/gfx/vsm_*`)
+- Quality ▸ Shadows ▸ Cascaded / Virtual (every preset Cascaded), Shadow Page Pool (512–4096 pages),
+  Shadow Resolution = texels per pixel in Virtual mode.
+- Sun clipmap of 8k × 8k levels around the camera (1 mm texels close up at High), 128² pages on a
+  light-space grid, toroidal page table, a coarse safety level over the whole shadow distance.
+- Page marking from the depth buffer (grass included) after the main pass, asynchronous readback, LRU page
+  cache; only new pages and pages under moving / new / removed / posed casters, changed terrain chunks or a
+  turned sun are rendered — 0 pages per frame on a still camera, ~1 while walking in MeadowDemo.
+- Pages rendered per rectangle of neighbouring pages through the existing caster pipelines (meshes, terrain
+  chunks, trees with per-level detail, virtual geometry) into a scratch atlas, copied into the pool.
+- Sampling in every lit shader (meshes, terrain, grass lit and visibility resolve, trees, water, custom
+  shaders, the temporal shadow mask) with PCSS search / filter at kernel-sized levels across page borders;
+  fog and sun shafts read cascade layers filled from the virtual map.
+- Scene view draw modes Virtual Shadow Levels / Cache / Pages; `Renderer::vsm_stats`.
+- MeadowDemo High: 15.44 → 15.17 ms still, 15.45 → 15.24 moving (wide); Medium +0.15–0.4, Low +0.2.
+
+### Not done yet
+- Grass past the near grass map (12 m) doesn't cast in Virtual mode (High 20 m, Ultra 32 m casters before);
+  cached tree shadows don't sway; a moving sun re-renders every page; Medium / Low are slightly slower than
+  their nearly free cascades, so no preset switched yet.
+
 ## Freeze on entering Play / opening a scene (branch play-hitch)
 
 ### Done (docs/pending/play-hitch.md)
