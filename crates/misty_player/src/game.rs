@@ -5,11 +5,23 @@ use std::path::{Path, PathBuf};
 
 use misty_engine::assets::AssetCache;
 use misty_engine::build::{BuildSettings, SceneRef};
+use misty_engine::network::{AutoStart, NetStats};
 use misty_engine::render_scene::GameView;
 use misty_engine::runtime::{Runtime, Time};
 use misty_engine::scene::Scene;
 use misty_engine::scripting::{Input, LogKind, Request};
 use misty_engine::settings::ProjectSettings;
+
+/// How the player was asked to start (command line; the editor's Multiplayer Play Mode).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LaunchOptions {
+    /// Play this project scene (path relative to the project) instead of build scene 0.
+    pub scene: Option<String>,
+    /// Read that scene from this file instead (the editor's unsaved copy).
+    pub scene_file: Option<PathBuf>,
+    /// Start networking once the first scene runs.
+    pub network: Option<AutoStart>,
+}
 
 pub struct Game {
     root: PathBuf,
@@ -31,7 +43,13 @@ pub struct Game {
 
 impl Game {
     /// Open the project at `root` and start build scene 0.
+    #[cfg(test)]
     pub fn open(root: &Path) -> Result<Self, String> {
+        Self::open_with(root, &LaunchOptions::default())
+    }
+
+    /// Open the project at `root` and start what `options` ask for (build scene 0 by default).
+    pub fn open_with(root: &Path, options: &LaunchOptions) -> Result<Self, String> {
         let mut logs = Vec::new();
         // Textures and models are resolved against the project folder.
         misty_engine::assets::set_project_root(root);
@@ -44,7 +62,7 @@ impl Game {
         // Sorting Layers are read by the renderer.
         settings.apply_globals();
         let build = BuildSettings::load(root).map_err(|e| format!("BuildSettings.json: {e}"))?;
-        if build.enabled().next().is_none() {
+        if options.scene.is_none() && build.enabled().next().is_none() {
             return Err("Build Settings has no scenes: add one in File ▸ Build Settings…".into());
         }
         let mut game = Self {
@@ -61,7 +79,13 @@ impl Game {
             draws: Default::default(),
         };
         game.draws.get_mut().set_static_batching(true);
-        game.load_scene(&SceneRef::Index(0))?;
+        match &options.scene {
+            Some(rel) => game.load_path(rel, options.scene_file.as_deref())?,
+            None => game.load_scene(&SceneRef::Index(0))?,
+        }
+        if let Some(start) = &options.network {
+            game.start_network(start);
+        }
         Ok(game)
     }
 
@@ -103,19 +127,50 @@ impl Game {
     /// Replace the current scene with a build scene and start its scripts (`Awake`).
     pub fn load_scene(&mut self, which: &SceneRef) -> Result<(), String> {
         let (rel, index) = self.build.resolve(which)?;
-        let (mut scene, report) = Scene::load(&self.root.join(&rel))?;
-        scene.set_scene_path(0, &rel);
+        self.load_path(&rel, None)?;
+        self.scene_index = index;
+        Ok(())
+    }
+
+    /// Replace the current scene with the project scene `rel` (read from `file` when given),
+    /// in the build list or not (a multiplayer server's scene, `--scene`). A network
+    /// connection carries over to the new scene.
+    pub fn load_path(&mut self, rel: &str, file: Option<&Path>) -> Result<(), String> {
+        let path = file.map_or_else(|| self.root.join(rel), Path::to_path_buf);
+        let (mut scene, report) = Scene::load(&path)?;
+        scene.set_scene_path(0, rel);
         for w in report.warnings {
             self.logs.push((LogKind::Warning, format!("{rel}: {w}")));
         }
+        let session = self.runtime.as_mut().map(|r| r.take_network());
         // Old scripts and bodies go before the new scene's Awake runs.
         self.runtime = None;
-        let runtime = Runtime::start(&mut scene, self.root.clone(), &self.settings);
+        let mut runtime = Runtime::start(&mut scene, self.root.clone(), &self.settings);
+        if let Some(s) = session {
+            runtime.adopt_network(&mut scene, s);
+        }
+        if let Some(i) = self.build.enabled().position(|b| b.path == rel) {
+            self.scene_index = i;
+        }
         self.scene = scene;
-        self.scene_index = index;
         self.runtime = Some(runtime);
         self.collect_logs();
         Ok(())
+    }
+
+    /// Start networking (host, server or client) in the running scene.
+    pub fn start_network(&mut self, start: &AutoStart) {
+        if let Some(rt) = self.runtime.as_mut()
+            && let Err(e) = rt.network_start(&mut self.scene, start)
+        {
+            self.logs.push((LogKind::Error, format!("Network: {e}")));
+        }
+        self.collect_logs();
+    }
+
+    /// Network traffic while a session runs (the window title shows it).
+    pub fn network_stats(&self) -> Option<NetStats> {
+        self.runtime.as_ref().and_then(|r| r.network_stats())
     }
 
     /// One game frame of `real_dt` seconds; then scene loads / quit asked for by scripts.
@@ -130,9 +185,11 @@ impl Game {
         // Like the familiar API, the last single LoadScene of a frame wins; additive loads
         // and unloads happen in order.
         let mut load = None;
+        let mut net_load = None;
         for r in requests {
             match r {
                 Request::LoadScene(s) => load = Some(s),
+                Request::NetworkLoadScene(path) => net_load = Some(path),
                 Request::Quit => self.quit = true,
                 other => {
                     let Some(runtime) = self.runtime.as_mut() else {
@@ -155,6 +212,12 @@ impl Game {
             && let Err(e) = self.load_scene(&scene)
         {
             self.logs.push((LogKind::Error, e));
+        }
+        // The server's scene (multiplayer scene sync).
+        if let Some(path) = net_load
+            && let Err(e) = self.load_path(&path, None)
+        {
+            self.logs.push((LogKind::Error, format!("Network: {e}")));
         }
     }
 
@@ -279,6 +342,55 @@ return Loader
                 fields: Default::default(),
             }],
         }
+    }
+
+    #[test]
+    fn a_scene_outside_the_build_list_hosts_and_the_session_survives_scene_loads() {
+        let _turn = one_game_at_a_time();
+        let root = project("net");
+        let mut net = Scene::new("Net");
+        let m = net.spawn("Network Manager", None);
+        net.add(
+            m,
+            misty_engine::network::NetworkManager {
+                port: 0,
+                lan_discovery: false,
+                ..Default::default()
+            },
+        );
+        net.save(&root.join("Assets/Scenes/Net.scene")).unwrap();
+        // The editor's unsaved copy is read from another file but keeps the scene's path.
+        let copy = root.join("Library/Copy.scene");
+        std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+        net.save(&copy).unwrap();
+        let options = LaunchOptions {
+            scene: Some("Assets/Scenes/Net.scene".into()),
+            scene_file: Some(copy),
+            network: Some(AutoStart::Host),
+        };
+        let mut game = Game::open_with(&root, &options).unwrap();
+        assert_eq!(game.scene.name, "Net");
+        assert_eq!(
+            game.scene.active_path().as_deref(),
+            Some("Assets/Scenes/Net.scene")
+        );
+        game.frame(1.0 / 60.0, Input::default());
+        assert_eq!(
+            game.network_stats().map(|s| s.mode),
+            Some(misty_engine::network::NetMode::Host)
+        );
+        game.load_path("Assets/Scenes/Level2.scene", None).unwrap();
+        assert_eq!(game.scene_index, 1);
+        assert!(
+            game.network_stats().is_some(),
+            "still hosting after the load"
+        );
+        let errors: Vec<_> = game
+            .take_logs()
+            .into_iter()
+            .filter(|(k, _)| *k == LogKind::Error)
+            .collect();
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
