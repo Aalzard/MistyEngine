@@ -85,17 +85,23 @@ fn vs_grass_depth(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u
 }
 
 fn grass_vertex(vi: u32, b: BladeIn) -> GrassOut {
-    var out: GrassOut;
     let v = grass_blade(vi, b);
-    let face = normalize(cross(v.across, v.tangent));
-
-    out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
     // Motion vector: the blade as the wind had it last frame (terrains don't move).
     // (Only while the wind's vectors are wanted: the clock moved and TAA is on.)
     var prev = v.p;
     if (grass.screen.w > 0.0) {
         prev = grass_blade_at(vi, b, grass.origin.w - grass.screen.w).p;
     }
+    return grass_out(v, prev, b);
+}
+
+// The vertex stage's output for card vertex `v` of blade `b` (`prev` = where the wind had it
+// last frame).
+fn grass_out(v: BladeVertex, prev: vec3<f32>, b: BladeIn) -> GrassOut {
+    var out: GrassOut;
+    let face = normalize(cross(v.across, v.tangent));
+
+    out.clip = view.view_proj * vec4<f32>(v.p, 1.0);
     out.clip_prev = prev_clip(prev);
     out.world = v.p;
     // Rounded across the blade, so a card is not one flat shade.

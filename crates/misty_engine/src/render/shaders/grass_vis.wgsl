@@ -145,6 +145,15 @@ fn vis_bary(c0: vec4<f32>, c1: vec4<f32>, c2: vec4<f32>, p: vec2<f32>) -> vec3<f
     return l / (l.x + l.y + l.z);
 }
 
+fn vis_vertex(now: BladeFrame, before: BladeFrame, b: BladeIn, vi: u32) -> GrassOut {
+    let v = grass_blade_point(now, b, vi);
+    var prev = v.p;
+    if (grass.screen.w > 0.0) {
+        prev = grass_blade_point(before, b, vi).p;
+    }
+    return grass_out(v, prev, b);
+}
+
 fn vis_card_uv(a: GrassOut, b: GrassOut, c: GrassOut, m: vec3<f32>) -> vec2<f32> {
     return a.uv.xy * m.x + b.uv.xy * m.y + c.uv.xy * m.z;
 }
@@ -153,9 +162,16 @@ fn vis_card_uv(a: GrassOut, b: GrassOut, c: GrassOut, m: vec3<f32>) -> vec2<f32>
 fn vis_shade(px: vec2<u32>, id: u32, card: vec4<f32>) -> MeshTargets {
     let b = vis_blade(id);
     let tri = u32(card.x);
-    let v0 = grass_vertex(tri, b);
-    let v1 = grass_vertex(tri + 1u, b);
-    let v2 = grass_vertex(tri + 2u, b);
+    // The triangle's three vertices as the vertex stage made them (`grass_vertex`), the
+    // blade's shared work done once per wind time.
+    let now = grass_blade_frame(b, grass.origin.w);
+    var before = now;
+    if (grass.screen.w > 0.0) {
+        before = grass_blade_frame(b, grass.origin.w - grass.screen.w);
+    }
+    let v0 = vis_vertex(now, before, b, tri);
+    let v1 = vis_vertex(now, before, b, tri + 1u);
+    let v2 = vis_vertex(now, before, b, tri + 2u);
     let p = vec2<f32>(px) + 0.5;
     let m = vis_bary(v0.clip, v1.clip, v2.clip, p);
     var in: GrassOut;
