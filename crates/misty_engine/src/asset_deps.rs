@@ -6,6 +6,7 @@
 //! scripts are scanned for string literals naming assets, `.obj` files for their `.mtl` and
 //! textures, `.gltf` files for their buffers and images. Every file under a `Resources` folder is
 //! included as well (assets loaded by name at runtime), and so is each file's `.meta` sidecar.
+//! Files under an `Editor` folder are left out (see [`is_editor_only`]).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::Path;
@@ -87,7 +88,8 @@ fn collect_with(
     }
     while let Some((rel, from)) = queue.pop_front() {
         let rel = normalize(&rel);
-        if deps.files.contains(&rel) {
+        // Editor scripts and other editor-only files never ship.
+        if deps.files.contains(&rel) || is_editor_only(&rel) {
             continue;
         }
         let abs = project.join(&rel);
@@ -107,6 +109,14 @@ fn collect_with(
         }
     }
     deps
+}
+
+/// Files under a folder named `Editor` (anywhere in the project) are for the editor only:
+/// editor scripts run in the editor's own Lua state and are never packed into a build.
+pub fn is_editor_only(rel: &str) -> bool {
+    let mut parts: Vec<&str> = rel.split(['/', '\\']).collect();
+    parts.pop();
+    parts.contains(&"Editor")
 }
 
 /// `Assets/A/../B/c.png` → `Assets/B/c.png`, forward slashes.
@@ -231,6 +241,7 @@ mod tests {
             "Assets/Scenes/A.scene",
             r#"{ "objects": [ { "mat": "Assets/Mats/Red.mat", "mesh": "Assets/Models/Ramp.obj#0",
                  "script": "Assets/Scripts/S.lua", "gone": "Assets/Missing.png",
+                 "tool": "Assets/Scripts/T.lua",
                  "sprite": "Assets/Sprites/Tiles.png#Tiles_3" } ] }"#,
         );
         write(
@@ -265,6 +276,15 @@ mod tests {
         write(&root, "Assets/Tex/Wood.png", "png");
         write(&root, "Assets/Resources/Levels/Data.json", "{}");
         write(&root, "Assets/Unused.scene", "{}");
+        // Editor scripts never ship, even when named or under Resources.
+        write(&root, "Assets/Resources/Editor/Tool.lua", "-- editor");
+        write(&root, "Assets/Editor/Menu.lua", "-- editor");
+        write(
+            &root,
+            "Assets/Scripts/T.lua",
+            "local tool = 'Assets/Editor/Menu.lua'
+",
+        );
 
         let deps = collect(&root, &["Assets/Scenes/A.scene".into()]);
         let files: Vec<&str> = deps.files.iter().map(String::as_str).collect();
@@ -278,6 +298,7 @@ mod tests {
                 "Assets/Resources/Levels/Data.json",
                 "Assets/Scenes/A.scene",
                 "Assets/Scripts/S.lua",
+                "Assets/Scripts/T.lua",
                 "Assets/Sprites/Tiles.png",
                 "Assets/Tex/Red.png",
                 "Assets/Tex/Red.png.meta",
