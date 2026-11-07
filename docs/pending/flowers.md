@@ -95,6 +95,18 @@ RTX 4060, other agents' GPU work and builds on the machine; GPU timing lock held
 - **Shots** (`flower_shots`, 1600 × 900, High; `before` = `MISTY_FLOWERS=0`):
   `flowers_{before,after}_{wide,behind,patch_close,patch_poppies,patch_far}.png`.
 
+## Checks
+
+After merging main (rocks) and updating the meadow golden references: `cargo fmt --all`
+clean, `cargo clippy --workspace --all-targets --release` 0 warnings, `golden_shots` all 20
+ok (CyclesRoom identical to its references). `cargo test --workspace --release --no-fail-fast`:
+misty_engine 964 passed, misty_player 11 passed, misty_editor 603 passed and 1 failed:
+`templates::tests::meadow_demo_opens_and_plays`, which passes alone and with the other
+`templates::` tests but fails in the full run with warnings that the rocks' Mesh Collider
+meshes (`Assets/Rocks/... LODs.glb #1`) can't be loaded: the merged rocks' prefab mesh paths
+resolve against the process-wide project root another test sets meanwhile (nothing of the
+flowers is involved). Left for the rocks / template owners.
+
 ## What still looks off
 
 - The player's start view (`wide`) shows only a few specks of colour: the patches nearest the

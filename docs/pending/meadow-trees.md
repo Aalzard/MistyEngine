@@ -235,3 +235,23 @@ visible."
   the crown and drooping (8 triangles instead of 4); LOD 1 keeps flat folded cards.
 - Alpha: the atlases' coverage-keeping mips (per cell) and the alpha-to-coverage rim as before;
   the crisper alpha of the new atlases keeps far crowns from turning to mush.
+- **Light through backlit leaves** a little stronger (forward lobe 1.25 → 1.6, diffuse through
+  the back 0.55 → 0.7), so crowns against the sun glow at their edges and the darker veins of
+  the translucency map show.
+- **Cost** (`tree_cost`, 1920 × 1080, trees vs no trees; old leaf code and new leaf code built
+  and measured back to back under the same load, GPU timing lock held):
+
+  | view | old: High / Medium / Low | new: High / Medium / Low |
+  | --- | --- | --- |
+  | wide | 0.07 / −0.12 / 0.25 ms | −0.06 / −0.02 / 0.05 ms |
+  | close | 0.78 / −0.01 / 0.25 ms | 0.81 / 0.34 / 0.27 ms |
+  | behind | 1.56 / 0.97 / 0.65 ms | 1.61 / 0.91 / 0.80 ms |
+
+  Within ~0.05 ms on High (the medium / low differences flip sign between runs: noise). Flat
+  two-row cards measured the same as the curved three-row ones (behind High 1.58 ms).
+- **Shots** (`tree_leaf_shots`, 1600 × 900, High): `leaves_{before,after}_{crown,cluster,backlit,
+  behind}.png` — the broad oak's crown, a young oak's lower crown from under it at eye height,
+  the broad oak against the sun, and the trees behind the player.
+- **Still off**: cards seen edge-on show stretched streaks; the leaves are drawn rather than
+  photographic (linden and birch a little schematic close up); the far crowns still read as
+  a dark mass against the sun (the crown's own occlusion dominates).
