@@ -58,7 +58,9 @@ fn scene_page(ui: &mut Ui, state: &mut EditorState) {
     if ui
         .checkbox(&mut gi, "Realtime Global Illumination")
         .on_hover_text(
-            "Misty GI: bounce light, sky occlusion and glossy reflections that follow moving              lights and objects, no baking. Quality ▸ Global Illumination sets how good it is;              a Post-process Volume can override it.",
+            "Misty GI: bounce light, sky occlusion and glossy reflections that follow moving \
+            lights and objects, no baking. Quality ▸ Global Illumination sets how good it is; \
+            a Post-process Volume can override it.",
         )
         .changed()
     {

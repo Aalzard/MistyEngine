@@ -120,7 +120,9 @@ pub fn fog_override(ui: &mut Ui, f: &mut FogOverride) -> bool {
     ui.end_row();
     ui.add_enabled_ui(on, |ui| {
         ui.label("Sun Shafts Quality").on_hover_text(
-            "Sharp: the sun is raymarched per pixel through its shadow map for crisp light              shafts. Off: the sun lights the froxel grid like other lights (softer). The              Quality settings can turn Sharp off.",
+            "Sharp: the sun is raymarched per pixel through its shadow map for crisp light \
+            shafts. Off: the sun lights the froxel grid like other lights (softer). The \
+            Quality settings can turn Sharp off.",
         )
     });
     ch |= ui

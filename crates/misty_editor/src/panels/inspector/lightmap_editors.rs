@@ -84,7 +84,10 @@ pub fn model_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         let mut ch = ui.checkbox(&mut s.generate_lightmap_uvs, "").changed();
         ui.end_row();
         ui.label("Virtual Geometry").on_hover_text(
-            "Build the meshes into clusters with per-cluster level of detail (Misty Virtual              Geometry, prototype): dense rocks, cliffs and props then draw about as many              triangles as they cover pixels. Needs Virtual Geometry on in the Quality level.              Opaque, non-skinned meshes; not for alpha-tested foliage.",
+            "Build the meshes into clusters with per-cluster level of detail (Misty Virtual \
+            Geometry, prototype): dense rocks, cliffs and props then draw about as many \
+            triangles as they cover pixels. Needs Virtual Geometry on in the Quality level. \
+            Opaque, non-skinned meshes; not for alpha-tested foliage.",
         );
         ch |= ui.checkbox(&mut s.virtual_geometry, "").changed();
         ui.end_row();

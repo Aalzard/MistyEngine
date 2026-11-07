@@ -119,7 +119,10 @@ fn shadows(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     let mut edited = row(
         ui,
         "Shadows",
-        "How the sun's shadows are made. Cascaded: up to four maps fitted around the view          every frame. Virtual: a virtual shadow map of 128 × 128 pages around the camera, only          the pages visible pixels need, kept between frames until something over them moves          (sharper close up, cheap while the view and the scene stay still).",
+        "How the sun's shadows are made. Cascaded: up to four maps fitted around the view \
+        every frame. Virtual: a virtual shadow map of 128 × 128 pages around the camera, only \
+        the pages visible pixels need, kept between frames until something over them moves \
+        (sharper close up, cheap while the view and the scene stay still).",
         |ui| {
             combo(
                 ui,
@@ -135,7 +138,8 @@ fn shadows(ui: &mut Ui, l: &mut QualityLevel) -> bool {
         edited |= row(
             ui,
             "Shadow Page Pool",
-            "Physical pages the virtual shadow map keeps (GPU memory). Too few for the view:              distant shadows fall back to coarser pages.",
+            "Physical pages the virtual shadow map keeps (GPU memory). Too few for the view: \
+            distant shadows fall back to coarser pages.",
             |ui| {
                 combo(
                     ui,
@@ -148,7 +152,8 @@ fn shadows(ui: &mut Ui, l: &mut QualityLevel) -> bool {
         );
     }
     let resolution_tip = if virtual_sun {
-        "Texel size of the virtual shadow map against a screen pixel: Very High ½, High 1,          Medium 2, Low 4 pixels per texel."
+        "Texel size of the virtual shadow map against a screen pixel: Very High ½, High 1, \
+        Medium 2, Low 4 pixels per texel."
     } else {
         "Size of the sun's shadow map. Higher = sharper shadows, more GPU memory."
     };
@@ -254,7 +259,8 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     edited |= row(
         ui,
         "FXAA",
-        "Post-process edge smoothing on the final image; also catches edges MSAA misses          (alpha cut-outs, shading).",
+        "Post-process edge smoothing on the final image; also catches edges MSAA misses \
+        (alpha cut-outs, shading).",
         |ui| ui.checkbox(&mut l.fxaa, "").changed(),
     );
     edited |= row(
@@ -355,7 +361,8 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     edited |= row(
         ui,
         "Upscale Filter",
-        "How the Render Scale image is stretched: Bilinear is smooth, Nearest keeps hard          pixels (pixel-art look), Sharpen adds contrast-adaptive sharpening.",
+        "How the Render Scale image is stretched: Bilinear is smooth, Nearest keeps hard \
+        pixels (pixel-art look), Sharpen adds contrast-adaptive sharpening.",
         |ui| {
             combo(
                 ui,
@@ -382,7 +389,8 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     edited |= row(
         ui,
         "Virtual Geometry",
-        "Prototype: models imported with Virtual Geometry draw as clusters with per-cluster          level of detail, culled on the GPU. Off = they draw as ordinary meshes.",
+        "Prototype: models imported with Virtual Geometry draw as clusters with per-cluster \
+        level of detail, culled on the GPU. Off = they draw as ordinary meshes.",
         |ui| ui.checkbox(&mut l.virtual_geometry, "").changed(),
     );
     if l.virtual_geometry {
@@ -475,7 +483,8 @@ fn effects(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     edited |= row(
         ui,
         "Global Illumination",
-        "Misty GI: realtime bounce light, sky occlusion and glossy reflections, when the scene          or a Post-process Volume turns it on. The highest quality it runs at.",
+        "Misty GI: realtime bounce light, sky occlusion and glossy reflections, when the scene \
+        or a Post-process Volume turns it on. The highest quality it runs at.",
         |ui| {
             combo(
                 ui,
