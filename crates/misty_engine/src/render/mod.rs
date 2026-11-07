@@ -87,7 +87,7 @@ pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
 use target::TargetLayouts;
 pub use terrain_grass::{GrassStats, grass_streaming, set_grass_streaming};
-pub use vgeo::{VgeoDebug, VgeoStats};
+pub use vgeo::{VgeoChoice, VgeoDebug, VgeoStats};
 pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 pub use vsm::{VsmDebug, VsmStats};
 
@@ -1502,7 +1502,10 @@ impl Renderer {
             self.upload_culling(device, queue, target, frame, &lists, c, &view_proj);
             self.last_gpu_batches = c.batches.len();
         }
-        self.begin_vgeo(device, queue, target, frame, &lists, &view_proj, &plan);
+        let gpu_culled = culled.is_some();
+        self.begin_vgeo(
+            device, queue, target, frame, &lists, &view_proj, &plan, gpu_culled,
+        );
         self.prepare_shadow_mask(device, queue, target, frame, &plan, &shadow_settings);
         let screen = self.prepare_screen_space(device, queue, target, frame);
         if screen.is_none() {
@@ -1715,8 +1718,10 @@ impl Renderer {
             vis: self.grass_vis_active(device, queue, target, frame),
         };
         // GPU culling and virtual geometry draw the main pass in two phases around the Hi-Z
-        // pyramid of the first phase's depth.
-        let vgeo = self.vgeo.active();
+        // pyramid of the first phase's depth (virtual geometry only when it has enough
+        // instances for occlusion culling to pay: otherwise its one phase draws with the
+        // opaque meshes of an unsplit main pass).
+        let vgeo = self.vgeo.active() && !self.vgeo.single_phase();
         match (&culled, self.culler.as_ref()) {
             (_, Some(culler)) if culled.is_some() || vgeo => {
                 let state = target.culling.lock().unwrap_or_else(|e| e.into_inner());
@@ -2585,8 +2590,18 @@ impl Renderer {
         // prepass's depth already).
         let keep_depth =
             self.volumetrics.keeps_depth() || self.glows.keeps_depth() || self.vsm.wants_marks();
+        // The virtual geometry view this part draws: its phase, or with one main phase all of
+        // it (view 0) where the opaque meshes draw.
+        let single = self.vgeo.single_phase();
+        let vgeo_view = match split.phase {
+            Some(1) if single => None,
+            Some(p) => Some(p),
+            None if single => Some(0),
+            None => None,
+        }
+        .filter(|_| self.vgeo.active());
         // Virtual geometry's visibility raster splits the phase's pass in two around it.
-        let vis = split.phase.is_some() && self.vgeo.visibility_active();
+        let vis = vgeo_view.is_some() && self.vgeo.visibility_active();
         // The grass visibility buffer ends the last part after the grass depth (kept for the
         // grass visibility raster), the rest follows below.
         let grass_vis = last && split.vis;
@@ -2629,49 +2644,6 @@ impl Renderer {
                     let opaque = &lists.opaque;
                     self.draw_batches(&mut pass, frame, lists, opaque, split.prepass, None, stats);
                 }
-                if self.vgeo.active() {
-                    self.mark_pass(&mut pass, "Main: opaque meshes");
-                    let textures = &self.textures;
-                    let material =
-                        |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
-                    if vis {
-                        drop(pass);
-                        let groups = [
-                            &self.view_bind_group,
-                            &self.draws_bind_group,
-                            &self.empty_group,
-                        ];
-                        self.vgeo.raster_visibility(
-                            encoder,
-                            target.depth_view(),
-                            phase,
-                            groups,
-                            &material,
-                            &self.vgeo_gate(frame),
-                        );
-                        self.mark(encoder, "Virtual geometry: visibility raster");
-                        pass = self.begin_main(
-                            encoder,
-                            target,
-                            false,
-                            false,
-                            last && !grass_vis,
-                            !last || copy || grass_vis,
-                            !last || copy || keep_depth || grass_vis,
-                        );
-                        pass.set_bind_group(1, self.lit_group(), &[]);
-                        self.vgeo
-                            .resolve(&mut pass, phase, &material, &self.vgeo_gate(frame));
-                        self.mark_pass(&mut pass, "Main: virtual geometry (resolve)");
-                    } else {
-                        self.vgeo
-                            .draw_main(&mut pass, phase, &material, &self.vgeo_gate(frame));
-                        self.mark_pass(&mut pass, "Main: virtual geometry");
-                    }
-                }
-                if !last {
-                    return;
-                }
             }
             if split.phase.is_none() && frame.shaded && !lists.opaque.is_empty() {
                 let main = || main_target(target);
@@ -2679,6 +2651,50 @@ impl Renderer {
                 pass.set_bind_group(1, self.lit_group(), &[]);
                 let opaque = &lists.opaque;
                 self.draw_batches(&mut pass, frame, lists, opaque, split.prepass, None, stats);
+            }
+            if let Some(phase) = vgeo_view {
+                pass.set_bind_group(1, self.lit_group(), &[]);
+                self.mark_pass(&mut pass, "Main: opaque meshes");
+                let textures = &self.textures;
+                let material =
+                    |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
+                if vis {
+                    drop(pass);
+                    let groups = [
+                        &self.view_bind_group,
+                        &self.draws_bind_group,
+                        &self.empty_group,
+                    ];
+                    self.vgeo.raster_visibility(
+                        encoder,
+                        target.depth_view(),
+                        phase,
+                        groups,
+                        &material,
+                        &self.vgeo_gate(frame),
+                    );
+                    self.mark(encoder, "Virtual geometry: visibility raster");
+                    pass = self.begin_main(
+                        encoder,
+                        target,
+                        false,
+                        false,
+                        last && !grass_vis,
+                        !last || copy || grass_vis,
+                        !last || copy || keep_depth || grass_vis,
+                    );
+                    pass.set_bind_group(1, self.lit_group(), &[]);
+                    self.vgeo
+                        .resolve(&mut pass, phase, &material, &self.vgeo_gate(frame));
+                    self.mark_pass(&mut pass, "Main: virtual geometry (resolve)");
+                } else {
+                    self.vgeo
+                        .draw_main(&mut pass, phase, &material, &self.vgeo_gate(frame));
+                    self.mark_pass(&mut pass, "Main: virtual geometry");
+                }
+            }
+            if !last {
+                return;
             }
 
             self.mark_pass(&mut pass, "Main: opaque meshes");

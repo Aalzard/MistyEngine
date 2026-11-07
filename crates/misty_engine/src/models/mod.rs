@@ -288,6 +288,18 @@ pub fn poll_changes() -> Vec<String> {
     changed
 }
 
+/// Forget the cached models at `rels` right away (their import settings changed: the next
+/// [`model`] call imports them again), unlike [`poll_changes`], which looks at most twice a
+/// second.
+pub fn forget(rels: &[String]) {
+    let mut lib = library();
+    let before = lib.entries.len();
+    lib.entries.retain(|rel, _| !rels.contains(rel));
+    if lib.entries.len() != before {
+        lib.generation += 1;
+    }
+}
+
 /// Bumped whenever cached models are dropped (GPU caches compare it to know when to re-upload).
 pub fn generation() -> u64 {
     library().generation

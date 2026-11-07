@@ -36,7 +36,7 @@ struct View {
     camera: vec4<f32>,
     // x = largest error on screen (pixels), y = 1 when orthographic, zw = target size (pixels).
     params: vec4<f32>,
-    // x = instances, y = mode (0 first phase, 1 second phase, 2 shadow map),
+    // x = instances, y = mode (0 first phase, 1 second phase, 2 shadow map, 3 the only phase),
     // z = Hi-Z mip count (0 = no occlusion test), w = batches.
     info: vec4<u32>,
     // x = view index, y = this view's first visible-list entry, z = entries per batch,
@@ -260,6 +260,13 @@ fn cs_instances(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         instance_state[4u * i] = select(0u, 1u, seen);
         if (!seen || instance_state[4u * i + 1u] != 0u) {
+            return;
+        }
+    } else if (mode == 3u) {
+        // The only main phase (few instances: no Hi-Z): every instance in the frustum.
+        instance_state[4u * i] = select(0u, 1u, inside);
+        instance_state[4u * i + 1u] = select(0u, 1u, inside);
+        if (!inside) {
             return;
         }
     } else if (!inside || (inst.w & 1u) == 0u) {

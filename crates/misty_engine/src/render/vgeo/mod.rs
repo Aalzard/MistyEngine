@@ -57,6 +57,16 @@ const MAIN_CHUNKS: u32 = 1 << 17;
 const SHADOW_CHUNKS: u32 = 1 << 15;
 const MAIN_GROUP_CHUNKS: u32 = 1 << 16;
 const SHADOW_GROUP_CHUNKS: u32 = 1 << 14;
+/// Auto visibility buffer: on once the main camera draws at least this many triangles per pixel
+/// and material batch (each batch's resolve reads every pixel's ids; the visibility buffer only
+/// pays when the triangles are small enough for quad overshading to cost more), off again below
+/// [`VIS_OFF_TRIANGLES`] (hysteresis: no flicker between the paths).
+const VIS_ON_TRIANGLES: f32 = 0.25;
+const VIS_OFF_TRIANGLES: f32 = 0.18;
+/// Auto occlusion: the main camera takes two phases around a Hi-Z pyramid (occlusion culling)
+/// from this many instances on, or when GPU culling builds the pyramid anyway; fewer instances
+/// are culled in one phase (frustum and level of detail only), which keeps the main pass whole.
+pub(super) const OCCLUSION_MIN_INSTANCES: usize = 1024;
 /// Shadow maps with virtual geometry casters (in plan order: cascades, local lights, virtual
 /// shadow map rectangles). The lists grow with the views a frame uses.
 pub const MAX_SHADOW_VIEWS: usize = 32;
@@ -231,6 +241,22 @@ struct ViewUniform {
     groups: [u32; 4],
 }
 
+/// How a frame picks a virtual geometry option: by its cost (Auto, the default) or always on or
+/// off (A/B measurements, tests).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VgeoChoice {
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
+impl From<bool> for VgeoChoice {
+    fn from(on: bool) -> Self {
+        if on { Self::On } else { Self::Off }
+    }
+}
+
 /// What the last frame drew (read back on request, for measurements).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VgeoStats {
@@ -253,6 +279,8 @@ pub struct VgeoStats {
     pub list_bytes: u64,
     /// The main pass drew the clusters through the visibility buffer.
     pub visibility: bool,
+    /// The main camera took two phases around a Hi-Z pyramid (occlusion culling).
+    pub occlusion: bool,
 }
 
 pub(super) struct VirtualGeometry {
@@ -267,8 +295,14 @@ pub(super) struct VirtualGeometry {
     /// This render's debug view.
     pub view_debug: VgeoDebug,
     /// Draw the main pass's clusters through the visibility buffer (render/vgeo/vis.rs) where
-    /// the device can; else lit directly.
-    pub visibility: bool,
+    /// the device can, or lit directly; Auto picks the visibility buffer once the triangles
+    /// get small (see [`VIS_ON_TRIANGLES`]).
+    pub visibility: VgeoChoice,
+    /// The last Auto visibility decision (hysteresis).
+    vis_auto: bool,
+    /// Two main phases around a Hi-Z pyramid (occlusion culling) or one; Auto: two from
+    /// [`OCCLUSION_MIN_INSTANCES`] instances on, or when GPU culling builds the pyramid anyway.
+    pub occlusion: VgeoChoice,
     /// The visibility resolve's second layer: two objects of one batch meeting inside a pixel
     /// get a shade each (otherwise the first one's; edges against everything else keep their
     /// MSAA coverage either way).
@@ -312,6 +346,7 @@ struct Readback {
     views: usize,
     instances: u32,
     visibility: bool,
+    occlusion: bool,
 }
 
 struct Gpu {
@@ -430,6 +465,8 @@ struct FrameState {
     render_group: wgpu::BindGroup,
     /// This frame draws the main pass's clusters through the visibility buffer.
     vis: Option<vis::VisFrame>,
+    /// The main camera is culled in one phase (view 0, frustum and level of detail only).
+    single: bool,
 }
 
 /// Everything [`VirtualGeometry::begin_frame`] needs from the renderer.
@@ -449,6 +486,8 @@ pub(super) struct FrameInputs<'a> {
     pub batch_key: &'a dyn Fn(usize) -> usize,
     /// Is the draw's material Cutout (alpha-tested)?
     pub cutout: &'a dyn Fn(usize) -> bool,
+    /// GPU culling builds the Hi-Z pyramid this frame anyway.
+    pub gpu_culling: bool,
 }
 
 fn storage(
@@ -546,7 +585,9 @@ impl Default for VirtualGeometry {
             debug: VgeoDebug::Off,
             debug_once: None,
             view_debug: VgeoDebug::Off,
-            visibility: true,
+            visibility: VgeoChoice::Auto,
+            vis_auto: false,
+            occlusion: VgeoChoice::Auto,
             edge_layer: false,
             on: false,
             pool_index: HashMap::new(),
@@ -855,6 +896,12 @@ impl VirtualGeometry {
             ]),
         );
 
+        // One main phase (frustum and level of detail only) or two around the Hi-Z pyramid.
+        let single = match self.occlusion {
+            VgeoChoice::On => false,
+            VgeoChoice::Off => true,
+            VgeoChoice::Auto => !input.gpu_culling && n < OCCLUSION_MIN_INSTANCES,
+        };
         // Level of detail for the main camera, in every view.
         let camera = frame.camera;
         let (scale, ortho) = match camera.projection {
@@ -896,7 +943,7 @@ impl VirtualGeometry {
             }
         };
         let mut uniforms = vec![
-            uniform(0, &input.view_proj, 0, 0),
+            uniform(0, &input.view_proj, if single { 3 } else { 0 }, 0),
             uniform(1, &input.view_proj, 1, input.state.mips()),
         ];
         for (i, m) in input
@@ -981,7 +1028,19 @@ impl VirtualGeometry {
             ],
         });
         let plain = self.view_debug == VgeoDebug::Off;
-        let vis = match self.visibility && plain && b <= vis::MAX_BATCHES {
+        // Auto: by the main camera's triangles a frame or two ago, per pixel and batch.
+        let pixels = (input.size.0 * input.size.1) as f32 * b as f32;
+        let triangles = self.latest.triangles as f32;
+        self.vis_auto = match self.vis_auto {
+            true => triangles >= VIS_OFF_TRIANGLES * pixels,
+            false => triangles >= VIS_ON_TRIANGLES * pixels,
+        };
+        let wanted = match self.visibility {
+            VgeoChoice::On => true,
+            VgeoChoice::Off => false,
+            VgeoChoice::Auto => self.vis_auto,
+        };
+        let vis = match wanted && plain && b <= vis::MAX_BATCHES {
             true => gpu
                 .vis
                 .as_mut()
@@ -998,7 +1057,14 @@ impl VirtualGeometry {
             cull_groups,
             render_group,
             vis,
+            single,
         });
+    }
+
+    /// The main camera's clusters are culled in one phase this frame (no Hi-Z occlusion):
+    /// the main pass draws them all with the first phase's meshes and isn't split for them.
+    pub fn single_phase(&self) -> bool {
+        self.frame.as_ref().is_some_and(|f| f.single)
     }
 
     /// Is there anything to draw this frame?
@@ -1025,7 +1091,7 @@ impl VirtualGeometry {
         let batches = f.batches.len() as u32;
         let label = Some("misty vgeo culling");
         for v in first..last {
-            if !gate(v) {
+            if (v == 1 && f.single) || !gate(v) {
                 continue;
             }
             {
@@ -1307,6 +1373,7 @@ impl VirtualGeometry {
                     views: 0,
                     instances: 0,
                     visibility: false,
+                    occlusion: false,
                 });
                 self.readback.len() - 1
             }
@@ -1316,6 +1383,7 @@ impl VirtualGeometry {
         r.views = f.views;
         r.instances = f.instances;
         r.visibility = f.vis.is_some();
+        r.occlusion = !f.single;
         r.state.store(1, Ordering::Release);
     }
 
@@ -1347,6 +1415,7 @@ impl VirtualGeometry {
             let mut stats = VgeoStats {
                 instances: r.instances,
                 visibility: r.visibility,
+                occlusion: r.occlusion,
                 ..Default::default()
             };
             if let Ok(data) = r.buffer.slice(..).get_mapped_range() {
@@ -1385,6 +1454,7 @@ impl VirtualGeometry {
         };
         stats.instances = f.instances;
         stats.visibility = f.vis.is_some();
+        stats.occlusion = !f.single;
         let size = (MAX_VIEWS * COUNTERS * 4) as u64;
         let read = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty vgeo stats readback"),
@@ -1741,6 +1811,7 @@ impl super::Renderer {
         lists: &super::frame_lists::FrameLists,
         view_proj: &Mat4,
         plan: &super::shadows::ShadowPlan,
+        gpu_culling: bool,
     ) {
         if !self.vgeo.on || !lists.prep.virtual_mesh.iter().any(Option::is_some) {
             self.vgeo.frame = None;
@@ -1789,14 +1860,24 @@ impl super::Renderer {
                 state,
                 batch_key: &batch_key,
                 cutout: &cutout,
+                gpu_culling,
             },
         );
     }
 
     /// Draw virtual geometry's main-pass clusters through the visibility buffer (the default,
     /// where the device can) or lit directly (A/B measurements).
-    pub fn set_virtual_geometry_visibility(&mut self, on: bool) {
-        self.vgeo.visibility = on;
+    /// `true` / `false` force it; [`VgeoChoice::Auto`] (the default) picks the visibility
+    /// buffer once the clusters' triangles get small for the pixels and material batches.
+    pub fn set_virtual_geometry_visibility(&mut self, choice: impl Into<VgeoChoice>) {
+        self.vgeo.visibility = choice.into();
+    }
+
+    /// Cull the main camera's clusters in two phases around a Hi-Z pyramid (occlusion
+    /// culling, `true`) or in one (`false`); [`VgeoChoice::Auto`] (the default) takes two
+    /// from [`OCCLUSION_MIN_INSTANCES`] instances on or when GPU culling is on.
+    pub fn set_virtual_geometry_occlusion(&mut self, choice: impl Into<VgeoChoice>) {
+        self.vgeo.occlusion = choice.into();
     }
 
     /// Draw every cluster in its own colour (Misty Virtual Geometry debug view).

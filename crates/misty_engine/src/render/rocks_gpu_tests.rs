@@ -234,6 +234,13 @@ fn rock_cost() {
         ("ultra", QualityLevel::ultra()),
     ];
     let only = std::env::var("MISTY_GFX_SHOT").unwrap_or_default();
+    let wanted = std::env::var("MISTY_QUALITY").unwrap_or_default();
+    let levels: Vec<_> = levels
+        .into_iter()
+        .filter(|(n, _)| wanted.is_empty() || wanted.split(',').any(|w| w == *n))
+        .collect();
+    // MISTY_PASSES=1: also the GPU time of each part (pass timers; they wait for the GPU).
+    let passes = std::env::var("MISTY_PASSES").is_ok_and(|v| v == "1");
     for shot in Shot::ALL {
         if !only.is_empty() && !shot.name().contains(&only) {
             continue;
@@ -252,19 +259,30 @@ fn rock_cost() {
             })
             .count();
         for (name, base) in &levels {
-            // (label, view, virtual geometry)
+            // (label, view, virtual geometry); "vgeo-old" forces the paths virtual geometry
+            // always took before its Auto choices (visibility buffer, two main phases).
             let runs = [
                 ("none", &without, false),
                 ("lod", &with, false),
+                ("vgeo-old", &with, true),
                 ("vgeo", &with, true),
             ];
             let mut out = Vec::new();
+            let mut breakdown = Vec::new();
             for (label, view, vgeo) in runs {
                 let mut r = Renderer::with_queue(&device, &queue);
                 r.set_quality(&device, &quality(base.clone(), vgeo));
+                if label == "vgeo-old" {
+                    r.set_virtual_geometry_visibility(true);
+                    r.set_virtual_geometry_occlusion(true);
+                }
+                if passes {
+                    r.set_pass_timing(&device, &queue, true);
+                }
                 let target = r.create_target(&device, 1920, 1080);
                 let frame = view.frame();
                 let mut times = Vec::new();
+                let mut parts: Vec<(&'static str, Vec<f32>)> = Vec::new();
                 for f in 0..160 {
                     r.render(&device, &queue, &target, &frame);
                     let _ = device.poll(wgpu::PollType::wait_indefinitely());
@@ -273,18 +291,40 @@ fn rock_cost() {
                     {
                         times.push(t);
                     }
+                    if f >= 40 {
+                        for &(l, ms) in r.pass_times() {
+                            match parts.iter_mut().find(|(x, _)| *x == l) {
+                                Some((_, v)) => v.push(ms),
+                                None => parts.push((l, vec![ms])),
+                            }
+                        }
+                    }
                 }
                 times.sort_by(f32::total_cmp);
                 let ms = times.get(times.len() / 2).copied().unwrap_or(f32::NAN);
+                let medians: Vec<(&'static str, f32)> = parts
+                    .into_iter()
+                    .map(|(l, mut v)| {
+                        v.sort_by(f32::total_cmp);
+                        (l, v[v.len() / 2])
+                    })
+                    .collect();
+                breakdown.push((label, medians));
                 let tris = r.stats().triangles as f64 / 1e6;
                 let vg = if vgeo {
                     let s = r.virtual_geometry_stats(&device, &queue);
                     format!(
-                        " [vg {} instances, {} clusters, {:.2} M tris, {:.2} M shadow tris]",
+                        " [vg {} instances, {} clusters, {:.2} M tris, {:.2} M shadow tris{}{}]",
                         s.instances,
                         s.clusters,
                         s.triangles as f64 / 1e6,
-                        s.shadow_triangles as f64 / 1e6
+                        s.shadow_triangles as f64 / 1e6,
+                        if s.visibility { ", vis" } else { ", lit" },
+                        if s.occlusion {
+                            ", 2 phases"
+                        } else {
+                            ", 1 phase"
+                        },
                     )
                 } else {
                     String::new()
@@ -303,6 +343,21 @@ fn rock_cost() {
                 shot.name(),
                 line.join(" | ")
             );
+            if passes {
+                // Every part that differs from "none" by 0.03 ms or more.
+                let none = &breakdown[0].1;
+                for (label, parts) in &breakdown[1..] {
+                    let diff: Vec<String> = parts
+                        .iter()
+                        .filter_map(|(l, ms)| {
+                            let base = none.iter().find(|(x, _)| x == l).map_or(0.0, |p| p.1);
+                            ((ms - base).abs() >= 0.03)
+                                .then(|| format!("{l} {ms:.2} ({:+.2})", ms - base))
+                        })
+                        .collect();
+                    eprintln!("    [{label}] {}", diff.join(" | "));
+                }
+            }
         }
     }
 }
