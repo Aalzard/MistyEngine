@@ -76,6 +76,8 @@ pub struct RenderTarget {
     pub(crate) screen_space: super::screen_space::TargetSlot,
     /// SSGI / SSR images, lit colour history and texels (created when first needed).
     pub(crate) screen_trace: super::screen_trace::TargetSlot,
+    /// Misty GI clipmaps and probes (created when first needed).
+    pub(crate) misty_gi: super::misty_gi::TargetSlot,
     /// Temporal shadow mask buffers and history (created when first needed).
     pub(crate) shadow_mask: super::shadow_denoise::TargetSlot,
     /// GPU culling's Hi-Z pyramid and last frame's visibility (made on first use).
@@ -292,6 +294,7 @@ impl RenderTarget {
             composite_group,
             screen_space: Default::default(),
             screen_trace: Default::default(),
+            misty_gi: Default::default(),
             shadow_mask: Default::default(),
             culling: Default::default(),
         }

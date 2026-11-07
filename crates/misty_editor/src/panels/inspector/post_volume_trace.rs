@@ -1,5 +1,5 @@
-//! Post-process Volume sections of the screen-space traced lighting: Screen Space Global
-//! Illumination and Screen Space Reflections.
+//! Post-process Volume sections of the traced lighting: Screen Space Global Illumination,
+//! Screen Space Reflections and Misty Global Illumination.
 
 use egui::Ui;
 use misty_engine::scene::{PostProcessVolume, ScreenSpaceQuality};
@@ -81,5 +81,24 @@ pub fn sections(ui: &mut Ui, v: &mut PostProcessVolume) -> bool {
         });
         ch
     });
+    let m = &mut v.misty_gi;
+    ch |= section(ui, "Misty Global Illumination", &mut m.active, |ui| {
+        let mut ch = row(ui, "Intensity", |ui| {
+            slider(ui, &mut m.intensity, 0.0..=2.0)
+        });
+        ch |= row(ui, "Quality", |ui| {
+            quality(ui, "misty_gi_quality", &mut m.quality)
+        });
+        grid_sub_header(ui, "Baked Lighting");
+        ch |= row(ui, "Lightmapped Surfaces", |ui| {
+            ui.checkbox(&mut m.lightmapped_surfaces, "")
+                .on_hover_text("Also light lightmapped surfaces (their lightmap already holds baked bounce light)")
+                .changed()
+        });
+        ch
+    });
+    if m.active {
+        ui.weak("Prototype. Fully dynamic bounce light and sky occlusion from a distance field around the camera; with Screen Space GI on too, on-screen detail comes from SSGI.");
+    }
     ch
 }

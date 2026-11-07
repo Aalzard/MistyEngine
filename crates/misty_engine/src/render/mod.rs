@@ -24,6 +24,7 @@ mod lightmap_gpu;
 pub mod lod;
 mod memory_items;
 pub mod mesh;
+mod misty_gi;
 mod motion;
 pub mod overrides;
 pub mod particles;
@@ -67,6 +68,7 @@ pub use frame_debug::{
     CaptureRequest, DrawLabel, EventKind, EventTarget, FrameCapture, FrameEvent, TargetInfo,
 };
 pub use glow::GlowSource;
+pub use misty_gi::MistyGiSettings;
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use pipelines::pipelines_built;
 pub use post::PostSettings;
@@ -1446,6 +1448,7 @@ impl Renderer {
         }
         let trace = screen.as_ref().and_then(|s| s.trace.as_ref());
         if let Some(t) = trace {
+            self.misty_gi_passes(&mut encoder, t);
             self.screen_trace_passes(&mut encoder, target, t);
         }
         self.mark(&mut encoder, "SSGI / SSR");

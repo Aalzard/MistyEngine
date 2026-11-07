@@ -47,6 +47,8 @@ pub struct PostSettings {
     pub ssgi: super::SsgiSettings,
     /// Screen Space Reflections (render/screen_trace).
     pub ssr: super::SsrSettings,
+    /// Misty GI (render/misty_gi).
+    pub misty_gi: super::MistyGiSettings,
     /// Volumetric clouds (off by default; drawn with the skybox).
     pub clouds: CloudsOverride,
 }
@@ -75,6 +77,7 @@ impl Default for PostSettings {
             contact_shadows: ContactShadowSettings::default(),
             ssgi: Default::default(),
             ssr: Default::default(),
+            misty_gi: Default::default(),
             clouds: CloudsOverride::default(),
         }
     }
@@ -120,6 +123,7 @@ impl PostSettings {
         s.contact_shadows = ContactShadowSettings::from_override(&v.contact_shadows);
         s.ssgi = super::SsgiSettings::from_override(&v.screen_space_gi);
         s.ssr = super::SsrSettings::from_override(&v.screen_space_reflections);
+        s.misty_gi = super::MistyGiSettings::from_override(&v.misty_gi);
         s.clouds = v.clouds;
         s
     }

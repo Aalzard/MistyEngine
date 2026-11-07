@@ -109,3 +109,30 @@ impl Default for ScreenSpaceReflectionsOverride {
         }
     }
 }
+
+/// Misty GI: fully dynamic world-space global illumination (global distance field, radiance
+/// cache and probe gather, `render/misty_gi`). Off unless the volume ticks it. With Screen Space
+/// GI also on, on-screen hits keep SSGI's detail and Misty GI fills the rays that leave the
+/// screen.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MistyGlobalIlluminationOverride {
+    pub active: bool,
+    /// 0..2: strength of the indirect light (1 = physically based).
+    pub intensity: f32,
+    /// Clipmap size, probe count and rays (Low ≈ 1 ms, High ≈ 3–4 ms at 1080p).
+    pub quality: ScreenSpaceQuality,
+    /// Lightmapped surfaces also take Misty GI (their lightmap already holds bounce light).
+    pub lightmapped_surfaces: bool,
+}
+
+impl Default for MistyGlobalIlluminationOverride {
+    fn default() -> Self {
+        Self {
+            active: false,
+            intensity: 1.0,
+            quality: ScreenSpaceQuality::High,
+            lightmapped_surfaces: false,
+        }
+    }
+}

@@ -5,7 +5,8 @@
 struct ScreenTrace {
     // x = 1 when SSGI is on, y = SSGI intensity, z = 1 when SSR is on, w = SSR intensity.
     flags: vec4<f32>,
-    // x = 1 when lightmapped surfaces take SSGI.
+    // x = 1 when lightmapped surfaces take SSGI, y = 1 when Misty GI is on (the GI replaces the
+    // ambient and takes the screen AO).
     misc: vec4<f32>,
     // x = GI rg, y = GI b + visibility, z = SSR rg, w = SSR b + confidence (non-negative f16 pairs, low half first).
     texels: array<vec4<u32>>,
@@ -78,7 +79,9 @@ fn screen_gi_apply(t: TraceSample, ambient_diffuse: vec3<f32>, diffuse_color: ve
     let intensity = screen_trace.flags.y;
     let traced = mix(1.0, t.gi.a, min(intensity, 1.0));
     let visibility = select(traced, min(traced / max(t.ao, 0.05), 1.0), screen.ao.x > 0.5);
-    return ambient_diffuse * visibility + t.gi.rgb * diffuse_color * occlusion * intensity;
+    // Misty GI's probes can't see crevices smaller than their grid: the screen AO adds them.
+    let gi_ao = select(1.0, t.ao, screen_trace.misc.y > 0.5);
+    return ambient_diffuse * visibility + t.gi.rgb * diffuse_color * occlusion * intensity * gi_ao;
 }
 
 // Reflection of probes / sky, replaced by the traced reflection where it found something;
