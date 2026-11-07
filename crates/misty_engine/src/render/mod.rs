@@ -34,6 +34,7 @@ pub mod probes;
 mod runtime_tex;
 mod scene_copy;
 mod screen_space;
+mod misty_gi;
 mod screen_trace;
 mod shadow_denoise;
 mod shadows;
@@ -68,6 +69,7 @@ pub use glow::GlowSource;
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use pipelines::pipelines_built;
 pub use post::PostSettings;
+pub use misty_gi::MistyGiSettings;
 pub use screen_trace::{SsgiSettings, SsrSettings};
 pub use soft_shadows::LightShadow;
 pub use stats::{FrameHistory, RenderMemory, RenderOptions, RenderStats};
@@ -1284,6 +1286,7 @@ impl Renderer {
         }
         let trace = screen.as_ref().and_then(|s| s.trace.as_ref());
         if let Some(t) = trace {
+            self.misty_gi_passes(&mut encoder, t);
             self.screen_trace_passes(&mut encoder, target, t);
         }
         self.mark(&mut encoder, "SSGI / SSR");

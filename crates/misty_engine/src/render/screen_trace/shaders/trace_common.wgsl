@@ -28,6 +28,9 @@ struct TraceParams {
     ssr: vec4<f32>,
     // x = history weight (0 = none), y = max ray length (m).
     ssr2: vec4<f32>,
+    // x = full pixels per Misty GI texel, y = 1 when Misty GI is on, z = its intensity, w = SSGI
+    // intensity (folded into the composed GI when Misty GI is on).
+    misty: vec4<f32>,
 };
 
 // What the lit shaders read (screen_trace.wgsl): header + one packed texel per full pixel.

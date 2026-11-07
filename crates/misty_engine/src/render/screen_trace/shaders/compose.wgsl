@@ -36,6 +36,13 @@ fn cs_compose(@builtin(global_invocation_id) id: vec3<u32>) {
         if (p.gi2.y > 0.5) {
             gi = upsample(in_a, p.size.zw, p.clip.z, fp);
         }
+        if (p.misty.y > 0.5) {
+            // Misty GI fills the share of SSGI's rays that hit nothing on screen (all of it
+            // with SSGI off); the ambient is then fully replaced (visibility 0).
+            let m = upsample(in_c, ceil(p.size.xy / p.misty.x), p.misty.x, fp);
+            let visible = mix(1.0, gi.a, min(p.misty.w, 1.0));
+            gi = vec4<f32>(gi.rgb * p.misty.w + visible * m.rgb * p.misty.z, 0.0);
+        }
         if (p.gi2.z > 0.5) {
             ssr = upsample(in_b, p.size2.xy, p.clip.w, fp);
         }

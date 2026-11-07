@@ -200,6 +200,9 @@ pub struct PostProcessVolume {
     /// Screen Space Reflections (render/screen_trace).
     #[serde(skip_serializing_if = "is_default")]
     pub screen_space_reflections: super::ScreenSpaceReflectionsOverride,
+    /// Misty GI: world-space dynamic global illumination (render/misty_gi).
+    #[serde(skip_serializing_if = "is_default")]
+    pub misty_gi: super::MistyGlobalIlluminationOverride,
     /// Raymarched cloud layer (left out of files while untouched).
     #[serde(skip_serializing_if = "is_default")]
     pub clouds: super::CloudsOverride,
@@ -220,6 +223,7 @@ impl Default for PostProcessVolume {
             contact_shadows: Default::default(),
             screen_space_gi: Default::default(),
             screen_space_reflections: Default::default(),
+            misty_gi: Default::default(),
             clouds: Default::default(),
         }
     }
