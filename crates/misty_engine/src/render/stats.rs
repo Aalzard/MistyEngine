@@ -37,6 +37,8 @@ pub struct RenderStats {
     pub grass_upload_last_start_ms: f32,
     /// The longest single upload piece of the frame (pieces are a fixed number of blades).
     pub grass_upload_piece_ms: f32,
+    /// Of that, the longest wait for room in the grass blade pages and cull arena.
+    pub grass_upload_alloc_ms: f32,
 }
 
 impl RenderStats {

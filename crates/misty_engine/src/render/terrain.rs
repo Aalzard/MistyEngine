@@ -113,6 +113,9 @@ struct GpuTerrain {
     /// Splat coverage per layer (Color Harmony weights).
     coverage: [f32; MAX_LAYERS],
     grass: Grass,
+    /// The grass passes' uniforms and groups (camera, cascade casters, the near map's
+    /// slices), made once and rewritten every frame.
+    grass_uniforms: Option<[(wgpu::Buffer, wgpu::BindGroup); 2 + grass_near_shadow::SLICES]>,
 }
 
 fn texture(
@@ -248,6 +251,7 @@ impl GpuTerrain {
             chunk_range: vec![(0.0, 0.0); per_side * per_side],
             coverage: [0.0; MAX_LAYERS],
             grass: Grass::default(),
+            grass_uniforms: None,
         }
     }
 
@@ -646,30 +650,41 @@ impl TerrainCache {
                 .with_ground_cover(self.ground_cover.is_some())
                 .with_vis_index(i as u32)
             };
-            let group = |p: &GrassParams| {
-                let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("misty grass params"),
-                    contents: bytemuck::bytes_of(p),
-                    usage: wgpu::BufferUsages::UNIFORM,
-                });
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("misty grass group"),
-                    layout: grass_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::TextureView(atlas_view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: wgpu::BindingResource::Sampler(atlas_sampler),
-                        },
-                    ],
+            // (Made once per terrain, rewritten every frame: no buffers or groups to create,
+            // track and drop per frame.)
+            let uniforms = g.grass_uniforms.get_or_insert_with(|| {
+                std::array::from_fn(|_| {
+                    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("misty grass params"),
+                        size: std::mem::size_of::<GrassParams>() as u64,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    });
+                    let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("misty grass group"),
+                        layout: grass_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(atlas_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(atlas_sampler),
+                            },
+                        ],
+                    });
+                    (buffer, group)
                 })
+            });
+            let group = |slot: usize, p: &GrassParams| {
+                let (buffer, group) = &uniforms[slot];
+                queue.write_buffer(buffer, 0, bytemuck::bytes_of(p));
+                group.clone()
             };
             let camera_params = params(None, 0.0);
             // Cascade casters leave the near map's square to it.
@@ -686,10 +701,16 @@ impl TerrainCache {
                     )
                 })
             });
-            self.grass_shadow_groups.push(shadow.as_ref().map(group));
-            self.grass_near_groups
-                .push(near_params.as_ref().map(|p| p.each_ref().map(group)));
-            self.grass_groups.push(Some(group(&camera_params)));
+            self.grass_shadow_groups
+                .push(shadow.as_ref().map(|p| group(1, p)));
+            self.grass_near_groups.push(near_params.as_ref().map(|p| {
+                let mut slot = 1;
+                p.each_ref().map(|p| {
+                    slot += 1;
+                    group(slot, p)
+                })
+            }));
+            self.grass_groups.push(Some(group(0, &camera_params)));
             self.grass_params.push(Some(GrassFrameParams {
                 camera: camera_params,
                 shadow,
@@ -1018,6 +1039,7 @@ impl TerrainCache {
             out.upload_ms += s.upload_ms;
             out.upload_last_start_ms = out.upload_last_start_ms.max(s.upload_last_start_ms);
             out.upload_piece_ms = out.upload_piece_ms.max(s.upload_piece_ms);
+            out.upload_alloc_ms = out.upload_alloc_ms.max(s.upload_alloc_ms);
             out.scatter_ms = out.scatter_ms.max(s.scatter_ms);
         }
         out

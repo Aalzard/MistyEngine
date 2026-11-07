@@ -229,6 +229,7 @@ fn grass_vis_flight() {
         let mut cpu = Vec::new();
         let mut upload = Vec::new();
         let mut piece: f32 = 0.0;
+        let mut alloc: f32 = 0.0;
         let mut over = 0;
         let first = crate::profiler::frame_index();
         for _ in 0..frames {
@@ -245,6 +246,7 @@ fn grass_vis_flight() {
             cpu.push(s.cpu_ms);
             upload.push(s.grass_upload_ms);
             piece = piece.max(s.grass_upload_piece_ms);
+            alloc = alloc.max(s.grass_upload_alloc_ms);
             over += usize::from(s.grass_upload_ms > 2.5);
         }
         let mut scopes: Vec<(String, f32)> = Vec::new();
@@ -271,7 +273,7 @@ fn grass_vis_flight() {
         let (c50, c90, c99, cmax) = stat(cpu.clone());
         let (u50, u90, u99, umax) = stat(upload.clone());
         eprintln!(
-            "== flight {level} {w}x{h} at {speed} m/s, {frames} frames: CPU render median {c50:.2} / p90 {c90:.2} / p99 {c99:.2} / max {cmax:.2} ms; grass upload median {u50:.2} / p90 {u90:.2} / p99 {u99:.2} / max {umax:.2} ms, longest piece {piece:.2} ms, frames over 2.5 ms: {over}"
+            "== flight {level} {w}x{h} at {speed} m/s, {frames} frames: CPU render median {c50:.2} / p90 {c90:.2} / p99 {c99:.2} / max {cmax:.2} ms; grass upload median {u50:.2} / p90 {u90:.2} / p99 {u99:.2} / max {umax:.2} ms, longest piece {piece:.2} ms (room in the pages {alloc:.2}), frames over 2.5 ms: {over}"
         );
         scopes.sort_by(|a, b| b.1.total_cmp(&a.1));
         for (name, ms) in scopes.iter().take(18) {
@@ -308,7 +310,7 @@ fn grass_vis_motion() {
         };
         let base_cam = view.camera;
         for (level, quality) in levels() {
-            let mut make = |on: bool| {
+            let make = |on: bool| {
                 crate::render::set_grass_vis(on);
                 let mut r = Renderer::with_queue(&device, &queue);
                 r.set_quality(&device, &quality);

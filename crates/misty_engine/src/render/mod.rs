@@ -1235,17 +1235,28 @@ impl Renderer {
         let (mut lists, plan, probes_rebuilt, near_sun) = {
             crate::profile_scope!("Render.Culling");
             let prep = self.draw_prep(frame, lod, &motion.prev_draws);
-            let terrains = self.terrain_bounds(frame);
+            let terrains = {
+                crate::profile_scope!("Render.TerrainBounds");
+                self.terrain_bounds(frame)
+            };
             // Reflection probes: atlas uploads and each draw's probe list.
-            let rebuilt = self
-                .probes
-                .prepare(device, queue, frame, &prep.bounds, &terrains);
+            let rebuilt = {
+                crate::profile_scope!("Render.Probes");
+                self.probes
+                    .prepare(device, queue, frame, &prep.bounds, &terrains)
+            };
             // Baked lightmaps (texture array upload).
             let rebuilt =
                 (self.lightmaps).prepare(device, queue, &frame.environment.lightmaps) || rebuilt;
-            let casters = Self::caster_bounds(frame, &prep.bounds, &terrains);
-            let plan = shadows::plan_with(frame, &casters, aspect, &shadow_settings);
-            let lists = self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats);
+            let plan = {
+                crate::profile_scope!("Render.ShadowPlan");
+                let casters = Self::caster_bounds(frame, &prep.bounds, &terrains);
+                shadows::plan_with(frame, &casters, aspect, &shadow_settings)
+            };
+            let lists = {
+                crate::profile_scope!("Render.FrameLists");
+                self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats)
+            };
             let grass_layout = &self.pipelines.grass_layout;
             let camera = frame.camera.position;
             // The sun that has the cascades gets the near grass shadow map too.
@@ -1417,7 +1428,10 @@ impl Renderer {
         self.vgeo
             .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views());
         self.mark(&mut encoder, "Virtual geometry: shadow culling");
-        self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+        {
+            crate::profile_scope!("Render.Encode.Shadows");
+            self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+        }
         self.mark(&mut encoder, "Shadow maps (cascades, local)");
         if let Some(view_proj) = grass_near {
             self.grass_near_shadow_pass(&mut encoder, frame, &view_proj, &mut stats);
@@ -1590,7 +1604,10 @@ impl Renderer {
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.resolve(&mut encoder, slot);
         }
-        queue.submit([encoder.finish()]);
+        {
+            crate::profile_scope!("Render.Submit");
+            queue.submit([encoder.finish()]);
+        }
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.submitted(slot);
         }
@@ -1603,6 +1620,7 @@ impl Renderer {
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
         stats.grass_upload_piece_ms = grass.upload_piece_ms;
+        stats.grass_upload_alloc_ms = grass.upload_alloc_ms;
         self.motion
             .end(target.id, std::mem::take(&mut lists.prep.motion));
         stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
@@ -2288,6 +2306,7 @@ impl Renderer {
         stats: &mut RenderStats,
         split: MainSplit,
     ) {
+        crate::profile_scope!("Render.Encode.Main");
         let (first, last) = (split.phase != Some(1), split.phase != Some(0));
         let copy = last && (split.scene_copy || split.trace.is_some());
         // Sun shafts and glow occlusion read the depth after the main pass.

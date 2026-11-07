@@ -24,9 +24,9 @@ use crate::terrain::store::Region;
 const CHUNK: f32 = 16.0;
 /// Render-thread time per frame for uploading finished chunks (the first piece always goes).
 pub(super) const UPLOAD_BUDGET: Duration = Duration::from_millis(2);
-/// Blades written per piece of an upload (~1.2 MB of blades and 0.25 MB of cull records):
+/// Blades written per piece of an upload (~0.6 MB of blades and 0.13 MB of cull records):
 /// a big chunk goes up over several frames, so no single frame spends long on it.
-const UPLOAD_PIECE: usize = 16 * 1024;
+const UPLOAD_PIECE: usize = 8 * 1024;
 /// Scatter jobs handed to the workers at once per terrain (more would just queue up and go
 /// stale while the camera moves on).
 const MAX_IN_FLIGHT: usize = 6;
@@ -213,6 +213,8 @@ pub struct GrassStats {
     pub upload_last_start_ms: f32,
     /// Longest single upload piece this frame (a piece is at most [`UPLOAD_PIECE`] blades).
     pub upload_piece_ms: f32,
+    /// Of that, the longest wait for room in the blade pages and the cull arena.
+    pub upload_alloc_ms: f32,
     /// Longest worker scatter among the chunks uploaded this frame.
     pub scatter_ms: f32,
 }
@@ -232,6 +234,9 @@ pub(super) struct Grass {
     ready: VecDeque<Done>,
     /// The chunk going up now (in pieces over frames).
     uploading: Option<Upload>,
+    /// Recent time of one upload piece (ms): a piece only starts when it fits in what is
+    /// left of the frame's budget (the first of a frame always goes).
+    piece_ms: f32,
     pub stats: GrassStats,
     /// Share of the blades drawn at every distance (Quality ▸ Grass Density; the rest grow
     /// wider to cover the same ground).
@@ -263,6 +268,7 @@ impl Default for Grass {
             },
             ready: VecDeque::new(),
             uploading: None,
+            piece_ms: 0.0,
             stats: GrassStats::default(),
             density: 1.0,
             arena: None,
@@ -521,14 +527,24 @@ impl Grass {
     /// chunk replaces its older version only once all its blades are on the GPU.
     fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, budgeted: bool) {
         let started = Instant::now();
+        let budget = UPLOAD_BUDGET.as_secs_f32() * 1000.0;
+        let mut first = true;
         loop {
             let piece_start = Instant::now();
+            let spent = started.elapsed().as_secs_f32() * 1000.0;
+            if budgeted && !first && spent + self.piece_ms > budget {
+                break;
+            }
+            first = false;
             if self.uploading.is_none() {
                 let Some(done) = self.ready.pop_front() else {
                     break;
                 };
                 self.stats.scatter_ms = self.stats.scatter_ms.max(done.scatter_ms);
-                self.uploading = Some(self.begin_upload(device, queue, done));
+                let up = self.begin_upload(device, queue, done);
+                let alloc_ms = piece_start.elapsed().as_secs_f32() * 1000.0;
+                self.stats.upload_alloc_ms = self.stats.upload_alloc_ms.max(alloc_ms);
+                self.uploading = Some(up);
             }
             let up = self.uploading.as_mut().expect("set above");
             let total = up.done.blades.len();
@@ -547,6 +563,8 @@ impl Grass {
             }
             let piece_ms = piece_start.elapsed().as_secs_f32() * 1000.0;
             self.stats.upload_piece_ms = self.stats.upload_piece_ms.max(piece_ms);
+            // (A slow piece raises the estimate at once, fast ones lower it gently.)
+            self.piece_ms = piece_ms.max(self.piece_ms * 0.9 + piece_ms * 0.1);
             let elapsed = started.elapsed();
             if budgeted && elapsed >= UPLOAD_BUDGET {
                 break;
