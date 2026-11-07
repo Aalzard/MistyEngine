@@ -1,6 +1,7 @@
 //! Which assets a build needs: a walk from the build scenes through everything they reference.
 //!
-//! Scenes, prefabs, materials, animations, controllers, mixers, terrains and nav meshes are JSON,
+//! Scenes, prefabs, materials, animations, controllers, mixers, terrains, tree recipes and nav
+//! meshes are JSON,
 //! and every reference in them is a project path string ("Assets/…", optionally with a
 //! `#sub-asset` suffix), so the walk reads every string of every JSON file it reaches. Lua
 //! scripts are scanned for string literals naming assets, `.obj` files for their `.mtl` and
@@ -23,7 +24,7 @@ pub struct Dependencies {
 }
 
 /// Extensions whose files are JSON documents that can reference other assets.
-const JSON_ASSETS: [&str; 16] = [
+const JSON_ASSETS: [&str; 17] = [
     "scene",
     "prefab",
     "mat",
@@ -40,6 +41,8 @@ const JSON_ASSETS: [&str; 16] = [
     "palette",
     "effect",
     "strings",
+    // Tree recipes name their bark and leaf textures (terrain trees).
+    "tree",
 ];
 
 fn ext(rel: &str) -> String {
@@ -66,10 +69,7 @@ fn collect_with(
     resources: bool,
     guids: &GuidDatabase,
 ) -> Dependencies {
-    let mut deps = Dependencies::default();
-    // Stale paths in files saved with GUIDs follow the renamed or moved asset.
-    let mut queue: VecDeque<(String, String)> =
-        roots.iter().map(|r| (r.clone(), String::new())).collect();
+    let mut roots = roots.to_vec();
     let resource_files = if resources {
         crate::vfs::files_under(&project.join("Assets"))
     } else {
@@ -83,26 +83,60 @@ fn collect_with(
         // String Tables are found by name at runtime, like Resources.
         let table = rel.ends_with(".strings");
         if (table || rel.split('/').any(|part| part == "Resources")) && !rel.ends_with(".meta") {
-            queue.push_back((rel, String::new()));
+            roots.push(rel);
         }
     }
+    collect_in(&Disk(project), &roots, guids)
+}
+
+/// Where a walk reads files from, by project-relative path ("Assets/…"): the project folder
+/// on disk, or another copy of a project (an archive, a project template's source).
+pub trait ProjectFiles {
+    fn is_file(&self, rel: &str) -> bool;
+    /// The file's text (`None` when it can't be read).
+    fn read_to_string(&self, rel: &str) -> Option<String>;
+}
+
+/// The project folder (through [`crate::vfs`], so a mounted pak works too).
+struct Disk<'a>(&'a Path);
+
+impl ProjectFiles for Disk<'_> {
+    fn is_file(&self, rel: &str) -> bool {
+        crate::vfs::is_file(&self.0.join(rel))
+    }
+
+    fn read_to_string(&self, rel: &str) -> Option<String> {
+        crate::vfs::read_to_string(self.0.join(rel)).ok()
+    }
+}
+
+/// Every file `roots` need, read from `files` (no `Resources` folders), resolving GUID
+/// references with `guids`.
+pub fn collect_in(
+    files: &dyn ProjectFiles,
+    roots: &[String],
+    guids: &GuidDatabase,
+) -> Dependencies {
+    let mut deps = Dependencies::default();
+    // Stale paths in files saved with GUIDs follow the renamed or moved asset.
+    let mut queue: VecDeque<(String, String)> =
+        roots.iter().map(|r| (r.clone(), String::new())).collect();
     while let Some((rel, from)) = queue.pop_front() {
         let rel = normalize(&rel);
         // Editor scripts and other editor-only files never ship.
         if deps.files.contains(&rel) || is_editor_only(&rel) {
             continue;
         }
-        let abs = project.join(&rel);
-        if !crate::vfs::is_file(&abs) {
+        if !files.is_file(&rel) {
             deps.missing.entry(rel).or_insert(from);
             continue;
         }
         deps.files.insert(rel.clone());
         let meta = format!("{rel}.meta");
-        if crate::vfs::is_file(&project.join(&meta)) {
+        if files.is_file(&meta) {
             deps.files.insert(meta);
         }
-        for r in references(project, &rel, guids) {
+        for r in references(files, &rel, guids) {
             if !deps.files.contains(&r) {
                 queue.push_back((r, rel.clone()));
             }
@@ -135,14 +169,13 @@ fn normalize(rel: &str) -> String {
 }
 
 /// Project paths named inside the file `rel`.
-fn references(project: &Path, rel: &str, guids: &GuidDatabase) -> Vec<String> {
-    let abs = project.join(rel);
+fn references(files: &dyn ProjectFiles, rel: &str, guids: &GuidDatabase) -> Vec<String> {
     let dir = Path::new(rel).parent().map_or(String::new(), |d| {
         let d = d.to_string_lossy().replace('\\', "/");
         if d.is_empty() { d } else { d + "/" }
     });
     let ext = ext(rel);
-    let read = || crate::vfs::read_to_string(&abs).unwrap_or_default();
+    let read = || files.read_to_string(rel).unwrap_or_default();
     let mut out = Vec::new();
     if JSON_ASSETS.contains(&ext.as_str()) {
         let text = read();
@@ -241,7 +274,7 @@ mod tests {
             "Assets/Scenes/A.scene",
             r#"{ "objects": [ { "mat": "Assets/Mats/Red.mat", "mesh": "Assets/Models/Ramp.obj#0",
                  "script": "Assets/Scripts/S.lua", "gone": "Assets/Missing.png",
-                 "tool": "Assets/Scripts/T.lua",
+                 "tool": "Assets/Scripts/T.lua", "terrain": "Assets/Terrains/T.terrain",
                  "sprite": "Assets/Sprites/Tiles.png#Tiles_3" } ] }"#,
         );
         write(
@@ -274,6 +307,18 @@ mod tests {
             "newmtl A\nmap_Kd -bm 1 ../Tex/Wood.png\n",
         );
         write(&root, "Assets/Tex/Wood.png", "png");
+        // Terrain trees: the terrain names its tree recipes, each recipe its textures.
+        write(
+            &root,
+            "Assets/Terrains/T.terrain",
+            r#"{ "trees": { "prototypes": [ { "tree": "Assets/Trees/Oak.tree" } ] } }"#,
+        );
+        write(
+            &root,
+            "Assets/Trees/Oak.tree",
+            r#"{ "bark_texture": "Assets/Trees/Textures/OakBark.png" }"#,
+        );
+        write(&root, "Assets/Trees/Textures/OakBark.png", "png");
         write(&root, "Assets/Resources/Levels/Data.json", "{}");
         write(&root, "Assets/Unused.scene", "{}");
         // Editor scripts never ship, even when named or under Resources.
@@ -300,9 +345,12 @@ mod tests {
                 "Assets/Scripts/S.lua",
                 "Assets/Scripts/T.lua",
                 "Assets/Sprites/Tiles.png",
+                "Assets/Terrains/T.terrain",
                 "Assets/Tex/Red.png",
                 "Assets/Tex/Red.png.meta",
                 "Assets/Tex/Wood.png",
+                "Assets/Trees/Oak.tree",
+                "Assets/Trees/Textures/OakBark.png",
             ]
         );
         assert_eq!(

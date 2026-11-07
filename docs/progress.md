@@ -2444,6 +2444,52 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Bark close up is much better but still procedural (furrow pattern somewhat regular on the
   linden, oak a little dark in shade); leaf cards seen edge-on still show stretched texture.
 
+## MeadowDemo project template (branch meadow-template)
+
+### Done
+- New Project has a third template, **MeadowDemo**: "A walkable meadow with a first-person player:
+  thin grass, trees, Misty GI. Free assets for your game." It copies `SampleProject`'s MeadowDemo
+  scene and everything it uses, found with the build's dependency walk (`asset_deps`, which now
+  also follows `.tree` recipes to their textures, so built games get the tree textures too): the
+  terrain, the 5 tree recipes with their textures, README and LICENSE, the meadow and terrain
+  ground textures, the First Person Player prefab and its 4 scripts, every `.meta` file (same
+  GUIDs, folders included) and the sample's project settings (Run / Crouch axes, the Player
+  layer). From `Examples/SampleProject` next to the exe or, in a dev build, the committed
+  `SampleProject` (`git archive HEAD`). The project opens on `MeadowDemo.scene`.
+- The new project looks towards the sun: the Player is turned to the sun's horizontal direction
+  (nudged if a tree stands right in front) and the Scene view starts just behind its eyes,
+  slightly down. Only the copy is turned; the sample scene is unchanged
+  (`docs/screenshots/gfx/meadow_template_start.png`, `meadow_template_player.png`).
+- Every template card has a one-line description (`docs/screenshots/gfx/hub_templates.png`);
+  the MeadowDemo card is dimmed when the install has no sample project. "Include sample scenes"
+  works on top of it (files already there are kept). Tests: copy list and GUIDs, every reference
+  of the scene, prefab, terrain and trees resolving, opening and 60 frames of Play without an
+  error, the folder (release) source, the Hub card and creating it from the Hub.
+
+## Meadow rocks (branch rocks)
+
+### Done (docs/pending/rocks.md)
+- Six procedural rock types in `SampleProject/Assets/Rocks` (CC0, README + LICENSE): Boulder
+  Large, Boulder Split, Boulder Round (granite), Outcrop Layered (sandstone slab), Rock Small and
+  Cobbles. Each: a dense LOD 0 (82 k triangles for the big ones) imported with Virtual Geometry
+  on, three simplified LOD levels, its own baked albedo / normal / mask maps (lichen, moss on
+  top faces and in hollows, a grass-tinted damp base), a material and a LOD Group prefab with a
+  Mesh Collider. Generator `crates/misty_editor/src/sample_rocks` (`write_rocks`); tileable
+  source sets from the Codex-written `tools/rock_textures.py`.
+- MeadowDemo: 64 rocks (34 big, 30 small) in 21 groups (boulders and outcrops near the rises and along the foot of
+  the mountains, a few in the open field's sides, small rocks and cobbles round the big ones),
+  sunk and tilted to the ground, clear of trees, the player and the view ahead. Only the
+  scene's "Rocks" object is generated (`write_meadow_rocks`); the user's objects stay.
+- LOD Groups whose LOD 0 is a virtual geometry mesh keep LOD 0 at every distance while virtual
+  geometry draws it (`LodRange::virtual_lod`), and switch levels as usual otherwise.
+- Shots `docs/screenshots/gfx/rocks_*`, GPU cost test `rock_cost`: LOD Groups cost 0–0.7 ms;
+  virtual geometry measured ~1–1.4 ms more (Low 2–4 ms), so the Quality presets keep it off.
+  Meadow golden references updated; CyclesRoom unchanged.
+
+### Not done yet
+- No prefab brush / terrain paint for rocks (optional part); moss follows the object's up axis
+  (baked); boulders still a little loaf-like at a distance; GI bounces the material colour.
+
 ## Flowers and leaves (branch flowers-leaves)
 
 ### Done (docs/pending/flowers.md; docs/pending/meadow-trees.md, "Look round 3")
@@ -2454,11 +2500,12 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   cull, go through the grass visibility buffer, cast shadows and sway with the grass's wind
   with correct motion vectors. Four CC0 sample wildflowers in `SampleProject/Assets/Flowers`
   (purple knapweed, red poppy, white oxeye daisy, yellow buttercup) from the Codex-written
-  `tools/flower_textures.py`; MeadowDemo grows them in patches.
+  `tools/flower_textures.py`; MeadowDemo grows them in patches. Cost 0.0–0.16 ms.
 - Leaves: new Codex-drawn leaf atlases (real oak lobes, heart-shaped linden, deltoid birch
   leaves, veins, per-leaf colour, translucent blades with darker veins), much lower roughness
   (a waxy sheen and glints), the leaves' own normals count more, LOD 0 leaf cards curve back
-  at the top.
+  at the top, more light through backlit leaves. Tree cost within 0.05 ms of before.
+- Meadow golden references updated (after merging the rocks); CyclesRoom unchanged.
 
 ### Not done yet
 - Flower plant cards are flat; seen from straight above only the head card shows. No flower

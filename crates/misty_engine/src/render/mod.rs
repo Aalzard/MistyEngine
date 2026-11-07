@@ -1300,20 +1300,23 @@ impl Renderer {
         if let Some(timer) = self.gpu_timer.as_mut() {
             timer.poll(device);
         }
-        let lod = draw_prep::lod_states(frame, self.options.lod_bias);
-        {
-            crate::profile_scope!("Render.PrepareAssets");
-            self.prepare_assets(device, queue, frame, &lod);
-        }
         // Virtual geometry: meshes built into clusters draw through the cluster path (it needs
         // indirect draws with an instance offset, like GPU culling). While capturing, the
-        // Frame Debugger lists its culling and batch draws (vgeo_gate).
+        // Frame Debugger lists its culling and batch draws (vgeo_gate). Prepared before the
+        // LOD states: a LOD Group whose LOD 0 draws as clusters keeps LOD 0.
         self.vgeo.on = self.vgeo.enabled && self.culler.is_some() && frame.shaded;
         self.vgeo.view_debug = self.vgeo.debug_once.take().unwrap_or(self.vgeo.debug);
         if self.vgeo.on {
             crate::profile_scope!("Render.VirtualGeometry");
             self.vgeo.ensure_gpu(device, &self.pipelines);
             self.vgeo.prepare_meshes(device, frame);
+        }
+        let lod = draw_prep::lod_states(frame, self.options.lod_bias, |m| {
+            self.vgeo.mesh_index(m).is_some()
+        });
+        {
+            crate::profile_scope!("Render.PrepareAssets");
+            self.prepare_assets(device, queue, frame, &lod);
         }
         let aspect = target.aspect();
         // Temporal anti-aliasing jitters the camera by a sub-pixel offset each frame (of an
@@ -3539,6 +3542,8 @@ mod grass_vis_tests;
 mod hitch_tests;
 #[cfg(test)]
 mod meadow_perf_tests;
+#[cfg(test)]
+mod rocks_gpu_tests;
 #[cfg(test)]
 mod taa_gpu_tests;
 #[cfg(test)]

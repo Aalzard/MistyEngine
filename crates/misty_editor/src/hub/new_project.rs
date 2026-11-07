@@ -89,8 +89,9 @@ fn blocked_hint(error: &str) -> &'static str {
         .iter()
         .any(|code| error.contains(code));
     if cfg!(windows) && blocked {
-        "
-If Windows Security's Controlled folder access is on, allow Misty Engine          (Windows Security ▸ Virus & threat protection ▸ Ransomware protection) or choose a          location outside Documents."
+        "\nIf Windows Security's Controlled folder access is on, allow Misty Engine \
+         (Windows Security ▸ Virus & threat protection ▸ Ransomware protection) or choose a \
+         location outside Documents."
     } else {
         ""
     }
@@ -133,8 +134,11 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 8.0;
                         for t in Template::ALL {
-                            if card(ui, hub, &p, t, np.template == t).clicked() && !np.busy() {
+                            let available = t.available();
+                            let resp = card(ui, hub, &p, t, np.template == t, available);
+                            if resp.clicked() && !np.busy() && available {
                                 np.template = t;
+                                np.error = None;
                             }
                         }
                     });
@@ -172,17 +176,19 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     }
 }
 
-/// A template card: thumbnail, name and description.
+/// A template card: thumbnail, name and a one-line description (dimmed when this install
+/// can't make the template).
 fn card(
     ui: &mut egui::Ui,
     hub: &mut Hub,
     p: &style::Palette,
     t: Template,
     selected: bool,
+    available: bool,
 ) -> egui::Response {
-    let height = 84.0;
+    let height = 96.0;
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::click());
-    let fill = if selected || resp.hovered() {
+    let fill = if (selected || resp.hovered()) && available {
         p.card_hover
     } else {
         p.card
@@ -200,6 +206,9 @@ fn card(
             .max_rect(rect.shrink(10.0))
             .layout(Layout::left_to_right(Align::Center)),
     );
+    if !available {
+        child.multiply_opacity(0.45);
+    }
     if let Some(tex) = hub.template_texture(child.ctx(), t) {
         child.add(
             egui::Image::new(&tex)
@@ -209,12 +218,19 @@ fn card(
     }
     child.add_space(4.0);
     child.vertical(|ui| {
-        ui.add_space(6.0);
+        ui.add_space(2.0);
         ui.spacing_mut().item_spacing.y = 3.0;
-        ui.label(RichText::new(t.name()).size(15.0).strong());
-        ui.add(egui::Label::new(RichText::new(t.description()).small().color(p.dim)).wrap());
+        // Not selectable: a click on the text picks the card.
+        let name = RichText::new(t.name()).size(15.0).strong();
+        ui.add(egui::Label::new(name).selectable(false));
+        let description = RichText::new(t.description()).small().color(p.dim);
+        ui.add(egui::Label::new(description).wrap().selectable(false));
     });
-    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+    if available {
+        resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        resp.on_hover_text("This install has no sample project to copy it from.")
+    }
 }
 
 /// Large preview, description and the name / location fields.
@@ -278,7 +294,8 @@ fn details(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette, np: &mut NewPro
             egui::Checkbox::new(&mut np.include_samples, "Include sample scenes"),
         )
         .on_hover_text(
-            "Adds every demo scene (vehicles, Timeline, terrain, effects…) and what they use              under Assets, and lists them in Build Settings (unticked). About 30 MB.",
+            "Adds every demo scene (vehicles, Timeline, terrain, effects…) and what they use \
+             under Assets, and lists them in Build Settings (unticked). About 30 MB.",
         );
     if !have_samples {
         samples.on_disabled_hover_text("This install has no sample scenes.");

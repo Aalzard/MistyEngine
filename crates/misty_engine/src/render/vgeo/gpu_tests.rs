@@ -622,6 +622,7 @@ fn field(rocks: &Rocks, n: usize, path: Path) -> Vec<MeshDraw> {
                         min: heights[level + 1],
                         max: heights[level],
                         fade: 0.0,
+                        virtual_lod: None,
                     });
                     draws.push(d);
                 }

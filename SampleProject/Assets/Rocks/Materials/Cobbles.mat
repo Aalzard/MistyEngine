@@ -1,0 +1,36 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.49249864,
+    0.49230254,
+    0.47138017,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 1.0,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Rocks/Textures/Cobbles_Albedo.jpg",
+  "normal_map": "Assets/Rocks/Textures/Cobbles_Normal.png",
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "metallic_map": "Assets/Rocks/Textures/Cobbles_Mask.png",
+  "occlusion_map": "Assets/Rocks/Textures/Cobbles_Mask.png",
+  "asset_guids": {
+    "Assets/Rocks/Textures/Cobbles_Albedo.jpg": "ec576504fc7d7e24ad99d8dd7bb97a55",
+    "Assets/Rocks/Textures/Cobbles_Mask.png": "d97dda55f50e0a139e69066eada8d000",
+    "Assets/Rocks/Textures/Cobbles_Normal.png": "3b4ce304d1719f4c3c36d403b1055f20"
+  }
+}

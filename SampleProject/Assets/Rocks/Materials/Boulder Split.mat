@@ -1,0 +1,36 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.7217327,
+    0.69598794,
+    0.5919102,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 1.0,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Rocks/Textures/Boulder Split_Albedo.jpg",
+  "normal_map": "Assets/Rocks/Textures/Boulder Split_Normal.png",
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "metallic_map": "Assets/Rocks/Textures/Boulder Split_Mask.png",
+  "occlusion_map": "Assets/Rocks/Textures/Boulder Split_Mask.png",
+  "asset_guids": {
+    "Assets/Rocks/Textures/Boulder Split_Albedo.jpg": "4cd54a96635130ec42361ab0e586987b",
+    "Assets/Rocks/Textures/Boulder Split_Mask.png": "2934859b2d8e3e3659e8b09aecf497ad",
+    "Assets/Rocks/Textures/Boulder Split_Normal.png": "ff3a3ec2ea602cb4f6ce2e7a34b3b77e"
+  }
+}

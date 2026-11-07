@@ -121,6 +121,8 @@ mod sample_render;
 #[cfg(test)]
 mod sample_rigging;
 #[cfg(test)]
+mod sample_rocks;
+#[cfg(test)]
 mod sample_saveloc;
 #[cfg(test)]
 mod sample_shader_graph;
@@ -175,6 +177,8 @@ mod spline_tools;
 mod sprite_handles;
 mod state;
 mod status_bar;
+#[cfg(test)]
+mod string_literal_lint;
 mod templates;
 mod terrain_flowers_ui;
 mod terrain_rules;
