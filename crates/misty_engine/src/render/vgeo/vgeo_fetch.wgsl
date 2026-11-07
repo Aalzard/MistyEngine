@@ -11,24 +11,28 @@ struct VgCluster {
     parent: vec4<f32>,
     error: f32,
     parent_error: f32,
-    first: u32,
     triangles: u32,
     vertex_first: u32,
     local_first: u32,
+    cone_axis: u32,
+    cone_cutoff: f32,
     pad0: u32,
-    pad1: u32,
 };
 
-// Source vertices, 14 floats each: position, normal, uv, tangent, uv2 (render/mesh.rs Vertex).
-@group(3) @binding(0) var<storage, read> vg_vertices: array<f32>;
-@group(3) @binding(1) var<storage, read> vg_indices: array<u32>;
+// Source vertices, 8 words each (render/vgeo/mod.rs `pack_vertex`): position (3 × f32),
+// normal and tangent (octahedral 2 × snorm16, the bitangent sign in the tangent's lowest bit),
+// uv (2 × f32), lightmap uv (2 × unorm16).
+@group(3) @binding(0) var<storage, read> vg_vertices: array<u32>;
+// Every cluster's triangles as 16-bit indices into its own vertex list, two per word (also
+// the index buffer of the indexed path).
+@group(3) @binding(1) var<storage, read> vg_local: array<u32>;
 @group(3) @binding(2) var<storage, read> vg_clusters: array<VgCluster>;
 // (draw, cluster) per drawn cluster, written by vgeo_cull.wgsl.
 @group(3) @binding(3) var<storage, read> vg_visible: array<vec2<u32>>;
 // Per cluster, its vertices' source ids (indexed path).
 @group(3) @binding(4) var<storage, read> vg_cluster_vertices: array<u32>;
 
-const VG_STRIDE: u32 = 14u;
+const VG_STRIDE: u32 = 8u;
 
 struct VgVertex {
     draw: u32,
@@ -40,11 +44,21 @@ struct VgVertex {
     uv2: vec2<f32>,
 };
 
+// Local index `i` (16 bits) of the pool.
+fn vg_local_index(i: u32) -> u32 {
+    return (vg_local[i >> 1u] >> ((i & 1u) * 16u)) & 0xffffu;
+}
+
+// Source vertex of corner `corner` (0 .. 3 × triangles) of cluster `c`.
+fn vg_corner(c: VgCluster, corner: u32) -> u32 {
+    return vg_cluster_vertices[c.vertex_first + vg_local_index(c.local_first + corner)];
+}
+
 fn vg_fetch(vertex: u32, instance: u32) -> VgVertex {
     let item = vg_visible[instance];
     let c = vg_clusters[item.y];
     let corner = min(vertex, c.triangles * 3u - 1u);
-    return vg_vertex(vg_indices[c.first + corner], item);
+    return vg_vertex(vg_corner(c, corner), item);
 }
 
 fn vg_fetch_indexed(vertex: u32, instance: u32) -> VgVertex {
@@ -54,20 +68,35 @@ fn vg_fetch_indexed(vertex: u32, instance: u32) -> VgVertex {
     return vg_vertex(vg_cluster_vertices[c.vertex_first + local], item);
 }
 
+// A direction from its octahedral encoding (render/vgeo/mod.rs `octahedral`).
+fn vg_octahedral(w: u32) -> vec3<f32> {
+    let e = unpack2x16snorm(w);
+    var n = vec3<f32>(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+    let t = max(-n.z, 0.0);
+    n.x += select(t, -t, n.x >= 0.0);
+    n.y += select(t, -t, n.y >= 0.0);
+    return normalize(n);
+}
+
+fn vg_vertex_position(source: u32) -> vec3<f32> {
+    let b = source * VG_STRIDE;
+    return vec3<f32>(
+        bitcast<f32>(vg_vertices[b]),
+        bitcast<f32>(vg_vertices[b + 1u]),
+        bitcast<f32>(vg_vertices[b + 2u]),
+    );
+}
+
 fn vg_vertex(source: u32, item: vec2<u32>) -> VgVertex {
     var out: VgVertex;
     out.draw = item.x;
     out.cluster = item.y;
     let b = source * VG_STRIDE;
-    out.position = vec3<f32>(vg_vertices[b], vg_vertices[b + 1u], vg_vertices[b + 2u]);
-    out.normal = vec3<f32>(vg_vertices[b + 3u], vg_vertices[b + 4u], vg_vertices[b + 5u]);
-    out.uv = vec2<f32>(vg_vertices[b + 6u], vg_vertices[b + 7u]);
-    out.tangent = vec4<f32>(
-        vg_vertices[b + 8u],
-        vg_vertices[b + 9u],
-        vg_vertices[b + 10u],
-        vg_vertices[b + 11u],
-    );
-    out.uv2 = vec2<f32>(vg_vertices[b + 12u], vg_vertices[b + 13u]);
+    out.position = vg_vertex_position(source);
+    out.normal = vg_octahedral(vg_vertices[b + 3u]);
+    let t = vg_vertices[b + 4u];
+    out.tangent = vec4<f32>(vg_octahedral(t), select(1.0, -1.0, (t & 1u) != 0u));
+    out.uv = vec2<f32>(bitcast<f32>(vg_vertices[b + 5u]), bitcast<f32>(vg_vertices[b + 6u]));
+    out.uv2 = unpack2x16unorm(vg_vertices[b + 7u]);
     return out;
 }

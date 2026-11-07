@@ -38,6 +38,8 @@ struct View {
     // x = chunk capacity; where `control` holds z = the limits and w = the draw arguments
     // (y unused).
     caps: vec4<u32>,
+    // This view's eye (w = 1) or, orthographic, its forward direction (w = 0): back faces.
+    eye: vec4<f32>,
 };
 
 struct Instance {
@@ -63,13 +65,14 @@ struct Cluster {
     parent: vec4<f32>,
     error: f32,
     parent_error: f32,
-    first: u32,
     triangles: u32,
     // The cluster's own vertex list (source vertex ids) and its local indices (indexed path).
     vertex_first: u32,
     local_first: u32,
+    // Normal cone: octahedral axis (2 × snorm16) and cutoff (> 1 = never back-facing).
+    cone_axis: u32,
+    cone_cutoff: f32,
     pad0: u32,
-    pad1: u32,
 };
 
 @group(0) @binding(0) var<uniform> vu: View;
@@ -99,6 +102,37 @@ struct Cluster {
 
 fn world_scale(m: mat4x4<f32>) -> f32 {
     return max(length(m[0].xyz), max(length(m[1].xyz), length(m[2].xyz)));
+}
+
+// As vg_octahedral (vgeo_fetch.wgsl).
+fn octahedral(w: u32) -> vec3<f32> {
+    let e = unpack2x16snorm(w);
+    var n = vec3<f32>(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+    let t = max(-n.z, 0.0);
+    n.x += select(t, -t, n.x >= 0.0);
+    n.y += select(t, -t, n.y >= 0.0);
+    return normalize(n);
+}
+
+// Does every triangle of the cluster face away from this view (vgeo::Cluster::backfacing)?
+// Object to world must keep angles (uniform scale) and winding (no mirror); otherwise never.
+fn backfacing(c: Cluster, model: mat4x4<f32>, center: vec3<f32>, radius: f32) -> bool {
+    if (c.cone_cutoff > 1.0) {
+        return false;
+    }
+    let lx = length(model[0].xyz);
+    let ly = length(model[1].xyz);
+    let lz = length(model[2].xyz);
+    let mirrored = dot(cross(model[0].xyz, model[1].xyz), model[2].xyz) < 0.0;
+    if (mirrored || max(lx, max(ly, lz)) > 1.001 * min(lx, min(ly, lz))) {
+        return false;
+    }
+    let axis = normalize((model * vec4<f32>(octahedral(c.cone_axis), 0.0)).xyz);
+    if (vu.eye.w < 0.5) {
+        return dot(vu.eye.xyz, axis) >= c.cone_cutoff;
+    }
+    let to = center - vu.eye.xyz;
+    return dot(to, axis) >= c.cone_cutoff * length(to) + radius;
 }
 
 fn sphere_inside(c: vec3<f32>, r: f32) -> bool {
@@ -318,7 +352,7 @@ fn cs_clusters(
     }
     let center = (model * vec4<f32>(c.bounds.xyz, 1.0)).xyz;
     let r = c.bounds.w * s;
-    if (!sphere_inside(center, r)) {
+    if (!sphere_inside(center, r) || backfacing(c, model, center, r)) {
         return;
     }
     if (vu.info.y == 1u && vu.info.z > 0u && occluded(center - vec3<f32>(r), center + vec3<f32>(r))) {

@@ -180,15 +180,50 @@ struct Surface {
     fast_shadows: bool,
 };
 
+// The Standard shader's material textures at a surface point.
+struct MaterialSamples {
+    base: vec4<f32>,
+    normal: vec3<f32>,
+    metal_gloss: vec4<f32>,
+    occlusion: f32,
+    emission: vec3<f32>,
+};
+
 // Standard shader inputs of a fragment; back faces (Cull Off) are lit from their side.
 fn standard_surface(in: MeshOut, front: bool) -> Surface {
-    let d = draws[in.draw];
     // Sample before any non-uniform branch (implicit derivatives).
-    let base = textureSampleBias(albedo_map, material_sampler, in.uv, view.view_tan.z);
-    let sampled_normal = textureSampleBias(normal_map, material_sampler, in.uv, view.view_tan.z).xyz;
-    let metal_gloss = textureSampleBias(metallic_map, material_sampler, in.uv, view.view_tan.z);
-    let occlusion = textureSampleBias(occlusion_map, material_sampler, in.uv, view.view_tan.z).g;
-    let emission = textureSampleBias(emission_map, material_sampler, in.uv, view.view_tan.z).rgb;
+    var t: MaterialSamples;
+    t.base = textureSampleBias(albedo_map, material_sampler, in.uv, view.view_tan.z);
+    t.normal = textureSampleBias(normal_map, material_sampler, in.uv, view.view_tan.z).xyz;
+    t.metal_gloss = textureSampleBias(metallic_map, material_sampler, in.uv, view.view_tan.z);
+    t.occlusion = textureSampleBias(occlusion_map, material_sampler, in.uv, view.view_tan.z).g;
+    t.emission = textureSampleBias(emission_map, material_sampler, in.uv, view.view_tan.z).rgb;
+    return standard_surface_from(in, front, t);
+}
+
+// `standard_surface` with the uv's screen derivatives given (`uv_dx`, `uv_dy`: per pixel),
+// for shading outside a triangle's own raster (virtual geometry's visibility resolve).
+fn standard_surface_grad(in: MeshOut, front: bool, uv_dx: vec2<f32>, uv_dy: vec2<f32>) -> Surface {
+    // The mip bias of `standard_surface` as a gradient scale.
+    let k = exp2(view.view_tan.z);
+    let dx = uv_dx * k;
+    let dy = uv_dy * k;
+    var t: MaterialSamples;
+    t.base = textureSampleGrad(albedo_map, material_sampler, in.uv, dx, dy);
+    t.normal = textureSampleGrad(normal_map, material_sampler, in.uv, dx, dy).xyz;
+    t.metal_gloss = textureSampleGrad(metallic_map, material_sampler, in.uv, dx, dy);
+    t.occlusion = textureSampleGrad(occlusion_map, material_sampler, in.uv, dx, dy).g;
+    t.emission = textureSampleGrad(emission_map, material_sampler, in.uv, dx, dy).rgb;
+    return standard_surface_from(in, front, t);
+}
+
+fn standard_surface_from(in: MeshOut, front: bool, t: MaterialSamples) -> Surface {
+    let d = draws[in.draw];
+    let base = t.base;
+    let sampled_normal = t.normal;
+    let metal_gloss = t.metal_gloss;
+    let occlusion = t.occlusion;
+    let emission = t.emission;
     let from_albedo = d.surface.w > 0.5;
     var s: Surface;
     s.albedo = srgb_to_linear(d.color.rgb) * base.rgb;

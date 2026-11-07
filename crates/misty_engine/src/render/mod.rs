@@ -137,8 +137,26 @@ pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
             | wgpu::Features::INDIRECT_FIRST_INSTANCE
             | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-            // Virtual geometry draws each cluster as an indexed sub-draw, counted on the GPU.
-            | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT)
+            // Virtual geometry draws each cluster as an indexed sub-draw, counted on the GPU,
+            // and its visibility buffer names the triangle of each sample.
+            | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT
+            | wgpu::Features::PRIMITIVE_INDEX)
+}
+
+/// `base` with the per-stage binding limits raised to what the adapter has (capped): the
+/// lit fragment stage is close to WebGPU's guaranteed 16 sampled textures and 8 storage
+/// buffers, and virtual geometry's material resolve adds its id targets and pool.
+pub fn device_limits(adapter: &wgpu::Adapter, base: wgpu::Limits) -> wgpu::Limits {
+    let has = adapter.limits();
+    wgpu::Limits {
+        max_sampled_textures_per_shader_stage: base
+            .max_sampled_textures_per_shader_stage
+            .max(has.max_sampled_textures_per_shader_stage.min(32)),
+        max_storage_buffers_per_shader_stage: base
+            .max_storage_buffers_per_shader_stage
+            .max(has.max_storage_buffers_per_shader_stage.min(16)),
+        ..base
+    }
 }
 
 /// World plane the editor grid lies on.
@@ -2279,15 +2297,17 @@ impl Renderer {
         let copy = last && (split.scene_copy || split.trace.is_some());
         // Sun shafts and glow occlusion read the depth after the main pass.
         let keep_depth = self.volumetrics.keeps_depth() || self.glows.keeps_depth();
+        // Virtual geometry's visibility raster splits the phase's pass in two around it.
+        let vis = split.phase.is_some() && self.vgeo.visibility_active();
         {
             let mut pass = self.begin_main(
                 encoder,
                 target,
                 first,
                 first && !split.prepass,
-                last,
-                !last || copy,
-                !last || copy || keep_depth,
+                last && !vis,
+                !last || copy || vis,
+                !last || copy || keep_depth || vis,
             );
             if first {
                 let main = || main_target(target);
@@ -2322,8 +2342,32 @@ impl Renderer {
                     let textures = &self.textures;
                     let material =
                         |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
-                    self.vgeo.draw_main(&mut pass, phase, &material);
-                    self.mark_pass(&mut pass, "Main: virtual geometry");
+                    if vis {
+                        drop(pass);
+                        let groups = [
+                            &self.view_bind_group,
+                            &self.draws_bind_group,
+                            &self.empty_group,
+                        ];
+                        self.vgeo
+                            .raster_visibility(encoder, target.depth_view(), phase, groups);
+                        self.mark(encoder, "Virtual geometry: visibility raster");
+                        pass = self.begin_main(
+                            encoder,
+                            target,
+                            false,
+                            false,
+                            last,
+                            !last || copy,
+                            !last || copy || keep_depth,
+                        );
+                        pass.set_bind_group(1, self.lit_group(), &[]);
+                        self.vgeo.resolve(&mut pass, &material);
+                        self.mark_pass(&mut pass, "Main: virtual geometry (resolve)");
+                    } else {
+                        self.vgeo.draw_main(&mut pass, phase, &material);
+                        self.mark_pass(&mut pass, "Main: virtual geometry");
+                    }
                 }
                 if !last {
                     return;

@@ -21,6 +21,7 @@
 
 mod cluster;
 mod dag;
+pub mod file;
 pub mod rock;
 mod simplify;
 #[cfg(test)]
@@ -127,6 +128,44 @@ pub struct Cluster {
     pub group: u32,
     /// The group it was simplified into (`u32::MAX` at the roots).
     pub parent_group: u32,
+    /// Normal cone of its triangles: the cluster faces away from every eye with
+    /// `dot(bounds.center - eye, cone_axis) >= cone_cutoff * |bounds.center - eye| + radius`
+    /// ([`Cluster::backfacing`]). `cone_cutoff` > 1 = never (normals spread past 90°).
+    pub cone_axis: Vec3,
+    pub cone_cutoff: f32,
+}
+
+impl Cluster {
+    /// Does every triangle face away from `eye` (back-face culling of the whole cluster)?
+    /// Must match the test in render/vgeo/vgeo_cull.wgsl.
+    pub fn backfacing(&self, eye: Vec3) -> bool {
+        let to = self.bounds.center - eye;
+        to.dot(self.cone_axis) >= self.cone_cutoff * to.length() + self.bounds.radius
+    }
+}
+
+/// Normal cone of triangles (`indices` into `positions`, front faces wound so that
+/// `(b - a) × (c - a)` points out): the axis and the cutoff of [`Cluster::backfacing`].
+pub fn normal_cone(tris: &[[u32; 3]], positions: &[Vec3]) -> (Vec3, f32) {
+    let normals: Vec<Vec3> = tris
+        .iter()
+        .filter_map(|t| {
+            let [a, b, c] = t.map(|v| positions[v as usize]);
+            (b - a).cross(c - a).try_normalize()
+        })
+        .collect();
+    let never = (Vec3::Z, 2.0);
+    let Some(axis) = normals.iter().copied().sum::<Vec3>().try_normalize() else {
+        return never;
+    };
+    let min_dot = normals.iter().map(|n| n.dot(axis)).fold(1.0f32, f32::min);
+    if min_dot <= 0.0 {
+        return never;
+    }
+    // The cluster faces away when the view direction is within 90° − (cone half angle) of
+    // the axis: cos of that angle = sin(acos(min_dot)). A little slack for rounding.
+    let cutoff = (1.0 - min_dot * min_dot).max(0.0).sqrt();
+    (axis, (cutoff + 1e-3).min(1.0))
 }
 
 /// A mesh built for virtual geometry: every cluster of every level, ordered by parent error

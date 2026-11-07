@@ -272,3 +272,73 @@ fn simplified_lod_levels_shrink() {
     assert!(tenth.indices.len() / 3 <= n / 10 + 8);
     assert!(tenth.vertices.len() < data.vertices.len() / 5);
 }
+
+#[test]
+fn normal_cones_only_cull_clusters_facing_away() {
+    let (positions, indices) = rock_mesh(4);
+    let mesh = VirtualMesh::build(&positions, &indices);
+    let r = mesh.bounds.radius;
+    let mut culled = 0;
+    let mut tested = 0;
+    for k in 0..48 {
+        // Eyes all around the rock, near (inside a few radii) and far.
+        let a = k as f32 * 2.399;
+        let y = 1.0 - 2.0 * (k as f32 + 0.5) / 48.0;
+        let dir = Vec3::new(
+            a.cos() * (1.0 - y * y).sqrt(),
+            y,
+            a.sin() * (1.0 - y * y).sqrt(),
+        );
+        let eye = mesh.bounds.center + dir * r * if k % 2 == 0 { 1.6 } else { 12.0 };
+        for (i, c) in mesh.clusters.iter().enumerate() {
+            tested += 1;
+            if !c.backfacing(eye) {
+                continue;
+            }
+            culled += 1;
+            for t in mesh.triangles(i).as_chunks::<3>().0 {
+                let [p0, p1, p2] = t.map(|v| positions[v as usize]);
+                let n = (p1 - p0).cross(p2 - p0);
+                for p in [p0, p1, p2] {
+                    assert!(
+                        n.dot(p - eye) >= -1e-6 * n.length() * (p - eye).length(),
+                        "cluster {i} has a triangle facing the eye {eye}"
+                    );
+                }
+            }
+        }
+    }
+    // A closed rock shows about half its surface, but its bumps spread each cluster's
+    // normals widely: about an eighth of all clusters (every level, near and far eyes).
+    let share = culled as f32 / tested as f32;
+    eprintln!("normal cones cull {share:.3} of the clusters");
+    assert!(share > 0.08, "only {share:.2} of the clusters culled");
+}
+
+#[test]
+fn vgeo_files_round_trip_and_reject_damage() {
+    let (positions, indices) = rock_mesh(3);
+    let mesh = VirtualMesh::build(&positions, &indices);
+    let hash = file::content_hash(&positions, &indices);
+    let bytes = file::write(&[None, Some((hash, 12.5, &mesh))]);
+    let back = file::read(&bytes).expect("readable");
+    assert_eq!(back.len(), 2);
+    assert!(back[0].is_none());
+    let e = back[1].as_ref().expect("second mesh");
+    assert_eq!((e.hash, e.build_ms), (hash, 12.5));
+    assert_eq!(e.mesh.clusters, mesh.clusters);
+    assert_eq!(e.mesh.indices, mesh.indices);
+    assert_eq!(e.mesh.bounds, mesh.bounds);
+    assert_eq!(
+        (e.mesh.levels, e.mesh.source_triangles, e.mesh.groups),
+        (mesh.levels, mesh.source_triangles, mesh.groups)
+    );
+    // Truncated, another version or another source: not used.
+    assert!(file::read(&bytes[..bytes.len() - 3]).is_none());
+    let mut other = bytes.clone();
+    other[8] ^= 1;
+    assert!(file::read(&other).is_none());
+    let mut moved = positions.clone();
+    moved[0].x += 1e-3;
+    assert_ne!(file::content_hash(&moved, &indices), hash);
+}
