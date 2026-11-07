@@ -20,6 +20,11 @@ struct VsmParams {
     levels: array<vec4<f32>, 12>,
     // Per level: xy = window origin page mod 64.
     wrap: array<vec4<f32>, 12>,
+    // The near layer (casters that sway: grass past the near grass map, trees close to the
+    // camera), redrawn every frame: world → its clip space.
+    near_view_proj: mat4x4<f32>,
+    // x = half its side (m), y = texel (m), z = 1 / side (texels), w = 1 when on.
+    near: vec4<f32>,
 };
 
 const VSM_PAGE: f32 = 128.0;

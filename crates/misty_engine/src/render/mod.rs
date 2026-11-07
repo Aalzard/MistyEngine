@@ -643,7 +643,11 @@ impl Renderer {
                 &screen_trace.off_buffer,
                 shadow_denoise.off_buffer(),
             ],
-            [&vsm_dummy.table_view, &vsm_dummy.pool_view],
+            [
+                &vsm_dummy.table_view,
+                &vsm_dummy.pool_view,
+                &vsm_dummy.pool_view,
+            ],
         );
 
         let meshes = GpuMesh::primitives(device);
@@ -759,6 +763,14 @@ impl Renderer {
             .map_or(&self.vsm_dummy.pool_view, |g| &g.pool_view)
     }
 
+    /// The virtual shadow map's near layer (or the dummy while it is off).
+    fn vsm_near_view(&self) -> &wgpu::TextureView {
+        self.vsm
+            .gpu
+            .as_ref()
+            .map_or(&self.vsm_dummy.pool_view, |g| &g.near_view)
+    }
+
     /// Rebuild the lit pass's group 1 (shadow maps or buffers changed).
     fn rebuild_draw_groups(&mut self, device: &wgpu::Device) {
         (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
@@ -774,7 +786,11 @@ impl Renderer {
                 &self.screen_trace.off_buffer,
                 self.shadow_denoise.off_buffer(),
             ],
-            [self.vsm_table_view(), self.vsm_pool_view()],
+            [
+                self.vsm_table_view(),
+                self.vsm_pool_view(),
+                self.vsm_near_view(),
+            ],
         );
     }
 
@@ -1447,6 +1463,17 @@ impl Renderer {
                     })
                     .map(|l| -l.direction),
                 vsm_views: &vsm_views,
+                near: (self.vsm.frame.as_ref())
+                    .and_then(|f| f.near)
+                    .map(|n| (n.view_proj, n.radius)),
+                // The radius the near layer has when on (its grass reach or the tree radius).
+                near_reach: match &self.vsm.frame {
+                    Some(_) => self
+                        .terrains
+                        .grass_caster_range()
+                        .map_or(vsm::NEAR_RADIUS, |r| r.max(vsm::NEAR_RADIUS)),
+                    None => 0.0,
+                },
             };
             (self.trees).prepare(device, queue, &self.pipelines, &tree_frame);
             (lists, plan, rebuilt, near_sun)
@@ -1454,6 +1481,12 @@ impl Renderer {
         // The near-camera grass shadow map follows the camera (off: its uniform says so).
         let near_sun = near_sun.filter(|_| self.terrains.has_grass_near_shadow());
         let grass_near = (self.shadows.grass_near).prepare(queue, near_sun, frame.camera.position);
+        // Virtual shadow maps leave grass out of their cached pages: the grass casters past the
+        // near map go into the virtual map's near layer instead.
+        let grass_band = (self.vsm.frame.as_ref())
+            .and_then(|f| f.near)
+            .filter(|n| n.grass)
+            .map(|n| n.view_proj);
         // GPU culling: opaque batches are built from every candidate and culled on the GPU.
         let culled = self.gpu_culling_active(frame).then(|| {
             let culled = self.gpu_batches(frame, &lists, lists.slots.len() as u32);
@@ -1477,13 +1510,17 @@ impl Renderer {
         // AO prepass and the camera's grass.
         if self.terrains.has_grass() {
             let grass_range = self.terrains.grass_caster_range();
-            let cascades: Vec<(usize, glam::Mat4)> = (plan.cascades.iter().enumerate())
+            let mut cascades: Vec<(usize, glam::Mat4)> = (plan.cascades.iter().enumerate())
                 .filter(|(slot, _)| {
                     let start = slot.checked_sub(1).map_or(0.0, |p| plan.cascades[p].far);
                     grass_range.is_some_and(|r| start < r)
                 })
                 .map(|(slot, c)| (slot, c.view_proj))
                 .collect();
+            // (No cascades with the virtual shadow map: its near layer takes the first lane.)
+            if let Some(m) = grass_band {
+                cascades.push((0, m));
+            }
             let prepass = screen
                 .as_ref()
                 .and_then(|_| screen_space::grass_prepass_range(self.quality.ambient_occlusion));
@@ -1578,7 +1615,8 @@ impl Renderer {
             if let (Some(fog), Some(gpu), Some(dir), true) = (
                 &self.vsm.fog,
                 &self.vsm.gpu,
-                plan.vsm.filter(|_| self.vsm.frame.is_some()),
+                // The light the shown pages were drawn for (it may trail the sun a little).
+                self.vsm.frame.as_ref().map(|f| f.light_dir),
                 self.volumetrics.reads_sun_shadow(),
             ) {
                 fog.encode(
@@ -1629,6 +1667,21 @@ impl Renderer {
         {
             self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
             self.mark(&mut encoder, "AO prepass + GTAO");
+            // The virtual shadow map marks its pages from this single-sampled depth (cheaper
+            // than the main pass's multisampled one, which then needn't be kept for it).
+            if self.vsm.wants_marks() {
+                let (depth, _, _) = ss.views();
+                let size = target.size();
+                (self.vsm).encode_mark(
+                    device,
+                    &mut encoder,
+                    &self.view_bind_group,
+                    depth,
+                    size,
+                    false,
+                );
+                self.mark(&mut encoder, "Virtual shadow map marking");
+            }
             let (depth, normals, velocity) = ss.views();
             self.shadow_mask_passes(device, &mut encoder, depth, normals, velocity);
             self.mark(&mut encoder, "Shadow mask / denoise");
@@ -1639,6 +1692,12 @@ impl Renderer {
             self.screen_trace_passes(&mut encoder, target, t);
         }
         self.mark(&mut encoder, "SSGI / SSR");
+        // Without the screen-space prepass the marking reads the main pass's multisampled depth,
+        // which then must be stored and decompressed: every other frame is enough (marked pages
+        // stay wanted for a second, the guard band covers the frame between).
+        if self.vsm.wants_marks() && self.vsm_frame % 2 == 1 {
+            self.vsm.skip_marks();
+        }
         let prepass = self.prepass_active(frame);
         if prepass {
             self.depth_prepass(&mut encoder, target.depth_view(), frame, &lists, &mut stats);
@@ -1716,8 +1775,7 @@ impl Renderer {
             }
         }
         self.mark(&mut encoder, "Main pass (rest)");
-        if self.vsm.frame.is_some() {
-            let frame_no = self.vsm_frame;
+        if self.vsm.wants_marks() {
             let depth = target.depth_view();
             (self.vsm).encode_mark(
                 device,
@@ -1725,7 +1783,7 @@ impl Renderer {
                 &self.view_bind_group,
                 depth,
                 target.size(),
-                frame_no,
+                sample_count() > 1,
             );
         }
         self.mark(&mut encoder, "Virtual shadow map marking");
@@ -2520,9 +2578,10 @@ impl Renderer {
         let (first, last) = (split.phase != Some(1), split.phase != Some(0));
         let copy = last && (split.scene_copy || split.trace.is_some());
         // Sun shafts and glow occlusion read the depth after the main pass.
-        // So does the virtual shadow map's page marking.
+        // So does the virtual shadow map's page marking (unless it marked the screen-space
+        // prepass's depth already).
         let keep_depth =
-            self.volumetrics.keeps_depth() || self.glows.keeps_depth() || self.vsm.frame.is_some();
+            self.volumetrics.keeps_depth() || self.glows.keeps_depth() || self.vsm.wants_marks();
         // Virtual geometry's visibility raster splits the phase's pass in two around it.
         let vis = split.phase.is_some() && self.vgeo.visibility_active();
         // The grass visibility buffer ends the last part after the grass depth (kept for the
@@ -3065,7 +3124,7 @@ fn draw_groups(
     probes: &probes::gpu::ProbeGpu,
     lightmaps: &lightmap_gpu::LightmapGpu,
     [screen, trace, shadow_mask]: [&wgpu::Buffer; 3],
-    [vsm_table, vsm_pool]: [&wgpu::TextureView; 2],
+    [vsm_table, vsm_pool, vsm_near]: [&wgpu::TextureView; 3],
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [lights, ltc, lights_2d] = lights;
     let [draws, slots] = buffers;
@@ -3126,6 +3185,10 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 11,
                 resource: wgpu::BindingResource::TextureView(vsm_pool),
+            },
+            wgpu::BindGroupEntry {
+                binding: 12,
+                resource: wgpu::BindingResource::TextureView(vsm_near),
             },
             p0,
             p1,

@@ -74,6 +74,8 @@ struct GrassNearShadow {
 // physical page + 1) and the physical page pool.
 @group(1) @binding(10) var vsm_table: texture_2d_array<u32>;
 @group(1) @binding(11) var vsm_pool: texture_depth_2d;
+// Its near layer (the casters that sway, redrawn every frame).
+@group(1) @binding(12) var vsm_near: texture_depth_2d;
 @group(1) @binding(25) var lightmaps: texture_2d_array<f32>;
 @group(1) @binding(26) var<uniform> lightmap_info: vec4<u32>;
 

@@ -59,6 +59,15 @@ fn view(name: &str) -> Option<GameView> {
         "close" => meadow_view(GrassShot::CloseGolden),
         "behind" => tree_view(TreeShot::Behind),
         "oak" => tree_view(TreeShot::Close),
+        // Walked 12 m / 20 m towards the oak (under its crown: the virtual shadow map's near
+        // layer takes it).
+        "oaknear" | "oakunder" => {
+            let mut v = tree_view(TreeShot::Close);
+            let f = v.camera.forward();
+            let d = if name == "oaknear" { 12.0 } else { 20.0 };
+            v.camera.position += glam::Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * d;
+            v
+        }
         _ => return None,
     })
 }
@@ -507,37 +516,75 @@ fn meadow_perf_matrix() {
     }
 }
 
-/// GPU frame median and parts of `view` at `size` with `quality`, the camera still or moving
-/// (4 m/s forward and turning 15°/s at 60 frames a second), and the virtual shadow map's mean
-/// page counts over the timed frames (rendered, resident).
+/// How the view changes during a VSM measurement (60 frames a second).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Motion {
+    Still,
+    /// 4 m/s forward, turning 15°/s.
+    Walk,
+    /// Turning 90°/s on the spot (page requests arrive a frame late).
+    Turn,
+    /// Still camera, the sun turning 0.5°/s (a fast time of day).
+    Sun,
+}
+
+/// A VSM measurement: the GPU breakdown and the virtual shadow map's mean counts per timed
+/// frame.
+struct VsmRun {
+    b: crate::render::terrain_grass::gpu_tests::Breakdown,
+    rendered: f32,
+    resident: f32,
+    late: f32,
+    swaying: f32,
+    catching_up: f32,
+}
+
+/// GPU frame median and parts of `view` at `size` with `quality` under `motion`.
 fn vsm_breakdown(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     view: &GameView,
     quality: &QualityLevel,
     size: (u32, u32),
-    moving: bool,
-) -> (crate::render::terrain_grass::gpu_tests::Breakdown, f32, f32) {
+    motion: Motion,
+) -> VsmRun {
     let mut r = Renderer::with_queue(device, queue);
     r.set_quality(device, quality);
     let target = r.create_view_target(device, size.0, size.1);
     let camera_at = |i: usize| {
         let mut c = view.camera;
-        if moving {
-            let t = i as f32 / 60.0;
-            let f = c.forward();
-            let flat = glam::Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
-            c.position += flat * 4.0 * t;
-            c.rotation = glam::Quat::from_rotation_y((15.0 * t).to_radians()) * c.rotation;
-        }
+        let t = i as f32 / 60.0;
+        let (speed, turn) = match motion {
+            Motion::Walk => (4.0, 15.0),
+            Motion::Turn => (0.0, 90.0),
+            _ => (0.0, 0.0),
+        };
+        let f = c.forward();
+        let flat = glam::Vec3::new(f.x, 0.0, f.z).normalize_or_zero();
+        c.position += flat * speed * t;
+        c.rotation = glam::Quat::from_rotation_y((turn * t).to_radians()) * c.rotation;
         c
     };
-    let (mut totals, mut cpu, mut rendered, mut resident) = (vec![], vec![], 0.0f32, 0.0f32);
-    let mut timed = 0.0f32;
+    let lights_at = |i: usize| {
+        let mut lights = view.lights.clone();
+        if motion == Motion::Sun {
+            let a = (0.5 * i as f32 / 60.0).to_radians();
+            for l in &mut lights {
+                if l.kind == crate::scene::LightType::Directional {
+                    l.direction = glam::Quat::from_rotation_y(a) * l.direction;
+                }
+            }
+        }
+        lights
+    };
+    let (mut rendered, mut resident, mut late, mut swaying, mut catching_up) =
+        (0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32);
+    let (mut totals, mut cpu, mut timed) = (vec![], vec![], 0.0f32);
     for i in 0..120 {
-        let cam = camera_at(i);
+        let (cam, lights) = (camera_at(i), lights_at(i));
         let frame = crate::render::Frame {
             camera: &cam,
+            lights: &lights,
             ..view.frame()
         };
         r.render(device, queue, &target, &frame);
@@ -550,6 +597,9 @@ fn vsm_breakdown(
             if let Some(s) = r.vsm_stats() {
                 rendered += s.rendered as f32;
                 resident += s.resident as f32;
+                late += s.late as f32;
+                swaying += s.near_trees as f32;
+                catching_up += s.catching_up as f32;
             }
             timed += 1.0;
         }
@@ -558,9 +608,10 @@ fn vsm_breakdown(
     let mut parts: Vec<(&'static str, Vec<f32>)> = Vec::new();
     if r.set_pass_timing(device, queue, true) {
         for i in 120..180 {
-            let cam = camera_at(i);
+            let (cam, lights) = (camera_at(i), lights_at(i));
             let frame = crate::render::Frame {
                 camera: &cam,
+                lights: &lights,
                 ..view.frame()
             };
             r.render(device, queue, &target, &frame);
@@ -584,19 +635,93 @@ fn vsm_breakdown(
         v.sort_by(f32::total_cmp);
         v.get(v.len() / 2).copied().unwrap_or(f32::NAN)
     };
-    let b = crate::render::terrain_grass::gpu_tests::Breakdown {
-        gpu: median(totals),
-        cpu: median(cpu),
-        parts: parts.into_iter().map(|(l, v)| (l, median(v))).collect(),
-        stats,
-    };
-    (b, rendered / timed.max(1.0), resident / timed.max(1.0))
+    let n = timed.max(1.0);
+    VsmRun {
+        b: crate::render::terrain_grass::gpu_tests::Breakdown {
+            gpu: median(totals),
+            cpu: median(cpu),
+            parts: parts.into_iter().map(|(l, v)| (l, median(v))).collect(),
+            stats,
+        },
+        rendered: rendered / n,
+        resident: resident / n,
+        late: late / n,
+        swaying: swaying / n,
+        catching_up: catching_up / n,
+    }
+}
+
+/// A VSM setup: name, mode, motion, guard band.
+type VsmSetup = (&'static str, crate::quality::ShadowMode, Motion, bool);
+
+/// The VSM setups measured.
+fn vsm_setups() -> Vec<VsmSetup> {
+    use crate::quality::ShadowMode::{Cascaded, Virtual};
+    let mut v = vec![
+        ("cascaded still", Cascaded, Motion::Still, true),
+        ("virtual still", Virtual, Motion::Still, true),
+        ("cascaded walk", Cascaded, Motion::Walk, true),
+        ("virtual walk", Virtual, Motion::Walk, true),
+        ("cascaded sun", Cascaded, Motion::Sun, true),
+        ("virtual sun", Virtual, Motion::Sun, true),
+    ];
+    if std::env::var_os("MISTY_VSM_TURN").is_some() {
+        v.push(("cascaded turn", Cascaded, Motion::Turn, true));
+        v.push(("virtual turn", Virtual, Motion::Turn, true));
+        v.push(("virtual turn, no guard band", Virtual, Motion::Turn, false));
+    }
+    v
+}
+
+fn vsm_line(name: &str, r: &VsmRun) -> String {
+    format!(
+        "{name}: {:.0} FPS, pages rendered/frame {:.1} (catching up {:.1}), near-layer trees {:.1}, resident {:.0}, late {:.1}",
+        1000.0 / r.b.gpu,
+        r.rendered,
+        r.catching_up,
+        r.swaying,
+        r.resident,
+        r.late
+    )
+}
+
+/// Every setup of [`vsm_setups`] for `v` at `quality`, alternating over `rounds` rounds (the
+/// quietest of each kept).
+fn vsm_rounds(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    v: &GameView,
+    quality: &QualityLevel,
+    size: (u32, u32),
+    rounds: usize,
+) -> Vec<(VsmSetup, VsmRun)> {
+    let setups = vsm_setups();
+    let mut best: Vec<Option<VsmRun>> = (0..setups.len()).map(|_| None).collect();
+    for _ in 0..rounds {
+        for (i, (_, mode, motion, guard)) in setups.iter().enumerate() {
+            super::vsm::set_guard_band(*guard);
+            let q = QualityLevel {
+                shadow_mode: *mode,
+                ..quality.clone()
+            };
+            let b = vsm_breakdown(device, queue, v, &q, size, *motion);
+            if best[i].as_ref().is_none_or(|x| b.b.gpu < x.b.gpu) {
+                best[i] = Some(b);
+            }
+        }
+    }
+    super::vsm::set_guard_band(true);
+    setups
+        .into_iter()
+        .zip(best)
+        .map(|(s, b)| (s, b.expect("measured")))
+        .collect()
 }
 
 /// Cascaded against virtual sun shadows per level (`MISTY_QUALITY`) and view
-/// (`MISTY_GFX_SHOT`), the camera still and moving, the setups alternating over
-/// `MISTY_AB_ROUNDS` rounds (quietest round kept): GPU frame, the shadow parts and the virtual
-/// map's pages rendered per frame / resident.
+/// (`MISTY_GFX_SHOT`): camera still, walking, the sun turning (and with `MISTY_VSM_TURN` a
+/// fast turn, with and without the guard band), alternating over `MISTY_AB_ROUNDS` rounds:
+/// GPU frame, parts and the virtual map's page counts.
 #[test]
 #[ignore = "timing, prints only"]
 fn meadow_perf_vsm() {
@@ -615,20 +740,6 @@ fn meadow_perf_vsm() {
         })
         .unwrap_or((1920, 1080));
     let shots = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide".into());
-    let setups = [
-        (
-            "cascaded still",
-            crate::quality::ShadowMode::Cascaded,
-            false,
-        ),
-        ("virtual still", crate::quality::ShadowMode::Virtual, false),
-        (
-            "cascaded moving",
-            crate::quality::ShadowMode::Cascaded,
-            true,
-        ),
-        ("virtual moving", crate::quality::ShadowMode::Virtual, true),
-    ];
     // Warm the GPU clocks up.
     if let Some(v) = view("wide") {
         breakdown(&device, &queue, &v, &QualityLevel::low(), (w, h));
@@ -638,34 +749,18 @@ fn meadow_perf_vsm() {
             continue;
         };
         for (level, quality) in levels() {
-            type Best = Option<(crate::render::terrain_grass::gpu_tests::Breakdown, f32, f32)>;
-            let mut best: Vec<Best> = (0..setups.len()).map(|_| None).collect();
-            for _ in 0..rounds {
-                for (i, (_, mode, moving)) in setups.iter().enumerate() {
-                    let q = QualityLevel {
-                        shadow_mode: *mode,
-                        ..quality.clone()
-                    };
-                    let b = vsm_breakdown(&device, &queue, &v, &q, (w, h), *moving);
-                    if best[i].as_ref().is_none_or(|x| b.0.gpu < x.0.gpu) {
-                        best[i] = Some(b);
-                    }
-                }
-            }
+            let runs = vsm_rounds(&device, &queue, &v, &quality, (w, h), rounds);
             eprintln!("== {shot} {level} {w}x{h}");
-            for ((name, _, _), b) in setups.iter().zip(&best) {
-                let (b, rendered, resident) = b.as_ref().expect("measured");
-                b.print(&format!(
-                    "{shot} {level} {name}: {:.0} FPS, pages rendered/frame {rendered:.1}, resident {resident:.0}",
-                    1000.0 / b.gpu
-                ));
+            for ((name, ..), b) in &runs {
+                b.b.print(&vsm_line(&format!("{shot} {level} {name}"), b));
             }
         }
     }
 }
 
 /// Cascaded against virtual sun shadows in other sample scenes (`MISTY_VSM_SCENES`, default the
-/// static-heavy StressStatic and ShadowsDemo), still and moving, per level (`MISTY_QUALITY`).
+/// static-heavy StressStatic and ShadowsDemo) per level (`MISTY_QUALITY`), the setups of
+/// [`meadow_perf_vsm`].
 #[test]
 #[ignore = "timing, prints only"]
 fn scene_perf_vsm() {
@@ -691,43 +786,15 @@ fn scene_perf_vsm() {
             continue;
         };
         for (level, quality) in levels() {
-            let mut best: Vec<Option<(f32, f32, f32, f32)>> = vec![None; 4];
-            for _ in 0..rounds {
-                for (i, (mode, moving)) in [
-                    (crate::quality::ShadowMode::Cascaded, false),
-                    (crate::quality::ShadowMode::Virtual, false),
-                    (crate::quality::ShadowMode::Cascaded, true),
-                    (crate::quality::ShadowMode::Virtual, true),
-                ]
-                .into_iter()
-                .enumerate()
-                {
-                    let q = QualityLevel {
-                        shadow_mode: mode,
-                        ..quality.clone()
-                    };
-                    let (b, rendered, resident) =
-                        vsm_breakdown(&device, &queue, &v, &q, (1920, 1080), moving);
-                    let shadow = b.part("Shadow maps (cascades, local)")
-                        + b.part("Virtual shadow map pages")
-                        + b.part("Virtual shadow map marking");
-                    if best[i].is_none_or(|x| b.gpu < x.0) {
-                        best[i] = Some((b.gpu, shadow, rendered, resident));
-                    }
-                }
-            }
-            for (name_i, b) in [
-                "cascaded still",
-                "virtual still",
-                "cascaded moving",
-                "virtual moving",
-            ]
-            .iter()
-            .zip(&best)
-            {
-                let (gpu, shadow, rendered, resident) = b.expect("measured");
+            let runs = vsm_rounds(&device, &queue, &v, &quality, (1920, 1080), rounds);
+            for ((setup, ..), b) in &runs {
+                let shadow = b.b.part("Shadow maps (cascades, local)")
+                    + b.b.part("Virtual shadow map pages")
+                    + b.b.part("Virtual shadow map marking");
                 eprintln!(
-                    "{name} {level} {name_i}: GPU {gpu:.2} ms, shadow passes {shadow:.2} ms, pages rendered/frame {rendered:.1}, resident {resident:.0}"
+                    "{name} {level} {}, GPU {:.2} ms, shadow passes {shadow:.2} ms",
+                    vsm_line(setup, b),
+                    b.b.gpu
                 );
             }
         }
