@@ -206,3 +206,32 @@ unrealistic; asked for Codex-made PBR textures, better leaves and a little more 
   terrain trees.
 - Tree colliders are always on with the Terrain Collider (no per-prototype toggle yet).
 - The screenshots and timings ran in release; the E: drive had only 2–8 GB free during the work.
+
+## Look round 3 (branch flowers-leaves)
+
+The user: "the tree's leaves still look ugly. So decrease the roughness. Make their shape more
+visible."
+
+- **Leaf atlases redrawn** (`tools/tree_textures.py`, leaf part only; the bark output is byte for
+  byte the same), with Codex (model gpt-5.6-sol, scratch folder, two review rounds on preview
+  sheets with 100 % cells, 128 / 64 px downsamples, a normal-lit and a backlit view):
+  - round 1 (from a brief: distinct outlines, veins, per-leaf variation, folded and curved
+    leaves, lower roughness, crisp alpha, 45–60 % coverage): individual leaves with midribs and
+    veins and crisp edges, but the oak lobes were a regular square wave and linden and birch
+    were heaps of oval "bay" leaves with comb teeth;
+  - round 2: oak obovate with 4–6 unequal round lobes per side, auricles and a lobe vein in
+    every lobe; linden broad heart-shaped leaves (notched cordate base, short drawn-out tip,
+    irregular fine teeth) on long petioles along zig-zag twigs; birch small deltoid leaves with
+    double-serrated edges on drooping twigs; leaves overlap at their edges only (42–45 %
+    coverage), each its own hue and value, some undersides, rare blemishes; midrib and
+    secondary veins in albedo and normal map; translucency 0.75–0.9 on the blades with darker
+    veins (the vein network shows against the sun); roughness 0.30–0.42 on the upper sides,
+    0.6–0.7 underneath.
+- **Shader** (`fs_tree_leaves`): smoothness = 0.85 × (1 − roughness) close up (was 0.35 ×), 0.5 ×
+  far away (no sparkle): a waxy sheen and glints where single leaves face the sun; the leaves'
+  own normal map counts 60 % close up (was 35 %; 30 % far away), so each leaf's fold and tilt
+  catch the light differently and the leaf shapes read.
+- **Curved cards**: on LOD 0 each card has a third row of vertices, the top curling back into
+  the crown and drooping (8 triangles instead of 4); LOD 1 keeps flat folded cards.
+- Alpha: the atlases' coverage-keeping mips (per cell) and the alpha-to-coverage rim as before;
+  the crisper alpha of the new atlases keeps far crowns from turning to mush.

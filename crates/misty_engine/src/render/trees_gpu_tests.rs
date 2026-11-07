@@ -451,6 +451,92 @@ fn tree_look_shots() {
     }
 }
 
+/// Leaf close-ups (look round 3): the broad oak's crown, a young oak's lower crown from
+/// under it at eye height (single leaf clusters against the sky), the broad oak against the
+/// sun (light through the leaves) and the trees behind the player:
+/// `docs/screenshots/gfx/leaves_<step>_{crown,cluster,backlit,behind}.png` (1600×900, High).
+#[test]
+#[ignore = "writes comparison renders into docs/screenshots/gfx; run on purpose"]
+fn tree_leaf_shots() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let step = std::env::var("MISTY_GFX_STEP").unwrap_or_else(|_| "latest".into());
+    let only = std::env::var("MISTY_GFX_SHOT").unwrap_or_default();
+    std::fs::create_dir_all(screenshots()).unwrap();
+    let base = meadow_view(Shot::Close);
+    let sun = base
+        .lights
+        .iter()
+        .find(|l| matches!(l.kind, LightType::Directional))
+        .map_or(Vec3::Z, |l| -l.direction);
+    let flat_sun = sun.with_y(0.0).normalize_or(Vec3::X);
+    let (foot, scale) = nearest_tree(&base, "Oak Broad").expect("a broad oak in MeadowDemo");
+    let height = 17.0 * scale;
+    let player = (base.camera.position - foot)
+        .with_y(0.0)
+        .normalize_or(Vec3::X);
+    let side = Vec3::Y.cross(player).normalize();
+    // Eye height above the ground at a point (the meadow rolls).
+    let eye_at = |p: Vec3| {
+        let t = &base.terrains[0];
+        let local = p - t.position;
+        Vec3::new(
+            p.x,
+            t.position.y + t.data.sample_height(local.x, local.z) + 1.7,
+            p.z,
+        )
+    };
+    let mut shots: Vec<(&str, GameView)> = Vec::new();
+    let mut v = meadow_view(Shot::Close);
+    look_at(
+        &mut v,
+        foot + player * height * 0.9 + side * height * 0.3 + Vec3::Y * 2.0,
+        foot + Vec3::Y * height * 0.62,
+        50.0,
+    );
+    shots.push(("crown", v));
+    let (young, ys) = nearest_tree(&base, "Young Oak").expect("a young oak in MeadowDemo");
+    let yh = 7.5 * ys;
+    let away = (base.camera.position - young)
+        .with_y(0.0)
+        .normalize_or(Vec3::X);
+    let mut v = meadow_view(Shot::Close);
+    look_at(
+        &mut v,
+        eye_at(young + away * yh * 0.55),
+        young + away * yh * 0.2 + Vec3::Y * yh * 0.55,
+        60.0,
+    );
+    shots.push(("cluster", v));
+    let mut v = meadow_view(Shot::Close);
+    look_at(
+        &mut v,
+        eye_at(foot - flat_sun * height * 1.1),
+        foot + Vec3::Y * height * 0.55,
+        55.0,
+    );
+    shots.push(("backlit", v));
+    shots.push(("behind", meadow_view(Shot::Behind)));
+    for (name, view) in shots {
+        if !only.is_empty() && !name.contains(&only) {
+            continue;
+        }
+        let img = shot_image(
+            &device,
+            &queue,
+            &view,
+            &QualityLevel::high(),
+            None,
+            (1600, 900),
+        );
+        let path = screenshots().join(format!("leaves_{step}_{name}.png"));
+        img.save(&path).unwrap();
+        eprintln!("wrote {}", path.display());
+    }
+}
+
 /// Median GPU frame time of MeadowDemo at 1920×1080 per quality level with and without its
 /// trees (the difference is what the trees cost), and the triangles drawn.
 #[test]
