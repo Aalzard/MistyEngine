@@ -64,8 +64,8 @@ pub const PAGE_BUDGET: usize = 384;
 /// (out to its caster range) and the trees close to the camera (their leaves and limbs sway).
 /// Its side in texels.
 pub const NEAR_SIZE: u32 = 2048;
-/// Half the near layer's side when no grass reaches further (metres): trees within 70 % of
-/// it go into the layer instead of the cached pages (`trees.rs` `near`).
+/// Half the near layer's side when no grass reaches further (metres): trees whose crowns lie
+/// within 90 % of it go into the layer instead of the cached pages (`trees.rs` `near`).
 pub const NEAR_RADIUS: f32 = 32.0;
 /// The sun may turn this far (radians) from the light the pages were drawn for before a new
 /// set starts filling in the background (shadows lag the sun by at most about this much).
@@ -855,10 +855,10 @@ impl Vsm {
                     if g.basis.levels != m.levels || g.basis.finest != m.finest {
                         continue;
                     }
-                    if g.basis.set != active.set {
-                        if let Some((_, marked)) = self.pending.as_mut() {
-                            *marked = true;
-                        }
+                    if g.basis.set != active.set
+                        && let Some((_, marked)) = self.pending.as_mut()
+                    {
+                        *marked = true;
                     }
                     let base = half * MARK_WORDS * MAX_LEVELS;
                     let bits = &words[base..base + MARK_WORDS * MAX_LEVELS];
@@ -993,7 +993,6 @@ impl Vsm {
         stats.pending = (all.len() as u32).saturating_sub(stats.rendered);
         // The pending basis takes over once its pixels have marked it and every page it wants
         // is rendered.
-        let mut gens = gens;
         if let Some((p, true)) = self.pending
             && cache.unrendered_wanted(p.set) == 0
         {

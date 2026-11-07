@@ -633,10 +633,11 @@ pub(super) struct TreeRenderer {
     near_candidates: usize,
 }
 
-/// A tree joins the near layer within this share of its half side and leaves it past
-/// [`NEAR_OUT`] (hysteresis, so a tree on the edge doesn't flip every frame).
-const NEAR_IN: f32 = 0.7;
-const NEAR_OUT: f32 = 0.8;
+/// A tree joins the near layer when its box, seen from the light, lies within this share of
+/// the layer's square and leaves it past [`NEAR_OUT`] (hysteresis, so a tree on the edge
+/// doesn't flip every frame; its whole shadow column then lies in the layer).
+const NEAR_IN: f32 = 0.9;
+const NEAR_OUT: f32 = 1.0;
 
 impl TreeRenderer {
     pub fn new(device: &wgpu::Device) -> Self {
@@ -833,6 +834,7 @@ impl TreeRenderer {
                     continue;
                 };
                 let m = &self.trees[&self.frame_trees[tree]].built.model;
+                let m_bounds = (m.min, m.max);
                 let scale = p.height.max(p.width);
                 let center = p.foot + Vec3::Y * (m.max.y * 0.5 * p.height);
                 let radius = m.bounding_radius() * scale;
@@ -930,14 +932,32 @@ impl TreeRenderer {
                 let near = f
                     .near
                     .filter(|_| s.cast_shadows && t.cast_shadows)
-                    .filter(|(_, r)| {
-                        let key = near_key(p);
-                        let reach = if self.near_set.contains(&key) {
+                    .filter(|(m, _)| {
+                        let reach = if self.near_set.contains(&near_key(p)) {
                             NEAR_OUT
                         } else {
                             NEAR_IN
                         };
-                        dist + radius < r * reach
+                        // Its box (any yaw) inside the layer's square, seen from the light.
+                        let c = m_bounds
+                            .0
+                            .x
+                            .abs()
+                            .max(m_bounds.1.x.abs())
+                            .max(m_bounds.0.z.abs())
+                            .max(m_bounds.1.z.abs())
+                            * p.width;
+                        let (y0, y1) = (m_bounds.0.y * p.height, m_bounds.1.y * p.height);
+                        (0..8).all(|k| {
+                            let corner = p.foot
+                                + Vec3::new(
+                                    if k & 1 == 0 { -c } else { c },
+                                    if k & 2 == 0 { y0 } else { y1 },
+                                    if k & 4 == 0 { -c } else { c },
+                                );
+                            let ndc = m.project_point3(corner);
+                            ndc.x.abs() < reach && ndc.y.abs() < reach
+                        })
                     });
                 if near.is_some() {
                     near_now.insert(near_key(p));
