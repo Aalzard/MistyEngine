@@ -94,7 +94,7 @@ const TERRAIN_SHADOW_SRC: &str = concat!(
     include_str!("shaders/terrain_vertex.wgsl")
 );
 /// Grass blades, lit like meshes (same includes as `MESH_SRC`).
-const GRASS_SRC: &str = concat!(
+pub(super) const GRASS_SRC: &str = concat!(
     include_str!("shaders/draw.wgsl"),
     "\n",
     include_str!("shaders/mesh.wgsl"),
@@ -299,18 +299,25 @@ impl Pipelines {
         // HDRI sky: uniform, background and specular cubes, sampler (render/hdri_sky).
         view_entries.extend(super::hdri_sky::layout_entries());
         view_entries.extend(super::clouds::view_layout_entries());
+        // (The grass visibility resolve lights blades in a compute pass, grass_vis.rs.)
+        for e in &mut view_entries {
+            e.visibility |= S::COMPUTE;
+        }
         let view_layout = layout("misty view", &view_entries);
         let probe = super::probes::gpu::layout_entries();
         let lightmap = super::lightmap_gpu::layout_entries();
+        // What `shade_grass` reads is visible to compute too (the grass visibility resolve,
+        // grass_vis.rs; only that: compute stages have the same storage buffer limit).
+        let lit = S::FRAGMENT | S::COMPUTE;
         let mesh_layout = layout(
             "misty mesh",
             &[
-                entry(0, S::FRAGMENT, uniform()),
+                entry(0, lit, uniform()),
                 entry(1, S::VERTEX_FRAGMENT, storage()),
                 // Sun cascades (one layer each).
                 entry(
                     2,
-                    S::FRAGMENT,
+                    lit,
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2Array,
@@ -319,12 +326,12 @@ impl Pipelines {
                 ),
                 entry(
                     3,
-                    S::FRAGMENT,
+                    lit,
                     wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                 ),
                 entry(
                     4,
-                    S::FRAGMENT,
+                    lit,
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2Array,
@@ -334,21 +341,21 @@ impl Pipelines {
                 // Instance → draw slot (instanced batches).
                 entry(5, S::VERTEX, storage()),
                 // Soft-shadow parameters (shadows.wgsl).
-                entry(6, S::FRAGMENT, uniform()),
+                entry(6, lit, uniform()),
                 // Rectangle lights' LTC table (area/area_light.wgsl).
                 entry(7, S::FRAGMENT, storage()),
                 // Near-camera grass shadow map (one layer per slice) and its uniform
                 // (grass_near_shadow.rs).
                 entry(
                     8,
-                    S::FRAGMENT,
+                    lit,
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2Array,
                         multisampled: false,
                     },
                 ),
-                entry(9, S::FRAGMENT, uniform()),
+                entry(9, lit, uniform()),
                 // Reflection probes (bindings 20–24, see probes/gpu.rs).
                 probe[0],
                 probe[1],
@@ -359,9 +366,9 @@ impl Pipelines {
                 lightmap[0],
                 lightmap[1],
                 // Screen-space AO and contact shadow texels (screen_space.rs).
-                entry(16, S::FRAGMENT, storage()),
+                entry(16, lit, storage()),
                 // Screen-space GI and reflection texels (screen_trace).
-                entry(17, S::FRAGMENT, storage()),
+                entry(17, lit, storage()),
                 // Temporal soft-shadow mask (shadow_denoise).
                 entry(super::shadow_denoise::BINDING, S::FRAGMENT, storage()),
                 // 2D lights and shadow maps (light2d.rs).
@@ -629,10 +636,10 @@ impl Pipelines {
         let grass_layout = layout(
             "misty grass",
             &[
-                entry(0, S::VERTEX_FRAGMENT, uniform()),
+                entry(0, S::VERTEX_FRAGMENT | S::COMPUTE, uniform()),
                 entry(
                     1,
-                    S::FRAGMENT,
+                    lit,
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
@@ -641,7 +648,7 @@ impl Pipelines {
                 ),
                 entry(
                     2,
-                    S::FRAGMENT,
+                    lit,
                     wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 ),
             ],
@@ -949,6 +956,20 @@ mod tests {
             (
                 "grass prepass",
                 super::super::screen_space::GRASS_PREPASS_SRC,
+            ),
+            (
+                "grass visibility",
+                format!(
+                    "{}
+{}",
+                    super::GRASS_SRC,
+                    include_str!("shaders/grass_vis.wgsl")
+                )
+                .leak(),
+            ),
+            (
+                "grass composite",
+                include_str!("shaders/grass_composite.wgsl"),
             ),
         ] {
             let module = naga::front::wgsl::parse_str(&format!("{COMMON}\n{src}"))

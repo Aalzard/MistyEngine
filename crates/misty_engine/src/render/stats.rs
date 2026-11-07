@@ -33,8 +33,12 @@ pub struct RenderStats {
     pub grass_pending: u32,
     /// Render-thread time spent uploading finished grass chunks (budgeted per frame).
     pub grass_upload_ms: f32,
-    /// Of that, the time already spent when the last chunk started: under the budget.
+    /// Of that, the time already spent when the last piece started: under the budget.
     pub grass_upload_last_start_ms: f32,
+    /// The longest single upload piece of the frame (pieces are a fixed number of blades).
+    pub grass_upload_piece_ms: f32,
+    /// Of that, the longest wait for room in the grass blade pages and cull arena.
+    pub grass_upload_alloc_ms: f32,
 }
 
 impl RenderStats {
