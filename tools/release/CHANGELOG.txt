@@ -1,6 +1,56 @@
 Misty Engine changelog
 ======================
 
+0.2.0 - speed, trees, multiplayer and Linux (November 2026)
+-----------------------------------------------------------
+
+Now on Linux
+- A Linux x64 download next to the Windows one (extract, run ./MistyEngine). The in-app
+  updater picks the right package on each system.
+
+Faster
+- Grass is drawn about twice as cheaply (each grass pixel is shaded once), and is culled on
+  the GPU. MeadowDemo at 1080p on Medium went from about 57 to 84 FPS, and the editor's
+  Game view from about 98 to 168 FPS.
+- Upscaling (Quality > Upscaling: Off / Quality / Balanced / Performance / Custom): render
+  below full resolution and rebuild a sharp image. Medium at 1080p reaches 100+ FPS with it.
+- No more freeze when pressing Play or opening a scene: textures load in the background and
+  compiled GPU programs are cached on disk.
+- The editor no longer waits for the screen refresh by default (VSync switch in the Game
+  view), so the FPS you see is the real one.
+
+The editor
+- Smoother Scene camera: gliding fly, orbit and zoom, raw mouse look, zoom towards the
+  cursor, and speed / acceleration / damping settings under the camera button.
+- Editor scripting in Lua: your own menu items, tool windows, custom Inspectors, gizmos and
+  handles from scripts in an Editor folder (see the Tools > Scatter Tool sample).
+- Inspector attributes for script fields: Header, Tooltip, Space, Range, HideInInspector.
+
+Multiplayer
+- Netcode: Network Manager, Network Object and Network Transform (interpolation and
+  prediction), network variables and server/client RPCs from Lua, LAN discovery.
+- Multiplayer Play Mode: tick 2-4 players and press Play; extra player windows join your
+  game. See the NetworkDemo sample scene.
+
+World and art
+- Trees: oak, linden and birch from editable .tree recipes, with wind, shadows, LODs and
+  far impostors, and a Paint Trees tab on the Terrain. MeadowDemo has 184 of them.
+- Realistic tree materials: PBR bark (relief, roughness, ambient occlusion, parallax) and
+  leaves with light shining through; gnarled oak limbs and root buttresses.
+- MeadowDemo now uses Misty GI (live bounce light and sky shading under the trees).
+- The tree and meadow assets are free to use in your own games (CC0).
+
+Experimental (off by default, try them in Quality settings)
+- Misty GI: real-time global illumination without baking (Quality > Global Illumination,
+  or the Lighting window).
+- Virtual shadow maps: sharper sun shadows with cached pages (Quality > Shadows > Virtual).
+- Virtual geometry: Nanite-style cluster rendering for very dense meshes (model import
+  setting).
+
+Fixes
+- Creating a project with "Include sample scenes" could fail with "os error 2"; errors now
+  name the file, and the release build no longer opens a console window.
+
 0.1.0 - big test update (November 2026)
 ---------------------------------------
 
