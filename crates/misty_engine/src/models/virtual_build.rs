@@ -213,10 +213,7 @@ fn start_at(model: &Model, path: Option<PathBuf>, rel: &str) -> Arc<VirtualBuild
         .and_then(|b| file::read(&b))
         .unwrap_or_default();
     let mut missing = Vec::new();
-    for i in 0..model.meshes.len() {
-        if !wanted[i] {
-            continue;
-        }
+    for (i, _) in wanted.iter().enumerate().filter(|(_, w)| **w) {
         let src = source(model, i);
         let vertices = src.positions.len() as u32;
         let hit = cached

@@ -839,9 +839,11 @@ fn vgeo_field() {
                 ..QualityLevel::high()
             };
             for (label, draws, vg, debug) in [
-                ("lodgroup", &lod_field, false, false),
-                ("virtual", &virtual_field, true, false),
-                ("clusters", &virtual_field, true, true),
+                ("lodgroup", &lod_field, false, VgeoDebug::Off),
+                ("virtual", &virtual_field, true, VgeoDebug::Off),
+                ("clusters", &virtual_field, true, VgeoDebug::Clusters),
+                ("levels", &virtual_field, true, VgeoDebug::Levels),
+                ("overdraw", &virtual_field, true, VgeoDebug::Overdraw),
             ] {
                 let mut r = Renderer::with_queue(&device, &queue);
                 r.set_quality(
@@ -851,7 +853,7 @@ fn vgeo_field() {
                         ..base.clone()
                     },
                 );
-                r.set_virtual_geometry_debug(debug);
+                r.vgeo.debug = debug;
                 let target = r.create_target(&device, size.0, size.1);
                 let px = render(&device, &queue, &mut r, &target, &cam, draws, 24);
                 save(&format!("{}_{label}", shot.name()), size, px);
@@ -898,6 +900,13 @@ fn vgeo_field() {
                     Path::Virtual,
                     false,
                 ),
+                ("LOD Groups, VSM", &lod_field, Path::LodGroup, false),
+                (
+                    "Virtual Geometry 1 px, VSM",
+                    &virtual_field,
+                    Path::Virtual,
+                    false,
+                ),
             ] {
                 if path == Path::Full && std::env::var("MISTY_VGEO_FULL").is_ok_and(|v| v == "0") {
                     continue;
@@ -908,6 +917,11 @@ fn vgeo_field() {
                     &QualityLevel {
                         virtual_geometry: path == Path::Virtual,
                         virtual_geometry_error: if label.ends_with("2 px") { 2.0 } else { 1.0 },
+                        // "VSM": the sun's virtual shadow map instead of cascades.
+                        shadow_mode: match label.ends_with("VSM") {
+                            true => crate::quality::ShadowMode::Virtual,
+                            false => q.shadow_mode,
+                        },
                         ..q.clone()
                     },
                 );

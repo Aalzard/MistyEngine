@@ -109,7 +109,7 @@ fn fs_cluster_debug(in: VgDebugOut) -> MeshTargets {
 @fragment
 fn fs_cluster_overdraw(in: VgDebugOut) -> MeshTargets {
     var out: MeshTargets;
-    out.color = vec4<f32>(0.04, 0.016, 0.006, 1.0);
+    out.color = vec4<f32>(0.12, 0.05, 0.015, 1.0);
     out.glow = vec4<f32>(0.0);
     out.velocity = vec2<f32>(0.0);
     return out;
