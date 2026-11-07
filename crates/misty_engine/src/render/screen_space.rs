@@ -291,6 +291,7 @@ impl Renderer {
             &self.probes,
             &self.lightmaps,
             [buffer, trace_buffer, self.shadow_denoise.lit_buffer()],
+            [self.vsm_table_view(), self.vsm_pool_view()],
         );
         self.screen_space.frame_group = Some(lit);
 

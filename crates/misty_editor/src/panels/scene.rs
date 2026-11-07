@@ -14,7 +14,7 @@ use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
 /// Scene view draw modes, indexed by `SceneView::draw_mode` (see the `*_MODE` constants).
-pub const DRAW_MODES: [&str; 10] = [
+pub const DRAW_MODES: [&str; 13] = [
     "Shaded",
     "Wireframe",
     "Shaded Wireframe",
@@ -25,6 +25,9 @@ pub const DRAW_MODES: [&str; 10] = [
     "Ambient Occlusion",
     "Baked Lightmap",
     "UV Charts",
+    "Virtual Shadow Levels",
+    "Virtual Shadow Cache",
+    "Virtual Shadow Pages",
 ];
 /// Wireframe only, no shading.
 const WIREFRAME_MODE: usize = 1;
@@ -44,6 +47,12 @@ const AO_DRAW_MODE: usize = 7;
 const LIGHTMAP_MODE: usize = 8;
 /// The lightmap texel grid of lightmapped surfaces.
 const UV_CHARTS_MODE: usize = 9;
+/// Quality ▸ Shadows ▸ Virtual: each clipmap level of the sun's virtual shadow map tinted, page
+/// borders drawn; then cached (green) / rendered this frame (red) / still missing (magenta)
+/// pages; then each physical page in its own colour.
+const VSM_LEVELS_MODE: usize = 10;
+const VSM_CACHE_MODE: usize = 11;
+const VSM_PAGES_MODE: usize = 12;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -225,6 +234,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let size = [(rect.width() * px) as u32, (rect.height() * px) as u32];
             gpu.renderer
                 .set_cascade_debug(sv.draw_mode == CASCADES_MODE);
+            gpu.renderer.set_vsm_debug(match sv.draw_mode {
+                VSM_LEVELS_MODE => misty_engine::render::VsmDebug::Levels,
+                VSM_CACHE_MODE => misty_engine::render::VsmDebug::Cache,
+                VSM_PAGES_MODE => misty_engine::render::VsmDebug::PageTable,
+                _ => misty_engine::render::VsmDebug::Off,
+            });
             let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
             crate::scene_camera::bench::scene_rendered(gpu);
             // Grass chunks still streaming in: keep drawing so they show up as they land.
