@@ -845,25 +845,36 @@ pub fn pipelines_built() -> u64 {
 /// the prelude plus the source was two thirds of what building the pipelines of a scene's
 /// first frame cost (148 of 218 ms for MeadowDemo's 51).
 fn shader_module(device: &wgpu::Device, name: &str, source: &str) -> wgpu::ShaderModule {
-    type Modules = std::collections::HashMap<(wgpu::Device, String), wgpu::ShaderModule>;
-    static MODULES: std::sync::Mutex<Option<Modules>> = std::sync::Mutex::new(None);
+    /// Per device (a short list: one in the editor and the player), modules by source.
+    type Modules = Vec<(
+        wgpu::Device,
+        std::collections::HashMap<String, wgpu::ShaderModule>,
+    )>;
+    static MODULES: std::sync::Mutex<Modules> = std::sync::Mutex::new(Vec::new());
     let lock = || MODULES.lock().unwrap_or_else(|e| e.into_inner());
-    let key = (device.clone(), source.to_owned());
-    if let Some(m) = lock().as_ref().and_then(|m| m.get(&key)) {
-        return m.clone();
+    let cached = lock()
+        .iter()
+        .find(|(d, _)| d == device)
+        .and_then(|(_, m)| m.get(source).cloned());
+    if let Some(m) = cached {
+        return m;
     }
     crate::profile_scope!("Pipeline.Module");
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(name),
         source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{source}").into()),
     });
-    let mut modules = lock();
-    let modules = modules.get_or_insert_with(Default::default);
-    // Tests make many devices: keep the cache bounded (a renderer needs a few dozen).
-    if modules.len() >= 256 {
-        modules.clear();
+    let mut devices = lock();
+    // Tests make many devices: keep the newest few (a renderer needs a few dozen modules).
+    if !devices.iter().any(|(d, _)| d == device) {
+        if devices.len() >= 4 {
+            devices.remove(0);
+        }
+        devices.push((device.clone(), Default::default()));
     }
-    modules.insert(key, module.clone());
+    if let Some((_, modules)) = devices.iter_mut().find(|(d, _)| d == device) {
+        modules.insert(source.to_owned(), module.clone());
+    }
     module
 }
 

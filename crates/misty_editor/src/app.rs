@@ -553,10 +553,11 @@ impl EditorApp {
             ctx.request_repaint();
         }
         // Editor scripts: (re)load, update callbacks, asset processors.
-        if {
+        let scripts_busy = {
             misty_engine::profile_scope!("Editor.EditorScripts");
             crate::editor_scripts::frame(s)
-        } {
+        };
+        if scripts_busy {
             ctx.request_repaint_after(std::time::Duration::from_millis(30));
         }
         let mut renderer_reloaded = Vec::new();

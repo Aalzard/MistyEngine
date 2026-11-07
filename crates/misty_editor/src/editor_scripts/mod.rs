@@ -487,10 +487,11 @@ pub fn reload(state: &mut EditorState) {
     state.editor_scripts.windows.clear();
     state.editor_scripts.inspectors.clear();
     misty_engine::profile_scope!("EditorScripts.Reload");
-    let lua = match {
+    let fresh = {
         misty_engine::profile_scope!("EditorScripts.NewLua");
         new_lua(state)
-    } {
+    };
+    let lua = match fresh {
         Ok(l) => l,
         Err(e) => {
             state

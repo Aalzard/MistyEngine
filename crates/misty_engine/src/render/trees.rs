@@ -187,14 +187,12 @@ fn main_spec<'a>(
     buffers: &'a [wgpu::VertexBufferLayout<'a>],
     cull: Option<wgpu::Face>,
     a2c: bool,
-    samples: u32,
 ) -> Spec<'a> {
     Spec {
         vs,
         fs: Some(fs),
         buffers,
         cull,
-        samples,
         depth: Depth::main(true, wgpu::CompareFunction::Less),
         glow: Some(false),
         alpha_to_coverage: a2c,
@@ -264,46 +262,35 @@ impl Pipelines {
         let imp = [instance_layout()];
         let back = Some(wgpu::Face::Back);
         let lit = [&l.view, &l.mesh, layout];
+        let main_pass = |spec: Spec| build(device, Spec { samples, ..spec });
         let main = [
-            build(
-                device,
-                main_spec(
-                    "tree bark",
-                    &lit,
-                    "vs_tree",
-                    "fs_tree_bark",
-                    &mesh,
-                    back,
-                    false,
-                    samples,
-                ),
-            ),
-            build(
-                device,
-                main_spec(
-                    "tree leaves",
-                    &lit,
-                    "vs_tree",
-                    "fs_tree_leaves",
-                    &mesh,
-                    None,
-                    true,
-                    samples,
-                ),
-            ),
-            build(
-                device,
-                main_spec(
-                    "tree impostor",
-                    &lit,
-                    "vs_tree_impostor",
-                    "fs_tree_impostor",
-                    &imp,
-                    None,
-                    true,
-                    samples,
-                ),
-            ),
+            main_pass(main_spec(
+                "tree bark",
+                &lit,
+                "vs_tree",
+                "fs_tree_bark",
+                &mesh,
+                back,
+                false,
+            )),
+            main_pass(main_spec(
+                "tree leaves",
+                &lit,
+                "vs_tree",
+                "fs_tree_leaves",
+                &mesh,
+                None,
+                true,
+            )),
+            main_pass(main_spec(
+                "tree impostor",
+                &lit,
+                "vs_tree_impostor",
+                "fs_tree_impostor",
+                &imp,
+                None,
+                true,
+            )),
         ];
         let casters = [&l.shadow_view, &l.draws, layout];
         let shadow = [
