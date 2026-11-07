@@ -2193,8 +2193,12 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   clipmaps when near; Misty GI's sun checked against virtual shadow maps; meadow ambient option
   shots (`gi_meadow_opt_*_compare.png`) for the user to pick from.
 
+- MeadowDemo ships with Misty GI: the user's option C (Realtime Global Illumination on, Environment
+  Intensity 0.6) in the scene and its generator; golden shots updated; +0.7 / 1.4 / 2.4 / 2.3 ms at
+  Low / Medium / High / Ultra (1080p); before / after in `gi_meadow_shipped_compare.png`.
+
 ### Not done yet
-- Still off by default (the scene switch's default is the one line to flip once the user picks).
+- New scenes still start with Realtime Global Illumination off (MeadowDemo has it on).
 - Debug views (SDF / radiance cache / probes), directional far field, screen-space near field,
   toroidal clipmap scrolling, skinned meshes: see the roadmap in the doc.
 

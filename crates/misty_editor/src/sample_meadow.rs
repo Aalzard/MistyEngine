@@ -584,6 +584,10 @@ fn demo_scene(d: &TerrainData) -> Scene {
     rs.skybox.sun_disk = SunDisk::HighQuality;
     rs.skybox.sun_size = 0.04;
     rs.skybox.atmosphere_thickness = 1.0;
+    // Realtime GI lights the shade under the trees, so the flat sky ambient is turned down
+    // (the user's pick from the option shots: GI on, Environment Intensity 0.6).
+    rs.realtime_gi = true;
+    rs.environment_lighting.intensity = 0.6;
 
     let terrain = s.spawn("Terrain", None);
     s.set_transform(terrain, Transform::from_position(CORNER));

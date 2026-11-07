@@ -7,7 +7,11 @@
 //!   (`docs/screenshots/gfx/gi_meadow_<shot>_<off|misty>.png`), including a "grove" shot from
 //!   beside the tree nearest the scene camera (sky occlusion under the canopy).
 //! - `misty_gi_scene_meadow_options`: the ambient options for the user (off, on, on with the
-//!   ambient lowered) and the grove with virtual shadow maps.
+//!   ambient lowered) and the grove with virtual shadow maps. (Made with the scene's ambient
+//!   at 1.0; since option C shipped the scene's ambient is 0.6 and the variants scale that.)
+//! - `misty_gi_scene_meadow_levels`: MeadowDemo as shipped, GPU frame time at every quality
+//!   level with Global Illumination at the level's tier and Off.
+//! - `misty_gi_scene_meadow_shipped`: MeadowDemo before and after the realtime GI default.
 
 use std::path::PathBuf;
 
@@ -430,5 +434,99 @@ fn misty_gi_scene_meadow_shapes() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
+/// MeadowDemo as shipped (Lighting ▸ Realtime Global Illumination on, Environment Intensity
+/// 0.6): GPU frame time at 1920×1080 at every quality level, with Quality ▸ Global
+/// Illumination at the level's tier and switched Off.
+#[test]
+#[ignore = "timing, prints only"]
+fn misty_gi_scene_meadow_levels() {
+    use crate::quality::Tier;
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let size = (1920, 1080);
+    let v = meadow_view(Shot::WideGolden);
+    wait_for_trees(&v);
+    assert!(
+        v.post.misty_gi.enabled,
+        "MeadowDemo ships with realtime GI on"
+    );
+    breakdown(&device, &queue, &v, &QualityLevel::low(), size);
+    for (level, quality) in [
+        ("Low", QualityLevel::low()),
+        ("Medium", QualityLevel::medium()),
+        ("High", QualityLevel::high()),
+        ("Ultra", QualityLevel::ultra()),
+    ] {
+        let off = QualityLevel {
+            global_illumination: Tier::Off,
+            ..quality.clone()
+        };
+        let (mut best_off, mut best_on) = (f32::MAX, f32::MAX);
+        let mut misty = 0.0;
+        for _ in 0..3 {
+            best_off = best_off.min(breakdown(&device, &queue, &v, &off, size).gpu);
+            let b = breakdown(&device, &queue, &v, &quality, size);
+            if b.gpu < best_on {
+                best_on = b.gpu;
+                misty = b
+                    .parts
+                    .iter()
+                    .filter(|(l, _)| l.starts_with("Misty GI"))
+                    .map(|p| p.1)
+                    .sum();
+            }
+        }
+        eprintln!(
+            "MeadowDemo {level} ({:?}): GI off {best_off:.2} ms, GI on {best_on:.2} ms \
+             (+{:.2} ms, Misty GI passes {misty:.2} ms)",
+            quality.global_illumination,
+            best_on - best_off
+        );
+    }
+}
+
+/// MeadowDemo before and after the realtime GI default (`gi_meadow_shipped_<shot>_<before|
+/// after>.png`): before = GI off, Environment Intensity 1.0 (the scene until now); after = the
+/// scene as saved. High quality level, 1280×720.
+#[test]
+#[ignore = "writes renders into docs/screenshots/gfx; run on purpose"]
+fn misty_gi_scene_meadow_shipped() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let (w, h) = (1280, 720);
+    let shots: [(ViewFn, &str); 2] = [
+        (|| meadow_view(Shot::WideGolden), "wide"),
+        (grove_view, "grove"),
+    ];
+    for (view, name) in shots {
+        for label in ["before", "after"] {
+            let mut v = view();
+            wait_for_trees(&v);
+            if label == "before" {
+                v.post.misty_gi = MistyGiSettings::default();
+                v.environment.settings.environment_lighting.intensity = 1.0;
+            }
+            let mut r = Renderer::with_queue(&device, &queue);
+            r.set_quality(&device, &QualityLevel::high());
+            let target = r.create_target(&device, w, h);
+            let frame = v.frame();
+            for _ in 0..90 {
+                r.render(&device, &queue, &target, &frame);
+            }
+            let rgba = read_back(&device, &queue, &target);
+            let path = screenshots().join(format!("gi_meadow_shipped_{name}_{label}.png"));
+            image::RgbaImage::from_raw(w, h, rgba)
+                .expect("size")
+                .save(&path)
+                .expect("png");
+            eprintln!("wrote {}", path.display());
+        }
     }
 }
