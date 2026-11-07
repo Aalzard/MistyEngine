@@ -171,7 +171,7 @@ fn grass_drawn_height(b: BladeIn) -> f32 {
     let keep = grass_keep(dist) * select(1.0, grass.shadow.y, shadow);
     var height = b.position.w * fade * (1.0 - smoothstep(keep * 0.7, keep, key));
     if (shadow) {
-        height *= 1.0 - smoothstep(grass.shadow.x * 0.6, grass.shadow.x, dist);
+        height *= 1.0 - smoothstep(grass.shadow.x * grass.shadow.w, grass.shadow.x, dist);
         if (grass.screen.z > 0.0) {
             height *= smoothstep(grass.screen.z * 0.7, grass.screen.z, dist);
         }

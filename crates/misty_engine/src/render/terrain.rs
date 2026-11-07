@@ -757,6 +757,7 @@ impl TerrainCache {
                         )),
                         0.0,
                     )
+                    .with_caster_fade(grass_near_shadow::CASTER_FADE)
                 })
             });
             self.grass_shadow_groups
