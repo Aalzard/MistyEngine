@@ -261,7 +261,7 @@ fn world_builder_demo_matches_its_generator() {
         crate::test_util::assert_close(
             &Biome::load(&root.join(p.path())).unwrap(),
             &p.biome(),
-            &format!("{}", p.path()),
+            p.path(),
         );
     }
     for stem in world_gen::biome::TEXTURES {

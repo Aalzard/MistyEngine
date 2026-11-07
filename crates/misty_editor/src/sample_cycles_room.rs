@@ -674,7 +674,7 @@ fn cycles_room_demo_matches_its_generator() {
         crate::test_util::assert_json_close(
             &text,
             &generated.to_json(),
-            &format!("{path}: regenerate with write_cycles_room_demo"),
+            format!("{path}: regenerate with write_cycles_room_demo"),
         );
         let (scene, report) = Scene::from_json("CyclesRoom", &text).unwrap();
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);

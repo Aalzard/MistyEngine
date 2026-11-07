@@ -485,7 +485,7 @@ fn platformer_2d_matches_its_generator() {
         crate::test_util::assert_close(
             &TextureImporter::try_load(&path).unwrap(),
             &imp,
-            &format!("{rel}.meta"),
+            format!("{rel}.meta"),
         );
     }
     for (rel, src) in scripts() {

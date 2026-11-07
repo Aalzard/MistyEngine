@@ -329,8 +329,11 @@ fn u32_at(b: &[u8], at: usize) -> Result<u32, String> {
         .ok_or_else(|| format!("truncated at byte {at}"))
 }
 
-/// The (type, payload) chunks of a GLB, after checking its 12-byte header.
-fn glb_chunks(b: &[u8]) -> Result<(u32, Vec<(u32, &[u8])>), String> {
+/// A GLB chunk: its type and payload.
+type Chunk<'a> = (u32, &'a [u8]);
+
+/// The GLB version and chunks, after checking its 12-byte header.
+fn glb_chunks(b: &[u8]) -> Result<(u32, Vec<Chunk<'_>>), String> {
     if u32_at(b, 0)? != GLB_MAGIC {
         return Err("not a GLB file".into());
     }
@@ -411,7 +414,7 @@ fn glb_diff(actual: &[u8], expected: &[u8]) -> Result<(), String> {
     if va != vb {
         return Err(format!("GLB version {va} != {vb}"));
     }
-    let kinds = |c: &[(u32, &[u8])]| c.iter().map(|(k, _)| *k).collect::<Vec<_>>();
+    let kinds = |c: &[Chunk]| c.iter().map(|(k, _)| *k).collect::<Vec<_>>();
     if kinds(&ca) != kinds(&cb) {
         return Err(format!(
             "chunk layout {:x?} != {:x?}",
@@ -571,7 +574,7 @@ mod tests {
         })
         .to_string();
         let mut json = json.into_bytes();
-        while json.len() % 4 != 0 {
+        while !json.len().is_multiple_of(4) {
             json.push(b' ');
         }
         let mut out = Vec::new();

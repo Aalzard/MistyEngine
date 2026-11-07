@@ -425,7 +425,7 @@ fn water_demo_matches_its_generator() {
         crate::test_util::assert_json_close(
             &text,
             &scene.to_json(),
-            &format!("regenerate {path} with write_water_demo"),
+            format!("regenerate {path} with write_water_demo"),
         );
         let (_, report) = Scene::from_json("Demo", &text).unwrap();
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);
