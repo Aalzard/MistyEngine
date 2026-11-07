@@ -751,7 +751,10 @@ impl TerrainCache {
                 std::array::from_fn(|i| {
                     let radius = grass_near_shadow::SLICE_RADII[i];
                     params(
-                        Some((radius * 1.25, grass_near_shadow::SLICE_SHARES[i])),
+                        Some((
+                            radius * grass_near_shadow::CASTER_REACH,
+                            grass_near_shadow::SLICE_SHARES[i],
+                        )),
                         0.0,
                     )
                 })
@@ -973,7 +976,7 @@ impl TerrainCache {
                     // Coarse three-segment cards (half the triangles; the arc keeps the shape
                     // close to the drawn blade's).
                     let limit = Limit {
-                        range: grass_near_shadow::SLICE_RADII[s] * 1.25,
+                        range: grass_near_shadow::SLICE_RADII[s] * grass_near_shadow::CASTER_REACH,
                         share: grass_near_shadow::SLICE_SHARES[s],
                         coarse: true,
                     };
