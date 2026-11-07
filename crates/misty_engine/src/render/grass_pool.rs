@@ -75,7 +75,9 @@ fn page_buffer(device: &wgpu::Device, blades: u32) -> wgpu::Buffer {
 impl BladePool {
     pub fn new(device: &wgpu::Device) -> Self {
         let limits = device.limits();
-        let bytes = (limits.max_storage_buffer_binding_size as u64).min(limits.max_buffer_size);
+        let bytes = limits
+            .max_storage_buffer_binding_size
+            .min(limits.max_buffer_size);
         let max_page = ((bytes / BLADE_BYTES).min(PAGE_LIMIT as u64) as u32) / GRAIN * GRAIN;
         Self {
             pages: Vec::new(),

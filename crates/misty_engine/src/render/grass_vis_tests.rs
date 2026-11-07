@@ -387,11 +387,8 @@ fn grass_vis_motion() {
                     };
                     let mut diff = 0.0f64;
                     let mut worst = 0.0f64;
-                    for f in 0..lumas[0].len() {
-                        let d = (0..n)
-                            .map(|p| (lumas[0][f][p] - lumas[1][f][p]).abs() as f64)
-                            .sum::<f64>()
-                            / n as f64;
+                    for (a, b) in lumas[0].iter().zip(&lumas[1]) {
+                        let d = (0..n).map(|p| (a[p] - b[p]).abs() as f64).sum::<f64>() / n as f64;
                         diff += d;
                         worst = worst.max(d);
                     }
