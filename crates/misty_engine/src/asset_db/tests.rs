@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, RwLock};
 
 use super::*;
 
@@ -178,21 +179,45 @@ fn settings_writes_keep_the_guid() {
 
 #[test]
 fn the_watcher_walks_on_a_thread_and_reports_new_files() {
-    // The global database is shared by the process: the other tests never install one.
+    // The watcher's own database and walk, not the process-wide ones: other tests running at
+    // the same time read the global database (GUID tables in saved scenes, asset listings).
     let root = temp("watch");
     write(&root, "Assets/Mats/Red.mat", "{}");
-    open(&root);
-    assert!(is_open());
-    // Nothing changed: the first call starts a walk, the second reads it.
-    assert!(poll_now().is_none());
+    let db = RwLock::new(Some(GuidDatabase::scan(&root).0));
+    let walk = Mutex::new(None);
+    let guid = |rel: &str| db.read().unwrap().as_ref().unwrap().guid_of(rel);
+    assert!(guid("Assets/Mats/Red.mat").is_some());
+    assert!(guid("Assets/Mats/Blue.mat").is_none());
+    // Nothing changed.
+    assert!(poll_now_in(&db, &walk).is_none());
+    // A walk under way when the file appears (the editor's next poll reads it) is not the
+    // one that reports it: `poll_now_in` waits for it and walks again.
+    assert!(poll_in(&db, &walk).is_none());
     write(&root, "Assets/Mats/Blue.mat", "{}");
-    let report = poll_now().expect("a rescan for the new file");
+    let report = poll_now_in(&db, &walk).expect("a rescan for the new file");
     assert!(
         report.created.iter().any(|p| p.contains("Blue.mat")),
         "{report:?}"
     );
-    assert!(guid_of("Assets/Mats/Blue.mat").is_some());
-    close();
+    assert!(guid("Assets/Mats/Blue.mat").is_some());
+    // And through the editor's call, which reads a finished walk one poll later.
+    write(&root, "Assets/Mats/Green.mat", "{}");
+    let started = std::time::Instant::now();
+    let report = loop {
+        if let Some(r) = poll_in(&db, &walk) {
+            break r;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(60),
+            "the watcher never reported Green.mat"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    };
+    assert!(
+        report.created.iter().any(|p| p.contains("Green.mat")),
+        "{report:?}"
+    );
+    assert!(guid("Assets/Mats/Green.mat").is_some());
     let _ = std::fs::remove_dir_all(root);
 }
 
