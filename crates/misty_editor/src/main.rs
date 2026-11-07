@@ -342,6 +342,17 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+/// Frames the CPU may queue ahead of the display (egui's high-throughput 2).
+/// `MISTY_FRAME_LATENCY=<1..3>` overrides it for measuring: in MeadowDemo the Scene view is
+/// CPU-bound while flying, so 1 measured no lower latency (docs/pending/scene-camera.md).
+fn frame_latency() -> u32 {
+    std::env::var("MISTY_FRAME_LATENCY")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|n| (1..=3).contains(n))
+        .unwrap_or(2)
+}
+
 /// egui's device setup plus timestamp queries when available (Profiler GPU times).
 fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
     let egui_wgpu::WgpuSetup::CreateNew(mut setup) = egui_wgpu::WgpuSetup::without_display_handle()
@@ -363,7 +374,7 @@ fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
         wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(setup),
         surface: egui_wgpu::SurfaceConfig {
             present_mode,
-            ..egui_wgpu::SurfaceConfig::HIGH_THROUGHPUT
+            desired_maximum_frame_latency: Some(frame_latency()),
         },
         ..Default::default()
     }

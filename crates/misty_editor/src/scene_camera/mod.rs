@@ -1,8 +1,14 @@
 //! Scene view camera: pivot/orbit model with fly, pan, orbit, zoom, axis snapping and 2D mode.
+//! Input moves goals; critically damped smoothing ([`smooth`]) carries the view after them,
+//! frame-rate independent.
+
+pub mod bench;
+pub mod smooth;
 
 use egui::{Key, PointerButton};
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
 use misty_engine::camera::{Camera, Projection};
+use smooth::{Chase, Velocity};
 
 /// Interaction that started with a mouse press in the view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,26 +98,126 @@ impl AxisView {
     }
 }
 
+/// Scene camera settings (the camera popover in the Scene view toolbar), saved per project.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct CameraSettings {
+    /// Vertical field of view in degrees (perspective).
+    pub fov: f32,
+    /// Near and far planes follow the distance to the pivot.
+    pub dynamic_clipping: bool,
+    pub near: f32,
+    pub far: f32,
+    /// Fly speed multiplier (right mouse + scroll changes it while flying).
+    pub speed: f32,
+    /// Flying speeds up while a key is held (up to 4× after 2 s).
+    pub acceleration: bool,
+    /// Moves ease in and out; off, the camera follows the input exactly.
+    pub easing: bool,
+    /// Smooth time (s) of flying and wheel zoom: how long moves ease in and glide out.
+    pub damping: f32,
+    /// Smooth time (s) of mouse drags: look, orbit, pan and Alt + right-drag zoom. A steady
+    /// drag is followed this far behind (0.012 s is under one frame at 60 FPS).
+    pub look_smoothing: f32,
+}
+
+impl Default for CameraSettings {
+    fn default() -> Self {
+        Self {
+            fov: 60.0,
+            dynamic_clipping: true,
+            near: 0.03,
+            far: 10_000.0,
+            speed: 1.0,
+            acceleration: true,
+            easing: true,
+            damping: 0.08,
+            look_smoothing: 0.012,
+        }
+    }
+}
+
+impl CameraSettings {
+    pub const SPEED_RANGE: std::ops::RangeInclusive<f32> = 0.01..=50.0;
+    pub const DAMPING_RANGE: std::ops::RangeInclusive<f32> = 0.0..=0.3;
+    pub const LOOK_SMOOTHING_RANGE: std::ops::RangeInclusive<f32> = 0.0..=0.05;
+
+    fn damping(&self) -> f32 {
+        if self.easing { self.damping } else { 0.0 }
+    }
+
+    fn look_smoothing(&self) -> f32 {
+        if self.easing {
+            self.look_smoothing
+        } else {
+            0.0
+        }
+    }
+}
+
+/// One frame of navigation input, already read from the mouse and keyboard.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct NavInput {
+    /// Mouse motion for look / orbit, in points (raw mouse motion when available).
+    pub turn: Vec2,
+    /// Cursor motion, in points (pan and drag zoom follow the cursor).
+    pub cursor_delta: Vec2,
+    /// Mouse wheel, in points (positive = away from the user).
+    pub wheel: f32,
+    /// Cursor position relative to the view centre in half view heights, +y up (where the
+    /// wheel zooms to); `None` zooms to the pivot.
+    pub cursor: Option<Vec2>,
+    /// Fly keys: x = D − A, y = E − Q, z = W − S.
+    pub fly: Vec3,
+    /// Shift: fly faster.
+    pub fast: bool,
+}
+
 pub struct SceneCamera {
     pose: Pose,
     anim: Option<(Pose, Pose, f32)>,
     pub orthographic: bool,
-    pub fov: f32,
-    /// Fly speed multiplier (camera settings dropdown, RMB + scroll).
-    pub speed: f32,
-    pub dynamic_clipping: bool,
-    pub near: f32,
-    pub far: f32,
+    pub settings: CameraSettings,
     pub drag: Drag,
     fly_time: f32,
     snapped: Option<AxisView>,
     ortho_before_snap: bool,
     in_2d: bool,
     saved_3d: Option<(Pose, bool)>,
+    /// Look (yaw, pitch degrees) still to be applied.
+    look: Chase,
+    /// Orbit (yaw, pitch degrees) still to be applied.
+    orbit: Chase,
+    /// Pivot offset (world) still to be applied.
+    pan: Chase,
+    /// Wheel zoom (log distance) still to be applied, towards `zoom_anchor`.
+    zoom: Chase,
+    zoom_anchor: Vec2,
+    /// Alt + right-drag zoom (log distance) still to be applied, towards the pivot.
+    dolly: Chase,
+    /// Fly velocity in view space (x right, y world up, z forward).
+    fly: Velocity,
+    /// Seconds left showing the fly speed in the view after it changed.
+    speed_shown: f32,
+    /// Where the cursor was hidden for a look drag (it comes back there).
+    hidden_cursor: Option<egui::Pos2>,
 }
 
+/// Degrees per point of mouse motion.
 const LOOK_SPEED: f32 = 0.25;
-const ANIM_TIME: f32 = 0.25;
+const ANIM_TIME: f32 = 0.3;
+/// Fly speed at Camera Speed 1, metres per second.
+const FLY_SPEED: f32 = 5.0;
+/// Shift multiplies the fly speed.
+const FAST: f32 = 4.0;
+/// Log distance per point of wheel (a 40-point notch zooms about 10 %).
+const WHEEL_ZOOM: f32 = 0.0025;
+/// Log distance per point of Alt + right-drag.
+const DRAG_ZOOM: f32 = 0.004;
+/// Log speed per point of wheel while flying (a notch is about ×1.2).
+const WHEEL_SPEED: f32 = 0.005;
+const MIN_DISTANCE: f32 = 0.01;
+const MAX_DISTANCE: f32 = 50_000.0;
 
 impl Default for SceneCamera {
     fn default() -> Self {
@@ -125,17 +231,22 @@ impl Default for SceneCamera {
             },
             anim: None,
             orthographic: false,
-            fov: 60.0,
-            speed: 1.0,
-            dynamic_clipping: true,
-            near: 0.03,
-            far: 10_000.0,
+            settings: CameraSettings::default(),
             drag: Drag::None,
             fly_time: 0.0,
             snapped: None,
             ortho_before_snap: false,
             in_2d: false,
             saved_3d: None,
+            look: Chase::default(),
+            orbit: Chase::default(),
+            pan: Chase::default(),
+            zoom: Chase::default(),
+            zoom_anchor: Vec2::ZERO,
+            dolly: Chase::default(),
+            fly: Velocity::default(),
+            speed_shown: 0.0,
+            hidden_cursor: None,
         }
     }
 }
@@ -153,6 +264,11 @@ impl SceneCamera {
         self.pose.pivot
     }
 
+    #[cfg(test)]
+    pub fn distance(&self) -> f32 {
+        self.pose.distance
+    }
+
     pub fn is_2d(&self) -> bool {
         self.in_2d
     }
@@ -168,15 +284,16 @@ impl SceneCamera {
 
     /// Half view height at the pivot, used for ortho size and pan speed.
     fn half_height(&self) -> f32 {
-        self.pose.distance * (self.fov.to_radians() * 0.5).tan()
+        self.pose.distance * (self.settings.fov.to_radians() * 0.5).tan()
     }
 
     pub fn camera(&self) -> Camera {
-        let (near, far) = if self.dynamic_clipping {
+        let s = &self.settings;
+        let (near, far) = if s.dynamic_clipping {
             let d = self.pose.distance;
             ((d * 0.002).clamp(0.01, 1.0), (d * 1000.0).max(1000.0))
         } else {
-            (self.near, self.far)
+            (s.near, s.far)
         };
         if self.orthographic {
             // Pull the eye far back so nothing in front of the pivot is clipped.
@@ -194,14 +311,33 @@ impl SceneCamera {
             Camera {
                 position: self.position(),
                 rotation: self.rotation(),
-                projection: Projection::Perspective { fov_y: self.fov },
+                projection: Projection::Perspective { fov_y: s.fov },
                 near,
                 far,
             }
         }
     }
 
-    /// Process mouse/keyboard for this frame. Returns true while the camera is moving.
+    /// The fly speed while it is shown in the view after a change, with its opacity.
+    pub fn speed_overlay(&self) -> Option<(f32, f32)> {
+        (self.speed_shown > 0.0).then(|| (self.settings.speed, (self.speed_shown / 0.3).min(1.0)))
+    }
+
+    /// Anything still moving: a drag, a fly glide, smoothing catching up or a transition.
+    pub fn is_moving(&self) -> bool {
+        self.drag != Drag::None
+            || self.anim.is_some()
+            || !self.look.is_settled()
+            || !self.orbit.is_settled()
+            || !self.pan.is_settled()
+            || !self.zoom.is_settled()
+            || !self.dolly.is_settled()
+            || !self.fly.is_settled()
+            || self.speed_shown > 0.0
+    }
+
+    /// Process mouse/keyboard for this frame. Returns true while the camera is moving (the
+    /// view should keep repainting).
     pub fn handle_input(
         &mut self,
         ctx: &egui::Context,
@@ -209,7 +345,8 @@ impl SceneCamera {
         view_height: f32,
         view_tool: bool,
     ) -> bool {
-        let (pressed, alt, delta, scroll, dt) = ctx.input(|i| {
+        let rect = response.rect;
+        let (pressed, alt, dt) = ctx.input(|i| {
             let pressed = [
                 PointerButton::Primary,
                 PointerButton::Secondary,
@@ -217,13 +354,7 @@ impl SceneCamera {
             ]
             .into_iter()
             .find(|b| i.pointer.button_pressed(*b));
-            (
-                pressed,
-                i.modifiers.alt,
-                i.pointer.delta(),
-                i.smooth_scroll_delta.y,
-                i.stable_dt.min(0.1),
-            )
+            (pressed, i.modifiers.alt, i.stable_dt.min(0.1))
         });
 
         // Start a drag only when the press lands on the view itself.
@@ -244,34 +375,84 @@ impl SceneCamera {
                 self.anim = None;
                 ctx.memory_mut(|m| m.stop_text_input());
             }
+            // Flying hides the cursor (raw mouse motion keeps turning at the screen edges)
+            // and puts it back where the drag started.
+            if self.drag == Drag::Look {
+                self.hidden_cursor = ctx.input(|i| i.pointer.interact_pos());
+                ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(
+                    egui::viewport::CursorGrab::Confined,
+                ));
+            }
         }
         let still_down = ctx.input(|i| i.pointer.any_down());
         if !still_down {
             self.drag = Drag::None;
-            self.fly_time = 0.0;
+        }
+        if self.drag != Drag::Look
+            && let Some(at) = self.hidden_cursor.take()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(
+                egui::viewport::CursorGrab::None,
+            ));
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(at));
         }
 
-        match self.drag {
-            Drag::Look => {
-                self.look(delta.x, delta.y);
-                self.fly(ctx, dt);
-                if response.hovered() && scroll != 0.0 {
-                    // RMB + wheel changes fly speed, like the camera speed setting.
-                    self.speed = (self.speed * (1.0 + scroll * 0.002)).clamp(0.01, 100.0);
+        let line = ctx.options(|o| o.input_options.line_scroll_speed);
+        let v2 = |v: egui::Vec2| Vec2::new(v.x, v.y);
+        let input = ctx.input(|i| {
+            let mut input = NavInput {
+                cursor_delta: v2(i.pointer.delta()),
+                ..Default::default()
+            };
+            // Raw mouse motion (no pointer acceleration, not stopped by the screen edge) when
+            // the platform sends it, in about the same units as points.
+            input.turn = match i.pointer.motion() {
+                Some(m) => v2(m) / i.pixels_per_point.max(0.1),
+                None => v2(i.pointer.delta()),
+            };
+            // The wheel unsmoothed (egui smooths it for scroll areas; the camera has its own).
+            for e in &i.events {
+                if let egui::Event::MouseWheel { unit, delta, .. } = e {
+                    let points = match unit {
+                        egui::MouseWheelUnit::Point => *delta,
+                        egui::MouseWheelUnit::Line => *delta * line,
+                        egui::MouseWheelUnit::Page => *delta * rect.height(),
+                    };
+                    // Shift turns the wheel horizontal on some platforms.
+                    input.wheel += points.x + points.y;
                 }
             }
-            Drag::Pan => self.pan(delta.x, delta.y, view_height),
-            Drag::Orbit => self.orbit(delta.x, delta.y),
-            Drag::Zoom => self.zoom((delta.x + delta.y) * 2.0),
-            Drag::None => {
-                if response.hovered() && scroll != 0.0 {
-                    self.zoom(scroll);
-                }
+            if !response.hovered() && self.drag == Drag::None {
+                input.wheel = 0.0;
             }
-        }
+            input.cursor = i
+                .pointer
+                .hover_pos()
+                .filter(|p| rect.contains(*p))
+                .map(|p| {
+                    let half = (rect.height() * 0.5).max(1.0);
+                    Vec2::new(
+                        (p.x - rect.center().x) / half,
+                        (rect.center().y - p.y) / half,
+                    )
+                });
+            if self.drag == Drag::Look {
+                let axis = |pos: Key, neg: Key| {
+                    i.key_down(pos) as i32 as f32 - i.key_down(neg) as i32 as f32
+                };
+                input.fly = Vec3::new(
+                    axis(Key::D, Key::A),
+                    axis(Key::E, Key::Q),
+                    axis(Key::W, Key::S),
+                );
+                input.fast = i.modifiers.shift;
+            }
+            input
+        });
+        let moving = self.update(&input, view_height, dt);
 
         if let Some(icon) = match self.drag {
-            Drag::Look => Some(egui::CursorIcon::Crosshair),
+            Drag::Look => Some(egui::CursorIcon::None),
             Drag::Pan => Some(egui::CursorIcon::Grabbing),
             Drag::Orbit => Some(egui::CursorIcon::AllScroll),
             Drag::Zoom => Some(egui::CursorIcon::ZoomIn),
@@ -280,77 +461,163 @@ impl SceneCamera {
         } {
             ctx.set_cursor_icon(icon);
         }
-
-        self.step_animation(dt);
-        self.drag != Drag::None || self.anim.is_some()
+        moving
     }
 
-    /// Rotate around the eye (first-person look).
-    fn look(&mut self, dx: f32, dy: f32) {
+    /// Apply one frame of input (`dt` seconds) for the current drag and advance the
+    /// smoothing. Returns true while anything is still moving.
+    pub fn update(&mut self, input: &NavInput, view_height: f32, dt: f32) -> bool {
+        match self.drag {
+            Drag::Look => {
+                self.look
+                    .push(Vec3::new(input.turn.x, input.turn.y, 0.0) * LOOK_SPEED);
+                if input.wheel != 0.0 {
+                    // Right mouse + wheel changes the fly speed, like the camera setting.
+                    let range = CameraSettings::SPEED_RANGE;
+                    self.settings.speed = (self.settings.speed * (input.wheel * WHEEL_SPEED).exp())
+                        .clamp(*range.start(), *range.end());
+                    self.speed_shown = 1.2;
+                }
+            }
+            Drag::Pan => {
+                let per_point = 2.0 * self.half_height() / view_height.max(1.0);
+                let r = self.rotation();
+                let d = input.cursor_delta;
+                self.pan
+                    .push((r * Vec3::X * -d.x + r * Vec3::Y * d.y) * per_point);
+            }
+            Drag::Orbit => self
+                .orbit
+                .push(Vec3::new(input.turn.x, input.turn.y, 0.0) * LOOK_SPEED),
+            Drag::Zoom => {
+                let d = input.cursor_delta;
+                self.dolly.push(Vec3::X * -(d.x + d.y) * DRAG_ZOOM);
+            }
+            Drag::None => {
+                if input.wheel != 0.0 {
+                    self.zoom.push(Vec3::X * -input.wheel * WHEEL_ZOOM);
+                    self.zoom_anchor = input.cursor.unwrap_or(Vec2::ZERO);
+                }
+            }
+        }
+        let fly_target = self.fly_target(input, dt);
+        self.step(fly_target, dt);
+        self.speed_shown = (self.speed_shown - dt).max(0.0);
+        self.is_moving()
+    }
+
+    /// Target fly velocity (view space) for the keys held.
+    fn fly_target(&mut self, input: &NavInput, dt: f32) -> Vec3 {
+        if self.drag != Drag::Look || input.fly == Vec3::ZERO {
+            self.fly_time = 0.0;
+            return Vec3::ZERO;
+        }
+        self.fly_time += dt;
+        // Speed at the middle of the frame, so long and short frames ramp alike.
+        let held = self.fly_time - dt * 0.5;
+        let ramp = if self.settings.acceleration {
+            1.0 + (held * 1.5).min(3.0)
+        } else {
+            1.0
+        };
+        let fast = if input.fast { FAST } else { 1.0 };
+        input.fly.normalize_or_zero() * FLY_SPEED * self.settings.speed * ramp * fast
+    }
+
+    /// Advance the smoothing by `dt` and apply what it lets through.
+    fn step(&mut self, fly_target: Vec3, dt: f32) {
+        let direct = self.settings.look_smoothing();
+        let damping = self.settings.damping();
+
+        let (yaw, pitch) = (self.pose.yaw, self.pose.pitch);
+        let turn = self.look.step(direct, dt, 1e-4);
+        if self.look_by(turn.x, turn.y) {
+            self.look.cancel_axis(1);
+        }
+        let turn = self.orbit.step(direct, dt, 1e-4);
+        if self.orbit_by(turn.x, turn.y) {
+            self.orbit.cancel_axis(1);
+        }
+        let eps = self.pose.distance * 1e-5;
+        self.pose.pivot += self.pan.step(direct, dt, eps);
+        let dolly = self.dolly.step(direct, dt, 1e-5).x;
+        self.zoom_by(dolly, Vec2::ZERO);
+        let zoom = self.zoom.step(damping, dt, 1e-5).x;
+        self.zoom_by(zoom, self.zoom_anchor);
+
+        let local = self.fly.step(fly_target, damping, dt);
+        if local != Vec3::ZERO {
+            // The view turned during the frame: fly along its direction halfway through, so a
+            // turning flight takes the same path at any frame rate.
+            let r = rotation((yaw + self.pose.yaw) * 0.5, (pitch + self.pose.pitch) * 0.5);
+            self.pose.pivot += r * Vec3::X * local.x + Vec3::Y * local.y + r * Vec3::Z * local.z;
+        }
+        self.step_animation(dt);
+    }
+
+    /// Rotate around the eye (first-person look). True when the pitch hit its limit.
+    fn look_by(&mut self, dx: f32, dy: f32) -> bool {
         if dx == 0.0 && dy == 0.0 {
-            return;
+            return false;
         }
         self.leave_snapped_view();
         let eye = self.position();
-        self.pose.yaw += dx * LOOK_SPEED;
-        self.pose.pitch = (self.pose.pitch + dy * LOOK_SPEED).clamp(-89.9, 89.9);
+        let limited = self.turn_by(dx, dy);
         self.pose.pivot = eye + self.rotation() * Vec3::Z * self.pose.distance;
+        limited
     }
 
-    /// Rotate around the pivot.
-    fn orbit(&mut self, dx: f32, dy: f32) {
+    /// Rotate around the pivot. True when the pitch hit its limit.
+    fn orbit_by(&mut self, dx: f32, dy: f32) -> bool {
         if dx == 0.0 && dy == 0.0 {
-            return;
+            return false;
         }
         self.leave_snapped_view();
-        self.pose.yaw += dx * LOOK_SPEED;
-        self.pose.pitch = (self.pose.pitch + dy * LOOK_SPEED).clamp(-89.9, 89.9);
+        self.turn_by(dx, dy)
     }
 
-    /// Drag the world with the mouse.
-    fn pan(&mut self, dx: f32, dy: f32, view_height: f32) {
-        let per_point = 2.0 * self.half_height() / view_height.max(1.0);
-        let r = self.rotation();
-        self.pose.pivot += (r * Vec3::X * -dx + r * Vec3::Y * dy) * per_point;
+    fn turn_by(&mut self, dx: f32, dy: f32) -> bool {
+        self.pose.yaw += dx;
+        let pitch = self.pose.pitch + dy;
+        self.pose.pitch = pitch.clamp(-89.9, 89.9);
+        self.pose.pitch != pitch
     }
 
-    /// Dolly towards the pivot. `amount` > 0 zooms in.
-    fn zoom(&mut self, amount: f32) {
-        let factor = (1.0 - amount * 0.002).clamp(0.5, 1.5);
-        self.pose.distance = (self.pose.distance * factor).clamp(0.01, 50_000.0);
-    }
-
-    /// WASD + QE while looking; Shift for 4x, speed ramps up while held.
-    fn fly(&mut self, ctx: &egui::Context, dt: f32) {
-        let (dir, fast) = ctx.input(|i| {
-            let axis =
-                |pos: Key, neg: Key| i.key_down(pos) as i32 as f32 - i.key_down(neg) as i32 as f32;
-            (
-                Vec3::new(
-                    axis(Key::D, Key::A),
-                    axis(Key::E, Key::Q),
-                    axis(Key::W, Key::S),
-                ),
-                i.modifiers.shift,
-            )
-        });
-        if dir == Vec3::ZERO {
-            self.fly_time = 0.0;
+    /// Change the distance by `log` (natural log, < 0 = closer), keeping the point under
+    /// `anchor` (half view heights from the centre, +y up) where it is on screen.
+    fn zoom_by(&mut self, log: f32, anchor: Vec2) {
+        if log == 0.0 {
             return;
         }
-        self.fly_time += dt;
-        let ramp = 1.0 + (self.fly_time * 1.5).min(3.0);
-        let speed = 5.0 * self.speed * ramp * if fast { 4.0 } else { 1.0 };
+        let d = self.pose.distance;
+        let f = ((d * log.exp()).clamp(MIN_DISTANCE, MAX_DISTANCE)) / d;
         let r = self.rotation();
-        let world = r * Vec3::X * dir.x + Vec3::Y * dir.y + r * Vec3::Z * dir.z;
-        self.pose.pivot += world.normalize_or_zero() * speed * dt;
+        let hh = self.half_height();
+        let point = self.pose.pivot + (r * Vec3::X * anchor.x + r * Vec3::Y * anchor.y) * hh;
+        self.pose.pivot = point + (self.pose.pivot - point) * f;
+        self.pose.distance = d * f;
+    }
+
+    /// Stop every move in progress (smoothing, glide) where it is.
+    fn stop_motion(&mut self) {
+        for c in [
+            &mut self.look,
+            &mut self.orbit,
+            &mut self.pan,
+            &mut self.zoom,
+            &mut self.dolly,
+        ] {
+            *c = Chase::default();
+        }
+        self.fly.stop();
     }
 
     /// Smoothly move the pivot onto a point (Frame Selected, F).
     pub fn frame(&mut self, center: Vec3, radius: f32) {
         let mut target = self.pose;
         target.pivot = center;
-        target.distance = (radius.max(0.25) * 2.5) / (self.fov.to_radians() * 0.5).tan().max(0.1);
+        target.distance =
+            (radius.max(0.25) * 2.5) / (self.settings.fov.to_radians() * 0.5).tan().max(0.1);
         self.animate_to(target);
     }
 
@@ -477,13 +744,16 @@ impl SceneCamera {
     }
 
     fn animate_to(&mut self, target: Pose) {
+        self.stop_motion();
         self.anim = Some((self.pose, target, 0.0));
     }
 
     fn step_animation(&mut self, dt: f32) {
         if let Some((from, to, t)) = &mut self.anim {
             *t = (*t + dt / ANIM_TIME).min(1.0);
-            let e = 1.0 - (1.0 - *t).powi(3);
+            // Ease in and out (smoothstep of an ease-out): starts gently, lands softly.
+            let out = 1.0 - (1.0 - *t).powi(3);
+            let e = out * out * (3.0 - 2.0 * out);
             self.pose = Pose::lerp(*from, *to, e);
             if *t >= 1.0 {
                 self.pose = *to;
@@ -533,7 +803,7 @@ mod tests {
     fn look_keeps_eye_fixed() {
         let mut cam = SceneCamera::default();
         let eye = cam.position();
-        cam.look(40.0, -20.0);
+        cam.look_by(10.0, -5.0);
         assert!((cam.position() - eye).length() < 1e-3);
     }
 
@@ -541,7 +811,7 @@ mod tests {
     fn orbit_keeps_pivot_fixed() {
         let mut cam = SceneCamera::default();
         let pivot = cam.pivot();
-        cam.orbit(40.0, 10.0);
+        cam.orbit_by(10.0, 2.5);
         assert!((cam.pivot() - pivot).length() < 1e-5);
     }
 
@@ -551,8 +821,182 @@ mod tests {
         cam.snap_to_axis(AxisView::Top);
         assert!(cam.orthographic);
         assert_eq!(cam.view_label(), "Top");
-        cam.orbit(10.0, 0.0);
+        cam.orbit_by(2.5, 0.0);
         assert!(!cam.orthographic);
         assert_eq!(cam.view_label(), "Persp");
+    }
+
+    /// Fly `seconds` at `fps` with `input(t)` per frame (right mouse held); the last frame is
+    /// shortened to end on time.
+    fn fly(fps: f32, seconds: f32, input: impl Fn(f32, f32) -> NavInput) -> SceneCamera {
+        let mut cam = SceneCamera {
+            drag: Drag::Look,
+            ..Default::default()
+        };
+        let mut t = 0.0;
+        while t < seconds - 1e-6 {
+            let dt = (1.0 / fps).min(seconds - t);
+            cam.update(&input(t, dt), 600.0, dt);
+            t += dt;
+        }
+        cam
+    }
+
+    /// Hold W while turning at 60°/s for a second, then let go: the same flight at 30, 60
+    /// and 144 FPS.
+    #[test]
+    fn flythrough_is_frame_rate_independent() {
+        let cams: Vec<SceneCamera> = [30.0, 60.0, 144.0]
+            .into_iter()
+            .map(|fps| {
+                fly(fps, 1.5, |t, dt| {
+                    let held = (t + dt).min(1.0) - t.min(1.0);
+                    NavInput {
+                        // The mouse moved during this frame.
+                        turn: Vec2::new(60.0 * held.max(0.0) / LOOK_SPEED, 0.0),
+                        fly: if t + dt * 0.5 < 1.0 {
+                            Vec3::Z
+                        } else {
+                            Vec3::ZERO
+                        },
+                        ..Default::default()
+                    }
+                })
+            })
+            .collect();
+        let start = SceneCamera::default().position();
+        let flown = (cams[1].position() - start).length();
+        assert!(flown > 5.0, "flew {flown} m");
+        for c in &cams[1..] {
+            let d = (c.position() - cams[0].position()).length();
+            // Measured: 2.4 cm (60 vs 30 FPS) and 5.4 cm (144 vs 30) of 8.5 m.
+            assert!(d < 0.01 * flown, "eye differs by {d} m of {flown}");
+            assert!((c.pose.yaw - cams[0].pose.yaw).abs() < 0.01, "yaw");
+            assert!(!c.fly.vel.is_nan());
+        }
+    }
+
+    /// Default look smoothing follows a steady mouse less than one 60 FPS frame behind.
+    #[test]
+    fn look_smoothing_lags_less_than_a_frame() {
+        let rate = 90.0; // degrees per second
+        let cam = fly(240.0, 0.5, |_, dt| NavInput {
+            turn: Vec2::new(rate * dt / LOOK_SPEED, 0.0),
+            ..Default::default()
+        });
+        let lag = cam.look.remaining().x / rate;
+        assert!(lag > 0.0 && lag < 1.0 / 60.0, "lag {lag} s");
+    }
+
+    #[test]
+    fn easing_off_follows_input_exactly() {
+        let mut cam = SceneCamera::default();
+        cam.settings.easing = false;
+        cam.drag = Drag::Look;
+        let yaw = cam.pose.yaw;
+        let input = NavInput {
+            turn: Vec2::new(40.0, 0.0),
+            fly: Vec3::Z,
+            ..Default::default()
+        };
+        cam.update(&input, 600.0, 0.1);
+        assert!((cam.pose.yaw - yaw - 40.0 * LOOK_SPEED).abs() < 1e-4);
+        cam.drag = Drag::None;
+        cam.update(&NavInput::default(), 600.0, 0.1);
+        assert!(!cam.is_moving(), "stops at once without easing");
+    }
+
+    /// Letting go of W glides a short way (speed × damping), then the camera rests and stops
+    /// asking for repaints.
+    #[test]
+    fn fly_glides_to_rest_after_release() {
+        let mut cam = SceneCamera::default();
+        cam.settings.acceleration = false;
+        cam.drag = Drag::Look;
+        let w = NavInput {
+            fly: Vec3::Z,
+            ..Default::default()
+        };
+        for _ in 0..60 {
+            cam.update(&w, 600.0, 1.0 / 60.0);
+        }
+        let released = cam.position();
+        cam.drag = Drag::None;
+        let mut frames = 0;
+        while cam.update(&NavInput::default(), 600.0, 1.0 / 60.0) {
+            frames += 1;
+            assert!(frames < 120, "never came to rest");
+        }
+        let glide = (cam.position() - released).length();
+        let expected = FLY_SPEED * cam.settings.damping;
+        assert!(
+            (glide - expected).abs() < 0.05,
+            "glide {glide} m, expected {expected}"
+        );
+    }
+
+    /// The wheel zooms towards the point under the cursor: it stays put on screen.
+    #[test]
+    fn wheel_zoom_keeps_the_point_under_the_cursor() {
+        let mut cam = SceneCamera::default();
+        let aspect = 16.0 / 9.0;
+        let anchor = Vec2::new(0.6, 0.3);
+        let r = cam.rotation();
+        let point =
+            cam.pivot() + (r * Vec3::X * anchor.x + r * Vec3::Y * anchor.y) * cam.half_height();
+        let (before, _) = cam.camera().world_to_screen(aspect, point).unwrap();
+        let expected = glam::Vec2::new(0.5 + anchor.x / (2.0 * aspect), 0.5 - anchor.y / 2.0);
+        assert!(
+            (before - expected).length() < 1e-3,
+            "{before} vs {expected}"
+        );
+        let distance = cam.distance();
+        let wheel = NavInput {
+            wheel: 120.0,
+            cursor: Some(anchor),
+            ..Default::default()
+        };
+        cam.update(&wheel, 600.0, 1.0 / 60.0);
+        while cam.update(&NavInput::default(), 600.0, 1.0 / 60.0) {}
+        let (after, _) = cam.camera().world_to_screen(aspect, point).unwrap();
+        assert!(cam.distance() < distance * 0.8, "zoomed in");
+        assert!((after - before).length() < 1e-3, "{before} -> {after}");
+    }
+
+    /// F: the view eases onto the selection and lands exactly.
+    #[test]
+    fn frame_selected_animates_then_lands() {
+        let mut cam = SceneCamera::default();
+        let center = Vec3::new(10.0, 2.0, -4.0);
+        cam.frame(center, 1.0);
+        cam.update(&NavInput::default(), 600.0, 1.0 / 60.0);
+        let early = cam.pivot();
+        assert!(
+            early != Vec3::ZERO && (early - center).length() > 1.0,
+            "in transit"
+        );
+        let mut frames = 0;
+        while cam.update(&NavInput::default(), 600.0, 1.0 / 60.0) {
+            frames += 1;
+        }
+        assert!((cam.pivot() - center).length() < 1e-5);
+        assert!((16..=20).contains(&frames), "{frames} frames");
+    }
+
+    #[test]
+    fn right_mouse_wheel_changes_speed_not_zoom() {
+        let mut cam = SceneCamera {
+            drag: Drag::Look,
+            ..Default::default()
+        };
+        let distance = cam.distance();
+        let wheel = NavInput {
+            wheel: 40.0,
+            ..Default::default()
+        };
+        cam.update(&wheel, 600.0, 1.0 / 60.0);
+        assert!(cam.settings.speed > 1.1);
+        assert!(cam.speed_overlay().is_some());
+        assert_eq!(cam.distance(), distance);
     }
 }
