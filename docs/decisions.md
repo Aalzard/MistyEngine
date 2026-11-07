@@ -3261,6 +3261,17 @@ Record of choices made without asking, and why.
        (`misty_ambient`, 2 reads; the world lookup per grass fragment cost +14 ms), tree crowns fall back to a
        world-space probe lookup (`misty_world_irradiance`, a copy of the probe clipmap after the texels).
      - Glossy reflections come from the same distance field and radiance cache, behind SSR's hits.
+     - Reachability (round 16): a per-scene checkbox (Lighting ▸ Realtime Global Illumination) and a Quality tier
+       (Quality ▸ Global Illumination, the highest quality allowed, Off = never), on top of the volume override, which
+       takes precedence. One switch and one tier, like Unity's realtime GI checkbox plus HDRP's quality settings; no
+       per-camera or per-light GI settings (clutter).
+     - Surfaces the prepass doesn't see (transparent, vertex-displaced custom shaders) and water use the world lookup
+       of the probe clipmap; water also scales its sky reflection by GI ÷ sky ambient in the reflection direction.
+     - Multi-view: world state (clipmaps, probes) is pooled in the renderer; the editor's Scene view is secondary and
+       gathers from the Game view's world when its camera is within 8 m (High) of the Game camera, else keeps its
+       own. The Game view never follows the Scene view's camera.
+     - Misty GI keeps its own SDF soft shadows for the sun in the surface cache (virtual shadow maps only hold pages
+       for what the camera sees; the cache needs off-screen light too); a test checks both agree on a shadow.
 650. **Virtual shadow maps for the sun, opt-in** (`docs/pending/vsm.md`).
      - Quality ▸ Shadows ▸ Virtual: a clipmap of 8k × 8k levels (64 × 64 pages of 128², texel 1/1024 m × Shadow
        Resolution's texels per pixel at level 0, doubling per level) up to a safety level covering the shadow

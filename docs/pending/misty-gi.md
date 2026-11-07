@@ -246,18 +246,28 @@ The surface cache relights every level every frame in the prototype (0.1–0.8 m
 relights one level per frame at Low (roadmap R5).
 
 Fallbacks: no compute/storage support → off (ambient + light probes as today). View too large for
-the texel buffer → off for that view. Transparent objects and water keep the probe / sky ambient
-(they read the texel only where the prepass saw them). Lightmapped surfaces skip Misty GI unless
-*Lightmapped Surfaces* is ticked (as with SSGI).
+the texel buffer → off for that view. Surfaces the prepass didn't see (transparent materials,
+vertex-displaced custom shaders) and water read the world lookup of the probe clipmap instead of
+the per-pixel texel. Lightmapped surfaces skip Misty GI unless *Lightmapped Surfaces* is ticked (as
+with SSGI).
 
 ## 9. Unity-like UI
 
-- **Lighting window ▸ Environment ▸ Global Illumination**: `None | Misty GI` (one setting per
-  scene; the volume can't turn it on in a scene where it's None). *Prototype: the volume
-  override alone; the Lighting-window switch is roadmap R1.*
-- **Post-process Volume ▸ Misty Global Illumination** (override, blends like the others):
-  Intensity (0–2), Quality (Low / High), Sky Occlusion strength, Lightmapped Surfaces, Debug view
-  (Off / SDF / Radiance Cache / Probes).
+Three places, kept minimal:
+
+- **Lighting window ▸ Scene ▸ Realtime Lighting ▸ Realtime Global Illumination** (checkbox, per
+  scene, saved in the scene's lighting settings; off by default): Misty GI for every camera of
+  the scene at full intensity. Undoable, marks the scene dirty.
+- **Project Settings ▸ Quality ▸ Global Illumination** (Off / Low / Medium / High per quality
+  level; presets Low → Low, Medium → Medium, High and Ultra → High): the highest quality Misty GI
+  runs at on that level. Off turns it off whatever the scene or a volume says (like Ambient
+  Occlusion's tier).
+- **Post-process Volume ▸ Misty Global Illumination** (override): ticking it turns GI on inside
+  the volume with its Intensity (0–2), Quality (Low / Medium / High, capped by the tier) and
+  Lightmapped Surfaces; it takes precedence over the scene switch. *Planned: debug views (SDF /
+  radiance cache / probes).*
+
+Making Misty GI the default for new scenes is then one line: the scene switch's default.
 - Scene view ▸ Effects dropdown follows Post Processing like every volume effect.
 - Frame Debugger events: *Misty GI: Scene SDF*, *Misty GI: Surface Cache*, *Misty GI: Probe
   Trace*, *Misty GI: Gather*. Pass timers report the same names.
@@ -273,17 +283,43 @@ Module `crates/misty_engine/src/render/misty_gi/`:
 | `settings.rs` | `MistyGiSettings` from the volume override `MistyGlobalIlluminationOverride` (off by default; Intensity, Quality). |
 | `scene.rs` | Per-frame instance list from the `Frame`: analytic primitives (Cube, Sphere, Capsule, Cylinder), mesh-SDF meshes, terrains (heightfield), terrain trees (capsule + ellipsoid); albedo/emission per instance; hashes per level. |
 | `mesh_sdf.rs` | CPU mesh SDF baker (32³, BVH closest point, back-face-ratio sign), cache by mesh key, small meshes baked inline, big ones on a worker thread. |
-| `mod.rs` | Per-view clipmap/probe resources, dirty tracking, the four stages, integration with the screen-trace compose. |
+| `mod.rs` | World state (clipmaps, probes) pooled in the renderer and shared by a secondary view near a primary one; per-view gather images; dirty tracking, the four stages, integration with the screen-trace compose. |
 | `shaders/gi_common.wgsl` | Bindings, clipmap addressing, SDF sampling, sphere tracing, sky model, probe SH evaluation. |
 | `shaders/sdf.wgsl` | Compose one SDF level + material volume from the instance list. |
 | `shaders/surface.wgsl` | Light the radiance band (all lights, SDF shadows, emission, probe feedback). |
 | `shaders/probes.wgsl` | Probe trace with the interval merge, SH L1 projection, hysteresis (faster on big changes). |
 | `shaders/apply.wgsl` | Per-pixel gather (half res) and glossy reflection rays into the images the compose pass reads. |
 
-Edits outside the module are small: `PostSettings::misty_gi`, the volume override, the compose
-pass (`in_c` = irradiance, `in_d` = glossy reflections behind SSR's), the lit-shader hooks in
-`screen_trace.wgsl`, pass-timer marks and Frame Debugger events in `render/mod.rs`, the
-Inspector section, and one line each in `grass.wgsl` and `tree.wgsl`.
+Edits outside the module are small: `PostSettings::misty_gi`, the volume override, the scene
+switch (`RenderSettings::realtime_gi`, resolved in `render_scene::post_settings`), the Quality
+tier (`QualityLevel::global_illumination`, applied in `Renderer::render`), the compose pass
+(`in_c` = irradiance, `in_d` = glossy reflections behind SSR's), the lit-shader hooks in
+`screen_trace.wgsl`, the world-lookup fallback in `mesh.wgsl`'s `shade` (transparent and custom
+surfaces), water's ambient and reflection in `water.wgsl`, pass-timer marks and Frame Debugger
+events in `render/mod.rs`, the Inspector section, the Lighting-window checkbox, the Quality row,
+the editor marking its Scene view secondary, and one line each in `grass.wgsl` and `tree.wgsl`.
+
+### Coverage
+
+| Surface | How it gets Misty GI |
+|---|---|
+| Standard / Cutout meshes, terrain | Per-pixel GI texel (prepass + gather + compose). |
+| Lit custom shaders and Shader Graphs (opaque) | The same `shade()` as the Standard shader: the texel. |
+| Transparent materials, transparent or vertex-displaced custom shaders | Not in the prepass: `shade()` falls back to the world lookup. |
+| Grass | `misty_ambient` (texel where the prepass saw the blade, else its own ambient). |
+| Tree crowns, impostors | `misty_ambient_world` (texel, else world lookup). |
+| Water | World lookup at the surface (body light, foam) and in the reflection direction: the sky reflection is scaled by GI ÷ sky ambient that way (darker under a bridge, tinted beside a lit wall); SSR still wins where it finds something. |
+| Unlit shaders, particles | None (by design). |
+
+### Multi-view: Scene and Game view share one clipmap
+
+The world state (SDF, emission, radiance cache, probes, instance and light buffers) lives in a
+pool in the renderer; each view keeps only its gather images. The editor marks its Scene view
+*secondary* (`RenderTarget::set_misty_gi_secondary`). A secondary view whose camera is within a
+quarter of the third-coarsest level's width of a primary view's (8 m at High, 6 m at Medium/Low),
+and whose primary updated the world in the last 250 ms, runs only its gather against that world:
+no SDF, surface or probe passes. Farther away, or with the Game view hidden, it keeps a world of
+its own; worlds unused for 3 s are freed. The Game view is never degraded by the Scene view.
 
 ### GI for shaders with their own lighting (grass, trees, a visibility-buffer resolve)
 
@@ -310,18 +346,27 @@ so the SDF stage doesn't run):
 
 | Scene | Misty GI | Frame | Misty GI total | Surface cache | Probe trace | Gather (+ reflections) |
 |---|---|---|---|---|---|---|
-| CyclesRoomDemo | off | 8.49 ms | — | — | — | — |
-| | Low | 8.80 | **0.28** | 0.05 | 0.11 | 0.11 |
-| | Medium | 9.52 | **0.73** | 0.08 | 0.27 | 0.38 |
-| | High | 10.26 | **1.90** | 0.08 | 1.40 | 0.42 |
-| MeadowDemo | off | 21.36 | — | — | — | — |
-| | Low | 22.78 | **0.32** | 0.11 | 0.10 | 0.12 |
-| | Medium | 23.26 | **0.67** | 0.20 | 0.21 | 0.27 |
-| | High | 24.08 | **1.59** | 0.21 | 1.06 | 0.32 |
+Round 16 (main effbe2f: grass visibility buffer, virtual shadow maps available):
 
-- Whole-frame cost at High: **+1.8 ms** (room) and **+2.7 ms** (meadow), inside the 3–4 ms target.
+| Scene | Misty GI | Frame | Misty GI total | Surface cache | Probe trace | Gather (+ reflections) |
+|---|---|---|---|---|---|---|
+| CyclesRoomDemo | off | 8.62 ms | — | — | — | — |
+| | Low | 8.93 | **0.28** | 0.05 | 0.11 | 0.11 |
+| | Medium | 9.61 | **0.74** | 0.08 | 0.28 | 0.38 |
+| | High | 10.38 | **1.91** | 0.08 | 1.41 | 0.42 |
+| MeadowDemo | off | 15.51 | — | — | — | — |
+| | Low | 16.49 | **0.32** | 0.11 | 0.10 | 0.12 |
+| | Medium | 17.06 | **0.68** | 0.20 | 0.21 | 0.27 |
+| | High | 17.88 | **1.60** | 0.21 | 1.07 | 0.32 |
+
+- Whole-frame cost at High: **+1.8 ms** (room) and **+2.4 ms** (meadow), inside the 3–4 ms target.
   In MeadowDemo the rest of the difference is the full-resolution compose (0.35 ms, the scene had
-  no SSGI/SSR before) and the grass reading its GI texel.
+  no SSGI/SSR before) and the grass reading its GI texel. (Phase 2 measured the meadow at 21.4 →
+  24.1 ms before the grass visibility buffer; Misty GI's own passes are unchanged.)
+- **Editor, Game + Scene view** (`misty_gi_scene_shared_views`, both 1080p High, the Scene view
+  1.9 m from the Game camera): sharing the Game view's clipmaps saves **1.1 ms per editor frame**
+  in both scenes (MeadowDemo 34.3 → 33.2 ms per pair, CyclesRoomDemo 17.1 → 15.9 ms): the Scene
+  view runs only its gather.
 - **Interval merge** (radiance-cascades style, section 5.3): fine probes trace half their level's
   width and take the coarser probes' radiance in the same direction beyond it. High's probe
   trace went from 2.0 to 1.4 ms (room) and 1.1 ms (meadow), and moving lights settle faster
@@ -390,6 +435,31 @@ Mean sRGB of the ground in the canopy's shade and of the crown (`grove*`):
   design, and the trees are 50 m+ away.
 - Tree crowns are ellipsoid proxies at 75 % size, so the canopy's shade is soft.
 
+### Meadow ambient options (for the user to pick; scene defaults unchanged)
+
+`misty_gi_scene_meadow_options` → `docs/screenshots/gfx/gi_meadow_opt_<shot>_compare.png` for
+`wide`, `grove`, `wide_golden`, `grove_golden`: **A** Misty GI off (today), **B** on with the scene
+as it is, **C** on with Lighting ▸ Environment ▸ Intensity lowered to 0.6, **D** on with the volume's
+GI Intensity at 1.6. Mean sRGB of the canopy shade (`grove`) / foreground grass (`wide`):
+
+| Shot | A off | B on | C ambient 0.6 | D GI Intensity 1.6 |
+|---|---|---|---|---|
+| grove | (45, 60, 11) | (47, 61, 10) | (45, 57, 9) | (51, 68, 12) |
+| grove golden | (96, 106, 18) | (98, 106, 17) | (96, 104, 16) | (100, 110, 19) |
+| wide | (96, 98, 34) | (97, 98, 34) | (96, 96, 32) | (99, 101, 36) |
+| wide golden | (111, 103, 40) | (112, 103, 39) | (110, 100, 37) | (113, 105, 42) |
+
+- Lowering the ambient (C; 0.4 was tried too) only darkens the meadow: Misty GI's sky light is the
+  same environment ambient, so it scales down with it, and the bounce off the dark turf is small.
+  It is not the knob that lets the GI show here.
+- Raising the GI's own Intensity (D) lifts the canopy shade and warms it (sky occlusion and
+  meadow bounce scaled together) without touching the open meadow's sun-lit look much.
+- What really hides the GI in this scene is the grass shader's own occlusion of the ambient in
+  the turf (any ambient, GI or not, is multiplied down there). Easing that is a shader change, not
+  a scene setting, and was left alone.
+- With virtual shadow maps (`gi_meadow_opt_grove*_vsm_compare.png`) Misty GI adds no light inside
+  the virtual shadows; its sky occlusion darkens the canopy shade slightly, as with cascades.
+
 ### Behaviour
 
 - **Moving light** (`misty_gi_follows_a_moving_light`): sun swung from the red wall to the back
@@ -407,6 +477,16 @@ Mean sRGB of the ground in the canopy's shade and of the crown (`grove*`):
   camera still tints the floor in front of it (redness 27 against 1 with a grey wall).
 - **Sky occlusion** (`misty_gi_occludes_the_sky_under_a_roof`): floor under a 3 m roof at 1.2 m
   loses about 35 % of its blue sky light; open floor keeps its ambient within ±5 %.
+- **Water** (`misty_gi_shades_water_under_a_roof`): a lake under a wide roof darkens from 90 to 62
+  (sRGB luminance) as its sky reflection and body light lose the sky; open water 141 → 141.
+- **Custom shaders** (`misty_gi_lights_custom_shader_surfaces`): a lit `.shader` floor takes the red
+  wall's bleed like the Standard shader (redness −15 → +52); a transparent custom cube (not in
+  the prepass) takes it through the world lookup (redness −3 → +52).
+- **Virtual shadow maps** (`misty_gi_sun_agrees_with_virtual_shadows`): with VSM on, a pillar's
+  shadow on the floor is dark both on screen (74 vs 184 lit) and in Misty GI's surface cache (0.08
+  vs 0.51 green radiance); the bounce in the shadow is the same as with cascades (+18).
+- **Shared clipmaps** (`misty_gi_scene_view_shares_the_game_views_clipmaps`): a secondary view
+  near the primary one keeps one world and still shows the bleed; 60 m away it gets its own.
 
 ### Bugs found on the way (kept as tests or comments)
 
@@ -421,12 +501,11 @@ Mean sRGB of the ground in the canopy's shade and of the crown (`grove*`):
 
 ## 12. Roadmap to production
 
-- **R0 — Coverage**: done for grass and trees (section 10). Still to do: water, custom shaders
-  and the grass visibility-buffer resolve (`misty_ambient`); per-blade evaluation of the world
-  lookup for grass beyond the prepass range.
-- **R1 — Product surface**: Lighting window switch, Quality ▸ Global Illumination tier per
-  quality level, Inspector debug views (SDF slice, radiance cache, probe spheres), editor gizmo
-  for the clipmap bounds.
+- **R0 — Coverage**: done (grass, trees, water, custom shaders and Shader Graphs, transparent
+  surfaces; section 10). Left: per-blade world lookup for grass beyond the prepass range.
+- **R1 — Product surface**: Lighting window switch and Quality tier done (section 9). Left:
+  Inspector debug views (SDF slice, radiance cache, probe spheres), editor gizmo for the clipmap
+  bounds, and flipping the scene switch's default once the user picks a meadow option.
 - **R2 — Directional radiance**: the interval merge is in (with SH L1 radiance, which is blurry
   in direction); 8×8 octahedral radiance per probe in the coarse levels would sharpen the far
   field and give rough reflections from the probes.
@@ -441,5 +520,5 @@ Mean sRGB of the ground in the canopy's shade and of the crown (`grove*`):
 - **R6 — Dynamic coverage**: skinned meshes as bone capsules, per-material albedo from textures
   (mean colour), emissive textures, grass as a density layer (sky occlusion near the ground).
 - **R7 — Hardware RT backend** (wgpu ray queries) behind `gi_trace`.
-- **R8 — Multi-view**: share one clipmap between views that are close (Scene + Game view), so the
-  editor doesn't pay twice.
+- **R8 — Multi-view**: done for the editor (section 10, 1.1 ms saved per editor frame). Left:
+  split-screen game cameras (several primaries) could share by the same rule.
