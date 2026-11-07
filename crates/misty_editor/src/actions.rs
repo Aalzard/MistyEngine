@@ -330,4 +330,8 @@ pub enum Action {
     Step,
     /// Menu item that exists for layout parity but is not built yet.
     NotImplemented(&'static str),
+    /// Run an editor script's menu item (its path, "Tools/Scatter Tool").
+    EditorMenu(String),
+    /// Close a dock tab if it is open (`ToolWindow:Close()`).
+    CloseTab(Tab),
 }

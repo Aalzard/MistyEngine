@@ -94,6 +94,12 @@ pub fn all(s: &EditorState) -> Vec<MenuCommand> {
     }
     presets(&mut l, s);
     window(&mut l, s);
+    // Editor script menu items (by their last path segment).
+    for m in &s.editor_scripts.menus {
+        let title = m.path.rsplit('/').next().unwrap_or(&m.path);
+        let shortcut = crate::editor_scripts::menus::intern(&m.shortcut);
+        l.action(title, &m.path, shortcut, Action::EditorMenu(m.path.clone()));
+    }
     l.add("Tutorials", "Help/Tutorials...", MenuRun::Tutorials);
     l.add(
         "About Misty Engine",
