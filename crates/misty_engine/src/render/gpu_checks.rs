@@ -361,6 +361,7 @@ fn lod_levels_switch_with_distance_and_cross_fade() {
             min,
             max,
             fade,
+            virtual_lod: None,
         }),
         ..draw(mesh, Mat4::from_translation(Vec3::Y), lit.clone())
     };

@@ -2465,3 +2465,27 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   works on top of it (files already there are kept). Tests: copy list and GUIDs, every reference
   of the scene, prefab, terrain and trees resolving, opening and 60 frames of Play without an
   error, the folder (release) source, the Hub card and creating it from the Hub.
+
+## Meadow rocks (branch rocks)
+
+### Done (docs/pending/rocks.md)
+- Six procedural rock types in `SampleProject/Assets/Rocks` (CC0, README + LICENSE): Boulder
+  Large, Boulder Split, Boulder Round (granite), Outcrop Layered (sandstone slab), Rock Small and
+  Cobbles. Each: a dense LOD 0 (82 k triangles for the big ones) imported with Virtual Geometry
+  on, three simplified LOD levels, its own baked albedo / normal / mask maps (lichen, moss on
+  top faces and in hollows, a grass-tinted damp base), a material and a LOD Group prefab with a
+  Mesh Collider. Generator `crates/misty_editor/src/sample_rocks` (`write_rocks`); tileable
+  source sets from the Codex-written `tools/rock_textures.py`.
+- MeadowDemo: 64 rocks (34 big, 30 small) in 21 groups (boulders and outcrops near the rises and along the foot of
+  the mountains, a few in the open field's sides, small rocks and cobbles round the big ones),
+  sunk and tilted to the ground, clear of trees, the player and the view ahead. Only the
+  scene's "Rocks" object is generated (`write_meadow_rocks`); the user's objects stay.
+- LOD Groups whose LOD 0 is a virtual geometry mesh keep LOD 0 at every distance while virtual
+  geometry draws it (`LodRange::virtual_lod`), and switch levels as usual otherwise.
+- Shots `docs/screenshots/gfx/rocks_*`, GPU cost test `rock_cost`: LOD Groups cost 0–0.7 ms;
+  virtual geometry measured ~1–1.4 ms more (Low 2–4 ms), so the Quality presets keep it off.
+  Meadow golden references updated; CyclesRoom unchanged.
+
+### Not done yet
+- No prefab brush / terrain paint for rocks (optional part); moss follows the object's up axis
+  (baked); boulders still a little loaf-like at a distance; GI bounces the material colour.
