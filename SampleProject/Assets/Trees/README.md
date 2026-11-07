@@ -14,8 +14,22 @@ They are used by the `MeadowDemo` scene and are free to use in your own games (s
 | `Linden.tree` | A lime (linden), about 17 m: straight trunk, tall dome of heart-shaped leaves. |
 | `Birch.tree` | A silver birch, about 15 m: slim white trunk to the top, a light airy crown. |
 
-`Textures/` holds the bark (tileable albedo + normal map, `u` around the trunk) and the leaf
-atlases (2 × 2 leafy twigs, alpha = cut-out, + normal map) of oak, linden and birch.
+`Textures/` holds, per species (Oak, Linden, Birch):
+
+| Texture | What it is |
+| --- | --- |
+| `<Species>Bark.png` | Bark albedo, 1024 × 1024, tileable both ways (`u` around the trunk, image up = up the trunk). |
+| `<Species>BarkNormal.png` | Tangent-space normal map (OpenGL: green up). |
+| `<Species>BarkRoughness.png` | Roughness (grayscale, 1 = rough). |
+| `<Species>BarkAO.png` | Ambient occlusion of the furrows (grayscale). |
+| `<Species>BarkHeight.png` | Height (grayscale, 0 = deepest furrow; parallax). |
+| `<Species>Leaves.png` | Leaf atlas, 1024 × 1024: 2 × 2 leafy twigs, the twig entering at the bottom centre of each cell, alpha = cut-out. |
+| `<Species>LeavesNormal.png` | The leaves' normal map. |
+| `<Species>LeavesRoughness.png` | Roughness (upper sides a little waxy, undersides matte). |
+| `<Species>LeavesTranslucency.png` | How much sunlight each part lets through (thin blades glow, veins and twigs less). |
+
+The roughness, occlusion, height and translucency slots of a `.tree` are optional; empty slots use
+plain values.
 
 ## Using them
 
@@ -37,5 +51,5 @@ crown shape and width, limbs, leaf density and size, tints, textures, wind), or 
 
     python tools/tree_textures.py SampleProject/Assets/Trees/Textures
 
-(numpy + Pillow; deterministic, about half a minute). The script documents its layouts and
+(NumPy, SciPy and Pillow; deterministic, `--preview` also writes review sheets). The script documents its layouts and
 conventions.

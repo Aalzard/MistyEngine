@@ -29,6 +29,11 @@
   "bark_normal": "Assets/Trees/Textures/OakBarkNormal.png",
   "leaf_texture": "Assets/Trees/Textures/OakLeaves.png",
   "leaf_normal": "Assets/Trees/Textures/OakLeavesNormal.png",
+  "bark_roughness": "Assets/Trees/Textures/OakBarkRoughness.png",
+  "bark_occlusion": "Assets/Trees/Textures/OakBarkAO.png",
+  "bark_height": "Assets/Trees/Textures/OakBarkHeight.png",
+  "leaf_roughness": "Assets/Trees/Textures/OakLeavesRoughness.png",
+  "leaf_translucency": "Assets/Trees/Textures/OakLeavesTranslucency.png",
   "wind": {
     "trunk_bend": 0.7,
     "branch_sway": 0.9,

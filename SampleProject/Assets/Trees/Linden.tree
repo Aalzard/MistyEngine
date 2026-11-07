@@ -29,6 +29,11 @@
   "bark_normal": "Assets/Trees/Textures/LindenBarkNormal.png",
   "leaf_texture": "Assets/Trees/Textures/LindenLeaves.png",
   "leaf_normal": "Assets/Trees/Textures/LindenLeavesNormal.png",
+  "bark_roughness": "Assets/Trees/Textures/LindenBarkRoughness.png",
+  "bark_occlusion": "Assets/Trees/Textures/LindenBarkAO.png",
+  "bark_height": "Assets/Trees/Textures/LindenBarkHeight.png",
+  "leaf_roughness": "Assets/Trees/Textures/LindenLeavesRoughness.png",
+  "leaf_translucency": "Assets/Trees/Textures/LindenLeavesTranslucency.png",
   "wind": {
     "trunk_bend": 0.7,
     "branch_sway": 0.9,

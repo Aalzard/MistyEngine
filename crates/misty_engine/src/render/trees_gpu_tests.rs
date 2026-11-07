@@ -351,10 +351,20 @@ fn nearest_tree(view: &GameView, name: &str) -> Option<(Vec3, f32)> {
     let mut best: Option<(Vec3, f32)> = None;
     for t in &view.terrains {
         let d = &t.data;
-        let Some(proto) = d.trees.prototypes.iter().position(|p| p.tree.contains(name)) else {
+        let Some(proto) = d
+            .trees
+            .prototypes
+            .iter()
+            .position(|p| p.tree.contains(name))
+        else {
             continue;
         };
-        for inst in d.trees.instances.iter().filter(|i| i.prototype as usize == proto) {
+        for inst in d
+            .trees
+            .instances
+            .iter()
+            .filter(|i| i.prototype as usize == proto)
+        {
             let foot = t.position + crate::terrain::trees::local_position(d, inst);
             if best.is_none_or(|(b, _)| b.distance(eye) > foot.distance(eye)) {
                 best = Some((foot, inst.height_scale));
@@ -374,9 +384,9 @@ fn look_at(view: &mut GameView, eye: Vec3, at: Vec3, fov: f32) {
     view.camera.near = 0.05;
 }
 
-/// Close-ups of the broad oak (trunk from the side and from low down, the crown) plus the wide
-/// and behind views: `docs/screenshots/gfx/treelook_<step>_{trunk_side,trunk_low,crown,wide,
-/// behind}.png` (1600×900, High).
+/// Close-ups of the broad oak (trunk from the side, sunlit and from low down, the crown) plus
+/// the wide and behind views: `docs/screenshots/gfx/treelook_<step>_{trunk_side,trunk_sun,
+/// trunk_low,crown,wide,behind}.png` (1600×900, High).
 #[test]
 #[ignore = "writes comparison renders into docs/screenshots/gfx; run on purpose"]
 fn tree_look_shots() {
@@ -389,29 +399,36 @@ fn tree_look_shots() {
     std::fs::create_dir_all(screenshots()).unwrap();
     let base = meadow_view(Shot::Close);
     let (foot, scale) = nearest_tree(&base, "Oak Broad").expect("a broad oak in MeadowDemo");
-    // From the tree towards the sun, turned 40° (the lit side with some of its shading).
+    // From the tree towards the player (the side the player sees), and a sunlit view of the
+    // trunk: from the tree towards the sun, turned 40° (some of its shading shows).
     let sun = base
         .lights
         .iter()
         .find(|l| matches!(l.kind, LightType::Directional))
         .map_or(Vec3::Z, |l| -l.direction);
-    let toward = glam::Quat::from_rotation_y(40f32.to_radians())
-        * sun.with_y(0.0).normalize_or(Vec3::X);
-    let side = Vec3::Y.cross(toward).normalize();
+    let player = (base.camera.position - foot)
+        .with_y(0.0)
+        .normalize_or(Vec3::X);
+    let sunny =
+        glam::Quat::from_rotation_y(40f32.to_radians()) * sun.with_y(0.0).normalize_or(Vec3::X);
     let height = 17.0 * scale;
     let mut shots: Vec<(&str, GameView)> = Vec::new();
+    for (name, toward) in [("trunk_side", player), ("trunk_sun", sunny)] {
+        let side = Vec3::Y.cross(toward).normalize();
+        let mut v = meadow_view(Shot::Close);
+        look_at(
+            &mut v,
+            foot + toward * 3.4 + side * 0.6 + Vec3::Y * 1.6,
+            foot + Vec3::Y * 1.7,
+            55.0,
+        );
+        shots.push((name, v));
+    }
+    let side = Vec3::Y.cross(player).normalize();
     let mut v = meadow_view(Shot::Close);
     look_at(
         &mut v,
-        foot + toward * 3.4 + side * 0.6 + Vec3::Y * 1.6,
-        foot + Vec3::Y * 1.7,
-        55.0,
-    );
-    shots.push(("trunk_side", v));
-    let mut v = meadow_view(Shot::Close);
-    look_at(
-        &mut v,
-        foot + toward * 2.2 - side * 0.8 + Vec3::Y * 0.45,
+        foot + player * 2.2 - side * 0.8 + Vec3::Y * 0.45,
         foot + Vec3::Y * height * 0.42,
         70.0,
     );
@@ -419,7 +436,7 @@ fn tree_look_shots() {
     let mut v = meadow_view(Shot::Close);
     look_at(
         &mut v,
-        foot + toward * height * 0.9 + side * height * 0.3 + Vec3::Y * 2.0,
+        foot + player * height * 0.9 + side * height * 0.3 + Vec3::Y * 2.0,
         foot + Vec3::Y * height * 0.62,
         50.0,
     );

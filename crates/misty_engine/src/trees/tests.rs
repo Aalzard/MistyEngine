@@ -129,7 +129,9 @@ fn bark_faces_point_out_of_the_limbs() {
         for (li, lod) in m.lods.iter().enumerate() {
             let tri = |i: usize, range: &std::ops::Range<u32>| {
                 let idx = &lod.indices[range.start as usize + i * 3..][..3];
-                idx.iter().map(|&k| lod.vertices[k as usize]).collect::<Vec<_>>()
+                idx.iter()
+                    .map(|&k| lod.vertices[k as usize])
+                    .collect::<Vec<_>>()
             };
             let mut trunk_faces = 0;
             for i in 0..lod.bark.len() / 3 {
@@ -165,7 +167,10 @@ fn bark_faces_point_out_of_the_limbs() {
                 total += 1;
                 out += usize::from(face.dot((p[0] + p[1] + p[2]) / 3.0 - m.crown_center) > 0.0);
             }
-            assert!(out as f32 > total as f32 * 0.8, "LOD{li} leaves: {out} of {total}");
+            assert!(
+                out as f32 > total as f32 * 0.8,
+                "LOD{li} leaves: {out} of {total}"
+            );
         }
     }
 }

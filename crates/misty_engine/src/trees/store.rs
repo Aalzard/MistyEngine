@@ -53,12 +53,7 @@ fn stamp(rel: &str) -> Option<SystemTime> {
 fn stamps(path: &str) -> Vec<Option<SystemTime>> {
     let mut out = vec![stamp(path)];
     if let Ok(t) = TreeAsset::load(&crate::assets::absolute(path)) {
-        for tex in [
-            &t.bark_texture,
-            &t.bark_normal,
-            &t.leaf_texture,
-            &t.leaf_normal,
-        ] {
+        for tex in t.textures() {
             out.push(stamp(tex));
         }
     }

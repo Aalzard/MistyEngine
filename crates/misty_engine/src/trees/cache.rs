@@ -1,7 +1,7 @@
 //! Built tree models cached on disk in the project's `Library/TreeCache`, keyed by a hash of
-//! everything the build reads: the recipe, the leaf and bark textures (path, size, modified
-//! time) and the generator's own source. Building a tree (meshes and the eight-view impostor
-//! bake) takes a few hundred milliseconds per prototype; reading one back takes a few.
+//! everything the build reads: the recipe, its textures (path, size, modified time) and the
+//! generator's own source. Building a tree (meshes and the eight-view impostor bake) takes a
+//! few hundred milliseconds per prototype; reading one back takes a few.
 //!
 //! Only the editor uses it (streaming on, no pak mounted): tests build in place, built games
 //! have no `Library`.
@@ -42,7 +42,7 @@ pub(super) fn path(asset: &TreeAsset) -> PathBuf {
     serde_json::to_string(asset)
         .unwrap_or_default()
         .hash(&mut h);
-    for rel in [&asset.leaf_texture, &asset.bark_texture] {
+    for rel in asset.textures() {
         rel.hash(&mut h);
         let meta = std::fs::metadata(crate::assets::absolute(rel)).ok();
         meta.as_ref().map(|m| m.len()).hash(&mut h);

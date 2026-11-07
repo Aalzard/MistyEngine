@@ -663,12 +663,7 @@ fn meadow_demo_matches_its_generator() {
     }
     for (rel, tree) in tree_assets() {
         assert_eq!(TreeAsset::load(&root.join(rel)).unwrap(), tree, "{rel}");
-        for tex in [
-            &tree.bark_texture,
-            &tree.bark_normal,
-            &tree.leaf_texture,
-            &tree.leaf_normal,
-        ] {
+        for tex in tree.textures() {
             assert!(
                 root.join(tex).exists(),
                 "{tex} (run tools/tree_textures.py)"

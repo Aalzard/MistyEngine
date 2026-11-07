@@ -111,9 +111,10 @@ fn shade_tree(world: vec3<f32>, albedo: vec3<f32>, n: vec3<f32>, occlusion: f32,
         // Light through the leaves: forward scattering towards the eye against the light,
         // plus diffuse light through the back of the cluster. It passes several layers of
         // leaves, so the crown's own shadow only dims it.
-        let back = pow(clamp(dot(v, -l), 0.0, 1.0), 4.0);
-        let through = max(dot(-n, l), 0.0);
-        color += transmission * li.color.rgb * atten * mix(0.35, 1.0, shadow) * (back * 1.8 + through * 0.6);
+        // Soft: a wide forward lobe, and diffuse light through the back wrapping round.
+        let back = pow(clamp(dot(v, -l), 0.0, 1.0), 2.5);
+        let through = clamp((dot(-n, l) + 0.35) / 1.35, 0.0, 1.0);
+        color += transmission * li.color.rgb * atten * mix(0.35, 1.0, shadow) * (back * 1.25 + through * through * 0.55);
         atten *= shadow * direct_occlusion(ssao);
         // Wrapped diffuse: leaves scatter light around the crown's terminator.
         let n_dot_l = (dot(n, l) + wrap) / (1.0 + wrap);
@@ -159,17 +160,55 @@ fn tree_normal_mapped(n: vec3<f32>, world: vec3<f32>, uv: vec2<f32>, sampled: ve
     return normalize(t * inv * m.x - b * inv * m.y + n * m.z);
 }
 
+// Normal maps carry x, y in rg (z rebuilt here) and two material maps in b and a
+// (render/trees.rs `pack_channel`): the `sampled` value tree_normal_mapped expects.
+fn tree_unpack_normal(s: vec4<f32>) -> vec3<f32> {
+    let xy = s.xy * 2.0 - 1.0;
+    return vec3<f32>(s.xy, sqrt(max(1.0 - dot(xy, xy), 0.0)) * 0.5 + 0.5);
+}
+
+// Offset parallax (one step, limited): the bark's height (albedo alpha, 0 = furrow, 1 = top
+// of the plates, 0.5 = the mesh surface) shifts the texture against the view, about 2.5 cm
+// deep, fading out by 20 m. The uv offset of a world offset comes from the derivatives.
+fn tree_parallax(world: vec3<f32>, n: vec3<f32>, uv: vec2<f32>, height: f32) -> vec2<f32> {
+    let dp1 = dpdx(world);
+    let dp2 = dpdy(world);
+    let duv1 = dpdx(uv);
+    let duv2 = dpdy(uv);
+    let det = duv1.x * duv2.y - duv1.y * duv2.x;
+    let ok = abs(det) > 1e-14;
+    let inv = select(0.0, 1.0 / det, ok);
+    // World direction of +u and +v (per unit of uv).
+    let pu = (dp1 * duv2.y - dp2 * duv1.y) * inv;
+    let pv = (dp2 * duv1.x - dp1 * duv2.x) * inv;
+    let to_eye = view.camera_pos.xyz - world;
+    let v = normalize(to_eye);
+    let fade = 1.0 - smoothstep(8.0, 20.0, length(to_eye));
+    let o = (v - n * dot(v, n)) * (height - 0.5) * 0.025 * fade / max(dot(v, n), 0.4);
+    let duv = vec2<f32>(dot(o, pu) / max(dot(pu, pu), 1e-12), dot(o, pv) / max(dot(pv, pv), 1e-12));
+    return select(vec2<f32>(0.0), clamp(duv, vec2<f32>(-0.05), vec2<f32>(0.05)), ok);
+}
+
 @fragment
 fn fs_tree_bark(in: TreeOut) -> MeshTargets {
-    // Sample (and take derivatives) before any discard.
-    let base = textureSampleBias(tree_albedo, tree_sampler, in.uv, view.view_tan.z);
-    let sampled = textureSampleBias(tree_normal_map, tree_sampler, in.uv, view.view_tan.z).xyz;
-    let n = tree_normal_mapped(normalize(in.normal), in.world, in.uv, sampled, 1.0);
+    // Sample (and take derivatives) before any discard. Gradients of the unshifted uv: the
+    // parallax shift doesn't change the mip.
+    let bias = exp2(view.view_tan.z);
+    let gx = dpdx(in.uv) * bias;
+    let gy = dpdy(in.uv) * bias;
+    let n0 = normalize(in.normal);
+    let height = textureSampleGrad(tree_albedo, tree_sampler, in.uv, gx, gy).a;
+    let uv = in.uv + tree_parallax(in.world, n0, in.uv, height);
+    let base = textureSampleGrad(tree_albedo, tree_sampler, uv, gx, gy);
+    let material = textureSampleGrad(tree_normal_map, tree_sampler, uv, gx, gy);
+    let n = tree_normal_mapped(n0, in.world, in.uv, tree_unpack_normal(material), 1.0);
     if (tree_faded(in.extra.w, in.clip.xy)) {
         discard;
     }
-    let albedo = base.rgb * tree.bark.rgb;
-    var out = shade_tree(in.world, albedo, n, in.extra.x, vec3<f32>(0.0), 0.15, 0.05, 0.05);
+    // Occlusion map: the ambient light, and a little cavity darkening of the sunlit bark.
+    let cavity = material.a;
+    let albedo = base.rgb * tree.bark.rgb * mix(1.0, cavity, 0.2);
+    var out = shade_tree(in.world, albedo, n, in.extra.x * mix(1.0, cavity, 0.7), vec3<f32>(0.0), 0.15, 1.0 - material.b, 0.05);
     out.velocity = velocity_of(in.clip, in.clip_prev);
     return out;
 }
@@ -185,7 +224,8 @@ fn leaf_coverage(alpha: f32, clip: vec4<f32>, far: f32) -> f32 {
 @fragment
 fn fs_tree_leaves(in: TreeOut, @builtin(front_facing) front: bool) -> MeshTargets {
     let tex = textureSampleBias(tree_albedo, tree_sampler, in.uv, view.view_tan.z);
-    let sampled = textureSampleBias(tree_normal_map, tree_sampler, in.uv, view.view_tan.z).xyz;
+    let material = textureSampleBias(tree_normal_map, tree_sampler, in.uv, view.view_tan.z);
+    let sampled = tree_unpack_normal(material);
     // Mostly sharp (alpha to coverage only antialiases the edges): wide partial coverage
     // reads as a dither pattern; a little softer far away.
     let far = 0.3 * smoothstep(20.0, 90.0, length(in.world - view.camera_pos.xyz));
@@ -202,8 +242,11 @@ fn fs_tree_leaves(in: TreeOut, @builtin(front_facing) front: bool) -> MeshTarget
     albedo = tree_tint(albedo, in.misc.x);
     // Inner, lower clusters are a little paler and bluer (sky light only), the outer warmer.
     let ao = in.extra.x;
-    let transmission = albedo * vec3<f32>(1.05, 1.0, 0.6) * tree.leaf.w * mix(0.35, 1.0, ao);
-    var out = shade_tree(in.world, albedo, n, ao, transmission, 0.45, 0.18, 0.35);
+    // Translucency map: thin blades glow, veins and twigs less.
+    let transmission = albedo * vec3<f32>(1.05, 1.0, 0.6) * tree.leaf.w * mix(0.35, 1.0, ao) * material.a;
+    // Roughness map: a soft sheen on the upper sides only (the dome normals would make one big
+    // highlight of a glossy crown).
+    var out = shade_tree(in.world, albedo, n, ao, transmission, 0.45, 0.35 * (1.0 - material.b), 0.35);
     out.color.a = coverage;
     out.glow.a = coverage;
     out.velocity = velocity_of(in.clip, in.clip_prev);

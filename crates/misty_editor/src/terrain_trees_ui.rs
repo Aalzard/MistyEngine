@@ -13,7 +13,7 @@ use crate::terrain_tools;
 pub const TREE_ICON: &str = "🌳";
 
 /// The sample oak's textures (the default tree's), written into a project that lacks them.
-const OAK_TEXTURES: [(&str, &[u8]); 4] = [
+const OAK_TEXTURES: [(&str, &[u8]); 9] = [
     (
         "OakBark.png",
         include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakBark.png"),
@@ -23,12 +23,32 @@ const OAK_TEXTURES: [(&str, &[u8]); 4] = [
         include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakBarkNormal.png"),
     ),
     (
+        "OakBarkRoughness.png",
+        include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakBarkRoughness.png"),
+    ),
+    (
+        "OakBarkAO.png",
+        include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakBarkAO.png"),
+    ),
+    (
+        "OakBarkHeight.png",
+        include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakBarkHeight.png"),
+    ),
+    (
         "OakLeaves.png",
         include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakLeaves.png"),
     ),
     (
         "OakLeavesNormal.png",
         include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakLeavesNormal.png"),
+    ),
+    (
+        "OakLeavesRoughness.png",
+        include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakLeavesRoughness.png"),
+    ),
+    (
+        "OakLeavesTranslucency.png",
+        include_bytes!("../../../SampleProject/Assets/Trees/Textures/OakLeavesTranslucency.png"),
     ),
 ];
 

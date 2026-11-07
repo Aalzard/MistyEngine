@@ -248,10 +248,20 @@ pub fn tree_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             };
             slot(ui, "Bark", "tree_bark", &mut t.bark_texture);
             slot(ui, "Bark Normal", "tree_bark_n", &mut t.bark_normal);
+            slot(ui, "Bark Roughness", "tree_bark_r", &mut t.bark_roughness);
+            slot(ui, "Bark Occlusion", "tree_bark_ao", &mut t.bark_occlusion);
+            slot(ui, "Bark Height", "tree_bark_h", &mut t.bark_height);
             slot(ui, "Leaves", "tree_leaf", &mut t.leaf_texture);
             slot(ui, "Leaf Normal", "tree_leaf_n", &mut t.leaf_normal);
+            slot(ui, "Leaf Roughness", "tree_leaf_r", &mut t.leaf_roughness);
+            slot(
+                ui,
+                "Leaf Translucency",
+                "tree_leaf_t",
+                &mut t.leaf_translucency,
+            );
         });
-        ui.weak("Leaves: a 2 × 2 atlas of leafy twigs, the twig entering at the bottom centre of each cell, alpha = cut-out.");
+        ui.weak("Bark: square, tileable maps (u around the trunk). Leaves: a 2 × 2 atlas of leafy twigs, the twig entering at the bottom centre of each cell, alpha = cut-out. Roughness, occlusion, height and translucency are grayscale; empty slots use plain values.");
     });
     section(ui, "Wind", false, |ui| {
         grid(ui, "tree_wind", |ui| {
