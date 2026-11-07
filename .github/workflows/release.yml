@@ -89,16 +89,20 @@ jobs:
       - name: Smoke check the binaries
         run: |
           pkg="dist/MistyEngine-$TAG-linux-x64"
-          test -x "$pkg/MistyEngine" && test -x "$pkg/misty_player"
+          # Both programs are executable inside the archive (the updater and users keep the mode).
+          execs="$(tar -tzvf "$pkg.tar.gz" | grep -cE '^-rwxr-xr-x .*/(MistyEngine|misty_player)$' || true)"
+          if [ "$execs" != 2 ]; then echo "::error::programs not executable in the archive"; exit 1; fi
           ldd "$pkg/MistyEngine" | tee ldd.txt
-          ! grep -q "not found" ldd.txt
+          if grep -q "not found" ldd.txt; then echo "::error::missing shared libraries"; exit 1; fi
           # Command-line mode needs no window: a bad option prints the usage and exits with 2.
           set +e
           "$pkg/MistyEngine" --no-such-option 2> usage.txt
           code=$?
           set -e
           cat usage.txt
-          [ "$code" = 2 ] && grep -q "usage: misty" usage.txt
+          if [ "$code" != 2 ] || ! grep -q "usage: misty" usage.txt; then
+            echo "::error::MistyEngine --no-such-option exited with $code"; exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
