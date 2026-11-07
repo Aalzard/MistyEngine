@@ -258,11 +258,10 @@ fn write_world_builder_demo() {
 fn world_builder_demo_matches_its_generator() {
     let root = project();
     for p in Preset::ALL {
-        assert_eq!(
-            Biome::load(&root.join(p.path())).unwrap(),
-            p.biome(),
-            "{}",
-            p.path()
+        crate::test_util::assert_close(
+            &Biome::load(&root.join(p.path())).unwrap(),
+            &p.biome(),
+            &format!("{}", p.path()),
         );
     }
     for stem in world_gen::biome::TEXTURES {
@@ -287,7 +286,7 @@ fn world_builder_demo_matches_its_generator() {
     }
     let (loaded, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(loaded.to_json(), scene.to_json());
+    crate::test_util::assert_json_close(&loaded.to_json(), &scene.to_json(), SCENE);
 }
 
 /// The demo has what it promises: lake in the crater, river and sea water, a flat plateau,

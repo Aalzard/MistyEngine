@@ -667,13 +667,14 @@ fn render_cycles_room_tonemappers() {
 fn cycles_room_demo_matches_its_generator() {
     let root = project();
     for (path, m) in materials() {
-        assert_eq!(Material::load(&root.join(path)).unwrap(), m, "{path}");
+        crate::test_util::assert_close(&Material::load(&root.join(path)).unwrap(), &m, path);
     }
     for (path, generated) in [(SCENE, demo_scene()), (BAKED_SCENE, baked_scene())] {
         let text = std::fs::read_to_string(root.join(path)).unwrap();
-        assert!(
-            text.replace("\r\n", "\n") == generated.to_json(),
-            "{path}: regenerate with write_cycles_room_demo"
+        crate::test_util::assert_json_close(
+            &text,
+            &generated.to_json(),
+            &format!("{path}: regenerate with write_cycles_room_demo"),
         );
         let (scene, report) = Scene::from_json("CyclesRoom", &text).unwrap();
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);

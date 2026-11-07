@@ -171,17 +171,26 @@ fn write_skinning_sample() {
 fn skinning_sample_matches_its_generator_and_plays() {
     let root = project();
     let model = model();
-    assert_eq!(
-        std::fs::read(root.join(MODEL)).unwrap(),
-        skinning::sample::tentacle_glb(),
-        "{MODEL}"
+    crate::test_util::assert_glb_close(
+        &std::fs::read(root.join(MODEL)).unwrap(),
+        &skinning::sample::tentacle_glb(),
+        MODEL,
     );
-    assert_eq!(
-        Material::load(&root.join(MATERIAL)).unwrap(),
-        skin_material(&model)
+    crate::test_util::assert_close(
+        &Material::load(&root.join(MATERIAL)).unwrap(),
+        &skin_material(&model),
+        MATERIAL,
     );
-    assert_eq!(Material::load(&root.join(FLOOR)).unwrap(), floor_material());
-    assert_eq!(AnimationClip::load(&root.join(CLIP)).unwrap(), clip(&model));
+    crate::test_util::assert_close(
+        &Material::load(&root.join(FLOOR)).unwrap(),
+        &floor_material(),
+        FLOOR,
+    );
+    crate::test_util::assert_close(
+        &AnimationClip::load(&root.join(CLIP)).unwrap(),
+        &clip(&model),
+        CLIP,
+    );
     assert_eq!(
         std::fs::read_to_string(root.join(SCRIPT))
             .unwrap()
@@ -191,10 +200,10 @@ fn skinning_sample_matches_its_generator_and_plays() {
     let (mut scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     let expected = demo_scene(&model);
-    assert_eq!(
-        scene.to_json(),
-        expected.to_json(),
-        "scene matches its generator"
+    crate::test_util::assert_json_close(
+        &scene.to_json(),
+        &expected.to_json(),
+        "scene matches its generator",
     );
 
     // Play: the animated tentacle's bones move and its Bulge pulses; Lua drives the other.

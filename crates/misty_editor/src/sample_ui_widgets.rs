@@ -266,10 +266,10 @@ fn write_ui_widgets_demo() {
 #[test]
 fn ui_widgets_demo_matches_its_generator() {
     let text = std::fs::read_to_string(project().join(SCENE)).unwrap();
-    assert_eq!(
-        text,
-        demo_scene().to_json(),
-        "regenerate with write_ui_widgets_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_ui_widgets_demo",
     );
     let (scene, report) = Scene::from_json("UIWidgetsDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

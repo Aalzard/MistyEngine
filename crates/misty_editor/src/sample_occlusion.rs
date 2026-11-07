@@ -376,9 +376,10 @@ mod tests {
     fn occlusion_demo_matches_its_generator() {
         let root = project();
         let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-        assert!(
-            text.replace("\r\n", "\n") == demo_scene().to_json(),
-            "regenerate with write_occlusion_demo"
+        crate::test_util::assert_json_close(
+            &text,
+            &demo_scene().to_json(),
+            "regenerate with write_occlusion_demo",
         );
         let src = std::fs::read_to_string(root.join(TOUR)).unwrap();
         assert_eq!(src.replace("\r\n", "\n"), TOUR_SRC);

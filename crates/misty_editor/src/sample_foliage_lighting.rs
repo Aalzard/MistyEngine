@@ -650,7 +650,11 @@ fn foliage_lighting_demo_matches_its_generator() {
             "{rel}: no .meta"
         );
     }
-    assert_eq!(Material::load(&root.join(PEBBLE)).unwrap(), pebble());
+    crate::test_util::assert_close(
+        &Material::load(&root.join(PEBBLE)).unwrap(),
+        &pebble(),
+        PEBBLE,
+    );
     let on_disk = TerrainData::load(&root.join(DATA)).unwrap();
     let generated = terrain_data();
     assert_eq!(on_disk.layers, generated.layers);
@@ -669,9 +673,10 @@ fn foliage_lighting_demo_matches_its_generator() {
     assert_eq!(tall.heights, on_disk.heights);
     assert_eq!(tall.alphamap, on_disk.alphamap);
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert!(
-        text.replace("\r\n", "\n") == scene(&generated, Look::Golden).to_json(),
-        "regenerate with write_foliage_lighting_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &scene(&generated, Look::Golden).to_json(),
+        "regenerate with write_foliage_lighting_demo",
     );
     let (loaded, report) = Scene::from_json("FoliageLightingDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

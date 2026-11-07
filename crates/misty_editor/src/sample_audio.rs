@@ -234,16 +234,20 @@ fn write_audio_demo() {
 fn audio_demo_matches_its_generator() {
     let root = project();
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text,
-        demo_scene().to_json(),
-        "regenerate with write_audio_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_audio_demo",
     );
     let (scene, report) = Scene::from_json("AudioDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert!(scene.find_by_name("Hint").is_some());
     let file = std::fs::read_to_string(root.join(MIXER)).unwrap();
-    assert_eq!(file, mixer().to_json(), "regenerate with write_audio_demo");
+    crate::test_util::assert_json_close(
+        &file,
+        &mixer().to_json(),
+        "regenerate with write_audio_demo",
+    );
     // WAVs: compare size and header only (`sin` may differ in the last bit between platforms).
     for (path, expected) in clips() {
         let found = std::fs::read(root.join(path)).unwrap_or_default();

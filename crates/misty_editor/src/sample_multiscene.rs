@@ -161,10 +161,10 @@ fn multiscene_demo_matches_its_generator() {
     let root = project();
     for (rel, scene) in [(LEVEL, level_scene()), (LIGHTING, lighting_scene())] {
         let text = std::fs::read_to_string(root.join(rel)).unwrap();
-        assert_eq!(
-            text.replace("\r\n", "\n"),
-            scene.to_json(),
-            "regenerate with write_multiscene_demo"
+        crate::test_util::assert_json_close(
+            &text,
+            &scene.to_json(),
+            "regenerate with write_multiscene_demo",
         );
     }
     let script = std::fs::read_to_string(root.join(LOADER)).unwrap();

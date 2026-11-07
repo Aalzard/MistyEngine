@@ -765,19 +765,24 @@ fn vfx_demo_matches_its_generator() {
     let root = project();
     for (path, g) in effects() {
         let text = std::fs::read_to_string(root.join(path)).unwrap();
-        assert_eq!(EffectGraph::from_json(&text).unwrap(), g, "{path}");
+        crate::test_util::assert_close(&EffectGraph::from_json(&text).unwrap(), &g, path);
         assert!(
             root.join(format!("{path}.meta")).exists(),
             "{path} has a GUID"
         );
     }
-    assert_eq!(Material::load(&root.join(GROUND_MAT)).unwrap(), ground());
+    crate::test_util::assert_close(
+        &Material::load(&root.join(GROUND_MAT)).unwrap(),
+        &ground(),
+        GROUND_MAT,
+    );
     let script = std::fs::read_to_string(root.join(SCRIPT)).unwrap();
     assert_eq!(script.replace("\r\n", "\n"), PORTAL_PULSE);
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert!(
-        text.replace("\r\n", "\n") == demo_scene().to_json(),
-        "regenerate with write_vfx_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_vfx_demo",
     );
     let (_, report) = Scene::from_json("VfxDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

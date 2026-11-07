@@ -60,7 +60,31 @@ jobs:
           VK_ICD_FILENAMES: /nonexistent.json
           VK_DRIVER_FILES: /nonexistent.json
           RUST_BACKTRACE: "1"
-        run: cargo test --workspace --release --locked --no-fail-fast
+          CARGO_TERM_COLOR: never
+        # --no-fail-fast runs every crate's tests even after a failure; the full output also goes
+        # to test-results.txt (uploaded below), since the web log can cut long runs short.
+        run: |
+          set -o pipefail
+          cargo test --workspace --release --locked --no-fail-fast 2>&1 | tee test-results.txt
+
+      - name: Test summary
+        if: always()
+        run: |
+          [ -f test-results.txt ] || exit 0
+          {
+            echo '### Test results'
+            echo '```'
+            grep -E '^\s+Running |^test result:|^test .* FAILED$|^error: |panicked at|process didn.t exit' test-results.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.txt
+          if-no-files-found: ignore
 
       - name: Disk left
         if: always()

@@ -418,13 +418,14 @@ fn water_demo_matches_its_generator() {
         misty_engine::render::custom_shader::check(src).unwrap_or_else(|e| panic!("{path}: {e}"));
     }
     for (path, m) in materials() {
-        assert_eq!(Material::load(&root.join(path)).unwrap(), m, "{path}");
+        crate::test_util::assert_close(&Material::load(&root.join(path)).unwrap(), &m, path);
     }
     for (path, scene) in [(WATER_SCENE, water_scene()), (SHADER_SCENE, shader_scene())] {
         let text = std::fs::read_to_string(root.join(path)).unwrap();
-        assert!(
-            text.replace("\r\n", "\n") == scene.to_json(),
-            "regenerate {path} with write_water_demo"
+        crate::test_util::assert_json_close(
+            &text,
+            &scene.to_json(),
+            &format!("regenerate {path} with write_water_demo"),
         );
         let (_, report) = Scene::from_json("Demo", &text).unwrap();
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);

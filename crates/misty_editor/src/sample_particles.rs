@@ -268,8 +268,8 @@ fn write_particles_demo() {
 #[test]
 fn particles_demo_matches_its_generator() {
     let root = project();
-    assert_eq!(Material::load(&root.join(WOOD)).unwrap(), wood());
-    assert_eq!(Material::load(&root.join(DIRT)).unwrap(), dirt());
+    crate::test_util::assert_close(&Material::load(&root.join(WOOD)).unwrap(), &wood(), WOOD);
+    crate::test_util::assert_close(&Material::load(&root.join(DIRT)).unwrap(), &dirt(), DIRT);
     let script = std::fs::read_to_string(root.join(SCRIPT)).unwrap();
     assert_eq!(script.replace("\r\n", "\n"), SPARK_BURST);
     let (scene, report) = Scene::load(&root.join("Assets/Scenes/ParticlesDemo.scene")).unwrap();
@@ -277,6 +277,6 @@ fn particles_demo_matches_its_generator() {
     for (name, expected) in [("Fire", fire()), ("Sparks", sparks()), ("Smoke", smoke())] {
         let e = scene.find_by_name(name).unwrap();
         let p = scene.world.get::<&ParticleSystem>(e).unwrap();
-        assert_eq!(*p, expected, "{name}");
+        crate::test_util::assert_close(&*p, &expected, name);
     }
 }

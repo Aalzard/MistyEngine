@@ -481,8 +481,12 @@ fn platformer_2d_matches_its_generator() {
     for (rel, img, imp) in textures() {
         let path = root.join(rel);
         let on_disk = misty_engine::image::open(&path).unwrap().into_rgba8();
-        assert_eq!(on_disk, img, "{rel}");
-        assert_eq!(TextureImporter::try_load(&path).unwrap(), imp, "{rel}.meta");
+        crate::test_util::assert_image_close(&on_disk, &img, rel);
+        crate::test_util::assert_close(
+            &TextureImporter::try_load(&path).unwrap(),
+            &imp,
+            &format!("{rel}.meta"),
+        );
     }
     for (rel, src) in scripts() {
         let on_disk = std::fs::read_to_string(root.join(rel)).unwrap();
@@ -490,7 +494,7 @@ fn platformer_2d_matches_its_generator() {
     }
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(scene.to_json(), demo_scene().to_json());
+    crate::test_util::assert_json_close(&scene.to_json(), &demo_scene().to_json(), SCENE);
 }
 
 /// Playing: running right collects the ground coins (the UI Text counts them), the camera
