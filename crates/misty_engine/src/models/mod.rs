@@ -10,6 +10,7 @@ mod gltf_import;
 mod obj_import;
 pub mod runtime;
 pub mod skin;
+pub mod virtual_build;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -112,6 +113,8 @@ pub struct Model {
     /// Import setting Virtual Geometry: its static meshes draw as clusters with per-cluster
     /// level of detail when the Quality level has Virtual Geometry on (render/vgeo).
     pub virtual_geometry: bool,
+    /// The meshes' cluster builds (made on a worker, cached in `Library/VirtualGeometry`).
+    pub virtual_builds: Arc<virtual_build::VirtualBuilds>,
 }
 
 impl Model {
@@ -165,8 +168,8 @@ impl ModelImporter {
     }
 }
 
-/// Apply import settings to a freshly read model.
-fn import(mut model: Model, settings: &ModelImporter) -> Model {
+/// Apply import settings to a freshly read model (`rel` = its project path).
+fn import(mut model: Model, settings: &ModelImporter, rel: &str) -> Model {
     // Skinned meshes deform: no clusters for them.
     model.virtual_geometry = settings.virtual_geometry && model.skins.is_empty();
     if settings.generate_lightmap_uvs {
@@ -176,6 +179,9 @@ fn import(mut model: Model, settings: &ModelImporter) -> Model {
                 m.data = crate::lightmap::uv::unwrap(&m.data, crate::lightmap::uv::MARGIN);
             }
         }
+    }
+    if model.virtual_geometry {
+        model.virtual_builds = virtual_build::start(&model, rel);
     }
     model
 }
@@ -244,7 +250,7 @@ pub fn model(rel: &str) -> Result<Arc<Model>, String> {
     let entry = Entry {
         modified: mtime(&abs),
         model: load(&abs)
-            .map(|m| import(m, &ModelImporter::load(&abs)))
+            .map(|m| import(m, &ModelImporter::load(&abs), rel))
             .map(Arc::new),
     };
     let result = entry.model.clone();
@@ -326,6 +332,17 @@ pub fn is_virtual(r: &MeshRef) -> bool {
             .is_some_and(|m| m.virtual_geometry),
         MeshRef::Primitive(_) => false,
     }
+}
+
+/// The cluster build of a virtual mesh, once it is ready (`None`: not a virtual mesh, or its
+/// build is still running on a worker).
+pub fn virtual_mesh(r: &MeshRef) -> Option<Arc<crate::vgeo::VirtualMesh>> {
+    if !is_virtual(r) {
+        return None;
+    }
+    let (path, index) = r.split_asset()?;
+    let model = model(path).ok()?;
+    model.virtual_builds.get(index).map(|b| b.mesh.clone())
 }
 
 /// Local-space bounds (min, max) of a mesh.

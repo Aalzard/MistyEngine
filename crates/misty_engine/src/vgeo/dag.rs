@@ -147,6 +147,7 @@ pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
             indices_out.extend_from_slice(t);
         }
         let bounds = Sphere::around(&points(&n.tris));
+        let (cone_axis, cone_cutoff) = super::normal_cone(&n.tris, positions);
         all.push(bounds);
         all.push(n.lod);
         clusters.push(Cluster {
@@ -160,6 +161,8 @@ pub(super) fn build(positions: &[Vec3], indices: &[u32]) -> VirtualMesh {
             level: n.level,
             group: n.group,
             parent_group: n.parent_group,
+            cone_axis,
+            cone_cutoff,
         });
     }
     VirtualMesh {

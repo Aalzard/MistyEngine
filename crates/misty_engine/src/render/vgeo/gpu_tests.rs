@@ -510,8 +510,15 @@ fn vgeo_field() {
         .filter(|s| only.is_empty() || only == s.name())
         .collect();
 
-    // Build the clusters once (timed) before anything is measured.
-    let started = std::time::Instant::now();
+    // Lay out the pool once before anything is measured (the clusters were built when the
+    // meshes were registered, as an import does).
+    let build_ms: f32 = rocks
+        .virtual_keys
+        .iter()
+        .filter_map(|k| k.split_asset())
+        .filter_map(|(path, _)| crate::models::model(path).ok())
+        .map(|m| m.virtual_builds.summary().build_ms)
+        .sum();
     {
         let mut r = Renderer::with_queue(&device, &queue);
         r.set_quality(&device, &quality(true, 1.0));
@@ -527,10 +534,11 @@ fn vgeo_field() {
         );
         let s = r.virtual_geometry_stats(&device, &queue);
         eprintln!(
-            "cluster build: {:.1} s for {} meshes ({} source triangles)",
-            started.elapsed().as_secs_f32(),
+            "cluster build: {:.1} s for {} meshes ({} source triangles), pool {:.1} MB",
+            build_ms / 1000.0,
             s.meshes,
-            s.source_triangles
+            s.source_triangles,
+            s.pool_bytes as f64 / 1e6
         );
     }
 
