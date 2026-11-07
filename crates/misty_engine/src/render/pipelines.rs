@@ -838,11 +838,38 @@ pub fn pipelines_built() -> u64 {
     BUILT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
+/// The shader module of `source` (after the common prelude) on `device`, made once.
+///
+/// Most pipelines share their source with others (the variants of a mesh shader; the main,
+/// shadow and prepass pipelines of the terrain, grass and trees), and parsing and validating
+/// the prelude plus the source was two thirds of what building the pipelines of a scene's
+/// first frame cost (148 of 218 ms for MeadowDemo's 51).
+fn shader_module(device: &wgpu::Device, name: &str, source: &str) -> wgpu::ShaderModule {
+    type Modules = std::collections::HashMap<(wgpu::Device, String), wgpu::ShaderModule>;
+    static MODULES: std::sync::Mutex<Option<Modules>> = std::sync::Mutex::new(None);
+    let lock = || MODULES.lock().unwrap_or_else(|e| e.into_inner());
+    let key = (device.clone(), source.to_owned());
+    if let Some(m) = lock().as_ref().and_then(|m| m.get(&key)) {
+        return m.clone();
+    }
+    crate::profile_scope!("Pipeline.Module");
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(spec.name),
-        source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{}", spec.source).into()),
+        label: Some(name),
+        source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{source}").into()),
     });
+    let mut modules = lock();
+    let modules = modules.get_or_insert_with(Default::default);
+    // Tests make many devices: keep the cache bounded (a renderer needs a few dozen).
+    if modules.len() >= 256 {
+        modules.clear();
+    }
+    modules.insert(key, module.clone());
+    module
+}
+
+pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
+    crate::profile_scope!(format!("Pipeline: {}", spec.name));
+    let module = shader_module(device, spec.name, spec.source);
     let layouts: Vec<Option<&wgpu::BindGroupLayout>> =
         spec.layouts.iter().map(|l| Some(*l)).collect();
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
