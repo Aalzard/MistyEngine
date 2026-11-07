@@ -111,7 +111,9 @@ impl Default for ScreenSpaceReflectionsOverride {
 }
 
 /// Misty GI: fully dynamic world-space global illumination (global distance field, radiance
-/// cache and probe gather, `render/misty_gi`). Off unless the volume ticks it. With Screen Space
+/// cache and probe gather, `render/misty_gi`). On when the volume ticks it, or for the whole
+/// scene with Lighting ▸ Realtime Global Illumination (this override then takes precedence);
+/// Quality ▸ Global Illumination caps its quality (Off = never). With Screen Space
 /// GI also on, on-screen hits keep SSGI's detail and Misty GI fills the rays that leave the
 /// screen.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

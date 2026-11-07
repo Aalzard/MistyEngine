@@ -2187,9 +2187,16 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Follow-up: grass and trees receive GI, glossy reflections behind SSR, interval merge on the probe levels,
   works with Upscaling; High +1.8 ms (room) / +2.7 ms (meadow) per frame at 1080p.
 
+- Round 16 (ready to become a default): Lighting ▸ Realtime Global Illumination (per scene) and
+  Quality ▸ Global Illumination (Off / Low / Medium / High per level); water, transparent and
+  custom-shader / Shader Graph surfaces receive GI; the editor's Scene view shares the Game view's
+  clipmaps when near; Misty GI's sun checked against virtual shadow maps; meadow ambient option
+  shots (`gi_meadow_opt_*_compare.png`) for the user to pick from.
+
 ### Not done yet
-- Grass blades and trees don't read the GI term yet (their shaders belong to the grass/tree work); the
-  Lighting-window switch, debug views, reflections, radiance-cascade merge: see the roadmap in the doc.
+- Still off by default (the scene switch's default is the one line to flip once the user picks).
+- Debug views (SDF / radiance cache / probes), directional far field, screen-space near field,
+  toroidal clipmap scrolling, skinned meshes: see the roadmap in the doc.
 
 ## Round 15 — Editor scripting in Lua (branch r15-editor-scripting)
 

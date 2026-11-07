@@ -15,6 +15,8 @@
 //! Off (the default) nothing is allocated and nothing runs.
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Vec3};
@@ -260,12 +262,14 @@ impl TerrainAtlas {
     }
 }
 
-/// The renderer's part: pipelines and the atlases shared by every view.
+/// The renderer's part: pipelines, the atlases shared by every view, and the views' world
+/// state (clipmaps and probes), which a secondary view near a primary one shares.
 #[derive(Default)]
 pub(in crate::render) struct MistyGi {
     pipelines: Option<Pipelines>,
     meshes: Option<mesh_sdf::MeshSdfs>,
     terrains: Option<TerrainAtlas>,
+    worlds: Vec<World>,
 }
 
 /// A 3D texture with its levels stacked along z.
@@ -297,18 +301,18 @@ impl Volume {
     }
 }
 
-/// A view's clipmaps, probes and buffers.
-struct TargetState {
+/// A secondary view shares a primary view's world updated this recently...
+const SHARE_WITHIN: Duration = Duration::from_millis(250);
+/// ...and worlds no view has updated for this long are freed.
+const WORLD_KEEP: Duration = Duration::from_secs(3);
+
+/// Clipmaps, probes and buffers around one view's camera.
+struct World {
     sizes: Sizes,
-    full: (u32, u32),
-    gather_size: (u32, u32),
     sdf: Volume,
     emission: Volume,
     radiance: Volume,
     normals: Volume,
-    gather: wgpu::TextureView,
-    /// Glossy reflections at the gather texels (rgb, a = confidence).
-    reflect: wgpu::TextureView,
     probes: wgpu::Buffer,
     params: wgpu::Buffer,
     instances: wgpu::Buffer,
@@ -317,6 +321,15 @@ struct TargetState {
     /// What each level was last composed from (None = never).
     hashes: Vec<Option<u64>>,
     frame: u32,
+    /// The view whose camera places it ([`TargetSlot`] id), whether that view is secondary,
+    /// and when and where it last updated it.
+    owner: u64,
+    owner_secondary: bool,
+    updated: Instant,
+    camera: Vec3,
+    /// Level placement and light count of the last update (what sharing views gather with).
+    levels: [LevelUniform; MAX_LEVELS],
+    light_count: u32,
 }
 
 fn storage(device: &wgpu::Device, label: &str, bytes: u64) -> wgpu::Buffer {
@@ -330,7 +343,70 @@ fn storage(device: &wgpu::Device, label: &str, bytes: u64) -> wgpu::Buffer {
     })
 }
 
-impl TargetState {
+fn params_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("misty gi params"),
+        size: std::mem::size_of::<Params>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+impl World {
+    fn new(device: &wgpu::Device, sizes: Sizes, owner: u64, owner_secondary: bool) -> Self {
+        let probe_count = sizes.levels as u64 * (sizes.probes as u64).pow(3);
+        Self {
+            sizes,
+            sdf: Volume::new(device, "misty gi sdf", &sizes, VOLUME_FORMAT),
+            emission: Volume::new(device, "misty gi emission", &sizes, VOLUME_FORMAT),
+            radiance: Volume::new(device, "misty gi radiance", &sizes, VOLUME_FORMAT),
+            normals: Volume::new(device, "misty gi cache normals", &sizes, NORMAL_FORMAT),
+            probes: storage(device, "misty gi probes", probe_count * 64),
+            params: params_buffer(device),
+            instances: storage(device, "misty gi instances", 192 * 64),
+            lists: storage(device, "misty gi lists", 4 * 1024),
+            lights: storage(device, "misty gi lights", 96 * scene::MAX_LIGHTS as u64),
+            hashes: vec![None; sizes.levels as usize],
+            frame: 0,
+            owner,
+            owner_secondary,
+            updated: Instant::now(),
+            camera: Vec3::ZERO,
+            levels: [LevelUniform::zeroed(); MAX_LEVELS],
+            light_count: 0,
+        }
+    }
+
+    /// Can a secondary view at `camera` gather from this world instead of keeping its own?
+    /// A primary view updated it just now, and the camera is inside the inner half of its
+    /// third-coarsest level, so the pixels near it still get fine levels (0.25 m at High).
+    fn shareable(&self, id: u64, sizes: &Sizes, camera: Vec3, now: Instant) -> bool {
+        self.owner != id
+            && !self.owner_secondary
+            && self.sizes == *sizes
+            && now.duration_since(self.updated) < SHARE_WITHIN
+            && self.camera.distance(camera) <= share_radius(sizes)
+    }
+}
+
+/// How far a secondary view's camera may be from the primary's to share its world.
+fn share_radius(s: &Sizes) -> f32 {
+    let k = s.levels.saturating_sub(2);
+    0.25 * s.dim as f32 * s.voxel * (1u32 << k) as f32
+}
+
+/// A view's own part: the gather images at its size and its parameters.
+struct ViewState {
+    sizes: Sizes,
+    full: (u32, u32),
+    gather_size: (u32, u32),
+    gather: wgpu::TextureView,
+    /// Glossy reflections at the gather texels (rgb, a = confidence).
+    reflect: wgpu::TextureView,
+    params: wgpu::Buffer,
+}
+
+impl ViewState {
     fn new(device: &wgpu::Device, sizes: Sizes, full: (u32, u32)) -> Self {
         let gather_size = (
             full.0.div_ceil(sizes.apply_scale),
@@ -356,36 +432,43 @@ impl TargetState {
                 })
                 .create_view(&Default::default())
         };
-        let probe_count = sizes.levels as u64 * (sizes.probes as u64).pow(3);
         Self {
             sizes,
             full,
             gather_size,
-            sdf: Volume::new(device, "misty gi sdf", &sizes, VOLUME_FORMAT),
-            emission: Volume::new(device, "misty gi emission", &sizes, VOLUME_FORMAT),
-            radiance: Volume::new(device, "misty gi radiance", &sizes, VOLUME_FORMAT),
-            normals: Volume::new(device, "misty gi cache normals", &sizes, NORMAL_FORMAT),
             gather: image("misty gi gather"),
             reflect: image("misty gi reflections"),
-            probes: storage(device, "misty gi probes", probe_count * 64),
-            params: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("misty gi params"),
-                size: std::mem::size_of::<Params>() as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
-            instances: storage(device, "misty gi instances", 192 * 64),
-            lists: storage(device, "misty gi lists", 4 * 1024),
-            lights: storage(device, "misty gi lights", 96 * scene::MAX_LIGHTS as u64),
-            hashes: vec![None; sizes.levels as usize],
-            frame: 0,
+            params: params_buffer(device),
         }
     }
 }
 
-/// Per-target slot (inside [`RenderTarget`]).
-#[derive(Default)]
-pub(crate) struct TargetSlot(Mutex<Option<TargetState>>);
+/// Per-target slot (inside [`RenderTarget`]): the view's identity, whether it is secondary
+/// (the editor's Scene view), and its gather images.
+pub(crate) struct TargetSlot {
+    id: u64,
+    secondary: AtomicBool,
+    view: Mutex<Option<ViewState>>,
+}
+
+impl Default for TargetSlot {
+    fn default() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self {
+            id: NEXT.fetch_add(1, Ordering::Relaxed),
+            secondary: AtomicBool::new(false),
+            view: Mutex::new(None),
+        }
+    }
+}
+
+impl TargetSlot {
+    /// A secondary view (the editor's Scene view) gathers from a primary view's clipmaps
+    /// when its camera is near enough, instead of updating clipmaps of its own.
+    pub fn set_secondary(&self, on: bool) {
+        self.secondary.store(on, Ordering::Relaxed);
+    }
+}
 
 /// One stage's work this render.
 struct Step {
@@ -485,130 +568,56 @@ impl MistyGi {
         if !settings.active() {
             return None;
         }
-        let pipelines = self.pipelines.get_or_insert_with(|| Pipelines::new(device));
-        let meshes = self
-            .meshes
-            .get_or_insert_with(|| mesh_sdf::MeshSdfs::new(device));
-        let terrains = self
-            .terrains
-            .get_or_insert_with(|| TerrainAtlas::new(device));
+        let MistyGi {
+            pipelines,
+            meshes,
+            terrains,
+            worlds,
+        } = self;
+        let pipelines = pipelines.get_or_insert_with(|| Pipelines::new(device));
+        let meshes = meshes.get_or_insert_with(|| mesh_sdf::MeshSdfs::new(device));
+        let terrains = terrains.get_or_insert_with(|| TerrainAtlas::new(device));
         let sizes = settings.sizes();
         let full = target.size();
-        let mut slot = target.misty_gi.0.lock().ok()?;
-        if slot
+        let slot = &target.misty_gi;
+        let mut view_slot = slot.view.lock().ok()?;
+        if view_slot
             .as_ref()
             .is_none_or(|s| s.sizes != sizes || s.full != full)
         {
-            *slot = Some(TargetState::new(device, sizes, full));
+            *view_slot = Some(ViewState::new(device, sizes, full));
         }
-        let state = slot.as_mut()?;
+        let view = view_slot.as_mut()?;
 
-        // The frame's shapes and lights.
-        let list = scene::build(frame, &mut |m| meshes.brick(queue, m), &mut |t| {
-            terrains.region(queue, t)
-        });
+        // The world this view gathers from: a primary view's when this one is secondary and
+        // near it (nothing to update), else its own (updated around its camera).
+        let now = Instant::now();
+        worlds.retain(|w| now.duration_since(w.updated) < WORLD_KEEP);
         let camera = frame.camera.position;
-        let mut lists: Vec<u32> = Vec::new();
-        let mut levels = [LevelUniform::zeroed(); MAX_LEVELS];
-        let mut dirty = Vec::new();
-        for k in 0..sizes.levels {
-            let focus = level_focus(&sizes, k, camera, frame.camera.forward());
-            let (origin, v) = level_box(&sizes, k, focus);
-            let margin = Vec3::splat(8.0 * v);
-            let hi = origin + Vec3::splat(sizes.dim as f32 * v);
-            let indices = scene::cull(&list.instances, origin - margin, hi + margin);
-            let hash = scene::level_hash(&list.instances, &indices, origin, 0);
-            if state.hashes[k as usize] != Some(hash) {
-                dirty.push((k as usize, hash));
-            }
-            let (first, spacing) = probe_grid(&sizes, k, focus);
-            levels[k as usize] = LevelUniform {
-                sdf: origin.extend(v).to_array(),
-                probe: first.extend(spacing).to_array(),
-                flags: [0.0, lists.len() as f32, indices.len() as f32, 0.0],
-            };
-            lists.extend(indices);
-        }
-        // A new view composes every level at once; later changes a few levels a frame.
-        let fresh = state.hashes.iter().all(|h| h.is_none());
-        let budget = if fresh {
-            dirty.len()
-        } else {
-            RECOMPOSE_PER_FRAME
+        let secondary = slot.secondary.load(Ordering::Relaxed);
+        let shared = secondary
+            .then(|| {
+                worlds
+                    .iter()
+                    .position(|w| w.shareable(slot.id, &sizes, camera, now))
+            })
+            .flatten();
+        let index = match shared {
+            Some(i) => i,
+            None => match worlds.iter().position(|w| w.owner == slot.id) {
+                Some(i) if worlds[i].sizes == sizes && worlds[i].owner_secondary == secondary => i,
+                Some(i) => {
+                    worlds[i] = World::new(device, sizes, slot.id, secondary);
+                    i
+                }
+                None => {
+                    worlds.push(World::new(device, sizes, slot.id, secondary));
+                    worlds.len() - 1
+                }
+            },
         };
-        let recomposed = dirty.len().min(budget);
-        for &(k, hash) in dirty.iter().take(budget) {
-            levels[k].flags[0] = 1.0;
-            state.hashes[k] = Some(hash);
-        }
-
-        // Buffers (grown to fit).
-        let instance_bytes = std::mem::size_of_val(list.instances.as_slice()) as u64;
-        if instance_bytes > state.instances.size() {
-            state.instances = storage(
-                device,
-                "misty gi instances",
-                instance_bytes.next_power_of_two(),
-            );
-        }
-        if !list.instances.is_empty() {
-            queue.write_buffer(&state.instances, 0, bytemuck::cast_slice(&list.instances));
-        }
-        let list_bytes = (lists.len() * 4) as u64;
-        if list_bytes > state.lists.size() {
-            state.lists = storage(device, "misty gi lists", list_bytes.next_power_of_two());
-        }
-        if !lists.is_empty() {
-            queue.write_buffer(&state.lists, 0, bytemuck::cast_slice(&lists));
-        }
-        if !list.lights.is_empty() {
-            queue.write_buffer(&state.lights, 0, bytemuck::cast_slice(&list.lights));
-        }
-
-        let env = frame.environment;
-        let k = env.settings.environment_lighting.intensity.max(0.0);
-        let [sky, equator, ground] = env.ambient();
-        let rot = ray_rotation(state.frame);
-        let row = |i: usize| Vec3::new(rot.x_axis[i], rot.y_axis[i], rot.z_axis[i]);
-        let view_proj = frame.camera.view_projection(target.aspect());
-        let params = Params {
-            info: [
-                sizes.levels as f32,
-                sizes.dim as f32,
-                sizes.probes as f32,
-                (state.frame % 65536) as f32,
-            ],
-            info2: [
-                sizes.rays as f32,
-                sizes.stride as f32,
-                (state.frame % sizes.stride) as f32,
-                HYSTERESIS,
-            ],
-            info3: [
-                list.lights.len() as f32,
-                sizes.visibility_steps as f32,
-                sizes.apply_scale as f32,
-                0.0,
-            ],
-            camera: camera
-                .extend(if sizes.reflections { 1.0 } else { 0.0 })
-                .to_array(),
-            sky: (sky * k).extend(0.0).to_array(),
-            equator: (equator * k).extend(0.0).to_array(),
-            ground: (ground * k).extend(0.0).to_array(),
-            rot0: row(0).extend(0.0).to_array(),
-            rot1: row(1).extend(0.0).to_array(),
-            rot2: row(2).extend(0.0).to_array(),
-            inv_view_proj: view_proj.inverse().to_cols_array_2d(),
-            size: [
-                full.0 as f32,
-                full.1 as f32,
-                state.gather_size.0 as f32,
-                state.gather_size.1 as f32,
-            ],
-            levels,
-        };
-        queue.write_buffer(&state.params, 0, bytemuck::bytes_of(&params));
+        let world = &mut worlds[index];
+        let update = shared.is_none();
 
         let sampler = wgpu::BindingResource::Sampler(&pipelines.sampler);
         let group = |p: &wgpu::ComputePipeline, entries: &[wgpu::BindGroupEntry]| {
@@ -618,101 +627,226 @@ impl MistyGi {
                 entries,
             })
         };
-        let volume_groups = [
-            state.sizes.dim.div_ceil(4),
-            state.sizes.dim.div_ceil(4),
-            (state.sizes.dim * state.sizes.levels).div_ceil(4),
-        ];
+        let env = frame.environment;
+        let k = env.settings.environment_lighting.intensity.max(0.0);
+        let [sky, equator, ground] = env.ambient();
+        let view_proj = frame.camera.view_projection(target.aspect());
+        // `frame_n` = the world's update count (ray rotation, stride phase).
+        let params = |levels: [LevelUniform; MAX_LEVELS], frame_n: u32, lights: u32| {
+            let rot = ray_rotation(frame_n);
+            let row = |i: usize| Vec3::new(rot.x_axis[i], rot.y_axis[i], rot.z_axis[i]);
+            Params {
+                info: [
+                    sizes.levels as f32,
+                    sizes.dim as f32,
+                    sizes.probes as f32,
+                    (frame_n % 65536) as f32,
+                ],
+                info2: [
+                    sizes.rays as f32,
+                    sizes.stride as f32,
+                    (frame_n % sizes.stride) as f32,
+                    HYSTERESIS,
+                ],
+                info3: [
+                    lights as f32,
+                    sizes.visibility_steps as f32,
+                    sizes.apply_scale as f32,
+                    0.0,
+                ],
+                camera: camera
+                    .extend(if sizes.reflections { 1.0 } else { 0.0 })
+                    .to_array(),
+                sky: (sky * k).extend(0.0).to_array(),
+                equator: (equator * k).extend(0.0).to_array(),
+                ground: (ground * k).extend(0.0).to_array(),
+                rot0: row(0).extend(0.0).to_array(),
+                rot1: row(1).extend(0.0).to_array(),
+                rot2: row(2).extend(0.0).to_array(),
+                inv_view_proj: view_proj.inverse().to_cols_array_2d(),
+                size: [
+                    full.0 as f32,
+                    full.1 as f32,
+                    view.gather_size.0 as f32,
+                    view.gather_size.1 as f32,
+                ],
+                levels,
+            }
+        };
+        let probe_count = sizes.levels * sizes.probes.pow(3);
         let mut steps = Vec::new();
-        if recomposed > 0 {
+        if update {
+            // The frame's shapes and lights.
+            let list = scene::build(frame, &mut |m| meshes.brick(queue, m), &mut |t| {
+                terrains.region(queue, t)
+            });
+            let mut lists: Vec<u32> = Vec::new();
+            let mut levels = [LevelUniform::zeroed(); MAX_LEVELS];
+            let mut dirty = Vec::new();
+            for k in 0..sizes.levels {
+                let focus = level_focus(&sizes, k, camera, frame.camera.forward());
+                let (origin, v) = level_box(&sizes, k, focus);
+                let margin = Vec3::splat(8.0 * v);
+                let hi = origin + Vec3::splat(sizes.dim as f32 * v);
+                let indices = scene::cull(&list.instances, origin - margin, hi + margin);
+                let hash = scene::level_hash(&list.instances, &indices, origin, 0);
+                if world.hashes[k as usize] != Some(hash) {
+                    dirty.push((k as usize, hash));
+                }
+                let (first, spacing) = probe_grid(&sizes, k, focus);
+                levels[k as usize] = LevelUniform {
+                    sdf: origin.extend(v).to_array(),
+                    probe: first.extend(spacing).to_array(),
+                    flags: [0.0, lists.len() as f32, indices.len() as f32, 0.0],
+                };
+                lists.extend(indices);
+            }
+            // A new world composes every level at once; later changes a few levels a frame.
+            let fresh = world.hashes.iter().all(|h| h.is_none());
+            let budget = if fresh {
+                dirty.len()
+            } else {
+                RECOMPOSE_PER_FRAME
+            };
+            let recomposed = dirty.len().min(budget);
+            for &(k, hash) in dirty.iter().take(budget) {
+                levels[k].flags[0] = 1.0;
+                world.hashes[k] = Some(hash);
+            }
+
+            // Buffers (grown to fit).
+            let instance_bytes = std::mem::size_of_val(list.instances.as_slice()) as u64;
+            if instance_bytes > world.instances.size() {
+                world.instances = storage(
+                    device,
+                    "misty gi instances",
+                    instance_bytes.next_power_of_two(),
+                );
+            }
+            if !list.instances.is_empty() {
+                queue.write_buffer(&world.instances, 0, bytemuck::cast_slice(&list.instances));
+            }
+            let list_bytes = (lists.len() * 4) as u64;
+            if list_bytes > world.lists.size() {
+                world.lists = storage(device, "misty gi lists", list_bytes.next_power_of_two());
+            }
+            if !lists.is_empty() {
+                queue.write_buffer(&world.lists, 0, bytemuck::cast_slice(&lists));
+            }
+            if !list.lights.is_empty() {
+                queue.write_buffer(&world.lights, 0, bytemuck::cast_slice(&list.lights));
+            }
+            let light_count = list.lights.len() as u32;
+            queue.write_buffer(
+                &world.params,
+                0,
+                bytemuck::bytes_of(&params(levels, world.frame, light_count)),
+            );
+            world.levels = levels;
+            world.light_count = light_count;
+            world.camera = camera;
+            world.updated = now;
+
+            let volume_groups = [
+                sizes.dim.div_ceil(4),
+                sizes.dim.div_ceil(4),
+                (sizes.dim * sizes.levels).div_ceil(4),
+            ];
+            if recomposed > 0 {
+                steps.push(Step {
+                    stage: Stage::Sdf,
+                    group: group(
+                        &pipelines.sdf,
+                        &[
+                            entry(0, buf(&world.params)),
+                            entry(2, res(&world.sdf.view)),
+                            entry(4, res(&world.emission.view)),
+                            entry(9, sampler.clone()),
+                            entry(10, buf(&world.instances)),
+                            entry(11, buf(&world.lists)),
+                            entry(14, res(&meshes.view)),
+                            entry(15, res(&terrains.view)),
+                        ],
+                    ),
+                    groups: volume_groups,
+                });
+            }
             steps.push(Step {
-                stage: Stage::Sdf,
+                stage: Stage::Surface,
                 group: group(
-                    &pipelines.sdf,
+                    &pipelines.surface,
                     &[
-                        entry(0, buf(&state.params)),
-                        entry(2, res(&state.sdf.view)),
-                        entry(4, res(&state.emission.view)),
+                        entry(0, buf(&world.params)),
+                        entry(1, res(&world.sdf.view)),
+                        entry(3, res(&world.emission.view)),
+                        entry(6, res(&world.radiance.view)),
+                        entry(8, res(&world.normals.view)),
                         entry(9, sampler.clone()),
-                        entry(10, buf(&state.instances)),
-                        entry(11, buf(&state.lists)),
-                        entry(14, res(&meshes.view)),
-                        entry(15, res(&terrains.view)),
+                        entry(12, buf(&world.lights)),
+                        entry(13, buf(&world.probes)),
                     ],
                 ),
                 groups: volume_groups,
             });
+            steps.push(Step {
+                stage: Stage::Probes,
+                group: group(
+                    &pipelines.probes,
+                    &[
+                        entry(0, buf(&world.params)),
+                        entry(1, res(&world.sdf.view)),
+                        entry(5, res(&world.radiance.view)),
+                        entry(7, res(&world.normals.view)),
+                        entry(9, sampler.clone()),
+                        entry(13, buf(&world.probes)),
+                    ],
+                ),
+                groups: [probe_count / sizes.stride, 1, 1],
+            });
+            world.frame = world.frame.wrapping_add(1);
         }
-        steps.push(Step {
-            stage: Stage::Surface,
-            group: group(
-                &pipelines.surface,
-                &[
-                    entry(0, buf(&state.params)),
-                    entry(1, res(&state.sdf.view)),
-                    entry(3, res(&state.emission.view)),
-                    entry(6, res(&state.radiance.view)),
-                    entry(8, res(&state.normals.view)),
-                    entry(9, sampler.clone()),
-                    entry(12, buf(&state.lights)),
-                    entry(13, buf(&state.probes)),
-                ],
-            ),
-            groups: volume_groups,
-        });
-        let probe_count = sizes.levels * sizes.probes.pow(3);
-        steps.push(Step {
-            stage: Stage::Probes,
-            group: group(
-                &pipelines.probes,
-                &[
-                    entry(0, buf(&state.params)),
-                    entry(1, res(&state.sdf.view)),
-                    entry(5, res(&state.radiance.view)),
-                    entry(7, res(&state.normals.view)),
-                    entry(9, sampler.clone()),
-                    entry(13, buf(&state.probes)),
-                ],
-            ),
-            groups: [probe_count / sizes.stride, 1, 1],
-        });
+        // The view's gather, from the world's placement as last updated.
+        queue.write_buffer(
+            &view.params,
+            0,
+            bytemuck::bytes_of(&params(world.levels, world.frame, world.light_count)),
+        );
         steps.push(Step {
             stage: Stage::Gather,
             group: group(
                 &pipelines.apply,
                 &[
-                    entry(0, buf(&state.params)),
-                    entry(1, res(&state.sdf.view)),
-                    entry(5, res(&state.radiance.view)),
-                    entry(7, res(&state.normals.view)),
+                    entry(0, buf(&view.params)),
+                    entry(1, res(&world.sdf.view)),
+                    entry(5, res(&world.radiance.view)),
+                    entry(7, res(&world.normals.view)),
                     entry(9, sampler),
-                    entry(13, buf(&state.probes)),
+                    entry(13, buf(&world.probes)),
                     entry(16, res(depth_view)),
                     entry(17, res(normal_view)),
-                    entry(18, res(&state.gather)),
-                    entry(19, res(&state.reflect)),
+                    entry(18, res(&view.gather)),
+                    entry(19, res(&view.reflect)),
                 ],
             ),
             groups: [
-                state.gather_size.0.div_ceil(8),
-                state.gather_size.1.div_ceil(8),
+                view.gather_size.0.div_ceil(8),
+                view.gather_size.1.div_ceil(8),
                 1,
             ],
         });
-        state.frame = state.frame.wrapping_add(1);
         let mut world_header = [[0.0; 4]; WORLD_HEADER_VEC4S];
         world_header[0] = [sizes.levels as f32, sizes.probes as f32, 0.0, 0.0];
-        for (k, l) in levels.iter().take(sizes.levels as usize).enumerate() {
+        for (k, l) in world.levels.iter().take(sizes.levels as usize).enumerate() {
             world_header[1 + k] = l.probe;
         }
         Some(MistyFrame {
             steps,
-            gather: state.gather.clone(),
+            gather: view.gather.clone(),
             scale: sizes.apply_scale,
-            reflect: state.reflect.clone(),
+            reflect: view.reflect.clone(),
             reflections: sizes.reflections,
             world_header,
-            probes: state.probes.clone(),
+            probes: world.probes.clone(),
             probe_bytes: probe_count as u64 * 64,
         })
     }

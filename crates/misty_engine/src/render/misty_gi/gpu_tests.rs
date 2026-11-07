@@ -446,10 +446,24 @@ fn read_sdf_slice(
     values
 }
 
+/// The clipmaps and probes `target` updates.
+fn world_of<'a>(renderer: &'a Renderer, target: &RenderTarget) -> &'a super::World {
+    renderer
+        .screen_trace
+        .misty
+        .worlds
+        .iter()
+        .find(|w| w.owner == target.misty_gi.id)
+        .expect("misty world")
+}
+
 /// Per level: probes updated, inside, mean and largest red c0 (diagnostics).
-fn probe_report(gpu: &(wgpu::Device, wgpu::Queue), target: &RenderTarget) -> Vec<f32> {
-    let slot = target.misty_gi.0.lock().unwrap();
-    let state = slot.as_ref().expect("misty state");
+fn probe_report(
+    gpu: &(wgpu::Device, wgpu::Queue),
+    renderer: &Renderer,
+    target: &RenderTarget,
+) -> Vec<f32> {
+    let state = world_of(renderer, target);
     let s = state.sizes;
     let per = (s.probes as usize).pow(3);
     let probes = read_buffer(gpu, &state.probes, (s.levels as usize * per * 64) as u64);
@@ -511,7 +525,7 @@ fn misty_gi_probe_diagnostics() {
             frames,
         );
         eprintln!("after {frames} more frames:");
-        probe_report(&gpu, &target);
+        probe_report(&gpu, &renderer, &target);
     }
 }
 
@@ -541,9 +555,8 @@ fn misty_gi_builds_the_sdf_and_lights_the_probes() {
         misty(ScreenSpaceQuality::High),
         8,
     );
-    probe_report(&gpu, &target);
-    let slot = target.misty_gi.0.lock().unwrap();
-    let state = slot.as_ref().expect("misty state");
+    probe_report(&gpu, &renderer, &target);
+    let state = world_of(&renderer, &target);
     let s = state.sizes;
     // A vertical line of voxels through the middle of level 1 (x = dim/2, all y, z = dim/2).
     let slice = read_sdf_slice(&gpu, &state.sdf.view, s.dim, s.dim + s.dim / 2);
@@ -779,4 +792,447 @@ fn misty_gi_reaches_tree_crowns() {
     let (a, b) = (mean(&off), mean(&on));
     eprintln!("tree crown facing the red wall: off {a}, on {b}");
     assert!(redness(b) > redness(a) + 3.0, "{a} → {b}");
+}
+
+/// A secondary view (the editor's Scene view) near the primary one (the Game view) gathers
+/// from the primary's clipmaps: one world for both, and the secondary still sees the bleed.
+/// Far away it keeps a world of its own.
+#[test]
+fn misty_gi_scene_view_shares_the_game_views_clipmaps() {
+    let Some(gpu) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut renderer = Renderer::new(&gpu.0);
+    let game = renderer.create_target(&gpu.0, W, H);
+    let scene_view = renderer.create_target(&gpu.0, W, H);
+    scene_view.set_misty_gi_secondary(true);
+    let (meshes, lights) = (room(), [sun_on_red_wall()]);
+    let game_cam = camera();
+    let mut near = camera();
+    near.position += Vec3::new(0.6, 0.3, -0.5);
+    let post = misty(ScreenSpaceQuality::High);
+    let mut on = Vec::new();
+    for _ in 0..30 {
+        render(
+            &mut renderer,
+            &gpu,
+            &game,
+            &game_cam,
+            &meshes,
+            &lights,
+            post,
+            1,
+        );
+        on = render(
+            &mut renderer,
+            &gpu,
+            &scene_view,
+            &near,
+            &meshes,
+            &lights,
+            post,
+            1,
+        );
+    }
+    assert_eq!(
+        renderer.screen_trace.misty.worlds.len(),
+        1,
+        "one shared world"
+    );
+    let off = render(
+        &mut renderer,
+        &gpu,
+        &scene_view,
+        &near,
+        &meshes,
+        &lights,
+        Default::default(),
+        1,
+    );
+    save("misty_shared_scene_view", &on);
+    let beside = Vec3::new(-1.6, 0.0, 0.0);
+    let (a, b) = (rgb(&near, &off, beside), rgb(&near, &on, beside));
+    eprintln!("secondary view, floor beside the red wall: off {a}, on {b}");
+    assert!(
+        redness(b) > redness(a) + 6.0,
+        "the secondary view gathers the bounce: {} → {}",
+        redness(a),
+        redness(b)
+    );
+
+    // Far from the Game view's camera: a world of its own.
+    let mut far = camera();
+    far.position += Vec3::new(60.0, 0.0, 0.0);
+    render(
+        &mut renderer,
+        &gpu,
+        &game,
+        &game_cam,
+        &meshes,
+        &lights,
+        post,
+        1,
+    );
+    render(
+        &mut renderer,
+        &gpu,
+        &scene_view,
+        &far,
+        &meshes,
+        &lights,
+        post,
+        1,
+    );
+    assert_eq!(
+        renderer.screen_trace.misty.worlds.len(),
+        2,
+        "far: its own world"
+    );
+}
+
+/// A lit custom shader (`.shader` / Shader Graph surface) takes Misty GI like the Standard
+/// shader: its floor shows the red wall's bleed.
+#[test]
+fn misty_gi_lights_custom_shader_surfaces() {
+    let Some(gpu) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let path = "Assets/Shaders/__misty_gi_floor.shader";
+    crate::shader_asset::set_source(
+        path,
+        "// @shader surface\nfn surface(input: SurfaceInput) -> SurfaceOutput {\n    var o = default_output(input);\n    o.albedo = vec3<f32>(0.8, 0.8, 0.8);\n    o.smoothness = 0.1;\n    return o;\n}\n",
+    );
+    let mut meshes = room();
+    meshes[0].material.custom = Some(super::super::custom_shader::CustomMaterial {
+        shader: path.into(),
+        values: Default::default(),
+        queue: 2000,
+    });
+    let mut renderer = Renderer::new(&gpu.0);
+    let target = renderer.create_target(&gpu.0, W, H);
+    let (lights, cam) = ([sun_on_red_wall()], camera());
+    let off = render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        Default::default(),
+        2,
+    );
+    let on = render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        misty(ScreenSpaceQuality::High),
+        40,
+    );
+    assert!(renderer.take_shader_errors().is_empty());
+    save("misty_custom_off", &off);
+    save("misty_custom_on", &on);
+    let beside = Vec3::new(-1.6, 0.0, 0.0);
+    let (a, b) = (rgb(&cam, &off, beside), rgb(&cam, &on, beside));
+    eprintln!("custom-shader floor beside the red wall: off {a}, on {b}");
+    assert!(
+        redness(b) > redness(a) + 6.0,
+        "custom shader takes the bleed: {} → {}",
+        redness(a),
+        redness(b)
+    );
+
+    // A transparent one (not in the prepass) takes it through the world lookup.
+    let glass = "Assets/Shaders/__misty_gi_glass.shader";
+    crate::shader_asset::set_source(
+        glass,
+        "// @shader surface\n// @blend alpha\nfn surface(input: SurfaceInput) -> SurfaceOutput {\n    var o = default_output(input);\n    o.albedo = vec3<f32>(0.8, 0.8, 0.8);\n    o.smoothness = 0.1;\n    o.alpha = 0.95;\n    return o;\n}\n",
+    );
+    let mut cube = boxed(Vec3::new(-1.4, 0.6, 0.0), Vec3::splat(0.6), [0.8; 3]);
+    cube.material.custom = Some(super::super::custom_shader::CustomMaterial {
+        shader: glass.into(),
+        values: Default::default(),
+        queue: 3000,
+    });
+    meshes.push(cube);
+    let off = render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        Default::default(),
+        2,
+    );
+    let on = render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        misty(ScreenSpaceQuality::High),
+        40,
+    );
+    assert!(renderer.take_shader_errors().is_empty());
+    save("misty_custom_glass_on", &on);
+    // The cube's face towards the camera (-z), in the shade of the sun.
+    let face = Vec3::new(-1.4, 0.6, -0.31);
+    let (a, b) = (rgb(&cam, &off, face), rgb(&cam, &on, face));
+    eprintln!("transparent custom cube facing the camera: off {a}, on {b}");
+    assert!(
+        redness(b) > redness(a) + 4.0,
+        "transparent custom shader takes the bleed: {} → {}",
+        redness(a),
+        redness(b)
+    );
+}
+
+/// Water takes Misty GI through the world lookup: under a wide roof its sky reflection and
+/// body light darken; in the open it stays close to the plain sky lighting.
+#[test]
+fn misty_gi_shades_water_under_a_roof() {
+    use crate::water::{WaterDraw, WaterKind, WaterSurface};
+    let Some(gpu) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let (device, queue) = &gpu;
+    let mut renderer = Renderer::new(device);
+    let target = renderer.create_target(device, W, H);
+    let cam = camera();
+    let meshes = vec![
+        boxed(
+            Vec3::new(0.0, -0.55, 10.0),
+            Vec3::new(30.0, 0.1, 40.0),
+            [0.5; 3],
+        ),
+        // Roof over the left half, from in front of the camera far beyond the view.
+        boxed(
+            Vec3::new(-4.0, 3.1, 14.0),
+            Vec3::new(8.0, 0.2, 34.0),
+            [0.6; 3],
+        ),
+    ];
+    let lights = [sun(Vec3::new(0.2, -1.0, 0.3))];
+    let mut surface = WaterSurface::new(WaterKind::Lake);
+    surface.size = [24.0, 30.0];
+    let water = [WaterDraw::new(
+        &surface,
+        Mat4::from_translation(Vec3::new(0.0, 0.0, 10.0)),
+        1.0,
+    )];
+    let environment = Environment::default();
+    let mut shoot = |post: PostSettings, frames: u32| {
+        let frame = Frame {
+            camera: &cam,
+            grid: None,
+            skybox: true,
+            background: [0.1; 3],
+            environment: &environment,
+            post,
+            lines: &[],
+            overlay: &[],
+            meshes: &meshes,
+            particles: &[],
+            terrains: &[],
+            water: &water,
+            shaded: true,
+            lights: &lights,
+        };
+        for _ in 0..frames {
+            renderer.render(device, queue, &target, &frame);
+        }
+        read_back(device, queue, &target)
+    };
+    let off = shoot(Default::default(), 2);
+    let on = shoot(misty(ScreenSpaceQuality::High), 40);
+    save("misty_water_off", &off);
+    save("misty_water_on", &on);
+    let lum = |c: Vec3| c.x * 0.2126 + c.y * 0.7152 + c.z * 0.0722;
+    let (shade, open) = (Vec3::new(-2.5, 0.0, 3.0), Vec3::new(2.5, 0.0, 3.0));
+    let (s0, s1) = (lum(rgb(&cam, &off, shade)), lum(rgb(&cam, &on, shade)));
+    let (o0, o1) = (lum(rgb(&cam, &off, open)), lum(rgb(&cam, &on, open)));
+    eprintln!("water under the roof: off {s0:.1}, on {s1:.1}; open: off {o0:.1}, on {o1:.1}");
+    assert!(s1 < s0 * 0.85, "the roof darkens the water: {s0} → {s1}");
+    assert!(
+        (o1 - o0).abs() < o0 * 0.25,
+        "open water stays close: {o0} → {o1}"
+    );
+}
+
+/// Level `k`'s volume at stacked slice `z`, all four channels.
+fn read_slice_rgba(
+    gpu: &(wgpu::Device, wgpu::Queue),
+    view: &wgpu::TextureView,
+    dim: u32,
+    z: u32,
+) -> Vec<[f32; 4]> {
+    let (device, queue) = gpu;
+    let row =
+        (dim * 8).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let out = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("misty gi test slice"),
+        size: (row * dim) as u64,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: view.texture(),
+            mip_level: 0,
+            origin: wgpu::Origin3d { x: 0, y: 0, z },
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &out,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(row),
+                rows_per_image: Some(dim),
+            },
+        },
+        wgpu::Extent3d {
+            width: dim,
+            height: dim,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+    let slice = out.slice(..);
+    slice.map_async(wgpu::MapMode::Read, |_| {});
+    let _ = device.poll(wgpu::PollType::wait_indefinitely());
+    let data = slice.get_mapped_range().expect("mapped");
+    let h = |i: usize| half::f16::from_le_bytes([data[i], data[i + 1]]).to_f32();
+    let mut values = Vec::new();
+    for y in 0..dim as usize {
+        for x in 0..dim as usize {
+            let i = y * row as usize + x * 8;
+            values.push([h(i), h(i + 2), h(i + 4), h(i + 6)]);
+        }
+    }
+    values
+}
+
+/// Green radiance Misty GI's surface cache holds for the floor (top at y = 0) at `p` (green:
+/// the red wall's bounce hardly adds to it): the brightest band voxel just above the floor, in
+/// the finest level holding `p`.
+fn cached_floor_green(gpu: &(wgpu::Device, wgpu::Queue), world: &super::World, p: Vec3) -> f32 {
+    let s = world.sizes;
+    for k in 0..s.levels as usize {
+        let l = world.levels[k].sdf;
+        let (origin, v) = (Vec3::new(l[0], l[1], l[2]), l[3]);
+        let c = ((p - origin) / v).floor();
+        if c.min_element() < 2.0 || c.max_element() > s.dim as f32 - 3.0 {
+            continue;
+        }
+        let slice = read_slice_rgba(
+            gpu,
+            &world.radiance.view,
+            s.dim,
+            k as u32 * s.dim + c.z as u32,
+        );
+        let y0 = ((0.0 - origin.y) / v).floor() as i32;
+        return (y0 - 1..=y0 + 1)
+            .filter_map(|y| {
+                let r = slice[y as usize * s.dim as usize + c.x as usize];
+                (r[3] > 0.5).then_some(r[1])
+            })
+            .fold(0.0, f32::max);
+    }
+    panic!("{p} outside the clipmap");
+}
+
+/// With virtual shadow maps on, Misty GI's sun (its own SDF soft shadows in the surface cache)
+/// agrees with the shadows on screen: a pillar's shadow on the floor is dark in both, the
+/// sunlit floor bright in both, and the bounce is the same as with cascaded shadows.
+#[test]
+fn misty_gi_sun_agrees_with_virtual_shadows() {
+    use crate::quality::{QualityLevel, ShadowMode, Tier};
+    let Some(gpu) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut meshes = room();
+    meshes.push(boxed(
+        Vec3::new(0.8, 1.25, 0.0),
+        Vec3::new(1.0, 2.5, 1.0),
+        [0.8; 3],
+    ));
+    let (lights, cam) = ([sun_on_red_wall()], camera());
+    // Sun (-1, -0.5, 0.3): the pillar's shadow runs left and a little back from it.
+    let (shadow, lit) = (Vec3::new(-1.0, 0.0, 0.55), Vec3::new(1.9, 0.0, -0.8));
+    let lum = |c: Vec3| c.x * 0.2126 + c.y * 0.7152 + c.z * 0.0722;
+    let mut gi_at_shadow = Vec::new();
+    for mode in [ShadowMode::Cascaded, ShadowMode::Virtual] {
+        let mut renderer = Renderer::new(&gpu.0);
+        renderer.set_quality(
+            &gpu.0,
+            &QualityLevel {
+                shadow_mode: mode,
+                temporal_aa: false,
+                shadow_temporal: false,
+                shadow_denoise: false,
+                ambient_occlusion: Tier::Off,
+                ..QualityLevel::high()
+            },
+        );
+        let target = renderer.create_target(&gpu.0, W, H);
+        let mut frames = |post: PostSettings, n: u32| {
+            let mut image = Vec::new();
+            for _ in 0..n {
+                image = render(
+                    &mut renderer,
+                    &gpu,
+                    &target,
+                    &cam,
+                    &meshes,
+                    &lights,
+                    post,
+                    1,
+                );
+                let _ = gpu.0.poll(wgpu::PollType::wait_indefinitely());
+            }
+            image
+        };
+        let off = frames(Default::default(), 4);
+        let on = frames(misty(ScreenSpaceQuality::High), 40);
+        save(&format!("misty_vsm_{mode:?}_on"), &on);
+        assert_eq!(
+            renderer.vsm_stats().is_some(),
+            mode == ShadowMode::Virtual,
+            "{mode:?} is the shadow path in use"
+        );
+        let world = world_of(&renderer, &target);
+        let (cache_shadow, cache_lit) = (
+            cached_floor_green(&gpu, world, shadow),
+            cached_floor_green(&gpu, world, lit),
+        );
+        let (screen_shadow, screen_lit) = (lum(rgb(&cam, &off, shadow)), lum(rgb(&cam, &off, lit)));
+        let gi = lum(rgb(&cam, &on, shadow)) - screen_shadow;
+        eprintln!(
+            "{mode:?}: screen shadow {screen_shadow:.1} / lit {screen_lit:.1}; GI cache shadow \
+             {cache_shadow:.3} / lit {cache_lit:.3}; GI in the shadow +{gi:.1}"
+        );
+        assert!(
+            screen_lit > screen_shadow * 2.0,
+            "{mode:?}: the pillar's shadow on screen"
+        );
+        assert!(
+            cache_lit > cache_shadow * 3.0,
+            "{mode:?}: Misty GI's sun sees the same shadow"
+        );
+        gi_at_shadow.push(gi);
+    }
+    let (a, b) = (gi_at_shadow[0], gi_at_shadow[1]);
+    assert!(
+        b > 3.0 && (a - b).abs() < a.max(b) * 0.2,
+        "same bounce: {a} vs {b}"
+    );
 }

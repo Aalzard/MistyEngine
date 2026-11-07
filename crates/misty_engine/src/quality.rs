@@ -389,6 +389,9 @@ pub struct QualityLevel {
     /// more triangles).
     pub virtual_geometry_error: f32,
     pub ambient_occlusion: Tier,
+    /// Misty GI (realtime global illumination, Lighting window ▸ Realtime Global
+    /// Illumination or a Post-process Volume): the highest quality it runs at (Off = never).
+    pub global_illumination: Tier,
     pub volumetric_fog: Tier,
     pub reflection_probes: Tier,
     /// Lens Flare components draw (light halos always do: they are cheap).
@@ -452,6 +455,7 @@ impl QualityLevel {
             virtual_geometry: false,
             virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Off,
+            global_illumination: Tier::Low,
             volumetric_fog: Tier::Off,
             reflection_probes: Tier::Low,
             lens_flares: false,
@@ -494,6 +498,7 @@ impl QualityLevel {
             virtual_geometry: false,
             virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Low,
+            global_illumination: Tier::Medium,
             volumetric_fog: Tier::Low,
             reflection_probes: Tier::Medium,
             lens_flares: true,
@@ -536,6 +541,7 @@ impl QualityLevel {
             virtual_geometry: false,
             virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Medium,
+            global_illumination: Tier::High,
             volumetric_fog: Tier::Medium,
             reflection_probes: Tier::High,
             lens_flares: true,
