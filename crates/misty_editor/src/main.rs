@@ -175,6 +175,8 @@ mod spline_tools;
 mod sprite_handles;
 mod state;
 mod status_bar;
+#[cfg(test)]
+mod string_literal_lint;
 mod templates;
 mod terrain_rules;
 mod terrain_tools;

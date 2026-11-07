@@ -144,7 +144,8 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             let b = ui
                 .add(egui::Button::new("⛰ World Builder").min_size(egui::vec2(0.0, 26.0)))
                 .on_hover_text(
-                    "Generate this terrain from a template, noise, erosion, stamps and biomes                      (opens the World Builder; creates one for this terrain if needed)",
+                    "Generate this terrain from a template, noise, erosion, stamps and biomes \
+                    (opens the World Builder; creates one for this terrain if needed)",
                 );
             targets::header(ui, "World Builder", b.rect);
             if b.clicked() {
