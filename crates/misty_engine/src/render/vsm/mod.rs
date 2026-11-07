@@ -80,6 +80,12 @@ pub const PENDING_BUDGET: usize = 128;
 const KEEP_FRAMES: u64 = 90;
 /// Pages a pool row holds.
 const POOL_ROW: u32 = 32;
+
+/// Pages a row of a pool of `pages` holds: 32 (4096 texels wide), 64 past 2048 pages so the
+/// pool stays within 8192 texels a side.
+fn pool_row(pages: u32) -> u32 {
+    if pages > 2048 { 2 * POOL_ROW } else { POOL_ROW }
+}
 /// Mark bits per level (one per page table slot).
 const MARK_WORDS: usize = (PAGES * PAGES) as usize / 32;
 /// Readback buffers in flight.
@@ -320,6 +326,8 @@ pub(super) struct VsmGpu {
     marks: wgpu::Buffer,
     readbacks: Vec<Readback>,
     capacity: u32,
+    /// Pages a pool row holds.
+    row: u32,
 }
 
 /// Dummy table and pool bound while the mode is off.
@@ -377,8 +385,9 @@ fn table_texture(device: &wgpu::Device, side: u32) -> (wgpu::Texture, wgpu::Text
 
 impl VsmGpu {
     fn new(device: &wgpu::Device, p: &super::pipelines::Pipelines, pages: u32) -> Self {
-        let rows = pages.div_ceil(POOL_ROW);
-        let pool_size = (POOL_ROW * PAGE, rows * PAGE);
+        let row = pool_row(pages);
+        let rows = pages.div_ceil(row);
+        let pool_size = (row * PAGE, rows * PAGE);
         let depth = |label, (w, h): (u32, u32)| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -613,7 +622,8 @@ impl VsmGpu {
             mark_params,
             marks,
             readbacks,
-            capacity: rows * POOL_ROW,
+            capacity: rows * row,
+            row,
         }
     }
 
@@ -677,7 +687,7 @@ impl Vsm {
         let fits = self
             .gpu
             .as_ref()
-            .is_some_and(|g| g.capacity == pages.div_ceil(POOL_ROW) * POOL_ROW);
+            .is_some_and(|g| g.capacity == pages.div_ceil(pool_row(pages)) * pool_row(pages));
         if fits {
             return false;
         }
@@ -930,7 +940,7 @@ impl Vsm {
         let mut draws: Vec<RectDraw> = Vec::new();
         let mut rendered_keys: Vec<PageKey> = Vec::new();
         let mut copies: Vec<(usize, [u32; 4])> = Vec::new();
-        let pool_row = POOL_ROW;
+        let pool_row = gpu.row;
         for (r, (round, at)) in rects.iter().zip(placed) {
             if round >= MAX_ROUNDS {
                 continue;
@@ -1116,7 +1126,7 @@ impl Vsm {
                 pool: [
                     1.0 / gpu.pool_size.0 as f32,
                     1.0 / gpu.pool_size.1 as f32,
-                    POOL_ROW as f32,
+                    gpu.row as f32,
                     0.0,
                 ],
                 levels: [[0.0; 4]; MAX_LEVELS],
@@ -1316,6 +1326,18 @@ mod gpu_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_pool_fits_8192_texels() {
+        for pool in crate::quality::ShadowPool::ALL {
+            let pages = pool.pages();
+            let row = pool_row(pages);
+            assert!(
+                row * PAGE <= 8192 && pages.div_ceil(row) * PAGE <= 8192,
+                "{pool:?}"
+            );
+        }
+    }
 
     #[test]
     fn uniform_matches_wgsl() {
