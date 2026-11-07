@@ -533,11 +533,13 @@ fn addressables_demo_matches_its_generator() {
     for (rel, text) in text_files() {
         let on_disk = std::fs::read_to_string(root.join(&rel))
             .unwrap_or_else(|e| panic!("{rel}: {e} (regenerate with write_addressables_demo)"));
-        assert_eq!(
-            on_disk.replace("\r\n", "\n"),
-            text,
-            "{rel}: regenerate with write_addressables_demo"
-        );
+        let what = format!("{rel}: regenerate with write_addressables_demo");
+        if text.trim_start().starts_with('{') {
+            // Scenes, prefabs, settings: JSON with floats.
+            crate::test_util::assert_json_close(&on_disk, &text, what);
+        } else {
+            assert_eq!(on_disk.replace("\r\n", "\n"), text, "{what}");
+        }
     }
     // The packages resolve without conflicts and the lock file is current.
     let (installed, broken) = crate::packages::manifest::scan(&root);

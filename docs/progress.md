@@ -2193,8 +2193,12 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   clipmaps when near; Misty GI's sun checked against virtual shadow maps; meadow ambient option
   shots (`gi_meadow_opt_*_compare.png`) for the user to pick from.
 
+- MeadowDemo ships with Misty GI: the user's option C (Realtime Global Illumination on, Environment
+  Intensity 0.6) in the scene and its generator; golden shots updated; +0.7 / 1.4 / 2.4 / 2.3 ms at
+  Low / Medium / High / Ultra (1080p); before / after in `gi_meadow_shipped_compare.png`.
+
 ### Not done yet
-- Still off by default (the scene switch's default is the one line to flip once the user picks).
+- New scenes still start with Realtime Global Illumination off (MeadowDemo has it on).
 - Debug views (SDF / radiance cache / probes), directional far field, screen-space near field,
   toroidal clipmap scrolling, skinned meshes: see the roadmap in the doc.
 
@@ -2361,3 +2365,62 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   proven one; watch for it in future full runs.
 - The golden references are for the RTX 4060 / NVIDIA 610.88 / Vulkan; another GPU or driver
   needs its own (`MISTY_GOLDEN=update` on it) or may drift past the tolerance.
+
+## Linux x64 release build (branch linux-ci)
+
+### Done
+- The workspace type-checks for `x86_64-unknown-linux-gnu` from Windows (`cargo clippy --workspace
+  --all-targets --target x86_64-unknown-linux-gnu`, 0 warnings). The C parts (ring, mlua's
+  vendored Lua) and the pkg-config probes (alsa-sys, libudev-sys) can't build on a Windows host;
+  the check used do-nothing `CC_*` / `AR_*` / `PKG_CONFIG_*` shims, so only the Rust code was
+  checked there. Real Linux builds come from GitHub Actions.
+- Windows-only code was already gated (`AttachConsole`, `AllocConsole`, the locale call, memory
+  counters, the hitch test's `QueryThreadCycleTime` / `GetSystemTimes` with Linux
+  `CLOCK_THREAD_CPUTIME_ID` / `/proc/stat` variants, exe icon embedding, `CREATE_NO_WINDOW` for
+  cargo, `cmd /C start` / `explorer` with `xdg-open` fallbacks; executables are found with
+  `EXE_SUFFIX`, so Multiplayer Play Mode finds `misty_player` on Linux). The only Linux warning,
+  the unused `icon::group_resource`, is now `cfg(any(windows, test))`.
+- Updater: `release::Platform::HOST` picks the package per OS (`-windows-x64.zip` on Windows,
+  `-linux-x64.tar.gz` on Linux x64; never the Setup `.exe`; other systems get the release-page
+  fallback). The `.tar.gz` is unpacked in-process with the `tar` crate (regular files and folders
+  only, `..` / absolute paths and links refused), file modes kept; the swap moves the running
+  extension-less binary to the backup folder (allowed on Linux). `PACKAGE_EXE` is `MistyEngine`
+  on Linux. New tests: Linux asset choice, tarball extract + swap (executable bits on Unix),
+  tar slip / symlink refusal, end-to-end tarball install against the local test server.
+- `tools/make_release_linux.sh`: the Linux package, same layout as Windows (`MistyEngine`,
+  `misty_player`, `Examples/SampleProject` from `git archive HEAD`, README.txt from
+  `tools/release/README-linux.txt`, CHANGELOG.txt, LICENSE.txt) as
+  `MistyEngine-vX.Y.Z-linux-x64.tar.gz` (GNU tar, root-owned, sorted) + `.sha256.txt`.
+- `.github/workflows/release.yml`: on `v*` tags (or by hand with a tag), ubuntu-22.04 (glibc
+  2.35): checks the tag equals the Cargo.toml version, installs the -dev packages, builds
+  `misty_editor` + `misty_player` in release (cargo cache), packages, checks `ldd` and the CLI
+  usage exit code, uploads an artifact, waits up to 45 min for the tag's release (a draft
+  counts) and uploads the two files with `gh release upload --clobber`; creates a published
+  release from the CHANGELOG section if none appears.
+- `.github/workflows/ci.yml`: by hand or on `ci/*` pushes, `cargo test --workspace --release` on
+  ubuntu-22.04 with no Vulkan driver (GPU tests skip).
+- README-linux.txt: extract and `./MistyEngine`, runtime libraries for apt / dnf / pacman,
+  Vulkan drivers, Wayland vs X11 (`env -u WAYLAND_DISPLAY`), `WGPU_BACKEND=gl`, file dialogs
+  through xdg-desktop-portal or zenity. docs/release.md describes the Linux package and workflow.
+
+- Linux test run (branch linux-tests): the first `ci/linux` run built fine; 10 sample
+  `*_matches_its_generator` tests failed because they compared regenerated files to the
+  Windows-made ones byte for byte, and Linux's libm `sin` / `cos` / `pow` differ in the last bit.
+  New `misty_editor::test_util` (test-only): `assert_json_close` (text around the numbers
+  identical, integers equal, floats within 1e-5 relative / 1e-6 absolute), `assert_value_close`,
+  `assert_close` (any `Serialize` value: materials, clips, particle systems…), `assert_glb_close`
+  (JSON chunk as above, BIN chunk exact except FLOAT accessor elements) and `assert_image_close`
+  (each channel within one step, at most 1% of them). All 50 generator tests use it; its unit
+  tests prove real changes (a moved float, an integer, a string, a key, an index) still fail.
+  Failure messages list the first differences instead of dumping whole files (the old glb
+  `assert_eq!` dump cut off the CI log).
+- World Builder erosion amplified the libm noise into different heights, so World Builder now
+  uses `world_gen::portable` (sin / cos / tan / atan / atan2 / pow from the pure-Rust `libm`
+  crate): the same seed builds the same terrain on every OS. WorldBuilderDemo regenerated.
+- CI: `--no-fail-fast` output goes to `test-results.txt` (uploaded as the `test-results`
+  artifact) and the run summary lists every crate's `test result` line and failures.
+
+### Not done yet
+- No `.desktop` file or icon install, no AppImage / Flatpak; the window icon is set at runtime
+  (X11), Wayland shows the generic one.
+- Linux ARM64 has no release package (the updater sends those users to the release page).

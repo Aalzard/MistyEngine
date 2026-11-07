@@ -334,17 +334,18 @@ fn animator_demo_matches_its_generator_and_plays() {
         (JUMP, jump()),
         (DANCE, dance()),
     ] {
-        assert_eq!(AnimationClip::load(&root.join(path)).unwrap(), c, "{path}");
+        crate::test_util::assert_close(&AnimationClip::load(&root.join(path)).unwrap(), &c, path);
     }
-    assert_eq!(
-        AnimatorController::load(&root.join(CONTROLLER)).unwrap(),
-        controller()
+    crate::test_util::assert_close(
+        &AnimatorController::load(&root.join(CONTROLLER)).unwrap(),
+        &controller(),
+        CONTROLLER,
     );
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text,
-        demo_scene().to_json(),
-        "regenerate with write_animator_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_animator_demo",
     );
 
     let (mut scene, report) = Scene::load(&root.join(SCENE)).unwrap();

@@ -3272,6 +3272,8 @@ Record of choices made without asking, and why.
        own. The Game view never follows the Scene view's camera.
      - Misty GI keeps its own SDF soft shadows for the sun in the surface cache (virtual shadow maps only hold pages
        for what the camera sees; the cache needs off-screen light too); a test checks both agree on a shadow.
+     - MeadowDemo ships with it on (the user's pick, option C: Realtime Global Illumination on, Environment Intensity
+       0.6); the switch's default for new scenes stays off.
 650. **Virtual shadow maps for the sun, opt-in** (`docs/pending/vsm.md`).
      - Quality ▸ Shadows ▸ Virtual: a clipmap of 8k × 8k levels (64 × 64 pages of 128², texel 1/1024 m × Shadow
        Resolution's texels per pixel at level 0, doubling per level) up to a safety level covering the shadow

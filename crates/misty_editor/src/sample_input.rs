@@ -238,10 +238,10 @@ fn input_demo_matches_its_generator() {
         assert_eq!(on_disk.replace("\r\n", "\n"), src, "{rel}");
     }
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text.replace("\r\n", "\n"),
-        demo_scene().to_json(),
-        "regenerate with write_input_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_input_demo",
     );
     let (_, report) = Scene::from_json("InputDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

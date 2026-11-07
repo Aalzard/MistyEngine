@@ -425,14 +425,18 @@ fn write_physics_demo() {
 #[test]
 fn physics_demo_matches_its_generator() {
     let root = project();
-    assert_eq!(Material::load(&root.join(LASER_MAT)).unwrap(), laser());
+    crate::test_util::assert_close(
+        &Material::load(&root.join(LASER_MAT)).unwrap(),
+        &laser(),
+        LASER_MAT,
+    );
     for (path, text) in [(WALKER, CHARACTER_WALKER), (LASER, LASER_POINTER)] {
         let on_disk = std::fs::read_to_string(root.join(path)).unwrap();
         assert_eq!(on_disk.replace("\r\n", "\n"), text, "{path}");
     }
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(scene.to_json(), demo_scene().to_json());
+    crate::test_util::assert_json_close(&scene.to_json(), &demo_scene().to_json(), SCENE);
 }
 
 /// The demo runs: the character walks into the door and opens it, the laser finds it, the

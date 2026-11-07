@@ -336,9 +336,10 @@ fn write_stress_demo() {
 #[test]
 fn stress_static_matches_its_generator_and_round_trips() {
     let text = std::fs::read_to_string(project().join(STATIC_SCENE)).unwrap();
-    assert!(
-        text.replace("\r\n", "\n") == static_scene().to_json(),
-        "regenerate with write_stress_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &static_scene().to_json(),
+        "regenerate with write_stress_demo",
     );
     let (scene, report) = Scene::from_json("StressStatic", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
@@ -364,14 +365,19 @@ fn stress_static_matches_its_generator_and_round_trips() {
 fn stress_demo_matches_its_generator() {
     let root = project();
     for (i, (path, ..)) in MATERIALS.iter().enumerate() {
-        assert_eq!(Material::load(&root.join(path)).unwrap(), material(i));
+        crate::test_util::assert_close(
+            &Material::load(&root.join(path)).unwrap(),
+            &material(i),
+            path,
+        );
     }
     let lua = std::fs::read_to_string(root.join(ORBIT)).unwrap();
     assert_eq!(lua.replace("\r\n", "\n"), ORBIT_LUA);
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert!(
-        text.replace("\r\n", "\n") == demo_scene().to_json(),
-        "regenerate with write_stress_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_stress_demo",
     );
     let (scene, report) = Scene::from_json("StressDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

@@ -33,10 +33,17 @@ gets the newest release with one click, so people don't end up on different vers
    - if anything fails, every step is undone (old exe restored) and a clear message shows;
    - start the new `MistyEngine.exe` with the same arguments and close. On the next start the
      leftover `*.old.exe` and backup folder are deleted.
-5. **Can't install in place?** If the install folder isn't writable (e.g. under
-   `C:\Program Files` without admin rights), or the release has no Windows zip or no checksum
-   file, the updater shows **Download the new version** with a button that opens the release
-   page in the browser.
+5. **Linux.** The same steps with `MistyEngine-vX.Y.Z-linux-x64.tar.gz` and its
+   `.sha256.txt` (`updater::release::Platform::HOST` picks the package per OS: Windows takes the
+   `-windows-x64.zip`, Linux x64 the `-linux-x64.tar.gz`; never the Setup `.exe`). The tarball
+   is unpacked in-process (tar crate: files and folders only, no links, no `..`), executable bits
+   are kept, and the running binary (no `.exe`) goes to the backup folder like any other file,
+   since Linux lets a running program be renamed. The new `MistyEngine` is started. Other
+   systems (macOS, Linux ARM64) get the release-page fallback below.
+6. **Can't install in place?** If the install folder isn't writable (e.g. under
+   `C:\Program Files` without admin rights, or `/opt`), or the release has no package for this
+   OS or no checksum file, the updater shows **Download the new version** with a button that
+   opens the release page in the browser.
 
 Security: HTTPS only; downloads only from `api.github.com`, `github.com`,
 `objects.githubusercontent.com` and `release-assets.githubusercontent.com` (every redirect hop
@@ -63,6 +70,16 @@ the `MistyEngine.exe` the package placed in the install folder. Requests send th
    tag **`v0.0.2`**, write the release notes (they appear in the message box), upload the zip and its
    `.sha256.txt` as release assets and **Publish** (not as a pre-release). The repository must be public for
    the API to see it.
+7. **Linux** comes from GitHub Actions: pushing the tag starts `.github/workflows/release.yml`
+   (ubuntu-22.04). It checks the tag equals `v<Cargo.toml version>`, builds, packages with
+   `tools/make_release_linux.sh`, then waits up to 45 minutes for the release of that tag (a
+   draft counts) and uploads `MistyEngine-vX.Y.Z-linux-x64.tar.gz` and its `.sha256.txt` with
+   `gh release upload --clobber`. If no release appears in time it creates a published one with
+   the tag's CHANGELOG section as notes (edit the notes afterwards, then upload the Windows files
+   to it). Actions ▸ Release (Linux) ▸ **Run workflow** with the tag re-uploads for an existing tag.
+   Before tagging, push the commit to a `ci/*` branch (`git push origin HEAD:ci/linux`) or run
+   **CI (Linux)** by hand: it builds and runs `cargo test --workspace --release` on Linux (the GPU
+   tests skip there: no adapter).
 
 Within 6 hours (or right away via Help ▸ Check for Updates…) every install older than 0.0.2
 offers the update.
@@ -85,6 +102,25 @@ MistyRelease\
   MistyEngine-vX.Y.Z-windows-x64.zip            the folder above inside the zip (bsdtar, deflate)
   MistyEngine-vX.Y.Z-windows-x64.zip.sha256.txt "<sha256>  <zip name>"
 ```
+
+The Linux package (`tools/make_release_linux.sh`, run by the release workflow; it also works on
+any Linux machine with the system libraries below) has the same layout without `.exe`:
+
+```
+MistyEngine-vX.Y.Z-linux-x64/
+  MistyEngine              the editor and Hub (misty renamed), mode 755
+  misty_player             mode 755; must sit next to MistyEngine
+  Examples/SampleProject/  as above
+  README.txt               tools/release/README-linux.txt ({VERSION} filled in)
+  CHANGELOG.txt, LICENSE.txt
+MistyEngine-vX.Y.Z-linux-x64.tar.gz             GNU tar + gzip, owner root:root, sorted names
+MistyEngine-vX.Y.Z-linux-x64.tar.gz.sha256.txt  "<sha256>  <tar.gz name>" (sha256sum)
+```
+
+Building it needs `pkg-config libasound2-dev libudev-dev` (alsa-sys and libudev-sys link
+against them); winit, xkbcommon and Vulkan are loaded at runtime. The binaries link
+`libasound.so.2`, `libudev.so.1` and glibc 2.35 (ubuntu-22.04), so they run on Ubuntu 22.04,
+Debian 12, Fedora 36 and newer.
 
 Nothing else is needed at runtime: shaders, fonts, icons, templates, tutorials and the Ctrl+K
 guides are built into the exes (the guides are written to the temp folder when opened). Both exes

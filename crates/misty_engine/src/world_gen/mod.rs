@@ -13,6 +13,7 @@ pub mod erosion;
 pub mod generate;
 pub mod noise;
 pub mod paint;
+pub mod portable;
 pub mod preview;
 pub mod scatter;
 pub mod scatter_set;

@@ -317,12 +317,13 @@ fn write_lightmap_demo() {
 fn lightmap_demo_matches_its_generator() {
     let root = project();
     for (path, m) in materials() {
-        assert_eq!(Material::load(&root.join(path)).unwrap(), m, "{path}");
+        crate::test_util::assert_close(&Material::load(&root.join(path)).unwrap(), &m, path);
     }
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert!(
-        text.replace("\r\n", "\n") == demo_scene().to_json(),
-        "regenerate with write_lightmap_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_lightmap_demo",
     );
     let (scene, report) = Scene::from_json("LightmapDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

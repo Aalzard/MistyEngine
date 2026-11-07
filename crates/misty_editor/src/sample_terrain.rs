@@ -374,7 +374,7 @@ fn terrain_demo_matches_its_generator() {
         let on_disk = misty_engine::image::open(root.join(rel))
             .unwrap()
             .into_rgba8();
-        assert_eq!(on_disk, img, "{rel}");
+        crate::test_util::assert_image_close(&on_disk, &img, rel);
     }
     let on_disk = TerrainData::load(&root.join(DATA)).unwrap();
     let generated = terrain_data();
@@ -394,7 +394,7 @@ fn terrain_demo_matches_its_generator() {
     assert_eq!(script.replace("\r\n", "\n"), TERRAIN_HOVER);
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(scene.to_json(), demo_scene().to_json());
+    crate::test_util::assert_json_close(&scene.to_json(), &demo_scene().to_json(), SCENE);
 }
 
 /// Playing: the balls roll down the hill and stay on the terrain; the marker follows the ground.

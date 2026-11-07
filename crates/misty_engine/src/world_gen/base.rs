@@ -151,8 +151,8 @@ pub fn sample(s: &BaseSettings, x: f32, z: f32, size: Vec3) -> f32 {
             let bend = warped(u * 0.5, v * 0.5, seed, &fbm, warp) * 2.5;
             let phase = (u * 3.0 + bend) * std::f32::consts::PI;
             // Asymmetric crest: gentle windward side, steeper lee side.
-            let s0 = phase.sin() * 0.5 + 0.5;
-            let crest = s0.powf(1.6);
+            let s0 = super::portable::sin(phase) * 0.5 + 0.5;
+            let crest = super::portable::powf(s0, 1.6);
             let swell = fractal(u * 0.4, v * 0.4, seed ^ 11, &billow);
             (0.15 + 0.45 * crest * (0.5 + swell) + 0.2 * swell + detail(0.02)).max(0.0)
         }

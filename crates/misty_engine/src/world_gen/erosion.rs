@@ -201,7 +201,7 @@ fn run_droplets(map: &mut Local, rng: &mut Rng, count: usize, p: &Droplet, brush
             if len < 1e-6 {
                 // Flat: pick a random direction.
                 let a = rng.range(0.0, std::f32::consts::TAU);
-                (dx, dz) = (a.cos(), a.sin());
+                (dx, dz) = (super::portable::cos(a), super::portable::sin(a));
             } else {
                 (dx, dz) = (dx / len, dz / len);
             }
@@ -324,7 +324,7 @@ pub fn thermal(
     if res < 3 {
         return true;
     }
-    let talus = s.talus_angle.clamp(1.0, 89.0).to_radians().tan() * cell;
+    let talus = super::portable::tan(s.talus_angle.clamp(1.0, 89.0).to_radians()) * cell;
     let k = s.thermal_strength.clamp(0.0, 1.0) * 0.5;
     const SQRT2: f32 = std::f32::consts::SQRT_2;
     const N: [(isize, isize, f32); 8] = [

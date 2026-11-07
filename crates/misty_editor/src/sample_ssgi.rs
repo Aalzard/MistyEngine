@@ -226,12 +226,17 @@ fn write_ssgi_demo() {
 fn ssgi_demo_matches_its_generator() {
     let root = project();
     for (i, (path, ..)) in MATERIALS.iter().enumerate() {
-        assert_eq!(Material::load(&root.join(path)).unwrap(), material(i));
+        crate::test_util::assert_close(
+            &Material::load(&root.join(path)).unwrap(),
+            &material(i),
+            path,
+        );
     }
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert!(
-        text.replace("\r\n", "\n") == demo_scene().to_json(),
-        "regenerate with write_ssgi_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_ssgi_demo",
     );
     let (scene, report) = Scene::from_json("ScreenSpaceGIDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

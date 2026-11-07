@@ -450,16 +450,16 @@ mod tests {
     fn first_person_demo_matches_its_generator() {
         let root = project();
         let text = std::fs::read_to_string(root.join(PREFAB)).unwrap();
-        assert_eq!(
-            without_guids(&text),
-            without_guids(&prefab().to_json()),
-            "regenerate with write_first_person_demo"
+        crate::test_util::assert_value_close(
+            &without_guids(&text),
+            &without_guids(&prefab().to_json()),
+            "regenerate with write_first_person_demo",
         );
         let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-        assert_eq!(
-            text.replace("\r\n", "\n"),
-            demo_scene().to_json(),
-            "regenerate with write_first_person_demo"
+        crate::test_util::assert_json_close(
+            &text,
+            &demo_scene().to_json(),
+            "regenerate with write_first_person_demo",
         );
         let (_, report) = Scene::from_json("FirstPersonDemo", &text).unwrap();
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);

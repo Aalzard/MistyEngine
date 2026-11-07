@@ -417,7 +417,7 @@ fn navigation_demo_matches_its_generator() {
     }
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    assert_eq!(scene.to_json(), demo_scene().to_json());
+    crate::test_util::assert_json_close(&scene.to_json(), &demo_scene().to_json(), SCENE);
     let on_disk = NavMesh::load(&root.join(NAV_MESH)).unwrap();
     let baked = nav_mesh();
     assert_eq!(on_disk.polys.len(), baked.polys.len());

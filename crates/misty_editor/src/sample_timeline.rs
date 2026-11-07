@@ -291,13 +291,15 @@ fn write_timeline_sample() {
 #[test]
 fn timeline_sample_matches_its_generator_and_plays() {
     let root = project();
-    assert_eq!(
-        AnimationClip::load(&root.join(PATH_CLIP)).unwrap(),
-        cube_path()
+    crate::test_util::assert_close(
+        &AnimationClip::load(&root.join(PATH_CLIP)).unwrap(),
+        &cube_path(),
+        PATH_CLIP,
     );
-    assert_eq!(
-        AnimationClip::load(&root.join(HOP_CLIP)).unwrap(),
-        cube_hop()
+    crate::test_util::assert_close(
+        &AnimationClip::load(&root.join(HOP_CLIP)).unwrap(),
+        &cube_hop(),
+        HOP_CLIP,
     );
     assert_eq!(std::fs::read(root.join(CHIME)).unwrap(), chime());
     assert_eq!(
@@ -306,9 +308,10 @@ fn timeline_sample_matches_its_generator_and_plays() {
             .replace("\r\n", "\n"),
         SCRIPT_SOURCE
     );
-    assert_eq!(
-        TimelineAsset::load(&root.join(TIMELINE)).unwrap(),
-        timeline()
+    crate::test_util::assert_close(
+        &TimelineAsset::load(&root.join(TIMELINE)).unwrap(),
+        &timeline(),
+        TIMELINE,
     );
     let (mut scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);

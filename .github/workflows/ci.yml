@@ -1,0 +1,91 @@
+# Linux build and tests, run by hand ("Run workflow") or by pushing a ci/* branch
+# (e.g. `git push origin HEAD:ci/linux`) to check Linux before tagging a release.
+#
+# The runner has no GPU and no Vulkan driver: the GPU tests find no adapter and skip themselves
+# ("no GPU adapter: skipped"). WGPU_BACKEND=vulkan and an empty Vulkan driver list make sure
+# wgpu doesn't pick a software OpenGL / lavapipe device and run them slowly on the CPU.
+
+name: CI (Linux)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["ci/*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev libudev-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libvulkan-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-ci
+          cache-on-failure: true
+
+      - name: Build (release)
+        run: cargo build --release --locked --workspace --all-targets
+
+      - name: Test
+        env:
+          WGPU_BACKEND: vulkan
+          VK_ICD_FILENAMES: /nonexistent.json
+          VK_DRIVER_FILES: /nonexistent.json
+          RUST_BACKTRACE: "1"
+          CARGO_TERM_COLOR: never
+        # --no-fail-fast runs every crate's tests even after a failure; the full output also goes
+        # to test-results.txt (uploaded below), since the web log can cut long runs short.
+        run: |
+          set -o pipefail
+          cargo test --workspace --release --locked --no-fail-fast 2>&1 | tee test-results.txt
+
+      - name: Test summary
+        if: always()
+        run: |
+          [ -f test-results.txt ] || exit 0
+          {
+            echo '### Test results'
+            echo '```'
+            grep -E '^\s+Running |^test result:|^test .* FAILED$|^error: |panicked at|process didn.t exit' test-results.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.txt
+          if-no-files-found: ignore
+
+      - name: Disk left
+        if: always()
+        run: df -h /

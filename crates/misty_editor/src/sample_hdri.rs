@@ -211,13 +211,13 @@ fn write_hdri_sky_demo() {
 fn hdri_sky_demo_matches_its_generator() {
     let root = project();
     for (name, m) in materials() {
-        assert_eq!(Material::load(&root.join(path(name))).unwrap(), m, "{name}");
+        crate::test_util::assert_close(&Material::load(&root.join(path(name))).unwrap(), &m, name);
     }
     let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
-    assert_eq!(
-        text.replace("\r\n", "\n"),
-        demo_scene().to_json(),
-        "regenerate with write_hdri_sky_demo"
+    crate::test_util::assert_json_close(
+        &text,
+        &demo_scene().to_json(),
+        "regenerate with write_hdri_sky_demo",
     );
     let (scene, report) = Scene::from_json("HdriSkyDemo", &text).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
