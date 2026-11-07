@@ -24,7 +24,7 @@ struct GiParams {
     // x = lights, y = visibility steps per pixel, z = full pixels per gather texel, w = 1 on the
     // first frame (probes take their first result whole).
     info3: vec4<f32>,
-    // xyz = camera position.
+    // xyz = camera position, w = 1 when glossy reflections are traced.
     camera: vec4<f32>,
     // Sky radiance (linear, × the environment intensity) above, at and below the horizon.
     sky: vec4<f32>,
@@ -83,6 +83,7 @@ struct GiLight {
 @group(0) @binding(16) var depth_tex: texture_depth_2d;
 @group(0) @binding(17) var scene_normal_tex: texture_2d<f32>;
 @group(0) @binding(18) var gather_out: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(19) var reflect_out: texture_storage_2d<rgba16float, write>;
 
 const PI: f32 = 3.14159265;
 const SH_Y0: f32 = 0.282095;

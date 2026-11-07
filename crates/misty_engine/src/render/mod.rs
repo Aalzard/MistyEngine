@@ -1480,7 +1480,7 @@ impl Renderer {
             culled: None,
             prepass,
             scene_copy,
-            trace,
+            trace: trace.filter(|t| t.needs_history),
         };
         // GPU culling and virtual geometry draw the main pass in two phases around the Hi-Z
         // pyramid of the first phase's depth.

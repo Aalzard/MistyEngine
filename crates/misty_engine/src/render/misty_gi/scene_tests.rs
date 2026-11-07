@@ -39,7 +39,16 @@ fn cycles_view() -> GameView {
 /// MeadowDemo at midday, the camera 7 m from the tree nearest the scene camera, looking at its
 /// foot.
 fn grove_view() -> GameView {
-    let mut v = meadow_view(Shot::WideMidday);
+    grove_view_at(Shot::WideMidday)
+}
+
+/// The grove shot in the low golden-hour sun.
+fn golden_grove_view() -> GameView {
+    grove_view_at(Shot::WideGolden)
+}
+
+fn grove_view_at(shot: Shot) -> GameView {
+    let mut v = meadow_view(shot);
     let t = v.terrains.first().expect("terrain").clone();
     let d = &t.data;
     let cam = v.camera.position;
@@ -173,8 +182,9 @@ fn misty_gi_scene_meadow_shots() {
     let (w, h) = (1280, 720);
     // Grass blades and trees have their own lighting shaders, which don't read the GI term
     // yet: "grove_bare" switches the grass off so the ground under the canopy shows Misty GI.
-    let shots: [(ViewFn, &str, f32); 4] = [
+    let shots: [(ViewFn, &str, f32); 5] = [
         (grove_view, "grove", 1.0),
+        (golden_grove_view, "grove_golden", 1.0),
         (bare_grove_view, "grove_bare", 1.0),
         (|| meadow_view(Shot::WideMidday), "wide_midday", 1.0),
         (|| meadow_view(Shot::WideGolden), "wide_golden", 1.0),

@@ -64,6 +64,7 @@ impl Passes {
                 ),
                 // Motion vectors of the prepass.
                 entry(12, texture(false)),
+                entry(13, texture(false)),
             ],
         );
         let hiz_copy_layout = layout(

@@ -2184,6 +2184,9 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Tests: colour bleeding at every quality, off-screen bounce, sky occlusion under a roof, moving light,
   SDF and probe sanity; ignored harnesses for timings and comparison renders.
 
+- Follow-up: grass and trees receive GI, glossy reflections behind SSR, interval merge on the probe levels,
+  works with Upscaling; High +1.8 ms (room) / +2.7 ms (meadow) per frame at 1080p.
+
 ### Not done yet
 - Grass blades and trees don't read the GI term yet (their shaders belong to the grass/tree work); the
   Lighting-window switch, debug views, reflections, radiance-cascade merge: see the roadmap in the doc.
@@ -2205,3 +2208,6 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 
 ### Not done yet
 - `OnPostprocessAsset` for re-imports of changed files; physics queries in editor scripts.
+
+- Lighting-window switch, debug views, water / custom shaders, octahedral probe radiance: see the roadmap in
+  the doc. The meadow's GI is subtle until its ambient / turf occlusion is retuned (art decision).
