@@ -107,6 +107,7 @@ pub fn ico_file(images: &[IconImage]) -> Vec<u8> {
 }
 
 /// The RT_GROUP_ICON resource: like the file header, with resource ids instead of offsets.
+#[cfg(any(windows, test))]
 pub fn group_resource(images: &[IconImage], first_id: u16) -> Vec<u8> {
     let mut out = Vec::new();
     dir_head(images.len(), &mut out);

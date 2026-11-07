@@ -1,7 +1,10 @@
 //! Installing a downloaded package in place: checksum check, extraction to a staging folder and
 //! the file swap with rollback. The running `.exe` can't be overwritten on Windows but can be
 //! renamed, so every replaced `.exe` becomes `<name>.old.exe` (deleted on the next start) and
-//! every other replaced file is moved to a backup folder until the swap has succeeded.
+//! every other replaced file is moved to a backup folder until the swap has succeeded. On Linux
+//! the package is a `.tar.gz` (executable bits kept) and the running binary, which has no
+//! extension, goes to the backup folder like any other file (Linux allows renaming and removing
+//! a running executable).
 
 use std::path::{Path, PathBuf};
 
@@ -11,8 +14,12 @@ use super::release::Update;
 
 /// Replaced files wait here until the swap succeeds (removed afterwards / on the next start).
 pub const BACKUP_DIR: &str = ".misty-update-backup";
-/// The editor executable every package must contain.
-pub const PACKAGE_EXE: &str = "MistyEngine.exe";
+/// The editor executable every package for this platform must contain.
+pub const PACKAGE_EXE: &str = if cfg!(windows) {
+    "MistyEngine.exe"
+} else {
+    "MistyEngine"
+};
 /// Existing files in this top-level folder are kept (the user may have edited the examples).
 const KEEP_EXISTING: &str = "Examples";
 
@@ -40,8 +47,32 @@ pub fn verify(actual: &str, expected: &str) -> Result<(), String> {
     }
 }
 
-/// Unpack `zip` into `dest`; returns the package root (a single top-level folder is skipped).
-pub fn extract(zip: &Path, dest: &Path) -> Result<PathBuf, String> {
+/// Whether a package name is a gzipped tarball (the Linux package) rather than a zip.
+pub fn is_tar_gz(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.ends_with(".tar.gz") || n.ends_with(".tgz")
+}
+
+/// Unpack a `.zip` or `.tar.gz` package into `dest`; returns the package root (a single
+/// top-level folder is skipped).
+pub fn extract(package: &Path, dest: &Path) -> Result<PathBuf, String> {
+    let name = package.file_name().unwrap_or_default().to_string_lossy();
+    if is_tar_gz(&name) {
+        extract_tar_gz(package, dest)?;
+    } else {
+        extract_zip(package, dest)?;
+    }
+    let entries: Vec<PathBuf> = std::fs::read_dir(dest)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .collect();
+    match entries.as_slice() {
+        [only] if only.is_dir() => Ok(only.clone()),
+        _ => Ok(dest.to_path_buf()),
+    }
+}
+
+fn extract_zip(zip: &Path, dest: &Path) -> Result<(), String> {
     let file = std::fs::File::open(zip).map_err(|e| format!("{}: {e}", zip.display()))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("bad package: {e}"))?;
     for i in 0..archive.len() {
@@ -62,15 +93,48 @@ pub fn extract(zip: &Path, dest: &Path) -> Result<PathBuf, String> {
         }
         let mut f = std::fs::File::create(&out).map_err(|e| format!("{}: {e}", out.display()))?;
         std::io::copy(&mut entry, &mut f).map_err(|e| format!("bad package: {e}"))?;
+        #[cfg(unix)]
+        if let Some(mode) = entry.unix_mode() {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = f.set_permissions(std::fs::Permissions::from_mode(mode & 0o777));
+        }
     }
-    let entries: Vec<PathBuf> = std::fs::read_dir(dest)
-        .map_err(|e| e.to_string())?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .collect();
-    match entries.as_slice() {
-        [only] if only.is_dir() => Ok(only.clone()),
-        _ => Ok(dest.to_path_buf()),
+    Ok(())
+}
+
+/// Unpack a gzipped tarball: regular files and folders only (no links), no absolute or `..`
+/// paths; file modes are kept on Unix (the executables stay executable).
+fn extract_tar_gz(tar_gz: &Path, dest: &Path) -> Result<(), String> {
+    use std::path::Component;
+    let file = std::fs::File::open(tar_gz).map_err(|e| format!("{}: {e}", tar_gz.display()))?;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
+    std::fs::create_dir_all(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let bad = |e: std::io::Error| format!("bad package: {e}");
+    for entry in archive.entries().map_err(bad)? {
+        let mut entry = entry.map_err(bad)?;
+        let rel = entry.path().map_err(bad)?.into_owned();
+        let unsafe_path = rel
+            .components()
+            .any(|c| !matches!(c, Component::Normal(_) | Component::CurDir));
+        if unsafe_path {
+            return Err(format!("unsafe path in package: {}", rel.display()));
+        }
+        match entry.header().entry_type() {
+            tar::EntryType::Regular | tar::EntryType::Directory => {}
+            // GNU long-name and PAX records are read by the tar crate itself.
+            tar::EntryType::XGlobalHeader => continue,
+            other => {
+                return Err(format!(
+                    "unsupported entry in package ({other:?}): {}",
+                    rel.display()
+                ));
+            }
+        }
+        if !entry.unpack_in(dest).map_err(bad)? {
+            return Err(format!("unsafe path in package: {}", rel.display()));
+        }
     }
+    Ok(())
 }
 
 /// Whether files can be created in `dir` (e.g. not under Program Files without admin rights).
@@ -289,17 +353,25 @@ pub fn run(
         )));
     }
     let (Some(zip), Some(sum_url)) = (&update.zip, &update.checksum_url) else {
-        return Ok(Outcome::Manual(
-            "This release has no Windows package with a checksum file to install automatically."
-                .into(),
-        ));
+        let why = match super::release::Platform::HOST {
+            Some(p) => format!(
+                "This release has no {} package with a checksum file to install automatically.",
+                p.label()
+            ),
+            None => "Automatic updates are not available for this system.".into(),
+        };
+        return Ok(Outcome::Manual(why));
     };
     let expected = parse_checksum(&http::fetch_text(src, sum_url)?)
         .ok_or("The release's checksum file has no SHA-256 hash.")?;
     let _ = std::fs::remove_dir_all(work);
     std::fs::create_dir_all(work).map_err(|e| format!("{}: {e}", work.display()))?;
     let result = (|| {
-        let zip_path = work.join("package.zip");
+        let zip_path = work.join(if is_tar_gz(&zip.name) {
+            "package.tar.gz"
+        } else {
+            "package.zip"
+        });
         let actual = http::download(src, &zip.url, &zip_path, |got, total| {
             phase(Phase::Downloading {
                 received: got,

@@ -1,0 +1,145 @@
+# Linux x64 release package: built on ubuntu-22.04 (glibc 2.35, so it runs on Ubuntu 22.04,
+# Debian 12, Fedora 36 and newer) when a v* tag is pushed, then uploaded to that tag's GitHub
+# release next to the Windows packages made with tools/make_release.ps1. See docs/release.md.
+#
+# The Windows release is usually created first (by hand, from Windows). This job waits for it
+# (a draft counts) and creates a published release itself only if none appears in time.
+# "Run workflow" (workflow_dispatch) rebuilds and re-uploads for an existing tag.
+
+name: Release (Linux)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and upload, e.g. v0.2.0"
+        required: true
+      wait_minutes:
+        description: "How long to wait for the release before creating it"
+        required: false
+        default: "45"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-linux-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      WAIT_MINUTES: ${{ github.event.inputs.wait_minutes || '45' }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check the tag matches the workspace version
+        run: |
+          version="$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' Cargo.toml | head -n 1)"
+          echo "Cargo.toml version: $version, tag: $TAG"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match the workspace version $version in Cargo.toml (the updater would keep offering the update)."
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev libudev-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libvulkan-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-release
+          cache-on-failure: true
+
+      - name: Build
+        run: cargo build --release --locked -p misty_editor -p misty_player
+
+      - name: Package
+        run: |
+          bash tools/make_release_linux.sh --skip-build --target-dir target --out-dir dist
+          ls -l dist
+          tar -tzvf "dist/MistyEngine-$TAG-linux-x64.tar.gz" | head -n 8
+
+      - name: Smoke check the binaries
+        run: |
+          pkg="dist/MistyEngine-$TAG-linux-x64"
+          # Both programs are executable inside the archive (the updater and users keep the mode).
+          execs="$(tar -tzvf "$pkg.tar.gz" | grep -cE '^-rwxr-xr-x .*/(MistyEngine|misty_player)$' || true)"
+          if [ "$execs" != 2 ]; then echo "::error::programs not executable in the archive"; exit 1; fi
+          ldd "$pkg/MistyEngine" | tee ldd.txt
+          if grep -q "not found" ldd.txt; then echo "::error::missing shared libraries"; exit 1; fi
+          # Command-line mode needs no window: a bad option prints the usage and exits with 2.
+          set +e
+          "$pkg/MistyEngine" --no-such-option 2> usage.txt
+          code=$?
+          set -e
+          cat usage.txt
+          if [ "$code" != 2 ] || ! grep -q "usage: misty" usage.txt; then
+            echo "::error::MistyEngine --no-such-option exited with $code"; exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MistyEngine-${{ env.TAG }}-linux-x64
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256.txt
+          retention-days: 14
+
+      - name: Upload to the GitHub release
+        run: |
+          files=("dist/MistyEngine-$TAG-linux-x64.tar.gz" "dist/MistyEngine-$TAG-linux-x64.tar.gz.sha256.txt")
+          # Wait for the release made from Windows (drafts count: gh finds them by tag too).
+          deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+          until gh release view "$TAG" > /dev/null 2>&1; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "No release for $TAG after $WAIT_MINUTES minutes; creating it (published, not a draft)."
+              notes="$(awk -v v="$VERSION" '
+                index($0, v " - ") == 1 { on = 1; next }
+                on && /^[0-9]+\.[0-9]+\.[0-9]+ - / { exit }
+                on && !/^-+$/ { print }' tools/release/CHANGELOG.txt)"
+              [ -n "$(echo "$notes" | tr -d '[:space:]')" ] || notes="Misty Engine $VERSION."
+              printf '%s\n' "$notes" > notes.txt
+              gh release create "$TAG" --verify-tag --title "Misty Engine $VERSION" --notes-file notes.txt \
+                || gh release view "$TAG" > /dev/null  # created meanwhile from Windows: fine
+              break
+            fi
+            echo "Waiting for the $TAG release to exist..."
+            sleep 60
+          done
+          # --clobber: a re-run replaces the Linux files; the Windows assets are left alone.
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "$TAG" "${files[@]}" --clobber; then
+              gh release view "$TAG" --json assets --jq '.assets[].name'
+              exit 0
+            fi
+            echo "Upload failed (attempt $attempt); retrying in 30 s."
+            sleep 30
+          done
+          exit 1
