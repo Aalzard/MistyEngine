@@ -402,6 +402,10 @@ impl Renderer {
             m.draw(&mut pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
         }
+        // Virtual geometry: the main camera's first-phase clusters.
+        if self.vgeo.active() {
+            self.vgeo.draw_prepass(&mut pass, &self.empty_group);
+        }
         // Terrains pull heights from their own textures (group 3; group 2 unused).
         if !frame.terrains.is_empty()
             && let Some(material) = self.textures.get(None, None)

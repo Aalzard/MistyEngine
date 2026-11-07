@@ -290,6 +290,28 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
             .changed()
         },
     );
+    edited |= row(
+        ui,
+        "Virtual Geometry",
+        "Prototype: models imported with Virtual Geometry draw as clusters with per-cluster          level of detail, culled on the GPU. Off = they draw as ordinary meshes.",
+        |ui| ui.checkbox(&mut l.virtual_geometry, "").changed(),
+    );
+    if l.virtual_geometry {
+        edited |= row(
+            ui,
+            "Virtual Geometry Error",
+            "Largest simplification error on screen, in pixels: lower draws more triangles.",
+            |ui| {
+                ui.add(
+                    egui::DragValue::new(&mut l.virtual_geometry_error)
+                        .speed(0.05)
+                        .range(0.1..=16.0)
+                        .suffix(" px"),
+                )
+                .changed()
+            },
+        );
+    }
     edited
 }
 

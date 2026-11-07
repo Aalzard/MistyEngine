@@ -434,10 +434,12 @@ impl DrawCache {
                 .take()
                 .filter(|o| o.entity == e && o.call + 1 == calls);
             // Occludees stay out of static batches while occlusion is in use, so each can be hidden.
+            // Virtual geometry meshes keep their own clusters (merging copies them per object).
             let batched = item.is_static
                 && lod.is_none()
                 && !item.outline
-                && !(item.occludee && self.occlusion.split);
+                && !(item.occludee && self.occlusion.split)
+                && !crate::models::is_virtual(mesh);
             let same_inputs = old.as_ref().is_some_and(|o| {
                 !item.world_changed
                     && o.mesh == *mesh

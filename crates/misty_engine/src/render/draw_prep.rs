@@ -24,6 +24,8 @@ pub(super) struct DrawPrep {
     pub uniforms: Vec<DrawUniform>,
     /// Per draw: mesh fingerprint and model matrix, kept for next frame's motion vectors.
     pub motion: Vec<(u64, glam::Mat4)>,
+    /// Per draw: drawn as virtual geometry (pool mesh index) instead of by the CPU lists.
+    pub virtual_mesh: Vec<Option<u32>>,
 }
 
 /// LOD state of every draw for `frame`'s camera.
@@ -88,6 +90,16 @@ impl Renderer {
             };
             let pipeline = pipeline_key(d, state);
             let shadow = shadow_key(d, state);
+            // Virtual geometry takes lit opaque single-sided surfaces of virtual meshes (not
+            // while a LOD Group level fades: the dither needs the cutout shader).
+            let virtual_mesh = self.vgeo.mesh_index(&d.mesh).filter(|_| {
+                bounds.is_some()
+                    && d.material.custom.is_none()
+                    && state == LodState::Visible
+                    && !pipeline.unlit
+                    && pipeline.mode == RenderingMode::Opaque
+                    && !pipeline.double_sided
+            });
             let group = || self.textures.get_set(&d.material.textures());
             let main = (|| {
                 bounds?;
@@ -98,14 +110,15 @@ impl Renderer {
                 };
                 Some([addr(p), addr(g), addr(mesh?)])
             })()
-            .filter(|_| shaded);
+            .filter(|_| shaded && virtual_mesh.is_none());
             let caster = (|| {
                 let key = shadow?;
                 bounds?;
                 let p = self.pipelines.shadow_variant(key)?;
                 let g = if key.cutout { addr(group()?) } else { 0 };
                 Some([addr(p), addr(mesh?), g])
-            })();
+            })()
+            .filter(|_| virtual_mesh.is_none());
             let fade = match state {
                 LodState::Fading(f) => f,
                 _ => 0.0,
@@ -115,7 +128,8 @@ impl Renderer {
                 // Opaque levels drawn with the cutout variant: only the dither clips.
                 u.surface[1] = f32::MIN;
             }
-            (bounds, pipeline, shadow, main, caster, u, (print, d.model))
+            let m = (print, d.model);
+            (bounds, pipeline, shadow, main, caster, u, m, virtual_mesh)
         });
         let mut p = DrawPrep {
             bounds: Vec::with_capacity(n),
@@ -125,8 +139,9 @@ impl Renderer {
             shadow_keys: Vec::with_capacity(n),
             uniforms: Vec::with_capacity(n),
             motion: Vec::with_capacity(n),
+            virtual_mesh: Vec::with_capacity(n),
         };
-        for (b, pk, sk, mk, ck, u, m) in per_draw {
+        for (b, pk, sk, mk, ck, u, m, v) in per_draw {
             p.bounds.push(b);
             p.pipeline.push(pk);
             p.shadow.push(sk);
@@ -134,6 +149,7 @@ impl Renderer {
             p.shadow_keys.push(ck);
             p.uniforms.push(u);
             p.motion.push(m);
+            p.virtual_mesh.push(v);
         }
         p
     }

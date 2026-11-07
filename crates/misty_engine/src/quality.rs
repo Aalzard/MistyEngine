@@ -225,6 +225,13 @@ pub struct QualityLevel {
     pub upscale_filter: UpscaleFilter,
     /// Multiplier on LOD Group switch distances (`RenderOptions::lod_bias`).
     pub lod_bias: f32,
+    /// Misty Virtual Geometry (prototype): meshes imported with Virtual Geometry on draw as
+    /// clusters with per-cluster level of detail, culled on the GPU. Off = they draw as
+    /// ordinary meshes.
+    pub virtual_geometry: bool,
+    /// Virtual Geometry: largest simplification error allowed on screen, in pixels (lower =
+    /// more triangles).
+    pub virtual_geometry_error: f32,
     pub ambient_occlusion: Tier,
     pub volumetric_fog: Tier,
     pub reflection_probes: Tier,
@@ -281,6 +288,8 @@ impl QualityLevel {
             render_scale: 0.75,
             upscale_filter: UpscaleFilter::Bilinear,
             lod_bias: 0.5,
+            virtual_geometry: false,
+            virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Off,
             volumetric_fog: Tier::Off,
             reflection_probes: Tier::Low,
@@ -316,6 +325,8 @@ impl QualityLevel {
             render_scale: 1.0,
             upscale_filter: UpscaleFilter::Bilinear,
             lod_bias: 1.0,
+            virtual_geometry: false,
+            virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Low,
             volumetric_fog: Tier::Low,
             reflection_probes: Tier::Medium,
@@ -351,6 +362,8 @@ impl QualityLevel {
             render_scale: 1.0,
             upscale_filter: UpscaleFilter::Bilinear,
             lod_bias: 1.5,
+            virtual_geometry: false,
+            virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::Medium,
             volumetric_fog: Tier::Medium,
             reflection_probes: Tier::High,
@@ -372,6 +385,8 @@ impl QualityLevel {
             soft_shadows: Tier::High,
             max_texture_size: 8192,
             lod_bias: 2.0,
+            virtual_geometry: false,
+            virtual_geometry_error: 1.0,
             ambient_occlusion: Tier::High,
             volumetric_fog: Tier::High,
             volumetric_clouds: Tier::High,
@@ -399,6 +414,7 @@ impl QualityLevel {
         self.max_texture_size = self.max_texture_size.clamp(32, 8192);
         self.render_scale = finite_clamp(self.render_scale, 0.25, 2.0, 1.0);
         self.lod_bias = finite_clamp(self.lod_bias, 0.01, 10.0, 1.0);
+        self.virtual_geometry_error = finite_clamp(self.virtual_geometry_error, 0.1, 16.0, 1.0);
         self.taa_blend = finite_clamp(self.taa_blend, 0.02, 0.5, TAA_BLEND);
         self.taa_sharpness = finite_clamp(self.taa_sharpness, 0.0, 1.0, TAA_SHARPNESS);
     }
