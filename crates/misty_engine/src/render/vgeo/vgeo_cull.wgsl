@@ -1,7 +1,9 @@
 // Misty Virtual Geometry: instance and cluster culling with per-cluster level of detail
 // (render/vgeo/mod.rs). Prepended with draw.wgsl (`struct Draw`).
 //
-// Per view (the main camera's two phases, then each shadow map):
+// Views are culled together: one dispatch of each pass covers a run of views (the main camera's
+// phases, then every shadow map at once), `range.x` the first and the workgroup id's y (direct
+// dispatches) or z (indirect ones) the view within the run. Per view:
 //   cs_instances  one thread per instance: frustum (and Hi-Z in the second phase) test, then
 //                 queue the instance's groups to decide (chunks of 64) and its candidate
 //                 clusters (chunks of 64). Groups and clusters that are surely fine enough
@@ -42,8 +44,8 @@ struct View {
     // x = view index, y = this view's first visible-list entry, z = entries per batch,
     // w = its first cluster chunk entry in `lists`.
     region: vec4<u32>,
-    // x = cluster chunk capacity; where `control` holds z = the limits and w = the draw
-    // arguments (y unused).
+    // x = cluster chunk capacity, y = instances `instance_state` is laid out for; where
+    // `control` holds z = the limits and w = the draw arguments.
     caps: vec4<u32>,
     // This view's eye (w = 1) or, orthographic, its forward direction (w = 0): back faces.
     eye: vec4<f32>,
@@ -83,14 +85,20 @@ struct Cluster {
     cone_cutoff: f32,
 };
 
-@group(0) @binding(0) var<uniform> vu: View;
+// x = the first view of this dispatch.
+@group(0) @binding(0) var<uniform> range: vec4<u32>;
+// Every view (MAX_VIEWS).
+@group(0) @binding(10) var<uniform> views: array<View, 34>;
+// The view this workgroup culls for (set first thing by every entry point).
+var<private> vu: View;
 @group(0) @binding(1) var<storage, read> draws: array<Draw>;
 @group(0) @binding(2) var<storage, read> instances: array<vec4<u32>>;
 @group(0) @binding(3) var<storage, read> records: array<Record>;
 @group(0) @binding(4) var<storage, read> clusters: array<Cluster>;
 // Per instance: [4i] = visible at the end of last frame (main camera), [4i + 1] = drawn by
-// the first phase this frame, [4i + 2] = its first group chunk in this view, [4i + 3] = its
-// first decided group (the ones below are fine enough).
+// the first phase this frame; then per view and instance (`view_state`, views run at the same
+// time): its first group chunk in the view and its first decided group (the ones below are
+// fine enough).
 @group(0) @binding(5) var<storage, read_write> instance_state: array<u32>;
 // The visible lists, (draw, cluster) per drawn cluster, every view's; then the cluster chunks,
 // (instance, first candidate cluster) each; then the group chunks, (instance, first group)
@@ -112,6 +120,12 @@ struct Cluster {
 // multi_draw_indexed_indirect_count with the batch's cluster count.
 @group(0) @binding(8) var<storage, read_write> cluster_args: array<u32>;
 @group(0) @binding(9) var hiz: texture_2d<f32>;
+
+// Where instance `i`'s two words for this view are in `instance_state` (caps.y = the
+// instances the buffer is laid out for).
+fn view_state(i: u32) -> u32 {
+    return 4u * vu.caps.y + 2u * (vu.region.x * vu.caps.y + i);
+}
 
 fn world_scale(m: mat4x4<f32>) -> f32 {
     return max(length(m[0].xyz), max(length(m[1].xyz), length(m[2].xyz)));
@@ -233,7 +247,11 @@ fn occluded(lo_box: vec3<f32>, hi_box: vec3<f32>) -> bool {
 }
 
 @compute @workgroup_size(64)
-fn cs_instances(@builtin(global_invocation_id) id: vec3<u32>) {
+fn cs_instances(
+    @builtin(global_invocation_id) id: vec3<u32>,
+    @builtin(workgroup_id) wg: vec3<u32>,
+) {
+    vu = views[range.x + wg.y];
     let i = id.x;
     if (i >= vu.info.x) {
         return;
@@ -332,8 +350,8 @@ fn cs_instances(@builtin(global_invocation_id) id: vec3<u32>) {
             lists[vu.groups.x + gbase + j] = vec2<u32>(i, glo + j * CHUNK);
         }
     }
-    instance_state[4u * i + 2u] = gbase;
-    instance_state[4u * i + 3u] = glo;
+    instance_state[view_state(i)] = gbase;
+    instance_state[view_state(i) + 1u] = glo;
     atomicAdd(&control[vi * 8u + 6u], 1u);
     let k = (n + CHUNK - 1u) / CHUNK;
     let base = atomicAdd(&control[vi * 8u], k);
@@ -345,7 +363,11 @@ fn cs_instances(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 @compute @workgroup_size(1)
-fn cs_prepare() {
+fn cs_prepare(
+    @builtin(workgroup_id) wg: vec3<u32>,
+    @builtin(num_workgroups) runs: vec3<u32>,
+) {
+    vu = views[range.x + wg.x];
     let vi = vu.region.x;
     let batches = vu.info.w;
     let per_batch = vu.region.z;
@@ -358,15 +380,18 @@ fn cs_prepare() {
         atomicStore(&control[a + 2u], 0u);
         atomicStore(&control[a + 3u], vu.region.y + b * per_batch);
     }
-    let d = DISPATCH_BASE + vi * 8u;
+    // One dispatch of the cluster and group passes for the whole run (in the first view's
+    // words, zeroed every frame): as many workgroups as the busiest view needs, z = the views;
+    // the others' extra workgroups return at once.
+    let d = DISPATCH_BASE + range.x * 8u;
     let queued = min(atomicLoad(&control[vi * 8u]), vu.caps.x);
-    atomicStore(&control[d], min(queued, MAX_GROUPS_X));
-    atomicStore(&control[d + 1u], (queued + MAX_GROUPS_X - 1u) / MAX_GROUPS_X);
-    atomicStore(&control[d + 2u], 1u);
+    atomicMax(&control[d], min(queued, MAX_GROUPS_X));
+    atomicMax(&control[d + 1u], (queued + MAX_GROUPS_X - 1u) / MAX_GROUPS_X);
+    atomicStore(&control[d + 2u], runs.x);
     let groups = min(atomicLoad(&control[vi * 8u + 4u]), vu.groups.y);
-    atomicStore(&control[d + 4u], min(groups, MAX_GROUPS_X));
-    atomicStore(&control[d + 5u], (groups + MAX_GROUPS_X - 1u) / MAX_GROUPS_X);
-    atomicStore(&control[d + 6u], 1u);
+    atomicMax(&control[d + 4u], min(groups, MAX_GROUPS_X));
+    atomicMax(&control[d + 5u], (groups + MAX_GROUPS_X - 1u) / MAX_GROUPS_X);
+    atomicStore(&control[d + 6u], runs.x);
 }
 
 var<workgroup> wg_bits: array<atomic<u32>, 2>;
@@ -377,6 +402,7 @@ fn cs_groups(
     @builtin(workgroup_id) group: vec3<u32>,
     @builtin(local_invocation_index) lane: u32,
 ) {
+    vu = views[range.x + group.z];
     let vi = vu.region.x;
     if (lane == 0u) {
         atomicStore(&wg_bits[0], 0u);
@@ -433,6 +459,7 @@ fn cs_clusters(
     @builtin(workgroup_id) group: vec3<u32>,
     @builtin(local_invocation_index) lane: u32,
 ) {
+    vu = views[range.x + group.z];
     let vi = vu.region.x;
     let chunk = group.y * MAX_GROUPS_X + group.x;
     let queued = min(atomicLoad(&control[vi * 8u]), vu.caps.x);
@@ -448,8 +475,8 @@ fn cs_clusters(
     }
     let ci = mesh.b.x + local;
     let c = clusters[ci];
-    let first_chunk = instance_state[4u * item.x + 2u];
-    let first_group = instance_state[4u * item.x + 3u];
+    let first_chunk = instance_state[view_state(item.x)];
+    let first_group = instance_state[view_state(item.x) + 1u];
     if (!group_fine(c.group, first_chunk, first_group, true)
         || group_fine(c.parent_group, first_chunk, first_group, false)) {
         return;
@@ -490,7 +517,11 @@ fn cs_clusters(
 }
 
 @compute @workgroup_size(64)
-fn cs_finish(@builtin(global_invocation_id) id: vec3<u32>) {
+fn cs_finish(
+    @builtin(global_invocation_id) id: vec3<u32>,
+    @builtin(workgroup_id) wg: vec3<u32>,
+) {
+    vu = views[range.x + wg.y];
     let b = id.x;
     if (b >= vu.info.w) {
         return;

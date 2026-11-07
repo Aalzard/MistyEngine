@@ -383,7 +383,10 @@ struct Gpu {
     lists: wgpu::Buffer,
     /// Per visible-list entry: that cluster's indexed draw arguments.
     cluster_args: wgpu::Buffer,
+    /// Per view: its index (the first view of a culling dispatch run, cull binding 0).
     uniforms: Vec<wgpu::Buffer>,
+    /// Every view's [`ViewUniform`] (cull binding 10).
+    views: wgpu::Buffer,
     /// Views the lists and uniforms are laid out for (they grow on demand).
     view_capacity: usize,
     /// Visible entries per view and per batch (vgeo_vis.wgsl `VgInfo`).
@@ -393,6 +396,8 @@ struct Gpu {
     /// Records (instances and slots) the instance buffer holds; instances the state holds.
     instance_capacity: usize,
     state_capacity: usize,
+    /// Views the instance state is laid out for.
+    state_views: usize,
     batch_capacity: usize,
 }
 
@@ -854,17 +859,6 @@ impl VirtualGeometry {
             );
             gpu.instance_capacity = cap;
         }
-        if n > gpu.state_capacity {
-            let cap = n.next_power_of_two();
-            gpu.instance_state = storage(
-                device,
-                "misty vgeo instance state",
-                cap as u64 * 16,
-                wgpu::BufferUsages::empty(),
-            );
-            gpu.state_capacity = cap;
-            self.last_instances = usize::MAX;
-        }
         if b > gpu.batch_capacity {
             let cap = b.next_power_of_two();
             gpu.control = control_buffer(device, cap);
@@ -872,6 +866,19 @@ impl VirtualGeometry {
         }
         if views > gpu.view_capacity {
             gpu.grow_views(device, views.max(6));
+        }
+        // 4 words per instance, then 2 per instance and view (views are culled together).
+        if n > gpu.state_capacity || gpu.view_capacity > gpu.state_views {
+            let cap = n.next_power_of_two().max(gpu.state_capacity);
+            gpu.instance_state = storage(
+                device,
+                "misty vgeo instance state",
+                cap as u64 * (16 + 8 * gpu.view_capacity as u64),
+                wgpu::BufferUsages::empty(),
+            );
+            gpu.state_capacity = cap;
+            gpu.state_views = gpu.view_capacity;
+            self.last_instances = usize::MAX;
         }
         queue.write_buffer(&gpu.instances, 0, bytemuck::cast_slice(&instances));
         if n != self.last_instances {
@@ -881,7 +888,8 @@ impl VirtualGeometry {
             self.last_instances = n;
         }
         let (limits, args) = control_layout(gpu.batch_capacity);
-        queue.write_buffer(&gpu.control, 0, &[0u8; MAX_VIEWS * COUNTERS * 4]);
+        // The counters and the dispatch arguments (cs_prepare takes maxima into them).
+        queue.write_buffer(&gpu.control, 0, &[0u8; CONTROL_HEADER * 4]);
         let (regions, _) = regions(gpu.view_capacity);
         // Each batch gets an equal share of a view's visible list (the indexed draw needs its
         // region's offset on the CPU).
@@ -937,7 +945,7 @@ impl VirtualGeometry {
                     r.visible / b as u32,
                     r.chunk_first,
                 ],
-                caps: [r.chunks, 0, limits, args],
+                caps: [r.chunks, gpu.state_capacity as u32, limits, args],
                 eye: view_eye(matrix),
                 groups: [r.group_first, r.groups, 0, 0],
             }
@@ -959,9 +967,7 @@ impl VirtualGeometry {
             u.params[3] = 0.0;
             uniforms.push(u);
         }
-        for (u, buffer) in uniforms.iter().zip(&gpu.uniforms) {
-            queue.write_buffer(buffer, 0, bytemuck::bytes_of(u));
-        }
+        queue.write_buffer(&gpu.views, 0, bytemuck::cast_slice(&uniforms));
 
         let Some(pool) = gpu.pool.as_ref() else {
             return;
@@ -993,6 +999,7 @@ impl VirtualGeometry {
                         entry(6, &gpu.lists),
                         entry(7, &gpu.control),
                         entry(8, &gpu.cluster_args),
+                        entry(10, &gpu.views),
                         wgpu::BindGroupEntry {
                             binding: 9,
                             resource: wgpu::BindingResource::TextureView(
@@ -1090,43 +1097,59 @@ impl VirtualGeometry {
         }
         let batches = f.batches.len() as u32;
         let label = Some("misty vgeo culling");
+        // With one main phase there is no view 1.
+        let first = if first == 1 && f.single { 2 } else { first };
+        if first >= last {
+            return;
+        }
+        // The views the Frame Debugger lets through (it stops a frame at one event: every
+        // view after a refused one is refused too).
+        let mut run = 0;
         for v in first..last {
-            if (v == 1 && f.single) || !gate(v) {
-                continue;
+            if !gate(v) {
+                break;
             }
-            {
-                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label,
-                    timestamp_writes: None,
-                });
-                pass.set_bind_group(0, &f.cull_groups[v], &[]);
-                pass.set_pipeline(&gpu.cs_instances);
-                pass.dispatch_workgroups(f.instances.div_ceil(WORKGROUP), 1, 1);
-                pass.set_pipeline(&gpu.cs_prepare);
-                pass.dispatch_workgroups(1, 1, 1);
-            }
-            // The cluster and group dispatches (8 words per view after the counters).
-            let at = (v * 32) as u64;
-            encoder.copy_buffer_to_buffer(
-                &gpu.control,
-                (MAX_VIEWS * COUNTERS * 4) as u64 + at,
-                &gpu.dispatch,
-                at,
-                32,
-            );
+            run += 1;
+        }
+        if run == 0 {
+            return;
+        }
+        // Every view of the run in one dispatch per pass (y or z = the view): five dispatches
+        // and one copy for all the shadow maps instead of five and one per map.
+        let views = run as u32;
+        {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label,
                 timestamp_writes: None,
             });
-            pass.set_bind_group(0, &f.cull_groups[v], &[]);
-            // Every candidate group's decision first: the clusters read them.
-            pass.set_pipeline(&gpu.cs_groups);
-            pass.dispatch_workgroups_indirect(&gpu.dispatch, at + 16);
-            pass.set_pipeline(&gpu.cs_clusters);
-            pass.dispatch_workgroups_indirect(&gpu.dispatch, at);
-            pass.set_pipeline(&gpu.cs_finish);
-            pass.dispatch_workgroups(batches.div_ceil(WORKGROUP), 1, 1);
+            pass.set_bind_group(0, &f.cull_groups[first], &[]);
+            pass.set_pipeline(&gpu.cs_instances);
+            pass.dispatch_workgroups(f.instances.div_ceil(WORKGROUP), views, 1);
+            pass.set_pipeline(&gpu.cs_prepare);
+            pass.dispatch_workgroups(views, 1, 1);
         }
+        // The run's cluster and group dispatches (in its first view's 8 words after the
+        // counters).
+        let at = (first * 32) as u64;
+        encoder.copy_buffer_to_buffer(
+            &gpu.control,
+            (MAX_VIEWS * COUNTERS * 4) as u64 + at,
+            &gpu.dispatch,
+            at,
+            32,
+        );
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label,
+            timestamp_writes: None,
+        });
+        pass.set_bind_group(0, &f.cull_groups[first], &[]);
+        // Every candidate group's decision first: the clusters read them.
+        pass.set_pipeline(&gpu.cs_groups);
+        pass.dispatch_workgroups_indirect(&gpu.dispatch, at + 16);
+        pass.set_pipeline(&gpu.cs_clusters);
+        pass.dispatch_workgroups_indirect(&gpu.dispatch, at);
+        pass.set_pipeline(&gpu.cs_finish);
+        pass.dispatch_workgroups(batches.div_ceil(WORKGROUP), views, 1);
     }
 
     /// Shadow views to cull (after the main phases).
@@ -1524,6 +1547,16 @@ impl Gpu {
             cull_entries.push(storage_entry(binding, false, S::COMPUTE));
         }
         cull_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: 10,
+            visibility: S::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+        cull_entries.push(wgpu::BindGroupLayoutEntry {
             binding: 9,
             visibility: S::COMPUTE,
             ty: wgpu::BindingType::Texture {
@@ -1750,6 +1783,12 @@ impl Gpu {
                 wgpu::BufferUsages::INDIRECT,
             ),
             uniforms: Vec::new(),
+            views: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("misty vgeo views"),
+                size: (MAX_VIEWS * std::mem::size_of::<ViewUniform>()) as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
             view_capacity: 0,
             info: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("misty vgeo info"),
@@ -1760,6 +1799,7 @@ impl Gpu {
             vis,
             instance_capacity: 0,
             state_capacity: 0,
+            state_views: 0,
             batch_capacity: 0,
         }
     }
@@ -1781,13 +1821,14 @@ impl Gpu {
             wgpu::BufferUsages::INDIRECT,
         );
         while self.uniforms.len() < views {
-            self.uniforms
-                .push(device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("misty vgeo view"),
-                    size: std::mem::size_of::<ViewUniform>() as u64,
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                }));
+            let v = self.uniforms.len() as u32;
+            self.uniforms.push(
+                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("misty vgeo view range"),
+                    contents: bytemuck::cast_slice(&[v, 0, 0, 0]),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                }),
+            );
         }
         self.view_capacity = views;
     }
@@ -1986,6 +2027,11 @@ mod tests {
             "DISPATCH_BASE should be {base}"
         );
         assert!(super::CULL_SRC.contains(&format!("MAX_VIEWS = {}", super::MAX_VIEWS)));
+        // Every view's uniform in one array (views are culled together).
+        assert!(super::CULL_SRC.contains(&format!(
+            "var<uniform> views: array<View, {}>;",
+            super::MAX_VIEWS
+        )));
         assert_eq!(std::mem::size_of::<super::GpuCluster>(), 48);
         // vgeo_resolve.wgsl reads cluster records by words.
         let resolve = include_str!("vgeo_resolve.wgsl");
