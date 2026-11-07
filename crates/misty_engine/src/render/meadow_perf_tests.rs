@@ -59,6 +59,13 @@ fn view(name: &str) -> Option<GameView> {
         "close" => meadow_view(GrassShot::CloseGolden),
         "behind" => tree_view(TreeShot::Behind),
         "oak" => tree_view(TreeShot::Close),
+        // Walked 12 m towards the oak: its crown within the virtual shadow map's near layer.
+        "oaknear" => {
+            let mut v = tree_view(TreeShot::Close);
+            let f = v.camera.forward();
+            v.camera.position += glam::Vec3::new(f.x, 0.0, f.z).normalize_or_zero() * 12.0;
+            v
+        }
         _ => return None,
     })
 }

@@ -66,7 +66,7 @@ pub const PAGE_BUDGET: usize = 384;
 pub const NEAR_SIZE: u32 = 2048;
 /// Half the near layer's side when no grass reaches further (metres): trees within 70 % of
 /// it go into the layer instead of the cached pages (`trees.rs` `near`).
-pub const NEAR_RADIUS: f32 = 24.0;
+pub const NEAR_RADIUS: f32 = 32.0;
 /// The sun may turn this far (radians) from the light the pages were drawn for before a new
 /// set starts filling in the background (shadows lag the sun by at most about this much).
 pub const SUN_START: f32 = 0.1 * std::f32::consts::PI / 180.0;
