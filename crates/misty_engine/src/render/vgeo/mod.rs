@@ -10,8 +10,18 @@
 //!
 //! Views: the main camera in two phases (instances visible last frame, then the rest against
 //! the Hi-Z pyramid built from the first phase's depth, like render/gpu_culling), then each
-//! shadow map (frustum only, level of detail chosen for the main camera). The first phase's
-//! list also feeds the depth + normal prepass of the screen-space effects.
+//! shadow map (frustum only, level of detail chosen for the main camera), up to
+//! [`MAX_SHADOW_VIEWS`] (cascades, local lights, virtual shadow map rectangles). The first
+//! phase's list also feeds the depth + normal prepass of the screen-space effects.
+//!
+//! Level of detail: each view decides every candidate group once (vgeo_cull.wgsl
+//! `cs_groups`), and clusters read their own group's and their parent group's decision, so the
+//! two sides of a group border always agree (crack-free by construction).
+//!
+//! Materials: draws of one virtual mesh with the same transform (the primitives of a glTF mesh,
+//! one per material) become one instance whose material slots name each part's draw and batch;
+//! a cluster goes to its part's slot. Opaque and Cutout (alpha-tested) batches are drawn by
+//! their own pipelines in every pass (main, visibility raster, shadows, prepass).
 
 use std::collections::HashMap;
 
@@ -37,57 +47,171 @@ const MESH_ENTRY_SRC: &str = include_str!("vgeo_mesh.wgsl");
 const DEPTH_ENTRY_SRC: &str = include_str!("vgeo_depth.wgsl");
 const PREPASS_ENTRY_SRC: &str = include_str!("vgeo_prepass.wgsl");
 
-/// Visible-list entries per view (× 128 triangles at most each), shared equally by the batches.
-/// (Entry × 384 is the indexed path's base vertex: it must stay below 2³¹ for all views.)
-const VISIBLE_PER_VIEW: u32 = 1 << 18;
-/// Chunks of 64 candidate clusters per view.
-const CHUNKS_PER_VIEW: u32 = 1 << 17;
-/// Shadow maps with virtual geometry casters (the sun's cascades come first).
-pub(super) const MAX_SHADOW_VIEWS: usize = 6;
+/// Visible-list entries of a main view (× 128 triangles at most each) and of a shadow view,
+/// shared equally by the batches. (Entry × 384 is the indexed path's base vertex: it must stay
+/// below 2³¹ for all views.)
+const MAIN_VISIBLE: u32 = 1 << 18;
+const SHADOW_VISIBLE: u32 = 1 << 16;
+/// Chunks of 64 candidate clusters, and of 64 groups to decide, per main / shadow view.
+const MAIN_CHUNKS: u32 = 1 << 17;
+const SHADOW_CHUNKS: u32 = 1 << 15;
+const MAIN_GROUP_CHUNKS: u32 = 1 << 16;
+const SHADOW_GROUP_CHUNKS: u32 = 1 << 14;
+/// Shadow maps with virtual geometry casters (in plan order: cascades, local lights, virtual
+/// shadow map rectangles). The lists grow with the views a frame uses.
+pub const MAX_SHADOW_VIEWS: usize = 32;
 const MAX_VIEWS: usize = 2 + MAX_SHADOW_VIEWS;
+/// Counters per view at the start of `control` (vgeo_cull.wgsl).
+const COUNTERS: usize = 8;
+/// A slot record's draw when the object doesn't draw that part.
+const NO_DRAW: u32 = u32::MAX;
 /// Words per vertex in the pool: position (3 × f32), normal and tangent (octahedral 2 × 16
 /// bits each, the bitangent sign in the tangent's lowest bit), uv (2 × f32), lightmap uv
 /// (2 × unorm16). [`super::mesh::Vertex`] is 14 floats.
 const VERTEX_WORDS: usize = 8;
 const WORKGROUP: u32 = 64;
-/// Words of `control` before the limits: 4 counters and 4 dispatch words per view
+/// Words of `control` before the limits: the counters and 8 dispatch words per view
 /// (`DISPATCH_BASE` in vgeo_cull.wgsl = the counters' words).
-const CONTROL_HEADER: usize = MAX_VIEWS * 8;
+const CONTROL_HEADER: usize = MAX_VIEWS * (COUNTERS + 8);
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct GpuCluster {
     bounds: [f32; 4],
-    lod: [f32; 4],
-    parent: [f32; 4],
-    error: f32,
+    /// Mesh-local groups ([`crate::vgeo::NO_GROUP`] = none): the one that made it, the one it
+    /// was simplified into, and the latter's error (the binary search's key).
+    group: u32,
+    parent_group: u32,
     parent_error: f32,
-    triangles: u32,
+    /// Triangles (8 bits) | level << 8 (6 bits) | material slot << 14.
+    packed: u32,
     /// Its own vertex list (source vertex ids) and local indices (16-bit, in index units).
     vertex_first: u32,
     local_first: u32,
     /// Normal cone: octahedral axis and cutoff ([`crate::vgeo::Cluster::backfacing`]).
     cone_axis: u32,
     cone_cutoff: f32,
-    pad: u32,
 }
 
+/// A mesh record (a = bounds, b = first cluster, clusters, first group record, groups) or a
+/// group record (a = its sphere, b.x = its error's bits): vgeo_cull.wgsl `Record`.
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct GpuMeshInfo {
-    bounds: [f32; 4],
-    first: u32,
-    count: u32,
-    pad: [u32; 2],
+struct GpuRecord {
+    a: [f32; 4],
+    b: [u32; 4],
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct GpuInstance {
-    draw: u32,
-    mesh: u32,
-    batch: u32,
-    flags: u32,
+/// An instance (draw, mesh record, first slot record, bit 0 = casts shadows) or a material slot
+/// record (draw or [`NO_DRAW`], batch, bit 0 = casts shadows, 0): vgeo_cull.wgsl.
+type GpuInstance = [u32; 4];
+
+/// Where one view's entries are: in `lists` (and, for the visible list, `cluster_args`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Region {
+    visible_first: u32,
+    visible: u32,
+    chunk_first: u32,
+    chunks: u32,
+    group_first: u32,
+    groups: u32,
+}
+
+/// Visible entries, cluster chunks and group chunks of view `v` (0, 1 = the main camera).
+fn view_sizes(v: usize) -> (u32, u32, u32) {
+    match v < 2 {
+        true => (MAIN_VISIBLE, MAIN_CHUNKS, MAIN_GROUP_CHUNKS),
+        false => (SHADOW_VISIBLE, SHADOW_CHUNKS, SHADOW_GROUP_CHUNKS),
+    }
+}
+
+/// The regions of `views` views: every visible list first (one index space for the draw
+/// arguments), then every view's cluster chunks, then its group chunks. Returns them and the
+/// entries of `lists`.
+fn regions(views: usize) -> (Vec<Region>, u32) {
+    let mut out: Vec<Region> = Vec::with_capacity(views);
+    let mut at = 0;
+    for v in 0..views {
+        let (visible, chunks, groups) = view_sizes(v);
+        out.push(Region {
+            visible_first: at,
+            visible,
+            chunk_first: 0,
+            chunks,
+            group_first: 0,
+            groups,
+        });
+        at += visible;
+    }
+    for r in &mut out {
+        r.chunk_first = at;
+        at += r.chunks;
+        r.group_first = at;
+        at += r.groups;
+    }
+    (out, at)
+}
+
+/// Visible-list entries of `views` views (the draw arguments' index space).
+fn visible_entries(views: usize) -> u32 {
+    (0..views).map(|v| view_sizes(v).0).sum()
+}
+
+/// The pass a virtual geometry draw belongs to (Frame Debugger events).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum VgeoPass {
+    /// Clusters drawn lit directly in the main pass (or a debug view).
+    Lit,
+    /// The visibility raster's ids.
+    Raster,
+    /// The material resolve (one fullscreen draw per batch and layer).
+    Resolve,
+    Shadow,
+    Prepass,
+}
+
+/// One batch draw of virtual geometry: what [`Gate`] is asked about.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct VgeoDraw {
+    pub pass: VgeoPass,
+    /// The view whose visible list it draws (0, 1 = main phases; 2.. = shadow maps).
+    pub view: usize,
+    pub batch: usize,
+    /// A draw of the batch (its material).
+    pub draw: usize,
+    pub cutout: bool,
+}
+
+/// Asked before each batch draw (false = skip it): the Frame Debugger records it and stops
+/// the frame at the chosen event; otherwise always true.
+pub(super) type Gate<'g> = dyn Fn(&VgeoDraw) -> bool + 'g;
+
+/// Debug views of virtual geometry (Scene view draw modes).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VgeoDebug {
+    #[default]
+    Off,
+    /// Every cluster in its own colour.
+    Clusters,
+    /// The level each cluster comes from (blue = source triangles … magenta = coarsest).
+    Levels,
+    /// Layers of rasterized cluster triangles, additive (bright = overdraw).
+    Overdraw,
+    /// Each material slot in its own colour.
+    Materials,
+}
+
+impl VgeoDebug {
+    /// Its number in the shaders (vgeo_mesh.wgsl `VgDebugInfo`).
+    fn code(self) -> u32 {
+        match self {
+            Self::Off => 0,
+            Self::Clusters => 1,
+            Self::Levels => 2,
+            Self::Overdraw => 3,
+            Self::Materials => 4,
+        }
+    }
 }
 
 #[repr(C)]
@@ -103,6 +227,8 @@ struct ViewUniform {
     /// This view's own eye (w = 1) or, orthographic, its forward direction (w = 0): the
     /// clusters' back-face test.
     eye: [f32; 4],
+    /// First group chunk entry, group chunk capacity.
+    groups: [u32; 4],
 }
 
 /// What the last frame drew (read back on request, for measurements).
@@ -116,11 +242,15 @@ pub struct VgeoStats {
     pub shadow_triangles: u64,
     /// Clusters left out because a visible list was full.
     pub dropped: u32,
+    /// Instance views left out because their view had no room to decide their groups.
+    pub dropped_instances: u32,
     /// Virtual meshes in the pool and their source triangles.
     pub meshes: u32,
     pub source_triangles: u64,
     /// GPU memory of the pool (vertices, local indices, cluster vertices, cluster records).
     pub pool_bytes: u64,
+    /// GPU memory of the per-view visible lists, chunks and draw arguments.
+    pub list_bytes: u64,
     /// The main pass drew the clusters through the visibility buffer.
     pub visibility: bool,
 }
@@ -130,8 +260,12 @@ pub(super) struct VirtualGeometry {
     pub enabled: bool,
     /// Largest error on screen, in pixels.
     pub threshold: f32,
-    /// Colour every cluster (debug view).
-    pub debug: bool,
+    /// Debug view (colours instead of the material), every render.
+    pub debug: VgeoDebug,
+    /// Debug view of the next render only (the Scene view's draw mode).
+    pub debug_once: Option<VgeoDebug>,
+    /// This render's debug view.
+    pub view_debug: VgeoDebug,
     /// Draw the main pass's clusters through the visibility buffer (render/vgeo/vis.rs) where
     /// the device can; else lit directly.
     pub visibility: bool,
@@ -141,14 +275,20 @@ pub(super) struct VirtualGeometry {
     pub edge_layer: bool,
     /// This frame draws virtual meshes through clusters (set before the draw prep).
     pub on: bool,
-    /// Mesh key → index in the pool (`None` = not a virtual mesh).
-    pool_index: HashMap<String, Option<u32>>,
+    /// Mesh key → (index in the pool, material slot) (`None` = not a virtual mesh).
+    pool_index: HashMap<String, Option<(u32, u32)>>,
+    /// Key of the mesh holding a build (a glTF mesh's first primitive) → index in the pool.
+    source_index: HashMap<String, u32>,
     generation: u64,
     /// [`crate::models::virtual_build::ready_generation`] the pool was laid out at.
     ready: u64,
     vertices: Vec<u32>,
     clusters: Vec<GpuCluster>,
-    meshes: Vec<GpuMeshInfo>,
+    /// Mesh records (their first group relative to `groups`) and group records.
+    meshes: Vec<GpuRecord>,
+    groups: Vec<GpuRecord>,
+    /// Material slots of each pool mesh.
+    mesh_materials: Vec<u32>,
     /// Per cluster: its vertices' source ids, and its triangles as indices into that list.
     cluster_vertices: Vec<u32>,
     local_indices: Vec<u16>,
@@ -157,6 +297,21 @@ pub(super) struct VirtualGeometry {
     gpu: Option<Gpu>,
     frame: Option<FrameState>,
     last_instances: usize,
+    /// The per-view counters copied out each frame and read back when ready (never waited
+    /// for): the Stats box and the Profiler.
+    readback: Vec<Readback>,
+    /// The last counters read back (a frame or two old).
+    latest: VgeoStats,
+}
+
+/// One staging buffer of the counter readback.
+struct Readback {
+    buffer: wgpu::Buffer,
+    /// 0 = free, 1 = copied this frame, 2 = mapping, 3 = mapped.
+    state: std::sync::Arc<std::sync::atomic::AtomicU8>,
+    views: usize,
+    instances: u32,
+    visibility: bool,
 }
 
 struct Gpu {
@@ -164,34 +319,45 @@ struct Gpu {
     render_layout: wgpu::BindGroupLayout,
     cs_instances: wgpu::ComputePipeline,
     cs_prepare: wgpu::ComputePipeline,
+    cs_groups: wgpu::ComputePipeline,
     cs_clusters: wgpu::ComputePipeline,
     cs_finish: wgpu::ComputePipeline,
     main: wgpu::RenderPipeline,
+    main_cutout: wgpu::RenderPipeline,
     debug: wgpu::RenderPipeline,
+    overdraw: wgpu::RenderPipeline,
     shadow: wgpu::RenderPipeline,
+    shadow_cutout: wgpu::RenderPipeline,
     prepass: wgpu::RenderPipeline,
+    prepass_cutout: wgpu::RenderPipeline,
     /// Draw each cluster as an indexed sub-draw with the GPU's count
     /// (`MULTI_DRAW_INDIRECT_COUNT`); else 384 pulled vertices per cluster.
     indexed: bool,
     pool: Option<Pool>,
+    /// The instances, then their material slot records.
     instances: wgpu::Buffer,
-    /// Per instance: visible last frame, drawn by the first phase.
+    /// Per instance: visible last frame, drawn by the first phase, its first group chunk and
+    /// first decided group in the view being culled.
     instance_state: wgpu::Buffer,
     /// Counters, dispatch arguments, limits and draw arguments (vgeo_cull.wgsl).
     control: wgpu::Buffer,
     /// The cluster passes' workgroups, copied out of `control` (a buffer bound for writing
     /// can't also be the indirect buffer of a dispatch).
     dispatch: wgpu::Buffer,
-    /// Every view's visible list, then every view's chunks.
+    /// Every view's visible list, then every view's cluster and group chunks ([`regions`]).
     lists: wgpu::Buffer,
     /// Per visible-list entry: that cluster's indexed draw arguments.
     cluster_args: wgpu::Buffer,
     uniforms: Vec<wgpu::Buffer>,
+    /// Views the lists and uniforms are laid out for (they grow on demand).
+    view_capacity: usize,
     /// Visible entries per view and per batch (vgeo_vis.wgsl `VgInfo`).
     info: wgpu::Buffer,
     /// The visibility buffer's pipelines and targets (None: this device draws clusters lit).
     vis: Option<vis::Vis>,
+    /// Records (instances and slots) the instance buffer holds; instances the state holds.
     instance_capacity: usize,
+    state_capacity: usize,
     batch_capacity: usize,
 }
 
@@ -200,6 +366,7 @@ const VERTICES: usize = 0;
 /// 16-bit local indices: the index buffer of the indexed path, read as storage elsewhere.
 const LOCAL: usize = 1;
 const CLUSTERS: usize = 2;
+/// Mesh records, then group records.
 const MESHES: usize = 3;
 const CLUSTER_VERTICES: usize = 4;
 
@@ -251,10 +418,13 @@ impl Pool {
 
 struct FrameState {
     views: usize,
+    /// Where each view's entries are.
+    regions: Vec<Region>,
     /// Shadow slot of view `2 + i`.
     shadow_slots: Vec<usize>,
-    /// A draw of each batch (its material's texture set).
+    /// A draw of each batch (its material's texture set) and whether it is Cutout.
     batches: Vec<usize>,
+    cutout: Vec<bool>,
     instances: u32,
     cull_groups: Vec<wgpu::BindGroup>,
     render_group: wgpu::BindGroup,
@@ -265,7 +435,8 @@ struct FrameState {
 /// Everything [`VirtualGeometry::begin_frame`] needs from the renderer.
 pub(super) struct FrameInputs<'a> {
     pub frame: &'a Frame<'a>,
-    pub virtual_mesh: &'a [Option<u32>],
+    /// Per draw: (pool mesh, material slot) when it draws through clusters.
+    pub virtual_mesh: &'a [Option<(u32, u32)>],
     pub draws: &'a wgpu::Buffer,
     pub view_proj: Mat4,
     pub size: (u32, u32),
@@ -276,6 +447,8 @@ pub(super) struct FrameInputs<'a> {
     pub state: &'a TargetState,
     /// Texture set of each draw's material, as an address (batches group by it).
     pub batch_key: &'a dyn Fn(usize) -> usize,
+    /// Is the draw's material Cutout (alpha-tested)?
+    pub cutout: &'a dyn Fn(usize) -> bool,
 }
 
 fn storage(
@@ -303,6 +476,9 @@ fn view_eye(view_proj: &Mat4) -> [f32; 4] {
         xyz.normalize_or_zero().extend(0.0).to_array()
     }
 }
+
+/// The batch draw a view's clusters go through, its pipeline and group 2 already set.
+type BatchSetup<'s> = dyn FnMut(&mut wgpu::RenderPass<'_>, usize, usize, bool) -> bool + 's;
 
 /// Word offsets in `control` of the limits and draw arguments for `batches` batches per view.
 fn control_layout(batches: usize) -> (u32, u32) {
@@ -367,16 +543,21 @@ impl Default for VirtualGeometry {
         Self {
             enabled: false,
             threshold: 1.0,
-            debug: false,
+            debug: VgeoDebug::Off,
+            debug_once: None,
+            view_debug: VgeoDebug::Off,
             visibility: true,
             edge_layer: false,
             on: false,
             pool_index: HashMap::new(),
+            source_index: HashMap::new(),
             generation: u64::MAX,
             ready: 0,
             vertices: Vec::new(),
             clusters: Vec::new(),
             meshes: Vec::new(),
+            groups: Vec::new(),
+            mesh_materials: Vec::new(),
             cluster_vertices: Vec::new(),
             local_indices: Vec::new(),
             source_triangles: 0,
@@ -384,13 +565,15 @@ impl Default for VirtualGeometry {
             gpu: None,
             frame: None,
             last_instances: usize::MAX,
+            readback: Vec::new(),
+            latest: VgeoStats::default(),
         }
     }
 }
 
 impl VirtualGeometry {
-    /// Pool index of a mesh drawn through clusters this frame.
-    pub fn mesh_index(&self, r: &MeshRef) -> Option<u32> {
+    /// Pool index and material slot of a mesh drawn through clusters this frame.
+    pub fn mesh_index(&self, r: &MeshRef) -> Option<(u32, u32)> {
         if !self.on {
             return None;
         }
@@ -406,9 +589,12 @@ impl VirtualGeometry {
         if generation != self.generation {
             self.generation = generation;
             self.pool_index.clear();
+            self.source_index.clear();
             self.vertices.clear();
             self.clusters.clear();
             self.meshes.clear();
+            self.groups.clear();
+            self.mesh_materials.clear();
             self.cluster_vertices.clear();
             self.local_indices.clear();
             self.source_triangles = 0;
@@ -427,23 +613,42 @@ impl VirtualGeometry {
             if self.pool_index.contains_key(key) {
                 continue;
             }
-            // Built at import (or still building: then the ordinary mesh path draws it).
+            // Built at import (or still building: then the ordinary mesh path draws it). The
+            // primitives of a glTF mesh share their first one's build.
             let index = crate::models::virtual_mesh(&d.mesh).and_then(|built| {
-                let m = crate::models::mesh(&d.mesh)?;
-                Some(self.add_to_pool(&m.vertices, &built))
+                let MeshRef::Asset(source) = &built.source else {
+                    return None;
+                };
+                let pool = match self.source_index.get(source) {
+                    Some(&p) => p,
+                    None => {
+                        let vertices = crate::models::virtual_vertices(&built.source)?;
+                        let p = self.add_to_pool(&vertices, &built.mesh);
+                        self.source_index.insert(source.clone(), p);
+                        p
+                    }
+                };
+                Some((pool, built.slot))
             });
             self.pool_index.insert(key.clone(), index);
         }
         if self.pool_dirty
             && let Some(gpu) = self.gpu.as_mut()
         {
+            // Mesh records first, then the groups (each mesh's first group made absolute).
+            let n = self.meshes.len() as u32;
+            let mut records = self.meshes.clone();
+            for r in &mut records {
+                r.b[2] += n;
+            }
+            records.extend_from_slice(&self.groups);
             gpu.pool = Some(Pool::new(
                 device,
                 [
                     bytemuck::cast_slice(&self.vertices),
                     bytemuck::cast_slice(&self.local_indices),
                     bytemuck::cast_slice(&self.clusters),
-                    bytemuck::cast_slice(&self.meshes),
+                    bytemuck::cast_slice(&records),
                     bytemuck::cast_slice(&self.cluster_vertices),
                 ],
             ));
@@ -457,7 +662,14 @@ impl VirtualGeometry {
             self.vertices.extend_from_slice(&pack_vertex(v));
         }
         let first = self.clusters.len() as u32;
+        let group_first = self.groups.len() as u32;
         let sphere = |s: crate::vgeo::Sphere| [s.center.x, s.center.y, s.center.z, s.radius];
+        for g in &m.groups {
+            self.groups.push(GpuRecord {
+                a: sphere(g.sphere),
+                b: [g.error.to_bits(), 0, 0, 0],
+            });
+        }
         for (i, c) in m.clusters.iter().enumerate() {
             // The cluster's own vertex list (first use order) and local indices into it.
             let vertex_first = self.cluster_vertices.len() as u32;
@@ -473,27 +685,34 @@ impl VirtualGeometry {
             }
             self.clusters.push(GpuCluster {
                 bounds: sphere(c.bounds),
-                lod: sphere(c.lod),
-                parent: sphere(c.parent),
-                error: c.error,
+                group: c.group,
+                parent_group: c.parent_group,
                 parent_error: c.parent_error,
-                triangles: c.triangles,
+                packed: c.triangles | (c.level.min(63) << 8) | (c.material << 14),
                 vertex_first,
                 local_first,
                 cone_axis: octahedral(c.cone_axis),
                 cone_cutoff: c.cone_cutoff,
-                pad: 0,
             });
         }
-        self.meshes.push(GpuMeshInfo {
-            bounds: sphere(m.bounds),
-            first,
-            count: m.clusters.len() as u32,
-            pad: [0; 2],
+        self.meshes.push(GpuRecord {
+            a: sphere(m.bounds),
+            b: [
+                first,
+                m.clusters.len() as u32,
+                group_first,
+                m.groups.len() as u32,
+            ],
         });
+        self.mesh_materials.push(m.materials.max(1));
         self.source_triangles += m.source_triangles as u64;
         self.pool_dirty = true;
         self.meshes.len() as u32 - 1
+    }
+
+    /// GPU bytes of the pool and the per-view lists (Profiler Memory module).
+    pub fn memory_bytes(&self) -> u64 {
+        self.pool_bytes() + self.gpu.as_ref().map_or(0, Gpu::list_bytes)
     }
 
     /// GPU bytes of the pool.
@@ -502,7 +721,8 @@ impl VirtualGeometry {
             + self.local_indices.len().next_multiple_of(2) * 2
             + self.cluster_vertices.len() * 4
             + self.clusters.len() * std::mem::size_of::<GpuCluster>()
-            + self.meshes.len() * std::mem::size_of::<GpuMeshInfo>()) as u64
+            + (self.meshes.len() + self.groups.len()) * std::mem::size_of::<GpuRecord>())
+            as u64
     }
 
     /// Make the pipelines and fixed buffers on first use.
@@ -520,53 +740,88 @@ impl VirtualGeometry {
         let Some(gpu) = self.gpu.as_mut() else {
             return;
         };
-        let Some(pool) = gpu.pool.as_ref() else {
+        if gpu.pool.is_none() {
             return;
-        };
+        }
         let frame = input.frame;
         // Instances in draw order (stable between frames: last frame's visibility applies).
-        let mut batch_of: HashMap<usize, u32> = HashMap::new();
+        // Draws of one pool mesh with the same transform are the parts of one object (a glTF
+        // mesh's primitives): one instance, each draw in its material slot.
+        let mut batch_of: HashMap<(usize, bool), u32> = HashMap::new();
         let mut batches = Vec::new();
-        let mut instances = Vec::new();
+        let mut cutout = Vec::new();
+        // (draw, mesh, shadows, slot records) per instance.
+        let mut objects: Vec<(u32, u32, bool, Vec<GpuInstance>)> = Vec::new();
+        let mut object_of: HashMap<(u32, [u32; 16]), usize> = HashMap::new();
         for (i, m) in input.virtual_mesh.iter().enumerate() {
-            let Some(mesh) = *m else {
+            let Some((mesh, slot)) = *m else {
                 continue;
             };
-            let key = (input.batch_key)(i);
+            let slots = self.mesh_materials.get(mesh as usize).copied().unwrap_or(1);
+            if slot >= slots {
+                continue;
+            }
+            let key = ((input.batch_key)(i), (input.cutout)(i));
             let batch = *batch_of.entry(key).or_insert_with(|| {
                 batches.push(i);
+                cutout.push(key.1);
                 batches.len() as u32 - 1
             });
-            instances.push(GpuInstance {
-                draw: i as u32,
+            let shadows = frame.meshes[i].cast_shadows;
+            let place = (
                 mesh,
-                batch,
-                flags: frame.meshes[i].cast_shadows as u32,
-            });
+                frame.meshes[i].model.to_cols_array().map(f32::to_bits),
+            );
+            let o = match object_of.get(&place) {
+                Some(&o) if objects[o].3[slot as usize][0] == NO_DRAW => o,
+                _ => {
+                    let empty = [NO_DRAW, 0, 0, 0];
+                    objects.push((i as u32, mesh, false, vec![empty; slots as usize]));
+                    object_of.insert(place, objects.len() - 1);
+                    objects.len() - 1
+                }
+            };
+            objects[o].2 |= shadows;
+            objects[o].3[slot as usize] = [i as u32, batch, shadows as u32, 0];
         }
-        if instances.is_empty() {
+        if objects.is_empty() {
             return;
         }
-        let n = instances.len();
+        let n = objects.len();
+        let mut instances: Vec<GpuInstance> = Vec::with_capacity(2 * n);
+        let mut slot_records: Vec<GpuInstance> = Vec::new();
+        for (draw, mesh, shadows, slots) in &objects {
+            instances.push([
+                *draw,
+                *mesh,
+                (n + slot_records.len()) as u32,
+                *shadows as u32,
+            ]);
+            slot_records.extend_from_slice(slots);
+        }
+        instances.extend(slot_records);
         let b = batches.len();
         let views = 2 + input.shadow_matrices.len().min(MAX_SHADOW_VIEWS);
-        // Grow the per-instance and per-batch buffers.
-        if n > gpu.instance_capacity {
-            let cap = n.next_power_of_two();
-            let bytes = cap as u64 * 4;
+        // Grow the per-instance, per-batch and per-view buffers.
+        if instances.len() > gpu.instance_capacity {
+            let cap = instances.len().next_power_of_two();
             gpu.instances = storage(
                 device,
                 "misty vgeo instances",
                 cap as u64 * 16,
                 wgpu::BufferUsages::empty(),
             );
+            gpu.instance_capacity = cap;
+        }
+        if n > gpu.state_capacity {
+            let cap = n.next_power_of_two();
             gpu.instance_state = storage(
                 device,
                 "misty vgeo instance state",
-                2 * bytes,
+                cap as u64 * 16,
                 wgpu::BufferUsages::empty(),
             );
-            gpu.instance_capacity = cap;
+            gpu.state_capacity = cap;
             self.last_instances = usize::MAX;
         }
         if b > gpu.batch_capacity {
@@ -574,22 +829,30 @@ impl VirtualGeometry {
             gpu.control = control_buffer(device, cap);
             gpu.batch_capacity = cap;
         }
+        if views > gpu.view_capacity {
+            gpu.grow_views(device, views.max(6));
+        }
         queue.write_buffer(&gpu.instances, 0, bytemuck::cast_slice(&instances));
         if n != self.last_instances {
             // A new set of instances starts as "all visible" (drawn in the first phase).
-            let state: Vec<u32> = (0..2 * n).map(|i| (i % 2 == 0) as u32).collect();
+            let state: Vec<u32> = (0..4 * n).map(|i| (i % 4 == 0) as u32).collect();
             queue.write_buffer(&gpu.instance_state, 0, bytemuck::cast_slice(&state));
             self.last_instances = n;
         }
         let (limits, args) = control_layout(gpu.batch_capacity);
-        queue.write_buffer(&gpu.control, 0, &[0u8; MAX_VIEWS * 16]);
+        queue.write_buffer(&gpu.control, 0, &[0u8; MAX_VIEWS * COUNTERS * 4]);
+        let (regions, _) = regions(gpu.view_capacity);
         // Each batch gets an equal share of a view's visible list (the indexed draw needs its
         // region's offset on the CPU).
-        let per_batch = VISIBLE_PER_VIEW / b as u32;
         queue.write_buffer(
             &gpu.info,
             0,
-            bytemuck::cast_slice(&[VISIBLE_PER_VIEW, per_batch, 0, 0]),
+            bytemuck::cast_slice(&[
+                MAIN_VISIBLE,
+                MAIN_VISIBLE / b as u32,
+                self.view_debug.code(),
+                0,
+            ]),
         );
 
         // Level of detail for the main camera, in every view.
@@ -603,30 +866,34 @@ impl VirtualGeometry {
                 (input.size.1 as f32 / (2.0 * size.max(1e-4)), true)
             }
         };
-        let uniform = |view: usize, matrix: &Mat4, mode: u32, mips: u32| ViewUniform {
-            view_proj: matrix.to_cols_array_2d(),
-            planes: Frustum::from_matrix(matrix).planes().map(|p| p.to_array()),
-            camera: [
-                camera.position.x,
-                camera.position.y,
-                camera.position.z,
-                scale,
-            ],
-            params: [
-                self.threshold.max(0.05),
-                if ortho { 1.0 } else { 0.0 },
-                input.size.0 as f32,
-                input.size.1 as f32,
-            ],
-            info: [n as u32, mode, mips, b as u32],
-            region: [
-                view as u32,
-                view as u32 * VISIBLE_PER_VIEW,
-                per_batch,
-                MAX_VIEWS as u32 * VISIBLE_PER_VIEW + view as u32 * CHUNKS_PER_VIEW,
-            ],
-            caps: [CHUNKS_PER_VIEW, 0, limits, args],
-            eye: view_eye(matrix),
+        let uniform = |view: usize, matrix: &Mat4, mode: u32, mips: u32| {
+            let r = regions[view];
+            ViewUniform {
+                view_proj: matrix.to_cols_array_2d(),
+                planes: Frustum::from_matrix(matrix).planes().map(|p| p.to_array()),
+                camera: [
+                    camera.position.x,
+                    camera.position.y,
+                    camera.position.z,
+                    scale,
+                ],
+                params: [
+                    self.threshold.max(0.05),
+                    if ortho { 1.0 } else { 0.0 },
+                    input.size.0 as f32,
+                    input.size.1 as f32,
+                ],
+                info: [n as u32, mode, mips, b as u32],
+                region: [
+                    view as u32,
+                    r.visible_first,
+                    r.visible / b as u32,
+                    r.chunk_first,
+                ],
+                caps: [r.chunks, 0, limits, args],
+                eye: view_eye(matrix),
+                groups: [r.group_first, r.groups, 0, 0],
+            }
         };
         let mut uniforms = vec![
             uniform(0, &input.view_proj, 0, 0),
@@ -649,6 +916,9 @@ impl VirtualGeometry {
             queue.write_buffer(buffer, 0, bytemuck::bytes_of(u));
         }
 
+        let Some(pool) = gpu.pool.as_ref() else {
+            return;
+        };
         fn entry(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
             wgpu::BindGroupEntry {
                 binding,
@@ -710,7 +980,8 @@ impl VirtualGeometry {
                 entry(5, &gpu.info),
             ],
         });
-        let vis = match self.visibility && !self.debug && b <= vis::MAX_BATCHES {
+        let plain = self.view_debug == VgeoDebug::Off;
+        let vis = match self.visibility && plain && b <= vis::MAX_BATCHES {
             true => gpu
                 .vis
                 .as_mut()
@@ -719,8 +990,10 @@ impl VirtualGeometry {
         };
         self.frame = Some(FrameState {
             views,
+            regions,
             shadow_slots: (0..views - 2).collect(),
             batches,
+            cutout,
             instances: n as u32,
             cull_groups,
             render_group,
@@ -733,8 +1006,15 @@ impl VirtualGeometry {
         self.frame.is_some()
     }
 
-    /// Run the culling passes of views `first..last` (0, 1 = main phases; 2.. = shadow maps).
-    pub fn cull(&self, encoder: &mut wgpu::CommandEncoder, first: usize, last: usize) {
+    /// Run the culling passes of views `first..last` (0, 1 = main phases; 2.. = shadow maps);
+    /// `gate(view)` false skips a view (the Frame Debugger stopped before it).
+    pub fn cull(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        first: usize,
+        last: usize,
+        gate: &dyn Fn(usize) -> bool,
+    ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
         };
@@ -745,6 +1025,9 @@ impl VirtualGeometry {
         let batches = f.batches.len() as u32;
         let label = Some("misty vgeo culling");
         for v in first..last {
+            if !gate(v) {
+                continue;
+            }
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label,
@@ -756,19 +1039,23 @@ impl VirtualGeometry {
                 pass.set_pipeline(&gpu.cs_prepare);
                 pass.dispatch_workgroups(1, 1, 1);
             }
-            let at = (v * 16) as u64;
+            // The cluster and group dispatches (8 words per view after the counters).
+            let at = (v * 32) as u64;
             encoder.copy_buffer_to_buffer(
                 &gpu.control,
-                (MAX_VIEWS * 16) as u64 + at,
+                (MAX_VIEWS * COUNTERS * 4) as u64 + at,
                 &gpu.dispatch,
                 at,
-                16,
+                32,
             );
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label,
                 timestamp_writes: None,
             });
             pass.set_bind_group(0, &f.cull_groups[v], &[]);
+            // Every candidate group's decision first: the clusters read them.
+            pass.set_pipeline(&gpu.cs_groups);
+            pass.dispatch_workgroups_indirect(&gpu.dispatch, at + 16);
             pass.set_pipeline(&gpu.cs_clusters);
             pass.dispatch_workgroups_indirect(&gpu.dispatch, at);
             pass.set_pipeline(&gpu.cs_finish);
@@ -781,11 +1068,15 @@ impl VirtualGeometry {
         self.frame.as_ref().map_or(0, |f| f.views - 2)
     }
 
-    fn draw_view<'a>(
+    /// Draw view `view`'s clusters, batch by batch; `setup(pass, batch, draw, cutout)` sets the
+    /// batch's pipeline and group 2 (false = skip the batch), after `gate` agreed.
+    fn draw_view(
         &self,
-        pass: &mut wgpu::RenderPass,
+        pass: &mut wgpu::RenderPass<'_>,
         view: usize,
-        group2: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        kind: VgeoPass,
+        gate: &Gate<'_>,
+        setup: &mut BatchSetup<'_>,
     ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
@@ -793,7 +1084,8 @@ impl VirtualGeometry {
         pass.set_bind_group(3, &f.render_group, &[]);
         let b = f.batches.len();
         let args = control_layout(gpu.batch_capacity).1 as usize * 4;
-        let per_batch = VISIBLE_PER_VIEW as usize / b;
+        let region = f.regions[view];
+        let per_batch = (region.visible as usize) / b;
         if gpu.indexed
             && let Some(pool) = gpu.pool.as_ref()
         {
@@ -801,15 +1093,22 @@ impl VirtualGeometry {
             pass.set_index_buffer(pool.buffer.slice(at..at + size), wgpu::IndexFormat::Uint16);
         }
         for (i, &draw) in f.batches.iter().enumerate() {
-            let Some(group) = group2(draw) else {
-                continue;
+            let cutout = f.cutout[i];
+            let what = VgeoDraw {
+                pass: kind,
+                view,
+                batch: i,
+                draw,
+                cutout,
             };
-            pass.set_bind_group(2, group, &[]);
+            if !gate(&what) || !setup(pass, i, draw, cutout) {
+                continue;
+            }
             // The batch's cluster count (instance count of its pulled-vertex arguments).
             let count = args + (view * b + i) * 16;
             if gpu.indexed {
                 // One indexed sub-draw per cluster of the batch's region, as many as it drew.
-                let first = view * VISIBLE_PER_VIEW as usize + i * per_batch;
+                let first = region.visible_first as usize + i * per_batch;
                 pass.multi_draw_indexed_indirect_count(
                     &gpu.cluster_args,
                     (first * 20) as u64,
@@ -826,15 +1125,29 @@ impl VirtualGeometry {
     /// Main pass: the clusters of phase `phase` (group 1 = the lit group, already bound).
     pub fn draw_main<'a>(
         &self,
-        pass: &mut wgpu::RenderPass,
+        pass: &mut wgpu::RenderPass<'_>,
         phase: usize,
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
     ) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
         };
-        pass.set_pipeline(if self.debug { &gpu.debug } else { &gpu.main });
-        self.draw_view(pass, phase, material);
+        let debug = self.view_debug;
+        let mut setup = |pass: &mut wgpu::RenderPass<'_>, _: usize, draw: usize, cutout: bool| {
+            let Some(group) = material(draw) else {
+                return false;
+            };
+            pass.set_pipeline(match (debug, cutout) {
+                (VgeoDebug::Overdraw, _) => &gpu.overdraw,
+                (VgeoDebug::Off, false) => &gpu.main,
+                (VgeoDebug::Off, true) => &gpu.main_cutout,
+                _ => &gpu.debug,
+            });
+            pass.set_bind_group(2, group, &[]);
+            true
+        };
+        self.draw_view(pass, phase, VgeoPass::Lit, gate, &mut setup);
     }
 
     /// Does the main pass draw this frame's clusters through the visibility buffer
@@ -845,12 +1158,14 @@ impl VirtualGeometry {
 
     /// The visibility raster of phase `phase`'s clusters into the main pass's MSAA `depth`
     /// (its own render pass; groups: the main view, the draws).
-    pub fn raster_visibility(
+    pub fn raster_visibility<'a>(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         depth: &wgpu::TextureView,
         phase: usize,
         groups: [&wgpu::BindGroup; 3],
+        material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
     ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
@@ -863,7 +1178,20 @@ impl VirtualGeometry {
             pass.set_bind_group(i as u32, *g, &[]);
         }
         let empty = groups[2];
-        self.draw_view(&mut pass, phase, &|_| Some(empty));
+        let mut setup = |pass: &mut wgpu::RenderPass<'_>, _: usize, draw: usize, cutout: bool| {
+            // Cutout batches test their albedo alpha (group 2 = their texture set).
+            let group = match cutout {
+                true => material(draw),
+                false => Some(empty),
+            };
+            let Some(group) = group else {
+                return false;
+            };
+            vis.set_raster(pass, cutout);
+            pass.set_bind_group(2, group, &[]);
+            true
+        };
+        self.draw_view(&mut pass, phase, VgeoPass::Raster, gate, &mut setup);
     }
 
     /// The material resolve of the last visibility raster, in the main pass (groups 0 and 1
@@ -871,38 +1199,176 @@ impl VirtualGeometry {
     pub fn resolve<'a>(
         &self,
         pass: &mut wgpu::RenderPass,
+        phase: usize,
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
     ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
         };
         if let (Some(vis), Some(vf)) = (gpu.vis.as_ref(), f.vis.as_ref()) {
-            vis.resolve(pass, vf, &f.batches, material);
+            let keep = |batch: usize, draw: usize, cutout: bool| {
+                gate(&VgeoDraw {
+                    pass: VgeoPass::Resolve,
+                    view: phase,
+                    batch,
+                    draw,
+                    cutout,
+                })
+            };
+            vis.resolve(pass, vf, &f.batches, &f.cutout, material, &keep);
+        }
+    }
+
+    /// The pipeline and group 2 of a depth-only pass's batch: opaque ones `opaque` with the
+    /// empty group, cutout ones `cutout` with their texture set.
+    fn depth_setup<'s, 'm: 's>(
+        opaque: &'s wgpu::RenderPipeline,
+        cutout: &'s wgpu::RenderPipeline,
+        empty: &'m wgpu::BindGroup,
+        material: &'s (dyn Fn(usize) -> Option<&'m wgpu::BindGroup> + 's),
+    ) -> impl FnMut(&mut wgpu::RenderPass<'_>, usize, usize, bool) -> bool + 's {
+        move |pass: &mut wgpu::RenderPass<'_>, _: usize, draw: usize, is_cutout: bool| {
+            let group = match is_cutout {
+                true => material(draw),
+                false => Some(empty),
+            };
+            let Some(group) = group else {
+                return false;
+            };
+            pass.set_pipeline(if is_cutout { cutout } else { opaque });
+            pass.set_bind_group(2, group, &[]);
+            true
         }
     }
 
     /// Shadow map `slot` (groups 0 and 1 already bound by the shadow pass).
-    pub fn draw_shadow(&self, pass: &mut wgpu::RenderPass, slot: usize, empty: &wgpu::BindGroup) {
+    pub fn draw_shadow<'a>(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        slot: usize,
+        empty: &'a wgpu::BindGroup,
+        material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
+    ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
         };
         let Some(i) = f.shadow_slots.iter().position(|s| *s == slot) else {
             return;
         };
-        pass.set_pipeline(&gpu.shadow);
-        self.draw_view(pass, 2 + i, &|_| Some(empty));
+        let mut setup = Self::depth_setup(&gpu.shadow, &gpu.shadow_cutout, empty, material);
+        self.draw_view(pass, 2 + i, VgeoPass::Shadow, gate, &mut setup);
     }
 
     /// The screen-space effects' prepass: the first phase's clusters.
-    pub fn draw_prepass(&self, pass: &mut wgpu::RenderPass, empty: &wgpu::BindGroup) {
+    pub fn draw_prepass<'a>(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        empty: &'a wgpu::BindGroup,
+        material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
+    ) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
         };
         if self.frame.is_none() {
             return;
         }
-        pass.set_pipeline(&gpu.prepass);
-        self.draw_view(pass, 0, &|_| Some(empty));
+        let mut setup = Self::depth_setup(&gpu.prepass, &gpu.prepass_cutout, empty, material);
+        self.draw_view(pass, 0, VgeoPass::Prepass, gate, &mut setup);
+    }
+
+    /// Copy this frame's per-view counters into a free staging buffer (read back later by
+    /// [`Self::collect_stats`], never waited for).
+    pub fn copy_stats(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
+        use std::sync::atomic::Ordering;
+        let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
+            return;
+        };
+        let size = (MAX_VIEWS * COUNTERS * 4) as u64;
+        let free = self
+            .readback
+            .iter()
+            .position(|r| r.state.load(Ordering::Acquire) == 0);
+        let i = match free {
+            Some(i) => i,
+            // Three in flight at most: skip a frame rather than wait.
+            None if self.readback.len() >= 3 => return,
+            None => {
+                self.readback.push(Readback {
+                    buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("misty vgeo counters readback"),
+                        size,
+                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                        mapped_at_creation: false,
+                    }),
+                    state: Default::default(),
+                    views: 0,
+                    instances: 0,
+                    visibility: false,
+                });
+                self.readback.len() - 1
+            }
+        };
+        let r = &mut self.readback[i];
+        encoder.copy_buffer_to_buffer(&gpu.control, 0, &r.buffer, 0, size);
+        r.views = f.views;
+        r.instances = f.instances;
+        r.visibility = f.vis.is_some();
+        r.state.store(1, Ordering::Release);
+    }
+
+    /// After the frame's submit: start mapping the counters it copied.
+    pub fn stats_submitted(&self) {
+        use std::sync::atomic::Ordering;
+        for r in &self.readback {
+            if r.state.load(Ordering::Acquire) == 1 {
+                r.state.store(2, Ordering::Release);
+                let state = r.state.clone();
+                r.buffer
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |result| {
+                        state.store(if result.is_ok() { 3 } else { 0 }, Ordering::Release);
+                    });
+            }
+        }
+    }
+
+    /// Take the newest counters that have arrived and return the latest known statistics
+    /// (with the pool's and the lists' memory).
+    pub fn collect_stats(&mut self) -> VgeoStats {
+        use std::sync::atomic::Ordering;
+        let mut newest = None;
+        for r in &self.readback {
+            if r.state.load(Ordering::Acquire) != 3 {
+                continue;
+            }
+            let mut stats = VgeoStats {
+                instances: r.instances,
+                visibility: r.visibility,
+                ..Default::default()
+            };
+            if let Ok(data) = r.buffer.slice(..).get_mapped_range() {
+                stats.add_counters(bytemuck::cast_slice(&data[..]), r.views);
+            }
+            r.buffer.unmap();
+            r.state.store(0, Ordering::Release);
+            newest = Some(stats);
+        }
+        if let Some(s) = newest {
+            self.latest = s;
+        }
+        if !self.on || self.frame.is_none() {
+            self.latest = VgeoStats::default();
+        }
+        VgeoStats {
+            meshes: self.meshes.len() as u32,
+            source_triangles: self.source_triangles,
+            pool_bytes: self.pool_bytes(),
+            list_bytes: self.gpu.as_ref().map_or(0, Gpu::list_bytes),
+            ..self.latest
+        }
     }
 
     /// What the last frame drew (blocking readback: measurements only).
@@ -911,6 +1377,7 @@ impl VirtualGeometry {
             meshes: self.meshes.len() as u32,
             source_triangles: self.source_triangles,
             pool_bytes: self.pool_bytes(),
+            list_bytes: self.gpu.as_ref().map_or(0, Gpu::list_bytes),
             ..Default::default()
         };
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
@@ -918,7 +1385,7 @@ impl VirtualGeometry {
         };
         stats.instances = f.instances;
         stats.visibility = f.vis.is_some();
-        let size = (MAX_VIEWS * 16) as u64;
+        let size = (MAX_VIEWS * COUNTERS * 4) as u64;
         let read = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty vgeo stats readback"),
             size,
@@ -935,17 +1402,25 @@ impl VirtualGeometry {
             return stats;
         };
         let words: &[u32] = bytemuck::cast_slice(&data[..]);
-        for v in 0..f.views {
-            let c = &words[v * 4..v * 4 + 4];
-            if v < 2 {
-                stats.triangles += c[1] as u64;
-                stats.clusters += c[2];
-            } else {
-                stats.shadow_triangles += c[1] as u64;
-            }
-            stats.dropped += c[3];
-        }
+        stats.add_counters(words, f.views);
         stats
+    }
+}
+
+impl VgeoStats {
+    /// Add the per-view counters at the start of `control` (`views` views).
+    fn add_counters(&mut self, words: &[u32], views: usize) {
+        for v in 0..views.min(words.len() / COUNTERS) {
+            let c = &words[v * COUNTERS..(v + 1) * COUNTERS];
+            if v < 2 {
+                self.triangles += c[1] as u64;
+                self.clusters += c[2];
+            } else {
+                self.shadow_triangles += c[1] as u64;
+            }
+            self.dropped += c[3];
+            self.dropped_instances += c[5];
+        }
     }
 }
 
@@ -1027,7 +1502,7 @@ impl Gpu {
                 module: &module,
                 entry_point: Some(entry),
                 compilation_options: Default::default(),
-                cache: None,
+                cache: crate::render::pipeline_cache(device).as_ref(),
             })
         };
 
@@ -1056,127 +1531,156 @@ impl Gpu {
             device,
             main_spec(entry("vs_cluster", "vs_cluster_indexed"), "fs_main"),
         );
-        let debug = pipelines::build(
+        let main_cutout = pipelines::build(
             device,
-            main_spec(
-                entry("vs_cluster_debug", "vs_cluster_debug_indexed"),
-                "fs_cluster_debug",
-            ),
+            main_spec(entry("vs_cluster", "vs_cluster_indexed"), "fs_cutout"),
+        );
+        let debug_vs = entry("vs_cluster_debug", "vs_cluster_debug_indexed");
+        let debug = pipelines::build(device, main_spec(debug_vs, "fs_cluster_debug"));
+        // Overdraw: every layer adds up (no depth test, additive colour).
+        let add = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let overdraw = pipelines::build(
+            device,
+            Spec {
+                depth: Depth::main(false, wgpu::CompareFunction::Always),
+                blend: Some(wgpu::BlendState {
+                    color: add,
+                    alpha: add,
+                }),
+                glow: Some(false),
+                ..main_spec(debug_vs, "fs_cluster_overdraw")
+            },
         );
 
         let depth_src = format!("{DEPTH_SRC}\n{FETCH_SRC}\n{DEPTH_ENTRY_SRC}");
-        let shadow = pipelines::build(
-            device,
-            Spec {
-                vs: entry("vs_cluster_depth", "vs_cluster_depth_indexed"),
-                fs: None,
-                cull: Some(wgpu::Face::Back),
-                depth: Some(Depth {
-                    format: SHADOW_FORMAT,
-                    write: true,
-                    compare: wgpu::CompareFunction::LessEqual,
-                    bias: wgpu::DepthBiasState {
-                        constant: 1,
-                        slope_scale: 1.0,
-                        clamp: 0.0,
-                    },
-                }),
-                color: None,
-                samples: 1,
-                glow: None,
-                ..Spec::new(
-                    "vgeo shadow",
-                    &depth_src,
-                    &[
-                        &p.shadow_view_layout,
-                        &p.draws_layout,
-                        &p.empty_layout,
-                        &render_layout,
-                    ],
-                )
-            },
+        let shadow_build = |vs, fs, group2: &[&wgpu::BindGroupLayout]| {
+            pipelines::build(
+                device,
+                Spec {
+                    vs,
+                    fs,
+                    cull: Some(wgpu::Face::Back),
+                    depth: Some(Depth {
+                        format: SHADOW_FORMAT,
+                        write: true,
+                        compare: wgpu::CompareFunction::LessEqual,
+                        bias: wgpu::DepthBiasState {
+                            constant: 1,
+                            slope_scale: 1.0,
+                            clamp: 0.0,
+                        },
+                    }),
+                    color: None,
+                    samples: 1,
+                    glow: None,
+                    ..Spec::new("vgeo shadow", &depth_src, group2)
+                },
+            )
+        };
+        let shadow_layouts = [
+            &p.shadow_view_layout,
+            &p.draws_layout,
+            &p.empty_layout,
+            &render_layout,
+        ];
+        let shadow_cutout_layouts = [
+            &p.shadow_view_layout,
+            &p.draws_layout,
+            &p.material_layout,
+            &render_layout,
+        ];
+        let shadow = shadow_build(
+            entry("vs_cluster_depth", "vs_cluster_depth_indexed"),
+            None,
+            &shadow_layouts,
+        );
+        let shadow_cutout = shadow_build(
+            entry("vs_cluster_depth_uv", "vs_cluster_depth_uv_indexed"),
+            Some("fs_shadow_cutout"),
+            &shadow_cutout_layouts,
         );
         let prepass_src = format!(
             "{}\n{FETCH_SRC}\n{PREPASS_ENTRY_SRC}",
             super::screen_space::PREPASS_SRC
         );
-        let prepass = pipelines::build(
-            device,
-            Spec {
-                vs: entry("vs_cluster_prepass", "vs_cluster_prepass_indexed"),
-                fs: Some("fs_normal"),
-                cull: Some(wgpu::Face::Back),
-                depth: Some(Depth {
-                    format: super::DEPTH_FORMAT,
-                    write: true,
-                    compare: wgpu::CompareFunction::Less,
-                    bias: Default::default(),
-                }),
-                color: Some(super::screen_space::NORMAL_FORMAT),
-                samples: 1,
-                glow: None,
-                velocity: true,
-                ..Spec::new(
-                    "vgeo prepass",
-                    &prepass_src,
-                    &[
-                        &p.view_layout,
-                        &p.draws_layout,
-                        &p.empty_layout,
-                        &render_layout,
-                    ],
-                )
-            },
-        );
+        let prepass_build = |fs, group2: &[&wgpu::BindGroupLayout]| {
+            pipelines::build(
+                device,
+                Spec {
+                    vs: entry("vs_cluster_prepass", "vs_cluster_prepass_indexed"),
+                    fs: Some(fs),
+                    cull: Some(wgpu::Face::Back),
+                    depth: Some(Depth {
+                        format: super::DEPTH_FORMAT,
+                        write: true,
+                        compare: wgpu::CompareFunction::Less,
+                        bias: Default::default(),
+                    }),
+                    color: Some(super::screen_space::NORMAL_FORMAT),
+                    samples: 1,
+                    glow: None,
+                    velocity: true,
+                    ..Spec::new("vgeo prepass", &prepass_src, group2)
+                },
+            )
+        };
+        let prepass_layouts = [
+            &p.view_layout,
+            &p.draws_layout,
+            &p.empty_layout,
+            &render_layout,
+        ];
+        let prepass_cutout_layouts = [
+            &p.view_layout,
+            &p.draws_layout,
+            &p.material_layout,
+            &render_layout,
+        ];
+        let prepass = prepass_build("fs_normal", &prepass_layouts);
+        let prepass_cutout = prepass_build("fs_normal_cutout", &prepass_cutout_layouts);
 
         let none = wgpu::BufferUsages::empty();
-        let uniforms = (0..MAX_VIEWS)
-            .map(|_| {
-                device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("misty vgeo view"),
-                    size: std::mem::size_of::<ViewUniform>() as u64,
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                })
-            })
-            .collect();
-        let views = MAX_VIEWS as u64;
         let vis = vis::Vis::new(device, p, &render_layout, indexed);
         Self {
             cs_instances: compute("cs_instances"),
             cs_prepare: compute("cs_prepare"),
+            cs_groups: compute("cs_groups"),
             cs_clusters: compute("cs_clusters"),
             cs_finish: compute("cs_finish"),
             cull_layout,
             render_layout,
             indexed,
             main,
+            main_cutout,
             debug,
+            overdraw,
             shadow,
+            shadow_cutout,
             prepass,
+            prepass_cutout,
             pool: None,
             instances: storage(device, "misty vgeo instances", 16, none),
             instance_state: storage(device, "misty vgeo instance state", 16, none),
             control: control_buffer(device, 1),
             dispatch: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("misty vgeo dispatch"),
-                size: views * 16,
+                size: MAX_VIEWS as u64 * 32,
                 usage: wgpu::BufferUsages::INDIRECT | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
-            lists: storage(
-                device,
-                "misty vgeo lists",
-                views * (VISIBLE_PER_VIEW + CHUNKS_PER_VIEW) as u64 * 8,
-                none,
-            ),
+            lists: storage(device, "misty vgeo lists", 16, none),
             cluster_args: storage(
                 device,
                 "misty vgeo cluster args",
-                views * VISIBLE_PER_VIEW as u64 * 20,
+                16,
                 wgpu::BufferUsages::INDIRECT,
             ),
-            uniforms,
+            uniforms: Vec::new(),
+            view_capacity: 0,
             info: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("misty vgeo info"),
                 size: 16,
@@ -1185,8 +1689,42 @@ impl Gpu {
             }),
             vis,
             instance_capacity: 0,
+            state_capacity: 0,
             batch_capacity: 0,
         }
+    }
+
+    /// Lay the lists, draw arguments and view uniforms out for `views` views.
+    fn grow_views(&mut self, device: &wgpu::Device, views: usize) {
+        let views = views.min(MAX_VIEWS);
+        let (_, entries) = regions(views);
+        self.lists = storage(
+            device,
+            "misty vgeo lists",
+            entries as u64 * 8,
+            wgpu::BufferUsages::empty(),
+        );
+        self.cluster_args = storage(
+            device,
+            "misty vgeo cluster args",
+            visible_entries(views) as u64 * 20,
+            wgpu::BufferUsages::INDIRECT,
+        );
+        while self.uniforms.len() < views {
+            self.uniforms
+                .push(device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("misty vgeo view"),
+                    size: std::mem::size_of::<ViewUniform>() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }));
+        }
+        self.view_capacity = views;
+    }
+
+    /// GPU bytes of the per-view lists and draw arguments.
+    fn list_bytes(&self) -> u64 {
+        self.lists.size() + self.cluster_args.size()
     }
 }
 
@@ -1222,6 +1760,7 @@ impl super::Renderer {
                 .get_set(&frame.meshes[i].material.textures())
                 .map_or(0, super::batch::addr)
         };
+        let cutout = |i: usize| lists.prep.pipeline[i].mode == super::RenderingMode::Cutout;
         self.vgeo.begin_frame(
             device,
             queue,
@@ -1249,6 +1788,7 @@ impl super::Renderer {
                     .collect(),
                 state,
                 batch_key: &batch_key,
+                cutout: &cutout,
             },
         );
     }
@@ -1261,7 +1801,16 @@ impl super::Renderer {
 
     /// Draw every cluster in its own colour (Misty Virtual Geometry debug view).
     pub fn set_virtual_geometry_debug(&mut self, on: bool) {
-        self.vgeo.debug = on;
+        self.vgeo.debug = match on {
+            true => VgeoDebug::Clusters,
+            false => VgeoDebug::Off,
+        };
+    }
+
+    /// Virtual geometry's debug view for the next render only (the Scene view's draw modes;
+    /// Off = the materials).
+    pub fn set_virtual_geometry_debug_view(&mut self, view: VgeoDebug) {
+        self.vgeo.debug_once = Some(view);
     }
 
     /// What virtual geometry drew last frame: clusters, triangles per view (blocking GPU
@@ -1350,14 +1899,48 @@ mod tests {
     #[test]
     fn gpu_structs_match_the_shaders() {
         // `DISPATCH_BASE` in vgeo_cull.wgsl.
-        assert_eq!(super::MAX_VIEWS * 4, 32);
-        assert!(super::CULL_SRC.contains("const DISPATCH_BASE: u32 = 32u;"));
-        assert_eq!(std::mem::size_of::<super::GpuCluster>(), 80);
+        let base = super::MAX_VIEWS * super::COUNTERS;
+        assert!(
+            super::CULL_SRC.contains(&format!("const DISPATCH_BASE: u32 = {base}u;")),
+            "DISPATCH_BASE should be {base}"
+        );
+        assert!(super::CULL_SRC.contains(&format!("MAX_VIEWS = {}", super::MAX_VIEWS)));
+        assert_eq!(std::mem::size_of::<super::GpuCluster>(), 48);
+        // vgeo_resolve.wgsl reads cluster records by words.
+        let resolve = include_str!("vgeo_resolve.wgsl");
+        assert!(resolve.contains("const VR_CLUSTER_WORDS: u32 = 12u;"));
         // The indexed path's base vertex (entry × 384) fits an i32 for every view.
-        assert!((super::MAX_VIEWS as u64 * super::VISIBLE_PER_VIEW as u64) * 384 < i32::MAX as u64);
-        assert_eq!(std::mem::size_of::<super::GpuMeshInfo>(), 32);
+        assert!(super::visible_entries(super::MAX_VIEWS) as u64 * 384 < i32::MAX as u64);
+        assert_eq!(std::mem::size_of::<super::GpuRecord>(), 32);
         assert_eq!(std::mem::size_of::<super::GpuInstance>(), 16);
-        // mat4 + 6 planes + 6 vec4s.
-        assert_eq!(std::mem::size_of::<super::ViewUniform>(), 64 + 96 + 96);
+        // mat4 + 6 planes + 7 vec4s.
+        assert_eq!(std::mem::size_of::<super::ViewUniform>(), 64 + 96 + 112);
+    }
+
+    #[test]
+    fn view_regions_never_overlap() {
+        let (regions, entries) = super::regions(super::MAX_VIEWS);
+        let mut spans: Vec<(u32, u32)> = Vec::new();
+        for r in &regions {
+            spans.push((r.visible_first, r.visible));
+            spans.push((r.chunk_first, r.chunks));
+            spans.push((r.group_first, r.groups));
+        }
+        spans.sort_unstable();
+        assert_eq!(spans[0].0, 0);
+        for w in spans.windows(2) {
+            assert_eq!(w[0].0 + w[0].1, w[1].0, "gap or overlap");
+        }
+        let last = spans[spans.len() - 1];
+        assert_eq!(last.0 + last.1, entries);
+        // Visible lists first: the draw arguments index them from 0.
+        let visible: u32 = regions.iter().map(|r| r.visible).sum();
+        assert_eq!(visible, super::visible_entries(super::MAX_VIEWS));
+        assert!(regions.iter().all(|r| r.visible_first < visible));
+        // Growing keeps the visible lists where they were.
+        let (small, _) = super::regions(6);
+        for (a, b) in small.iter().zip(&regions) {
+            assert_eq!((a.visible_first, a.visible), (b.visible_first, b.visible));
+        }
     }
 }

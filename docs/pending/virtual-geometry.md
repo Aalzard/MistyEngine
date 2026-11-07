@@ -1,6 +1,6 @@
 # Misty Virtual Geometry (branch vgeo)
 
-Virtualized geometry for opaque static meshes: a dense mesh is cut into small clusters of
+Virtualized geometry for opaque and alpha-tested static meshes: a dense mesh is cut into small clusters of
 triangles with a hierarchy of simplified clusters, and the GPU picks the level of detail per
 cluster, so a scene of film-density rocks draws about as many triangles as it has pixels. This
 is the geometry half of the "our own Lumen-like GI, faster at the same quality" plan: the GI
@@ -18,14 +18,16 @@ a large mesh cost almost nothing, and occlusion culling works per cluster, not p
 
 **Does not help** (keeps the existing paths):
 
-- **Alpha-tested foliage and grass.** A cluster hierarchy simplifies surfaces; it cannot
-  simplify a cloud of thin cards (simplifying leaves removes coverage, and alpha testing defeats
-  depth-based occlusion and a visibility buffer's single opaque sample). Grass stays on its
-  instanced blade path, trees on their instanced LODs and impostors (meadow work).
+- **Foliage cards and grass.** A cluster hierarchy simplifies surfaces; it cannot simplify a
+  cloud of thin cards (simplifying leaves removes coverage). Grass stays on its instanced
+  blade path, trees on their instanced LODs and impostors (meadow work). Cutout materials on
+  dense *surfaces* (grates, fences cut from a sheet, decals baked into a scan) do take the
+  cluster path: the alpha test runs in every cluster pass, the visibility raster included.
 - Skinned, morphing or vertex-animated meshes (the hierarchy is built offline from rest
   positions). World-position-offset style wind is the same problem.
 - Transparent and Fade materials, double-sided thin surfaces (cull-off), custom `.shader`
-  materials (their vertex stage is theirs).
+  materials (their vertex stage is theirs): drawn the ordinary way, even when the mesh's
+  other parts are virtual.
 - Low-poly meshes: under a few thousand triangles there is nothing to cluster; the ordinary
   instanced path is as fast.
 - Meshes that are mostly large flat faces (a box room): a cluster per 128 triangles of a wall
@@ -40,16 +42,37 @@ a large mesh cost almost nothing, and occlusion culling works per cluster, not p
   **Virtual Geometry Error** (pixels, default 1). With it off, or on hardware that can't run it,
   virtual meshes draw as ordinary meshes, so a project never breaks.
 - Nothing changes in the scene: a Mesh Filter + Mesh Renderer with a virtual mesh is drawn by
-  the cluster path when its material qualifies (Standard lit, Opaque, single-sided) and by the
-  ordinary path otherwise. LOD Groups on a virtual mesh still work (a fading level uses the
-  ordinary path for its dither); they become unnecessary.
+  the cluster path when its material qualifies (Standard lit, Opaque or Cutout, single-sided)
+  and by the ordinary path otherwise. LOD Groups on a virtual mesh still work (a fading level
+  uses the ordinary path for its dither); they become unnecessary.
+- **Several materials**: a glTF mesh with several primitives (one per material, imported as an
+  object and child objects with the same transform, each with its material) is built as *one*
+  cluster hierarchy whose clusters each hold one primitive's triangles (a per-cluster material
+  slot). At runtime the draws of those primitives with the same transform become one instance
+  whose material slots point at each primitive's draw, so the object is culled and its level
+  of detail chosen once, and every cluster is shaded with its own primitive's material.
+  Moving one child elsewhere makes it its own instance that draws only its part. Generated
+  meshes get the same with `models::runtime::register_virtual_parts`.
 - Virtual meshes stay out of static batching (merging would copy the clusters per object).
 - The import Inspector shows the build: clusters, levels, source triangles and build time
   ("from Library/VirtualGeometry" when it came from the cache; "building clusters (n of m
   meshes done)…" while the worker runs).
-- Planned: "Clusters" and "Triangles" Scene view debug views (the prototype has the cluster
-  colours as a renderer switch: `Renderer::set_virtual_geometry_debug`); Lua
-  `QualitySettings.virtualGeometry`.
+- **Scene view draw modes** "Virtual Geometry Clusters" (each cluster its colour), "Virtual
+  Geometry Levels" (blue = source triangles, then cyan, green, yellow, orange, red, magenta for
+  coarser levels), "Virtual Geometry Overdraw" (cluster triangles added up, no depth test:
+  bright = layers) and "Virtual Geometry Materials" (each material slot its colour). They apply
+  to the Scene view's render only (`Renderer::set_virtual_geometry_debug_view`).
+- **Statistics**: the Game view Stats box has a "Virtual geometry" line (objects, clusters and
+  triangles drawn by the camera, shadow triangles, GPU memory); the Profiler's Rendering module
+  lists the same counters and its Memory module the pool + lists memory (also in its GPU buffer
+  total). The counters are copied out of the culling buffer every frame and read back when the
+  copy has landed (a frame or two late), never waited for.
+- **Frame Debugger**: virtual geometry stays on while capturing. Each view's culling is a
+  Compute event ("Virtual Geometry ▸ Culling"), each batch draw an event (visibility raster
+  ids, resolve, lit clusters, shadow casters, prepass normals) with the batch's material,
+  textures and values; stopping the replay at one of them works like for any other draw. The
+  cluster count of a batch is GPU-written, so the event says "GPU-driven" instead of a count.
+- Not yet: Lua `QualitySettings.virtualGeometry`.
 
 ## Offline build (`crates/misty_engine/src/vgeo/`)
 
@@ -87,33 +110,47 @@ The result is a DAG, not a tree: a group's new clusters replace all of its old o
 the next level regroups across the old group borders, so borders don't stay locked forever
 (which would leave long seams of fine triangles).
 
-### Error metric and seamless selection
+### Error metric and seamless selection: one decision per group
 
-Every cluster stores two (sphere, error) pairs:
+Every **group** (the clusters simplified together) has one record: an error and the sphere it
+is measured from. Every cluster names two groups:
 
-- **own**: the group that made it (level 0: error 0, its own bounding sphere),
-- **parent**: the group it was simplified into (roots: `ROOT_ERROR`).
+- **own**: the group that made it (none at level 0),
+- **parent**: the group it was simplified into (none at the roots).
 
-Group error = max(children's errors) + the simplification's own error (square root of the largest
-quadric error of an accepted collapse, in object units) — strictly larger than every child's.
-Group sphere = a sphere holding every child's own sphere. Errors and spheres therefore only grow
-towards the roots.
+Group error = max(children's errors) × (1 + 10⁻⁴) + the simplification's own error (square
+root of the largest quadric error of an accepted collapse, in object units) — larger than every
+child's by a relative margin far above float rounding. Group sphere = a sphere holding every
+child's sphere. Errors and spheres therefore grow towards the roots.
 
 At runtime, error `e` measured from sphere `(c, r)` projects to `e · scale / max(|c − camera| − r, ε)`
-pixels (`scale` = screen height / (2 tan(fov/2)); orthographic: `e · pixels per unit`). A cluster
-is drawn when **own ≤ threshold < parent**. Along any path from a source triangle to a root the
-projected values never decrease (bigger error, and a containing sphere is never farther), and a
-cluster's parent value is *exactly* (same inputs, same code) the own value of every cluster its
-group made. So for every camera exactly one cluster on each path passes — one level covers each
-spot, no overlap and no hole — and since a group switches as a whole and its border never moved,
-neighbours at different levels share their border edges exactly: **no cracks, no stitching**.
-Tests check this directly (`vgeo/tests.rs`): every group's border is identical before and after
-simplification, and cuts for cameras at 0.5 m–1 km and 0.5–4 px are watertight (every directed
-edge matched by its reverse exactly once) on a closed 82 k-triangle rock.
+pixels (`scale` = screen height / (2 tan(fov/2)); orthographic: `e · pixels per unit`). A group
+is **fine enough** when its projected error is at most the threshold. **The decision is made
+once per group and view** (`cs_groups`, below) and stored as a bit; a cluster is drawn when its
+own group is fine enough (always, at level 0) and its parent group is not (never, at the
+roots). The clusters on both sides of a group border — the ones the group made, and its
+children whose parent it is — read *the same bit*, so they can't disagree, whatever the GPU's
+rounding or the compiler's contractions: exactly one level covers each spot, and since a group
+switches as a whole and its border never moved, neighbours at different levels share their
+border edges exactly: **no cracks, no stitching, by construction**. (Round 2 relied on two call
+sites computing the same value identically; a compiler contracting them differently could open
+a one-frame hole exactly at a threshold crossing.) The relative error margin makes the cut
+coherent too (a group can only be fine enough when its children are), so per-level rounding
+can't overlap two levels either.
 
-Clusters are stored sorted by parent error, roots last: for an instance at distance `d` no
-cluster whose parent error is below `threshold · d / scale` can pass, so the GPU skips all of
-them with one binary search (the finest levels of far instances are never even read).
+Tests check this directly (`vgeo/tests.rs`): every group's border is identical before and after
+simplification; cuts for cameras at 0.5 m–1 km and 0.5–4 px are watertight (every directed edge
+matched by its reverse exactly once) on a closed 82 k-triangle rock;
+`one_decision_per_group_is_crack_free_whatever_the_rounding` puts the threshold exactly on a
+group's projected error, biases the decision by ±10⁻⁶ and checks the per-group cut stays
+watertight either way — and that evaluating the same group twice with opposite rounding (the
+old scheme) does break it, so the test can see the failure it rules out.
+
+Clusters are stored sorted by parent error and groups by error: for an instance at distance `d`
+no group with an error below `threshold · d / scale` can fail, so the GPU skips those groups
+(implicitly fine enough) and every cluster whose parent group is one of them with one binary
+search each — the same comparison on the same values, so the two skips agree (the finest
+levels of far instances are never even read).
 
 ### Storage: built at import, cached on disk (`models/virtual_build.rs`, `vgeo/file.rs`)
 
@@ -150,31 +187,39 @@ format is 16-bit); the visibility resolve and the pulled path read the same u16 
 
 ### Pool and instances
 
-All virtual meshes share one pool (vertices, cluster triangles, cluster records, mesh records),
-so the draw needs no per-mesh state. Each frame, the draws of virtual meshes (lit opaque
-single-sided) leave the CPU lists and become instances (draw slot, mesh, batch, casts-shadow
-flag); a batch is one material texture set (group 2), everything else per object comes from the
-existing `draws[]` buffer through the slot, so transforms, colours, material values, lightmap
-scale-offset and motion vectors work unchanged.
+All virtual meshes share one pool (vertices, cluster triangles, cluster records, mesh and group
+records), so the draw needs no per-mesh state. Each frame, the draws of virtual meshes (lit
+Opaque or Cutout, single-sided) leave the CPU lists and become instances: one per object (the
+draws of one pool mesh with the same transform are its material parts), with a material slot
+record per part (that part's draw, batch and casts-shadow flag; "not drawn" when the object
+doesn't draw it). A batch is one material texture set (group 2) and Opaque or Cutout;
+everything else per part comes from the existing `draws[]` buffer through the slot's draw, so
+transforms, colours, material values, lightmap scale-offset and motion vectors work unchanged.
+
+Cluster record: 48 bytes (bounds, own and parent group, parent error, triangles | level |
+material slot packed in one word, vertex list and local indices, normal cone). Group record:
+32 bytes (sphere, error).
 
 ### Culling and LOD selection on the GPU (`vgeo_cull.wgsl`)
 
-Per view, four small compute passes:
+Per view, five small compute passes:
 
 | pass | threads | does |
 |---|---|---|
-| `cs_instances` | one per instance | frustum (sphere); Hi-Z in the second phase; binary search for the first candidate cluster; queue chunks of 64 candidates |
-| `cs_prepare` | one | write each batch's draw arguments (its region is a fixed share of the view's list) and the cluster dispatch size |
-| `cs_clusters` | one workgroup per chunk | LOD test (own ≤ T < parent), frustum, normal cone and Hi-Z test of the cluster sphere, append (draw, cluster) to the batch's list and write the cluster's indexed draw arguments |
+| `cs_instances` | one per instance | frustum (sphere); Hi-Z in the second phase; binary searches for the first candidate cluster and the first group to decide; queue chunks of 64 groups and of 64 candidate clusters |
+| `cs_prepare` | one | write each batch's draw arguments (its region is a fixed share of the view's list) and the group and cluster dispatch sizes |
+| `cs_groups` | one workgroup per group chunk | each group's decision (fine enough or not), once; the chunk's 64 bits overwrite its own record |
+| `cs_clusters` | one workgroup per cluster chunk | LOD from the two group bits (own fine, parent not), material slot (skip parts the object doesn't draw, or that cast no shadow in a shadow view), frustum, normal cone and Hi-Z test of the cluster sphere, append (slot's draw, cluster) to the slot's batch and write the cluster's indexed draw arguments |
 | `cs_finish` | one per batch | clamp each batch's count to its region |
 
 Views: the main camera in **two phases** — instances visible last frame (frustum + LOD only),
 then after the opaque depth of phase one is turned into the Hi-Z pyramid, every instance and
 cluster not drawn yet against it (this is `render/gpu_culling`'s pyramid and occlusion test,
 shared: when GPU culling is on both use the same pyramid; when it is off virtual geometry builds
-it anyway). Then up to 6 **shadow maps** (frustum only; level of detail = the coarser of the
-main camera's and one texel of the cascade, so far casters are coarse and near cascades don't
-rasterize sub-texel detail).
+it anyway). Then up to 32 **shadow maps** in plan order — cascades, local light layers, then
+the virtual shadow map's rectangles (frustum only; level of detail = the coarser of the main
+camera's and one texel of the cascade or rectangle, so far casters are coarse and near
+cascades don't rasterize sub-texel detail).
 
 **Normal cones**: each cluster stores the cone of its triangles' face normals (axis and cutoff,
 the meshoptimizer formulation with the bounding sphere); a cluster whose every triangle faces
@@ -184,12 +229,18 @@ is dropped before the Hi-Z test and before drawing. Only under a uniform, unmirr
 about an eighth of all clusters in the unit test's mix of eyes and levels; smoother props catch
 more.
 
-Budgets: 256 k visible clusters (33 M triangles) and 128 k chunks (8 M candidate clusters) per
-view; overflow is counted (`VgeoStats::dropped`) and clusters are dropped rather than
+Budgets: a main-camera view has 256 k visible clusters (33 M triangles), 128 k cluster chunks
+(8 M candidate clusters) and 64 k group chunks (4 M groups to decide); a shadow view a quarter
+of each (64 k visible clusters, 8 M triangles: a cascade or a rectangle of ≤ 2048² texels at
+texel-sized detail needs far fewer). The lists and draw arguments are laid out for the views a
+frame uses and grow on demand: 2 main views + 4 cascades take 27 MB (round 2 reserved 67 MB
+for 8 views); all 34 views would take 89 MB. Overflow is counted (`VgeoStats::dropped`, and
+`dropped_instances` for an instance whose groups had no room) and work is dropped rather than
 corrupting memory. wgpu's default limit of 8 storage buffers per shader stage shaped the
-bindings: counters, limits and draw arguments share one buffer, the visible lists and the
-chunks another; the cluster dispatch size is copied out of the counters because a buffer can't
-be bound for writing and be the indirect buffer of the same dispatch.
+bindings: counters, limits and draw arguments share one buffer; the visible lists, cluster
+chunks and group chunks another; instances and their material slots a third, mesh and group
+records a fourth; the dispatch sizes are copied out of the counters because a buffer can't be
+bound for writing and be the indirect buffer of the same dispatch.
 
 ### Drawing (prototype: hardware rasterization)
 
@@ -207,8 +258,11 @@ Two paths, chosen by device features:
   No vertex reuse: measured about twice as slow (Measurements).
 
 Both write the same outputs as the mesh shader's `vs_main`, so the fragment stage is the
-ordinary `fs_main` — every lighting feature (cascades, soft shadows, probes, lightmaps, SSGI
-inputs, fog) applies unchanged. The same fetch feeds the shadow maps (`vs_cluster_depth*`) and
+ordinary `fs_main` (or `fs_cutout` for Cutout batches) — every lighting feature (cascades,
+soft shadows, probes, lightmaps, SSGI inputs, fog) applies unchanged. Cutout batches use their
+own pipeline in every pass, with group 2 = their texture set: the depth passes sample the
+albedo alpha (`fs_shadow_cutout`, `fs_normal_cutout`), the visibility raster discards before
+writing ids (`fs_cluster_vis_cutout`), so the resolve only sees surviving samples. The same fetch feeds the shadow maps (`vs_cluster_depth*`) and
 the depth + normal prepass of AO and contact shadows (`vs_cluster_prepass*`, first-phase
 clusters). Each batch owns a fixed, equal share of a view's visible list (the indexed draw needs
 its region's offset on the CPU); many materials therefore shrink each batch's budget — a
@@ -332,15 +386,15 @@ The prototype keeps every cluster resident. For large worlds:
 
 ### Shadows
 
-- **Prototype**: cascades (and spot/point layers) are fed by clusters, culled per map, with the
-  main camera's level of detail. Cheap and consistent, but distant cascades rasterize coarse
-  clusters for every caster in their frustum.
-- **Design**: **virtual shadow maps** — one 16 k × 16 k virtual map per directional light (clipmap
-  levels), 128 × 128 pages allocated only where the depth buffer needs them (page marking from
-  the visibility/depth pass), static pages cached between frames (only pages touched by moving
-  objects or a moving sun are redrawn), clusters culled and LOD-selected *per page* at the
-  page's texel size. This is what makes pixel-accurate shadows of pixel-sized geometry
-  affordable; it needs the same request/feedback machinery as streaming, so it comes after it.
+- Cascades (and spot/point layers) are fed by clusters, culled per map, at the coarser of the
+  main camera's level of detail and a texel of the map, with normal cones from the light.
+- **Virtual shadow maps** (main, opt-in: Quality ▸ Shadows ▸ Virtual): each page rectangle is
+  one more shadow view, clusters culled and level-of-detail chosen for the rectangle's texel
+  size; cached pages aren't redrawn. Round 2 capped virtual geometry at 6 shadow views, which
+  capped the virtual shadow map's rectangles per frame when virtual geometry was on (the rest
+  waited for later frames). Now 32 shadow views (so up to 32 minus the cascades and local
+  layers for rectangles; the virtual shadow map itself allows 64). Each shadow view costs its
+  five dispatches and 2 MB of lists, paid only by frames that use it.
 
 ### Fallbacks
 
@@ -352,7 +406,7 @@ The prototype keeps every cluster resident. For large worlds:
 | `MULTI_DRAW_INDIRECT_COUNT` | the pulled-vertex path (one `draw_indirect` per batch): correct, about twice the main-pass cost |
 | subgroups | the software rasterizer and prefix sums get slower, still correct |
 | 8 storage buffers per stage (default limit) | already worked around (shared control buffer) |
-| Frame Debugger capture | off while capturing (the debugger lists CPU draws) |
+| Frame Debugger capture | stays on; culling and batch draws are events (GPU-driven counts) |
 
 ## Phase 2: terrain as virtual geometry (design, after objects work)
 
@@ -467,13 +521,16 @@ They all stay on the **heightmap**, which remains the source of truth:
 - `vgeo/file.rs` (the `.vgeo` format) and `models/virtual_build.rs` (builds at import on a
   worker, the `Library/VirtualGeometry` cache, `bake` for player builds; the build pipeline
   packs the files).
-- `render/vgeo/` (GPU): pool, culling passes (with normal cones), indexed and pulled cluster
-  pipelines for the main pass, shadow maps and the screen-space prepass, the visibility
-  buffer (`vis.rs`, `vgeo_vis.wgsl`, `vgeo_resolve.wgsl`), cluster colour debug view, stats
-  readback.
+- `render/vgeo/` (GPU): pool, culling passes (per-group decisions, normal cones, material
+  slots), indexed and pulled cluster pipelines (Opaque and Cutout) for the main pass, shadow
+  maps and the screen-space prepass, the visibility buffer (`vis.rs`, `vgeo_vis.wgsl`,
+  `vgeo_resolve.wgsl`), debug views, counter readback (blocking for tests, non-blocking for
+  the Stats box and the Profiler), Frame Debugger gates (events in `frame_debug/events.rs`).
 - Settings: `ModelImporter::virtual_geometry`, `QualityLevel::virtual_geometry` /
   `virtual_geometry_error` with their inspector and Project Settings rows,
-  `models::runtime::register_virtual` for generated meshes.
+  `models::runtime::register_virtual` / `register_virtual_parts` for generated meshes; Scene
+  view draw modes (`panels/scene.rs`), the Stats box line (`panels/game.rs`), Profiler rows
+  (`panels/profiler/details.rs`).
 - Tests: `vgeo::tests` (cluster sizes and coverage, hierarchy depth, error/sphere monotonicity,
   group borders identical after simplification, watertight cuts, seams and open borders kept,
   normal cones only cull clusters whose every triangle faces away, `.vgeo` round trip and
@@ -483,7 +540,17 @@ They all stay on the **heightmap**, which remains the source of truth:
   `render::vgeo::gpu_tests::virtual_rock_matches_the_mesh_path` (a rock through clusters at
   0.1 px matches the mesh render, shadows included — through the visibility buffer, with and
   without its edge layer, and lit directly, which is bit-identical; at 4 px fewer triangles,
-  still close), and the ignored demo `vgeo_field` (shots + timings).
+  still close), `virtual_parts_and_cutout_match_the_mesh_path` (a rock of two parts, one Opaque
+  and one Cutout with a checker of holes: one instance, matches the two meshes drawn the
+  ordinary way — mean 0.06 levels through the visibility buffer, 0.002 lit — holes and their
+  shadow included), `virtual_geometry_shows_in_stats_debug_views_and_frame_debugger` (the
+  non-blocking counters equal the blocking read, Profiler memory, each debug view differs and
+  lasts one render, capture events present and stopping before the main-pass draw leaves the
+  rock out), `virtual_shadow_maps_get_more_than_six_virtual_geometry_views`; further
+  `vgeo::tests::one_decision_per_group_is_crack_free_whatever_the_rounding`,
+  `parts_share_one_hierarchy_with_one_part_per_cluster`,
+  `render::vgeo::tests::view_regions_never_overlap`, and the ignored demo `vgeo_field`
+  (shots + timings).
 
 ## Measurements
 
@@ -499,11 +566,53 @@ RTX 4060, median of 90 frames after 30. Compared paths, all on the same rocks:
 - **LOD Groups + GPU culling** (the existing two-phase Hi-Z path);
 - **Virtual Geometry** at the default 1 px error, and at 2 px.
 
-Cluster build (now at import, on the worker, three meshes in parallel): 1.4–2.0 s for the three
-82 k meshes; read back from the `.vgeo` cache in milliseconds. Pool: 8.7 MB for the three
-meshes (all levels).
+Cluster build (at import, on the worker, three meshes in parallel): 1.3–2.0 s for the three
+82 k meshes; read back from the `.vgeo` cache in milliseconds. Pool: 8.6 MB for the three
+meshes (all levels, with the group records; the cluster record shrank from 80 to 48 bytes).
 
-### Round 2 (this branch now): cache, normal cones, 32-byte vertices, visibility buffer
+### Round 3 (this branch now): per-group decisions, materials, 32 shadow views, VSM rows
+
+Main at 7442b5e merged (virtual shadow maps, play-hitch work), `gpu-timing.lock` held, full
+detail left out (`MISTY_VGEO_FULL=0`). Two runs; the first was disturbed by GPU work outside
+the lock (sky and TAA inflated, one VSM row 0.5 ms high), so the table is the second run,
+whose path-independent passes sat at their baseline (sky 0.13–0.15, TAA 0.36–0.41 ms). New
+rows: the same scene with the sun's **virtual shadow map** (Quality ▸ Shadows ▸ Virtual)
+instead of cascades, for both paths.
+
+| Quality / view | LOD Groups | **VG 1 px** | VG 1 px, lit | VG 1 px, edges | VG 2 px | LOD Groups, VSM | VG 1 px, VSM |
+|---|---|---|---|---|---|---|---|
+| High / field | 3.12 | **2.93** | 3.34 | 3.16 | **2.23** | **1.96** | 2.13 |
+| High / close | **2.74** | 3.09 | 3.32 | 3.33 | **2.39** | **1.97** | 2.20 |
+| High / aerial | 2.40 | **2.20** | 2.45 | 2.34 | **1.87** | 2.38 | **2.24** |
+| Medium / field | **2.22** | 2.30 | 2.52 | 2.53 | **1.89** | **1.93** | 2.40 |
+| Medium / close | **2.16** | 2.42 | 2.81 | 2.65 | **2.02** | **1.96** | 2.19 |
+| Medium / aerial | 1.95 | **1.94** | 2.16 | 2.10 | **1.73** | 2.27 | **2.18** |
+
+GPU ms, 1920 × 1080. Triangles (High): LOD Groups 6.1–7.4 M with cascades, 2.5–3.8 M with the
+virtual shadow map (cached pages aren't redrawn); VG 1 px 1.2–2.4 M, VG 2 px 0.5–1.0 M. CPU:
+VG 5.2–6.8 ms, LOD Groups 7.7–9.5 ms.
+
+Parts at High / close (ms): shadow culling (4 cascades) VG 0.14; shadow maps LOD 0.84, VG 0.82;
+main geometry LOD 1.10, VG 0.44 raster + 0.29 resolve + 0.15 second-phase Hi-Z and culling.
+
+#### What the numbers say (round 3)
+
+- **The per-group decision is nearly free**: one more dispatch per view; shadow culling over
+  four cascades went from 0.11 to 0.14–0.15 ms, the second phase stayed at 0.15 ms. Within one
+  run, VG at 1 px is still 0.2 ms faster than an ideal LOD chain in the field and from above,
+  and 0.35 ms slower right next to a group of rocks (round 2: +0.22–0.27); at 2 px it is faster
+  everywhere. LOD Groups moved between rounds too (main's merges), so compare within a run.
+- **With the virtual shadow map** the shadow cost of both paths almost disappears (cached
+  pages), and what is left is the main pass: VG at 1 px is 0.17–0.24 ms behind LOD Groups in
+  the field and close up, 0.06–0.14 ms ahead from above. The visibility buffer's fixed resolve
+  cost (0.22–0.29 ms) is now the largest single difference; per-tile material classification
+  ("Left to do" 1) is the next step. VG's triangle counts stay 1.2–2.5× lower.
+- **The visibility buffer** keeps its 0.2–0.4 ms lead over drawing clusters lit, and the
+  edge layer its ~0.1–0.2 ms cost.
+- The per-material batches and the cutout pipelines cost nothing measurable in this scene
+  (one opaque material); `virtual_parts_and_cutout_match_the_mesh_path` checks they draw right.
+
+### Round 2: cache, normal cones, 32-byte vertices, visibility buffer
 
 Same scene and machine, `gpu-timing.lock` held, full detail left out (`MISTY_VGEO_FULL=0`).
 The machine was still shared: rows whose path-independent passes (sky, TAA) ran inflated
@@ -620,16 +729,26 @@ baked from the source onto each level, or normal deviation in the simplification
 
 ### Screenshots (`docs/screenshots/gfx/`)
 
-Retaken in round 2: the `*_virtual` shots are drawn through the visibility buffer (single
-layer) and look the same as round 1's lit clusters.
+Retaken in round 3 (the `*_virtual` shots through the visibility buffer), with the new debug
+views:
 
 - `vgeo_field_lodgroup.png`, `vgeo_field_virtual.png`, `vgeo_field_clusters.png`: standing in the
   field (High).
 - `vgeo_close_*`: next to a group of rocks; the cluster view shows small clusters on the near
   rock and coarse ones behind.
 - `vgeo_aerial_*`: the whole field from above.
+- `vgeo_{field,close,aerial}_levels.png`: the Levels view — the near rock at level 1 (cyan:
+  one simplification step still under a pixel), the next ones green/yellow, the far field
+  orange, red and magenta.
+- `vgeo_{field,close,aerial}_overdraw.png`: the Overdraw view (additive, no depth test) — single
+  layers on near rocks, stacked layers brightening the horizon.
 
 ## Checks
+
+Round 3 (release profile, CARGO_INCREMENTAL=0): `cargo fmt`, `cargo clippy --release --workspace
+--all-targets` (0 warnings), `cargo test --workspace --release`: engine 946 passed, editor 580
+passed, player 11 passed. Failing: `foliage_lighting_demo_matches_its_generator` (known, not
+touched here).
 
 Round 2 (release profile, CARGO_INCREMENTAL=0): `cargo fmt`, `cargo clippy --release --workspace
 --all-targets` (0 warnings), `cargo test --workspace --release`: engine 888 passed, editor 561
@@ -640,8 +759,10 @@ Round 1: engine 860, editor 542, player 9 passed, the same known failure.
 
 ## Left to do before production
 
-Honest list, roughly in the order it should happen (done in this round: build at import with
-the `.vgeo` cache, the visibility buffer and material resolve, normal cones, the smaller pool):
+Honest list, roughly in the order it should happen (done in round 2: build at import with the
+`.vgeo` cache, the visibility buffer and material resolve, normal cones, the smaller pool;
+in round 3: one decision per group, per-cluster material slots and Cutout, Stats / Profiler /
+debug views / Frame Debugger, 32 shadow views):
 
 1. **Visibility resolve cost**: the resolve is a full-screen pass per material batch that
    reads every sample's ids before discarding; with many virtual materials that scales with
@@ -661,30 +782,31 @@ the `.vgeo` cache, the visibility buffer and material resolve, normal cones, the
 4. **Software rasterizer** for tiny triangles, only on adapters with 64-bit atomics (see the
    cost/benefit above). The visibility raster's id format is what it would write.
 5. **Streaming**: pages, GPU request feedback, async loads, eviction, a memory budget per
-   Quality level; pool memory reported in the Profiler's Memory module (it isn't yet;
-   `VgeoStats::pool_bytes` has it).
-6. **Shadows**: virtual shadow maps with cached static pages. Today: cascades fed by clusters
-   with the camera's / a texel's level of detail and normal cones from the light, no
-   occlusion culling in shadow views, and only the first 6 shadow maps get virtual casters.
+   Quality level (the Profiler's Memory module shows the pool and lists today).
+6. **Shadows**: clusters culled per virtual shadow map *page* instead of per rectangle (a
+   rectangle of 16 × 16 pages culls against its whole frustum), occlusion culling in shadow
+   views, and the virtual shadow map's own 64-rectangle budget is still shared with cascades
+   and local layers under the 32-view cap (raising it costs 2 MB of lists per view; a shared
+   pool of visible entries for all shadow views would remove the per-view reservation).
 7. **Culling refinements**: cluster-level occlusion for the instances drawn in the first
    phase (only instance-level today); a persistent GPU instance buffer updated incrementally
    (instances are re-uploaded from the CPU draw list every frame — fine to ~100 k instances,
    not to millions); normal cones under non-uniform scale (skipped today).
 8. **Materials and batches**: each material batch owns a fixed equal share of a view's
    visible list (scenes with many virtual materials need GPU-side compaction per material);
-   only Standard lit Opaque single-sided surfaces take the cluster path. Cutout on clusters
-   needs an alpha test in the visibility raster; multi-material meshes need a per-cluster
-   material id (the id format has room in the batch field).
+   Cutout and Opaque single-sided Standard lit surfaces take the cluster path, double-sided
+   and custom `.shader` materials don't. Material borders inside one mesh are seams (locked,
+   never simplified across): coarse levels keep every border's vertices, so a mesh made of
+   many small material islands simplifies poorly; simplifying across material borders (the
+   triangle keeps its material, the border moves) is the fix. A transparent primitive of a
+   virtual mesh draws the ordinary way at full detail next to the clusters of its
+   neighbours (no gap: borders are locked, but its own detail doesn't drop).
 9. **Fallback mesh**: without the GPU features a virtual mesh draws its full source mesh; a
    production build should keep a coarse fallback (a mid level of the DAG) for those devices,
    and could then stop packing the full source mesh (physics would read a level of the DAG).
-10. **Tools and stats**: the Game view Stats don't count cluster triangles (GPU-side counts
-    are read back only on request), the Frame Debugger doesn't list cluster draws (virtual
-    geometry is off while capturing), the Scene view has no Clusters / Triangles debug views
-    yet, no Lua. Rebuilding a model's `.vgeo` by hand (Reimport) works through the import
-    settings; there is no "Clear Virtual Geometry cache" menu item.
-11. **Robustness**: the crack-free guarantee relies on the GPU computing a cluster's own error
-    and its children's parent error identically (same inputs, same function); a compiler
-    contracting the two call sites differently could give a one-frame overlap or hole exactly
-    at a threshold crossing. Computing the decision once per group (stored per group, read by
-    both) removes the dependency. Non-uniform scale uses the largest axis scale (conservative).
+10. **Tools**: Frame Debugger events have no per-batch cluster count (GPU-written; a readback
+    while capturing could fill it in), no Lua `QualitySettings.virtualGeometry`, no "Clear
+    Virtual Geometry cache" menu item (Reimport rebuilds a model's `.vgeo`).
+11. **Robustness**: non-uniform scale uses the largest axis scale (conservative); an instance
+    whose groups find no room in its view's group chunks is skipped for that view (counted in
+    `dropped_instances`) — the budget is 4 M groups per main view, far above the test scenes.

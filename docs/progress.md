@@ -2187,9 +2187,16 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Follow-up: grass and trees receive GI, glossy reflections behind SSR, interval merge on the probe levels,
   works with Upscaling; High +1.8 ms (room) / +2.7 ms (meadow) per frame at 1080p.
 
+- Round 16 (ready to become a default): Lighting ▸ Realtime Global Illumination (per scene) and
+  Quality ▸ Global Illumination (Off / Low / Medium / High per level); water, transparent and
+  custom-shader / Shader Graph surfaces receive GI; the editor's Scene view shares the Game view's
+  clipmaps when near; Misty GI's sun checked against virtual shadow maps; meadow ambient option
+  shots (`gi_meadow_opt_*_compare.png`) for the user to pick from.
+
 ### Not done yet
-- Grass blades and trees don't read the GI term yet (their shaders belong to the grass/tree work); the
-  Lighting-window switch, debug views, reflections, radiance-cascade merge: see the roadmap in the doc.
+- Still off by default (the scene switch's default is the one line to flip once the user picks).
+- Debug views (SDF / radiance cache / probes), directional far field, screen-space near field,
+  toroidal clipmap scrolling, skinned meshes: see the roadmap in the doc.
 
 ## Round 15 — Editor scripting in Lua (branch r15-editor-scripting)
 
@@ -2296,3 +2303,61 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Medium / Low remain 0.15–0.45 ms slower in MeadowDemo; trees too large for the near layer keep a cached
   wind pose; a sun jump over 5° re-renders everything.
+
+## Freeze on entering Play / opening a scene (branch play-hitch)
+
+### Done (docs/pending/play-hitch.md)
+- The "worst 3.4–4.4 s" in the Stats box was the load frame of a capture run (project open,
+  scene load, entering Play and the scene's first render in one frame), 3.5–5.7 s on a new
+  build of the editor (NVIDIA's shader cache is per executable), plus 2–3 frames of 200–600 ms
+  when the tree textures arrived.
+- Terrain layer arrays (370–440 ms) and tree textures (85–105 ms per tree) are built on worker
+  threads and uploaded in budgeted pieces; the terrain draws neutral layers for a few frames.
+- Tree models cached in `Library/TreeCache` (keyed by recipe, textures and the generator's
+  source); a wgpu pipeline cache in `Library/ShaderCache` (Vulkan); shader modules made once
+  per source; the tree, grass visibility, grass cull, volumetrics and cloud pipelines, the cloud
+  noise, grass atlas and blue noise prepared on threads as soon as the renderer exists.
+- Asset groups, string tables and editor scripts list files from the GUID database instead of
+  reading every meta file / walking `Assets/` on the main thread (two 50 ms reads and a 25 ms
+  walk when entering Play; a 50 ms walk every 2 s from the editor scripts).
+- Capture runs: `MISTY_PROFILE`, a slow-frame / time-to-interactive report, `MISTY_PLAY_AT`,
+  `MISTY_OPEN_SCENE_AT`.
+
+  | MeadowDemo, RTX 4060 | before | after |
+  |---|---|---|
+  | Entering Play in a running editor (worst frame) | 140–192 ms | 13–28 ms |
+  | Opening MeadowDemo in a running editor, warm / new build | 613–631 / 2476–2514 ms | 37–64 / 35–60 ms |
+  | Capture run (open + Play at launch), new build: load frame / worst after / interactive | 4.9–5.0 s / 616–625 ms / 6.7–6.9 s | 0.5–0.8 s / 30–37 ms / 1.5–2.7 s |
+  | Same, warm | 1.2–1.3 s / 187–296 ms / 2.8–3.2 s | 0.33–0.38 s / 46 ms / 1.0–1.2 s |
+  | Same, first launch ever (no Library, new build) | 5.0–5.7 s / 600–980 ms / 6.7–8.4 s | 3.2–3.7 s / 40–50 ms / 4.2–5.9 s |
+
+### Not done yet
+- Project open (`EditorState::new`, the GUID scan, the core pipelines) is most of what is left
+  of the load frame (~0.33 s warm); the very first launch still compiles the core pipelines on
+  the main thread (behind the splash).
+
+## Test health (branch test-health)
+
+### Done (docs/pending/test-health.md, references `docs/golden/`)
+- `cargo test --workspace --release` green twice in a row (editor 582, engine 951, player 11
+  passed; 0 failed).
+- `foliage_lighting_demo_matches_its_generator`: the generator used `MAX_DENSITY`, raised from
+  600 to 1500 for MeadowDemo after FoliageLightingDemo was committed; it now says 600, the
+  committed value.
+- Hitch test: slow frames are judged by the render thread's own CPU time and the machine's
+  load, so a loaded machine's stalls are printed, not failed; the profiler tests and timing
+  tests share a lock; `headless()` switches grass streaming off only under the GPU lock.
+- Asset watcher test: own database and walk (not the process-wide ones); `poll_now` no longer
+  reads a walk that started before the change; waits with a timeout.
+- GPU tests: one process-wide wgpu instance (no Vulkan driver unload/reload after every test),
+  prebuilt workers of an earlier test finish before the next device. The round-14 `0xc0000005`
+  did not reproduce in 12 engine runs (default and one thread, two processes at once under load).
+- Golden shots: `cargo test --release -p misty_engine --lib golden_shots -- --ignored --nocapture --test-threads=1`
+  compares MeadowDemo wide / close / behind / oak and CyclesRoomDemo at every quality level with
+  the references; `MISTY_GOLDEN=update` rewrites them. The gate for "flip a default" changes.
+
+### Not done yet
+- The access violation was not reproduced, so the instance change is a likely fix, not a
+  proven one; watch for it in future full runs.
+- The golden references are for the RTX 4060 / NVIDIA 610.88 / Vulkan; another GPU or driver
+  needs its own (`MISTY_GOLDEN=update` on it) or may drift past the tolerance.

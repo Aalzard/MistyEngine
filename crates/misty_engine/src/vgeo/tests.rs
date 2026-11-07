@@ -114,10 +114,10 @@ fn hierarchy_halves_down_to_a_few_roots() {
             .all(|w| w[0].parent_error <= w[1].parent_error)
     );
     assert!(
-        mesh.stuck_groups * 4 <= mesh.groups,
+        mesh.stuck_groups as usize * 4 <= mesh.groups.len(),
         "{} of {}",
         mesh.stuck_groups,
-        mesh.groups
+        mesh.groups.len()
     );
 }
 
@@ -137,11 +137,136 @@ fn errors_and_spheres_grow_towards_the_roots() {
         }
     }
     for c in &mesh.clusters {
-        // ...and they are exactly what its children replace them with.
+        // ...and they are exactly what its children replace them with, and the group's record.
         if c.parent_group != u32::MAX {
             assert_eq!(by_group[&c.parent_group], (c.parent, c.parent_error));
+            let g = mesh.groups[c.parent_group as usize];
+            assert_eq!((g.sphere, g.error), (c.parent, c.parent_error));
+        }
+        if c.group != u32::MAX {
+            let g = mesh.groups[c.group as usize];
+            assert_eq!((g.sphere, g.error), (c.lod, c.error));
         }
     }
+    // Groups by error (the GPU's binary search), every one used.
+    assert!(mesh.groups.windows(2).all(|w| w[0].error <= w[1].error));
+    assert_eq!(by_group.len(), mesh.groups.len());
+}
+
+/// The cut of `view` with the decision of each group made by `fine` (`None` = no group).
+fn cut_with(
+    mesh: &VirtualMesh,
+    own: impl Fn(u32) -> bool,
+    parent: impl Fn(u32) -> bool,
+) -> Vec<usize> {
+    (0..mesh.clusters.len())
+        .filter(|&i| {
+            let c = &mesh.clusters[i];
+            let fine_own = c.group == u32::MAX || own(c.group);
+            let fine_parent = c.parent_group != u32::MAX && parent(c.parent_group);
+            fine_own && !fine_parent
+        })
+        .collect()
+}
+
+#[test]
+fn one_decision_per_group_is_crack_free_whatever_the_rounding() {
+    let (positions, indices) = rock_mesh(4);
+    let mesh = VirtualMesh::build(&positions, &indices);
+    let weld = weld(&positions);
+    let base = LodView {
+        camera: Vec3::new(2.0, 0.8, 3.0),
+        scale: 1080.0 / (2.0 * 30f32.to_radians().tan()),
+        orthographic: false,
+        threshold: 1.0,
+    };
+    let mut caught = 0;
+    // Put the threshold exactly on a group's projected error: the worst case, where two
+    // evaluations rounding differently disagree.
+    for g in (0..mesh.groups.len()).step_by(7) {
+        let gr = mesh.groups[g];
+        let view = LodView {
+            threshold: base.projected(gr.sphere, gr.error),
+            ..base
+        };
+        let decide = |g: u32, bias: f32| {
+            let gr = mesh.groups[g as usize];
+            view.projected(gr.sphere, gr.error) <= view.threshold * (1.0 + bias)
+        };
+        for bias in [-1e-6f32, 1e-6] {
+            // One decision per group, read by both sides of its border: closed either way.
+            let shared = cut_with(&mesh, |g| decide(g, bias), |g| decide(g, bias));
+            watertight(&mesh, &shared, &weld)
+                .unwrap_or_else(|e| panic!("group {g}, bias {bias}: {e}"));
+            // The same group evaluated twice (own error vs children's parent error) with
+            // different rounding: overlaps or holes. What the per-group decision rules out.
+            let split = cut_with(&mesh, |g| decide(g, bias), |g| decide(g, -bias));
+            caught += watertight(&mesh, &split, &weld).is_err() as u32;
+        }
+    }
+    assert!(caught > 0, "the test should see the two-evaluation failure");
+}
+
+/// The rock with the triangles on the +x side moved to a second part (their own vertices: a
+/// seam between the parts), as a glTF mesh of two primitives combined. Returns the positions,
+/// indices and the parts' first vertices.
+fn two_part_rock() -> (Vec<Vec3>, Vec<u32>, Vec<u32>) {
+    let (positions, indices) = rock_mesh(4);
+    let tris = indices.as_chunks::<3>().0;
+    let side = |t: &[u32; 3]| t.iter().map(|&v| positions[v as usize].x).sum::<f32>() > 0.0;
+    let mut out_pos = positions.clone();
+    let mut out_idx = Vec::new();
+    for t in tris.iter().filter(|t| !side(t)) {
+        out_idx.extend_from_slice(t);
+    }
+    let start = out_pos.len() as u32;
+    let mut copy: HashMap<u32, u32> = HashMap::new();
+    for t in tris.iter().filter(|t| side(t)) {
+        for &v in t {
+            let n = *copy.entry(v).or_insert_with(|| {
+                out_pos.push(positions[v as usize]);
+                out_pos.len() as u32 - 1
+            });
+            out_idx.push(n);
+        }
+    }
+    (out_pos, out_idx, vec![0, start])
+}
+
+#[test]
+fn parts_share_one_hierarchy_with_one_part_per_cluster() {
+    let (positions, indices, starts) = two_part_rock();
+    let mesh = VirtualMesh::build_parts(&positions, &indices, &starts);
+    assert_eq!(mesh.materials, 2);
+    let part = |v: u32| (v >= starts[1]) as u32;
+    let mut seen = [0usize; 2];
+    for (i, c) in mesh.clusters.iter().enumerate() {
+        assert!(
+            mesh.triangles(i).iter().all(|&v| part(v) == c.material),
+            "cluster {i} mixes parts"
+        );
+        seen[c.material as usize] += 1;
+    }
+    assert!(seen[0] > 0 && seen[1] > 0, "{seen:?}");
+    // One hierarchy: groups across the seam, a few roots, and every cut closed (by position).
+    assert!(mesh.levels >= 4, "{} levels", mesh.levels);
+    let weld = weld(&positions);
+    for distance in [1.0f32, 4.0, 20.0, 200.0] {
+        let view = LodView {
+            camera: Vec3::new(0.3, 0.5, 1.0).normalize() * distance,
+            scale: 1080.0 / (2.0 * 30f32.to_radians().tan()),
+            orthographic: false,
+            threshold: 1.0,
+        };
+        watertight(&mesh, &mesh.select(&view), &weld)
+            .unwrap_or_else(|e| panic!("distance {distance}: {e}"));
+    }
+    // The file keeps the parts.
+    let bytes = file::write(&[Some((1, 0.0, &mesh))]);
+    let back = file::read(&bytes).expect("readable");
+    let e = back[0].as_ref().expect("mesh");
+    assert_eq!(e.mesh.materials, 2);
+    assert_eq!(e.mesh.clusters, mesh.clusters);
 }
 
 #[test]
@@ -329,9 +454,10 @@ fn vgeo_files_round_trip_and_reject_damage() {
     assert_eq!(e.mesh.clusters, mesh.clusters);
     assert_eq!(e.mesh.indices, mesh.indices);
     assert_eq!(e.mesh.bounds, mesh.bounds);
+    assert_eq!(e.mesh.groups, mesh.groups);
     assert_eq!(
-        (e.mesh.levels, e.mesh.source_triangles, e.mesh.groups),
-        (mesh.levels, mesh.source_triangles, mesh.groups)
+        (e.mesh.levels, e.mesh.source_triangles, e.mesh.materials),
+        (mesh.levels, mesh.source_triangles, mesh.materials)
     );
     // Truncated, another version or another source: not used.
     assert!(file::read(&bytes[..bytes.len() - 3]).is_none());

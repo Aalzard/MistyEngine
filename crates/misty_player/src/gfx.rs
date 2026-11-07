@@ -93,6 +93,7 @@ impl Gfx {
         config.present_mode = present_mode(vsync);
         surface.configure(&device, &config);
 
+        misty_engine::render::cache_shader_modules(&device);
         let renderer = Renderer::with_queue(&device, &queue);
         let ui = UiRenderer::new(&device, &queue);
         let target = renderer.create_view_target(&device, config.width, config.height);

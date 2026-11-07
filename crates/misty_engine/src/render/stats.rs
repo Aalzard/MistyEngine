@@ -31,6 +31,9 @@ pub struct RenderStats {
     pub cpu_ms: f32,
     /// Grass chunks still being scattered on the workers or waiting for upload.
     pub grass_pending: u32,
+    /// Terrain layer textures and tree models still being prepared on worker threads (a
+    /// scene's first frames): the views keep drawing until they land.
+    pub loading: u32,
     /// Render-thread time spent uploading finished grass chunks (budgeted per frame).
     pub grass_upload_ms: f32,
     /// Of that, the time already spent when the last piece started: under the budget.
@@ -39,6 +42,14 @@ pub struct RenderStats {
     pub grass_upload_piece_ms: f32,
     /// Of that, the longest wait for room in the grass blade pages and cull arena.
     pub grass_upload_alloc_ms: f32,
+    /// Misty Virtual Geometry (GPU counters read back without waiting: a frame or two old):
+    /// objects, clusters and triangles drawn by the main camera, triangles of every shadow
+    /// map, and the GPU memory of the cluster pool and the per-view lists.
+    pub vgeo_instances: u32,
+    pub vgeo_clusters: u32,
+    pub vgeo_triangles: u64,
+    pub vgeo_shadow_triangles: u64,
+    pub vgeo_memory: u64,
 }
 
 impl RenderStats {
@@ -62,6 +73,8 @@ pub struct RenderMemory {
     pub buffer_bytes: u64,
     /// Texture memory (loaded textures, shadow maps).
     pub texture_bytes: u64,
+    /// Of `buffer_bytes`: Misty Virtual Geometry's cluster pool and per-view lists.
+    pub virtual_geometry_bytes: u64,
 }
 
 /// Renderer switches (the defaults are what measured fastest; turning one off reproduces the

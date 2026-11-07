@@ -200,8 +200,14 @@ pub fn post_settings(scene: &Scene) -> PostSettings {
             best = Some((*v).clone());
         }
     }
-    best.map(|v| PostSettings::from_volume(&v))
-        .unwrap_or_default()
+    let mut post = best
+        .map(|v| PostSettings::from_volume(&v))
+        .unwrap_or_default();
+    // Lighting window ▸ Realtime Global Illumination, unless a volume overrides it.
+    if scene.render_settings.realtime_gi && !post.misty_gi.enabled {
+        post.misty_gi = crate::render::MistyGiSettings::scene_default();
+    }
+    post
 }
 
 /// Scene-view lighting off: one light shining from the camera, no shadows.

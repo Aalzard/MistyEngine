@@ -27,11 +27,11 @@ struct VgResolve {
 
 // Words per pool vertex and per cluster record (GpuVertex / GpuCluster in render/vgeo/mod.rs).
 const VR_VERTEX_WORDS: u32 = 8u;
-const VR_CLUSTER_WORDS: u32 = 20u;
+const VR_CLUSTER_WORDS: u32 = 12u;
 
 struct VgResolveIn {
     @builtin(position) pos: vec4<f32>,
-    // batch × 2 + layer.
+    // (batch × 2 + layer) × 2 + cutout.
     @location(0) @interpolate(flat) pass_id: u32,
 };
 
@@ -64,8 +64,8 @@ struct VrCorner {
 // Corner `corner` (0 .. 3 × triangles) of cluster `cluster`, as vgeo_fetch.wgsl's vg_vertex.
 fn vr_corner(cluster: u32, corner: u32) -> VrCorner {
     let cb = vr.offsets.z + cluster * VR_CLUSTER_WORDS;
-    let vertex_first = vg_pool[cb + 15u];
-    let li = vg_pool[cb + 16u] + corner;
+    let vertex_first = vg_pool[cb + 8u];
+    let li = vg_pool[cb + 9u] + corner;
     let local = (vg_pool[vr.offsets.y + (li >> 1u)] >> ((li & 1u) * 16u)) & 0xffffu;
     let source = vg_pool[vr.offsets.w + vertex_first + local];
     let b = vr.offsets.x + source * VR_VERTEX_WORDS;
@@ -132,8 +132,9 @@ fn vr_batch(draw_word: u32) -> u32 {
 
 @fragment
 fn fs_cluster_resolve(in: VgResolveIn) -> VgResolveTargets {
-    let batch = in.pass_id >> 1u;
-    let layer = in.pass_id & 1u;
+    let batch = in.pass_id >> 2u;
+    let layer = (in.pass_id >> 1u) & 1u;
+    let cutout = (in.pass_id & 1u) != 0u;
     let p = vec2<i32>(in.pos.xy);
     let edge = vr.info.y != 0u;
     // This layer's samples (of this batch) and the one whose triangle shades them.
@@ -219,6 +220,10 @@ fn fs_cluster_resolve(in: VgResolveIn) -> VgResolveTargets {
     let shaded = shade(m.world, standard_surface_grad(m, true, uv_dx, uv_dy));
     var out: VgResolveTargets;
     out.color = shaded.color;
+    if (cutout) {
+        // As fs_cutout: the holes were cut in the raster.
+        out.color.a = 1.0;
+    }
     out.glow = shaded.glow;
     out.velocity = mesh_velocity(m);
     out.mask = mask;

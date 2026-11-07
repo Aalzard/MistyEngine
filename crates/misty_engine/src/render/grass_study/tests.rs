@@ -50,8 +50,9 @@ fn screenshots() -> PathBuf {
 }
 
 fn study_device() -> Option<(wgpu::Device, wgpu::Queue)> {
-    let instance =
-        wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+    // One GPU test at a time and the process's one instance, as `headless`.
+    crate::render::gpu_tests::hold_gpu_lock();
+    let instance = crate::render::gpu_tests::instance();
     let adapter =
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
             .ok()?;

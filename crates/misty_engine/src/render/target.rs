@@ -328,6 +328,13 @@ impl RenderTarget {
         self.samples
     }
 
+    /// Mark this view secondary for Misty GI (the editor's Scene view): near a primary view
+    /// (the Game view) it gathers from that view's clipmaps instead of updating its own, so
+    /// the editor doesn't pay for the world-space passes twice.
+    pub fn set_misty_gi_secondary(&self, on: bool) {
+        self.misty_gi.set_secondary(on);
+    }
+
     /// Aspect ratio of the final image (the camera's).
     pub fn aspect(&self) -> f32 {
         self.out_width as f32 / self.out_height as f32

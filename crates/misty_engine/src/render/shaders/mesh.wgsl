@@ -455,6 +455,14 @@ fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
     // Screen-space GI and reflections (screen_trace.wgsl); unchanged while both are off.
     let traced = screen_trace_sample(world);
     color = screen_gi_apply(traced, color, diffuse_color, s.occlusion, lightmapped);
+    // Misty GI where the prepass didn't see this surface (transparent, vertex-displaced): the
+    // world lookup of its probes instead of the per-pixel texel.
+    if (!traced.valid && screen_trace.misc.w > 0.0 && (!lightmapped || screen_trace.misc.x > 0.5)) {
+        let e = misty_world_irradiance(world, n);
+        if (e.w > 0.0) {
+            color = e.rgb * diffuse_color * s.occlusion;
+        }
+    }
     let reflection_weight = fresnel_env * surface_reduction * lights.info.w * smoothness;
     color += screen_reflection_apply(traced, reflection, reflection_weight);
 

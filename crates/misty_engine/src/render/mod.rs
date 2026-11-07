@@ -31,8 +31,10 @@ mod motion;
 pub mod overrides;
 pub mod particles;
 mod pass_timer;
+mod pipeline_cache;
 mod pipelines;
 pub mod post;
+mod prebuilt;
 mod prepass;
 pub mod probes;
 mod runtime_tex;
@@ -74,7 +76,9 @@ pub use glow::GlowSource;
 pub use grass_vis::{grass_vis_enabled, set_grass_vis};
 pub use misty_gi::MistyGiSettings;
 pub use particles::{ParticleBatch, ParticleInstance};
-pub use pipelines::pipelines_built;
+pub(crate) use pipeline_cache::pipeline_cache;
+pub use pipeline_cache::{open_pipeline_cache, pipeline_cache_features, save_pipeline_cache};
+pub use pipelines::{cache_shader_modules, pipelines_built};
 pub use post::PostSettings;
 pub use screen_trace::{SsgiSettings, SsrSettings};
 pub use soft_shadows::LightShadow;
@@ -83,7 +87,7 @@ pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
 use target::TargetLayouts;
 pub use terrain_grass::{GrassStats, grass_streaming, set_grass_streaming};
-pub use vgeo::VgeoStats;
+pub use vgeo::{VgeoDebug, VgeoStats};
 pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 pub use vsm::{VsmDebug, VsmStats};
 
@@ -582,6 +586,8 @@ pub struct Renderer {
     /// Grass visibility buffer pipelines (made with the first grass; `Some(None)` = this
     /// device refused them and the grass keeps the lit pass).
     grass_vis: Option<Option<grass_vis::VisPipelines>>,
+    /// The grass visibility pipelines being built on a worker (see `prebuilt`).
+    grass_vis_prebuilt: prebuilt::Prebuilt<Option<grass_vis::VisPipelines>>,
 }
 
 impl Renderer {
@@ -653,7 +659,7 @@ impl Renderer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        Self {
+        let mut renderer = Self {
             post_sampler,
             view_buffer,
             view_bind_group,
@@ -723,10 +729,22 @@ impl Renderer {
             last_view_proj: Mat4::IDENTITY,
             samples: sample_count(),
             grass_vis: None,
+            grass_vis_prebuilt: Default::default(),
             vsm: Default::default(),
             vsm_dummy,
             vsm_frame: 0,
+        };
+        // Streaming (editor, player): compile what a scene's first frame would otherwise
+        // wait for on worker threads now (see `prebuilt`).
+        if grass_streaming() {
+            renderer.trees.prebuild(device, &renderer.pipelines);
+            renderer.terrains.prebuild(device);
+            renderer.grass_vis_prebuilt =
+                grass_vis::VisPipelines::prebuild(device, &renderer.pipelines);
+            terrain_grass::prewarm_atlas();
+            clouds::noise::prewarm_blue_noise();
         }
+        renderer
     }
 
     /// The virtual shadow map's page table (or the dummy while it is off).
@@ -803,10 +821,16 @@ impl Renderer {
     /// Renderer that also measures GPU time per render when the device was created with
     /// `TIMESTAMP_QUERY` (see [`timestamp_features`]).
     pub fn with_queue(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        Self {
+        let mut renderer = Self {
             gpu_timer: gpu_timer::GpuTimer::new(device, queue),
             ..Self::new(device)
+        };
+        if grass_streaming() {
+            let view_layout = &renderer.pipelines.view_layout;
+            (renderer.volumetrics).prebuild(device, queue, view_layout);
+            renderer.clouds.prebuild(device, queue);
         }
+        renderer
     }
 
     /// Culling / instancing switches.
@@ -873,6 +897,20 @@ impl Renderer {
         self.vgeo.enabled = quality.virtual_geometry;
         self.vgeo.threshold = quality.virtual_geometry_error;
         self.quality = quality.clone();
+    }
+
+    /// Frame Debugger event of virtual geometry's culling of view `v` (true = run it).
+    fn vgeo_cull_event(&self, v: usize) -> bool {
+        frame_debug::record(&self.capture, |_| frame_debug::events::vgeo_cull_event(v))
+    }
+
+    /// Frame Debugger gate of virtual geometry's batch draws (records each; true = draw it).
+    fn vgeo_gate<'s>(&'s self, frame: &'s Frame<'_>) -> impl Fn(&vgeo::VgeoDraw) -> bool + 's {
+        move |d| {
+            frame_debug::record(&self.capture, |r| {
+                frame_debug::events::vgeo_event(r, frame, d)
+            })
+        }
     }
 
     /// Counters of the last [`Renderer::render`] call.
@@ -980,10 +1018,13 @@ impl Renderer {
         let shadow_bytes = 4
             * (self.shadows.directional_size.pow(2) as u64 * cascades::MAX_CASCADES as u64
                 + shadows::LOCAL_SIZE.pow(2) as u64 * shadows::MAX_LOCAL_LAYERS as u64);
+        let vgeo_bytes = self.vgeo.memory_bytes();
         RenderMemory {
             meshes: self.meshes.len() + imported.count() + terrains,
             textures,
+            virtual_geometry_bytes: vgeo_bytes,
             buffer_bytes: mesh_bytes
+                + vgeo_bytes
                 + terrain_bytes
                 + buffers.iter().map(|b| b.size()).sum::<u64>()
                 + self.particle_instances.buffer.size()
@@ -1198,6 +1239,10 @@ impl Renderer {
             // (Made before Quality ▸ Anti-Aliasing changed: the host makes a new one.)
             return;
         }
+        // Quality ▸ Global Illumination caps Misty GI whatever the scene or volume asks for.
+        let mut post = frame.post;
+        post.misty_gi = post.misty_gi.capped(self.quality.global_illumination);
+        let frame = &Frame { post, ..*frame };
         let emitters = if frame.shaded {
             area::emitter_draws(frame.lights)
         } else {
@@ -1261,10 +1306,10 @@ impl Renderer {
             self.prepare_assets(device, queue, frame, &lod);
         }
         // Virtual geometry: meshes built into clusters draw through the cluster path (it needs
-        // indirect draws with an instance offset, like GPU culling; the Frame Debugger lists
-        // CPU-side draws, so it is off while capturing).
-        self.vgeo.on =
-            self.vgeo.enabled && self.culler.is_some() && frame.shaded && self.capture.is_none();
+        // indirect draws with an instance offset, like GPU culling). While capturing, the
+        // Frame Debugger lists its culling and batch draws (vgeo_gate).
+        self.vgeo.on = self.vgeo.enabled && self.culler.is_some() && frame.shaded;
+        self.vgeo.view_debug = self.vgeo.debug_once.take().unwrap_or(self.vgeo.debug);
         if self.vgeo.on {
             crate::profile_scope!("Render.VirtualGeometry");
             self.vgeo.ensure_gpu(device, &self.pipelines);
@@ -1554,7 +1599,9 @@ impl Renderer {
         }
         self.mark(&mut encoder, "Water simulation");
         self.vgeo
-            .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views());
+            .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views(), &|v| {
+                self.vgeo_cull_event(v)
+            });
         self.mark(&mut encoder, "Virtual geometry: shadow culling");
         {
             crate::profile_scope!("Render.Encode.Shadows");
@@ -1594,7 +1641,8 @@ impl Renderer {
         self.froxel_passes(device, &mut encoder, target);
         self.mark(&mut encoder, "Froxel fog");
         // The first phase's clusters (also drawn by the screen-space prepass below).
-        self.vgeo.cull(&mut encoder, 0, 1);
+        self.vgeo
+            .cull(&mut encoder, 0, 1, &|v| self.vgeo_cull_event(v));
         self.mark(&mut encoder, "Virtual geometry: culling (first phase)");
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see
@@ -1694,7 +1742,8 @@ impl Renderer {
                 if let Some(c) = &culled {
                     culler.dispatch(device, &mut encoder, state, c, slots, 1);
                 }
-                self.vgeo.cull(&mut encoder, 1, 2);
+                self.vgeo
+                    .cull(&mut encoder, 1, 2, &|v| self.vgeo_cull_event(v));
                 self.mark(&mut encoder, "Hi-Z + culling (second phase)");
                 let rest = MainSplit {
                     phase: Some(1),
@@ -1789,10 +1838,18 @@ impl Renderer {
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.resolve(&mut encoder, slot);
         }
+        self.vgeo.copy_stats(device, &mut encoder);
         {
             crate::profile_scope!("Render.Submit");
             queue.submit([encoder.finish()]);
         }
+        self.vgeo.stats_submitted();
+        let vg = self.vgeo.collect_stats();
+        stats.vgeo_instances = vg.instances;
+        stats.vgeo_clusters = vg.clusters;
+        stats.vgeo_triangles = vg.triangles;
+        stats.vgeo_shadow_triangles = vg.shadow_triangles;
+        stats.vgeo_memory = vg.pool_bytes + vg.list_bytes;
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.submitted(slot);
         }
@@ -1804,6 +1861,7 @@ impl Renderer {
         self.slots_scratch = lists.slots;
         let grass = self.terrains.grass_stats();
         stats.grass_pending = grass.pending;
+        stats.loading = (self.terrains.layers_pending() + self.trees.loading()) as u32;
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
         stats.grass_upload_piece_ms = grass.upload_piece_ms;
@@ -2307,7 +2365,15 @@ impl Renderer {
         }
         // Virtual geometry casters (culled for this map, detail chosen for the camera).
         if self.vgeo.active() {
-            self.vgeo.draw_shadow(pass, slot, &self.empty_group);
+            let textures = &self.textures;
+            let material = |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
+            self.vgeo.draw_shadow(
+                pass,
+                slot,
+                &self.empty_group,
+                &material,
+                &self.vgeo_gate(frame),
+            );
         }
         // Grass near the camera (the first cascades only; group 2 = the grass casters).
         if grass
@@ -2572,8 +2638,14 @@ impl Renderer {
                             &self.draws_bind_group,
                             &self.empty_group,
                         ];
-                        self.vgeo
-                            .raster_visibility(encoder, target.depth_view(), phase, groups);
+                        self.vgeo.raster_visibility(
+                            encoder,
+                            target.depth_view(),
+                            phase,
+                            groups,
+                            &material,
+                            &self.vgeo_gate(frame),
+                        );
                         self.mark(encoder, "Virtual geometry: visibility raster");
                         pass = self.begin_main(
                             encoder,
@@ -2585,10 +2657,12 @@ impl Renderer {
                             !last || copy || keep_depth || grass_vis,
                         );
                         pass.set_bind_group(1, self.lit_group(), &[]);
-                        self.vgeo.resolve(&mut pass, &material);
+                        self.vgeo
+                            .resolve(&mut pass, phase, &material, &self.vgeo_gate(frame));
                         self.mark_pass(&mut pass, "Main: virtual geometry (resolve)");
                     } else {
-                        self.vgeo.draw_main(&mut pass, phase, &material);
+                        self.vgeo
+                            .draw_main(&mut pass, phase, &material, &self.vgeo_gate(frame));
                         self.mark_pass(&mut pass, "Main: virtual geometry");
                     }
                 }
@@ -2782,7 +2856,10 @@ impl Renderer {
             return false;
         }
         if self.grass_vis.is_none() {
-            self.grass_vis = Some(grass_vis::VisPipelines::new(device, &self.pipelines));
+            crate::profile_scope!("GrassVis.Pipelines");
+            let built = (self.grass_vis_prebuilt.take())
+                .unwrap_or_else(|| grass_vis::VisPipelines::new(device, &self.pipelines));
+            self.grass_vis = Some(built);
         }
         let Some(Some(pipes)) = &self.grass_vis else {
             return false;
@@ -3446,6 +3523,8 @@ fn view_ray(cam: &Camera, aspect: f32) -> [[f32; 4]; 2] {
 
 #[cfg(test)]
 mod benchmark;
+#[cfg(test)]
+mod golden_tests;
 #[cfg(test)]
 mod gpu_checks;
 #[cfg(test)]

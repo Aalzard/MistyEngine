@@ -119,6 +119,13 @@ pub(crate) fn view_group(
     })
 }
 
+/// Froxel, sharp shaft and sun shaft pipelines built together on a worker.
+type Prebuilt = (
+    froxels::FroxelPipelines,
+    sharp_shafts::SharpPipelines,
+    sun_shafts::ShaftPipelines,
+);
+
 /// Per-view state (keyed by [`RenderTarget::id`]).
 #[derive(Default)]
 struct TargetState {
@@ -145,6 +152,9 @@ pub(crate) struct Volumetrics {
     froxels: Option<froxels::FroxelPipelines>,
     shafts: Option<sun_shafts::ShaftPipelines>,
     sharp: Option<sharp_shafts::SharpPipelines>,
+    /// The three pipeline sets above, built on a worker since the renderer was made
+    /// (streaming only, see `render::prebuilt`).
+    prebuilt: crate::render::prebuilt::Prebuilt<Prebuilt>,
     targets: HashMap<u64, TargetState>,
     renders: u64,
     clock: std::time::Instant,
@@ -185,12 +195,41 @@ impl Volumetrics {
             froxels: None,
             shafts: None,
             sharp: None,
+            prebuilt: Default::default(),
             targets: HashMap::new(),
             renders: 0,
             clock: std::time::Instant::now(),
             froxels_now: None,
             shafts_now: false,
             sharp_now: false,
+        }
+    }
+
+    /// Start building the froxel and shaft pipelines on a worker thread (streaming only), so
+    /// the first frame of a foggy scene does not compile them.
+    pub fn prebuild(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view_layout: &wgpu::BindGroupLayout,
+    ) {
+        let (device, queue, layout) = (device.clone(), queue.clone(), view_layout.clone());
+        self.prebuilt =
+            crate::render::prebuilt::Prebuilt::spawn("misty volumetrics pipelines", move || {
+                (
+                    froxels::FroxelPipelines::new(&device),
+                    sharp_shafts::SharpPipelines::new(&device, &queue, &layout),
+                    sun_shafts::ShaftPipelines::new(&device, &layout),
+                )
+            });
+    }
+
+    /// Install the prebuilt pipelines (waiting for the worker if needed) before first use.
+    fn take_prebuilt(&mut self) {
+        if let Some((froxels, sharp, shafts)) = self.prebuilt.take() {
+            self.froxels.get_or_insert(froxels);
+            self.sharp.get_or_insert(sharp);
+            self.shafts.get_or_insert(shafts);
         }
     }
 
@@ -223,6 +262,9 @@ impl Volumetrics {
             }
             return;
         };
+        if self.sharp.is_none() {
+            self.take_prebuilt();
+        }
         let pipelines = self
             .sharp
             .get_or_insert_with(|| sharp_shafts::SharpPipelines::new(device, queue, view_layout));
@@ -313,10 +355,15 @@ impl Renderer {
                 rebuild = true;
             }
             if v.froxels.is_none() {
+                v.take_prebuilt();
+            }
+            if v.froxels.is_none() {
+                crate::profile_scope!("Volumetrics.FroxelPipelines");
                 v.froxels = Some(froxels::FroxelPipelines::new(device));
             }
             let state = v.targets.entry(target.id).or_default();
             if state.history.as_ref().map(|h| h.size) != Some(size) {
+                crate::profile_scope!("Volumetrics.History");
                 state.history = Some(froxels::History::new(device, size));
             }
             let history = state.history.as_mut().expect("history");
@@ -372,6 +419,9 @@ impl Renderer {
 
         v.shafts_now = false;
         if let Some(u) = sun_shafts::uniform(frame, aspect) {
+            if v.shafts.is_none() {
+                v.take_prebuilt();
+            }
             if v.shafts.is_none() {
                 v.shafts = Some(sun_shafts::ShaftPipelines::new(
                     device,

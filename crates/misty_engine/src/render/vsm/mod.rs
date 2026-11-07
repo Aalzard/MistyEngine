@@ -549,13 +549,7 @@ impl VsmGpu {
             let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("misty vsm mark"),
                 source: wgpu::ShaderSource::Wgsl(
-                    format!(
-                        "{}
-{COMMON_SRC}
-{src}",
-                        super::pipelines::COMMON
-                    )
-                    .into(),
+                    format!("{}\n{COMMON_SRC}\n{src}", super::pipelines::COMMON).into(),
                 ),
             });
             let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -570,7 +564,7 @@ impl VsmGpu {
                 module: &module,
                 entry_point: Some("cs_vsm_mark"),
                 compilation_options: Default::default(),
-                cache: None,
+                cache: crate::render::pipeline_cache(device).as_ref(),
             });
             (pipeline, layout)
         };

@@ -1027,21 +1027,45 @@ fn atlas_mips(image: image::RgbaImage) -> Vec<image::RgbaImage> {
     chain
 }
 
+/// The built-in atlas decoded with its coverage-keeping mips: (width, height, levels, texels).
+/// Made once per process (40 ms of PNG decoding and filtering), on a worker thread when
+/// [`prewarm_atlas`] ran first.
+fn atlas_data() -> &'static (u32, u32, u32, Vec<u8>) {
+    static DATA: std::sync::OnceLock<(u32, u32, u32, Vec<u8>)> = std::sync::OnceLock::new();
+    DATA.get_or_init(|| {
+        let image = image::load_from_memory(ATLAS_PNG)
+            .expect("built-in grass atlas")
+            .into_rgba8();
+        let (w, h) = image.dimensions();
+        let chain = atlas_mips(image);
+        let data = chain
+            .iter()
+            .flat_map(|m| m.as_raw().iter().copied())
+            .collect();
+        (w, h, chain.len() as u32, data)
+    })
+}
+
+/// Start decoding the grass atlas on a worker thread (once per process).
+pub(super) fn prewarm_atlas() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        let _ = std::thread::Builder::new()
+            .name("misty grass atlas".into())
+            .spawn(|| {
+                atlas_data();
+            });
+    });
+}
+
 /// Upload the grass atlas with coverage-keeping mips (sRGB) and its clamped trilinear,
 /// anisotropic sampler (cards are seen at grazing angles).
 pub(super) fn atlas(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> (wgpu::TextureView, wgpu::Sampler) {
-    let image = image::load_from_memory(ATLAS_PNG)
-        .expect("built-in grass atlas")
-        .into_rgba8();
-    let (w, h) = image.dimensions();
-    let chain = atlas_mips(image);
-    let data: Vec<u8> = chain
-        .iter()
-        .flat_map(|m| m.as_raw().iter().copied())
-        .collect();
+    let (w, h, levels, data) = atlas_data();
+    let (w, h, levels) = (*w, *h, *levels);
     let texture = wgpu::util::DeviceExt::create_texture_with_data(
         device,
         queue,
@@ -1052,7 +1076,7 @@ pub(super) fn atlas(
                 height: h,
                 depth_or_array_layers: 1,
             },
-            mip_level_count: chain.len() as u32,
+            mip_level_count: levels,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -1060,7 +1084,7 @@ pub(super) fn atlas(
             view_formats: &[],
         },
         wgpu::util::TextureDataOrder::LayerMajor,
-        &data,
+        data,
     );
     let view = texture.create_view(&Default::default());
     let sampler = device.create_sampler(&wgpu::SamplerDescriptor {

@@ -7,11 +7,11 @@
 
 use glam::Vec3;
 
-use super::{Cluster, Sphere, VirtualMesh};
+use super::{Cluster, Group, Sphere, VirtualMesh};
 
 const MAGIC: &[u8; 8] = b"MISTYVG\0";
 /// Bumped whenever the layout or the builder's output changes.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// One mesh of a `.vgeo` file.
 #[derive(Clone, Debug)]
@@ -119,8 +119,13 @@ pub fn write(meshes: &[Option<(u64, f32, &VirtualMesh)>]) -> Vec<u8> {
         w.sphere(v.bounds);
         w.u32(v.levels);
         w.u64(v.source_triangles as u64);
-        w.u32(v.groups);
         w.u32(v.stuck_groups);
+        w.u32(v.materials);
+        w.u32(v.groups.len() as u32);
+        for g in &v.groups {
+            w.sphere(g.sphere);
+            w.f32(g.error);
+        }
         w.u32(v.clusters.len() as u32);
         for c in &v.clusters {
             w.u32(c.first);
@@ -133,6 +138,7 @@ pub fn write(meshes: &[Option<(u64, f32, &VirtualMesh)>]) -> Vec<u8> {
             w.u32(c.level);
             w.u32(c.group);
             w.u32(c.parent_group);
+            w.u32(c.material);
             w.vec3(c.cone_axis);
             w.f32(c.cone_cutoff);
         }
@@ -145,7 +151,7 @@ pub fn write(meshes: &[Option<(u64, f32, &VirtualMesh)>]) -> Vec<u8> {
 }
 
 /// Bytes of one cluster record.
-const CLUSTER_BYTES: usize = 4 * 23;
+const CLUSTER_BYTES: usize = 4 * 24;
 
 /// Read a file written by [`write`] (`None` for another version or a damaged file).
 pub fn read(bytes: &[u8]) -> Option<Vec<Option<Entry>>> {
@@ -165,8 +171,16 @@ pub fn read(bytes: &[u8]) -> Option<Vec<Option<Entry>>> {
         let bounds = r.sphere()?;
         let levels = r.u32()?;
         let source_triangles = r.u64()? as usize;
-        let groups = r.u32()?;
         let stuck_groups = r.u32()?;
+        let materials = r.u32()?;
+        let n = r.count(20)?;
+        let mut groups = Vec::with_capacity(n);
+        for _ in 0..n {
+            groups.push(Group {
+                sphere: r.sphere()?,
+                error: r.f32()?,
+            });
+        }
         let n = r.count(CLUSTER_BYTES)?;
         let mut clusters = Vec::with_capacity(n);
         for _ in 0..n {
@@ -181,6 +195,7 @@ pub fn read(bytes: &[u8]) -> Option<Vec<Option<Entry>>> {
                 level: r.u32()?,
                 group: r.u32()?,
                 parent_group: r.u32()?,
+                material: r.u32()?,
                 cone_axis: r.vec3()?,
                 cone_cutoff: r.f32()?,
             });
@@ -190,10 +205,15 @@ pub fn read(bytes: &[u8]) -> Option<Vec<Option<Entry>>> {
         for _ in 0..n {
             indices.push(r.u32()?);
         }
-        // Every cluster's triangles must be inside the index list.
-        let fits = clusters
-            .iter()
-            .all(|c| (c.first as u64 + 3 * c.triangles as u64) <= indices.len() as u64);
+        // Every cluster's triangles must be inside the index list, its groups in the group
+        // list (or none) and its part among the parts.
+        let group_ok = |g: u32| g == super::NO_GROUP || (g as usize) < groups.len();
+        let fits = clusters.iter().all(|c| {
+            (c.first as u64 + 3 * c.triangles as u64) <= indices.len() as u64
+                && group_ok(c.group)
+                && group_ok(c.parent_group)
+                && c.material < materials
+        });
         if !fits {
             return None;
         }
@@ -202,12 +222,13 @@ pub fn read(bytes: &[u8]) -> Option<Vec<Option<Entry>>> {
             build_ms,
             mesh: VirtualMesh {
                 clusters,
+                groups,
                 indices,
                 bounds,
                 levels,
                 source_triangles,
-                groups,
                 stuck_groups,
+                materials,
             },
         }));
     }

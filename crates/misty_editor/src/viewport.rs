@@ -33,8 +33,22 @@ pub struct Gpu {
 
 impl Gpu {
     pub fn new(state: egui_wgpu::RenderState) -> Self {
-        let renderer = Renderer::with_queue(&state.device, &state.queue);
-        let ui = UiRenderer::new(&state.device, &state.queue);
+        misty_engine::render::cache_shader_modules(&state.device);
+        // Compiled pipelines from earlier launches (Vulkan): a new build of the editor starts
+        // with the driver's own cache empty.
+        misty_engine::render::open_pipeline_cache(
+            &state.device,
+            &state.adapter.get_info(),
+            &misty_engine::assets::absolute("Library/ShaderCache"),
+        );
+        let renderer = {
+            misty_engine::profile_scope!("Renderer.New");
+            Renderer::with_queue(&state.device, &state.queue)
+        };
+        let ui = {
+            misty_engine::profile_scope!("UiRenderer.New");
+            UiRenderer::new(&state.device, &state.queue)
+        };
         Self {
             state,
             renderer,
@@ -77,6 +91,13 @@ impl Gpu {
         frame: &Frame,
         effects: &[misty_engine::vfx::EffectDraw],
     ) -> egui::TextureId {
+        misty_engine::profile_scope!(
+            match view {
+                ViewId::Scene => "Editor.SceneView",
+                ViewId::Game => "Editor.GameView",
+            },
+            misty_engine::profiler::Category::Rendering
+        );
         // The previewed quality level (shadow resolution, effects).
         let generation = misty_engine::quality::generation();
         if generation != self.quality {
@@ -129,6 +150,8 @@ impl Gpu {
             vp.filter = Some(filter);
         }
         let target = vp.target.as_ref().expect("target created above");
+        // The Scene view shares the Game view's Misty GI clipmaps when its camera is near.
+        target.set_misty_gi_secondary(matches!(view, ViewId::Scene));
         self.renderer.render_with_effects(
             &self.state.device,
             &self.state.queue,

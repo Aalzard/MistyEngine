@@ -1,0 +1,1 @@
+NVIDIA GeForce RTX 4060 (Vulkan, driver NVIDIA 610.88)

@@ -15,7 +15,7 @@ use crate::render::environment::Environment;
 use crate::render::gpu_tests::{headless, read_back};
 use crate::render::lod::LodRange;
 use crate::render::{
-    Frame, LightData, MaterialParams, MeshDraw, RenderOptions, RenderTarget, Renderer,
+    Frame, LightData, MaterialParams, MeshDraw, RenderOptions, RenderTarget, Renderer, VgeoDebug,
 };
 use crate::scene::{LightType, MeshRef, PrimitiveMesh, Shadows};
 use crate::vgeo::rock;
@@ -259,6 +259,263 @@ fn virtual_rock_matches_the_mesh_path() {
         coarse_stats.shadow_triangles
     );
     crate::models::runtime::unregister("vgeo-test-rock");
+}
+
+/// A rock of two parts (as a glTF mesh with two primitives): the -x side Opaque, the +x side
+/// Cutout with a checker of holes. Through clusters (one instance, one hierarchy, each cluster
+/// in its part's material slot) it looks like the two meshes drawn the ordinary way, holes and
+/// their shadow included.
+#[test]
+fn virtual_parts_and_cutout_match_the_mesh_path() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let data = rock::rock(5, 4);
+    let tris = data.indices.as_chunks::<3>().0;
+    let side = |t: &[u32; 3]| {
+        t.iter()
+            .map(|&v| data.vertices[v as usize].position[0])
+            .sum::<f32>()
+            > 0.0
+    };
+    let part = |plus: bool| crate::render::mesh::MeshData {
+        vertices: data.vertices.clone(),
+        indices: tris
+            .iter()
+            .filter(|t| side(t) == plus)
+            .flatten()
+            .copied()
+            .collect(),
+    };
+    let parts = vec![part(false), part(true)];
+    let plain = crate::models::runtime::register_meshes("vgeo-test-parts-plain", parts.clone());
+    let virt = crate::models::runtime::register_virtual_parts("vgeo-test-parts", parts);
+    let key = |base: &str, i: usize| MeshRef::Asset(format!("{}#{i}", base.trim_end_matches("#0")));
+
+    // A checker of holes in the albedo alpha.
+    let texture = "runtime://vgeo-test-holes";
+    let image = image::RgbaImage::from_fn(64, 64, |x, y| {
+        let hole = ((x / 8) + (y / 8)) % 2 == 0;
+        image::Rgba([200, 190, 170, if hole { 0 } else { 255 }])
+    });
+    crate::video::textures::publish(texture, &image);
+    let opaque = rock_material();
+    let cutout = MaterialParams {
+        mode: crate::render::RenderingMode::Cutout,
+        albedo_map: Some(texture.to_owned()),
+        color: [0.8, 0.5, 0.3, 1.0],
+        ..rock_material()
+    };
+    let at = Mat4::from_scale_rotation_translation(
+        Vec3::splat(1.0),
+        Quat::from_rotation_y(2.2),
+        Vec3::new(0.0, 0.7, 0.0),
+    );
+    let cam = camera(Vec3::new(2.5, 2.2, -4.0), Vec3::new(0.0, 0.5, 0.0));
+    let scene = |base: &str| {
+        vec![
+            ground(20.0),
+            mesh_draw(key(base, 0), at, &opaque),
+            mesh_draw(key(base, 1), at, &cutout),
+        ]
+    };
+
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_quality(&device, &quality(false, 1.0));
+    let target = r.create_target(&device, 480, 320);
+    let reference = render(&device, &queue, &mut r, &target, &cam, &scene(&plain), 4);
+
+    let mut v = Renderer::with_queue(&device, &queue);
+    v.set_quality(&device, &quality(true, 0.1));
+    let target_v = v.create_target(&device, 480, 320);
+    for visibility in [true, false] {
+        v.set_virtual_geometry_visibility(visibility);
+        let img = render(&device, &queue, &mut v, &target_v, &cam, &scene(&virt), 4);
+        let stats = v.virtual_geometry_stats(&device, &queue);
+        // Both parts in one instance, both drawn, nothing dropped.
+        assert_eq!((stats.instances, stats.dropped), (1, 0), "{stats:?}");
+        assert!(
+            stats.triangles > 0 && stats.shadow_triangles > 0,
+            "{stats:?}"
+        );
+        let (mean, off) = difference(&reference, &img);
+        eprintln!(
+            "parts + cutout, visibility {visibility}: mean {mean:.3}, {:.3} % off",
+            off * 100.0
+        );
+        assert!(
+            mean < 1.5 && off < 0.006,
+            "visibility {visibility}: mean {mean}, {:.3} % off",
+            off * 100.0
+        );
+    }
+    // The holes are there: the cutout part without its texture looks different.
+    let solid = MaterialParams {
+        mode: crate::render::RenderingMode::Opaque,
+        albedo_map: None,
+        ..cutout.clone()
+    };
+    let filled = vec![
+        ground(20.0),
+        mesh_draw(key(&virt, 0), at, &opaque),
+        mesh_draw(key(&virt, 1), at, &solid),
+    ];
+    let img = render(&device, &queue, &mut v, &target_v, &cam, &filled, 4);
+    assert!(
+        difference(&reference, &img).1 > 0.01,
+        "the holes should show"
+    );
+    crate::models::runtime::unregister("vgeo-test-parts");
+    crate::video::textures::remove(texture);
+}
+
+/// The tools see virtual geometry: the Stats counters arrive without a blocking readback, the
+/// Profiler's memory counts the pool, every Scene view debug view draws something else than
+/// the materials, and the Frame Debugger lists the culling and batch draws (and can stop the
+/// frame before them).
+#[test]
+fn virtual_geometry_shows_in_stats_debug_views_and_frame_debugger() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let virt = MeshRef::Asset(crate::models::runtime::register_virtual(
+        "vgeo-test-tools-rock",
+        rock::rock(4, 9),
+    ));
+    let at = Mat4::from_translation(Vec3::new(0.0, 0.6, 0.0));
+    let cam = camera(Vec3::new(2.5, 2.2, -4.0), Vec3::new(0.0, 0.5, 0.0));
+    let scene = vec![ground(20.0), mesh_draw(virt, at, &rock_material())];
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_quality(&device, &quality(true, 1.0));
+    let target = r.create_target(&device, 480, 320);
+    let plain = render(&device, &queue, &mut r, &target, &cam, &scene, 6);
+
+    // Stats: read back a frame or two late, without waiting; the same as the blocking read.
+    let exact = r.virtual_geometry_stats(&device, &queue);
+    let _ = device.poll(wgpu::PollType::wait_indefinitely());
+    render(&device, &queue, &mut r, &target, &cam, &scene, 2);
+    let s = r.stats();
+    assert_eq!(s.vgeo_instances, 1, "{s:?}");
+    assert_eq!(s.vgeo_triangles, exact.triangles, "{s:?} vs {exact:?}");
+    assert_eq!(s.vgeo_clusters, exact.clusters);
+    assert!(
+        s.vgeo_shadow_triangles > 0 && s.vgeo_memory > exact.pool_bytes,
+        "{s:?}"
+    );
+    assert_eq!(r.memory().virtual_geometry_bytes, s.vgeo_memory);
+
+    // Debug views: this render only, each unlike the materials (and unlike each other).
+    let mut seen: Vec<Vec<u8>> = Vec::new();
+    for view in [
+        VgeoDebug::Clusters,
+        VgeoDebug::Levels,
+        VgeoDebug::Overdraw,
+        VgeoDebug::Materials,
+    ] {
+        r.set_virtual_geometry_debug_view(view);
+        let img = render(&device, &queue, &mut r, &target, &cam, &scene, 1);
+        let (mean, _) = difference(&plain, &img);
+        assert!(mean > 2.0, "{view:?}: mean {mean}");
+        for other in &seen {
+            assert!(
+                difference(other, &img).0 > 0.5,
+                "{view:?} like an earlier view"
+            );
+        }
+        seen.push(img);
+    }
+    let back = render(&device, &queue, &mut r, &target, &cam, &scene, 1);
+    assert!(
+        difference(&plain, &back).0 < 0.5,
+        "the debug view lasts one render"
+    );
+
+    // Frame Debugger: the culling and the batch draws are events.
+    r.begin_capture(Default::default());
+    render(&device, &queue, &mut r, &target, &cam, &scene, 1);
+    let capture = r.end_capture().expect("captured");
+    let names: Vec<&str> = capture.events.iter().map(|e| e.name.as_str()).collect();
+    let culling = names
+        .iter()
+        .filter(|n| n.starts_with("Dispatch Virtual Geometry Culling"))
+        .count();
+    assert!(culling >= 3, "camera phases and shadow maps: {names:?}");
+    assert!(
+        names
+            .iter()
+            .any(|n| n.starts_with("Draw Virtual Geometry Casters")),
+        "{names:?}"
+    );
+    let vis = exact.visibility;
+    let main_draw = match vis {
+        true => "Resolve Virtual Geometry",
+        false => "Draw Virtual Geometry Clusters",
+    };
+    let at_main = names
+        .iter()
+        .position(|n| n.starts_with(main_draw))
+        .unwrap_or_else(|| panic!("no {main_draw}: {names:?}"));
+    if vis {
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with("Draw Virtual Geometry Ids"))
+        );
+    }
+    assert!(capture.roots().iter().any(|r| r == "Virtual Geometry"));
+    // Stopped just before the rock's main-pass draw: no rock in the colour target.
+    r.begin_capture(crate::render::CaptureRequest {
+        stop_after: Some(at_main - 1),
+        labels: Vec::new(),
+    });
+    let stopped = render(&device, &queue, &mut r, &target, &cam, &scene, 1);
+    r.end_capture();
+    assert!(
+        difference(&plain, &stopped).1 > 0.01,
+        "stopping should leave the rock out"
+    );
+    crate::models::runtime::unregister("vgeo-test-tools-rock");
+}
+
+/// With the virtual shadow map, virtual geometry casts into more rectangles than the old cap of
+/// six shadow views.
+#[test]
+fn virtual_shadow_maps_get_more_than_six_virtual_geometry_views() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let virt = MeshRef::Asset(crate::models::runtime::register_virtual(
+        "vgeo-test-vsm-rock",
+        rock::rock(4, 3),
+    ));
+    let mut scene = vec![ground(60.0)];
+    for i in 0..40 {
+        let a = i as f32 * 2.4;
+        let d = 2.0 + i as f32 * 1.2;
+        let at = Mat4::from_translation(Vec3::new(a.cos() * d, 0.5, a.sin() * d));
+        scene.push(mesh_draw(virt.clone(), at, &rock_material()));
+    }
+    let cam = camera(Vec3::new(0.0, 4.0, -12.0), Vec3::new(0.0, 0.0, 10.0));
+    let mut r = Renderer::with_queue(&device, &queue);
+    let q = QualityLevel {
+        shadow_mode: crate::quality::ShadowMode::Virtual,
+        ..quality(true, 1.0)
+    };
+    r.set_quality(&device, &q);
+    let target = r.create_target(&device, 640, 360);
+    render(&device, &queue, &mut r, &target, &cam, &scene, 1);
+    let vsm = r.vsm_stats().expect("virtual shadow map");
+    let stats = r.virtual_geometry_stats(&device, &queue);
+    eprintln!("first frame: {} rectangles, {vsm:?}, {stats:?}", vsm.rects);
+    assert!(vsm.rects > 6, "{vsm:?}");
+    assert!(
+        stats.shadow_triangles > 0 && stats.dropped == 0 && stats.dropped_instances == 0,
+        "{stats:?}"
+    );
+    crate::models::runtime::unregister("vgeo-test-vsm-rock");
 }
 
 /// Rocks of the field: the same three generated rocks for both paths.
@@ -582,9 +839,11 @@ fn vgeo_field() {
                 ..QualityLevel::high()
             };
             for (label, draws, vg, debug) in [
-                ("lodgroup", &lod_field, false, false),
-                ("virtual", &virtual_field, true, false),
-                ("clusters", &virtual_field, true, true),
+                ("lodgroup", &lod_field, false, VgeoDebug::Off),
+                ("virtual", &virtual_field, true, VgeoDebug::Off),
+                ("clusters", &virtual_field, true, VgeoDebug::Clusters),
+                ("levels", &virtual_field, true, VgeoDebug::Levels),
+                ("overdraw", &virtual_field, true, VgeoDebug::Overdraw),
             ] {
                 let mut r = Renderer::with_queue(&device, &queue);
                 r.set_quality(
@@ -594,7 +853,7 @@ fn vgeo_field() {
                         ..base.clone()
                     },
                 );
-                r.set_virtual_geometry_debug(debug);
+                r.vgeo.debug = debug;
                 let target = r.create_target(&device, size.0, size.1);
                 let px = render(&device, &queue, &mut r, &target, &cam, draws, 24);
                 save(&format!("{}_{label}", shot.name()), size, px);
@@ -641,6 +900,13 @@ fn vgeo_field() {
                     Path::Virtual,
                     false,
                 ),
+                ("LOD Groups, VSM", &lod_field, Path::LodGroup, false),
+                (
+                    "Virtual Geometry 1 px, VSM",
+                    &virtual_field,
+                    Path::Virtual,
+                    false,
+                ),
             ] {
                 if path == Path::Full && std::env::var("MISTY_VGEO_FULL").is_ok_and(|v| v == "0") {
                     continue;
@@ -651,6 +917,11 @@ fn vgeo_field() {
                     &QualityLevel {
                         virtual_geometry: path == Path::Virtual,
                         virtual_geometry_error: if label.ends_with("2 px") { 2.0 } else { 1.0 },
+                        // "VSM": the sun's virtual shadow map instead of cascades.
+                        shadow_mode: match label.ends_with("VSM") {
+                            true => crate::quality::ShadowMode::Virtual,
+                            false => q.shadow_mode,
+                        },
                         ..q.clone()
                     },
                 );

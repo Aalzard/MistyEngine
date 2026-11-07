@@ -69,6 +69,7 @@ pub(super) fn compute(
     entry: &str,
     layout: &wgpu::BindGroupLayout,
 ) -> wgpu::ComputePipeline {
+    crate::profile_scope!(format!("Pipeline: {name}"));
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(name),
         source: wgpu::ShaderSource::Wgsl(source(body).into()),
@@ -85,7 +86,7 @@ pub(super) fn compute(
         module: &module,
         entry_point: Some(entry),
         compilation_options: Default::default(),
-        cache: None,
+        cache: crate::render::pipeline_cache(device).as_ref(),
     })
 }
 

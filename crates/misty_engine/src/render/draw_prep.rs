@@ -25,7 +25,8 @@ pub(super) struct DrawPrep {
     /// Per draw: mesh fingerprint and model matrix, kept for next frame's motion vectors.
     pub motion: Vec<(u64, glam::Mat4)>,
     /// Per draw: drawn as virtual geometry (pool mesh index) instead of by the CPU lists.
-    pub virtual_mesh: Vec<Option<u32>>,
+    /// Per draw: (pool mesh, material slot) when it draws through virtual geometry clusters.
+    pub virtual_mesh: Vec<Option<(u32, u32)>>,
 }
 
 /// LOD state of every draw for `frame`'s camera.
@@ -90,14 +91,14 @@ impl Renderer {
             };
             let pipeline = pipeline_key(d, state);
             let shadow = shadow_key(d, state);
-            // Virtual geometry takes lit opaque single-sided surfaces of virtual meshes (not
-            // while a LOD Group level fades: the dither needs the cutout shader).
+            // Virtual geometry takes lit Opaque and Cutout single-sided surfaces of virtual
+            // meshes (not while a LOD Group level fades: the dither needs the cutout shader).
             let virtual_mesh = self.vgeo.mesh_index(&d.mesh).filter(|_| {
                 bounds.is_some()
                     && d.material.custom.is_none()
                     && state == LodState::Visible
                     && !pipeline.unlit
-                    && pipeline.mode == RenderingMode::Opaque
+                    && matches!(pipeline.mode, RenderingMode::Opaque | RenderingMode::Cutout)
                     && !pipeline.double_sided
             });
             let group = || self.textures.get_set(&d.material.textures());

@@ -194,7 +194,8 @@ pub fn slug(name: &str) -> String {
 
 /// Work out the bundles, their contents and the catalog for `settings` (nothing is written).
 pub fn plan(project: &Path, settings: &AssetGroupSettings, platform: &str) -> Plan {
-    let guids = GuidDatabase::read(project);
+    // A copy: the dependency walk below is long, the open database stays unlocked meanwhile.
+    let guids: GuidDatabase = crate::asset_db::with_project(project, Clone::clone);
     let mut out = Plan::default();
     out.catalog.version = CATALOG_VERSION;
     out.catalog.platform = platform.to_owned();

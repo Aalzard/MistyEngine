@@ -9,15 +9,21 @@
 //!    are simplified to half with the group's outer border locked, then split into new
 //!    clusters. Repeating on the new clusters builds a DAG of coarser and coarser clusters
 //!    until one cluster is left or simplifying stops paying.
-//! 3. Every cluster stores its own error (the group that made it) and its parent error (the
-//!    group it was simplified into), each with a bounding sphere. A cluster is drawn when its
-//!    own error projects to at most the pixel threshold and its parent's to more
-//!    ([`VirtualMesh::select`]). Errors and spheres only grow towards the roots, so exactly one
-//!    cluster covers each part of the surface for any camera, and because a group switches as
-//!    a whole and its border never moved, neighbouring clusters always meet without cracks.
+//! 3. Every group keeps one error and bounding sphere ([`Group`]); every cluster names the
+//!    group that made it and the group it was simplified into. The level-of-detail decision is
+//!    made once per group ("fine enough": its error projects to at most the pixel threshold),
+//!    and a cluster is drawn when its own group is fine enough and its parent group is not
+//!    ([`VirtualMesh::select`]). Both sides of every group border read the same decision, so
+//!    exactly one level covers each part of the surface for any camera however the numbers
+//!    round, and because a group switches as a whole and its border never moved, neighbouring
+//!    clusters always meet without cracks. Errors and spheres grow towards the roots, so a
+//!    group is fine enough only when its children are (the cut is coherent).
 //!
 //! Simplification only removes vertices (half-edge collapses), so every level indexes the
-//! source mesh's own vertex buffer: no vertex data is added. See docs/pending/virtual-geometry.md.
+//! source mesh's own vertex buffer: no vertex data is added. A mesh of several parts (one per
+//! material, [`VirtualMesh::build_parts`]) is built as one hierarchy whose clusters each hold
+//! one part's triangles ([`Cluster::material`]); parts meet at seams (separate vertices), which
+//! never move. See docs/pending/virtual-geometry.md.
 
 mod cluster;
 mod dag;
@@ -107,6 +113,17 @@ impl Sphere {
     }
 }
 
+/// One group of a [`VirtualMesh`]: clusters simplified together into new clusters. Its error
+/// (object units) is measured from its sphere.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Group {
+    pub sphere: Sphere,
+    pub error: f32,
+}
+
+/// No group: [`Cluster::group`] of the source clusters, [`Cluster::parent_group`] of the roots.
+pub const NO_GROUP: u32 = u32::MAX;
+
 /// One cluster of a [`VirtualMesh`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cluster {
@@ -124,10 +141,13 @@ pub struct Cluster {
     pub parent_error: f32,
     /// 0 = source triangles.
     pub level: u32,
-    /// The group that made it (`u32::MAX` at level 0).
+    /// The group that made it ([`NO_GROUP`] at level 0; `lod` and `error` are its).
     pub group: u32,
-    /// The group it was simplified into (`u32::MAX` at the roots).
+    /// The group it was simplified into ([`NO_GROUP`] at the roots; `parent` and
+    /// `parent_error` are its).
     pub parent_group: u32,
+    /// The part (material slot) its triangles belong to.
+    pub material: u32,
     /// Normal cone of its triangles: the cluster faces away from every eye with
     /// `dot(bounds.center - eye, cone_axis) >= cone_cutoff * |bounds.center - eye| + radius`
     /// ([`Cluster::backfacing`]). `cone_cutoff` > 1 = never (normals spread past 90°).
@@ -168,11 +188,13 @@ pub fn normal_cone(tris: &[[u32; 3]], positions: &[Vec3]) -> (Vec3, f32) {
     (axis, (cutoff + 1e-3).min(1.0))
 }
 
-/// A mesh built for virtual geometry: every cluster of every level, ordered by parent error
-/// (the GPU skips the finest clusters of far objects with one binary search).
+/// A mesh built for virtual geometry: every cluster of every level, ordered by parent error,
+/// and every group, ordered by error (the GPU skips the finest clusters and groups of far
+/// objects with one binary search each).
 #[derive(Clone, Debug, Default)]
 pub struct VirtualMesh {
     pub clusters: Vec<Cluster>,
+    pub groups: Vec<Group>,
     /// Triangles of every cluster, indexing the source vertex buffer.
     pub indices: Vec<u32>,
     /// Holds every cluster's bounds and LOD spheres.
@@ -180,9 +202,10 @@ pub struct VirtualMesh {
     /// Levels in the hierarchy (1 = no simplified level).
     pub levels: u32,
     pub source_triangles: usize,
-    /// Groups that simplified to less than 85 % of their triangles / all groups.
-    pub groups: u32,
+    /// Groups that kept more than 85 % of their triangles.
     pub stuck_groups: u32,
+    /// Parts (material slots): 1 for a single-material mesh.
+    pub materials: u32,
 }
 
 /// A camera for level-of-detail selection.
@@ -215,16 +238,35 @@ impl LodView {
 impl VirtualMesh {
     /// Build the clusters and hierarchy of a triangle mesh (`indices` into `positions`).
     pub fn build(positions: &[Vec3], indices: &[u32]) -> Self {
-        dag::build(positions, indices)
+        dag::build(positions, indices, &[])
     }
 
-    /// Clusters `view` draws (object space). The reference for the GPU selection.
+    /// [`Self::build`] for a mesh of several parts (materials): part `k` owns the vertices from
+    /// `part_starts[k]` on (`part_starts[0]` = 0); a triangle belongs to its first vertex's part.
+    pub fn build_parts(positions: &[Vec3], indices: &[u32], part_starts: &[u32]) -> Self {
+        dag::build(positions, indices, part_starts)
+    }
+
+    /// Is group `g` fine enough for `view`? The one decision both sides of its border read;
+    /// `none` for no group (source clusters: true; the roots' parent: false).
+    pub fn group_fine(&self, g: u32, view: &LodView, none: bool) -> bool {
+        match self.groups.get(g as usize) {
+            Some(gr) => view.projected(gr.sphere, gr.error) <= view.threshold,
+            None => none,
+        }
+    }
+
+    /// Clusters `view` draws (object space). The reference for the GPU selection: each group's
+    /// decision is made once, then every cluster reads its own group's and its parent's.
     pub fn select(&self, view: &LodView) -> Vec<usize> {
+        let fine: Vec<bool> = (0..self.groups.len() as u32)
+            .map(|g| self.group_fine(g, view, false))
+            .collect();
+        let at = |g: u32, none: bool| fine.get(g as usize).copied().unwrap_or(none);
         (0..self.clusters.len())
             .filter(|&i| {
                 let c = &self.clusters[i];
-                view.projected(c.lod, c.error) <= view.threshold
-                    && view.projected(c.parent, c.parent_error) > view.threshold
+                at(c.group, true) && !at(c.parent_group, false)
             })
             .collect()
     }

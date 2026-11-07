@@ -1,9 +1,4 @@
-use std::sync::Mutex;
-
 use super::*;
-
-/// Recording is global: tests that switch it take turns.
-static SERIAL: Mutex<()> = Mutex::new(());
 
 fn busy(ms: f32) {
     let start = Instant::now();
@@ -18,7 +13,7 @@ fn last_frame() -> FrameData {
 
 #[test]
 fn scopes_nest_and_merge_in_the_hierarchy() {
-    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let _serial = test_serial();
     set_enabled(true);
     end_frame(); // start a clean frame
     {
@@ -64,7 +59,7 @@ fn scopes_nest_and_merge_in_the_hierarchy() {
 
 #[test]
 fn disabled_scopes_record_nothing_and_skip_their_name() {
-    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let _serial = test_serial();
     set_enabled(false);
     let mut evaluated = false;
     {
@@ -81,7 +76,7 @@ fn disabled_scopes_record_nothing_and_skip_their_name() {
 
 #[test]
 fn gpu_times_reach_their_frame_and_history_is_capped() {
-    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let _serial = test_serial();
     set_enabled(true);
     let index = frame_index();
     add_gpu_time(index, 1.5); // before the frame ends
@@ -98,7 +93,7 @@ fn gpu_times_reach_their_frame_and_history_is_capped() {
 
 #[test]
 fn capture_writes_one_json_line_per_frame() {
-    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let _serial = test_serial();
     let path = std::env::temp_dir().join("misty_profile_capture_test.jsonl");
     capture::start(&path).unwrap();
     for _ in 0..10 {

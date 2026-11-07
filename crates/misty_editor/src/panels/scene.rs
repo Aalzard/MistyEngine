@@ -14,7 +14,7 @@ use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
 /// Scene view draw modes, indexed by `SceneView::draw_mode` (see the `*_MODE` constants).
-pub const DRAW_MODES: [&str; 13] = [
+pub const DRAW_MODES: [&str; 17] = [
     "Shaded",
     "Wireframe",
     "Shaded Wireframe",
@@ -28,6 +28,10 @@ pub const DRAW_MODES: [&str; 13] = [
     "Virtual Shadow Levels",
     "Virtual Shadow Cache",
     "Virtual Shadow Pages",
+    "Virtual Geometry Clusters",
+    "Virtual Geometry Levels",
+    "Virtual Geometry Overdraw",
+    "Virtual Geometry Materials",
 ];
 /// Wireframe only, no shading.
 const WIREFRAME_MODE: usize = 1;
@@ -53,6 +57,13 @@ const UV_CHARTS_MODE: usize = 9;
 const VSM_LEVELS_MODE: usize = 10;
 const VSM_CACHE_MODE: usize = 11;
 const VSM_PAGES_MODE: usize = 12;
+/// Quality ▸ Virtual Geometry: each cluster in its own colour; the level each cluster comes
+/// from (blue = the source triangles … magenta = the coarsest); layers of cluster triangles
+/// added up (bright = overdraw); each material slot in its own colour.
+const VGEO_CLUSTERS_MODE: usize = 13;
+const VGEO_LEVELS_MODE: usize = 14;
+const VGEO_OVERDRAW_MODE: usize = 15;
+const VGEO_MATERIALS_MODE: usize = 16;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     toolbar(ui, state);
@@ -240,10 +251,23 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 VSM_PAGES_MODE => misty_engine::render::VsmDebug::PageTable,
                 _ => misty_engine::render::VsmDebug::Off,
             });
+            // This render only (the Game view keeps the materials).
+            let vgeo_debug = match sv.draw_mode {
+                VGEO_CLUSTERS_MODE => Some(misty_engine::render::VgeoDebug::Clusters),
+                VGEO_LEVELS_MODE => Some(misty_engine::render::VgeoDebug::Levels),
+                VGEO_OVERDRAW_MODE => Some(misty_engine::render::VgeoDebug::Overdraw),
+                VGEO_MATERIALS_MODE => Some(misty_engine::render::VgeoDebug::Materials),
+                _ => None,
+            };
+            if let Some(view) = vgeo_debug {
+                gpu.renderer.set_virtual_geometry_debug_view(view);
+            }
             let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
             crate::scene_camera::bench::scene_rendered(gpu);
-            // Grass chunks still streaming in: keep drawing so they show up as they land.
-            if gpu.renderer.stats().grass_pending > 0 {
+            // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
+            // show up as they land.
+            let stats = gpu.renderer.stats();
+            if stats.grass_pending > 0 || stats.loading > 0 {
                 ui.ctx().request_repaint();
             }
             ui.painter().image(

@@ -1,6 +1,7 @@
 //! Misty GI settings of one view, resolved from the Post-process Volume override, and the
 //! sizes each quality level uses.
 
+use crate::quality::Tier;
 use crate::scene::{MistyGlobalIlluminationOverride, ScreenSpaceQuality};
 
 /// Misty GI of one view. `Default` = off.
@@ -30,6 +31,40 @@ impl MistyGiSettings {
 
     pub fn active(&self) -> bool {
         self.enabled && self.intensity > 0.0
+    }
+
+    /// Lighting window ▸ Realtime Global Illumination: on at full intensity, at the quality
+    /// the Quality level allows.
+    pub fn scene_default() -> Self {
+        Self {
+            enabled: true,
+            ..Self::default()
+        }
+    }
+
+    /// Capped by Quality ▸ Global Illumination: Off turns it off, otherwise the quality is at
+    /// most the tier's.
+    pub fn capped(self, tier: Tier) -> Self {
+        let cap = match tier {
+            Tier::Off => {
+                return Self {
+                    enabled: false,
+                    ..self
+                };
+            }
+            Tier::Low => ScreenSpaceQuality::Low,
+            Tier::Medium => ScreenSpaceQuality::Medium,
+            Tier::High => ScreenSpaceQuality::High,
+        };
+        let rank = |q: ScreenSpaceQuality| q as u8;
+        Self {
+            quality: if rank(self.quality) > rank(cap) {
+                cap
+            } else {
+                self.quality
+            },
+            ..self
+        }
     }
 
     /// Clipmap, probe and ray budget of the quality level. `MISTY_GI_SIZES=levels,dim,voxel,
@@ -153,6 +188,15 @@ mod tests {
         });
         assert!(s.active());
         assert_eq!(s.intensity, 2.0);
+        assert!(!s.capped(Tier::Off).active());
+        assert_eq!(s.capped(Tier::Low).quality, ScreenSpaceQuality::Low);
+        assert_eq!(s.capped(Tier::High).quality, ScreenSpaceQuality::High);
+        let low = MistyGiSettings {
+            quality: ScreenSpaceQuality::Low,
+            ..s
+        };
+        assert_eq!(low.capped(Tier::High).quality, ScreenSpaceQuality::Low);
+        assert!(MistyGiSettings::scene_default().active());
         let high = s.sizes();
         // Level 0 fits a room, the last level an outdoor view.
         assert_eq!(high.dim as f32 * high.voxel, 4.0);

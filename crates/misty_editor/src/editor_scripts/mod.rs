@@ -412,17 +412,30 @@ pub fn is_editor_script(rel: &str) -> bool {
 
 /// Every editor script under `Assets`, sorted (the load order).
 fn scan(root: &Path) -> Vec<String> {
-    let mut out: Vec<String> = misty_engine::vfs::files_under(&root.join("Assets"))
-        .into_iter()
-        .filter_map(|p| {
-            let rel = p
-                .strip_prefix(root)
-                .ok()?
-                .to_string_lossy()
-                .replace('\\', "/");
-            is_editor_script(&rel).then_some(rel)
+    // The project's GUID database lists every asset (the asset watcher keeps it current from
+    // its own thread): walking `Assets/` here took tens of milliseconds every two seconds.
+    let listed = misty_engine::asset_db::with(|db| {
+        (db.root() == root).then(|| {
+            db.paths()
+                .filter(|p| is_editor_script(p))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
         })
-        .collect();
+    })
+    .flatten();
+    let mut out: Vec<String> = listed.unwrap_or_else(|| {
+        misty_engine::vfs::files_under(&root.join("Assets"))
+            .into_iter()
+            .filter_map(|p| {
+                let rel = p
+                    .strip_prefix(root)
+                    .ok()?
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                is_editor_script(&rel).then_some(rel)
+            })
+            .collect()
+    });
     out.sort();
     out
 }
@@ -473,7 +486,12 @@ pub fn reload(state: &mut EditorState) {
     state.editor_scripts.menus.clear();
     state.editor_scripts.windows.clear();
     state.editor_scripts.inspectors.clear();
-    let lua = match new_lua(state) {
+    misty_engine::profile_scope!("EditorScripts.Reload");
+    let fresh = {
+        misty_engine::profile_scope!("EditorScripts.NewLua");
+        new_lua(state)
+    };
+    let lua = match fresh {
         Ok(l) => l,
         Err(e) => {
             state

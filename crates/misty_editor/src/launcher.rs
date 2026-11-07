@@ -28,7 +28,7 @@ pub enum Launcher {
         tutorial: Option<String>,
         frames: u32,
         /// `MISTY_SPLASH=1` with `MISTY_SCREENSHOT`: capture the splash itself (never loads).
-        capture: Option<crate::capture::Capture>,
+        capture: Option<Box<crate::capture::Capture>>,
         /// The process's one updater, handed to the editor (boxed: it is large).
         updater: Box<Updater>,
     },
@@ -56,7 +56,8 @@ impl Launcher {
             tutorial,
             frames,
             capture: std::env::var_os("MISTY_SPLASH")
-                .and_then(|_| crate::capture::Capture::from_env()),
+                .and_then(|_| crate::capture::Capture::from_env())
+                .map(Box::new),
             updater: Box::new(updater),
         }
     }

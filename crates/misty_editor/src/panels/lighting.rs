@@ -54,10 +54,21 @@ fn scene_page(ui: &mut Ui, state: &mut EditorState) {
     });
     ui.add_space(6.0);
     ui.label(RichText::new("Realtime Lighting").strong());
-    ui.add_enabled(
-        false,
-        egui::Checkbox::new(&mut false, "Realtime Global Illumination"),
-    );
+    let mut gi = state.scene.render_settings.realtime_gi;
+    if ui
+        .checkbox(&mut gi, "Realtime Global Illumination")
+        .on_hover_text(
+            "Misty GI: bounce light, sky occlusion and glossy reflections that follow moving              lights and objects, no baking. Quality ▸ Global Illumination sets how good it is;              a Post-process Volume can override it.",
+        )
+        .changed()
+    {
+        state.scene.render_settings.realtime_gi = gi;
+        state.mark_edited(if gi {
+            "Enable Realtime Global Illumination"
+        } else {
+            "Disable Realtime Global Illumination"
+        });
+    }
     ui.add_space(6.0);
     let mut s = state.scene.render_settings.lightmapping.clone();
     let busy = state.lightmapper.baking();
@@ -495,5 +506,35 @@ mod tests {
         h.run();
         h.get_by_label("Density");
         h.get_by_label("Mode");
+    }
+
+    /// Lighting ▸ Realtime Global Illumination turns Misty GI on for the scene's cameras.
+    #[test]
+    fn realtime_gi_checkbox_turns_misty_gi_on_and_undoes() {
+        let mut h = Harness::builder().with_size([520.0, 640.0]).build_ui_state(
+            |ui, s: &mut EditorState| show(ui, s),
+            state("misty_lighting_gi_test"),
+        );
+        h.run();
+        assert!(
+            !misty_engine::render_scene::post_settings(&h.state().scene)
+                .misty_gi
+                .active()
+        );
+        let s = h.state_mut();
+        s.undo.begin_frame(true, &s.scene, &s.selection, || None);
+        h.get_by_label("Realtime Global Illumination").click();
+        h.run();
+        let s = h.state_mut();
+        assert!(s.scene.render_settings.realtime_gi);
+        assert!(s.scene_dirty);
+        assert!(
+            misty_engine::render_scene::post_settings(&s.scene)
+                .misty_gi
+                .active()
+        );
+        s.undo.end_frame(false);
+        crate::commands::apply(s, Action::Undo);
+        assert!(!s.scene.render_settings.realtime_gi);
     }
 }
