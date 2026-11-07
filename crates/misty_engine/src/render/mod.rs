@@ -1422,6 +1422,7 @@ impl Renderer {
             let first = frame.meshes.len();
             // (Before the frame lists: the virtual shadow map's pages follow the terrain chunks'
             // detail.)
+            (self.terrains).set_shadow_reach(shadow_settings.distance.min(frame.camera.far));
             (self.terrains).select(
                 device,
                 queue,
@@ -2277,6 +2278,7 @@ impl Renderer {
         list: Option<&frame_lists::ShadowList>,
         grass: bool,
         trees: Option<usize>,
+        chunks: Option<&culling::Frustum>,
         stats: &mut RenderStats,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -2303,7 +2305,7 @@ impl Renderer {
         let casters = Casters {
             grass,
             trees,
-            chunks: None,
+            chunks,
         };
         self.draw_casters(&mut pass, frame, slot, lists, list, casters, stats);
     }
@@ -3119,7 +3121,7 @@ struct Casters<'a> {
     grass: bool,
     /// The trees' shadow list to draw (cascades, then virtual shadow map rectangles).
     trees: Option<usize>,
-    /// Only the terrain chunks meeting this frustum (virtual shadow map rectangles).
+    /// Only the terrain chunks meeting this frustum (the shadow map's own view).
     chunks: Option<&'a culling::Frustum>,
 }
 

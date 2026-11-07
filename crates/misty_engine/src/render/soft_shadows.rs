@@ -207,6 +207,11 @@ impl Renderer {
             });
             let grass = grass.is_some();
             let trees = (slot < cascades).then_some(slot);
+            // Terrain chunks outside this map's view (towards the light included) are skipped.
+            let chunks = plan
+                .matrices()
+                .nth(slot)
+                .map(super::culling::Frustum::from_matrix);
             self.shadow_pass(
                 encoder,
                 frame,
@@ -216,6 +221,7 @@ impl Renderer {
                 Some(list),
                 grass,
                 trees,
+                chunks.as_ref(),
                 stats,
             );
         }

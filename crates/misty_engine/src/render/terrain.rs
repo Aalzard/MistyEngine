@@ -81,15 +81,22 @@ fn ground_cover_values() -> [[f32; 4]; 3] {
     [GROUND_COVER, GROUND_TINT, GROUND_FRONT]
 }
 
-/// Per terrain: key, version (and position), (lod, edge mask) of every chunk this frame.
+/// Per terrain: key, version (and position), (lod, edge mask) of every chunk in the shadow
+/// maps this frame.
 pub(super) type ChunkStates = Vec<(String, u64, Vec<(u8, u8)>)>;
 
 /// One chunk drawn this frame.
 #[derive(Clone, Copy)]
 struct ChunkDraw {
     base: i32,
+    /// Level of detail and edge mask in the camera's passes.
     lod: u8,
     mask: u8,
+    /// ... and in the shadow maps (`terrain_lod::shadow_lods`: full detail unless the chunk
+    /// receives sun shadows at a coarser level), so casters keep their shape as the camera
+    /// moves.
+    shadow_lod: u8,
+    shadow_mask: u8,
     /// Inside the camera frustum (shadow passes draw every chunk).
     visible: bool,
     /// Distance from the camera (the camera pass draws near chunks first).
@@ -394,6 +401,9 @@ pub(super) struct TerrainCache {
     grass_atlas: Option<(wgpu::TextureView, wgpu::Sampler)>,
     /// Camera of the current frame (grass LOD).
     camera: Vec3,
+    /// How far from the camera the sun's shadows reach (chunks within it keep their camera
+    /// LOD in the shadow maps; see [`ChunkDraw::shadow_lod`]).
+    shadow_reach: f32,
     frustum: Option<Frustum>,
     started: Instant,
 }
@@ -432,6 +442,7 @@ impl TerrainCache {
             ground_cover: None,
             grass_atlas: None,
             camera: Vec3::ZERO,
+            shadow_reach: 0.0,
             frustum: None,
             started: Instant::now(),
         }
@@ -559,6 +570,12 @@ impl TerrainCache {
             .unwrap_or_else(|| self.started.elapsed().as_secs_f32())
     }
 
+    /// Distance the sun's shadows reach this frame (Quality ▸ Shadow Distance), for the
+    /// chunks' shadow-map detail in the next [`TerrainCache::select`].
+    pub fn set_shadow_reach(&mut self, distance: f32) {
+        self.shadow_reach = distance;
+    }
+
     /// Pick each chunk's LOD and visibility for the camera, and update grass around it
     /// (`time` = [`TerrainCache::grass_time`]).
     #[allow(clippy::too_many_arguments)]
@@ -622,6 +639,12 @@ impl TerrainCache {
                 camera.clamp(b.min, b.max).distance(camera)
             });
             let masks = terrain_lod::masks(per, &lods);
+            let reach = self.shadow_reach;
+            let shadow_lods = terrain_lod::shadow_lods(per, &lods, |c| {
+                let b = bounds(c);
+                camera.clamp(b.min, b.max).distance(camera) < reach
+            });
+            let shadow_masks = terrain_lod::masks(per, &shadow_lods);
             self.chunks.push(
                 (0..per * per)
                     .map(|c| {
@@ -630,6 +653,8 @@ impl TerrainCache {
                             base: ((c / per) * cells * g.res + (c % per) * cells) as i32,
                             lod: lods[c],
                             mask: masks[c],
+                            shadow_lod: shadow_lods[c],
+                            shadow_mask: shadow_masks[c],
                             visible: frustum.intersects(&b),
                             dist: camera.clamp(b.min, b.max).distance(camera),
                             bounds: b,
@@ -807,7 +832,12 @@ impl TerrainCache {
                 order.sort_by(|a, b| a.dist.total_cmp(&b.dist));
             }
             for c in order {
-                let range = p.ranges[c.lod as usize][c.mask as usize].clone();
+                let (lod, mask) = if camera {
+                    (c.lod, c.mask)
+                } else {
+                    (c.shadow_lod, c.shadow_mask)
+                };
+                let range = p.ranges[lod as usize][mask as usize].clone();
                 let count = range.len() as u32;
                 pass.draw_indexed(range, c.base, index..index + 1);
                 stats.draw(1, count, count / 6 + 1);
@@ -848,7 +878,7 @@ impl TerrainCache {
                     pass.set_index_buffer(p.buffer.slice(..), wgpu::IndexFormat::Uint32);
                     bound = true;
                 }
-                let range = p.ranges[c.lod as usize][c.mask as usize].clone();
+                let range = p.ranges[c.shadow_lod as usize][c.shadow_mask as usize].clone();
                 let count = range.len() as u32;
                 pass.draw_indexed(range, c.base, index..index + 1);
                 stats.draw(1, count, count / 6 + 1);
@@ -863,10 +893,9 @@ impl TerrainCache {
             .iter()
             .enumerate()
             .map(|(i, t)| {
-                let chunks = self
-                    .chunks
-                    .get(i)
-                    .map_or(Vec::new(), |c| c.iter().map(|c| (c.lod, c.mask)).collect());
+                let chunks = self.chunks.get(i).map_or(Vec::new(), |c| {
+                    c.iter().map(|c| (c.shadow_lod, c.shadow_mask)).collect()
+                });
                 let pos = t.position;
                 let moved = (pos.x.to_bits() as u64)
                     ^ ((pos.y.to_bits() as u64) << 21)

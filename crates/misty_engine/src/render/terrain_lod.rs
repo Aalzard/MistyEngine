@@ -81,12 +81,17 @@ fn area2(res: usize, tri: [u32; 3]) -> i64 {
 /// LOD per chunk from its distance (`dist(chunk)`, metres) and size, then limited so
 /// neighbours differ by at most one level.
 pub fn select(per_side: usize, chunk_m: f32, top: u8, dist: impl Fn(usize) -> f32) -> Vec<u8> {
-    let mut lods: Vec<u8> = (0..per_side * per_side)
+    let lods: Vec<u8> = (0..per_side * per_side)
         .map(|c| {
             let d = dist(c) / (chunk_m * LOD_DISTANCE).max(1e-3);
             (d.max(1.0).log2().floor() as u8).min(top)
         })
         .collect();
+    limit(per_side, lods)
+}
+
+/// `lods` made finer where needed so that neighbours differ by at most one level.
+pub fn limit(per_side: usize, mut lods: Vec<u8>) -> Vec<u8> {
     loop {
         let mut changed = false;
         for z in 0..per_side {
@@ -104,6 +109,41 @@ pub fn select(per_side: usize, chunk_m: f32, top: u8, dist: impl Fn(usize) -> f3
         }
         if !changed {
             break lods;
+        }
+    }
+}
+
+/// LOD of each chunk in the shadow maps: the finest level, whatever the camera's distance, so
+/// a caster's shape (a hill shadowing the ground far from it) never changes as the camera
+/// moves; chunks that `receive(c)` sun shadows keep their camera LOD (`lods`) so their own
+/// shadow-map surface matches the surface the camera sees (no self-shadowing between two
+/// levels of detail). The other chunks next to coarse receivers step up to them one level at
+/// a time, so neighbours differ by at most one level, as in the camera's pass.
+pub fn shadow_lods(per_side: usize, lods: &[u8], receive: impl Fn(usize) -> bool) -> Vec<u8> {
+    let fixed: Vec<bool> = (0..lods.len()).map(receive).collect();
+    let mut out: Vec<u8> = (0..lods.len())
+        .map(|c| if fixed[c] { lods[c] } else { 0 })
+        .collect();
+    loop {
+        let mut changed = false;
+        for z in 0..per_side {
+            for x in 0..per_side {
+                let c = z * per_side + x;
+                if fixed[c] {
+                    continue;
+                }
+                let need = neighbours(per_side, x, z)
+                    .map(|(nx, nz)| out[nz * per_side + nx].saturating_sub(1))
+                    .max()
+                    .unwrap_or(0);
+                if out[c] < need {
+                    out[c] = need;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break out;
         }
     }
 }
@@ -201,6 +241,35 @@ mod tests {
                 assert!(
                     (area - (cells * cells) as f32).abs() < 1e-3,
                     "lod {lod} mask {mask}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn shadow_lods_follow_the_receivers_only() {
+        let n = 8;
+        let far = |c: usize| (c % n) as f32 * 300.0;
+        let lods = select(n, 64.0, 5, far);
+        // Nothing within the shadow distance is coarse: every chunk at full detail, whatever
+        // the camera's distance (so the casters can't change shape as it moves).
+        let near = shadow_lods(n, &lods, |c| far(c) < 150.0);
+        assert!(near.iter().all(|&l| l == 0), "{near:?}");
+        let moved = select(n, 64.0, 5, |c| far(c) + 250.0);
+        assert_ne!(moved, lods);
+        assert_eq!(shadow_lods(n, &moved, |c| far(c) + 250.0 < 150.0), near);
+        // Receivers keep their camera detail; the rest step down to full detail one level at a time.
+        let wide = shadow_lods(n, &lods, |c| far(c) < 1000.0);
+        for c in 0..n * n {
+            if far(c) < 1000.0 {
+                assert_eq!(wide[c], lods[c]);
+            }
+        }
+        for z in 0..n {
+            for x in 1..n {
+                assert!(
+                    wide[z * n + x - 1].abs_diff(wide[z * n + x]) <= 1,
+                    "{wide:?}"
                 );
             }
         }
