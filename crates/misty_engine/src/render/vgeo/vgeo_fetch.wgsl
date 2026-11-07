@@ -5,19 +5,27 @@
 //   pulled (`vg_fetch`): 384 vertices per cluster, the index read from storage; triangles
 //     past a cluster's count collapse onto one vertex (no area, dropped). No vertex reuse.
 
+// The cluster record (render/vgeo/mod.rs `GpuCluster`, vgeo_cull.wgsl `Cluster`).
 struct VgCluster {
     bounds: vec4<f32>,
-    lod: vec4<f32>,
-    parent: vec4<f32>,
-    error: f32,
+    group: u32,
+    parent_group: u32,
     parent_error: f32,
-    triangles: u32,
+    // Triangles (8 bits) | level << 8 (6 bits) | material slot << 14.
+    packed: u32,
     vertex_first: u32,
     local_first: u32,
     cone_axis: u32,
     cone_cutoff: f32,
-    pad0: u32,
 };
+
+fn vg_triangles(c: VgCluster) -> u32 {
+    return c.packed & 255u;
+}
+
+fn vg_level(c: VgCluster) -> u32 {
+    return (c.packed >> 8u) & 63u;
+}
 
 // Source vertices, 8 words each (render/vgeo/mod.rs `pack_vertex`): position (3 × f32),
 // normal and tangent (octahedral 2 × snorm16, the bitangent sign in the tangent's lowest bit),
@@ -57,7 +65,7 @@ fn vg_corner(c: VgCluster, corner: u32) -> u32 {
 fn vg_fetch(vertex: u32, instance: u32) -> VgVertex {
     let item = vg_visible[instance];
     let c = vg_clusters[item.y];
-    let corner = min(vertex, c.triangles * 3u - 1u);
+    let corner = min(vertex, vg_triangles(c) * 3u - 1u);
     return vg_vertex(vg_corner(c, corner), item);
 }
 

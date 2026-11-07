@@ -175,6 +175,14 @@ pub fn stats_lines(
         ),
         format!("  Occlusion culled: {}", render.occlusion_culled),
         format!(
+            "  Virtual geometry: {} objects  {} clusters  {} tris (shadows {})  {:.1} MB",
+            render.vgeo_instances,
+            fmt_k(render.vgeo_clusters as usize),
+            fmt_k(render.vgeo_triangles as usize),
+            fmt_k(render.vgeo_shadow_triangles as usize),
+            render.vgeo_memory as f64 / (1024.0 * 1024.0)
+        ),
+        format!(
             "  Grass chunks pending: {}   upload {:.1}ms   Shaders built: {}",
             render.grass_pending,
             render.grass_upload_ms,

@@ -12,6 +12,9 @@
 //! The id format follows the grass visibility buffer (grass-study.md B4): raw bits in R32Float
 //! (core WebGPU can't multisample integer targets), bit 30 always set.
 //!
+//! Cutout batches rasterize with their albedo alpha test (their own pipeline, group 2 = their
+//! texture set), so holes never reach the resolve.
+//!
 //! Needs `PRIMITIVE_INDEX` (the triangle of an indexed sub-draw) and the indexed path; without
 //! them, or when the device refuses the pipelines, clusters draw lit as before.
 
@@ -43,6 +46,7 @@ struct Targets {
 
 pub(super) struct Vis {
     raster: wgpu::RenderPipeline,
+    raster_cutout: wgpu::RenderPipeline,
     resolve: wgpu::RenderPipeline,
     resolve_layout: wgpu::BindGroupLayout,
     uniform: wgpu::Buffer,
@@ -111,56 +115,64 @@ impl Vis {
             label: Some("misty vgeo visibility"),
             source: wgpu::ShaderSource::Wgsl(source.into()),
         });
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("misty vgeo visibility"),
-            bind_group_layouts: &[
-                Some(&p.view_layout),
-                Some(&p.draws_layout),
-                Some(&p.empty_layout),
-                Some(render_layout),
-            ],
-            immediate_size: 0,
-        });
         let id_target = Some(wgpu::ColorTargetState {
             format: ID_FORMAT,
             blend: None,
             write_mask: wgpu::ColorWrites::ALL,
         });
-        pipelines::note_pipeline();
-        let raster = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("misty vgeo visibility"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs_cluster_vis"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState {
-                front_face: wgpu::FrontFace::Cw,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: crate::render::DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Less),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: samples,
-                ..Default::default()
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some("fs_cluster_vis"),
-                compilation_options: Default::default(),
-                targets: &[id_target.clone(), id_target],
-            }),
-            multiview_mask: None,
-            cache: crate::render::pipeline_cache(device).as_ref(),
-        });
+        let raster_pipeline = |group2: &wgpu::BindGroupLayout, vs: &str, fs: &str| {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("misty vgeo visibility"),
+                bind_group_layouts: &[
+                    Some(&p.view_layout),
+                    Some(&p.draws_layout),
+                    Some(group2),
+                    Some(render_layout),
+                ],
+                immediate_size: 0,
+            });
+            pipelines::note_pipeline();
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("misty vgeo visibility"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some(vs),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                primitive: wgpu::PrimitiveState {
+                    front_face: wgpu::FrontFace::Cw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: crate::render::DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Less),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: samples,
+                    ..Default::default()
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some(fs),
+                    compilation_options: Default::default(),
+                    targets: &[id_target.clone(), id_target.clone()],
+                }),
+                multiview_mask: None,
+                cache: crate::render::pipeline_cache(device).as_ref(),
+            })
+        };
+        let raster = raster_pipeline(&p.empty_layout, "vs_cluster_vis", "fs_cluster_vis");
+        let raster_cutout = raster_pipeline(
+            &p.material_layout,
+            "vs_cluster_vis_cutout",
+            "fs_cluster_vis_cutout",
+        );
 
         let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry {
             binding,
@@ -226,6 +238,7 @@ impl Vis {
         });
         Self {
             raster,
+            raster_cutout,
             resolve,
             resolve_layout,
             uniform,
@@ -357,23 +370,42 @@ impl Vis {
         pass
     }
 
+    /// The raster pipeline of an opaque or a cutout batch.
+    pub fn set_raster(&self, pass: &mut wgpu::RenderPass, cutout: bool) {
+        pass.set_pipeline(if cutout {
+            &self.raster_cutout
+        } else {
+            &self.raster
+        });
+    }
+
     /// The resolve of `batches` batches (groups 0 and 1 bound by the main pass).
     pub fn resolve<'a>(
         &self,
         pass: &mut wgpu::RenderPass,
         frame: &VisFrame,
         batches: &[usize],
+        cutout: &[bool],
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        keep: &dyn Fn(usize, usize, bool) -> bool,
     ) {
         pass.set_pipeline(&self.resolve);
         pass.set_bind_group(3, &frame.group, &[]);
         for (i, &draw) in batches.iter().enumerate() {
+            let c = cutout.get(i).copied().unwrap_or(false);
+            if !keep(i, draw, c) {
+                continue;
+            }
             let Some(group) = material(draw) else {
                 continue;
             };
             pass.set_bind_group(2, group, &[]);
-            let first = 2 * i as u32;
-            pass.draw(0..3, first..first + frame.layers);
+            // Instance = (batch × 2 + layer) × 2 + cutout (vgeo_resolve.wgsl).
+            let c = c as u32;
+            for layer in 0..frame.layers {
+                let id = (2 * i as u32 + layer) * 2 + c;
+                pass.draw(0..3, id..id + 1);
+            }
         }
     }
 }

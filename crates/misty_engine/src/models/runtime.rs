@@ -20,6 +20,13 @@ pub fn register_virtual(name: &str, data: MeshData) -> String {
     store(name, vec![data], true)
 }
 
+/// A virtual mesh of several parts (one per material, like a glTF mesh's primitives), built
+/// as one cluster hierarchy: part `i` is "runtime://name#i"; a Mesh Renderer drawing part `i`
+/// with element `i`'s material draws that part's clusters.
+pub fn register_virtual_parts(name: &str, parts: Vec<MeshData>) -> String {
+    store_parts(name, parts, true, true)
+}
+
 /// Drop runtime meshes whose name starts with `prefix`.
 pub fn unregister(prefix: &str) {
     let full = format!("{PREFIX}{prefix}");
@@ -37,6 +44,12 @@ pub fn register_meshes(name: &str, meshes: Vec<MeshData>) -> String {
 }
 
 fn store(name: &str, meshes: Vec<MeshData>, virtual_geometry: bool) -> String {
+    store_parts(name, meshes, virtual_geometry, false)
+}
+
+/// [`store`]; `parts` = the meshes are the primitives of one mesh (one build).
+fn store_parts(name: &str, meshes: Vec<MeshData>, virtual_geometry: bool, parts: bool) -> String {
+    let n = meshes.len();
     let path = format!("{PREFIX}{name}");
     let mut model = Model {
         meshes: meshes
@@ -55,6 +68,7 @@ fn store(name: &str, meshes: Vec<MeshData>, virtual_geometry: bool) -> String {
                 skin: None,
                 blend_shapes: Vec::new(),
                 default_weights: Vec::new(),
+                primitive: (parts && n > 1).then_some((0, i as u32)),
             })
             .collect(),
         virtual_geometry,
@@ -132,6 +146,7 @@ pub fn register_new(name: &str, data: MeshData) -> String {
             skin: None,
             blend_shapes: Vec::new(),
             default_weights: Vec::new(),
+            primitive: None,
         }],
         ..Default::default()
     };

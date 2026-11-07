@@ -48,6 +48,10 @@ pub struct ModelMesh {
     /// Morph targets; the file's default weights (0–100) alongside.
     pub blend_shapes: Vec<BlendShape>,
     pub default_weights: Vec<f32>,
+    /// One primitive of a glTF mesh with several (one per material): the index of that mesh's
+    /// first primitive in [`Model::meshes`] and this one's slot. Virtual Geometry builds the
+    /// primitives as one hierarchy, held by the first ([`virtual_mesh`]).
+    pub primitive: Option<(usize, u32)>,
 }
 
 impl ModelMesh {
@@ -65,6 +69,7 @@ impl ModelMesh {
             skin: None,
             blend_shapes: Vec::new(),
             default_weights: Vec::new(),
+            primitive: None,
         }
     }
 
@@ -334,15 +339,45 @@ pub fn is_virtual(r: &MeshRef) -> bool {
     }
 }
 
+/// A virtual mesh's cluster build ([`virtual_mesh`]).
+pub struct VirtualRef {
+    pub mesh: Arc<crate::vgeo::VirtualMesh>,
+    /// The mesh holding the build: `r` itself, or the first primitive of its glTF mesh when
+    /// the primitives were built together (then [`virtual_vertices`] of it are theirs, joined).
+    pub source: MeshRef,
+    /// `r`'s part of the build ([`crate::vgeo::Cluster::material`]).
+    pub slot: u32,
+}
+
 /// The cluster build of a virtual mesh, once it is ready (`None`: not a virtual mesh, or its
 /// build is still running on a worker).
-pub fn virtual_mesh(r: &MeshRef) -> Option<Arc<crate::vgeo::VirtualMesh>> {
+pub fn virtual_mesh(r: &MeshRef) -> Option<VirtualRef> {
     if !is_virtual(r) {
         return None;
     }
     let (path, index) = r.split_asset()?;
     let model = model(path).ok()?;
-    model.virtual_builds.get(index).map(|b| b.mesh.clone())
+    let (first, slot) = model.meshes.get(index)?.primitive.unwrap_or((index, 0));
+    let mesh = model.virtual_builds.get(first)?.mesh.clone();
+    Some(VirtualRef {
+        mesh,
+        source: MeshRef::asset(path, first),
+        slot,
+    })
+}
+
+/// The vertices a build indexes ([`VirtualRef::source`]): the mesh's own, or every primitive's
+/// of its glTF mesh, in slot order.
+pub fn virtual_vertices(source: &MeshRef) -> Option<Vec<crate::render::mesh::Vertex>> {
+    let (path, index) = source.split_asset()?;
+    let model = model(path).ok()?;
+    let parts = virtual_build::parts(&model, index);
+    Some(
+        parts
+            .iter()
+            .flat_map(|&i| model.meshes[i].data.vertices.iter().copied())
+            .collect(),
+    )
 }
 
 /// Local-space bounds (min, max) of a mesh.
