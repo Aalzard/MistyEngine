@@ -242,6 +242,82 @@ fn new_project_page_creates_and_opens_the_project() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// New Project lists every template with its one-line description (MeadowDemo's says it has a
+/// first-person player); clicking the MeadowDemo card picks it, and Create makes a project
+/// that opens on MeadowDemo.
+#[test]
+fn new_project_page_shows_the_meadow_demo_card() {
+    use crate::templates::{Template, meadow};
+    let dir = temp("meadow_card");
+    let path = dir.join("hub.json");
+    HubConfig {
+        projects_folder: Some(dir.join("Projects")),
+        ..Default::default()
+    }
+    .save(&path)
+    .unwrap();
+    let mut h = harness(&path);
+    h.run();
+    h.state_mut().hub.start_new_project();
+    h.run();
+    for t in Template::ALL {
+        assert!(h.query_all_by_label(t.name()).count() > 0, "{}", t.name());
+        assert!(
+            h.query_all_by_label(t.description()).count() > 0,
+            "{}",
+            t.description()
+        );
+    }
+    assert!(
+        Template::MeadowDemo
+            .description()
+            .contains("first-person player")
+    );
+    if !Template::MeadowDemo.available() {
+        eprintln!("no sample project here: card disabled, not created");
+        let _ = std::fs::remove_dir_all(dir);
+        return;
+    }
+    // Only the card shows the name until it is picked; then the details show it too.
+    h.get_by_label(Template::MeadowDemo.name()).click();
+    h.run();
+    assert_eq!(
+        h.state().hub.new_project.as_ref().unwrap().template,
+        Template::MeadowDemo
+    );
+    assert_eq!(
+        h.query_all_by_label(Template::MeadowDemo.description())
+            .count(),
+        2
+    );
+    h.state_mut().hub.new_project.as_mut().unwrap().name = "Meadow".into();
+    h.run();
+    h.get_by_label("Create project").click();
+    for _ in 0..1500 {
+        // The spinner keeps repainting: step instead of run.
+        h.step();
+        if h.state().opened.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let error = h
+        .state()
+        .hub
+        .new_project
+        .as_ref()
+        .and_then(|n| n.target().err());
+    let opened = h
+        .state()
+        .opened
+        .clone()
+        .unwrap_or_else(|| panic!("not opened: {error:?}"));
+    assert_eq!(opened, dir.join("Projects/Meadow"));
+    assert!(opened.join(meadow::SCENE).is_file());
+    assert!(!opened.join(crate::templates::SCENE).exists());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn learn_and_settings_pages_show() {
     let dir = temp("pages");
