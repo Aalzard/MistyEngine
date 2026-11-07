@@ -2282,8 +2282,17 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Scene view draw modes Virtual Shadow Levels / Cache / Pages; `Renderer::vsm_stats`.
 - MeadowDemo High: 15.44 → 15.17 ms still, 15.45 → 15.24 moving (wide); Medium +0.15–0.4, Low +0.2.
 
-### Not done yet
-- Grass past the near grass map (12 m) doesn't cast in Virtual mode (High 20 m, Ultra 32 m casters before);
-  cached tree shadows don't sway; a moving sun re-renders every page; Medium / Low are slightly slower than
-  their nearly free cascades, so no preset switched yet.
+### Round 2 (branch vsm2, default-ready)
+- Near layer redrawn every frame for casters that sway: grass past the near grass map (High 20 m, Ultra
+  32 m) and trees near the camera (left out of the cached pages; pages re-render as they enter or leave).
+- Turning sun: a second page set fills in the background and takes over (no full re-render, no dropout).
+- Guard band: neighbours of marked pages requested too (late pages on a 90°/s turn 8.3 → 0.1 a frame at
+  Ultra); marking from the screen-space prepass's depth or every other frame; one table load per pixel.
+- Ultra's 4096-page pool fixed (was over the 8192-texel limit).
+- MeadowDemo wide, GPU ms cascaded → virtual: Ultra 21.33 → 19.17, High 15.25 → 15.15, Medium 11.96 →
+  12.13, Low 8.08 → 8.29 (still); faster or equal at Ultra / High walking, turning and with a moving sun.
+- Recommendation (defaults unchanged): Ultra and High could switch to Virtual; Medium and Low stay Cascaded.
 
+### Not done yet
+- Medium / Low remain 0.15–0.45 ms slower in MeadowDemo; trees too large for the near layer keep a cached
+  wind pose; a sun jump over 5° re-renders everything.
