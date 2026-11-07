@@ -756,7 +756,6 @@ fn meadow_demo_matches_its_generator() {
 #[test]
 fn meadow_demo_plays() {
     let root = project();
-    misty_engine::assets::set_project_root(&root);
     let data = TerrainData::load(&root.join(DATA)).unwrap();
     let scene = demo_scene(&data);
     let terrain = scene.find_by_name("Terrain").unwrap();
@@ -765,6 +764,19 @@ fn meadow_demo_plays() {
         .get::<&mut Terrain>(terrain)
         .unwrap()
         .terrain_data = root.join(DATA).to_string_lossy().into_owned();
+    // The rocks' collider meshes by absolute path (other tests move the project root).
+    for f in scene
+        .world
+        .query::<&mut misty_engine::scene::MeshFilter>()
+        .iter()
+    {
+        if let Some(misty_engine::scene::MeshRef::Asset(key)) = &mut f.mesh
+            && key.starts_with("Assets/")
+        {
+            let abs = root.join(key.as_str()).to_string_lossy().into_owned();
+            *key = abs;
+        }
+    }
     let physics = misty_engine::physics::Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
     assert!(physics.warnings.is_empty(), "{:?}", physics.warnings);
 }

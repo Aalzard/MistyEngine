@@ -583,12 +583,7 @@ const GROUPS: &[Group] = &[
     // Near, just left of the first view: the close-up group.
     group(-68.0, 20.0, 6.0, &[LARGE, SMALL, SMALL, COBBLES, COBBLES]),
     // Behind the player and to the sides (seen when turning round).
-    group(
-        165.0,
-        55.0,
-        14.0,
-        &[OUTCROP, SPLIT, SMALL, COBBLES],
-    ),
+    group(165.0, 55.0, 14.0, &[OUTCROP, SPLIT, SMALL, COBBLES]),
     group(-150.0, 38.0, 8.0, &[ROUND, COBBLES, SMALL]),
     group(80.0, 70.0, 10.0, &[SPLIT, SMALL, COBBLES]),
     group(205.0, 150.0, 12.0, &[LARGE, SMALL, COBBLES]),
