@@ -275,7 +275,9 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
 fn grass() -> details::DetailSettings {
     details::DetailSettings {
         enabled: true,
-        density: details::MAX_DENSITY,
+        // The density the demo was made and committed with (11cf089); `MAX_DENSITY` was raised
+        // to 1500 later for MeadowDemo, which left this scene as it was.
+        density: 600.0,
         draw_distance: 40.0,
         height: [0.1, 0.4],
         width: 0.018,
