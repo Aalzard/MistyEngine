@@ -444,3 +444,63 @@ fn meadow_perf_ab() {
         }
     }
 }
+
+/// The final table: per view and level, GPU culling off (≈ `meadow-trees-1`), the default
+/// (culling on), Grass Ground Cover, 2× MSAA and both; the setups interleaved over
+/// `MISTY_AB_ROUNDS` (3) rounds and each one's quietest round kept (other GPU work on the
+/// machine only ever adds time). `MISTY_SIZE`, `MISTY_SCALED` as for `meadow_perf_times`.
+#[test]
+#[ignore = "timing, prints only"]
+fn meadow_perf_matrix() {
+    let Some((device, queue)) = headless() else {
+        return;
+    };
+    let rounds: usize = std::env::var("MISTY_AB_ROUNDS")
+        .ok()
+        .and_then(|r| r.parse().ok())
+        .unwrap_or(3);
+    let (w, h) = std::env::var("MISTY_SIZE")
+        .ok()
+        .and_then(|s| {
+            let (w, h) = s.split_once('x')?;
+            Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?))
+        })
+        .unwrap_or((1920, 1080));
+    let scaled = std::env::var("MISTY_SCALED").is_ok();
+    let shots = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide".into());
+    let setups = ["no culling", "default", "cover", "msaa2", "cover+msaa2"];
+    for shot in shots.split(',') {
+        let Some(v) = view(shot) else {
+            continue;
+        };
+        for (level, quality) in levels() {
+            let s = if scaled { quality.render_scale } else { 1.0 };
+            let size = ((w as f32 * s) as u32, (h as f32 * s) as u32);
+            let setup = |name: &str| {
+                let mut q = quality.clone();
+                crate::render::terrain_grass::set_grass_gpu_cull(name != "no culling");
+                q.grass_ground_cover = name.contains("cover");
+                if name.contains("msaa2") {
+                    q.anti_aliasing = crate::quality::AntiAliasing::X2;
+                }
+                q
+            };
+            let mut best: Vec<Option<super::terrain_grass::gpu_tests::Breakdown>> =
+                (0..setups.len()).map(|_| None).collect();
+            for _ in 0..rounds {
+                for (i, name) in setups.iter().enumerate() {
+                    let b = breakdown(&device, &queue, &v, &setup(name), size);
+                    if best[i].as_ref().is_none_or(|x| b.gpu < x.gpu) {
+                        best[i] = Some(b);
+                    }
+                }
+            }
+            crate::render::terrain_grass::set_grass_gpu_cull(true);
+            eprintln!("== {shot} {level} {}x{}", size.0, size.1);
+            for (name, b) in setups.iter().zip(&best) {
+                let b = b.as_ref().expect("measured");
+                b.print(&format!("{shot} {level} {name}: {:.0} FPS", 1000.0 / b.gpu));
+            }
+        }
+    }
+}
