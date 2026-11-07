@@ -175,7 +175,11 @@ impl MeshSdfs {
 /// Mesh-space triangles of a mesh.
 fn triangles(r: &MeshRef) -> Option<Vec<[Vec3; 3]>> {
     let data = crate::models::mesh(r)?;
-    let p = |i: u32| data.vertices.get(i as usize).map(|v| Vec3::from(v.position));
+    let p = |i: u32| {
+        data.vertices
+            .get(i as usize)
+            .map(|v| Vec3::from(v.position))
+    };
     let tris: Vec<[Vec3; 3]> = data
         .indices
         .as_chunks::<3>()
@@ -244,8 +248,7 @@ pub fn bake(tris: &[[Vec3; 3]]) -> Baked {
     let distances: Vec<f32> = (0..n * n * n)
         .into_par_iter()
         .map(|i| {
-            let p = lo
-                + Vec3::new((i % n) as f32, (i / n % n) as f32, (i / (n * n)) as f32) * step;
+            let p = lo + Vec3::new((i % n) as f32, (i / n % n) as f32, (i / (n * n)) as f32) * step;
             let mut best = f32::MAX;
             let mut winding = 0.0;
             for t in tris {
@@ -283,8 +286,8 @@ mod tests {
         let n = BRICK as usize;
         let step = (b.max - b.min) / (BRICK - 1) as f32;
         for (i, d) in b.distances.iter().enumerate() {
-            let q = b.min
-                + Vec3::new((i % n) as f32, (i / n % n) as f32, (i / (n * n)) as f32) * step;
+            let q =
+                b.min + Vec3::new((i % n) as f32, (i / n % n) as f32, (i / (n * n)) as f32) * step;
             let e = q.abs() - Vec3::splat(0.5);
             let exact = e.max(Vec3::ZERO).length() + e.max_element().min(0.0);
             assert!((d - exact).abs() < 1e-3, "{q} {d} {exact}");

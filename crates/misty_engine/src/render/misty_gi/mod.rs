@@ -402,19 +402,27 @@ impl MistyFrame {
     }
 }
 
-/// World box (min corner) and voxel size of level `k` around `camera`.
-fn level_box(s: &Sizes, k: u32, camera: Vec3) -> (Vec3, f32) {
+/// Where level `k` is centred: a quarter of its width ahead of the camera, so the camera sits
+/// in its back half and what it looks at gets the finer levels (a camera outside a room
+/// looking in would otherwise see the room only in coarse levels).
+fn level_focus(s: &Sizes, k: u32, camera: Vec3, forward: Vec3) -> Vec3 {
+    let width = s.dim as f32 * s.voxel * (1u32 << k) as f32;
+    camera + forward * (0.25 * width)
+}
+
+/// World box (min corner) and voxel size of level `k` centred near `focus`.
+fn level_box(s: &Sizes, k: u32, focus: Vec3) -> (Vec3, f32) {
     let v = s.voxel * (1u32 << k) as f32;
     let snap = 8.0 * v;
-    let center = (camera / snap).floor() * snap;
+    let center = (focus / snap).floor() * snap;
     (center - Vec3::splat(s.dim as f32 * 0.5 * v), v)
 }
 
-/// First probe cell and spacing of level `k` around `camera`.
-fn probe_grid(s: &Sizes, k: u32, camera: Vec3) -> (Vec3, f32) {
+/// First probe cell and spacing of level `k` centred near `focus`.
+fn probe_grid(s: &Sizes, k: u32, focus: Vec3) -> (Vec3, f32) {
     let v = s.voxel * (1u32 << k) as f32;
     let spacing = s.dim as f32 * v / s.probes as f32;
-    let first = (camera / spacing).floor() - Vec3::splat((s.probes / 2) as f32);
+    let first = (focus / spacing).floor() - Vec3::splat((s.probes / 2) as f32);
     (first, spacing)
 }
 
@@ -462,7 +470,9 @@ impl MistyGi {
         let meshes = self
             .meshes
             .get_or_insert_with(|| mesh_sdf::MeshSdfs::new(device));
-        let terrains = self.terrains.get_or_insert_with(|| TerrainAtlas::new(device));
+        let terrains = self
+            .terrains
+            .get_or_insert_with(|| TerrainAtlas::new(device));
         let sizes = settings.sizes();
         let full = target.size();
         let mut slot = target.misty_gi.0.lock().ok()?;
@@ -475,17 +485,16 @@ impl MistyGi {
         let state = slot.as_mut()?;
 
         // The frame's shapes and lights.
-        let list = scene::build(
-            frame,
-            &mut |m| meshes.brick(queue, m),
-            &mut |t| terrains.region(queue, t),
-        );
+        let list = scene::build(frame, &mut |m| meshes.brick(queue, m), &mut |t| {
+            terrains.region(queue, t)
+        });
         let camera = frame.camera.position;
         let mut lists: Vec<u32> = Vec::new();
         let mut levels = [LevelUniform::zeroed(); MAX_LEVELS];
         let mut dirty = Vec::new();
         for k in 0..sizes.levels {
-            let (origin, v) = level_box(&sizes, k, camera);
+            let focus = level_focus(&sizes, k, camera, frame.camera.forward());
+            let (origin, v) = level_box(&sizes, k, focus);
             let margin = Vec3::splat(8.0 * v);
             let hi = origin + Vec3::splat(sizes.dim as f32 * v);
             let indices = scene::cull(&list.instances, origin - margin, hi + margin);
@@ -493,7 +502,7 @@ impl MistyGi {
             if state.hashes[k as usize] != Some(hash) {
                 dirty.push((k as usize, hash));
             }
-            let (first, spacing) = probe_grid(&sizes, k, camera);
+            let (first, spacing) = probe_grid(&sizes, k, focus);
             levels[k as usize] = LevelUniform {
                 sdf: origin.extend(v).to_array(),
                 probe: first.extend(spacing).to_array(),
@@ -579,8 +588,6 @@ impl MistyGi {
             levels,
         };
         queue.write_buffer(&state.params, 0, bytemuck::bytes_of(&params));
-
-
 
         let sampler = wgpu::BindingResource::Sampler(&pipelines.sampler);
         let group = |p: &wgpu::ComputePipeline, entries: &[wgpu::BindGroupEntry]| {
@@ -704,6 +711,9 @@ impl MistyGi {
 mod gpu_tests;
 
 #[cfg(test)]
+mod scene_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use wgpu::naga;
@@ -726,7 +736,10 @@ mod tests {
         validate("surface", SURFACE_SRC);
         validate("probes", PROBES_SRC);
         validate("apply", APPLY_SRC);
-        assert_eq!(std::mem::size_of::<Params>(), 10 * 16 + 64 + 16 + 48 * MAX_LEVELS);
+        assert_eq!(
+            std::mem::size_of::<Params>(),
+            10 * 16 + 64 + 16 + 48 * MAX_LEVELS
+        );
     }
 
     #[test]
@@ -737,11 +750,13 @@ mod tests {
         }
         .sizes();
         let cam = Vec3::new(3.3, 1.7, -8.2);
+        let forward = Vec3::new(0.6, -0.48, 0.64);
         for k in 0..s.levels {
-            let (lo, v) = level_box(&s, k, cam);
+            let focus = level_focus(&s, k, cam, forward);
+            let (lo, v) = level_box(&s, k, focus);
             let hi = lo + Vec3::splat(s.dim as f32 * v);
             assert!(cam.cmpgt(lo + 8.0 * v).all() && cam.cmplt(hi - 8.0 * v).all());
-            let (first, spacing) = probe_grid(&s, k, cam);
+            let (first, spacing) = probe_grid(&s, k, focus);
             let plo = first * spacing;
             let phi = plo + Vec3::splat(s.probes as f32 * spacing);
             assert!(cam.cmpgt(plo).all() && cam.cmplt(phi).all());

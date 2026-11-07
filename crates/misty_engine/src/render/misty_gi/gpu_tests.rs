@@ -94,6 +94,7 @@ fn misty(quality: ScreenSpaceQuality) -> PostSettings {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render(
     renderer: &mut Renderer,
     gpu: &(wgpu::Device, wgpu::Queue),
@@ -252,7 +253,10 @@ fn misty_gi_bounces_light_from_off_screen() {
     save("misty_offscreen_grey", &neutral);
     let (a, b) = (rgb(&cam, &neutral, floor), rgb(&cam, &on, floor));
     eprintln!("floor in front of the camera: grey wall {a}, red wall {b}");
-    assert!(redness(b) > 4.0 && redness(b) > redness(a) + 4.0, "{a} → {b}");
+    assert!(
+        redness(b) > 4.0 && redness(b) > redness(a) + 4.0,
+        "{a} → {b}"
+    );
 }
 
 /// A roof on posts shades the floor under it from the sky (no sun).
@@ -359,8 +363,14 @@ fn misty_gi_follows_a_moving_light() {
     eprintln!(
         "redness {start} → {last} (settled {goal}); half-way after {half:?}, 90 % after {ninety:?} frames"
     );
-    assert!(start > goal + 10.0, "the move changes the bounce: {start} vs {goal}");
-    assert!((last - goal).abs() < 0.15 * (start - goal), "{last} vs {goal}");
+    assert!(
+        start > goal + 10.0,
+        "the move changes the bounce: {start} vs {goal}"
+    );
+    assert!(
+        (last - goal).abs() < 0.15 * (start - goal),
+        "{last} vs {goal}"
+    );
     assert!(half.is_some_and(|f| f <= 20), "{half:?}");
 }
 
@@ -384,9 +394,15 @@ fn read_buffer(gpu: &(wgpu::Device, wgpu::Queue), buffer: &wgpu::Buffer, bytes: 
 }
 
 /// Level 0's SDF at its middle z slice (distance channel), as f32.
-fn read_sdf_slice(gpu: &(wgpu::Device, wgpu::Queue), view: &wgpu::TextureView, dim: u32, z: u32) -> Vec<f32> {
+fn read_sdf_slice(
+    gpu: &(wgpu::Device, wgpu::Queue),
+    view: &wgpu::TextureView,
+    dim: u32,
+    z: u32,
+) -> Vec<f32> {
     let (device, queue) = gpu;
-    let row = (dim * 8).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let row =
+        (dim * 8).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
     let out = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("misty gi test sdf"),
         size: (row * dim) as u64,
@@ -409,7 +425,11 @@ fn read_sdf_slice(gpu: &(wgpu::Device, wgpu::Queue), view: &wgpu::TextureView, d
                 rows_per_image: Some(dim),
             },
         },
-        wgpu::Extent3d { width: dim, height: dim, depth_or_array_layers: 1 },
+        wgpu::Extent3d {
+            width: dim,
+            height: dim,
+            depth_or_array_layers: 1,
+        },
     );
     queue.submit([encoder.finish()]);
     let slice = out.slice(..);
@@ -444,7 +464,11 @@ fn probe_report(gpu: &(wgpu::Device, wgpu::Queue), target: &RenderTarget) -> Vec
         let mut top: Vec<usize> = range.clone().collect();
         top.sort_by(|a, b| probes[b * 16].total_cmp(&probes[a * 16]));
         for &i in top.iter().take(4) {
-            let g = Vec3::new(probes[i * 16 + 12], probes[i * 16 + 13], probes[i * 16 + 14]);
+            let g = Vec3::new(
+                probes[i * 16 + 12],
+                probes[i * 16 + 13],
+                probes[i * 16 + 14],
+            );
             let spacing = s.dim as f32 * s.voxel * (1u32 << k) as f32 / s.probes as f32;
             eprintln!(
                 "    c0 {:.2} at {} (c1 {:.2} {:.2} {:.2})",
@@ -476,7 +500,16 @@ fn misty_gi_probe_diagnostics() {
     let target = renderer.create_target(&gpu.0, W, H);
     let (meshes, lights, cam) = (room(), [sun_on_red_wall()], camera());
     for frames in [1, 4, 8, 16, 32] {
-        render(&mut renderer, &gpu, &target, &cam, &meshes, &lights, misty(q), frames);
+        render(
+            &mut renderer,
+            &gpu,
+            &target,
+            &cam,
+            &meshes,
+            &lights,
+            misty(q),
+            frames,
+        );
         eprintln!("after {frames} more frames:");
         probe_report(&gpu, &target);
     }
@@ -498,23 +531,42 @@ fn misty_gi_builds_the_sdf_and_lights_the_probes() {
         [0.8; 3],
     )];
     let lights: [LightData; 0] = [];
-    render(&mut renderer, &gpu, &target, &cam, &meshes, &lights, misty(ScreenSpaceQuality::High), 8);
+    render(
+        &mut renderer,
+        &gpu,
+        &target,
+        &cam,
+        &meshes,
+        &lights,
+        misty(ScreenSpaceQuality::High),
+        8,
+    );
     probe_report(&gpu, &target);
     let slot = target.misty_gi.0.lock().unwrap();
     let state = slot.as_ref().expect("misty state");
     let s = state.sizes;
     // A vertical line of voxels through the middle of level 1 (x = dim/2, all y, z = dim/2).
     let slice = read_sdf_slice(&gpu, &state.sdf.view, s.dim, s.dim + s.dim / 2);
-    let column: Vec<f32> = (0..s.dim as usize).map(|y| slice[y * s.dim as usize + s.dim as usize / 2]).collect();
-    let (lo, v) = super::level_box(&s, 1, cam.position);
+    let column: Vec<f32> = (0..s.dim as usize)
+        .map(|y| slice[y * s.dim as usize + s.dim as usize / 2])
+        .collect();
+    let focus = super::level_focus(&s, 1, cam.position, cam.forward());
+    let (lo, v) = super::level_box(&s, 1, focus);
     eprintln!("level 1 box from {lo}, voxel {v}: column {column:?}");
-    let probes = read_buffer(&gpu, &state.probes, s.levels as u64 * (s.probes as u64).pow(3) * 64);
+    let probes = read_buffer(
+        &gpu,
+        &state.probes,
+        s.levels as u64 * (s.probes as u64).pow(3) * 64,
+    );
     let n = probes.len() / 16;
     let valid = (0..n).filter(|i| probes[i * 16 + 15] > 0.0).count();
     let inside = (0..n).filter(|i| probes[i * 16 + 15] < 0.0).count();
     let mean_c0: f32 = (0..n).map(|i| probes[i * 16]).sum::<f32>() / n as f32;
     eprintln!("probes: {n}, valid {valid}, inside {inside}, mean red c0 {mean_c0}");
-    assert!(column.iter().any(|&d| d < 0.0) && column.iter().any(|&d| d > 0.0), "floor in the SDF");
+    assert!(
+        column.iter().any(|&d| d < 0.0) && column.iter().any(|&d| d > 0.0),
+        "floor in the SDF"
+    );
     assert!(valid > n / 2, "probes updated");
     assert!(mean_c0 > 0.1, "probes see the sky");
 }

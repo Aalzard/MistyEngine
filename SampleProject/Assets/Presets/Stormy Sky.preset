@@ -92,6 +92,7 @@
     "ambient_occlusion",
     "contact_shadows",
     "screen_space_gi",
-    "screen_space_reflections"
+    "screen_space_reflections",
+    "misty_gi"
   ]
 }

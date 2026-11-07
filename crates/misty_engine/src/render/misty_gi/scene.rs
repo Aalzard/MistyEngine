@@ -11,8 +11,8 @@ use std::hash::{Hash, Hasher};
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
 
-use super::super::{Frame, MeshDraw, srgb_to_linear};
 use super::super::surface::RenderingMode;
+use super::super::{Frame, MeshDraw, srgb_to_linear};
 use crate::scene::{MeshRef, PrimitiveMesh};
 
 /// Shape kinds (`Instance::extent.w`, `gi_common.wgsl`).
@@ -195,11 +195,7 @@ fn mesh_instance(
             }
             PrimitiveMesh::Cylinder => {
                 let r = 0.5 * s.x.max(s.z);
-                a(
-                    KIND_CYLINDER,
-                    Vec3::new(r, s.y, 0.0),
-                    Vec3::new(r, s.y, r),
-                )
+                a(KIND_CYLINDER, Vec3::new(r, s.y, 0.0), Vec3::new(r, s.y, r))
             }
             PrimitiveMesh::Plane => {
                 let h = Vec3::new(5.0 * s.x, 0.0, 5.0 * s.z);
@@ -297,11 +293,7 @@ fn tree_instances(t: &crate::terrain::TerrainDraw, out: &mut Vec<Instance>) {
             Vec3::from(BARK_ALBEDO),
             Vec3::ZERO,
         ));
-        let radii = Vec3::new(
-            width * 0.5,
-            (height - crown_base) * 0.5,
-            width * 0.5,
-        ) * CROWN_SHRINK;
+        let radii = Vec3::new(width * 0.5, (height - crown_base) * 0.5, width * 0.5) * CROWN_SHRINK;
         let leaf = Vec3::from(srgb_to_linear(a.leaf_color)) * LEAF_DARKEN;
         out.push(Instance::analytic(
             KIND_ELLIPSOID,
@@ -462,7 +454,10 @@ mod tests {
         );
         let list = [a, b];
         assert_eq!(cull(&list, Vec3::splat(-2.0), Vec3::splat(2.0)), vec![1]);
-        assert_eq!(cull(&list, Vec3::splat(-20.0), Vec3::splat(20.0)), vec![0, 1]);
+        assert_eq!(
+            cull(&list, Vec3::splat(-20.0), Vec3::splat(20.0)),
+            vec![0, 1]
+        );
         let h0 = level_hash(&list, &[0, 1], Vec3::ZERO, 0);
         let h1 = level_hash(&list, &[0, 1], Vec3::X, 0);
         assert_ne!(h0, h1, "moving the level recomposes it");

@@ -2124,3 +2124,20 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - See "What's left" in docs/pending/meadow-trees.md.
 
+
+## Misty GI 🧪 (prototype, off by default)
+
+### Done (decision 649; docs/pending/misty-gi.md, screenshots `docs/screenshots/gfx/gi_*`)
+- Design: global SDF clipmap from object SDFs + terrain + tree proxies, radiance-cache voxel band,
+  irradiance probe clipmap gather (SSGI first, Misty GI for the rest), radiance cascades evaluated,
+  reflections, optional hardware RT backend, quality levels, Unity-like UI, roadmap.
+- Prototype in `render/misty_gi/` behind Post-process Volume ▸ *Misty Global Illumination* (Intensity,
+  Quality, Lightmapped Surfaces), composed into the lit shaders' existing GI texel.
+- CyclesRoomDemo: within 1–2 sRGB levels of the path-traced lightmap (white and red/green rooms), nothing
+  baked. 1080p RTX 4060: High ≈ 1.1 ms, Medium ≈ 0.6 ms, Low ≈ 0.3 ms; a moving object 0.07 ms.
+- Tests: colour bleeding at every quality, off-screen bounce, sky occlusion under a roof, moving light,
+  SDF and probe sanity; ignored harnesses for timings and comparison renders.
+
+### Not done yet
+- Grass blades and trees don't read the GI term yet (their shaders belong to the grass/tree work); the
+  Lighting-window switch, debug views, reflections, radiance-cascade merge: see the roadmap in the doc.

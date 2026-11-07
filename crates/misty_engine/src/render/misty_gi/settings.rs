@@ -35,7 +35,10 @@ impl MistyGiSettings {
     /// Clipmap, probe and ray budget of the quality level. `MISTY_GI_SIZES=levels,dim,voxel,
     /// probes,rays,stride,apply,visibility` overrides it (tuning).
     pub fn sizes(&self) -> Sizes {
-        if let Some(s) = std::env::var("MISTY_GI_SIZES").ok().and_then(|v| Sizes::parse(&v)) {
+        if let Some(s) = std::env::var("MISTY_GI_SIZES")
+            .ok()
+            .and_then(|v| Sizes::parse(&v))
+        {
             return s;
         }
         match self.quality {
@@ -53,21 +56,21 @@ impl MistyGiSettings {
                 levels: 4,
                 dim: 64,
                 voxel: 0.09375,
-                probes: 20,
-                rays: 32,
+                probes: 16,
+                rays: 24,
                 stride: 4,
                 apply_scale: 2,
-                visibility_steps: 4,
+                visibility_steps: 3,
             },
             ScreenSpaceQuality::High => Sizes {
                 levels: 5,
                 dim: 64,
                 voxel: 0.0625,
-                probes: 24,
+                probes: 20,
                 rays: 32,
                 stride: 4,
                 apply_scale: 2,
-                visibility_steps: 6,
+                visibility_steps: 4,
             },
         }
     }
@@ -96,7 +99,10 @@ pub struct Sizes {
 
 impl Sizes {
     fn parse(v: &str) -> Option<Self> {
-        let n: Vec<f32> = v.split(',').map(|x| x.trim().parse().ok()).collect::<Option<_>>()?;
+        let n: Vec<f32> = v
+            .split(',')
+            .map(|x| x.trim().parse().ok())
+            .collect::<Option<_>>()?;
         let [levels, dim, voxel, probes, rays, stride, apply, vis] = n[..] else {
             return None;
         };

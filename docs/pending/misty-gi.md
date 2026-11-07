@@ -9,7 +9,9 @@ It is the engine's answer to "something like Lumen, faster, without losing the l
 *behaviour and published ideas* (papers, talks), never code, shaders, assets or names.
 
 Status: design below; a working prototype of the core loop is in `render/misty_gi/` behind a
-Post-process Volume override that is **off by default** (see *Prototype* and *Results*).
+Post-process Volume override that is **off by default** (see *Prototype* and *Results*):
+within 1–2 sRGB levels of the path-traced lightmap in the Cycles room, ≈ 1.1 ms at High and
+≈ 0.3 ms at Low (1080p, RTX 4060).
 
 ---
 
@@ -44,7 +46,7 @@ of incoming radiance** (irradiance / π); no extra π anywhere.
      rectangles; SDF shadow rays) + emission + albedo × GI at that point (multi-bounce feedback)
  (3) Final gather                            ▼
      a. Screen-space tier: SSGI rays (existing), misses → b
-     b. World-space tier: irradiance probe clipmap (24³ per level), each probe traces rays
+     b. World-space tier: irradiance probe clipmap (20³ per level), each probe traces rays
         through the SDF, hit → radiance cache, miss → sky; SH L1, temporal hysteresis
      c. Per pixel: trilinear probes × SDF visibility + back-face weight → irradiance
  (4) Denoise: temporal in the probes (hysteresis), bilateral upsample; SSGI keeps its own
@@ -141,17 +143,21 @@ feeds the term.
 
 **Prototype: irradiance probe clipmap** (DDGI-like, but traced through the SDF instead of a BVH):
 
-- `levels` grids of 24³ probes (High), each level the same box as its SDF level (spacing
-  `width / 24`: 17 cm … 2.7 m). Toroidal storage: a probe keeps its world cell, history resets
+- `levels` grids of 20³ probes (High), each level the same box as its SDF level (spacing
+  `width / 20`: 20 cm … 3.2 m). Toroidal storage: a probe keeps its world cell, history resets
   when a new cell scrolls in.
 - Each update a probe traces 32 rays (spherical Fibonacci, randomly rotated every update),
   through the SDF levels; hit → radiance cache, miss → sky radiance in that direction.
 - Stored as **SH L1** radiance (12 floats). Irradiance per normal is the clamped-cosine
   convolution (`c0·Y0 + ⅔·c1·Y1(n)`), slightly windowed against ringing.
-- Amortised: a quarter of the probes per frame, blended with hysteresis 0.85 → full response in
-  about ½ s at 60 fps (see *Results* for moving lights).
+- Amortised: a quarter of the probes per frame, blended with hysteresis 0.85; an update that
+  changes a probe's brightness by more than 25 % blends at 0.5 instead (lights switched or
+  moved). A new probe averages its first updates (1/n) before the hysteresis takes over.
+- Probe rays only hit surfaces they close in on, and not within one voxel of the probe: a
+  probe beside a wall must not see that wall in every direction (on coarse levels the hit
+  epsilon is larger than the probe's distance to the wall).
 - Per pixel (half resolution): the finest level containing the point (blending to the next one at
-  the border), 8 probes trilinearly weighted × **SDF visibility** (a 6-step march from the
+  the border), 8 probes trilinearly weighted × **SDF visibility** (a 4-step march from the
   surface towards each probe; probes behind a wall or inside geometry get ~0) × a soft
   back-face weight. This removes the classic probe leaks without DDGI's depth-moment atlases.
 
@@ -172,7 +178,7 @@ Numbers for a 64 m outdoor clipmap at 1080p:
 | World-space RC, c0 sparse (1 m) | 64×32×64×6 ≈ 0.8 M (+0.4 M, +0.2 M …) | short (interval) | Viable cost, but 1 m c0 = probe-grid resolution: no better than probes near surfaces. |
 | Screen-space c0/c1 (probes on the depth buffer every 4 px, hemispheres) + world-space c2+ | ~0.13 M + 0.07 M + world 0.3 M | c0/c1 very short | **Best of both**: per-pixel detail from short screen-anchored intervals, long rays traced once per sparse world probe and *shared* by thousands of pixels. |
 | Lumen-like screen probes (16 px, 64 rays, full length) | 0.5 M | full | Each long ray is traced per screen probe: no sharing. |
-| **Prototype** probe clipmap (24³ × 5, 32 rays, ¼ per frame) | ~0.55 M | full | Simple, stable, leaks fixed by SDF visibility. |
+| **Prototype** probe clipmap (20³ × 5, 32 rays, ¼ per frame) | ~0.32 M | full | Simple, stable, leaks fixed by SDF visibility. |
 
 Conclusions:
 
@@ -193,8 +199,8 @@ Conclusions:
 
 - **Temporal**: in probe space (hysteresis, per-probe history reset on scroll-in). Probes are
   stable by construction (no per-pixel noise), so no screen-space temporal pass is needed for the
-  world tier. Moving lights lag by the hysteresis (~½ s); production adds a per-probe
-  "luminance change → faster blend" rule (DDGI-style) to cut lag on sudden changes.
+  world tier. Moving lights: half-way to the new bounce in ~18 frames, 90 % in ~80 (the
+  radiance cache and the probes feed each other, so the last bounces settle slowest).
 - **Spatial**: the per-pixel interpolation is smooth (trilinear + visibility); the half-res image
   is bilaterally upsampled in the existing compose pass. SSGI keeps its own temporal + à-trous.
 - Production with screen probes / cascade 0: temporal reprojection of probe radiance + a 3×3
@@ -229,11 +235,15 @@ Cost estimate at half res: 0.5 M rays × ~24 SDF steps ≈ 0.6–0.8 ms on a 406
 
 ## 8. Quality levels and fallbacks
 
-| Level | SDF | Probes | Rays/probe, update rate | Surface light | Apply | Target (1080p, 4060) |
-|---|---|---|---|---|---|---|
-| **High** | 5 × 64³, v0 6.25 cm (4–64 m) | 24³ × 5 | 32, ¼ per frame | all levels each frame | half res, 6-step visibility | ≈ 3–4 ms |
-| **Low** | 4 × 48³, v0 12.5 cm (6–48 m) | 16³ × 4 | 16, ¼ per frame | one level per frame | quarter res, 3-step visibility | ≈ 1–1.5 ms |
-| Off | — | — | — | — | — | 0 (nothing allocated, lit shaders read the zero header) |
+| Level | SDF | Probes | Rays/probe, update rate | Gather | Measured (1080p, 4060) |
+|---|---|---|---|---|---|
+| **High** | 5 × 64³, v0 6.25 cm (4–64 m wide) | 20³ × 5 | 32, ¼ per frame | half res, 4-step visibility | ≈ 1.1 ms |
+| **Medium** | 4 × 64³, v0 9.4 cm (6–48 m) | 16³ × 4 | 24, ¼ per frame | half res, 3-step visibility | ≈ 0.6 ms |
+| **Low** | 4 × 48³, v0 12.5 cm (6–48 m) | 16³ × 4 | 16, ¼ per frame | quarter res, 3-step visibility | ≈ 0.3 ms |
+| Off | — | — | — | — | 0 (nothing allocated, lit shaders read the zero header) |
+
+The surface cache relights every level every frame in the prototype (0.1–0.8 ms); production
+relights one level per frame at Low (roadmap R5).
 
 Fallbacks: no compute/storage support → off (ambient + light probes as today). View too large for
 the texel buffer → off for that view. Transparent objects and water keep the probe / sky ambient
@@ -276,10 +286,109 @@ on), pass-timer marks and Frame Debugger events in `render/mod.rs`, the Inspecto
 
 ## 11. Results
 
-*(Filled in from the measurement runs; see the step log.)*
+### Cost (RTX 4060, 1920×1080, Quality ▸ High, GPU pass timestamps, shared GPU-timing lock)
+
+`misty_gi_scene_pass_times` (median of 60 frames, after 60 to settle; the scene still, so the
+SDF stage doesn't run):
+
+| Scene | Misty GI | Frame | Misty GI total | Surface cache | Probe trace | Gather |
+|---|---|---|---|---|---|---|
+| CyclesRoomDemo | off | 8.48 ms | — | — | — | — |
+| | Low | 8.81 | **0.28** | 0.05 | 0.11 | 0.11 |
+| | Medium | 9.18 | **0.62** | 0.08 | 0.18 | 0.36 |
+| | High | 9.65 | **1.09** | 0.08 | 0.60 | 0.41 |
+| MeadowDemo | off | 22.74 | — | — | — | — |
+| | Low | 23.77 | **0.36** | 0.11 | 0.14 | 0.11 |
+| | Medium | 24.05 | **0.65** | 0.20 | 0.19 | 0.26 |
+| | High | 24.67 | **1.12** | 0.20 | 0.61 | 0.31 |
+
+- MeadowDemo's frame grows by more than the Misty GI stages (+1.9 ms at High): the scene has no
+  SSGI/SSR, so turning Misty GI on also brings the screen-trace compose, the lit colour history
+  copy and the main-pass split (≈ 0.2 ms + the split). Skipping the colour history when only
+  Misty GI is on is an easy follow-up.
+- **Moving object** (`misty_gi_scene_moving_object_cost`, the room's cube sliding every frame):
+  scene SDF recompose 0.07 ms per frame, Misty GI total 1.15 ms.
+- High is about **⅓ of the 3–4 ms budget**: there is room to raise probe density or rays, or
+  to add the reflection rays (section 6), before hitting the target.
+- Earlier runs while other sessions were timing on the same GPU read 3–4 ms for High; those
+  numbers were contention, not Misty GI.
+
+### Quality: CyclesRoomDemo against the path-traced lightmap
+
+`render_cycles_room_misty_gi` (editor crate). Same camera, light, exposure and AO as the baked
+reference; Misty GI replaces the bounce light, nothing is baked.
+`docs/screenshots/gfx/gi_cycles_room_compare.png` (top: probes / Misty GI / Misty GI + SSGI /
+path-traced lightmap; bottom: red-green room with SSGI only / Misty GI / lightmap).
+
+Mean sRGB brightness of 21×21 patches:
+
+| | ceiling | back wall | left wall | floor front | pillar front | cube front | floor right of cube |
+|---|---|---|---|---|---|---|---|
+| Room probes + SSGI (shipped) | 196 | 179 | 179 | 159 | 115 | 50 | 69 |
+| **Misty GI** | 197 | 190 | 178 | 160 | 104 | 45 | 62 |
+| Misty GI + SSGI | 197 | 189 | 178 | 161 | 108 | 46 | 60 |
+| **Path-traced lightmap** | 197 | 189 | 179 | 163 | 105 | 44 | 71 |
+| Red/green: SSGI only | 190 | 178 | 99 | 154 | 27 | 0 | 45 |
+| **Red/green: Misty GI** | 194 | 185 | 104 | 156 | 67 | 23 | 40 |
+| **Red/green: lightmap** | 194 | 184 | 103 | 158 | 65 | 16 | 45 |
+
+- Misty GI is within 1–2 levels of the path tracer on the ceiling, walls, floor, pillar and
+  cube: closer than the baked room probes (which flatten the back wall and over-light the
+  camera-facing box fronts), with nothing baked.
+- Colour bleeding: the pillar's red-lit face and the cube's green-lit face match the lightmap
+  (67 vs 65); the cube front is a little brighter (23 vs 16) and the floor right of the cube a
+  little darker (62 vs 71: the probes are 20 cm apart and the floor there sits in the cube's
+  contact shadow, which GTAO deepens too).
+- The first version centred the clipmap on the camera, 3 m outside the room: the room fell into
+  the 25 cm level and the box fronts came out far too dark (66 / 11). Centring each level a
+  quarter of its width ahead of the camera fixed it.
+
+### Quality: MeadowDemo sky occlusion under trees
+
+`misty_gi_scene_meadow_shots`, `docs/screenshots/gfx/gi_meadow_*`:
+
+- **Grass and trees don't take Misty GI yet**: blades (`grass*.wgsl`) and trees (`tree.wgsl`)
+  have their own lighting and don't read the GI texel (only the mesh / terrain `shade` does).
+  Those files belong to the grass and tree work in progress, so they were not touched; the
+  hook is one call each (`screen_trace_sample` + `screen_gi_apply` on their ambient term).
+  With grass on, the default meadow shots are unchanged within ±1 level.
+- `gi_meadow_grove_bare_compare.png`: the same spot beside a tree with the terrain's grass off,
+  so the ground is terrain. In the canopy's shade the blue sky light drops by about a quarter
+  and warm bounce from the sunlit ground comes in. Mean sRGB under the canopy: off (15, 24, 23),
+  Misty GI (19, 24, 18). The sunlit ground is unchanged. Tree crowns are ellipsoid proxies at
+  75 % size, so the shade is soft and slightly weaker than a real canopy's.
+
+### Behaviour
+
+- **Moving light** (`misty_gi_follows_a_moving_light`): sun swung from the red wall to the back
+  wall; the floor's red tint is half-way to its new value after 18 frames and 90 % after about
+  80 frames. The tail comes from the cache and the probes feeding each other (one bounce per
+  frame).
+- **Moving object**: the levels holding it recompose (0.07 ms); its bounce and occlusion follow
+  as the probes update (the same ~18 frames to half-way).
+- **Off-screen light** (`misty_gi_bounces_light_from_off_screen`): a sunlit red wall behind the
+  camera still tints the floor in front of it (redness 27 against 1 with a grey wall).
+- **Sky occlusion** (`misty_gi_occludes_the_sky_under_a_roof`): floor under a 3 m roof at 1.2 m
+  loses about 35 % of its blue sky light; open floor keeps its ambient within ±5 %.
+
+### Bugs found on the way (kept as tests or comments)
+
+- `normalize(probe − point)` with the gather point exactly on a probe (Low's grids align with
+  surfaces at half a voxel) gave NaN, which `min(x, 64)` turned into a blinding 64. Guarded
+  division, and the Low test now checks for a real red tint instead of "redder than before".
+- The screen-trace compose only ran when SSGI or SSR was on: with Misty GI alone, the GI texel
+  stayed zero (black ambient).
+- Probe rays treated "within the hit epsilon" as a hit even when running alongside a wall; on
+  coarse levels the epsilon exceeds a probe's distance to a wall. Hits now require the ray to
+  close in on the surface and to be at least one voxel from the probe.
 
 ## 12. Roadmap to production
 
+- **R0 — Coverage of the other lit shaders** (small, needs the grass / tree owners): grass blades
+  and trees read the GI texel on their ambient term (`screen_trace_sample` +
+  `screen_gi_apply`), so MeadowDemo's grass and crowns get sky occlusion and bounce; water and
+  custom shaders the same way. Skip the lit colour history copy and the main-pass split when
+  only Misty GI is on (≈ 0.2 ms+ in MeadowDemo).
 - **R1 — Product surface**: Lighting window switch, Quality ▸ Global Illumination tier per
   quality level, Inspector debug views (SDF slice, radiance cache, probe spheres), editor gizmo
   for the clipmap bounds.
