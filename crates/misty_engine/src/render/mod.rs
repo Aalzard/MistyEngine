@@ -3541,6 +3541,8 @@ fn view_ray(cam: &Camera, aspect: f32) -> [[f32; 4]; 2] {
 #[cfg(test)]
 mod benchmark;
 #[cfg(test)]
+mod flowers_gpu_tests;
+#[cfg(test)]
 mod golden_tests;
 #[cfg(test)]
 mod gpu_checks;

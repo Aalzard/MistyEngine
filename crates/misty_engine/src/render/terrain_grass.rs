@@ -18,6 +18,7 @@ use super::grass_cull::{self, Arena, CullFrame, CullPipelines, JobDraw, KINDS, P
 use super::grass_pool::{BladePool, Slot};
 use crate::terrain::TerrainData;
 use crate::terrain::details::{self, Blade, DetailSettings};
+use crate::terrain::flowers::FlowerSettings;
 use crate::terrain::store::Region;
 
 /// Chunk side in metres.
@@ -224,7 +225,7 @@ pub struct GrassStats {
 pub(super) struct Grass {
     chunks: HashMap<(u32, u32), Chunk>,
     /// Settings the blades were scattered with (look-only fields cleared).
-    key: Option<(DetailSettings, u32)>,
+    key: Option<ScatterKey>,
     /// Bumped whenever the blades must be scattered afresh (older results are dropped).
     generation: u64,
     /// Chunks handed to the workers and not uploaded yet: the level asked for.
@@ -282,8 +283,12 @@ impl Default for Grass {
     }
 }
 
+/// What the blades were scattered from: the grass settings (look-only fields cleared), the
+/// flowers, the number of trees (flowers gather around them) and the seed.
+type ScatterKey = (DetailSettings, FlowerSettings, usize, u32);
+
 /// Settings that change where blades are and how big (colours and wind are uniforms).
-fn scatter_key(d: &TerrainData) -> (DetailSettings, u32) {
+fn scatter_key(d: &TerrainData) -> ScatterKey {
     let mut s = d.details.clone();
     s.healthy_color = [0.0; 3];
     s.dry_color = [0.0; 3];
@@ -304,7 +309,20 @@ fn scatter_key(d: &TerrainData) -> (DetailSettings, u32) {
     s.gust_strength = 0.0;
     s.gust_scale = 0.0;
     s.turbulence = 0.0;
-    (s, d.rule_seed)
+    // (Not the painted map: painting invalidates the region it changed.)
+    let f = &d.flowers;
+    let f = FlowerSettings {
+        enabled: f.enabled,
+        kinds: f.kinds.clone(),
+        density: f.density,
+        coverage: f.coverage,
+        patch_scale: f.patch_scale,
+        scattered: f.scattered,
+        edges: f.edges,
+        lod_distance: 0.0,
+        map: Vec::new(),
+    };
+    (s, f, d.trees.instances.len(), d.rule_seed)
 }
 
 /// Chunk `(x, z)` is within `r` metres of the camera (terrain-local).
@@ -941,7 +959,8 @@ pub(super) struct GrassParams {
     /// x = full-density distance, y = tip dryness, z = most widening, w = colour variation.
     look: [f32; 4],
     /// x = the terrain's draw slot (its reflection probes), y = 1 with the ground cover (the
-    /// lit pass skips the flat fans), z = the terrain's number in the visibility ids, w unused.
+    /// lit pass skips the flat fans), z = the terrain's number in the visibility ids, w = the
+    /// flowers' LOD distance (f32 bits).
     draw: [u32; 4],
     /// rgb = linear lush colour, w = patch size.
     lush: [f32; 4],
@@ -1061,8 +1080,9 @@ pub(super) fn prewarm_atlas() {
     });
 }
 
-/// Upload the grass atlas with coverage-keeping mips (sRGB) and its clamped trilinear,
-/// anisotropic sampler (cards are seen at grazing angles).
+/// Upload the grass atlas alone (a 2D texture) with coverage-keeping mips (sRGB) and its
+/// clamped trilinear, anisotropic sampler (cards are seen at grazing angles): the grass study.
+#[cfg(test)]
 pub(super) fn atlas(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -1090,7 +1110,156 @@ pub(super) fn atlas(
         data,
     );
     let view = texture.create_view(&Default::default());
-    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+    (view, atlas_sampler(device))
+}
+
+/// The flower kinds' textures in the layout of the grass atlas's flower layers: layer 1 =
+/// albedo (four kinds side by side, each a column a quarter as wide as the atlas), layer 2 =
+/// material (normal x, y, roughness, translucency; stored so the sRGB texture decodes them to
+/// their linear values). Each with its mip chain (the albedo keeping its alpha-tested coverage
+/// per head and plant cell).
+pub(super) struct FlowerLayers {
+    albedo: Vec<image::RgbaImage>,
+    material: Vec<image::RgbaImage>,
+}
+
+/// The textures a terrain's flower layers are made from (the cache key of [`flower_layers`]).
+pub(super) fn flower_key(kinds: &[crate::terrain::flowers::FlowerKind]) -> Vec<String> {
+    kinds
+        .iter()
+        .take(crate::terrain::flowers::MAX_KINDS)
+        .flat_map(|k| {
+            [
+                k.texture.clone(),
+                k.normal.clone(),
+                k.roughness.clone(),
+                k.translucency.clone(),
+            ]
+        })
+        .collect()
+}
+
+/// Build the flower layers from the kinds' textures (decoding and filtering: tens of
+/// milliseconds, on a worker thread while streaming). Missing textures leave their column
+/// transparent (albedo) or flat (material).
+pub(super) fn flower_layers(kinds: &[crate::terrain::flowers::FlowerKind]) -> FlowerLayers {
+    let (w, h, _, _) = atlas_data();
+    let (w, h) = (*w, *h);
+    let cols = crate::terrain::flowers::MAX_KINDS as u32;
+    let cw = w / cols;
+    let load = |rel: &str| -> Option<image::RgbaImage> {
+        if rel.is_empty() {
+            return None;
+        }
+        let img = super::texture::load_image(&crate::assets::absolute(rel)).ok()?;
+        Some(if img.dimensions() == (cw, h) {
+            img
+        } else {
+            image::imageops::resize(&img, cw, h, image::imageops::FilterType::Triangle)
+        })
+    };
+    let mut albedo = image::RgbaImage::new(w, h);
+    // Linear material values first.
+    let mut material = image::RgbaImage::from_pixel(w, h, image::Rgba([128, 128, 153, 128]));
+    for (slot, k) in kinds.iter().take(cols as usize).enumerate() {
+        let x0 = slot as u32 * cw;
+        if let Some(img) = load(&k.texture) {
+            image::imageops::replace(&mut albedo, &img, x0 as i64, 0);
+        }
+        let normal = load(&k.normal);
+        let rough = load(&k.roughness);
+        let trans = load(&k.translucency);
+        for y in 0..h {
+            for x in 0..cw {
+                let m = material.get_pixel_mut(x0 + x, y);
+                if let Some(n) = &normal {
+                    let p = n.get_pixel(x, y);
+                    m[0] = p[0];
+                    m[1] = p[1];
+                }
+                if let Some(r) = &rough {
+                    m[2] = r.get_pixel(x, y)[0];
+                }
+                if let Some(t) = &trans {
+                    m[3] = t.get_pixel(x, y)[0];
+                }
+            }
+        }
+    }
+    // The material is uploaded into an sRGB layer: store each value so it decodes to itself.
+    let encode: Vec<u8> = (0..=255u32)
+        .map(|v| {
+            let c = v as f32 / 255.0;
+            let e = if c <= 0.003_130_8 {
+                c * 12.92
+            } else {
+                1.055 * c.powf(1.0 / 2.4) - 0.055
+            };
+            (e * 255.0).round().clamp(0.0, 255.0) as u8
+        })
+        .collect();
+    // (Alpha, the translucency, is linear in an sRGB format already.)
+    for p in material.pixels_mut() {
+        for c in 0..3 {
+            p[c] = encode[p[c] as usize];
+        }
+    }
+    FlowerLayers {
+        albedo: super::trees::coverage_mips(albedo, cols, 4),
+        material: super::texture::mip_chain(material, true),
+    }
+}
+
+/// Upload the grass atlas as a three-layer array: the built-in grass (layer 0) and the flower
+/// layers (transparent while `flowers` is None), with coverage-keeping mips (sRGB) and the
+/// clamped trilinear, anisotropic sampler of [`atlas`].
+pub(super) fn atlas_array(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    flowers: Option<&FlowerLayers>,
+) -> (wgpu::TextureView, wgpu::Sampler) {
+    let (w, h, levels, grass) = atlas_data();
+    let (w, h, levels) = (*w, *h, *levels);
+    let mut data = grass.clone();
+    match flowers {
+        Some(f) if f.albedo.len() == levels as usize && f.material.len() == levels as usize => {
+            for chain in [&f.albedo, &f.material] {
+                for mip in chain {
+                    data.extend_from_slice(mip.as_raw());
+                }
+            }
+        }
+        _ => data.resize(grass.len() * 3, 0),
+    }
+    let texture = wgpu::util::DeviceExt::create_texture_with_data(
+        device,
+        queue,
+        &wgpu::TextureDescriptor {
+            label: Some("misty grass atlas"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 3,
+            },
+            mip_level_count: levels,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::LayerMajor,
+        &data,
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        ..Default::default()
+    });
+    (view, atlas_sampler(device))
+}
+
+fn atlas_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+    device.create_sampler(&wgpu::SamplerDescriptor {
         label: Some("misty grass sampler"),
         address_mode_u: wgpu::AddressMode::ClampToEdge,
         address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -1099,8 +1268,7 @@ pub(super) fn atlas(
         mipmap_filter: wgpu::MipmapFilterMode::Linear,
         anisotropy_clamp: 16,
         ..Default::default()
-    });
-    (view, sampler)
+    })
 }
 
 fn lin(c: f32) -> f32 {
@@ -1155,6 +1323,12 @@ impl GrassParams {
     /// The terrain's number in the grass visibility ids (grass_vis.wgsl `grass_vis_id`).
     pub fn with_vis_index(mut self, index: u32) -> Self {
         self.draw[2] = index;
+        self
+    }
+
+    /// The flowers' LOD distance (grass_blade.wgsl `grass_flower_keep`).
+    pub fn with_flowers(mut self, lod_distance: f32) -> Self {
+        self.draw[3] = lod_distance.max(1.0).to_bits();
         self
     }
 

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::cliffs::CliffSettings;
 use super::data::{TerrainData, TerrainLayer};
 use super::details::DetailSettings;
+use super::flowers::FlowerSettings;
 use super::harmony::HarmonySettings;
 use super::trees::TreeSettings;
 
@@ -34,6 +35,9 @@ struct TerrainFile {
     details: DetailSettings,
     /// base64 of one detail density byte per splat texel (empty = none).
     detail_map: String,
+    /// Left out while there are no flowers (older files stay as they were).
+    #[serde(skip_serializing_if = "FlowerSettings::is_default")]
+    flowers: FlowerSettings,
     /// Left out while there are no trees (older files stay as they were).
     #[serde(skip_serializing_if = "TreeSettings::is_default")]
     trees: TreeSettings,
@@ -54,6 +58,7 @@ impl Default for TerrainFile {
             harmony: HarmonySettings::default(),
             details: DetailSettings::default(),
             detail_map: String::new(),
+            flowers: FlowerSettings::default(),
             trees: TreeSettings::default(),
         }
     }
@@ -81,6 +86,7 @@ impl TerrainData {
             harmony: self.harmony.clone(),
             details: self.details.clone(),
             detail_map: encode(&self.detail_map),
+            flowers: self.flowers.clone(),
             trees: self.trees.clone(),
         };
         serde_json::to_string_pretty(&file).expect("terrain serialises")
@@ -108,6 +114,7 @@ impl TerrainData {
             harmony: f.harmony,
             details: f.details,
             detail_map: decode(&f.detail_map)?,
+            flowers: f.flowers,
             trees: f.trees,
         };
         d.sanitize();

@@ -114,7 +114,7 @@ fn shade_tree(world: vec3<f32>, albedo: vec3<f32>, n: vec3<f32>, occlusion: f32,
         // Soft: a wide forward lobe, and diffuse light through the back wrapping round.
         let back = pow(clamp(dot(v, -l), 0.0, 1.0), 2.5);
         let through = clamp((dot(-n, l) + 0.35) / 1.35, 0.0, 1.0);
-        color += transmission * li.color.rgb * atten * mix(0.35, 1.0, shadow) * (back * 1.25 + through * through * 0.55);
+        color += transmission * li.color.rgb * atten * mix(0.35, 1.0, shadow) * (back * 1.6 + through * through * 0.7);
         atten *= shadow * direct_occlusion(ssao);
         // Wrapped diffuse: leaves scatter light around the crown's terminator.
         let n_dot_l = (dot(n, l) + wrap) / (1.0 + wrap);
@@ -230,10 +230,12 @@ fn fs_tree_leaves(in: TreeOut, @builtin(front_facing) front: bool) -> MeshTarget
     // reads as a dither pattern; a little softer far away.
     let far = 0.3 * smoothstep(20.0, 90.0, length(in.world - view.camera_pos.xyz));
     let coverage = leaf_coverage(tex.a, in.clip, far);
-    // The dome normal, with a little of the leaves' own relief (either side of the card).
+    // The dome normal with the leaves' own shape (fold, midrib, each leaf's tilt; either side
+    // of the card): enough that single leaves catch the light differently and read as leaves,
+    // less far away where they are a few pixels (the crown lights as one soft volume there).
     var n = normalize(in.normal);
     let detail = tree_normal_mapped(n, in.world, in.uv, sampled, select(-1.0, 1.0, front));
-    n = normalize(mix(n, detail, 0.35));
+    n = normalize(mix(n, detail, mix(0.6, 0.3, far / 0.3)));
     if (coverage < 0.01 || tree_faded(in.extra.w, in.clip.xy)) {
         discard;
     }
@@ -244,9 +246,11 @@ fn fs_tree_leaves(in: TreeOut, @builtin(front_facing) front: bool) -> MeshTarget
     let ao = in.extra.x;
     // Translucency map: thin blades glow, veins and twigs less.
     let transmission = albedo * vec3<f32>(1.05, 1.0, 0.6) * tree.leaf.w * mix(0.35, 1.0, ao) * material.a;
-    // Roughness map: a soft sheen on the upper sides only (the dome normals would make one big
-    // highlight of a glossy crown).
-    var out = shade_tree(in.world, albedo, n, ao, transmission, 0.45, 0.35 * (1.0 - material.b), 0.35);
+    // Roughness map: waxy upper sides with a soft sheen and small glints where single leaves
+    // face the sun (the leaves' own normals break the dome's highlight up), matte undersides;
+    // duller far away (no sparkle).
+    let smoothness = (1.0 - material.b) * mix(0.85, 0.5, far / 0.3);
+    var out = shade_tree(in.world, albedo, n, ao, transmission, 0.45, smoothness, 0.35);
     out.color.a = coverage;
     out.glow.a = coverage;
     out.velocity = velocity_of(in.clip, in.clip_prev);

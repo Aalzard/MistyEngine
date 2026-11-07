@@ -522,6 +522,8 @@ struct Detail {
     min_radius: f32,
     /// Keep one card in this many (the kept ones grow to cover the same area).
     card_stride: usize,
+    /// Rows of vertices up a leaf card: 2 = flat (folded) quad, 3 = curved back at its top.
+    card_rows: u32,
     /// Use every n-th ring along a limb (the last one always).
     ring_step: usize,
 }
@@ -530,12 +532,14 @@ const LOD0: Detail = Detail {
     sides: [16, 8, 5],
     min_radius: 0.0,
     card_stride: 1,
+    card_rows: 3,
     ring_step: 1,
 };
 const LOD1: Detail = Detail {
     sides: [7, 4, 3],
     min_radius: 0.04,
     card_stride: 3,
+    card_rows: 2,
     ring_step: 2,
 };
 
@@ -667,8 +671,9 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
     }
     m.bark = 0..m.indices.len() as u32;
 
-    // Leaves: each card folded along its middle (a shallow V away from the viewer outside),
-    // shaded with normals leaning to the crown's dome.
+    // Leaves: each card folded along its middle (a shallow V away from the viewer outside)
+    // and, close up, curved back and drooping towards its top like a real spray (no flat
+    // "puffy" cards), shaded with normals leaning to the crown's dome.
     let stride = detail.card_stride.max(1);
     let grow = (stride as f32).sqrt() * 0.95;
     for (ci, c) in sk.cards.iter().enumerate() {
@@ -681,16 +686,22 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
         let fold = -c.facing * size * 0.14;
         let (cx, cy) = ((c.cell % 2) as f32 * 0.5, (c.cell / 2) as f32 * 0.5);
         let first = m.vertices.len() as u32;
-        // Columns: left edge, folded middle, right edge; rows: bottom, top.
-        for row in 0..2 {
+        let rows = detail.card_rows.max(2);
+        // Columns: left edge, folded middle, right edge; rows: bottom .. top.
+        for row in 0..rows {
             for col in 0..3 {
                 let x = col as f32 * 0.5;
-                let y = row as f32;
+                let y = row as f32 / (rows - 1) as f32;
                 let mut p = base + side * (x - 0.5) * size + c.up * y * size;
                 if col == 1 {
                     p += fold;
                 }
-                let card_n = (c.facing + side * (0.5 - x) * 0.6).normalize();
+                // Curl: the top bends back into the crown and droops a little.
+                if rows > 2 {
+                    p += (-c.facing * 0.14 - Vec3::Y * 0.05) * size * y * y;
+                }
+                let curl = if rows > 2 { c.up * 0.3 * y } else { Vec3::ZERO };
+                let card_n = (c.facing + side * (0.5 - x) * 0.6 + curl).normalize();
                 let dome = sk.crown.normal(p);
                 let n = (card_n * 0.3 + dome * 0.7).normalize();
                 let ao = sk.crown.occlusion(p);
@@ -709,9 +720,11 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
         // Front faces towards `facing` (outside the crown), so `front_facing` in the leaf shader
         // knows which side of the card it sees.
         let i = |r: u32, col: u32| first + r * 3 + col;
-        for col in 0..2 {
-            let (a, b, c2, d) = (i(0, col), i(0, col + 1), i(1, col), i(1, col + 1));
-            m.indices.extend([a, b, c2, b, d, c2]);
+        for r in 0..rows - 1 {
+            for col in 0..2 {
+                let (a, b, c2, d) = (i(r, col), i(r, col + 1), i(r + 1, col), i(r + 1, col + 1));
+                m.indices.extend([a, b, c2, b, d, c2]);
+            }
         }
     }
     m.leaves = m.bark.end..m.indices.len() as u32;

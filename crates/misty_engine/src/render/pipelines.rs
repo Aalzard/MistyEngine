@@ -667,7 +667,7 @@ impl Pipelines {
                 )
             },
         );
-        // Grass parameters, the grass atlas and its sampler.
+        // Grass parameters, the grass atlas (grass and flower layers) and its sampler.
         let grass_layout = layout(
             "misty grass",
             &[
@@ -677,7 +677,7 @@ impl Pipelines {
                     lit,
                     wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
                         multisampled: false,
                     },
                 ),

@@ -305,7 +305,8 @@ pub fn canopy(p: Vec2) -> f32 {
 pub struct Blade {
     /// xyz = root position, w = height.
     pub position: [f32; 4],
-    /// x = facing angle (radians), y = width, z = dry mix 0..1, w = random phase 0..1.
+    /// x = facing angle (radians), y = width, z = dry mix 0..1 (flowers: 2 + their card,
+    /// see `flowers::card_of`), w = random phase 0..1.
     pub shape: [f32; 4],
     /// x = drop-out key 0..1 (see [`level_keep`]) + 2 for a seed head stem, y = bend,
     /// z = lean angle (radians), w = tuft tint -1..1.
@@ -319,9 +320,14 @@ pub struct Blade {
 }
 
 impl Blade {
-    /// The stem carries a seed head.
+    /// The stem carries a seed head (flowers are stems too).
     pub fn seed_head(&self) -> bool {
         self.extra[0] >= 2.0
+    }
+
+    /// One of a wildflower's cards (terrain/flowers.rs).
+    pub fn flower(&self) -> bool {
+        self.shape[2] >= 1.5
     }
 
     /// Drop-out key: the blade is drawn while the share kept at its distance is above it.
@@ -506,6 +512,12 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
             }
         }
     }
+    // Wildflowers ride along as blades of their own kind (their keys sort them first).
+    out.extend(
+        super::flowers::scatter(d, lo, hi)
+            .into_iter()
+            .map(|b| (b.key(), b)),
+    );
     out.sort_by(|a, b| a.0.total_cmp(&b.0));
     out.into_iter().map(|(_, b)| b).collect()
 }

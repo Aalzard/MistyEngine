@@ -54,14 +54,19 @@ fn canopy_top(b: BladeIn) -> vec4<f32> {
 // Every vertex of a skipped blade lands on one point outside the view: nothing is rasterised.
 const GRASS_SKIP = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 
+// The lit pass leaves the blade out: shrunk away by the LOD while the ground cover replaces
+// the flat fans, or a flower shrunk away (flowers never lie down as fans).
+fn grass_skip(b: BladeIn) -> bool {
+    return grass_flat(b) && (grass.draw.y != 0u || grass_is_flower(b));
+}
+
 // The lit grass: every blade in view, the flat fans of the blades the LOD shrank away too
 // (`grass_flat`: they test against the depth the standing blades wrote without writing their
 // own, see `vs_grass_depth`).
 @vertex
 fn vs_grass(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> GrassOut {
     let b = grass_fetch(ii);
-    let fans = grass.draw.y == 0u;
-    if ((!fans && grass_flat(b)) || grass_outside(b, view.view_proj, true)) {
+    if (grass_skip(b) || grass_outside(b, view.view_proj, true)) {
         var out: GrassOut;
         out.clip = GRASS_SKIP;
         return out;
@@ -95,6 +100,19 @@ fn grass_vertex(vi: u32, b: BladeIn) -> GrassOut {
     return grass_out(v, prev, b);
 }
 
+// GrassOut.across of a card vertex: across the blade, signed by the side (the blade's
+// rounding); flowers: the card's plain across direction (their normal maps' +x).
+fn grass_across(v: BladeVertex) -> vec3<f32> {
+    return select(v.across * v.side * 2.0, v.across, v.cell >= 8u);
+}
+
+// Shading normal of a flower card's vertex: plant cards a little rounded across, the head flat.
+fn grass_flower_normal(v: BladeVertex) -> vec3<f32> {
+    let face = normalize(cross(v.across, v.tangent));
+    let round = select(0.5, 0.0, (v.cell & 1u) == 1u);
+    return normalize(face + v.across * v.side * round);
+}
+
 // The vertex stage's output for card vertex `v` of blade `b` (`prev` = where the wind had it
 // last frame).
 fn grass_out(v: BladeVertex, prev: vec3<f32>, b: BladeIn) -> GrassOut {
@@ -126,15 +144,25 @@ fn grass_out(v: BladeVertex, prev: vec3<f32>, b: BladeIn) -> GrassOut {
     let seed_color = grass.seed.rgb * (1.0 + 0.12 * tint)
         * mix(vec3<f32>(1.0), vec3<f32>(1.06, 1.0, 0.85), patches.y * grass.amounts.y);
     out.color = select(base, seed_color, v.seed_head);
+    if (v.cell >= 8u) {
+        // Flowers: their atlas colour, each flower a little warmer or cooler, lighter or
+        // darker (the tint in the shading).
+        let k = tint * (1.0 - 0.5 * far);
+        out.color = vec3<f32>(1.0 + 0.06 * k, 1.0 + 0.02 * k, 1.0 - 0.06 * k)
+            * (1.0 + 0.12 * (fract(phase * 7.31 + 0.37) - 0.5));
+    }
     // Height within the local canopy (a tuft's tip stands above 1, a dip's below).
     let top = canopy_top(b);
     out.misc = vec4<f32>(far, v.above / top.x, v.gust, v.thin);
     // The canopy's slope, exaggerated: the turf is rougher than its smoothed height field,
     // and the sun side of every bump reads lighter than the dip behind it.
     out.canopy = vec4<f32>(normalize(vec3<f32>(-top.y * 8.0, 1.0, -top.z * 8.0)), top.w);
-    out.uv = vec4<f32>(grass_card_u(v.cell, v.side, v.repeat), grass_card_v(v.t, phase), v.t, v.fade);
+    out.uv = vec4<f32>(v.card, v.t, v.fade);
     out.cell = v.cell;
-    out.across = v.across * v.side * 2.0;
+    out.across = grass_across(v);
+    if (v.cell >= 8u) {
+        out.normal = grass_flower_normal(v);
+    }
     return out;
 }
 
@@ -252,7 +280,7 @@ fn grass_coverage(in: GrassOut, alpha: f32) -> f32 {
 @fragment
 fn fs_grass_depth(in: GrassOut) -> MeshTargets {
     let auv = grass_atlas_uv(in.uv.xy);
-    let alpha = textureSampleGrad(grass_atlas, grass_sampler, auv.xy, grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a * auv.z;
+    let alpha = textureSampleGrad(grass_atlas, grass_sampler, auv.xy, i32(auv.w), grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a * auv.z;
     let coverage = grass_coverage(in, alpha);
     if (coverage < 0.01) {
         discard;
@@ -268,7 +296,7 @@ fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
     let leaf = grass_atlas_uv(in.uv.xy);
     let gx = grass_atlas_dx(in.uv.xy);
     let gy = grass_atlas_dy(in.uv.xy);
-    var tex = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, gx, gy);
+    var tex = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, i32(leaf.w), gx, gy);
     tex.a *= leaf.z;
     let coverage = grass_coverage(in, tex.a);
     if (coverage < 0.01) {
@@ -291,10 +319,13 @@ fn grass_lit(
     gy: vec2<f32>,
     coverage: f32,
 ) -> MeshTargets {
+    if (in.cell >= 8u) {
+        return grass_flower_lit(in, front, tex, auv, gx, gy, coverage);
+    }
     // Two texels across the blade: the alpha slope is the blade's thickness profile, used as
     // a normal map (rounded edges, a crease along the midrib) and a thickness map.
     let across_uv = vec2<f32>(2.0 / f32(textureDimensions(grass_atlas).x), 0.0);
-    let next = textureSampleGrad(grass_atlas, grass_sampler, auv + across_uv, gx, gy).a;
+    let next = textureSampleGrad(grass_atlas, grass_sampler, auv + across_uv, 0, gx, gy).a;
     let far = in.misc.x;
     let t = in.uv.z;
     let cell = in.cell;
@@ -368,5 +399,45 @@ fn grass_lit(
     // Thin edges let more light through than the thick midrib.
     let transmission = albedo * grass.seed.w * select(1.0, 0.6, seed_head) * mix(0.15, 1.0, canopy)
         * mix(1.35, 0.8, thick);
+    return shade_grass(in.world, lit, n, occlusion, transmission, smoothness, coverage);
+}
+
+// A lit flower card (`grass_lit` for cells 8..): the flower atlas's colour and its material
+// layer (normal map, roughness, translucency), the flower's tint, shade low in the turf and
+// light through the petals. Heads stand above the turf and light as themselves; stems lean a
+// little towards the canopy's shading so they sit in the grass.
+fn grass_flower_lit(
+    in: GrassOut,
+    front: bool,
+    tex: vec4<f32>,
+    auv: vec2<f32>,
+    gx: vec2<f32>,
+    gy: vec2<f32>,
+    coverage: f32,
+) -> MeshTargets {
+    let material = textureSampleGrad(grass_atlas, grass_sampler, auv, 2, gx, gy);
+    let far = in.misc.x;
+    let head = (in.cell & 1u) == 1u;
+    // Tangent frame: +x across the card, +y up the image (towards the tip / head).
+    let n0 = normalize(in.normal);
+    let across = normalize(in.across - n0 * dot(in.across, n0));
+    let up = cross(n0, across);
+    let m = vec3<f32>(material.xy * 2.0 - 1.0, 0.0);
+    let mz = sqrt(max(1.0 - dot(m.xy, m.xy), 0.05));
+    // Seen from the back, the relief mirrors through the card.
+    let detail = mix(1.0, 0.4, far);
+    var n = normalize(across * m.x * detail + up * m.y * detail + n0 * select(-mz, mz, front));
+    if (!head) {
+        n = normalize(mix(n, normalize(in.canopy.xyz), 0.25 + 0.3 * far));
+    }
+    let albedo = clamp(tex.rgb * in.color, vec3<f32>(0.0), vec3<f32>(1.0));
+    // Shade low in the turf (stems, low leaves); the heads stand in the light.
+    let canopy = smoothstep(0.0, 0.85, in.misc.y);
+    let dip = mix(0.88, 1.04, in.canopy.w);
+    let occlusion = mix(0.45, 1.0, canopy) * dip;
+    let lit = albedo * mix(0.6, 1.0, canopy) * dip;
+    let roughness = material.z;
+    let smoothness = clamp(1.0 - roughness, 0.0, 0.85) * mix(1.0, 0.5, far) * in.uv.w;
+    let transmission = albedo * material.w * grass.seed.w * 1.3 * mix(0.25, 1.0, canopy);
     return shade_grass(in.world, lit, n, occlusion, transmission, smoothness, coverage);
 }

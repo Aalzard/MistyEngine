@@ -128,6 +128,9 @@ struct GpuTerrain {
     /// The grass passes' uniforms and groups (camera, cascade casters, the near map's
     /// slices), made once and rewritten every frame.
     grass_uniforms: Option<[(wgpu::Buffer, wgpu::BindGroup); 2 + grass_near_shadow::SLICES]>,
+    /// Id of the grass atlas those groups bind (they are made again when it changes: the
+    /// flower layers arrived or the flowers' textures changed).
+    grass_atlas_id: u64,
 }
 
 fn texture(
@@ -264,6 +267,7 @@ impl GpuTerrain {
             coverage: [0.0; MAX_LAYERS],
             grass: Grass::default(),
             grass_uniforms: None,
+            grass_atlas_id: 0,
         }
     }
 
@@ -397,8 +401,12 @@ pub(super) struct TerrainCache {
     /// Quality ▸ Grass Ground Cover (with the quality's blade share): the terrain paints the
     /// undergrowth the grass LOD's flat fans would draw, and the lit grass skips them.
     ground_cover: Option<f32>,
-    /// The built-in grass atlas (uploaded with the first grass).
+    /// The built-in grass atlas with empty flower layers (uploaded with the first grass).
     grass_atlas: Option<(wgpu::TextureView, wgpu::Sampler)>,
+    /// Grass atlases with a terrain's flower layers, per set of flower textures.
+    flower_atlases: HashMap<Vec<String>, FlowerAtlas>,
+    /// Ids handed to grass atlases (0 = the one without flowers).
+    next_atlas_id: u64,
     /// Camera of the current frame (grass LOD).
     camera: Vec3,
     /// How far from the camera the sun's shadows reach (chunks within it keep their camera
@@ -406,6 +414,74 @@ pub(super) struct TerrainCache {
     shadow_reach: f32,
     frustum: Option<Frustum>,
     started: Instant,
+}
+
+/// A grass atlas with flower layers: being built on a worker thread, or uploaded (with its id).
+enum FlowerAtlas {
+    /// (Behind a lock only so the renderer stays `Sync`.)
+    Building(std::sync::Mutex<std::sync::mpsc::Receiver<super::terrain_grass::FlowerLayers>>),
+    Ready(wgpu::TextureView, wgpu::Sampler, u64),
+}
+
+/// The grass atlas with the flower layers of `kinds` once it is ready (the layers are built on
+/// a worker thread while grass streams, in place otherwise); None meanwhile.
+fn flower_atlas<'a>(
+    atlases: &'a mut HashMap<Vec<String>, FlowerAtlas>,
+    next_id: &mut u64,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    kinds: &[crate::terrain::flowers::FlowerKind],
+) -> Option<(&'a wgpu::TextureView, &'a wgpu::Sampler, u64)> {
+    let key = super::terrain_grass::flower_key(kinds);
+    if !atlases.contains_key(&key) {
+        // (A handful of terrains at most; forget atlases of texture sets no longer used.)
+        if atlases.len() > 8 {
+            atlases.clear();
+        }
+        let state = if super::terrain_grass::grass_streaming() {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let kinds = kinds.to_vec();
+            let spawned = std::thread::Builder::new()
+                .name("misty flower atlas".into())
+                .spawn(move || {
+                    let _ = tx.send(super::terrain_grass::flower_layers(&kinds));
+                });
+            if let Err(e) = spawned {
+                eprintln!("flower atlas worker: {e}");
+            }
+            FlowerAtlas::Building(std::sync::Mutex::new(rx))
+        } else {
+            let layers = super::terrain_grass::flower_layers(kinds);
+            let (view, sampler) = super::terrain_grass::atlas_array(device, queue, Some(&layers));
+            *next_id += 1;
+            FlowerAtlas::Ready(view, sampler, *next_id)
+        };
+        atlases.insert(key.clone(), state);
+    }
+    let entry = atlases.get_mut(&key)?;
+    if let FlowerAtlas::Building(rx) = entry {
+        let got = rx.get_mut().unwrap_or_else(|e| e.into_inner()).try_recv();
+        match got {
+            Ok(layers) => {
+                crate::profile_scope!("Grass.FlowerAtlas");
+                let (view, sampler) =
+                    super::terrain_grass::atlas_array(device, queue, Some(&layers));
+                *next_id += 1;
+                *entry = FlowerAtlas::Ready(view, sampler, *next_id);
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+            // The worker failed: draw without the flowers' textures from now on.
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                let (view, sampler) = super::terrain_grass::atlas_array(device, queue, None);
+                *next_id += 1;
+                *entry = FlowerAtlas::Ready(view, sampler, *next_id);
+            }
+        }
+    }
+    match entry {
+        FlowerAtlas::Ready(view, sampler, id) => Some((view, sampler, *id)),
+        FlowerAtlas::Building(_) => None,
+    }
 }
 
 /// The grass uniforms of a terrain's passes this frame.
@@ -441,6 +517,8 @@ impl TerrainCache {
             view_proj: Mat4::IDENTITY,
             ground_cover: None,
             grass_atlas: None,
+            flower_atlases: HashMap::new(),
+            next_atlas_id: 1,
             camera: Vec3::ZERO,
             shadow_reach: 0.0,
             frustum: None,
@@ -670,10 +748,22 @@ impl TerrainCache {
             let has_grass = d.details.enabled && !d.detail_map.is_empty();
             if has_grass && self.grass_atlas.is_none() {
                 crate::profile_scope!("Grass.Atlas");
-                self.grass_atlas = Some(super::terrain_grass::atlas(device, queue));
+                self.grass_atlas = Some(super::terrain_grass::atlas_array(device, queue, None));
             }
-            let (atlas_view, atlas_sampler) = match &self.grass_atlas {
-                Some((v, s)) if has_grass => (v, s),
+            let flowers = (has_grass && d.flowers.enabled && !d.flowers.kinds.is_empty())
+                .then(|| {
+                    flower_atlas(
+                        &mut self.flower_atlases,
+                        &mut self.next_atlas_id,
+                        device,
+                        queue,
+                        &d.flowers.kinds,
+                    )
+                })
+                .flatten();
+            let (atlas_view, atlas_sampler, atlas_id) = match (flowers, &self.grass_atlas) {
+                (Some(f), _) => f,
+                (None, Some((v, s))) if has_grass => (v, s, 0),
                 _ => {
                     self.grass_groups.push(None);
                     self.grass_shadow_groups.push(None);
@@ -704,9 +794,14 @@ impl TerrainCache {
                 )
                 .with_ground_cover(self.ground_cover.is_some())
                 .with_vis_index(i as u32)
+                .with_flowers(d.flowers.lod_distance)
             };
             // (Made once per terrain, rewritten every frame: no buffers or groups to create,
-            // track and drop per frame.)
+            // track and drop per frame; again when the atlas changes.)
+            if g.grass_atlas_id != atlas_id {
+                g.grass_uniforms = None;
+                g.grass_atlas_id = atlas_id;
+            }
             let uniforms = g.grass_uniforms.get_or_insert_with(|| {
                 std::array::from_fn(|_| {
                     let buffer = device.create_buffer(&wgpu::BufferDescriptor {

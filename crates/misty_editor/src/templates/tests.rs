@@ -711,6 +711,18 @@ fn meadow_demo_opens_and_plays() {
     };
     let data = misty_engine::terrain::TerrainData::load(&data_path).unwrap();
     assert!(!data.trees.instances.is_empty(), "a terrain with trees");
+    // The rocks' collider meshes by absolute path too (other tests move the project root).
+    for f in scene
+        .world
+        .query::<&mut misty_engine::scene::MeshFilter>()
+        .iter()
+    {
+        if let Some(misty_engine::scene::MeshRef::Asset(key)) = &mut f.mesh
+            && key.starts_with("Assets/")
+        {
+            *key = root.join(key.as_str()).to_string_lossy().into_owned();
+        }
+    }
     let settings = misty_engine::settings::ProjectSettings::load(&root).unwrap();
     let (audio, _) = Audio::null(root.clone());
     let mut rt = Runtime::start_with_audio(&mut scene, root.clone(), &settings, audio);
