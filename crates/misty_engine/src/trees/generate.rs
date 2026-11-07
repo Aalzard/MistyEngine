@@ -588,12 +588,15 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
                 });
             }
         }
+        // Outward faces: `cross(b - a, c - a)` points out of the tube (the engine's winding,
+        // clockwise on screen; the bark pipelines cull back faces). Around the ring is
+        // `dir × n`, along it `dir`, and `(dir × n) × dir = n`.
         let ring = sides + 1;
         for i in 0..rings as u32 - 1 {
             for k in 0..sides {
                 let a = first + i * ring + k;
                 let b = a + ring;
-                m.indices.extend([a, b, a + 1, a + 1, b, b + 1]);
+                m.indices.extend([a, a + 1, b, a + 1, b + 1, b]);
             }
         }
     }
@@ -638,10 +641,12 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
                 });
             }
         }
+        // Front faces towards `facing` (outside the crown), so `front_facing` in the leaf shader
+        // knows which side of the card it sees.
         let i = |r: u32, col: u32| first + r * 3 + col;
         for col in 0..2 {
             let (a, b, c2, d) = (i(0, col), i(0, col + 1), i(1, col), i(1, col + 1));
-            m.indices.extend([a, c2, b, b, c2, d]);
+            m.indices.extend([a, b, c2, b, d, c2]);
         }
     }
     m.leaves = m.bark.end..m.indices.len() as u32;

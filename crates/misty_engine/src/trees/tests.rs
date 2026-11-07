@@ -103,6 +103,73 @@ fn leaf_normals_face_out_of_the_crown() {
     assert!(outward as f32 > total as f32 * 0.85, "{outward} of {total}");
 }
 
+/// The point of the polyline `points` nearest to `p`.
+fn nearest_on(points: &[Vec3], p: Vec3) -> Vec3 {
+    let mut best = points[0];
+    for w in points.windows(2) {
+        let d = w[1] - w[0];
+        let s = ((p - w[0]).dot(d) / d.length_squared().max(1e-9)).clamp(0.0, 1.0);
+        let q = w[0] + d * s;
+        if q.distance(p) < best.distance(p) {
+            best = q;
+        }
+    }
+    best
+}
+
+/// The bark is seen from outside: every bark triangle winds so that `cross(b - a, c - a)`
+/// (the engine's front face, culled from behind) agrees with its vertex normals, and the
+/// trunk's faces point away from the trunk's axis. Leaf cards face out of the crown too.
+#[test]
+fn bark_faces_point_out_of_the_limbs() {
+    for t in [TreeAsset::oak(), TreeAsset::linden(), TreeAsset::birch()] {
+        let sk = generate::skeleton(&t);
+        let trunk = &sk.limbs[0].points;
+        let m = model(&t);
+        for (li, lod) in m.lods.iter().enumerate() {
+            let tri = |i: usize, range: &std::ops::Range<u32>| {
+                let idx = &lod.indices[range.start as usize + i * 3..][..3];
+                idx.iter().map(|&k| lod.vertices[k as usize]).collect::<Vec<_>>()
+            };
+            let mut trunk_faces = 0;
+            for i in 0..lod.bark.len() / 3 {
+                let v = tri(i, &lod.bark);
+                let p: Vec<Vec3> = v.iter().map(|v| Vec3::from(v.position)).collect();
+                let face = (p[1] - p[0]).cross(p[2] - p[0]);
+                if face.length_squared() < 1e-14 {
+                    continue;
+                }
+                let n: Vec3 = v.iter().map(|v| Vec3::from(v.normal)).sum();
+                assert!(
+                    face.dot(n) > 0.0,
+                    "LOD{li} bark triangle {i}: winding {face:?} against normals {n:?}"
+                );
+                // The trunk: no sway at any corner (limbs sway from their second ring on).
+                if v.iter().all(|v| v.wind[0] == 0.0) {
+                    trunk_faces += 1;
+                    let c = (p[0] + p[1] + p[2]) / 3.0;
+                    let out = c - nearest_on(trunk, c);
+                    assert!(
+                        face.dot(out) > 0.0 && n.dot(out) > 0.0,
+                        "LOD{li} trunk triangle {i} faces the axis"
+                    );
+                }
+            }
+            assert!(trunk_faces > 50, "LOD{li}: {trunk_faces} trunk faces");
+            // Leaf cards: front faces mostly towards the outside of the crown.
+            let (mut out, mut total) = (0, 0);
+            for i in 0..lod.leaves.len() / 3 {
+                let v = tri(i, &lod.leaves);
+                let p: Vec<Vec3> = v.iter().map(|v| Vec3::from(v.position)).collect();
+                let face = (p[1] - p[0]).cross(p[2] - p[0]);
+                total += 1;
+                out += usize::from(face.dot((p[0] + p[1] + p[2]) / 3.0 - m.crown_center) > 0.0);
+            }
+            assert!(out as f32 > total as f32 * 0.8, "LOD{li} leaves: {out} of {total}");
+        }
+    }
+}
+
 #[test]
 fn impostor_covers_the_crown_in_every_view() {
     let m = model(&TreeAsset::oak());
