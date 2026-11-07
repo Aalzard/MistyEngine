@@ -35,9 +35,13 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
 ## What you get
 
 - **Misty Hub:** the start screen, with your recent projects (each showing the last view you were
-  looking at) and tutorials. New projects come from three templates: Standard, PP Ready (a sunset
-  over the ocean with clouds, god rays and every effect on) and **MeadowDemo** (the walkable meadow
-  above, with a first-person player; its grass, trees and textures are free to use in your games).
+  looking at) and tutorials. New projects start from a template:
+  - **Standard:** an empty 3D scene with a camera, a light and a floor.
+  - **PP Ready:** a sunset over the ocean with clouds, god rays and every post effect on.
+  - **MeadowDemo:** the walkable meadow above, with a **first-person player** ready to walk, run,
+    jump and crouch; thin grass, trees and Misty GI. Its grass, trees and textures are free to use
+    in your games.
+
   You can also include all the sample scenes.
 - **Editor:**
   - Frameless window with its own title bar, and dockable windows with saved layouts.
