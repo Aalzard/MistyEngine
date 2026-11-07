@@ -29,14 +29,36 @@ pub(super) struct DrawPrep {
     pub virtual_mesh: Vec<Option<(u32, u32)>>,
 }
 
-/// LOD state of every draw for `frame`'s camera.
-pub(super) fn lod_states(frame: &Frame, bias: f32) -> Vec<LodState> {
+/// LOD state of every draw for `frame`'s camera. `virtual_ready(mesh)`: the mesh draws through
+/// virtual geometry this frame; a LOD Group whose LOD 0 draws are all ready keeps LOD 0 at every
+/// distance and skips its other levels ([`super::lod::VirtualLod`]).
+pub(super) fn lod_states(
+    frame: &Frame,
+    bias: f32,
+    virtual_ready: impl Fn(&crate::scene::MeshRef) -> bool,
+) -> Vec<LodState> {
+    // Groups whose LOD 0 is virtual, and whether every LOD 0 draw of each is ready.
+    let mut groups: std::collections::HashMap<u32, bool> = std::collections::HashMap::new();
+    for d in frame.meshes {
+        if let Some(v) = d.lod.and_then(|l| l.virtual_lod)
+            && v.first
+        {
+            let ready = virtual_ready(&d.mesh);
+            *groups.entry(v.group).or_insert(true) &= ready;
+        }
+    }
     frame
         .meshes
         .iter()
         .map(|d| match d.lod {
             None => LodState::Visible,
-            Some(l) => l.state(screen_height(frame.camera, l.center, l.size, bias)),
+            Some(l) => {
+                let h = screen_height(frame.camera, l.center, l.size, bias);
+                match l.virtual_lod {
+                    Some(v) if groups.get(&v.group) == Some(&true) => l.virtual_state(v, h),
+                    _ => l.state(h),
+                }
+            }
         })
         .collect()
 }

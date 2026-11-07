@@ -625,7 +625,8 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         );
         ui.end_row();
         ui.label("Mode").on_hover_text(
-            "Realtime: lit every frame. Mixed: realtime direct light, baked bounce light.              Baked: direct and bounce light baked into lightmaps (Lighting ▸ Generate Lighting)",
+            "Realtime: lit every frame. Mixed: realtime direct light, baked bounce light. \
+            Baked: direct and bounce light baked into lightmaps (Lighting ▸ Generate Lighting)",
         );
         ch |= combo_k(
             ui,

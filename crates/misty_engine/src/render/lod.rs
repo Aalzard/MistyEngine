@@ -17,6 +17,23 @@ pub struct LodRange {
     pub max: f32,
     /// Cross-fade band above each threshold, as a fraction of it (0 = switch instantly).
     pub fade: f32,
+    /// Set when the group's LOD 0 is a virtual geometry mesh (see [`VirtualLod`]).
+    pub virtual_lod: Option<VirtualLod>,
+}
+
+/// A LOD Group whose LOD 0 is a virtual geometry mesh: while virtual geometry draws that mesh
+/// (its clusters pick their own level of detail), LOD 0 draws at every distance down to the
+/// group's cull height and the other levels are skipped, like Nanite meshes ignore their LODs.
+/// Without virtual geometry (Quality setting off, unsupported, or the build not ready yet) the
+/// group switches levels as usual.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VirtualLod {
+    /// Tells the levels of one group apart within a frame.
+    pub group: u32,
+    /// This draw belongs to LOD 0.
+    pub first: bool,
+    /// The group's lowest threshold (0 = never culled).
+    pub cull: f32,
 }
 
 /// What a camera does with one draw.
@@ -41,6 +58,15 @@ pub fn screen_height(camera: &Camera, center: Vec3, size: f32, bias: f32) -> f32
 }
 
 impl LodRange {
+    /// The state at screen height `h` when the group's LOD 0 draws through virtual geometry.
+    pub fn virtual_state(&self, v: VirtualLod, h: f32) -> LodState {
+        if v.first && h >= v.cull {
+            LodState::Visible
+        } else {
+            LodState::Hidden
+        }
+    }
+
     /// The level's state at screen height `h`.
     pub fn state(&self, h: f32) -> LodState {
         let w = self.fade.max(0.0);
@@ -102,6 +128,7 @@ mod tests {
             min: 0.5,
             max: f32::INFINITY,
             fade: 0.0,
+            virtual_lod: None,
         };
         let lod1 = LodRange {
             min: 0.1,
@@ -127,5 +154,33 @@ mod tests {
         assert_eq!(f1.state(0.65), LodState::Hidden);
         // The last level fades out to nothing above its cull height.
         assert!(matches!(f1.state(0.11), LodState::Fading(k) if k > 0.0 && k < 1.0));
+    }
+
+    #[test]
+    fn virtual_lod_zero_draws_at_every_distance_down_to_the_cull_height() {
+        let v = VirtualLod {
+            group: 1,
+            first: true,
+            cull: 0.01,
+        };
+        let lod0 = LodRange {
+            center: Vec3::ZERO,
+            size: 1.0,
+            min: 0.5,
+            max: f32::INFINITY,
+            fade: 0.0,
+            virtual_lod: Some(v),
+        };
+        let lod1 = LodRange {
+            min: 0.01,
+            max: 0.5,
+            ..lod0
+        };
+        let rest = VirtualLod { first: false, ..v };
+        for h in [2.0, 0.6, 0.3, 0.02] {
+            assert_eq!(lod0.virtual_state(v, h), LodState::Visible, "{h}");
+            assert_eq!(lod1.virtual_state(rest, h), LodState::Hidden, "{h}");
+        }
+        assert_eq!(lod0.virtual_state(v, 0.005), LodState::Hidden, "culled");
     }
 }

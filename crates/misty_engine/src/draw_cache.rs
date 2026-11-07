@@ -369,6 +369,19 @@ impl DrawCache {
                 continue;
             }
             let (center, size) = ((lo + hi) * 0.5, (hi - lo).max_element());
+            // LOD 0 made of virtual geometry meshes only: it may stand in for every level.
+            let virtual_first = group.lods.first().is_some_and(|l| {
+                !l.renderers.is_empty()
+                    && l.renderers.iter().all(|e| {
+                        scene
+                            .world
+                            .get::<&MeshFilter>(*e)
+                            .ok()
+                            .and_then(|f| f.mesh.clone())
+                            .is_some_and(|m| crate::models::is_virtual(&m))
+                    })
+            });
+            let cull = group.lods.last().map_or(0.0, |l| l.screen_height);
             for (i, level) in group.lods.iter().enumerate() {
                 let (min, max) = group.range(i);
                 let range = LodRange {
@@ -377,6 +390,11 @@ impl DrawCache {
                     min,
                     max,
                     fade: group.fade(),
+                    virtual_lod: virtual_first.then_some(crate::render::lod::VirtualLod {
+                        group: g.id(),
+                        first: i == 0,
+                        cull,
+                    }),
                 };
                 for e in &level.renderers {
                     out.entry(*e).or_insert(range);

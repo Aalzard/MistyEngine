@@ -1,0 +1,36 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.6499679,
+    0.6374537,
+    0.5487171,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 1.0,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Rocks/Textures/Rock Small_Albedo.jpg",
+  "normal_map": "Assets/Rocks/Textures/Rock Small_Normal.png",
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "metallic_map": "Assets/Rocks/Textures/Rock Small_Mask.png",
+  "occlusion_map": "Assets/Rocks/Textures/Rock Small_Mask.png",
+  "asset_guids": {
+    "Assets/Rocks/Textures/Rock Small_Albedo.jpg": "1d427a050ab4832de4810bdddeffe567",
+    "Assets/Rocks/Textures/Rock Small_Mask.png": "ac58931e5fe7aa02dc5ba6211e691cb2",
+    "Assets/Rocks/Textures/Rock Small_Normal.png": "1aa17282138adff64ab2a7a0dec98e04"
+  }
+}
