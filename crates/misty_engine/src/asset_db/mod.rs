@@ -73,6 +73,20 @@ pub fn with<R>(f: impl FnOnce(&GuidDatabase) -> R) -> Option<R> {
     read().as_ref().map(f)
 }
 
+/// Run `f` on the GUIDs of the project at `root`: the open database when it is that
+/// project's (the editor keeps it current), else the project's meta files read now. Reading
+/// every meta file takes tens of milliseconds, too long for entering Play mode.
+pub fn with_project<R>(root: &Path, f: impl FnOnce(&GuidDatabase) -> R) -> R {
+    let guard = read();
+    match guard.as_ref() {
+        Some(db) if db.root() == root => f(db),
+        _ => {
+            drop(guard);
+            f(&GuidDatabase::read(root))
+        }
+    }
+}
+
 /// Scan the current project again (after file operations). `None` when none is open.
 pub fn rescan() -> Option<ScanReport> {
     let root = with(|db| db.root().to_path_buf())?;
