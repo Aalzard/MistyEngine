@@ -5,7 +5,7 @@
 //! next to the exe, or, in a development build, the committed `SampleProject` of the source
 //! tree (`git archive HEAD`, so uncommitted edits and untracked files are never copied).
 
-use std::io::Read;
+use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 
 use misty_engine::build::{BuildScene, BuildSettings};
@@ -84,8 +84,9 @@ fn copy_tree(from: &Path, to: &Path) -> Result<usize, String> {
     Ok(copied)
 }
 
-/// `git archive HEAD` of the sample's Assets and settings as a zip, unpacked into `root`.
-fn copy_from_git(repo: &Path, root: &Path) -> Result<usize, String> {
+/// The committed sample project: `git archive HEAD` of its Assets and settings, as a zip
+/// whose entries start with `SampleProject/`.
+pub(super) fn git_archive(repo: &Path) -> Result<zip::ZipArchive<Cursor<Vec<u8>>>, String> {
     let out = std::process::Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -97,15 +98,20 @@ fn copy_from_git(repo: &Path, root: &Path) -> Result<usize, String> {
             "SampleProject/ProjectSettings/ProjectSettings.json",
         ])
         .output()
-        .map_err(|e| format!("git archive: {e}"))?;
+        .map_err(|e| format!("git archive in {}: {e}", repo.display()))?;
     if !out.status.success() {
         return Err(format!(
-            "git archive failed: {}",
+            "git archive failed in {}: {}",
+            repo.display(),
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
-    let mut zip =
-        zip::ZipArchive::new(std::io::Cursor::new(out.stdout)).map_err(|e| e.to_string())?;
+    zip::ZipArchive::new(Cursor::new(out.stdout)).map_err(|e| format!("git archive: {e}"))
+}
+
+/// [`git_archive`] unpacked into `root`.
+fn copy_from_git(repo: &Path, root: &Path) -> Result<usize, String> {
+    let mut zip = git_archive(repo)?;
     let mut copied = 0;
     for i in 0..zip.len() {
         let mut file = zip.by_index(i).map_err(|e| e.to_string())?;
@@ -128,37 +134,24 @@ fn copy_from_git(repo: &Path, root: &Path) -> Result<usize, String> {
             continue;
         }
         if let Some(dir) = dest.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(dir).map_err(io_error("Could not create the folder", dir))?;
         }
         let mut bytes = Vec::with_capacity(file.size() as usize);
-        file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-        std::fs::write(&dest, bytes).map_err(|e| e.to_string())?;
+        file.read_to_end(&mut bytes)
+            .map_err(|e| format!("Could not read {} from git: {e}", rel.display()))?;
+        std::fs::write(&dest, bytes).map_err(io_error("Could not write", &dest))?;
         copied += 1;
     }
     Ok(copied)
 }
 
-/// The sample's settings are staged here, then merged by [`adopt_settings`].
-const SAMPLE_SETTINGS: &str = "Library/SampleProjectSettings.json";
+/// The sample's settings are staged here, then merged by [`merge_settings`].
+pub(super) const SAMPLE_SETTINGS: &str = "Library/SampleProjectSettings.json";
 
 /// Take over the samples' project settings (keeping the new project's product name) and list
 /// the sample scenes in Build Settings, unticked, after the template's own scene.
 fn adopt_settings(root: &Path) -> Result<(), String> {
-    let staged = root.join(SAMPLE_SETTINGS);
-    if staged.is_file() {
-        let ours = ProjectSettings::load(root)?;
-        let text = std::fs::read_to_string(&staged).map_err(|e| e.to_string())?;
-        let mut theirs: ProjectSettings =
-            serde_json::from_str(&text).map_err(|e| format!("sample settings: {e}"))?;
-        let name = ours.player.as_ref().map(|p| p.product_name.clone());
-        let mut player = theirs.player.take().unwrap_or_default();
-        if let Some(name) = name {
-            player.product_name = name;
-        }
-        theirs.player = Some(player);
-        theirs.save(root)?;
-        std::fs::remove_file(&staged).map_err(|e| e.to_string())?;
-    }
+    merge_settings(root)?;
     let mut build = BuildSettings::load(root)?;
     let mut scenes = Vec::new();
     collect_scenes(root, &root.join("Assets"), &mut scenes);
@@ -172,6 +165,27 @@ fn adopt_settings(root: &Path) -> Result<(), String> {
         }
     }
     build.save(root)
+}
+
+/// Take over the staged sample settings (input axes, tags, layers, quality…), keeping the new
+/// project's product name. Nothing to do when none are staged.
+pub(super) fn merge_settings(root: &Path) -> Result<(), String> {
+    let staged = root.join(SAMPLE_SETTINGS);
+    if staged.is_file() {
+        let ours = ProjectSettings::load(root)?;
+        let text = std::fs::read_to_string(&staged).map_err(io_error("Could not read", &staged))?;
+        let mut theirs: ProjectSettings = serde_json::from_str(&text)
+            .map_err(|e| format!("Could not read {}: {e}", staged.display()))?;
+        let name = ours.player.as_ref().map(|p| p.product_name.clone());
+        let mut player = theirs.player.take().unwrap_or_default();
+        if let Some(name) = name {
+            player.product_name = name;
+        }
+        theirs.player = Some(player);
+        theirs.save(root)?;
+        std::fs::remove_file(&staged).map_err(io_error("Could not remove", &staged))?;
+    }
+    Ok(())
 }
 
 fn collect_scenes(root: &Path, dir: &Path, out: &mut Vec<String>) {

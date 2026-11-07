@@ -2443,3 +2443,25 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Bark close up is much better but still procedural (furrow pattern somewhat regular on the
   linden, oak a little dark in shade); leaf cards seen edge-on still show stretched texture.
+
+## MeadowDemo project template (branch meadow-template)
+
+### Done
+- New Project has a third template, **MeadowDemo**: "A walkable meadow with a first-person player:
+  thin grass, trees, Misty GI. Free assets for your game." It copies `SampleProject`'s MeadowDemo
+  scene and everything it uses, found with the build's dependency walk (`asset_deps`, which now
+  also follows `.tree` recipes to their textures, so built games get the tree textures too): the
+  terrain, the 5 tree recipes with their textures, README and LICENSE, the meadow and terrain
+  ground textures, the First Person Player prefab and its 4 scripts, every `.meta` file (same
+  GUIDs, folders included) and the sample's project settings (Run / Crouch axes, the Player
+  layer). From `Examples/SampleProject` next to the exe or, in a dev build, the committed
+  `SampleProject` (`git archive HEAD`). The project opens on `MeadowDemo.scene`.
+- The new project looks towards the sun: the Player is turned to the sun's horizontal direction
+  (nudged if a tree stands right in front) and the Scene view starts just behind its eyes,
+  slightly down. Only the copy is turned; the sample scene is unchanged
+  (`docs/screenshots/gfx/meadow_template_start.png`, `meadow_template_player.png`).
+- Every template card has a one-line description (`docs/screenshots/gfx/hub_templates.png`);
+  the MeadowDemo card is dimmed when the install has no sample project. "Include sample scenes"
+  works on top of it (files already there are kept). Tests: copy list and GUIDs, every reference
+  of the scene, prefab, terrain and trees resolving, opening and 60 frames of Play without an
+  error, the folder (release) source, the Hub card and creating it from the Hub.
