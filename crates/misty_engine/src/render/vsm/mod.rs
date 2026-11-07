@@ -950,16 +950,8 @@ impl Vsm {
                     .rect_view_proj(&g.view, r.level, r.lo, r.hi(), g.basis.z),
                 round,
                 at,
-                // The cascades' choice: full trees close up, the first simplified level
-                // further out, impostors only where a texel is wider than twigs anyway
-                // (impostor crowns barely shadow themselves).
-                tree_lod: if texel <= 0.03 {
-                    0
-                } else if texel < 0.2 {
-                    1
-                } else {
-                    2
-                },
+                // The cascades' choice (by texel size).
+                tree_lod: super::trees::shadow_lod(texel),
                 texels_per_metre: 1.0 / texel,
             });
             for j in 0..r.size.y {

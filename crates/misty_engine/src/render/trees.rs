@@ -78,11 +78,21 @@ const TREE_PREPASS_SRC: &str = concat!(
 /// keeps it), and the levels are close enough that the switch hardly shows. The fade code
 /// stays for a smaller-noise dither later.
 const FADE: f32 = 0.0001;
-/// The mesh LOD trees cast shadows into each cascade with: the full mesh into cascade 0, LOD 1
-/// further out (the shadow of a far crown needs no twigs). Fixed per cascade, not taken from
-/// the camera's distance: a tree crossing its LOD distance used to switch its shadow in
-/// cascade 0 at once (no cross-fade), and the shadow jumped while the player walked.
-const SHADOW_LOD: [u8; 4] = [0, 1, 1, 1];
+/// The mesh LOD trees cast shadows with into a shadow map whose texel is `texel` metres: the
+/// full mesh where texels resolve twigs, the first simplified level further out, impostors only
+/// where a texel is wider than twigs anyway (impostor crowns barely shadow themselves). Chosen
+/// per map (cascade or virtual shadow map page), not from the camera's distance: a tree
+/// crossing its LOD distance used to switch its shadow in cascade 0 at once (no cross-fade),
+/// and the shadow jumped while the player walked.
+pub(super) fn shadow_lod(texel: f32) -> u8 {
+    if texel <= 0.03 {
+        0
+    } else if texel < 0.2 {
+        1
+    } else {
+        2
+    }
+}
 
 /// One placed tree on the GPU (`TreeInstance` in tree_vertex.wgsl).
 #[repr(C)]
@@ -1079,7 +1089,7 @@ impl TreeRenderer {
                         if !cf.intersects(&bounds) {
                             continue;
                         }
-                        let lod = SHADOW_LOD[slot.min(3)] as usize;
+                        let lod = shadow_lod(f.cascades[slot].texel) as usize;
                         let parts: &[Part] = if lod == 2 {
                             &[Part::Impostor]
                         } else {
