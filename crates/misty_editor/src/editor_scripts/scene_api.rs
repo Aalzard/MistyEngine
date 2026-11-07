@@ -12,7 +12,7 @@ use misty_engine::scripting::ui_api::LColor;
 use mlua::{Lua, Result, Table, Value};
 
 use super::api::entity_of;
-use super::state_mut;
+use super::with_state;
 
 fn entity(v: &Value, what: &str) -> Result<Entity> {
     entity_of(v).ok_or_else(|| mlua::Error::runtime(format!("{what} expects a GameObject")))
@@ -27,8 +27,7 @@ fn alive(lua: &Lua, e: Entity) -> Result<()> {
 }
 
 fn dirty(lua: &Lua) -> Result<()> {
-    state_mut(lua)?.scene_dirty = true;
-    Ok(())
+    with_state(lua, |st| st.scene_dirty = true)
 }
 
 /// Does `e` have the built-in component or script `name`?
@@ -111,9 +110,7 @@ fn register_scene(lua: &Lua) -> Result<()> {
         "InstantiatePrefab",
         lua.create_function(
             |lua, (path, position, parent): (String, Option<LVec3>, Value)| {
-                let prefab = state_mut(lua)?
-                    .assets
-                    .prefab(&path)
+                let prefab = with_state(lua, |st| st.assets.prefab(&path))?
                     .map_err(|e| mlua::Error::runtime(format!("InstantiatePrefab: {e}")))?;
                 let parent = entity_of(&parent);
                 let e = with_world(lua, |w| {
@@ -208,10 +205,10 @@ fn writable(path: &str) -> Result<String> {
 
 /// After a script made an asset: rescan, then run the asset processors on it.
 fn created(lua: &Lua, rel: &str) -> Result<()> {
-    let st = state_mut(lua)?;
-    st.refresh_assets();
-    st.assets.imported.push(rel.to_owned());
-    Ok(())
+    with_state(lua, |st| {
+        st.refresh_assets();
+        st.assets.imported.push(rel.to_owned());
+    })
 }
 
 /// `AssetDB.Find(query [, folder])` ("t:prefab" / "t:texture" / … and a name filter) → paths;
@@ -222,7 +219,7 @@ fn register_assets(lua: &Lua) -> Result<()> {
     a.set(
         "Find",
         lua.create_function(|lua, (query, folder): (Option<String>, Option<String>)| {
-            let root = state_mut(lua)?.project.root.clone();
+            let root = with_state(lua, |st| st.project.root.clone())?;
             let query = query.unwrap_or_default();
             let mut kind = String::new();
             let mut words = Vec::new();
@@ -257,13 +254,13 @@ fn register_assets(lua: &Lua) -> Result<()> {
     a.set(
         "Exists",
         lua.create_function(|lua, path: String| {
-            Ok(state_mut(lua)?.project.root.join(&path).exists())
+            with_state(lua, |st| st.project.root.join(&path).exists())
         })?,
     )?;
     a.set(
         "ReadText",
         lua.create_function(|lua, path: String| {
-            let abs = state_mut(lua)?.project.root.join(&path);
+            let abs = with_state(lua, |st| st.project.root.clone())?.join(&path);
             misty_engine::vfs::read_to_string(&abs)
                 .map_err(|e| mlua::Error::runtime(format!("ReadText: {path}: {e}")))
         })?,
@@ -272,7 +269,7 @@ fn register_assets(lua: &Lua) -> Result<()> {
         "CreateAsset",
         lua.create_function(|lua, (path, text): (String, String)| {
             let rel = writable(&path)?;
-            let abs = state_mut(lua)?.project.root.join(&rel);
+            let abs = with_state(lua, |st| st.project.root.clone())?.join(&rel);
             if let Some(dir) = abs.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| mlua::Error::runtime(e.to_string()))?;
             }
@@ -286,10 +283,10 @@ fn register_assets(lua: &Lua) -> Result<()> {
         "CreateFolder",
         lua.create_function(|lua, path: String| {
             let rel = writable(&path)?;
-            let abs = state_mut(lua)?.project.root.join(&rel);
+            let abs = with_state(lua, |st| st.project.root.clone())?.join(&rel);
             std::fs::create_dir_all(&abs)
                 .map_err(|e| mlua::Error::runtime(format!("CreateFolder: {rel}: {e}")))?;
-            state_mut(lua)?.refresh_assets();
+            with_state(lua, |st| st.refresh_assets())?;
             Ok(rel)
         })?,
     )?;
@@ -300,7 +297,7 @@ fn register_assets(lua: &Lua) -> Result<()> {
             if !rel.ends_with(".mat") {
                 rel.push_str(".mat");
             }
-            let abs = state_mut(lua)?.project.root.join(&rel);
+            let abs = with_state(lua, |st| st.project.root.clone())?.join(&rel);
             if let Some(dir) = abs.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| mlua::Error::runtime(e.to_string()))?;
             }
@@ -317,7 +314,7 @@ fn register_assets(lua: &Lua) -> Result<()> {
     a.set(
         "Refresh",
         lua.create_function(|lua, ()| {
-            state_mut(lua)?.refresh_assets();
+            with_state(lua, |st| st.refresh_assets())?;
             Ok(())
         })?,
     )?;

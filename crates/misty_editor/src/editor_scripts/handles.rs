@@ -203,7 +203,7 @@ pub fn scene_gui(
         });
         for (slot, name, path) in &targets {
             let site = format!("scene:{name}");
-            if super::state_mut(lua).is_ok_and(|st| st.editor_scripts.is_broken(&site)) {
+            if super::with_state(lua, |st| st.editor_scripts.is_broken(&site)).unwrap_or(false) {
                 continue;
             }
             let result = super::inspector::instance(lua, e, *slot, name, path).and_then(|inst| {
@@ -212,10 +212,8 @@ pub fn scene_gui(
                     None => Ok(()),
                 }
             });
-            if let Err(err) = result
-                && let Ok(st) = super::state_mut(lua)
-            {
-                super::fail(st, &site, &err);
+            if let Err(err) = result {
+                let _ = super::with_state(lua, |st| super::fail(st, &site, &err));
             }
         }
         lua.remove_app_data::<HandleCx>()

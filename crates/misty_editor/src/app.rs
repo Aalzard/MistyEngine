@@ -717,6 +717,7 @@ impl EditorApp {
 impl eframe::App for EditorApp {
     fn on_exit(&mut self) {
         self.save_layout(true);
+        crate::editor_scripts::on_exit(&mut self.state);
         self.save_hub_thumbnail();
         // Screenshot runs leave the saved view alone so they stay repeatable.
         if self.capture.is_none() {

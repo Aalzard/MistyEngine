@@ -206,7 +206,7 @@ pub fn lines(state: &mut EditorState, lines: &mut Lines) {
 
 fn draw_one(lua: &Lua, e: Entity, script: &ScriptRef, selected: bool) {
     let site = format!("gizmos:{}", script.path);
-    if super::state_mut(lua).is_ok_and(|st| st.editor_scripts.is_broken(&site)) {
+    if super::with_state(lua, |st| st.editor_scripts.is_broken(&site)).unwrap_or(false) {
         return;
     }
     let Ok(Some(class)) = super::api::game_class(lua, &script.path) else {
@@ -229,10 +229,8 @@ fn draw_one(lua: &Lua, e: Entity, script: &ScriptRef, selected: bool) {
         }
         Ok(())
     });
-    if let Err(err) = result
-        && let Ok(st) = super::state_mut(lua)
-    {
-        super::fail(st, &site, &err);
+    if let Err(err) = result {
+        let _ = super::with_state(lua, |st| super::fail(st, &site, &err));
     }
 }
 

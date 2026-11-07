@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use mlua::{Lua, Result};
 use serde_json::Value as J;
 
-use super::state_mut;
+use super::with_state;
 
 #[derive(Debug, Default)]
 pub struct EditorPrefs {
@@ -68,15 +68,12 @@ impl EditorPrefs {
 }
 
 fn set(lua: &Lua, key: &str, v: J) -> Result<()> {
-    state_mut(lua)?
-        .editor_scripts
-        .prefs
-        .set(key, v)
+    with_state(lua, |st| st.editor_scripts.prefs.set(key, v))?
         .map_err(|e| mlua::Error::runtime(format!("EditorPrefs: {e}")))
 }
 
 fn get(lua: &Lua, key: &str) -> Result<Option<J>> {
-    Ok(state_mut(lua)?.editor_scripts.prefs.get(key).cloned())
+    with_state(lua, |st| st.editor_scripts.prefs.get(key).cloned())
 }
 
 pub fn register(lua: &Lua) -> Result<()> {
@@ -141,10 +138,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     p.set(
         "DeleteKey",
         lua.create_function(|lua, k: String| {
-            state_mut(lua)?
-                .editor_scripts
-                .prefs
-                .delete(&k)
+            with_state(lua, |st| st.editor_scripts.prefs.delete(&k))?
                 .map_err(|e| mlua::Error::runtime(format!("EditorPrefs: {e}")))
         })?,
     )?;

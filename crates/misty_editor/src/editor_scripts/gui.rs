@@ -374,10 +374,9 @@ fn choices(lua: &Lua, kind: &str, objects: bool) -> Vec<Choice> {
         })
         .unwrap_or_default();
     }
-    let Ok(st) = super::state_mut(lua) else {
+    let Ok(root) = super::with_state(lua, |st| st.project.root.clone()) else {
         return Vec::new();
     };
-    let root = st.project.root.clone();
     let mut out: Vec<String> = misty_engine::vfs::files_under(&root.join("Assets"))
         .into_iter()
         .filter_map(|p| {

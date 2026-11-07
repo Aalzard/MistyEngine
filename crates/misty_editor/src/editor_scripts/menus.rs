@@ -32,9 +32,9 @@ pub fn parse_shortcut(text: &str) -> Option<KeyboardShortcut> {
     let mut key = None;
     for part in text.split('+').map(str::trim) {
         match part.to_ascii_lowercase().as_str() {
-            "ctrl" | "cmd" | "command" => mods = mods | Modifiers::COMMAND,
-            "shift" => mods = mods | Modifiers::SHIFT,
-            "alt" | "option" => mods = mods | Modifiers::ALT,
+            "ctrl" | "cmd" | "command" => mods |= Modifiers::COMMAND,
+            "shift" => mods |= Modifiers::SHIFT,
+            "alt" | "option" => mods |= Modifiers::ALT,
             "" => return None,
             _ => {
                 if key.is_some() {

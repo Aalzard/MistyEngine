@@ -158,10 +158,11 @@ pub(crate) fn create_instances(state: &mut EditorState) {
             }
             if let Ok(Some(f)) = class.get::<Option<Function>>("OnEnable")
                 && let Err(e) = f.call::<()>(t)
-                && let Ok(st) = super::state_mut(lua)
             {
-                st.console
-                    .log(crate::console::LogLevel::Error, super::describe(&e));
+                let _ = super::with_state(lua, |st| {
+                    st.console
+                        .log(crate::console::LogLevel::Error, super::describe(&e))
+                });
             }
         }
     });

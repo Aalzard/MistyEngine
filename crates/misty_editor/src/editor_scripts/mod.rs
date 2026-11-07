@@ -128,8 +128,11 @@ struct UndoGroup {
     recorded: bool,
 }
 
-/// The editor state while a Lua call runs (see [`state_mut`]).
-struct StatePtr(*mut EditorState);
+/// The editor state while a Lua call runs (see [`with_state`]), and whether it is lent out.
+struct StatePtr {
+    state: *mut EditorState,
+    busy: Cell<bool>,
+}
 
 /// Wall-clock limit for the Lua code running now (checked by an instruction-count hook).
 struct Deadline {
@@ -197,18 +200,29 @@ pub fn window_id(title: &str) -> u64 {
     h
 }
 
-/// The editor state of the running call.
+/// Run `f` with the editor state of the running call.
 ///
 /// SAFETY: the pointer is set by [`call`] from its `&mut EditorState` and removed before
-/// `call` returns; `call` does not touch the state while Lua runs, so API functions are the
-/// only users. Each API function takes the reference once and drops it before calling back
-/// into Lua, so no two live references overlap.
-pub(crate) fn state_mut(lua: &Lua) -> mlua::Result<&mut EditorState> {
-    let p = lua
-        .app_data_ref::<StatePtr>()
-        .map(|p| p.0)
-        .ok_or_else(|| mlua::Error::runtime("the editor is not available here"))?;
-    Ok(unsafe { &mut *p })
+/// `call` returns; `call` does not touch the state while Lua runs. The `busy` flag makes this
+/// the only live reference: a nested `with_state` (from Lua called inside `f`) is an error
+/// instead of a second `&mut`.
+pub(crate) fn with_state<R>(lua: &Lua, f: impl FnOnce(&mut EditorState) -> R) -> mlua::Result<R> {
+    let p = {
+        let cell = lua
+            .app_data_ref::<StatePtr>()
+            .ok_or_else(|| mlua::Error::runtime("the editor is not available here"))?;
+        if cell.busy.replace(true) {
+            return Err(mlua::Error::runtime(
+                "editor API called from inside another editor API call",
+            ));
+        }
+        cell.state
+    };
+    let r = f(unsafe { &mut *p });
+    if let Some(cell) = lua.app_data_ref::<StatePtr>() {
+        cell.busy.set(false);
+    }
+    Ok(r)
 }
 
 /// Run `f` with the editor scene in the Lua state's world and the editor state reachable
@@ -225,7 +239,10 @@ pub(crate) fn call<R>(
     if let Some(mut w) = lua.app_data_mut::<World>() {
         w.scene = scene;
     }
-    lua.set_app_data(StatePtr(state as *mut EditorState));
+    lua.set_app_data(StatePtr {
+        state: state as *mut EditorState,
+        busy: Cell::new(false),
+    });
     arm(&lua, Some(budget));
     let result = f(&lua);
     arm(&lua, None);
@@ -452,12 +469,10 @@ pub fn reload(state: &mut EditorState) {
         .iter()
         .map(|rel| (rel.clone(), mtime(&state.project.root.join(rel))))
         .collect();
-    if files.is_empty() {
-        state.editor_scripts.menus.clear();
-        state.editor_scripts.windows.clear();
-        state.editor_scripts.inspectors.clear();
-        return;
-    }
+    // Also without editor scripts: game scripts' gizmos run in this state.
+    state.editor_scripts.menus.clear();
+    state.editor_scripts.windows.clear();
+    state.editor_scripts.inspectors.clear();
     let lua = match new_lua(state) {
         Ok(l) => l,
         Err(e) => {
@@ -488,6 +503,12 @@ pub fn reload(state: &mut EditorState) {
         }
     }
     windows::create_instances(state);
+}
+
+/// Save tool window state (the editor is closing).
+pub fn on_exit(state: &mut EditorState) {
+    windows::capture_all(state);
+    state.editor_scripts.window_store.save(&state.project.root);
 }
 
 /// Once per editor frame: load on first use, reload when a script changed, run update

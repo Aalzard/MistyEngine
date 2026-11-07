@@ -906,3 +906,25 @@ fn sample_project_editor_scripts_work() {
     assert!(errors(&s).is_empty(), "{:?}", errors(&s));
     cleanup(s);
 }
+
+#[test]
+fn game_script_gizmos_draw_without_any_editor_script() {
+    let mut s = project("gizmos_only", &[("Assets/Scripts/Orbiter.lua", ORBITER)]);
+    assert!(s.editor_scripts.menus.is_empty());
+    let e = s.scene.spawn("Planet", None);
+    attach(&mut s, e, "Assets/Scripts/Orbiter.lua");
+    let mut lines = crate::gizmos::Lines::default();
+    gizmos::lines(&mut s, &mut lines);
+    assert_eq!(lines.0.len(), 2);
+    // A game script that fails to load in the editor stays quiet (the game reports it).
+    let other = s.scene.spawn("Broken", None);
+    write(
+        &s.project.root,
+        "Assets/Scripts/Broken.lua",
+        "error('only at run time')\n",
+    );
+    attach(&mut s, other, "Assets/Scripts/Broken.lua");
+    gizmos::lines(&mut s, &mut crate::gizmos::Lines::default());
+    assert!(errors(&s).is_empty(), "{:?}", errors(&s));
+    cleanup(s);
+}

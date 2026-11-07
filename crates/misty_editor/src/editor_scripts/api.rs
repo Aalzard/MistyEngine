@@ -15,7 +15,7 @@ use misty_engine::scripting::api::{LGameObject, LTransform, LVec3, with_world};
 use misty_engine::scripting::ui_api::LColor;
 use mlua::{Function, Lua, RegistryKey, Result, Table, Value};
 
-use super::{EditorScripts, MenuInfo, Progress, WindowInfo, state_mut};
+use super::{EditorScripts, MenuInfo, Progress, WindowInfo, with_state};
 use crate::actions::Action;
 use crate::state::EditorState;
 
@@ -116,23 +116,22 @@ pub(crate) fn game_class(lua: &Lua, rel: &str) -> Result<Option<Table>> {
         Some(None) => return Ok(None),
         None => {}
     }
-    let st = state_mut(lua)?;
-    let abs = st.project.root.join(rel);
-    st.editor_scripts
-        .game_files
-        .insert(rel.to_owned(), super::mtime(&abs));
+    let abs = with_state(lua, |st| {
+        let abs = st.project.root.join(rel);
+        st.editor_scripts
+            .game_files
+            .insert(rel.to_owned(), super::mtime(&abs));
+        abs
+    })?;
     let loaded = misty_engine::vfs::read_to_string(&abs)
         .map_err(|e| mlua::Error::runtime(format!("{rel}: {e}")))
         .and_then(|src| lua.load(&src).set_name(rel).eval::<Value>());
     let key = match loaded {
         Ok(Value::Table(t)) => Some(lua.create_registry_value(t)?),
         Ok(_) => None,
-        Err(e) => {
-            let st = state_mut(lua)?;
-            st.console
-                .log(crate::console::LogLevel::Error, super::describe(&e));
-            None
-        }
+        // Not reported here: the asset database reports broken scripts, and the game reports
+        // what fails at run time.
+        Err(_) => None,
     };
     let table = key
         .as_ref()
@@ -276,22 +275,23 @@ fn tool_window(lua: &Lua, title: String) -> Result<Table> {
     class.set(
         "Open",
         lua.create_function(move |lua, _: mlua::Variadic<Value>| {
-            state_mut(lua)?.push(Action::FocusTab(crate::layout::Tab::Tool(id)));
-            Ok(())
+            with_state(lua, |st| {
+                st.push(Action::FocusTab(crate::layout::Tab::Tool(id)))
+            })
         })?,
     )?;
     class.set(
         "Close",
         lua.create_function(move |lua, _: mlua::Variadic<Value>| {
-            state_mut(lua)?.push(Action::CloseTab(crate::layout::Tab::Tool(id)));
-            Ok(())
+            with_state(lua, |st| {
+                st.push(Action::CloseTab(crate::layout::Tab::Tool(id)))
+            })
         })?,
     )?;
     class.set(
         "Repaint",
         lua.create_function(|lua, _: mlua::Variadic<Value>| {
-            state_mut(lua)?.editor_scripts.repaint = true;
-            Ok(())
+            with_state(lua, |st| st.editor_scripts.repaint = true)
         })?,
     )?;
     let entry = WindowEntry {
@@ -338,7 +338,7 @@ fn custom_inspector(lua: &Lua, script: String) -> Result<Table> {
             entry.file, old.file
         );
         drop(r);
-        state_mut(lua)?.console.warn(msg);
+        with_state(lua, |st| st.console.warn(msg))?;
         r = registry_mut(lua)?;
     }
     r.inspectors.retain(|i| i.script != name);
@@ -383,11 +383,11 @@ pub(crate) fn postprocess(state: &mut EditorState, paths: &[String]) {
                 continue;
             };
             for p in &paths {
-                if let Err(e) = f.call::<()>((t.clone(), p.as_str()))
-                    && let Ok(st) = state_mut(lua)
-                {
-                    st.console
-                        .log(crate::console::LogLevel::Error, super::describe(&e));
+                if let Err(e) = f.call::<()>((t.clone(), p.as_str())) {
+                    let _ = with_state(lua, |st| {
+                        st.console
+                            .log(crate::console::LogLevel::Error, super::describe(&e))
+                    });
                 }
             }
         }
@@ -417,10 +417,10 @@ pub(crate) fn run_updates(state: &mut EditorState) {
                 Ok(Value::Boolean(false)) => true,
                 Ok(_) => false,
                 Err(e) => {
-                    if let Ok(st) = state_mut(lua) {
+                    let _ = with_state(lua, |st| {
                         st.console
-                            .log(crate::console::LogLevel::Error, super::describe(&e));
-                    }
+                            .log(crate::console::LogLevel::Error, super::describe(&e))
+                    });
                     true
                 }
             };
@@ -455,40 +455,40 @@ fn register_selection(lua: &Lua) -> Result<()> {
     let sel = lua.create_table()?;
     sel.set(
         "Clear",
-        lua.create_function(|lua, ()| {
-            state_mut(lua)?.selection.clear();
-            Ok(())
-        })?,
+        lua.create_function(|lua, ()| with_state(lua, |st| st.selection.clear()))?,
     )?;
     sel.set(
         "Contains",
         lua.create_function(|lua, v: Value| {
             let e = entity_of(&v);
-            Ok(e.is_some_and(|e| state_mut(lua).is_ok_and(|s| s.selection.contains(e))))
+            Ok(e.is_some_and(|e| with_state(lua, |s| s.selection.contains(e)).unwrap_or(false)))
         })?,
     )?;
     let meta = lua.create_table()?;
     meta.set(
         "__index",
         lua.create_function(|lua, (_, key): (Table, String)| -> Result<Value> {
-            let st = state_mut(lua)?;
+            let (active, list, asset) = with_state(lua, |st| {
+                let sel = &st.selection;
+                (sel.active(), sel.list().to_vec(), selected_asset(st))
+            })?;
             match key.as_str() {
-                "active" => match st.selection.active() {
+                "active" => match active {
                     Some(e) => Ok(Value::UserData(lua.create_userdata(LGameObject(e))?)),
                     None => Ok(Value::Nil),
                 },
                 "objects" => {
-                    let list = lua.create_table()?;
-                    for (i, e) in st.selection.list().iter().enumerate() {
-                        list.set(i + 1, LGameObject(*e))?;
+                    let t = lua.create_table()?;
+                    for (i, e) in list.iter().enumerate() {
+                        t.set(i + 1, LGameObject(*e))?;
                     }
-                    Ok(Value::Table(list))
+                    Ok(Value::Table(t))
                 }
-                "asset" => match selected_asset(st) {
+                "asset" => match asset {
                     Some(p) => Ok(Value::String(lua.create_string(p)?)),
                     None => Ok(Value::Nil),
                 },
-                "count" => Ok(Value::Integer(st.selection.list().len() as i64)),
+                "count" => Ok(Value::Integer(list.len() as i64)),
                 _ => Ok(Value::Nil),
             }
         })?,
@@ -496,43 +496,46 @@ fn register_selection(lua: &Lua) -> Result<()> {
     meta.set(
         "__newindex",
         lua.create_function(|lua, (_, key, v): (Table, String, Value)| {
-            let st = state_mut(lua)?;
-            match key.as_str() {
-                "active" => match entity_of(&v) {
-                    Some(e) => st.selection.set(e),
-                    None if v.is_nil() => st.selection.clear(),
-                    None => {
-                        return Err(mlua::Error::runtime("Selection.active takes a GameObject"));
-                    }
-                },
-                "objects" => {
-                    let list: Vec<Entity> = match &v {
-                        Value::Table(t) => t
-                            .sequence_values::<Value>()
-                            .filter_map(|v| v.ok().as_ref().and_then(entity_of))
-                            .collect(),
-                        _ => Vec::new(),
-                    };
-                    st.selection.set_many(list);
-                }
-                "asset" => match v {
-                    Value::String(s) => {
-                        let rel = s.to_string_lossy();
-                        crate::prefabs::select_asset(st, &rel);
-                    }
-                    _ => st.inspector_asset = None,
-                },
-                _ => {
-                    return Err(mlua::Error::runtime(format!(
-                        "Selection.{key} is read-only"
-                    )));
-                }
-            }
-            Ok(())
+            with_state(lua, |st| set_selection(st, &key, &v))?
         })?,
     )?;
     sel.set_metatable(Some(meta))?;
     lua.globals().set("Selection", sel)
+}
+
+fn set_selection(st: &mut EditorState, key: &str, v: &Value) -> Result<()> {
+    match key {
+        "active" => match entity_of(v) {
+            Some(e) => st.selection.set(e),
+            None if v.is_nil() => st.selection.clear(),
+            None => {
+                return Err(mlua::Error::runtime("Selection.active takes a GameObject"));
+            }
+        },
+        "objects" => {
+            let list: Vec<Entity> = match v {
+                Value::Table(t) => t
+                    .sequence_values::<Value>()
+                    .filter_map(|v| v.ok().as_ref().and_then(entity_of))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            st.selection.set_many(list);
+        }
+        "asset" => match v {
+            Value::String(s) => {
+                let rel = s.to_string_lossy();
+                crate::prefabs::select_asset(st, &rel);
+            }
+            _ => st.inspector_asset = None,
+        },
+        _ => {
+            return Err(mlua::Error::runtime(format!(
+                "Selection.{key} is read-only"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// The asset selected in the Project window, as a project path.
@@ -548,19 +551,21 @@ fn selected_asset(st: &EditorState) -> Option<String> {
 
 /// Snapshot the scene for undo, once per call (or per open group).
 fn record(lua: &Lua, name: &str) -> Result<()> {
-    let st = state_mut(lua)?;
-    st.scene_dirty = true;
-    if st.editor_scripts.undo.recorded {
+    let label = with_state(lua, |st| {
+        st.scene_dirty = true;
+        let u = &mut st.editor_scripts.undo;
+        if u.recorded {
+            return None;
+        }
+        u.recorded = true;
+        Some(u.open.clone().unwrap_or_else(|| name.to_owned()))
+    })?;
+    let Some(label) = label else {
         return Ok(());
-    }
-    let label = st
-        .editor_scripts
-        .undo
-        .open
-        .clone()
-        .unwrap_or_else(|| name.to_owned());
-    with_world(lua, |w| st.undo.push(&label, &w.scene, &st.selection))?;
-    st.editor_scripts.undo.recorded = true;
+    };
+    with_world(lua, |w| {
+        with_state(lua, |st| st.undo.push(&label, &w.scene, &st.selection))
+    })??;
     Ok(())
 }
 
@@ -585,32 +590,23 @@ fn register_undo(lua: &Lua) -> Result<()> {
     undo.set(
         "BeginGroup",
         lua.create_function(|lua, name: String| {
-            let es = &mut state_mut(lua)?.editor_scripts;
-            es.undo.open = Some(name);
-            es.undo.recorded = false;
-            Ok(())
+            with_state(lua, |st| {
+                st.editor_scripts.undo.open = Some(name);
+                st.editor_scripts.undo.recorded = false;
+            })
         })?,
     )?;
     undo.set(
         "EndGroup",
-        lua.create_function(|lua, ()| {
-            state_mut(lua)?.editor_scripts.undo.open = None;
-            Ok(())
-        })?,
+        lua.create_function(|lua, ()| with_state(lua, |st| st.editor_scripts.undo.open = None))?,
     )?;
     undo.set(
         "Undo",
-        lua.create_function(|lua, ()| {
-            state_mut(lua)?.push(Action::Undo);
-            Ok(())
-        })?,
+        lua.create_function(|lua, ()| with_state(lua, |st| st.push(Action::Undo)))?,
     )?;
     undo.set(
         "Redo",
-        lua.create_function(|lua, ()| {
-            state_mut(lua)?.push(Action::Redo);
-            Ok(())
-        })?,
+        lua.create_function(|lua, ()| with_state(lua, |st| st.push(Action::Redo)))?,
     )?;
     lua.globals().set("Undo", undo)
 }
@@ -635,21 +631,19 @@ fn register_editor(lua: &Lua) -> Result<()> {
         "ShowProgress",
         lua.create_function(
             |lua, (title, info, fraction): (String, Option<String>, f32)| {
-                state_mut(lua)?.editor_scripts.progress = Some(Progress {
-                    title,
-                    info: info.unwrap_or_default(),
-                    fraction: fraction.clamp(0.0, 1.0),
-                });
-                Ok(())
+                with_state(lua, |st| {
+                    st.editor_scripts.progress = Some(Progress {
+                        title,
+                        info: info.unwrap_or_default(),
+                        fraction: fraction.clamp(0.0, 1.0),
+                    })
+                })
             },
         )?,
     )?;
     ed.set(
         "ClearProgress",
-        lua.create_function(|lua, ()| {
-            state_mut(lua)?.editor_scripts.progress = None;
-            Ok(())
-        })?,
+        lua.create_function(|lua, ()| with_state(lua, |st| st.editor_scripts.progress = None))?,
     )?;
     ed.set(
         "AddUpdate",
@@ -668,20 +662,17 @@ fn register_editor(lua: &Lua) -> Result<()> {
     )?;
     ed.set(
         "IsPlaying",
-        lua.create_function(|lua, ()| Ok(state_mut(lua)?.play.in_play_mode()))?,
+        lua.create_function(|lua, ()| with_state(lua, |st| st.play.in_play_mode()))?,
     )?;
     ed.set(
         "ProjectPath",
         lua.create_function(|lua, ()| {
-            Ok(state_mut(lua)?.project.root.to_string_lossy().into_owned())
+            with_state(lua, |st| st.project.root.to_string_lossy().into_owned())
         })?,
     )?;
     ed.set(
         "Repaint",
-        lua.create_function(|lua, ()| {
-            state_mut(lua)?.editor_scripts.repaint = true;
-            Ok(())
-        })?,
+        lua.create_function(|lua, ()| with_state(lua, |st| st.editor_scripts.repaint = true))?,
     )?;
     lua.globals().set("Editor", ed)
 }
@@ -693,10 +684,15 @@ fn display_dialog(
     ok: &str,
     cancel: Option<String>,
 ) -> Result<bool> {
-    let st = state_mut(lua)?;
-    if let super::DialogMode::Scripted { answers, shown } = &mut st.editor_scripts.dialogs {
-        shown.push((title.to_owned(), message.to_owned()));
-        return Ok(answers.pop_front().unwrap_or(true));
+    let scripted = with_state(lua, |st| match &mut st.editor_scripts.dialogs {
+        super::DialogMode::Scripted { answers, shown } => {
+            shown.push((title.to_owned(), message.to_owned()));
+            Some(answers.pop_front().unwrap_or(true))
+        }
+        super::DialogMode::Native => None,
+    })?;
+    if let Some(answer) = scripted {
+        return Ok(answer);
     }
     let buttons = match cancel {
         Some(c) => rfd::MessageButtons::OkCancelCustom(ok.to_owned(), c),

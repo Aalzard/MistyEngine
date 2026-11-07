@@ -63,7 +63,9 @@
    scripts.
 3. **The editor state is reached through a pointer that lives for one call.** `call` takes the
    Lua state out of `EditorScripts` (so a nested call is impossible and nothing aliases it), sets
-   a `*mut EditorState` app-data entry, runs, and removes it. The `GUI` functions reach the `Ui`
+   a `*mut EditorState` app-data entry, runs, and removes it. API functions use it only through
+   `with_state(lua, |st| …)`, which refuses to nest (a busy flag), so there is never a second
+   `&mut` and no Lua runs while it is borrowed. The `GUI` functions reach the `Ui`
    the same way (a stack, for layout helpers). Registering scoped functions per frame was the
    alternative; it costs dozens of allocations per window per frame.
 4. **Errors switch the callback off until the script changes** (`window:`, `inspector:`,
@@ -112,5 +114,6 @@
   parenting/destroy, game API on the edited scene, dialogs, progress, update callbacks), and the
   SampleProject scripts (load cleanly, Scatter Tool scatters 7 linked prefab copies as one undo
   step, Align to Floor, Satellite gizmos and Inspector).
+  Game script gizmos also draw in projects without editor scripts (the Lua state is always made).
 - `misty_engine::scripting::tests::inspector_attributes_are_read_from_the_class`,
   `asset_deps` test extended with `Editor` folders left out of builds.

@@ -53,7 +53,10 @@ impl ScriptTarget {
 }
 
 fn default_of(lua: &Lua, path: &str, key: &str) -> Option<ScriptValue> {
-    let st = super::state_mut(lua).ok()?;
+    super::with_state(lua, |st| script_default(st, path, key)).ok()?
+}
+
+fn script_default(st: &EditorState, path: &str, key: &str) -> Option<ScriptValue> {
     let meta = st.assets.scripts.get(path)?;
     let fields = meta.fields.as_ref().ok()?;
     fields
@@ -104,8 +107,7 @@ impl UserData for ScriptTarget {
                 }
             })?;
             let label = format!("Change {}", crate::undo_names::humanize(&key));
-            super::state_mut(lua)?.mark_edited(&label);
-            Ok(())
+            super::with_state(lua, |st| st.mark_edited(&label))
         });
         m.add_meta_method(MetaMethod::ToString, |_, t, ()| {
             Ok(format!("ScriptTarget({})", t.path))
@@ -141,14 +143,15 @@ fn draw_default(lua: &Lua) -> Result<()> {
         .and_then(|i| i.0.last().cloned())
         .ok_or_else(|| mlua::Error::runtime("DrawDefaultInspector only works in OnInspectorGUI"))?;
     let scene = with_world(lua, |w| std::mem::take(&mut w.scene))?;
-    let st = super::state_mut(lua)?;
-    st.scene = scene;
-    let drawn = super::gui::with_ui(lua, |ui| {
-        crate::panels::script_fields(ui, st, target.entity, target.slot, &target.path)
-    });
-    let scene = std::mem::take(&mut st.scene);
-    with_world(lua, |w| w.scene = scene)?;
-    drawn
+    let scene = super::with_state(lua, |st| {
+        st.scene = scene;
+        let drawn = super::gui::with_ui(lua, |ui| {
+            crate::panels::script_fields(ui, st, target.entity, target.slot, &target.path)
+        });
+        (std::mem::take(&mut st.scene), drawn)
+    })?;
+    with_world(lua, |w| w.scene = scene.0)?;
+    scene.1
 }
 
 /// The Inspector instance for `name` on (`e`, `slot`), created on first use.
