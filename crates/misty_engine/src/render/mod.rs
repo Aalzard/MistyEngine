@@ -575,6 +575,12 @@ pub struct Renderer {
     /// The view-projection the last render drew with (jitter included), for tests.
     #[cfg(test)]
     last_view_proj: Mat4,
+    /// The sun's cascades and near grass shadow map slices of the last render, for tests.
+    #[cfg(test)]
+    last_shadow_views: (
+        Vec<cascades::Cascade>,
+        Option<[Mat4; grass_near_shadow::SLICES]>,
+    ),
     /// MSAA samples of the main pass this renderer was built for (see [`sample_count`]).
     samples: u32,
     /// The sun's virtual shadow map (Quality ▸ Shadows ▸ Virtual, see [`vsm`]).
@@ -727,6 +733,8 @@ impl Renderer {
             debug_blit: None,
             #[cfg(test)]
             last_view_proj: Mat4::IDENTITY,
+            #[cfg(test)]
+            last_shadow_views: Default::default(),
             samples: sample_count(),
             grass_vis: None,
             grass_vis_prebuilt: Default::default(),
@@ -1417,6 +1425,7 @@ impl Renderer {
             let first = frame.meshes.len();
             // (Before the frame lists: the virtual shadow map's pages follow the terrain chunks'
             // detail.)
+            (self.terrains).set_shadow_reach(shadow_settings.distance.min(frame.camera.far));
             (self.terrains).select(
                 device,
                 queue,
@@ -1484,6 +1493,10 @@ impl Renderer {
         // The near-camera grass shadow map follows the camera (off: its uniform says so).
         let near_sun = near_sun.filter(|_| self.terrains.has_grass_near_shadow());
         let grass_near = (self.shadows.grass_near).prepare(queue, near_sun, frame.camera.position);
+        #[cfg(test)]
+        {
+            self.last_shadow_views = (plan.cascades.clone(), grass_near);
+        }
         // Virtual shadow maps leave grass out of their cached pages: the grass casters past the
         // near map go into the virtual map's near layer instead.
         let grass_band = (self.vsm.frame.as_ref())
@@ -2268,6 +2281,7 @@ impl Renderer {
         list: Option<&frame_lists::ShadowList>,
         grass: bool,
         trees: Option<usize>,
+        chunks: Option<&culling::Frustum>,
         stats: &mut RenderStats,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -2294,7 +2308,7 @@ impl Renderer {
         let casters = Casters {
             grass,
             trees,
-            chunks: None,
+            chunks,
         };
         self.draw_casters(&mut pass, frame, slot, lists, list, casters, stats);
     }
@@ -3110,7 +3124,7 @@ struct Casters<'a> {
     grass: bool,
     /// The trees' shadow list to draw (cascades, then virtual shadow map rectangles).
     trees: Option<usize>,
-    /// Only the terrain chunks meeting this frustum (virtual shadow map rectangles).
+    /// Only the terrain chunks meeting this frustum (the shadow map's own view).
     chunks: Option<&'a culling::Frustum>,
 }
 
@@ -3544,6 +3558,8 @@ mod hitch_tests;
 mod meadow_perf_tests;
 #[cfg(test)]
 mod rocks_gpu_tests;
+#[cfg(test)]
+mod shadow_stutter_tests;
 #[cfg(test)]
 mod taa_gpu_tests;
 #[cfg(test)]

@@ -2512,3 +2512,26 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   colour in the far terrain beyond the grass draw distance (160 m in MeadowDemo).
 - Leaf cards seen edge-on still show stretched texture; linden and birch leaves are still a
   little schematic close up.
+
+## Shadow stutter (branch shadow-stutter)
+
+### Done (docs/pending/shadow-stutter.md)
+- Repro harness `render/shadow_stutter_tests.rs`: a scripted First Person walk / turn through
+  MeadowDemo that reads every sun cascade and near grass shadow map slice back each frame and
+  counts the world texels whose caster changed (the maps are world-snapped, so any change is
+  a caster that popped because the camera moved), plus an on-screen metric (reprojected
+  frame-to-frame change in shadow, penumbra and lit regions).
+- Causes found and fixed: terrain chunks drawn into the shadow maps at the camera's LOD (a
+  whole 256 m chunk popped in cascade 3 with long shadow distances; a chunk flipped with the
+  stride bob), trees switching their cascade-0 shadow LOD with the camera's distance, and the
+  near grass shadow map shrinking its blades inside the part the lit shaders read (12.3 % of
+  the inner slice changed every walking frame, 1.5 % now) plus grass shadow cards re-cut per
+  blade.
+- Shadow maps draw terrain at full detail (camera LOD only for coarse receivers), culled per
+  map; tree shadows use a fixed LOD per map (by its texel size, as the virtual shadow map);
+  near-map casters fade out past its read area. Cost +0.15 ms on High, ±0 on Medium and Low;
+  4 MeadowDemo golden references updated (grass shadow detail close up, Ultra tree crowns).
+
+### Not done yet
+- Cascade grass casters still fade smoothly with the camera's distance (near-map hand-over,
+  grass LOD); the camera's terrain LOD has no hysteresis (main view only now).

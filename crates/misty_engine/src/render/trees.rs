@@ -78,9 +78,21 @@ const TREE_PREPASS_SRC: &str = concat!(
 /// keeps it), and the levels are close enough that the switch hardly shows. The fade code
 /// stays for a smaller-noise dither later.
 const FADE: f32 = 0.0001;
-/// Trees cast shadows into the cascades as: the camera's mesh LOD in cascade 0, at least LOD 1
-/// further out (the shadow of a far crown needs no twigs).
-const SHADOW_MIN_LOD: [u8; 4] = [0, 1, 1, 1];
+/// The mesh LOD trees cast shadows with into a shadow map whose texel is `texel` metres: the
+/// full mesh where texels resolve twigs, the first simplified level further out, impostors only
+/// where a texel is wider than twigs anyway (impostor crowns barely shadow themselves). Chosen
+/// per map (cascade or virtual shadow map page), not from the camera's distance: a tree
+/// crossing its LOD distance used to switch its shadow in cascade 0 at once (no cross-fade),
+/// and the shadow jumped while the player walked.
+pub(super) fn shadow_lod(texel: f32) -> u8 {
+    if texel <= 0.03 {
+        0
+    } else if texel < 0.2 {
+        1
+    } else {
+        2
+    }
+}
 
 /// One placed tree on the GPU (`TreeInstance` in tree_vertex.wgsl).
 #[repr(C)]
@@ -1077,18 +1089,11 @@ impl TreeRenderer {
                 }
                 // Shadows: within the cascades' reach, one LOD per cascade (no fades).
                 if s.cast_shadows && t.cast_shadows && !beyond && dist < shadow_reach + radius {
-                    let cam_lod = if a < 0.5 {
-                        0
-                    } else if b < 0.5 {
-                        1
-                    } else {
-                        2
-                    };
                     for (slot, cf) in cascade_frusta.iter().enumerate() {
                         if !cf.intersects(&bounds) {
                             continue;
                         }
-                        let lod = cam_lod.max(SHADOW_MIN_LOD[slot.min(3)] as usize);
+                        let lod = shadow_lod(f.cascades[slot].texel) as usize;
                         let parts: &[Part] = if lod == 2 {
                             &[Part::Impostor]
                         } else {

@@ -33,6 +33,8 @@ const UPLOAD_PIECE: usize = 8 * 1024;
 const MAX_IN_FLIGHT: usize = 6;
 /// Vertices of one blade (grass_blade.wgsl: four segments and a tip).
 pub(super) const BLADE_VERTICES: u32 = 10;
+/// Share of a shadow caster range where the grass casters start to fade out.
+pub(super) const CASTER_FADE: f32 = 0.6;
 /// Vertices of a coarse far blade (three segments), drawn from vertex 100 on.
 const COARSE_VERTICES: u32 = 8;
 /// Chunks further than this many LOD distances draw coarse blades.
@@ -966,7 +968,8 @@ pub(super) struct GrassParams {
     amounts: [f32; 4],
     /// xyz = camera position, w = gust wave length.
     camera: [f32; 4],
-    /// x = caster range, y = caster share, z = 1 in shadow passes, w = ground tint.
+    /// x = caster range, y = caster share, z = 1 in shadow passes, w = ground tint (the
+    /// share of the range where the casters start to fade out in shadow passes).
     shadow: [f32; 4],
     /// x = angle of one pixel (radians), y = 1 with temporal anti-aliasing, z = radius of
     /// the near-camera grass shadow map, w = seconds since last frame (wind motion vectors).
@@ -1308,6 +1311,15 @@ impl GrassParams {
         self
     }
 
+    /// Shadow passes: the share of the caster range where the casters start to fade out
+    /// (grass_blade.wgsl `grass_drawn_height`; [`CASTER_FADE`] unless set).
+    pub fn with_caster_fade(mut self, from: f32) -> Self {
+        if self.shadow[2] > 0.5 {
+            self.shadow[3] = from;
+        }
+        self
+    }
+
     /// The terrain's number in the grass visibility ids (grass_vis.wgsl `grass_vis_id`).
     pub fn with_vis_index(mut self, index: u32) -> Self {
         self.draw[2] = index;
@@ -1391,7 +1403,11 @@ impl GrassParams {
                 range,
                 share,
                 if shadow.is_some() { 1.0 } else { 0.0 },
-                s.ground_tint.clamp(0.0, 1.0),
+                if shadow.is_some() {
+                    CASTER_FADE
+                } else {
+                    s.ground_tint.clamp(0.0, 1.0)
+                },
             ],
             screen,
             canopy: [

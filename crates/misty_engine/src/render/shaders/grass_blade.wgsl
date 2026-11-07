@@ -216,7 +216,7 @@ fn grass_drawn_height(b: BladeIn) -> f32 {
     keep *= select(1.0, grass.shadow.y, shadow);
     var height = b.position.w * fade * (1.0 - smoothstep(keep * 0.7, keep, key));
     if (shadow) {
-        height *= 1.0 - smoothstep(grass.shadow.x * 0.6, grass.shadow.x, dist);
+        height *= 1.0 - smoothstep(grass.shadow.x * grass.shadow.w, grass.shadow.x, dist);
         if (grass.screen.z > 0.0) {
             height *= smoothstep(grass.screen.z * 0.7, grass.screen.z, dist);
         }
@@ -346,6 +346,13 @@ fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
             fit = min(fit, width / (least * 2.5));
         }
         repeat = clamp(round(fit), 1.0, 4.0);
+        // Shadow casters grow the next leaf in from the card's edge as the blade widens with
+        // the camera's distance instead of re-cutting the whole card at once (a whole blade's
+        // shadow changing shape in one frame, blade after blade, read as flicker in the grass
+        // shadows while walking).
+        if (shadow) {
+            repeat = clamp(fit, 1.0, 4.0);
+        }
     }
 
     // Wind: gust waves rolling across the field, and a fast flutter whose phase runs along

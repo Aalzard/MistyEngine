@@ -23,6 +23,14 @@ pub const INNER_RADIUS: f32 = 4.0;
 pub const SLICES: usize = 2;
 /// Half sides of the slices.
 pub const SLICE_RADII: [f32; SLICES] = [INNER_RADIUS, RADIUS];
+/// Blades within this × a slice's half side cast into it.
+pub const CASTER_REACH: f32 = 1.25;
+/// ... and fade out from this share of that reach (grass_blade.wgsl `grass_drawn_height`):
+/// full height to 1.05 × the half side, past everywhere the lit shaders read the slice (the
+/// inner one to 95 % of its half side, the outer one fading out by its edge) plus a blade's
+/// shadow length. The casters used to fade from 60 % (75 % of the half side), shrinking the
+/// blades inside the slices around the camera, so their shadows changed as it moved.
+pub const CASTER_FADE: f32 = 0.84;
 /// Depth reach towards and away from the light around the camera (metres).
 const DEPTH: f32 = 60.0;
 /// Most pixels on a side of the inner slice (its square is a third of the outer one's, so at
@@ -76,7 +84,9 @@ impl GrassNearShadow {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: SHADOW_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | super::shadows::TEST_COPY,
             view_formats: &[],
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {

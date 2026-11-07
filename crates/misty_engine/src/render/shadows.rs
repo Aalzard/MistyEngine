@@ -22,6 +22,13 @@ pub const VIEW_STRIDE: u64 = 512;
 /// Cascades first, then the local layers (the order of [`ShadowPlan::matrices`]).
 pub const VIEW_SLOTS: usize = MAX_CASCADES + MAX_LOCAL_LAYERS;
 
+/// Shadow maps can be read back in tests (render/shadow_stutter_tests).
+pub(super) const TEST_COPY: wgpu::TextureUsages = if cfg!(test) {
+    wgpu::TextureUsages::COPY_SRC
+} else {
+    wgpu::TextureUsages::empty()
+};
+
 /// Cube face directions and up vectors, in layer order +X, -X, +Y, -Y, +Z, -Z.
 const CUBE_FACES: [(Vec3, Vec3); 6] = [
     (Vec3::X, Vec3::Y),
@@ -118,7 +125,8 @@ impl ShadowMaps {
                 dimension: wgpu::TextureDimension::D2,
                 format: SHADOW_FORMAT,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | TEST_COPY,
                 view_formats: &[],
             })
         };
