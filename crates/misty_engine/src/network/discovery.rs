@@ -89,7 +89,12 @@ pub struct DiscoveryClient {
 
 impl DiscoveryClient {
     pub fn new(game: &str) -> std::io::Result<Self> {
-        let socket = UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))?;
+        Self::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)), game)
+    }
+
+    /// A client on `addr` (tests use loopback; broadcasts need an unspecified address).
+    pub fn bind(addr: SocketAddr, game: &str) -> std::io::Result<Self> {
+        let socket = UdpSocket::bind(addr)?;
         socket.set_nonblocking(true)?;
         socket.set_broadcast(true)?;
         Ok(Self {
@@ -170,7 +175,7 @@ mod tests {
         server.players = 2;
         server.max_players = 8;
         let mut other = DiscoveryResponder::bind(local, "Another Game", 9000, "x").unwrap();
-        let mut client = DiscoveryClient::new("Net Demo").unwrap();
+        let mut client = DiscoveryClient::bind(local, "Net Demo").unwrap();
         let start = std::time::Instant::now();
         while client.found.is_empty() && start.elapsed().as_secs() < 10 {
             client.query(server.local_addr().unwrap());

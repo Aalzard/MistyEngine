@@ -457,6 +457,11 @@ mod tests {
             .get::<&mut NetworkManager>(e)
             .unwrap()
             .lan_discovery = false;
+        s.scene
+            .world
+            .get::<&mut NetworkManager>(e)
+            .unwrap()
+            .listen_address = "127.0.0.1".into();
         crate::play::start(&mut s);
         let mut h = Harness::builder().with_size([420.0, 700.0]).build_ui_state(
             move |ui, s: &mut EditorState| {

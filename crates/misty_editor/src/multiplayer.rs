@@ -390,6 +390,7 @@ mod tests {
             NetworkManager {
                 port: 0,
                 lan_discovery: false,
+                listen_address: "127.0.0.1".into(),
                 ..Default::default()
             },
         );

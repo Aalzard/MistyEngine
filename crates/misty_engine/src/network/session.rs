@@ -440,11 +440,14 @@ impl NetSession {
         } else {
             super::parse_address(address, self.config.manager.port)?
         };
-        let mut endpoint = Endpoint::client(
-            self.link(SocketAddr::from(([0, 0, 0, 0], 0)))?,
-            server,
-            self.now,
-        );
+        // A server on this machine is reached from loopback (no firewall prompt).
+        let local: [u8; 4] = if server.ip().is_loopback() {
+            [127, 0, 0, 1]
+        } else {
+            [0, 0, 0, 0]
+        };
+        let mut endpoint =
+            Endpoint::client(self.link(SocketAddr::from((local, 0)))?, server, self.now);
         endpoint.simulator = self.config.simulator();
         endpoint.config = self.transport_config();
         self.endpoint = Some(endpoint);

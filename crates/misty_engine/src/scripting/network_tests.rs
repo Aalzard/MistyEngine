@@ -441,9 +441,16 @@ fn disconnects_timeouts_and_bad_networks() {
     assert_eq!(b.named("Net Player(Clone)").len(), 3);
     a.frame(keys(&["h"], &[]));
     run(&mut [&mut host, &mut a, &mut b], 120);
-    assert!(b.has("score 0 2 2"), "b sees a's score: {:?}", b.logs);
+    // Lossy connects may finish in either order: b's client id is 1 or 2.
+    let b_id = b.rt.with_network(|s| s.local_client_id);
+    assert!(
+        b.has(&format!("score 0 2 {b_id}")),
+        "b sees a's score: {:?}",
+        b.logs
+    );
 
     // `a` leaves politely: its player goes everywhere.
+    let a_id = a.rt.with_network(|s| s.local_client_id);
     a.rt.network_shutdown(&mut a.scene);
     a.collect();
     assert_eq!(a.named("Net Player(Clone)").len(), 0, "spawned copies go");
@@ -452,7 +459,7 @@ fn disconnects_timeouts_and_bad_networks() {
     assert!(
         host.logs
             .iter()
-            .any(|l| l.contains("client 1 disconnected"))
+            .any(|l| l.contains(&format!("client {a_id} disconnected")))
     );
     assert_eq!(host.named("Net Player(Clone)").len(), 2);
     assert_eq!(b.named("Net Player(Clone)").len(), 2);
@@ -468,7 +475,7 @@ fn disconnects_timeouts_and_bad_networks() {
     assert!(
         host.logs
             .iter()
-            .any(|l| l.contains("client 2 disconnected (timed out)")),
+            .any(|l| l.contains(&format!("client {b_id} disconnected (timed out)"))),
         "{:?}",
         host.logs
     );
@@ -580,6 +587,11 @@ fn a_real_udp_session_on_localhost() {
         .get::<&mut NetworkManager>(m)
         .unwrap()
         .lan_discovery = false;
+    scene
+        .world
+        .get::<&mut NetworkManager>(m)
+        .unwrap()
+        .listen_address = "127.0.0.1".into();
     let mut host_scene = scene.clone();
     let mut host = Runtime::start_with_audio(
         &mut host_scene,
