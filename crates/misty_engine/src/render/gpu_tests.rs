@@ -20,15 +20,17 @@ thread_local! {
 /// A device without a window (`None` = no usable adapter on this machine). The calling test
 /// holds the GPU test lock until it finishes.
 pub(crate) fn headless() -> Option<(wgpu::Device, wgpu::Queue)> {
-    // Renders must be complete on their first frame: grass chunks are built in the frame
-    // that needs them (the hitch tests turn streaming back on).
-    set_grass_streaming(false);
     GPU_HELD.with(|held| {
         let mut held = held.borrow_mut();
         if held.is_none() {
             *held = Some(GPU_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
         }
     });
+    // Renders must be complete on their first frame: grass chunks are built in the frame
+    // that needs them (the hitch tests turn streaming back on). Only once the lock is held:
+    // switched off before, by a test waiting for its turn, it changed how the test holding
+    // the GPU rendered (a hitch run then scattered every chunk on the render thread).
+    set_grass_streaming(false);
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     let adapter =

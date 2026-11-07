@@ -36,8 +36,14 @@ pub(super) fn scripted(base: &crate::camera::Camera, i: usize) -> crate::camera:
 pub(super) struct FrameTime {
     /// Wall-clock time of the frame: the render call and the wait for the GPU to finish it.
     pub wall_ms: f32,
-    /// CPU time of the render call alone.
+    /// CPU time of the render call alone (wall clock: a descheduled thread counts too).
     pub cpu_ms: f32,
+    /// Work the render thread itself did in the frame: CPU time it was running, in the
+    /// platform's units (TSC cycles on Windows, ns on Linux; only compared with other frames).
+    /// Unlike the wall times it does not grow while the thread waits for a core.
+    pub work: Option<u64>,
+    /// Share of the machine's CPU time that was busy during the frame (0..1).
+    pub busy: Option<f32>,
     pub gpu_ms: Option<f32>,
     /// Render-thread time spent uploading grass chunks, and the time already spent when the
     /// last chunk started (the budget check).
@@ -91,23 +97,38 @@ pub(super) fn run(
     let target = r.create_target(device, w, h);
     // The real thing: grass chunks stream in over frames (headless() turned it off).
     crate::render::set_grass_streaming(true);
+    // Recording and the frame counter are process-wide; the profiler's tests wait.
+    let profiler = crate::profiler::test_serial();
     crate::profiler::set_enabled(true);
     crate::profiler::clear();
     let base = view.camera;
     let mut out = Vec::with_capacity(FRAMES);
     let first = crate::profiler::frame_index();
     for i in 0..FRAMES + 4 {
+        let (work0, system0) = (os::thread_work(), os::system_times());
         let started = std::time::Instant::now();
         let cam = scripted(&base, i.min(FRAMES - 1));
         let mut frame = view.frame();
         frame.camera = &cam;
         r.render(device, queue, &target, &frame);
         let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        let wall_ms = started.elapsed().as_secs_f32() * 1000.0;
+        let work = work0
+            .zip(os::thread_work())
+            .map(|(a, b)| b.saturating_sub(a));
+        let busy = system0
+            .zip(os::system_times())
+            .and_then(|((i0, t0), (i1, t1))| {
+                let total = t1.saturating_sub(t0);
+                (total > 0).then(|| 1.0 - i1.saturating_sub(i0) as f32 / total as f32)
+            });
         let cpu_ms = r.stats().cpu_ms;
         crate::profiler::end_frame();
         out.push(FrameTime {
-            wall_ms: started.elapsed().as_secs_f32() * 1000.0,
+            wall_ms,
             cpu_ms,
+            work,
+            busy,
             grass_upload_ms: r.stats().grass_upload_ms,
             grass_upload_last_start_ms: r.stats().grass_upload_last_start_ms,
             pipelines_built: crate::render::pipelines_built(),
@@ -137,6 +158,7 @@ pub(super) fn run(
         }
     });
     crate::profiler::set_enabled(false);
+    drop(profiler);
     crate::render::set_grass_streaming(false);
     out.truncate(FRAMES);
     out
@@ -174,10 +196,13 @@ fn report(label: &str, times: &[FrameTime]) -> [Summary; 3] {
                 .map(|(n, ms)| format!("{n} {ms:.2}"))
                 .collect();
             eprintln!(
-                "  frame {i:3}: wall {:.2} cpu {:.2} gpu {} ms  [{}]",
+                "  frame {i:3}: wall {:.2} cpu {:.2} gpu {} ms, work {} x median, machine {} busy  [{}]",
                 t.wall_ms,
                 t.cpu_ms,
                 t.gpu_ms.map_or("-".to_owned(), |g| format!("{g:.2}")),
+                work_ratio(times, t).map_or("-".to_owned(), |r| format!("{r:.1}")),
+                t.busy
+                    .map_or("-".to_owned(), |b| format!("{:.0} %", b * 100.0)),
                 scopes.join(", ")
             );
         }
@@ -195,10 +220,28 @@ fn demo_view(scene: &str) -> GameView {
     GameView::new(&s, &materials).expect("camera")
 }
 
-/// Frames after the warmup whose wall time was over 2.5× the median while their GPU time was
-/// ordinary: a stall of ours, not the GPU being shared with another program (the user's
-/// editor, the other tests) in that frame.
-fn stalls(times: &[FrameTime]) -> Vec<(usize, f32)> {
+/// The machine counts as loaded during a frame when at least this share of its CPU time was
+/// busy: then threads queue for cores, and a thread that is ready to run can wait tens of
+/// milliseconds for one (the whole test suite runs on every core; other programs too).
+const LOADED: f32 = 0.85;
+
+/// A frame's render-thread work over the median of the frames after the warmup.
+fn work_ratio(times: &[FrameTime], t: &FrameTime) -> Option<f32> {
+    let work: Vec<f32> = times[WARMUP..]
+        .iter()
+        .filter_map(|t| t.work.map(|w| w as f32))
+        .collect();
+    let median = summary(&work).median;
+    t.work.filter(|_| median > 0.0).map(|w| w as f32 / median)
+}
+
+/// Slow frames after the warmup: wall time over 2.5× the median while the GPU time was
+/// ordinary (not the GPU being shared with another program in that frame). Each is a hitch
+/// (`Err`) when the render thread itself worked over 2.5× its median (its CPU time, which
+/// waiting for a core does not add to), or when it was off its core on a machine with cores
+/// to spare (a wait of ours: a lock, a file, a blocking call). It is excused (`Ok`) when the
+/// work was ordinary and the machine was loaded: the thread was ready but had no core.
+fn stalls(times: &[FrameTime]) -> Vec<Result<String, String>> {
     let [wall, _, gpu] = summarize(times);
     times
         .iter()
@@ -206,14 +249,29 @@ fn stalls(times: &[FrameTime]) -> Vec<(usize, f32)> {
         .skip(WARMUP)
         .filter(|(_, t)| t.wall_ms > wall.median * 2.5)
         .filter(|(_, t)| t.gpu_ms.is_none_or(|g| g < gpu.median * 2.0))
-        .map(|(i, t)| (i, t.wall_ms))
+        .map(|(i, t)| {
+            let ratio = work_ratio(times, t);
+            let busy = t.busy.unwrap_or(0.0);
+            let text = format!(
+                "frame {i}: wall {:.1} ms (median {:.1}), render-thread work {} x median, machine {:.0} % busy",
+                t.wall_ms,
+                wall.median,
+                ratio.map_or("?".to_owned(), |r| format!("{r:.1}")),
+                busy * 100.0
+            );
+            match ratio {
+                Some(r) if r <= 2.5 && busy >= LOADED => Ok(text),
+                _ => Err(text),
+            }
+        })
         .collect()
 }
 
 /// MeadowDemo on High with the scripted camera: no frame longer than 2.5× the median after
-/// the warmup (grass chunks stream in on worker threads; a run that stalls gets one more
-/// try, since the test suite runs on every core at once), and the render thread never starts
-/// uploading a chunk past its budget.
+/// the warmup (grass chunks stream in on worker threads), and the render thread never starts
+/// uploading a chunk past its budget. Frames slowed by a loaded machine are told apart from
+/// ours by the render thread's own CPU time (see [`stalls`]); they are printed, not failed.
+/// A run with a hitch gets one more try; it fails when both have one.
 #[test]
 fn scripted_meadow_run_has_no_hitches() {
     let Some((device, queue)) = headless() else {
@@ -222,7 +280,7 @@ fn scripted_meadow_run_has_no_hitches() {
     };
     let view = meadow_view(Shot::WideGolden);
     let budget = super::terrain_grass::UPLOAD_BUDGET.as_secs_f32() * 1000.0;
-    let mut stalled = Vec::new();
+    let mut hitches = Vec::new();
     for attempt in 0..2 {
         let times = run(&device, &queue, &view, &QualityLevel::high(), (1280, 720));
         let [wall, cpu, gpu] = report(&format!("meadow high, attempt {attempt}"), &times);
@@ -234,12 +292,106 @@ fn scripted_meadow_run_has_no_hitches() {
                 t.grass_upload_last_start_ms
             );
         }
-        stalled = stalls(&times);
-        if stalled.is_empty() {
+        hitches.clear();
+        for s in stalls(&times) {
+            match s {
+                Ok(excused) => eprintln!("  excused (machine loaded, ordinary work): {excused}"),
+                Err(hitch) => hitches.push(hitch),
+            }
+        }
+        if hitches.is_empty() {
             return;
         }
+        eprintln!("  attempt {attempt}: {} hitches", hitches.len());
     }
-    panic!("frames over 2.5× the median wall time (frame, ms): {stalled:?}");
+    panic!("hitches in both attempts (the second's): {hitches:#?}");
+}
+
+/// The render thread's CPU time and the machine's busy time, from the OS.
+mod os {
+    #[cfg(windows)]
+    #[repr(C)]
+    #[derive(Default)]
+    struct FileTime {
+        low: u32,
+        high: u32,
+    }
+
+    #[cfg(windows)]
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentThread() -> isize;
+        fn QueryThreadCycleTime(thread: isize, cycles: *mut u64) -> i32;
+        fn GetSystemTimes(idle: *mut FileTime, kernel: *mut FileTime, user: *mut FileTime) -> i32;
+    }
+
+    /// CPU cycles this thread has run (kernel and user), counted only while it is on a core.
+    #[cfg(windows)]
+    pub fn thread_work() -> Option<u64> {
+        let mut cycles = 0u64;
+        // SAFETY: the current thread's pseudo handle needs no closing; `cycles` is writable.
+        let ok = unsafe { QueryThreadCycleTime(GetCurrentThread(), &mut cycles) };
+        (ok != 0).then_some(cycles)
+    }
+
+    /// (idle, total) CPU time of every core since boot, in 100 ns units.
+    #[cfg(windows)]
+    pub fn system_times() -> Option<(u64, u64)> {
+        let (mut idle, mut kernel, mut user) = Default::default();
+        // SAFETY: three writable FILETIMEs.
+        let ok = unsafe { GetSystemTimes(&mut idle, &mut kernel, &mut user) };
+        let t = |f: &FileTime| (u64::from(f.high) << 32) | u64::from(f.low);
+        // Kernel time includes the idle time.
+        (ok != 0).then(|| (t(&idle), t(&kernel) + t(&user)))
+    }
+
+    #[cfg(target_os = "linux")]
+    #[repr(C)]
+    struct Timespec {
+        sec: i64,
+        nsec: i64,
+    }
+
+    #[cfg(target_os = "linux")]
+    unsafe extern "C" {
+        fn clock_gettime(clock: i32, ts: *mut Timespec) -> i32;
+    }
+
+    /// Nanoseconds of CPU time this thread has used.
+    #[cfg(target_os = "linux")]
+    pub fn thread_work() -> Option<u64> {
+        const CLOCK_THREAD_CPUTIME_ID: i32 = 3;
+        let mut ts = Timespec { sec: 0, nsec: 0 };
+        // SAFETY: `ts` is a writable timespec (64-bit fields on the 64-bit targets built).
+        let ok = unsafe { clock_gettime(CLOCK_THREAD_CPUTIME_ID, &mut ts) } == 0;
+        ok.then(|| ts.sec as u64 * 1_000_000_000 + ts.nsec as u64)
+    }
+
+    /// (idle, total) CPU time of every core since boot, in clock ticks (`/proc/stat`).
+    #[cfg(target_os = "linux")]
+    pub fn system_times() -> Option<(u64, u64)> {
+        let text = std::fs::read_to_string("/proc/stat").ok()?;
+        let fields: Vec<u64> = text
+            .lines()
+            .next()?
+            .split_whitespace()
+            .skip(1)
+            .filter_map(|f| f.parse().ok())
+            .collect();
+        // user nice system idle iowait ...
+        let idle = fields.get(3)? + fields.get(4).copied().unwrap_or(0);
+        Some((idle, fields.iter().sum()))
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
+    pub fn thread_work() -> Option<u64> {
+        None
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
+    pub fn system_times() -> Option<(u64, u64)> {
+        None
+    }
 }
 
 /// Every pipeline a demo scene draws with exists after its first frames: moving the camera
