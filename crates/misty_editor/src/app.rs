@@ -917,6 +917,10 @@ impl eframe::App for EditorApp {
         }
         self.save_layout(false);
         if let Some(capture) = &mut self.capture {
+            if let Some(gpu) = &self.gpu {
+                let stats = gpu.renderer.stats();
+                capture.note_loading(stats.loading > 0 || stats.grass_pending > 0);
+            }
             capture.update(&ctx);
             // Screenshot runs close without a save prompt (and never save the scene).
             if capture.saved() {

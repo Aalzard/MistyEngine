@@ -44,6 +44,9 @@ struct FrameClock {
     open_worst: (u32, f32),
     /// End of the last frame over [`FREEZE_MS`] since the scene was opened, ms after start.
     open_freeze_end: Option<f32>,
+    /// Last frame the views were still streaming in (grass chunks, terrain textures, trees):
+    /// (frame, ms after start).
+    last_loading: Option<(u32, f32)>,
 }
 
 impl FrameClock {
@@ -92,6 +95,11 @@ impl FrameClock {
             eprintln!(
                 "entering Play at frame {at}: worst frame since {} at {:.0} ms",
                 self.play_worst.0, self.play_worst.1
+            );
+        }
+        if let Some((frame, t)) = self.last_loading {
+            eprintln!(
+                "scene complete (nothing streaming in) after frame {frame}, {t:.0} ms after start"
             );
         }
         if let Some(at) = self.open_at {
@@ -160,6 +168,13 @@ impl Capture {
         }
         self.clock.open_at = Some(self.frames);
         Some(rel)
+    }
+
+    /// The views are still streaming in assets this frame (see [`FrameClock::last_loading`]).
+    pub fn note_loading(&mut self, loading: bool) {
+        if loading && !self.requested {
+            self.clock.last_loading = Some((self.frames + 1, since_start_ms(Instant::now())));
+        }
     }
 
     /// Call once per frame; requests a screenshot after warm-up and quits once saved.
