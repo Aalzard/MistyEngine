@@ -48,6 +48,37 @@ struct TerrainParams {
     /// x = lush amount, y = dry amount, z = the quality's share of the blades with the
     /// ground cover (0 = off), w = the grass's full-density distance.
     grass_amounts: [f32; 4],
+    /// Quality ▸ Grass Ground Cover (see `GROUND_COVER`): x = how much of the ground the
+    /// fans cover, y / z = where that fades in, w = where it has faded out (× the grass's
+    /// full-density distance).
+    ground_cover: [f32; 4],
+    /// rgb = the fans' colour against the ground's looking into the sun / with it behind.
+    ground_tint: [f32; 4],
+    ground_front: [f32; 4],
+}
+
+/// Quality ▸ Grass Ground Cover (terrain_layers.wgsl `grass_ground_cover`), fitted against
+/// renders with the fans (meadow_perf_tests.rs): how much of the ground the fans cover, where
+/// that fades in and out (× the full-density distance); their colour against the ground's
+/// looking into the sun and with the sun behind.
+const GROUND_COVER: [f32; 4] = [0.5, 0.8, 2.0, 7.0];
+const GROUND_TINT: [f32; 4] = [0.78, 0.75, 0.6, 0.0];
+const GROUND_FRONT: [f32; 4] = [1.35, 1.3, 1.2, 0.0];
+
+/// The ground cover values (tests can try others: `MISTY_GROUND_COVER` = 10 numbers).
+fn ground_cover_values() -> [[f32; 4]; 3] {
+    #[cfg(test)]
+    if let Ok(v) = std::env::var("MISTY_GROUND_COVER") {
+        let n: Vec<f32> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+        if n.len() == 10 {
+            return [
+                [n[0], n[1], n[2], n[3]],
+                [n[4], n[5], n[6], 0.0],
+                [n[7], n[8], n[9], 0.0],
+            ];
+        }
+    }
+    [GROUND_COVER, GROUND_TINT, GROUND_FRONT]
 }
 
 /// One chunk drawn this frame.
@@ -1010,6 +1041,9 @@ fn params(
         grass_dry: [0.0; 4],
         grass_lush: [0.0; 4],
         grass_amounts: [0.0; 4],
+        ground_cover: ground_cover_values()[0],
+        ground_tint: ground_cover_values()[1],
+        ground_front: ground_cover_values()[2],
     };
     let g = &d.details;
     if g.enabled && d.detail_map.len() == d.alphamap_resolution.pow(2) {

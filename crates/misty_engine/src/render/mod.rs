@@ -2182,6 +2182,7 @@ impl Renderer {
                     |i| visible[i],
                     stats,
                 );
+                self.mark_pass(&mut pass, "Main: terrain");
                 // Trees before the grass: the grass's depth pass then skips what they hide.
                 if self.trees.has_trees()
                     && frame_debug::record(&self.capture, |_| {
@@ -2197,7 +2198,7 @@ impl Renderer {
                 {
                     // Depth first (alpha tested), then the shading once per covered sample:
                     // dense turf overlaps each pixel many times.
-                    self.mark_pass(&mut pass, "Main: terrain");
+                    self.mark_pass(&mut pass, "Main: trees");
                     pass.set_pipeline(&self.pipelines.grass_depth);
                     let depth = grass_cull::DEPTH;
                     self.terrains
