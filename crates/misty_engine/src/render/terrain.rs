@@ -619,10 +619,14 @@ impl TerrainCache {
                     })
                     .collect(),
             );
-            g.grass
-                .update(device, queue, &t.data, camera - t.position, density);
+            {
+                crate::profile_scope!("Grass.Update");
+                g.grass
+                    .update(device, queue, &t.data, camera - t.position, density);
+            }
             let has_grass = d.details.enabled && !d.detail_map.is_empty();
             if has_grass && self.grass_atlas.is_none() {
+                crate::profile_scope!("Grass.Atlas");
                 self.grass_atlas = Some(super::terrain_grass::atlas(device, queue));
             }
             let (atlas_view, atlas_sampler) = match &self.grass_atlas {
@@ -636,6 +640,7 @@ impl TerrainCache {
                 }
             };
             if self.grass_cull.is_none() {
+                crate::profile_scope!("Grass.CullPipelines");
                 self.grass_cull = Some(CullPipelines::new(device));
             }
             let casts = d.details.cast_shadows && t.cast_shadows;

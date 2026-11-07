@@ -157,6 +157,27 @@ fn part_index(p: Part) -> usize {
 
 type Layouts<'a> = [&'a wgpu::BindGroupLayout; 3];
 
+/// The bind group layouts the tree pipelines use (owned, so a worker can build them).
+struct TreeLayouts {
+    view: wgpu::BindGroupLayout,
+    mesh: wgpu::BindGroupLayout,
+    shadow_view: wgpu::BindGroupLayout,
+    draws: wgpu::BindGroupLayout,
+    tree: wgpu::BindGroupLayout,
+}
+
+impl TreeLayouts {
+    fn of(p: &super::pipelines::Pipelines, tree: &wgpu::BindGroupLayout) -> Self {
+        Self {
+            view: p.view_layout.clone(),
+            mesh: p.mesh_layout.clone(),
+            shadow_view: p.shadow_view_layout.clone(),
+            draws: p.draws_layout.clone(),
+            tree: tree.clone(),
+        }
+    }
+}
+
 /// A main-pass tree pipeline (lit, depth written, motion vectors).
 fn main_spec<'a>(
     name: &'a str,
@@ -166,12 +187,14 @@ fn main_spec<'a>(
     buffers: &'a [wgpu::VertexBufferLayout<'a>],
     cull: Option<wgpu::Face>,
     a2c: bool,
+    samples: u32,
 ) -> Spec<'a> {
     Spec {
         vs,
         fs: Some(fs),
         buffers,
         cull,
+        samples,
         depth: Depth::main(true, wgpu::CompareFunction::Less),
         glow: Some(false),
         alpha_to_coverage: a2c,
@@ -234,15 +257,13 @@ fn prepass_spec<'a>(
 }
 
 impl Pipelines {
-    fn new(
-        device: &wgpu::Device,
-        p: &super::pipelines::Pipelines,
-        layout: &wgpu::BindGroupLayout,
-    ) -> Self {
+    /// `samples`: the main pass's MSAA samples (passed in: a worker may build these).
+    fn new(device: &wgpu::Device, l: &TreeLayouts, samples: u32) -> Self {
+        let layout = &l.tree;
         let mesh = vertex_layouts();
         let imp = [instance_layout()];
         let back = Some(wgpu::Face::Back);
-        let lit = [&p.view_layout, &p.mesh_layout, layout];
+        let lit = [&l.view, &l.mesh, layout];
         let main = [
             build(
                 device,
@@ -254,6 +275,7 @@ impl Pipelines {
                     &mesh,
                     back,
                     false,
+                    samples,
                 ),
             ),
             build(
@@ -266,6 +288,7 @@ impl Pipelines {
                     &mesh,
                     None,
                     true,
+                    samples,
                 ),
             ),
             build(
@@ -278,10 +301,11 @@ impl Pipelines {
                     &imp,
                     None,
                     true,
+                    samples,
                 ),
             ),
         ];
-        let casters = [&p.shadow_view_layout, &p.draws_layout, layout];
+        let casters = [&l.shadow_view, &l.draws, layout];
         let shadow = [
             build(
                 device,
@@ -308,7 +332,7 @@ impl Pipelines {
                 ),
             ),
         ];
-        let pre = [&p.view_layout, &p.draws_layout, layout];
+        let pre = [&l.view, &l.draws, layout];
         let prepass = [
             build(
                 device,
@@ -616,6 +640,8 @@ pub(super) struct TreeRenderer {
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     pipelines: Option<Pipelines>,
+    /// The pipelines being built on a worker since the renderer was made (streaming only).
+    prebuilt: super::prebuilt::Prebuilt<Pipelines>,
     trees: HashMap<String, GpuTree>,
     /// Texture chains being built on worker threads, per tree asset (while streaming).
     pending: HashMap<String, Pending>,
@@ -679,6 +705,7 @@ impl TreeRenderer {
             layout,
             sampler,
             pipelines: None,
+            prebuilt: Default::default(),
             trees: HashMap::new(),
             pending: HashMap::new(),
             loading: 0,
@@ -694,6 +721,16 @@ impl TreeRenderer {
     /// Any tree to draw this frame.
     pub fn has_trees(&self) -> bool {
         !self.main.is_empty()
+    }
+
+    /// Start building the pipelines on a worker thread (streaming only), so the first frame
+    /// of a scene with trees does not compile them.
+    pub fn prebuild(&mut self, device: &wgpu::Device, pipelines: &super::pipelines::Pipelines) {
+        let (device, layouts) = (device.clone(), TreeLayouts::of(pipelines, &self.layout));
+        let samples = super::sample_count();
+        self.prebuilt = super::prebuilt::Prebuilt::spawn("misty tree pipelines", move || {
+            Pipelines::new(&device, &layouts, samples)
+        });
     }
 
     /// Tree assets of the last frame still being built or prepared for upload.
@@ -787,7 +824,11 @@ impl TreeRenderer {
         }
         if self.pipelines.is_none() {
             crate::profile_scope!("Trees.Pipelines");
-            self.pipelines = Some(Pipelines::new(device, pipelines, &self.layout));
+            let built = self.prebuilt.take().unwrap_or_else(|| {
+                let layouts = TreeLayouts::of(pipelines, &self.layout);
+                Pipelines::new(device, &layouts, super::sample_count())
+            });
+            self.pipelines = Some(built);
         }
         let frustum = Frustum::from_matrix(f.view_proj);
         let cascade_frusta: Vec<Frustum> = f

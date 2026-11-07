@@ -33,6 +33,7 @@ pub mod particles;
 mod pass_timer;
 mod pipelines;
 pub mod post;
+mod prebuilt;
 mod prepass;
 pub mod probes;
 mod runtime_tex;
@@ -574,6 +575,8 @@ pub struct Renderer {
     /// Grass visibility buffer pipelines (made with the first grass; `Some(None)` = this
     /// device refused them and the grass keeps the lit pass).
     grass_vis: Option<Option<grass_vis::VisPipelines>>,
+    /// The grass visibility pipelines being built on a worker (see `prebuilt`).
+    grass_vis_prebuilt: prebuilt::Prebuilt<Option<grass_vis::VisPipelines>>,
 }
 
 impl Renderer {
@@ -639,7 +642,7 @@ impl Renderer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        Self {
+        let mut renderer = Self {
             post_sampler,
             view_buffer,
             view_bind_group,
@@ -709,7 +712,18 @@ impl Renderer {
             last_view_proj: Mat4::IDENTITY,
             samples: sample_count(),
             grass_vis: None,
+            grass_vis_prebuilt: Default::default(),
+        };
+        // Streaming (editor, player): compile what a scene's first frame would otherwise
+        // wait for on worker threads now (see `prebuilt`).
+        if grass_streaming() {
+            renderer.trees.prebuild(device, &renderer.pipelines);
+            renderer.grass_vis_prebuilt =
+                grass_vis::VisPipelines::prebuild(device, &renderer.pipelines);
+            terrain_grass::prewarm_atlas();
+            clouds::noise::prewarm_blue_noise();
         }
+        renderer
     }
 
     /// Point the view group at the current fog volume, HDRI sky cubes and cloud images.
@@ -728,10 +742,15 @@ impl Renderer {
     /// Renderer that also measures GPU time per render when the device was created with
     /// `TIMESTAMP_QUERY` (see [`timestamp_features`]).
     pub fn with_queue(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        Self {
+        let mut renderer = Self {
             gpu_timer: gpu_timer::GpuTimer::new(device, queue),
             ..Self::new(device)
+        };
+        if grass_streaming() {
+            let view_layout = &renderer.pipelines.view_layout;
+            (renderer.volumetrics).prebuild(device, queue, view_layout);
         }
+        renderer
     }
 
     /// Culling / instancing switches.
@@ -2596,7 +2615,10 @@ impl Renderer {
             return false;
         }
         if self.grass_vis.is_none() {
-            self.grass_vis = Some(grass_vis::VisPipelines::new(device, &self.pipelines));
+            crate::profile_scope!("GrassVis.Pipelines");
+            let built = (self.grass_vis_prebuilt.take())
+                .unwrap_or_else(|| grass_vis::VisPipelines::new(device, &self.pipelines));
+            self.grass_vis = Some(built);
         }
         let Some(Some(pipes)) = &self.grass_vis else {
             return false;
