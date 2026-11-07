@@ -120,6 +120,8 @@ pub struct TerrainTools {
     pub layer: usize,
     /// Paint Texture paints the Auto Paint result (layers and grass) instead of `layer`.
     pub generate_in_brush: bool,
+    /// Paint Texture paints where flowers grow (Flowers ▸ Paint Flowers) instead of `layer`.
+    pub paint_flowers: bool,
     /// Paint Trees: the selected tree prototype, trees per 100 m², how new trees vary and
     /// how many Mass Place adds.
     pub tree: usize,
@@ -143,6 +145,7 @@ impl Default for TerrainTools {
             target_height: 10.0,
             layer: 0,
             generate_in_brush: false,
+            paint_flowers: false,
             tree: 0,
             tree_density: 1.0,
             tree_placement: Default::default(),
@@ -267,6 +270,7 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
         falloff: t.falloff,
     };
     let (tool, target, layer, generated) = (t.tool, t.target_height, t.layer, t.generate_in_brush);
+    let flowers = t.paint_flowers;
     misty_engine::profile_scope!("Terrain.Brush");
     if tool == TerrainTool::Trees {
         // Trees don't touch the maps: a settings edit (no terrain re-upload).
@@ -294,6 +298,7 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
         TerrainTool::RaiseLower => brush::raise(d, &b, dt, shift),
         TerrainTool::SetHeight => brush::set_height(d, &b, dt, target),
         TerrainTool::Smooth => brush::smooth(d, &b, dt),
+        TerrainTool::Paint if flowers => misty_engine::terrain::flowers::paint(d, &b, dt, shift),
         TerrainTool::Paint if generated => auto_paint::generate_in_brush(d, &b, dt),
         TerrainTool::Paint => brush::paint(d, &b, dt, layer),
         TerrainTool::Trees | TerrainTool::Settings => {}

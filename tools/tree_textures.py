@@ -765,7 +765,7 @@ def draw_branch(canvas: dict[str, np.ndarray], p0: np.ndarray, p1: np.ndarray,
     normal /= np.maximum(np.linalg.norm(normal, axis=-1, keepdims=True), 1e-5)
     rgb = color[None, None, :]*(.76+.24*z[..., None])
     composite_surface(canvas, slice(ya, yb), slice(xa, xb), rgb, alpha, normal,
-                      np.full_like(alpha, .90), np.zeros_like(alpha))
+                      np.full_like(alpha, .85), np.zeros_like(alpha))
 
 
 def draw_curved_branch(canvas: dict[str, np.ndarray], p0: np.ndarray, pc: np.ndarray,
@@ -781,28 +781,54 @@ def draw_curved_branch(canvas: dict[str, np.ndarray], p0: np.ndarray, pc: np.nda
 
 
 def leaf_half_width(species: str, u: np.ndarray, width: float,
-                    phase: float) -> tuple[np.ndarray, np.ndarray]:
+                    phase: float, side: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
     u0 = np.clip(u, 0, 1)
-    profile = np.maximum(np.sin(np.pi*u0), 0.0)
     if species == "oak":
-        core = .53*width*profile**.61*(.61+.62*u0)
-        lobes = 5
-        modulation = .48+.52*(.5+.5*np.cos(2*np.pi*lobes*u0+phase))**.84
-        half = core*modulation + .055*width*np.exp(-((u0-.08)/.04)**2)
+        # Build the margin from individual rounded lobe bulbs rather than a
+        # periodic wave.  The unequal, side-dependent centres keep the two
+        # sides from mirroring each other, while the narrow core leaves deep,
+        # smoothly rounded sinuses between the lobes.
+        profile = np.maximum(np.sin(np.pi*u0), 0.0)
+        half = width*(.235+.075*u0)*profile**.44
+        centres = (.075, .225, .405, .585, .755, .918)
+        reaches = (.18, .34, .42, .50, .47, .37)
+        radii = (.062, .112, .120, .126, .126, .098)
+        for k, (centre, reach, radius) in enumerate(zip(centres, reaches, radii)):
+            jitter = .016*math.sin(phase*(1.13+.11*k)+1.71*k+side*.83)
+            size = 1.0+.18*math.sin(phase*.79+2.19*k-side*1.07)
+            z = (u0-(centre+jitter))/(radius*(1+.05*math.sin(phase+k)))
+            bulb = width*reach*size*np.sqrt(np.clip(1-z*z, 0, 1))
+            half = np.maximum(half, bulb)
+        half *= ((u >= 0) & (u <= 1))
         base_cut = np.zeros_like(u)
     elif species == "linden":
-        core = .53*width*profile**.50*(1.23-.37*u0)
-        core += .115*width*np.exp(-((u0-.12)/.10)**2)
-        half = core*(1+.025*np.sin(2*np.pi*19*u0+phase))
-        base_cut = .22
+        # Tilia is almost as broad as long: round basal shoulders occupy the
+        # lower third, then the margin holds its width until an abrupt point.
+        core = .50*width*(1-u0)**.34
+        core *= 1+.13*np.exp(-((u0-.20)/.18)**2)
+        core *= 1-.18*smoothstep((u0-.78)/.22)
+        # A warped ramp produces small forward-pointing teeth with irregular
+        # spacing.  Unlike a sine wave it has a sharp tip and no comb rhythm.
+        cycles = (17.2*u0 + .31*np.sin(2*np.pi*2.7*u0+phase+side*.9) +
+                  .13*np.sin(2*np.pi*5.1*u0-phase*.4))
+        tooth = np.mod(cycles, 1.0)**1.45-.43
+        tooth_fade = smoothstep((u0-.07)/.15)*(1-smoothstep((u0-.87)/.11))
+        half = core*(1+.052*tooth*tooth_fade)
+        half *= 1+.025*side
+        base_cut = .205
     else:
-        # Triangular-ovate birch: broad lower third, straight-ish base and a
-        # long pointed tip.  The previous symmetric profile read as a coin.
-        core = .56*width*profile**.54*(1.48-.88*u0)
-        core *= smoothstep(u0/.055)
-        serr1 = .065*np.sin(2*np.pi*18*u0+phase)
-        serr2 = .026*np.sin(2*np.pi*37*u0+phase*.7)
-        half = core*(1+serr1+serr2)
+        # Betula is deltoid: a broad, nearly truncate base and mostly straight
+        # sides lead into a long tapering point.  Alternating large and small
+        # ramp teeth form an irregular double serration.
+        core = .50*width*(1-u0)**.76
+        core *= 1+.075*np.exp(-((u0-.17)/.18)**2)
+        primary_cycles = 10.8*u0+.22*np.sin(2*np.pi*2.3*u0+phase+side*.7)
+        secondary_cycles = 22.7*u0+.16*np.sin(2*np.pi*4.7*u0-phase*.6)
+        primary = np.mod(primary_cycles, 1.0)**1.35-.43
+        secondary = np.mod(secondary_cycles, 1.0)**1.65-.46
+        tooth_fade = smoothstep((u0-.055)/.11)*(1-smoothstep((u0-.91)/.075))
+        half = core*(1+(.060*primary+.027*secondary)*tooth_fade)
+        half *= 1+.018*side
         base_cut = np.zeros_like(u)
     return np.maximum(half, 0), base_cut
 
@@ -828,18 +854,27 @@ def draw_leaf(canvas: dict[str, np.ndarray], species: str, base: np.ndarray,
     along = dx*direction[0]+dy*direction[1]
     lateral = dx*right[0]+dy*right[1]
     u = along/length+.5
-    phase = float(rng.uniform(-.25, .25) if species == "oak" else rng.uniform(0, 2*np.pi))
-    half, base_cut = leaf_half_width(species, u, effective_width, phase)
+    phase = float(rng.uniform(0, 2*np.pi))
+    half_pos, base_cut = leaf_half_width(species, u, effective_width, phase, 1.0)
+    half_neg, _ = leaf_half_width(species, u, effective_width, phase+1.37, -1.0)
+    half = np.where(lateral >= 0, half_pos, half_neg)
     q = np.clip(np.abs(lateral)/np.maximum(half, .75), 0, 1)
     if species == "linden":
-        # The basal notch is deepest at the midrib and asymmetric across it.
-        notch = base_cut*(1-q)**2
-        asym = np.where(lateral > 0, 1.04, .96)
-        edge = half*asym-np.abs(lateral)
-        ends = np.minimum((u-notch)*length, (1-u)*length)
+        # The deep central cleft exposes the petiole.  A small signed offset
+        # drops one rounded basal lobe below the other.
+        notch = base_cut*(1-q)**1.75
+        basal_skew = .026*np.clip(lateral/max(effective_width*.5, 1), -1, 1)
+        edge = half-np.abs(lateral)
+        ends = np.minimum((u-notch-basal_skew)*length*4.2, (1-u)*length*1.35)
+    elif species == "birch":
+        edge = half-np.abs(lateral)
+        # A steep basal SDF produces Betula's broad, almost straight base.
+        ends = np.minimum(u*length*8.0, (1-u)*length*1.25)
     else:
         edge = half-np.abs(lateral)
-        ends = np.minimum(u*length, (1-u)*length)
+        # The lobe envelopes already describe the ends; these steep caps only
+        # close the SDF and retain a blunt terminal lobe and narrow base.
+        ends = np.minimum(u*length*3.6, (1-u)*length*3.6)
     alpha = np.clip(np.minimum(edge, ends)+.72, 0, 1).astype(np.float32)
     if not np.any(alpha > 0):
         return
@@ -847,26 +882,39 @@ def draw_leaf(canvas: dict[str, np.ndarray], species: str, base: np.ndarray,
     # A foreground blade softly shadows surfaces already in the stack.  This
     # contact term is deliberately local and offset down-right, so overlaps
     # read as a layered spray rather than a pile of flat vector cut-outs.
-    shadow = gaussian_filter(alpha, 5.5, mode="constant")
-    shadow = np.roll(shadow, (4, 4), (0, 1))
-    shadow[:4] = 0; shadow[:, :4] = 0
+    shadow = gaussian_filter(alpha, 2.2, mode="constant")
+    shadow = np.roll(shadow, (2, 2), (0, 1))
+    shadow[:2] = 0; shadow[:, :2] = 0
     existing = canvas["alpha"][slice(ya, yb), slice(xa, xb)]
     canvas["rgb"][slice(ya, yb), slice(xa, xb)] *= (
-        1.0-(.10+.09*depth)*shadow[..., None]*existing[..., None])
+        1.0-(.055+.035*depth)*shadow[..., None]*existing[..., None])
 
     dome = np.sqrt(np.clip(1-q*q, 0, 1))*np.maximum(
         np.sin(np.pi*np.clip(u, 0, 1)), 0.0)**.34
-    fold = .11*np.tanh(lateral/max(effective_width*.055, .9))*np.sin(np.pi*np.clip(u, 0, 1))
-    mid = np.exp(-(lateral/max(.75, effective_width*.026))**2)
+    fold = .075*np.tanh(lateral/max(effective_width*.085, 1.1))*np.sin(np.pi*np.clip(u, 0, 1))
+    mid_width = max(1.0, effective_width*.030)
+    mid = np.exp(-(lateral/mid_width)**2)
+    mid_groove = np.exp(-((np.abs(lateral)-mid_width*1.65)/max(.8, mid_width*.65))**2)
     # Secondary veins fan from the midrib towards the margin rather than
     # forming transverse bands.  They are visible, but remain much finer than
     # the fold and silhouette.
     vein = np.zeros_like(u)
-    for root in np.linspace(.18, .79, 6 if species != "birch" else 5):
-        vein = np.maximum(vein, np.exp(-((u-(root+.12*q))/.012)**2)*q**.55)
-    surface = .18*dome + fold - .010*mid - .005*vein
+    vein_roots = ({
+        # The oak roots are offset from the margin centres by the fan bend,
+        # putting one secondary into each of the five main side lobes and the
+        # rounded terminal lobe.  Linden and birch retain even pinnate fans.
+        "oak": (.115, .295, .475, .645, .808, .860),
+        "linden": tuple(np.linspace(.16, .80, 7)),
+        "birch": tuple(np.linspace(.16, .80, 5)),
+    })[species]
+    for root in vein_roots:
+        # The distal end of each vein bends gently toward the tip.  Oak veins
+        # terminate in the centres of the rounded lobes.
+        bend = (.105 if species == "oak" else .080)*q
+        vein = np.maximum(vein, np.exp(-((u-(root+bend))/.0105)**2)*q**.48)
+    surface = .145*dome + fold + .012*mid - .007*mid_groove + .006*vein
     gy, gx = np.gradient(surface)
-    nx, ny = -gx*11.5, gy*11.5  # screen-down gradient maps to OpenGL +Y up
+    nx, ny = -gx*12.0, gy*12.0  # screen-down gradient maps to OpenGL +Y up
     nz = np.ones_like(nx)
     normal = np.stack((nx, ny, nz), -1)
     normal /= np.maximum(np.linalg.norm(normal, axis=-1, keepdims=True), 1e-5)
@@ -876,27 +924,29 @@ def draw_leaf(canvas: dict[str, np.ndarray], species: str, base: np.ndarray,
         blade = blade*.73 + np.array([32., 42., 34.])*.27
     base_yellow = (1-np.clip(u, 0, 1))[..., None]*np.array([9.0, 7.0, -3.0])
     edge_light = (q**1.8)[..., None]*2.6
-    fine = (np.sin(xx*.69+phase*3)+np.sin(yy*.53-phase*2))*1.1
+    fine = (np.sin(xx*.41+phase*3)+np.sin(yy*.37-phase*2))*.45
     half_fold = np.tanh(lateral/max(effective_width*.045, 1.0))
-    fold_sign = -1.0 if phase < 0 else 1.0
-    fold_tone = 1.0+fold_sign*.085*half_fold*np.sin(np.pi*np.clip(u, 0, 1))
-    tip_light = 5.0*smoothstep((u-.35)/.58)
-    rgb = blade[None, None, :]*(.95+.07*dome[..., None])*fold_tone[..., None]
+    fold_sign = -1.0 if math.sin(phase) < 0 else 1.0
+    fold_tone = 1.0+fold_sign*.060*half_fold*np.sin(np.pi*np.clip(u, 0, 1))
+    tip_light = 3.0*smoothstep((u-.35)/.58)
+    rgb = blade[None, None, :]*(.97+.055*dome[..., None])*fold_tone[..., None]
     rgb += base_yellow+edge_light+tip_light[..., None]
     rgb += fine[..., None]
-    rgb += (mid*7.0+vein*4.5)[..., None]
+    rgb += (mid*9.0+vein*5.0-mid_groove*2.0)[..., None]
     if not underside and rng.random() < .34:
         gloss = np.exp(-(((u-.66)/.17)**2+((lateral/effective_width-.16)/.20)**2))
         rgb += (2.0+2.5*depth)*gloss[..., None]
     if spotted:
         spot = np.exp(-(((u-.64)/.075)**2 + ((lateral/effective_width-.12)/.13)**2))
         rgb = rgb*(1-.55*spot[..., None]) + np.array([76., 57., 26.])*(.55*spot[..., None])
-    rgb *= (.60+.40*depth)
+    rgb *= (.83+.17*depth)
     rgb = np.clip(rgb, 20, 150)
-    rough = np.full_like(alpha, .77 if underside else (.53+.05*(1-depth)))
-    trans = np.full_like(alpha, .82 if not underside else .76)
-    trans -= .30*mid + .20*vein
-    trans = np.clip(trans, .42, .90)
+    upper_rough = {"oak": .32, "linden": .40, "birch": .38}[species]
+    rough = np.full_like(alpha, .66 if underside else upper_rough)
+    rough -= (.025*mid+.018*vein)*(0 if underside else 1)
+    trans = np.full_like(alpha, .84 if not underside else .78)
+    trans -= .40*mid + .31*vein
+    trans = np.clip(trans, .35, .90)
     composite_surface(canvas, slice(ya, yb), slice(xa, xb), rgb, alpha, normal,
                       rough, trans)
 
@@ -1026,106 +1076,124 @@ def _leaf_cell_round1(species: str, seed: int, variant: int) -> tuple[np.ndarray
 def dense_twig_scaffold(rng: np.random.Generator, species: str,
                         variant: int) -> tuple[
                             list[tuple[np.ndarray, np.ndarray, np.ndarray]],
-                            list[np.ndarray]]:
-    """Build a wide asymmetric fan ending in five separated shoot tips."""
-    root = np.array([256.+rng.uniform(-5, 5), 499.], np.float32)
-    junction = np.array([256.+rng.uniform(-15, 15), 392.+rng.uniform(-8, 8)], np.float32)
-    branches = [(root, np.array([252.+rng.uniform(-16, 16), 445.], np.float32), junction)]
+                            list[tuple[np.ndarray, float]]]:
+    """Build a botanical spray and return its leaf attachment directions."""
+    root = np.array([256.+rng.uniform(-5, 5), 505.], np.float32)
+    junction = np.array([256.+rng.uniform(-12, 12), 397.+rng.uniform(-7, 7)], np.float32)
+    branches = [(root, np.array([254.+rng.uniform(-10, 10), 452.], np.float32), junction)]
+    candidates: list[tuple[np.ndarray, float]] = []
+
     layouts = (
-        ((-168, -82), (-105, -207), (-12, -265), (101, -205), (170, -83)),
-        ((-176, -111), (-85, -221), (18, -255), (115, -176), (163, -48)),
-        ((-153, -68), (-119, -181), (-26, -244), (78, -218), (171, -105)),
-        ((-174, -61), (-72, -190), (8, -272), (124, -216), (157, -112)),
+        ((-174, -100), (-132, -207), (-48, -273), (52, -263), (139, -201), (177, -91)),
+        ((-178, -126), (-115, -230), (-25, -277), (73, -244), (151, -175), (174, -66)),
+        ((-169, -82), (-145, -183), (-62, -256), (42, -278), (130, -212), (180, -111)),
+        ((-177, -70), (-112, -198), (-18, -282), (83, -250), (153, -181), (171, -89)),
     )[variant]
-    tips: list[np.ndarray] = []
-    for ox, oy in layouts:
-        tip = junction+np.array([ox, oy], np.float32)+rng.normal(0, (9, 9), 2)
-        if species == "birch":
-            # Hanging distal twigs make the birch fan looser and less domed.
-            tip[1] += rng.uniform(7, 24)
-        tip[0] = np.clip(tip[0], 76, 436); tip[1] = np.clip(tip[1], 86, 330)
-        origin = junction+rng.normal(0, (11, 6), 2)
+    if species == "linden":
+        # Five long, well-separated sprays carry exactly five alternate
+        # leaves each.  Their open fan keeps the heart-shaped bases visible.
+        layouts = layouts[:5]
+    elif species == "birch":
+        # Eight fine shoots form a broad, drooping curtain.  Seven leaves per
+        # shoot gives the requested 56 without turning the cell into a heap.
+        layouts = ((-194, -55), (-171, -139), (-111, -232), (-38, -278),
+                   (45, -274), (116, -225), (174, -132), (195, -46))
+
+    for shoot_index, (ox, oy) in enumerate(layouts):
+        tip = junction+np.array([ox, oy], np.float32)+rng.normal(0, (6, 7), 2)
+        origin = junction+rng.normal(0, (8, 5), 2)
         v = tip-origin
-        a = math.atan2(v[1], v[0])
-        bend = np.array([-math.sin(a), math.cos(a)], np.float32)*rng.uniform(-30, 30)
+        outward = math.atan2(v[1], v[0])
+        perpendicular = np.array([-math.sin(outward), math.cos(outward)], np.float32)
+        control = (origin+tip)*.5+perpendicular*rng.uniform(-19, 19)
         if species == "birch":
-            bend[1] -= rng.uniform(8, 24)
-        control = (origin+tip)*.5+bend
+            # The control rises above the tip, so the distal section visibly
+            # hangs instead of making another rigid radial fan.
+            control[1] -= rng.uniform(18, 38)
+            tip[1] += rng.uniform(8, 22)
+        if species == "linden":
+            # Tilia shoots visibly zig-zag from node to node.  The modest
+            # offsets are botanical structure, not a decorative wavy line.
+            nodes = []
+            for k, u in enumerate(np.linspace(0, 1, 6)):
+                p = (1-u)**2*origin+2*(1-u)*u*control+u*u*tip
+                if 0 < k < 5:
+                    p = p+perpendicular*((-1 if (k+shoot_index) % 2 else 1)*5.5)
+                nodes.append(p)
+            for p0, p1 in zip(nodes[:-1], nodes[1:]):
+                branches.append((p0, (p0+p1)*.5, p1))
+            for k, anchor in enumerate(nodes[1:]):
+                side = -1 if (k+shoot_index) % 2 else 1
+                candidates.append((anchor, outward+side*rng.uniform(.82, 1.08)))
+            continue
+
         branches.append((origin, control, tip))
-        tips.append(tip)
-    return branches, tips
+
+        if species == "oak":
+            # Five broad leaves form a loose terminal rosette.  Separating the
+            # basal points slightly prevents all five outlines from stacking.
+            for offset in np.linspace(-.88, .88, 5):
+                anchor = tip+perpendicular*(offset*5.5)+rng.normal(0, (3.0, 3.0), 2)
+                candidates.append((anchor, outward+offset+rng.normal(0, .045)))
+            for k, u in enumerate((.38, .68)):
+                p = (1-u)**2*origin+2*(1-u)*u*control+u*u*tip
+                candidates.append((p, outward+(-1 if (k+shoot_index) % 2 else 1)*rng.uniform(.72, .96)))
+        else:
+            # Seven or eight small alternate leaves follow each arching twig.
+            # Sixty leaves total meet the requested botanical density while
+            # the broad eight-shoot curtain preserves many small sky gaps.
+            nodes = ((.16, .28, .40, .52, .64, .76, .88, .98)
+                     if shoot_index % 2 == 0 else
+                     (.20, .33, .46, .59, .72, .85, .98))
+            for k, u in enumerate(nodes):
+                p = (1-u)**2*origin+2*(1-u)*u*control+u*u*tip
+                side = -1 if (k+shoot_index) % 2 else 1
+                angle = outward+side*rng.uniform(.80, 1.10)
+                if u > .72:
+                    angle += rng.uniform(.06, .18)
+                candidates.append((p, angle))
+    return branches, candidates
 
 
 def leaf_cell(species: str, seed: int, variant: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Render a flattened fan of distinct shoot-tip rosettes and open gaps."""
+    """Render one open, species-specific leafy spray."""
     rng = np.random.default_rng(seed)
     canvas = new_leaf_canvas()
     twig_color = {"oak": np.array([68., 54., 37.]),
                   "linden": np.array([73., 60., 41.]),
                   "birch": np.array([77., 66., 49.])}[species]
-    branches, tips = dense_twig_scaffold(rng, species, variant)
+    branches, candidates = dense_twig_scaffold(rng, species, variant)
     for i, (p0, pc, p1) in enumerate(branches):
-        draw_curved_branch(canvas, p0, pc, p1, 3.3 if i == 0 else 1.25,
-                           .82 if i == 0 else .34, twig_color, 14 if i == 0 else 10)
+        draw_curved_branch(canvas, p0, pc, p1, 3.0 if i == 0 else 1.55,
+                           .90 if i == 0 else .72, twig_color, 14 if i == 0 else 10)
 
-    counts = {"oak": (58, 60, 54, 58),
-              "linden": (28, 30, 26, 29),
-              "birch": (68, 70, 63, 68)}[species]
     ranges = {
-        "oak": ((120., 148.), (.84, 1.02), np.array([43., 70., 29.]), np.array([100., 119., 52.])),
-        "linden": ((128., 156.), (.88, 1.02), np.array([49., 84., 34.]), np.array([112., 134., 59.])),
-        "birch": ((117., 137.), (.80, 1.0), np.array([59., 91., 34.]), np.array([124., 143., 61.])),
+        "oak": ((96., 134.), (.44, .51), np.array([45., 72., 34.]), np.array([91., 112., 57.])),
+        "linden": ((95., 115.), (.94, 1.08), np.array([51., 85., 37.]), np.array([105., 128., 64.])),
+        "birch": ((80., 96.), (.76, .88), np.array([63., 94., 37.]), np.array([120., 139., 64.])),
     }
     length_range, ratio_range, low, high = ranges[species]
-    junction = branches[0][2]
     leaves = []
-    total = counts[variant]
-    # Unequal allocation makes the five lobes visibly different; variant 2 is
-    # deliberately sparse, with larger notches between its rosettes.
-    weights = rng.uniform(.78, 1.22, len(tips)); weights /= weights.sum()
-    allocations = np.maximum(3, np.floor(weights*total).astype(int))
-    while allocations.sum() < total: allocations[int(rng.integers(0, len(tips)))] += 1
-    while allocations.sum() > total:
-        k = int(np.argmax(allocations)); allocations[k] -= 1
-
-    for tip_index, (tip, amount) in enumerate(zip(tips, allocations)):
-      outward = math.atan2(tip[1]-junction[1], tip[0]-junction[0])
-      for j in range(int(amount)):
-        # Rosette leaves fan around each terminal bud.  A few side leaves sit
-        # back on the shoot, leaving sky holes between neighbouring rosettes.
-        angle = outward+rng.uniform(-1.15, 1.15)+rng.normal(0, .10)
-        anchor = tip+rng.normal(0, (30, 26), 2)
-        if j == 0:  # a solitary outline leaf points decisively outwards
-            angle = outward+rng.normal(0, .08)
-            anchor = tip+np.array([math.cos(outward), math.sin(outward)])*rng.uniform(4, 11)
-        elif j == 1 and tip_index in (1, 3):
-            # Two existing leaves are placed low on the inner shoots.  This
-            # hides the bare fan of sticks without inflating atlas coverage or
-            # exceeding the species leaf-count ranges.
-            u = rng.uniform(.06, .22)
-            p0, pc, p1 = branches[tip_index+1]
-            anchor = (1-u)**2*p0+2*(1-u)*u*pc+u*u*p1
-            angle = outward+rng.choice((-1, 1))*rng.uniform(.70, 1.02)
-        elif rng.random() < {"oak": .40, "linden": .47, "birch": .59}[species]:
-            u = rng.uniform(.22, .82)
-            p0, pc, p1 = branches[tip_index+1]
-            anchor = (1-u)**2*p0+2*(1-u)*u*pc+u*u*p1
-            angle = outward+rng.choice((-1, 1))*rng.uniform(.62, 1.12)
+    for anchor, angle in candidates:
         length = rng.uniform(*length_range)
         width = length*rng.uniform(*ratio_range)
-        narrow_chance = {"oak": .24, "linden": .22, "birch": .27}[species]
-        squash = rng.uniform(.20, .46) if rng.random() < narrow_chance else rng.uniform(.72, 1.0)
+        narrow_chance = {"oak": .10, "linden": .05, "birch": .08}[species]
+        squash = rng.uniform(.42, .68) if rng.random() < narrow_chance else rng.uniform(.86, 1.0)
         effective_width = width*squash
         direction = np.array([math.cos(angle), math.sin(angle)], np.float32)
-        centre = anchor+direction*(length*.31)
+        petiole = rng.uniform(4.0, 7.0) if species == "oak" else (
+            rng.uniform(18., 27.) if species == "linden" else rng.uniform(13., 21.))
+        centre = anchor+direction*(petiole+length*.49)
         c, s = abs(math.cos(angle)), abs(math.sin(angle))
-        half_factor = {"oak": .56, "linden": .60, "birch": .58}[species]
-        ex = .52*length*c+half_factor*effective_width*s
-        ey = .52*length*s+half_factor*effective_width*c
-        centre[0] = np.clip(centre[0], 9+ex, 503-ex); centre[1] = np.clip(centre[1], 9+ey, 503-ey)
+        ex = .51*length*c+.55*effective_width*s
+        ey = .51*length*s+.55*effective_width*c
+        centre[0] = np.clip(centre[0], 7+ex, 505-ex)
+        centre[1] = np.clip(centre[1], 7+ey, 505-ey)
         base = centre-direction*(length*.49)
-        layer = int(rng.integers(0, 5))
-        depth = np.clip((layer+.25+.5*rng.random())/5, .08, 1.0)
+        # Petioles are drawn first and stay at least three pixels wide so they
+        # survive alpha-tested mipmaps.
+        draw_branch(canvas, anchor, base, 1.65, 1.40, twig_color*.94)
+        depth = rng.uniform(.18, 1.0)
         mix = rng.random()
         color = low*(1-mix)+high*mix
         hue = rng.normal(0, 1)
@@ -1133,7 +1201,8 @@ def leaf_cell(species: str, seed: int, variant: int) -> tuple[np.ndarray, np.nda
         color *= rng.uniform(.87, 1.14)
         underside = rng.random() < .15
         spotted = rng.random() < .05
-        leaves.append((depth, base, length, width, angle, squash, color, underside, spotted))
+        leaves.append((depth, base, length, width, angle+rng.normal(0, .035),
+                       squash, color, underside, spotted))
     leaves.sort(key=lambda item: item[0])
     for item in leaves:
         depth, base, length, width, angle, squash, color, underside, spotted = item
@@ -1244,6 +1313,49 @@ def leaf_preview(records: dict[str, dict[str, np.ndarray]], path: Path) -> None:
         row = Image.new("RGB", (panel*4, panel+25))
         for i, im in enumerate(panels): row.paste(im, (i*panel, 0))
         rows.append(row)
+
+        # A practical review sheet for one atlas cell: full atlas context,
+        # a 100% crop, actual 128/64-pixel game sizes, directional lighting,
+        # and a backlit view in which the vein network should remain legible.
+        cell_rgba = rgba[:CELL, :CELL]
+        cell_alpha = cell_rgba[..., 3:4].astype(np.float32)/255
+        cell_rgb = cell_rgba[..., :3].astype(np.float32)
+        cell_sky = np.uint8(cell_rgb*cell_alpha+np.array([126, 165, 196])*(1-cell_alpha))
+        cell_lit = lit_rgb(cell_rgba[..., :3], d["normal"][:CELL, :CELL]).astype(np.float32)
+        cell_lit = np.uint8(cell_lit*cell_alpha+np.array([105, 108, 106])*(1-cell_alpha))
+        cell_trans = d["trans"][:CELL, :CELL].astype(np.float32)/255
+        backlight = cell_rgb*(.30+1.02*cell_trans[..., None])
+        backlight += np.array([20., 15., 7.])*cell_trans[..., None]
+        backlight = np.uint8(np.clip(backlight*cell_alpha+
+                                     np.array([91, 119, 143])*(1-cell_alpha), 0, 255))
+
+        low = Image.new("RGB", (CELL, CELL), (42, 45, 45))
+        low_draw = ImageDraw.Draw(low)
+        cimg = Image.fromarray(cell_sky)
+        c128 = cimg.resize((128, 128), Image.Resampling.LANCZOS)
+        c64 = cimg.resize((64, 64), Image.Resampling.LANCZOS)
+        low.paste(c128, (54, 78)); low.paste(c64, (310, 110))
+        low_draw.text((54, 55), "128 px actual size", fill=(235, 235, 230),
+                      font=ImageFont.load_default())
+        low_draw.text((310, 87), "64 px actual size", fill=(235, 235, 230),
+                      font=ImageFont.load_default())
+        # Enlarged nearest-neighbour copies make species readability at the two
+        # target resolutions easy to inspect without concealing actual size.
+        low.paste(c128.resize((256, 256), Image.Resampling.NEAREST), (16, 238))
+        low.paste(c64.resize((192, 192), Image.Resampling.NEAREST), (304, 270))
+
+        review_ims = [Image.fromarray(np.uint8(sky)).resize((CELL, CELL), Image.Resampling.LANCZOS),
+                      Image.fromarray(cell_sky), low, Image.fromarray(cell_lit),
+                      Image.fromarray(backlight),
+                      Image.fromarray(d["normal"][:CELL, :CELL])]
+        review_labels = [f"{NAMES[species]} atlas / sky", "cell 0 / 100%",
+                         "128 + 64 px", "normal-lit / upper left",
+                         "backlit translucency", "cell normal map"]
+        review_panels = [label_panel(im, lab) for im, lab in zip(review_ims, review_labels)]
+        review = Image.new("RGB", (CELL*3, (CELL+25)*2), (32, 34, 33))
+        for i, im in enumerate(review_panels):
+            review.paste(im, ((i % 3)*CELL, (i//3)*(CELL+25)))
+        review.save(path.parent/f"{species}_leaf_review.png", compress_level=6)
     sheet = Image.new("RGB", (panel*4, (panel+25)*len(rows)))
     for i, row in enumerate(rows): sheet.paste(row, (0, i*(panel+25)))
     sheet.save(path, compress_level=6)

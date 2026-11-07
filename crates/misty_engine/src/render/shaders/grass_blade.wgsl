@@ -2,6 +2,8 @@
 // (grass_shadow.wgsl). One instance per blade or seed-head stem; ten vertices make a curved
 // card of four segments (eight from vertex 100 on make a coarse one of three). The card
 // bends along a circular arc, so it keeps its length however far the wind pushes it.
+// Wildflowers (terrain/flowers.rs) are blades too: two crossed plant cards per flower that
+// bend like a stem, and a head card lying nearly flat at the top of that stem.
 // Uses grass_field.wgsl (patches, gusts).
 
 struct GrassParams {
@@ -19,7 +21,8 @@ struct GrassParams {
     look: vec4<f32>,
     // x = the terrain's draw slot (reflection probes), y = 1 with the ground cover (the lit
     // pass leaves the flat fans out too: the terrain paints the undergrowth), z = the
-    // terrain's number in the grass visibility ids (grass_vis.wgsl).
+    // terrain's number in the grass visibility ids (grass_vis.wgsl), w = the flowers' LOD
+    // distance (f32 bits).
     draw: vec4<u32>,
     // rgb = linear lush colour, w = patch size (m).
     lush: vec4<f32>,
@@ -40,7 +43,10 @@ struct GrassParams {
 };
 
 @group(2) @binding(0) var<uniform> grass: GrassParams;
-@group(2) @binding(1) var grass_atlas: texture_2d<f32>;
+// Layer 0: the grass atlas; 1: the flower atlas (four kinds side by side: the head seen from
+// above in the top quarter, the plant from the side below); 2: the flowers' material
+// (normal x, y, roughness, translucency; stored so the sRGB decode gives the linear values).
+@group(2) @binding(1) var grass_atlas: texture_2d_array<f32>;
 @group(2) @binding(2) var grass_sampler: sampler;
 
 // Width / height of the specimen in each atlas cell, and its average linear colour.
@@ -48,6 +54,15 @@ struct GrassParams {
 const CELL_ASPECT = array<f32, 8>(0.28, 0.28, 0.28, 0.28, 0.069, 0.057, 0.146, 0.151);
 const GRASS_SEGMENTS: f32 = 4.0;
 const MIN_KEEP: f32 = 0.012;
+// Flowers (terrain/flowers.rs): keys scaled into [0, FLOWER_KEY), cards per flower, the head's
+// height on the plant card, the fewest flowers kept far away and how much bigger they grow.
+const FLOWER_KEY: f32 = 0.004;
+const FLOWER_CARDS: u32 = 3u;
+const FLOWER_HEAD_AT: f32 = 0.92;
+const FLOWER_MIN_KEEP: f32 = 0.4;
+const FLOWER_MAX_GROW: f32 = 3.0;
+// Card coordinates at or past this (8 grass cells x 8) are flower atlas uv: x = 64 + 8 u, y = v.
+const FLOWER_CARD_U: f32 = 64.0;
 
 struct BladeIn {
     // xyz = root (terrain-local), w = height.
@@ -70,6 +85,23 @@ struct BladeIn {
 // four bits name the page for the visibility buffer).
 @group(3) @binding(0) var<storage, read> grass_blades: array<vec2<f32>>;
 @group(3) @binding(1) var<storage, read> grass_drawn: array<u32>;
+
+// One of a wildflower's cards (shape.z = 2 + kind x 3 + card).
+fn grass_is_flower(b: BladeIn) -> bool {
+    return b.shape.z >= 1.5;
+}
+
+// Share of the flowers drawn at `dist`: all up to the flowers' LOD distance, then fewer (each
+// grown bigger to keep the colour of a patch, `grass_flower_grow`), never under a share that
+// keeps far patches showing.
+fn grass_flower_keep(dist: f32) -> f32 {
+    let r = max(bitcast<f32>(grass.draw.w), 1.0) / max(dist, 1e-3);
+    return clamp(r * r, FLOWER_MIN_KEEP, 1.0);
+}
+
+fn grass_flower_grow(dist: f32) -> f32 {
+    return min(inverseSqrt(grass_flower_keep(dist)), FLOWER_MAX_GROW);
+}
 
 // The blade of draw instance `instance`.
 fn grass_fetch(instance: u32) -> BladeIn {
@@ -107,6 +139,9 @@ struct BladeVertex {
     thin: f32,
     // Leaves side by side on the card (see `grass_card_u`).
     repeat: f32,
+    // Card coordinate of the vertex (`grass_card_u` / `grass_card_v`; flowers: atlas uv
+    // past FLOWER_CARD_U, see `grass_atlas_uv`).
+    card: vec2<f32>,
 };
 
 // Card coordinate across a blade: 8 × atlas cell + 0..`repeat` from edge to edge. Cards much
@@ -122,10 +157,14 @@ fn grass_card_v(t: f32, phase: f32) -> f32 {
     return 1.0 - t + 2.0 * floor(phase * 16.0);
 }
 
-// Atlas uv of an interpolated card coordinate (`grass_card_u`, `grass_card_v`) and z = 1
-// where a leaf is (0 above the tip of a shortened one): the first leaf of a card has the
-// full length, the others 65–100 % of it, so a card reads as a ragged tuft, not a comb.
-fn grass_atlas_uv(card: vec2<f32>) -> vec3<f32> {
+// Atlas uv of an interpolated card coordinate (`grass_card_u`, `grass_card_v`), z = 1
+// where a leaf is (0 above the tip of a shortened one) and w = the atlas layer: the first
+// leaf of a card has the full length, the others 65–100 % of it, so a card reads as a ragged
+// tuft, not a comb. Flower cards carry their atlas uv directly (layer 1).
+fn grass_atlas_uv(card: vec2<f32>) -> vec4<f32> {
+    if (card.x >= FLOWER_CARD_U - 0.5) {
+        return vec4<f32>((card.x - FLOWER_CARD_U) / 8.0, card.y, 1.0, 1.0);
+    }
     let cell = floor(card.x / 8.0);
     let local = card.x - cell * 8.0;
     let leaf = floor(local);
@@ -134,7 +173,7 @@ fn grass_atlas_uv(card: vec2<f32>) -> vec3<f32> {
     let h = grass_hash(vec2<f32>(leaf * 7.1 + cell * 1.3, blade * 3.3 + 1.7));
     let reach = select(1.0 - 0.35 * h, 1.0, leaf < 0.5);
     let along = 1.0 - (1.0 - v) / reach;
-    return vec3<f32>((cell + fract(local)) / 8.0, max(along, 0.0), step(0.0, along));
+    return vec4<f32>((cell + fract(local)) / 8.0, max(along, 0.0), step(0.0, along), 0.0);
 }
 
 // Screen gradients of the atlas uv for `grass_atlas_uv` (taken on the card coordinate, so the
@@ -159,7 +198,7 @@ fn grass_keep(dist: f32) -> f32 {
 // draw distance, outside a shadow caster's range). `grass_blade_at` draws it this tall.
 fn grass_drawn_height(b: BladeIn) -> f32 {
     let seed_head = b.extra.x >= 2.0;
-    let key = b.extra.x - select(0.0, 2.0, seed_head);
+    var key = b.extra.x - select(0.0, 2.0, seed_head);
     let root = grass.origin.xyz + b.position.xyz;
     let dist = distance(root, grass.camera.xyz);
     let fade = 1.0 - smoothstep(grass.dry.w, grass.healthy.w, dist);
@@ -168,7 +207,13 @@ fn grass_drawn_height(b: BladeIn) -> f32 {
     // nearest point needs), so thinning is smooth instead of popping. Shadow casters are a
     // fixed share of the drawn blades and fade out towards their range.
     let shadow = grass.shadow.z > 0.5;
-    let keep = grass_keep(dist) * select(1.0, grass.shadow.y, shadow);
+    var keep = grass_keep(dist);
+    if (grass_is_flower(b)) {
+        // Flowers thin out with their own, gentler curve (their keys sort them first).
+        key = key / FLOWER_KEY;
+        keep = grass_flower_keep(dist);
+    }
+    keep *= select(1.0, grass.shadow.y, shadow);
     var height = b.position.w * fade * (1.0 - smoothstep(keep * 0.7, keep, key));
     if (shadow) {
         height *= 1.0 - smoothstep(grass.shadow.x * 0.6, grass.shadow.x, dist);
@@ -237,6 +282,9 @@ struct BladeFrame {
     theta: f32,
     bend3: vec3<f32>,
     facing_angle: f32,
+    // Flowers: 1 + the card (1 / 3 = plant cards, 2 = head), 0 for grass; the kind.
+    flower: u32,
+    kind: u32,
 };
 
 fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
@@ -246,6 +294,15 @@ fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
     if (seed_head) {
         // The open panicles only: thin pale stalks over short turf.
         cell = 6u + (u32(fract(phase * 7.31) * 2.0) & 1u);
+    }
+    var flower = 0u;
+    var kind = 0u;
+    if (grass_is_flower(b)) {
+        let i = u32(round(b.shape.z - 2.0));
+        kind = min(i / FLOWER_CARDS, 3u);
+        flower = 1u + i % FLOWER_CARDS;
+        // Cells 8.. mark flowers (8 + 2 x kind, + 1 on the head).
+        cell = 8u + kind * 2u + select(0u, 1u, flower == 2u);
     }
 
     let root = grass.origin.xyz + b.position.xyz;
@@ -258,10 +315,15 @@ fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
     // of them, so the blade area per square metre (and the ground they hide) stays the same.
     let widen = min(1.0 / keep, grass.look.z);
     var width = b.shape.y;
-    if (seed_head) {
-        width = b.position.w * CELL_ASPECT[cell] * (0.8 + 0.4 * fract(phase * 3.7));
+    if (flower > 0u) {
+        // Fewer flowers far away, each bigger, so a patch keeps its colour.
+        width *= grass_flower_grow(dist);
+    } else {
+        if (seed_head) {
+            width = b.position.w * CELL_ASPECT[cell] * (0.8 + 0.4 * fract(phase * 3.7));
+        }
+        width *= widen;
     }
-    width *= widen;
     // Seen from above, cards show their thin side and the ground between them: blades the
     // camera looks down on grow wider (the main pass only; shadows keep their shape).
     if (!shadow && !seed_head) {
@@ -291,7 +353,8 @@ fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
     let dir = grass.wind.zw;
     let gust = grass_gust(root.xz, dir, time, grass.wind.y, grass.camera.w);
     let flutter = sin(time * (4.5 + 3.0 * phase) + phase * 40.0 - dot(root.xz, dir) * 1.3);
-    let give = clamp(b.position.w / 0.45, 0.35, 1.4) * select(1.0, 0.7, seed_head);
+    let give = clamp(b.position.w / 0.45, 0.35, 1.4)
+        * select(select(1.0, 0.7, seed_head), 0.8, flower > 0u);
     let push = grass.wind.x * give
         * (0.2 + 1.3 * grass.amounts.z * gust + 0.15 * grass.amounts.w * flutter);
     // Lean out of the tuft (arched by `bend`) plus the wind; the card bends along an arc
@@ -324,11 +387,70 @@ fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
     f.theta = theta;
     f.bend3 = vec3<f32>(bend.x, 0.0, bend.y);
     f.facing_angle = facing_angle;
+    f.flower = flower;
+    f.kind = kind;
     return f;
+}
+
+// The point `t` (0 = root .. 1 = top) of a blade's arc, and the arc's direction there.
+fn grass_arc(f: BladeFrame, t: f32) -> array<vec3<f32>, 2> {
+    let theta = f.theta;
+    let a = theta * t;
+    var along = 0.5 * theta * t * t;
+    var up = t;
+    if (theta > 1e-3) {
+        along = (1.0 - cos(a)) / theta;
+        up = sin(a) / theta;
+    }
+    let centre = f.root + (f.bend3 * along + vec3<f32>(0.0, up, 0.0)) * f.height;
+    let tangent = normalize(f.bend3 * sin(a) + vec3<f32>(0.0, cos(a), 0.0));
+    return array<vec3<f32>, 2>(centre, tangent);
+}
+
+// Vertex `vi` of a flower's head card: the head seen from above (the atlas's top quarter),
+// lying nearly flat at the top of the stem, tilted its own way and turned about its middle
+// (`shape.x`).
+fn grass_flower_head(f: BladeFrame, b: BladeIn, vi: u32) -> BladeVertex {
+    let coarse = vi >= 100u;
+    let k = select(vi, vi - 100u, coarse);
+    let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
+    let side = select(-0.5, 0.5, (k & 1u) == 1u);
+    let phase = b.shape.w;
+    let arc = grass_arc(f, FLOWER_HEAD_AT);
+    let tilt_dir = fract(phase * 5.71) * 6.2831853;
+    let tilt = vec3<f32>(cos(tilt_dir), 0.0, sin(tilt_dir)) * (0.25 + 0.35 * fract(phase * 3.13));
+    let n = normalize(arc[1] + tilt);
+    let r = vec3<f32>(cos(b.shape.x), 0.0, sin(b.shape.x));
+    let e1 = normalize(r - n * dot(r, n) + vec3<f32>(0.0, 0.0, 1e-4));
+    let e2 = cross(n, e1);
+
+    var v: BladeVertex;
+    // A little above the stem's top, so the head sits on the plant cards' painted head.
+    v.p = arc[0] + n * f.width * 0.08 + e1 * (t - 0.5) * f.width + e2 * side * f.width;
+    v.across = e2;
+    // Image up (towards smaller v) is -e1: the face normal `cross(across, tangent)` is `n`.
+    v.tangent = -e1;
+    v.root = f.root;
+    v.t = t;
+    v.side = side;
+    v.above = arc[0].y - f.root.y;
+    v.gust = f.gust;
+    v.dist = f.dist;
+    v.fade = f.fade;
+    v.cell = f.cell;
+    v.seed_head = true;
+    v.thin = f.thin;
+    v.repeat = 1.0;
+    let u = (f32(f.kind) + side + 0.5) * 0.25;
+    v.card = vec2<f32>(FLOWER_CARD_U + 8.0 * u, t * 0.25);
+    return v;
 }
 
 // Vertex `vi` of the card of a blade's frame.
 fn grass_blade_point(f: BladeFrame, b: BladeIn, vi: u32) -> BladeVertex {
+    if (f.flower == 2u) {
+        return grass_flower_head(f, b, vi);
+    }
     let coarse = vi >= 100u;
     let k = select(vi, vi - 100u, coarse);
     let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
@@ -368,5 +490,11 @@ fn grass_blade_point(f: BladeFrame, b: BladeIn, vi: u32) -> BladeVertex {
     v.seed_head = f.seed_head;
     v.thin = f.thin;
     v.repeat = f.repeat;
+    v.card = vec2<f32>(grass_card_u(f.cell, side, f.repeat), grass_card_v(t, phase));
+    if (f.flower > 0u) {
+        // The plant from the side: the atlas below the head quarter, root at the bottom.
+        let u = (f32(f.kind) + side + 0.5) * 0.25;
+        v.card = vec2<f32>(FLOWER_CARD_U + 8.0 * u, 0.25 + (1.0 - t) * 0.75);
+    }
     return v;
 }

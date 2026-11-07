@@ -37,14 +37,14 @@ fn vs_grass_prepass(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii:
     }
     out.clip_prev = prev_clip(prev);
     out.normal = normalize(face + v.across * v.side * 0.8);
-    out.uv = vec3<f32>(grass_card_u(v.cell, v.side, v.repeat), grass_card_v(v.t, b.shape.w), smoothstep(5.0, 55.0, v.dist));
+    out.uv = vec3<f32>(v.card, smoothstep(5.0, 55.0, v.dist));
     return out;
 }
 
 @fragment
 fn fs_grass_prepass(in: GrassPrepassOut, @builtin(front_facing) front: bool) -> GrassPrepassTargets {
     let leaf = grass_atlas_uv(in.uv.xy);
-    let alpha = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a * leaf.z;
+    let alpha = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, i32(leaf.w), grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a * leaf.z;
     if (alpha < 0.5) {
         discard;
     }

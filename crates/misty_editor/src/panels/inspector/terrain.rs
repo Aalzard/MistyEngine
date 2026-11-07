@@ -191,6 +191,7 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 crate::terrain_rules::generate_row(ui, state, &path, d);
                 ui.add_space(4.0);
                 crate::terrain_rules::details_section(ui, state, &path, d);
+                crate::terrain_flowers_ui::flowers_section(ui, state, &path, d);
                 crate::terrain_rules::cliffs_section(ui, state, &path, d);
                 crate::terrain_rules::harmony_section(ui, state, &path, d);
             }

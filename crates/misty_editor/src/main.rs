@@ -180,6 +180,7 @@ mod status_bar;
 #[cfg(test)]
 mod string_literal_lint;
 mod templates;
+mod terrain_flowers_ui;
 mod terrain_rules;
 mod terrain_tools;
 mod terrain_trees_ui;
