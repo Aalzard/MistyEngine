@@ -93,17 +93,46 @@ pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
-pub const SAMPLE_COUNT: u32 = 4;
+/// MSAA samples of the main pass for the pipelines and targets made from now on: the
+/// samples of the renderer at work (each `Renderer` keeps its own and sets this before it
+/// builds anything; Quality ▸ Anti-Aliasing, 2× or 4×).
+static SAMPLES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(4);
+
+pub(crate) fn sample_count() -> u32 {
+    SAMPLES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn use_samples(samples: u32) {
+    SAMPLES.store(samples, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The main pass's MSAA samples for a quality level on `device`: its Anti-Aliasing.
+/// Disabled renders 2× for now (the depth / velocity readers and the resolve need
+/// multisampled targets); 2× needs the adapter's own format features (WebGPU guarantees
+/// only 1× and 4× for the HDR targets), else 4×.
+pub fn msaa_samples(device: &wgpu::Device, quality: &crate::quality::QualityLevel) -> u32 {
+    let two = device
+        .features()
+        .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
+    match quality.msaa_samples() {
+        n if n >= 4 || !two => 4,
+        _ => 2,
+    }
+}
+
 const MAX_LIGHTS: usize = 8;
 
 /// Device features to request when the adapter has them: timestamp queries for GPU timing
-/// (see [`Renderer::with_queue`]) and indirect draws with an instance offset (GPU culling).
+/// (see [`Renderer::with_queue`]), indirect draws with an instance offset (GPU culling) and
+/// the adapter's own format capabilities (2× MSAA of the HDR targets is not guaranteed by
+/// WebGPU, only 1× and 4×).
 pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     adapter.features()
         & (wgpu::Features::TIMESTAMP_QUERY
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
-            | wgpu::Features::INDIRECT_FIRST_INSTANCE)
+            | wgpu::Features::INDIRECT_FIRST_INSTANCE
+            | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
 }
 
 /// World plane the editor grid lies on.
@@ -507,6 +536,8 @@ pub struct Renderer {
     /// The view-projection the last render drew with (jitter included), for tests.
     #[cfg(test)]
     last_view_proj: Mat4,
+    /// MSAA samples of the main pass this renderer was built for (see [`sample_count`]).
+    samples: u32,
 }
 
 impl Renderer {
@@ -639,6 +670,7 @@ impl Renderer {
             debug_blit: None,
             #[cfg(test)]
             last_view_proj: Mat4::IDENTITY,
+            samples: sample_count(),
         }
     }
 
@@ -682,6 +714,20 @@ impl Renderer {
     /// Effect settings (cascades, soft shadows, AO, fog, probes) are read from
     /// [`Renderer::quality`] by the passes that implement them.
     pub fn set_quality(&mut self, device: &wgpu::Device, quality: &crate::quality::QualityLevel) {
+        // Quality ▸ Anti-Aliasing: another sample count rebuilds the renderer (pipelines and
+        // GPU caches; meshes, textures and grass load again over the next frames). Targets
+        // made before no longer fit (`target_fits`): the hosts make new ones.
+        let samples = msaa_samples(device, quality);
+        if samples != self.samples {
+            use_samples(samples);
+            let mut fresh = Self::new(device);
+            fresh.gpu_timer = self.gpu_timer.take();
+            fresh.pass_timer = self.pass_timer.take();
+            fresh.options = self.options;
+            fresh.capture = self.capture.take();
+            *self = fresh;
+        }
+        use_samples(self.samples);
         if !quality.temporal_aa {
             self.taa.clear();
         }
@@ -747,6 +793,12 @@ impl Renderer {
     /// Latest GPU time of a render, when timestamp queries are supported.
     pub fn gpu_ms(&self) -> Option<f32> {
         self.gpu_timer.as_ref().and_then(|t| t.last_ms())
+    }
+
+    /// The target was made for this renderer's MSAA samples (else make a new one: Quality ▸
+    /// Anti-Aliasing changed).
+    pub fn target_fits(&self, target: &RenderTarget) -> bool {
+        target.samples() == self.samples
     }
 
     /// Measure the GPU time of each part of every render (shadows, AO, main pass, grass, TAA,
@@ -962,6 +1014,7 @@ impl Renderer {
 
     /// New offscreen target for a view.
     pub fn create_target(&self, device: &wgpu::Device, width: u32, height: u32) -> RenderTarget {
+        use_samples(self.samples);
         let layouts = TargetLayouts {
             mask: &self.pipelines.mask_layout,
             post: &self.pipelines.post_layout,
@@ -990,6 +1043,11 @@ impl Renderer {
         target: &RenderTarget,
         frame: &Frame,
     ) {
+        use_samples(self.samples);
+        if !self.target_fits(target) {
+            // (Made before Quality ▸ Anti-Aliasing changed: the host makes a new one.)
+            return;
+        }
         let emitters = if frame.shaded {
             area::emitter_draws(frame.lights)
         } else {

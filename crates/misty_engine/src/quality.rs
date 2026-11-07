@@ -268,7 +268,9 @@ impl QualityLevel {
             soft_shadows: Tier::Off,
             shadow_temporal: false,
             shadow_denoise: false,
-            anti_aliasing: AntiAliasing::Off,
+            // (Every level renders 4× as before the renderer honoured the setting; 2× is a
+            // choice for the user, see docs/pending/meadow-perf2.md.)
+            anti_aliasing: AntiAliasing::X4,
             fxaa: false,
             temporal_aa: false,
             taa_blend: TAA_BLEND,
@@ -303,7 +305,7 @@ impl QualityLevel {
             soft_shadows: Tier::Low,
             shadow_temporal: false,
             shadow_denoise: false,
-            anti_aliasing: AntiAliasing::X2,
+            anti_aliasing: AntiAliasing::X4,
             fxaa: false,
             temporal_aa: true,
             taa_blend: TAA_BLEND,
@@ -676,7 +678,12 @@ mod tests {
     fn accessors_turn_choices_into_numbers() {
         let low = QualityLevel::low();
         assert_eq!(low.shadow_map_size(), 512);
-        assert_eq!(low.msaa_samples(), 1);
+        assert_eq!(low.msaa_samples(), 4);
+        let off = QualityLevel {
+            anti_aliasing: AntiAliasing::Off,
+            ..QualityLevel::low()
+        };
+        assert_eq!(off.msaa_samples(), 1);
         assert_eq!(low.ao_samples(), 0);
         assert_eq!(low.texture_size_limit(2048), 512, "1024 cap, then half");
         assert_eq!(low.anisotropy(16), 1);

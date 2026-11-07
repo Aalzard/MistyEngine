@@ -2,7 +2,7 @@
 
 use super::mesh::Vertex;
 use super::particles::ParticleInstance;
-use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT, SAMPLE_COUNT};
+use super::{COLOR_FORMAT, DEPTH_FORMAT, HDR_FORMAT, LineVertex, MASK_FORMAT};
 
 /// Shared view uniform + helpers, then the clouds and fog every forward shader applies.
 pub(super) const COMMON: &str = concat!(
@@ -243,7 +243,7 @@ impl<'a> Spec<'a> {
             depth: Depth::main(false, wgpu::CompareFunction::Always),
             color: Some(HDR_FORMAT),
             blend: None,
-            samples: SAMPLE_COUNT,
+            samples: super::sample_count(),
             glow: Some(false),
             alpha_to_coverage: false,
             velocity: false,

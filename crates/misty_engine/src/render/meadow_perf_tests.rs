@@ -43,6 +43,8 @@ fn apply_opts(mut q: QualityLevel) -> QualityLevel {
         match o {
             // Quality ▸ Grass Ground Cover.
             "cover" => q.grass_ground_cover = true,
+            // Quality ▸ Anti-Aliasing 2×.
+            "msaa2" => q.anti_aliasing = crate::quality::AntiAliasing::X2,
             _ => eprintln!("(option {o} unknown: ignored)"),
         }
     }
@@ -363,8 +365,8 @@ fn meadow_perf_cull_counts() {
 }
 
 /// A/B timing in one process, the two setups alternating (other GPU work on the machine then
-/// weighs on both alike): `MISTY_AB=cull` (GPU grass culling off / on) or `cover` (Quality ▸
-/// Grass Ground Cover off / on). Median per part over `MISTY_AB_ROUNDS` (3) rounds.
+/// weighs on both alike): `MISTY_AB=cull` (GPU grass culling off / on), `cover` (Quality ▸
+/// Grass Ground Cover off / on) or `msaa` (the level's Anti-Aliasing / 2×). Median per part over `MISTY_AB_ROUNDS` (3) rounds.
 #[test]
 #[ignore = "timing, prints only"]
 fn meadow_perf_ab() {
@@ -393,6 +395,8 @@ fn meadow_perf_ab() {
                 let mut q = quality.clone();
                 match what.as_str() {
                     "cover" => q.grass_ground_cover = on,
+                    "msaa" if on => q.anti_aliasing = crate::quality::AntiAliasing::X2,
+                    "msaa" => {}
                     _ => crate::render::terrain_grass::set_grass_gpu_cull(on),
                 }
                 q

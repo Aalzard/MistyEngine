@@ -205,8 +205,8 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     let mut edited = row(
         ui,
         "Anti-Aliasing",
-        "Smooths jagged edges. The renderer currently always uses 4x; this choice is saved \
-         for when it can switch.",
+        "Multisampling of the 3D view: smooths jagged edges (4x smoother, 2x cheaper on dense \
+         grass). Disabled renders 2x for now. Changing it rebuilds the renderer (a short hitch).",
         |ui| {
             combo(
                 ui,
