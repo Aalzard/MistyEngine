@@ -208,7 +208,7 @@ fn fs_tree_bark(in: TreeOut) -> MeshTargets {
     // Occlusion map: the ambient light, and a little cavity darkening of the sunlit bark.
     let cavity = material.a;
     let albedo = base.rgb * tree.bark.rgb * mix(1.0, cavity, 0.2);
-    var out = shade_tree(in.world, albedo, n, in.extra.x * mix(1.0, cavity, 0.7), vec3<f32>(0.0), 0.15, 1.0 - material.b, 0.05);
+    var out = shade_tree(in.world, albedo, n, in.extra.x * mix(1.0, cavity, 0.5), vec3<f32>(0.0), 0.15, 1.0 - material.b, 0.05);
     out.velocity = velocity_of(in.clip, in.clip_prev);
     return out;
 }

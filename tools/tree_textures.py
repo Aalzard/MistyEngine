@@ -543,9 +543,9 @@ def oak_bark() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     broad = gradient_fbm(3, 3, 1251, 3)*.5+.5
     medium = gradient_fbm(12, 20, 1253, 3)*.5+.5
     grain = gradient_fbm(128, 128, 1259, 2)*.5+.5
-    furrow = np.array([56., 47., 39.], np.float32)
-    wall = np.array([100., 89., 77.], np.float32)
-    crown = np.array([142., 134., 120.], np.float32)
+    furrow = np.array([62., 52., 43.], np.float32)
+    wall = np.array([112., 100., 86.], np.float32)
+    crown = np.array([154., 145., 130.], np.float32)
     lower = furrow+(wall-furrow)*np.clip(height/.48, 0, 1)[..., None]
     upper = wall+(crown-wall)*np.clip((height-.48)/.52, 0, 1)[..., None]
     color = np.where((height < .48)[..., None], lower, upper)
@@ -561,7 +561,7 @@ def oak_bark() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     color = color*(1-.35*lichen[..., None])+np.array([105., 111., 91.])*(.35*lichen[..., None])
     cavity = 1-smoothstep(plate/.62)
     rough = np.clip(.82+.12*cavity+.035*(grain-.5)-.055*lichen, .80, .95)
-    return np.clip(color, 40, 168).astype(np.uint8), height, rough, ao
+    return np.clip(color, 44, 178).astype(np.uint8), height, rough, ao
 
 
 def linden_bark() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

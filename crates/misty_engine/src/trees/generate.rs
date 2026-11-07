@@ -615,7 +615,9 @@ fn mesh(t: &TreeAsset, sk: &Skeleton, detail: &Detail) -> TreeMesh {
                 v_acc += limb.points[i - 1].distance(p) * v_per_m;
             }
             v_of.push(v_acc);
-            let ao = sk.crown.occlusion(p) * if limb.level == 0 { 1.0 } else { 0.95 };
+            // The crown's occlusion is meant for the leaf shell: the bark (near the axis, deep
+            // "inside" by that measure) gets a milder share of it, or shaded trunks go black.
+            let ao = (0.6 + 0.4 * sk.crown.occlusion(p)) * if limb.level == 0 { 1.0 } else { 0.95 };
             // The trunk's foot is darker where it meets the grass.
             let foot = smoothstep(-0.3, 1.2, p.y) * 0.35 + 0.65;
             let buttress = lobe_amount * (-(p.y.max(0.0)) / 0.7).exp();
