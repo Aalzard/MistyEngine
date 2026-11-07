@@ -2170,3 +2170,21 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Medium at ≤ 10 ms full screen (11.7 ms with both switches): the grass visibility buffer
   (grass study) is next; 1× MSAA; see "Left" in docs/pending/meadow-perf2.md.
 
+
+## Round 15 — Editor scripting in Lua (branch r15-editor-scripting)
+
+### Done (docs/pending/r15-editor-scripting.md, docs/scripting.md ▸ Editor scripting)
+- Lua editor scripts in any `Editor` folder: their own Lua state with the game API on the edited
+  scene, hot reload, never in builds.
+- `MenuItem` (menu bar, submenus, validate, shortcuts, Ctrl+K), dockable `ToolWindow`s with a small
+  `GUI` API and saved state, `CustomInspector` with `DrawDefaultInspector` and undoable
+  `self.target` edits, field attributes (`Header`, `Tooltip`, `Space`, `Range`,
+  `HideInInspector`), `OnDrawGizmos(Selected)` and `OnSceneGUI` with `Handles.Position`.
+- Editor API: `Selection`, `Undo` (with groups), `EditorPrefs`, `AssetDB`, `EditorScene`,
+  `Editor` (dialogs, progress bar, update callbacks), `AssetProcessor` / `OnPostprocessAsset`.
+- Errors in the Console with file and line, failing callbacks switched off until their script
+  changes, a time budget for runaway loops.
+- Sample: Scatter Tool, Align to Floor, Satellite with its Inspector, gizmos and handle.
+
+### Not done yet
+- `OnPostprocessAsset` for re-imports of changed files; physics queries in editor scripts.
