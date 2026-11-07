@@ -37,8 +37,13 @@ pub fn start(s: &mut EditorState) {
     if s.console.clear_on_play {
         s.console.clear();
     }
+    misty_engine::profile_scope!("Play.Start", misty_engine::profiler::Category::Scripts);
+    let scene = {
+        misty_engine::profile_scope!("Play.CopyScene");
+        s.scene.clone()
+    };
     s.play_session = Some(PlaySession {
-        scene: s.scene.clone(),
+        scene,
         selection: s.selection.clone(),
         undo: std::mem::take(&mut s.undo),
         dirty: s.scene_dirty,
@@ -52,6 +57,7 @@ pub fn start(s: &mut EditorState) {
     misty_engine::localization::reset_session();
     let mut audio = Audio::with_device(s.project.root.clone());
     audio.set_muted(s.game_view.mute);
+    misty_engine::profile_scope!("Play.Runtime");
     let mut runtime = Runtime::start_with_audio(
         &mut s.scene,
         s.project.root.clone(),
@@ -59,6 +65,7 @@ pub fn start(s: &mut EditorState) {
         audio,
     );
     // Addressables load per the Asset Groups window's Play Mode Script.
+    misty_engine::profile_scope!("Play.AssetSystem");
     runtime.set_assets(misty_engine::asset_groups::AssetSystem::for_editor(
         &s.project.root,
         s.build_settings.target.slug(),

@@ -4,6 +4,87 @@
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
+use std::time::Instant;
+
+/// When the process started (`main`'s first line): frame times in capture runs are reported
+/// against it, so "time to interactive" includes the window, the project and the scene load.
+static PROCESS_START: OnceLock<Instant> = OnceLock::new();
+
+pub fn mark_process_start() {
+    PROCESS_START.get_or_init(Instant::now);
+}
+
+fn since_start_ms(t: Instant) -> f32 {
+    let start = *PROCESS_START.get_or_init(Instant::now);
+    (t - start).as_secs_f32() * 1000.0
+}
+
+/// Frames slower than this count as a freeze in the capture report.
+const FREEZE_MS: f32 = 100.0;
+
+/// Whole editor frame times of a capture run (wall clock between two editor frames).
+#[derive(Default)]
+struct FrameClock {
+    last: Option<Instant>,
+    /// Editor frames seen.
+    frames: u32,
+    /// Worst frame: (frame, ms).
+    worst: (u32, f32),
+    /// End of the last frame slower than [`FREEZE_MS`], ms since the process started.
+    last_freeze_end: Option<f32>,
+    /// Frames slower than [`FREEZE_MS`].
+    freezes: u32,
+    first_frame_ms: f32,
+    /// Frame Play was pressed on (`MISTY_PLAY_AT`) and the worst frame since: (frame, ms).
+    play_at: Option<u32>,
+    play_worst: (u32, f32),
+}
+
+impl FrameClock {
+    fn tick(&mut self) {
+        let now = Instant::now();
+        self.frames += 1;
+        match self.last.replace(now) {
+            None => self.first_frame_ms = since_start_ms(now),
+            Some(prev) => {
+                let ms = (now - prev).as_secs_f32() * 1000.0;
+                if ms > self.worst.1 {
+                    self.worst = (self.frames, ms);
+                }
+                if self.play_at.is_some() && ms > self.play_worst.1 {
+                    self.play_worst = (self.frames, ms);
+                }
+                if ms > FREEZE_MS {
+                    self.freezes += 1;
+                    self.last_freeze_end = Some(since_start_ms(now));
+                    eprintln!(
+                        "slow frame {}: {ms:.0} ms (ends {:.0} ms after start)",
+                        self.frames,
+                        since_start_ms(now)
+                    );
+                }
+            }
+        }
+    }
+
+    fn report(&self) {
+        eprintln!(
+            "first editor frame {:.0} ms after start; worst frame {} at {:.0} ms; {} frames over {FREEZE_MS:.0} ms; interactive {:.0} ms after start",
+            self.first_frame_ms,
+            self.worst.0,
+            self.worst.1,
+            self.freezes,
+            self.last_freeze_end.unwrap_or(self.first_frame_ms)
+        );
+        if let Some(at) = self.play_at {
+            eprintln!(
+                "entering Play at frame {at}: worst frame since {} at {:.0} ms",
+                self.play_worst.0, self.play_worst.1
+            );
+        }
+    }
+}
 
 pub struct Capture {
     path: PathBuf,
@@ -15,6 +96,8 @@ pub struct Capture {
     light: bool,
     /// Frame times (ms) after the warm-up, printed when the screenshot is saved.
     times: Vec<f32>,
+    /// Every editor frame's wall time (slow frames and time to interactive).
+    clock: FrameClock,
 }
 
 impl Capture {
@@ -26,6 +109,7 @@ impl Capture {
             saved: false,
             light: std::env::var("MISTY_THEME").is_ok_and(|t| t == "light"),
             times: Vec::new(),
+            clock: FrameClock::default(),
         })
     }
 
@@ -34,9 +118,23 @@ impl Capture {
         self.saved
     }
 
+    /// `MISTY_PLAY_AT=<frame>`: press Play (as the toolbar button does) on that editor frame,
+    /// once the scene has been open a while, to time entering Play on its own.
+    pub fn play_due(&mut self) -> bool {
+        let due = std::env::var("MISTY_PLAY_AT")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .is_some_and(|at| at == self.frames);
+        if due {
+            self.clock.play_at = Some(self.frames);
+        }
+        due
+    }
+
     /// Call once per frame; requests a screenshot after warm-up and quits once saved.
     pub fn update(&mut self, ctx: &egui::Context) {
         self.frames += 1;
+        self.clock.tick();
         ctx.request_repaint();
         if self.light && self.frames == 1 {
             ctx.set_visuals(egui::Visuals::light());
@@ -64,6 +162,7 @@ impl Capture {
                     1000.0 / mean
                 );
             }
+            self.clock.report();
             self.requested = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }
@@ -97,6 +196,7 @@ pub fn apply_env(
         let scenes = scenes.to_string_lossy().into_owned();
         let mut list = scenes.split(',').map(str::trim).filter(|p| !p.is_empty());
         if let Some(first) = list.next() {
+            misty_engine::profile_scope!("Editor.LoadScene");
             crate::scene_files::load(s, first);
         }
         for rel in list {
@@ -376,6 +476,7 @@ pub fn apply_env(
     }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {
+        misty_engine::profile_scope!("Editor.EnterPlay");
         crate::play::start(s);
     }
     // `MISTY_WINDOW` / `MISTY_LOCALE` / `MISTY_SAVE_SLOT` (see `saveloc::apply_env`).

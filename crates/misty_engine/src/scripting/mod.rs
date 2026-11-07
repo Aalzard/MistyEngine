@@ -255,11 +255,20 @@ impl World {
         audio: Audio,
         settings: &crate::settings::ProjectSettings,
     ) -> Self {
-        let navigation = crate::navigation::NavRuntime::load(&scene, &project_root);
+        let navigation = {
+            profile_scope!("Scripts.World.Navigation");
+            crate::navigation::NavRuntime::load(&scene, &project_root)
+        };
         let project_root_for_video = project_root.clone();
-        let save = crate::save::SaveRuntime::begin(&scene);
-        let (localization, table_warnings) =
-            crate::localization::Localizer::load(&project_root, &settings.localization);
+        let save = {
+            profile_scope!("Scripts.World.Save");
+            crate::save::SaveRuntime::begin(&scene)
+        };
+        let (localization, table_warnings) = {
+            profile_scope!("Scripts.World.Localization");
+            crate::localization::Localizer::load(&project_root, &settings.localization)
+        };
+        profile_scope!("Scripts.World.Players");
         World {
             save,
             localization,
@@ -400,10 +409,17 @@ impl ScriptHost {
     ) -> Self {
         let lua = Lua::new();
         let mut logs = Vec::new();
-        if let Err(e) = api::register(&lua) {
+        if let Err(e) = {
+            profile_scope!("Scripts.RegisterApi");
+            api::register(&lua)
+        } {
             logs.push((LogKind::Error, format!("Script API failed to load: {e}")));
         }
-        lua.set_app_data(crate::asset_groups::AssetSystem::auto(&project_root));
+        lua.set_app_data({
+            profile_scope!("Scripts.AssetSystem");
+            crate::asset_groups::AssetSystem::auto(&project_root)
+        });
+        profile_scope!("Scripts.World");
         let mut world = World::new(
             std::mem::take(scene),
             physics,
@@ -437,12 +453,15 @@ impl ScriptHost {
         });
         for (e, list) in scripted {
             for (slot, script) in list.iter().enumerate() {
+                profile_scope!("Scripts.Instantiate");
                 host.instantiate(e, slot, script);
             }
         }
+        profile_scope!("Scripts.Awake");
         host.call_all("Awake");
         host.flush_spawned();
         host.localization_frame();
+        profile_scope!("Scripts.PlayOnAwake");
         host.with_world(|w| {
             w.audio.play_on_awake(&w.scene, None);
             w.animation.play_automatically(&w.scene, None);

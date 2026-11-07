@@ -272,7 +272,15 @@ fn attach_parent_console() {
 fn attach_parent_console() {}
 
 fn main() -> eframe::Result<()> {
+    capture::mark_process_start();
     attach_parent_console();
+    // `MISTY_PROFILE=capture.jsonl misty …` records the profiler from the first frame into a
+    // capture file (JSON Lines, one frame per line), as the player does.
+    if let Some(path) = std::env::var_os("MISTY_PROFILE")
+        && let Err(e) = misty_engine::profiler::capture::start(std::path::Path::new(&path))
+    {
+        eprintln!("profiler capture: {e}");
+    }
     let start = match parse_args() {
         Ok(s) => s,
         Err(e) => {
