@@ -133,20 +133,50 @@ type Walk = std::thread::JoinHandle<(PathBuf, BTreeSet<String>)>;
 /// The walk runs on a background thread: a call starts one and a later call (when it is
 /// done) compares its listing with the database, so a change shows up one poll late.
 pub fn poll() -> Option<ScanReport> {
-    let mut walk = WALK.lock().unwrap_or_else(|e| e.into_inner());
+    poll_in(&DB, &WALK)
+}
+
+/// [`poll`] on a given database slot and walk (the process-wide ones, or a test's own).
+fn poll_in(db: &RwLock<Option<GuidDatabase>>, walk: &Mutex<Option<Walk>>) -> Option<ScanReport> {
+    let mut walk = walk.lock().unwrap_or_else(|e| e.into_inner());
     if walk.as_ref().is_some_and(|w| !w.is_finished()) {
         return None;
     }
     let found = walk.take().and_then(|w| w.join().ok());
-    let (root, known) = with(|db| {
+    let report = compare(db, found);
+    if report.is_none() {
+        *walk = start_walk(db);
+    }
+    report
+}
+
+/// The root of the database in `db` and every asset path it knows.
+fn known(db: &RwLock<Option<GuidDatabase>>) -> Option<(PathBuf, BTreeSet<String>)> {
+    let guard = db.read().unwrap_or_else(|e| e.into_inner());
+    guard.as_ref().map(|db| {
         let known: BTreeSet<String> = db.paths().map(str::to_owned).collect();
         (db.root().to_path_buf(), known)
-    })?;
+    })
+}
+
+/// Rescan the project in `db` when a finished walk listed other paths than it knows.
+fn compare(
+    db: &RwLock<Option<GuidDatabase>>,
+    found: Option<(PathBuf, BTreeSet<String>)>,
+) -> Option<ScanReport> {
+    let (root, known) = known(db)?;
     let changed = found.is_some_and(|(r, now)| r == root && now != known);
-    if changed {
-        return Some(open(&root));
-    }
-    let listing = std::thread::Builder::new()
+    changed.then(|| {
+        let (scanned, report) = GuidDatabase::scan(&root);
+        *db.write().unwrap_or_else(|e| e.into_inner()) = Some(scanned);
+        report
+    })
+}
+
+/// Start listing `Assets/` of the project in `db` on a thread (`None` when none is open).
+fn start_walk(db: &RwLock<Option<GuidDatabase>>) -> Option<Walk> {
+    let (root, _) = known(db)?;
+    std::thread::Builder::new()
         .name("misty asset watcher".into())
         .spawn(move || {
             let mut now = BTreeSet::new();
@@ -154,29 +184,37 @@ pub fn poll() -> Option<ScanReport> {
                 now.insert(database::rel(&root, p));
             });
             (root, now)
-        });
-    *walk = listing.ok();
-    None
+        })
+        .ok()
 }
 
-/// [`poll`] that waits for the walk: the report of a change made since the last scan (tests).
+/// [`poll`] that waits for a walk started after the call: the report of a change made since
+/// the last scan, or `None` when nothing changed (tests). A walk already under way may have
+/// listed the folders before the caller's change, so it is waited for and dropped first.
 #[cfg(test)]
-pub fn poll_now() -> Option<ScanReport> {
-    let first = poll();
-    if first.is_some() {
-        return first;
-    }
-    loop {
-        let done = WALK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .is_none_or(|w| w.is_finished());
-        if done {
-            return poll();
+fn poll_now_in(
+    db: &RwLock<Option<GuidDatabase>>,
+    walk: &Mutex<Option<Walk>>,
+) -> Option<ScanReport> {
+    /// Generous: a walk of a test's few files takes microseconds, even on a loaded machine.
+    const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+    let wait = |w: Walk| {
+        let started = std::time::Instant::now();
+        while !w.is_finished() {
+            assert!(
+                started.elapsed() < TIMEOUT,
+                "the asset watcher's walk did not finish in {TIMEOUT:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
-        std::thread::sleep(std::time::Duration::from_millis(1));
+        w.join().ok()
+    };
+    let mut walk = walk.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(stale) = walk.take() {
+        wait(stale);
     }
+    let found = wait(start_walk(db)?);
+    compare(db, found)
 }
 
 pub fn guid_of(rel: &str) -> Option<Guid> {

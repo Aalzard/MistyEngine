@@ -233,6 +233,7 @@ fn grass_vis_flight() {
             r.render(&device, &queue, &target, &view.frame());
         }
         crate::render::set_grass_streaming(true);
+        let profiler = crate::profiler::test_serial();
         crate::profiler::set_enabled(true);
         crate::profiler::clear();
         let mut cam = view.camera;
@@ -275,6 +276,7 @@ fn grass_vis_flight() {
             }
         });
         crate::profiler::set_enabled(false);
+        drop(profiler);
         crate::render::set_grass_streaming(false);
         let stat = |mut x: Vec<f32>| {
             x.sort_by(f32::total_cmp);

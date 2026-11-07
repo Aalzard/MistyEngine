@@ -265,5 +265,14 @@ pub fn clear() {
     h.gpu_pending.clear();
 }
 
+/// Recording, the frame counter and the history are process-wide: tests that switch
+/// recording on or off, end frames or read the history take turns through this (the profiler's
+/// own tests and the GPU timing tests, which run in the same test process).
+#[cfg(test)]
+pub(crate) fn test_serial() -> std::sync::MutexGuard<'static, ()> {
+    static SERIAL: Mutex<()> = Mutex::new(());
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[cfg(test)]
 mod tests;

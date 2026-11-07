@@ -2325,3 +2325,29 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Project open (`EditorState::new`, the GUID scan, the core pipelines) is most of what is left
   of the load frame (~0.33 s warm); the very first launch still compiles the core pipelines on
   the main thread (behind the splash).
+
+## Test health (branch test-health)
+
+### Done (docs/pending/test-health.md, references `docs/golden/`)
+- `cargo test --workspace --release` green twice in a row (editor 582, engine 951, player 11
+  passed; 0 failed).
+- `foliage_lighting_demo_matches_its_generator`: the generator used `MAX_DENSITY`, raised from
+  600 to 1500 for MeadowDemo after FoliageLightingDemo was committed; it now says 600, the
+  committed value.
+- Hitch test: slow frames are judged by the render thread's own CPU time and the machine's
+  load, so a loaded machine's stalls are printed, not failed; the profiler tests and timing
+  tests share a lock; `headless()` switches grass streaming off only under the GPU lock.
+- Asset watcher test: own database and walk (not the process-wide ones); `poll_now` no longer
+  reads a walk that started before the change; waits with a timeout.
+- GPU tests: one process-wide wgpu instance (no Vulkan driver unload/reload after every test),
+  prebuilt workers of an earlier test finish before the next device. The round-14 `0xc0000005`
+  did not reproduce in 12 engine runs (default and one thread, two processes at once under load).
+- Golden shots: `cargo test --release -p misty_engine --lib golden_shots -- --ignored --nocapture --test-threads=1`
+  compares MeadowDemo wide / close / behind / oak and CyclesRoomDemo at every quality level with
+  the references; `MISTY_GOLDEN=update` rewrites them. The gate for "flip a default" changes.
+
+### Not done yet
+- The access violation was not reproduced, so the instance change is a likely fix, not a
+  proven one; watch for it in future full runs.
+- The golden references are for the RTX 4060 / NVIDIA 610.88 / Vulkan; another GPU or driver
+  needs its own (`MISTY_GOLDEN=update` on it) or may drift past the tolerance.
