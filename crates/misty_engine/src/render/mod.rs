@@ -77,7 +77,7 @@ pub use misty_gi::MistyGiSettings;
 pub use particles::{ParticleBatch, ParticleInstance};
 pub(crate) use pipeline_cache::pipeline_cache;
 pub use pipeline_cache::{open_pipeline_cache, pipeline_cache_features, save_pipeline_cache};
-pub use pipelines::pipelines_built;
+pub use pipelines::{cache_shader_modules, pipelines_built};
 pub use post::PostSettings;
 pub use screen_trace::{SsgiSettings, SsrSettings};
 pub use soft_shadows::LightShadow;

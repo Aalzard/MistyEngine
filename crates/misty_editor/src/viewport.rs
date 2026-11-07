@@ -33,6 +33,7 @@ pub struct Gpu {
 
 impl Gpu {
     pub fn new(state: egui_wgpu::RenderState) -> Self {
+        misty_engine::render::cache_shader_modules(&state.device);
         // Compiled pipelines from earlier launches (Vulkan): a new build of the editor starts
         // with the driver's own cache empty.
         misty_engine::render::open_pipeline_cache(

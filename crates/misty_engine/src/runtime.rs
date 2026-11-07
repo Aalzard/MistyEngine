@@ -92,17 +92,11 @@ impl Runtime {
         // Edit-mode particle previews don't carry into the game.
         crate::particles::clear_all(scene);
         crate::vfx::clear_all(scene);
-        let mut physics = {
-            crate::profile_scope!("Physics.Build", Category::Physics);
-            Physics::build_with(scene, &settings.physics)
-        };
+        let mut physics = Physics::build_with(scene, &settings.physics);
         let mut warnings = std::mem::take(&mut physics.warnings);
-        let mut physics2d = {
-            crate::profile_scope!("Physics2D.Build", Category::Physics);
-            crate::physics2d::Physics2D::build(scene, &settings.physics2d, &settings.physics)
-        };
+        let mut physics2d =
+            crate::physics2d::Physics2D::build(scene, &settings.physics2d, &settings.physics);
         warnings.append(&mut physics2d.warnings);
-        crate::profile_scope!("Scripts.Host", Category::Scripts);
         let host = ScriptHost::start_with_physics(
             scene,
             physics,
