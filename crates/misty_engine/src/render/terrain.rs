@@ -767,6 +767,7 @@ impl TerrainCache {
     /// lit and depth passes, the AO prepass within `prepass` metres, the sun cascades
     /// `cascades` (slot, view-projection) that take grass casters and the near grass shadow
     /// map's slices (`near`).
+    #[allow(clippy::too_many_arguments)]
     pub fn plan_grass(
         &mut self,
         device: &wgpu::Device,

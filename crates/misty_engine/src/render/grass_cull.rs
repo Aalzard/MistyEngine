@@ -214,7 +214,9 @@ impl Arena {
             return Some(at);
         }
         // Grow: at least twice as big, copying what is there.
-        let limit = (device.limits().max_storage_buffer_binding_size as u64)
+        let limit = device
+            .limits()
+            .max_storage_buffer_binding_size
             .min(device.limits().max_buffer_size)
             / RECORD;
         let want = (self.capacity as u64 * 2).max(self.capacity as u64 + n as u64);
