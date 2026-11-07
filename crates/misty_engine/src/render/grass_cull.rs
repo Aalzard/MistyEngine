@@ -52,7 +52,10 @@ struct Job {
     first_wg: u32,
     first_lane: u32,
     lanes: u32,
-    pad: [u32; 3],
+    /// What the lists hold for the chunk's first blade (grass_pool.rs `Slot::list_base`; 0
+    /// for a chunk with a buffer of its own).
+    blades: u32,
+    pad: [u32; 2],
 }
 
 /// A pass drawing a job's chunk (grass_cull.wgsl `Lane`).
@@ -243,21 +246,20 @@ impl Arena {
         release_run(&mut self.free, at, n.max(1).next_multiple_of(GRAIN));
     }
 
-    /// Store the records of `blades`; their offset (None: the arena can't grow).
-    pub fn store(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        blades: &[Blade],
-    ) -> Option<u32> {
-        let at = self.alloc(device, queue, blades.len() as u32)?;
+    /// Room for the records of `n` blades; their offset (None: the arena can't grow).
+    pub fn reserve(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Option<u32> {
+        self.alloc(device, queue, n)
+    }
+
+    /// Write the records of `blades` at record `offset` of the run at `at` (a chunk's
+    /// records may go up in pieces over several frames).
+    pub fn write(&self, queue: &wgpu::Queue, at: u32, offset: u32, blades: &[Blade]) {
         let records: Vec<[u32; 4]> = blades.iter().map(record).collect();
         queue.write_buffer(
             &self.buffer,
-            at as u64 * RECORD,
+            (at + offset) as u64 * RECORD,
             bytemuck::cast_slice(&records),
         );
-        Some(at)
     }
 
     pub fn free(&mut self, at: u32, n: u32) {
@@ -266,7 +268,7 @@ impl Arena {
 }
 
 /// First fit: the start of a free run of `n` records, taken out of `free`.
-fn take_run(free: &mut BTreeMap<u32, u32>, n: u32) -> Option<u32> {
+pub(super) fn take_run(free: &mut BTreeMap<u32, u32>, n: u32) -> Option<u32> {
     let (at, len) = free
         .iter()
         .find(|(_, len)| **len >= n)
@@ -279,7 +281,7 @@ fn take_run(free: &mut BTreeMap<u32, u32>, n: u32) -> Option<u32> {
 }
 
 /// Put `n` records at `at` back into `free`, merged with the runs either side.
-fn release_run(free: &mut BTreeMap<u32, u32>, at: u32, n: u32) {
+pub(super) fn release_run(free: &mut BTreeMap<u32, u32>, at: u32, n: u32) {
     let (mut start, mut len) = (at, n);
     if let Some((&p, &pl)) = free.range(..at).next_back()
         && p + pl == at
@@ -344,10 +346,10 @@ pub(super) struct JobDraw {
 }
 
 /// What a planned pass draws: its kind's tests and its chunks in draw order (with each
-/// chunk's arena offset).
+/// chunk's arena offset and the list value of its first blade).
 pub(super) struct PlannedKind {
     pub kind: Kind,
-    pub draws: Vec<(JobDraw, u32)>,
+    pub draws: Vec<(JobDraw, u32, u32)>,
 }
 
 /// One terrain's culling this frame: the jobs of every pass, their buffers and bind group.
@@ -464,7 +466,7 @@ impl CullFrame {
         let mut kinds = [Kind::zeroed(); KINDS];
         // One job per chunk, with a lane for every pass that draws it.
         let mut by_chunk: HashMap<(u32, u32), usize> = HashMap::new();
-        let mut chunk_jobs: Vec<(u32, u32, Vec<Lane>)> = Vec::new();
+        let mut chunk_jobs: Vec<(u32, u32, u32, Vec<Lane>)> = Vec::new();
         let mut args = 0u32;
         let mut drawn = 0u64;
         for (k, p) in planned.iter().enumerate() {
@@ -473,19 +475,19 @@ impl CullFrame {
                 continue;
             };
             kinds[k] = p.kind;
-            for (d, base) in &p.draws {
+            for (d, base, blades) in &p.draws {
                 if d.count == 0 {
                     continue;
                 }
                 let mut d = *d;
                 d.job = args;
                 let at = *by_chunk.entry(d.key).or_insert_with(|| {
-                    chunk_jobs.push((*base, 0, Vec::new()));
+                    chunk_jobs.push((*base, *blades, 0, Vec::new()));
                     chunk_jobs.len() - 1
                 });
                 let job = &mut chunk_jobs[at];
-                job.1 = job.1.max(d.count);
-                job.2.push(Lane {
+                job.2 = job.2.max(d.count);
+                job.3.push(Lane {
                     kind: k as u32,
                     count: d.count,
                     args,
@@ -507,7 +509,7 @@ impl CullFrame {
         let mut lanes: Vec<Lane> = Vec::with_capacity(args as usize);
         let mut wg_job: Vec<u32> = Vec::new();
         let mut rows = 0;
-        for (base, count, job_lanes) in chunk_jobs {
+        for (base, blades, count, job_lanes) in chunk_jobs {
             let wgs = count.div_ceil(GROUP);
             wg_job.extend(std::iter::repeat_n(jobs.len() as u32, wgs as usize));
             jobs.push(Job {
@@ -516,7 +518,8 @@ impl CullFrame {
                 first_wg: wg_job.len() as u32 - wgs,
                 first_lane: lanes.len() as u32,
                 lanes: job_lanes.len() as u32,
-                pad: [0; 3],
+                blades,
+                pad: [0; 2],
             });
             rows = rows.max(job_lanes.len() as u32);
             lanes.extend(job_lanes);

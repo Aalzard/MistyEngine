@@ -258,20 +258,36 @@ fn fs_grass_depth(in: GrassOut) -> MeshTargets {
 @fragment
 fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
     let leaf = grass_atlas_uv(in.uv.xy);
-    let auv = leaf.xy;
     let gx = grass_atlas_dx(in.uv.xy);
     let gy = grass_atlas_dy(in.uv.xy);
-    var tex = textureSampleGrad(grass_atlas, grass_sampler, auv, gx, gy);
+    var tex = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, gx, gy);
     tex.a *= leaf.z;
+    let coverage = grass_coverage(in, tex.a);
+    if (coverage < 0.01) {
+        discard;
+    }
+    var out = grass_lit(in, front, tex, leaf.xy, gx, gy, coverage);
+    out.velocity = velocity_of(in.clip, in.clip_prev);
+    return out;
+}
+
+// The lit blade at a point of its card (`in`, the atlas texel `tex` at `auv` with the atlas
+// gradients `gx`, `gy`, and its coverage): the lit grass fragment, and the grass visibility
+// buffer's resolve for each blade it sees (grass_vis.wgsl). No velocity.
+fn grass_lit(
+    in: GrassOut,
+    front: bool,
+    tex: vec4<f32>,
+    auv: vec2<f32>,
+    gx: vec2<f32>,
+    gy: vec2<f32>,
+    coverage: f32,
+) -> MeshTargets {
     // Two texels across the blade: the alpha slope is the blade's thickness profile, used as
     // a normal map (rounded edges, a crease along the midrib) and a thickness map.
     let across_uv = vec2<f32>(2.0 / f32(textureDimensions(grass_atlas).x), 0.0);
     let next = textureSampleGrad(grass_atlas, grass_sampler, auv + across_uv, gx, gy).a;
     let far = in.misc.x;
-    let coverage = grass_coverage(in, tex.a);
-    if (coverage < 0.01) {
-        discard;
-    }
     let t = in.uv.z;
     let cell = in.cell;
     let seed_head = cell >= 4u;
@@ -344,7 +360,5 @@ fn fs_grass(in: GrassOut, @builtin(front_facing) front: bool) -> MeshTargets {
     // Thin edges let more light through than the thick midrib.
     let transmission = albedo * grass.seed.w * select(1.0, 0.6, seed_head) * mix(0.15, 1.0, canopy)
         * mix(1.35, 0.8, thick);
-    var out = shade_grass(in.world, lit, n, occlusion, transmission, smoothness, coverage);
-    out.velocity = velocity_of(in.clip, in.clip_prev);
-    return out;
+    return shade_grass(in.world, lit, n, occlusion, transmission, smoothness, coverage);
 }

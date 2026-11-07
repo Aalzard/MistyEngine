@@ -1,0 +1,250 @@
+// Grass visibility buffer (grass_vis.rs), appended to the lit grass shader (grass.wgsl).
+//
+// The lit grass pass shaded every blade fragment that passed the depth test, once per
+// primitive per pixel under MSAA and in 2×2 quads: ~15 M shader lanes for ~2 M visible
+// blade samples at 1080p. Here the same blades, in the same order and with the same depth
+// test, coverage and alpha to coverage, only write which blade (and which triangle of its
+// card) each sample shows; a compute pass then shades each distinct blade of a pixel once
+// with the very same lighting (`grass_lit`), and the main pass writes the results into the
+// samples they own (grass_composite.wgsl) before everything drawn after the grass.
+//
+// Core WebGPU can't multisample integer targets: the blade id goes into an R32Float target
+// as raw bits (bit 30 set, so it is never a denormal or NaN), the triangle and facing into
+// an Rgba16Float target whose alpha is the coverage (alpha to coverage reads target 0).
+
+// Visibility id: bit 30 set, terrain (draw.z, 3 bits) at 24, page at 21, index in the page.
+fn grass_vis_id(entry: u32) -> u32 {
+    return 0x40000000u | ((grass.draw.z & 7u) << 24u) | ((entry >> 28u) << 21u)
+        | (entry & 0x1fffffu);
+}
+
+struct VisOut {
+    // Invariant: the same position as the grass depth pass, tested for equal depth.
+    @builtin(position) @invariant clip: vec4<f32>,
+    // As GrassOut.uv (card u, v; z, w unused here).
+    @location(0) uv: vec4<f32>,
+    // x = far (GrassOut.misc.x), y = real / drawn width (GrassOut.misc.w).
+    @location(1) misc: vec2<f32>,
+    @location(2) @interpolate(flat) id: u32,
+    // The first vertex of the fragment's triangle (the strip's triangle n is vertices n, n+1,
+    // n+2; flat values come from vertex n).
+    @location(3) @interpolate(flat) tri: u32,
+};
+
+// The lit grass's blades and fans, as `vs_grass` draws them.
+@vertex
+fn vs_grass_vis(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VisOut {
+    let b = grass_fetch(ii);
+    var out: VisOut;
+    let fans = grass.draw.y == 0u;
+    if ((!fans && grass_flat(b)) || grass_outside(b, view.view_proj, true)) {
+        out.clip = GRASS_SKIP;
+        return out;
+    }
+    let g = grass_vertex(vi, b);
+    out.clip = g.clip;
+    out.uv = g.uv;
+    out.misc = vec2<f32>(g.misc.x, g.misc.w);
+    out.id = grass_vis_id(grass_drawn[ii]);
+    out.tri = vi;
+    return out;
+}
+
+struct VisTargets {
+    // x = first vertex of the triangle, y = 1 front / -1 back face, w = coverage.
+    @location(0) card: vec4<f32>,
+    // `grass_vis_id` as raw bits.
+    @location(1) id: f32,
+};
+
+// The coverage of `fs_grass` (same inputs, same quad, so the same samples pass).
+@fragment
+fn fs_grass_vis(in: VisOut, @builtin(front_facing) front: bool) -> VisTargets {
+    let leaf = grass_atlas_uv(in.uv.xy);
+    var alpha = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, grass_atlas_dx(in.uv.xy), grass_atlas_dy(in.uv.xy)).a;
+    alpha *= leaf.z;
+    var g: GrassOut;
+    g.clip = in.clip;
+    g.misc = vec4<f32>(in.misc.x, 0.0, 0.0, in.misc.y);
+    let coverage = grass_coverage(g, alpha);
+    if (coverage < 0.01) {
+        discard;
+    }
+    var out: VisTargets;
+    out.card = vec4<f32>(f32(in.tri), select(-1.0, 1.0, front), 0.0, coverage);
+    out.id = bitcast<f32>(in.id);
+    return out;
+}
+
+// ---- The resolve: one thread per pixel ----
+
+// Pages 1–3 of the terrain's blades (page 0 is `grass_blades`, grass_pool.rs).
+@group(3) @binding(2) var<storage, read> grass_page1: array<vec2<f32>>;
+@group(3) @binding(3) var<storage, read> grass_page2: array<vec2<f32>>;
+@group(3) @binding(4) var<storage, read> grass_page3: array<vec2<f32>>;
+@group(3) @binding(5) var vis_card: texture_multisampled_2d<f32>;
+@group(3) @binding(6) var vis_ids: texture_multisampled_2d<f32>;
+// Per pixel: x = 3 bits per sample (0 = no blade, k = slot k - 1), y = sample 0's motion
+// vector (pack2x16float).
+@group(3) @binding(7) var vis_px: texture_storage_2d<rg32uint, write>;
+// Per pixel and slot: colour rg, colour b + coverage (pack2x16float).
+@group(3) @binding(8) var vis_slots: texture_storage_2d_array<rg32uint, write>;
+
+struct VisFrame {
+    // x = this dispatch's terrain (id bits 24–26), y = 1 for the frame's first dispatch
+    // (writes every pixel), zw = target size.
+    info: vec4<u32>,
+};
+@group(3) @binding(9) var<uniform> vis: VisFrame;
+
+fn vis_word(page: u32, i: u32) -> vec2<f32> {
+    switch page {
+        case 1u: {
+            return grass_page1[i];
+        }
+        case 2u: {
+            return grass_page2[i];
+        }
+        case 3u: {
+            return grass_page3[i];
+        }
+        default: {
+            return grass_blades[i];
+        }
+    }
+}
+
+fn vis_blade(id: u32) -> BladeIn {
+    let page = (id >> 21u) & 7u;
+    let at = (id & 0x1fffffu) * 9u;
+    var b: BladeIn;
+    b.position = vec4<f32>(vis_word(page, at), vis_word(page, at + 1u));
+    b.shape = vec4<f32>(vis_word(page, at + 2u), vis_word(page, at + 3u));
+    b.extra = vec4<f32>(vis_word(page, at + 4u), vis_word(page, at + 5u));
+    b.field = vec4<f32>(vis_word(page, at + 6u), vis_word(page, at + 7u));
+    b.slope = vis_word(page, at + 8u);
+    return b;
+}
+
+// Perspective-correct barycentrics of the triangle (clip positions) at framebuffer point
+// `p`, as the rasteriser interpolates (also outside the triangle: a pixel centre a
+// triangle covers only some samples of extrapolates its attributes the same way).
+fn vis_bary(c0: vec4<f32>, c1: vec4<f32>, c2: vec4<f32>, p: vec2<f32>) -> vec3<f32> {
+    let size = vec2<f32>(vis.info.zw);
+    let ndc = vec2<f32>(p.x / size.x * 2.0 - 1.0, 1.0 - p.y / size.y * 2.0);
+    let s0 = c0.xy / c0.w;
+    let s1 = c1.xy / c1.w;
+    let s2 = c2.xy / c2.w;
+    let e1 = s1 - s0;
+    let e2 = s2 - s0;
+    let d = ndc - s0;
+    let area = e1.x * e2.y - e1.y * e2.x;
+    let l1 = (d.x * e2.y - d.y * e2.x) / area;
+    let l2 = (e1.x * d.y - e1.y * d.x) / area;
+    let l = vec3<f32>(1.0 - l1 - l2, l1, l2) / vec3<f32>(c0.w, c1.w, c2.w);
+    return l / (l.x + l.y + l.z);
+}
+
+fn vis_card_uv(a: GrassOut, b: GrassOut, c: GrassOut, m: vec3<f32>) -> vec2<f32> {
+    return a.uv.xy * m.x + b.uv.xy * m.y + c.uv.xy * m.z;
+}
+
+// Shade the blade `id` seen through triangle `card.x` at pixel `px`.
+fn vis_shade(px: vec2<u32>, id: u32, card: vec4<f32>) -> MeshTargets {
+    let b = vis_blade(id);
+    let tri = u32(card.x);
+    let v0 = grass_vertex(tri, b);
+    let v1 = grass_vertex(tri + 1u, b);
+    let v2 = grass_vertex(tri + 2u, b);
+    let p = vec2<f32>(px) + 0.5;
+    let m = vis_bary(v0.clip, v1.clip, v2.clip, p);
+    var in: GrassOut;
+    in.clip = vec4<f32>(p, 0.0, 1.0);
+    in.world = v0.world * m.x + v1.world * m.y + v2.world * m.z;
+    in.normal = v0.normal * m.x + v1.normal * m.y + v2.normal * m.z;
+    in.color = v0.color * m.x + v1.color * m.y + v2.color * m.z;
+    in.uv = v0.uv * m.x + v1.uv * m.y + v2.uv * m.z;
+    in.cell = v0.cell;
+    in.misc = v0.misc * m.x + v1.misc * m.y + v2.misc * m.z;
+    in.across = v0.across * m.x + v1.across * m.y + v2.across * m.z;
+    in.clip_prev = v0.clip_prev * m.x + v1.clip_prev * m.y + v2.clip_prev * m.z;
+    in.canopy = v0.canopy * m.x + v1.canopy * m.y + v2.canopy * m.z;
+    // Screen gradients of the card coordinate as the fragment's quad takes them (the
+    // horizontal and vertical pixel pairs of its 2×2 quad).
+    let q = vec2<f32>(px & vec2<u32>(~1u)) + 0.5;
+    let ux0 = vis_card_uv(v0, v1, v2, vis_bary(v0.clip, v1.clip, v2.clip, vec2<f32>(q.x, p.y)));
+    let ux1 = vis_card_uv(v0, v1, v2, vis_bary(v0.clip, v1.clip, v2.clip, vec2<f32>(q.x + 1.0, p.y)));
+    let uy0 = vis_card_uv(v0, v1, v2, vis_bary(v0.clip, v1.clip, v2.clip, vec2<f32>(p.x, q.y)));
+    let uy1 = vis_card_uv(v0, v1, v2, vis_bary(v0.clip, v1.clip, v2.clip, vec2<f32>(p.x, q.y + 1.0)));
+    let dx = ux1 - ux0;
+    let dy = uy1 - uy0;
+    let gx = vec2<f32>(dx.x / 8.0, dx.y);
+    let gy = vec2<f32>(dy.x / 8.0, dy.y);
+    let leaf = grass_atlas_uv(in.uv.xy);
+    var tex = textureSampleGrad(grass_atlas, grass_sampler, leaf.xy, gx, gy);
+    tex.a *= leaf.z;
+    var out = grass_lit(in, card.y > 0.0, tex, leaf.xy, gx, gy, card.w);
+    out.velocity = velocity_of(in.clip, in.clip_prev);
+    return out;
+}
+
+fn vis_pack(c: vec4<f32>) -> vec2<u32> {
+    let v = clamp(c, vec4<f32>(-65504.0), vec4<f32>(65504.0));
+    return vec2<u32>(pack2x16float(v.xy), pack2x16float(v.zw));
+}
+
+@compute @workgroup_size(8, 8)
+fn cs_grass_resolve(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if (gid.x >= vis.info.z || gid.y >= vis.info.w) {
+        return;
+    }
+    let px = gid.xy;
+    let n = textureNumSamples(vis_ids);
+    var ids: array<u32, 4>;
+    var cards: array<vec4<f32>, 4>;
+    var slot_of: array<u32, 4>;
+    var first: array<u32, 4>;
+    var slots = 0u;
+    var table = 0u;
+    for (var s = 0u; s < n; s++) {
+        let id = bitcast<u32>(textureLoad(vis_ids, px, s).x);
+        let card = textureLoad(vis_card, px, s);
+        ids[s] = id;
+        cards[s] = card;
+        slot_of[s] = 4u;
+        if (id == 0u) {
+            continue;
+        }
+        // The same blade fragment (same triangle, facing and coverage) in an earlier sample
+        // shares its shade.
+        var slot = slots;
+        for (var k = 0u; k < s; k++) {
+            if (slot == slots && ids[k] == id && all(cards[k] == card)) {
+                slot = slot_of[k];
+            }
+        }
+        if (slot == slots) {
+            first[slots] = s;
+            slots += 1u;
+        }
+        slot_of[s] = slot;
+        table |= (slot + 1u) << (3u * s);
+    }
+    var velocity = 0u;
+    var owns_first = false;
+    for (var k = 0u; k < slots; k++) {
+        let s = first[k];
+        if (((ids[s] >> 24u) & 7u) != vis.info.x) {
+            continue;
+        }
+        let shaded = vis_shade(px, ids[s], cards[s]);
+        textureStore(vis_slots, px, k, vec4<u32>(vis_pack(vec4<f32>(shaded.color.rgb, cards[s].w)), 0u, 0u));
+        if (slot_of[0] == k) {
+            velocity = pack2x16float(shaded.velocity);
+            owns_first = true;
+        }
+    }
+    if (vis.info.y == 1u || owns_first) {
+        textureStore(vis_px, px, vec4<u32>(table, velocity, 0u, 0u));
+    }
+}

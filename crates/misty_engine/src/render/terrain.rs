@@ -644,6 +644,7 @@ impl TerrainCache {
                     density,
                 )
                 .with_ground_cover(self.ground_cover.is_some())
+                .with_vis_index(i as u32)
             };
             let group = |p: &GrassParams| {
                 let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -848,6 +849,12 @@ impl TerrainCache {
         }
     }
 
+    /// Per terrain: grass chunks and blades held (tests).
+    #[cfg(test)]
+    pub fn grass_resident(&self) -> Vec<(usize, u64)> {
+        self.entries.values().map(|g| g.grass.resident()).collect()
+    }
+
     /// Per terrain: blades each grass pass drew after / before the GPU culling (tests).
     #[cfg(test)]
     pub fn read_grass_cull_counts(
@@ -963,6 +970,38 @@ impl TerrainCache {
             .flatten()
     }
 
+    /// This frame's lit grass can go through the visibility buffer (grass_vis.rs): every
+    /// terrain with grass is culled on the GPU with its drawn chunks in its blade pages, and
+    /// there are few enough of them for the ids.
+    pub fn grass_vis_ready(&self, terrains: &[TerrainDraw]) -> bool {
+        terrains.iter().enumerate().all(|(i, t)| {
+            let (Some(gpu), Some(Some(_))) = (self.entries.get(&t.key), self.grass_groups.get(i))
+            else {
+                return true;
+            };
+            i < super::grass_vis::MAX_TERRAINS && gpu.grass.vis_ready()
+        })
+    }
+
+    /// The terrains whose grass the visibility resolve shades: their number in the ids,
+    /// grass group and blade pages.
+    pub fn grass_vis_terrains<'a>(
+        &'a self,
+        terrains: &[TerrainDraw],
+    ) -> Vec<super::grass_vis::ResolveTerrain<'a>> {
+        (terrains.iter().enumerate())
+            .filter_map(|(i, t)| {
+                let gpu = self.entries.get(&t.key)?;
+                let group = self.grass_groups.get(i)?.as_ref()?;
+                Some(super::grass_vis::ResolveTerrain {
+                    index: i as u32,
+                    grass_group: group,
+                    pages: gpu.grass.pages()?,
+                })
+            })
+            .collect()
+    }
+
     /// Any terrain of the frame has grass to draw.
     pub fn has_grass(&self) -> bool {
         self.grass_groups.iter().any(|g| g.is_some())
@@ -978,6 +1017,7 @@ impl TerrainCache {
             out.pending += s.pending;
             out.upload_ms += s.upload_ms;
             out.upload_last_start_ms = out.upload_last_start_ms.max(s.upload_last_start_ms);
+            out.upload_piece_ms = out.upload_piece_ms.max(s.upload_piece_ms);
             out.scatter_ms = out.scatter_ms.max(s.scatter_ms);
         }
         out

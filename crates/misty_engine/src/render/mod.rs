@@ -18,6 +18,8 @@ mod gpu_culling;
 mod gpu_timer;
 mod grass_cull;
 mod grass_near_shadow;
+mod grass_pool;
+mod grass_vis;
 mod hdri_sky;
 mod light2d;
 mod lightmap_gpu;
@@ -66,6 +68,7 @@ pub use frame_debug::{
     CaptureRequest, DrawLabel, EventKind, EventTarget, FrameCapture, FrameEvent, TargetInfo,
 };
 pub use glow::GlowSource;
+pub use grass_vis::{grass_vis_enabled, set_grass_vis};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use pipelines::pipelines_built;
 pub use post::PostSettings;
@@ -333,6 +336,10 @@ struct MainSplit<'a> {
     scene_copy: bool,
     /// SSGI / SSR: the opaque scene is also copied into their lit colour history.
     trace: Option<&'a screen_trace::TraceFrame>,
+    /// The lit grass goes through the visibility buffer (grass_vis.rs): the last phase ends
+    /// after the grass depth, the visibility raster and resolve run, and the rest of the
+    /// main pass starts with the grass composite.
+    vis: bool,
 }
 
 /// Everything needed to draw one view.
@@ -538,6 +545,9 @@ pub struct Renderer {
     last_view_proj: Mat4,
     /// MSAA samples of the main pass this renderer was built for (see [`sample_count`]).
     samples: u32,
+    /// Grass visibility buffer pipelines (made with the first grass; `Some(None)` = this
+    /// device refused them and the grass keeps the lit pass).
+    grass_vis: Option<Option<grass_vis::VisPipelines>>,
 }
 
 impl Renderer {
@@ -671,6 +681,7 @@ impl Renderer {
             #[cfg(test)]
             last_view_proj: Mat4::IDENTITY,
             samples: sample_count(),
+            grass_vis: None,
         }
     }
 
@@ -1388,6 +1399,7 @@ impl Renderer {
             prepass,
             scene_copy,
             trace,
+            vis: self.grass_vis_active(device, queue, target, frame),
         };
         match (&culled, self.culler.as_ref()) {
             (Some(c), Some(culler)) => {
@@ -1496,6 +1508,7 @@ impl Renderer {
         stats.grass_pending = grass.pending;
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
+        stats.grass_upload_piece_ms = grass.upload_piece_ms;
         self.motion
             .end(target.id, std::mem::take(&mut lists.prep.motion));
         stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
@@ -2180,15 +2193,19 @@ impl Renderer {
         let copy = last && (split.scene_copy || split.trace.is_some());
         // Sun shafts and glow occlusion read the depth after the main pass.
         let keep_depth = self.volumetrics.keeps_depth() || self.glows.keeps_depth();
+        // The grass visibility buffer ends this part after the grass depth (kept for the
+        // visibility raster), the rest follows below.
+        let vis = last && split.vis;
+        let mut vis_drawn = false;
         {
             let mut pass = self.begin_main(
                 encoder,
                 target,
                 first,
                 first && !split.prepass,
-                last,
-                !last || copy,
-                !last || copy || keep_depth,
+                last && !vis,
+                !last || copy || vis,
+                !last || copy || keep_depth || vis,
             );
             if first {
                 let main = || main_target(target);
@@ -2262,26 +2279,54 @@ impl Renderer {
                     self.terrains
                         .draw_grass(&mut pass, frame.terrains, depth, stats);
                     self.mark_pass(&mut pass, "Main: grass depth");
-                    pass.set_pipeline(&self.pipelines.grass);
-                    let lit = grass_cull::LIT;
-                    self.terrains
-                        .draw_grass(&mut pass, frame.terrains, lit, stats);
-                    self.mark_pass(&mut pass, "Main: grass lit");
+                    if vis {
+                        vis_drawn = true;
+                    } else {
+                        pass.set_pipeline(&self.pipelines.grass);
+                        let lit = grass_cull::LIT;
+                        self.terrains
+                            .draw_grass(&mut pass, frame.terrains, lit, stats);
+                        self.mark_pass(&mut pass, "Main: grass lit");
+                    }
                 }
             }
 
-            if frame.grid.is_some() {
-                let main = || main_target(target);
-                frame_debug::pass(&self.capture, &["Gizmos"], main, EventTarget::Hdr);
+            if !vis {
+                self.main_grid(&mut pass, target, frame);
+                if !copy {
+                    self.main_tail(
+                        &mut pass,
+                        target,
+                        frame,
+                        outline,
+                        lists,
+                        particle_draws,
+                        None,
+                        stats,
+                    );
+                    return;
+                }
             }
-            if frame.grid.is_some()
-                && frame_debug::record(&self.capture, |_| {
-                    frame_debug::events::post_event("Draw Grid".to_owned(), "grid.wgsl")
-                })
-            {
-                pass.set_pipeline(&self.pipelines.grid);
-                pass.draw(0..3, 0..1);
+        }
+        if vis {
+            // Which blade each sample shows, each visible blade shaded once, then the rest of
+            // the main pass starting with the shaded blades written into their samples.
+            if vis_drawn {
+                self.grass_vis_passes(device, encoder, target, frame, stats);
             }
+            let mut pass = self.begin_main(
+                encoder,
+                target,
+                false,
+                false,
+                true,
+                copy,
+                copy || keep_depth,
+            );
+            if vis_drawn {
+                self.grass_vis_composite(&mut pass, target);
+            }
+            self.main_grid(&mut pass, target, frame);
             if !copy {
                 self.main_tail(
                     &mut pass,
@@ -2336,6 +2381,109 @@ impl Renderer {
             scene,
             stats,
         );
+    }
+
+    /// The editor grid (after the opaque scene, before transparents).
+    fn main_grid(&self, pass: &mut wgpu::RenderPass, target: &RenderTarget, frame: &Frame) {
+        if frame.grid.is_some() {
+            let main = || main_target(target);
+            frame_debug::pass(&self.capture, &["Gizmos"], main, EventTarget::Hdr);
+        }
+        if frame.grid.is_some()
+            && frame_debug::record(&self.capture, |_| {
+                frame_debug::events::post_event("Draw Grid".to_owned(), "grid.wgsl")
+            })
+        {
+            pass.set_pipeline(&self.pipelines.grid);
+            pass.draw(0..3, 0..1);
+        }
+    }
+
+    /// This render's lit grass goes through the visibility buffer: switched on, the device
+    /// has the pipelines and the target's images, and every terrain's grass can be named by
+    /// visibility ids this frame (else the lit pass draws it, as before).
+    fn grass_vis_active(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &RenderTarget,
+        frame: &Frame,
+    ) -> bool {
+        if !grass_vis::grass_vis_enabled()
+            || !frame.shaded
+            || frame.terrains.is_empty()
+            || !self.terrains.has_grass()
+            || !self.terrains.grass_vis_ready(frame.terrains)
+        {
+            return false;
+        }
+        if self.grass_vis.is_none() {
+            self.grass_vis = Some(grass_vis::VisPipelines::new(device, &self.pipelines));
+        }
+        let Some(Some(pipes)) = &self.grass_vis else {
+            return false;
+        };
+        let images = target.grass_vis.get(device, pipes, target.size());
+        if !matches!(&*images, Some(Some(_))) {
+            return false;
+        }
+        let terrains = self.terrains.grass_vis_terrains(frame.terrains);
+        grass_vis::write_frame(queue, pipes, target.size(), &terrains);
+        true
+    }
+
+    /// The grass visibility raster (after the main pass's first part, which kept its depth)
+    /// and the resolve that shades each visible blade once.
+    fn grass_vis_passes(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget,
+        frame: &Frame,
+        stats: &mut RenderStats,
+    ) {
+        let Some(Some(pipes)) = &self.grass_vis else {
+            return;
+        };
+        let images = target.grass_vis.get(device, pipes, target.size());
+        let Some(Some(t)) = &*images else {
+            return;
+        };
+        {
+            let mut pass = grass_vis::begin_raster(encoder, t, target.depth_view());
+            pass.set_bind_group(0, &self.view_bind_group, &[]);
+            pass.set_bind_group(1, self.lit_group(), &[]);
+            pass.set_pipeline(pipes.raster());
+            let lit = grass_cull::LIT;
+            self.terrains
+                .draw_grass(&mut pass, frame.terrains, lit, stats);
+        }
+        self.mark(encoder, "Grass visibility");
+        let terrains = self.terrains.grass_vis_terrains(frame.terrains);
+        grass_vis::resolve(
+            device,
+            encoder,
+            pipes,
+            t,
+            &self.view_bind_group,
+            self.lit_group(),
+            &terrains,
+        );
+        self.mark(encoder, "Grass shading");
+    }
+
+    /// Write the resolved blades into their samples (first draw of the main pass's rest).
+    fn grass_vis_composite(&self, pass: &mut wgpu::RenderPass, target: &RenderTarget) {
+        let Some(Some(pipes)) = &self.grass_vis else {
+            return;
+        };
+        let Some(group) = target.grass_vis.composite_group() else {
+            return;
+        };
+        pass.set_pipeline(pipes.composite());
+        pass.set_bind_group(1, &group, &[]);
+        pass.draw(0..3, 0..1);
+        self.mark_pass(pass, "Main: grass composite");
     }
 
     /// The main pass after opaque geometry; `scene` = scene copy id for scene-reading shaders.
@@ -2894,6 +3042,8 @@ mod gpu_checks;
 pub(crate) mod gpu_tests;
 #[cfg(test)]
 mod grass_study;
+#[cfg(test)]
+mod grass_vis_tests;
 #[cfg(test)]
 mod hitch_tests;
 #[cfg(test)]

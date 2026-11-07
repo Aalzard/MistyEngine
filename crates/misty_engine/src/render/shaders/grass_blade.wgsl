@@ -18,7 +18,8 @@ struct GrassParams {
     // x = full-density distance, y = tip dryness, z = most widening, w = colour variation.
     look: vec4<f32>,
     // x = the terrain's draw slot (reflection probes), y = 1 with the ground cover (the lit
-    // pass leaves the flat fans out too: the terrain paints the undergrowth).
+    // pass leaves the flat fans out too: the terrain paints the undergrowth), z = the
+    // terrain's number in the grass visibility ids (grass_vis.wgsl).
     draw: vec4<u32>,
     // rgb = linear lush colour, w = patch size (m).
     lush: vec4<f32>,
@@ -63,14 +64,16 @@ struct BladeIn {
     @location(4) slope: vec2<f32>,
 };
 
-// The drawn chunk's blades (72 bytes each, as terrain/details.rs `Blade`) and the list of
-// the ones this draw shows (grass_cull.wgsl; instance i draws blade `grass_drawn[i]`).
+// The drawn chunk's blades (72 bytes each, as terrain/details.rs `Blade`): its page of the
+// terrain's blades (grass_pool.rs) or its own run of them, and the list of the ones this draw
+// shows (grass_cull.wgsl; instance i draws blade `grass_drawn[i]` of the page, whose top
+// four bits name the page for the visibility buffer).
 @group(3) @binding(0) var<storage, read> grass_blades: array<vec2<f32>>;
 @group(3) @binding(1) var<storage, read> grass_drawn: array<u32>;
 
 // The blade of draw instance `instance`.
 fn grass_fetch(instance: u32) -> BladeIn {
-    let at = grass_drawn[instance] * 9u;
+    let at = (grass_drawn[instance] & 0x0fffffffu) * 9u;
     var b: BladeIn;
     b.position = vec4<f32>(grass_blades[at], grass_blades[at + 1u]);
     b.shape = vec4<f32>(grass_blades[at + 2u], grass_blades[at + 3u]);

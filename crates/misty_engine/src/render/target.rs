@@ -64,6 +64,8 @@ pub struct RenderTarget {
     pub(crate) shadow_mask: super::shadow_denoise::TargetSlot,
     /// GPU culling's Hi-Z pyramid and last frame's visibility (made on first use).
     pub(in crate::render) culling: std::sync::Mutex<Option<super::gpu_culling::TargetState>>,
+    /// Grass visibility buffer and resolve images (made on first use, grass_vis.rs).
+    pub(crate) grass_vis: super::grass_vis::TargetSlot,
 }
 
 impl RenderTarget {
@@ -252,6 +254,7 @@ impl RenderTarget {
             screen_trace: Default::default(),
             shadow_mask: Default::default(),
             culling: Default::default(),
+            grass_vis: Default::default(),
         }
     }
 

@@ -35,14 +35,16 @@ struct Kind {
 };
 
 // Blades `base .. base + count` of the arena from workgroup `first_wg` on, drawn by lanes
-// `first_lane .. first_lane + lanes`.
+// `first_lane .. first_lane + lanes`; their list entries are `blades + i`.
 struct Job {
     base: u32,
     count: u32,
     first_wg: u32,
     first_lane: u32,
     lanes: u32,
-    pad0: u32,
+    // What the lists hold for blade 0 of the chunk: its page (top bits) and index in the
+    // page (grass_pool.rs; 0 for a chunk with a buffer of its own).
+    blades: u32,
     pad1: u32,
     pad2: u32,
 };
@@ -248,6 +250,6 @@ fn cs_write(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_inde
         for (var k = 0u; k < word; k++) {
             n += countOneBits(masks[at + k]);
         }
-        indices[offsets[l * total + w] + n] = i;
+        indices[offsets[l * total + w] + n] = j.blades + i;
     }
 }
