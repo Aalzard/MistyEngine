@@ -59,16 +59,51 @@ pub const MAX_ROUNDS: usize = 2;
 /// Most pages rendered per frame (the rest wait for the next frames, sampled from coarser
 /// levels meanwhile).
 pub const PAGE_BUDGET: usize = 384;
+/// The near layer: a small shadow map around the camera redrawn every frame for the casters
+/// that move on their own and so can't be cached in pages — grass past the near grass map
+/// (out to its caster range) and the trees close to the camera (their leaves and limbs sway).
+/// Its side in texels.
+pub const NEAR_SIZE: u32 = 2048;
+/// Half the near layer's side when no grass reaches further (metres): trees whose crowns lie
+/// within 90 % of it go into the layer instead of the cached pages (`trees.rs` `near`).
+pub const NEAR_RADIUS: f32 = 32.0;
+/// The sun may turn this far (radians) from the light the pages were drawn for before a new
+/// set starts filling in the background (shadows lag the sun by at most about this much).
+pub const SUN_START: f32 = 0.1 * std::f32::consts::PI / 180.0;
+/// A set filling in the background starts over when the sun turns this far from it.
+pub const SUN_RESTART: f32 = 1.0 * std::f32::consts::PI / 180.0;
+/// Further than this from the shown set, everything starts afresh at once.
+pub const SUN_RESET: f32 = 5.0 * std::f32::consts::PI / 180.0;
+/// Most pages of the background set rendered per frame.
+pub const PENDING_BUDGET: usize = 128;
 /// A marked page stays wanted this many frames.
 const KEEP_FRAMES: u64 = 90;
 /// Pages a pool row holds.
 const POOL_ROW: u32 = 32;
+
+/// Pages a row of a pool of `pages` holds: 32 (4096 texels wide), 64 past 2048 pages so the
+/// pool stays within 8192 texels a side.
+fn pool_row(pages: u32) -> u32 {
+    if pages > 2048 { 2 * POOL_ROW } else { POOL_ROW }
+}
 /// Mark bits per level (one per page table slot).
 const MARK_WORDS: usize = (PAGES * PAGES) as usize / 32;
 /// Readback buffers in flight.
 const READBACKS: usize = 3;
 /// Table entry flag: rendered this frame (debug views only).
 const FLAG_RENDERED: u32 = 1 << 16;
+
+/// Request the neighbours of marked pages too (on by default; off for A/B measurements).
+static GUARD_BAND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+#[cfg(test)]
+pub fn set_guard_band(on: bool) {
+    GUARD_BAND.store(on, Ordering::Relaxed);
+}
+
+fn guard_band() -> bool {
+    GUARD_BAND.load(Ordering::Relaxed)
+}
 
 /// Scene view ▸ Virtual Shadow Map debug views.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -117,6 +152,10 @@ pub(super) struct VsmUniform {
     pub levels: [[f32; 4]; MAX_LEVELS],
     /// Per level: xy = window origin page mod 64.
     pub wrap: [[f32; 4]; MAX_LEVELS],
+    /// The near layer's view-projection (world → its clip space).
+    pub near_view_proj: [[f32; 4]; 4],
+    /// x = half its side (m), y = texel (m), z = 1 / side (texels), w = 1 when on.
+    pub near: [f32; 4],
 }
 
 /// Counters of the last frame (Stats, perf harness).
@@ -140,6 +179,15 @@ pub struct VsmStats {
     pub pending: u32,
     /// The whole cache was dropped (light turned, depth range changed).
     pub reset: bool,
+    /// Trees drawn into the near layer this frame (swaying, not cached).
+    pub near_trees: u32,
+    /// Pages rendered for the set filling in the background (the sun turned).
+    pub catching_up: u32,
+    /// The background set took over this frame.
+    pub switched: bool,
+    /// Pages marked by the frame read back now that weren't rendered when it drew (it
+    /// sampled them from a coarser level).
+    pub late: u32,
 }
 
 /// One rectangle of pages drawn this frame.
@@ -162,6 +210,20 @@ pub(super) struct VsmFrame {
     pub rects: Vec<RectDraw>,
     /// Scratch fills; per fill the instance range of its page copies.
     pub rounds: Vec<std::ops::Range<u32>>,
+    /// The light the shown pages were drawn for (the sun may have turned a little since).
+    pub light_dir: Vec3,
+    /// The near layer this frame.
+    pub near: Option<NearLayer>,
+}
+
+/// The near layer of one frame (see [`NEAR_SIZE`]).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct NearLayer {
+    pub view_proj: Mat4,
+    /// Half its side (metres).
+    pub radius: f32,
+    /// Grass casters go into it (their range reaches past the near grass map).
+    pub grass: bool,
 }
 
 /// Inputs of [`Vsm::prepare`].
@@ -182,17 +244,71 @@ pub(super) struct VsmInput<'a> {
     pub debug: VsmDebug,
     /// Most rectangles this frame (virtual geometry has a few shadow views only).
     pub max_rects: usize,
+    /// Range of the grass shadow casters (None = none): past the near grass map they go into
+    /// the near layer.
+    pub grass_range: Option<f32>,
+    /// Trees come within reach of the near layer (else it is off unless grass needs it).
+    pub near_trees: bool,
+}
+
+/// Light direction, depth range, finest texel and level count a set of pages is drawn for;
+/// `set` (0 or 1) tells its pages from the other set's while one replaces the other.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Basis {
+    dir: Vec3,
+    z: (f32, f32),
+    finest: f32,
+    levels: usize,
+    set: u8,
+}
+
+/// A basis placed around this frame's camera.
+struct Gen {
+    basis: Basis,
+    view: Mat4,
+    map: Clipmap,
+}
+
+impl Gen {
+    fn new(basis: Basis, camera: Vec3) -> Self {
+        let view = clipmap::light_view(basis.dir);
+        let map = Clipmap::new(&view, camera, basis.levels, basis.finest);
+        Self { basis, view, map }
+    }
+
+    /// Per level, the pages whose columns meet the world box `b`.
+    fn columns(&self, b: &Aabb) -> Vec<(IVec2, IVec2)> {
+        let lb = b.transformed(&self.view);
+        let (lo, hi) = (
+            clipmap::q_of(Vec3::new(lb.min.x, lb.max.y, 0.0)),
+            clipmap::q_of(Vec3::new(lb.max.x, lb.min.y, 0.0)),
+        );
+        (0..self.basis.levels)
+            .map(|l| self.map.page_range(l, lo, hi))
+            .collect()
+    }
+}
+
+/// The clipmaps (and their set) one frame marked pages for: the shown set, then the one
+/// filling in the background.
+struct Marked {
+    bases: Vec<(Clipmap, u8)>,
+    frame: u64,
 }
 
 struct Readback {
     buffer: wgpu::Buffer,
     /// 0 free, 1 waiting for the map, 2 mapped.
     state: Arc<AtomicU8>,
-    map: Option<(Clipmap, u64)>,
+    map: Option<Marked>,
 }
 
 /// GPU objects (made when the mode first turns on).
 pub(super) struct VsmGpu {
+    /// The near layer (sampled) and its view uniform.
+    pub near_view: wgpu::TextureView,
+    near_view_buffer: wgpu::Buffer,
+    pub near_view_group: wgpu::BindGroup,
     pub pool_view: wgpu::TextureView,
     pool_size: (u32, u32),
     pub table_view: wgpu::TextureView,
@@ -204,12 +320,14 @@ pub(super) struct VsmGpu {
     copy_group: wgpu::BindGroup,
     copy_info: wgpu::Buffer,
     pub copy_instances: wgpu::Buffer,
-    mark: wgpu::ComputePipeline,
-    mark_layout: wgpu::BindGroupLayout,
+    /// Marking from the main depth, and from a single-sampled depth.
+    mark: [(wgpu::ComputePipeline, wgpu::BindGroupLayout); 2],
     pub(super) mark_params: wgpu::Buffer,
     marks: wgpu::Buffer,
     readbacks: Vec<Readback>,
     capacity: u32,
+    /// Pages a pool row holds.
+    row: u32,
 }
 
 /// Dummy table and pool bound while the mode is off.
@@ -267,8 +385,9 @@ fn table_texture(device: &wgpu::Device, side: u32) -> (wgpu::Texture, wgpu::Text
 
 impl VsmGpu {
     fn new(device: &wgpu::Device, p: &super::pipelines::Pipelines, pages: u32) -> Self {
-        let rows = pages.div_ceil(POOL_ROW);
-        let pool_size = (POOL_ROW * PAGE, rows * PAGE);
+        let row = pool_row(pages);
+        let rows = pages.div_ceil(row);
+        let pool_size = (row * PAGE, rows * PAGE);
         let depth = |label, (w, h): (u32, u32)| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -287,6 +406,25 @@ impl VsmGpu {
             })
         };
         let pool = depth("misty vsm pool", pool_size);
+        let near = depth("misty vsm near layer", (NEAR_SIZE, NEAR_SIZE));
+        let near_view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("misty vsm near view"),
+            size: VIEW_STRIDE,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let near_view_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty vsm near view group"),
+            layout: &p.shadow_view_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &near_view_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(VIEW_STRIDE),
+                }),
+            }],
+        });
         let scratch_side = SCRATCH_PAGES as u32 * PAGE;
         let scratch = depth("misty vsm scratch", (scratch_side, scratch_side));
         let (table, table_view) = table_texture(device, PAGES as u32);
@@ -384,56 +522,61 @@ impl VsmGpu {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        // Marking: main depth (multisampled), parameters, mark bits.
-        let samples = super::sample_count();
-        let mark_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("misty vsm mark"),
-            entries: &[
-                entry(0, S::COMPUTE, depth_2d(samples > 1)),
-                entry(1, S::COMPUTE, uniform),
-                entry(
-                    2,
-                    S::COMPUTE,
-                    wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
+        // Marking: a depth buffer (the main pass's multisampled one, or the screen-space
+        // prepass's single-sampled one when it runs), parameters, mark bits.
+        let make_mark = |ms: bool| {
+            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("misty vsm mark"),
+                entries: &[
+                    entry(0, S::COMPUTE, depth_2d(ms)),
+                    entry(1, S::COMPUTE, uniform),
+                    entry(
+                        2,
+                        S::COMPUTE,
+                        wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                    ),
+                ],
+            });
+            let src = if ms {
+                MARK_SRC.to_owned()
+            } else {
+                MARK_SRC.replace("texture_depth_multisampled_2d", "texture_depth_2d")
+            };
+            let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("misty vsm mark"),
+                source: wgpu::ShaderSource::Wgsl(
+                    format!("{}\n{COMMON_SRC}\n{src}", super::pipelines::COMMON).into(),
                 ),
-            ],
-        });
-        let mark_src = if samples > 1 {
-            MARK_SRC.to_owned()
-        } else {
-            MARK_SRC.replace("texture_depth_multisampled_2d", "texture_depth_2d")
+            });
+            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("misty vsm mark"),
+                bind_group_layouts: &[Some(&p.view_layout), Some(&layout)],
+                immediate_size: 0,
+            });
+            super::pipelines::note_pipeline();
+            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("misty vsm mark"),
+                layout: Some(&pipeline_layout),
+                module: &module,
+                entry_point: Some("cs_vsm_mark"),
+                compilation_options: Default::default(),
+                cache: crate::render::pipeline_cache(device).as_ref(),
+            });
+            (pipeline, layout)
         };
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("misty vsm mark"),
-            source: wgpu::ShaderSource::Wgsl(
-                format!("{}\n{COMMON_SRC}\n{mark_src}", super::pipelines::COMMON).into(),
-            ),
-        });
-        let mark_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("misty vsm mark"),
-            bind_group_layouts: &[Some(&p.view_layout), Some(&mark_layout)],
-            immediate_size: 0,
-        });
-        super::pipelines::note_pipeline();
-        let mark = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("misty vsm mark"),
-            layout: Some(&mark_pipeline_layout),
-            module: &module,
-            entry_point: Some("cs_vsm_mark"),
-            compilation_options: Default::default(),
-            cache: crate::render::pipeline_cache(device).as_ref(),
-        });
+        let mark = [make_mark(super::sample_count() > 1), make_mark(false)];
         let mark_params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty vsm mark params"),
-            size: std::mem::size_of::<VsmUniform>() as u64,
+            // The shown set's parameters, then the background set's.
+            size: 2 * std::mem::size_of::<VsmUniform>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let mark_bytes = (MARK_WORDS * MAX_LEVELS * 4) as u64;
+        let mark_bytes = (2 * MARK_WORDS * MAX_LEVELS * 4) as u64;
         let marks = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty vsm marks"),
             size: mark_bytes,
@@ -455,6 +598,9 @@ impl VsmGpu {
             })
             .collect();
         Self {
+            near_view: near.create_view(&Default::default()),
+            near_view_buffer,
+            near_view_group,
             pool_view: pool.create_view(&Default::default()),
             pool_size,
             table_view,
@@ -467,11 +613,11 @@ impl VsmGpu {
             copy_info,
             copy_instances,
             mark,
-            mark_layout,
             mark_params,
             marks,
             readbacks,
-            capacity: rows * POOL_ROW,
+            capacity: rows * row,
+            row,
         }
     }
 
@@ -480,7 +626,8 @@ impl VsmGpu {
         let pool = self.pool_size.0 as u64 * self.pool_size.1 as u64 * 4;
         let scratch = (SCRATCH_PAGES as u64 * PAGE as u64).pow(2) * 4;
         let table = (PAGES * PAGES) as u64 * MAX_LEVELS as u64 * 4;
-        pool + scratch + table
+        let near = (NEAR_SIZE as u64).pow(2) * 4;
+        pool + scratch + table + near
     }
 }
 
@@ -504,8 +651,11 @@ pub(super) struct Vsm {
     /// Fills the fog's cascade layers from the virtual map.
     pub fog: Option<fog::FogResolve>,
     cache: Option<PageCache>,
-    /// Light direction, depth range, finest texel and level count the cache was rendered with.
-    basis: Option<(Vec3, (f32, f32), f32, usize)>,
+    /// The light the shown pages were rendered for.
+    basis: Option<Basis>,
+    /// A set of pages filling in the background for the light the sun has turned to, and
+    /// whether this frame's pixels have marked it yet.
+    pending: Option<(Basis, bool)>,
     /// Page table as uploaded (level-major, 64 × 64 per level).
     table: Vec<u32>,
     /// Last frame's casters: signature → (world bounds, count).
@@ -513,8 +663,8 @@ pub(super) struct Vsm {
     /// Last frame's terrain chunk detail per terrain (key, version, (lod, mask) per chunk).
     chunks: super::terrain::ChunkStates,
     pub frame: Option<VsmFrame>,
-    /// This frame's clipmap (for the readback of its marks).
-    map: Option<Clipmap>,
+    /// This frame's clipmaps (for the readback of their marks).
+    marking: Option<Marked>,
     pub stats: VsmStats,
     pub debug: VsmDebug,
 }
@@ -531,7 +681,7 @@ impl Vsm {
         let fits = self
             .gpu
             .as_ref()
-            .is_some_and(|g| g.capacity == pages.div_ceil(POOL_ROW) * POOL_ROW);
+            .is_some_and(|g| g.capacity == pages.div_ceil(pool_row(pages)) * pool_row(pages));
         if fits {
             return false;
         }
@@ -539,6 +689,7 @@ impl Vsm {
         self.fog = Some(fog::FogResolve::new(device, p));
         self.cache = Some(PageCache::new(gpu.capacity));
         self.basis = None;
+        self.pending = None;
         self.table.clear();
         self.gpu = Some(gpu);
         true
@@ -626,22 +777,59 @@ impl Vsm {
         let distance = s.distance.min(input.camera.far).max(1.0);
         let safety = clipmap::safety_level(distance, finest);
         let levels = safety + 1;
-        let view = clipmap::light_view(input.sun_dir);
-        let z = clipmap::depth_range(&view, input.casters).unwrap_or((-1000.0, 1000.0));
         let dir = input.sun_dir.normalize_or(Vec3::NEG_Y);
+        let z_now = clipmap::depth_range(&clipmap::light_view(dir), input.casters)
+            .unwrap_or((-1000.0, 1000.0));
         let mut stats = VsmStats {
             levels: levels as u32,
             ..Default::default()
         };
-        let same = self
-            .basis
-            .is_some_and(|(d, zr, f, l)| d == dir && zr == z && f == finest && l == levels);
-        if !same || input.reset {
+        // Which light the pages are drawn for (see `Basis`): the active basis while the sun
+        // stays within SUN_START of it; past that a pending basis fills its own pages in the
+        // background and takes over once they are all rendered; past SUN_RESET (or anything
+        // else changing every page) everything starts afresh.
+        let fresh = |set: u8| Basis {
+            dir,
+            z: z_now,
+            finest,
+            levels,
+            set,
+        };
+        let angle = |a: Vec3| a.dot(dir).clamp(-1.0, 1.0).acos();
+        let reset = match self.basis {
+            None => true,
+            Some(b) => {
+                input.reset
+                    || b.finest != finest
+                    || b.levels != levels
+                    || angle(b.dir) > SUN_RESET
+                    || (angle(b.dir) <= SUN_START && b.z != z_now)
+            }
+        };
+        if reset {
             cache.clear();
             stats.reset = true;
-            self.basis = Some((dir, z, finest, levels));
+            self.basis = Some(fresh(0));
+            self.pending = None;
         }
-        let map = Clipmap::new(&view, input.camera.position, levels, finest);
+        let active = self.basis.expect("set above");
+        if angle(active.dir) > SUN_START {
+            let restart = self
+                .pending
+                .is_none_or(|(p, _)| angle(p.dir) > SUN_RESTART || p.z != z_now);
+            if restart {
+                let set = active.set ^ 1;
+                cache.drop_set(set);
+                self.pending = Some((fresh(set), false));
+            }
+        } else if let Some((p, _)) = self.pending.take() {
+            // Back within reach of the active basis: drop the half-built one.
+            cache.drop_set(p.set);
+        }
+        let mut gens = vec![Gen::new(active, input.camera.position)];
+        if let Some((p, _)) = self.pending {
+            gens.push(Gen::new(p, input.camera.position));
+        }
 
         // Feedback of earlier frames (non-blocking).
         let _ = device.poll(wgpu::PollType::Poll);
@@ -649,20 +837,52 @@ impl Vsm {
             if r.state.load(Ordering::Acquire) != 2 {
                 continue;
             }
-            if let (Some((m, frame)), Ok(data)) =
+            if let (Some(marked), Ok(data)) =
                 (r.map.as_ref(), r.buffer.slice(..).get_mapped_range())
-                && m.levels == levels
-                && m.finest == finest
             {
                 let words: &[u32] = bytemuck::cast_slice(&data);
-                for (l, level) in words.chunks(MARK_WORDS).enumerate().take(levels) {
-                    for (w, &bits) in level.iter().enumerate() {
-                        let mut b = bits;
-                        while b != 0 {
-                            let i = w * 32 + b.trailing_zeros() as usize;
-                            b &= b - 1;
-                            let slot = IVec2::new(i as i32 % PAGES, i as i32 / PAGES);
-                            cache.request(PageKey::new(l, m.global_page(l, slot)), *frame);
+                for (half, (m, set)) in marked.bases.iter().enumerate() {
+                    // Only marks made for a basis still in use.
+                    let Some(g) = gens.iter().find(|g| g.basis.set == *set) else {
+                        continue;
+                    };
+                    if g.basis.levels != m.levels || g.basis.finest != m.finest {
+                        continue;
+                    }
+                    if g.basis.set != active.set
+                        && let Some((_, marked)) = self.pending.as_mut()
+                    {
+                        *marked = true;
+                    }
+                    let base = half * MARK_WORDS * MAX_LEVELS;
+                    let bits = &words[base..base + MARK_WORDS * MAX_LEVELS];
+                    for (l, level) in bits.chunks(MARK_WORDS).enumerate().take(m.levels) {
+                        for (w, &bits) in level.iter().enumerate() {
+                            let mut b = bits;
+                            while b != 0 {
+                                let i = w * 32 + b.trailing_zeros() as usize;
+                                b &= b - 1;
+                                let slot = IVec2::new(i as i32 % PAGES, i as i32 / PAGES);
+                                let key = PageKey::of(*set, l, m.global_page(l, slot));
+                                if *set == active.set && !cache.is_rendered(&key) {
+                                    stats.late += 1;
+                                }
+                                cache.request(key, marked.frame);
+                                // Guard band: the neighbours too, so a turning or moving
+                                // view finds its next pages already rendered instead of
+                                // waiting a frame for their marks (sampled coarse meanwhile).
+                                if guard_band() {
+                                    for dy in -1..=1 {
+                                        for dx in -1..=1 {
+                                            let p = key.page() + IVec2::new(dx, dy);
+                                            if (dx, dy) != (0, 0) && m.contains(l, p) {
+                                                cache
+                                                    .request(PageKey::of(*set, l, p), marked.frame);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -671,31 +891,41 @@ impl Vsm {
             r.map = None;
             r.state.store(0, Ordering::Release);
         }
-        // The safety level always covers the shadow distance.
-        for p in clipmap::disk_pages(&map, safety, distance) {
-            cache.request(PageKey::new(safety, p), input.frame);
-        }
-        // Moving casters: their columns at every level.
-        let invalidate = |cache: &mut PageCache, b: &Aabb| {
-            let lb = b.transformed(&view);
-            let (lo, hi) = (
-                clipmap::q_of(Vec3::new(lb.min.x, lb.max.y, 0.0)),
-                clipmap::q_of(Vec3::new(lb.max.x, lb.min.y, 0.0)),
-            );
-            for l in 0..levels {
-                let (a, c) = map.page_range(l, lo, hi);
-                cache.invalidate(l, a, c);
+        for g in &gens {
+            let (set, map) = (g.basis.set, &g.map);
+            // The safety level always covers the shadow distance.
+            for p in clipmap::disk_pages(map, safety, distance) {
+                cache.request(PageKey::of(set, safety, p), input.frame);
             }
-        };
-        for b in input.changed {
-            invalidate(cache, b);
+            // Moving casters: their columns at every level.
+            for b in input.changed {
+                for (l, (a, c)) in g.columns(b).into_iter().enumerate() {
+                    cache.invalidate(set, l, a, c);
+                }
+            }
         }
-        let todo = cache.update(
+        let all = cache.update(
             input.frame,
             KEEP_FRAMES,
-            |k| map.contains(k.level as usize, k.page()),
-            PAGE_BUDGET,
+            |k| {
+                gens.iter()
+                    .find(|g| g.basis.set == k.set)
+                    .is_some_and(|g| g.map.contains(k.level as usize, k.page()))
+            },
+            usize::MAX,
         );
+        // The active basis's pages first; the pending one's PENDING_BUDGET a frame.
+        let mut todo: Vec<PageKey> = all
+            .iter()
+            .filter(|k| k.set == active.set)
+            .copied()
+            .collect();
+        todo.extend(
+            all.iter()
+                .filter(|k| k.set != active.set)
+                .take(PENDING_BUDGET),
+        );
+        todo.truncate(PAGE_BUDGET);
         let cstats = cache.stats;
         // Rectangles, at most `max_rects` and what the scratch fills hold.
         let mut rects = rects::group(&todo);
@@ -704,15 +934,20 @@ impl Vsm {
         let mut draws: Vec<RectDraw> = Vec::new();
         let mut rendered_keys: Vec<PageKey> = Vec::new();
         let mut copies: Vec<(usize, [u32; 4])> = Vec::new();
-        let pool_row = POOL_ROW;
+        let pool_row = gpu.row;
         for (r, (round, at)) in rects.iter().zip(placed) {
             if round >= MAX_ROUNDS {
                 continue;
             }
-            let texel = map.texel(r.level);
+            let Some(g) = gens.iter().find(|g| g.basis.set == r.set) else {
+                continue;
+            };
+            let texel = g.map.texel(r.level);
             draws.push(RectDraw {
                 rect: *r,
-                view_proj: map.rect_view_proj(&view, r.level, r.lo, r.hi(), z),
+                view_proj: g
+                    .map
+                    .rect_view_proj(&g.view, r.level, r.lo, r.hi(), g.basis.z),
                 round,
                 at,
                 // The cascades' choice: full trees close up, the first simplified level
@@ -729,7 +964,7 @@ impl Vsm {
             });
             for j in 0..r.size.y {
                 for i in 0..r.size.x {
-                    let key = PageKey::new(r.level, r.lo + IVec2::new(i, j));
+                    let key = PageKey::of(r.set, r.level, r.lo + IVec2::new(i, j));
                     let Some(phys) = cache.phys(&key) else {
                         continue;
                     };
@@ -739,14 +974,29 @@ impl Vsm {
                     if cache.is_rendered(&key) {
                         stats.invalidated += 1;
                     }
-                    cache.rendered(&key);
+                    cache.rendered(&key, input.frame);
                     rendered_keys.push(key);
                     stats.rendered += 1;
+                    if r.set != active.set {
+                        stats.catching_up += 1;
+                    }
                 }
             }
         }
         stats.rects = draws.len() as u32;
-        stats.pending = (todo.len() as u32).saturating_sub(stats.rendered);
+        stats.pending = (all.len() as u32).saturating_sub(stats.rendered);
+        // The pending basis takes over once its pixels have marked it and every page it wants
+        // is rendered.
+        if let Some((p, true)) = self.pending
+            && cache.unrendered_wanted(p.set) == 0
+        {
+            cache.drop_set(active.set);
+            self.basis = Some(p);
+            self.pending = None;
+            gens.swap(0, 1);
+            gens.truncate(1);
+            stats.switched = true;
+        }
         copies.sort_by_key(|c| c.0);
         let mut rounds = Vec::new();
         for round in 0..MAX_ROUNDS {
@@ -782,7 +1032,8 @@ impl Vsm {
                 bytemuck::bytes_of(&v),
             );
         }
-        // Page table: every rendered page inside its level's window.
+        // Page table: every rendered page of the active basis inside its level's window.
+        let shown = &gens[0];
         let rendered_now: std::collections::HashSet<PageKey> = if input.debug != VsmDebug::Off {
             rendered_keys.iter().copied().collect()
         } else {
@@ -791,7 +1042,7 @@ impl Vsm {
         let mut table = vec![0u32; MAX_LEVELS * (PAGES * PAGES) as usize];
         for (k, phys) in cache.addressable() {
             let l = k.level as usize;
-            if !map.contains(l, k.page()) {
+            if k.set != shown.basis.set || !shown.map.contains(l, k.page()) {
                 continue;
             }
             let w = Clipmap::wrap(k.page());
@@ -834,12 +1085,7 @@ impl Vsm {
         }
         self.table = table;
 
-        // The shaders' parameters.
-        let inv = view.inverse();
-        let axis = |v: Vec3| inv.transform_vector3(v).normalize_or_zero();
-        let (lx, ly, lz) = (axis(Vec3::X), axis(Vec3::Y), axis(Vec3::Z));
-        let range = (z.1 - z.0).max(1.0);
-        let camera_depth = (map.camera.z - z.0) / range;
+        // The shaders' parameters: the active basis for the lit shaders, both for marking.
         let (pixel, floor) = match input.camera.projection {
             crate::camera::Projection::Perspective { fov_y } => (
                 2.0 * (fov_y.to_radians() * 0.5).tan() / input.target_height.max(1) as f32,
@@ -851,46 +1097,102 @@ impl Vsm {
         };
         let reach = input.sun_size * clipmap::MAX_BLOCKER_DISTANCE;
         let search = clipmap::kernel_level(reach, finest, levels);
-        let mut u = VsmUniform {
-            light_x: lx.extend(1.0).to_array(),
-            light_y: ly.extend(levels as f32).to_array(),
-            light_z: lz.extend(1.0 / range).to_array(),
-            // The footprint is scaled like `finest`, so a level's texel is Shadow Resolution's
-            // texels per pixel times the footprint it serves.
-            info: [
-                finest,
-                pixel * s.texels_per_pixel,
-                camera_depth,
-                floor * s.texels_per_pixel,
-            ],
-            misc: [input.debug.index(), search as f32, safety as f32, distance],
-            pool: [
-                1.0 / gpu.pool_size.0 as f32,
-                1.0 / gpu.pool_size.1 as f32,
-                POOL_ROW as f32,
-                0.0,
-            ],
-            levels: [[0.0; 4]; MAX_LEVELS],
-            wrap: [[0.0; 4]; MAX_LEVELS],
+        let uniform = |g: &Gen| {
+            let inv = g.view.inverse();
+            let axis = |v: Vec3| inv.transform_vector3(v).normalize_or_zero();
+            let (lx, ly, lz) = (axis(Vec3::X), axis(Vec3::Y), axis(Vec3::Z));
+            let range = (g.basis.z.1 - g.basis.z.0).max(1.0);
+            let camera_depth = (g.map.camera.z - g.basis.z.0) / range;
+            let mut u = VsmUniform {
+                light_x: lx.extend(1.0).to_array(),
+                light_y: ly.extend(levels as f32).to_array(),
+                light_z: lz.extend(1.0 / range).to_array(),
+                // The footprint is scaled like `finest`, so a level's texel is Shadow
+                // Resolution's texels per pixel times the footprint it serves.
+                info: [
+                    finest,
+                    pixel * s.texels_per_pixel,
+                    camera_depth,
+                    floor * s.texels_per_pixel,
+                ],
+                misc: [input.debug.index(), search as f32, safety as f32, distance],
+                pool: [
+                    1.0 / gpu.pool_size.0 as f32,
+                    1.0 / gpu.pool_size.1 as f32,
+                    gpu.row as f32,
+                    0.0,
+                ],
+                levels: [[0.0; 4]; MAX_LEVELS],
+                wrap: [[0.0; 4]; MAX_LEVELS],
+                near_view_proj: [[0.0; 4]; 4],
+                near: [0.0; 4],
+            };
+            for l in 0..levels {
+                let o = g.map.origin_offset(l);
+                let t = g.map.texel(l);
+                u.levels[l] = [o.x, o.y, 1.0 / t, t];
+                let w = Clipmap::wrap(g.map.origins[l]);
+                u.wrap[l] = [w.x as f32, w.y as f32, 0.0, 0.0];
+            }
+            u
         };
-        for l in 0..levels {
-            let o = map.origin_offset(l);
-            let t = map.texel(l);
-            u.levels[l] = [o.x, o.y, 1.0 / t, t];
-            let w = Clipmap::wrap(map.origins[l]);
-            u.wrap[l] = [w.x as f32, w.y as f32, 0.0, 0.0];
-        }
-        queue.write_buffer(&gpu.mark_params, 0, bytemuck::bytes_of(&u));
+        let mut u = uniform(&gens[0]);
+        // The near layer around the camera, for the shown set's light.
+        let grass = input
+            .grass_range
+            .filter(|r| *r > super::grass_near_shadow::RADIUS + 0.5);
+        let radius = grass.map_or(NEAR_RADIUS, |r| r.max(NEAR_RADIUS));
+        let near_texel = 2.0 * radius / NEAR_SIZE as f32;
+        let near_view_proj = {
+            let g = &gens[0];
+            let c = g.map.camera;
+            let x = (c.x / near_texel).floor() * near_texel;
+            let y = (c.y / near_texel).floor() * near_texel;
+            let proj = glam::camera::lh::proj::directx::orthographic(
+                x - radius,
+                x + radius,
+                y - radius,
+                y + radius,
+                g.basis.z.0,
+                g.basis.z.1,
+            );
+            proj * g.view
+        };
+        // Off (not drawn, not sampled) while nothing would go into it.
+        let near_on = grass.is_some() || input.near_trees;
+        u.near_view_proj = near_view_proj.to_cols_array_2d();
+        u.near = [
+            radius,
+            near_texel,
+            1.0 / NEAR_SIZE as f32,
+            near_on as u32 as f32,
+        ];
+        let mut v = super::ViewUniform::zeroed();
+        v.view_proj = u.near_view_proj;
+        let c = input.camera.position;
+        v.camera_pos = [c.x, c.y, c.z, 0.0];
+        queue.write_buffer(&gpu.near_view_buffer, 0, bytemuck::bytes_of(&v));
+        let marks = [u, gens.get(1).map_or(VsmUniform::zeroed(), uniform)];
+        queue.write_buffer(&gpu.mark_params, 0, bytemuck::cast_slice(&marks));
         stats.wanted = cstats.wanted;
         stats.resident = cstats.resident;
         stats.evicted = cstats.evicted;
         stats.overflow = cstats.overflow;
         self.stats = stats;
-        self.map = Some(map);
+        self.marking = Some(Marked {
+            bases: gens.iter().map(|g| (g.map.clone(), g.basis.set)).collect(),
+            frame: input.frame,
+        });
         self.frame = Some(VsmFrame {
             uniform: u,
             rects: draws,
             rounds,
+            light_dir: gens[0].basis.dir,
+            near: near_on.then_some(NearLayer {
+                view_proj: near_view_proj,
+                radius,
+                grass: grass.is_some(),
+            }),
         });
     }
 
@@ -923,7 +1225,19 @@ impl Vsm {
         pass.draw(0..6, instances);
     }
 
-    /// Mark the pages this frame's pixels need (after the main pass) and copy the bits out.
+    /// Leave this frame unmarked (the marks of the frame before stand; see `render_frame`).
+    pub fn skip_marks(&mut self) {
+        self.marking = None;
+    }
+
+    /// The pages this frame's pixels need are still to be marked (the main pass must keep
+    /// its depth for it when no earlier depth was marked).
+    pub fn wants_marks(&self) -> bool {
+        self.marking.is_some()
+    }
+
+    /// Mark the pages this frame's pixels need from a depth buffer (the screen-space
+    /// prepass's when it runs, else the main pass's) and copy the bits out.
     pub fn encode_mark(
         &mut self,
         device: &wgpu::Device,
@@ -931,9 +1245,9 @@ impl Vsm {
         view_group: &wgpu::BindGroup,
         depth: &wgpu::TextureView,
         size: (u32, u32),
-        frame: u64,
+        multisampled: bool,
     ) {
-        let (Some(gpu), Some(map)) = (self.gpu.as_mut(), self.map.take()) else {
+        let (Some(gpu), Some(map)) = (self.gpu.as_mut(), self.marking.take()) else {
             return;
         };
         let Some(slot) = gpu
@@ -945,7 +1259,7 @@ impl Vsm {
         };
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("misty vsm mark"),
-            layout: &gpu.mark_layout,
+            layout: &gpu.mark[!multisampled as usize].1,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -967,7 +1281,7 @@ impl Vsm {
                 label: Some("misty vsm mark"),
                 timestamp_writes: None,
             });
-            pass.set_pipeline(&gpu.mark);
+            pass.set_pipeline(&gpu.mark[!multisampled as usize].0);
             pass.set_bind_group(0, view_group, &[]);
             pass.set_bind_group(1, &group, &[]);
             // 8 × 8 threads a group, one thread per 2 × 2 pixels.
@@ -976,7 +1290,7 @@ impl Vsm {
         let r = &mut gpu.readbacks[slot];
         encoder.copy_buffer_to_buffer(&gpu.marks, 0, &r.buffer, 0, r.buffer.size());
         r.state.store(1, Ordering::Release);
-        r.map = Some((map, frame));
+        r.map = Some(map);
     }
 
     /// Ask for the mark readbacks once the frame is submitted.
@@ -1007,11 +1321,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_pool_fits_8192_texels() {
+        for pool in crate::quality::ShadowPool::ALL {
+            let pages = pool.pages();
+            let row = pool_row(pages);
+            assert!(
+                row * PAGE <= 8192 && pages.div_ceil(row) * PAGE <= 8192,
+                "{pool:?}"
+            );
+        }
+    }
+
+    #[test]
     fn uniform_matches_wgsl() {
-        // 6 vec4s, then two arrays of MAX_LEVELS vec4s (vsm_common.wgsl `VsmParams`).
+        // 6 vec4s, two arrays of MAX_LEVELS vec4s, a matrix and a vec4 (vsm_common.wgsl
+        // `VsmParams`).
         assert_eq!(
             std::mem::size_of::<VsmUniform>(),
-            16 * 6 + 2 * 16 * MAX_LEVELS
+            16 * 6 + 2 * 16 * MAX_LEVELS + 64 + 16
         );
     }
 

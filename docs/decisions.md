@@ -3292,3 +3292,14 @@ Record of choices made without asking, and why.
      - Fog and sun shafts keep reading cascade-shaped layers, filled from the virtual map (one lookup per texel).
      - Every preset stays Cascaded: Virtual is faster at High (−0.2 to −0.5 ms MeadowDemo, StressStatic) and sharper
        everywhere, but 0.15–0.4 ms slower at Medium / Low, whose cascades are almost free.
+651. **Virtual shadow maps, round 2: what moves goes into a near layer, a turning sun fills a second page set** (`docs/pending/vsm.md` ▸ Round 2).
+     - Swaying casters are redrawn every frame into a 2048² near layer around the camera (grass past the
+       near grass map, trees whose box fits it) instead of re-rendering the pages under them: the
+       round-robin page refresh was tried and cost 8–12 ms GPU / 40–60 ms CPU a frame at High.
+     - A sun more than 0.1° from the shown pages' light starts a background page set for the new light
+       (marked by the same pass, 128 pages a frame) that replaces the shown set once complete; over 5° or
+       other basis changes still reset everything.
+     - Neighbours of marked pages are requested (guard band); marking reads the screen-space prepass's
+       single-sampled depth when it runs, else the main depth every other frame.
+     - Measured: Virtual is faster than Cascaded at Ultra (−1.7 to −2.2 ms) and equal or faster at High in
+       MeadowDemo; Medium / Low stay 0.15–0.45 ms slower. Defaults unchanged; the user picks.

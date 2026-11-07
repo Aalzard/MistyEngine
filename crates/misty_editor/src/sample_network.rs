@@ -129,11 +129,29 @@ function NetCoin:Update()
             local player = go:GetComponent("NetPlayer")
             player.score = player.score + 1
             self:CollectedClientRpc(player.playerName)
-            local a = self.arena
-            self.transform.position = Vector3.new(math.random() * 2 * a - a, 0.6, math.random() * 2 * a - a)
+            self.transform.position = self:FreeSpot()
             return
         end
     end
+end
+
+-- A random spot in the arena, at least 4 m from every player, so the coin never lands under
+-- someone (a second pickup the moment it moves).
+function NetCoin:FreeSpot()
+    local a = self.arena
+    local spot
+    for _ = 1, 16 do
+        spot = Vector3.new(math.random() * 2 * a - a, 0.6, math.random() * 2 * a - a)
+        local clear = true
+        for _, id in ipairs(Network.ConnectedClientsIds) do
+            local go = Network.GetPlayerObject(id)
+            if go and (go.transform.position - spot).magnitude < 4 then
+                clear = false
+            end
+        end
+        if clear then return spot end
+    end
+    return spot
 end
 
 function NetCoin:CollectedClientRpc(name)
@@ -454,7 +472,15 @@ fn network_demo_plays_host_and_client() {
     let mut walk = Input::default();
     walk.held.insert("d".into());
     walk.held.insert("w".into());
-    frames(&mut peers, 75, &walk);
+    // Walk until the pickup arrives, then stop: walking on could reach the coin's new random
+    // spot too and score twice.
+    let picked = |p: &Peer| p.logs.iter().any(|l| l == "Player 2 picked up the coin");
+    for _ in 0..150 {
+        if picked(&peers[1]) {
+            break;
+        }
+        frames(&mut peers, 1, &walk);
+    }
     frames(&mut peers, 30, &Input::default());
     assert!(
         peers[1]

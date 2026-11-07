@@ -20,11 +20,29 @@ function NetCoin:Update()
             local player = go:GetComponent("NetPlayer")
             player.score = player.score + 1
             self:CollectedClientRpc(player.playerName)
-            local a = self.arena
-            self.transform.position = Vector3.new(math.random() * 2 * a - a, 0.6, math.random() * 2 * a - a)
+            self.transform.position = self:FreeSpot()
             return
         end
     end
+end
+
+-- A random spot in the arena, at least 4 m from every player, so the coin never lands under
+-- someone (a second pickup the moment it moves).
+function NetCoin:FreeSpot()
+    local a = self.arena
+    local spot
+    for _ = 1, 16 do
+        spot = Vector3.new(math.random() * 2 * a - a, 0.6, math.random() * 2 * a - a)
+        local clear = true
+        for _, id in ipairs(Network.ConnectedClientsIds) do
+            local go = Network.GetPlayerObject(id)
+            if go and (go.transform.position - spot).magnitude < 4 then
+                clear = false
+            end
+        end
+        if clear then return spot end
+    end
+    return spot
 end
 
 function NetCoin:CollectedClientRpc(name)

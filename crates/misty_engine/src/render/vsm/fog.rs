@@ -126,28 +126,36 @@ impl FogResolve {
             layer.depth = [cam.z - lo.z, 1.0 / (hi.z - lo.z).max(1e-3), c.texel, 0.0];
         }
         queue.write_buffer(&self.layers, 0, bytemuck::cast_slice(&layers));
-        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("misty vsm fog"),
-            layout: &self.layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&gpu.table_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&gpu.pool_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: gpu.mark_params.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: self.layers.as_entire_binding(),
-                },
-            ],
-        });
+        let group =
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("misty vsm fog"),
+                layout: &self.layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&gpu.table_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&gpu.pool_view),
+                    },
+                    // The shown set's parameters (the first of the two).
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &gpu.mark_params,
+                            offset: 0,
+                            size: wgpu::BufferSize::new(
+                                std::mem::size_of::<super::VsmUniform>() as u64
+                            ),
+                        }),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: self.layers.as_entire_binding(),
+                    },
+                ],
+            });
         for (i, view) in views.iter().enumerate().take(cascades.len()) {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("misty vsm fog cascade"),

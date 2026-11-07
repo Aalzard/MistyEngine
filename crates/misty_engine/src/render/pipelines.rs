@@ -381,6 +381,16 @@ impl Pipelines {
                         multisampled: false,
                     },
                 ),
+                // Its near layer (casters that sway, redrawn every frame).
+                entry(
+                    12,
+                    lit,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
                 // Reflection probes (bindings 20–24, see probes/gpu.rs).
                 probe[0],
                 probe[1],
