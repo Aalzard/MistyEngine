@@ -535,3 +535,32 @@ fn particle_system_api_controls_the_emitter() {
     let em = scene.world.get::<&ParticleEmitter>(e).unwrap();
     assert!(em.is_paused(), "paused emitter stays paused");
 }
+
+#[test]
+fn inspector_attributes_are_read_from_the_class() {
+    let src = r#"
+local Orbiter = { radius = 3, speed = 45, label = "x", gap = true }
+Orbiter._attributes = {
+    radius = { Header("Orbit"), Range(10, 0.5), Tooltip("Metres from the centre") },
+    speed = Range(-180, 180),
+    label = { HideInInspector() },
+    gap = { Space(), Space(4) },
+    missing = { Header("Ignored") },
+}
+return Orbiter
+"#;
+    let info = super::inspect_script(src, "Assets/Scripts/Orbiter.lua").unwrap();
+    let names: Vec<&str> = info.fields.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["radius", "speed", "label", "gap"]);
+    let r = &info.attributes["radius"];
+    assert_eq!(r.header.as_deref(), Some("Orbit"));
+    assert_eq!(r.tooltip.as_deref(), Some("Metres from the centre"));
+    assert_eq!(r.range, Some((0.5, 10.0)));
+    assert_eq!(info.attributes["speed"].range, Some((-180.0, 180.0)));
+    assert!(info.attributes["label"].hidden);
+    assert_eq!(info.attributes["gap"].space, 12.0);
+    // A script without attributes still inspects, and the functions run in games too.
+    let plain = super::inspect_script("return { a = 1 }", "A.lua").unwrap();
+    assert!(plain.attributes.is_empty());
+    super::test_scripts(&[], "assert(Range(0, 1).attribute == 'Range')").unwrap();
+}

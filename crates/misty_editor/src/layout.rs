@@ -48,6 +48,8 @@ pub enum Tab {
     AssetGroups,
     /// Window ▸ Package Manager.
     PackageManager,
+    /// A tool window of an editor script (`ToolWindow(title)`), by the id of its title.
+    Tool(u64),
 }
 
 impl Tab {
@@ -112,6 +114,8 @@ impl Tab {
             Tab::TestRunner => Some(Tab::Scene),
             // A two-pane browser that wants room, like the graphs.
             Tab::PackageManager => Some(Tab::Scene),
+            // Script tools sit by the Inspector, like Lighting and Navigation.
+            Tab::Tool(_) => Some(Tab::Inspector),
             _ => None,
         }
     }
@@ -143,6 +147,8 @@ impl Tab {
             Tab::TestRunner => "Test Runner",
             Tab::AssetGroups => "Asset Groups",
             Tab::PackageManager => "Package Manager",
+            // The real title comes from the script (`PanelViewer::title`).
+            Tab::Tool(_) => "Tool Window",
         }
     }
 
@@ -173,6 +179,7 @@ impl Tab {
             Tab::TestRunner => crate::panels::test_runner::ICON,
             Tab::AssetGroups => crate::panels::asset_groups::ICON,
             Tab::PackageManager => crate::panels::packages::ICON,
+            Tab::Tool(_) => TOOL_ICON,
         }
     }
 
@@ -203,10 +210,14 @@ impl Tab {
             | Tab::MemoryProfiler
             | Tab::TestRunner
             | Tab::AssetGroups
-            | Tab::PackageManager => "",
+            | Tab::PackageManager
+            | Tab::Tool(_) => "",
         }
     }
 }
+
+/// Tab icon of script tool windows.
+pub const TOOL_ICON: &str = "🛠";
 
 /// Layouts that ship with the editor (Window ▸ Layouts).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

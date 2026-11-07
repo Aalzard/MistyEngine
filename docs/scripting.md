@@ -26,6 +26,22 @@ Animation events call a function by name (no arguments) on the scripts of the ob
 Save games call `OnSave(data)` / `OnLoad(data)` and locale switches `OnLocaleChanged(code)` (see Save games
 and Localization below).
 
+## Inspector attributes
+List attributes per field in the class's `_attributes` table to change how the Inspector shows it:
+
+```lua
+local Satellite = { center = Vector3.new(0, 1, 0), radius = 3, angle = 0 }
+Satellite._attributes = {
+    center = { Header("Orbit"), Tooltip("World point the object circles around") },
+    radius = { Range(0.5, 20) },          -- a slider instead of a number field
+    angle = { HideInInspector() },        -- still saved and used, just not shown
+}
+```
+
+`Header(text)` (bold heading above), `Tooltip(text)` (hover text of the label), `Space([pixels])` (gap
+above, 8 by default), `Range(min, max)` (numbers) and `HideInInspector()`. One attribute can stand on its
+own (`radius = Range(0, 1)`). The functions exist in games too and cost nothing there.
+
 ## API
 | | |
 |---|---|
@@ -700,3 +716,139 @@ laid out right to left yet, and the built-in UI font has no Arabic glyphs.
 
 Sample: `Scenes/SaveLocDemo.scene` with `SaveLocMenu.lua`, `CoinCounter.lua` and
 `Assets/Localization/SaveLocDemo.strings`.
+
+## Editor scripting
+Lua files in a folder named `Editor` (anywhere under `Assets`, e.g. `Assets/Editor/` or
+`Assets/Tools/Editor/`) are **editor scripts**: they add menu items, tool windows, custom Inspectors, Scene
+view gizmos and handles, and asset hooks. They run in the editor's own Lua state, never in a build (builds
+leave every `Editor` folder out), and reload by themselves when one is saved. The game API is there too,
+so `GameObject.Find`, `transform.position`, `Vector3` and `Debug.Log` work on the scene being edited.
+
+Errors go to the Console with file and line (click to open the script). A callback that fails stays off
+until its script changes (tool windows and Inspectors show a Try again button), and one that runs too long
+is stopped: 0.5 s per frame for `OnGUI`, Inspectors, gizmos and handles, 5 s for a menu item, a script
+loading, an update callback or an asset hook.
+
+Sample: `Assets/Editor/ScatterTool.lua` (Tools ▸ Scatter Tool and Tools ▸ Align to Floor),
+`Assets/Editor/SatelliteInspector.lua` and `Assets/Scripts/Satellite.lua` (add the Satellite script to any
+object to see its gizmos, its Inspector and the centre handle).
+
+### Menu items
+```lua
+MenuItem("Tools/Scatter Tool", function() Scatter:Open() end)
+MenuItem("Tools/Align to Floor", alignSelection, {
+    validate = function() return Selection.count > 0 end,  -- greyed out while false
+    shortcut = "Ctrl+Alt+G",                                 -- Ctrl / Shift / Alt + a key
+    priority = 10,                                           -- order in its menu (lower first)
+})
+```
+A new top-level name ("Tools") becomes a menu between Component and Window; a path under a built-in menu
+("GameObject/My Item") goes at the end of that menu; more slashes make submenus. Every item is in the
+Ctrl+K search too. Built-in shortcuts win over script ones.
+
+### Tool windows
+```lua
+local Counter = ToolWindow("Counter")
+Counter.count = 0                          -- plain values on the window are its state
+function Counter:OnGUI()
+    self.count = GUI.IntField("Count", self.count)
+    if GUI.Button("Add one") then self.count = self.count + 1 end
+end
+MenuItem("Tools/Counter", function() Counter:Open() end)
+```
+A tool window is a dock tab like the built-in panels: it opens by the Inspector, docks and floats anywhere,
+and layouts remember it. Its numbers, booleans, strings, Vector3s and Colors are kept across reloads and
+restarts (`Library/ToolWindows.json`). `Window:Open()`, `Window:Close()`, `Window:Repaint()`; `OnEnable()`
+runs after each load.
+
+| GUI (inside `OnGUI` / `OnInspectorGUI`) | Returns |
+|---|---|
+| `GUI.Label(text)`, `GUI.Header(text)`, `GUI.HelpBox(text [, kind])` | (`kind`: "info", "warning", "error") |
+| `GUI.Button(text)` | true on the frame it is clicked |
+| `GUI.Toggle(label, on)`, `GUI.Slider(label, v, min, max)` | the new value |
+| `GUI.IntField(label, v)`, `GUI.FloatField(label, v)`, `GUI.TextField(label, s)` | the new value |
+| `GUI.ColorField(label, color)`, `GUI.Vector3Field(label, v)` | the new value |
+| `GUI.ObjectField(label, value [, kind])` | a GameObject (`kind` "GameObject", the default) or an asset path of that kind ("prefab", "material", "texture", "model", "audio", "script" or an extension); pick from the list or drop an asset from the Project window |
+| `GUI.Foldout(label, open)` | the new open state (draw the contents yourself while open) |
+| `GUI.Horizontal(fn)`, `GUI.Vertical(fn)`, `GUI.Scroll(fn)` | lay out what `fn` draws |
+| `GUI.Space([px])`, `GUI.Separator()` | |
+
+### Custom Inspectors
+```lua
+local SatelliteInspector = CustomInspector("Satellite")    -- the script's file name
+function SatelliteInspector:OnInspectorGUI()
+    DrawDefaultInspector()                              -- leave out to replace the field list
+    if GUI.Button("Centre on origin") then
+        self.target.center = Vector3.zero               -- an undoable edit, like typing in the field
+    end
+end
+function SatelliteInspector:OnSceneGUI()                  -- while the object is the active selection
+    self.target.center = Handles.Position(self.target.center)
+    Handles.Label(self.target.center, "Orbit centre")
+end
+```
+`self.target` reads and writes the script's public fields (the saved value, else the default) and has
+`gameObject` and `transform`. One Inspector instance lives per inspected script, so values kept on `self`
+last while it stays selected.
+
+### Gizmos and handles
+Game scripts can define `OnDrawGizmos()` (every object) and `OnDrawGizmosSelected()` (selected objects).
+They run in the Scene view while editing (with the Gizmos toggle on), never in Play mode or builds; `self`
+has the script's field values, `gameObject` and `transform`.
+
+| | |
+|---|---|
+| `Gizmos.color = Color.new(r, g, b [, a])` | colour of what follows (white at the start of each call) |
+| `Gizmos.Line(a, b)`, `Gizmos.Ray(from, direction)` | lines |
+| `Gizmos.WireSphere(center, radius)`, `Gizmos.WireCube(center, size)` | wire shapes |
+| `Gizmos.Icon(position [, glyph])`, `Gizmos.Label(position, text)` | a glyph / a text at a point |
+| `Handles.Position(p)` (in `OnSceneGUI`) | a three-axis move handle; returns where it was dragged |
+| `Handles.Label(p, text)` | a text at a point |
+
+### Editor API
+| | |
+|---|---|
+| `Selection.active`, `Selection.objects`, `Selection.asset` | the active GameObject, all selected ones, the asset selected in the Project window (a path); all assignable |
+| `Selection.count`, `Selection.Clear()`, `Selection.Contains(go)` | |
+| `Undo.Record(obj, "Name")` | call before changing objects: everything until the call returns is one undo step (it also marks the scene changed) |
+| `Undo.BeginGroup("Name")` … `Undo.EndGroup()` | one step over several calls (an update callback working over frames) |
+| `Undo.Undo()`, `Undo.Redo()` | |
+| `EditorScene.Find(name)`, `EditorScene.FindAll(query)`, `EditorScene.Roots()` | `query`: "t:Light" (a component or script name) or part of an object name |
+| `EditorScene.Create(name [, parent])`, `EditorScene.InstantiatePrefab(path [, position [, parent]])` | new objects (prefab instances stay linked to the prefab) |
+| `EditorScene.AddComponent(go, name)`, `EditorScene.HasComponent(go, name)` | a component name or a `.lua` script path |
+| `EditorScene.SetParent(go, parent)`, `EditorScene.Destroy(go)` | |
+| `AssetDB.Find(query [, folder])` | asset paths: "t:prefab" / "t:texture" / … and words of the file name |
+| `AssetDB.Exists(path)`, `AssetDB.ReadText(path)`, `AssetDB.Refresh()` | |
+| `AssetDB.CreateAsset(path, text)`, `AssetDB.CreateFolder(path)`, `AssetDB.CreateMaterial(path [, color])` | inside `Assets/` only |
+| `EditorPrefs.GetInt` / `SetInt`, `GetFloat` / `SetFloat`, `GetString` / `SetString`, `GetBool` / `SetBool`, `HasKey`, `DeleteKey` | per user, shared by all projects |
+| `Editor.DisplayDialog(title, message [, ok [, cancel]])` | a message box; true for OK |
+| `Editor.ShowProgress(title, info, fraction)`, `Editor.ClearProgress()` | a progress bar at the bottom of the window |
+| `Editor.AddUpdate(fn)`, `Editor.RemoveUpdate(fn)` | `fn()` every editor frame (return `false` to stop) |
+| `Editor.IsPlaying()`, `Editor.ProjectPath()`, `Editor.Repaint()` | |
+
+The progress bar draws between frames, so a long job splits its work over an update callback:
+
+```lua
+local left = 500
+Undo.BeginGroup("Place Trees")
+Editor.AddUpdate(function()
+    for _ = 1, 25 do placeOneTree(); left = left - 1 end
+    Editor.ShowProgress("Placing trees", left .. " left", 1 - left / 500)
+    if left <= 0 then
+        Editor.ClearProgress()
+        Undo.EndGroup()
+        return false
+    end
+end)
+```
+
+### Asset hooks
+```lua
+local Hooks = AssetProcessor()
+function Hooks:OnPostprocessAsset(path)
+    if path:match("%.png$") then Debug.Log("New texture: " .. path) end
+end
+```
+`OnPostprocessAsset(path)` runs for each asset that appears in the project: files copied into `Assets`
+(noticed within a couple of seconds), assets the editor creates, and assets made with `AssetDB`. Changes to
+an existing file do not call it.

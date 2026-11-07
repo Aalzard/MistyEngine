@@ -22,6 +22,7 @@ pub mod animator_api;
 pub mod api;
 pub mod app_api;
 pub mod assets_api;
+pub mod attributes;
 pub mod audio_api;
 pub mod camera_api;
 pub mod cursor_api;
@@ -1195,9 +1196,24 @@ fn to_lua(lua: &Lua, v: &ScriptValue) -> mlua::Result<Value> {
 
 /// Public fields of a script (name, default) in declaration order, for the Inspector.
 pub fn inspect_fields(source: &str, path: &str) -> Result<Vec<(String, ScriptValue)>, String> {
+    inspect_script(source, path).map(|info| info.fields)
+}
+
+/// What the Inspector needs of a script: its public fields and their attributes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ScriptInfo {
+    /// Public fields (name, default) in declaration order.
+    pub fields: Vec<(String, ScriptValue)>,
+    /// `Header`, `Range`, … by field name (see [`attributes`]).
+    pub attributes: HashMap<String, attributes::FieldAttributes>,
+}
+
+/// Public fields of a script with their Inspector attributes.
+pub fn inspect_script(source: &str, path: &str) -> Result<ScriptInfo, String> {
     let lua = Lua::new();
     api::register(&lua).map_err(|e| e.to_string())?;
     let class = eval_class(&lua, source, path)?;
+    let attributes = attributes::parse(&class);
     let mut fields = Vec::new();
     for pair in class.pairs::<Value, Value>() {
         let (k, v) = pair.map_err(|e| e.to_string())?;
@@ -1228,7 +1244,7 @@ pub fn inspect_fields(source: &str, path: &str) -> Result<Vec<(String, ScriptVal
             .or_else(|| source.find(name.as_str()))
             .unwrap_or(usize::MAX)
     });
-    Ok(fields)
+    Ok(ScriptInfo { fields, attributes })
 }
 
 /// Run a Lua `chunk` against script classes, for unit tests of script logic without a scene:

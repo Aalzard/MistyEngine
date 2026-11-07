@@ -296,6 +296,10 @@ impl EditorApp {
                 self.state.push(action);
             }
         }
+        if !typing && !code_editor {
+            // Editor script menu shortcuts, after the built-in ones.
+            crate::editor_scripts::menus::shortcuts(ctx, &mut self.state);
+        }
         if !typing && !self.state.project.focused {
             self.clipboard_shortcuts(ctx);
         }
@@ -393,6 +397,11 @@ impl EditorApp {
         let s = &mut self.state;
         match action {
             Action::FocusTab(tab) => layout::focus_or_open(&mut self.dock, tab),
+            Action::CloseTab(tab) => {
+                if let Some(path) = self.dock.find_tab(&tab) {
+                    self.dock.remove_tab(path);
+                }
+            }
             Action::LoadLayout(_)
             | Action::SaveLayout(_)
             | Action::DeleteLayout(_)
@@ -502,6 +511,10 @@ impl EditorApp {
         // Window ▸ General ▸ Test Runner: a slice of the running tests per frame.
         if crate::panels::test_runner::tick(s) {
             ctx.request_repaint();
+        }
+        // Editor scripts: (re)load, update callbacks, asset processors.
+        if crate::editor_scripts::frame(s) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(30));
         }
         let mut renderer_reloaded = Vec::new();
         if let Some(gpu) = self.gpu.as_mut() {
@@ -704,6 +717,7 @@ impl EditorApp {
 impl eframe::App for EditorApp {
     fn on_exit(&mut self) {
         self.save_layout(true);
+        crate::editor_scripts::on_exit(&mut self.state);
         self.save_hub_thumbnail();
         // Screenshot runs leave the saved view alone so they stay repeatable.
         if self.capture.is_none() {
@@ -816,6 +830,7 @@ impl eframe::App for EditorApp {
         crate::panels::preset_window(&ctx, &mut self.state);
         crate::branding::about::show(&ctx, &mut self.state.about_open);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);
+        crate::editor_scripts::progress_ui(&ctx, &self.state);
         // Last, so the tutorial card and highlight sit on top of everything drawn above.
         crate::tutorials::frame(&ctx, &mut self.state);
         self.apply_actions(&ctx);

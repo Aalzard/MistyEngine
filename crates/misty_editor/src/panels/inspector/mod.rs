@@ -60,6 +60,7 @@ use crate::branding::icons::{self, Icon};
 use crate::state::{EditorState, object_icon};
 use crate::theme;
 
+pub(crate) use editors::script_fields;
 pub use preset_picker::window as preset_window;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
