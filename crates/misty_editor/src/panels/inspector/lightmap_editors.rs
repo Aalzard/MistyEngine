@@ -113,7 +113,38 @@ pub fn model_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
                 .map(|m| m.data.vertices.len())
                 .sum::<usize>()
         ));
+        if model.virtual_geometry {
+            ui.weak(virtual_geometry_summary(&model.virtual_builds.summary()));
+            if !model.virtual_builds.complete() {
+                // The build runs on a worker: show its result when it lands.
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(250));
+            }
+        }
     }
+}
+
+/// The import Inspector's line about a model's virtual geometry build.
+fn virtual_geometry_summary(s: &misty_engine::models::virtual_build::BuildSummary) -> String {
+    if s.built < s.meshes {
+        return format!(
+            "Virtual Geometry: building clusters ({} of {} meshes done)…",
+            s.built, s.meshes
+        );
+    }
+    format!(
+        "Virtual Geometry: {} clusters, {} level{}, {} source triangles; built in {:.1} s{}",
+        s.clusters,
+        s.levels,
+        if s.levels == 1 { "" } else { "s" },
+        s.source_triangles,
+        s.build_ms / 1000.0,
+        if s.cached {
+            " (from Library/VirtualGeometry)"
+        } else {
+            ""
+        }
+    )
 }
 
 /// A baked lightmap file: size and a small preview.

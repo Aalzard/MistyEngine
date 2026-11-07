@@ -33,7 +33,7 @@ impl MistyGiSettings {
     }
 
     /// Clipmap, probe and ray budget of the quality level. `MISTY_GI_SIZES=levels,dim,voxel,
-    /// probes,rays,stride,apply,visibility` overrides it (tuning).
+    /// probes,rays,stride,apply,visibility[,reflections]` overrides it (tuning).
     pub fn sizes(&self) -> Sizes {
         if let Some(s) = std::env::var("MISTY_GI_SIZES")
             .ok()
@@ -51,6 +51,7 @@ impl MistyGiSettings {
                 stride: 4,
                 apply_scale: 4,
                 visibility_steps: 3,
+                reflections: false,
             },
             ScreenSpaceQuality::Medium => Sizes {
                 levels: 4,
@@ -58,19 +59,21 @@ impl MistyGiSettings {
                 voxel: 0.09375,
                 probes: 16,
                 rays: 24,
-                stride: 4,
+                stride: 2,
                 apply_scale: 2,
                 visibility_steps: 3,
+                reflections: true,
             },
             ScreenSpaceQuality::High => Sizes {
                 levels: 5,
                 dim: 64,
                 voxel: 0.0625,
-                probes: 20,
+                probes: 24,
                 rays: 32,
-                stride: 4,
+                stride: 2,
                 apply_scale: 2,
                 visibility_steps: 4,
+                reflections: true,
             },
         }
     }
@@ -95,15 +98,31 @@ pub struct Sizes {
     pub apply_scale: u32,
     /// SDF steps of the probe visibility test per pixel.
     pub visibility_steps: u32,
+    /// Glossy reflections traced at the gather texels.
+    pub reflections: bool,
 }
 
 impl Sizes {
     fn parse(v: &str) -> Option<Self> {
-        let n: Vec<f32> = v
+        let mut n: Vec<f32> = v
             .split(',')
             .map(|x| x.trim().parse().ok())
             .collect::<Option<_>>()?;
-        let [levels, dim, voxel, probes, rays, stride, apply, vis] = n[..] else {
+        if n.len() == 8 {
+            n.push(1.0);
+        }
+        let [
+            levels,
+            dim,
+            voxel,
+            probes,
+            rays,
+            stride,
+            apply,
+            vis,
+            reflections,
+        ] = n[..]
+        else {
             return None;
         };
         Some(Self {
@@ -115,6 +134,7 @@ impl Sizes {
             stride: (stride as u32).clamp(1, 8),
             apply_scale: (apply as u32).clamp(1, 8),
             visibility_steps: vis as u32,
+            reflections: reflections > 0.5,
         })
     }
 }

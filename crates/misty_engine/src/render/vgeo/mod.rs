@@ -14,7 +14,6 @@
 //! list also feeds the depth + normal prepass of the screen-space effects.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -46,8 +45,10 @@ const CHUNKS_PER_VIEW: u32 = 1 << 17;
 /// Shadow maps with virtual geometry casters (the sun's cascades come first).
 pub(super) const MAX_SHADOW_VIEWS: usize = 6;
 const MAX_VIEWS: usize = 2 + MAX_SHADOW_VIEWS;
-/// Floats per vertex in the pool ([`super::mesh::Vertex`]).
-const VERTEX_FLOATS: usize = 14;
+/// Words per vertex in the pool: position (3 × f32), normal and tangent (octahedral 2 × 16
+/// bits each, the bitangent sign in the tangent's lowest bit), uv (2 × f32), lightmap uv
+/// (2 × unorm16). [`super::mesh::Vertex`] is 14 floats.
+const VERTEX_WORDS: usize = 8;
 const WORKGROUP: u32 = 64;
 /// Words of `control` before the limits: 4 counters and 4 dispatch words per view
 /// (`DISPATCH_BASE` in vgeo_cull.wgsl = the counters' words).
@@ -61,12 +62,14 @@ struct GpuCluster {
     parent: [f32; 4],
     error: f32,
     parent_error: f32,
-    first: u32,
     triangles: u32,
-    /// Its own vertex list (source vertex ids) and local indices, for the indexed path.
+    /// Its own vertex list (source vertex ids) and local indices (16-bit, in index units).
     vertex_first: u32,
     local_first: u32,
-    pad: [u32; 2],
+    /// Normal cone: octahedral axis and cutoff ([`crate::vgeo::Cluster::backfacing`]).
+    cone_axis: u32,
+    cone_cutoff: f32,
+    pad: u32,
 }
 
 #[repr(C)]
@@ -97,6 +100,9 @@ struct ViewUniform {
     info: [u32; 4],
     region: [u32; 4],
     caps: [u32; 4],
+    /// This view's own eye (w = 1) or, orthographic, its forward direction (w = 0): the
+    /// clusters' back-face test.
+    eye: [f32; 4],
 }
 
 /// What the last frame drew (read back on request, for measurements).
@@ -113,12 +119,10 @@ pub struct VgeoStats {
     /// Virtual meshes in the pool and their source triangles.
     pub meshes: u32,
     pub source_triangles: u64,
-}
-
-/// A built mesh, kept across model cache reloads (rebuilt only when its data changed).
-struct Built {
-    fingerprint: u64,
-    mesh: Arc<VirtualMesh>,
+    /// GPU memory of the pool (vertices, local indices, cluster vertices, cluster records).
+    pub pool_bytes: u64,
+    /// The main pass drew the clusters through the visibility buffer.
+    pub visibility: bool,
 }
 
 pub(super) struct VirtualGeometry {
@@ -128,19 +132,26 @@ pub(super) struct VirtualGeometry {
     pub threshold: f32,
     /// Colour every cluster (debug view).
     pub debug: bool,
+    /// Draw the main pass's clusters through the visibility buffer (render/vgeo/vis.rs) where
+    /// the device can; else lit directly.
+    pub visibility: bool,
+    /// The visibility resolve's second layer: two objects of one batch meeting inside a pixel
+    /// get a shade each (otherwise the first one's; edges against everything else keep their
+    /// MSAA coverage either way).
+    pub edge_layer: bool,
     /// This frame draws virtual meshes through clusters (set before the draw prep).
     pub on: bool,
     /// Mesh key → index in the pool (`None` = not a virtual mesh).
     pool_index: HashMap<String, Option<u32>>,
-    cache: HashMap<String, Built>,
     generation: u64,
-    vertices: Vec<f32>,
-    indices: Vec<u32>,
+    /// [`crate::models::virtual_build::ready_generation`] the pool was laid out at.
+    ready: u64,
+    vertices: Vec<u32>,
     clusters: Vec<GpuCluster>,
     meshes: Vec<GpuMeshInfo>,
     /// Per cluster: its vertices' source ids, and its triangles as indices into that list.
     cluster_vertices: Vec<u32>,
-    local_indices: Vec<u32>,
+    local_indices: Vec<u16>,
     source_triangles: u64,
     pool_dirty: bool,
     gpu: Option<Gpu>,
@@ -162,8 +173,7 @@ struct Gpu {
     /// Draw each cluster as an indexed sub-draw with the GPU's count
     /// (`MULTI_DRAW_INDIRECT_COUNT`); else 384 pulled vertices per cluster.
     indexed: bool,
-    /// Vertices, indices, clusters, meshes, cluster vertices, local indices (an index buffer).
-    pool: Option<[wgpu::Buffer; 6]>,
+    pool: Option<Pool>,
     instances: wgpu::Buffer,
     /// Per instance: visible last frame, drawn by the first phase.
     instance_state: wgpu::Buffer,
@@ -177,8 +187,66 @@ struct Gpu {
     /// Per visible-list entry: that cluster's indexed draw arguments.
     cluster_args: wgpu::Buffer,
     uniforms: Vec<wgpu::Buffer>,
+    /// Visible entries per view and per batch (vgeo_vis.wgsl `VgInfo`).
+    info: wgpu::Buffer,
+    /// The visibility buffer's pipelines and targets (None: this device draws clusters lit).
+    vis: Option<vis::Vis>,
     instance_capacity: usize,
     batch_capacity: usize,
+}
+
+/// Sections of the pool buffer (index into [`Pool::sections`]).
+const VERTICES: usize = 0;
+/// 16-bit local indices: the index buffer of the indexed path, read as storage elsewhere.
+const LOCAL: usize = 1;
+const CLUSTERS: usize = 2;
+const MESHES: usize = 3;
+const CLUSTER_VERTICES: usize = 4;
+
+/// The whole pool in one buffer (the visibility resolve reads it through a single binding:
+/// the lit fragment stage already uses 7 of the 8 storage buffers WebGPU guarantees).
+pub(super) struct Pool {
+    buffer: wgpu::Buffer,
+    /// (byte offset, byte size) of the vertices, local indices, clusters, meshes and cluster
+    /// vertices, each aligned for a storage binding.
+    sections: [(u64, u64); 5],
+}
+
+impl Pool {
+    fn new(device: &wgpu::Device, parts: [&[u8]; 5]) -> Self {
+        let align = device.limits().min_storage_buffer_offset_alignment.max(16) as u64;
+        let mut bytes = Vec::new();
+        let mut sections = [(0u64, 0u64); 5];
+        for (i, part) in parts.iter().enumerate() {
+            let at = (bytes.len() as u64).next_multiple_of(align);
+            bytes.resize(at as usize, 0);
+            bytes.extend_from_slice(part);
+            // Never an empty binding; whole words.
+            let size = (part.len() as u64).max(16).next_multiple_of(4);
+            bytes.resize((at + size) as usize, 0);
+            sections[i] = (at, size);
+        }
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("misty vgeo pool"),
+            contents: &bytes,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::INDEX,
+        });
+        Self { buffer, sections }
+    }
+
+    fn binding(&self, section: usize) -> wgpu::BindingResource<'_> {
+        let (offset, size) = self.sections[section];
+        wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+            buffer: &self.buffer,
+            offset,
+            size: wgpu::BufferSize::new(size),
+        })
+    }
+
+    /// Word offsets of the sections (the visibility resolve's view of the whole buffer).
+    fn word_offsets(&self) -> [u32; 5] {
+        self.sections.map(|(at, _)| (at / 4) as u32)
+    }
 }
 
 struct FrameState {
@@ -190,6 +258,8 @@ struct FrameState {
     instances: u32,
     cull_groups: Vec<wgpu::BindGroup>,
     render_group: wgpu::BindGroup,
+    /// This frame draws the main pass's clusters through the visibility buffer.
+    vis: Option<vis::VisFrame>,
 }
 
 /// Everything [`VirtualGeometry::begin_frame`] needs from the renderer.
@@ -222,6 +292,18 @@ fn storage(
     })
 }
 
+/// The eye of a view-projection matrix: the point clip space maps to (0, 0, z, 0), as
+/// (x, y, z, 1); for an orthographic matrix the direction depth grows along, as (x, y, z, 0).
+fn view_eye(view_proj: &Mat4) -> [f32; 4] {
+    let e = view_proj.inverse() * glam::Vec4::new(0.0, 0.0, 1.0, 0.0);
+    let xyz = e.truncate();
+    if e.w.abs() > 1e-6 * xyz.length() {
+        (xyz / e.w).extend(1.0).to_array()
+    } else {
+        xyz.normalize_or_zero().extend(0.0).to_array()
+    }
+}
+
 /// Word offsets in `control` of the limits and draw arguments for `batches` batches per view.
 fn control_layout(batches: usize) -> (u32, u32) {
     let limits = CONTROL_HEADER;
@@ -239,21 +321,45 @@ fn control_buffer(device: &wgpu::Device, batches: usize) -> wgpu::Buffer {
     )
 }
 
-/// Content fingerprint of a mesh (sizes and a sample of positions and indices).
-fn fingerprint(m: &super::mesh::MeshData) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    m.vertices.len().hash(&mut h);
-    m.indices.len().hash(&mut h);
-    let step = (m.vertices.len() / 64).max(1);
-    for v in m.vertices.iter().step_by(step) {
-        v.position.map(f32::to_bits).hash(&mut h);
+/// Two components in [-1, 1] as 16-bit signed normalized values (WGSL `unpack2x16snorm`).
+fn pack_snorm(x: f32, y: f32) -> u32 {
+    let q = |v: f32| ((v.clamp(-1.0, 1.0) * 32767.0).round() as i16) as u16 as u32;
+    q(x) | (q(y) << 16)
+}
+
+/// A direction in octahedral encoding, 2 × 16 bits (decoded by `vg_octahedral` in
+/// vgeo_fetch.wgsl).
+fn octahedral(n: Vec3) -> u32 {
+    let sum = n.x.abs() + n.y.abs() + n.z.abs();
+    if sum < 1e-20 {
+        return pack_snorm(0.0, 0.0);
     }
-    let step = (m.indices.len() / 64).max(1);
-    for i in m.indices.iter().step_by(step) {
-        i.hash(&mut h);
-    }
-    h.finish()
+    let n = n / sum;
+    let sign = |v: f32| if v >= 0.0 { 1.0 } else { -1.0 };
+    let (x, y) = match n.z < 0.0 {
+        true => ((1.0 - n.y.abs()) * sign(n.x), (1.0 - n.x.abs()) * sign(n.y)),
+        false => (n.x, n.y),
+    };
+    pack_snorm(x, y)
+}
+
+/// A pool vertex ([`VERTEX_WORDS`]; decoded by `vg_vertex` in vgeo_fetch.wgsl).
+fn pack_vertex(v: &super::mesh::Vertex) -> [u32; VERTEX_WORDS] {
+    let p = v.position.map(f32::to_bits);
+    let t = Vec3::from_slice(&v.tangent[..3]);
+    // The bitangent sign replaces the lowest bit of the tangent's x.
+    let tangent = (octahedral(t) & !1) | (v.tangent[3] < 0.0) as u32;
+    let unorm = |f: f32| (f.clamp(0.0, 1.0) * 65535.0).round() as u32;
+    [
+        p[0],
+        p[1],
+        p[2],
+        octahedral(Vec3::from(v.normal)),
+        tangent,
+        v.uv[0].to_bits(),
+        v.uv[1].to_bits(),
+        unorm(v.uv2[0]) | (unorm(v.uv2[1]) << 16),
+    ]
 }
 
 impl Default for VirtualGeometry {
@@ -262,12 +368,13 @@ impl Default for VirtualGeometry {
             enabled: false,
             threshold: 1.0,
             debug: false,
+            visibility: true,
+            edge_layer: false,
             on: false,
             pool_index: HashMap::new(),
-            cache: HashMap::new(),
             generation: u64::MAX,
+            ready: 0,
             vertices: Vec::new(),
-            indices: Vec::new(),
             clusters: Vec::new(),
             meshes: Vec::new(),
             cluster_vertices: Vec::new(),
@@ -300,13 +407,18 @@ impl VirtualGeometry {
             self.generation = generation;
             self.pool_index.clear();
             self.vertices.clear();
-            self.indices.clear();
             self.clusters.clear();
             self.meshes.clear();
             self.cluster_vertices.clear();
             self.local_indices.clear();
             self.source_triangles = 0;
             self.pool_dirty = true;
+        }
+        // Builds finished on a worker: look again at the meshes drawn the ordinary way.
+        let ready = crate::models::virtual_build::ready_generation();
+        if ready != self.ready {
+            self.ready = ready;
+            self.pool_index.retain(|_, v| v.is_some());
         }
         for d in frame.meshes {
             let MeshRef::Asset(key) = &d.mesh else {
@@ -315,103 +427,44 @@ impl VirtualGeometry {
             if self.pool_index.contains_key(key) {
                 continue;
             }
-            let index = crate::models::is_virtual(&d.mesh)
-                .then(|| crate::models::mesh(&d.mesh))
-                .flatten()
-                .filter(|m| !m.indices.is_empty())
-                .map(|m| {
-                    let print = fingerprint(&m);
-                    let built = match self.cache.get(key) {
-                        Some(b) if b.fingerprint == print => b.mesh.clone(),
-                        _ => {
-                            let positions: Vec<Vec3> =
-                                m.vertices.iter().map(|v| v.position.into()).collect();
-                            let mesh = Arc::new(VirtualMesh::build(&positions, &m.indices));
-                            self.cache.insert(
-                                key.clone(),
-                                Built {
-                                    fingerprint: print,
-                                    mesh: mesh.clone(),
-                                },
-                            );
-                            mesh
-                        }
-                    };
-                    self.add_to_pool(&m.vertices, &built)
-                });
+            // Built at import (or still building: then the ordinary mesh path draws it).
+            let index = crate::models::virtual_mesh(&d.mesh).and_then(|built| {
+                let m = crate::models::mesh(&d.mesh)?;
+                Some(self.add_to_pool(&m.vertices, &built))
+            });
             self.pool_index.insert(key.clone(), index);
         }
         if self.pool_dirty
             && let Some(gpu) = self.gpu.as_mut()
         {
-            let init = |label, contents: &[u8], usage| {
-                let padded;
-                let contents = if contents.len() < 16 {
-                    padded = [0u8; 16];
-                    &padded[..]
-                } else {
-                    contents
-                };
-                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(label),
-                    contents,
-                    usage,
-                })
-            };
-            let storage = wgpu::BufferUsages::STORAGE;
-            let cast = |v: &[u32]| bytemuck::cast_slice::<u32, u8>(v).to_vec();
-            gpu.pool = Some([
-                init(
-                    "misty vgeo vertices",
+            gpu.pool = Some(Pool::new(
+                device,
+                [
                     bytemuck::cast_slice(&self.vertices),
-                    storage,
-                ),
-                init("misty vgeo indices", &cast(&self.indices), storage),
-                init(
-                    "misty vgeo clusters",
+                    bytemuck::cast_slice(&self.local_indices),
                     bytemuck::cast_slice(&self.clusters),
-                    storage,
-                ),
-                init(
-                    "misty vgeo meshes",
                     bytemuck::cast_slice(&self.meshes),
-                    storage,
-                ),
-                init(
-                    "misty vgeo cluster vertices",
-                    &cast(&self.cluster_vertices),
-                    storage,
-                ),
-                init(
-                    "misty vgeo local indices",
-                    &cast(&self.local_indices),
-                    wgpu::BufferUsages::INDEX,
-                ),
-            ]);
+                    bytemuck::cast_slice(&self.cluster_vertices),
+                ],
+            ));
             self.pool_dirty = false;
         }
     }
 
     fn add_to_pool(&mut self, vertices: &[super::mesh::Vertex], m: &VirtualMesh) -> u32 {
-        let base = (self.vertices.len() / VERTEX_FLOATS) as u32;
+        let base = (self.vertices.len() / VERTEX_WORDS) as u32;
         for v in vertices {
-            self.vertices.extend_from_slice(&v.position);
-            self.vertices.extend_from_slice(&v.normal);
-            self.vertices.extend_from_slice(&v.uv);
-            self.vertices.extend_from_slice(&v.tangent);
-            self.vertices.extend_from_slice(&v.uv2);
+            self.vertices.extend_from_slice(&pack_vertex(v));
         }
-        let first_index = self.indices.len() as u32;
-        self.indices.extend(m.indices.iter().map(|i| i + base));
         let first = self.clusters.len() as u32;
         let sphere = |s: crate::vgeo::Sphere| [s.center.x, s.center.y, s.center.z, s.radius];
         for (i, c) in m.clusters.iter().enumerate() {
             // The cluster's own vertex list (first use order) and local indices into it.
             let vertex_first = self.cluster_vertices.len() as u32;
             let local_first = self.local_indices.len() as u32;
-            let mut local: HashMap<u32, u32> = HashMap::new();
+            let mut local: HashMap<u32, u16> = HashMap::new();
             for &v in m.triangles(i) {
-                let next = local.len() as u32;
+                let next = local.len() as u16;
                 let l = *local.entry(v).or_insert_with(|| {
                     self.cluster_vertices.push(v + base);
                     next
@@ -424,11 +477,12 @@ impl VirtualGeometry {
                 parent: sphere(c.parent),
                 error: c.error,
                 parent_error: c.parent_error,
-                first: first_index + c.first,
                 triangles: c.triangles,
                 vertex_first,
                 local_first,
-                pad: [0; 2],
+                cone_axis: octahedral(c.cone_axis),
+                cone_cutoff: c.cone_cutoff,
+                pad: 0,
             });
         }
         self.meshes.push(GpuMeshInfo {
@@ -440,6 +494,15 @@ impl VirtualGeometry {
         self.source_triangles += m.source_triangles as u64;
         self.pool_dirty = true;
         self.meshes.len() as u32 - 1
+    }
+
+    /// GPU bytes of the pool.
+    fn pool_bytes(&self) -> u64 {
+        (self.vertices.len() * 4
+            + self.local_indices.len().next_multiple_of(2) * 2
+            + self.cluster_vertices.len() * 4
+            + self.clusters.len() * std::mem::size_of::<GpuCluster>()
+            + self.meshes.len() * std::mem::size_of::<GpuMeshInfo>()) as u64
     }
 
     /// Make the pipelines and fixed buffers on first use.
@@ -523,6 +586,11 @@ impl VirtualGeometry {
         // Each batch gets an equal share of a view's visible list (the indexed draw needs its
         // region's offset on the CPU).
         let per_batch = VISIBLE_PER_VIEW / b as u32;
+        queue.write_buffer(
+            &gpu.info,
+            0,
+            bytemuck::cast_slice(&[VISIBLE_PER_VIEW, per_batch, 0, 0]),
+        );
 
         // Level of detail for the main camera, in every view.
         let camera = frame.camera;
@@ -558,6 +626,7 @@ impl VirtualGeometry {
                 MAX_VIEWS as u32 * VISIBLE_PER_VIEW + view as u32 * CHUNKS_PER_VIEW,
             ],
             caps: [CHUNKS_PER_VIEW, 0, limits, args],
+            eye: view_eye(matrix),
         };
         let mut uniforms = vec![
             uniform(0, &input.view_proj, 0, 0),
@@ -595,8 +664,14 @@ impl VirtualGeometry {
                         entry(0, &gpu.uniforms[v]),
                         entry(1, input.draws),
                         entry(2, &gpu.instances),
-                        entry(3, &pool[3]),
-                        entry(4, &pool[2]),
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: pool.binding(MESHES),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: pool.binding(CLUSTERS),
+                        },
                         entry(5, &gpu.instance_state),
                         entry(6, &gpu.lists),
                         entry(7, &gpu.control),
@@ -615,13 +690,33 @@ impl VirtualGeometry {
             label: Some("misty vgeo render group"),
             layout: &gpu.render_layout,
             entries: &[
-                entry(0, &pool[0]),
-                entry(1, &pool[1]),
-                entry(2, &pool[2]),
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: pool.binding(VERTICES),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: pool.binding(LOCAL),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: pool.binding(CLUSTERS),
+                },
                 entry(3, &gpu.lists),
-                entry(4, &pool[4]),
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: pool.binding(CLUSTER_VERTICES),
+                },
+                entry(5, &gpu.info),
             ],
         });
+        let vis = match self.visibility && !self.debug && b <= vis::MAX_BATCHES {
+            true => gpu
+                .vis
+                .as_mut()
+                .map(|v| v.begin_frame(device, queue, pool, input.size, self.edge_layer)),
+            false => None,
+        };
         self.frame = Some(FrameState {
             views,
             shadow_slots: (0..views - 2).collect(),
@@ -629,6 +724,7 @@ impl VirtualGeometry {
             instances: n as u32,
             cull_groups,
             render_group,
+            vis,
         });
     }
 
@@ -701,7 +797,8 @@ impl VirtualGeometry {
         if gpu.indexed
             && let Some(pool) = gpu.pool.as_ref()
         {
-            pass.set_index_buffer(pool[5].slice(..), wgpu::IndexFormat::Uint32);
+            let (at, size) = pool.sections[LOCAL];
+            pass.set_index_buffer(pool.buffer.slice(at..at + size), wgpu::IndexFormat::Uint16);
         }
         for (i, &draw) in f.batches.iter().enumerate() {
             let Some(group) = group2(draw) else {
@@ -740,6 +837,50 @@ impl VirtualGeometry {
         self.draw_view(pass, phase, material);
     }
 
+    /// Does the main pass draw this frame's clusters through the visibility buffer
+    /// ([`Self::raster_visibility`] between two parts of the pass, then [`Self::resolve`])?
+    pub fn visibility_active(&self) -> bool {
+        self.frame.as_ref().is_some_and(|f| f.vis.is_some())
+    }
+
+    /// The visibility raster of phase `phase`'s clusters into the main pass's MSAA `depth`
+    /// (its own render pass; groups: the main view, the draws).
+    pub fn raster_visibility(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        depth: &wgpu::TextureView,
+        phase: usize,
+        groups: [&wgpu::BindGroup; 3],
+    ) {
+        let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
+            return;
+        };
+        let (Some(vis), Some(vf)) = (gpu.vis.as_ref(), f.vis.as_ref()) else {
+            return;
+        };
+        let mut pass = vis.begin_raster(encoder, vf, depth);
+        for (i, g) in groups.iter().enumerate() {
+            pass.set_bind_group(i as u32, *g, &[]);
+        }
+        let empty = groups[2];
+        self.draw_view(&mut pass, phase, &|_| Some(empty));
+    }
+
+    /// The material resolve of the last visibility raster, in the main pass (groups 0 and 1
+    /// bound).
+    pub fn resolve<'a>(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+    ) {
+        let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
+            return;
+        };
+        if let (Some(vis), Some(vf)) = (gpu.vis.as_ref(), f.vis.as_ref()) {
+            vis.resolve(pass, vf, &f.batches, material);
+        }
+    }
+
     /// Shadow map `slot` (groups 0 and 1 already bound by the shadow pass).
     pub fn draw_shadow(&self, pass: &mut wgpu::RenderPass, slot: usize, empty: &wgpu::BindGroup) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
@@ -769,12 +910,14 @@ impl VirtualGeometry {
         let mut stats = VgeoStats {
             meshes: self.meshes.len() as u32,
             source_triangles: self.source_triangles,
+            pool_bytes: self.pool_bytes(),
             ..Default::default()
         };
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return stats;
         };
         stats.instances = f.instances;
+        stats.visibility = f.vis.is_some();
         let size = (MAX_VIEWS * 16) as u64;
         let read = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty vgeo stats readback"),
@@ -849,7 +992,19 @@ impl Gpu {
             label: Some("misty vgeo cull"),
             entries: &cull_entries,
         });
-        let render_entries: Vec<_> = (0..5).map(|b| storage_entry(b, true, S::VERTEX)).collect();
+        let mut render_entries: Vec<_> =
+            (0..5).map(|b| storage_entry(b, true, S::VERTEX)).collect();
+        // Visible entries per view and per batch (the visibility raster's batch ids).
+        render_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: 5,
+            visibility: S::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
         let render_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("misty vgeo render"),
             entries: &render_entries,
@@ -986,6 +1141,7 @@ impl Gpu {
             })
             .collect();
         let views = MAX_VIEWS as u64;
+        let vis = vis::Vis::new(device, p, &render_layout, indexed);
         Self {
             cs_instances: compute("cs_instances"),
             cs_prepare: compute("cs_prepare"),
@@ -1021,6 +1177,13 @@ impl Gpu {
                 wgpu::BufferUsages::INDIRECT,
             ),
             uniforms,
+            info: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("misty vgeo info"),
+                size: 16,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            vis,
             instance_capacity: 0,
             batch_capacity: 0,
         }
@@ -1084,6 +1247,12 @@ impl super::Renderer {
         );
     }
 
+    /// Draw virtual geometry's main-pass clusters through the visibility buffer (the default,
+    /// where the device can) or lit directly (A/B measurements).
+    pub fn set_virtual_geometry_visibility(&mut self, on: bool) {
+        self.vgeo.visibility = on;
+    }
+
     /// Draw every cluster in its own colour (Misty Virtual Geometry debug view).
     pub fn set_virtual_geometry_debug(&mut self, on: bool) {
         self.vgeo.debug = on;
@@ -1098,6 +1267,7 @@ impl super::Renderer {
 
 #[cfg(test)]
 mod gpu_tests;
+mod vis;
 
 #[cfg(test)]
 mod tests {
@@ -1136,6 +1306,29 @@ mod tests {
                     super::PREPASS_ENTRY_SRC
                 ),
             ),
+            (
+                "vgeo visibility",
+                format!(
+                    "enable primitive_index;
+{common}
+{}
+{}
+{}",
+                    super::super::screen_space::PREPASS_SRC,
+                    super::FETCH_SRC,
+                    include_str!("vgeo_vis.wgsl")
+                ),
+            ),
+            (
+                "vgeo resolve",
+                format!(
+                    "{common}
+{}
+{}",
+                    super::MESH_SRC,
+                    include_str!("vgeo_resolve.wgsl")
+                ),
+            ),
         ] {
             let module = naga::front::wgsl::parse_str(&src)
                 .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(&src)));
@@ -1158,7 +1351,7 @@ mod tests {
         assert!((super::MAX_VIEWS as u64 * super::VISIBLE_PER_VIEW as u64) * 384 < i32::MAX as u64);
         assert_eq!(std::mem::size_of::<super::GpuMeshInfo>(), 32);
         assert_eq!(std::mem::size_of::<super::GpuInstance>(), 16);
-        // mat4 + 6 planes + 5 vec4s.
-        assert_eq!(std::mem::size_of::<super::ViewUniform>(), 64 + 96 + 80);
+        // mat4 + 6 planes + 6 vec4s.
+        assert_eq!(std::mem::size_of::<super::ViewUniform>(), 64 + 96 + 96);
     }
 }

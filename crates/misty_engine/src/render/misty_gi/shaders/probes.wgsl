@@ -3,6 +3,11 @@
 // rotation; a hit reads the radiance cache, a miss the sky. The rays are projected onto SH L1
 // and blended into the probe's history (hysteresis); a probe whose world cell changed (the grid
 // scrolled) or that is new starts afresh. Probes inside geometry are marked off (state −1).
+//
+// Interval merge (the radiance-cascades idea on the probe levels): a probe's rays trace only
+// half its level's width; beyond that they take the coarser levels' radiance in the same
+// direction at the interval's end. Long rays are traced once by sparse coarse probes and shared
+// by every finer probe, instead of marching through every level from each one.
 
 const MAX_RAYS: u32 = 32u;
 
@@ -17,6 +22,66 @@ fn fibonacci_dir(i: u32, n: u32) -> vec3<f32> {
     return vec3<f32>(r * cos(phi), r * sin(phi), z);
 }
 
+// Radiance along `dir` at `q` from the probes of the first level from `start` up whose grid
+// holds `q` (trilinear SH L1, evaluated in the direction). w = 0 when no level holds `q`.
+fn far_field(start: i32, q: vec3<f32>, dir: vec3<f32>) -> vec4<f32> {
+    let n = f32(probes_per_side());
+    for (var k = start; k < level_count(); k++) {
+        let spacing = p.levels[k].probe.w;
+        let qq = q / spacing - 0.5;
+        let rel = qq - p.levels[k].probe.xyz;
+        if (any(rel < vec3<f32>(0.0)) || any(rel > vec3<f32>(n - 1.001))) {
+            continue;
+        }
+        let base = vec3<i32>(floor(qq));
+        let f = qq - floor(qq);
+        var sum = vec3<f32>(0.0);
+        var wsum = 0.0;
+        for (var c = 0; c < 8; c++) {
+            let o = vec3<i32>(c & 1, (c >> 1u) & 1, (c >> 2u) & 1);
+            let g = base + o;
+            let i = probe_index(k, g);
+            let st = probes[i * 4 + 3];
+            if (st.w <= 0.0 || any(vec3<i32>(st.xyz) != g)) {
+                continue;
+            }
+            let fo = vec3<f32>(o);
+            let tri = (fo.x * f.x + (1.0 - fo.x) * (1.0 - f.x)) * (fo.y * f.y + (1.0 - fo.y) * (1.0 - f.y)) * (fo.z * f.z + (1.0 - fo.z) * (1.0 - f.z));
+            let r = probes[i * 4];
+            let gg = probes[i * 4 + 1];
+            let b = probes[i * 4 + 2];
+            let l = vec3<f32>(r.x * SH_Y0 + SH_Y1 * dot(r.yzw, dir), gg.x * SH_Y0 + SH_Y1 * dot(gg.yzw, dir), b.x * SH_Y0 + SH_Y1 * dot(b.yzw, dir));
+            sum += max(l, vec3<f32>(0.0)) * (tri + 1e-3);
+            wsum += tri + 1e-3;
+        }
+        if (wsum > 1e-3) {
+            return vec4<f32>(sum / wsum, 1.0);
+        }
+        return vec4<f32>(0.0);
+    }
+    return vec4<f32>(0.0);
+}
+
+// Radiance a ray of a level-k probe brings back (see the interval merge above).
+fn probe_ray(pp: vec3<f32>, dir: vec3<f32>, k: i32, t_min: f32) -> vec3<f32> {
+    let last = level_count() - 1;
+    var reach = 1e4;
+    if (k < last) {
+        reach = 0.5 * dim() * voxel(k);
+    }
+    let h = trace(pp, dir, reach, 64, 0.5, t_min);
+    if (h.hit) {
+        return cache_radiance(h.level, h.pos, dir);
+    }
+    if (k < last && h.t >= reach) {
+        let far = far_field(k + 1, pp + dir * reach, dir);
+        if (far.w > 0.0) {
+            return far.rgb;
+        }
+    }
+    return sky_radiance(dir);
+}
+
 @compute @workgroup_size(32)
 fn cs_probes(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) lid: u32) {
     let n = probes_per_side();
@@ -25,6 +90,11 @@ fn cs_probes(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_in
     let slot = i32(wid.x * stride + u32(p.info2.z));
     let k = slot / per_level;
     if (k >= level_count()) {
+        return;
+    }
+    // The two finest levels (what the camera is close to) follow changes fastest; coarser
+    // levels update at half that rate.
+    if (k >= 2 && ((u32(p.info.w) / stride) & 1u) == 1u) {
         return;
     }
     let s = slot - k * per_level;
@@ -44,13 +114,7 @@ fn cs_probes(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_in
     if (lid < rays && !inside) {
         let base = fibonacci_dir(lid, rays);
         let dir = normalize(vec3<f32>(dot(p.rot0.xyz, base), dot(p.rot1.xyz, base), dot(p.rot2.xyz, base)));
-        let h = trace(pp, dir, 1e4, 64, 0.5, voxel(max(level_of(pp, 0), 0)));
-        var radiance: vec3<f32>;
-        if (h.hit) {
-            radiance = cache_radiance(h.level, h.pos, dir);
-        } else {
-            radiance = sky_radiance(dir);
-        }
+        let radiance = probe_ray(pp, dir, k, voxel(max(level_of(pp, 0), 0)));
         let y = vec4<f32>(SH_Y0, SH_Y1 * dir);
         c_r = radiance.r * y;
         c_g = radiance.g * y;

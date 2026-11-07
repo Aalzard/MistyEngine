@@ -18,7 +18,8 @@ struct GrassParams {
     // x = full-density distance, y = tip dryness, z = most widening, w = colour variation.
     look: vec4<f32>,
     // x = the terrain's draw slot (reflection probes), y = 1 with the ground cover (the lit
-    // pass leaves the flat fans out too: the terrain paints the undergrowth).
+    // pass leaves the flat fans out too: the terrain paints the undergrowth), z = the
+    // terrain's number in the grass visibility ids (grass_vis.wgsl).
     draw: vec4<u32>,
     // rgb = linear lush colour, w = patch size (m).
     lush: vec4<f32>,
@@ -63,14 +64,16 @@ struct BladeIn {
     @location(4) slope: vec2<f32>,
 };
 
-// The drawn chunk's blades (72 bytes each, as terrain/details.rs `Blade`) and the list of
-// the ones this draw shows (grass_cull.wgsl; instance i draws blade `grass_drawn[i]`).
+// The drawn chunk's blades (72 bytes each, as terrain/details.rs `Blade`): its page of the
+// terrain's blades (grass_pool.rs) or its own run of them, and the list of the ones this draw
+// shows (grass_cull.wgsl; instance i draws blade `grass_drawn[i]` of the page, whose top
+// four bits name the page for the visibility buffer).
 @group(3) @binding(0) var<storage, read> grass_blades: array<vec2<f32>>;
 @group(3) @binding(1) var<storage, read> grass_drawn: array<u32>;
 
 // The blade of draw instance `instance`.
 fn grass_fetch(instance: u32) -> BladeIn {
-    let at = grass_drawn[instance] * 9u;
+    let at = (grass_drawn[instance] & 0x0fffffffu) * 9u;
     var b: BladeIn;
     b.position = vec4<f32>(grass_blades[at], grass_blades[at + 1u]);
     b.shape = vec4<f32>(grass_blades[at + 2u], grass_blades[at + 3u]);
@@ -215,10 +218,28 @@ fn grass_blade(vi: u32, b: BladeIn) -> BladeVertex {
 
 // The blade as it stood at `time` (last frame's position for the motion vectors).
 fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
-    let coarse = vi >= 100u;
-    let k = select(vi, vi - 100u, coarse);
-    let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
-    let side = select(-0.5, 0.5, (k & 1u) == 1u);
+    return grass_blade_point(grass_blade_frame(b, time), b, vi);
+}
+
+// What a blade's card vertices share at one time: everything but the point along the card
+// (the visibility resolve evaluates three vertices of a card from one frame).
+struct BladeFrame {
+    root: vec3<f32>,
+    dist: f32,
+    fade: f32,
+    height: f32,
+    width: f32,
+    thin: f32,
+    repeat: f32,
+    cell: u32,
+    seed_head: bool,
+    gust: f32,
+    theta: f32,
+    bend3: vec3<f32>,
+    facing_angle: f32,
+};
+
+fn grass_blade_frame(b: BladeIn, time: f32) -> BladeFrame {
     let seed_head = b.extra.x >= 2.0;
     let phase = b.shape.w;
     var cell = u32(phase * 4.0) & 3u;
@@ -283,6 +304,37 @@ fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
     if (amount > 1e-5) {
         bend = sway / amount;
     }
+    // Blades turn their face into the lean; seed stems face anywhere.
+    var facing_angle = b.extra.z + 1.5708 + (b.shape.x - 3.14159) * 0.25;
+    if (seed_head) {
+        facing_angle = b.shape.x;
+    }
+
+    var f: BladeFrame;
+    f.root = root;
+    f.dist = dist;
+    f.fade = fade;
+    f.height = height;
+    f.width = width;
+    f.thin = thin;
+    f.repeat = repeat;
+    f.cell = cell;
+    f.seed_head = seed_head;
+    f.gust = gust;
+    f.theta = theta;
+    f.bend3 = vec3<f32>(bend.x, 0.0, bend.y);
+    f.facing_angle = facing_angle;
+    return f;
+}
+
+// Vertex `vi` of the card of a blade's frame.
+fn grass_blade_point(f: BladeFrame, b: BladeIn, vi: u32) -> BladeVertex {
+    let coarse = vi >= 100u;
+    let k = select(vi, vi - 100u, coarse);
+    let t = f32(k / 2u) / select(GRASS_SEGMENTS, 3.0, coarse);
+    let side = select(-0.5, 0.5, (k & 1u) == 1u);
+    let phase = b.shape.w;
+    let theta = f.theta;
     let a = theta * t;
     var along = 0.5 * theta * t * t;
     var up = t;
@@ -290,36 +342,31 @@ fn grass_blade_at(vi: u32, b: BladeIn, time: f32) -> BladeVertex {
         along = (1.0 - cos(a)) / theta;
         up = sin(a) / theta;
     }
-    let bend3 = vec3<f32>(bend.x, 0.0, bend.y);
-    let centre = root + (bend3 * along + vec3<f32>(0.0, up, 0.0)) * height;
+    let bend3 = f.bend3;
+    let centre = f.root + (bend3 * along + vec3<f32>(0.0, up, 0.0)) * f.height;
     let tangent = normalize(bend3 * sin(a) + vec3<f32>(0.0, cos(a), 0.0));
-    // Blades turn their face into the lean; seed stems face anywhere.
-    var facing_angle = b.extra.z + 1.5708 + (b.shape.x - 3.14159) * 0.25;
-    if (seed_head) {
-        facing_angle = b.shape.x;
-    }
-    var across = vec3<f32>(cos(facing_angle), 0.0, sin(facing_angle));
+    var across = vec3<f32>(cos(f.facing_angle), 0.0, sin(f.facing_angle));
     across = normalize(across - tangent * dot(across, tangent) + vec3<f32>(1e-4, 0.0, 0.0));
     // A slight twist along the blade (each its own way), so no card is a flat strap.
-    if (!seed_head) {
+    if (!f.seed_head) {
         let twist = (fract(phase * 5.3) - 0.5) * 0.9 * t;
         across = across * cos(twist) + cross(tangent, across) * sin(twist);
     }
 
     var v: BladeVertex;
-    v.p = centre + across * side * width;
+    v.p = centre + across * side * f.width;
     v.across = across;
     v.tangent = tangent;
-    v.root = root;
+    v.root = f.root;
     v.t = t;
     v.side = side;
-    v.above = up * height;
-    v.gust = gust;
-    v.dist = dist;
-    v.fade = fade;
-    v.cell = cell;
-    v.seed_head = seed_head;
-    v.thin = thin;
-    v.repeat = repeat;
+    v.above = up * f.height;
+    v.gust = f.gust;
+    v.dist = f.dist;
+    v.fade = f.fade;
+    v.cell = f.cell;
+    v.seed_head = f.seed_head;
+    v.thin = f.thin;
+    v.repeat = f.repeat;
     return v;
 }

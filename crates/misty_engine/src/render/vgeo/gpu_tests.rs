@@ -192,11 +192,43 @@ fn virtual_rock_matches_the_mesh_path() {
         fine_stats.triangles > 0 && fine_stats.shadow_triangles > 0,
         "{fine_stats:?}"
     );
+    // Where the device can, the main pass resolves the clusters from the visibility buffer.
+    let f = device.features();
+    let can_vis = f.contains(wgpu::Features::PRIMITIVE_INDEX)
+        && f.contains(wgpu::Features::MULTI_DRAW_INDIRECT_COUNT);
+    assert_eq!(fine_stats.visibility, can_vis, "{fine_stats:?}");
     let (mean, off) = difference(&reference, &fine);
     assert!(
         mean < 1.5 && off < 0.004,
         "fine: mean {mean}, {:.3} % off",
         off * 100.0
+    );
+    // With the resolve's edge layer.
+    v.vgeo.edge_layer = true;
+    let edges = render(&device, &queue, &mut v, &target_v, &cam, &scene(&virt), 4);
+    v.vgeo.edge_layer = false;
+    let (edge_mean, edge_off) = difference(&reference, &edges);
+    assert!(
+        edge_mean < 1.5 && edge_off < 0.004,
+        "edge layer: mean {edge_mean}, {:.3} % off",
+        edge_off * 100.0
+    );
+    // The same clusters drawn lit directly (no visibility buffer).
+    v.set_virtual_geometry_visibility(false);
+    let lit = render(&device, &queue, &mut v, &target_v, &cam, &scene(&virt), 4);
+    assert!(!v.virtual_geometry_stats(&device, &queue).visibility);
+    v.set_virtual_geometry_visibility(true);
+    let (lit_mean, lit_off) = difference(&reference, &lit);
+    assert!(
+        lit_mean < 1.5 && lit_off < 0.004,
+        "lit: mean {lit_mean}, {:.3} % off",
+        lit_off * 100.0
+    );
+    eprintln!(
+        "against the mesh path: visibility buffer mean {mean:.3} ({:.3} % off), with the edge layer {edge_mean:.3} ({:.3} % off), lit {lit_mean:.3} ({:.3} % off)",
+        off * 100.0,
+        edge_off * 100.0,
+        lit_off * 100.0
     );
     // The mesh path without virtual geometry on draws the virtual mesh as a mesh.
     let mut o = Renderer::with_queue(&device, &queue);
@@ -510,8 +542,15 @@ fn vgeo_field() {
         .filter(|s| only.is_empty() || only == s.name())
         .collect();
 
-    // Build the clusters once (timed) before anything is measured.
-    let started = std::time::Instant::now();
+    // Lay out the pool once before anything is measured (the clusters were built when the
+    // meshes were registered, as an import does).
+    let build_ms: f32 = rocks
+        .virtual_keys
+        .iter()
+        .filter_map(|k| k.split_asset())
+        .filter_map(|(path, _)| crate::models::model(path).ok())
+        .map(|m| m.virtual_builds.summary().build_ms)
+        .sum();
     {
         let mut r = Renderer::with_queue(&device, &queue);
         r.set_quality(&device, &quality(true, 1.0));
@@ -527,10 +566,11 @@ fn vgeo_field() {
         );
         let s = r.virtual_geometry_stats(&device, &queue);
         eprintln!(
-            "cluster build: {:.1} s for {} meshes ({} source triangles)",
-            started.elapsed().as_secs_f32(),
+            "cluster build: {:.1} s for {} meshes ({} source triangles), pool {:.1} MB",
+            build_ms / 1000.0,
             s.meshes,
-            s.source_triangles
+            s.source_triangles,
+            s.pool_bytes as f64 / 1e6
         );
     }
 
@@ -578,7 +618,19 @@ fn vgeo_field() {
                 ("LOD Groups", &lod_field, Path::LodGroup, false),
                 ("LOD Groups + GPU culling", &lod_field, Path::LodGroup, true),
                 (
+                    "Virtual Geometry 1 px, lit",
+                    &virtual_field,
+                    Path::Virtual,
+                    false,
+                ),
+                (
                     "Virtual Geometry 1 px",
+                    &virtual_field,
+                    Path::Virtual,
+                    false,
+                ),
+                (
+                    "Virtual Geometry 1 px, edges",
                     &virtual_field,
                     Path::Virtual,
                     false,
@@ -606,6 +658,10 @@ fn vgeo_field() {
                     gpu_culling,
                     ..Default::default()
                 });
+                // "lit": clusters drawn lit directly, without the visibility buffer.
+                r.set_virtual_geometry_visibility(!label.ends_with("lit"));
+                // "edges": the visibility resolve's edge layer.
+                r.vgeo.edge_layer = label.ends_with("edges");
                 r.set_pass_timing(&device, &queue, true);
                 let target = r.create_target(&device, size.0, size.1);
                 let m = measure(&device, &queue, &mut r, &target, &cam, draws, path);
@@ -614,7 +670,7 @@ fn vgeo_field() {
             eprintln!("\n{qname} / {} ({}x{}):", shot.name(), size.0, size.1);
             for (label, m) in &rows {
                 eprintln!(
-                    "  {label:<26} GPU {:>7.2} ms  CPU {:>6.2} ms  {:>8.2} M triangles",
+                    "  {label:<28} GPU {:>7.2} ms  CPU {:>6.2} ms  {:>8.2} M triangles",
                     m.gpu_ms, m.cpu_ms, m.triangles
                 );
             }

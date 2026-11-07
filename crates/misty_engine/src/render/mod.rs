@@ -18,6 +18,8 @@ mod gpu_culling;
 mod gpu_timer;
 mod grass_cull;
 mod grass_near_shadow;
+mod grass_pool;
+mod grass_vis;
 mod hdri_sky;
 mod light2d;
 mod lightmap_gpu;
@@ -68,6 +70,7 @@ pub use frame_debug::{
     CaptureRequest, DrawLabel, EventKind, EventTarget, FrameCapture, FrameEvent, TargetInfo,
 };
 pub use glow::GlowSource;
+pub use grass_vis::{grass_vis_enabled, set_grass_vis};
 pub use misty_gi::MistyGiSettings;
 pub use particles::{ParticleBatch, ParticleInstance};
 pub use pipelines::pipelines_built;
@@ -137,8 +140,26 @@ pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
             | wgpu::Features::INDIRECT_FIRST_INSTANCE
             | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-            // Virtual geometry draws each cluster as an indexed sub-draw, counted on the GPU.
-            | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT)
+            // Virtual geometry draws each cluster as an indexed sub-draw, counted on the GPU,
+            // and its visibility buffer names the triangle of each sample.
+            | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT
+            | wgpu::Features::PRIMITIVE_INDEX)
+}
+
+/// `base` with the per-stage binding limits raised to what the adapter has (capped): the
+/// lit fragment stage is close to WebGPU's guaranteed 16 sampled textures and 8 storage
+/// buffers, and virtual geometry's material resolve adds its id targets and pool.
+pub fn device_limits(adapter: &wgpu::Adapter, base: wgpu::Limits) -> wgpu::Limits {
+    let has = adapter.limits();
+    wgpu::Limits {
+        max_sampled_textures_per_shader_stage: base
+            .max_sampled_textures_per_shader_stage
+            .max(has.max_sampled_textures_per_shader_stage.min(32)),
+        max_storage_buffers_per_shader_stage: base
+            .max_storage_buffers_per_shader_stage
+            .max(has.max_storage_buffers_per_shader_stage.min(16)),
+        ..base
+    }
 }
 
 /// World plane the editor grid lies on.
@@ -339,6 +360,10 @@ struct MainSplit<'a> {
     scene_copy: bool,
     /// SSGI / SSR: the opaque scene is also copied into their lit colour history.
     trace: Option<&'a screen_trace::TraceFrame>,
+    /// The lit grass goes through the visibility buffer (grass_vis.rs): the last phase ends
+    /// after the grass depth, the visibility raster and resolve run, and the rest of the
+    /// main pass starts with the grass composite.
+    vis: bool,
 }
 
 /// Everything needed to draw one view.
@@ -546,6 +571,9 @@ pub struct Renderer {
     last_view_proj: Mat4,
     /// MSAA samples of the main pass this renderer was built for (see [`sample_count`]).
     samples: u32,
+    /// Grass visibility buffer pipelines (made with the first grass; `Some(None)` = this
+    /// device refused them and the grass keeps the lit pass).
+    grass_vis: Option<Option<grass_vis::VisPipelines>>,
 }
 
 impl Renderer {
@@ -680,6 +708,7 @@ impl Renderer {
             #[cfg(test)]
             last_view_proj: Mat4::IDENTITY,
             samples: sample_count(),
+            grass_vis: None,
         }
     }
 
@@ -1224,17 +1253,28 @@ impl Renderer {
         let (mut lists, plan, probes_rebuilt, near_sun) = {
             crate::profile_scope!("Render.Culling");
             let prep = self.draw_prep(frame, lod, &motion.prev_draws);
-            let terrains = self.terrain_bounds(frame);
+            let terrains = {
+                crate::profile_scope!("Render.TerrainBounds");
+                self.terrain_bounds(frame)
+            };
             // Reflection probes: atlas uploads and each draw's probe list.
-            let rebuilt = self
-                .probes
-                .prepare(device, queue, frame, &prep.bounds, &terrains);
+            let rebuilt = {
+                crate::profile_scope!("Render.Probes");
+                self.probes
+                    .prepare(device, queue, frame, &prep.bounds, &terrains)
+            };
             // Baked lightmaps (texture array upload).
             let rebuilt =
                 (self.lightmaps).prepare(device, queue, &frame.environment.lightmaps) || rebuilt;
-            let casters = Self::caster_bounds(frame, &prep.bounds, &terrains);
-            let plan = shadows::plan_with(frame, &casters, aspect, &shadow_settings);
-            let lists = self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats);
+            let plan = {
+                crate::profile_scope!("Render.ShadowPlan");
+                let casters = Self::caster_bounds(frame, &prep.bounds, &terrains);
+                shadows::plan_with(frame, &casters, aspect, &shadow_settings)
+            };
+            let lists = {
+                crate::profile_scope!("Render.FrameLists");
+                self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats)
+            };
             let grass_layout = &self.pipelines.grass_layout;
             let camera = frame.camera.position;
             // The sun that has the cascades gets the near grass shadow map too.
@@ -1406,7 +1446,10 @@ impl Renderer {
         self.vgeo
             .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views());
         self.mark(&mut encoder, "Virtual geometry: shadow culling");
-        self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+        {
+            crate::profile_scope!("Render.Encode.Shadows");
+            self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+        }
         self.mark(&mut encoder, "Shadow maps (cascades, local)");
         if let Some(view_proj) = grass_near {
             self.grass_near_shadow_pass(&mut encoder, frame, &view_proj, &mut stats);
@@ -1462,7 +1505,8 @@ impl Renderer {
             culled: None,
             prepass,
             scene_copy,
-            trace,
+            trace: trace.filter(|t| t.needs_history),
+            vis: self.grass_vis_active(device, queue, target, frame),
         };
         // GPU culling and virtual geometry draw the main pass in two phases around the Hi-Z
         // pyramid of the first phase's depth.
@@ -1578,7 +1622,10 @@ impl Renderer {
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.resolve(&mut encoder, slot);
         }
-        queue.submit([encoder.finish()]);
+        {
+            crate::profile_scope!("Render.Submit");
+            queue.submit([encoder.finish()]);
+        }
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.submitted(slot);
         }
@@ -1590,6 +1637,8 @@ impl Renderer {
         stats.grass_pending = grass.pending;
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
+        stats.grass_upload_piece_ms = grass.upload_piece_ms;
+        stats.grass_upload_alloc_ms = grass.upload_alloc_ms;
         self.motion
             .end(target.id, std::mem::take(&mut lists.prep.motion));
         stats.cpu_ms = started.elapsed().as_secs_f32() * 1000.0;
@@ -2275,19 +2324,26 @@ impl Renderer {
         stats: &mut RenderStats,
         split: MainSplit,
     ) {
+        crate::profile_scope!("Render.Encode.Main");
         let (first, last) = (split.phase != Some(1), split.phase != Some(0));
         let copy = last && (split.scene_copy || split.trace.is_some());
         // Sun shafts and glow occlusion read the depth after the main pass.
         let keep_depth = self.volumetrics.keeps_depth() || self.glows.keeps_depth();
+        // Virtual geometry's visibility raster splits the phase's pass in two around it.
+        let vis = split.phase.is_some() && self.vgeo.visibility_active();
+        // The grass visibility buffer ends the last part after the grass depth (kept for the
+        // grass visibility raster), the rest follows below.
+        let grass_vis = last && split.vis;
+        let mut grass_vis_drawn = false;
         {
             let mut pass = self.begin_main(
                 encoder,
                 target,
                 first,
                 first && !split.prepass,
-                last,
-                !last || copy,
-                !last || copy || keep_depth,
+                last && !vis && !grass_vis,
+                !last || copy || vis || grass_vis,
+                !last || copy || keep_depth || vis || grass_vis,
             );
             if first {
                 let main = || main_target(target);
@@ -2322,8 +2378,32 @@ impl Renderer {
                     let textures = &self.textures;
                     let material =
                         |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
-                    self.vgeo.draw_main(&mut pass, phase, &material);
-                    self.mark_pass(&mut pass, "Main: virtual geometry");
+                    if vis {
+                        drop(pass);
+                        let groups = [
+                            &self.view_bind_group,
+                            &self.draws_bind_group,
+                            &self.empty_group,
+                        ];
+                        self.vgeo
+                            .raster_visibility(encoder, target.depth_view(), phase, groups);
+                        self.mark(encoder, "Virtual geometry: visibility raster");
+                        pass = self.begin_main(
+                            encoder,
+                            target,
+                            false,
+                            false,
+                            last && !grass_vis,
+                            !last || copy || grass_vis,
+                            !last || copy || keep_depth || grass_vis,
+                        );
+                        pass.set_bind_group(1, self.lit_group(), &[]);
+                        self.vgeo.resolve(&mut pass, &material);
+                        self.mark_pass(&mut pass, "Main: virtual geometry (resolve)");
+                    } else {
+                        self.vgeo.draw_main(&mut pass, phase, &material);
+                        self.mark_pass(&mut pass, "Main: virtual geometry");
+                    }
                 }
                 if !last {
                     return;
@@ -2376,26 +2456,54 @@ impl Renderer {
                     self.terrains
                         .draw_grass(&mut pass, frame.terrains, depth, stats);
                     self.mark_pass(&mut pass, "Main: grass depth");
-                    pass.set_pipeline(&self.pipelines.grass);
-                    let lit = grass_cull::LIT;
-                    self.terrains
-                        .draw_grass(&mut pass, frame.terrains, lit, stats);
-                    self.mark_pass(&mut pass, "Main: grass lit");
+                    if grass_vis {
+                        grass_vis_drawn = true;
+                    } else {
+                        pass.set_pipeline(&self.pipelines.grass);
+                        let lit = grass_cull::LIT;
+                        self.terrains
+                            .draw_grass(&mut pass, frame.terrains, lit, stats);
+                        self.mark_pass(&mut pass, "Main: grass lit");
+                    }
                 }
             }
 
-            if frame.grid.is_some() {
-                let main = || main_target(target);
-                frame_debug::pass(&self.capture, &["Gizmos"], main, EventTarget::Hdr);
+            if !grass_vis {
+                self.main_grid(&mut pass, target, frame);
+                if !copy {
+                    self.main_tail(
+                        &mut pass,
+                        target,
+                        frame,
+                        outline,
+                        lists,
+                        particle_draws,
+                        None,
+                        stats,
+                    );
+                    return;
+                }
             }
-            if frame.grid.is_some()
-                && frame_debug::record(&self.capture, |_| {
-                    frame_debug::events::post_event("Draw Grid".to_owned(), "grid.wgsl")
-                })
-            {
-                pass.set_pipeline(&self.pipelines.grid);
-                pass.draw(0..3, 0..1);
+        }
+        if grass_vis {
+            // Which blade each sample shows, each visible blade shaded once, then the rest of
+            // the main pass starting with the shaded blades written into their samples.
+            if grass_vis_drawn {
+                self.grass_vis_passes(device, encoder, target, frame, stats);
             }
+            let mut pass = self.begin_main(
+                encoder,
+                target,
+                false,
+                false,
+                true,
+                copy,
+                copy || keep_depth,
+            );
+            if grass_vis_drawn {
+                self.grass_vis_composite(&mut pass, target);
+            }
+            self.main_grid(&mut pass, target, frame);
             if !copy {
                 self.main_tail(
                     &mut pass,
@@ -2450,6 +2558,113 @@ impl Renderer {
             scene,
             stats,
         );
+    }
+
+    /// The editor grid (after the opaque scene, before transparents).
+    fn main_grid(&self, pass: &mut wgpu::RenderPass, target: &RenderTarget, frame: &Frame) {
+        if frame.grid.is_some() {
+            let main = || main_target(target);
+            frame_debug::pass(&self.capture, &["Gizmos"], main, EventTarget::Hdr);
+        }
+        if frame.grid.is_some()
+            && frame_debug::record(&self.capture, |_| {
+                frame_debug::events::post_event("Draw Grid".to_owned(), "grid.wgsl")
+            })
+        {
+            pass.set_pipeline(&self.pipelines.grid);
+            pass.draw(0..3, 0..1);
+        }
+    }
+
+    /// This render's lit grass goes through the visibility buffer: switched on, the device
+    /// has the pipelines and the target's images, and every terrain's grass can be named by
+    /// visibility ids this frame (else the lit pass draws it, as before).
+    fn grass_vis_active(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &RenderTarget,
+        frame: &Frame,
+    ) -> bool {
+        if !grass_vis::grass_vis_enabled()
+            || !frame.shaded
+            || frame.terrains.is_empty()
+            || !self.terrains.has_grass()
+            || !self.terrains.grass_vis_ready(frame.terrains)
+        {
+            return false;
+        }
+        if self.grass_vis.is_none() {
+            self.grass_vis = Some(grass_vis::VisPipelines::new(device, &self.pipelines));
+        }
+        let Some(Some(pipes)) = &self.grass_vis else {
+            return false;
+        };
+        let images = target
+            .grass_vis
+            .get(device, pipes, target.size(), target.samples());
+        if !matches!(&*images, Some(Some(_))) {
+            return false;
+        }
+        let terrains = self.terrains.grass_vis_terrains(frame.terrains);
+        grass_vis::write_frame(queue, pipes, target.size(), &terrains);
+        true
+    }
+
+    /// The grass visibility raster (after the main pass's first part, which kept its depth)
+    /// and the resolve that shades each visible blade once.
+    fn grass_vis_passes(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget,
+        frame: &Frame,
+        stats: &mut RenderStats,
+    ) {
+        let Some(Some(pipes)) = &self.grass_vis else {
+            return;
+        };
+        let images = target
+            .grass_vis
+            .get(device, pipes, target.size(), target.samples());
+        let Some(Some(t)) = &*images else {
+            return;
+        };
+        {
+            let mut pass = grass_vis::begin_raster(encoder, t, target.depth_view());
+            pass.set_bind_group(0, &self.view_bind_group, &[]);
+            pass.set_bind_group(1, self.lit_group(), &[]);
+            pass.set_pipeline(pipes.raster());
+            let lit = grass_cull::LIT;
+            self.terrains
+                .draw_grass(&mut pass, frame.terrains, lit, stats);
+        }
+        self.mark(encoder, "Grass visibility");
+        let terrains = self.terrains.grass_vis_terrains(frame.terrains);
+        grass_vis::resolve(
+            device,
+            encoder,
+            pipes,
+            t,
+            &self.view_bind_group,
+            self.lit_group(),
+            &terrains,
+        );
+        self.mark(encoder, "Grass shading");
+    }
+
+    /// Write the resolved blades into their samples (first draw of the main pass's rest).
+    fn grass_vis_composite(&self, pass: &mut wgpu::RenderPass, target: &RenderTarget) {
+        let Some(Some(pipes)) = &self.grass_vis else {
+            return;
+        };
+        let Some(group) = target.grass_vis.composite_group() else {
+            return;
+        };
+        pass.set_pipeline(pipes.composite());
+        pass.set_bind_group(1, &group, &[]);
+        pass.draw(0..3, 0..1);
+        self.mark_pass(pass, "Main: grass composite");
     }
 
     /// The main pass after opaque geometry; `scene` = scene copy id for scene-reading shaders.
@@ -3026,6 +3241,8 @@ mod gpu_checks;
 pub(crate) mod gpu_tests;
 #[cfg(test)]
 mod grass_study;
+#[cfg(test)]
+mod grass_vis_tests;
 #[cfg(test)]
 mod hitch_tests;
 #[cfg(test)]

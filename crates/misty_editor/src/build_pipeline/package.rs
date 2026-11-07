@@ -144,6 +144,29 @@ pub fn package(
             send(Msg::Progress(f, format!("Packing {rel}")));
         }
     }
+    // Virtual geometry cluster builds of the packed models (made now if the cache is missing),
+    // so players load them instead of building at runtime.
+    for rel in deps
+        .files
+        .iter()
+        .filter(|r| misty_engine::models::is_model(r))
+    {
+        match misty_engine::models::virtual_build::bake(rel) {
+            Ok(Some(path)) => {
+                let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+                let bytes = misty_engine::vfs::read(&path).map_err(|e| io(&path, e))?;
+                let key = format!(
+                    "{}/{}",
+                    misty_engine::models::virtual_build::LIBRARY_DIR,
+                    name.unwrap_or_default()
+                );
+                pak.add(&key, &bytes).map_err(|e| io(&pak_path, e))?;
+                send(Msg::Log(format!("Virtual geometry: {key}")));
+            }
+            Ok(None) => {}
+            Err(e) => send(Msg::Warning(format!("virtual geometry of {rel}: {e}"))),
+        }
+    }
     let mut settings = req.settings.clone();
     // The player reads its settings from here, so migrate old projects' window options.
     settings.player = Some(player_settings.clone());

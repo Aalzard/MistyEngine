@@ -620,7 +620,8 @@ pub(in crate::render) fn breakdown(
 ) -> Breakdown {
     let mut r = Renderer::with_queue(device, queue);
     r.set_quality(device, quality);
-    let target = r.create_target(device, w, h);
+    // A view target: at the level's Upscaling share of `w` × `h` (native when it is Off).
+    let target = r.create_view_target(device, w, h);
     let frame = view.frame();
     let mut totals = Vec::new();
     let mut cpu = Vec::new();

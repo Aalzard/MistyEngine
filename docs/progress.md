@@ -2184,6 +2184,9 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Tests: colour bleeding at every quality, off-screen bounce, sky occlusion under a roof, moving light,
   SDF and probe sanity; ignored harnesses for timings and comparison renders.
 
+- Follow-up: grass and trees receive GI, glossy reflections behind SSR, interval merge on the probe levels,
+  works with Upscaling; High +1.8 ms (room) / +2.7 ms (meadow) per frame at 1080p.
+
 ### Not done yet
 - Grass blades and trees don't read the GI term yet (their shaders belong to the grass/tree work); the
   Lighting-window switch, debug views, reflections, radiance-cascade merge: see the roadmap in the doc.
@@ -2205,6 +2208,41 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 
 ### Not done yet
 - `OnPostprocessAsset` for re-imports of changed files; physics queries in editor scripts.
+
+- Lighting-window switch, debug views, water / custom shaders, octahedral probe radiance: see the roadmap in
+  the doc. The meadow's GI is subtle until its ambient / turf occlusion is retuned (art decision).
+
+## Grass visibility buffer (branch grass-vis)
+
+### Done (docs/pending/grass-vis.md, screenshots `docs/screenshots/gfx/grassvis_*`)
+- The lit grass pass is replaced by the grass study's B4: a multisampled visibility raster
+  (same lists, order, depth test, coverage and alpha to coverage as the lit pass; blade id as
+  raw float bits + triangle / facing / coverage), a compute resolve that shades each distinct
+  blade fragment of a pixel once with the grass's own lighting (`grass_lit` / `shade_grass`,
+  Misty GI hook included; previous wind time for the motion vectors), and a per-sample
+  composite at the start of the rest of the main pass (grid, transparents, particles,
+  effects, gizmos unchanged). Sample count = Quality ▸ Anti-Aliasing (4× default, 2× where
+  the adapter can); internal render size with Upscaling. Lit pass kept as the fallback.
+- Look: within 0.07 levels of `meadow-trees-1` at every level and view, no pixel over 8
+  levels; shimmer and motion the same; same with Upscaling ▸ Performance and with Misty GI.
+- Blade pages: a terrain's grass blades live in a few big storage buffers (the resolve reads
+  any blade by id; a page binds once for all its chunks).
+- Grass chunk uploads go up in budgeted 8 k-blade pieces: in the Scene camera bench, frames
+  with a > 2 ms chunk upload 24 → 4, longest 7.9 → 3.4 ms, hitches 169 → 4.
+- Grass uniforms and groups made once per terrain instead of every frame; profiler scopes for
+  the render's CPU parts.
+
+  | MeadowDemo GPU ms, 1920×1080, RTX 4060 (wide view) | Low | Medium | High |
+  |---|---|---|---|
+  | before (main) | 10.6 (94 FPS) | 16.5 (61 FPS) | 21.3 (47 FPS) |
+  | **visibility buffer (default 4×)** | **8.0 (124 FPS)** | **11.9 (84 FPS)** | **15.4 (65 FPS)** |
+  | visibility buffer, 2× MSAA | 6.3 (160 FPS) | 10.0 (100 FPS) | 13.4 (74 FPS) |
+
+  Editor Game view (docked): Low 224 → 307–315 FPS, Medium 106 → 167, High 78 → 116.
+
+### Not done yet
+- Medium at defaults is 11.9 ms full screen (84 FPS); 100 FPS needs 2× MSAA on Medium (a look
+  change, the user's call) or more grass work (Grass Ground Cover, a cheaper composite).
 
 ## Round 15 — Multiplayer networking (branch r15-networking)
 
