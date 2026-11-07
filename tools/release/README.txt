@@ -55,7 +55,8 @@ Help > Check for Updates... checks right away.
 Known limitations
 -----------------
 
-- Windows only for now.
+- Windows and Linux (x64). The Linux version is a separate download
+  (MistyEngine-v{VERSION}-linux-x64.tar.gz on the releases page); there is no macOS version yet.
 - 2D tools (sprites, 2D physics) are unfinished.
 - Some menu entries are not done yet and say so in the Console.
 - No crash reporter yet. If something goes wrong, please tell us what you did.
