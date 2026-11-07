@@ -407,8 +407,12 @@ impl Renderer {
         if self.vgeo.active() {
             let textures = &self.textures;
             let material = |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
-            self.vgeo
-                .draw_prepass(&mut pass, &self.empty_group, &material);
+            self.vgeo.draw_prepass(
+                &mut pass,
+                &self.empty_group,
+                &material,
+                &self.vgeo_gate(frame),
+            );
         }
         // Terrains pull heights from their own textures (group 3; group 2 unused).
         if !frame.terrains.is_empty()

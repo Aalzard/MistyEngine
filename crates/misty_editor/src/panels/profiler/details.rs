@@ -51,6 +51,13 @@ pub fn rendering_rows(f: &FrameData) -> Vec<(&'static str, String)> {
         ("Visible meshes", r.visible.to_string()),
         ("Culled meshes", r.culled.to_string()),
         ("Culled shadow draws", r.shadow_culled.to_string()),
+        ("Virtual geometry objects", r.vgeo_instances.to_string()),
+        ("Virtual geometry clusters", r.vgeo_clusters.to_string()),
+        ("Virtual geometry triangles", r.vgeo_triangles.to_string()),
+        (
+            "Virtual geometry shadow triangles",
+            r.vgeo_shadow_triangles.to_string(),
+        ),
         ("Render CPU", format!("{:.2} ms", r.cpu_ms)),
     ]
 }
@@ -67,6 +74,10 @@ pub fn memory_rows(f: &FrameData) -> Vec<(&'static str, String)> {
         ("Textures", m.render.textures.to_string()),
         ("GPU buffers (estimate)", mb(m.render.buffer_bytes)),
         ("GPU textures (estimate)", mb(m.render.texture_bytes)),
+        (
+            "Virtual geometry pool + lists",
+            mb(m.render.virtual_geometry_bytes),
+        ),
     ]
 }
 

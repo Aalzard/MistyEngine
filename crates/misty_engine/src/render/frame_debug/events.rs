@@ -389,3 +389,119 @@ impl crate::render::Renderer {
             .collect()
     }
 }
+
+/// Virtual geometry's culling of one view (compute: instances, group decisions, clusters).
+pub(in crate::render) fn vgeo_cull_event(view: usize) -> FrameEvent {
+    let name = match view {
+        0 => "Dispatch Virtual Geometry Culling (camera, first phase)".to_owned(),
+        1 => "Dispatch Virtual Geometry Culling (camera, second phase, Hi-Z)".to_owned(),
+        v => format!("Dispatch Virtual Geometry Culling (shadow map {})", v - 2),
+    };
+    FrameEvent {
+        pass: vec!["Virtual Geometry".to_owned(), "Culling".to_owned()],
+        shader: "vgeo_cull.wgsl cs_instances, cs_prepare, cs_groups, cs_clusters, cs_finish"
+            .to_owned(),
+        ..FrameEvent::new(EventKind::Compute, name)
+    }
+}
+
+/// One batch draw of virtual geometry: every visible cluster of one material texture set in
+/// one view, drawn indirectly with the count the GPU wrote.
+pub(in crate::render) fn vgeo_event(
+    rec: &Recorder,
+    frame: &Frame,
+    d: &crate::render::vgeo::VgeoDraw,
+) -> FrameEvent {
+    use crate::render::vgeo::VgeoPass;
+    let draw = &frame.meshes[d.draw];
+    let label = rec.label(d.draw);
+    let material = label.and_then(|l| l.material.clone());
+    let what = material
+        .clone()
+        .unwrap_or_else(|| format!("batch {}", d.batch));
+    let cutout = if d.cutout { ", Cutout" } else { "" };
+    let main = |leaf: &str| vec!["Virtual Geometry".to_owned(), leaf.to_owned()];
+    let (pass, kind, name, shader, depth) = match d.pass {
+        VgeoPass::Lit => (
+            main("Clusters"),
+            EventKind::Draw,
+            format!("Draw Virtual Geometry Clusters ({what}{cutout})"),
+            format!(
+                "vgeo_mesh.wgsl vs_cluster + mesh.wgsl {}",
+                if d.cutout { "fs_cutout" } else { "fs_main" }
+            ),
+            "Less, write on",
+        ),
+        VgeoPass::Raster => (
+            main("Visibility Raster"),
+            EventKind::Draw,
+            format!("Draw Virtual Geometry Ids ({what}{cutout})"),
+            format!(
+                "vgeo_vis.wgsl {}",
+                if d.cutout {
+                    "fs_cluster_vis_cutout"
+                } else {
+                    "fs_cluster_vis"
+                }
+            ),
+            "Less, write on",
+        ),
+        VgeoPass::Resolve => (
+            main("Resolve"),
+            EventKind::Fullscreen,
+            format!("Resolve Virtual Geometry ({what})"),
+            "vgeo_resolve.wgsl fs_cluster_resolve + mesh.wgsl shade".to_owned(),
+            "Off (samples from the visibility ids)",
+        ),
+        VgeoPass::Shadow => (
+            Vec::new(),
+            EventKind::Draw,
+            format!("Draw Virtual Geometry Casters ({what}{cutout})"),
+            format!(
+                "vgeo_depth.wgsl {}",
+                if d.cutout {
+                    "fs_shadow_cutout"
+                } else {
+                    "depth only"
+                }
+            ),
+            "LessEqual, write on (slope bias)",
+        ),
+        VgeoPass::Prepass => (
+            Vec::new(),
+            EventKind::Draw,
+            format!("Draw Virtual Geometry Normals ({what}{cutout})"),
+            format!(
+                "vgeo_prepass.wgsl + ao_prepass.wgsl {}",
+                if d.cutout {
+                    "fs_normal_cutout"
+                } else {
+                    "fs_normal"
+                }
+            ),
+            "Less, write on",
+        ),
+    };
+    FrameEvent {
+        pass,
+        material,
+        batch: Some(format!(
+            "GPU-driven: the clusters of every object with this material picked for view {} by \
+             vgeo_cull.wgsl (one indirect draw, count written by the GPU)",
+            d.view
+        )),
+        instances: 0,
+        shader,
+        depth: depth.to_owned(),
+        blend: "Off".to_owned(),
+        cull: if d.pass == VgeoPass::Resolve {
+            "Off"
+        } else {
+            "Back"
+        }
+        .to_owned(),
+        textures: textures(&draw.material),
+        properties: properties(&draw.material),
+        ..FrameEvent::new(kind, name)
+    }
+}

@@ -883,6 +883,20 @@ impl Renderer {
         self.quality = quality.clone();
     }
 
+    /// Frame Debugger event of virtual geometry's culling of view `v` (true = run it).
+    fn vgeo_cull_event(&self, v: usize) -> bool {
+        frame_debug::record(&self.capture, |_| frame_debug::events::vgeo_cull_event(v))
+    }
+
+    /// Frame Debugger gate of virtual geometry's batch draws (records each; true = draw it).
+    fn vgeo_gate<'s>(&'s self, frame: &'s Frame<'_>) -> impl Fn(&vgeo::VgeoDraw) -> bool + 's {
+        move |d| {
+            frame_debug::record(&self.capture, |r| {
+                frame_debug::events::vgeo_event(r, frame, d)
+            })
+        }
+    }
+
     /// Counters of the last [`Renderer::render`] call.
     pub fn stats(&self) -> RenderStats {
         self.stats
@@ -988,10 +1002,13 @@ impl Renderer {
         let shadow_bytes = 4
             * (self.shadows.directional_size.pow(2) as u64 * cascades::MAX_CASCADES as u64
                 + shadows::LOCAL_SIZE.pow(2) as u64 * shadows::MAX_LOCAL_LAYERS as u64);
+        let vgeo_bytes = self.vgeo.memory_bytes();
         RenderMemory {
             meshes: self.meshes.len() + imported.count() + terrains,
             textures,
+            virtual_geometry_bytes: vgeo_bytes,
             buffer_bytes: mesh_bytes
+                + vgeo_bytes
                 + terrain_bytes
                 + buffers.iter().map(|b| b.size()).sum::<u64>()
                 + self.particle_instances.buffer.size()
@@ -1269,10 +1286,10 @@ impl Renderer {
             self.prepare_assets(device, queue, frame, &lod);
         }
         // Virtual geometry: meshes built into clusters draw through the cluster path (it needs
-        // indirect draws with an instance offset, like GPU culling; the Frame Debugger lists
-        // CPU-side draws, so it is off while capturing).
-        self.vgeo.on =
-            self.vgeo.enabled && self.culler.is_some() && frame.shaded && self.capture.is_none();
+        // indirect draws with an instance offset, like GPU culling). While capturing, the
+        // Frame Debugger lists its culling and batch draws (vgeo_gate).
+        self.vgeo.on = self.vgeo.enabled && self.culler.is_some() && frame.shaded;
+        self.vgeo.view_debug = self.vgeo.debug_once.take().unwrap_or(self.vgeo.debug);
         if self.vgeo.on {
             crate::profile_scope!("Render.VirtualGeometry");
             self.vgeo.ensure_gpu(device, &self.pipelines);
@@ -1541,7 +1558,9 @@ impl Renderer {
         }
         self.mark(&mut encoder, "Water simulation");
         self.vgeo
-            .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views());
+            .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views(), &|v| {
+                self.vgeo_cull_event(v)
+            });
         self.mark(&mut encoder, "Virtual geometry: shadow culling");
         {
             crate::profile_scope!("Render.Encode.Shadows");
@@ -1580,7 +1599,8 @@ impl Renderer {
         self.froxel_passes(device, &mut encoder, target);
         self.mark(&mut encoder, "Froxel fog");
         // The first phase's clusters (also drawn by the screen-space prepass below).
-        self.vgeo.cull(&mut encoder, 0, 1);
+        self.vgeo
+            .cull(&mut encoder, 0, 1, &|v| self.vgeo_cull_event(v));
         self.mark(&mut encoder, "Virtual geometry: culling (first phase)");
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see
@@ -1659,7 +1679,8 @@ impl Renderer {
                 if let Some(c) = &culled {
                     culler.dispatch(device, &mut encoder, state, c, slots, 1);
                 }
-                self.vgeo.cull(&mut encoder, 1, 2);
+                self.vgeo
+                    .cull(&mut encoder, 1, 2, &|v| self.vgeo_cull_event(v));
                 self.mark(&mut encoder, "Hi-Z + culling (second phase)");
                 let rest = MainSplit {
                     phase: Some(1),
@@ -1755,10 +1776,18 @@ impl Renderer {
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.resolve(&mut encoder, slot);
         }
+        self.vgeo.copy_stats(device, &mut encoder);
         {
             crate::profile_scope!("Render.Submit");
             queue.submit([encoder.finish()]);
         }
+        self.vgeo.stats_submitted();
+        let vg = self.vgeo.collect_stats();
+        stats.vgeo_instances = vg.instances;
+        stats.vgeo_clusters = vg.clusters;
+        stats.vgeo_triangles = vg.triangles;
+        stats.vgeo_shadow_triangles = vg.shadow_triangles;
+        stats.vgeo_memory = vg.pool_bytes + vg.list_bytes;
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.submitted(slot);
         }
@@ -2276,8 +2305,13 @@ impl Renderer {
         if self.vgeo.active() {
             let textures = &self.textures;
             let material = |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
-            self.vgeo
-                .draw_shadow(pass, slot, &self.empty_group, &material);
+            self.vgeo.draw_shadow(
+                pass,
+                slot,
+                &self.empty_group,
+                &material,
+                &self.vgeo_gate(frame),
+            );
         }
         // Grass near the camera (the first cascades only; group 2 = the grass casters).
         if grass
@@ -2547,6 +2581,7 @@ impl Renderer {
                             phase,
                             groups,
                             &material,
+                            &self.vgeo_gate(frame),
                         );
                         self.mark(encoder, "Virtual geometry: visibility raster");
                         pass = self.begin_main(
@@ -2559,10 +2594,12 @@ impl Renderer {
                             !last || copy || keep_depth || grass_vis,
                         );
                         pass.set_bind_group(1, self.lit_group(), &[]);
-                        self.vgeo.resolve(&mut pass, &material);
+                        self.vgeo
+                            .resolve(&mut pass, phase, &material, &self.vgeo_gate(frame));
                         self.mark_pass(&mut pass, "Main: virtual geometry (resolve)");
                     } else {
-                        self.vgeo.draw_main(&mut pass, phase, &material);
+                        self.vgeo
+                            .draw_main(&mut pass, phase, &material, &self.vgeo_gate(frame));
                         self.mark_pass(&mut pass, "Main: virtual geometry");
                     }
                 }

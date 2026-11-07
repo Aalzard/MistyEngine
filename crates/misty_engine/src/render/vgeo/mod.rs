@@ -157,6 +157,35 @@ fn visible_entries(views: usize) -> u32 {
     (0..views).map(|v| view_sizes(v).0).sum()
 }
 
+/// The pass a virtual geometry draw belongs to (Frame Debugger events).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum VgeoPass {
+    /// Clusters drawn lit directly in the main pass (or a debug view).
+    Lit,
+    /// The visibility raster's ids.
+    Raster,
+    /// The material resolve (one fullscreen draw per batch and layer).
+    Resolve,
+    Shadow,
+    Prepass,
+}
+
+/// One batch draw of virtual geometry: what [`Gate`] is asked about.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct VgeoDraw {
+    pub pass: VgeoPass,
+    /// The view whose visible list it draws (0, 1 = main phases; 2.. = shadow maps).
+    pub view: usize,
+    pub batch: usize,
+    /// A draw of the batch (its material).
+    pub draw: usize,
+    pub cutout: bool,
+}
+
+/// Asked before each batch draw (false = skip it): the Frame Debugger records it and stops
+/// the frame at the chosen event; otherwise always true.
+pub(super) type Gate<'g> = dyn Fn(&VgeoDraw) -> bool + 'g;
+
 /// Debug views of virtual geometry (Scene view draw modes).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum VgeoDebug {
@@ -220,6 +249,8 @@ pub struct VgeoStats {
     pub source_triangles: u64,
     /// GPU memory of the pool (vertices, local indices, cluster vertices, cluster records).
     pub pool_bytes: u64,
+    /// GPU memory of the per-view visible lists, chunks and draw arguments.
+    pub list_bytes: u64,
     /// The main pass drew the clusters through the visibility buffer.
     pub visibility: bool,
 }
@@ -229,8 +260,12 @@ pub(super) struct VirtualGeometry {
     pub enabled: bool,
     /// Largest error on screen, in pixels.
     pub threshold: f32,
-    /// Debug view (colours instead of the material).
+    /// Debug view (colours instead of the material), every render.
     pub debug: VgeoDebug,
+    /// Debug view of the next render only (the Scene view's draw mode).
+    pub debug_once: Option<VgeoDebug>,
+    /// This render's debug view.
+    pub view_debug: VgeoDebug,
     /// Draw the main pass's clusters through the visibility buffer (render/vgeo/vis.rs) where
     /// the device can; else lit directly.
     pub visibility: bool,
@@ -262,6 +297,21 @@ pub(super) struct VirtualGeometry {
     gpu: Option<Gpu>,
     frame: Option<FrameState>,
     last_instances: usize,
+    /// The per-view counters copied out each frame and read back when ready (never waited
+    /// for): the Stats box and the Profiler.
+    readback: Vec<Readback>,
+    /// The last counters read back (a frame or two old).
+    latest: VgeoStats,
+}
+
+/// One staging buffer of the counter readback.
+struct Readback {
+    buffer: wgpu::Buffer,
+    /// 0 = free, 1 = copied this frame, 2 = mapping, 3 = mapped.
+    state: std::sync::Arc<std::sync::atomic::AtomicU8>,
+    views: usize,
+    instances: u32,
+    visibility: bool,
 }
 
 struct Gpu {
@@ -494,6 +544,8 @@ impl Default for VirtualGeometry {
             enabled: false,
             threshold: 1.0,
             debug: VgeoDebug::Off,
+            debug_once: None,
+            view_debug: VgeoDebug::Off,
             visibility: true,
             edge_layer: false,
             on: false,
@@ -513,6 +565,8 @@ impl Default for VirtualGeometry {
             gpu: None,
             frame: None,
             last_instances: usize::MAX,
+            readback: Vec::new(),
+            latest: VgeoStats::default(),
         }
     }
 }
@@ -656,6 +710,11 @@ impl VirtualGeometry {
         self.meshes.len() as u32 - 1
     }
 
+    /// GPU bytes of the pool and the per-view lists (Profiler Memory module).
+    pub fn memory_bytes(&self) -> u64 {
+        self.pool_bytes() + self.gpu.as_ref().map_or(0, Gpu::list_bytes)
+    }
+
     /// GPU bytes of the pool.
     fn pool_bytes(&self) -> u64 {
         (self.vertices.len() * 4
@@ -788,7 +847,12 @@ impl VirtualGeometry {
         queue.write_buffer(
             &gpu.info,
             0,
-            bytemuck::cast_slice(&[MAIN_VISIBLE, MAIN_VISIBLE / b as u32, self.debug.code(), 0]),
+            bytemuck::cast_slice(&[
+                MAIN_VISIBLE,
+                MAIN_VISIBLE / b as u32,
+                self.view_debug.code(),
+                0,
+            ]),
         );
 
         // Level of detail for the main camera, in every view.
@@ -916,7 +980,8 @@ impl VirtualGeometry {
                 entry(5, &gpu.info),
             ],
         });
-        let vis = match self.visibility && self.debug == VgeoDebug::Off && b <= vis::MAX_BATCHES {
+        let plain = self.view_debug == VgeoDebug::Off;
+        let vis = match self.visibility && plain && b <= vis::MAX_BATCHES {
             true => gpu
                 .vis
                 .as_mut()
@@ -941,8 +1006,15 @@ impl VirtualGeometry {
         self.frame.is_some()
     }
 
-    /// Run the culling passes of views `first..last` (0, 1 = main phases; 2.. = shadow maps).
-    pub fn cull(&self, encoder: &mut wgpu::CommandEncoder, first: usize, last: usize) {
+    /// Run the culling passes of views `first..last` (0, 1 = main phases; 2.. = shadow maps);
+    /// `gate(view)` false skips a view (the Frame Debugger stopped before it).
+    pub fn cull(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        first: usize,
+        last: usize,
+        gate: &dyn Fn(usize) -> bool,
+    ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
         };
@@ -953,6 +1025,9 @@ impl VirtualGeometry {
         let batches = f.batches.len() as u32;
         let label = Some("misty vgeo culling");
         for v in first..last {
+            if !gate(v) {
+                continue;
+            }
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label,
@@ -994,8 +1069,15 @@ impl VirtualGeometry {
     }
 
     /// Draw view `view`'s clusters, batch by batch; `setup(pass, batch, draw, cutout)` sets the
-    /// batch's pipeline and group 2 (false = skip the batch).
-    fn draw_view(&self, pass: &mut wgpu::RenderPass<'_>, view: usize, setup: &mut BatchSetup<'_>) {
+    /// batch's pipeline and group 2 (false = skip the batch), after `gate` agreed.
+    fn draw_view(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        view: usize,
+        kind: VgeoPass,
+        gate: &Gate<'_>,
+        setup: &mut BatchSetup<'_>,
+    ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
         };
@@ -1011,7 +1093,15 @@ impl VirtualGeometry {
             pass.set_index_buffer(pool.buffer.slice(at..at + size), wgpu::IndexFormat::Uint16);
         }
         for (i, &draw) in f.batches.iter().enumerate() {
-            if !setup(pass, i, draw, f.cutout[i]) {
+            let cutout = f.cutout[i];
+            let what = VgeoDraw {
+                pass: kind,
+                view,
+                batch: i,
+                draw,
+                cutout,
+            };
+            if !gate(&what) || !setup(pass, i, draw, cutout) {
                 continue;
             }
             // The batch's cluster count (instance count of its pulled-vertex arguments).
@@ -1038,11 +1128,12 @@ impl VirtualGeometry {
         pass: &mut wgpu::RenderPass<'_>,
         phase: usize,
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
     ) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
         };
-        let debug = self.debug;
+        let debug = self.view_debug;
         let mut setup = |pass: &mut wgpu::RenderPass<'_>, _: usize, draw: usize, cutout: bool| {
             let Some(group) = material(draw) else {
                 return false;
@@ -1056,7 +1147,7 @@ impl VirtualGeometry {
             pass.set_bind_group(2, group, &[]);
             true
         };
-        self.draw_view(pass, phase, &mut setup);
+        self.draw_view(pass, phase, VgeoPass::Lit, gate, &mut setup);
     }
 
     /// Does the main pass draw this frame's clusters through the visibility buffer
@@ -1074,6 +1165,7 @@ impl VirtualGeometry {
         phase: usize,
         groups: [&wgpu::BindGroup; 3],
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
     ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
@@ -1099,7 +1191,7 @@ impl VirtualGeometry {
             pass.set_bind_group(2, group, &[]);
             true
         };
-        self.draw_view(&mut pass, phase, &mut setup);
+        self.draw_view(&mut pass, phase, VgeoPass::Raster, gate, &mut setup);
     }
 
     /// The material resolve of the last visibility raster, in the main pass (groups 0 and 1
@@ -1107,13 +1199,24 @@ impl VirtualGeometry {
     pub fn resolve<'a>(
         &self,
         pass: &mut wgpu::RenderPass,
+        phase: usize,
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
     ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
         };
         if let (Some(vis), Some(vf)) = (gpu.vis.as_ref(), f.vis.as_ref()) {
-            vis.resolve(pass, vf, &f.batches, &f.cutout, material);
+            let keep = |batch: usize, draw: usize, cutout: bool| {
+                gate(&VgeoDraw {
+                    pass: VgeoPass::Resolve,
+                    view: phase,
+                    batch,
+                    draw,
+                    cutout,
+                })
+            };
+            vis.resolve(pass, vf, &f.batches, &f.cutout, material, &keep);
         }
     }
 
@@ -1146,6 +1249,7 @@ impl VirtualGeometry {
         slot: usize,
         empty: &'a wgpu::BindGroup,
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
     ) {
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
             return;
@@ -1154,7 +1258,7 @@ impl VirtualGeometry {
             return;
         };
         let mut setup = Self::depth_setup(&gpu.shadow, &gpu.shadow_cutout, empty, material);
-        self.draw_view(pass, 2 + i, &mut setup);
+        self.draw_view(pass, 2 + i, VgeoPass::Shadow, gate, &mut setup);
     }
 
     /// The screen-space effects' prepass: the first phase's clusters.
@@ -1163,6 +1267,7 @@ impl VirtualGeometry {
         pass: &mut wgpu::RenderPass<'_>,
         empty: &'a wgpu::BindGroup,
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        gate: &Gate<'_>,
     ) {
         let Some(gpu) = self.gpu.as_ref() else {
             return;
@@ -1171,7 +1276,99 @@ impl VirtualGeometry {
             return;
         }
         let mut setup = Self::depth_setup(&gpu.prepass, &gpu.prepass_cutout, empty, material);
-        self.draw_view(pass, 0, &mut setup);
+        self.draw_view(pass, 0, VgeoPass::Prepass, gate, &mut setup);
+    }
+
+    /// Copy this frame's per-view counters into a free staging buffer (read back later by
+    /// [`Self::collect_stats`], never waited for).
+    pub fn copy_stats(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder) {
+        use std::sync::atomic::Ordering;
+        let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
+            return;
+        };
+        let size = (MAX_VIEWS * COUNTERS * 4) as u64;
+        let free = self
+            .readback
+            .iter()
+            .position(|r| r.state.load(Ordering::Acquire) == 0);
+        let i = match free {
+            Some(i) => i,
+            // Three in flight at most: skip a frame rather than wait.
+            None if self.readback.len() >= 3 => return,
+            None => {
+                self.readback.push(Readback {
+                    buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("misty vgeo counters readback"),
+                        size,
+                        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                        mapped_at_creation: false,
+                    }),
+                    state: Default::default(),
+                    views: 0,
+                    instances: 0,
+                    visibility: false,
+                });
+                self.readback.len() - 1
+            }
+        };
+        let r = &mut self.readback[i];
+        encoder.copy_buffer_to_buffer(&gpu.control, 0, &r.buffer, 0, size);
+        r.views = f.views;
+        r.instances = f.instances;
+        r.visibility = f.vis.is_some();
+        r.state.store(1, Ordering::Release);
+    }
+
+    /// After the frame's submit: start mapping the counters it copied.
+    pub fn stats_submitted(&self) {
+        use std::sync::atomic::Ordering;
+        for r in &self.readback {
+            if r.state.load(Ordering::Acquire) == 1 {
+                r.state.store(2, Ordering::Release);
+                let state = r.state.clone();
+                r.buffer
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |result| {
+                        state.store(if result.is_ok() { 3 } else { 0 }, Ordering::Release);
+                    });
+            }
+        }
+    }
+
+    /// Take the newest counters that have arrived and return the latest known statistics
+    /// (with the pool's and the lists' memory).
+    pub fn collect_stats(&mut self) -> VgeoStats {
+        use std::sync::atomic::Ordering;
+        let mut newest = None;
+        for r in &self.readback {
+            if r.state.load(Ordering::Acquire) != 3 {
+                continue;
+            }
+            let mut stats = VgeoStats {
+                instances: r.instances,
+                visibility: r.visibility,
+                ..Default::default()
+            };
+            if let Ok(data) = r.buffer.slice(..).get_mapped_range() {
+                stats.add_counters(bytemuck::cast_slice(&data[..]), r.views);
+            }
+            r.buffer.unmap();
+            r.state.store(0, Ordering::Release);
+            newest = Some(stats);
+        }
+        if let Some(s) = newest {
+            self.latest = s;
+        }
+        if !self.on || self.frame.is_none() {
+            self.latest = VgeoStats::default();
+        }
+        VgeoStats {
+            meshes: self.meshes.len() as u32,
+            source_triangles: self.source_triangles,
+            pool_bytes: self.pool_bytes(),
+            list_bytes: self.gpu.as_ref().map_or(0, Gpu::list_bytes),
+            ..self.latest
+        }
     }
 
     /// What the last frame drew (blocking readback: measurements only).
@@ -1180,6 +1377,7 @@ impl VirtualGeometry {
             meshes: self.meshes.len() as u32,
             source_triangles: self.source_triangles,
             pool_bytes: self.pool_bytes(),
+            list_bytes: self.gpu.as_ref().map_or(0, Gpu::list_bytes),
             ..Default::default()
         };
         let (Some(gpu), Some(f)) = (self.gpu.as_ref(), self.frame.as_ref()) else {
@@ -1609,9 +1807,10 @@ impl super::Renderer {
         };
     }
 
-    /// Virtual geometry's debug view (the Scene view draw modes; Off = the materials).
+    /// Virtual geometry's debug view for the next render only (the Scene view's draw modes;
+    /// Off = the materials).
     pub fn set_virtual_geometry_debug_view(&mut self, view: VgeoDebug) {
-        self.vgeo.debug = view;
+        self.vgeo.debug_once = Some(view);
     }
 
     /// What virtual geometry drew last frame: clusters, triangles per view (blocking GPU

@@ -387,16 +387,21 @@ impl Vis {
         batches: &[usize],
         cutout: &[bool],
         material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+        keep: &dyn Fn(usize, usize, bool) -> bool,
     ) {
         pass.set_pipeline(&self.resolve);
         pass.set_bind_group(3, &frame.group, &[]);
         for (i, &draw) in batches.iter().enumerate() {
+            let c = cutout.get(i).copied().unwrap_or(false);
+            if !keep(i, draw, c) {
+                continue;
+            }
             let Some(group) = material(draw) else {
                 continue;
             };
             pass.set_bind_group(2, group, &[]);
             // Instance = (batch × 2 + layer) × 2 + cutout (vgeo_resolve.wgsl).
-            let c = cutout.get(i).copied().unwrap_or(false) as u32;
+            let c = c as u32;
             for layer in 0..frame.layers {
                 let id = (2 * i as u32 + layer) * 2 + c;
                 pass.draw(0..3, id..id + 1);
