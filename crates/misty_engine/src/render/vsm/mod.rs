@@ -425,7 +425,7 @@ impl VsmGpu {
             module: &module,
             entry_point: Some("cs_vsm_mark"),
             compilation_options: Default::default(),
-            cache: None,
+            cache: crate::render::pipeline_cache(device).as_ref(),
         });
         let mark_params = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("misty vsm mark params"),

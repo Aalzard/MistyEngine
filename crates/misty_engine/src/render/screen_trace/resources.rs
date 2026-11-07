@@ -119,7 +119,7 @@ impl Passes {
                     constants,
                     ..Default::default()
                 },
-                cache: None,
+                cache: crate::render::pipeline_cache(device).as_ref(),
             })
         };
         let step = |s: f64| compute(&main_layout, &ssgi, "cs_gi_denoise", &[("STEP", s)]);

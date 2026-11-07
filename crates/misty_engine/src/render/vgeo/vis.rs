@@ -159,7 +159,7 @@ impl Vis {
                 targets: &[id_target.clone(), id_target],
             }),
             multiview_mask: None,
-            cache: None,
+            cache: crate::render::pipeline_cache(device).as_ref(),
         });
 
         let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry {

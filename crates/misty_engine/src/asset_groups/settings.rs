@@ -214,7 +214,7 @@ impl AssetGroupSettings {
         };
         let mut s = Self::from_json(&text)?;
         if !crate::vfs::is_mounted() {
-            s.refresh_paths(&GuidDatabase::read(root));
+            crate::asset_db::with_project(root, |db| s.refresh_paths(db));
         }
         Ok(s)
     }

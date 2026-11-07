@@ -73,6 +73,48 @@ pub fn with<R>(f: impl FnOnce(&GuidDatabase) -> R) -> Option<R> {
     read().as_ref().map(f)
 }
 
+/// Run `f` on the GUIDs of the project at `root`: the open database when it is that
+/// project's (the editor keeps it current), else the project's meta files read now. Reading
+/// every meta file takes tens of milliseconds, too long for entering Play mode.
+pub fn with_project<R>(root: &Path, f: impl FnOnce(&GuidDatabase) -> R) -> R {
+    let guard = read();
+    match guard.as_ref() {
+        Some(db) if db.root() == root => f(db),
+        _ => {
+            drop(guard);
+            f(&GuidDatabase::read(root))
+        }
+    }
+}
+
+/// Files under `Assets/` of the project at `root` with extension `ext`, sorted: listed from
+/// the open GUID database when it is that project's (the editor; no walk of the project,
+/// which took 25 ms when entering Play), else found by walking `Assets/` (built games read
+/// their pak; tools and tests without a database).
+pub fn assets_with_extension(root: &Path, ext: &str) -> Vec<PathBuf> {
+    let listed = if crate::vfs::is_mounted() {
+        None
+    } else {
+        with(|db| {
+            (db.root() == root).then(|| {
+                db.paths()
+                    .filter(|p| Path::new(p).extension().and_then(|e| e.to_str()) == Some(ext))
+                    .map(|p| root.join(p))
+                    .collect::<Vec<_>>()
+            })
+        })
+        .flatten()
+    };
+    let mut out = listed.unwrap_or_else(|| {
+        crate::vfs::files_under(&root.join("Assets"))
+            .into_iter()
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some(ext))
+            .collect()
+    });
+    out.sort();
+    out
+}
+
 /// Scan the current project again (after file operations). `None` when none is open.
 pub fn rescan() -> Option<ScanReport> {
     let root = with(|db| db.root().to_path_buf())?;

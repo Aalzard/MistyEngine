@@ -4,7 +4,8 @@
 //! until the first build is done, then keeps returning the last good model while a newer one is
 //! built after the asset or one of its textures changed on disk (checked twice a second).
 //! With grass streaming off (`render::set_grass_streaming(false)`: tests, screenshots) [`get`]
-//! builds in place, so a render is complete on its first frame.
+//! builds in place, so a render is complete on its first frame. In the editor, built models
+//! are kept in `Library/TreeCache` (see `cache`), so a later launch reads them back.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -110,7 +111,21 @@ pub fn build(asset: TreeAsset) -> Built {
 
 fn build_path(path: &str) -> Result<Built, String> {
     let asset = TreeAsset::load(&crate::assets::absolute(path))?;
-    Ok(build(asset))
+    if !super::cache::enabled() {
+        return Ok(build(asset));
+    }
+    let file = super::cache::path(&asset);
+    if let Some(model) = super::cache::load(&file) {
+        return Ok(Built {
+            asset,
+            model,
+            version: next_version(),
+        });
+    }
+    let built = build(asset);
+    // A cache that cannot be written only costs the next launch the build.
+    let _ = super::cache::save(&file, &built.model);
+    Ok(built)
 }
 
 fn finish(path: &str, result: Result<Built, String>) {

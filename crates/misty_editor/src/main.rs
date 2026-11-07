@@ -275,7 +275,15 @@ fn attach_parent_console() {
 fn attach_parent_console() {}
 
 fn main() -> eframe::Result<()> {
+    capture::mark_process_start();
     attach_parent_console();
+    // `MISTY_PROFILE=capture.jsonl misty …` records the profiler from the first frame into a
+    // capture file (JSON Lines, one frame per line), as the player does.
+    if let Some(path) = std::env::var_os("MISTY_PROFILE")
+        && let Err(e) = misty_engine::profiler::capture::start(std::path::Path::new(&path))
+    {
+        eprintln!("profiler capture: {e}");
+    }
     let start = match parse_args() {
         Ok(s) => s,
         Err(e) => {
@@ -367,6 +375,7 @@ fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
     setup.device_descriptor = std::sync::Arc::new(move |adapter| {
         let mut desc = base(adapter);
         desc.required_features |= misty_engine::render::timestamp_features(adapter);
+        desc.required_features |= misty_engine::render::pipeline_cache_features(adapter);
         desc.required_limits = misty_engine::render::device_limits(adapter, desc.required_limits);
         desc
     });

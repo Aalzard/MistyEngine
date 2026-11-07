@@ -31,8 +31,10 @@ mod motion;
 pub mod overrides;
 pub mod particles;
 mod pass_timer;
+mod pipeline_cache;
 mod pipelines;
 pub mod post;
+mod prebuilt;
 mod prepass;
 pub mod probes;
 mod runtime_tex;
@@ -74,7 +76,9 @@ pub use glow::GlowSource;
 pub use grass_vis::{grass_vis_enabled, set_grass_vis};
 pub use misty_gi::MistyGiSettings;
 pub use particles::{ParticleBatch, ParticleInstance};
-pub use pipelines::pipelines_built;
+pub(crate) use pipeline_cache::pipeline_cache;
+pub use pipeline_cache::{open_pipeline_cache, pipeline_cache_features, save_pipeline_cache};
+pub use pipelines::{cache_shader_modules, pipelines_built};
 pub use post::PostSettings;
 pub use screen_trace::{SsgiSettings, SsrSettings};
 pub use soft_shadows::LightShadow;
@@ -582,6 +586,8 @@ pub struct Renderer {
     /// Grass visibility buffer pipelines (made with the first grass; `Some(None)` = this
     /// device refused them and the grass keeps the lit pass).
     grass_vis: Option<Option<grass_vis::VisPipelines>>,
+    /// The grass visibility pipelines being built on a worker (see `prebuilt`).
+    grass_vis_prebuilt: prebuilt::Prebuilt<Option<grass_vis::VisPipelines>>,
 }
 
 impl Renderer {
@@ -649,7 +655,7 @@ impl Renderer {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        Self {
+        let mut renderer = Self {
             post_sampler,
             view_buffer,
             view_bind_group,
@@ -719,10 +725,22 @@ impl Renderer {
             last_view_proj: Mat4::IDENTITY,
             samples: sample_count(),
             grass_vis: None,
+            grass_vis_prebuilt: Default::default(),
             vsm: Default::default(),
             vsm_dummy,
             vsm_frame: 0,
+        };
+        // Streaming (editor, player): compile what a scene's first frame would otherwise
+        // wait for on worker threads now (see `prebuilt`).
+        if grass_streaming() {
+            renderer.trees.prebuild(device, &renderer.pipelines);
+            renderer.terrains.prebuild(device);
+            renderer.grass_vis_prebuilt =
+                grass_vis::VisPipelines::prebuild(device, &renderer.pipelines);
+            terrain_grass::prewarm_atlas();
+            clouds::noise::prewarm_blue_noise();
         }
+        renderer
     }
 
     /// The virtual shadow map's page table (or the dummy while it is off).
@@ -787,10 +805,16 @@ impl Renderer {
     /// Renderer that also measures GPU time per render when the device was created with
     /// `TIMESTAMP_QUERY` (see [`timestamp_features`]).
     pub fn with_queue(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        Self {
+        let mut renderer = Self {
             gpu_timer: gpu_timer::GpuTimer::new(device, queue),
             ..Self::new(device)
+        };
+        if grass_streaming() {
+            let view_layout = &renderer.pipelines.view_layout;
+            (renderer.volumetrics).prebuild(device, queue, view_layout);
+            renderer.clouds.prebuild(device, queue);
         }
+        renderer
     }
 
     /// Culling / instancing switches.
@@ -1746,6 +1770,7 @@ impl Renderer {
         self.slots_scratch = lists.slots;
         let grass = self.terrains.grass_stats();
         stats.grass_pending = grass.pending;
+        stats.loading = (self.terrains.layers_pending() + self.trees.loading()) as u32;
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
         stats.grass_upload_piece_ms = grass.upload_piece_ms;
@@ -2723,7 +2748,10 @@ impl Renderer {
             return false;
         }
         if self.grass_vis.is_none() {
-            self.grass_vis = Some(grass_vis::VisPipelines::new(device, &self.pipelines));
+            crate::profile_scope!("GrassVis.Pipelines");
+            let built = (self.grass_vis_prebuilt.take())
+                .unwrap_or_else(|| grass_vis::VisPipelines::new(device, &self.pipelines));
+            self.grass_vis = Some(built);
         }
         let Some(Some(pipes)) = &self.grass_vis else {
             return false;

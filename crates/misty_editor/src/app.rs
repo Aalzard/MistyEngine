@@ -32,6 +32,8 @@ pub struct EditorApp {
     cursor_applied: misty_engine::scripting::CursorState,
     /// Shader pipelines built so far (a rise shows "Preparing shaders" in the status bar).
     shaders_seen: u64,
+    /// When to write the pipeline cache: a few seconds after the last shader compiled.
+    pipeline_cache_due: Option<std::time::Instant>,
     /// Last window title sent.
     title: String,
     /// Writes the layout to the project's Library folder.
@@ -49,11 +51,34 @@ impl EditorApp {
     ) -> Self {
         theme::apply(ctx);
         // Asset GUIDs: scan the meta files (creating missing ones) before anything loads.
-        let guids = misty_engine::asset_db::open(&project);
-        let mut state = EditorState::new(ProjectBrowser::open(project));
+        let guids = {
+            misty_engine::profile_scope!(
+                "Editor.AssetDb",
+                misty_engine::profiler::Category::Others
+            );
+            misty_engine::asset_db::open(&project)
+        };
+        let browser = {
+            misty_engine::profile_scope!(
+                "Editor.ProjectBrowser",
+                misty_engine::profiler::Category::Others
+            );
+            ProjectBrowser::open(project)
+        };
+        let mut state = {
+            misty_engine::profile_scope!("Editor.State", misty_engine::profiler::Category::Others);
+            EditorState::new(browser)
+        };
         state.assets.note_guids(guids);
-        scene_files::open_initial(&mut state);
+        {
+            misty_engine::profile_scope!(
+                "Editor.OpenInitialScene",
+                misty_engine::profiler::Category::Others
+            );
+            scene_files::open_initial(&mut state);
+        }
         scene_files::restore_scene_view(&mut state);
+        misty_engine::profile_scope!("Editor.Layouts", misty_engine::profiler::Category::Others);
         let (saved_layouts, dock) = layouts::load(&state.project.root);
         state.layouts = saved_layouts;
         let mut dock = dock;
@@ -66,15 +91,28 @@ impl EditorApp {
         state.live.dev = crate::live_reload::dev_build::DevBuild::detect();
         let capture = Capture::from_env();
         if capture.is_some() {
+            misty_engine::profile_scope!(
+                "Editor.CaptureEnv",
+                misty_engine::profiler::Category::Others
+            );
             crate::capture::apply_env(&mut state, &mut dock);
         }
         crate::tutorials::from_env(&mut state);
         // Updater: the one this process runs (started by the launcher, passed on from the Hub).
         state.updater = updater;
-        let gpu = render_state.map(Gpu::new);
+        let gpu = {
+            misty_engine::profile_scope!(
+                "Editor.GpuInit",
+                misty_engine::profiler::Category::Rendering
+            );
+            render_state.map(Gpu::new)
+        };
         match &gpu {
             Some(g) => {
                 let info = g.state.adapter.get_info();
+                if capture.is_some() {
+                    eprintln!("renderer: {} ({:?})", info.name, info.backend);
+                }
                 state
                     .console
                     .info(format!("Renderer: {} ({:?})", info.name, info.backend));
@@ -92,6 +130,7 @@ impl EditorApp {
             errors_seen: 0,
             cursor_applied: Default::default(),
             shaders_seen: misty_engine::render::pipelines_built(),
+            pipeline_cache_due: None,
             title: String::new(),
             layout_autosave,
         }
@@ -505,6 +544,7 @@ impl EditorApp {
     /// Advance the game while in Play mode; Error Pause stops on new errors.
     fn game_frame(&mut self, ctx: &egui::Context) {
         let s = &mut self.state;
+        misty_engine::profile_scope!("Editor.GameFrame.Pre");
         for msg in std::mem::take(&mut s.assets.messages) {
             s.console.info(msg);
         }
@@ -513,7 +553,11 @@ impl EditorApp {
             ctx.request_repaint();
         }
         // Editor scripts: (re)load, update callbacks, asset processors.
-        if crate::editor_scripts::frame(s) {
+        let scripts_busy = {
+            misty_engine::profile_scope!("Editor.EditorScripts");
+            crate::editor_scripts::frame(s)
+        };
+        if scripts_busy {
             ctx.request_repaint_after(std::time::Duration::from_millis(30));
         }
         let mut renderer_reloaded = Vec::new();
@@ -582,7 +626,10 @@ impl EditorApp {
         {
             r.release_cursor();
         }
-        play::tick(s, ctx.input(|i| i.stable_dt));
+        {
+            misty_engine::profile_scope!("Play.Tick");
+            play::tick(s, ctx.input(|i| i.stable_dt));
+        }
         self.sync_cursor(ctx);
         let s = &mut self.state;
         let errors = s.console.count(LogLevel::Error);
@@ -723,6 +770,12 @@ impl eframe::App for EditorApp {
         if self.capture.is_none() {
             scene_files::remember_scene_view(&self.state);
         }
+        if let Err(e) = misty_engine::profiler::capture::finish() {
+            eprintln!("profiler capture: {e}");
+        }
+        if let Err(e) = misty_engine::render::save_pipeline_cache() {
+            eprintln!("pipeline cache not saved: {e}");
+        }
     }
 
     /// Only the window position/size is persisted by eframe; editor state lives in the project.
@@ -741,7 +794,13 @@ impl eframe::App for EditorApp {
                 clips.snapshot(clip.as_deref()?)
             });
         self.shortcuts(&ctx);
-        self.game_frame(&ctx);
+        {
+            misty_engine::profile_scope!(
+                "Editor.GameFrame",
+                misty_engine::profiler::Category::Others
+            );
+            self.game_frame(&ctx);
+        }
         animation::preview::pre_frame(&mut self.state, ctx.input(|i| i.stable_dt));
         crate::panels::timeline::preview::pre_frame(&mut self.state, ctx.input(|i| i.stable_dt));
 
@@ -782,6 +841,7 @@ impl eframe::App for EditorApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(theme::BORDER))
             .show(ui, |ui| {
+                misty_engine::profile_scope!("Editor.Panels", misty_engine::profiler::Category::Ui);
                 DockArea::new(&mut self.dock)
                     .style(style)
                     .show_leaf_collapse_buttons(false)
@@ -803,6 +863,21 @@ impl eframe::App for EditorApp {
             self.state
                 .live
                 .toast(format!("Preparing shaders… ({n} compiled)"));
+            self.pipeline_cache_due =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
+        }
+        if self
+            .pipeline_cache_due
+            .is_some_and(|t| std::time::Instant::now() >= t)
+        {
+            self.pipeline_cache_due = None;
+            let _ = std::thread::Builder::new()
+                .name("misty pipeline cache".into())
+                .spawn(|| {
+                    if let Err(e) = misty_engine::render::save_pipeline_cache() {
+                        eprintln!("pipeline cache not saved: {e}");
+                    }
+                });
         }
         // Lightmap bakes run on their own thread: pick up the result when it is done.
         if crate::lightmap_tools::poll(&mut self.state) {
@@ -834,6 +909,12 @@ impl eframe::App for EditorApp {
         crate::editor_scripts::progress_ui(&ctx, &self.state);
         // Last, so the tutorial card and highlight sit on top of everything drawn above.
         crate::tutorials::frame(&ctx, &mut self.state);
+        if self.capture.as_mut().is_some_and(Capture::play_due) {
+            self.state.push(Action::TogglePlay);
+        }
+        if let Some(rel) = self.capture.as_mut().and_then(Capture::scene_due) {
+            self.state.push(Action::OpenScenePath(rel));
+        }
         self.apply_actions(&ctx);
         crate::saveloc::frame(&mut self.state);
         // SaveSystem.Save asked for a thumbnail of the game's last frame.
@@ -862,6 +943,10 @@ impl eframe::App for EditorApp {
         }
         self.save_layout(false);
         if let Some(capture) = &mut self.capture {
+            if let Some(gpu) = &self.gpu {
+                let stats = gpu.renderer.stats();
+                capture.note_loading(stats.loading > 0 || stats.grass_pending > 0);
+            }
             capture.update(&ctx);
             // Screenshot runs close without a save prompt (and never save the scene).
             if capture.saved() {

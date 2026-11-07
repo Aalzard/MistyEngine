@@ -80,6 +80,25 @@ fn accepted<T>(device: &wgpu::Device, f: impl FnOnce() -> T) -> Option<T> {
     }
 }
 
+/// The bind group layouts the visibility pipelines use (owned, so a worker can build them).
+struct VisLayouts {
+    view_layout: wgpu::BindGroupLayout,
+    mesh_layout: wgpu::BindGroupLayout,
+    grass_layout: wgpu::BindGroupLayout,
+    grass_blades_layout: wgpu::BindGroupLayout,
+}
+
+impl VisLayouts {
+    fn of(p: &Pipelines) -> Self {
+        Self {
+            view_layout: p.view_layout.clone(),
+            mesh_layout: p.mesh_layout.clone(),
+            grass_layout: p.grass_layout.clone(),
+            grass_blades_layout: p.grass_blades_layout.clone(),
+        }
+    }
+}
+
 /// Native error scopes resolve immediately; poll with a no-op waker.
 fn block_on<F: std::future::Future>(f: F) -> F::Output {
     let mut f = std::pin::pin!(f);
@@ -95,12 +114,26 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 impl VisPipelines {
     /// None when the device refuses them (the lit pass stays).
     pub fn new(device: &wgpu::Device, p: &Pipelines) -> Option<Self> {
-        accepted(device, || Self::build(device, p))
+        let layouts = VisLayouts::of(p);
+        accepted(device, || {
+            Self::build(device, &layouts, super::sample_count())
+        })
     }
 
-    fn build(device: &wgpu::Device, p: &Pipelines) -> Self {
-        use wgpu::ShaderStages as S;
+    /// Start building them on a worker thread (streaming only; see `render::prebuilt`).
+    pub(super) fn prebuild(
+        device: &wgpu::Device,
+        p: &Pipelines,
+    ) -> super::prebuilt::Prebuilt<Option<Self>> {
+        let (device, layouts) = (device.clone(), VisLayouts::of(p));
         let samples = super::sample_count();
+        super::prebuilt::Prebuilt::spawn("misty grass visibility pipelines", move || {
+            accepted(&device, || Self::build(&device, &layouts, samples))
+        })
+    }
+
+    fn build(device: &wgpu::Device, p: &VisLayouts, samples: u32) -> Self {
+        use wgpu::ShaderStages as S;
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("misty grass visibility"),
             source: wgpu::ShaderSource::Wgsl(
@@ -172,7 +205,7 @@ impl VisPipelines {
                 ],
             }),
             multiview_mask: None,
-            cache: None,
+            cache: crate::render::pipeline_cache(device).as_ref(),
         });
 
         let entry = |binding, ty| wgpu::BindGroupLayoutEntry {
@@ -244,7 +277,7 @@ impl VisPipelines {
                 module: &module,
                 entry_point: Some(entry),
                 compilation_options: Default::default(),
-                cache: None,
+                cache: crate::render::pipeline_cache(device).as_ref(),
             })
         };
         let classify = compute("cs_grass_classify");

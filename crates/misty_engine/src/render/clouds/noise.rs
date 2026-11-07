@@ -154,7 +154,7 @@ fn generate(device: &wgpu::Device, queue: &wgpu::Queue, views: &[wgpu::TextureVi
             module: &module,
             entry_point: Some(entry),
             compilation_options: Default::default(),
-            cache: None,
+            cache: crate::render::pipeline_cache(device).as_ref(),
         })
     };
     let group = |volume: &wgpu::TextureView| {
@@ -204,6 +204,19 @@ fn generate(device: &wgpu::Device, queue: &wgpu::Queue, views: &[wgpu::TextureVi
 pub(in crate::render) fn blue_noise() -> Vec<u8> {
     static CACHE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
     CACHE.get_or_init(|| void_and_cluster(BLUE_SIZE)).clone()
+}
+
+/// Start computing the blue noise on a worker thread (once per process; ~20 ms that the
+/// first frame with clouds or sharp sun shafts would otherwise wait for).
+pub(in crate::render) fn prewarm_blue_noise() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        let _ = std::thread::Builder::new()
+            .name("misty blue noise".into())
+            .spawn(|| {
+                blue_noise();
+            });
+    });
 }
 
 /// Ranks 0..n² of a blue-noise dither array, scaled to bytes.

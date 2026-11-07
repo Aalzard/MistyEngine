@@ -2287,3 +2287,34 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   cached tree shadows don't sway; a moving sun re-renders every page; Medium / Low are slightly slower than
   their nearly free cascades, so no preset switched yet.
 
+## Freeze on entering Play / opening a scene (branch play-hitch)
+
+### Done (docs/pending/play-hitch.md)
+- The "worst 3.4–4.4 s" in the Stats box was the load frame of a capture run (project open,
+  scene load, entering Play and the scene's first render in one frame), 3.5–5.7 s on a new
+  build of the editor (NVIDIA's shader cache is per executable), plus 2–3 frames of 200–600 ms
+  when the tree textures arrived.
+- Terrain layer arrays (370–440 ms) and tree textures (85–105 ms per tree) are built on worker
+  threads and uploaded in budgeted pieces; the terrain draws neutral layers for a few frames.
+- Tree models cached in `Library/TreeCache` (keyed by recipe, textures and the generator's
+  source); a wgpu pipeline cache in `Library/ShaderCache` (Vulkan); shader modules made once
+  per source; the tree, grass visibility, grass cull, volumetrics and cloud pipelines, the cloud
+  noise, grass atlas and blue noise prepared on threads as soon as the renderer exists.
+- Asset groups, string tables and editor scripts list files from the GUID database instead of
+  reading every meta file / walking `Assets/` on the main thread (two 50 ms reads and a 25 ms
+  walk when entering Play; a 50 ms walk every 2 s from the editor scripts).
+- Capture runs: `MISTY_PROFILE`, a slow-frame / time-to-interactive report, `MISTY_PLAY_AT`,
+  `MISTY_OPEN_SCENE_AT`.
+
+  | MeadowDemo, RTX 4060 | before | after |
+  |---|---|---|
+  | Entering Play in a running editor (worst frame) | 140–192 ms | 13–28 ms |
+  | Opening MeadowDemo in a running editor, warm / new build | 613–631 / 2476–2514 ms | 37–64 / 35–60 ms |
+  | Capture run (open + Play at launch), new build: load frame / worst after / interactive | 4.9–5.0 s / 616–625 ms / 6.7–6.9 s | 0.5–0.8 s / 30–37 ms / 1.5–2.7 s |
+  | Same, warm | 1.2–1.3 s / 187–296 ms / 2.8–3.2 s | 0.33–0.38 s / 46 ms / 1.0–1.2 s |
+  | Same, first launch ever (no Library, new build) | 5.0–5.7 s / 600–980 ms / 6.7–8.4 s | 3.2–3.7 s / 40–50 ms / 4.2–5.9 s |
+
+### Not done yet
+- Project open (`EditorState::new`, the GUID scan, the core pipelines) is most of what is left
+  of the load frame (~0.33 s warm); the very first launch still compiles the core pipelines on
+  the main thread (behind the splash).

@@ -383,6 +383,8 @@ pub(super) struct TerrainCache {
     grass_params: Vec<Option<GrassFrameParams>>,
     /// Grass culling pipelines (made with the first grass).
     grass_cull: Option<CullPipelines>,
+    /// The cull pipelines made on a worker since the renderer was made (streaming only).
+    grass_cull_prebuilt: super::prebuilt::Prebuilt<CullPipelines>,
     /// The camera's view-projection of the current frame.
     view_proj: Mat4,
     /// Quality ▸ Grass Ground Cover (with the quality's blade share): the terrain paints the
@@ -425,6 +427,7 @@ impl TerrainCache {
             grass_casters: None,
             grass_params: Vec::new(),
             grass_cull: None,
+            grass_cull_prebuilt: Default::default(),
             view_proj: Mat4::IDENTITY,
             ground_cover: None,
             grass_atlas: None,
@@ -534,6 +537,20 @@ impl TerrainCache {
         }
     }
 
+    /// Start making the grass cull pipelines on a worker thread (streaming only).
+    pub fn prebuild(&mut self, device: &wgpu::Device) {
+        let device = device.clone();
+        self.grass_cull_prebuilt =
+            super::prebuilt::Prebuilt::spawn("misty grass cull pipelines", move || {
+                CullPipelines::new(&device)
+            });
+    }
+
+    /// Layer texture arrays still being built on worker threads.
+    pub fn layers_pending(&self) -> usize {
+        self.layers.pending()
+    }
+
     /// The grass clock this render: the environment's fixed one, else seconds since the cache
     /// was made.
     pub fn grass_time(&self, environment: &Environment) -> f32 {
@@ -620,10 +637,14 @@ impl TerrainCache {
                     })
                     .collect(),
             );
-            g.grass
-                .update(device, queue, &t.data, camera - t.position, density);
+            {
+                crate::profile_scope!("Grass.Update");
+                g.grass
+                    .update(device, queue, &t.data, camera - t.position, density);
+            }
             let has_grass = d.details.enabled && !d.detail_map.is_empty();
             if has_grass && self.grass_atlas.is_none() {
+                crate::profile_scope!("Grass.Atlas");
                 self.grass_atlas = Some(super::terrain_grass::atlas(device, queue));
             }
             let (atlas_view, atlas_sampler) = match &self.grass_atlas {
@@ -637,7 +658,10 @@ impl TerrainCache {
                 }
             };
             if self.grass_cull.is_none() {
-                self.grass_cull = Some(CullPipelines::new(device));
+                crate::profile_scope!("Grass.CullPipelines");
+                let built =
+                    (self.grass_cull_prebuilt.take()).unwrap_or_else(|| CullPipelines::new(device));
+                self.grass_cull = Some(built);
             }
             let casts = d.details.cast_shadows && t.cast_shadows;
             let near = near_map && casts;

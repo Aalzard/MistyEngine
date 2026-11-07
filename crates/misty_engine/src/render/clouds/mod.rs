@@ -75,6 +75,10 @@ pub(crate) struct Clouds {
     dummy_shadow: wgpu::TextureView,
     noise: Option<noise::NoiseTextures>,
     pipelines: Option<passes::CloudPipelines>,
+    /// The two above, made on a worker since the renderer was made (streaming only, see
+    /// `render::prebuilt`): the noise volumes are compute dispatches whose pipelines took
+    /// 280 ms on a first launch.
+    prebuilt: crate::render::prebuilt::Prebuilt<(noise::NoiseTextures, passes::CloudPipelines)>,
     shadow_map: Option<(u32, wgpu::TextureView)>,
     targets: HashMap<u64, passes::CloudTarget>,
     renders: u64,
@@ -85,6 +89,17 @@ pub(crate) struct Clouds {
 }
 
 impl Clouds {
+    /// Start making the noise volumes and the pipelines on a worker thread (streaming only).
+    pub fn prebuild(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let (device, queue) = (device.clone(), queue.clone());
+        self.prebuilt = crate::render::prebuilt::Prebuilt::spawn("misty cloud setup", move || {
+            (
+                noise::NoiseTextures::new(&device, &queue),
+                passes::CloudPipelines::new(&device),
+            )
+        });
+    }
+
     pub fn new(device: &wgpu::Device) -> Self {
         let uniform = |label, size: usize| {
             device.create_buffer(&wgpu::BufferDescriptor {
@@ -123,6 +138,7 @@ impl Clouds {
             dummy_shadow: passes::shadow_map(device, 1),
             noise: None,
             pipelines: None,
+            prebuilt: Default::default(),
             shadow_map: None,
             targets: HashMap::new(),
             renders: 0,
@@ -189,6 +205,12 @@ impl Renderer {
             .filter(|_| o.is_on() && frame.skybox && frame.shaded && !ortho);
         c.now = None;
         if let Some(q) = quality {
+            if (c.noise.is_none() || c.pipelines.is_none())
+                && let Some((noise, pipelines)) = c.prebuilt.take()
+            {
+                c.noise.get_or_insert(noise);
+                c.pipelines.get_or_insert(pipelines);
+            }
             if c.noise.is_none() {
                 c.noise = Some(noise::NoiseTextures::new(device, queue));
             }

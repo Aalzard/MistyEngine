@@ -331,10 +331,7 @@ impl Localizer {
 pub fn load_tables(root: &Path) -> (Vec<StringTable>, Vec<String>) {
     let mut tables = Vec::new();
     let mut warnings = Vec::new();
-    for p in crate::vfs::files_under(&root.join("Assets")) {
-        if p.extension().and_then(|e| e.to_str()) != Some(table::EXTENSION) {
-            continue;
-        }
+    for p in crate::asset_db::assets_with_extension(root, table::EXTENSION) {
         match StringTable::load(&p) {
             Ok(t) => tables.push(t),
             Err(e) => warnings.push(e),

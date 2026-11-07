@@ -863,11 +863,55 @@ pub fn pipelines_built() -> u64 {
     BUILT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
+/// The device whose shader modules are kept, with its modules by source.
+type Modules = (
+    wgpu::Device,
+    std::collections::HashMap<String, wgpu::ShaderModule>,
+);
+static MODULES: std::sync::Mutex<Option<Modules>> = std::sync::Mutex::new(None);
+
+fn modules() -> std::sync::MutexGuard<'static, Option<Modules>> {
+    MODULES.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Keep the shader modules made on `device` (the editor's and the player's one device), so
+/// each source is parsed once (see [`shader_module`]). Only one device: wgpu compares devices
+/// by id, and devices of different instances (tests make many) can share one.
+pub fn cache_shader_modules(device: &wgpu::Device) {
+    *modules() = Some((device.clone(), Default::default()));
+}
+
+/// The shader module of `source` (after the common prelude) on `device`: made once on the
+/// device of [`cache_shader_modules`], every time elsewhere.
+///
+/// Most pipelines share their source with others (the variants of a mesh shader; the main,
+/// shadow and prepass pipelines of the terrain, grass and trees), and parsing and validating
+/// the prelude plus the source was two thirds of what building the pipelines of a scene's
+/// first frame cost (148 of 218 ms for MeadowDemo's 51).
+fn shader_module(device: &wgpu::Device, name: &str, source: &str) -> wgpu::ShaderModule {
+    let cached = modules()
+        .as_ref()
+        .filter(|(d, _)| d == device)
+        .and_then(|(_, m)| m.get(source).cloned());
+    if let Some(m) = cached {
+        return m;
+    }
+    crate::profile_scope!("Pipeline.Module");
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(spec.name),
-        source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{}", spec.source).into()),
+        label: Some(name),
+        source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{source}").into()),
     });
+    if let Some((d, m)) = modules().as_mut()
+        && d == device
+    {
+        m.insert(source.to_owned(), module.clone());
+    }
+    module
+}
+
+pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
+    crate::profile_scope!(format!("Pipeline: {}", spec.name));
+    let module = shader_module(device, spec.name, spec.source);
     let layouts: Vec<Option<&wgpu::BindGroupLayout>> =
         spec.layouts.iter().map(|l| Some(*l)).collect();
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -946,7 +990,7 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
             targets: &targets,
         }),
         multiview_mask: None,
-        cache: None,
+        cache: crate::render::pipeline_cache(device).as_ref(),
     })
 }
 

@@ -31,6 +31,9 @@ pub struct RenderStats {
     pub cpu_ms: f32,
     /// Grass chunks still being scattered on the workers or waiting for upload.
     pub grass_pending: u32,
+    /// Terrain layer textures and tree models still being prepared on worker threads (a
+    /// scene's first frames): the views keep drawing until they land.
+    pub loading: u32,
     /// Render-thread time spent uploading finished grass chunks (budgeted per frame).
     pub grass_upload_ms: f32,
     /// Of that, the time already spent when the last piece started: under the budget.
