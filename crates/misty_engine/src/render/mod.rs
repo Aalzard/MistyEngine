@@ -53,6 +53,7 @@ mod trees;
 pub mod ui;
 mod variants;
 pub(crate) mod vfx;
+mod vgeo;
 mod volumetrics;
 mod water;
 
@@ -75,6 +76,7 @@ pub use surface::{RenderingMode, ShaderKind, SortingKey};
 pub use target::RenderTarget;
 use target::TargetLayouts;
 pub use terrain_grass::{GrassStats, grass_streaming, set_grass_streaming};
+pub use vgeo::VgeoStats;
 pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 
 use bytemuck::{Pod, Zeroable};
@@ -96,13 +98,16 @@ pub const SAMPLE_COUNT: u32 = 4;
 const MAX_LIGHTS: usize = 8;
 
 /// Device features to request when the adapter has them: timestamp queries for GPU timing
-/// (see [`Renderer::with_queue`]) and indirect draws with an instance offset (GPU culling).
+/// (see [`Renderer::with_queue`]), indirect draws with an instance offset (GPU culling) and
+/// indirect draw counts (virtual geometry's indexed cluster draws).
 pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     adapter.features()
         & (wgpu::Features::TIMESTAMP_QUERY
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
-            | wgpu::Features::INDIRECT_FIRST_INSTANCE)
+            | wgpu::Features::INDIRECT_FIRST_INSTANCE
+            // Virtual geometry draws each cluster as an indexed sub-draw, counted on the GPU.
+            | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT)
 }
 
 /// World plane the editor grid lies on.
@@ -475,6 +480,8 @@ pub struct Renderer {
     culler: Option<gpu_culling::GpuCuller>,
     /// Batches of the last GPU-culled frame.
     last_gpu_batches: usize,
+    /// Misty Virtual Geometry: cluster culling and drawing of virtual meshes (render/vgeo).
+    vgeo: vgeo::VirtualGeometry,
     prepass: prepass::Prepass,
     // Per-frame scratch kept to avoid reallocating.
     batcher: batch::Batcher,
@@ -620,6 +627,7 @@ impl Renderer {
             pass_timer: None,
             culler: gpu_culling::supported(device).then(|| gpu_culling::GpuCuller::new(device)),
             last_gpu_batches: 0,
+            vgeo: Default::default(),
             prepass: Default::default(),
             batcher: Default::default(),
             shadow_batchers: Vec::new(),
@@ -707,6 +715,8 @@ impl Renderer {
         }
         // Quality ▸ LOD Bias scales every LOD Group's switch heights.
         self.options.lod_bias = quality.lod_bias;
+        self.vgeo.enabled = quality.virtual_geometry;
+        self.vgeo.threshold = quality.virtual_geometry_error;
         self.quality = quality.clone();
     }
 
@@ -1048,6 +1058,16 @@ impl Renderer {
             crate::profile_scope!("Render.PrepareAssets");
             self.prepare_assets(device, queue, frame, &lod);
         }
+        // Virtual geometry: meshes built into clusters draw through the cluster path (it needs
+        // indirect draws with an instance offset, like GPU culling; the Frame Debugger lists
+        // CPU-side draws, so it is off while capturing).
+        self.vgeo.on =
+            self.vgeo.enabled && self.culler.is_some() && frame.shaded && self.capture.is_none();
+        if self.vgeo.on {
+            crate::profile_scope!("Render.VirtualGeometry");
+            self.vgeo.ensure_gpu(device, &self.pipelines);
+            self.vgeo.prepare_meshes(device, frame);
+        }
         let aspect = target.aspect();
         // Temporal anti-aliasing jitters the camera by a sub-pixel offset each frame.
         let taa_on = self.quality.temporal_aa && frame.shaded;
@@ -1179,6 +1199,7 @@ impl Renderer {
             self.upload_culling(device, queue, target, frame, &lists, c, &view_proj);
             self.last_gpu_batches = c.batches.len();
         }
+        self.begin_vgeo(device, queue, target, frame, &lists, &view_proj, &plan);
         self.prepare_shadow_mask(device, queue, target, frame, &plan, &shadow_settings);
         let screen = self.prepare_screen_space(device, queue, target, frame);
         if screen.is_none() {
@@ -1245,6 +1266,9 @@ impl Renderer {
             self.water.simulate(&mut encoder);
         }
         self.mark(&mut encoder, "Water simulation");
+        self.vgeo
+            .cull(&mut encoder, 2, 2 + self.vgeo.shadow_views());
+        self.mark(&mut encoder, "Virtual geometry: shadow culling");
         self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
         self.mark(&mut encoder, "Shadow maps (cascades, local)");
         if let Some(view_proj) = grass_near {
@@ -1255,6 +1279,9 @@ impl Renderer {
         self.mark(&mut encoder, "Clouds");
         self.froxel_passes(device, &mut encoder, target);
         self.mark(&mut encoder, "Froxel fog");
+        // The first phase's clusters (also drawn by the screen-space prepass below).
+        self.vgeo.cull(&mut encoder, 0, 1);
+        self.mark(&mut encoder, "Virtual geometry: culling (first phase)");
         // The AO / contact shadow prepass (own normal + depth targets) is separate from the
         // optional main depth prepass below; GPU culling is off while it runs (see
         // `gpu_culling_active`), so it always sees the CPU-culled opaque batches.
@@ -1299,15 +1326,20 @@ impl Renderer {
             scene_copy,
             trace,
         };
+        // GPU culling and virtual geometry draw the main pass in two phases around the Hi-Z
+        // pyramid of the first phase's depth.
+        let vgeo = self.vgeo.active();
         match (&culled, self.culler.as_ref()) {
-            (Some(c), Some(culler)) => {
+            (_, Some(culler)) if culled.is_some() || vgeo => {
                 let state = target.culling.lock().unwrap_or_else(|e| e.into_inner());
-                let state = state.as_ref().expect("made by upload_culling");
+                let state = state.as_ref().expect("made by upload_culling / begin_vgeo");
                 let slots = &self.slots_buffer;
-                culler.dispatch(device, &mut encoder, state, c, slots, 0);
+                if let Some(c) = &culled {
+                    culler.dispatch(device, &mut encoder, state, c, slots, 0);
+                }
                 let first = MainSplit {
                     phase: Some(0),
-                    culled: Some(c),
+                    culled: culled.as_ref(),
                     ..split
                 };
                 let parts = (&lists, &particle_draws[..]);
@@ -1322,7 +1354,11 @@ impl Renderer {
                     first,
                 );
                 culler.build_pyramid(device, &mut encoder, state, target.depth_view());
-                culler.dispatch(device, &mut encoder, state, c, slots, 1);
+                if let Some(c) = &culled {
+                    culler.dispatch(device, &mut encoder, state, c, slots, 1);
+                }
+                self.vgeo.cull(&mut encoder, 1, 2);
+                self.mark(&mut encoder, "Hi-Z + culling (second phase)");
                 let rest = MainSplit {
                     phase: Some(1),
                     ..first
@@ -1887,6 +1923,10 @@ impl Renderer {
             m.draw(&mut pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
         }
+        // Virtual geometry casters (culled for this map, detail chosen for the camera).
+        if self.vgeo.active() {
+            self.vgeo.draw_shadow(&mut pass, slot, &self.empty_group);
+        }
         // Grass near the camera (the first cascades only; group 2 = the grass casters).
         if let Some(view_proj) = grass
             && frame_debug::record(&self.capture, |_| {
@@ -2117,15 +2157,30 @@ impl Renderer {
             }
 
             self.mark_pass(&mut pass, "Main: sky");
-            // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches).
-            if let (Some(culled), Some(phase)) = (split.culled, split.phase) {
+            // Opaque and Cutout meshes, front to back (or this phase's GPU-culled batches),
+            // then this phase's virtual geometry clusters. Without GPU culling the CPU-culled
+            // batches all draw in the first phase.
+            if let Some(phase) = split.phase {
                 pass.set_bind_group(1, self.lit_group(), &[]);
-                self.draw_culled(&mut pass, frame, lists, culled, phase, stats);
+                if let Some(culled) = split.culled {
+                    self.draw_culled(&mut pass, frame, lists, culled, phase, stats);
+                } else if phase == 0 && frame.shaded && !lists.opaque.is_empty() {
+                    let opaque = &lists.opaque;
+                    self.draw_batches(&mut pass, frame, lists, opaque, split.prepass, None, stats);
+                }
+                if self.vgeo.active() {
+                    self.mark_pass(&mut pass, "Main: opaque meshes");
+                    let textures = &self.textures;
+                    let material =
+                        |draw: usize| textures.get_set(&frame.meshes[draw].material.textures());
+                    self.vgeo.draw_main(&mut pass, phase, &material);
+                    self.mark_pass(&mut pass, "Main: virtual geometry");
+                }
                 if !last {
                     return;
                 }
             }
-            if frame.shaded && !lists.opaque.is_empty() {
+            if split.phase.is_none() && frame.shaded && !lists.opaque.is_empty() {
                 let main = || main_target(target);
                 frame_debug::pass(&self.capture, &["Opaque"], main, EventTarget::Hdr);
                 pass.set_bind_group(1, self.lit_group(), &[]);

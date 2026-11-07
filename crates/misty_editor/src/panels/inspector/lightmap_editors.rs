@@ -62,7 +62,8 @@ pub fn renderer_section(ui: &mut Ui, r: &mut MeshRenderer, is_static: bool) -> b
     })
 }
 
-/// Model import settings: Generate Lightmap UVs (written to the `.meta`, re-imports the model).
+/// Model import settings: Generate Lightmap UVs, Virtual Geometry (written to the `.meta`,
+/// re-imports the model).
 pub fn model_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let name = std::path::Path::new(rel)
         .file_stem()
@@ -80,7 +81,12 @@ pub fn model_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         ui.label("Generate Lightmap UVs").on_hover_text(
             "Unwrap a second UV set (non-overlapping charts with padding) for baked lighting",
         );
-        let ch = ui.checkbox(&mut s.generate_lightmap_uvs, "").changed();
+        let mut ch = ui.checkbox(&mut s.generate_lightmap_uvs, "").changed();
+        ui.end_row();
+        ui.label("Virtual Geometry").on_hover_text(
+            "Build the meshes into clusters with per-cluster level of detail (Misty Virtual              Geometry, prototype): dense rocks, cliffs and props then draw about as many              triangles as they cover pixels. Needs Virtual Geometry on in the Quality level.              Opaque, non-skinned meshes; not for alpha-tested foliage.",
+        );
+        ch |= ui.checkbox(&mut s.virtual_geometry, "").changed();
         ui.end_row();
         ch
     });
