@@ -948,7 +948,7 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
             targets: &targets,
         }),
         multiview_mask: None,
-        cache: None,
+        cache: crate::render::pipeline_cache(device).as_ref(),
     })
 }
 

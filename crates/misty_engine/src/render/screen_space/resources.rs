@@ -165,7 +165,7 @@ impl Passes {
                 module: &module,
                 entry_point: Some(entry),
                 compilation_options: Default::default(),
-                cache: None,
+                cache: crate::render::pipeline_cache(device).as_ref(),
             })
         };
         Self {

@@ -474,7 +474,7 @@ fn pipeline(
         depth_stencil: None,
         multisample: Default::default(),
         multiview_mask: None,
-        cache: None,
+        cache: crate::render::pipeline_cache(device).as_ref(),
     })
 }
 

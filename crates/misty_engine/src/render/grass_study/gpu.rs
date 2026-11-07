@@ -1013,7 +1013,7 @@ impl Study {
                 targets,
             }),
             multiview_mask: None,
-            cache: None,
+            cache: crate::render::pipeline_cache(device).as_ref(),
         })
     }
 
@@ -1037,7 +1037,7 @@ impl Study {
                 constants: &constants,
                 ..Default::default()
             },
-            cache: None,
+            cache: crate::render::pipeline_cache(device).as_ref(),
         })
     }
 

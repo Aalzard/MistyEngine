@@ -205,7 +205,7 @@ impl VisPipelines {
                 ],
             }),
             multiview_mask: None,
-            cache: None,
+            cache: crate::render::pipeline_cache(device).as_ref(),
         });
 
         let entry = |binding, ty| wgpu::BindGroupLayoutEntry {
@@ -277,7 +277,7 @@ impl VisPipelines {
                 module: &module,
                 entry_point: Some(entry),
                 compilation_options: Default::default(),
-                cache: None,
+                cache: crate::render::pipeline_cache(device).as_ref(),
             })
         };
         let classify = compute("cs_grass_classify");

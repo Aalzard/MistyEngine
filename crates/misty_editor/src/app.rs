@@ -32,6 +32,8 @@ pub struct EditorApp {
     cursor_applied: misty_engine::scripting::CursorState,
     /// Shader pipelines built so far (a rise shows "Preparing shaders" in the status bar).
     shaders_seen: u64,
+    /// When to write the pipeline cache: a few seconds after the last shader compiled.
+    pipeline_cache_due: Option<std::time::Instant>,
     /// Last window title sent.
     title: String,
     /// Writes the layout to the project's Library folder.
@@ -108,6 +110,9 @@ impl EditorApp {
         match &gpu {
             Some(g) => {
                 let info = g.state.adapter.get_info();
+                if capture.is_some() {
+                    eprintln!("renderer: {} ({:?})", info.name, info.backend);
+                }
                 state
                     .console
                     .info(format!("Renderer: {} ({:?})", info.name, info.backend));
@@ -125,6 +130,7 @@ impl EditorApp {
             errors_seen: 0,
             cursor_applied: Default::default(),
             shaders_seen: misty_engine::render::pipelines_built(),
+            pipeline_cache_due: None,
             title: String::new(),
             layout_autosave,
         }
@@ -766,6 +772,9 @@ impl eframe::App for EditorApp {
         if let Err(e) = misty_engine::profiler::capture::finish() {
             eprintln!("profiler capture: {e}");
         }
+        if let Err(e) = misty_engine::render::save_pipeline_cache() {
+            eprintln!("pipeline cache not saved: {e}");
+        }
     }
 
     /// Only the window position/size is persisted by eframe; editor state lives in the project.
@@ -853,6 +862,21 @@ impl eframe::App for EditorApp {
             self.state
                 .live
                 .toast(format!("Preparing shaders… ({n} compiled)"));
+            self.pipeline_cache_due =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(3));
+        }
+        if self
+            .pipeline_cache_due
+            .is_some_and(|t| std::time::Instant::now() >= t)
+        {
+            self.pipeline_cache_due = None;
+            let _ = std::thread::Builder::new()
+                .name("misty pipeline cache".into())
+                .spawn(|| {
+                    if let Err(e) = misty_engine::render::save_pipeline_cache() {
+                        eprintln!("pipeline cache not saved: {e}");
+                    }
+                });
         }
         // Lightmap bakes run on their own thread: pick up the result when it is done.
         if crate::lightmap_tools::poll(&mut self.state) {

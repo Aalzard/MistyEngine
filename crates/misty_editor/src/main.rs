@@ -372,6 +372,7 @@ fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
     setup.device_descriptor = std::sync::Arc::new(move |adapter| {
         let mut desc = base(adapter);
         desc.required_features |= misty_engine::render::timestamp_features(adapter);
+        desc.required_features |= misty_engine::render::pipeline_cache_features(adapter);
         desc.required_limits = misty_engine::render::device_limits(adapter, desc.required_limits);
         desc
     });
