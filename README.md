@@ -6,38 +6,61 @@ scripts on your objects. The goal is to bring the best of several engines into o
 workflow, high-end visuals, open source, and lots of tools built in. It is built on wgpu, egui, hecs,
 rapier and Lua.
 
-> **Early test version (0.1.0).** Things will change and some things will break. Please try it, and
+> **Early test version (0.2.0).** Things will change and some things will break. Please try it, and
 > tell us what you find.
 
-![The editor](docs/screenshots/round12/meshbuilder_scene.png)
+![MeadowDemo: thin field grass with tree shadows, real-time GI](docs/screenshots/gfx/treelook_after_behind.png)
+
+*MeadowDemo, rendered live in the editor: millions of thin grass blades, trees casting soft shadows
+across the turf, and Misty GI lighting the shade. It is also a project template you can start from.*
 
 ## Download
 
-Get the newest Windows version from the
+Get the newest version from the
 **[Releases page](https://github.com/Aalzard/MistyEngine/releases)**:
 
-- **`MistyEngine-Setup-vX.Y.Z-windows-x64.exe`** (recommended): installs Misty Engine for your user,
-  with Start menu and desktop shortcuts and an uninstaller.
-- or **`MistyEngine-vX.Y.Z-windows-x64.zip`**: unzip it anywhere and start `MistyEngine.exe`.
+- **Windows:** **`MistyEngine-Setup-vX.Y.Z-windows-x64.exe`** (recommended) installs Misty Engine for
+  your user, with Start menu and desktop shortcuts and an uninstaller; or
+  **`MistyEngine-vX.Y.Z-windows-x64.zip`**: unzip it anywhere and start `MistyEngine.exe`.
+- **Linux:** **`MistyEngine-vX.Y.Z-linux-x64.tar.gz`**: extract it anywhere and run `./MistyEngine`
+  (see the README inside for the few system libraries it needs).
 
 Misty Engine tells you when a new version is out and updates itself with one click (the green
 **Update** button). Windows may say "Windows protected your PC" because the app is not signed yet:
 click **More info ▸ Run anyway**.
 
-**You need:** Windows 10 or 11 (64-bit) and a graphics card with Vulkan or DirectX 12. Linux and
-macOS versions are coming.
+**You need:** Windows 10 or 11 (64-bit) or a 64-bit Linux (glibc 2.35 or newer, X11 or Wayland), and
+a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is coming.
 
 ## What you get
 
 - **Misty Hub:** the start screen, with your recent projects (each showing the last view you were
-  looking at) and tutorials. New projects come from two templates: Standard, and PP Ready (a sunset
-  over the ocean with clouds, god rays and every effect on). You can also include all the sample
-  scenes.
+  looking at) and tutorials. New projects come from three templates: Standard, PP Ready (a sunset
+  over the ocean with clouds, god rays and every effect on) and **MeadowDemo** (the walkable meadow
+  above, with a first-person player; its grass, trees and textures are free to use in your games).
+  You can also include all the sample scenes.
 - **Editor:**
   - Frameless window with its own title bar, and dockable windows with saved layouts.
   - Inspector cards with clear titles; a Hierarchy with tree lines and colour-coded folders.
   - Undo history, Ctrl+K search for anything, multiple scenes open at once, prefabs and presets.
   - A built-in code editor, so you don't need Visual Studio.
+  - A smooth Scene camera (gliding fly, orbit and zoom to the cursor), and **editor scripting in
+    Lua**: your own menu items, tool windows, custom Inspectors and gizmos.
+- **Next-generation rendering** (experimental, switch them on in Quality settings):
+  - **Misty GI, Lumen-like real-time global illumination:** bounce light, colour bleeding and sky
+    occlusion that update live as lights and objects move, with nothing baked. It traces a
+    distance-field version of the scene and gathers light through probes; in our test room it lands
+    within 1–2 brightness levels of an offline path-traced bake, in about 1.1 ms on High.
+  - **Virtual geometry, Nanite-like:** dense meshes are cut into small clusters with a hierarchy of
+    simpler versions, and the GPU picks the detail per cluster every frame, so thousands of
+    high-poly rocks draw as fast as a hand-made LOD chain, with no LODs to make.
+  - **Virtual shadow maps:** sharp sun shadows from a cached page system, with grass and swaying
+    trees in a near layer.
+  - **Upscaling** (Off / Quality / Balanced / Performance): render below full resolution and rebuild
+    a sharp image.
+- **Grass and trees:** dense, thin field grass drawn with a visibility buffer (each grass pixel is
+  shaded once), soft shadows from trees on the turf, and procedural trees (oak, linden, birch) with
+  PBR bark, wind, LODs and far impostors, painted onto terrains like in Unity.
 - **Rendering:**
   - Physically based materials, soft shadows, area lights and reflection probes.
   - **Baked global illumination** (a lightmapper), **light probes** and **occlusion culling**.
@@ -56,6 +79,9 @@ macOS versions are coming.
   - **Skinned characters** with blend shapes, **animation rigging and IK**, animator controllers.
   - The **Timeline** for cutscenes, and **virtual cameras** with blends, follow, orbit and shake.
   - Navigation meshes, particles, audio with mixers, UI, input actions.
+- **Multiplayer:** Network Manager, Network Object and Network Transform (interpolation and
+  prediction), network variables and RPCs from Lua, LAN discovery, and a Multiplayer Play Mode that
+  opens extra player windows.
 - **Systems:**
   - Save system and localization, a video player, and rich text.
   - Asset groups loaded by address, and a package manager.
@@ -66,6 +92,8 @@ macOS versions are coming.
 
 | | |
 |---|---|
+| ![Tree shadows on the grass](docs/screenshots/gfx/treelook_after_trunk_sun.png) | ![Misty GI: live bounce light vs. a path-traced bake](docs/screenshots/gfx/gi_cycles_room_compare.png) |
+| ![Virtual geometry: each colour is one cluster](docs/screenshots/gfx/vgeo_close_clusters.png) | ![Virtual geometry: 3000 rocks of 82k triangles](docs/screenshots/gfx/vgeo_close_virtual.png) |
 | ![PP Ready template](crates/misty_editor/assets/templates/pp_ready.png) | ![Baked lighting](docs/screenshots/round13/lightmap_game.png) |
 | ![GPU particles](docs/screenshots/round13/vfx_play.png) | ![Shader Graph](docs/screenshots/round12/shadergraph_dissolve.png) |
 | ![Timeline](docs/screenshots/round11/timeline_window.png) | ![Virtual cameras](docs/screenshots/round11/vcam_follow_collider.png) |
