@@ -36,6 +36,8 @@ struct Lights {
 @group(1) @binding(2) var shadow_map: texture_depth_2d_array;
 @group(1) @binding(3) var shadow_sampler: sampler_comparison;
 @group(1) @binding(4) var local_shadow_map: texture_depth_2d_array;
+@group(1) @binding(10) var vsm_table: texture_2d_array<u32>;
+@group(1) @binding(11) var vsm_pool: texture_depth_2d;
 
 // The camera as shadows.wgsl expects it in `view`.
 struct MaskView {

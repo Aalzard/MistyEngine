@@ -52,6 +52,8 @@ pub(super) struct ShadowUniform {
     filter: [f32; 4],
     /// Per light: [size, depth bias, normal bias, 0], [near, far, tan(half fov), faces].
     lights: [[f32; 4]; 2 * MAX_LIGHTS],
+    /// The sun's virtual shadow map (render/vsm; all zero = off).
+    vsm: super::vsm::VsmUniform,
 }
 
 fn pack(
@@ -60,6 +62,7 @@ fn pack(
     settings: &ShadowSettings,
     size: (u32, u32),
     debug: bool,
+    vsm: Option<&super::vsm::VsmUniform>,
 ) -> ShadowUniform {
     let mut u = ShadowUniform::zeroed();
     for (i, c) in plan.cascades.iter().enumerate() {
@@ -70,7 +73,13 @@ fn pack(
     let count = plan.cascades.len() as f32;
     u.settings = [count, settings.cascade_blend, blocker as f32, filter as f32];
     let forward = frame.camera.forward();
-    let distance = plan.cascades.last().map_or(0.0, |c| c.far);
+    let distance = match vsm {
+        Some(v) => v.misc[3],
+        None => plan.cascades.last().map_or(0.0, |c| c.far),
+    };
+    if let Some(v) = vsm {
+        u.vsm = *v;
+    }
     u.view_axis = forward.extend(distance).to_array();
     let debug = if debug { 1.0 } else { 0.0 };
     u.misc = [
@@ -105,7 +114,7 @@ const FILTER_BIAS: f32 = 0.02;
 /// Directional: tan(half the angular diameter). Spot / point: the radius. Rectangle: just the
 /// softness, since the shader projects the rectangle's own half axes. All scaled by the
 /// light's softness.
-fn source_size(l: &LightData) -> f32 {
+pub(super) fn source_size(l: &LightData) -> f32 {
     let size = l.shadow.size.max(0.0);
     let softness = l.shadow.softness.max(0.0);
     softness
@@ -131,14 +140,16 @@ impl Renderer {
         settings: &ShadowSettings,
         size: (u32, u32),
     ) {
-        for (slot, m) in plan.matrices().enumerate() {
+        // (The virtual shadow map's rectangles have their own view buffer.)
+        for (slot, m) in plan.matrices().enumerate().take(plan.vsm_first_slot()) {
             let mut v = ViewUniform::zeroed();
             v.view_proj = m.to_cols_array_2d();
             let offset = slot as u64 * shadows::VIEW_STRIDE;
             queue.write_buffer(&self.shadows.view_buffer, offset, bytemuck::bytes_of(&v));
         }
         let debug = std::mem::take(&mut self.shadows.debug_cascades);
-        let u = pack(frame, plan, settings, size, debug);
+        let vsm = self.vsm.frame.as_ref().map(|f| &f.uniform);
+        let u = pack(frame, plan, settings, size, debug, vsm);
         queue.write_buffer(&self.shadows.params_buffer, 0, bytemuck::bytes_of(&u));
     }
 
@@ -152,7 +163,9 @@ impl Renderer {
         stats: &mut RenderStats,
     ) {
         let cascades = plan.cascades.len();
-        for (slot, list) in lists.shadows.iter().enumerate() {
+        // The virtual shadow map's rectangles (after the local layers) draw in `vsm_passes`.
+        let maps = cascades + plan.local.len();
+        for (slot, list) in lists.shadows.iter().enumerate().take(maps) {
             let view = match slot.checked_sub(cascades) {
                 None => &self.shadows.cascade_views[slot],
                 Some(layer) => &self.shadows.local_layer_views[layer],
@@ -193,7 +206,18 @@ impl Renderer {
                 grass_range.is_some_and(|r| start < r)
             });
             let grass = grass.is_some();
-            self.shadow_pass(encoder, frame, view, slot, lists, Some(list), grass, stats);
+            let trees = (slot < cascades).then_some(slot);
+            self.shadow_pass(
+                encoder,
+                frame,
+                view,
+                slot,
+                lists,
+                Some(list),
+                grass,
+                trees,
+                stats,
+            );
         }
     }
 }
@@ -208,10 +232,15 @@ mod tests {
 
     #[test]
     fn uniform_matches_wgsl_and_sizes_convert() {
-        // 4 matrices, 4 cascade rows, 4 vec4s, 2 vec4s per light (shadows.wgsl).
+        // 4 matrices, 4 cascade rows, 4 vec4s, 2 vec4s per light, the virtual shadow map's
+        // parameters (shadows.wgsl).
         assert_eq!(
             std::mem::size_of::<ShadowUniform>(),
-            64 * MAX_CASCADES + 16 * MAX_CASCADES + 64 + 32 * MAX_LIGHTS
+            64 * MAX_CASCADES
+                + 16 * MAX_CASCADES
+                + 64
+                + 32 * MAX_LIGHTS
+                + std::mem::size_of::<super::super::vsm::VsmUniform>()
         );
         let mut l = LightData {
             kind: LightType::Directional,

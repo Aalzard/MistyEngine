@@ -42,6 +42,75 @@ impl ShadowResolution {
     }
 }
 
+/// How the sun's shadows are made (Quality ▸ Shadows).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShadowMode {
+    /// Up to four cascades fitted around the view each frame (render/cascades.rs).
+    #[default]
+    Cascaded,
+    /// Virtual shadow maps: a clipmap of 8k × 8k levels around the camera, 128 × 128 pages
+    /// allocated only where visible pixels need them and kept between frames until something
+    /// moves (render/vsm).
+    Virtual,
+}
+
+impl ShadowMode {
+    pub const ALL: [Self; 2] = [Self::Cascaded, Self::Virtual];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Cascaded => "Cascaded",
+            Self::Virtual => "Virtual",
+        }
+    }
+
+    fn is_default(&self) -> bool {
+        *self == Self::Cascaded
+    }
+}
+
+/// Physical page pool of the virtual shadow maps (128 × 128 depth pages, 64 KB each).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShadowPool {
+    /// 512 pages (32 MB).
+    Small,
+    /// 1024 pages (64 MB).
+    Medium,
+    /// 2048 pages (128 MB).
+    #[default]
+    Large,
+    /// 4096 pages (256 MB).
+    Huge,
+}
+
+impl ShadowPool {
+    pub const ALL: [Self; 4] = [Self::Small, Self::Medium, Self::Large, Self::Huge];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Small => "512 pages (32 MB)",
+            Self::Medium => "1024 pages (64 MB)",
+            Self::Large => "2048 pages (128 MB)",
+            Self::Huge => "4096 pages (256 MB)",
+        }
+    }
+
+    /// Pages in the pool.
+    pub fn pages(self) -> u32 {
+        match self {
+            Self::Small => 512,
+            Self::Medium => 1024,
+            Self::Large => 2048,
+            Self::Huge => 4096,
+        }
+    }
+
+    /// The serde default (a level missing the field reads as High's).
+    fn is_default(&self) -> bool {
+        *self == Self::Large
+    }
+}
+
 /// Off / Low / Medium / High for soft shadows and screen effects.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Tier {
@@ -261,6 +330,13 @@ pub const TAA_SHARPNESS: f32 = 0.4;
 pub struct QualityLevel {
     pub name: String,
     pub shadow_resolution: ShadowResolution,
+    /// Cascaded or virtual sun shadows (Virtual: Shadow Resolution sets the texel size
+    /// against a screen pixel instead of the map size).
+    #[serde(skip_serializing_if = "ShadowMode::is_default")]
+    pub shadow_mode: ShadowMode,
+    /// Virtual shadow maps: size of the physical page pool.
+    #[serde(skip_serializing_if = "ShadowPool::is_default")]
+    pub shadow_pool: ShadowPool,
     /// Shadows are drawn up to this many metres from the camera.
     pub shadow_distance: f32,
     /// Directional shadow cascades: 1, 2 or 4.
@@ -348,6 +424,8 @@ impl QualityLevel {
         Self {
             name: "Low".into(),
             shadow_resolution: ShadowResolution::Low,
+            shadow_mode: ShadowMode::Cascaded,
+            shadow_pool: ShadowPool::Small,
             shadow_distance: 40.0,
             shadow_cascades: 1,
             cascade_split: 0.75,
@@ -390,6 +468,8 @@ impl QualityLevel {
         Self {
             name: "Medium".into(),
             shadow_resolution: ShadowResolution::Medium,
+            shadow_mode: ShadowMode::Cascaded,
+            shadow_pool: ShadowPool::Medium,
             shadow_distance: 70.0,
             shadow_cascades: 2,
             cascade_split: 0.75,
@@ -430,6 +510,8 @@ impl QualityLevel {
         Self {
             name: "High".into(),
             shadow_resolution: ShadowResolution::High,
+            shadow_mode: ShadowMode::Cascaded,
+            shadow_pool: ShadowPool::Large,
             shadow_distance: 150.0,
             shadow_cascades: 4,
             cascade_split: 0.75,
@@ -471,6 +553,7 @@ impl QualityLevel {
             name: "Ultra".into(),
             shadow_resolution: ShadowResolution::VeryHigh,
             shadow_distance: 250.0,
+            shadow_pool: ShadowPool::Huge,
             soft_shadows: Tier::High,
             max_texture_size: 8192,
             lod_bias: 2.0,
@@ -532,6 +615,14 @@ impl QualityLevel {
             map_size: self.shadow_map_size(),
             temporal: self.shadow_temporal,
             denoise: self.shadow_denoise,
+            mode: self.shadow_mode,
+            pool_pages: self.shadow_pool.pages(),
+            texels_per_pixel: match self.shadow_resolution {
+                ShadowResolution::Low => 4.0,
+                ShadowResolution::Medium => 2.0,
+                ShadowResolution::High => 1.0,
+                ShadowResolution::VeryHigh => 0.5,
+            },
         }
     }
 
@@ -623,6 +714,13 @@ pub struct ShadowSettings {
     pub temporal: bool,
     /// Edge-aware screen-space blur of soft shadows.
     pub denoise: bool,
+    /// Cascaded or virtual sun shadows.
+    pub mode: ShadowMode,
+    /// Virtual shadow maps: physical pages in the pool.
+    pub pool_pages: u32,
+    /// Virtual shadow maps: texel size against a screen pixel at the receiver (1 = one
+    /// texel per pixel; Shadow Resolution Very High 0.5, High 1, Medium 2, Low 4).
+    pub texels_per_pixel: f32,
 }
 
 impl Default for ShadowSettings {

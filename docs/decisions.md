@@ -3261,3 +3261,21 @@ Record of choices made without asking, and why.
        (`misty_ambient`, 2 reads; the world lookup per grass fragment cost +14 ms), tree crowns fall back to a
        world-space probe lookup (`misty_world_irradiance`, a copy of the probe clipmap after the texels).
      - Glossy reflections come from the same distance field and radiance cache, behind SSR's hits.
+650. **Virtual shadow maps for the sun, opt-in** (`docs/pending/vsm.md`).
+     - Quality ▸ Shadows ▸ Virtual: a clipmap of 8k × 8k levels (64 × 64 pages of 128², texel 1/1024 m × Shadow
+       Resolution's texels per pixel at level 0, doubling per level) up to a safety level covering the shadow
+       distance. Pages on a light-space grid with one snapped depth range, so a page's content never depends on
+       the camera and caching is exact; toroidal page table (R32Uint array, lit bindings 10–11).
+     - CPU-allocated pages from GPU marks read back a frame later (not GPU-driven allocation): the caster passes
+       stay the ordinary CPU-culled ones (meshes, terrain chunks, trees, virtual geometry), drawn per rectangle of
+       neighbouring pages into a 2048² scratch atlas and copied into the pool. Coarser levels and the safety level
+       cover pages that aren't rendered yet.
+     - Invalidation by caster signatures (fingerprint, model matrix, variant) diffed between frames — no ids —
+       plus terrain chunk detail changes; a turned sun, a new depth range or an edited terrain drop everything.
+     - Grass isn't a cached caster (it sways): the near grass shadow map keeps blade shadows; trees are cached with
+       the wind pose of their page's frame and detail chosen per level.
+     - PCSS keeps its look: blocker search where its radius is ≤ 8 texels, filter at the finest level where the
+       penumbra is ≤ 8 texels (contact edges at the pixel's level), every tap looked up on its own.
+     - Fog and sun shafts keep reading cascade-shaped layers, filled from the virtual map (one lookup per texel).
+     - Every preset stays Cascaded: Virtual is faster at High (−0.2 to −0.5 ms MeadowDemo, StressStatic) and sharper
+       everywhere, but 0.15–0.4 ms slower at Medium / Low, whose cascades are almost free.

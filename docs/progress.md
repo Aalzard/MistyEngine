@@ -2263,3 +2263,27 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Relay / NAT punch-through, encryption, dedicated-server (headless) builds, Network Animator, interest
   management, tighter bandwidth (quantisation, batching).
+
+## Virtual shadow maps (branch vsm)
+
+### Done (docs/pending/vsm.md, screenshots `docs/screenshots/gfx/vsm_*`)
+- Quality ▸ Shadows ▸ Cascaded / Virtual (every preset Cascaded), Shadow Page Pool (512–4096 pages),
+  Shadow Resolution = texels per pixel in Virtual mode.
+- Sun clipmap of 8k × 8k levels around the camera (1 mm texels close up at High), 128² pages on a
+  light-space grid, toroidal page table, a coarse safety level over the whole shadow distance.
+- Page marking from the depth buffer (grass included) after the main pass, asynchronous readback, LRU page
+  cache; only new pages and pages under moving / new / removed / posed casters, changed terrain chunks or a
+  turned sun are rendered — 0 pages per frame on a still camera, ~1 while walking in MeadowDemo.
+- Pages rendered per rectangle of neighbouring pages through the existing caster pipelines (meshes, terrain
+  chunks, trees with per-level detail, virtual geometry) into a scratch atlas, copied into the pool.
+- Sampling in every lit shader (meshes, terrain, grass lit and visibility resolve, trees, water, custom
+  shaders, the temporal shadow mask) with PCSS search / filter at kernel-sized levels across page borders;
+  fog and sun shafts read cascade layers filled from the virtual map.
+- Scene view draw modes Virtual Shadow Levels / Cache / Pages; `Renderer::vsm_stats`.
+- MeadowDemo High: 15.44 → 15.17 ms still, 15.45 → 15.24 moving (wide); Medium +0.15–0.4, Low +0.2.
+
+### Not done yet
+- Grass past the near grass map (12 m) doesn't cast in Virtual mode (High 20 m, Ultra 32 m casters before);
+  cached tree shadows don't sway; a moving sun re-renders every page; Medium / Low are slightly slower than
+  their nearly free cascades, so no preset switched yet.
+

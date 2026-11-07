@@ -60,15 +60,36 @@ pub struct ShadowPlan {
     pub local: Vec<Mat4>,
     /// Per light (same order as `Frame::lights`): -1 = directional map, n = first local layer, None = no shadows.
     pub light_layers: Vec<Option<i32>>,
+    /// The first shadowed directional light uses the virtual shadow map (render/vsm) instead
+    /// of cascades: its direction.
+    pub vsm: Option<Vec3>,
+    /// View-projection of each page rectangle the virtual shadow map renders this frame
+    /// (after the local layers in [`ShadowPlan::matrices`]).
+    pub vsm_views: Vec<Mat4>,
+    /// With the virtual shadow map: cascade boxes the fog and sun shafts read the sun's
+    /// shadow through (filled from the virtual map, not drawn; render/vsm/fog.rs).
+    pub fog_cascades: Vec<Cascade>,
 }
 
 impl ShadowPlan {
-    /// Every shadow map's view-projection: cascades first, then the local layers.
+    /// Every shadow map's view-projection: cascades first, then the local layers, then the
+    /// virtual shadow map's page rectangles.
     pub fn matrices(&self) -> impl Iterator<Item = &Mat4> {
         self.cascades
             .iter()
             .map(|c| &c.view_proj)
             .chain(&self.local)
+            .chain(&self.vsm_views)
+    }
+
+    /// The sun casts shadows this frame (cascades or the virtual shadow map).
+    pub fn has_sun(&self) -> bool {
+        !self.cascades.is_empty() || self.vsm.is_some()
+    }
+
+    /// Slot (in [`ShadowPlan::matrices`]) of the virtual shadow map's first rectangle.
+    pub fn vsm_first_slot(&self) -> usize {
+        self.cascades.len() + self.local.len()
     }
 }
 
@@ -204,10 +225,17 @@ pub fn plan_with(
             l.shadows != Shadows::None && l.intensity > 0.0 && frame.shaded && !casters.is_empty();
         let layer = match l.kind {
             _ if !wants => None,
-            LightType::Directional if plan.cascades.is_empty() => {
-                let size = settings.map_size;
-                plan.cascades =
-                    cascades::fit(frame.camera, aspect, l.direction, settings, casters, size);
+            LightType::Directional if !plan.has_sun() => {
+                if settings.mode == crate::quality::ShadowMode::Virtual {
+                    plan.vsm = Some(l.direction);
+                    let size = super::vsm::fog::FOG_SIZE;
+                    plan.fog_cascades =
+                        cascades::fit(frame.camera, aspect, l.direction, settings, casters, size);
+                } else {
+                    let size = settings.map_size;
+                    plan.cascades =
+                        cascades::fit(frame.camera, aspect, l.direction, settings, casters, size);
+                }
                 Some(-1)
             }
             LightType::Directional => None,

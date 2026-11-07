@@ -29,6 +29,8 @@ struct ShadowParams {
     // lights and the softness multiplier for rectangles (their half axes give the shape).
     // Faces = shadow-map layers of a rectangle light (1 = one wide map, 5 / 6 = hemicube).
     light_params: array<vec4<f32>, 16>,
+    // The sun's virtual shadow map (render/vsm; vsm_common.wgsl), when it has one.
+    vsm: VsmParams,
 };
 
 @group(1) @binding(6) var<uniform> shadow_params: ShadowParams;
@@ -262,6 +264,9 @@ fn cascade_at(depth: f32) -> vec2<f32> {
 }
 
 fn sun_shadow(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode: f32) -> f32 {
+    if (vsm_on()) {
+        return vsm_sun_shadow(light, world, n, n_dot_l, mode);
+    }
     let count = u32(shadow_params.settings.x);
     let depth = cascade_depth(world);
     let distance = shadow_params.view_axis.w;
@@ -296,6 +301,9 @@ fn sun_shadow(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode: f3
 // the taps are a few centimetres apart, so they share them (dense grass shades many
 // fragments per pixel; picking the cascade per tap cost as much as the taps).
 fn sun_shadow_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: array<vec3<f32>, 4>) -> f32 {
+    if (vsm_on()) {
+        return vsm_sun_taps(light, world, n, n_dot_l, taps);
+    }
     let count = u32(shadow_params.settings.x);
     let depth = cascade_depth(world);
     let distance = shadow_params.view_axis.w;
@@ -507,6 +515,9 @@ fn fast_shadow_factor(i: u32, li: LightItem, world: vec3<f32>, n: vec3<f32>, l: 
 
 // Scene view ▸ Shadow Cascades: colour each cascade (blended across the bands).
 fn cascade_debug(world: vec3<f32>, color: vec3<f32>) -> vec3<f32> {
+    if (vsm_on()) {
+        return vsm_debug(world, color);
+    }
     let count = u32(shadow_params.settings.x);
     let depth = cascade_depth(world);
     if (shadow_params.misc.z < 0.5 || count == 0u || depth > shadow_params.view_axis.w) {
@@ -525,5 +536,293 @@ fn cascade_debug(world: vec3<f32>, color: vec3<f32>) -> vec3<f32> {
         tint = mix(tint, tints[min(c + 1u, 3u)], at.y);
     }
     let luma = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+    return tint * (0.15 + 0.85 * min(luma, 1.5));
+}
+
+// ---- Virtual shadow maps (render/vsm) ----
+// The sun's shadow from a clipmap of virtual levels around the camera: the level a pixel's
+// footprint picks (vsm_common.wgsl), its page found through the page table (`vsm_table`, one
+// layer per level, toroidal) in the physical pool (`vsm_pool`). A page not rendered yet falls
+// back to the coarser levels. Soft shadows search and filter at the level whose texel suits
+// their kernel, each tap looked up on its own (kernels cross page borders); the hardware
+// bilinear compare stays inside the tap's page.
+
+fn vsm_on() -> bool {
+    return shadow_params.vsm.light_x.w > 0.5;
+}
+
+fn vsm_levels() -> f32 {
+    return shadow_params.vsm.light_y.w;
+}
+
+fn vsm_texel(l: i32) -> f32 {
+    return shadow_params.vsm.levels[l].w;
+}
+
+// Level a receiver at `dist` metres from the camera samples.
+fn vsm_level(dist: f32) -> i32 {
+    let footprint = max(dist * shadow_params.vsm.info.y, shadow_params.vsm.info.w);
+    return vsm_level_of(footprint, shadow_params.vsm.info.x, vsm_levels());
+}
+
+// Light-space q (x, -y; metres, camera relative) and depth (0..1) of a world point.
+fn vsm_coords(world: vec3<f32>) -> vec3<f32> {
+    let rel = world - view.camera_pos.xyz;
+    let x = dot(rel, shadow_params.vsm.light_x.xyz);
+    let y = dot(rel, shadow_params.vsm.light_y.xyz);
+    let z = dot(rel, shadow_params.vsm.light_z.xyz);
+    return vec3<f32>(x, -y, z * shadow_params.vsm.light_z.w + shadow_params.vsm.info.z);
+}
+
+// The page holding q at level l: xy = its first pool texel, zw = q's texel within the page;
+// x < 0 when it isn't rendered (or q is outside the level's window).
+fn vsm_page(l: i32, q: vec2<f32>) -> vec4<f32> {
+    let lv = shadow_params.vsm.levels[l];
+    let t = (q - lv.xy) * lv.z;
+    let page = floor(t / VSM_PAGE);
+    if (any(page < vec2<f32>(0.0)) || any(page >= vec2<f32>(VSM_PAGES))) {
+        return vec4<f32>(-1.0);
+    }
+    let slot = vec2<i32>((page + shadow_params.vsm.wrap[l].xy) % VSM_PAGES);
+    let phys = textureLoad(vsm_table, slot, l, 0).r & 0xFFFFu;
+    if (phys == 0u) {
+        return vec4<f32>(-1.0);
+    }
+    let row = u32(shadow_params.vsm.pool.z);
+    let origin = vec2<f32>(f32((phys - 1u) % row), f32((phys - 1u) / row)) * VSM_PAGE;
+    return vec4<f32>(origin, t - page * VSM_PAGE);
+}
+
+// Finest level from `l0` up whose page holding q is rendered (-1 = none).
+fn vsm_resident(l0: i32, q: vec2<f32>) -> i32 {
+    let levels = i32(vsm_levels());
+    for (var l = l0; l < levels; l++) {
+        if (vsm_page(l, q).x >= 0.0) {
+            return l;
+        }
+    }
+    return -1;
+}
+
+// Bilinear compare at q (level l0, coarser levels where its page is missing); -1 = none.
+fn vsm_tap(l0: i32, q: vec2<f32>, z: f32) -> f32 {
+    let levels = i32(vsm_levels());
+    for (var l = l0; l < levels; l++) {
+        let pg = vsm_page(l, q);
+        if (pg.x >= 0.0) {
+            let t = pg.xy + clamp(pg.zw, vec2<f32>(0.5), vec2<f32>(VSM_PAGE - 0.5));
+            return textureSampleCompareLevel(vsm_pool, shadow_sampler, t * shadow_params.vsm.pool.xy, clamp(z, 0.0, 1.0));
+        }
+    }
+    return -1.0;
+}
+
+// Stored depth at q (level l0, coarser levels where its page is missing); 2 = none.
+fn vsm_depth(l0: i32, q: vec2<f32>) -> f32 {
+    let levels = i32(vsm_levels());
+    for (var l = l0; l < levels; l++) {
+        let pg = vsm_page(l, q);
+        if (pg.x >= 0.0) {
+            return textureLoad(vsm_pool, vec2<i32>(pg.xy + floor(pg.zw)), 0);
+        }
+    }
+    return 2.0;
+}
+
+// Depth change of the receiver's plane per metre of q (wide kernels compare against the
+// plane, not one depth), limited at grazing angles like `receiver_slope`.
+fn vsm_slope(n: vec3<f32>, n_dot_l: f32) -> vec2<f32> {
+    let nl = vec3<f32>(
+        dot(n, shadow_params.vsm.light_x.xyz),
+        dot(n, shadow_params.vsm.light_y.xyz),
+        dot(n, shadow_params.vsm.light_z.xyz),
+    );
+    if (abs(nl.z) < 1e-4) {
+        return vec2<f32>(0.0);
+    }
+    let g = vec2<f32>(-nl.x / nl.z, nl.y / nl.z) * shadow_params.vsm.light_z.w;
+    let tan_now = sqrt(max(1.0 - n_dot_l * n_dot_l, 0.0)) / max(n_dot_l, 1e-4);
+    return g * min(1.0, 8.0 / max(tan_now, 1e-4));
+}
+
+// The page a kernel around q starts from at level l: xy = the page (window relative), zw = its
+// first pool texel (z < 0 when it isn't rendered). Taps landing in it (most of them: kernels
+// are a few texels wide, pages 128) skip the page table.
+fn vsm_center(l: i32, q: vec2<f32>) -> vec4<f32> {
+    let lv = shadow_params.vsm.levels[l];
+    let page = floor((q - lv.xy) * lv.z * (1.0 / VSM_PAGE));
+    return vec4<f32>(page, vsm_page(l, q).xy);
+}
+
+// `vsm_tap` through the kernel's centre page `c` when q lies in it.
+fn vsm_tap_c(l: i32, q: vec2<f32>, z: f32, c: vec4<f32>) -> f32 {
+    let lv = shadow_params.vsm.levels[l];
+    let t = (q - lv.xy) * lv.z;
+    let page = floor(t * (1.0 / VSM_PAGE));
+    if (c.z >= 0.0 && all(page == c.xy)) {
+        let p = c.zw + clamp(t - page * VSM_PAGE, vec2<f32>(0.5), vec2<f32>(VSM_PAGE - 0.5));
+        return textureSampleCompareLevel(vsm_pool, shadow_sampler, p * shadow_params.vsm.pool.xy, clamp(z, 0.0, 1.0));
+    }
+    return vsm_tap(l, q, z);
+}
+
+// `vsm_depth` through the kernel's centre page `c` when q lies in it.
+fn vsm_depth_c(l: i32, q: vec2<f32>, c: vec4<f32>) -> f32 {
+    let lv = shadow_params.vsm.levels[l];
+    let t = (q - lv.xy) * lv.z;
+    let page = floor(t * (1.0 / VSM_PAGE));
+    if (c.z >= 0.0 && all(page == c.xy)) {
+        return textureLoad(vsm_pool, vec2<i32>(c.zw + floor(t - page * VSM_PAGE)), 0);
+    }
+    return vsm_depth(l, q);
+}
+
+// Average depth of the blockers over a disk of `r` metres at level l, and their count.
+fn vsm_find_blockers(l: i32, q: vec2<f32>, z: f32, slope: vec2<f32>, r: f32, phi: f32) -> vec2<f32> {
+    let n = u32(shadow_params.settings.z);
+    let c = vsm_center(l, q);
+    var sum = 0.0;
+    var count = 0.0;
+    for (var i = 0u; i < n; i++) {
+        let o = vogel(i, n, phi) * r;
+        let d = vsm_depth_c(l, q + o, c);
+        if (d < z + dot(slope, o)) {
+            sum += d;
+            count += 1.0;
+        }
+    }
+    return vec2<f32>(sum / max(count, 1.0), count);
+}
+
+// Lit fraction over a disk of `r` metres at level l (receiver-plane compares, more bias
+// further from the receiver's own point, as `filter_kernel`).
+fn vsm_filter(l: i32, q: vec2<f32>, z: f32, slope: vec2<f32>, r: f32, phi: f32, bias_per_m: f32) -> f32 {
+    let n = u32(shadow_params.settings.w);
+    let c = vsm_center(l, q);
+    var lit = 0.0;
+    var count = 0.0;
+    for (var i = 0u; i < n; i++) {
+        let o = vogel(i, n, phi) * r;
+        let s = vsm_tap_c(l, q + o, z + dot(slope, o) - bias_per_m * length(o), c);
+        if (s >= 0.0) {
+            lit += s;
+            count += 1.0;
+        }
+    }
+    return select(1.0, lit / max(count, 1.0), count > 0.0);
+}
+
+// Fade over the last 10% of the shadow distance (view depth, as the cascades).
+fn vsm_fade(world: vec3<f32>, s: f32) -> f32 {
+    let distance = shadow_params.view_axis.w;
+    let depth = cascade_depth(world);
+    return mix(1.0, s, clamp((distance - depth) / (0.1 * distance), 0.0, 1.0));
+}
+
+fn vsm_sun_shadow(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, mode: f32) -> f32 {
+    let dist = length(world - view.camera_pos.xyz);
+    if (cascade_depth(world) > shadow_params.view_axis.w) {
+        return 1.0;
+    }
+    let lv = vsm_resident(vsm_level(dist), vsm_coords(world).xy);
+    if (lv < 0) {
+        return 1.0;
+    }
+    let lp = shadow_params.light_params[light * 2u];
+    let texel = vsm_texel(lv);
+    let inv_range = shadow_params.vsm.light_z.w;
+    // Normal offset: about `normal bias` texels of the level, more on slopes.
+    let p = world + n * texel * lp.z * (1.0 + 2.0 * (1.0 - n_dot_l));
+    let c = vsm_coords(p);
+    let z = c.z - lp.y * texel * inv_range;
+    if (mode < 1.5) {
+        let s = vsm_tap(lv, c.xy, z);
+        return vsm_fade(world, select(1.0, s, s >= 0.0));
+    }
+    let phi = shadow_noise(world) * 6.2831853;
+    let slope = vsm_slope(n, n_dot_l);
+    // Blockers up to MAX_BLOCKER_DISTANCE above the receiver can reach this far.
+    let reach = lp.x * MAX_BLOCKER_DISTANCE;
+    let ls = max(lv, i32(shadow_params.vsm.misc.y));
+    let search = max(reach, 2.0 * vsm_texel(ls));
+    let blockers = vsm_find_blockers(ls, c.xy, z, slope, search, phi);
+    if (blockers.y < 0.5) {
+        return 1.0;
+    }
+    // Penumbra radius = blocker-to-receiver distance × tan(half the sun's angle).
+    let distance = max(z - blockers.x, 0.0) / inv_range;
+    let narrowest = shadow_params.filtering.y * texel;
+    let radius = clamp(distance * lp.x, narrowest, max(search, narrowest));
+    shadow_radius_out = max(shadow_radius_out, radius);
+    let lf = max(lv, vsm_level_of(radius / VSM_KERNEL_TEXELS, shadow_params.vsm.info.x, vsm_levels()));
+    let bias_per_m = shadow_params.filtering.z * inv_range;
+    return vsm_fade(world, vsm_filter(lf, c.xy, z, slope, radius, phi, bias_per_m));
+}
+
+// `sun_shadow_taps` from the virtual shadow map: the four taps at the level whose texel suits
+// their spread.
+fn vsm_sun_taps(light: u32, world: vec3<f32>, n: vec3<f32>, n_dot_l: f32, taps: array<vec3<f32>, 4>) -> f32 {
+    let dist = length(world - view.camera_pos.xyz);
+    if (cascade_depth(world) > shadow_params.view_axis.w) {
+        return 1.0;
+    }
+    let finest = shadow_params.vsm.info.x;
+    let lt = max(vsm_level(dist), vsm_level_of(vsm_taps_footprint(dist), finest, vsm_levels()));
+    let lv = vsm_resident(lt, vsm_coords(world).xy);
+    if (lv < 0) {
+        return 1.0;
+    }
+    let lp = shadow_params.light_params[light * 2u];
+    let texel = vsm_texel(lv);
+    let p = world + n * texel * lp.z * (1.0 + 2.0 * (1.0 - n_dot_l));
+    let bias = lp.y * texel * shadow_params.vsm.light_z.w;
+    let centre = vsm_center(lv, vsm_coords(p).xy);
+    var sum = 0.0;
+    for (var k = 0u; k < 4u; k++) {
+        let c = vsm_coords(p + taps[k]);
+        let s = vsm_tap_c(lv, c.xy, c.z - bias, centre);
+        sum += select(1.0, s, s >= 0.0);
+    }
+    return vsm_fade(world, sum * 0.25);
+}
+
+// Scene view debug views of the virtual shadow map (vsm.misc.x): 1 = levels and page borders,
+// 2 = cached (green) / rendered this frame (red) / sampled from a coarser level (magenta),
+// 3 = physical pages (the page table's mapping).
+fn vsm_debug(world: vec3<f32>, color: vec3<f32>) -> vec3<f32> {
+    let mode = shadow_params.vsm.misc.x;
+    if (mode < 0.5 || cascade_depth(world) > shadow_params.view_axis.w) {
+        return color;
+    }
+    let dist = length(world - view.camera_pos.xyz);
+    let want = vsm_level(dist);
+    let q = vsm_coords(world).xy;
+    let l = vsm_resident(want, q);
+    let luma = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
+    var tint = vec3<f32>(1.0, 0.0, 1.0);
+    if (l >= 0) {
+        let pg = vsm_page(l, q);
+        let edge = min(min(pg.z, pg.w), min(VSM_PAGE - pg.z, VSM_PAGE - pg.w));
+        if (mode > 2.5) {
+            let id = pg.xy / VSM_PAGE;
+            let h = vec3<f32>(dot(id, vec2<f32>(12.9898, 78.233)), dot(id, vec2<f32>(39.35, 11.13)), dot(id, vec2<f32>(73.1, 52.7)));
+            tint = fract(sin(h) * 43758.5453);
+        } else if (mode > 1.5) {
+            let lv = shadow_params.vsm.levels[l];
+            let page = floor((q - lv.xy) * lv.z / VSM_PAGE);
+            let slot = vec2<i32>((page + shadow_params.vsm.wrap[l].xy) % VSM_PAGES);
+            let fresh = (textureLoad(vsm_table, slot, l, 0).r & 0x10000u) != 0u;
+            tint = select(vec3<f32>(0.25, 1.0, 0.3), vec3<f32>(1.0, 0.2, 0.15), fresh);
+            if (l != want) {
+                tint = vec3<f32>(1.0, 0.3, 1.0);
+            }
+        } else {
+            let hue = f32(l) * 0.618034;
+            tint = clamp(abs(fract(vec3<f32>(hue) + vec3<f32>(0.0, 0.333, 0.667)) * 6.0 - 3.0) - 1.0, vec3<f32>(0.0), vec3<f32>(1.0));
+        }
+        if (edge < 1.5) {
+            tint *= 0.3;
+        }
+    }
     return tint * (0.15 + 0.85 * min(luma, 1.5));
 }

@@ -59,6 +59,7 @@ mod variants;
 pub(crate) mod vfx;
 mod vgeo;
 mod volumetrics;
+mod vsm;
 mod water;
 
 pub use crate::terrain::TerrainDraw;
@@ -84,6 +85,7 @@ use target::TargetLayouts;
 pub use terrain_grass::{GrassStats, grass_streaming, set_grass_streaming};
 pub use vgeo::VgeoStats;
 pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
+pub use vsm::{VsmDebug, VsmStats};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -571,6 +573,12 @@ pub struct Renderer {
     last_view_proj: Mat4,
     /// MSAA samples of the main pass this renderer was built for (see [`sample_count`]).
     samples: u32,
+    /// The sun's virtual shadow map (Quality ▸ Shadows ▸ Virtual, see [`vsm`]).
+    vsm: vsm::Vsm,
+    /// Page table and pool bound while the virtual shadow map is off.
+    vsm_dummy: vsm::VsmDummy,
+    /// Renders so far (the virtual shadow map's request ages).
+    vsm_frame: u64,
     /// Grass visibility buffer pipelines (made with the first grass; `Some(None)` = this
     /// device refused them and the grass keeps the lit pass).
     grass_vis: Option<Option<grass_vis::VisPipelines>>,
@@ -615,6 +623,7 @@ impl Renderer {
         let slots_buffer = slots_buffer(device, slots_capacity);
         let ltc_table = area::table_buffer(device);
         let lights_2d = light2d::buffer(device);
+        let vsm_dummy = vsm::VsmDummy::new(device);
         let (mesh_bind_group, draws_bind_group) = draw_groups(
             device,
             &pipelines,
@@ -628,6 +637,7 @@ impl Renderer {
                 &screen_trace.off_buffer,
                 shadow_denoise.off_buffer(),
             ],
+            [&vsm_dummy.table_view, &vsm_dummy.pool_view],
         );
 
         let meshes = GpuMesh::primitives(device);
@@ -709,7 +719,56 @@ impl Renderer {
             last_view_proj: Mat4::IDENTITY,
             samples: sample_count(),
             grass_vis: None,
+            vsm: Default::default(),
+            vsm_dummy,
+            vsm_frame: 0,
         }
+    }
+
+    /// The virtual shadow map's page table (or the dummy while it is off).
+    fn vsm_table_view(&self) -> &wgpu::TextureView {
+        self.vsm
+            .gpu
+            .as_ref()
+            .map_or(&self.vsm_dummy.table_view, |g| &g.table_view)
+    }
+
+    /// The virtual shadow map's physical page pool (or the dummy while it is off).
+    fn vsm_pool_view(&self) -> &wgpu::TextureView {
+        self.vsm
+            .gpu
+            .as_ref()
+            .map_or(&self.vsm_dummy.pool_view, |g| &g.pool_view)
+    }
+
+    /// Rebuild the lit pass's group 1 (shadow maps or buffers changed).
+    fn rebuild_draw_groups(&mut self, device: &wgpu::Device) {
+        (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
+            device,
+            &self.pipelines,
+            [&self.lights_buffer, &self.ltc_table, &self.lights_2d],
+            [&self.draws_buffer, &self.slots_buffer],
+            &self.shadows,
+            &self.probes,
+            &self.lightmaps,
+            [
+                &self.screen_space.off_buffer,
+                &self.screen_trace.off_buffer,
+                self.shadow_denoise.off_buffer(),
+            ],
+            [self.vsm_table_view(), self.vsm_pool_view()],
+        );
+    }
+
+    /// Scene view ▸ Virtual Shadow debug view (levels, cached pages, page table) for the next
+    /// render only.
+    pub fn set_vsm_debug(&mut self, debug: VsmDebug) {
+        self.vsm.debug = debug;
+    }
+
+    /// Page counts of the last render's virtual shadow map (None = cascaded shadows).
+    pub fn vsm_stats(&self) -> Option<VsmStats> {
+        self.vsm.gpu.as_ref().map(|_| self.vsm.stats)
     }
 
     /// Point the view group at the current fog volume, HDRI sky cubes and cloud images.
@@ -769,26 +828,29 @@ impl Renderer {
         if !quality.temporal() {
             self.taa.clear();
         }
-        let size = quality.shadow_map_size();
+        // Virtual shadow maps replace the sun's cascades (small layers stay for the fog, filled
+        // from the virtual map).
+        let virtual_sun = quality.shadow_mode == crate::quality::ShadowMode::Virtual;
+        let size = if virtual_sun {
+            vsm::fog::FOG_SIZE
+        } else {
+            quality.shadow_map_size()
+        };
         let near = quality.grass_shadow_map_size();
+        let mut rebuild = false;
         if size != self.shadows.directional_size || near != self.shadows.grass_near.size {
             let layout = &self.pipelines.shadow_view_layout;
             self.shadows = shadows::ShadowMaps::with_size(device, layout, size, near);
-            let lists = [&self.draws_buffer, &self.slots_buffer];
-            (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
-                device,
-                &self.pipelines,
-                [&self.lights_buffer, &self.ltc_table, &self.lights_2d],
-                lists,
-                &self.shadows,
-                &self.probes,
-                &self.lightmaps,
-                [
-                    &self.screen_space.off_buffer,
-                    &self.screen_trace.off_buffer,
-                    self.shadow_denoise.off_buffer(),
-                ],
-            );
+            rebuild = true;
+        }
+        rebuild |= if virtual_sun {
+            let pages = quality.shadow_pool.pages();
+            self.vsm.ensure_gpu(device, &self.pipelines, pages)
+        } else {
+            self.vsm.release()
+        };
+        if rebuild {
+            self.rebuild_draw_groups(device);
         }
         // Quality ▸ LOD Bias scales every LOD Group's switch heights.
         self.options.lod_bias = quality.lod_bias;
@@ -917,7 +979,8 @@ impl Renderer {
                 + self.sky.bytes()
                 + self.volumetrics.texture_bytes()
                 + self.clouds.texture_bytes()
-                + self.taa.bytes(),
+                + self.taa.bytes()
+                + self.vsm.bytes(),
         }
     }
 
@@ -1266,19 +1329,15 @@ impl Renderer {
             // Baked lightmaps (texture array upload).
             let rebuilt =
                 (self.lightmaps).prepare(device, queue, &frame.environment.lightmaps) || rebuilt;
-            let plan = {
+            let casters = Self::caster_bounds(frame, &prep.bounds, &terrains);
+            let mut plan = {
                 crate::profile_scope!("Render.ShadowPlan");
-                let casters = Self::caster_bounds(frame, &prep.bounds, &terrains);
                 shadows::plan_with(frame, &casters, aspect, &shadow_settings)
-            };
-            let lists = {
-                crate::profile_scope!("Render.FrameLists");
-                self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats)
             };
             let grass_layout = &self.pipelines.grass_layout;
             let camera = frame.camera.position;
             // The sun that has the cascades gets the near grass shadow map too.
-            let near_sun = (self.shadows.grass_near.size > 1 && !plan.cascades.is_empty())
+            let near_sun = (self.shadows.grass_near.size > 1 && plan.has_sun())
                 .then(|| {
                     frame
                         .lights
@@ -1292,6 +1351,8 @@ impl Renderer {
                 })
                 .flatten();
             let first = frame.meshes.len();
+            // (Before the frame lists: the virtual shadow map's pages follow the terrain chunks'
+            // detail.)
             (self.terrains).select(
                 device,
                 queue,
@@ -1309,6 +1370,17 @@ impl Renderer {
                 grass_time,
                 self.quality.grass_density(),
             );
+            {
+                crate::profile_scope!("Render.VirtualShadowMap");
+                self.prepare_vsm(device, queue, frame, target, &mut plan, &prep, &casters);
+            }
+            let lists = {
+                crate::profile_scope!("Render.FrameLists");
+                self.frame_lists(frame, &view_proj, &plan, prep, &terrains, &mut stats)
+            };
+            let vsm_views: Vec<(Mat4, u8)> = (self.vsm.frame.iter())
+                .flat_map(|f| f.rects.iter().map(|r| (r.view_proj, r.tree_lod)))
+                .collect();
             let tree_frame = trees::TreeFrame {
                 terrains: frame.terrains,
                 camera,
@@ -1329,6 +1401,7 @@ impl Renderer {
                             && l.intensity > 0.0
                     })
                     .map(|l| -l.direction),
+                vsm_views: &vsm_views,
             };
             (self.trees).prepare(device, queue, &self.pipelines, &tree_frame);
             (lists, plan, rebuilt, near_sun)
@@ -1451,6 +1524,29 @@ impl Renderer {
             self.shadow_passes(&mut encoder, frame, &plan, &lists, &mut stats);
         }
         self.mark(&mut encoder, "Shadow maps (cascades, local)");
+        {
+            crate::profile_scope!("Render.Encode.VirtualShadowMap");
+            self.vsm_passes(&mut encoder, frame, &plan, &lists, &mut stats);
+            // The fog and sun shafts read cascade layers: fill them from the virtual map.
+            if let (Some(fog), Some(gpu), Some(dir), true) = (
+                &self.vsm.fog,
+                &self.vsm.gpu,
+                plan.vsm.filter(|_| self.vsm.frame.is_some()),
+                self.volumetrics.reads_sun_shadow(),
+            ) {
+                fog.encode(
+                    device,
+                    queue,
+                    &mut encoder,
+                    gpu,
+                    &plan.fog_cascades,
+                    dir,
+                    frame.camera.position,
+                    &self.shadows.cascade_views,
+                );
+            }
+        }
+        self.mark(&mut encoder, "Virtual shadow map pages");
         if let Some(view_proj) = grass_near {
             self.grass_near_shadow_pass(&mut encoder, frame, &view_proj, &mut stats);
         }
@@ -1571,6 +1667,19 @@ impl Renderer {
             }
         }
         self.mark(&mut encoder, "Main pass (rest)");
+        if self.vsm.frame.is_some() {
+            let frame_no = self.vsm_frame;
+            let depth = target.depth_view();
+            (self.vsm).encode_mark(
+                device,
+                &mut encoder,
+                &self.view_bind_group,
+                depth,
+                target.size(),
+                frame_no,
+            );
+        }
+        self.mark(&mut encoder, "Virtual shadow map marking");
         self.glow_passes(device, &mut encoder, target);
         self.mark(&mut encoder, "Glows");
         self.sun_shaft_passes(device, &mut encoder, target);
@@ -1629,6 +1738,8 @@ impl Renderer {
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.submitted(slot);
         }
+        self.vsm.submitted();
+        self.vsm_frame += 1;
         if let Some(t) = self.pass_timer.as_mut() {
             t.read(device);
         }
@@ -1692,20 +1803,7 @@ impl Renderer {
             self.slots_buffer = slots_buffer(device, self.slots_capacity);
         }
         if grow_draws || grow_slots || rebuild {
-            (self.mesh_bind_group, self.draws_bind_group) = draw_groups(
-                device,
-                &self.pipelines,
-                [&self.lights_buffer, &self.ltc_table, &self.lights_2d],
-                [&self.draws_buffer, &self.slots_buffer],
-                &self.shadows,
-                &self.probes,
-                &self.lightmaps,
-                [
-                    &self.screen_space.off_buffer,
-                    &self.screen_trace.off_buffer,
-                    self.shadow_denoise.off_buffer(),
-                ],
-            );
+            self.rebuild_draw_groups(device);
         }
         let meshes = &lists.prep.uniforms;
         if !meshes.is_empty() {
@@ -2050,6 +2148,7 @@ impl Renderer {
         lists: &frame_lists::FrameLists,
         list: Option<&frame_lists::ShadowList>,
         grass: bool,
+        trees: Option<usize>,
         stats: &mut RenderStats,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -2073,6 +2172,33 @@ impl Renderer {
         let offset = (slot as u64 * shadows::VIEW_STRIDE) as u32;
         pass.set_bind_group(0, &self.shadows.view_bind_group, &[offset]);
         pass.set_bind_group(1, &self.draws_bind_group, &[]);
+        let casters = Casters {
+            grass,
+            trees,
+            chunks: None,
+        };
+        self.draw_casters(&mut pass, frame, slot, lists, list, casters, stats);
+    }
+
+    /// The casters of shadow map `slot` into an open pass (groups 0 and 1 bound by the
+    /// caller): meshes, virtual geometry, grass (`grass`), trees (their list `trees`) and the
+    /// terrains (only the chunks meeting `chunks` when given).
+    #[allow(clippy::too_many_arguments)]
+    fn draw_casters(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        frame: &Frame,
+        slot: usize,
+        lists: &frame_lists::FrameLists,
+        list: &frame_lists::ShadowList,
+        casters: Casters,
+        stats: &mut RenderStats,
+    ) {
+        let Casters {
+            grass,
+            trees,
+            chunks,
+        } = casters;
         let mut pipeline_at = 0;
         let ctx = self.capture.is_some().then(|| {
             let kind = frame_debug::events::ListKind::Shadow;
@@ -2118,12 +2244,12 @@ impl Renderer {
                 pass.set_pipeline(pipeline);
                 stats.set_pass += 1;
             }
-            m.draw(&mut pass, b.first..b.first + b.count);
+            m.draw(pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
         }
         // Virtual geometry casters (culled for this map, detail chosen for the camera).
         if self.vgeo.active() {
-            self.vgeo.draw_shadow(&mut pass, slot, &self.empty_group);
+            self.vgeo.draw_shadow(pass, slot, &self.empty_group);
         }
         // Grass near the camera (the first cascades only; group 2 = the grass casters).
         if grass
@@ -2136,11 +2262,11 @@ impl Renderer {
         {
             pass.set_pipeline(&self.pipelines.grass_shadow);
             stats.set_pass += 1;
-            (self.terrains).draw_grass_shadow(&mut pass, frame.terrains, slot, stats);
+            (self.terrains).draw_grass_shadow(pass, frame.terrains, slot, stats);
         }
-        // Trees into the sun's cascades (group 2 = the tree's textures).
-        if self.trees.has_trees() {
-            self.trees.draw_shadow(&mut pass, slot, stats);
+        // Trees into the sun's cascades and virtual pages (group 2 = the tree's textures).
+        if let Some(t) = trees.filter(|_| self.trees.has_trees()) {
+            self.trees.draw_shadow(pass, t, stats);
         }
         let first = frame.meshes.len();
         // Terrain casters pull heights from their own textures (group 3; group 2 unused).
@@ -2150,14 +2276,14 @@ impl Renderer {
         let terrains = self.terrain_events(frame, |i| list.terrains[i], "Terrain Shadow Caster");
         pass.set_pipeline(&self.pipelines.terrain_shadow);
         pass.set_bind_group(2, material, &[]);
-        self.terrains.draw(
-            &mut pass,
-            frame.terrains,
-            first,
-            false,
-            |i| terrains[i],
-            stats,
-        );
+        match chunks {
+            Some(f) => {
+                (self.terrains).draw_in(pass, frame.terrains, first, |i| terrains[i], f, stats)
+            }
+            None => self
+                .terrains
+                .draw(pass, frame.terrains, first, false, |i| terrains[i], stats),
+        }
     }
 
     /// Every blade near the camera into the near-camera grass shadow map (one pass per
@@ -2328,7 +2454,9 @@ impl Renderer {
         let (first, last) = (split.phase != Some(1), split.phase != Some(0));
         let copy = last && (split.scene_copy || split.trace.is_some());
         // Sun shafts and glow occlusion read the depth after the main pass.
-        let keep_depth = self.volumetrics.keeps_depth() || self.glows.keeps_depth();
+        // So does the virtual shadow map's page marking.
+        let keep_depth =
+            self.volumetrics.keeps_depth() || self.glows.keeps_depth() || self.vsm.frame.is_some();
         // Virtual geometry's visibility raster splits the phase's pass in two around it.
         let vis = split.phase.is_some() && self.vgeo.visibility_active();
         // The grass visibility buffer ends the last part after the grass depth (kept for the
@@ -2837,6 +2965,16 @@ fn slots_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
     })
 }
 
+/// What [`Renderer::draw_casters`] draws besides the meshes and virtual geometry.
+struct Casters<'a> {
+    /// Grass shadow casters (sun cascades within the casters' range).
+    grass: bool,
+    /// The trees' shadow list to draw (cascades, then virtual shadow map rectangles).
+    trees: Option<usize>,
+    /// Only the terrain chunks meeting this frustum (virtual shadow map rectangles).
+    chunks: Option<&'a culling::Frustum>,
+}
+
 /// Group 1 of the lit mesh pass and of the shadow/mask passes; `lights` = the lights uniform
 /// and the LTC table; `buffers` = draws, slots; `screen` = screen-space texels (AO, contact
 /// shadows) and the screen-space trace texels (SSGI, SSR).
@@ -2850,6 +2988,7 @@ fn draw_groups(
     probes: &probes::gpu::ProbeGpu,
     lightmaps: &lightmap_gpu::LightmapGpu,
     [screen, trace, shadow_mask]: [&wgpu::Buffer; 3],
+    [vsm_table, vsm_pool]: [&wgpu::TextureView; 2],
 ) -> (wgpu::BindGroup, wgpu::BindGroup) {
     let [lights, ltc, lights_2d] = lights;
     let [draws, slots] = buffers;
@@ -2901,6 +3040,15 @@ fn draw_groups(
             wgpu::BindGroupEntry {
                 binding: 9,
                 resource: shadows.grass_near.uniform.as_entire_binding(),
+            },
+            // The sun's virtual shadow map (render/vsm).
+            wgpu::BindGroupEntry {
+                binding: 10,
+                resource: wgpu::BindingResource::TextureView(vsm_table),
+            },
+            wgpu::BindGroupEntry {
+                binding: 11,
+                resource: wgpu::BindingResource::TextureView(vsm_pool),
             },
             p0,
             p1,

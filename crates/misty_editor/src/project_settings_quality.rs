@@ -3,8 +3,8 @@
 
 use egui::Ui;
 use misty_engine::quality::{
-    Anisotropic, AntiAliasing, QualityLevel, ShadowResolution, TextureQuality, Tier, UPSCALING_MIN,
-    UpscaleFilter, UpscalerBackend, Upscaling,
+    Anisotropic, AntiAliasing, QualityLevel, ShadowMode, ShadowPool, ShadowResolution,
+    TextureQuality, Tier, UPSCALING_MIN, UpscaleFilter, UpscalerBackend, Upscaling,
 };
 use misty_engine::settings::ProjectSettings;
 use misty_engine::sprites::import::{MAX_SIZES, max_size_label};
@@ -118,18 +118,49 @@ pub fn page(ui: &mut Ui, s: &mut ProjectSettings, selected: &mut usize) -> bool 
 fn shadows(ui: &mut Ui, l: &mut QualityLevel) -> bool {
     let mut edited = row(
         ui,
-        "Shadow Resolution",
-        "Size of the sun's shadow map. Higher = sharper shadows, more GPU memory.",
+        "Shadows",
+        "How the sun's shadows are made. Cascaded: up to four maps fitted around the view          every frame. Virtual: a virtual shadow map of 128 × 128 pages around the camera, only          the pages visible pixels need, kept between frames until something over them moves          (sharper close up, cheap while the view and the scene stay still).",
         |ui| {
             combo(
                 ui,
-                "q_shadow_res",
-                &mut l.shadow_resolution,
-                &ShadowResolution::ALL,
-                ShadowResolution::label,
+                "q_shadow_mode",
+                &mut l.shadow_mode,
+                &ShadowMode::ALL,
+                ShadowMode::label,
             )
         },
     );
+    let virtual_sun = l.shadow_mode == ShadowMode::Virtual;
+    if virtual_sun {
+        edited |= row(
+            ui,
+            "Shadow Page Pool",
+            "Physical pages the virtual shadow map keeps (GPU memory). Too few for the view:              distant shadows fall back to coarser pages.",
+            |ui| {
+                combo(
+                    ui,
+                    "q_shadow_pool",
+                    &mut l.shadow_pool,
+                    &ShadowPool::ALL,
+                    ShadowPool::label,
+                )
+            },
+        );
+    }
+    let resolution_tip = if virtual_sun {
+        "Texel size of the virtual shadow map against a screen pixel: Very High ½, High 1,          Medium 2, Low 4 pixels per texel."
+    } else {
+        "Size of the sun's shadow map. Higher = sharper shadows, more GPU memory."
+    };
+    edited |= row(ui, "Shadow Resolution", resolution_tip, |ui| {
+        combo(
+            ui,
+            "q_shadow_res",
+            &mut l.shadow_resolution,
+            &ShadowResolution::ALL,
+            ShadowResolution::label,
+        )
+    });
     edited |= row(
         ui,
         "Shadow Distance",
@@ -143,39 +174,41 @@ fn shadows(ui: &mut Ui, l: &mut QualityLevel) -> bool {
             .changed()
         },
     );
-    edited |= row(
-        ui,
-        "Shadow Cascades",
-        "Splits the sun's shadow into 1, 2 or 4 bands so near shadows stay sharp.",
-        |ui| {
-            let mut ch = false;
-            for n in [1, 2, 4] {
-                ch |= ui
-                    .selectable_value(&mut l.shadow_cascades, n, n.to_string())
-                    .changed();
-            }
-            ch
-        },
-    );
-    if l.shadow_cascades > 1 {
+    if !virtual_sun {
         edited |= row(
             ui,
-            "Cascade Split",
-            "0 = even bands, 1 = most detail close to the camera.",
+            "Shadow Cascades",
+            "Splits the sun's shadow into 1, 2 or 4 bands so near shadows stay sharp.",
             |ui| {
-                ui.add(egui::Slider::new(&mut l.cascade_split, 0.0..=1.0))
-                    .changed()
+                let mut ch = false;
+                for n in [1, 2, 4] {
+                    ch |= ui
+                        .selectable_value(&mut l.shadow_cascades, n, n.to_string())
+                        .changed();
+                }
+                ch
             },
         );
-        edited |= row(
-            ui,
-            "Cascade Blend",
-            "How much neighbouring cascades fade into each other (hides the seam).",
-            |ui| {
-                ui.add(egui::Slider::new(&mut l.cascade_blend, 0.0..=0.5))
-                    .changed()
-            },
-        );
+        if l.shadow_cascades > 1 {
+            edited |= row(
+                ui,
+                "Cascade Split",
+                "0 = even bands, 1 = most detail close to the camera.",
+                |ui| {
+                    ui.add(egui::Slider::new(&mut l.cascade_split, 0.0..=1.0))
+                        .changed()
+                },
+            );
+            edited |= row(
+                ui,
+                "Cascade Blend",
+                "How much neighbouring cascades fade into each other (hides the seam).",
+                |ui| {
+                    ui.add(egui::Slider::new(&mut l.cascade_blend, 0.0..=0.5))
+                        .changed()
+                },
+            );
+        }
     }
     edited |= row(
         ui,
