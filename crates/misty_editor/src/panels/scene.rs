@@ -63,7 +63,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let view_tool = state.tool == Tool::Hand;
     let cam = &mut state.scene_view.camera;
     cam.set_2d(state.scene_view.is_2d);
-    if cam.handle_input(ui.ctx(), &response, rect.height(), view_tool) {
+    let dt = ui.input(|i| i.stable_dt.min(0.1));
+    let moving = crate::scene_camera::bench::drive(cam, rect.height(), dt)
+        || cam.handle_input(ui.ctx(), &response, rect.height(), view_tool);
+    // Repaint every frame while the camera moves or eases out; idle otherwise.
+    if moving {
         ui.ctx().request_repaint();
     }
 
@@ -212,6 +216,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             gpu.renderer
                 .set_cascade_debug(sv.draw_mode == CASCADES_MODE);
             let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
+            crate::scene_camera::bench::scene_rendered(gpu);
             // Grass chunks still streaming in: keep drawing so they show up as they land.
             if gpu.renderer.stats().grass_pending > 0 {
                 ui.ctx().request_repaint();
@@ -314,6 +319,25 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     if !state.scene_view.camera.is_2d() {
         scene_gizmo(ui, rect, &mut state.scene_view.camera);
     }
+    speed_overlay(ui, rect, &state.scene_view.camera);
+}
+
+/// The fly speed, briefly, after right mouse + scroll changed it.
+fn speed_overlay(ui: &Ui, rect: Rect, cam: &SceneCamera) {
+    let Some((speed, alpha)) = cam.speed_overlay() else {
+        return;
+    };
+    let at = pos2(rect.center().x, rect.bottom() - 28.0);
+    let text = format!("Camera Speed {speed:.2}");
+    let font = FontId::proportional(13.0);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text, font, Color32::WHITE.gamma_multiply(alpha));
+    let bg = Rect::from_center_size(at, galley.size() + vec2(16.0, 8.0));
+    ui.painter()
+        .rect_filled(bg, 4.0, Color32::from_black_alpha((160.0 * alpha) as u8));
+    ui.painter()
+        .galley(bg.center() - galley.size() * 0.5, galley, Color32::WHITE);
 }
 
 /// Grid follows the view: XZ normally, the facing plane in axis views and 2D.
@@ -643,39 +667,82 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
     }
 }
 
-/// Camera settings dropdown: field of view, clipping and fly speed.
+/// Camera settings popover: view (field of view, clipping) and navigation feel.
 fn camera_settings(ui: &mut Ui, cam: &mut SceneCamera) {
-    ui.set_min_width(220.0);
+    use crate::scene_camera::CameraSettings;
+    ui.set_min_width(240.0);
+    let s = &mut cam.settings;
     ui.strong("Scene Camera");
     egui::Grid::new("scene_cam_settings")
         .num_columns(2)
         .show(ui, |ui| {
             ui.label("Field of View");
-            ui.add(egui::Slider::new(&mut cam.fov, 4.0..=120.0).suffix("°"));
+            ui.add(egui::Slider::new(&mut s.fov, 4.0..=120.0).suffix("°"));
             ui.end_row();
             ui.label("Dynamic Clipping");
-            ui.checkbox(&mut cam.dynamic_clipping, "");
+            ui.checkbox(&mut s.dynamic_clipping, "");
             ui.end_row();
-            ui.add_enabled_ui(!cam.dynamic_clipping, |ui| ui.label("Clipping Near"));
+            ui.add_enabled_ui(!s.dynamic_clipping, |ui| ui.label("Clipping Near"));
             ui.add_enabled(
-                !cam.dynamic_clipping,
-                egui::DragValue::new(&mut cam.near)
+                !s.dynamic_clipping,
+                egui::DragValue::new(&mut s.near)
                     .speed(0.01)
                     .range(0.001..=100.0),
             );
             ui.end_row();
-            ui.add_enabled_ui(!cam.dynamic_clipping, |ui| ui.label("Clipping Far"));
+            ui.add_enabled_ui(!s.dynamic_clipping, |ui| ui.label("Clipping Far"));
             ui.add_enabled(
-                !cam.dynamic_clipping,
-                egui::DragValue::new(&mut cam.far)
+                !s.dynamic_clipping,
+                egui::DragValue::new(&mut s.far)
                     .speed(10.0)
                     .range(1.0..=1.0e6),
             );
             ui.end_row();
-            ui.label("Camera Speed");
-            ui.add(egui::Slider::new(&mut cam.speed, 0.01..=10.0).logarithmic(true));
+        });
+    ui.separator();
+    ui.strong("Navigation");
+    egui::Grid::new("scene_cam_nav")
+        .num_columns(2)
+        .show(ui, |ui| {
+            ui.label("Camera Speed")
+                .on_hover_text("Fly speed (right mouse + scroll changes it while flying)");
+            ui.add(egui::Slider::new(&mut s.speed, CameraSettings::SPEED_RANGE).logarithmic(true));
+            ui.end_row();
+            ui.label("Acceleration")
+                .on_hover_text("Flying speeds up while a key is held");
+            ui.checkbox(&mut s.acceleration, "");
+            ui.end_row();
+            ui.label("Easing")
+                .on_hover_text("Moves ease in and out. Off, the camera follows input exactly");
+            ui.checkbox(&mut s.easing, "");
+            ui.end_row();
+            ui.add_enabled_ui(s.easing, |ui| {
+                ui.label("Damping")
+                    .on_hover_text("How long flying and wheel zoom ease in and glide out")
+            });
+            ui.add_enabled(
+                s.easing,
+                egui::Slider::new(&mut s.damping, CameraSettings::DAMPING_RANGE)
+                    .suffix(" s")
+                    .fixed_decimals(2),
+            );
+            ui.end_row();
+            ui.add_enabled_ui(s.easing, |ui| {
+                ui.label("Look Smoothing").on_hover_text(
+                    "Smoothing of mouse look, orbit and pan. Keep it small: 0.012 s is under one frame at 60 FPS",
+                )
+            });
+            ui.add_enabled(
+                s.easing,
+                egui::Slider::new(&mut s.look_smoothing, CameraSettings::LOOK_SMOOTHING_RANGE)
+                    .suffix(" s")
+                    .fixed_decimals(3),
+            );
             ui.end_row();
         });
+    if ui.small_button("Reset").clicked() {
+        *s = CameraSettings::default();
+    }
 }
 
 /// Ambient Occlusion draw mode: the scene's AO settings (defaults when no volume has them)
@@ -741,6 +808,8 @@ mod tests {
             h.step();
         }
         button(h, CENTER + delta, b, false, modifiers);
+        // Let the smoothing land.
+        h.run_steps(10);
     }
 
     fn cam<'h>(h: &'h Harness<'_, EditorState>) -> &'h crate::scene_camera::SceneCamera {
@@ -791,6 +860,138 @@ mod tests {
         );
         let moved = cam(&h).position() - eye;
         assert!(moved.dot(forward) > 0.5, "moved {moved:?}");
+    }
+
+    /// Hold right mouse and `key` (with `modifiers`) for `steps` frames; returns the eye
+    /// movement.
+    fn fly_with(
+        h: &mut Harness<'_, EditorState>,
+        key: Key,
+        modifiers: Modifiers,
+        steps: usize,
+    ) -> Vec3 {
+        let eye = cam(h).position();
+        button(h, CENTER, PointerButton::Secondary, true, modifiers);
+        h.key_down_modifiers(modifiers, key);
+        // kittest lets go of the modifiers after the key event: keep holding them.
+        h.event(Event::ModifiersChanged(modifiers));
+        h.run_steps(steps);
+        h.key_up_modifiers(modifiers, key);
+        button(h, CENTER, PointerButton::Secondary, false, Modifiers::NONE);
+        h.run_steps(10);
+        cam(h).position() - eye
+    }
+
+    #[test]
+    fn right_mouse_plus_qe_flies_down_and_up() {
+        let mut h = harness();
+        let down = fly_with(&mut h, Key::Q, Modifiers::NONE, 5);
+        assert!(down.y < -0.5, "Q goes down: {down:?}");
+        let up = fly_with(&mut h, Key::E, Modifiers::NONE, 5);
+        assert!(up.y > 0.5, "E goes up: {up:?}");
+    }
+
+    #[test]
+    fn shift_flies_faster() {
+        let mut h = harness();
+        h.state_mut().scene_view.camera.settings.acceleration = false;
+        let slow = fly_with(&mut h, Key::A, Modifiers::NONE, 6).length();
+        let fast = fly_with(&mut h, Key::A, Modifiers::SHIFT, 6).length();
+        assert!(fast > slow * 3.0, "{slow} -> {fast}");
+    }
+
+    /// Raw mouse motion turns the view even when the cursor does not move (the cursor is
+    /// held at the screen edge, or hidden while flying).
+    #[test]
+    fn raw_mouse_motion_turns_while_looking() {
+        let mut h = harness();
+        let rot = cam(&h).rotation();
+        button(
+            &mut h,
+            CENTER,
+            PointerButton::Secondary,
+            true,
+            Modifiers::NONE,
+        );
+        for _ in 0..5 {
+            h.event(Event::MouseMoved(egui::vec2(30.0, 0.0)));
+            h.step();
+        }
+        button(
+            &mut h,
+            CENTER,
+            PointerButton::Secondary,
+            false,
+            Modifiers::NONE,
+        );
+        h.run_steps(10);
+        assert!(cam(&h).rotation().angle_between(rot) > 0.3);
+    }
+
+    #[test]
+    fn right_mouse_plus_scroll_changes_fly_speed() {
+        let mut h = harness();
+        let distance = cam(&h).distance();
+        button(
+            &mut h,
+            CENTER,
+            PointerButton::Secondary,
+            true,
+            Modifiers::NONE,
+        );
+        h.event(Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, 2.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        });
+        h.step();
+        button(
+            &mut h,
+            CENTER,
+            PointerButton::Secondary,
+            false,
+            Modifiers::NONE,
+        );
+        assert!(cam(&h).settings.speed > 1.3, "{}", cam(&h).settings.speed);
+        assert_eq!(cam(&h).distance(), distance, "no zoom while flying");
+    }
+
+    /// The wheel zooms towards the cursor: with the cursor right of the centre the pivot
+    /// moves to the right.
+    #[test]
+    fn scroll_zooms_towards_the_cursor() {
+        let mut h = harness();
+        let (pivot, right) = (cam(&h).pivot(), cam(&h).rotation() * Vec3::X);
+        let at = h.state().scene_view.view_rect.center() + egui::vec2(200.0, 0.0);
+        h.event(Event::PointerMoved(at));
+        h.event(Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, 3.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        });
+        h.run_steps(30);
+        assert!((cam(&h).pivot() - pivot).dot(right) > 0.3);
+        assert!(!cam(&h).is_moving(), "settles");
+    }
+
+    #[test]
+    fn camera_popover_shows_navigation_settings() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness();
+        h.get_by_label("📷 ⏷").click();
+        h.run_steps(3);
+        for label in [
+            "Field of View",
+            "Camera Speed",
+            "Acceleration",
+            "Easing",
+            "Damping",
+            "Look Smoothing",
+        ] {
+            assert!(h.query_by_label(label).is_some(), "{label}");
+        }
     }
 
     #[test]

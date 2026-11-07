@@ -2124,3 +2124,22 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - See "What's left" in docs/pending/meadow-trees.md.
 
+
+## Scene camera feel ✅
+
+### Done (docs/pending/scene-camera.md)
+- Measured with `MISTY_CAMERA_BENCH` (scripted flight through MeadowDemo: pacing, CPU/GPU, grass
+  uploads, input → GPU done latency): the Scene view is CPU-bound while flying, hitches come with
+  doubled Scene render CPU time and over-budget single grass chunk uploads; the camera itself
+  reacted raw (no easing, cursor-based look stopping at the screen edge).
+- Frame-rate independent critically damped smoothing (SmoothDamp-style) for look, orbit, pan,
+  zoom and fly velocity; look smoothing defaults to 12 ms (under one 60 FPS frame), fly / wheel
+  damping 0.08 s.
+- Right mouse + WASD/QE with acceleration, Shift ×4, right mouse + wheel speed (shown briefly in
+  the view), raw mouse look with the cursor hidden and confined, wheel zoom towards the cursor,
+  eased Frame Selected, Shift + letter shortcuts ignored while flying.
+- Camera popover: Field of View, clipping, Camera Speed, Acceleration, Easing, Damping, Look
+  Smoothing, Reset; saved per project.
+
+### Not done yet
+- Grass first-chunk uploads going over the 2 ms budget (grass renderer).

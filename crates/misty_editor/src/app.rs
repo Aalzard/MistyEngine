@@ -250,6 +250,9 @@ impl EditorApp {
         // Plain keys belong to text fields while typing, and to the game while it has focus.
         let typing = ctx.egui_wants_keyboard_input()
             || (self.state.play.in_play_mode() && self.state.game_view.focused);
+        // Flying with right mouse: WASD/QE (and Shift for speed) move the camera, so Shift+D
+        // must not deselect and Shift+F must not lock the view.
+        let flying = self.state.scene_view.camera.drag == crate::scene_camera::Drag::Look;
         // Mesh Builder modes (1–4) and operations first, so Delete removes elements.
         crate::mesh_builder::shortcuts(ctx, &mut self.state, typing || code_editor);
         for (mods, key, action) in sorted {
@@ -257,7 +260,7 @@ impl EditorApp {
             let text_key = mods == Modifiers::NONE
                 || mods == Modifiers::SHIFT
                 || matches!(key, Key::Z | Key::Y | Key::A | Key::D);
-            if typing && text_key {
+            if (typing || flying) && text_key {
                 continue;
             }
             if code_editor
@@ -302,7 +305,7 @@ impl EditorApp {
             self.state.refresh_assets();
         }
         // Transform tools: plain Q/W/E/R/T/Y, unless typing or flying with right mouse.
-        let flying = ctx.input(|i| i.pointer.secondary_down());
+        let flying = flying || ctx.input(|i| i.pointer.secondary_down());
         if !typing
             && !flying
             && !self.state.shader_graph.wants_keys()
@@ -715,6 +718,7 @@ impl eframe::App for EditorApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        crate::scene_camera::bench::frame_start(&ctx);
         apply_vsync(&mut self.state, frame);
         let s = &mut self.state;
         let (clips, clip) = (&mut s.anim_clips, &s.animation.clip);
@@ -848,6 +852,7 @@ impl eframe::App for EditorApp {
                 self.state.files.quit_confirmed = true;
             }
         }
+        crate::scene_camera::bench::frame_end();
         // One profiler frame per editor frame.
         misty_engine::profiler::end_frame();
         if misty_engine::profiler::enabled() {
