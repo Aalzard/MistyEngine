@@ -2493,6 +2493,7 @@ dependencies = [
  "egui_dock",
  "egui_kittest",
  "flate2",
+ "getrandom 0.3.4",
  "glam 0.34.2",
  "misty_engine",
  "mlua",
