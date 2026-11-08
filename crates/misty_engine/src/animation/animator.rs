@@ -1077,13 +1077,14 @@ impl AnimatorPlayer {
             .ok()
             .and_then(|a| a.avatar.clone())
             .and_then(|p| self.assets.avatar(&p));
-        let Some(inst) = self.instances.get(&e) else {
+        let Some(inst) = self.instances.get_mut(&e) else {
             return;
         };
         let ctrl = inst.ctrl.clone();
         let params = inst.params.clone();
         let runs: Vec<LayerRun> = inst.layers.clone();
-        let mut frozen_poses = inst.frozen_poses.clone();
+        // Taken for the frame and put back below.
+        let mut frozen_poses = std::mem::take(&mut inst.frozen_poses);
         let Self {
             assets, defaults, ..
         } = self;
