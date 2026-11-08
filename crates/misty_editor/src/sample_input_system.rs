@@ -74,8 +74,8 @@ function PlayerActions:Update()
         end
     end
     if self.hint == nil then return end
-    local text = "Move  Look  Jump: " .. self.jump:GetBindingDisplayString()
-        .. "  Sprint  Crouch    Hold E / X: interact    Tab / Start: rebind menu\n"
+    local text = "Jump: " .. self.jump:GetBindingDisplayString()
+        .. "    Hold E / X: interact    Tab / Start: rebind menu\n"
         .. "Control scheme: " .. tostring(self.player.currentControlScheme)
         .. "    Interactions: " .. self._interacts
     if text ~= self._shown then
@@ -424,7 +424,7 @@ fn demo_scene() -> Scene {
             anchored_position: Vec2::new(20.0, -20.0),
             size_delta: Vec2::new(1100.0, 70.0),
         },
-        "Move  Look  Jump  Sprint  Crouch    Hold E / X: interact    Tab / Start: rebind menu",
+        "Hold E / X: interact    Tab / Start: rebind menu",
         22.0,
     );
     s.world.get::<&mut UiText>(hint).unwrap().alignment = TextAnchor::UpperLeft;

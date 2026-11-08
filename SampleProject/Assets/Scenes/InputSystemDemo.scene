@@ -853,7 +853,7 @@
           "font_size": 22.0,
           "line_spacing": 1.0,
           "raycast_target": true,
-          "text": "Move  Look  Jump  Sprint  Crouch    Hold E / X: interact    Tab / Start: rebind menu",
+          "text": "Hold E / X: interact    Tab / Start: rebind menu",
           "wrap": true
         },
         "Transform": {

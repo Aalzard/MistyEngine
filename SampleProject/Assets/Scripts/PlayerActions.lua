@@ -39,8 +39,8 @@ function PlayerActions:Update()
         end
     end
     if self.hint == nil then return end
-    local text = "Move  Look  Jump: " .. self.jump:GetBindingDisplayString()
-        .. "  Sprint  Crouch    Hold E / X: interact    Tab / Start: rebind menu\n"
+    local text = "Jump: " .. self.jump:GetBindingDisplayString()
+        .. "    Hold E / X: interact    Tab / Start: rebind menu\n"
         .. "Control scheme: " .. tostring(self.player.currentControlScheme)
         .. "    Interactions: " .. self._interacts
     if text ~= self._shown then
