@@ -341,7 +341,7 @@ fn with_view(view: TargetView) -> Option<CaptureRequest> {
 fn tone(pixels: &[u8]) -> (f32, u8) {
     let mut sum = 0u64;
     let mut gap = 0u8;
-    for p in pixels.chunks_exact(4) {
+    for p in pixels.as_chunks::<4>().0 {
         sum += p[0] as u64 + p[1] as u64 + p[2] as u64;
         let (lo, hi) = (p[0].min(p[1]).min(p[2]), p[0].max(p[1]).max(p[2]));
         gap = gap.max(hi - lo);

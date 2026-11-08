@@ -46,7 +46,8 @@ impl Summary {
             physics_ms: f.category_ms(Category::Physics),
             // Main thread (Audio.Update) and the audio thread's mixing.
             audio_ms: f.category_ms(Category::Audio) + f.counter(Counter::AudioMixMs),
-            ui_ms: f.category_ms(Category::Ui),
+            // The game's canvases (UI.* scopes), not the editor's panels.
+            ui_ms: f.time_in("UI."),
             bodies: f.counter(Counter::PhysicsBodies),
             contacts: f.counter(Counter::PhysicsContacts),
             voices: f.counter(Counter::AudioPlayingSources),
@@ -59,23 +60,47 @@ impl Summary {
 
 const LEGEND_W: f32 = 170.0;
 
-/// Height share of each module row (CPU and GPU get more room).
-fn weight(m: Module) -> f32 {
+/// Height of a module row: CPU and GPU have a legend of swatches, the others one line.
+pub fn row_height(m: Module) -> f32 {
     match m {
-        Module::Cpu => 2.4,
-        Module::Gpu => 2.2,
-        _ => 1.0,
+        Module::Cpu => 96.0,
+        Module::Gpu => 76.0,
+        _ => 30.0,
     }
 }
 
+/// The frame "Current" shows: the newest one whose GPU times have arrived (they come a frame
+/// or two late), else the newest.
+pub fn current(frames: &[Summary]) -> Option<u64> {
+    frames
+        .iter()
+        .rev()
+        .take(6)
+        .find(|f| f.gpu_ms.is_some())
+        .or(frames.last())
+        .map(|f| f.index)
+}
+
+/// Height of every module row together.
+pub fn content_height() -> f32 {
+    Module::ALL.iter().map(|m| row_height(*m)).sum()
+}
+
 pub fn modules(ui: &mut Ui, w: &mut ProfilerWindow, frames: &[Summary]) {
-    let total = ui.available_rect_before_wrap();
-    ui.allocate_rect(total, Sense::hover());
-    let sum: f32 = Module::ALL.iter().map(|m| weight(*m)).sum();
-    let selected = w.selected.or(frames.last().map(|f| f.index));
+    let (total, _) =
+        ui.allocate_exact_size(vec2(ui.available_width(), content_height()), Sense::hover());
+    let selected = w.selected.or(current(frames));
+    let shown = frames
+        .iter()
+        .find(|f| Some(f.index) == selected)
+        .or(frames.last());
     let mut top = total.top();
     for module in Module::ALL {
-        let h = total.height() * weight(module) / sum;
+        let h = row_height(module);
+        if module == w.module && std::mem::take(&mut w.reveal_module) {
+            let row = Rect::from_min_size(pos2(total.left(), top), vec2(total.width(), h));
+            ui.scroll_to_rect(row, Some(egui::Align::Max));
+        }
         let legend = Rect::from_min_size(pos2(total.left(), top), vec2(LEGEND_W, h));
         let plot = Rect::from_min_max(
             pos2(total.left() + LEGEND_W, top),
@@ -89,23 +114,47 @@ pub fn modules(ui: &mut Ui, w: &mut ProfilerWindow, frames: &[Summary]) {
         match module {
             Module::Cpu => cpu_chart(&painter, w, frames, plot),
             Module::Gpu => gpu_chart(&painter, w, frames, plot),
-            Module::Rendering => line_chart(&painter, frames, plot, |f| {
+            Module::Rendering => line_chart(&painter, frames, shown, plot, |f| {
                 (
                     f.render.batches as f32,
-                    format!("{} batches", f.render.batches),
+                    format!(
+                        "{} batches   SetPass {}",
+                        f.render.batches, f.render.set_pass
+                    ),
                 )
             }),
-            Module::Memory => line_chart(&painter, frames, plot, |f| {
-                (f.memory_mb, format!("{:.1} MB", f.memory_mb))
+            Module::Memory => line_chart(&painter, frames, shown, plot, |f| {
+                (
+                    f.memory_mb,
+                    format!("{:.1} MB   {} objects", f.memory_mb, f.entities),
+                )
             }),
-            Module::Physics => line_chart(&painter, frames, plot, |f| {
-                (f.physics_ms, format!("{:.2} ms", f.physics_ms))
+            Module::Physics => line_chart(&painter, frames, shown, plot, |f| {
+                (
+                    f.physics_ms,
+                    format!(
+                        "{:.2} ms   Bodies {}   Contacts {}",
+                        f.physics_ms, f.bodies, f.contacts
+                    ),
+                )
             }),
-            Module::Audio => line_chart(&painter, frames, plot, |f| {
-                (f.audio_ms, format!("{:.2} ms", f.audio_ms))
+            Module::Audio => line_chart(&painter, frames, shown, plot, |f| {
+                (
+                    f.audio_ms,
+                    format!(
+                        "{:.2} ms   Voices {}   DSP {:.1}%",
+                        f.audio_ms, f.voices, f.dsp_load
+                    ),
+                )
             }),
-            Module::Ui => line_chart(&painter, frames, plot, |f| {
-                (f.ui_ms, format!("{:.2} ms", f.ui_ms))
+            Module::Ui => line_chart(&painter, frames, shown, plot, |f| {
+                (
+                    f.ui_ms,
+                    format!(
+                        "{:.2} ms   Elements {}   Batches {}",
+                        f.ui_ms, f.ui_elements, f.ui_batches
+                    ),
+                )
             }),
         }
         // Click or drag to pick a frame.
@@ -201,9 +250,6 @@ fn module_legend(
     {
         w.module = module;
     }
-    let small = |ui: &mut Ui, text: String| {
-        ui.label(egui::RichText::new(text).size(10.5));
-    };
     match module {
         Module::Cpu => {
             let top = ui.cursor().top();
@@ -244,40 +290,7 @@ fn module_legend(
                 "profiler gpu legend",
             );
         }
-        Module::Rendering => {
-            if let Some(f) = frame {
-                small(
-                    ui,
-                    format!(
-                        "Batches {}  SetPass {}",
-                        f.render.batches, f.render.set_pass
-                    ),
-                );
-            }
-        }
-        Module::Memory => {
-            if let Some(f) = frame {
-                small(ui, format!("{} objects", f.entities));
-            }
-        }
-        Module::Physics => {
-            if let Some(f) = frame {
-                small(ui, format!("Bodies {}  Contacts {}", f.bodies, f.contacts));
-            }
-        }
-        Module::Audio => {
-            if let Some(f) = frame {
-                small(ui, format!("Voices {}  DSP {:.1}%", f.voices, f.dsp_load));
-            }
-        }
-        Module::Ui => {
-            if let Some(f) = frame {
-                small(
-                    ui,
-                    format!("Elements {}  Batches {}", f.ui_elements, f.ui_batches),
-                );
-            }
-        }
+        Module::Rendering | Module::Memory | Module::Physics | Module::Audio | Module::Ui => {}
     }
 }
 
@@ -455,10 +468,11 @@ fn gpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], pl
     }
 }
 
-/// One value per frame as filled columns, with the selected value at the top left.
+/// One value per frame as filled columns, with the selected frame's values at the top left.
 fn line_chart(
     painter: &egui::Painter,
     frames: &[Summary],
+    shown: Option<&Summary>,
     plot: Rect,
     value: impl Fn(&Summary) -> (f32, String),
 ) {
@@ -475,11 +489,11 @@ fn line_chart(
         );
         painter.rect_filled(r, 0.0, color.gamma_multiply(0.6));
     }
-    if let Some(last) = frames.last() {
+    if let Some(f) = shown {
         painter.text(
             plot.left_top() + vec2(4.0, 2.0),
             Align2::LEFT_TOP,
-            value(last).1,
+            value(f).1,
             FontId::proportional(10.0),
             Color32::from_gray(190),
         );

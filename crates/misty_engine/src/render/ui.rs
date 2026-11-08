@@ -550,24 +550,6 @@ fn pipeline(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use wgpu::naga;
-
-    #[test]
-    fn ui_shader_validates_and_vertex_matches_layout() {
-        let module = naga::front::wgsl::parse_str(super::SHADER)
-            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(super::SHADER)));
-        naga::valid::Validator::new(
-            naga::valid::ValidationFlags::all(),
-            naga::valid::Capabilities::all(),
-        )
-        .validate(&module)
-        .expect("valid ui shader");
-        assert_eq!(std::mem::size_of::<super::UiVertex>(), 52);
-    }
-}
-
 /// The Profiler's UI module counters for the canvases drawn this frame.
 fn report_profiler(scene: &Scene, l: &crate::ui::tree::UiLayout, list: &UiDrawList) {
     use crate::profiler::{Counter, add_counter};
@@ -589,5 +571,23 @@ fn report_profiler(scene: &Scene, l: &crate::ui::tree::UiLayout, list: &UiDrawLi
     ] {
         // Added: the Game view and world-space canvases of the Scene view each draw a list.
         add_counter(c, v as f32);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wgpu::naga;
+
+    #[test]
+    fn ui_shader_validates_and_vertex_matches_layout() {
+        let module = naga::front::wgsl::parse_str(super::SHADER)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(super::SHADER)));
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .expect("valid ui shader");
+        assert_eq!(std::mem::size_of::<super::UiVertex>(), 52);
     }
 }

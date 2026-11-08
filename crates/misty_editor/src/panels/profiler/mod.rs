@@ -119,6 +119,8 @@ pub struct ProfilerWindow {
     pub source: Source,
     /// Last Load / Save problem (shown in the toolbar).
     pub message: Option<String>,
+    /// Scroll the module list to the selected module once (set when picked from outside).
+    pub reveal_module: bool,
     /// The window has been shown (recording starts then, like the reference editor).
     opened: bool,
     /// UI pass the window was last drawn in.
@@ -247,12 +249,17 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         });
         return;
     }
-    let chart_h = (ui.available_height() * 0.55).clamp(240.0, 440.0);
+    // The module rows scroll when the window is short (like the reference's module list).
+    let chart_h = chart::content_height().min((ui.available_height() * 0.55).max(120.0));
     ui.allocate_ui(egui::vec2(ui.available_width(), chart_h), |ui| {
-        chart::modules(ui, w, &frames);
+        egui::ScrollArea::vertical()
+            .id_salt("profiler modules")
+            .max_height(chart_h)
+            .auto_shrink([false, true])
+            .show(ui, |ui| chart::modules(ui, w, &frames));
     });
     ui.separator();
-    let selected = w.selected;
+    let selected = w.selected.or(chart::current(&frames));
     let frame: Option<FrameData> = w.source.with_frames(|f| match selected {
         Some(i) => f.iter().find(|f| f.index == i).cloned(),
         None => f.back().cloned(),

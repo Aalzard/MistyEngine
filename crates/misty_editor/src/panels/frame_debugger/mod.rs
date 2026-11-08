@@ -78,12 +78,18 @@ impl FrameDebuggerWindow {
         if self.capture.is_none() {
             self.selected = n.saturating_sub(1);
             self.scroll_to_selected = true;
-            if let Some(want) = self.pending_select.take() {
-                let found = match want.parse::<usize>() {
-                    Ok(i) => Some(i),
-                    Err(_) => capture.events.iter().position(|e| e.name.contains(&want)),
-                };
-                self.selected = found.unwrap_or(self.selected);
+        }
+        // The screenshot hook's event: the first capture that has it (grass and other
+        // streamed work may only show up a few frames in).
+        if let Some(want) = self.pending_select.as_deref() {
+            let found = match want.parse::<usize>() {
+                Ok(i) => Some(i),
+                Err(_) => capture.events.iter().position(|e| e.name.contains(want)),
+            };
+            if let Some(i) = found {
+                self.selected = i;
+                self.scroll_to_selected = true;
+                self.pending_select = None;
             }
         }
         self.selected = self.selected.min(n.saturating_sub(1));

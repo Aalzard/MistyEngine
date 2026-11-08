@@ -104,10 +104,8 @@ pub fn module_rows(f: &FrameData, group: CounterGroup) -> Vec<(&'static str, Str
             ("Audio thread mixing", ms(f.counter(Counter::AudioMixMs))),
         ],
         CounterGroup::Ui => vec![
-            (
-                "UI time",
-                ms(f.category_ms(misty_engine::profiler::Category::Ui)),
-            ),
+            // The game's canvases (UI.*), not the editor's own panels.
+            ("UI time", ms(f.time_in("UI."))),
             ("  Layout", ms(f.time_in("UI.Layout"))),
             ("  Render", ms(f.time_in("UI.Render"))),
             ("  Events", ms(f.time_in("UI.Events"))),

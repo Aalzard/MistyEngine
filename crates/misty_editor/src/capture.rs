@@ -498,6 +498,7 @@ pub fn apply_env(
         .and_then(|m| crate::panels::profiler::Module::named(&m))
     {
         s.profiler.module = m;
+        s.profiler.reveal_module = true;
     }
     if std::env::var("MISTY_PROFILER_VIEW").is_ok_and(|v| v == "Timeline") {
         s.profiler.cpu_view = crate::panels::profiler::CpuView::Timeline;
@@ -506,6 +507,19 @@ pub fn apply_env(
         && let Err(e) = s.profiler.load(path.into())
     {
         eprintln!("profiler capture: {e}");
+    }
+    // `MISTY_DOCK_SPLIT=0.4`: the first top / bottom split of the layout at that fraction (a
+    // taller bottom panel for Profiler screenshots).
+    if let Some(f) = std::env::var("MISTY_DOCK_SPLIT")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+        && let Some(node) = dock
+            .main_surface_mut()
+            .iter_mut()
+            .find(|n| matches!(n, egui_dock::Node::Vertical(_)))
+        && let egui_dock::Node::Vertical(v) = node
+    {
+        v.fraction = f.clamp(0.1, 0.9);
     }
     // `MISTY_STATS=1` shows the Game view's Stats box.
     if std::env::var_os("MISTY_STATS").is_some() {
