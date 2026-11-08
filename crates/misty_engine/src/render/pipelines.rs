@@ -635,6 +635,11 @@ impl Pipelines {
             view_dimension: wgpu::TextureViewDimension::D2,
             multisampled: false,
         };
+        let uint = wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Uint,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        };
         let terrain_entries = [
             entry(0, S::VERTEX_FRAGMENT, uniform()),
             entry(1, S::FRAGMENT, filtered),
@@ -642,6 +647,9 @@ impl Pipelines {
             entry(3, S::FRAGMENT, array),
             entry(4, S::FRAGMENT, array),
             entry(6, S::FRAGMENT, filtering),
+            // Splat maps of layers 5.. and the chunks' layer masks.
+            entry(7, S::FRAGMENT, array),
+            entry(8, S::FRAGMENT, uint),
             entry(12, S::VERTEX, unfiltered),
             entry(13, S::VERTEX_FRAGMENT, filtered),
         ];

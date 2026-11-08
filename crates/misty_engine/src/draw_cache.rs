@@ -189,6 +189,8 @@ impl DrawCache {
         let mut scatter = Vec::new();
         let keep = |e| crate::render_scene::in_mask(scene, e, culling_mask);
         crate::world_gen::scatter_set::draws(scene, materials, keep, &mut scatter);
+        // Terrain detail meshes (instances cached per terrain version).
+        crate::terrain::detail_layers::draws(scene, materials, keep, &mut scatter);
         // Skinned Mesh Renderers: posed every call (bones move without touching the renderer).
         let world = |e: Entity| {
             views

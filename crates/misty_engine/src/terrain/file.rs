@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::cliffs::CliffSettings;
 use super::data::{TerrainData, TerrainLayer};
+use super::detail_layers::DetailLayer;
 use super::details::DetailSettings;
 use super::flowers::FlowerSettings;
 use super::harmony::HarmonySettings;
@@ -41,6 +42,17 @@ struct TerrainFile {
     /// Left out while there are no trees (older files stay as they were).
     #[serde(skip_serializing_if = "TreeSettings::is_default")]
     trees: TreeSettings,
+    /// base64 of the hole bits, one per heightmap cell (8 to a byte, low bit first); left
+    /// out while there are no holes.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    holes: String,
+    /// base64 of the RGBA weights of layers 5.. (one map after another); left out with four
+    /// layers or fewer.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    alphamap_extra: String,
+    /// Grass species and detail meshes (left out while there are none).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    detail_layers: Vec<DetailLayer>,
 }
 
 impl Default for TerrainFile {
@@ -60,6 +72,9 @@ impl Default for TerrainFile {
             detail_map: String::new(),
             flowers: FlowerSettings::default(),
             trees: TreeSettings::default(),
+            holes: String::new(),
+            alphamap_extra: String::new(),
+            detail_layers: Vec::new(),
         }
     }
 }
@@ -88,6 +103,13 @@ impl TerrainData {
             detail_map: encode(&self.detail_map),
             flowers: self.flowers.clone(),
             trees: self.trees.clone(),
+            holes: if self.has_holes() {
+                encode(&pack_bits(&self.holes))
+            } else {
+                String::new()
+            },
+            alphamap_extra: encode(&self.alphamap_extra.concat()),
+            detail_layers: self.detail_layers.clone(),
         };
         serde_json::to_string_pretty(&file).expect("terrain serialises")
     }
@@ -108,6 +130,7 @@ impl TerrainData {
             heights,
             alphamap_resolution: f.alphamap_resolution,
             alphamap,
+            alphamap_extra: decode(&f.alphamap_extra)?.as_chunks::<4>().0.to_vec(),
             layers: f.layers,
             rule_seed: f.rule_seed,
             cliffs: f.cliffs,
@@ -116,7 +139,13 @@ impl TerrainData {
             detail_map: decode(&f.detail_map)?,
             flowers: f.flowers,
             trees: f.trees,
+            holes: Vec::new(),
+            detail_layers: f.detail_layers,
         };
+        if !f.holes.is_empty() {
+            let cells = f.heightmap_resolution.saturating_sub(1);
+            d.holes = unpack_bits(&decode(&f.holes)?, cells * cells);
+        }
         d.sanitize();
         Ok(d)
     }
@@ -134,6 +163,24 @@ impl TerrainData {
         std::fs::write(path, crate::asset_db::embed_json(&self.to_file_string()))
             .map_err(|e| e.to_string())
     }
+}
+
+/// One bit per value (non-zero = set), 8 to a byte, low bit first.
+pub(super) fn pack_bits(v: &[u8]) -> Vec<u8> {
+    v.chunks(8)
+        .map(|c| {
+            c.iter()
+                .enumerate()
+                .fold(0u8, |acc, (i, b)| acc | (u8::from(*b != 0) << i))
+        })
+        .collect()
+}
+
+/// `n` values (0 / 1) from [`pack_bits`] output.
+pub(super) fn unpack_bits(bytes: &[u8], n: usize) -> Vec<u8> {
+    (0..n)
+        .map(|i| bytes.get(i / 8).map_or(0, |b| (b >> (i % 8)) & 1))
+        .collect()
 }
 
 /// Normalised height to the stored 16-bit value.

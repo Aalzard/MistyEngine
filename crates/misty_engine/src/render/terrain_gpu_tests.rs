@@ -178,6 +178,128 @@ fn partial_uploads_match_a_fresh_upload() {
     store::unload(&key);
 }
 
+/// A painted hole shows (the ground under it is gone), uploads as a region like other strokes
+/// and draws the same as a fresh upload; filling it back in restores the plain terrain.
+#[test]
+fn holes_cut_the_drawn_terrain() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let key = path("holes");
+    let mut d = hills(129, 64.0);
+    // No grass: it sways with the clock.
+    d.details.enabled = false;
+    store::insert(&key, d);
+    let mut r = Renderer::with_queue(&device, &queue);
+    let plain = render(&device, &queue, &mut r, &key);
+    // The camera looks at local (32, 21).
+    let b = Brush {
+        center: Vec2::new(32.0, 21.0),
+        size: 14.0,
+        strength: 1.0,
+        falloff: 0.0,
+    };
+    let region = store::get(&key).map(|(d, _)| b.region(&d)).unwrap();
+    store::modify_region(&key, region, |d| brush::paint_holes(d, &b, false));
+    let holed = render(&device, &queue, &mut r, &key);
+    let differing = plain
+        .chunks(4)
+        .zip(holed.chunks(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    assert!(differing > 1500, "the hole shows: {differing} pixels");
+    // The centre of the view looks through the hole.
+    let centre = &holed[(80 * 256 + 128) * 4..][..4];
+    let before = &plain[(80 * 256 + 128) * 4..][..4];
+    assert_ne!(centre, before, "the ground at the centre is gone");
+    let mut fresh = Renderer::with_queue(&device, &queue);
+    let full = render(&device, &queue, &mut fresh, &key);
+    assert_eq!(holed, full, "region upload matches a fresh one");
+    if let Some(p) = std::env::var_os("MISTY_GPU_TEST_PNG") {
+        image::RgbaImage::from_raw(256, 160, holed.clone())
+            .unwrap()
+            .save(p)
+            .unwrap();
+    }
+    store::modify_region(&key, region, |d| brush::paint_holes(d, &b, true));
+    let filled = render(&device, &queue, &mut r, &key);
+    assert_eq!(filled, plain, "filled back in");
+    store::unload(&key);
+}
+
+/// A terrain with eight layers (two splat maps) draws a layer of its second map where it is
+/// painted: solid-colour layers, layer 6 red on one half, layer 1 green on the other.
+#[test]
+fn layers_past_the_fourth_are_drawn() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("misty_terrain_layers8_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let colours: [[u8; 3]; 8] = [
+        [128, 128, 128],
+        [40, 200, 40],
+        [90, 90, 90],
+        [60, 60, 200],
+        [200, 200, 200],
+        [20, 20, 20],
+        [220, 40, 30],
+        [150, 100, 50],
+    ];
+    let mut d = TerrainData::new(129, Vec3::new(64.0, 8.0, 64.0), 128);
+    d.layers = colours
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let p = dir.join(format!("L{i}.png"));
+            image::RgbaImage::from_pixel(8, 8, image::Rgba([c[0], c[1], c[2], 255]))
+                .save(&p)
+                .unwrap();
+            TerrainLayer {
+                name: format!("L{i}"),
+                diffuse: Some(p.to_string_lossy().into_owned()),
+                ..Default::default()
+            }
+        })
+        .collect();
+    d.cliffs.height_blend = 0.0;
+    d.fit_splat_maps();
+    assert_eq!(d.splat_maps(), 2);
+    let n = d.alphamap_resolution;
+    for tz in 0..n {
+        for tx in 0..n {
+            let mut w = [0u8; crate::terrain::MAX_LAYERS];
+            w[if tx < n / 2 { 6 } else { 1 }] = 255;
+            d.set_layer_weights(tz * n + tx, &w);
+        }
+    }
+    let key = path("layers8");
+    store::insert(&key, d);
+    let mut r = Renderer::with_queue(&device, &queue);
+    let px = render(&device, &queue, &mut r, &key);
+    if let Some(p) = std::env::var_os("MISTY_GPU_TEST_PNG") {
+        image::RgbaImage::from_raw(256, 160, px.clone())
+            .unwrap()
+            .save(p)
+            .unwrap();
+    }
+    // The terrain spans world x -32..32 under the camera at x 0: left of centre is layer 6.
+    let at = |x: usize, y: usize| &px[(y * 256 + x) * 4..][..4];
+    let (left, right) = (at(70, 130), at(190, 130));
+    assert!(
+        left[0] > left[1] + 20 && left[0] > left[2] + 20,
+        "red layer 6 on the left: {left:?}"
+    );
+    assert!(
+        right[1] > right[0] + 20 && right[1] > right[2] + 20,
+        "green layer 1 on the right: {right:?}"
+    );
+    store::unload(&key);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// Timings of editing a large terrain (`cargo test -p misty_engine --release terrain_timings -- --ignored --nocapture`).
 #[test]
 #[ignore = "timing run"]

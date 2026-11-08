@@ -93,7 +93,13 @@ pub(super) struct LayerCache {
 }
 
 pub(super) fn key(layers: &[TerrainLayer]) -> Key {
-    (0..MAX_LAYERS)
+    // Four slices for up to four layers (as before more layers existed), else a whole
+    // number of splat maps' worth.
+    let slots = layers
+        .len()
+        .clamp(1, MAX_LAYERS)
+        .next_multiple_of(crate::terrain::LAYERS_PER_MAP);
+    (0..slots)
         .map(|i| {
             let l = layers.get(i);
             [

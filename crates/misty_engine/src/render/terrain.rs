@@ -56,6 +56,8 @@ struct TerrainParams {
     /// rgb = the fans' colour against the ground's looking into the sun / with it behind.
     ground_tint: [f32; 4],
     ground_front: [f32; 4],
+    /// x = chunks per side (the chunk layer masks of terrains with more than four layers).
+    chunks: [f32; 4],
 }
 
 /// Quality ▸ Grass Ground Cover (terrain_layers.wgsl `grass_ground_cover`), fitted against
@@ -104,12 +106,46 @@ struct ChunkDraw {
     dist: f32,
     /// World bounds (the virtual shadow map culls chunks per page rectangle).
     bounds: Aabb,
+    /// Has hole cells: drawn at full detail from its own index list (`HoleIndices`).
+    holed: bool,
 }
 
 /// Shared index patterns for one heightmap resolution.
 struct Patterns {
     buffer: wgpu::Buffer,
     ranges: Vec<[std::ops::Range<u32>; 16]>,
+    /// The indices (chunks with holes filter them into lists of their own).
+    indices: Vec<u32>,
+}
+
+/// Index lists of the chunks with holes: the shared pattern of the chunk's (lod, edge mask)
+/// without the triangles over hole cells, so holes cut every pass (camera, depth, shadows,
+/// prepass) with no shader change. Chunks with holes always draw at full detail, so the
+/// hole edges follow the heightmap cells exactly.
+#[derive(Default)]
+struct HoleIndices {
+    /// (chunk, lod, mask) -> range in `buffer`.
+    ranges: HashMap<(usize, u8, u8), std::ops::Range<u32>>,
+    buffer: Option<wgpu::Buffer>,
+}
+
+/// The triangles of `pattern` (a chunk's indices, relative to its first sample) whose cell is
+/// not a hole; the chunk's first cell is `(x0, z0)`.
+fn without_holes(pattern: &[u32], res: usize, x0: usize, z0: usize, d: &TerrainData) -> Vec<u32> {
+    let mut out = Vec::with_capacity(pattern.len());
+    for tri in pattern.as_chunks::<3>().0 {
+        let (mut sx, mut sz) = (0usize, 0usize);
+        for i in tri {
+            sx += *i as usize % res;
+            sz += *i as usize / res;
+        }
+        // The centroid's cell (a third of the way in, so never on a cell border).
+        let (cx, cz) = (sx / 3, sz / 3);
+        if !d.is_hole(x0 + cx, z0 + cz) {
+            out.extend_from_slice(tri);
+        }
+    }
+    out
 }
 
 struct GpuTerrain {
@@ -132,6 +168,76 @@ struct GpuTerrain {
     /// Id of the grass atlas those groups bind (they are made again when it changes: the
     /// flower layers arrived or the flowers' textures changed).
     grass_atlas_id: u64,
+    /// Per chunk: some of its cells are holes.
+    holed: Vec<bool>,
+    /// Index lists of the chunks with holes (rebuilt when holes or their LODs change).
+    holes: HoleIndices,
+    /// Splat maps of layers 5.. (one array slice per map; a single unused slice with four
+    /// layers or fewer).
+    splat_extra: wgpu::Texture,
+    /// Splat maps the data has (the arrays are made again when it changes).
+    maps: usize,
+    /// Per chunk: bit mask of the layers painted in it (R32Uint, chunks² texels). With more
+    /// than four layers a pixel reads only the maps of its chunk's layers and blends the four
+    /// strongest of them, so a chunk costs what its own layers cost.
+    chunk_layers: wgpu::Texture,
+}
+
+/// Bit mask of the layers with weight in splat texels `xs` × `zs` (every map).
+fn layer_mask(d: &TerrainData, xs: std::ops::Range<usize>, zs: std::ops::Range<usize>) -> u32 {
+    let n = d.alphamap_resolution;
+    let mut mask = 0u32;
+    for tz in zs {
+        for tx in xs.clone() {
+            for (l, w) in d.layer_weights(tz * n + tx).iter().enumerate() {
+                if *w > 0 {
+                    mask |= 1 << l;
+                }
+            }
+        }
+    }
+    mask
+}
+
+/// Write `data` (rows of `w` texels) at `(x, z)` of slice `layer` of an array texture.
+#[allow(clippy::too_many_arguments)]
+fn write_layer<T: Pod>(
+    queue: &wgpu::Queue,
+    tex: &wgpu::Texture,
+    layer: u32,
+    x: usize,
+    z: usize,
+    w: usize,
+    data: &[T],
+) {
+    let texel = std::mem::size_of::<T>();
+    let h = data.len() / w.max(1);
+    if h == 0 {
+        return;
+    }
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: tex,
+            mip_level: 0,
+            origin: wgpu::Origin3d {
+                x: x as u32,
+                y: z as u32,
+                z: layer,
+            },
+            aspect: wgpu::TextureAspect::All,
+        },
+        bytemuck::cast_slice(data),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some((w * texel) as u32),
+            rows_per_image: Some(h as u32),
+        },
+        wgpu::Extent3d {
+            width: w as u32,
+            height: h as u32,
+            depth_or_array_layers: 1,
+        },
+    );
 }
 
 fn texture(
@@ -269,11 +375,74 @@ impl GpuTerrain {
             grass: Grass::default(),
             grass_uniforms: None,
             grass_atlas_id: 0,
+            holed: vec![false; per_side * per_side],
+            holes: HoleIndices::default(),
+            splat_extra: device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("misty terrain splat (layers 5+)"),
+                size: wgpu::Extent3d {
+                    width: d.alphamap_resolution as u32,
+                    height: d.alphamap_resolution as u32,
+                    depth_or_array_layers: (d.splat_maps() as u32 - 1).max(1),
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            }),
+            maps: d.splat_maps(),
+            chunk_layers: texture(
+                device,
+                "misty terrain chunk layers",
+                per_side,
+                wgpu::TextureFormat::R32Uint,
+            ),
         }
     }
 
     fn per_side(&self) -> usize {
         (self.res - 1) / terrain_lod::chunk_cells(self.res)
+    }
+
+    /// Upload the extra splat maps' texels `xs` × `zs` and the layer masks of the chunks over
+    /// them (terrains with more than four layers only).
+    fn upload_extra(
+        &mut self,
+        queue: &wgpu::Queue,
+        d: &TerrainData,
+        xs: std::ops::Range<usize>,
+        zs: std::ops::Range<usize>,
+    ) {
+        let n = self.ares;
+        if d.alphamap_extra.len() < n * n || xs.is_empty() || zs.is_empty() {
+            return;
+        }
+        for (m, map) in d.alphamap_extra.chunks(n * n).enumerate() {
+            write_layer(
+                queue,
+                &self.splat_extra,
+                m as u32,
+                xs.start,
+                zs.start,
+                xs.len(),
+                &rect(map, n, &xs, &zs),
+            );
+        }
+        let per = self.per_side();
+        // A chunk's texels and one more around them (the bilinear splat lookup reads them).
+        let chunk_of = |t: usize| (t * per / n).min(per - 1);
+        let (cx0, cx1) = (chunk_of(xs.start.saturating_sub(1)), chunk_of(xs.end));
+        let (cz0, cz1) = (chunk_of(zs.start.saturating_sub(1)), chunk_of(zs.end));
+        for cz in cz0..=cz1 {
+            let mut row = Vec::with_capacity(cx1 - cx0 + 1);
+            for cx in cx0..=cx1 {
+                let tx = (cx * n / per).saturating_sub(1)..((cx + 1) * n / per + 1).min(n);
+                let tz = (cz * n / per).saturating_sub(1)..((cz + 1) * n / per + 1).min(n);
+                row.push(layer_mask(d, tx, tz));
+            }
+            write(queue, &self.chunk_layers, cx0, cz, row.len(), &row);
+        }
     }
 
     /// Re-upload everything.
@@ -290,6 +459,7 @@ impl GpuTerrain {
             &normals(d, &all, &all),
         );
         write(queue, &self.splat, 0, 0, self.ares, &d.alphamap);
+        self.upload_extra(queue, d, 0..self.ares, 0..self.ares);
         self.range = d.height_range();
         let per = self.per_side();
         self.update_chunks(d, 0..per, 0..per);
@@ -338,6 +508,7 @@ impl GpuTerrain {
                 sx.len(),
                 &rect(&d.alphamap, self.ares, &sx, &sz),
             );
+            self.upload_extra(queue, d, sx, sz);
         }
         self.coverage = harmony::coverage(d);
         self.grass.invalidate(d, Some(r));
@@ -363,12 +534,21 @@ impl GpuTerrain {
                     }
                 }
                 self.chunk_range[cz * per + cx] = range;
+                let holed = !d.holes.is_empty()
+                    && (cz * cells..(cz + 1) * cells)
+                        .any(|z| (cx * cells..(cx + 1) * cells).any(|x| d.is_hole(x, z)));
+                if holed || self.holed[cz * per + cx] {
+                    // Its index lists are made again.
+                    self.holes = HoleIndices::default();
+                }
+                self.holed[cz * per + cx] = holed;
             }
         }
     }
 
     fn bytes(&self) -> u64 {
-        (self.res * self.res * 8 + self.ares * self.ares * 4) as u64 + self.grass.bytes()
+        let extra = self.ares * self.ares * 4 * (self.maps - 1);
+        (self.res * self.res * 8 + self.ares * self.ares * 4 + extra) as u64 + self.grass.bytes()
     }
 }
 
@@ -591,10 +771,11 @@ impl TerrainCache {
     /// Bring a terrain's GPU data up to date with its store version.
     fn sync(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, t: &TerrainDraw) {
         let d = &t.data;
-        let stale = self
-            .entries
-            .get(&t.key)
-            .is_none_or(|g| g.res != d.heightmap_resolution || g.ares != d.alphamap_resolution);
+        let stale = self.entries.get(&t.key).is_none_or(|g| {
+            g.res != d.heightmap_resolution
+                || g.ares != d.alphamap_resolution
+                || g.maps != d.splat_maps()
+        });
         if stale {
             self.entries
                 .insert(t.key.clone(), GpuTerrain::new(device, d));
@@ -622,6 +803,7 @@ impl TerrainCache {
                     usage: wgpu::BufferUsages::INDEX,
                 }),
                 ranges,
+                indices,
             }
         });
     }
@@ -667,7 +849,8 @@ impl TerrainCache {
             self.sync(device, queue, t);
             let layers = self.layers.get(device, queue, &t.data.layers);
             let gpu = &self.entries[&t.key];
-            let params = params(t, &layers.means, gpu.coverage, light, self.ground_cover);
+            let mut params = params(t, &layers.means, gpu.coverage, light, self.ground_cover);
+            params.chunks = [gpu.per_side() as f32, 0.0, 0.0, 0.0];
             let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("misty terrain params"),
                 contents: bytemuck::bytes_of(&params),
@@ -676,6 +859,11 @@ impl TerrainCache {
             let view = |t: &wgpu::Texture| t.create_view(&Default::default());
             let (heights, normals, splat) =
                 (view(&gpu.heights), view(&gpu.normals), view(&gpu.splat));
+            let extra = gpu.splat_extra.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            });
+            let chunk_layers = view(&gpu.chunk_layers);
             let tex = wgpu::BindingResource::TextureView;
             let entries = [
                 (0, buffer.as_entire_binding()),
@@ -684,6 +872,8 @@ impl TerrainCache {
                 (3, tex(&layers.albedo)),
                 (4, tex(&layers.normal)),
                 (6, wgpu::BindingResource::Sampler(textures.sampler())),
+                (7, tex(&extra)),
+                (8, tex(&chunk_layers)),
                 (12, tex(&heights)),
                 (13, tex(&normals)),
             ]
@@ -783,17 +973,43 @@ impl TerrainCache {
                 );
                 Aabb::new(min + t.position, max + t.position)
             };
-            let lods = terrain_lod::select(per, chunk_m, terrain_lod::max_lod(cells), |c| {
+            let mut lods = terrain_lod::select(per, chunk_m, terrain_lod::max_lod(cells), |c| {
                 let b = bounds(c);
                 camera.clamp(b.min, b.max).distance(camera)
             });
+            // Chunks with holes draw at full detail (their neighbours step down to them).
+            let any_holes = g.holed.iter().any(|h| *h);
+            let full = |mut l: Vec<u8>| {
+                for (c, h) in g.holed.iter().enumerate() {
+                    if *h {
+                        l[c] = 0;
+                    }
+                }
+                terrain_lod::limit(per, l)
+            };
+            if any_holes {
+                lods = full(lods);
+            }
             let masks = terrain_lod::masks(per, &lods);
             let reach = self.shadow_reach;
-            let shadow_lods = terrain_lod::shadow_lods(per, &lods, |c| {
+            let mut shadow_lods = terrain_lod::shadow_lods(per, &lods, |c| {
                 let b = bounds(c);
                 camera.clamp(b.min, b.max).distance(camera) < reach
             });
+            if any_holes {
+                shadow_lods = full(shadow_lods);
+            }
             let shadow_masks = terrain_lod::masks(per, &shadow_lods);
+            if any_holes && let Some(p) = self.patterns.get(&g.res) {
+                let wanted: Vec<(usize, u8, u8)> = (0..per * per)
+                    .filter(|c| g.holed[*c])
+                    .flat_map(|c| [(c, lods[c], masks[c]), (c, shadow_lods[c], shadow_masks[c])])
+                    .collect();
+                if wanted.iter().any(|k| !g.holes.ranges.contains_key(k)) {
+                    crate::profile_scope!("Terrain.HoleIndices");
+                    g.holes = hole_indices(device, p, &wanted, g.res, per, cells, d);
+                }
+            }
             self.chunks.push(
                 (0..per * per)
                     .map(|c| {
@@ -807,6 +1023,7 @@ impl TerrainCache {
                             visible: frustum.intersects(&b),
                             dist: camera.clamp(b.min, b.max).distance(camera),
                             bounds: b,
+                            holed: g.holed[c],
                         }
                     })
                     .collect(),
@@ -816,7 +1033,7 @@ impl TerrainCache {
                 g.grass
                     .update(device, queue, &t.data, camera - t.position, density);
             }
-            let has_grass = d.details.enabled && !d.detail_map.is_empty();
+            let has_grass = crate::terrain::detail_layers::draws_grass(d);
             // (Uploaded again when it went up uncompressed and its blocks are ready now.)
             if has_grass && self.grass_atlas.as_ref().is_none_or(|(a, _)| a.outdated()) {
                 crate::profile_scope!("Grass.Atlas");
@@ -1014,8 +1231,10 @@ impl TerrainCache {
             let index = (first + i) as u32;
             // The camera pass draws near chunks first: hills in front hide the ground behind
             // them before it is shaded.
-            let mut order: Vec<&ChunkDraw> =
-                chunks.iter().filter(|c| c.visible || !camera).collect();
+            let mut order: Vec<&ChunkDraw> = chunks
+                .iter()
+                .filter(|c| (c.visible || !camera) && !c.holed)
+                .collect();
             if camera {
                 order.sort_by(|a, b| a.dist.total_cmp(&b.dist));
             }
@@ -1028,6 +1247,29 @@ impl TerrainCache {
                 let range = p.ranges[lod as usize][mask as usize].clone();
                 let count = range.len() as u32;
                 pass.draw_indexed(range, c.base, index..index + 1);
+                stats.draw(1, count, count / 6 + 1);
+            }
+            // Chunks with holes, from their own index lists.
+            let mut bound = false;
+            for (ci, c) in chunks.iter().enumerate() {
+                if !c.holed || !(c.visible || !camera) {
+                    continue;
+                }
+                let key = if camera {
+                    (ci, c.lod, c.mask)
+                } else {
+                    (ci, c.shadow_lod, c.shadow_mask)
+                };
+                let (Some(buffer), Some(range)) = (&gpu.holes.buffer, gpu.holes.ranges.get(&key))
+                else {
+                    continue;
+                };
+                if !bound {
+                    pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    bound = true;
+                }
+                let count = range.len() as u32;
+                pass.draw_indexed(range.clone(), c.base, index..index + 1);
                 stats.draw(1, count, count / 6 + 1);
             }
         }
@@ -1060,7 +1302,10 @@ impl TerrainCache {
             }
             let mut bound = false;
             let index = (first + i) as u32;
-            for c in chunks.iter().filter(|c| frustum.intersects(&c.bounds)) {
+            for c in chunks
+                .iter()
+                .filter(|c| !c.holed && frustum.intersects(&c.bounds))
+            {
                 if !bound {
                     pass.set_bind_group(3, group, &[]);
                     pass.set_index_buffer(p.buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -1069,6 +1314,29 @@ impl TerrainCache {
                 let range = p.ranges[c.shadow_lod as usize][c.shadow_mask as usize].clone();
                 let count = range.len() as u32;
                 pass.draw_indexed(range, c.base, index..index + 1);
+                stats.draw(1, count, count / 6 + 1);
+            }
+            // Chunks with holes, from their own index lists.
+            let mut holes_bound = false;
+            for (ci, c) in chunks.iter().enumerate() {
+                if !c.holed || !frustum.intersects(&c.bounds) {
+                    continue;
+                }
+                let key = (ci, c.shadow_lod, c.shadow_mask);
+                let (Some(buffer), Some(range)) = (&gpu.holes.buffer, gpu.holes.ranges.get(&key))
+                else {
+                    continue;
+                };
+                if !bound {
+                    pass.set_bind_group(3, group, &[]);
+                    bound = true;
+                }
+                if !holes_bound {
+                    pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    holes_bound = true;
+                }
+                let count = range.len() as u32;
+                pass.draw_indexed(range.clone(), c.base, index..index + 1);
                 stats.draw(1, count, count / 6 + 1);
             }
         }
@@ -1372,6 +1640,51 @@ impl TerrainCache {
     }
 }
 
+/// The index lists of the chunks with holes (`wanted`: chunk, lod, edge mask) in one buffer.
+#[allow(clippy::too_many_arguments)]
+fn hole_indices(
+    device: &wgpu::Device,
+    p: &Patterns,
+    wanted: &[(usize, u8, u8)],
+    res: usize,
+    per: usize,
+    cells: usize,
+    d: &TerrainData,
+) -> HoleIndices {
+    let mut indices: Vec<u32> = Vec::new();
+    let mut ranges = HashMap::new();
+    for &k @ (c, lod, mask) in wanted {
+        if ranges.contains_key(&k) {
+            continue;
+        }
+        let r = p.ranges[lod as usize][mask as usize].clone();
+        let pattern = &p.indices[r.start as usize..r.end as usize];
+        let start = indices.len() as u32;
+        indices.extend(without_holes(
+            pattern,
+            res,
+            (c % per) * cells,
+            (c / per) * cells,
+            d,
+        ));
+        ranges.insert(k, start..indices.len() as u32);
+    }
+    // (A buffer can't be empty: one collapsed triangle.)
+    if indices.is_empty() {
+        indices.extend([0, 0, 0]);
+    }
+    HoleIndices {
+        ranges,
+        buffer: Some(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("misty terrain hole indices"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }),
+        ),
+    }
+}
+
 /// Per-draw values of a terrain: translation only, white, receives shadows.
 pub(super) fn draw_uniform(t: &TerrainDraw) -> DrawUniform {
     let model = Mat4::from_translation(t.position);
@@ -1433,6 +1746,7 @@ fn params(
         ground_cover: ground_cover_values()[0],
         ground_tint: ground_cover_values()[1],
         ground_front: ground_cover_values()[2],
+        chunks: [1.0, 0.0, 0.0, 0.0],
     };
     let g = &d.details;
     if g.enabled && d.detail_map.len() == d.alphamap_resolution.pow(2) {
@@ -1478,4 +1792,39 @@ fn params(
         p.harmony = harmony::adjustments(&d.harmony, &tones, light);
     }
     p
+}
+
+#[cfg(test)]
+mod hole_tests {
+    use super::*;
+
+    /// A chunk's pattern without its hole cells keeps every other cell's two triangles.
+    #[test]
+    fn hole_cells_leave_the_chunk_pattern() {
+        let mut d = TerrainData::new(129, Vec3::splat(128.0), 128);
+        let cells = terrain_lod::chunk_cells(129);
+        let (indices, ranges) = terrain_lod::patterns(129, cells);
+        let full = &indices[ranges[0][0].start as usize..ranges[0][0].end as usize];
+        assert_eq!(
+            without_holes(full, 129, 0, 0, &d),
+            full,
+            "no holes: all kept"
+        );
+        // Three holes in the second chunk along x, one in the first.
+        for (x, z) in [(70, 3), (71, 3), (100, 40), (5, 5)] {
+            d.set_hole(x, z, true);
+        }
+        let kept = without_holes(full, 129, cells, 0, &d);
+        assert_eq!(kept.len(), full.len() - 3 * 6);
+        let first = without_holes(full, 129, 0, 0, &d);
+        assert_eq!(first.len(), full.len() - 6);
+        // The cut cell's samples no longer form a triangle there.
+        let cell = (5 * 129 + 5) as u32;
+        assert!(
+            !first
+                .chunks(3)
+                .any(|t| t.contains(&cell) && t.contains(&(cell + 1)) && t.contains(&(cell + 129))),
+            "cell (5, 5) left out"
+        );
+    }
 }

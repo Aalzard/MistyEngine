@@ -482,6 +482,97 @@ fn scene_round_trip_and_apply() {
     assert_eq!(scene.len(), before);
 }
 
+/// Scatter Storage ▸ Terrain Trees: tree items become terrain tree instances (prototypes
+/// added), other items stay scene objects, hand-painted trees of other prototypes survive a
+/// regeneration and the generated ones are replaced, not doubled.
+#[test]
+fn scatter_becomes_editable_terrain_trees() {
+    use crate::scene::{Scene, Terrain};
+    let mut req = request(65, Vec::new());
+    req.settings.scatter_storage = ScatterStorage::TerrainTrees;
+    let forest = &req.biomes[0];
+    let tree_items: Vec<usize> = (0..forest.scatter.len())
+        .filter(|i| tree_asset(&forest.scatter[*i]).is_some())
+        .collect();
+    assert!(!tree_items.is_empty(), "the forest preset has trees");
+    let out = run(&req);
+    let batches = out.scatter.as_ref().expect("scatter ran");
+    let expected: usize = (batches.iter())
+        .filter(|b| tree_asset(&req.biomes[b.biome].scatter[b.item]).is_some())
+        .map(|b| b.instances.len())
+        .sum();
+    assert!(expected > 10, "{expected} trees scattered");
+    let trees = &out.data.trees;
+    assert_eq!(
+        trees.instances.len(),
+        expected,
+        "every tree in the terrain data"
+    );
+    assert!(trees.prototypes.iter().any(|p| p.tree == BROADLEAF_TREE));
+    // On the ground where the scatter put them.
+    let b = batches
+        .iter()
+        .find(|b| {
+            tree_asset(&req.biomes[b.biome].scatter[b.item]).is_some() && !b.instances.is_empty()
+        })
+        .unwrap();
+    let first = b.instances[0].position;
+    assert!(trees.instances.iter().any(|t| {
+        let p = crate::terrain::trees::local_position(&out.data, t);
+        (p.x - first.x).abs() < 1e-3 && (p.z - first.z).abs() < 1e-3
+    }));
+
+    // Applying puts only the other items into the scene.
+    let mut scene = Scene::new("t");
+    let terrain = scene.spawn("Terrain", None);
+    scene.add(
+        terrain,
+        Terrain {
+            terrain_data: "Assets/T.terrain".into(),
+            ..Default::default()
+        },
+    );
+    let builder = scene.spawn("World Builder", None);
+    scene.add(builder, req.settings.clone());
+    super::apply(&mut scene, builder, &req, &out, &|_| None);
+    let names: Vec<String> = (scene.world.query::<&crate::scene::GameObject>().iter())
+        .map(|g| g.name.clone())
+        .collect();
+    for i in &tree_items {
+        let item = &req.biomes[0].scatter[*i];
+        let holder = format!("{} {}", req.biomes[0].name, item.name);
+        assert!(
+            !names.contains(&holder),
+            "{holder} went into the terrain, not the scene"
+        );
+    }
+
+    // A hand-painted tree of another asset survives regenerating; generated ones are replaced.
+    let mut current = out.data.clone();
+    current
+        .trees
+        .prototypes
+        .push(crate::terrain::trees::TreePrototype {
+            tree: "Assets/Trees/Mine.tree".into(),
+        });
+    let mine = current.trees.prototypes.len() as u16 - 1;
+    current
+        .trees
+        .instances
+        .push(crate::terrain::trees::TreeInstance {
+            prototype: mine,
+            ..Default::default()
+        });
+    req.current = Some(current);
+    let again = run(&req);
+    let t = &again.data.trees;
+    assert_eq!(t.instances.len(), expected + 1);
+    assert_eq!(
+        t.instances.iter().filter(|i| i.prototype == mine).count(),
+        1
+    );
+}
+
 struct NoMaterials;
 impl crate::render_scene::MaterialSource for NoMaterials {
     fn params(&self, _: Option<&str>) -> crate::render::MaterialParams {

@@ -53,7 +53,7 @@ pub fn texture_slot(
 }
 
 /// Every mesh that can go in a Mesh Filter: primitives, then each imported model's meshes.
-fn mesh_choices(state: &EditorState) -> Vec<(MeshRef, String)> {
+pub(crate) fn mesh_choices(state: &EditorState) -> Vec<(MeshRef, String)> {
     let mut out: Vec<(MeshRef, String)> = PrimitiveMesh::ALL
         .iter()
         .map(|p| (MeshRef::Primitive(*p), p.name().to_owned()))

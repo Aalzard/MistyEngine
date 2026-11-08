@@ -7,7 +7,7 @@
 use super::biome::{Biome, Feature};
 use super::classify::{Fields, classify};
 use super::par_rows;
-use crate::terrain::{MAX_LAYERS, TerrainLayer};
+use crate::terrain::{LAYERS_PER_MAP as MAX_LAYERS, TerrainLayer};
 
 /// Layers and splat map for a terrain.
 #[derive(Clone, Debug)]

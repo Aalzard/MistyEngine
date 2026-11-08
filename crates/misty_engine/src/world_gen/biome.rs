@@ -131,6 +131,9 @@ pub struct ScatterItem {
     pub height_range: [f32; 2],
     /// Tilt with the ground (rocks) instead of standing upright (trees).
     pub align_to_normal: bool,
+    /// `.tree` asset this item becomes with Scatter Storage ▸ Terrain Trees (None = the
+    /// World Builder's own tree for tree shapes; other shapes stay scene objects).
+    pub tree: Option<String>,
 }
 
 impl Default for ScatterItem {
@@ -147,6 +150,7 @@ impl Default for ScatterItem {
             max_slope: 30.0,
             height_range: [0.0, 1.0],
             align_to_normal: false,
+            tree: None,
         }
     }
 }

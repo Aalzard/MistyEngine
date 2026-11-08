@@ -8,13 +8,13 @@ struct TerrainParams {
     size: vec4<f32>,
     // x = heightmap samples per side, y = sample spacing along x, z = along z.
     grid: vec4<f32>,
-    // Per layer: xy = tile size (metres), zw = tile offset (metres).
-    tiles: array<vec4<f32>, 4>,
+    // Per layer (up to 16): xy = tile size (metres), zw = tile offset (metres).
+    tiles: array<vec4<f32>, 16>,
     // Per layer: x = metallic, y = smoothness, z = normal scale.
-    surface: array<vec4<f32>, 4>,
+    surface: array<vec4<f32>, 16>,
     // Per layer Color Harmony: x = hue shift (turns), y = saturation scale,
     // z = brightness scale, w = 1 when active.
-    harmony: array<vec4<f32>, 4>,
+    harmony: array<vec4<f32>, 16>,
     // x = triplanar on, y = |normal.xz| where triplanar starts, z = projection sharpness,
     // w = height-blend window (1 = plain weights).
     cliff: vec4<f32>,
@@ -34,6 +34,8 @@ struct TerrainParams {
     // rgb = the fans' colour against the ground's looking into the sun / with it behind.
     ground_tint: vec4<f32>,
     ground_front: vec4<f32>,
+    // x = chunks per side (`chunk_layers`, terrain_layers.wgsl).
+    chunks: vec4<f32>,
 };
 
 @group(3) @binding(0) var<uniform> terrain: TerrainParams;

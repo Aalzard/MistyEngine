@@ -2963,3 +2963,40 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Imported-mesh outputs, sub-graph blocks, strip ids for several ribbons, colour in GPU event
   records, off-screen depth collision; CPU Inherit Velocity / Lights / External Forces / Custom
   Data modules, more Shape types, smooth curve tangents.
+
+## Round 20B — Terrain tools at Unity parity, placement brushes (branch r20-terrain)
+
+### Done (docs/pending/r20-terrain.md, screenshots `docs/screenshots/r20/terrain_*`)
+- **Paint Holes**: holes are cut per heightmap cell and saved in the `.terrain` asset. Chunks with
+  holes draw from their own index lists at full detail, so every render pass is cut with no
+  shader change. Hole cells are removed from the rapier heightfield, rays fall through them,
+  and nothing grows over them.
+- **Up to 16 layers**: four to a splat map, the extra maps in `alphamap_extra` (empty with four
+  layers or fewer, so those terrains save and draw as before). Texture arrays get one slice per
+  layer. A per-chunk layer mask makes a pixel read only its chunk's maps and height-blend the
+  four strongest layers. Brush, Auto Paint, Generate in brush, harmony and grass rules all work
+  across maps.
+- **Paint Details**: the terrain grass plus up to 16 detail layers, each with a painted density
+  map. Grass species (height, width, bend, colour, seed heads) ride in the terrain grass's
+  chunks and GPU path. Detail meshes are instanced mesh draws with random scale and turn,
+  optional align-to-normal, culled by screen size.
+- **Placement**: Paint Trees gains a slope range, height limits and random rotation. **Place
+  Objects** brushes prefabs (rocks, props) onto the terrain as scene objects, with density,
+  spacing, scale range, rotation, align-to-normal, slope and height limits, and erase (all or the
+  selected prefab only). Each stroke is one undo step.
+- **World Builder ▸ Scatter Storage ▸ Terrain Trees**: tree items become editable terrain tree
+  instances (a per-item Terrain Tree asset, with the builder's own Oak / Birch as the default).
+  Regenerating replaces only those trees.
+- Sample `TerrainToolsDemo` (seven layers over two maps, sinkhole over a pit, two grass species,
+  pebbles, trees, placed rocks).
+- MeadowDemo unchanged: all 20 golden shots match (mean 0.15–0.39, ≤ 0.03 % changed, same as main).
+  `meadow_perf_times` at 1080p, baseline (7d17100) vs this branch, two alternating rounds: wide
+  High 15.47 / 15.46 ms GPU, Medium 11.39 / 11.40, Low 7.65 / 7.66; behind High 16.60 / 16.62,
+  Medium 11.79 / 11.81, Low 7.72 / 7.73. Same triangles and draw calls; CPU render time within
+  noise (1.6–2.2 ms both).
+
+### Not done yet
+- Sub-cell hole masks. A grass species's own colour and wind (it picks a point between the
+  terrain grass's healthy and dry colours). Billboards, wind and GPU scatter for detail meshes.
+  Storing placed objects in the terrain asset. World Builder keeping holes and detail layers
+  when it regenerates.

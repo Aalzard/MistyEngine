@@ -49,7 +49,7 @@ mod rig_editors;
 mod saveloc_editors;
 pub(in crate::panels) mod shader_material;
 mod skinned_editors;
-pub(in crate::panels) mod slots;
+pub(crate) mod slots;
 mod spline_editors;
 mod sprite_border;
 mod sprite_editors;

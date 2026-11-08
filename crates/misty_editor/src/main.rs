@@ -163,6 +163,8 @@ mod sample_terrain;
 #[cfg(test)]
 mod sample_terrain2;
 #[cfg(test)]
+mod sample_terrain_tools;
+#[cfg(test)]
 mod sample_tilemap;
 #[cfg(test)]
 mod sample_timeline;
@@ -204,7 +206,9 @@ mod status_bar;
 #[cfg(test)]
 mod string_literal_lint;
 mod templates;
+mod terrain_details_ui;
 mod terrain_flowers_ui;
+mod terrain_place_ui;
 mod terrain_rules;
 mod terrain_tools;
 mod terrain_trees_ui;

@@ -28,9 +28,12 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use glam::{Mat4, Quat, Vec3};
+use glam::{Mat4, Quat, Vec2, Vec3};
 use hecs::Entity;
 use serde::{Deserialize, Serialize};
+
+use crate::terrain::TerrainData;
+use scatter::ScatterBatch;
 
 pub use base::{BaseSettings, Generator};
 pub use biome::{Biome, Feature, Preset, ScatterItem, ScatterShape};
@@ -58,17 +61,104 @@ pub enum ScatterStorage {
     Objects,
     /// One Scatter component per item (small files, very large counts).
     Compact,
+    /// Trees become the terrain's own tree instances (edit them with Paint Trees); other
+    /// items are stored as with Auto.
+    TerrainTrees,
 }
 
 impl ScatterStorage {
-    pub const ALL: [Self; 3] = [Self::Auto, Self::Objects, Self::Compact];
+    pub const ALL: [Self; 4] = [Self::Auto, Self::Objects, Self::Compact, Self::TerrainTrees];
     pub fn label(self) -> &'static str {
         match self {
             Self::Auto => "Auto",
             Self::Objects => "Objects",
             Self::Compact => "Compact (Scatter component)",
+            Self::TerrainTrees => "Terrain Trees (editable with Paint Trees)",
         }
     }
+}
+
+/// The World Builder's own trees (written into a project that lacks them): the broadleaf
+/// shape becomes an oak, the narrow-crowned one a birch.
+pub const BROADLEAF_TREE: &str = "Assets/WorldBuilder/Trees/Oak.tree";
+pub const NARROW_TREE: &str = "Assets/WorldBuilder/Trees/Birch.tree";
+
+/// The `.tree` asset a scatter item becomes as a terrain tree (None: not a tree, it stays a
+/// scene object).
+pub fn tree_asset(item: &ScatterItem) -> Option<String> {
+    if item.tree.is_some() {
+        return item.tree.clone();
+    }
+    if item.prefab.is_some() {
+        return None;
+    }
+    match item.shape {
+        ScatterShape::BroadleafTree => Some(BROADLEAF_TREE.into()),
+        ScatterShape::PineTree => Some(NARROW_TREE.into()),
+        _ => None,
+    }
+}
+
+/// Scatter ▸ Terrain Trees: the tree items' instances become `data.trees` instances (their
+/// `.tree` assets added as prototypes). Trees of those prototypes already in `data` (an
+/// earlier generation's) go first; other trees (painted by hand with other trees) stay.
+/// Returns how many trees were added.
+pub fn scatter_to_trees(
+    data: &mut TerrainData,
+    biomes: &[Biome],
+    batches: &[ScatterBatch],
+) -> usize {
+    use crate::terrain::trees::{TreeInstance, TreePrototype};
+    let mut protos: Vec<(usize, usize, u16)> = Vec::new();
+    for batch in batches {
+        let Some(item) = biomes
+            .get(batch.biome)
+            .and_then(|b| b.scatter.get(batch.item))
+        else {
+            continue;
+        };
+        let Some(tree) = tree_asset(item) else {
+            continue;
+        };
+        let index = match data.trees.prototypes.iter().position(|p| p.tree == tree) {
+            Some(i) => i,
+            None => {
+                if data.trees.prototypes.len() >= crate::terrain::trees::MAX_PROTOTYPES {
+                    continue;
+                }
+                data.trees.prototypes.push(TreePrototype { tree });
+                data.trees.prototypes.len() - 1
+            }
+        };
+        protos.push((batch.biome, batch.item, index as u16));
+    }
+    let owned: Vec<u16> = protos.iter().map(|p| p.2).collect();
+    data.trees
+        .instances
+        .retain(|t| !owned.contains(&t.prototype));
+    let mut added = 0;
+    for batch in batches {
+        let Some(&(_, _, prototype)) = protos
+            .iter()
+            .find(|p| p.0 == batch.biome && p.1 == batch.item)
+        else {
+            continue;
+        };
+        for (k, inst) in batch.instances.iter().enumerate() {
+            let colour = crate::terrain::noise::hash(k as i32, prototype as i32, 0x7ee5);
+            data.trees.instances.push(TreeInstance {
+                position: Vec2::new(inst.position.x / data.size.x, inst.position.z / data.size.z)
+                    .clamp(Vec2::ZERO, Vec2::ONE),
+                prototype,
+                rotation: inst.yaw,
+                height_scale: inst.scale,
+                width_scale: inst.scale,
+                color: colour,
+            });
+            added += 1;
+        }
+    }
+    added
 }
 
 /// World Builder settings (on the "World Builder" object).
@@ -344,6 +434,24 @@ pub fn write_materials(root: &Path, biomes: &[Biome]) -> Result<(), String> {
             ));
         }
     }
+    // The World Builder's own trees (Scatter Storage ▸ Terrain Trees).
+    let wants_trees = biomes
+        .iter()
+        .flat_map(|b| &b.scatter)
+        .filter_map(tree_asset)
+        .collect::<Vec<_>>();
+    for (rel, asset) in [
+        (
+            BROADLEAF_TREE,
+            crate::trees::TreeAsset::oak as fn() -> crate::trees::TreeAsset,
+        ),
+        (NARROW_TREE, crate::trees::TreeAsset::birch),
+    ] {
+        let path = root.join(rel);
+        if wants_trees.iter().any(|t| t == rel) && !path.exists() {
+            asset().save(&path)?;
+        }
+    }
     for (rel, m) in list {
         let path = root.join(&rel);
         if Material::load(&path).is_ok_and(|old| old == m) {
@@ -415,9 +523,21 @@ pub fn apply(
         return 0;
     };
     let scatter_root = fresh_child(scene, generated, "Scatter");
+    let trees = req.settings.scatter_storage == ScatterStorage::TerrainTrees;
+    // Batches stored in the terrain data instead (generate() put them there).
+    let in_terrain = |batch: &ScatterBatch| {
+        trees
+            && (req.biomes.get(batch.biome))
+                .and_then(|b| b.scatter.get(batch.item))
+                .is_some_and(|i| tree_asset(i).is_some())
+    };
     let total: usize = batches.iter().map(|b| b.instances.len()).sum();
+    let objects: usize = (batches.iter())
+        .filter(|b| !in_terrain(b))
+        .map(|b| b.instances.len())
+        .sum();
     let compact = match req.settings.scatter_storage {
-        ScatterStorage::Auto => total > OBJECT_LIMIT,
+        ScatterStorage::Auto | ScatterStorage::TerrainTrees => objects > OBJECT_LIMIT,
         ScatterStorage::Objects => false,
         ScatterStorage::Compact => true,
     };
@@ -425,6 +545,9 @@ pub fn apply(
         let (Some(b), true) = (req.biomes.get(batch.biome), !batch.instances.is_empty()) else {
             continue;
         };
+        if in_terrain(batch) {
+            continue;
+        }
         let item = &b.scatter[batch.item];
         let name = format!("{} {}", b.name, item.name);
         let parts = primitive_parts(b, item);

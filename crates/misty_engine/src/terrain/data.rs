@@ -1,5 +1,8 @@
-//! Terrain data asset: a square heightmap (normalised 0..1 heights scaled by `size.y`), a splat
-//! (alpha) map with one weight per terrain layer, and up to four layers.
+//! Terrain data asset: a square heightmap (normalised 0..1 heights scaled by `size.y`), splat
+//! (alpha / control) maps with one weight per terrain layer, four layers to a map, and up to
+//! sixteen layers. The first map is `alphamap`; maps for layers 5.. follow in
+//! `alphamap_extra`, which stays empty while a terrain has four layers or fewer (so such
+//! terrains, their files and their drawing are exactly as before more layers existed).
 //!
 //! Local space: the origin is the terrain's corner; x runs over the width, z over the length.
 //! Heightmap sample `(ix, iz)` sits at `(ix * dx, h, iz * dz)` and is stored at `iz * res + ix`.
@@ -16,8 +19,10 @@ use super::flowers::FlowerSettings;
 use super::harmony::HarmonySettings;
 use super::trees::TreeSettings;
 
-/// Most layers a terrain blends (one splat-map channel each).
-pub const MAX_LAYERS: usize = 4;
+/// Most layers a terrain holds (one splat-map channel each, four channels to a map).
+pub const MAX_LAYERS: usize = 16;
+/// Layers per splat (control) map.
+pub const LAYERS_PER_MAP: usize = 4;
 /// Heightmap resolutions offered (2^n + 1 samples per side).
 pub const HEIGHTMAP_RESOLUTIONS: [usize; 8] = [33, 65, 129, 257, 513, 1025, 2049, 4097];
 /// Splat-map resolutions offered (texels per side).
@@ -74,6 +79,10 @@ pub struct TerrainData {
     pub alphamap_resolution: usize,
     /// Layer weights per texel (channel n = layer n), row by row along z.
     pub alphamap: Vec<[u8; 4]>,
+    /// Weights of layers 5.. (`LAYERS_PER_MAP` to a map, the maps one after another, each
+    /// `alphamap_resolution²` texels); empty with four layers or fewer. All of a texel's
+    /// weights over every map sum to 255.
+    pub alphamap_extra: Vec<[u8; 4]>,
     pub layers: Vec<TerrainLayer>,
     /// Seed of the Auto Paint breakup noise and the detail scatter.
     pub rule_seed: u32,
@@ -89,6 +98,11 @@ pub struct TerrainData {
     pub flowers: FlowerSettings,
     /// Tree prototypes, placed trees and how they are drawn.
     pub trees: TreeSettings,
+    /// Holes (Paint Holes): one byte per heightmap cell (`(res - 1)²`, row by row along z),
+    /// non-zero = cut out of the surface and the collider; empty = no holes.
+    pub holes: Vec<u8>,
+    /// More grass species and detail meshes, each with its painted density (Paint Details).
+    pub detail_layers: Vec<super::detail_layers::DetailLayer>,
 }
 
 impl Default for TerrainData {
@@ -116,6 +130,7 @@ impl TerrainData {
             heights: vec![0.0; res * res],
             alphamap_resolution: ares,
             alphamap: vec![[255, 0, 0, 0]; ares * ares],
+            alphamap_extra: Vec::new(),
             layers: Vec::new(),
             rule_seed: 1,
             cliffs: CliffSettings::default(),
@@ -124,6 +139,8 @@ impl TerrainData {
             detail_map: Vec::new(),
             flowers: FlowerSettings::default(),
             trees: TreeSettings::default(),
+            holes: Vec::new(),
+            detail_layers: Vec::new(),
         }
     }
 
@@ -200,11 +217,124 @@ impl TerrainData {
     }
 
     /// Layer weights (0..1) at a local point, from the nearest splat texel.
-    pub fn weights_at(&self, x: f32, z: f32) -> [f32; 4] {
+    pub fn weights_at(&self, x: f32, z: f32) -> [f32; MAX_LAYERS] {
         let n = self.alphamap_resolution;
         let tx = ((x / self.size.x) * n as f32).clamp(0.0, n as f32 - 1.0) as usize;
         let tz = ((z / self.size.z) * n as f32).clamp(0.0, n as f32 - 1.0) as usize;
-        self.alphamap[tz * n + tx].map(|w| w as f32 / 255.0)
+        self.layer_weights(tz * n + tx).map(|w| w as f32 / 255.0)
+    }
+
+    /// Splat maps the layers need (four layers to a map, at least one).
+    pub fn splat_maps(&self) -> usize {
+        self.layers
+            .len()
+            .clamp(1, MAX_LAYERS)
+            .div_ceil(LAYERS_PER_MAP)
+    }
+
+    /// Every layer's weight at splat texel `t` (layers past the maps read 0).
+    pub fn layer_weights(&self, t: usize) -> [u8; MAX_LAYERS] {
+        let mut out = [0u8; MAX_LAYERS];
+        out[..4].copy_from_slice(&self.alphamap[t]);
+        let n = self.alphamap_resolution * self.alphamap_resolution;
+        for (m, chunk) in out[4..].chunks_mut(4).enumerate() {
+            if let Some(px) = self.alphamap_extra.get(m * n + t) {
+                chunk.copy_from_slice(px);
+            }
+        }
+        out
+    }
+
+    /// Set every layer's weight at splat texel `t` (the maps must fit: [`Self::fit_splat_maps`]).
+    pub fn set_layer_weights(&mut self, t: usize, w: &[u8; MAX_LAYERS]) {
+        self.alphamap[t] = [w[0], w[1], w[2], w[3]];
+        let n = self.alphamap_resolution * self.alphamap_resolution;
+        for m in 0..self.alphamap_extra.len() / n.max(1) {
+            let c = &w[4 + m * 4..8 + m * 4];
+            self.alphamap_extra[m * n + t] = [c[0], c[1], c[2], c[3]];
+        }
+    }
+
+    /// Weight 0..255 of `layer` at splat texel `t`.
+    pub fn layer_weight(&self, t: usize, layer: usize) -> u8 {
+        if layer < LAYERS_PER_MAP {
+            return self.alphamap[t][layer];
+        }
+        let n = self.alphamap_resolution * self.alphamap_resolution;
+        let m = layer / LAYERS_PER_MAP - 1;
+        self.alphamap_extra
+            .get(m * n + t)
+            .map_or(0, |px| px[layer % LAYERS_PER_MAP])
+    }
+
+    /// Size the extra splat maps for the layer count: maps are added empty, and maps no layer
+    /// uses any more are dropped (their weight goes to layer 0, so texels still sum to 255).
+    pub fn fit_splat_maps(&mut self) {
+        let n = self.alphamap_resolution * self.alphamap_resolution;
+        let want = (self.splat_maps() - 1) * n;
+        if self.alphamap_extra.len() == want {
+            return;
+        }
+        if self.alphamap_extra.len() > want {
+            for t in 0..n {
+                let lost: u32 = (want / n.max(1)..self.alphamap_extra.len() / n.max(1))
+                    .filter_map(|m| self.alphamap_extra.get(m * n + t))
+                    .flat_map(|px| px.iter().map(|v| *v as u32))
+                    .sum();
+                self.alphamap[t][0] = (self.alphamap[t][0] as u32 + lost).min(255) as u8;
+            }
+            self.alphamap_extra.truncate(want);
+        } else {
+            self.alphamap_extra.resize(want, [0; 4]);
+        }
+    }
+
+    /// Heightmap cells per side (one less than the samples).
+    pub fn cells(&self) -> usize {
+        self.heightmap_resolution - 1
+    }
+
+    /// Some cell is a hole.
+    pub fn has_holes(&self) -> bool {
+        self.holes.iter().any(|h| *h != 0)
+    }
+
+    /// Cell `(cx, cz)` is cut out (false outside the grid).
+    pub fn is_hole(&self, cx: usize, cz: usize) -> bool {
+        let c = self.cells();
+        cx < c && cz < c && self.holes.get(cz * c + cx).is_some_and(|h| *h != 0)
+    }
+
+    /// Cut cell `(cx, cz)` out (or fill it back in).
+    pub fn set_hole(&mut self, cx: usize, cz: usize, hole: bool) {
+        let c = self.cells();
+        if cx >= c || cz >= c {
+            return;
+        }
+        if self.holes.len() != c * c {
+            if !hole {
+                return;
+            }
+            self.holes = vec![0; c * c];
+        }
+        self.holes[cz * c + cx] = u8::from(hole);
+    }
+
+    /// Heightmap cell under a local point (clamped to the grid).
+    pub fn cell_at(&self, x: f32, z: f32) -> (usize, usize) {
+        let s = self.spacing();
+        let last = self.cells().saturating_sub(1);
+        let at = |v: f32, step: f32| ((v / step.max(1e-6)).floor().max(0.0) as usize).min(last);
+        (at(x, s.x), at(z, s.y))
+    }
+
+    /// The local point is over a hole (outside the terrain: no).
+    pub fn hole_at(&self, x: f32, z: f32) -> bool {
+        if self.holes.is_empty() || x < 0.0 || z < 0.0 || x > self.size.x || z > self.size.z {
+            return false;
+        }
+        let (cx, cz) = self.cell_at(x, z);
+        self.is_hole(cx, cz)
     }
 
     /// Resample the heightmap to another resolution (bilinear), keeping its shape.
@@ -227,6 +357,18 @@ impl TerrainData {
             }
         }
         self.heights = heights;
+        // Holes follow the cells they covered (nearest cell).
+        if !self.holes.is_empty() {
+            let (oc, nc) = (old - 1, res - 1);
+            let mut holes = Vec::with_capacity(nc * nc);
+            for cz in 0..nc {
+                for cx in 0..nc {
+                    let src = |c: usize| ((c * oc + oc / 2) / nc).min(oc - 1);
+                    holes.push(self.holes[src(cz) * oc + src(cx)]);
+                }
+            }
+            self.holes = holes;
+        }
         self.heightmap_resolution = res;
     }
 
@@ -245,6 +387,16 @@ impl TerrainData {
         let mut map = Vec::with_capacity(res * res);
         let mut details = Vec::new();
         let mut flowers = Vec::new();
+        let maps = self.alphamap_extra.len() / (old * old);
+        let mut extra = Vec::with_capacity(maps * res * res);
+        for m in 0..maps {
+            for tz in 0..res {
+                for tx in 0..res {
+                    extra.push(self.alphamap_extra[m * old * old + source(tx, tz)]);
+                }
+            }
+        }
+        self.alphamap_extra = extra;
         for tz in 0..res {
             for tx in 0..res {
                 map.push(self.alphamap[source(tx, tz)]);
@@ -254,6 +406,15 @@ impl TerrainData {
                 if !self.flowers.map.is_empty() {
                     flowers.push(self.flowers.map[source(tx, tz)]);
                 }
+            }
+        }
+        for l in &mut self.detail_layers {
+            if l.map.len() == old * old {
+                l.map = (0..res * res)
+                    .map(|i| l.map[source(i % res, i / res)])
+                    .collect();
+            } else {
+                l.map.clear();
             }
         }
         self.alphamap = map;
@@ -274,13 +435,22 @@ impl TerrainData {
         self.heights.resize(r * r, 0.0);
         let a = self.alphamap_resolution;
         self.alphamap.resize(a * a, [255, 0, 0, 0]);
+        self.layers.truncate(MAX_LAYERS);
+        let maps = self.splat_maps() - 1;
+        if self.alphamap_extra.len() != maps * a * a {
+            self.alphamap_extra.resize(maps * a * a, [0; 4]);
+        }
         if self.detail_map.len() != a * a {
             self.detail_map.clear();
+        }
+        if self.holes.len() != (r - 1) * (r - 1) || !self.has_holes() {
+            self.holes.clear();
         }
         self.layers.truncate(MAX_LAYERS);
         self.size = sanitize_size(self.size);
         self.trees.sanitize();
         self.flowers.sanitize(a);
+        super::detail_layers::sanitize(self);
     }
 }
 

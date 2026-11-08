@@ -434,11 +434,13 @@ pub fn run_cached(req: &Request, progress: &Progress, cache: &mut Cache) -> Opti
         let painted = hit(&cache.painted, k_paint).expect("painted");
         data.layers = painted.layers.clone();
         data.alphamap = painted.alphamap.clone();
+        data.alphamap_extra.clear();
     } else if let Some(cur) = &req.current {
         let mut keep = cur.clone();
         keep.set_alphamap_resolution(ares);
         data.layers = keep.layers;
         data.alphamap = keep.alphamap;
+        data.alphamap_extra = keep.alphamap_extra;
     }
     if progress.cancelled() {
         return None;
@@ -459,6 +461,16 @@ pub fn run_cached(req: &Request, progress: &Progress, cache: &mut Cache) -> Opti
     } else {
         None
     };
+    // Scatter ▸ Terrain Trees: tree items become the terrain's own trees; otherwise the trees
+    // already on the terrain (painted by hand, an earlier generation's) stay.
+    if let Some(cur) = &req.current {
+        data.trees = cur.trees.clone();
+    }
+    if let Some(sc) = &scatter
+        && req.settings.scatter_storage == super::ScatterStorage::TerrainTrees
+    {
+        super::scatter_to_trees(&mut data, &req.biomes, sc);
+    }
     progress.set("Done", 1.0);
     Some(Output {
         data,

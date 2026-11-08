@@ -306,7 +306,7 @@ pub fn scatter(d: &TerrainData, lo: Vec2, hi: Vec2) -> Vec<Blade> {
             for c in 0..count {
                 let r = |salt: u32| noise::hash(ix, iz, seed.wrapping_add(c * 131 + salt));
                 let p = Vec2::new(tx as f32 + r(1), tz as f32 + r(2)) * texel;
-                if p.x < lo.x || p.y < lo.y || p.x >= hi.x || p.y >= hi.y {
+                if p.x < lo.x || p.y < lo.y || p.x >= hi.x || p.y >= hi.y || d.hole_at(p.x, p.y) {
                     continue;
                 }
                 let masks: Vec<f32> = kinds
