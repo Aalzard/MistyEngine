@@ -368,6 +368,11 @@ fn uniform(
 }
 
 impl WaterRenderer {
+    /// Draw nothing until the next [`Self::prepare`] (a render without water).
+    pub fn forget(&mut self) {
+        self.planned = Planned::default();
+    }
+
     /// Simulate the waves for this frame's time and write each surface's uniform.
     pub fn prepare(
         &mut self,
@@ -436,7 +441,9 @@ impl WaterRenderer {
         let Some(group) = inner.groups.get(&id) else {
             return;
         };
-        let _ = frame;
+        if frame.water.is_empty() {
+            return;
+        }
         crate::profile_scope!("Water.Draw");
         if let Some(offset) = self.planned.underwater {
             pass.set_pipeline(&inner.underwater);
