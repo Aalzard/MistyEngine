@@ -1,6 +1,7 @@
-//! Inspector for an Avatar Mask (`.mask`): the transform tree with a checkbox per bone
+//! Inspectors for rig assets. An Avatar Mask (`.mask`): the transform tree with a checkbox per bone
 //! (switching one switches everything below it), All / None, and "Import skeleton" from an
-//! object in the scene (its hierarchy becomes the list, keeping flags already set).
+//! object in the scene (its hierarchy becomes the list, keeping flags already set). A humanoid
+//! Avatar (`.avatar`): its bone mapping and converting clips to humanoid clips.
 
 use egui::{RichText, Ui};
 use misty_engine::animation::AvatarMask;
@@ -167,4 +168,111 @@ fn tree(ui: &mut Ui, state: &mut EditorState, rel: &str, mask: &AvatarMask) {
 /// Whether `a` is a proper ancestor path of `b` ("" is everyone's ancestor).
 fn is_ancestor(a: &str, b: &str) -> bool {
     a != b && path_within(b, a)
+}
+
+/// Label of the clip conversion button (tests click it).
+pub const CONVERT_LABEL: &str = "Convert to Humanoid";
+
+/// Inspector for a humanoid Avatar (`.avatar`): the human bones and the rig bones they map to
+/// (required bones the rig lacks in red), and converting a clip made for this rig into a
+/// humanoid clip any rig with an Avatar can play.
+pub fn avatar_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    use misty_engine::animation::{Avatar, HumanBone, humanoid};
+    let avatar = match Avatar::load(&state.assets.absolute(rel)) {
+        Ok(a) => a,
+        Err(e) => {
+            ui.colored_label(theme::AXIS_X, e);
+            return;
+        }
+    };
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(crate::panels::animator::AVATAR_ICON).size(22.0));
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{} (Avatar)", clip_name(rel)),
+        ));
+    });
+    ui.separator();
+    crate::asset_guids::path_label(ui, rel);
+    super::card::sub_header(ui, "Humanoid Bones");
+    egui::Grid::new("avatar_bones")
+        .num_columns(2)
+        .spacing([10.0, 2.0])
+        .show(ui, |ui| {
+            for b in HumanBone::ALL {
+                ui.label(b.name());
+                match avatar.bone(b) {
+                    Some(x) => {
+                        ui.label(RichText::new(&x.path).color(theme::TEXT_DIM));
+                    }
+                    None if b.required() => {
+                        ui.colored_label(theme::AXIS_X, "Missing");
+                    }
+                    None => {
+                        ui.weak("(optional)");
+                    }
+                }
+                ui.end_row();
+            }
+        });
+    ui.weak(format!("Hips height {:.2} m", avatar.hips_height));
+    super::card::sub_header(ui, "Retargeting");
+    ui.weak(
+        "Turn a clip made for this rig into a humanoid clip that plays on any rig with an Avatar.",
+    );
+    let id = ui.id().with(("avatar_convert", rel));
+    let clips: Vec<String> = state
+        .assets
+        .anims
+        .iter()
+        .filter(|c| !c.contains("(Humanoid)"))
+        .cloned()
+        .collect();
+    let mut pick: Option<String> = ui
+        .data(|d| d.get_temp::<String>(id))
+        .filter(|c| clips.contains(c))
+        .or_else(|| clips.first().cloned());
+    ui.horizontal(|ui| {
+        egui::ComboBox::from_id_salt(("avatar_clip", rel))
+            .selected_text(
+                pick.as_deref()
+                    .map(clip_name)
+                    .unwrap_or_else(|| "No clips".into()),
+            )
+            .show_ui(ui, |ui| {
+                for c in &clips {
+                    ui.selectable_value(&mut pick, Some(c.clone()), clip_name(c));
+                }
+            });
+        if let Some(c) = &pick {
+            ui.data_mut(|d| d.insert_temp(id, c.clone()));
+        }
+        if ui
+            .add_enabled(pick.is_some(), egui::Button::new(CONVERT_LABEL))
+            .clicked()
+            && let Some(src) = pick.clone()
+        {
+            let result = misty_engine::animation::AnimationClip::load(&state.assets.absolute(&src))
+                .map(|clip| humanoid::humanoid_clip(&clip, &avatar, 30.0))
+                .and_then(|human| {
+                    let stem = clip_name(&src);
+                    let dir = state
+                        .assets
+                        .absolute(&src)
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_default();
+                    let path =
+                        crate::asset_ops::unique_path(&dir, &format!("{stem} (Humanoid)"), "anim");
+                    human.save(&path).map(|_| state.assets.relative(&path))
+                });
+            match result {
+                Ok(out) => {
+                    state.assets.anims.insert(out.clone());
+                    state.console.info(format!("Humanoid clip written: {out}"));
+                }
+                Err(e) => state.console.warn(format!("Could not convert {src}: {e}")),
+            }
+        }
+    });
 }

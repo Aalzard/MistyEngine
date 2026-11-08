@@ -27,6 +27,8 @@ use crate::theme;
 pub const CONTROLLER_ICON: &str = "⇄";
 /// Icon of Avatar Masks.
 pub const MASK_ICON: &str = "◐";
+/// Icon of humanoid Avatars.
+pub const AVATAR_ICON: &str = "☺";
 /// Width of the Parameters panel on the left.
 const PARAMS_W: f32 = 230.0;
 

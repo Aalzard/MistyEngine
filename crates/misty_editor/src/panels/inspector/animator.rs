@@ -1,4 +1,5 @@
-//! Inspector editors for the Animator: the component (controller slot, speed, root motion), and
+//! Inspector editors for the Animator: the component (controller slot, speed, root motion,
+//! humanoid avatar), and
 //! a `.controller` asset showing what is selected in the Animator window on its shown layer:
 //! a state (clip or blend tree with its diagram, speed, multiplier, tag), a sub-state machine,
 //! a transition (exit time, duration, offset, interruption, conditions) or a summary.
@@ -28,7 +29,9 @@ pub fn animator(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     };
     let controllers: Vec<String> = state.assets.controllers.iter().cloned().collect();
     let bones = misty_engine::animation::AvatarMask::skeleton(&state.scene, e);
+    let avatars: Vec<String> = state.assets.avatars.iter().cloned().collect();
     let mut open = false;
+    let mut create_avatar = false;
     let changed = grid(ui, "animator_grid", |ui| {
         let mut ch = false;
         ui.label("Controller");
@@ -73,11 +76,62 @@ pub fn animator(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 });
         });
         ui.end_row();
+        ui.label("Avatar");
+        ui.horizontal(|ui| {
+            let none = "None (Avatar)";
+            egui::ComboBox::from_id_salt("animator_avatar")
+                .selected_text(match &a.avatar {
+                    Some(p) => format!("{} {}", crate::panels::animator::AVATAR_ICON, clip_name(p)),
+                    None => none.to_owned(),
+                })
+                .show_ui(ui, |ui| {
+                    ch |= ui.selectable_value(&mut a.avatar, None, none).changed();
+                    for p in &avatars {
+                        ch |= ui
+                            .selectable_value(&mut a.avatar, Some(p.clone()), clip_name(p))
+                            .changed();
+                    }
+                });
+            create_avatar = ui
+                .small_button("Create")
+                .on_hover_text("Map this rig's bones to a humanoid Avatar asset")
+                .clicked();
+        });
+        ui.end_row();
         ui.label("Keep State On Disable");
         ch |= ui.checkbox(&mut a.keep_state_on_disable, "").changed();
         ui.end_row();
         ch
     });
+    if create_avatar {
+        let avatar = misty_engine::animation::Avatar::auto_map(&state.scene, e);
+        let dir = state.assets.absolute("Assets");
+        let name = state.scene.name(e);
+        let path = crate::asset_ops::unique_path(&dir, &name, "avatar");
+        match avatar.save(&path) {
+            Ok(()) => {
+                let rel = state.assets.relative(&path);
+                let missing = avatar.missing();
+                if !missing.is_empty() {
+                    state.console.warn(format!(
+                        "Avatar {rel}: no bone found for {}.",
+                        missing
+                            .iter()
+                            .map(|b| b.name())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                state.assets.avatars.insert(rel.clone());
+                a.avatar = Some(rel);
+                let _ = state.scene.world.insert_one(e, a.clone());
+                return true;
+            }
+            Err(err) => state
+                .console
+                .warn(format!("Could not create the Avatar: {err}")),
+        }
+    }
     if open {
         state.animator.open(a.controller.clone());
         state.push(crate::actions::Action::FocusTab(
