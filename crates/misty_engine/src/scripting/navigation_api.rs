@@ -1,19 +1,43 @@
-//! Lua navigation API: `GetComponent("NavMeshAgent")` (`SetDestination`, `destination`,
-//! `remainingDistance`, `hasPath`, `isStopped`, `velocity`, `Warp`, …) and the `NavMesh` table
-//! (`SamplePosition`, `CalculatePath`).
+//! Lua navigation API.
+//!
+//! - `GetComponent("NavMeshAgent")`: `SetDestination`, `destination`, `remainingDistance`,
+//!   `hasPath`, `pathPending`, `pathStatus`, `isOnNavMesh`, `isOnOffMeshLink`,
+//!   `currentOffMeshLinkData`, `CompleteOffMeshLink`, `autoTraverseOffMeshLink`, `isStopped`,
+//!   `velocity`, `desiredVelocity`, `Warp`, `ResetPath`, `Move`, `areaMask`, `agentTypeID`,
+//!   `SetAreaCost` / `GetAreaCost`, `CalculatePath`, `Raycast`, `FindClosestEdge`, settings.
+//! - `GetComponent("NavMeshSurface")`: `BuildNavMesh()`, `UpdateNavMesh()` (only changed tiles).
+//! - `GetComponent("NavMeshObstacle")`: `carving`, `enabled`, `carveOnlyStationary`.
+//! - The `NavMesh` table: `SamplePosition`, `CalculatePath`, `Raycast`, `FindClosestEdge`,
+//!   `GetAreaFromName`, `GetAreaCost` / `SetAreaCost`, `AllAreas`.
+//! - Callbacks on the agent's scripts: `OnOffMeshLinkStart(link)`, `OnOffMeshLinkEnd(link)`.
 
+use glam::Vec3;
 use hecs::Entity;
 use mlua::{Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value};
 
 use super::World;
 use super::api::{LGameObject, LTransform, LVec3, with_world};
-use crate::navigation::NavMeshAgent;
+use crate::navigation::{
+    ALL_AREAS, EdgeHit, NavMeshAgent, NavMeshObstacle, NavMeshSurface, NavPath, ObstacleAvoidance,
+    RaycastHit,
+};
 
 #[derive(Clone, Copy)]
 pub struct LNavMeshAgent(pub Entity);
 
+#[derive(Clone, Copy)]
+pub struct LNavMeshSurface(pub Entity);
+
+#[derive(Clone, Copy)]
+pub struct LNavMeshObstacle(pub Entity);
+
 fn missing() -> mlua::Error {
     mlua::Error::runtime("object was destroyed or has no NavMeshAgent")
+}
+
+/// Lua integer → area mask (-1 = every area).
+fn mask_of(v: Option<i64>) -> u32 {
+    v.map_or(ALL_AREAS, |m| m as u32)
 }
 
 /// Run `f` on the agent's live state (placing it on the mesh first).
@@ -49,6 +73,41 @@ macro_rules! setting {
     };
 }
 
+/// A path as a list of corners with `status` (and `corners` for the familiar spelling).
+fn path_table(lua: &Lua, path: &NavPath) -> Result<Table> {
+    let t: Table = lua.create_sequence_from(path.corners.iter().map(|c| LVec3(*c)))?;
+    t.set("status", path.status.name())?;
+    let corners: Table = lua.create_sequence_from(path.corners.iter().map(|c| LVec3(*c)))?;
+    t.set("corners", corners)?;
+    Ok(t)
+}
+
+fn raycast_table(lua: &Lua, h: &RaycastHit) -> Result<Table> {
+    let t = lua.create_table()?;
+    t.set("hit", h.hit)?;
+    t.set("position", LVec3(h.position))?;
+    t.set("normal", LVec3(h.normal))?;
+    t.set("distance", h.distance)?;
+    t.set("mask", 1i64 << h.area)?;
+    Ok(t)
+}
+
+fn edge_table(lua: &Lua, h: &EdgeHit) -> Result<Table> {
+    let t = lua.create_table()?;
+    t.set("hit", true)?;
+    t.set("position", LVec3(h.position))?;
+    t.set("normal", LVec3(h.normal))?;
+    t.set("distance", h.distance)?;
+    Ok(t)
+}
+
+/// (agent type, area mask, position) of an agent for queries.
+fn agent_query(lua: &Lua, e: Entity) -> Result<(u32, u32, Vec3)> {
+    let (t, m) = settings(lua, e, |c| (c.agent_type, c.area_mask))?;
+    let p = state(lua, e, |s| s.position)?.unwrap_or_default();
+    Ok((t, m, p))
+}
+
 impl UserData for LNavMeshAgent {
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         f.add_field_method_get("gameObject", |_, a| Ok(LGameObject(a.0)));
@@ -63,8 +122,35 @@ impl UserData for LNavMeshAgent {
         setting!(f, "baseOffset", base_offset, f32);
         setting!(f, "avoidancePriority", priority, i32);
         setting!(f, "enabled", enabled, bool);
+        setting!(
+            f,
+            "autoTraverseOffMeshLink",
+            auto_traverse_off_mesh_link,
+            bool
+        );
+        setting!(f, "autoRepath", auto_repath, bool);
+        setting!(f, "agentTypeID", agent_type, u32);
+        f.add_field_method_get("areaMask", |lua, a| {
+            settings(lua, a.0, |c| c.area_mask as i32 as i64)
+        });
+        f.add_field_method_set("areaMask", |lua, a, v: i64| {
+            settings(lua, a.0, |c| c.area_mask = v as u32)
+        });
+        f.add_field_method_get("obstacleAvoidanceType", |lua, a| {
+            settings(lua, a.0, |c| {
+                ObstacleAvoidance::ALL
+                    .iter()
+                    .position(|q| *q == c.obstacle_avoidance)
+                    .unwrap_or(0) as i64
+            })
+        });
+        f.add_field_method_set("obstacleAvoidanceType", |lua, a, v: i64| {
+            settings(lua, a.0, |c| {
+                c.obstacle_avoidance = ObstacleAvoidance::ALL[v.clamp(0, 4) as usize];
+            })
+        });
         f.add_field_method_get("destination", |lua, a| {
-            Ok(state(lua, a.0, |s| LVec3(s.destination))?.unwrap_or(LVec3(glam::Vec3::ZERO)))
+            Ok(state(lua, a.0, |s| LVec3(s.destination))?.unwrap_or(LVec3(Vec3::ZERO)))
         });
         f.add_field_method_set("destination", |lua, a, v: LVec3| {
             with_world(lua, |w| {
@@ -80,13 +166,31 @@ impl UserData for LNavMeshAgent {
         f.add_field_method_get("hasPath", |lua, a| {
             Ok(state(lua, a.0, |s| s.has_path())?.unwrap_or(false))
         });
-        // Paths are computed at once, never in the background.
-        f.add_field_method_get("pathPending", |_, _| Ok(false));
+        // Paths are planned at once, except while the nav mesh under them is rebuilding or the
+        // agent is crossing a link.
+        f.add_field_method_get("pathPending", |lua, a| {
+            Ok(state(lua, a.0, |s| s.path_pending)?.unwrap_or(false))
+        });
         f.add_field_method_get("pathStatus", |lua, a| {
             Ok(state(lua, a.0, |s| s.status.name())?.unwrap_or("PathInvalid"))
         });
         f.add_field_method_get("isOnNavMesh", |lua, a| {
             Ok(state(lua, a.0, |s| s.on_mesh)?.unwrap_or(false))
+        });
+        f.add_field_method_get("isOnOffMeshLink", |lua, a| {
+            Ok(state(lua, a.0, |s| s.is_on_off_mesh_link())?.unwrap_or(false))
+        });
+        f.add_field_method_get("currentOffMeshLinkData", |lua, a| {
+            let link = state(lua, a.0, |s| s.link.clone())?.flatten();
+            let t = lua.create_table()?;
+            t.set("valid", link.is_some())?;
+            t.set("activated", link.is_some())?;
+            if let Some(l) = link {
+                t.set("startPos", LVec3(l.start))?;
+                t.set("endPos", LVec3(l.end))?;
+                t.set("area", l.area)?;
+            }
+            Ok(t)
         });
         f.add_field_method_get("isStopped", |lua, a| {
             Ok(state(lua, a.0, |s| s.is_stopped)?.unwrap_or(false))
@@ -95,22 +199,26 @@ impl UserData for LNavMeshAgent {
             state(lua, a.0, |s| s.is_stopped = v).map(|_| ())
         });
         f.add_field_method_get("velocity", |lua, a| {
-            Ok(state(lua, a.0, |s| LVec3(s.velocity))?.unwrap_or(LVec3(glam::Vec3::ZERO)))
+            Ok(state(lua, a.0, |s| LVec3(s.velocity))?.unwrap_or(LVec3(Vec3::ZERO)))
         });
         f.add_field_method_set("velocity", |lua, a, v: LVec3| {
-            state(lua, a.0, |s| {
-                s.velocity = glam::Vec3::new(v.0.x, 0.0, v.0.z)
-            })
-            .map(|_| ())
+            state(lua, a.0, |s| s.velocity = Vec3::new(v.0.x, 0.0, v.0.z)).map(|_| ())
+        });
+        f.add_field_method_get("desiredVelocity", |lua, a| {
+            Ok(state(lua, a.0, |s| LVec3(s.desired_velocity))?.unwrap_or(LVec3(Vec3::ZERO)))
         });
         f.add_field_method_get("nextPosition", |lua, a| {
-            Ok(state(lua, a.0, |s| LVec3(s.position))?.unwrap_or(LVec3(glam::Vec3::ZERO)))
+            Ok(state(lua, a.0, |s| LVec3(s.position))?.unwrap_or(LVec3(Vec3::ZERO)))
         });
         f.add_field_method_get("steeringTarget", |lua, a| {
             let t = state(lua, a.0, |s| {
                 s.corners.first().copied().unwrap_or(s.position)
             })?;
             Ok(LVec3(t.unwrap_or_default()))
+        });
+        f.add_field_method_get("path", |lua, a| {
+            let corners = with_world(lua, |w| w.navigation.path_of(a.0))?.unwrap_or_default();
+            lua.create_sequence_from(corners.into_iter().map(LVec3))
         });
     }
 
@@ -139,209 +247,284 @@ impl UserData for LNavMeshAgent {
                 navigation.warp(scene, a.0, v.0)
             })
         });
+        m.add_method("Move", |lua, a, offset: LVec3| {
+            let p = state(lua, a.0, |s| s.position)?.unwrap_or_default();
+            with_world(lua, |w| {
+                let World {
+                    scene, navigation, ..
+                } = w;
+                navigation.warp(scene, a.0, p + offset.0)
+            })
+        });
+        m.add_method("CompleteOffMeshLink", |lua, a, ()| {
+            with_world(lua, |w| {
+                let World {
+                    scene, navigation, ..
+                } = w;
+                navigation.complete_off_mesh_link(scene, a.0)
+            })
+        });
+        m.add_method("SetAreaCost", |lua, a, (area, cost): (usize, f32)| {
+            with_world(lua, |w| {
+                let costs: [f32; crate::navigation::AREA_COUNT] =
+                    std::array::from_fn(|i| w.navigation.area_cost(i));
+                let World {
+                    scene, navigation, ..
+                } = w;
+                if let Some(st) = navigation.agent(scene, a.0)
+                    && area < crate::navigation::AREA_COUNT
+                {
+                    let c = st.area_costs.get_or_insert(costs);
+                    c[area] = cost.max(1.0);
+                }
+            })
+        });
+        m.add_method("GetAreaCost", |lua, a, area: usize| {
+            let own = state(lua, a.0, |s| s.area_costs.map(|c| c.get(area).copied()))?
+                .flatten()
+                .flatten();
+            match own {
+                Some(c) => Ok(c),
+                None => with_world(lua, |w| w.navigation.area_cost(area)),
+            }
+        });
+        m.add_method("CalculatePath", |lua, a, target: LVec3| {
+            let (t, mask, p) = agent_query(lua, a.0)?;
+            let path = with_world(lua, |w| {
+                w.navigation.calculate_path_filtered(p, target.0, mask, t)
+            })?;
+            path_table(lua, &path)
+        });
+        m.add_method("Raycast", |lua, a, target: LVec3| {
+            let (t, mask, p) = agent_query(lua, a.0)?;
+            let hit = with_world(lua, |w| w.navigation.raycast(p, target.0, mask, t))?;
+            match hit {
+                Some(h) => Ok((h.hit, Value::Table(raycast_table(lua, &h)?))),
+                None => Ok((false, Value::Nil)),
+            }
+        });
+        m.add_method("FindClosestEdge", |lua, a, ()| {
+            let (t, mask, p) = agent_query(lua, a.0)?;
+            let hit = with_world(lua, |w| w.navigation.closest_edge(p, mask, t))?;
+            hit.map(|h| edge_table(lua, &h)).transpose()
+        });
     }
 }
 
-/// `GetComponent("NavMeshAgent")`.
-pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
-    if name != "NavMeshAgent"
-        || !with_world(lua, |w| w.scene.world.get::<&NavMeshAgent>(e).is_ok())?
-    {
-        return Ok(None);
+impl UserData for LNavMeshSurface {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("gameObject", |_, s| Ok(LGameObject(s.0)));
+        f.add_field_method_get("agentTypeID", |lua, s| {
+            with_world(lua, |w| {
+                w.scene
+                    .world
+                    .get::<&NavMeshSurface>(s.0)
+                    .map_or(0, |c| c.agent_type)
+            })
+        });
     }
-    Ok(Some(Value::UserData(
-        lua.create_userdata(LNavMeshAgent(e))?,
-    )))
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        // Rebuild every tile (in the background).
+        m.add_method("BuildNavMesh", |lua, s, ()| {
+            with_world(lua, |w| {
+                let World {
+                    scene, navigation, ..
+                } = w;
+                navigation.rebuild_surface(scene, s.0, true)
+            })
+        });
+        // Rebuild only tiles whose objects changed (in the background).
+        m.add_method("UpdateNavMesh", |lua, s, ()| {
+            with_world(lua, |w| {
+                let World {
+                    scene, navigation, ..
+                } = w;
+                navigation.rebuild_surface(scene, s.0, false)
+            })
+        });
+    }
+}
+
+fn obstacle<R>(lua: &Lua, e: Entity, f: impl FnOnce(&mut NavMeshObstacle) -> R) -> Result<R> {
+    with_world(lua, |w| {
+        let mut o =
+            w.scene.world.get::<&mut NavMeshObstacle>(e).map_err(|_| {
+                mlua::Error::runtime("object was destroyed or has no NavMeshObstacle")
+            })?;
+        Ok(f(&mut o))
+    })?
+}
+
+impl UserData for LNavMeshObstacle {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("gameObject", |_, o| Ok(LGameObject(o.0)));
+        f.add_field_method_get("carving", |lua, o| obstacle(lua, o.0, |c| c.carve));
+        f.add_field_method_set("carving", |lua, o, v: bool| {
+            obstacle(lua, o.0, |c| c.carve = v)
+        });
+        f.add_field_method_get("enabled", |lua, o| obstacle(lua, o.0, |c| c.enabled));
+        f.add_field_method_set("enabled", |lua, o, v: bool| {
+            obstacle(lua, o.0, |c| c.enabled = v)
+        });
+        f.add_field_method_get("carveOnlyStationary", |lua, o| {
+            obstacle(lua, o.0, |c| c.carve_only_stationary)
+        });
+        f.add_field_method_set("carveOnlyStationary", |lua, o, v: bool| {
+            obstacle(lua, o.0, |c| c.carve_only_stationary = v)
+        });
+    }
+}
+
+/// `GetComponent("NavMeshAgent" | "NavMeshSurface" | "NavMeshObstacle")`.
+pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
+    let has = |lua: &Lua, which: &str| {
+        with_world(lua, |w| match which {
+            "NavMeshAgent" => w.scene.world.get::<&NavMeshAgent>(e).is_ok(),
+            "NavMeshSurface" => w.scene.world.get::<&NavMeshSurface>(e).is_ok(),
+            _ => w.scene.world.get::<&NavMeshObstacle>(e).is_ok(),
+        })
+    };
+    let ud = match name {
+        "NavMeshAgent" if has(lua, name)? => lua.create_userdata(LNavMeshAgent(e))?,
+        "NavMeshSurface" if has(lua, name)? => lua.create_userdata(LNavMeshSurface(e))?,
+        "NavMeshObstacle" if has(lua, name)? => lua.create_userdata(LNavMeshObstacle(e))?,
+        _ => return Ok(None),
+    };
+    Ok(Some(Value::UserData(ud)))
 }
 
 /// Register the `NavMesh` global.
 pub fn register(lua: &Lua) -> Result<()> {
     let nav = lua.create_table()?;
     nav.set("AllAreas", -1i64)?;
-    // SamplePosition(position, maxDistance [, areaMask]) → { position, distance, hit } or nil.
+    // SamplePosition(position, maxDistance [, areaMask [, agentTypeID]]) →
+    // { position, distance, hit, mask } or nil.
     nav.set(
         "SamplePosition",
-        lua.create_function(|lua, (p, max, _mask): (LVec3, f32, Option<i64>)| {
-            let hit = with_world(lua, |w| {
-                w.navigation.mesh().and_then(|m| m.nearest(p.0, max))
-            })?;
-            let Some(h) = hit else {
-                return Ok(Value::Nil);
-            };
-            let t = lua.create_table()?;
-            t.set("position", LVec3(h.position))?;
-            t.set("distance", h.distance)?;
-            t.set("hit", true)?;
-            Ok(Value::Table(t))
-        })?,
+        lua.create_function(
+            |lua, (p, max, mask, agent): (LVec3, f32, Option<i64>, Option<u32>)| {
+                let hit = with_world(lua, |w| {
+                    let h =
+                        w.navigation
+                            .sample_position(p.0, max, mask_of(mask), agent.unwrap_or(0));
+                    h.map(|h| {
+                        let area = w
+                            .navigation
+                            .meshes()
+                            .find(|(m, _)| m.valid(h.poly) && m.contains_xz(h.poly, h.position))
+                            .map_or(0, |(m, _)| m.area_of(h.poly));
+                        (h, area)
+                    })
+                })?;
+                let Some((h, area)) = hit else {
+                    return Ok(Value::Nil);
+                };
+                let t = lua.create_table()?;
+                t.set("position", LVec3(h.position))?;
+                t.set("distance", h.distance)?;
+                t.set("hit", true)?;
+                t.set("mask", 1i64 << area)?;
+                Ok(Value::Table(t))
+            },
+        )?,
     )?;
-    // CalculatePath(from, to [, areaMask]) → list of corners with a `status` field.
+    // CalculatePath(from, to [, areaMask [, agentTypeID]]) → list of corners with `status`.
     nav.set(
         "CalculatePath",
-        lua.create_function(|lua, (a, b, _mask): (LVec3, LVec3, Option<i64>)| {
-            let path = with_world(lua, |w| w.navigation.calculate_path(a.0, b.0))?;
-            let t: Table = lua.create_sequence_from(path.corners.iter().map(|c| LVec3(*c)))?;
-            t.set("status", path.status.name())?;
-            Ok(t)
+        lua.create_function(
+            |lua, (a, b, mask, agent): (LVec3, LVec3, Option<i64>, Option<u32>)| {
+                let path = with_world(lua, |w| {
+                    w.navigation.calculate_path_filtered(
+                        a.0,
+                        b.0,
+                        mask_of(mask),
+                        agent.unwrap_or(0),
+                    )
+                })?;
+                path_table(lua, &path)
+            },
+        )?,
+    )?;
+    // Raycast(from, to [, areaMask [, agentTypeID]]) → blocked, { hit, position, normal,
+    // distance, mask } (nil when `from` isn't near the mesh).
+    nav.set(
+        "Raycast",
+        lua.create_function(
+            |lua, (a, b, mask, agent): (LVec3, LVec3, Option<i64>, Option<u32>)| {
+                let hit = with_world(lua, |w| {
+                    w.navigation
+                        .raycast(a.0, b.0, mask_of(mask), agent.unwrap_or(0))
+                })?;
+                match hit {
+                    Some(h) => Ok((h.hit, Value::Table(raycast_table(lua, &h)?))),
+                    None => Ok((false, Value::Nil)),
+                }
+            },
+        )?,
+    )?;
+    // FindClosestEdge(position [, areaMask [, agentTypeID]]) → { position, normal, distance }.
+    nav.set(
+        "FindClosestEdge",
+        lua.create_function(|lua, (p, mask, agent): (LVec3, Option<i64>, Option<u32>)| {
+            let hit = with_world(lua, |w| {
+                w.navigation
+                    .closest_edge(p.0, mask_of(mask), agent.unwrap_or(0))
+            })?;
+            hit.map(|h| edge_table(lua, &h)).transpose()
+        })?,
+    )?;
+    nav.set(
+        "GetAreaFromName",
+        lua.create_function(|lua, name: String| {
+            with_world(lua, |w| {
+                w.navigation
+                    .settings()
+                    .area_from_name(&name)
+                    .map_or(-1, |i| i as i64)
+            })
+        })?,
+    )?;
+    nav.set(
+        "GetAreaCost",
+        lua.create_function(|lua, area: usize| with_world(lua, |w| w.navigation.area_cost(area)))?,
+    )?;
+    nav.set(
+        "SetAreaCost",
+        lua.create_function(|lua, (area, cost): (usize, f32)| {
+            with_world(lua, |w| w.navigation.set_area_cost(area, cost))
         })?,
     )?;
     lua.globals().set("NavMesh", nav)
 }
 
-#[cfg(test)]
-mod tests {
-    use glam::{Vec2, Vec3};
-
-    use crate::navigation::NavMeshAgent;
-    use crate::navigation::tests::floor;
-    use crate::physics::Physics;
-    use crate::runtime::Time;
-    use crate::scene::{Camera, Scene, ScriptRef, Scripts, Transform};
-    use crate::scripting::{Input, LogKind, ScriptHost};
-
-    const SCRIPT: &str = r#"
-local T = {}
-function T:Start()
-    self.agent = self.gameObject:GetComponent("NavMeshAgent")
-    local ok = self.agent:SetDestination(Vector3.new(3, 0, 2))
-    local hit = NavMesh.SamplePosition(Vector3.new(1, 3, 1), 5)
-    local miss = NavMesh.SamplePosition(Vector3.new(50, 0, 0), 1)
-    local path = NavMesh.CalculatePath(Vector3.new(-3, 0, -3), Vector3.new(3, 0, 3))
-    Debug.Log(tostring(ok), tostring(self.agent.hasPath), tostring(self.agent.pathPending),
-        tostring(self.agent.remainingDistance > 5), hit.position.y, tostring(miss == nil),
-        #path, path.status, self.agent.speed)
-    self.frames = 0
-end
-function T:Update()
-    self.frames = self.frames + 1
-    if self.frames == 240 then
-        Debug.Log("arrived", tostring(self.agent.hasPath), self.agent.remainingDistance,
-            math.floor(self.transform.position.x + 0.5), self.transform.position.y)
-        self.agent:Warp(Vector3.new(-2, 0, -2))
-        self.agent.isStopped = true
-        self.agent:SetDestination(Vector3.new(2, 0, 2))
-    elseif self.frames == 300 then
-        local p = self.transform.position
-        Debug.Log("stopped", tostring(self.agent.isStopped), p.x, p.z,
-            tostring(self.agent.hasPath))
-        self.agent:ResetPath()
-        Debug.Log(tostring(self.agent.hasPath))
-    end
-end
-return T
-"#;
-
-    fn temp_root(tag: &str) -> std::path::PathBuf {
-        let n = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("misty_{tag}_{n}"));
-        std::fs::create_dir_all(root.join("Assets/Scripts")).unwrap();
-        root
-    }
-
-    fn texts(host: &ScriptHost) -> Vec<String> {
-        let logs = host.take_logs();
-        assert!(logs.iter().all(|(k, _)| *k != LogKind::Error), "{logs:?}");
-        logs.into_iter().map(|(_, t)| t).collect()
-    }
-
-    fn with_script(scene: &mut Scene, e: hecs::Entity) {
-        scene.add(
-            e,
-            Scripts {
-                list: vec![ScriptRef {
-                    path: "Assets/Scripts/T.lua".into(),
-                    ..Default::default()
-                }],
-            },
-        );
-    }
-
-    #[test]
-    fn scripts_drive_agents_and_query_the_nav_mesh() {
-        let root = temp_root("nav_script");
-        std::fs::write(root.join("Assets/Scripts/T.lua"), SCRIPT).unwrap();
-        let mut scene = Scene::new("T");
-        floor(&mut scene, 0.0, 0.0, 10.0, 10.0);
-        let rel = "Assets/Scenes/T/NavMesh.navmesh";
-        crate::navigation::bake::bake_scene(&scene)
-            .save(&root.join(rel))
-            .unwrap();
-        scene.navigation.nav_mesh = Some(rel.into());
-        let e = scene.spawn("Agent", None);
-        scene.set_transform(e, Transform::from_position(Vec3::new(-3.0, 1.0, -3.0)));
-        scene.add(
-            e,
-            NavMeshAgent {
-                base_offset: 1.0,
-                ..Default::default()
-            },
-        );
-        with_script(&mut scene, e);
-        let physics = Physics::build(&scene, Vec3::ZERO);
-        let mut host = ScriptHost::start(&mut scene, physics, root.clone());
-        let mut time = Time::default();
-        let mut all = Vec::new();
-        for _ in 0..300 {
-            time.advance(1.0 / 60.0);
-            host.update(&mut scene, &time, Input::default());
-            all.extend(texts(&host));
+impl super::ScriptHost {
+    /// Off-mesh link callbacks: `OnOffMeshLinkStart(link)` and `OnOffMeshLinkEnd(link)` on the
+    /// agent's scripts (`link` has `startPos`, `endPos`, `area`).
+    pub(super) fn dispatch_navigation_events(&mut self) {
+        let events = self.with_world(|w| w.navigation.take_events());
+        for ev in events {
+            let name = match ev.kind {
+                crate::navigation::agent::NavEventKind::LinkStart => "OnOffMeshLinkStart",
+                crate::navigation::agent::NavEventKind::LinkEnd => "OnOffMeshLinkEnd",
+            };
+            let arg = (|| -> Result<Value> {
+                let t = self.lua.create_table()?;
+                t.set("startPos", LVec3(ev.start))?;
+                t.set("endPos", LVec3(ev.end))?;
+                t.set("area", ev.area)?;
+                Ok(Value::Table(t))
+            })()
+            .ok();
+            for i in 0..self.instances.len() {
+                if self.instances[i].entity == ev.entity && self.runnable(&self.instances[i]) {
+                    self.call(i, name, arg.clone());
+                }
+            }
         }
-        assert_eq!(
-            all,
-            [
-                "true true false true 0 true 2 PathComplete 3.5",
-                "arrived false 0 3 1",
-                "stopped true -2 -2 true",
-                "false",
-            ],
-            "{all:?}"
-        );
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn camera_rays_from_the_mouse_position() {
-        let root = temp_root("nav_camera");
-        let src = r#"
-local T = {}
-function T:Update()
-    local m = Input.mousePosition
-    local ray = Camera.main:ScreenPointToRay(m)
-    local s = Camera.main:WorldToScreenPoint(Vector3.new(0, 0, 0))
-    Debug.Log(m.x, m.y, math.floor(ray.direction.y * 100 + 0.5) / 100, tostring(ray.origin.y > 9),
-        math.floor(s.x + 0.5), math.floor(s.y + 0.5))
-end
-return T
-"#;
-        std::fs::write(root.join("Assets/Scripts/T.lua"), src).unwrap();
-        let mut scene = Scene::new("T");
-        let cam = scene.spawn("Main Camera", None);
-        scene.game_object_mut(cam).tag = "MainCamera".into();
-        scene.set_transform(
-            cam,
-            Transform::from_position(Vec3::new(0.0, 10.0, 0.0))
-                .with_euler(Vec3::new(90.0, 0.0, 0.0)),
-        );
-        scene.add(cam, Camera::default());
-        with_script(&mut scene, cam);
-        let physics = Physics::build(&scene, Vec3::ZERO);
-        let mut host = ScriptHost::start(&mut scene, physics, root.clone());
-        let mut time = Time::default();
-        time.advance(1.0 / 60.0);
-        let input = Input {
-            mouse_position: Some(Vec2::new(100.0, 30.0)),
-            screen_size: Vec2::new(200.0, 100.0),
-            ..Default::default()
-        };
-        host.update(&mut scene, &time, input);
-        // Pixels from the bottom-left; the ray through (100, 70) tilts a little off straight down.
-        let out = texts(&host);
-        assert_eq!(out.len(), 1, "{out:?}");
-        assert!(out[0].starts_with("100 70 -0.9"), "{out:?}");
-        assert!(out[0].ends_with("true 100 50"), "{out:?}");
-        let _ = std::fs::remove_dir_all(root);
     }
 }
+
+#[cfg(test)]
+#[path = "navigation_api_tests.rs"]
+mod tests;

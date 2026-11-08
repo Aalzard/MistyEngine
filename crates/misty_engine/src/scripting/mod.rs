@@ -1041,6 +1041,7 @@ impl ScriptHost {
                 w.logs
                     .extend(logs.into_iter().map(|l| (LogKind::Warning, l)));
             });
+            self.dispatch_navigation_events();
         }
         {
             profile_scope!("Animation.Update", Category::Animation);

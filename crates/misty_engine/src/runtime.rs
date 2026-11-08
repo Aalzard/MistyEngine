@@ -327,6 +327,11 @@ impl Runtime {
         self.host.with_navigation(|n| n.path_of(e))
     }
 
+    /// The game's live navigation (nav meshes with carved tiles, agents) for editor drawing.
+    pub fn with_navigation<R>(&self, f: impl FnOnce(&crate::navigation::NavRuntime) -> R) -> R {
+        self.host.with_navigation(f)
+    }
+
     /// Camera Brains and Virtual Cameras of this game (live camera, blend progress).
     pub fn with_cameras<R>(&self, f: impl FnOnce(&crate::vcam::CameraRig) -> R) -> R {
         self.host.with_cameras(f)

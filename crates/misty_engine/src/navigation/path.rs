@@ -1,13 +1,15 @@
-//! Path queries: A* over polygons (through portal midpoints), then string pulling.
-//! Unreachable targets give a partial path to the reachable polygon closest to them.
+//! Path queries: A* over polygons (and off-mesh links) with per-area costs and an area mask,
+//! then string pulling per stretch between links. Unreachable targets give a partial path to
+//! the reachable polygon closest to them.
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 
-use glam::{Vec3, Vec3Swizzles};
+use glam::{Vec2, Vec3, Vec3Swizzles};
 
 use super::funnel;
-use super::navmesh::{NavMesh, cross2};
+use super::navmesh::{NavMesh, PolyRef, cross2, segment_t};
+use super::query::QueryFilter;
 
 /// Like the familiar NavMeshPathStatus.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -30,11 +32,21 @@ impl PathStatus {
     }
 }
 
+/// Crossing off-mesh link `link` (forward = start to end) from this corner to the next.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LinkStep {
+    pub link: u32,
+    pub forward: bool,
+}
+
 /// Corner points from start to end and the polygons walked through.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NavPath {
     pub corners: Vec<Vec3>,
-    pub polys: Vec<u32>,
+    /// Same length as `corners`: Some when the stretch from this corner to the next is an
+    /// off-mesh link.
+    pub links: Vec<Option<LinkStep>>,
+    pub polys: Vec<PolyRef>,
     pub status: PathStatus,
 }
 
@@ -55,7 +67,7 @@ impl NavPath {
 #[derive(Clone, Copy, PartialEq)]
 struct Open {
     f: f32,
-    poly: u32,
+    poly: PolyRef,
 }
 
 impl Eq for Open {}
@@ -73,104 +85,278 @@ impl PartialOrd for Open {
     }
 }
 
-/// How far from the mesh the start and end may be (horizontally a few cells, vertically the
-/// agent height).
-fn snap(mesh: &NavMesh, p: Vec3) -> Option<(u32, Vec3)> {
-    let reach = (mesh.agent.height).max(mesh.cell_size * 4.0);
-    mesh.nearest(p, reach).map(|h| (h.poly, h.position))
+/// How a polygon was reached.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Via {
+    Start,
+    Portal,
+    Link(LinkStep),
+}
+
+#[derive(Clone, Copy)]
+struct Node {
+    g: f32,
+    pos: Vec3,
+    parent: Option<PolyRef>,
+    via: Via,
+}
+
+/// The point of portal a..b a taut path from `from` to `goal` most likely crosses.
+fn portal_point(a: Vec3, b: Vec3, from: Vec3, goal: Vec3) -> Vec3 {
+    let (pa, pb, f, g) = (a.xz(), b.xz(), from.xz(), goal.xz());
+    let d = g - f;
+    let e = pb - pa;
+    let den = d.perp_dot(e);
+    if den.abs() > 1e-9 {
+        let t = (pa - f).perp_dot(d) / den;
+        let s = (pa - f).perp_dot(e) / den;
+        if (0.0..=1.0).contains(&t) && s >= 0.0 {
+            return a.lerp(b, t);
+        }
+    }
+    let cost = |p: Vec2| p.distance(f) + p.distance(g);
+    let t = segment_t(pa, pb, (f + g) * 0.5);
+    [(0.0, cost(pa)), (1.0, cost(pb)), (t, cost(pa.lerp(pb, t)))]
+        .into_iter()
+        .min_by(|x, y| x.1.total_cmp(&y.1))
+        .map_or((a + b) * 0.5, |(t, _)| a.lerp(b, t))
 }
 
 impl NavMesh {
-    /// Shortest path from `start` to `end` (both snapped onto the mesh).
+    /// Snap a point onto the mesh (horizontally a few cells, vertically the agent height).
+    pub fn snap(&self, p: Vec3, filter: &QueryFilter) -> Option<(PolyRef, Vec3)> {
+        let reach = self.agent.height.max(self.cell_size * 4.0);
+        self.nearest_filtered(p, reach, filter)
+            .map(|h| (h.poly, h.position))
+    }
+
+    /// Shortest path from `start` to `end` on any area at cost 1.
     pub fn find_path(&self, start: Vec3, end: Vec3) -> NavPath {
-        let (Some((sp, s)), end_hit) = (snap(self, start), snap(self, end)) else {
+        self.find_path_filtered(start, end, &QueryFilter::default())
+    }
+
+    /// Cheapest path from `start` to `end` (both snapped onto the mesh) over the areas
+    /// `filter` allows.
+    pub fn find_path_filtered(&self, start: Vec3, end: Vec3, filter: &QueryFilter) -> NavPath {
+        let (Some((sp, s)), end_hit) = (self.snap(start, filter), self.snap(end, filter)) else {
             return NavPath::invalid();
         };
         // An end off the mesh still steers towards the closest reachable point.
         let (ep, e) = end_hit.unwrap_or_else(|| {
-            self.nearest(end, f32::INFINITY)
+            self.nearest_filtered(end, f32::INFINITY, filter)
                 .map_or((sp, s), |h| (h.poly, h.position))
         });
-        let (polys, reached) = self.search(sp, s, ep, e);
-        let last = *polys.last().expect("start polygon");
+        let (chain, reached) = self.search(sp, s, ep, e, filter);
+        let last = chain.last().expect("start polygon").0;
         let target = if reached {
             e
         } else {
             self.closest_point(last, e)
         };
-        let corners = funnel::pull(&self.portals(&polys, s, target));
-        let status = if reached && end_hit.is_some() {
+        let mut path = self.straighten(&chain, s, target);
+        self.shortcut(&mut path, filter);
+        path.status = if reached && end_hit.is_some() {
             PathStatus::Complete
         } else {
             PathStatus::Partial
         };
-        NavPath {
-            corners,
-            polys,
-            status,
-        }
+        path
     }
 
-    /// A* from polygon `sp` (at `s`) to `ep`; returns the polygon chain and whether it reached
-    /// `ep` (else it ends at the explored polygon closest to `e`).
-    fn search(&self, sp: u32, s: Vec3, ep: u32, e: Vec3) -> (Vec<u32>, bool) {
-        let mut pos: HashMap<u32, Vec3> = HashMap::from([(sp, s)]);
-        let mut cost: HashMap<u32, f32> = HashMap::from([(sp, 0.0)]);
-        let mut parent: HashMap<u32, u32> = HashMap::new();
+    /// A* from polygon `sp` (at `s`) to `ep`; returns the polygon chain (with how each was
+    /// reached) and whether it reached `ep` (else it ends at the explored polygon closest to
+    /// `e`).
+    fn search(
+        &self,
+        sp: PolyRef,
+        s: Vec3,
+        ep: PolyRef,
+        e: Vec3,
+        filter: &QueryFilter,
+    ) -> (Vec<(PolyRef, Via)>, bool) {
+        let mut nodes: HashMap<PolyRef, Node> = HashMap::from([(
+            sp,
+            Node {
+                g: 0.0,
+                pos: s,
+                parent: None,
+                via: Via::Start,
+            },
+        )]);
         let mut open = BinaryHeap::from([Open {
             f: s.distance(e),
             poly: sp,
         }]);
+        let mut closed: std::collections::HashSet<PolyRef> = Default::default();
         let mut best = (s.distance(e), sp);
-        let mut reached = false;
+        let mut reached = sp == ep;
         while let Some(Open { poly, .. }) = open.pop() {
             if poly == ep {
                 reached = true;
                 break;
             }
-            let (g, p) = (cost[&poly], pos[&poly]);
-            for l in &self.polys[poly as usize].links {
-                let mid = (l.a + l.b) * 0.5;
-                // The last step goes straight to the target point.
-                let step = if l.to == ep {
-                    p.distance(mid) + mid.distance(e)
-                } else {
-                    p.distance(mid)
-                };
-                let ng = g + step;
-                if cost.get(&l.to).is_some_and(|c| *c <= ng) {
+            if !closed.insert(poly) {
+                continue;
+            }
+            let node = nodes[&poly];
+            let here = filter.cost(self.area_of(poly));
+            let mut relax = |to: PolyRef, g: f32, pos: Vec3, via: Via| {
+                if nodes.get(&to).is_some_and(|n| n.g <= g) {
+                    return;
+                }
+                nodes.insert(
+                    to,
+                    Node {
+                        g,
+                        pos,
+                        parent: Some(poly),
+                        via,
+                    },
+                );
+                let h = pos.distance(e);
+                if h < best.0 {
+                    best = (h, to);
+                }
+                open.push(Open { f: g + h, poly: to });
+            };
+            for l in &self.poly(poly).links {
+                let area = self.area_of(l.to);
+                if !filter.passes(area) {
                     continue;
                 }
-                cost.insert(l.to, ng);
-                pos.insert(l.to, mid);
-                parent.insert(l.to, poly);
-                let h = mid.distance(e);
-                if h < best.0 {
-                    best = (h, l.to);
+                let x = portal_point(l.a, l.b, node.pos, e);
+                let mut g = node.g + node.pos.distance(x) * here;
+                // The last step goes straight to the target point.
+                if l.to == ep {
+                    g += x.distance(e) * filter.cost(area);
                 }
-                open.push(Open {
-                    f: ng + h,
-                    poly: l.to,
-                });
+                relax(l.to, g, x, Via::Portal);
+            }
+            for &(li, forward) in self.links_from(poly) {
+                let link = &self.off_links[li as usize];
+                if !filter.passes(link.area) || !link.connected() {
+                    continue;
+                }
+                let (from, to, _, to_poly) = link.ends(forward);
+                let area = self.area_of(to_poly);
+                if !filter.passes(area) {
+                    continue;
+                }
+                let factor = if link.cost_modifier >= 0.0 {
+                    link.cost_modifier
+                } else {
+                    filter.cost(link.area)
+                };
+                let mut g = node.g + node.pos.distance(from) * here + from.distance(to) * factor;
+                if to_poly == ep {
+                    g += to.distance(e) * filter.cost(area);
+                }
+                relax(to_poly, g, to, Via::Link(LinkStep { link: li, forward }));
             }
         }
-        let mut chain = vec![if reached { ep } else { best.1 }];
-        while let Some(p) = parent.get(chain.last().expect("chain")) {
-            chain.push(*p);
+        let mut chain = Vec::new();
+        let mut cur = if reached { ep } else { best.1 };
+        loop {
+            let n = nodes[&cur];
+            chain.push((cur, n.via));
+            match n.parent {
+                Some(p) if chain.len() < 100_000 => cur = p,
+                _ => break,
+            }
         }
         chain.reverse();
         (chain, reached)
     }
 
+    /// Corners along a polygon chain: string pulled between off-mesh links.
+    fn straighten(&self, chain: &[(PolyRef, Via)], s: Vec3, e: Vec3) -> NavPath {
+        let mut path = NavPath {
+            polys: chain.iter().map(|c| c.0).collect(),
+            ..Default::default()
+        };
+        let mut seg_start = s;
+        let mut seg: Vec<PolyRef> = Vec::new();
+        let push = |path: &mut NavPath, p: Vec3, link: Option<LinkStep>| {
+            if let Some(last) = path.corners.last()
+                && last.distance_squared(p) < 1e-10
+                && path.links.last() == Some(&None)
+            {
+                *path.links.last_mut().expect("links") = link;
+                return;
+            }
+            path.corners.push(p);
+            path.links.push(link);
+        };
+        for (i, &(poly, via)) in chain.iter().enumerate() {
+            if let Via::Link(step) = via {
+                let (from, to, _, _) = self.off_links[step.link as usize].ends(step.forward);
+                for c in funnel::pull(&self.portals(&seg, seg_start, from)) {
+                    push(&mut path, c, None);
+                }
+                *path.links.last_mut().expect("corner") = Some(step);
+                seg_start = to;
+                seg.clear();
+            }
+            seg.push(poly);
+            if i + 1 == chain.len() {
+                for c in funnel::pull(&self.portals(&seg, seg_start, e)) {
+                    push(&mut path, c, None);
+                }
+            }
+        }
+        path
+    }
+
+    /// Skip corners the surface can see past (A* over large polygons can pick a staircase of
+    /// them where a straight line fits), never through areas dearer than the path's cheapest
+    /// and never across off-mesh links.
+    fn shortcut(&self, path: &mut NavPath, filter: &QueryFilter) {
+        let n = path.corners.len();
+        if n < 3 {
+            return;
+        }
+        let cheapest = path
+            .polys
+            .iter()
+            .map(|&p| filter.cost(self.area_of(p)))
+            .fold(f32::INFINITY, f32::min);
+        let mut keep = vec![0usize];
+        let mut i = 0;
+        while i + 1 < n {
+            // The last corner reachable from i without passing a link.
+            let mut limit = i + 1;
+            while limit < n - 1 && path.links[limit].is_none() && path.links[i].is_none() {
+                limit += 1;
+            }
+            let mut next = i + 1;
+            if path.links[i].is_none() {
+                for j in (i + 2..=limit).rev() {
+                    let clear = self
+                        .raycast_walk(path.corners[i], path.corners[j], filter)
+                        .is_some_and(|(h, polys)| {
+                            !h.hit
+                                && polys
+                                    .iter()
+                                    .all(|&p| filter.cost(self.area_of(p)) <= cheapest + 1e-4)
+                        });
+                    if clear {
+                        next = j;
+                        break;
+                    }
+                }
+            }
+            keep.push(next);
+            i = next;
+        }
+        path.corners = keep.iter().map(|&k| path.corners[k]).collect();
+        path.links = keep.iter().map(|&k| path.links[k]).collect();
+    }
+
     /// (left, right) portals along `polys`, framed by the start and end points.
-    fn portals(&self, polys: &[u32], s: Vec3, e: Vec3) -> Vec<(Vec3, Vec3)> {
+    pub(super) fn portals(&self, polys: &[PolyRef], s: Vec3, e: Vec3) -> Vec<(Vec3, Vec3)> {
         let mut out = vec![(s, s)];
         for w in polys.windows(2) {
-            let Some(l) = self.polys[w[0] as usize]
-                .links
-                .iter()
-                .find(|l| l.to == w[1])
-            else {
+            let Some(l) = self.poly(w[0]).links.iter().find(|l| l.to == w[1]) else {
                 continue;
             };
             // Seen walking from this polygon into the next, which end is on the left?

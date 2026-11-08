@@ -180,6 +180,22 @@ impl SceneComponent for NavMeshObstacle {
     const NAME: &'static str = "Nav Mesh Obstacle";
     const CATEGORY: &'static str = "Navigation";
 }
+impl SceneComponent for crate::navigation::NavMeshSurface {
+    const NAME: &'static str = "NavMesh Surface";
+    const CATEGORY: &'static str = "Navigation";
+}
+impl SceneComponent for crate::navigation::NavMeshModifier {
+    const NAME: &'static str = "NavMesh Modifier";
+    const CATEGORY: &'static str = "Navigation";
+}
+impl SceneComponent for crate::navigation::NavMeshModifierVolume {
+    const NAME: &'static str = "NavMesh Modifier Volume";
+    const CATEGORY: &'static str = "Navigation";
+}
+impl SceneComponent for crate::navigation::NavMeshLink {
+    const NAME: &'static str = "NavMesh Link";
+    const CATEGORY: &'static str = "Navigation";
+}
 impl SceneComponent for TerrainCollider {
     const NAME: &'static str = "Terrain Collider";
     const CATEGORY: &'static str = "Physics";
@@ -405,6 +421,10 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::Floater>(),
             ComponentInfo::of::<NavMeshAgent>(),
             ComponentInfo::of::<NavMeshObstacle>(),
+            ComponentInfo::of::<crate::navigation::NavMeshSurface>(),
+            ComponentInfo::of::<crate::navigation::NavMeshModifier>(),
+            ComponentInfo::of::<crate::navigation::NavMeshModifierVolume>(),
+            ComponentInfo::of::<crate::navigation::NavMeshLink>(),
             ComponentInfo::of::<Scripts>(),
             // Input System (input::actions).
             ComponentInfo::of::<crate::input::actions::PlayerInput>(),
