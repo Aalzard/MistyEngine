@@ -41,6 +41,8 @@ pub use vcam::vcam_overlay;
 const COLLIDER: [f32; 4] = [0.57, 0.96, 0.55, 0.9];
 /// Wireframe draw-mode colour (dark lines).
 pub const WIREFRAME: [f32; 4] = [0.05, 0.05, 0.05, 0.9];
+/// Edges over the shaded scene (Shaded Wireframe draw mode).
+pub const SHADED_WIREFRAME: [f32; 4] = [0.0, 0.0, 0.0, 0.35];
 const CAMERA: [f32; 4] = [0.85, 0.85, 0.85, 0.8];
 const LIGHT: [f32; 4] = [1.0, 0.92, 0.45, 0.9];
 const AUDIO: [f32; 4] = [0.45, 0.7, 1.0, 0.85];

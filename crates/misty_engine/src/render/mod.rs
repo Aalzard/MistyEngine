@@ -66,6 +66,7 @@ mod vgeo;
 mod volumetrics;
 mod vsm;
 mod water;
+mod wireframe;
 
 pub use crate::terrain::TerrainDraw;
 pub use ao::AoSettings;
@@ -94,6 +95,7 @@ pub use terrain_grass::{GrassStats, grass_streaming, set_grass_streaming};
 pub use vgeo::{VgeoChoice, VgeoDebug, VgeoStats};
 pub use volumetrics::{FogDebug, FogSettings, LocalFog, SunShaftSettings, VolumetricLight};
 pub use vsm::{VsmDebug, VsmStats};
+pub use wireframe::{WirePath, Wireframe};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -142,11 +144,12 @@ const MAX_LIGHTS: usize = 8;
 /// Device features to request when the adapter has them: timestamp queries for GPU timing
 /// (see [`Renderer::with_queue`]), indirect draws with an instance offset (GPU culling) and
 /// the adapter's own format capabilities (2× MSAA of the HDR targets is not guaranteed by
-/// WebGPU, only 1× and 4×), indirect draw counts (virtual geometry's indexed cluster draws) and
-/// BC texture compression.
+/// WebGPU, only 1× and 4×), indirect draw counts (virtual geometry's indexed cluster draws),
+/// BC texture compression and the wireframe draw modes' edges ([`wireframe`]).
 pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
-    adapter.features()
-        & (wgpu::Features::TIMESTAMP_QUERY
+    wireframe::wireframe_features(adapter)
+        | adapter.features()
+            & (wgpu::Features::TIMESTAMP_QUERY
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
             | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
             | wgpu::Features::INDIRECT_FIRST_INSTANCE
@@ -609,6 +612,15 @@ pub struct Renderer {
     grass_vis: Option<Option<grass_vis::VisPipelines>>,
     /// The grass visibility pipelines being built on a worker (see `prebuilt`).
     grass_vis_prebuilt: prebuilt::Prebuilt<Option<grass_vis::VisPipelines>>,
+    /// How this device draws the wireframe draw modes' edges (`None` = it can't: the editor
+    /// draws CPU lines), the next render's request, this render's, and whether this render is
+    /// the Wireframe mode (geometry for its depth only, see [`wireframe`]).
+    wire_path: Option<WirePath>,
+    wire_next: Option<Wireframe>,
+    wire: Option<Wireframe>,
+    wire_only: bool,
+    /// Built on the first wireframe render.
+    wire_pipelines: Option<wireframe::WirePipelines>,
 }
 
 impl Renderer {
@@ -757,6 +769,11 @@ impl Renderer {
             samples: sample_count(),
             grass_vis: None,
             grass_vis_prebuilt: Default::default(),
+            wire_path: WirePath::of(device),
+            wire_next: None,
+            wire: None,
+            wire_only: false,
+            wire_pipelines: None,
             vsm: Default::default(),
             vsm_dummy,
             vsm_frame: 0,
@@ -1285,10 +1302,26 @@ impl Renderer {
             // (Made before Quality ▸ Anti-Aliasing changed: the host makes a new one.)
             return;
         }
+        self.begin_wireframe();
         // Quality ▸ Global Illumination caps Misty GI whatever the scene or volume asks for.
         let mut post = frame.post;
         post.misty_gi = post.misty_gi.capped(self.quality.global_illumination);
-        let frame = &Frame { post, ..*frame };
+        let frame = &if self.wire_only {
+            // The Wireframe mode: the geometry renders for the depth that hides edges behind
+            // it, unlit and without what draws no depth; its colour is painted over with the
+            // flat background (no post-processing on it).
+            Frame {
+                shaded: true,
+                skybox: false,
+                post: PostSettings::default(),
+                lights: &[],
+                water: &[],
+                particles: &[],
+                ..*frame
+            }
+        } else {
+            Frame { post, ..*frame }
+        };
         let emitters = if frame.shaded {
             area::emitter_draws(frame.lights)
         } else {
@@ -1369,7 +1402,7 @@ impl Renderer {
         // internal pixel when the target is upscaled: the upscaler is TAA at a lower
         // resolution, so it runs whatever Quality ▸ Temporal Anti-aliasing says).
         let upscaled = target.upscaled();
-        let taa_on = (self.quality.temporal_aa || upscaled) && frame.shaded;
+        let taa_on = (self.quality.temporal_aa || upscaled) && frame.shaded && !self.wire_only;
         let jitter = if taa_on {
             self.taa.jitter(target.id, target.render_scale())
         } else {
@@ -1381,18 +1414,17 @@ impl Renderer {
         // Motion vectors: last frame's camera, draws and grass clock.
         let grass_time = self.terrains.grass_time(frame.environment);
         let motion = self.motion.begin(target.id, frame, view_proj, grass_time);
-        queue.write_buffer(
-            &self.view_buffer,
-            0,
-            bytemuck::bytes_of(&view_uniform(
-                frame,
-                aspect,
-                jitter,
-                target.size(),
-                motion.prev_view_proj,
-                mip_bias,
-            )),
+        let mut view = view_uniform(
+            frame,
+            aspect,
+            jitter,
+            target.size(),
+            motion.prev_view_proj,
+            mip_bias,
         );
+        // view_tan.w (unused elsewhere): the wireframe edges' opacity ([`wireframe`]).
+        view.view_ray[1][3] = self.wire.map_or(0.0, |w| w.color[3]);
+        queue.write_buffer(&self.view_buffer, 0, bytemuck::bytes_of(&view));
         #[cfg(test)]
         {
             self.last_view_proj = Mat4::from_cols_array_2d(
@@ -1559,6 +1591,7 @@ impl Renderer {
         self.begin_vgeo(
             device, queue, target, frame, &lists, &view_proj, &plan, gpu_culled,
         );
+        self.prepare_wireframe(device);
         self.prepare_shadow_mask(device, queue, target, frame, &plan, &shadow_settings);
         let screen = self.prepare_screen_space(device, queue, target, frame);
         if screen.is_none() {
@@ -2326,7 +2359,7 @@ impl Renderer {
 
     /// The transparent queue samples the opaque scene (water, scene-reading shaders).
     fn needs_scene_copy(&self, frame: &Frame) -> bool {
-        if !frame.shaded {
+        if !frame.shaded || self.wire_only {
             return false;
         }
         if !frame.water.is_empty() || self.effects.needs_scene() {
@@ -3041,6 +3074,7 @@ impl Renderer {
 
     /// The editor grid (after the opaque scene, before transparents).
     fn main_grid(&self, pass: &mut wgpu::RenderPass, target: &RenderTarget, frame: &Frame) {
+        self.draw_wire_background(pass);
         if frame.grid.is_some() {
             let main = || main_target(target);
             frame_debug::pass(&self.capture, &["Gizmos"], main, EventTarget::Hdr);
@@ -3183,7 +3217,8 @@ impl Renderer {
     ) {
         let main = || main_target(target);
         // Fade / Transparent meshes back to front, after the grid (they don't write depth).
-        if frame.shaded && !lists.transparent.is_empty() {
+        let shaded = frame.shaded && !self.wire_only;
+        if shaded && !lists.transparent.is_empty() {
             frame_debug::pass(&self.capture, &["Transparent"], main, EventTarget::Hdr);
             pass.set_bind_group(1, self.lit_group(), &[]);
             let transparent = &lists.transparent;
@@ -3195,7 +3230,7 @@ impl Renderer {
             frame_debug::pass(&self.capture, &["Particles"], main, EventTarget::Hdr);
             self.draw_particles(pass, frame, particle_draws, stats);
         }
-        if frame.shaded
+        if shaded
             && (!self.effects.has_draws()
                 || frame_debug::whole(
                     &self.capture,
@@ -3211,7 +3246,8 @@ impl Renderer {
             self.effects.draw(pass, &self.textures, scene, stats);
         }
 
-        if !frame.overlay.is_empty() || !frame.lines.is_empty() || outline {
+        let wire = self.wire.is_some();
+        if !frame.overlay.is_empty() || !frame.lines.is_empty() || outline || wire {
             frame_debug::pass(&self.capture, &["Gizmos"], main, EventTarget::Hdr);
         }
         let gizmo = |name: &str, shader: &str| {
@@ -3219,6 +3255,9 @@ impl Renderer {
                 frame_debug::events::post_event(name.to_owned(), shader)
             })
         };
+        if wire && gizmo("Draw Wireframe", "wireframe.wgsl") {
+            self.draw_wireframe(pass, frame, lists);
+        }
         if self.overlay_drawn > 0 && gizmo("Draw Overlay Triangles", "lines.wgsl") {
             let first = self.lines_drawn;
             pass.set_pipeline(&self.pipelines.overlay);
@@ -3827,6 +3866,8 @@ mod taa_gpu_tests;
 mod terrain_gpu_tests;
 #[cfg(test)]
 mod upscale_gpu_tests;
+#[cfg(test)]
+mod wireframe_gpu_tests;
 
 #[cfg(test)]
 mod tests {

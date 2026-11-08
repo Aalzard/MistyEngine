@@ -62,7 +62,7 @@ pub(super) fn mesh_buffers() -> [wgpu::VertexBufferLayout<'static>; 1] {
     }]
 }
 /// The terrain shader reuses the mesh shader's draws and lighting.
-const TERRAIN_SRC: &str = concat!(
+pub(super) const TERRAIN_SRC: &str = concat!(
     include_str!("shaders/draw.wgsl"),
     "\n",
     include_str!("shaders/mesh.wgsl"),
@@ -239,6 +239,8 @@ pub(super) struct Spec<'a> {
     /// Channels written to the colour target (a depth-only pass with alpha to coverage keeps
     /// just the alpha).
     pub color_writes: wgpu::ColorWrites,
+    /// Filled triangles, or their edges (the wireframe draw modes, render/wireframe.rs).
+    pub polygon: wgpu::PolygonMode,
 }
 
 impl<'a> Spec<'a> {
@@ -261,6 +263,7 @@ impl<'a> Spec<'a> {
             alpha_to_coverage: false,
             velocity: false,
             color_writes: wgpu::ColorWrites::ALL,
+            polygon: wgpu::PolygonMode::Fill,
         }
     }
 }
@@ -1036,6 +1039,7 @@ pub(super) fn build(device: &wgpu::Device, spec: Spec) -> wgpu::RenderPipeline {
             topology: spec.topology,
             front_face: wgpu::FrontFace::Cw,
             cull_mode: spec.cull,
+            polygon_mode: spec.polygon,
             ..Default::default()
         },
         depth_stencil: spec.depth.map(|d| wgpu::DepthStencilState {
