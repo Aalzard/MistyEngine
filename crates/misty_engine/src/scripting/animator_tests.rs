@@ -86,7 +86,6 @@ fn project(source: &str) -> PathBuf {
             },
             ..Default::default()
         }],
-        ..Default::default()
     };
     ctrl.save(&root.join("Assets/A.controller")).unwrap();
     root

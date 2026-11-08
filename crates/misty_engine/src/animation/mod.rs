@@ -12,6 +12,7 @@ pub mod clip;
 pub mod controller;
 pub mod curve;
 pub mod fsm;
+pub mod humanoid;
 pub mod mask;
 pub mod player;
 pub mod root_motion;
@@ -20,6 +21,7 @@ pub use animator::AnimatorPlayer;
 pub use clip::{AnimationClip, AnimationEvent, Curve, Property, is_clip};
 pub use controller::{AnimatorController, is_controller};
 pub use curve::{Keyframe, Keys, TangentMode};
+pub use humanoid::{Avatar, HumanBone, is_avatar};
 pub use mask::{AvatarMask, is_mask};
 pub use player::AnimationPlayer;
 
@@ -27,6 +29,8 @@ pub use player::AnimationPlayer;
 mod animator_tests;
 #[cfg(test)]
 mod blend_tests;
+#[cfg(test)]
+mod humanoid_tests;
 #[cfg(test)]
 mod layer_tests;
 #[cfg(test)]

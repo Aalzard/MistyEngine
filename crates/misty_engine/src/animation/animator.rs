@@ -19,6 +19,7 @@ use super::controller::{
     AnimatorController, BlendTree, BlendType, LayerBlending, ParamKind, State,
 };
 use super::fsm::{self, LayerRun, Lengths, Params, Run};
+use super::humanoid::{self, Avatar};
 use super::mask::AvatarMask;
 use super::root_motion::{self, Delta};
 use crate::scene::{Animator, Scene};
@@ -116,6 +117,7 @@ struct Assets {
     controllers: HashMap<String, Option<Arc<AnimatorController>>>,
     clips: HashMap<String, Option<Arc<AnimationClip>>>,
     masks: HashMap<String, Option<Arc<AvatarMask>>>,
+    avatars: HashMap<String, Option<Arc<Avatar>>>,
     logs: Vec<String>,
 }
 
@@ -148,6 +150,20 @@ impl Assets {
             self.clips.insert(path.to_owned(), loaded);
         }
         self.clips.get(path).cloned().flatten()
+    }
+
+    fn avatar(&mut self, path: &str) -> Option<Arc<Avatar>> {
+        if !self.avatars.contains_key(path) {
+            let loaded = match Avatar::load(&self.root.join(path)) {
+                Ok(m) => Some(Arc::new(m)),
+                Err(e) => {
+                    self.logs.push(format!("Avatar failed to load: {e}"));
+                    None
+                }
+            };
+            self.avatars.insert(path.to_owned(), loaded);
+        }
+        self.avatars.get(path).cloned().flatten()
     }
 
     fn mask(&mut self, path: &str) -> Option<Arc<AvatarMask>> {
@@ -281,6 +297,8 @@ struct SampleCtx<'a> {
     params: &'a [f32],
     mask: Option<&'a AvatarMask>,
     root_motion: Option<RootSpec<'a>>,
+    /// The Animator's avatar: humanoid clips play through it.
+    avatar: Option<&'a Avatar>,
 }
 
 /// Property values of one run of a layer (blend trees mix their children; a value missing in
@@ -310,7 +328,23 @@ fn sample_run(
             clip_time(run.norm, clip.length, looping)
         };
         let mut pose = HashMap::new();
-        for curve in clip.curves.iter().filter(|c| !c.keys.is_empty()) {
+        if let Some(avatar) = cx.avatar
+            && humanoid::is_humanoid(&clip)
+        {
+            for (path, p, v) in humanoid::retarget(&clip, avatar, t) {
+                if cx.mask.is_some_and(|m| !m.allows(&path, p)) {
+                    continue;
+                }
+                if let Some(target) = binding::resolve(cx.scene, cx.root, &path) {
+                    pose.insert((target, p), v);
+                }
+            }
+        }
+        let rig_curves = clip
+            .curves
+            .iter()
+            .filter(|c| !c.keys.is_empty() && !c.path.starts_with(humanoid::HUMAN_PREFIX));
+        for curve in rig_curves {
             if cx
                 .mask
                 .is_some_and(|m| !m.allows(&curve.path, curve.property))
@@ -419,6 +453,7 @@ impl AnimatorPlayer {
                 controllers: HashMap::new(),
                 clips: HashMap::new(),
                 masks: HashMap::new(),
+                avatars: HashMap::new(),
                 logs: Vec::new(),
             },
             instances: HashMap::new(),
@@ -443,6 +478,13 @@ impl AnimatorPlayer {
     /// Use an in-memory avatar mask for `path` instead of reading the file.
     pub fn insert_mask(&mut self, path: &str, m: AvatarMask) {
         self.assets.masks.insert(path.to_owned(), Some(Arc::new(m)));
+    }
+
+    /// Use an in-memory avatar for `path` instead of reading the file.
+    pub fn insert_avatar(&mut self, path: &str, a: Avatar) {
+        self.assets
+            .avatars
+            .insert(path.to_owned(), Some(Arc::new(a)));
     }
 
     /// The live instance of `e`'s Animator, created in its default states on first use.
@@ -1029,6 +1071,12 @@ impl AnimatorPlayer {
     /// Sample every layer, combine them and write the result. Properties the Animator animated
     /// before but not now go back to their rest values.
     fn apply(&mut self, scene: &mut Scene, e: Entity, root_spec: Option<RootSpec>) {
+        let avatar = scene
+            .world
+            .get::<&Animator>(e)
+            .ok()
+            .and_then(|a| a.avatar.clone())
+            .and_then(|p| self.assets.avatar(&p));
         let Some(inst) = self.instances.get(&e) else {
             return;
         };
@@ -1066,6 +1114,7 @@ impl AnimatorPlayer {
                 params: &params,
                 mask: mask.as_deref(),
                 root_motion: root_spec,
+                avatar: avatar.as_deref(),
             };
             let (live, frozen_w) = sources(lr);
             let mut poses: Vec<(Pose, f32)> = live

@@ -22,6 +22,9 @@ pub struct Animator {
     /// object's own position and Y rotation curves).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub root_motion_bone: String,
+    /// Humanoid Avatar asset (`.avatar`): humanoid clips play on this rig through it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
 }
 
 impl Default for Animator {
@@ -33,6 +36,7 @@ impl Default for Animator {
             keep_state_on_disable: false,
             apply_root_motion: false,
             root_motion_bone: String::new(),
+            avatar: None,
         }
     }
 }
