@@ -9,6 +9,7 @@ mod cloud_editors;
 mod decal_editors;
 mod editors;
 mod fog_editors;
+mod font_asset_editor;
 mod glow_editors;
 mod input_editors;
 mod layer_mask;
@@ -45,6 +46,7 @@ pub(in crate::panels) mod shader_material;
 mod skinned_editors;
 pub(in crate::panels) mod slots;
 mod spline_editors;
+mod sprite_border;
 mod sprite_editors;
 pub(crate) mod terrain;
 mod texture_import;
@@ -650,6 +652,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::tilemap::palette::is_palette(rel) {
         tilemap_editors::palette_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::ui::rich::fonts::is_font(rel) {
+        font_asset_editor::font_asset(ui, state, rel);
         return;
     }
     if misty_engine::assets::is_texture(rel) {
