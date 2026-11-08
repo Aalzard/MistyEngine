@@ -972,7 +972,8 @@ impl eframe::App for EditorApp {
             }
         }
         crate::scene_camera::bench::frame_end();
-        // One profiler frame per editor frame.
+        // One profiler frame per editor frame; a Profiler out of sight stops recording.
+        crate::panels::profiler::sync(&mut self.state, &ctx);
         misty_engine::profiler::end_frame();
         if misty_engine::profiler::enabled() {
             ctx.request_repaint();

@@ -207,8 +207,11 @@ impl Renderer {
             frame.post.contact_shadows.active() && frame.lights.iter().any(|l| l.contact_shadows);
         // SSGI, SSR and the soft-shadow mask trace through the same prepass, and decals
         // project from it (render/decals).
+        // The Frame Debugger's Depth and Normals views show the prepass.
+        let debug = super::frame_debug::view(&self.capture).needs_prepass();
         frame.shaded
             && (ao
+                || debug
                 || contact
                 || super::screen_trace::wanted(frame)
                 || self.shadow_mask_wanted(frame)

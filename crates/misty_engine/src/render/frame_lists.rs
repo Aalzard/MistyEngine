@@ -147,6 +147,7 @@ impl Renderer {
             .par_iter()
             .zip(batchers.par_iter_mut())
             .map(|(m, batcher)| {
+                crate::profile_scope!("Render.ShadowList", crate::profiler::Category::Rendering);
                 let f = Frustum::from_matrix(m);
                 let key = |i: usize| {
                     let k = prep.shadow_keys[i]?;

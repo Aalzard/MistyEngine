@@ -94,7 +94,8 @@ impl Gfx {
         surface.configure(&device, &config);
 
         misty_engine::render::cache_shader_modules(&device);
-        let renderer = Renderer::with_queue(&device, &queue);
+        let mut renderer = Renderer::with_queue(&device, &queue);
+        renderer.set_view_label("Game");
         let ui = UiRenderer::new(&device, &queue);
         let target = renderer.create_view_target(&device, config.width, config.height);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

@@ -469,6 +469,11 @@ impl Runtime {
         self.host.lua_memory()
     }
 
+    /// Audio clips the mixer keeps in memory (Memory Profiler).
+    pub fn audio_clip_memory(&self) -> Vec<(String, u64, &'static str)> {
+        self.host.audio_clip_memory()
+    }
+
     pub fn stats(&self) -> RuntimeStats {
         let (bodies, colliders) = self.host.physics_counts();
         RuntimeStats {

@@ -3,10 +3,11 @@
 
 use std::collections::VecDeque;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// What one `Renderer::render` call drew.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RenderStats {
     /// Draw calls of meshes, terrains and particles (an instanced batch counts once).
     pub batches: u32,
@@ -64,7 +65,8 @@ impl RenderStats {
 }
 
 /// GPU resources the renderer holds (Profiler Memory module; sizes are estimates).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RenderMemory {
     /// Uploaded meshes (primitives, imported meshes, terrains).
     pub meshes: usize,

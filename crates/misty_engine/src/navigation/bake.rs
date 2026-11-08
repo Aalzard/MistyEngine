@@ -135,6 +135,7 @@ pub fn bake(
     let built: Vec<(usize, Tile)> = crate::background::pool().install(|| {
         todo.par_iter()
             .map(|&i| {
+                crate::profile_scope!("Navigation.BakeTile", crate::profiler::Category::Navigation);
                 let (x, z) = all[i];
                 let t = builder.build(x, z, &[]);
                 let n = done.fetch_add(1, Ordering::Relaxed) + 1;

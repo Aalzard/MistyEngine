@@ -166,3 +166,68 @@ fn renderer_items_match_known_allocations() {
 fn target_levels(w: u32, h: u32) -> usize {
     6u32.min((w.min(h) as f32).log2().floor().max(2.0) as u32 - 1) as usize
 }
+
+#[test]
+fn items_are_split_into_gpu_and_cpu_memory() {
+    let snap = MemorySnapshot::new(
+        "s",
+        vec![
+            item(MemCategory::Textures, "albedo", 4096),
+            item(MemCategory::Meshes, "rock (GPU)", 1000),
+            item(MemCategory::Meshes, "rock (cache)", 600).on_cpu(),
+            item(MemCategory::Audio, "music", 8000),
+            item(MemCategory::DistanceFields, "sdf", 128),
+        ],
+    );
+    assert_eq!(snap.location_total(MemLocation::Gpu), 5096);
+    assert_eq!(snap.location_total(MemLocation::Cpu), 8728);
+    let gpu = snap.totals_at(MemLocation::Gpu);
+    assert_eq!(
+        gpu,
+        vec![(MemCategory::Textures, 4096), (MemCategory::Meshes, 1000)]
+    );
+    let cpu = snap.totals_at(MemLocation::Cpu);
+    assert_eq!(cpu[0], (MemCategory::Meshes, 600));
+    assert!(cpu.contains(&(MemCategory::DistanceFields, 128)));
+    assert_eq!(snap.total(), 13824);
+}
+
+#[test]
+fn asset_caches_report_cached_models() {
+    let dir = std::env::temp_dir().join(format!("misty_mem_cache_{}", std::process::id()));
+    let assets = dir.join("Assets");
+    std::fs::create_dir_all(&assets).unwrap();
+    // A one-triangle OBJ in the model cache.
+    let obj = "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+    let path = assets.join("Tri.obj");
+    std::fs::write(&path, obj).unwrap();
+    let rel = path.to_string_lossy().replace('\\', "/");
+    crate::models::model(&rel).expect("obj loads");
+    let items = cache_items();
+    crate::models::forget(std::slice::from_ref(&rel));
+    let _ = std::fs::remove_dir_all(&dir);
+    let tri = items
+        .iter()
+        .find(|i| i.name == rel)
+        .expect("the cached model is listed");
+    assert_eq!(tri.kind, "Mesh (CPU cache)");
+    assert_eq!(tri.location, MemLocation::Cpu);
+    assert_eq!(tri.category, MemCategory::Meshes);
+    assert!(tri.bytes >= 3 * std::mem::size_of::<crate::render::mesh::Vertex>() as u64);
+}
+
+#[test]
+fn audio_cache_items_name_clips_by_project_path() {
+    let items = audio_cache_items(vec![
+        (
+            "C:/Projects/Game/Assets/Audio/Music.ogg".to_owned(),
+            4_000_000,
+            "Decoded",
+        ),
+        ("Assets/Audio/Wind.ogg".to_owned(), 0, "Streamed"),
+    ]);
+    assert_eq!(items.len(), 1, "streamed clips hold nothing");
+    assert_eq!(items[0].name, "Assets/Audio/Music.ogg");
+    assert_eq!(items[0].kind, "AudioClip (Decoded)");
+    assert_eq!(items[0].location, MemLocation::Cpu);
+}

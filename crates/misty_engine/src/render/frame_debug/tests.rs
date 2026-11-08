@@ -120,6 +120,7 @@ fn full(labels: Vec<DrawLabel>) -> Option<CaptureRequest> {
     Some(CaptureRequest {
         stop_after: None,
         labels,
+        ..Default::default()
     })
 }
 
@@ -248,6 +249,7 @@ fn replay_shows_the_frame_up_to_the_selected_event() {
         Some(CaptureRequest {
             stop_after: Some(n),
             labels: labels(),
+            ..Default::default()
         })
     };
     let mut r = Renderer::with_queue(&device, &queue);
@@ -278,4 +280,188 @@ fn replay_shows_the_frame_up_to_the_selected_event() {
     // Stopping at the last event is the full frame.
     let (last, _) = render(&device, &queue, &mut r, stop(c.events.len() - 1));
     assert_eq!(differing(&last, &final_image), 0);
+}
+
+/// While the Profiler records, every part of each render is timed and reaches its frame a
+/// frame or two later without the renderer waiting; recording off drops the timer.
+#[test]
+fn profiler_gets_per_pass_gpu_times() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_view_label("Game");
+    let profiler = crate::profiler::test_serial();
+    crate::profiler::set_enabled(true);
+    crate::profiler::clear();
+    let first = crate::profiler::frame_index();
+    for _ in 0..8 {
+        render(&device, &queue, &mut r, None);
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        crate::profiler::end_frame();
+    }
+    let frames: Vec<crate::profiler::FrameData> =
+        crate::profiler::with_frames(|f| f.iter().filter(|f| f.index >= first).cloned().collect());
+    crate::profiler::set_enabled(false);
+    render(&device, &queue, &mut r, None);
+    let dropped = r.pass_timer.is_none();
+    drop(profiler);
+    assert!(dropped, "recording off drops the profiler's timer");
+    if crate::profiler::gpu_timing() != crate::profiler::GpuTiming::Passes {
+        eprintln!("no timestamps inside encoders: per-pass times skipped");
+        return;
+    }
+    let timed: Vec<_> = frames.iter().filter(|f| !f.gpu_passes.is_empty()).collect();
+    assert!(timed.len() >= 4, "{} of 8 frames timed", timed.len());
+    let f = timed[0];
+    assert!(f.gpu_passes.iter().all(|p| p.view == "Game"));
+    let names: Vec<&str> = f.gpu_passes.iter().map(|p| p.name.as_ref()).collect();
+    assert!(
+        names.contains(&"Shadow maps (cascades, local)"),
+        "{names:?}"
+    );
+    assert!(names.contains(&"Bloom, tonemap, finish"), "{names:?}");
+    // Parts follow each other.
+    for w in f.gpu_passes.windows(2) {
+        assert!(w[1].start_ms >= w[0].start_ms, "{:?}", w);
+    }
+    assert!(f.gpu_total_ms().unwrap() > 0.0);
+}
+
+fn with_view(view: TargetView) -> Option<CaptureRequest> {
+    Some(CaptureRequest {
+        labels: labels(),
+        view,
+        ..Default::default()
+    })
+}
+
+/// Mean of the RGB channels and the largest gap between the channels of a pixel.
+fn tone(pixels: &[u8]) -> (f32, u8) {
+    let mut sum = 0u64;
+    let mut gap = 0u8;
+    for p in pixels.as_chunks::<4>().0 {
+        sum += p[0] as u64 + p[1] as u64 + p[2] as u64;
+        let (lo, hi) = (p[0].min(p[1]).min(p[2]), p[0].max(p[1]).max(p[2]));
+        gap = gap.max(hi - lo);
+    }
+    (sum as f32 / (pixels.len() / 4 * 3) as f32, gap)
+}
+
+/// Mesh draws say what they bind (view, lighting, material, buffers, instances).
+#[test]
+fn draw_events_list_their_bindings() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut r = Renderer::with_queue(&device, &queue);
+    let (_, capture) = render(&device, &queue, &mut r, full(labels()));
+    let c = capture.unwrap();
+    let cube = c
+        .events
+        .iter()
+        .find(|e| e.root() == "Opaque" && e.name.contains("Cube"))
+        .unwrap_or_else(|| {
+            let names: Vec<(&str, &str)> = c
+                .events
+                .iter()
+                .map(|e| (e.root(), e.name.as_str()))
+                .collect();
+            panic!("no cube draw in {names:?}")
+        });
+    let slots: Vec<&str> = cube.bindings.iter().map(|b| b.0.as_str()).collect();
+    assert!(slots.contains(&"Group 0 · View"), "{slots:?}");
+    assert!(slots.contains(&"Group 1 · Lighting"), "{slots:?}");
+    assert!(slots.contains(&"Group 2 · Material"), "{slots:?}");
+    assert!(slots.contains(&"Vertex buffer") && slots.contains(&"Index buffer"));
+    let shadow = c
+        .events
+        .iter()
+        .find(|e| e.root() == "Shadows" && e.is_draw())
+        .expect("shadow draw");
+    assert!(shadow.bindings.iter().any(|b| b.0 == "Group 1 · Draws"));
+    let post = c.events.iter().find(|e| e.root() == "Post").unwrap();
+    assert!(!post.bindings.is_empty());
+}
+
+/// GPU-driven captures keep GPU culling on: the opaque meshes are indirect multi-draws, each
+/// one event that can be replayed up to.
+#[test]
+fn gpu_driven_captures_list_indirect_draws() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut r = Renderer::with_queue(&device, &queue);
+    if !crate::render::gpu_culling::supported(&device) {
+        eprintln!("no GPU culling on this device: skipped");
+        return;
+    }
+    r.set_options(crate::render::RenderOptions {
+        gpu_culling: true,
+        ..r.options()
+    });
+    let request = Some(CaptureRequest {
+        labels: labels(),
+        gpu_driven: true,
+        ..Default::default()
+    });
+    let (image, capture) = render(&device, &queue, &mut r, request);
+    let c = capture.unwrap();
+    let indirect: Vec<&FrameEvent> = c
+        .events
+        .iter()
+        .filter(|e| e.kind() == EventKind::DrawIndirect)
+        .collect();
+    assert!(!indirect.is_empty(), "{:?}", c.roots());
+    let first = indirect[0];
+    assert_eq!(first.root(), "Opaque (GPU-driven)");
+    assert!(first.batch.as_deref().unwrap().starts_with("GPU-driven"));
+    assert!(first.bindings.iter().any(|b| b.0 == "Indirect arguments"));
+    assert!(first.is_draw());
+    // The CPU-culled opaque list isn't drawn as well.
+    assert_eq!(c.count_in("Opaque"), 0, "{:?}", c.roots());
+    // Same picture as the CPU-culled frame.
+    let mut plain = Renderer::with_queue(&device, &queue);
+    let (expected, _) = render(&device, &queue, &mut plain, full(labels()));
+    let diff = image
+        .iter()
+        .zip(&expected)
+        .filter(|(a, b)| a.abs_diff(**b) > 24)
+        .count();
+    assert!(diff < image.len() / 50, "{diff} bytes differ");
+}
+
+/// Depth and Normals show the depth prepass (forced on), GI needs Misty GI (not in this
+/// scene), Emission shows emission only (none here: dark).
+#[test]
+fn target_views_show_depth_normals_gi_and_emission() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let mut r = Renderer::with_queue(&device, &queue);
+    let (color, _) = render(&device, &queue, &mut r, with_view(TargetView::Color));
+    let (depth, cap) = render(&device, &queue, &mut r, with_view(TargetView::Depth));
+    let cap = cap.unwrap();
+    assert!(cap.view_available && cap.view == TargetView::Depth);
+    let (depth_mean, depth_gap) = tone(&depth);
+    assert!(depth_gap <= 2, "depth is grey ({depth_gap})");
+    assert!(depth_mean > 5.0, "something is near: {depth_mean}");
+    assert_ne!(depth, color);
+    let (normals, cap) = render(&device, &queue, &mut r, with_view(TargetView::Normals));
+    assert!(cap.unwrap().view_available);
+    let (_, normal_gap) = tone(&normals);
+    assert!(normal_gap > 60, "normals are coloured ({normal_gap})");
+    let (_, cap) = render(&device, &queue, &mut r, with_view(TargetView::Gi));
+    assert!(!cap.unwrap().view_available, "no Misty GI in this scene");
+    let (emission, _) = render(&device, &queue, &mut r, with_view(TargetView::Emission));
+    let (emission_mean, _) = tone(&emission);
+    let (color_mean, _) = tone(&color);
+    assert!(
+        emission_mean < color_mean * 0.25,
+        "emission {emission_mean} vs colour {color_mean}"
+    );
 }

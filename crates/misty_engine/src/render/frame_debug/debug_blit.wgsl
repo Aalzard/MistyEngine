@@ -28,3 +28,13 @@ fn fs_tonemap(in: VsOut) -> @location(0) vec4<f32> {
 fn fs_copy(in: VsOut) -> @location(0) vec4<f32> {
     return vec4<f32>(textureSampleLevel(src, samp, in.uv, 0.0).rgb, 1.0);
 }
+
+// World-space normals of the depth prepass (rgb = n * 0.5 + 0.5; empty pixels stay dark).
+@fragment
+fn fs_normals(in: VsOut) -> @location(0) vec4<f32> {
+    let n = textureSampleLevel(src, samp, in.uv, 0.0).xyz;
+    if dot(n, n) < 1e-4 {
+        return vec4<f32>(0.02, 0.02, 0.025, 1.0);
+    }
+    return vec4<f32>(normalize(n) * 0.5 + 0.5, 1.0);
+}

@@ -89,6 +89,7 @@ pub fn kind_icon(kind: EventKind) -> &'static str {
     match kind {
         EventKind::Clear => "⊘",
         EventKind::Draw => "▲",
+        EventKind::DrawIndirect => "◭",
         EventKind::Fullscreen => "▣",
         EventKind::Compute => "⚙",
         EventKind::Copy => "⎘",
@@ -232,6 +233,7 @@ pub fn kind_color(kind: EventKind) -> Color32 {
     match kind {
         EventKind::Clear => Color32::from_rgb(150, 150, 150),
         EventKind::Draw => Color32::from_rgb(110, 190, 120),
+        EventKind::DrawIndirect => Color32::from_rgb(70, 200, 190),
         EventKind::Fullscreen => Color32::from_rgb(120, 170, 240),
         EventKind::Compute => Color32::from_rgb(230, 170, 80),
         EventKind::Copy => Color32::from_rgb(180, 140, 220),

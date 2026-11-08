@@ -244,7 +244,13 @@ fn start_at(model: &Model, path: Option<PathBuf>, rel: &str) -> Arc<VirtualBuild
             let made: Vec<(usize, VirtualBuild)> = crate::background::pool().install(|| {
                 missing
                     .par_iter()
-                    .map(|(i, src)| (*i, build(src)))
+                    .map(|(i, src)| {
+                        crate::profile_scope!(
+                            "VirtualGeometry.Build",
+                            crate::profiler::Category::Rendering
+                        );
+                        (*i, build(src))
+                    })
                     .collect()
             });
             for (i, b) in made {

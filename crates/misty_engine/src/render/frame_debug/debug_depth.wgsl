@@ -24,3 +24,14 @@ fn fs_depth(in: VsOut) -> @location(0) vec4<f32> {
     let v = pow(clamp(1.0 - d, 0.0, 1.0), 0.5);
     return vec4<f32>(v, v, v, 1.0);
 }
+
+// Camera depth (D3D-style 0 = near, 1 = far): a steep curve so nearby surfaces are bright and
+// the far plane and sky black.
+@fragment
+fn fs_scene_depth(in: VsOut) -> @location(0) vec4<f32> {
+    let size = vec2<i32>(textureDimensions(depth_src));
+    let texel = clamp(vec2<i32>(in.uv * vec2<f32>(size)), vec2<i32>(0), size - 1);
+    let d = textureLoad(depth_src, texel, 0);
+    let v = pow(clamp(1.0 - d, 0.0, 1.0), 0.3);
+    return vec4<f32>(v, v, v, 1.0);
+}

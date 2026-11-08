@@ -2913,3 +2913,26 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - The Wireframe mode still pays for the geometry's shading passes (unlit); a depth-only path would be
   cheaper. Water and particles show no edges. Shaded Wireframe edges go through TAA like the gizmo lines.
+
+## Round 20E — Profiling and debugging depth (branch r20-profiler)
+
+### Done (docs/pending/r20-profiler.md, screenshots `docs/screenshots/r20/profiler_*`)
+- Profiler GPU Usage module: per-pass GPU timestamps read back without waiting (a ring of query
+  sets, the renderer's existing pass marks), stacked by pass group, GPU Hierarchy per view;
+  whole-render or "not supported" fallback.
+- Physics, Audio and UI modules with per-frame counters and times (bodies, contacts, joints;
+  voices, mixer groups, effects, streams, audio-thread mixing time and DSP load; canvases,
+  elements, batches, vertices).
+- Timeline rows: Main Thread, the GPU passes of each render, the audio thread, the background
+  pool and rayon workers.
+- Capture Save / Load (`.mprof`), Target ▸ Player: a Player with
+  `MISTY_PROFILER_CONNECT=127.0.0.1:54998` streams its frames to the editor.
+- Frame Debugger: Draw Indirect events (GPU-driven culling, virtual geometry, grass, VFX),
+  Bindings card, Depth / Normals / GI / Emission views, Draws only stepping.
+- Memory Profiler: GPU and CPU memory by category, CPU asset caches (model meshes and
+  embedded textures, runtime textures, mixer clips, mesh distance fields).
+- Overhead on MeadowDemo: see docs/pending/r20-profiler.md (recording and closed).
+
+### Not done yet
+- Per-pass GPU times without timestamps inside encoders; visible instance counts of indirect
+  draws; Player discovery / autoconnect; live resource views in the Bindings card.

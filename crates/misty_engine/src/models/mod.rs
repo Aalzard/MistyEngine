@@ -355,6 +355,40 @@ pub fn forget(rels: &[String]) {
     }
 }
 
+/// What the model cache holds on the CPU, per model: (path, mesh bytes, embedded texture bytes)
+/// (Memory Profiler).
+pub fn cache_memory() -> Vec<(String, u64, u64)> {
+    let lib = library();
+    let mut out: Vec<(String, u64, u64)> = lib
+        .entries
+        .iter()
+        .filter_map(|(rel, e)| {
+            let m = e.model.as_ref().ok()?;
+            let meshes = m
+                .meshes
+                .iter()
+                .map(|mesh| {
+                    (mesh.data.vertices.capacity()
+                        * std::mem::size_of::<crate::render::mesh::Vertex>()
+                        + mesh.data.indices.capacity() * 4) as u64
+                })
+                .sum();
+            let textures = m
+                .materials
+                .iter()
+                .flat_map(|mat| [&mat.albedo, &mat.normal])
+                .map(|t| match t {
+                    Some(TextureSource::Embedded(bytes)) => bytes.len() as u64,
+                    _ => 0,
+                })
+                .sum();
+            Some((rel.clone(), meshes, textures))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
 /// Bumped whenever cached models are dropped (GPU caches compare it to know when to re-upload).
 pub fn generation() -> u64 {
     library().generation

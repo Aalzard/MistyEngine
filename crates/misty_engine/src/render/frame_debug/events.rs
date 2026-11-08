@@ -217,6 +217,74 @@ pub(in crate::render) fn shadow_label(key: ShadowKey) -> String {
     }
 }
 
+/// What a mesh draw binds: view, lighting (or per-draw values for depth-only passes), the
+/// material's textures, the mesh buffers and the instances.
+pub(in crate::render) fn mesh_bindings(
+    d: &MeshDraw,
+    mesh: &str,
+    m: &GpuMesh,
+    instances: u32,
+    depth_only: bool,
+) -> Vec<(String, String)> {
+    let mut out = vec![(
+        "Group 0 · View".to_owned(),
+        match depth_only {
+            true => "view uniform (camera or light matrix)".to_owned(),
+            false => "view uniform (camera, jitter, fog, sky), sky cubemaps".to_owned(),
+        },
+    )];
+    out.push(match depth_only {
+        true => (
+            "Group 1 · Draws".to_owned(),
+            "per-draw values (draws[]), draw slots".to_owned(),
+        ),
+        false => (
+            "Group 1 · Lighting".to_owned(),
+            "lights, per-draw values (draws[]), draw slots, shadow maps (cascades, local, \
+             virtual), lightmaps, screen-space AO / GI texels"
+                .to_owned(),
+        ),
+    });
+    let material = match &d.material.custom {
+        Some(c) => format!("{} resources", c.shader),
+        None => {
+            let t = textures(&d.material);
+            match t.is_empty() {
+                true => "default textures (white albedo, flat normal)".to_owned(),
+                false => t
+                    .iter()
+                    .map(|(slot, path)| {
+                        format!("{slot}: {}", path.rsplit('/').next().unwrap_or(path))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            }
+        }
+    };
+    if !depth_only || d.material.mode == RenderingMode::Cutout {
+        out.push(("Group 2 · Material".to_owned(), material));
+    }
+    out.push((
+        "Vertex buffer".to_owned(),
+        format!(
+            "{mesh}: position, normal, uv, tangent · {} vertices",
+            m.vertex_count
+        ),
+    ));
+    out.push((
+        "Index buffer".to_owned(),
+        format!(
+            "{} indices (u32) from {} · base vertex {}",
+            m.count, m.first_index, m.base_vertex
+        ),
+    ));
+    out.push((
+        "Instances".to_owned(),
+        format!("{instances} (per-draw values through the draw slots)"),
+    ));
+    out
+}
+
 /// A mesh batch's event: object / mesh / material names, counts, reason and state.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::render) fn mesh_event(
@@ -241,7 +309,10 @@ pub(in crate::render) fn mesh_event(
         1 => format!("Draw Mesh {object}"),
         n => format!("Draw Mesh (instanced ×{n}) {object}"),
     };
+    let depth_only = shader.contains("epth") || shader.starts_with("Shadow");
+    let bindings = mesh_bindings(d, &mesh, m, b.count, depth_only);
     FrameEvent {
+        bindings,
         object: Some(object),
         mesh: Some(mesh),
         material: label.and_then(|l| l.material.clone()),
@@ -297,6 +368,16 @@ pub(in crate::render) fn main_event(
 pub(in crate::render) fn post_event(name: String, shader: &str) -> FrameEvent {
     FrameEvent {
         shader: shader.to_owned(),
+        bindings: vec![
+            (
+                "Group 0".to_owned(),
+                "input image(s) of the step and their sampler".to_owned(),
+            ),
+            (
+                "Vertex buffer".to_owned(),
+                "none (fullscreen triangle from the vertex index)".to_owned(),
+            ),
+        ],
         vertices: 3,
         blend: "Off".to_owned(),
         depth: "Off".to_owned(),
@@ -424,7 +505,7 @@ pub(in crate::render) fn vgeo_event(
     let (pass, kind, name, shader, depth) = match d.pass {
         VgeoPass::Lit => (
             main("Clusters"),
-            EventKind::Draw,
+            EventKind::DrawIndirect,
             format!("Draw Virtual Geometry Clusters ({what}{cutout})"),
             format!(
                 "vgeo_mesh.wgsl vs_cluster + mesh.wgsl {}",
@@ -434,7 +515,7 @@ pub(in crate::render) fn vgeo_event(
         ),
         VgeoPass::Raster => (
             main("Visibility Raster"),
-            EventKind::Draw,
+            EventKind::DrawIndirect,
             format!("Draw Virtual Geometry Ids ({what}{cutout})"),
             format!(
                 "vgeo_vis.wgsl {}",
@@ -455,7 +536,7 @@ pub(in crate::render) fn vgeo_event(
         ),
         VgeoPass::Shadow => (
             Vec::new(),
-            EventKind::Draw,
+            EventKind::DrawIndirect,
             format!("Draw Virtual Geometry Casters ({what}{cutout})"),
             format!(
                 "vgeo_depth.wgsl {}",
@@ -469,7 +550,7 @@ pub(in crate::render) fn vgeo_event(
         ),
         VgeoPass::Prepass => (
             Vec::new(),
-            EventKind::Draw,
+            EventKind::DrawIndirect,
             format!("Draw Virtual Geometry Normals ({what}{cutout})"),
             format!(
                 "vgeo_prepass.wgsl + ao_prepass.wgsl {}",
@@ -502,6 +583,177 @@ pub(in crate::render) fn vgeo_event(
         .to_owned(),
         textures: textures(&draw.material),
         properties: properties(&draw.material),
+        bindings: vec![
+            (
+                "Group 0 · View".to_owned(),
+                format!("view {} uniform", d.view),
+            ),
+            (
+                "Cluster pool".to_owned(),
+                "vertices, triangles and cluster records of every virtual mesh".to_owned(),
+            ),
+            (
+                "Visible list".to_owned(),
+                format!("clusters vgeo_cull.wgsl kept for view {}", d.view),
+            ),
+            (
+                "Indirect arguments".to_owned(),
+                "one indexed command per visible cluster; the count is read from the GPU \
+                 (multi_draw_indexed_indirect_count)"
+                    .to_owned(),
+            ),
+        ],
         ..FrameEvent::new(kind, name)
+    }
+}
+
+/// The material shown by the Frame Debugger's Emission view: unlit, its colour the emission
+/// (black without), its texture the emission map.
+pub(crate) fn emission_only(d: &MeshDraw) -> MeshDraw {
+    let mut d = d.clone();
+    let m = &mut d.material;
+    let e = m.emission;
+    let k = m.emission_intensity;
+    m.color = [e[0] * k, e[1] * k, e[2] * k, m.color[3]];
+    m.albedo_map = m.emission_map.take();
+    m.normal_map = None;
+    m.metallic_map = None;
+    m.occlusion_map = None;
+    m.unlit = true;
+    m.custom = None;
+    if m.mode != RenderingMode::Cutout {
+        m.mode = RenderingMode::Opaque;
+    }
+    d
+}
+
+/// The terrain grass: blades drawn indirectly when the GPU culled them.
+pub(in crate::render) fn grass_event(indirect: bool) -> FrameEvent {
+    let mut ev = post_event("Draw Grass".to_owned(), "grass.wgsl");
+    if indirect {
+        ev.kind = Some(EventKind::DrawIndirect);
+        ev.name = "Draw Grass (indirect, GPU-culled chunks)".to_owned();
+        ev.vertices = 0;
+        ev.batch = Some(
+            "GPU-driven: grass_cull.wgsl picked the visible blades of each chunk and wrote \
+             one draw_indirect command per chunk"
+                .to_owned(),
+        );
+        ev.bindings = vec![
+            ("Group 0 · View".to_owned(), "view uniform".to_owned()),
+            (
+                "Group 2 · Terrain".to_owned(),
+                "grass params, height and colour maps".to_owned(),
+            ),
+            (
+                "Group 3 · Blade page".to_owned(),
+                "blade storage of the chunk's page".to_owned(),
+            ),
+            (
+                "Indirect arguments".to_owned(),
+                "grass cull args buffer, 16 bytes per chunk (vertex count, instance count \
+                 written by the GPU)"
+                    .to_owned(),
+            ),
+        ];
+    }
+    ev
+}
+
+/// Visual Effect outputs (simulated on the GPU, drawn indirectly).
+pub(in crate::render) fn effects_event() -> FrameEvent {
+    FrameEvent {
+        shader: "generated effect shaders (Effect Graph outputs)".to_owned(),
+        batch: Some(
+            "GPU-driven: each output draws its alive particles with draw_indirect (count \
+             written by the simulation)"
+                .to_owned(),
+        ),
+        blend: "per output".to_owned(),
+        depth: "LessEqual, write off".to_owned(),
+        cull: "Off".to_owned(),
+        bindings: vec![
+            ("Group 1 · Material".to_owned(), "output texture".to_owned()),
+            (
+                "Group 2 · Particles".to_owned(),
+                "particle buffers (ping-pong) and alive list".to_owned(),
+            ),
+            (
+                "Group 3 · Depth".to_owned(),
+                "scene depth (soft particles)".to_owned(),
+            ),
+            (
+                "Indirect arguments".to_owned(),
+                "the effect's indirect buffer, 32 bytes per output".to_owned(),
+            ),
+        ],
+        instances: 0,
+        ..FrameEvent::new(
+            EventKind::DrawIndirect,
+            "Draw Visual Effects (indirect)".to_owned(),
+        )
+    }
+}
+
+/// One GPU-culled multi-draw: `batches` share pipeline, material and mesh buffers; their
+/// instance counts were written by the culling pass of `phase`.
+pub(in crate::render) fn culled_event(
+    rec: &Recorder,
+    frame: &Frame,
+    batches: &[Batch],
+    m: &GpuMesh,
+    key: PipelineKey,
+    phase: usize,
+    args_offset: u64,
+) -> FrameEvent {
+    let first = &batches[0];
+    let d = &frame.meshes[first.draw];
+    let label = rec.label(first.draw);
+    let mesh = mesh_name(&d.mesh);
+    let object = label
+        .map(|l| l.object.clone())
+        .filter(|o| !o.is_empty())
+        .unwrap_or_else(|| mesh.clone());
+    let candidates: u32 = batches.iter().map(|b| b.count).sum();
+    let name = match batches.len() {
+        1 => format!("Draw Indexed Indirect {object}"),
+        n => format!("Multi Draw Indexed Indirect ×{n} ({object}, …)"),
+    };
+    let phase_name = match phase {
+        0 => "first phase (frustum + last frame's Hi-Z)",
+        _ => "second phase (this frame's Hi-Z)",
+    };
+    let mut bindings = mesh_bindings(d, &mesh, m, candidates, false);
+    bindings.push((
+        "Indirect arguments".to_owned(),
+        format!(
+            "GPU culling args buffer @ {args_offset} bytes, {} command(s) of 20 bytes",
+            batches.len()
+        ),
+    ));
+    FrameEvent {
+        object: Some(object),
+        mesh: Some(mesh),
+        material: label.and_then(|l| l.material.clone()),
+        vertices: m.vertex_count,
+        indices: m.count,
+        instances: candidates,
+        batch: Some(format!(
+            "GPU-driven: {} batch(es) of {candidates} candidate objects culled on the GPU in \
+             the {phase_name}; visible instance counts stay on the GPU",
+            batches.len()
+        )),
+        shader: shader_label(key),
+        depth: match key.depth_write() {
+            true => "LessEqual, write on",
+            false => "LessEqual, write off",
+        }
+        .to_owned(),
+        blend: blend_label(key.blend()),
+        cull: if key.double_sided { "Off" } else { "Back" }.to_owned(),
+        textures: textures(&d.material),
+        properties: properties(&d.material),
+        bindings,
+        ..FrameEvent::new(EventKind::DrawIndirect, name)
     }
 }

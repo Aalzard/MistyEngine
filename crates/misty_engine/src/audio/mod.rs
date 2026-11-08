@@ -44,6 +44,30 @@ pub const CLIP_EXTENSIONS: [&str; 3] = ["wav", "ogg", "mp3"];
 /// Voices beyond this many are silenced, least important (highest Priority value) first.
 pub const MAX_REAL_VOICES: usize = 32;
 
+/// Audio-thread mixing time and the length of audio it produced since the main thread last
+/// reported them to the Profiler (ns).
+static MIX_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static MIXED_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A mixed block: `cpu` ns of work for `audio` ns of sound (audio thread, while recording).
+pub(crate) fn note_mix(cpu: u64, audio: u64) {
+    use std::sync::atomic::Ordering::Relaxed;
+    MIX_NS.fetch_add(cpu, Relaxed);
+    MIXED_NS.fetch_add(audio, Relaxed);
+}
+
+/// Mixing time (ms) and DSP load (% of one core) since the last call.
+pub fn take_mix_load() -> (f32, f32) {
+    use std::sync::atomic::Ordering::Relaxed;
+    let cpu = MIX_NS.swap(0, Relaxed);
+    let audio = MIXED_NS.swap(0, Relaxed);
+    let load = match audio {
+        0 => 0.0,
+        a => cpu as f32 / a as f32 * 100.0,
+    };
+    (cpu as f32 / 1.0e6, load)
+}
+
 pub fn is_clip(path: &str) -> bool {
     std::path::Path::new(path)
         .extension()
@@ -119,6 +143,13 @@ impl Audio {
         if let Some(b) = self.backend.as_mut() {
             b.forget_clips();
         }
+    }
+
+    /// Clips the mixer keeps in memory (Memory Profiler).
+    pub fn clip_memory(&self) -> Vec<(String, u64, &'static str)> {
+        self.backend
+            .as_ref()
+            .map_or(Vec::new(), |b| b.clip_memory())
     }
 
     /// Offline audio: the next `frames` of the mix (`None` for device or null backends).
@@ -501,6 +532,9 @@ impl Audio {
         }
         clips.retain(|id| b.is_alive(*id));
         limit_voices(&mut planned);
+        if crate::profiler::enabled() {
+            report_profiler(&planned, &self.mixers);
+        }
         for (id, p, _) in planned {
             b.set(id, p);
         }
@@ -522,6 +556,29 @@ impl Drop for Audio {
     fn drop(&mut self) {
         self.stop_all();
     }
+}
+
+/// The Profiler's Audio module counters of this frame (main thread side; the graph reports its
+/// own voices and the audio thread's time).
+fn report_profiler(planned: &[(VoiceId, VoiceParams, u16)], mixers: &[MixerState]) {
+    use crate::profiler::{Counter, add_counter, set_counter};
+    let heard = planned.iter().filter(|p| p.1.volume > 0.0).count();
+    let groups: usize = mixers.iter().map(|m| m.asset.groups.len()).sum();
+    let effects: usize = mixers
+        .iter()
+        .flat_map(|m| &m.asset.groups)
+        .map(|g| g.effects.len())
+        .sum();
+    let (mix_ms, load) = take_mix_load();
+    set_counter(Counter::AudioPlayingSources, heard as f32);
+    set_counter(
+        Counter::AudioVirtualVoices,
+        planned.len().saturating_sub(MAX_REAL_VOICES) as f32,
+    );
+    set_counter(Counter::AudioMixerGroups, groups as f32);
+    set_counter(Counter::AudioEffects, effects as f32);
+    add_counter(Counter::AudioMixMs, mix_ms);
+    set_counter(Counter::AudioDspLoad, load);
 }
 
 /// Keep the most important voices audible: sort by Priority (lower first), then loudness,

@@ -1,10 +1,14 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 
-use misty_engine::profiler::{Category, FrameData, HierarchyTree, Sample};
+use misty_engine::profiler::{
+    Category, Counter, CounterGroup, FrameData, GpuPass, HierarchyTree, Sample, ThreadKind,
+    ThreadTrack,
+};
 use misty_engine::render::RenderStats;
 
-use super::details::{memory_rows, rendering_rows, visible_rows};
+use super::details::{gpu_views, lanes, memory_rows, module_rows, rendering_rows, visible_rows};
+use super::{Module, ProfilerWindow, Source};
 use crate::layout::{self, Tab};
 
 fn sample(name: &'static str, depth: u16, start: f32, ms: f32) -> Sample {
@@ -89,4 +93,109 @@ fn stats_box_shows_batching_and_screen() {
     assert!(text.contains("Tris: 2500.0k"), "{text}");
     assert!(text.contains("Screen: 1280x720"));
     assert!(text.contains("GPU: 3.2ms"));
+}
+
+fn pass(view: &'static str, name: &'static str, start: f32, ms: f32) -> GpuPass {
+    GpuPass {
+        view: view.into(),
+        name: name.into(),
+        start_ms: start,
+        ms,
+    }
+}
+
+/// A frame with GPU passes of two renders, a worker thread and module counters.
+fn rich_frame() -> FrameData {
+    let mut f = frame();
+    f.samples.push(sample("Render.Submit", 1, 5.0, 0.5));
+    f.gpu_passes = vec![
+        pass("Scene", "Shadow maps (cascades, local)", 0.0, 1.0),
+        pass("Scene", "Main: opaque meshes", 1.0, 2.0),
+        pass("Game", "Shadow maps (cascades, local)", 0.0, 0.5),
+        pass("Game", "Bloom, tonemap, finish", 0.5, 0.25),
+    ];
+    f.threads = vec![ThreadTrack {
+        name: "Worker 2".into(),
+        kind: ThreadKind::Worker,
+        samples: vec![sample("Render.ShadowList", 0, -1.0, 2.0)],
+    }];
+    f.counters = vec![0.0; Counter::COUNT];
+    f.counters[Counter::PhysicsBodies.index()] = 42.0;
+    f.counters[Counter::AudioDspLoad.index()] = 1.5;
+    f.counters[Counter::UiElements.index()] = 17.0;
+    f
+}
+
+#[test]
+fn gpu_hierarchy_groups_passes_by_render() {
+    let f = rich_frame();
+    let views = gpu_views(&f);
+    assert_eq!(views.len(), 2);
+    assert_eq!(views[0].0, "Scene");
+    assert_eq!(views[0].1.len(), 2);
+    assert_eq!(views[1].0, "Game");
+    assert_eq!(f.gpu_total_ms(), Some(3.75));
+}
+
+#[test]
+fn timeline_has_a_lane_per_thread_and_render() {
+    let f = rich_frame();
+    let lanes = lanes(&f);
+    let names: Vec<&str> = lanes.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "Main Thread",
+            "Render (GPU) · Scene",
+            "Render (GPU) · Game",
+            "Worker 2"
+        ]
+    );
+    assert_eq!(lanes[0].rows(), 2, "main thread nesting");
+    // The first render's GPU work starts after its submit (5.0 + 0.5 ms).
+    assert_eq!(lanes[1].samples[0].start_ms, 5.5);
+    // A worker scope that began in an earlier frame is clipped to the frame's start.
+    let w = &lanes[3].samples[0];
+    assert_eq!((w.start_ms, w.ms), (0.0, 1.0));
+}
+
+#[test]
+fn module_counters_show_times_then_values() {
+    let mut f = rich_frame();
+    f.samples.push(sample("Physics.Step", 0, 6.0, 0.75));
+    let physics = module_rows(&f, CounterGroup::Physics);
+    assert_eq!(physics[0], ("Physics time", "0.750 ms".to_owned()));
+    assert!(physics.contains(&("Rigidbodies", "42".to_owned())));
+    let audio = module_rows(&f, CounterGroup::Audio);
+    assert!(audio.contains(&("DSP load (% of one core)", "1.50 %".to_owned())));
+    let ui = module_rows(&f, CounterGroup::Ui);
+    assert!(ui.contains(&("Elements", "17".to_owned())));
+}
+
+#[test]
+fn modules_are_found_by_short_names() {
+    assert_eq!(Module::named("GPU"), Some(Module::Gpu));
+    assert_eq!(Module::named("cpu usage"), Some(Module::Cpu));
+    assert_eq!(Module::named("UI"), Some(Module::Ui));
+    assert_eq!(Module::named("Physics"), Some(Module::Physics));
+    assert_eq!(Module::named("nope"), None);
+}
+
+#[test]
+fn saved_frames_load_back_as_a_file_source() {
+    let dir = std::env::temp_dir().join(format!("misty_profiler_panel_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("capture.mprof");
+    let frames = [rich_frame(), rich_frame()];
+    misty_engine::profiler::capture::save(&path, frames.iter()).unwrap();
+    let mut w = ProfilerWindow::default();
+    w.load(path.clone()).unwrap();
+    assert!(matches!(w.source, Source::File { .. }));
+    assert_eq!(w.source.with_frames(|f| f.len()), 2);
+    let again = dir.join("again.mprof");
+    assert_eq!(w.save(&again).unwrap(), 2);
+    let back = misty_engine::profiler::capture::load(&again).unwrap();
+    assert_eq!(back[1].gpu_passes.len(), 4);
+    assert_eq!(back[0].counter(Counter::PhysicsBodies), 42.0);
+    let _ = std::fs::remove_dir_all(dir);
 }

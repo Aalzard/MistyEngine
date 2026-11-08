@@ -2,24 +2,24 @@
 
 use std::borrow::Cow;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use super::{Category, MemoryStats};
+use super::{Category, Counter, GpuPass, GpuTiming, MemoryStats, ThreadTrack};
 use crate::render::RenderStats;
 
 /// One timed scope.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Sample {
     pub name: Cow<'static, str>,
     pub category: Category,
     /// Nesting level (0 = top level).
     pub depth: u16,
-    /// Start, in ms after the frame's first sample.
+    /// Start, in ms after the frame began (the previous frame's end).
     pub start_ms: f32,
     pub duration_ms: f32,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FrameData {
     pub index: u64,
     /// Wall-clock time since the previous frame ended.
@@ -28,9 +28,23 @@ pub struct FrameData {
     pub gpu_ms: Option<f32>,
     /// Self time per [`Category`] (indexed by [`Category::index`]).
     pub categories: [f32; Category::COUNT],
+    /// Main Thread scopes.
     pub samples: Vec<Sample>,
+    #[serde(default)]
     pub render: RenderStats,
+    #[serde(default)]
     pub memory: MemoryStats,
+    /// Module counters (indexed by [`Counter::index`]; shorter in older captures).
+    #[serde(default)]
+    pub counters: Vec<f32>,
+    /// Scopes of the other threads (workers, background pool, audio thread).
+    #[serde(default)]
+    pub threads: Vec<ThreadTrack>,
+    /// GPU time of each part of each render (when the device has the timestamps for it).
+    #[serde(default)]
+    pub gpu_passes: Vec<GpuPass>,
+    #[serde(default)]
+    pub gpu_timing: GpuTiming,
 }
 
 impl FrameData {
@@ -47,7 +61,33 @@ impl FrameData {
             samples,
             render: RenderStats::default(),
             memory: MemoryStats::default(),
+            counters: Vec::new(),
+            threads: Vec::new(),
+            gpu_passes: Vec::new(),
+            gpu_timing: GpuTiming::default(),
         }
+    }
+
+    /// A module counter's value (0 when it wasn't reported).
+    pub fn counter(&self, c: Counter) -> f32 {
+        self.counters.get(c.index()).copied().unwrap_or(0.0)
+    }
+
+    /// Total time of the Main Thread scopes whose name starts with `prefix` (outermost
+    /// matches only).
+    pub fn time_in(&self, prefix: &str) -> f32 {
+        let mut total = 0.0;
+        let mut inside: Option<u16> = None;
+        for s in &self.samples {
+            if inside.is_some_and(|d| s.depth <= d) {
+                inside = None;
+            }
+            if inside.is_none() && s.name.starts_with(prefix) {
+                total += s.duration_ms;
+                inside = Some(s.depth);
+            }
+        }
+        total
     }
 
     /// Time in `category`; Others also gets the frame time no scope covered.

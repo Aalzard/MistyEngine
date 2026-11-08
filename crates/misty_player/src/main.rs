@@ -8,6 +8,8 @@
 //! (`MISTY_UPSCALING=Performance` etc. overrides the quality levels' Upscaling).
 //! `MISTY_PROFILE=capture.jsonl misty_player` records the profiler into a capture file
 //! (one JSON object per frame) until the player quits.
+//! `MISTY_PROFILER_CONNECT=127.0.0.1:54998 misty_player` streams the profiler to an editor whose
+//! Profiler window listens there (Target ▸ Player).
 //! Multiplayer: `--net-host`, `--net-server` or `--net-client host[:port]` start networking
 //! once the scene runs; `--scene Assets/…scene [--scene-file copy.scene]` plays that scene;
 //! `--title`, `--size 800x450` and `--pos 40,40` place the window (the editor's Multiplayer
@@ -116,6 +118,14 @@ fn main() {
         && let Err(e) = misty_engine::profiler::capture::start(Path::new(&path))
     {
         log.write(LogKind::Warning, &format!("profiler capture: {e}"));
+    }
+    if let Ok(addr) = std::env::var(misty_engine::profiler::remote::ENV)
+        && let Err(e) = misty_engine::profiler::remote::connect(&addr)
+    {
+        log.write(
+            LogKind::Warning,
+            &format!("profiler connection to {addr}: {e}"),
+        );
     }
     let screenshot = std::env::var_os("MISTY_SCREENSHOT").map(PathBuf::from);
     let mut app = Player {

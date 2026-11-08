@@ -312,6 +312,9 @@ impl UiRenderer {
             &mut self.atlas,
             &mut self.sdf,
         );
+        if crate::profiler::enabled() {
+            report_profiler(scene, &l, &list);
+        }
         let depth = Some(target.depth_view());
         self.draw(device, queue, target.output_view(), &list, depth, false);
     }
@@ -545,6 +548,30 @@ fn pipeline(
         multiview_mask: None,
         cache: crate::render::pipeline_cache(device).as_ref(),
     })
+}
+
+/// The Profiler's UI module counters for the canvases drawn this frame.
+fn report_profiler(scene: &Scene, l: &crate::ui::tree::UiLayout, list: &UiDrawList) {
+    use crate::profiler::{Counter, add_counter};
+    use crate::scene::ui_components::UiText;
+    use crate::scene::ui_widgets::Selectable;
+    let has = |e: hecs::Entity, text: bool| match text {
+        true => scene.world.get::<&UiText>(e).is_ok(),
+        false => scene.world.get::<&Selectable>(e).is_ok(),
+    };
+    let texts = l.nodes.iter().filter(|n| has(n.entity, true)).count();
+    let interactive = l.nodes.iter().filter(|n| has(n.entity, false)).count();
+    for (c, v) in [
+        (Counter::UiCanvases, l.canvases.len()),
+        (Counter::UiElements, l.nodes.len()),
+        (Counter::UiTexts, texts),
+        (Counter::UiInteractive, interactive),
+        (Counter::UiBatches, list.batches.len()),
+        (Counter::UiVertices, list.vertices.len()),
+    ] {
+        // Added: the Game view and world-space canvases of the Scene view each draw a list.
+        add_counter(c, v as f32);
+    }
 }
 
 #[cfg(test)]
