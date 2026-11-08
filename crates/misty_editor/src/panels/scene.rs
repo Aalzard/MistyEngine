@@ -280,6 +280,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             if let Some(view) = vgeo_debug {
                 gpu.renderer.set_virtual_geometry_debug_view(view);
             }
+            misty_engine::render::ui::set_keeps_depth(misty_engine::render::ui::needs_depth(
+                &state.scene,
+                true,
+            ));
             let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
             // Canvases in the world, drawn with the scene's depth.
             gpu.render_scene_ui(&state.scene, &camera, crate::ui_gizmos::game_screen(state));
@@ -312,7 +316,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let ui_layout = crate::ui_gizmos::scene_layout(state, &camera, rect);
     if state.scene_view.gizmos {
         crate::ui_gizmos::paint(ui, rect, state, &ui_layout);
-        if crate::ui_gizmos::visualizing_navigation(ui.ctx()) {
+        if crate::ui_gizmos::visualizing_navigation() {
             crate::ui_gizmos::paint_navigation(ui, rect, &state.scene, &ui_layout);
         }
         draw_icons(ui, rect, state, &camera);

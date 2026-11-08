@@ -383,6 +383,10 @@ impl Gfx {
     ) {
         if let Some(frame) = frame {
             let (device, queue) = (&self.device, &self.queue);
+            // World Space / Screen Space - Camera canvases need the scene depth after the pass.
+            misty_engine::render::ui::set_keeps_depth(misty_engine::render::ui::needs_depth(
+                scene, false,
+            ));
             self.renderer
                 .render_with_effects(device, queue, &self.target, frame, effects);
             misty_engine::profiler::set_render_stats(self.renderer.stats());

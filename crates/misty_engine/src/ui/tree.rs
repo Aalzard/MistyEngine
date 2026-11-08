@@ -134,7 +134,8 @@ pub fn layout_view(scene: &Scene, view: &UiView) -> UiLayout {
         nodes: Vec::new(),
         canvases: Vec::new(),
     };
-    if screen.x < 1.0 || screen.y < 1.0 {
+    // Nothing to do without a screen or a canvas (most 3D scenes).
+    if screen.x < 1.0 || screen.y < 1.0 || scene.world.query::<&Canvas>().iter().next().is_none() {
         return out;
     }
     // Root canvases: no canvas above them.

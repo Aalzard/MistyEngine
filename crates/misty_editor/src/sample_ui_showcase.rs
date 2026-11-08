@@ -673,3 +673,60 @@ fn ui_showcase_plays_with_a_gamepad() {
     );
     assert_eq!(text_of(&scene, "Status"), "Hello from the sign!");
 }
+
+/// Render it headlessly: the World Space sign and the camera HUD reach the image (drawn in the
+/// depth-tested UI pass), not only the overlay menu.
+#[test]
+fn ui_showcase_renders_every_canvas_mode() {
+    use misty_engine::render::Renderer;
+    use misty_engine::render::ui::UiRenderer;
+    struct NoMaterials;
+    impl misty_engine::render_scene::MaterialSource for NoMaterials {
+        fn params(&self, _: Option<&str>) -> misty_engine::render::MaterialParams {
+            Default::default()
+        }
+    }
+    let root = project();
+    misty_engine::assets::set_project_root(&root);
+    let text = std::fs::read_to_string(root.join(SCENE)).unwrap();
+    let (scene, _) = Scene::from_json("UIShowcase", &text).unwrap();
+    let Some(gpu) = crate::sample_render::headless() else {
+        return;
+    };
+    let (device, queue) = &gpu;
+    let view = misty_engine::render_scene::GameView::new(&scene, &NoMaterials).unwrap();
+    let mut renderer = Renderer::with_queue(device, queue);
+    let (w, h) = (640u32, 360u32);
+    let target = renderer.create_target(device, w, h);
+    misty_engine::render::ui::set_keeps_depth(misty_engine::render::ui::needs_depth(&scene, false));
+    renderer.render(device, queue, &target, &view.frame());
+    misty_engine::render::ui::set_keeps_depth(false);
+    let before = crate::project_thumbnail::read_pixels(device, queue, &target);
+    let mut ui = UiRenderer::new(device, queue);
+    ui.render(device, queue, &target, &scene, None);
+    let after = crate::project_thumbnail::read_pixels(device, queue, &target);
+    let screen = Vec2::new(w as f32, h as f32);
+    let l = misty_engine::ui::layout(&scene, screen);
+    // How much the pixel at (fx, fy) across an element changed (a spot on its graphic, clear
+    // of text: the ring's top, inside the panels' borders, the middle of the stamina bar).
+    let changed_at = |name: &str, fx: f32, fy: f32| {
+        let n = l.node(scene.find_by_name(name).unwrap()).unwrap();
+        let c = n.corners();
+        let q = c[0] + (c[1] - c[0]) * fx + (c[3] - c[0]) * fy;
+        let p = l.to_target(n.canvas, q).unwrap();
+        let i = ((p.y as u32 * w + p.x as u32) * 4) as usize;
+        let d: i32 = (0..3)
+            .map(|k| (before[i + k] as i32 - after[i + k] as i32).abs())
+            .sum();
+        (p, d)
+    };
+    for (name, fx, fy) in [
+        ("Sign Panel", 0.08, 0.08),
+        ("Health Ring Back", 0.5, 0.06),
+        ("Stamina Frame", 0.5, 0.5),
+        ("Menu Panel", 0.08, 0.08),
+    ] {
+        let (p, d) = changed_at(name, fx, fy);
+        assert!(d > 30, "{name} drawn at {p}: colour change {d}");
+    }
+}

@@ -2681,7 +2681,8 @@ impl Renderer {
         let keep_depth = self.volumetrics.keeps_depth()
             || self.glows.keeps_depth()
             || self.vsm.wants_marks()
-            || self.postfx.keeps_depth();
+            || self.postfx.keeps_depth()
+            || ui::keeps_depth();
         // The virtual geometry view this part draws: its phase, or with one main phase all of
         // it (view 0) where the opaque meshes draw.
         let single = self.vgeo.single_phase();

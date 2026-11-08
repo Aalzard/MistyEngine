@@ -513,6 +513,26 @@ pub fn apply_env(
     // `MISTY_2D=1` switches the Scene view to 2D (looking down +Z at the XY plane).
     if std::env::var_os("MISTY_2D").is_some() {
         s.scene_view.is_2d = true;
+        s.scene_view.camera.set_2d(true);
+    }
+    // `MISTY_TOOL=Rect` picks a transform tool (Hand, Move, Rotate, Scale, Rect, Transform).
+    if let Some(name) = std::env::var_os("MISTY_TOOL")
+        && let Some(t) = crate::state::Tool::ALL
+            .into_iter()
+            .find(|t| format!("{t:?}").eq_ignore_ascii_case(&name.to_string_lossy()))
+    {
+        s.tool = t;
+    }
+    // `MISTY_FRAME_SELECTED=1` frames the selection in the Scene view (like F).
+    if std::env::var_os("MISTY_FRAME_SELECTED").is_some()
+        && let Some((center, radius)) = crate::commands::selection_bounds(s)
+    {
+        s.scene_view.camera.frame(center, radius);
+    }
+    // `MISTY_UI_NAVIGATION=1` turns on Visualize Navigation (selectables' links in the Scene
+    // view).
+    if std::env::var_os("MISTY_UI_NAVIGATION").is_some() {
+        crate::ui_gizmos::set_visualizing_navigation(true);
     }
     // `MISTY_ALIGN_VIEW=1` puts the Scene view camera where the selected object is (with
     // `MISTY_SELECT=Main Camera`: the Scene view sees what the game camera sees).

@@ -17,6 +17,32 @@ use crate::ui::{UiInteraction, UiView, layout_view};
 use crate::video::{VideoPlayer, VideoRenderMode};
 
 const SHADER: &str = include_str!("shaders/ui.wgsl");
+
+/// The next renders keep the scene's depth after the main pass for the UI pass (World Space and
+/// Screen Space - Camera canvases are hidden behind it). Set per view before rendering it.
+static KEEP_DEPTH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Keep (or stop keeping) the scene depth for world-placed canvases; see [`needs_depth`].
+pub fn set_keeps_depth(on: bool) {
+    KEEP_DEPTH.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn keeps_depth() -> bool {
+    KEEP_DEPTH.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Does drawing `scene`'s UI need the scene depth? Any enabled Screen Space - Camera or World
+/// Space canvas (with `all` = every canvas, as in the Scene view where overlays stand in the
+/// world), or a Video Player on the camera's far plane.
+pub fn needs_depth(scene: &Scene, all: bool) -> bool {
+    use crate::scene::{Canvas, CanvasRenderMode};
+    let canvas = scene
+        .world
+        .query::<&Canvas>()
+        .iter()
+        .any(|c| c.enabled && (all || c.render_mode != CanvasRenderMode::ScreenSpaceOverlay));
+    canvas || !camera_plane_videos(scene, true).is_empty()
+}
 const ATLAS_SIZE: u32 = 1024;
 const SDF_ATLAS_SIZE: u32 = 1024;
 

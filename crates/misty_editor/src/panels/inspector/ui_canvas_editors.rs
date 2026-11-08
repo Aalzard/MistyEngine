@@ -351,15 +351,14 @@ pub fn navigation_rows(ui: &mut Ui, id: &str, nav: &mut Navigation, objs: &Objec
             &NavigationMode::ALL,
             NavigationMode::label,
         );
-        let mut on = crate::ui_gizmos::visualizing_navigation(ui.ctx());
+        let mut on = crate::ui_gizmos::visualizing_navigation();
         if ui
             .selectable_label(on, "Visualize")
             .on_hover_text("Show navigation links in the Scene view")
             .clicked()
         {
             on = !on;
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(crate::ui_gizmos::visualize_id(), on));
+            crate::ui_gizmos::set_visualizing_navigation(on);
         }
     });
     ui.end_row();

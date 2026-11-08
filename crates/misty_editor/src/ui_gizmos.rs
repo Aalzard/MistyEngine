@@ -17,14 +17,17 @@ const CANVAS: Color32 = Color32::from_rgba_premultiplied(200, 200, 200, 150);
 const SELECTED: Color32 = Color32::from_rgb(90, 165, 255);
 const NAV: Color32 = Color32::from_rgb(255, 230, 60);
 
-/// The egui memory slot of the Visualize Navigation toggle (a selectable's Inspector sets it).
-pub fn visualize_id() -> egui::Id {
-    egui::Id::new("misty_ui_visualize_navigation")
-}
+/// Visualize Navigation (the toggle beside a selectable's Navigation in the Inspector).
+static VISUALIZE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Is Visualize Navigation on?
-pub fn visualizing_navigation(ctx: &egui::Context) -> bool {
-    ctx.data(|d| d.get_temp::<bool>(visualize_id()).unwrap_or(false))
+pub fn visualizing_navigation() -> bool {
+    VISUALIZE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Turn Visualize Navigation on or off.
+pub fn set_visualizing_navigation(on: bool) {
+    VISUALIZE.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// The game screen size UI is laid out for (the Game view's, or 1920×1080 before it drew).

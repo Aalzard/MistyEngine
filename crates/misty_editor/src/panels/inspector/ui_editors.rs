@@ -194,8 +194,13 @@ fn parent_size(state: &EditorState, e: Entity) -> Vec2 {
 }
 
 fn rect_transform(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
-    // A root canvas' rect is the screen: the Canvas drives it.
-    let driven = state.scene.world.get::<&Canvas>(e).is_ok()
+    // A root screen-space canvas' rect is the screen: the Canvas drives it (a World Space
+    // canvas sizes itself with its Rect Transform).
+    let driven = state
+        .scene
+        .world
+        .get::<&Canvas>(e)
+        .is_ok_and(|c| c.render_mode != CanvasRenderMode::WorldSpace)
         && state
             .scene
             .parent(e)

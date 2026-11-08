@@ -57,6 +57,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             misty_engine::screen::set_size(size[0], size[1], mode);
             // The Game view has no window to resize: Screen.SetResolution is a no-op here.
             misty_engine::screen::take_requests();
+            misty_engine::render::ui::set_keeps_depth(misty_engine::render::ui::needs_depth(
+                &state.scene,
+                false,
+            ));
             let texture = gpu.render(ViewId::Game, size, &frame, &game.effects);
             let render = gpu.renderer.stats();
             // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
