@@ -283,7 +283,11 @@ fn lua_switches_material_features() {
     let mut scene = Scene::new("t");
     ball(&mut scene, "A", Some("F.lua"));
     let logs = run(&mut scene, &root, 1);
-    let line = &logs.iter().find(|l| l.0 == LogKind::Info).expect("logged").1;
+    let line = &logs
+        .iter()
+        .find(|l| l.0 == LogKind::Info)
+        .expect("logged")
+        .1;
     // The height map alone doesn't switch parallax on.
     assert_eq!(
         line, "true 0.75 false Assets/Textures/Height.png true",
@@ -291,7 +295,10 @@ fn lua_switches_material_features() {
     );
     let draws = rendered(&scene, &root);
     use crate::render::material_v2::feature;
-    assert_eq!(draws[0].features(), feature::CLEARCOAT | feature::ANISOTROPY);
+    assert_eq!(
+        draws[0].features(),
+        feature::CLEARCOAT | feature::ANISOTROPY
+    );
     let e = draws[0].extras.as_ref().unwrap();
     assert!((e.values.coat[0] - 0.75).abs() < 1e-6);
     assert_eq!(e.values.aniso[0], -0.4);
