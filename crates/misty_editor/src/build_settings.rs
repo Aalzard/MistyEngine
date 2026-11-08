@@ -547,7 +547,9 @@ fn profile_page(ui: &mut Ui, s: &mut EditorState, i: usize) {
     if p.is_server() {
         section(ui, "Server");
         ui.weak(
-            "Textures, audio and video stay out of server builds, and nothing renders, so              the texture and quality overrides don't apply. The server listens on the scene's              Network Manager port (`--port N` overrides it).",
+            "Textures, audio and video stay out of server builds, and nothing renders, so the \
+             texture and quality overrides don't apply. The server listens on the scene's \
+             Network Manager port (`--port N` overrides it).",
         );
     } else {
         section(ui, "Texture Overrides");
