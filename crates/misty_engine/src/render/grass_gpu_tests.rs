@@ -609,8 +609,8 @@ impl Breakdown {
     }
 }
 
-/// Measure `view` at `size` with `quality`: 60 frames to settle, 60 timed as a whole, 60
-/// timed per part (pass timestamps).
+/// Measure `view` at `size` with `quality`: 60 frames to settle (`MISTY_SETTLE`), 60 timed as
+/// a whole, 60 timed per part (pass timestamps).
 pub(in crate::render) fn breakdown(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -625,10 +625,15 @@ pub(in crate::render) fn breakdown(
     let frame = view.frame();
     let mut totals = Vec::new();
     let mut cpu = Vec::new();
-    for i in 0..120 {
+    // `MISTY_SETTLE`: frames before the timing (60; Misty GI's levels settle after 128).
+    let settle: usize = std::env::var("MISTY_SETTLE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(60);
+    for i in 0..settle + 60 {
         r.render(device, queue, &target, &frame);
         let _ = device.poll(wgpu::PollType::wait_indefinitely());
-        if i >= 60 {
+        if i >= settle {
             if let Some(ms) = r.gpu_ms() {
                 totals.push(ms);
             }
@@ -800,7 +805,7 @@ fn grass_variants() {
             b.part("Main: grass depth"),
             b.part("Main: grass lit"),
             b.part("Grass near shadow map"),
-            b.part("AO prepass + GTAO"),
+            b.part("Screen-space prepass") + b.part("GTAO"),
             b.stats.triangles as f64 / 1e6
         );
     }

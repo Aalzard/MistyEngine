@@ -122,7 +122,7 @@ fn configs() -> Vec<Config> {
     for n in [10, 200] {
         add(
             format!("Decals x{n}"),
-            &["Decals", "AO prepass + GTAO"],
+            &["Decals", "Screen-space prepass", "GTAO"],
             &|v| v.environment.decals = scattered(n),
         );
     }

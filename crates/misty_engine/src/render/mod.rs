@@ -11,6 +11,7 @@ pub mod custom_shader;
 mod decals;
 mod draw_prep;
 pub mod environment;
+pub mod fast_paths;
 mod finish;
 mod frame_debug;
 mod frame_lists;
@@ -1710,7 +1711,7 @@ impl Renderer {
             )
         {
             self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
-            self.mark(&mut encoder, "AO prepass + GTAO");
+            self.mark(&mut encoder, "GTAO");
             self.decal_pass(device, queue, &mut encoder, ss);
             self.mark(&mut encoder, "Decals");
             // The virtual shadow map marks its pages from this single-sampled depth (cheaper
