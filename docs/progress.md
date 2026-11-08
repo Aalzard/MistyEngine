@@ -2512,3 +2512,27 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   colour in the far terrain beyond the grass draw distance (160 m in MeadowDemo).
 - Leaf cards seen edge-on still show stretched texture; linden and birch leaves are still a
   little schematic close up.
+
+## Post effects and decals (branch postfx, round 17)
+
+### Done (docs/pending/postfx.md)
+- Post-process Volume overrides, all off by default: **Depth of Field** (Gaussian; Bokeh with
+  focus distance, focal length, f-stop, blade count / curvature / rotation and Low / Medium /
+  High quality, half-resolution near and far fields), **Motion Blur** (per object and camera
+  from the motion vectors, intensity, maximum velocity, sample count, camera clamp) and **Auto
+  Exposure** (compute histogram, Average / Spot / Center Weighted metering, EV limits,
+  compensation, Fixed / Progressive adaptation). They run after TAA / the upscaler at the output
+  resolution; Inspector sections in the volume. The Scene view leaves motion blur out.
+- **Decal Projector** (GameObject ▸ Rendering ▸ Decal Projector): box-projected base colour with
+  opacity, normal, mask (metallic, occlusion, smoothness) and emission, angle and distance fades,
+  priority. Screen-space decals from the screen-space prepass's depth and normals, blended into
+  a per-pixel decal buffer that the lit shaders apply before lighting (URP's DBuffer idea in a
+  forward renderer). Meshes, virtual geometry and terrain. Inspector, gizmo, icons.
+- Procedural CC0 decal textures (dirt, moss, cracks, puddle) and the PostFxDemo sample scene.
+- Costs at 1080p: Gaussian DOF 0.27 ms, Bokeh 0.47 / 0.64 / 0.87 ms, motion blur 0.62 ms at 8
+  samples, auto exposure 0.03 ms, 200 decals 0.33 ms including the prepass they turn on.
+  Shots `docs/screenshots/gfx/postfx_*`. Golden shots unchanged.
+
+### Not done yet
+- Physical camera properties on the Camera for Bokeh focus; decal layers; decals on transparent
+  surfaces; local volumes, film grain, chromatic aberration and lens distortion.
