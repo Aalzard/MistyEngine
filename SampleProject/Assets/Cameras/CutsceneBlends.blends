@@ -1,0 +1,18 @@
+{
+  "blends": [
+    {
+      "from": "Wide Cam",
+      "to": "Free Look Cam",
+      "blend": {
+        "style": "Custom",
+        "duration": 2.5,
+        "curve": [
+          0.6,
+          0.0,
+          0.2,
+          1.0
+        ]
+      }
+    }
+  ]
+}

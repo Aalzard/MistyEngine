@@ -1,0 +1,46 @@
+{
+  "length": 10.0,
+  "loop": false,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -7.0
+        },
+        {
+          "time": 7.0,
+          "value": -1.6
+        },
+        {
+          "time": 10.0,
+          "value": -1.6
+        }
+      ]
+    },
+    {
+      "path": "",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "path": "",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.5
+        }
+      ]
+    }
+  ],
+  "events": []
+}

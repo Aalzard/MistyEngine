@@ -87,6 +87,8 @@ mod sample_character_animator;
 #[cfg(test)]
 mod sample_clouds;
 #[cfg(test)]
+mod sample_cutscene;
+#[cfg(test)]
 mod sample_cycles_room;
 #[cfg(test)]
 mod sample_foliage_lighting;
