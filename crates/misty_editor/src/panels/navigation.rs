@@ -1,15 +1,20 @@
-//! Navigation window (Window ▸ AI ▸ Navigation): Agents (radius, height, step, slope), Bake
-//! (advanced voxel settings, Clear / Bake with a progress line) and Object (Navigation Static of
-//! the selection). Bakes run on a worker thread; the result is saved as
-//! `<Scene folder>/<Scene>/NavMesh.navmesh` and referenced from the scene. While the window is
-//! shown the Scene view draws the nav mesh (see `nav_gizmos`).
+//! Navigation window (Window ▸ AI ▸ Navigation): **Agents** (agent types: radius, height, step,
+//! slope), **Areas** (32 named areas with path costs), **Bake** (the scene's Navigation Static
+//! bake for the Humanoid, Bake All Surfaces, progress) and **Object** (Navigation Static of the
+//! selection). Bakes run on the background pool, tile by tile; tiles whose input didn't change
+//! are reused. Results are saved next to the scene (`<Scene>/NavMesh.navmesh` and
+//! `<Scene>/NavMesh-<Surface>.navmesh`). While the window is shown, or a NavMesh Surface is
+//! selected, the Scene view draws the nav meshes coloured by area (see `nav_gizmos`).
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
 use std::time::Instant;
 
 use egui::{Color32, Grid, RichText, Stroke, Ui, pos2, vec2};
-use misty_engine::navigation::{self, NavMesh, NavigationSettings, geometry};
+use misty_engine::hecs::Entity;
+use misty_engine::navigation::{
+    self, AREA_COUNT, AgentSettings, NavArea, NavMesh, NavMeshSurface, NavigationSettings, geometry,
+};
 
 use crate::state::EditorState;
 
@@ -17,45 +22,79 @@ use crate::state::EditorState;
 enum Page {
     #[default]
     Agents,
+    Areas,
     Bake,
     Object,
 }
 
+type Shared<T> = Arc<Mutex<T>>;
+
 /// A bake in progress.
 struct BakeJob {
-    handle: JoinHandle<NavMesh>,
-    progress: Arc<Mutex<(f32, &'static str)>>,
+    result: Shared<Option<NavMesh>>,
+    progress: Shared<(f32, &'static str)>,
     /// Project path the result is saved to.
     target: String,
     objects: usize,
     started: Instant,
+    /// The surface being baked (None = the scene's Navigation Static bake).
+    surface: Option<Entity>,
+    previous: Option<Arc<NavMesh>>,
+}
+
+impl BakeJob {
+    fn progress(&self) -> (f32, &'static str) {
+        *self.progress.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn finished(&self) -> bool {
+        self.result
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+    }
 }
 
 /// Navigation window state (kept while the window is closed).
 pub struct NavigationWindow {
     /// Draw the nav mesh in the Scene view while the window is open.
     pub show_mesh: bool,
+    /// Draw tile borders.
+    pub show_tiles: bool,
+    /// Draw every agent's path in Play mode (not just the selected ones).
+    pub show_all_paths: bool,
     /// egui frame the window was last drawn in.
     pub seen_frame: Option<u64>,
     /// Last bake result or problem.
     pub status: String,
+    /// Agent type shown on the Agents page.
+    pub selected_agent: u32,
     job: Option<BakeJob>,
+    surface_jobs: Vec<BakeJob>,
+    surface_status: HashMap<Entity, String>,
 }
 
 impl Default for NavigationWindow {
     fn default() -> Self {
+        // `MISTY_NAV_TILES=1` / `MISTY_NAV_PATHS=1` turn the options on (screenshots).
         Self {
             show_mesh: true,
+            show_tiles: std::env::var_os("MISTY_NAV_TILES").is_some(),
+            show_all_paths: std::env::var_os("MISTY_NAV_PATHS").is_some(),
             seen_frame: None,
             status: String::new(),
+            selected_agent: 0,
             job: None,
+            surface_jobs: Vec::new(),
+            surface_status: HashMap::new(),
         }
     }
 }
 
 impl NavigationWindow {
+    /// Any bake running.
     pub fn baking(&self) -> bool {
-        self.job.is_some()
+        self.job.is_some() || !self.surface_jobs.is_empty()
     }
 }
 
@@ -65,10 +104,41 @@ pub fn is_open(state: &EditorState, ctx: &egui::Context) -> bool {
     state.navigation.seen_frame.is_some_and(|f| f + 1 >= now)
 }
 
-/// The open scene's baked nav mesh, if any.
+/// The open scene's Navigation Static nav mesh, if baked.
 pub fn current_mesh(state: &EditorState) -> Option<Arc<NavMesh>> {
     let rel = state.scene.navigation.nav_mesh.as_ref()?;
     navigation::store::load(&state.project.root.join(rel)).ok()
+}
+
+/// Baked data of every NavMesh Surface in the scene.
+pub fn surface_meshes(state: &EditorState) -> Vec<(Entity, Arc<NavMesh>)> {
+    let mut out = Vec::new();
+    for (e, _) in state.scene.walk() {
+        let Ok(s) = state.scene.world.get::<&NavMeshSurface>(e) else {
+            continue;
+        };
+        if let Some(rel) = &s.nav_mesh_data
+            && let Ok(m) = navigation::store::load(&state.project.root.join(rel))
+        {
+            out.push((e, m));
+        }
+    }
+    out
+}
+
+/// Bake progress of the surface on `e`.
+pub fn surface_progress(state: &EditorState, e: Entity) -> Option<(f32, &'static str)> {
+    state
+        .navigation
+        .surface_jobs
+        .iter()
+        .find(|j| j.surface == Some(e))
+        .map(BakeJob::progress)
+}
+
+/// Last bake result of the surface on `e`.
+pub fn surface_status(state: &EditorState, e: Entity) -> Option<&str> {
+    state.navigation.surface_status.get(&e).map(String::as_str)
 }
 
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
@@ -81,11 +151,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let mut page: Page = ui.data(|d| d.get_temp(id)).unwrap_or_default();
     ui.horizontal(|ui| {
         ui.selectable_value(&mut page, Page::Agents, "Agents");
+        ui.selectable_value(&mut page, Page::Areas, "Areas");
         ui.selectable_value(&mut page, Page::Bake, "Bake");
         ui.selectable_value(&mut page, Page::Object, "Object");
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.checkbox(&mut state.navigation.show_mesh, "Show NavMesh");
-        });
+    });
+    ui.horizontal(|ui| {
+        let n = &mut state.navigation;
+        ui.checkbox(&mut n.show_mesh, "Show NavMesh");
+        ui.checkbox(&mut n.show_tiles, "Show Tiles");
+        ui.checkbox(&mut n.show_all_paths, "Show All Agent Paths");
     });
     ui.data_mut(|d| d.insert_temp(id, page));
     ui.separator();
@@ -93,45 +167,162 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .auto_shrink([false, false])
         .show(ui, |ui| match page {
             Page::Agents => agents_page(ui, state),
+            Page::Areas => areas_page(ui, state),
             Page::Bake => bake_page(ui, state),
             Page::Object => object_page(ui, state),
         });
 }
 
-fn agents_page(ui: &mut Ui, state: &mut EditorState) {
-    let mut s = state.scene.navigation.clone();
-    ui.label(RichText::new("Humanoid").strong());
-    agent_diagram(ui, &s);
-    let changed = grid(ui, "nav_agent", |ui| {
-        let a = &mut s.agent;
-        let mut ch = number(ui, "Agent Radius", &mut a.radius, 0.01, 0.05, 50.0);
-        ch |= number(ui, "Agent Height", &mut a.height, 0.01, 0.1, 50.0);
-        ch |= number(ui, "Step Height", &mut a.step_height, 0.01, 0.0, 50.0);
-        ui.label("Max Slope");
-        ch |= ui
-            .add(egui::Slider::new(&mut a.max_slope, 0.0..=60.0).suffix("°"))
-            .changed();
-        ui.end_row();
-        ch
-    });
-    if changed {
+/// Apply an edited copy of the scene's navigation settings (undoable).
+fn commit(state: &mut EditorState, s: NavigationSettings) {
+    if s != state.scene.navigation {
         let label = crate::undo_names::struct_change("Navigation", &state.scene.navigation, &s);
         state.scene.navigation = s;
         state.mark_edited(&label);
     }
-    ui.add_space(6.0);
-    ui.weak("Bake again (Bake tab) after changing the agent.");
+}
+
+fn agents_page(ui: &mut Ui, state: &mut EditorState) {
+    let mut s = state.scene.navigation.clone();
+    let types = s.all_agent_types();
+    if !types
+        .iter()
+        .any(|t| t.id == state.navigation.selected_agent)
+    {
+        state.navigation.selected_agent = 0;
+    }
+    let mut selected = state.navigation.selected_agent;
+    ui.horizontal(|ui| {
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.set_min_width(140.0);
+            ui.vertical(|ui| {
+                for t in &types {
+                    ui.selectable_value(&mut selected, t.id, &t.name);
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("+").on_hover_text("Add an agent type").clicked() {
+                        selected = s.add_agent_type("New Agent");
+                    }
+                    let can_remove = selected != 0;
+                    if ui
+                        .add_enabled(can_remove, egui::Button::new("−"))
+                        .on_hover_text("Remove the selected agent type")
+                        .clicked()
+                    {
+                        s.agent_types.retain(|t| t.id != selected);
+                        selected = 0;
+                    }
+                });
+            });
+        });
+        ui.vertical(|ui| {
+            let name = s.agent_type_name(selected);
+            if selected == 0 {
+                ui.label(RichText::new("Humanoid").strong());
+            } else if let Some(t) = s.agent_types.iter_mut().find(|t| t.id == selected) {
+                ui.horizontal(|ui| {
+                    ui.label("Name");
+                    ui.text_edit_singleline(&mut t.name);
+                });
+            } else {
+                ui.label(name);
+            }
+            let mut a = s.agent_settings(selected).unwrap_or_default();
+            agent_diagram(ui, &a);
+            let changed = grid(ui, "nav_agent", |ui| {
+                let mut ch = number(ui, "Agent Radius", &mut a.radius, 0.01, 0.05, 50.0);
+                ch |= number(ui, "Agent Height", &mut a.height, 0.01, 0.1, 50.0);
+                ch |= number(ui, "Step Height", &mut a.step_height, 0.01, 0.0, 50.0);
+                ui.label("Max Slope");
+                ch |= ui
+                    .add(egui::Slider::new(&mut a.max_slope, 0.0..=60.0).suffix("°"))
+                    .changed();
+                ui.end_row();
+                ch
+            });
+            if changed {
+                if selected == 0 {
+                    s.agent = a;
+                } else if let Some(t) = s.agent_types.iter_mut().find(|t| t.id == selected) {
+                    t.settings = a;
+                }
+            }
+            ui.add_space(6.0);
+            ui.weak(format!(
+                "Agent type id {selected}. Bake again (Bake tab, or the NavMesh Surfaces) after \
+                 changing it."
+            ));
+        });
+    });
+    state.navigation.selected_agent = selected;
+    commit(state, s);
+}
+
+fn areas_page(ui: &mut Ui, state: &mut EditorState) {
+    let mut s = state.scene.navigation.clone();
+    ui.weak("Path cost per metre on each area. Built-in areas keep their names.");
+    Grid::new("nav_areas")
+        .num_columns(4)
+        .striped(true)
+        .spacing([10.0, 3.0])
+        .show(ui, |ui| {
+            ui.weak("");
+            ui.weak("");
+            ui.label(RichText::new("Name").strong());
+            ui.label(RichText::new("Cost").strong());
+            ui.end_row();
+            for i in 0..AREA_COUNT {
+                let mut a = s.area(i);
+                let builtin = i < 3;
+                ui.label(if builtin {
+                    format!("Built-in {i}")
+                } else {
+                    format!("User {i}")
+                });
+                let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), egui::Sense::hover());
+                let color = if a.name.is_empty() {
+                    Color32::from_gray(70)
+                } else {
+                    super::inspector::nav_area_color(i as u8)
+                };
+                ui.painter().rect_filled(rect, 2.0, color);
+                let mut ch = false;
+                if builtin {
+                    ui.label(&a.name);
+                } else {
+                    ch |= ui
+                        .add(egui::TextEdit::singleline(&mut a.name).desired_width(140.0))
+                        .changed();
+                }
+                if i == 1 {
+                    ui.weak("—");
+                } else {
+                    ch |= ui
+                        .add(
+                            egui::DragValue::new(&mut a.cost)
+                                .speed(0.05)
+                                .range(1.0..=1000.0)
+                                .max_decimals(2),
+                        )
+                        .changed();
+                }
+                ui.end_row();
+                if ch {
+                    s.set_area(i, NavArea { ..a });
+                }
+            }
+        });
+    commit(state, s);
 }
 
 /// Side view of the agent cylinder, its step and its steepest slope.
-fn agent_diagram(ui: &mut Ui, s: &NavigationSettings) {
+fn agent_diagram(ui: &mut Ui, a: &AgentSettings) {
     let (rect, _) = ui.allocate_exact_size(
         vec2(ui.available_width().min(320.0), 96.0),
         egui::Sense::hover(),
     );
     let p = ui.painter_at(rect);
     p.rect_filled(rect, 4.0, Color32::from_gray(40));
-    let a = s.agent;
     let ground = rect.bottom() - 14.0;
     // Pixels per metre: fit the taller of height and diameter.
     let scale = (70.0 / a.height.max(a.radius * 2.0).max(0.1)).min(60.0);
@@ -199,12 +390,14 @@ fn bake_page(ui: &mut Ui, state: &mut EditorState) {
         Some(m) => {
             let a = m.agent;
             ui.weak(format!(
-                "Radius {:.2}, Height {:.2}, Step {:.2}, Slope {:.0}° — {} polygons, {:.1} m²",
+                "Radius {:.2}, Height {:.2}, Step {:.2}, Slope {:.0}° — {} polygons in {} tiles, \
+                 {:.1} m²",
                 a.radius,
                 a.height,
                 a.step_height,
                 a.max_slope,
-                m.polys.len(),
+                m.poly_count(),
+                m.tiles().len(),
                 m.area()
             ));
         }
@@ -239,12 +432,32 @@ fn bake_page(ui: &mut Ui, state: &mut EditorState) {
             0.0,
             1000.0,
         );
+        ui.label("Tile Size");
+        let mut tiles = if s.tile_size == 0 {
+            navigation::DEFAULT_TILE_SIZE
+        } else {
+            s.tile_size
+        };
+        if ui
+            .add(
+                egui::DragValue::new(&mut tiles)
+                    .range(16..=1024)
+                    .suffix(" voxels"),
+            )
+            .changed()
+        {
+            s.tile_size = if tiles == navigation::DEFAULT_TILE_SIZE {
+                0
+            } else {
+                tiles
+            };
+            ch = true;
+        }
+        ui.end_row();
         ch
     });
     if changed {
-        let label = crate::undo_names::struct_change("Navigation", &state.scene.navigation, &s);
-        state.scene.navigation = s;
-        state.mark_edited(&label);
+        commit(state, s);
     }
     ui.add_space(8.0);
     let busy = state.navigation.baking() || state.play.in_play_mode();
@@ -259,17 +472,54 @@ fn bake_page(ui: &mut Ui, state: &mut EditorState) {
         if ui.add_enabled(!busy, egui::Button::new("Bake")).clicked() {
             start_bake(state);
         }
+        let surfaces = surface_entities(state);
+        if ui
+            .add_enabled(
+                !busy && !surfaces.is_empty(),
+                egui::Button::new(format!("Bake All Surfaces ({})", surfaces.len())),
+            )
+            .clicked()
+        {
+            for e in surfaces {
+                start_surface_bake(state, e);
+            }
+        }
     });
     if let Some(job) = &state.navigation.job {
-        let (f, stage) = *job.progress.lock().unwrap_or_else(|e| e.into_inner());
+        let (f, stage) = job.progress();
         ui.add(egui::ProgressBar::new(f).text(format!("Baking: {stage}…")));
     } else if !state.navigation.status.is_empty() {
         ui.weak(&state.navigation.status);
     }
+    for job in &state.navigation.surface_jobs {
+        let (f, stage) = job.progress();
+        let name = job
+            .surface
+            .filter(|e| state.scene.contains(*e))
+            .map_or_else(String::new, |e| state.scene.name(e));
+        ui.add(egui::ProgressBar::new(f).text(format!("{name}: {stage}…")));
+    }
     ui.add_space(6.0);
     ui.weak(
-        "Objects marked Static (see the Object tab) with a Mesh Renderer or Terrain are baked.",
+        "Bake: objects marked Navigation Static (see the Object tab) with a Mesh Renderer or \
+         Terrain, for the Humanoid. NavMesh Surfaces bake their own objects for any agent type.",
     );
+}
+
+fn surface_entities(state: &EditorState) -> Vec<Entity> {
+    state
+        .scene
+        .walk()
+        .into_iter()
+        .map(|(e, _)| e)
+        .filter(|e| {
+            state
+                .scene
+                .world
+                .get::<&NavMeshSurface>(*e)
+                .is_ok_and(|s| s.enabled)
+        })
+        .collect()
 }
 
 fn object_page(ui: &mut Ui, state: &mut EditorState) {
@@ -285,95 +535,188 @@ fn object_page(ui: &mut Ui, state: &mut EditorState) {
             state.scene.game_object_mut(t).is_static = on;
         }
     }
-    ui.weak("Same as the Static flag in the Inspector header.");
+    ui.weak(
+        "Same as the Static flag in the Inspector header. Add a NavMesh Modifier to give an \
+             object an area or leave it out of bakes.",
+    );
 }
 
-/// Start baking the open scene on a worker thread.
+/// Run a bake on the background pool.
+fn spawn_bake(
+    input: geometry::BuildInput,
+    settings: navigation::navmesh::BuildSettings,
+    previous: Option<Arc<NavMesh>>,
+    target: String,
+    surface: Option<Entity>,
+) -> BakeJob {
+    let objects = input.geometry.objects;
+    let progress = Arc::new(Mutex::new((0.0, "Collecting geometry")));
+    let result = Arc::new(Mutex::new(None));
+    let (p, r, prev) = (progress.clone(), result.clone(), previous.clone());
+    misty_engine::background::pool().spawn(move || {
+        let mesh = navigation::bake::bake(input, settings, prev.as_deref(), &|f, stage| {
+            *p.lock().unwrap_or_else(|e| e.into_inner()) = (f, stage);
+        });
+        *r.lock().unwrap_or_else(|e| e.into_inner()) = Some(mesh);
+    });
+    BakeJob {
+        result,
+        progress,
+        target,
+        objects,
+        started: Instant::now(),
+        surface,
+        previous,
+    }
+}
+
+/// Start baking the open scene's Navigation Static objects in the background.
 pub fn start_bake(state: &mut EditorState) {
-    if state.navigation.baking() {
+    if state.navigation.job.is_some() {
         return;
     }
     let Some(scene_path) = state.scene.active_path() else {
         state.navigation.status = "Save the scene before baking.".into();
         return;
     };
-    let geo = geometry::collect(&state.scene);
-    let objects = geo.objects;
-    let settings = state.scene.navigation.clone();
-    let progress = Arc::new(Mutex::new((0.0, "Collecting geometry")));
-    let shared = progress.clone();
-    let handle = std::thread::spawn(move || {
-        navigation::bake::bake(&geo, &settings, &mut |f, stage| {
-            *shared.lock().unwrap_or_else(|e| e.into_inner()) = (f, stage);
-        })
-    });
-    state.navigation.job = Some(BakeJob {
-        handle,
-        progress,
-        target: NavigationSettings::asset_path_for(&scene_path),
-        objects,
-        started: Instant::now(),
-    });
+    let input = geometry::collect_static(&state.scene);
+    let settings = navigation::bake::scene_settings(&input, &state.scene.navigation);
+    let target = NavigationSettings::asset_path_for(&scene_path);
+    let previous = navigation::store::load(&state.project.root.join(&target)).ok();
+    state.navigation.job = Some(spawn_bake(input, settings, previous, target, None));
 }
 
-/// Pick up a finished bake: save it and point the scene at it.
-pub fn poll(state: &mut EditorState) {
-    if !state
+/// Start baking the NavMesh Surface on `e` in the background.
+pub fn start_surface_bake(state: &mut EditorState, e: Entity) {
+    if state
         .navigation
-        .job
-        .as_ref()
-        .is_some_and(|j| j.handle.is_finished())
+        .surface_jobs
+        .iter()
+        .any(|j| j.surface == Some(e))
     {
         return;
     }
-    let job = state.navigation.job.take().expect("checked");
-    let secs = job.started.elapsed().as_secs_f32();
-    let mesh = match job.handle.join() {
-        Ok(m) => m,
-        Err(_) => {
-            state.navigation.status = "Bake failed.".into();
-            return;
+    let Ok(s) = state
+        .scene
+        .world
+        .get::<&NavMeshSurface>(e)
+        .map(|s| s.clone())
+    else {
+        return;
+    };
+    let Some(scene_path) = state.scene.active_path() else {
+        state
+            .navigation
+            .surface_status
+            .insert(e, "Save the scene before baking.".into());
+        return;
+    };
+    let input = geometry::collect_surface(&state.scene, e, &s);
+    let settings = navigation::bake::surface_settings(&input, &state.scene.navigation, &s);
+    let target = s.nav_mesh_data.clone().unwrap_or_else(|| {
+        NavigationSettings::surface_asset_path_for(&scene_path, &state.scene.name(e))
+    });
+    let previous = navigation::store::load(&state.project.root.join(&target)).ok();
+    let job = spawn_bake(input, settings, previous, target, Some(e));
+    state.navigation.surface_jobs.push(job);
+}
+
+/// Pick up finished bakes: save them and point the scene (or surface) at them.
+pub fn poll(state: &mut EditorState) {
+    if state.navigation.job.as_ref().is_some_and(BakeJob::finished) {
+        let job = state.navigation.job.take().expect("checked");
+        finish(state, job);
+    }
+    let mut i = 0;
+    while i < state.navigation.surface_jobs.len() {
+        if state.navigation.surface_jobs[i].finished() {
+            let job = state.navigation.surface_jobs.remove(i);
+            finish(state, job);
+        } else {
+            i += 1;
         }
+    }
+}
+
+fn finish(state: &mut EditorState, job: BakeJob) {
+    let secs = job.started.elapsed().as_secs_f32();
+    let Some(mesh) = job.result.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+        return;
     };
     let path = state.project.root.join(&job.target);
+    let report = |state: &mut EditorState, msg: String| match job.surface {
+        Some(e) => {
+            state.navigation.surface_status.insert(e, msg);
+        }
+        None => state.navigation.status = msg,
+    };
     if let Err(e) = mesh.save(&path) {
-        state.navigation.status = format!("Could not save the nav mesh: {e}");
+        report(state, format!("Could not save the nav mesh: {e}"));
         return;
     }
-    state.navigation.status = format!(
-        "Baked {} polygons ({:.1} m²) from {} static objects in {secs:.1} s → {}",
-        mesh.polys.len(),
-        mesh.area(),
-        job.objects,
-        job.target
-    );
-    if mesh.is_empty() {
-        state.navigation.status =
-            "Nothing walkable: mark floors Static (Object tab) and bake again.".into();
-    }
+    let reused = job
+        .previous
+        .as_deref()
+        .map_or(0, |p| navigation::bake::reused_tiles(p, &mesh));
+    let msg = if mesh.is_empty() {
+        "Nothing walkable: check the collected objects and bake again.".to_owned()
+    } else {
+        format!(
+            "Baked {} polygons in {} tiles ({} reused, {:.1} m²) from {} objects in {secs:.2} s → {}",
+            mesh.poly_count(),
+            mesh.tiles().len(),
+            reused,
+            mesh.area(),
+            job.objects,
+            job.target
+        )
+    };
+    report(state, msg);
     navigation::store::insert(&path, Arc::new(mesh));
-    if state.scene.navigation.nav_mesh.as_deref() != Some(job.target.as_str()) {
-        state.record("Bake NavMesh");
-        state.scene.navigation.nav_mesh = Some(job.target);
+    match job.surface {
+        None => {
+            if state.scene.navigation.nav_mesh.as_deref() != Some(job.target.as_str()) {
+                state.record("Bake NavMesh");
+                state.scene.navigation.nav_mesh = Some(job.target);
+            }
+        }
+        Some(e) => {
+            let current = state
+                .scene
+                .world
+                .get::<&NavMeshSurface>(e)
+                .ok()
+                .map(|s| s.nav_mesh_data.clone());
+            if let Some(current) = current
+                && current.as_deref() != Some(job.target.as_str())
+            {
+                state.record("Bake NavMesh Surface");
+                if let Ok(mut s) = state.scene.world.get::<&mut NavMeshSurface>(e) {
+                    s.nav_mesh_data = Some(job.target);
+                }
+            }
+        }
     }
     state.refresh_assets();
 }
 
-/// Wait for a running bake (tests).
+/// Wait for running bakes (tests).
 #[cfg(test)]
 pub fn finish_bake(state: &mut EditorState) {
     while state.navigation.baking() {
-        if state
-            .navigation
-            .job
-            .as_ref()
-            .is_some_and(|j| j.handle.is_finished())
-        {
-            poll(state);
-        } else {
-            std::thread::yield_now();
-        }
+        poll(state);
+        std::thread::yield_now();
     }
+}
+
+/// Remove `rel` (to the Recycle Bin when possible).
+fn remove_asset(state: &EditorState, rel: &str) -> bool {
+    let path = state.project.root.join(rel);
+    if path.exists() && trash::delete(&path).is_err() && std::fs::remove_file(&path).is_err() {
+        return false;
+    }
+    navigation::store::forget(&path);
+    true
 }
 
 /// Remove the baked asset and the scene's reference to it.
@@ -381,16 +724,39 @@ pub fn clear(state: &mut EditorState) {
     let Some(rel) = state.scene.navigation.nav_mesh.clone() else {
         return;
     };
-    let path = state.project.root.join(&rel);
-    // To the Recycle Bin when possible.
-    if path.exists() && trash::delete(&path).is_err() && std::fs::remove_file(&path).is_err() {
+    if !remove_asset(state, &rel) {
         state.navigation.status = format!("Could not remove {rel}.");
         return;
     }
-    navigation::store::forget(&path);
     state.record("Clear NavMesh");
     state.scene.navigation.nav_mesh = None;
     state.navigation.status = "Cleared.".into();
+    state.refresh_assets();
+}
+
+/// Remove a surface's baked data.
+pub fn clear_surface(state: &mut EditorState, e: Entity) {
+    let Some(rel) = state
+        .scene
+        .world
+        .get::<&NavMeshSurface>(e)
+        .ok()
+        .and_then(|s| s.nav_mesh_data.clone())
+    else {
+        return;
+    };
+    if !remove_asset(state, &rel) {
+        state
+            .navigation
+            .surface_status
+            .insert(e, format!("Could not remove {rel}."));
+        return;
+    }
+    state.record("Clear NavMesh Surface");
+    if let Ok(mut s) = state.scene.world.get::<&mut NavMeshSurface>(e) {
+        s.nav_mesh_data = None;
+    }
+    state.navigation.surface_status.insert(e, "Cleared.".into());
     state.refresh_assets();
 }
 
@@ -418,105 +784,5 @@ fn number(ui: &mut Ui, label: &str, v: &mut f32, speed: f64, min: f32, max: f32)
 }
 
 #[cfg(test)]
-mod tests {
-    use egui_kittest::Harness;
-    use egui_kittest::kittest::Queryable;
-    use glam::Vec3;
-    use misty_engine::scene::{MeshFilter, MeshRenderer, PrimitiveMesh, Transform};
-
-    use super::*;
-    use crate::actions::Action;
-    use crate::layout::Tab;
-    use crate::project::ProjectBrowser;
-
-    fn state(name: &str) -> EditorState {
-        let root = std::env::temp_dir().join(name);
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("Assets/Scenes")).unwrap();
-        EditorState::new(ProjectBrowser::open(root))
-    }
-
-    /// A saved scene with a static 10 m floor.
-    fn floor_state(name: &str) -> EditorState {
-        let mut s = state(name);
-        let f = s.scene.spawn("Floor", None);
-        let mut t = Transform::from_position(Vec3::new(0.0, -0.5, 0.0));
-        t.scale = Vec3::new(10.0, 1.0, 10.0);
-        s.scene.set_transform(f, t);
-        s.scene.add(f, MeshFilter::primitive(PrimitiveMesh::Cube));
-        s.scene.add(f, MeshRenderer::default());
-        s.scene.game_object_mut(f).is_static = true;
-        s.scene.set_scene_path(0, "Assets/Scenes/Level.scene");
-        s
-    }
-
-    #[test]
-    fn window_menu_opens_the_navigation_window() {
-        let mut h = Harness::builder().with_size([900.0, 600.0]).build_ui_state(
-            |ui, s: &mut EditorState| crate::menu_bar::show(ui, s),
-            state("misty_navigation_menu_test"),
-        );
-        h.run();
-        h.get_by_label("Window").click();
-        h.run();
-        h.get_by_label("AI ⏵").hover();
-        h.run();
-        h.get_by_label("Navigation").click();
-        h.run();
-        let actions = std::mem::take(&mut h.state_mut().actions);
-        assert!(
-            matches!(actions.as_slice(), [Action::FocusTab(Tab::Navigation)]),
-            "{actions:?}"
-        );
-    }
-
-    #[test]
-    fn bake_button_saves_the_nav_mesh_next_to_the_scene() {
-        let mut h = Harness::builder().with_size([520.0, 640.0]).build_ui_state(
-            |ui, s: &mut EditorState| show(ui, s),
-            floor_state("misty_navigation_bake_test"),
-        );
-        h.run();
-        h.get_by_label("Agent Radius");
-        h.get_all_by_label("Bake").next().unwrap().click();
-        h.run();
-        h.get_by_label("Not baked yet.");
-        h.get_all_by_label("Bake").last().unwrap().click();
-        // The window repaints while baking.
-        h.step();
-        finish_bake(h.state_mut());
-        h.run();
-        let rel = "Assets/Scenes/Level/NavMesh.navmesh";
-        {
-            let s = h.state();
-            assert_eq!(s.scene.navigation.nav_mesh.as_deref(), Some(rel));
-            assert!(s.project.root.join(rel).is_file());
-            assert!(s.scene_dirty);
-            assert!(
-                s.navigation.status.starts_with("Baked"),
-                "{}",
-                s.navigation.status
-            );
-            let mesh = current_mesh(s).unwrap();
-            assert!((mesh.area() - 81.0).abs() < 4.0, "{}", mesh.area());
-            // The overlay draws while the window is open.
-            let mut lines = crate::gizmos::Lines::default();
-            let tris = crate::gizmos::nav_overlay(s, &h.ctx, &mut lines);
-            assert!(!tris.is_empty() && !lines.0.is_empty());
-        }
-        h.get_by_label("Clear").click();
-        h.run();
-        let s = h.state();
-        assert!(s.scene.navigation.nav_mesh.is_none());
-        assert!(!s.project.root.join(rel).exists());
-    }
-
-    #[test]
-    fn baking_needs_a_saved_scene() {
-        let mut s = floor_state("misty_navigation_unsaved_test");
-        s.scene.forget_scene_path(0);
-        start_bake(&mut s);
-        assert!(!s.navigation.baking());
-        assert!(s.navigation.status.contains("Save the scene"));
-    }
-}
+#[path = "navigation_tests.rs"]
+mod tests;

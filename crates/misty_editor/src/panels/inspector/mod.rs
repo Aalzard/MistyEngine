@@ -26,6 +26,7 @@ mod mixed;
 mod mixer_inspector;
 mod model_settings;
 mod nav_editors;
+pub use nav_editors::area_color32 as nav_area_color;
 mod net_editors;
 mod occlusion_editors;
 mod overrides;
