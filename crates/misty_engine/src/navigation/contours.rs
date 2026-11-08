@@ -76,18 +76,18 @@ fn corner_height(f: &CompactField, i: u32, d: usize) -> f32 {
 pub(super) fn build(f: &CompactField, r: &Regions, s: Simplify) -> Vec<Contour> {
     let n = f.cells.len();
     // Boundary edges still to walk, per cell.
-    let mut flags = vec![0u8; n];
-    for i in 0..n {
-        let reg = r.of_cell[i];
-        if reg == 0 {
-            continue;
-        }
-        for d in 0..4 {
-            if neighbour_region(f, r, i as u32, d) != reg {
-                flags[i] |= 1 << d;
+    let flags: Vec<u8> = (0..n)
+        .map(|i| {
+            let reg = r.of_cell[i];
+            if reg == 0 {
+                return 0;
             }
-        }
-    }
+            (0..4)
+                .filter(|&d| neighbour_region(f, r, i as u32, d) != reg)
+                .fold(0u8, |m, d| m | (1 << d))
+        })
+        .collect();
+    let mut flags = flags;
     let mut done = vec![false; r.count()];
     let mut out = Vec::new();
     for i in 0..n {

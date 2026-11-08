@@ -66,7 +66,7 @@ fn carving_rebuilds_only_the_tiles_it_touches() {
     nav.update(&mut s, 1.0 / 60.0);
     let rebuilt = nav.stats.tiles_rebuilt;
     assert!(
-        rebuilt >= 1 && rebuilt <= 4,
+        (1..=4).contains(&rebuilt),
         "{rebuilt} of {tiles} tiles rebuilt"
     );
     let m = nav.mesh().unwrap();
@@ -356,7 +356,7 @@ fn runtime_surface_updates_rebuild_changed_tiles() {
     assert!(nav.rebuild_surface(&s, surface, false));
     nav.finish_rebuilds(&s);
     let changed = nav.stats.tiles_rebuilt - built;
-    assert!(changed >= 1 && changed <= 4, "{changed} of {tiles}");
+    assert!((1..=4).contains(&changed), "{changed} of {tiles}");
     assert!(
         nav.mesh()
             .unwrap()

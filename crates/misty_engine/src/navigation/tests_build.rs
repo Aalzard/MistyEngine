@@ -152,7 +152,7 @@ fn partial_rebake_reuses_untouched_tiles() {
     let moved = bake::bake(static_input(&s), cfg(&s), Some(&first), &|_, _| {});
     let rebuilt = moved.tiles().len() - bake::reused_tiles(&first, &moved);
     assert!(
-        rebuilt >= 1 && rebuilt <= 4,
+        (1..=4).contains(&rebuilt),
         "{rebuilt} of {} tiles",
         moved.tiles().len()
     );

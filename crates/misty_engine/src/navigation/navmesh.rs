@@ -551,7 +551,8 @@ impl NavMesh {
         let climb = self.settings.agent.step_height.max(0.05) + 1e-3;
         let tile = Arc::make_mut(&mut self.tiles[ti as usize]);
         let key = |v: Vec3| (v.x.to_bits(), v.z.to_bits());
-        let mut edges: HashMap<((u32, u32), (u32, u32)), Vec<(usize, usize)>> = HashMap::new();
+        type Key = (u32, u32);
+        let mut edges: HashMap<(Key, Key), Vec<(usize, usize)>> = HashMap::new();
         for (pi, p) in tile.polys.iter().enumerate() {
             let n = p.vertices.len();
             for k in 0..n {

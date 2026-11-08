@@ -168,7 +168,8 @@ fn merge(v: &[Vert], tris: Vec<[usize; 3]>) -> Vec<Vec<usize>> {
     let mut polys: Vec<Vec<usize>> = tris.into_iter().map(|t| t.to_vec()).collect();
     let key = |i: usize| (v[i].x, v[i].z);
     loop {
-        let mut edges: HashMap<((i32, i32), (i32, i32)), usize> = HashMap::new();
+        type Key = (i32, i32);
+        let mut edges: HashMap<(Key, Key), usize> = HashMap::new();
         for (p, poly) in polys.iter().enumerate() {
             for k in 0..poly.len() {
                 edges.insert((key(poly[k]), key(poly[(k + 1) % poly.len()])), p);

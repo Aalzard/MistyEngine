@@ -630,8 +630,9 @@ impl NavRuntime {
     /// surface's tiles in the background (only those whose input changed unless `full`). A
     /// surface without baked data gets a mesh.
     pub fn rebuild_surface(&mut self, scene: &Scene, e: Entity, full: bool) -> bool {
-        let Ok(s) = scene.world.get::<&NavMeshSurface>(e).map(|s| s.clone()) else {
-            return false;
+        let s = match scene.world.get::<&NavMeshSurface>(e) {
+            Ok(s) => (*s).clone(),
+            Err(_) => return false,
         };
         let i = match self
             .meshes
@@ -856,8 +857,9 @@ impl NavRuntime {
         // 2. Avoidance.
         let new_vel = self.avoid(&states, &agents, &footprints, dt);
         // 3. Move.
+        let comp_of: HashMap<Entity, &NavMeshAgent> = agents.iter().map(|(e, a)| (*e, a)).collect();
         for ((e, mut st), v) in states.into_iter().zip(new_vel) {
-            let comp = &agents.iter().find(|(a, _)| *a == e).expect("agent").1;
+            let comp = comp_of[&e];
             if st.link.is_some() {
                 self.traverse(e, &mut st, comp, dt);
                 if st.link.as_ref().is_none_or(|l| l.auto) {
@@ -1032,6 +1034,12 @@ impl NavRuntime {
                 )
             })
             .collect();
+        // Bodies bucketed in 4 m cells for the neighbour search.
+        let cell_of = |p: Vec2| ((p.x / 4.0).floor() as i32, (p.y / 4.0).floor() as i32);
+        let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+        for (j, b) in bodies.iter().enumerate() {
+            grid.entry(cell_of(b.1.position)).or_default().push(j);
+        }
         states
             .iter()
             .enumerate()
@@ -1050,10 +1058,15 @@ impl NavRuntime {
                     return pref;
                 }
                 let me = bodies[i].1;
-                let range = c.speed * horizon + c.radius * 2.0 + 1.0;
-                let mut near: Vec<(f32, orca::Body, f32)> = bodies
-                    .iter()
-                    .enumerate()
+                // Neighbours within the horizon, at most twelve radii away.
+                let range = (c.speed * horizon).min(c.radius * 12.0) + c.radius * 2.0 + 1.0;
+                let (x0, z0) = cell_of(me.position - Vec2::splat(range));
+                let (x1, z1) = cell_of(me.position + Vec2::splat(range));
+                let mut near: Vec<(f32, orca::Body, f32)> = (z0..=z1)
+                    .flat_map(|z| (x0..=x1).map(move |x| (x, z)))
+                    .filter_map(|k| grid.get(&k))
+                    .flatten()
+                    .map(|&j| (j, &bodies[j]))
                     .filter(|(j, b)| {
                         *j != i && b.5 && (b.2 - st.position.y).abs() < c.height.max(b.4)
                     })

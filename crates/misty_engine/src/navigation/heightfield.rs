@@ -424,12 +424,12 @@ pub(super) fn erode(f: &mut CompactField, radius: f32) {
     }
     let mut dist = vec![u32::MAX; n];
     let mut heap = BinaryHeap::new();
-    for i in 0..n {
+    for (i, d) in dist.iter_mut().enumerate() {
         if f.cells[i].area == NULL_AREA {
             continue;
         }
-        if (0..4).any(|d| f.neighbour(i as u32, d).is_none()) {
-            dist[i] = 0;
+        if (0..4).any(|k| f.neighbour(i as u32, k).is_none()) {
+            *d = 0;
             heap.push(Reverse((0u32, i as u32)));
         }
     }

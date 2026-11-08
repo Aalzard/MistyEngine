@@ -21,7 +21,7 @@ const OBSTACLE: [f32; 4] = [0.95, 0.55, 0.3, 0.9];
 const CARVE: [f32; 4] = [1.0, 0.3, 0.25, 0.95];
 const VOLUME: [f32; 4] = [0.4, 1.0, 0.6, 0.9];
 const LINK: [f32; 4] = [1.0, 0.85, 0.3, 1.0];
-const TILE: [f32; 4] = [0.15, 0.2, 0.3, 0.7];
+const TILE: [f32; 4] = [1.0, 1.0, 1.0, 0.75];
 const PATH: [f32; 4] = [1.0, 0.85, 0.2, 1.0];
 /// Fill and edge opacity of the overlay.
 const FILL_ALPHA: f32 = 0.4;

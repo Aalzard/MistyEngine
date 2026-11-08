@@ -148,7 +148,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         ui.ctx().request_repaint();
     }
     let id = ui.id().with("navigation_page");
-    let mut page: Page = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    let mut page: Page = ui.data(|d| d.get_temp(id)).unwrap_or_else(env_page);
     ui.horizontal(|ui| {
         ui.selectable_value(&mut page, Page::Agents, "Agents");
         ui.selectable_value(&mut page, Page::Areas, "Areas");
@@ -171,6 +171,16 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             Page::Bake => bake_page(ui, state),
             Page::Object => object_page(ui, state),
         });
+}
+
+/// `MISTY_NAV_PAGE=areas` (agents / areas / bake / object) opens that page first (screenshots).
+fn env_page() -> Page {
+    match std::env::var("MISTY_NAV_PAGE").as_deref() {
+        Ok("areas") => Page::Areas,
+        Ok("bake") => Page::Bake,
+        Ok("object") => Page::Object,
+        _ => Page::Agents,
+    }
 }
 
 /// Apply an edited copy of the scene's navigation settings (undoable).
@@ -596,13 +606,9 @@ pub fn start_surface_bake(state: &mut EditorState, e: Entity) {
     {
         return;
     }
-    let Ok(s) = state
-        .scene
-        .world
-        .get::<&NavMeshSurface>(e)
-        .map(|s| s.clone())
-    else {
-        return;
+    let s = match state.scene.world.get::<&NavMeshSurface>(e) {
+        Ok(s) => (*s).clone(),
+        Err(_) => return,
     };
     let Some(scene_path) = state.scene.active_path() else {
         state
@@ -621,8 +627,30 @@ pub fn start_surface_bake(state: &mut EditorState, e: Entity) {
     state.navigation.surface_jobs.push(job);
 }
 
+/// `MISTY_NAV_VIEW=x,y,z,pitch,yaw` puts the Scene view camera there once, a few frames in
+/// (after the scene has loaded; screenshots).
+fn apply_env_view(state: &mut EditorState) {
+    static FRAMES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    if FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) != 5 {
+        return;
+    }
+    let Ok(v) = std::env::var("MISTY_NAV_VIEW") else {
+        return;
+    };
+    let n: Vec<f32> = v.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+    if let [x, y, z, pitch, yaw] = n[..] {
+        let t =
+            misty_engine::scene::Transform::default().with_euler(glam::Vec3::new(pitch, yaw, 0.0));
+        state
+            .scene_view
+            .camera
+            .align_to(glam::Vec3::new(x, y, z), t.rotation);
+    }
+}
+
 /// Pick up finished bakes: save them and point the scene (or surface) at them.
 pub fn poll(state: &mut EditorState) {
+    apply_env_view(state);
     if state.navigation.job.as_ref().is_some_and(BakeJob::finished) {
         let job = state.navigation.job.take().expect("checked");
         finish(state, job);
