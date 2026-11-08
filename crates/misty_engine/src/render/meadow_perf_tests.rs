@@ -121,7 +121,8 @@ fn meadow_perf_shots() {
             };
             let mut r = Renderer::with_queue(&device, &queue);
             r.set_quality(&device, &quality);
-            let target = r.create_target(&device, w, h);
+            // A view target: the level's Upscaling applies (native when it is Off).
+            let target = r.create_view_target(&device, w, h);
             let frame = view.frame();
             for _ in 0..frames {
                 r.render(&device, &queue, &target, &frame);
