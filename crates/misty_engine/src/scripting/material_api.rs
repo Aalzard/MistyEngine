@@ -279,6 +279,20 @@ fn keyword(m: &Material, k: &str) -> bool {
     }
 }
 
+/// Turn a switchable keyword on or off (`_EMISSION`, the Standard Lit v2 feature sections).
+fn switch_keyword(m: &mut Material, k: &str, on: bool) {
+    let f = &mut m.features;
+    match k {
+        "_EMISSION" => m.emission_enabled = on,
+        "_DETAIL_MULX2" => f.detail.enabled = on,
+        "_PARALLAXMAP" => f.parallax.enabled = on,
+        "_CLEARCOAT" => f.clear_coat.enabled = on,
+        "_TRANSLUCENCY" => f.translucency.enabled = on,
+        "_ANISOTROPY" => f.anisotropy.enabled = on,
+        _ => {}
+    }
+}
+
 /// x, y of a Vector3 (z ignored) or a `{ x = …, y = … }` table.
 fn vec2(v: Value, lua: &Lua) -> Result<[f32; 2]> {
     match v {
@@ -376,20 +390,13 @@ impl UserData for LMaterial {
         m.add_method("IsKeywordEnabled", |lua, m, k: String| {
             get(lua, &m.0, |mat| keyword(mat, &k))
         });
-        // Only `_EMISSION` is a switch; the other keywords follow the material's settings.
+        // `_EMISSION` and the feature keywords are switches; the other keywords follow the
+        // material's settings.
         m.add_method("EnableKeyword", |lua, m, k: String| {
-            set(lua, &m.0, |mat| {
-                if k == "_EMISSION" {
-                    mat.emission_enabled = true;
-                }
-            })
+            set(lua, &m.0, |mat| switch_keyword(mat, &k, true))
         });
         m.add_method("DisableKeyword", |lua, m, k: String| {
-            set(lua, &m.0, |mat| {
-                if k == "_EMISSION" {
-                    mat.emission_enabled = false;
-                }
-            })
+            set(lua, &m.0, |mat| switch_keyword(mat, &k, false))
         });
         m.add_meta_method(MetaMethod::Eq, |_, a, b: LMaterial| Ok(a.0 == b.0));
         m.add_meta_method(MetaMethod::ToString, |lua, m, ()| {
