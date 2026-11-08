@@ -745,6 +745,8 @@ impl Renderer {
 }
 
 #[cfg(test)]
+mod cost_tests;
+#[cfg(test)]
 mod gpu_tests;
 
 #[cfg(test)]

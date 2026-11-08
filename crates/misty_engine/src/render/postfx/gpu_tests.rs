@@ -262,7 +262,6 @@ fn motion_blur_follows_the_camera_and_moving_objects() {
             camera_clamp: 0.2,
             maximum_velocity: 0.2,
             sample_count: 16,
-            ..Default::default()
         },
         ..Default::default()
     };
