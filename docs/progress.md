@@ -2686,3 +2686,28 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Cheaper sharp sun shafts; the walking cost of Misty GI (toroidal clipmap scrolling would
   keep settled probes); the terrain's shadow lookups where the shadow mask can't serve them.
+
+## Round 19A — uGUI parity (branch r19-ui)
+
+### Done (docs/pending/r19-ui.md)
+- Canvas render modes: Screen Space - Overlay, Screen Space - Camera (Render Camera, Plane Distance; unlit,
+  sorted with the scene by depth) and World Space (placed by the Transform, sized by the Rect Transform,
+  drawn with depth in the UI pass and clicked through the camera). Canvas Scaler: Constant Pixel Size, Scale
+  With Screen Size (Match Width Or Height, Expand, Shrink), Constant Physical Size, Dynamic Pixels Per Unit.
+- Image types: Simple, Sliced (9-slice borders from the sprite import settings, edited there with preview
+  lines), Tiled, Filled (horizontal, vertical, radial 90 / 180 / 360 with origin, amount, direction),
+  Preserve Aspect. Canvas Group, Aspect Ratio Fitter. Rect Transforms turn and scale with the Transform.
+- Navigation: Selectable Navigation (None, Horizontal, Vertical, Automatic, Explicit, wrap around, Visualize),
+  Event System First Selected, Submit, Cancel and move repeat, driven by the Input System's UI map (the Event
+  System's Actions Asset or the default UI actions) with the Input Manager as fallback.
+- Scene view: every canvas drawn (2D and 3D), outlines, click to select UI, Rect tool handles (resize, move,
+  rotate, pivot, anchors).
+- Font assets: SDF or smooth raster atlases, sampling size, padding, fallback fonts, with an Inspector preview;
+  used by Text and rich text.
+- Lua: Image fill / type, Canvas, CanvasGroup, AspectRatioFitter. Sample `UIShowcase` (gamepad menu, radial
+  health ring, sliced panels, World Space sign, Screen Space - Camera HUD). Screenshots
+  `docs/screenshots/r19/ui_*`.
+
+### Not done yet
+- No scripted selection (`SetSelectedGameObject`), no Blocking Objects for world canvases, rotated sliders map
+  the pointer unrotated, no draggable border handles in the import preview, no baked-charset font assets.
