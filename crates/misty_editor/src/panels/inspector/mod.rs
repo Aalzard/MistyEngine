@@ -65,6 +65,7 @@ mod video_editors;
 mod visual_effect;
 mod water;
 mod wind_editors;
+mod world_partition_editors;
 
 use egui::{RichText, Ui};
 use misty_engine::hecs::Entity;

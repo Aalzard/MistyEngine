@@ -39,6 +39,7 @@ pub mod tile_palette;
 pub mod timeline;
 pub mod undo_history;
 pub mod world_builder;
+pub mod world_partition;
 
 #[cfg(test)]
 pub use game::stats_lines as game_stats_lines;
@@ -95,6 +96,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::CodeEditor => code_editor::show(ui, self.state),
             Tab::Profiler => profiler::show(ui, self.state),
             Tab::WorldBuilder => world_builder::show(ui, self.state),
+            Tab::WorldPartition => world_partition::show(ui, self.state),
             Tab::UndoHistory => undo_history::show(ui, self.state),
             Tab::Timeline => timeline::show(ui, self.state),
             Tab::TilePalette => tile_palette::show(ui, self.state),

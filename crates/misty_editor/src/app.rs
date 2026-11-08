@@ -586,6 +586,10 @@ impl EditorApp {
             if crate::particle_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();
             }
+            // World Partition cells loaded by hand or around the Scene camera.
+            if crate::panels::world_partition::tick(s) {
+                ctx.request_repaint();
+            }
             // Visual Effects simulate in the Scene view while editing.
             if crate::vfx_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();

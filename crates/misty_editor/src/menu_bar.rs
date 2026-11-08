@@ -574,6 +574,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         let tab = Tab::WorldBuilder;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
+    sub(ui, "World", |ui| {
+        let tab = Tab::WorldPartition;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
     ui.menu_button("Analysis", |ui| {
         for tab in [Tab::Profiler, Tab::FrameDebugger, Tab::MemoryProfiler] {
             item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
