@@ -602,6 +602,8 @@ impl EditorApp {
             if crate::live_reload::frame(s, renderer_reloaded) {
                 ctx.request_repaint();
             }
+            // Prefab Mode's Auto Save.
+            crate::prefab_mode::update(s, ctx);
             return;
         }
         // Clicking outside the Game view gives keyboard/mouse back to the editor (not while
@@ -671,6 +673,12 @@ impl EditorApp {
         let closing = ctx.input(|i| i.viewport().close_requested());
         if closing && s.code_editor.cancel_close() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        } else if closing && !s.files.quit_confirmed && crate::prefab_mode::active(s) {
+            // Leave Prefab Mode first (Auto Save saves, otherwise its bar asks), then close.
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            if crate::prefab_mode::leave_for_scene_change(s) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         } else if closing && !s.files.quit_confirmed {
             if s.play.in_play_mode() {
                 play::stop(s);

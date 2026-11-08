@@ -85,7 +85,24 @@ fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
 
 /// Right-click menu of an asset or folder.
 pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Requests) {
-    ui.menu_button("Create", |ui| create_items(ui, &mut req.actions));
+    ui.menu_button("Create", |ui| {
+        create_items(ui, &mut req.actions);
+        // Create ▸ Prefab Variant of the prefab (or model) right-clicked.
+        if let Some(r) = rel
+            .as_ref()
+            .filter(|r| r.ends_with(".prefab") || misty_engine::models::is_model(r))
+        {
+            ui.separator();
+            if ui
+                .button("Prefab Variant")
+                .on_hover_text("A new prefab that inherits from this one")
+                .clicked()
+            {
+                req.actions.push(Action::CreatePrefabVariant(r.clone()));
+                ui.close();
+            }
+        }
+    });
     let p = path.to_path_buf();
     if ui.button(explorer_label()).clicked() {
         req.actions.push(Action::ShowInExplorer(p.clone()));

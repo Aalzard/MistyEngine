@@ -398,6 +398,8 @@ pub struct EditorState {
     pub live: crate::live_reload::LiveReload,
     /// Editor scripts (`Editor` folders): menu items, tool windows, Inspectors, gizmos.
     pub editor_scripts: crate::editor_scripts::EditorScripts,
+    /// Prefab Mode levels, outermost first (empty: editing the scenes).
+    pub prefab_stages: Vec<crate::prefab_mode::PrefabStage>,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
 }
@@ -516,6 +518,7 @@ impl EditorState {
             tutorials: Default::default(),
             live: Default::default(),
             editor_scripts: crate::editor_scripts::EditorScripts::new(&root),
+            prefab_stages: Vec::new(),
             actions: Vec::new(),
         };
         crate::project_settings::load(&mut s);

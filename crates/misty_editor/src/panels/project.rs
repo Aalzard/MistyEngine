@@ -174,9 +174,10 @@ pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
     let Some(path) = opened else { return };
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     if ext == misty_engine::scene::prefab::EXTENSION {
-        state
-            .console
-            .info("Prefab Mode is not available yet: edit an instance and use Apply All.");
+        state.push(Action::OpenPrefab {
+            path: state.assets.relative(&path),
+            from: None,
+        });
     } else if ext == misty_engine::scene::file::EXTENSION {
         state.push(Action::OpenScenePath(state.assets.relative(&path)));
     } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {

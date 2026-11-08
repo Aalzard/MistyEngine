@@ -35,6 +35,10 @@ pub const WARN: Color32 = Color32::from_rgb(230, 180, 60);
 /// Names of prefab instances in the Hierarchy (and the prefab icon).
 pub const PREFAB: Color32 = Color32::from_rgb(123, 174, 250);
 pub const PREFAB_DIM: Color32 = Color32::from_rgb(78, 108, 155);
+/// Instances whose prefab file is gone ("Missing Prefab").
+pub const MISSING_PREFAB: Color32 = Color32::from_rgb(232, 96, 86);
+/// The bar beside overridden values in the Inspector, and added objects' badge.
+pub const OVERRIDE: Color32 = Color32::from_rgb(64, 150, 255);
 pub const PLAY_TINT: Color32 = Color32::from_rgb(70, 110, 170);
 pub const AXIS_X: Color32 = Color32::from_rgb(219, 62, 29);
 pub const AXIS_Y: Color32 = Color32::from_rgb(139, 220, 0);

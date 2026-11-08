@@ -334,6 +334,21 @@ pub fn apply_env(
         crate::panels::test_runner::run_from_env(s, &mode.to_string_lossy(), select.as_deref());
         crate::layout::focus_or_open(dock, crate::layout::Tab::TestRunner);
     }
+    // `MISTY_PREFAB_DEMO=overrides` gives the selected prefab instance a few overrides in memory
+    // and opens its Overrides dropdown (`=bold` selects the overridden child instead, `=missing`
+    // adds an instance of a prefab that doesn't exist); `MISTY_PREFAB=Assets/….prefab` opens
+    // Prefab Mode (in context when the selected object is one of its instances).
+    if let Some(demo) = std::env::var_os("MISTY_PREFAB_DEMO") {
+        crate::panels::prefab_demo(s, &demo.to_string_lossy());
+    }
+    if let Some(rel) = std::env::var_os("MISTY_PREFAB") {
+        let rel = rel.to_string_lossy().into_owned();
+        let from = s
+            .selection
+            .active()
+            .filter(|e| s.scene.prefab_link(*e).as_deref() == Some(rel.as_str()));
+        crate::prefab_mode::open(s, &rel, from);
+    }
     // `MISTY_PACKAGE=com.misty.example-effects` selects a package in the Package Manager;
     // `MISTY_GROUP_ENTRY=<asset path>` selects an entry in the Asset Groups window.
     if let Some(name) = std::env::var_os("MISTY_PACKAGE") {

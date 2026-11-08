@@ -26,6 +26,12 @@ pub struct ScriptMeta {
     modified: Option<SystemTime>,
 }
 
+thread_local! {
+    /// Prefabs being read right now (nested prefabs read the prefabs they use).
+    static PREFABS_LOADING: std::cell::RefCell<BTreeSet<String>> =
+        const { std::cell::RefCell::new(BTreeSet::new()) };
+}
+
 /// A prefab read from disk (or why it couldn't be), with the file time it was read at.
 type CachedPrefab = (Option<SystemTime>, Result<Rc<Prefab>, String>);
 
@@ -333,22 +339,44 @@ impl AssetDatabase {
         Ok(rel)
     }
 
-    /// A prefab asset (cached; re-read when its file changes).
+    /// A prefab asset (cached; re-read when its file changes). Model files read as read-only
+    /// prefabs. Nested instances and a variant's base catch up with prefabs that changed since
+    /// the file was saved (through their override records).
     pub fn prefab(&mut self, rel: &str) -> Result<Rc<Prefab>, String> {
         let abs = self.absolute(rel);
         let modified = mtime(&abs);
-        match self.prefabs.get(rel) {
-            Some((m, p)) if *m == modified && modified.is_some() => p.clone(),
-            _ => {
-                let p = Prefab::load(&abs).map(Rc::new);
-                self.prefabs.insert(rel.to_owned(), (modified, p.clone()));
-                p
-            }
+        if let Some((m, p)) = self.prefabs.get(rel)
+            && *m == modified
+            && modified.is_some()
+        {
+            return p.clone();
         }
+        // A prefab that (through others) contains itself would load forever.
+        let loading = PREFABS_LOADING.with(|l| l.borrow().contains(rel));
+        if loading {
+            return Err(format!("{rel} contains itself"));
+        }
+        PREFABS_LOADING.with(|l| l.borrow_mut().insert(rel.to_owned()));
+        let p = self.read_prefab(rel, &abs).map(Rc::new);
+        PREFABS_LOADING.with(|l| l.borrow_mut().remove(rel));
+        self.prefabs.insert(rel.to_owned(), (modified, p.clone()));
+        p
     }
 
-    /// Write a prefab asset (Apply All) and update the cache.
+    fn read_prefab(&mut self, rel: &str, abs: &Path) -> Result<Prefab, String> {
+        if models::is_model(rel) {
+            return crate::model_import::model_prefab(self, rel);
+        }
+        let p = Prefab::load(abs)?;
+        let synced = p.sync_to_records(&mut |path| self.prefab(path).ok().map(|p| (*p).clone()));
+        Ok(synced.unwrap_or(p))
+    }
+
+    /// Write a prefab asset (Apply, Prefab Mode) and update the cache.
     pub fn save_prefab(&mut self, rel: &str, prefab: &Prefab) -> Result<(), String> {
+        if models::is_model(rel) {
+            return Err(format!("{rel} is a model file (read-only)"));
+        }
         let abs = self.absolute(rel);
         prefab.save(&abs)?;
         self.prefabs

@@ -229,7 +229,7 @@ fn reload_scene_command_asks_about_unsaved_changes() {
 }
 
 #[test]
-fn prefab_instances_without_overrides_refresh() {
+fn prefab_instances_follow_and_keep_their_overrides() {
     let mut s = state("prefab");
     let rel = "Assets/Crate.prefab";
     let abs = s.project.root.join(rel);
@@ -257,11 +257,15 @@ fn prefab_instances_without_overrides_refresh() {
     };
     let (first, second) = (instances[0], instances[1]);
     assert_eq!(names(first), ["Lid"], "plain instance took the new version");
+    assert_eq!(names(second), ["Lid"], "so did the one with overrides");
     assert!(
-        names(second).is_empty(),
-        "instance with overrides kept as it is"
+        s.scene
+            .world
+            .get::<&misty_engine::scene::BoxCollider>(second)
+            .is_ok(),
+        "and kept its override"
     );
-    assert_ne!(first, a, "refreshed as a new copy");
+    assert_eq!((first, second), (a, b), "updated in place");
     assert_eq!(s.undo.undo_label(), Some("Refresh Prefab Instances"));
     assert_eq!(s.live.current_toast(), Some("Reloaded 1 asset"));
 }

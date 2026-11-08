@@ -189,6 +189,7 @@ pub fn reload_in_place(s: &mut EditorState, id: SceneId) -> Result<(), String> {
     s.undo.clear();
     scene_files::mark_saved(s, id);
     scene_files::recheck_dirty(s);
+    crate::prefabs::catch_up(s, Some(id));
     for w in report.warnings {
         s.console.warn(format!("{rel}: {w}"));
     }

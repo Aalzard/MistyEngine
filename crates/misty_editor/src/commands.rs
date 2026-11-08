@@ -12,6 +12,29 @@ use crate::state::EditorState;
 
 /// Apply a scene command. Returns the action back if it is not a scene command.
 pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
+    // Prefab Mode: Ctrl+S saves the prefab; replacing the scenes leaves Prefab Mode first.
+    if crate::prefab_mode::active(s) {
+        match action {
+            Action::SaveScene => {
+                crate::prefab_mode::save(s);
+                return None;
+            }
+            Action::SaveSceneAs
+            | Action::NewScene
+            | Action::OpenScene
+            | Action::OpenScenePath(_)
+            | Action::OpenSceneAdditive(_)
+            | Action::ReloadScene
+            | Action::TogglePlay
+            | Action::Quit
+            | Action::OpenHub { .. } => {
+                if !crate::prefab_mode::leave_for_scene_change(s) {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
     match action {
         Action::Create {
             what: Create::Ui(el),

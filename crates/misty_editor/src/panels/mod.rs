@@ -19,6 +19,8 @@ pub mod effect_graph;
 pub mod frame_debugger;
 mod lighting;
 mod lighting_hdri;
+mod prefab_rows;
+pub(crate) use inspector::prefab_overrides::demo as prefab_demo;
 pub mod memory_profiler;
 pub mod navigation;
 pub mod occlusion;

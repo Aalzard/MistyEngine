@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use misty_engine::hecs::Entity;
 use misty_engine::scene::prefab::Prefab;
 
 use super::{Settle, Stamp, stamp};
@@ -125,53 +124,31 @@ fn reload(s: &mut EditorState, kind: Kind, rel: &str) -> Result<bool, String> {
     }
 }
 
-/// The prefab at `rel` changed from `old` to `new`: instances without overrides (they matched
-/// `old`) become copies of `new`, keeping their name, place and position; instances with
-/// overrides keep them. One undo step. Returns how many instances were refreshed.
+/// The editor just wrote the prefab at `rel` (Apply, Prefab Mode, an update from a prefab it
+/// uses): remember it as read, so the write isn't taken for an outside change.
+pub fn note_prefab(s: &mut EditorState, rel: &str) {
+    let now = stamp(&s.project.root.join(rel));
+    let w = &mut s.live.assets;
+    w.known.insert(rel.to_owned(), now);
+    w.settle.forget(rel);
+    if let Ok(p) = s.assets.prefab(rel) {
+        s.live.assets.prefabs.insert(rel.to_owned(), p);
+    }
+}
+
+/// The prefab at `rel` changed on disk from `old` to `new`: instances follow it in place and
+/// keep their overrides, and prefabs that use it are updated (see `prefabs::propagate`). One
+/// undo step. Returns how many instances changed.
 pub fn refresh_instances(s: &mut EditorState, rel: &str, old: &Prefab, new: &Prefab) -> usize {
-    let mut refresh = Vec::new();
-    let mut kept = 0;
-    for e in s.scene.prefab_instances(rel) {
-        if !s.scene.has_prefab_overrides(e, new) {
-            continue;
-        }
-        if s.scene.has_prefab_overrides(e, old) {
-            kept += 1;
-        } else {
-            refresh.push(e);
-        }
+    let before = s.scene.clone();
+    let changed = crate::prefabs::propagate(s, rel, old, new);
+    if changed > 0 {
+        s.undo
+            .push("Refresh Prefab Instances", &before, &s.selection);
+        s.scene_dirty = true;
+        let scene = &s.scene;
+        s.inspector_targets.retain(|e| scene.contains(*e));
+        s.hierarchy.expanded.retain(|e| scene.contains(*e));
     }
-    if kept > 0 {
-        s.console.info(format!(
-            "{rel} changed on disk: {kept} instance(s) with overrides were left as they are \
-             (Revert in the Inspector to take the new version)."
-        ));
-    }
-    if refresh.is_empty() {
-        return 0;
-    }
-    s.record("Refresh Prefab Instances");
-    let mut selection: Vec<Entity> = s.selection.list().to_vec();
-    let active = s.selection.active();
-    let mut new_active = active;
-    for e in &refresh {
-        let root = s.scene.revert_prefab(*e, new);
-        // A selected instance root stays selected as its new copy.
-        for x in selection.iter_mut().filter(|x| **x == *e) {
-            *x = root;
-        }
-        if active == Some(*e) {
-            new_active = Some(root);
-        }
-    }
-    selection.retain(|x| s.scene.contains(*x));
-    if let Some(a) = new_active.filter(|a| s.scene.contains(*a)) {
-        selection.retain(|x| *x != a);
-        selection.push(a);
-    }
-    s.selection.set_many(selection);
-    let scene = &s.scene;
-    s.inspector_targets.retain(|e| scene.contains(*e));
-    s.hierarchy.expanded.retain(|e| scene.contains(*e));
-    refresh.len()
+    changed
 }
