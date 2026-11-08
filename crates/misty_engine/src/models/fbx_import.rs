@@ -442,6 +442,7 @@ fn material(m: &ufbx::Material, dir: &Path) -> ModelMaterial {
         material,
         albedo,
         normal,
+        extra_maps: Vec::new(),
     }
 }
 

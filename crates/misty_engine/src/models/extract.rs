@@ -87,6 +87,21 @@ pub fn extract_materials(model_rel: &str, model: &Model) -> Result<Vec<String>, 
                 None => None,
             };
         }
+        // Feature maps from glTF extensions (Clear Coat normal).
+        for (map, source) in &m.extra_maps {
+            let rel = match source {
+                TextureSource::File(p) => assets::relative(p),
+                TextureSource::Embedded(bytes) => {
+                    let png = dir.join(format!("{stem}_{}.png", map.label()));
+                    if !png.exists() {
+                        write_png(bytes, &png)?;
+                        created.push(assets::relative(&png));
+                    }
+                    assets::relative(&png)
+                }
+            };
+            *map.slot(&mut material) = Some(rel);
+        }
         material.save(&path)?;
         created.push(rel);
     }
