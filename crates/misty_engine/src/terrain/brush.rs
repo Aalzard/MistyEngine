@@ -3,7 +3,7 @@
 
 use glam::Vec2;
 
-use super::data::{MAX_LAYERS, TerrainData};
+use super::data::{LAYERS_PER_MAP, MAX_LAYERS, TerrainData};
 
 /// Raise/Lower: fraction of the terrain height per second.
 pub const RAISE_RATE: f32 = 0.15;
@@ -121,9 +121,13 @@ pub fn smooth(d: &mut TerrainData, b: &Brush, dt: f32) {
     });
 }
 
-/// Paint `layer` into the splat map: its weight grows, the others shrink, the sum stays 1.
+/// Paint `layer` into the splat maps: its weight grows, the others shrink, the sum stays 1.
 pub fn paint(d: &mut TerrainData, b: &Brush, dt: f32, layer: usize) {
     if layer >= MAX_LAYERS {
+        return;
+    }
+    if layer >= LAYERS_PER_MAP || !d.alphamap_extra.is_empty() {
+        paint_any(d, b, dt, layer);
         return;
     }
     let n = d.alphamap_resolution;
@@ -154,8 +158,71 @@ pub fn paint(d: &mut TerrainData, b: &Brush, dt: f32, layer: usize) {
     }
 }
 
+/// Paint Holes: cut the cells whose centre the brush covers by at least half out of the surface
+/// and the collider (`fill` puts them back). Holes are all-or-nothing per heightmap cell, like
+/// the reference engine's hole texture. Returns true when a cell changed.
+pub fn paint_holes(d: &mut TerrainData, b: &Brush, fill: bool) -> bool {
+    let s = d.spacing();
+    let cells = d.cells();
+    let range = |c: f32, step: f32| {
+        let lo = ((c - b.radius()) / step).floor().max(0.0) as usize;
+        let hi = (((c + b.radius()) / step).ceil().max(0.0) as usize).min(cells);
+        lo.min(hi)..hi
+    };
+    let (xs, zs) = (range(b.center.x, s.x), range(b.center.y, s.y));
+    let mut changed = false;
+    for cz in zs {
+        for cx in xs.clone() {
+            let centre = Vec2::new((cx as f32 + 0.5) * s.x, (cz as f32 + 0.5) * s.y);
+            if b.weight(centre) >= 0.5 && d.is_hole(cx, cz) == fill {
+                d.set_hole(cx, cz, !fill);
+                changed = true;
+            }
+        }
+    }
+    if fill && changed && !d.has_holes() {
+        d.holes.clear();
+    }
+    changed
+}
+
+/// [`paint`] on a terrain with more than one splat map (every map's weights move together).
+fn paint_any(d: &mut TerrainData, b: &Brush, dt: f32, layer: usize) {
+    d.fit_splat_maps();
+    let channels = d.splat_maps() * LAYERS_PER_MAP;
+    if layer >= channels {
+        return;
+    }
+    let n = d.alphamap_resolution;
+    let texel = Vec2::new(d.size.x, d.size.z) / n as f32;
+    let k = (PAINT_RATE * b.strength * dt).min(1.0);
+    let lo = ((b.center - b.radius()) / texel).floor().max(Vec2::ZERO);
+    let hi = ((b.center + b.radius()) / texel)
+        .ceil()
+        .min(Vec2::splat(n as f32));
+    for tz in lo.y as usize..hi.y as usize {
+        for tx in lo.x as usize..hi.x as usize {
+            let centre = (Vec2::new(tx as f32, tz as f32) + 0.5) * texel;
+            let a = k * b.weight(centre);
+            if a <= 0.0 {
+                continue;
+            }
+            let t = tz * n + tx;
+            let mut w = d.layer_weights(t).map(|v| v as f32 / 255.0);
+            for (i, v) in w.iter_mut().enumerate().take(channels) {
+                *v = if i == layer {
+                    *v + (1.0 - *v) * a
+                } else {
+                    *v * (1.0 - a)
+                };
+            }
+            d.set_layer_weights(t, &quantize_weights(w, layer));
+        }
+    }
+}
+
 /// Weights to bytes that sum to exactly 255 (rounding error goes to `keep`).
-pub(super) fn quantize_weights(w: [f32; 4], keep: usize) -> [u8; 4] {
+pub(super) fn quantize_weights<const N: usize>(w: [f32; N], keep: usize) -> [u8; N] {
     let sum: f32 = w.iter().sum::<f32>().max(1e-6);
     let mut out = w.map(|v| (v / sum * 255.0).round().clamp(0.0, 255.0) as u8);
     let total: i32 = out.iter().map(|v| *v as i32).sum();

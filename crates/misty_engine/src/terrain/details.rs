@@ -144,7 +144,7 @@ fn texel_density(d: &TerrainData, tx: usize, tz: usize) -> f32 {
     let seed = d.rule_seed.wrapping_add(0xde7a);
     let mut m = rule_mask(&s.rules, d, at, surface, seed);
     if let Some(l) = s.on_layer.filter(|l| *l < d.layers.len()) {
-        m *= d.alphamap[tz * n + tx][l] as f32 / 255.0;
+        m *= d.layer_weight(tz * n + tx, l) as f32 / 255.0;
     }
     m
 }
@@ -373,18 +373,24 @@ pub fn scatter(d: &TerrainData, lo: Vec2, hi: Vec2) -> Vec<Blade> {
 pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Blade> {
     let s = &d.details;
     let n = d.alphamap_resolution;
-    if !s.enabled || d.detail_map.len() != n * n {
+    if !super::detail_layers::draws_grass(d) {
         return Vec::new();
     }
     let keep = level_keep(level);
+    // Grass species painted on the terrain (terrain/detail_layers.rs).
+    let mut out: Vec<(f32, Blade)> = super::detail_layers::species_blades(d, lo, hi, keep);
+    if d.detail_map.len() != n * n {
+        out.sort_by(|a, b| a.0.total_cmp(&b.0));
+        return out.into_iter().map(|(_, b)| b).collect();
+    }
     let texel = Vec2::new(d.size.x, d.size.z) / n as f32;
     let per_texel = s.density.clamp(0.0, MAX_DENSITY) * texel.x * texel.y;
     let (t0, t1) = (
         (lo / texel).floor().max(Vec2::ZERO),
         (hi / texel).ceil().min(Vec2::splat(n as f32)),
     );
-    let mut out: Vec<(f32, Blade)> = Vec::new();
     let seed = d.rule_seed;
+    let holes = d.has_holes();
     let clumping = s.clumping.clamp(0.0, 1.0);
     let hv = s.height_variation.clamp(0.0, 1.0);
     let dv = s.density_variation.clamp(0.0, 1.0);
@@ -428,6 +434,10 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 let pulled = centre + (root - centre) * (1.0 - pull * clumping);
                 let inside = pulled.cmpge(lo).all() && pulled.cmplt(hi).all();
                 let p = if inside { pulled } else { root };
+                // Nothing grows over a hole.
+                if holes && d.hole_at(p.x, p.y) {
+                    continue;
+                }
                 let away = p - centre;
                 let lean = if away.length_squared() > 1e-6 {
                     away.y.atan2(away.x)

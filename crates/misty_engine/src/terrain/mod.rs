@@ -8,12 +8,14 @@ pub mod auto_paint;
 pub mod brush;
 pub mod cliffs;
 mod data;
+pub mod detail_layers;
 pub mod details;
 mod file;
 pub mod flowers;
 pub mod harmony;
 pub mod mesh;
 pub mod noise;
+pub mod placement;
 pub mod store;
 #[cfg(test)]
 mod tests;
@@ -27,7 +29,8 @@ use rapier3d::prelude as rp;
 use serde::{Deserialize, Serialize};
 
 pub use data::{
-    ALPHAMAP_RESOLUTIONS, HEIGHTMAP_RESOLUTIONS, MAX_LAYERS, TerrainData, TerrainLayer,
+    ALPHAMAP_RESOLUTIONS, HEIGHTMAP_RESOLUTIONS, LAYERS_PER_MAP, MAX_LAYERS, TerrainData,
+    TerrainLayer,
 };
 pub use file::EXTENSION;
 
@@ -153,7 +156,8 @@ pub fn raycast(scene: &Scene, origin: Vec3, dir: Vec3) -> Option<(Entity, Vec3)>
 }
 
 /// Ray (terrain-local) against the height surface: marched in half-cell steps inside the
-/// bounds, then refined by bisection.
+/// bounds, then refined by bisection. Holes let the ray through: it goes on under the surface
+/// and can't hit it again from below.
 pub fn raycast_data(d: &TerrainData, origin: Vec3, dir: Vec3) -> Option<Vec3> {
     let dir = dir.normalize_or_zero();
     let (lo, hi) = d.bounds();
@@ -168,6 +172,7 @@ pub fn raycast_data(d: &TerrainData, origin: Vec3, dir: Vec3) -> Option<Vec3> {
         // Started under the surface: no hit from below.
         return None;
     }
+    let holes = d.has_holes();
     let mut t = prev;
     while t < t1 {
         t = (t + step).min(t1);
@@ -177,7 +182,12 @@ pub fn raycast_data(d: &TerrainData, origin: Vec3, dir: Vec3) -> Option<Vec3> {
                 let m = (a + b) * 0.5;
                 if above(m) > 0.0 { a = m } else { b = m }
             }
-            return Some(origin + dir * b);
+            let hit = origin + dir * b;
+            if holes && d.hole_at(hit.x, hit.z) {
+                // Through the hole: under the surface from here on.
+                return None;
+            }
+            return Some(hit);
         }
         prev = t;
     }
@@ -255,8 +265,23 @@ pub fn tree_colliders(scene: &Scene, e: Entity) -> Vec<rp::ColliderBuilder> {
 }
 
 /// Heightfield shape centred on x/z (rapier's convention): rows along z, columns along x.
+/// Hole cells are removed from it (nothing collides there).
 pub fn heightfield(d: &TerrainData) -> rp::ColliderBuilder {
     let r = d.heightmap_resolution;
     let heights = rp::Array2::from_fn(r, r, |iz, ix| d.height(ix, iz));
-    rp::ColliderBuilder::heightfield(heights, rp::Vector::new(d.size.x, d.size.y, d.size.z))
+    let scale = rp::Vector::new(d.size.x, d.size.y, d.size.z);
+    if !d.has_holes() {
+        return rp::ColliderBuilder::heightfield(heights, scale);
+    }
+    use rapier3d::parry::shape::{HeightField, HeightFieldCellStatus};
+    let mut hf = HeightField::new(heights, scale);
+    let cells = d.cells();
+    for cz in 0..cells {
+        for cx in 0..cells {
+            if d.is_hole(cx, cz) {
+                hf.set_cell_status(cz, cx, HeightFieldCellStatus::CELL_REMOVED);
+            }
+        }
+    }
+    rp::ColliderBuilder::new(rp::SharedShape::new(hf))
 }

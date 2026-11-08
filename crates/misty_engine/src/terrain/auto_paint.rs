@@ -137,15 +137,15 @@ fn texel_weights(
     order: &[usize],
     tx: usize,
     tz: usize,
-    current: [u8; 4],
-) -> [u8; 4] {
+    current: [u8; MAX_LAYERS],
+) -> [u8; MAX_LAYERS] {
     let n = d.alphamap_resolution as f32;
     let at = Vec2::new(
         (tx as f32 + 0.5) / n * d.size.x,
         (tz as f32 + 0.5) / n * d.size.z,
     );
     let surface = surface_at(d, at.x, at.y);
-    let mut w = [0.0f32; 4];
+    let mut w = [0.0f32; MAX_LAYERS];
     for (k, &i) in order.iter().enumerate() {
         let m = rule_mask(&d.layers[i].rules, d, at, surface, layer_seed(d, i));
         // The lowest layer is the base: it fills whatever the others leave.
@@ -198,13 +198,30 @@ pub fn generate(d: &mut TerrainData) -> bool {
         return false;
     }
     let n = d.alphamap_resolution;
-    let mut out = d.alphamap.clone();
+    d.fit_splat_maps();
+    if d.alphamap_extra.is_empty() {
+        // Four layers or fewer: one map.
+        let mut out = d.alphamap.clone();
+        par_rows(&mut out, n, |tz, row| {
+            for (tx, px) in row.iter_mut().enumerate() {
+                let mut all = [0u8; MAX_LAYERS];
+                all[..4].copy_from_slice(px);
+                let w = texel_weights(d, &order, tx, tz, all);
+                *px = [w[0], w[1], w[2], w[3]];
+            }
+        });
+        d.alphamap = out;
+        return true;
+    }
+    let mut out = vec![[0u8; MAX_LAYERS]; n * n];
     par_rows(&mut out, n, |tz, row| {
         for (tx, px) in row.iter_mut().enumerate() {
-            *px = texel_weights(d, &order, tx, tz, *px);
+            *px = texel_weights(d, &order, tx, tz, d.layer_weights(tz * n + tx));
         }
     });
-    d.alphamap = out;
+    for (t, w) in out.iter().enumerate() {
+        d.set_layer_weights(t, w);
+    }
     true
 }
 
@@ -216,6 +233,7 @@ pub fn generate_in_brush(d: &mut TerrainData, b: &Brush, dt: f32) {
         return;
     }
     let n = d.alphamap_resolution;
+    d.fit_splat_maps();
     let texel = Vec2::new(d.size.x, d.size.z) / n as f32;
     let k = (super::brush::PAINT_RATE * b.strength * dt).min(1.0);
     let lo = ((b.center - b.radius()) / texel).floor().max(Vec2::ZERO);
@@ -229,16 +247,16 @@ pub fn generate_in_brush(d: &mut TerrainData, b: &Brush, dt: f32) {
             if a <= 0.0 {
                 continue;
             }
-            let cur = d.alphamap[tz * n + tx];
+            let cur = d.layer_weights(tz * n + tx);
             let target = texel_weights(d, &order, tx, tz, cur);
-            let mixed = std::array::from_fn(|c| {
+            let mixed: [f32; MAX_LAYERS] = std::array::from_fn(|c| {
                 cur[c] as f32 / 255.0 + (target[c] as f32 - cur[c] as f32) / 255.0 * a
             });
             changes.push((tz * n + tx, quantize_weights(mixed, order[0])));
         }
     }
     for (i, px) in changes {
-        d.alphamap[i] = px;
+        d.set_layer_weights(i, &px);
     }
     super::details::generate_in_brush(d, b, k);
 }

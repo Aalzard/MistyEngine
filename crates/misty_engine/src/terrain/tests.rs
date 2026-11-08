@@ -188,7 +188,7 @@ fn painting_moves_weight_to_the_layer_and_keeps_the_sum() {
     brush::paint(&mut d, &b, 1.0, 2);
     let w = d.weights_at(8.0, 8.0);
     assert!(w[2] > 0.99, "{w:?}");
-    assert_eq!(d.weights_at(20.0, 20.0), [1.0, 0.0, 0.0, 0.0]);
+    assert_eq!(d.weights_at(20.0, 20.0)[..4], [1.0, 0.0, 0.0, 0.0]);
     for px in &d.alphamap {
         assert_eq!(px.iter().map(|v| *v as u32).sum::<u32>(), 255);
     }
@@ -334,4 +334,253 @@ fn rays_and_controllers_collide_with_the_terrain() {
     }
     let p = scene.world_position(player);
     assert!(p.y > 2.5 && p.y < 4.0, "standing on the terrain: {p}");
+}
+
+/// A brush over local (16, 16) with a 6 m radius.
+fn hole_brush() -> Brush {
+    Brush {
+        center: Vec2::new(16.0, 16.0),
+        size: 12.0,
+        strength: 1.0,
+        falloff: 0.0,
+    }
+}
+
+#[test]
+fn hole_brush_cuts_and_fills_cells() {
+    let mut d = sloped();
+    assert!(!d.has_holes());
+    assert!(brush::paint_holes(&mut d, &hole_brush(), false));
+    assert!(d.has_holes());
+    assert_eq!(d.holes.len(), 32 * 32);
+    assert!(d.is_hole(16, 16), "centre cut");
+    assert!(d.hole_at(16.5, 16.5));
+    assert!(!d.is_hole(2, 2), "far corner kept");
+    assert!(!d.hole_at(2.5, 2.5));
+    // About pi * 6² cells.
+    let count = d.holes.iter().filter(|h| **h != 0).count();
+    assert!((100..130).contains(&count), "{count} cells");
+    // Painting again changes nothing; Shift fills them all back in.
+    assert!(!brush::paint_holes(&mut d, &hole_brush(), false));
+    assert!(brush::paint_holes(&mut d, &hole_brush(), true));
+    assert!(!d.has_holes());
+    assert!(d.holes.is_empty(), "no hole data kept once filled");
+}
+
+#[test]
+fn holes_round_trip_through_the_file_and_resizes() {
+    let mut d = sloped();
+    let plain = d.to_file_string();
+    assert!(
+        !plain.contains("\"holes\""),
+        "files without holes stay as they were"
+    );
+    brush::paint_holes(&mut d, &hole_brush(), false);
+    let text = d.to_file_string();
+    assert!(text.contains("\"holes\""));
+    let back = TerrainData::from_file_str(&text).unwrap();
+    assert_eq!(back.holes, d.holes);
+    // A finer heightmap keeps the hole where it was.
+    let mut fine = back.clone();
+    fine.set_heightmap_resolution(65);
+    assert_eq!(fine.holes.len(), 64 * 64);
+    assert!(fine.hole_at(16.2, 16.2));
+    assert!(!fine.hole_at(2.0, 2.0));
+}
+
+#[test]
+fn rays_fall_through_holes() {
+    let mut d = sloped();
+    let down = Vec3::NEG_Y;
+    assert!(raycast_data(&d, Vec3::new(16.5, 30.0, 16.5), down).is_some());
+    brush::paint_holes(&mut d, &hole_brush(), false);
+    assert!(
+        raycast_data(&d, Vec3::new(16.5, 30.0, 16.5), down).is_none(),
+        "through the hole"
+    );
+    let hit = raycast_data(&d, Vec3::new(4.5, 30.0, 4.5), down).unwrap();
+    assert!(
+        (hit.y - 4.5 / 32.0 * 10.0).abs() < 1e-3,
+        "solid ground still hit"
+    );
+}
+
+#[test]
+fn the_collider_leaves_hole_cells_out() {
+    let mut d = sloped();
+    brush::paint_holes(&mut d, &hole_brush(), false);
+    let c = heightfield(&d).build();
+    let hf = c.shape().as_heightfield().expect("a heightfield");
+    use rapier3d::parry::shape::HeightFieldCellStatus as S;
+    // Rows along z, columns along x.
+    assert_eq!(hf.cell_status(16, 16), S::CELL_REMOVED);
+    assert_eq!(hf.cell_status(2, 2), S::empty());
+    // A ball dropped over the hole falls through; one dropped beside it lands.
+    use crate::physics::Physics;
+    use crate::scene::{Rigidbody, SphereCollider};
+    let (mut scene, _, _) = terrain_scene("holes", Vec3::ZERO, d);
+    let spawn = |scene: &mut Scene, at: Vec3| {
+        let ball = scene.spawn("Ball", None);
+        scene.set_transform(ball, crate::scene::Transform::from_position(at));
+        scene.add(ball, Rigidbody::default());
+        scene.add(ball, SphereCollider::default());
+        ball
+    };
+    let through = spawn(&mut scene, Vec3::new(16.0, 12.0, 16.0));
+    let lands = spawn(&mut scene, Vec3::new(28.0, 14.0, 28.0));
+    let mut physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+    for _ in 0..120 {
+        physics.update(&mut scene, 1.0 / 60.0);
+    }
+    let fell = scene.world_position(through);
+    assert!(fell.y < 0.0, "fell through the hole: {fell}");
+    let rest = scene.world_position(lands);
+    assert!(rest.y > 5.0, "landed beside it: {rest}");
+}
+
+#[test]
+fn no_grass_or_trees_over_holes() {
+    let mut d = sloped();
+    d.details.enabled = true;
+    d.details.rules.slope = [0.0, 90.0];
+    d.details.rules.breakup = 0.0;
+    details::generate(&mut d);
+    brush::paint_holes(&mut d, &hole_brush(), false);
+    let blades = details::scatter(&d, Vec2::ZERO, Vec2::splat(32.0));
+    assert!(!blades.is_empty());
+    assert!(
+        blades
+            .iter()
+            .all(|b| !d.hole_at(b.position[0], b.position[2])),
+        "a blade over the hole"
+    );
+    d.trees.prototypes.push(Default::default());
+    let p = trees::Placement {
+        spacing: 1.5,
+        max_slope: 90.0,
+        ..Default::default()
+    };
+    trees::mass_place(&mut d, 300, &[0], &p);
+    assert!(d.trees.instances.len() > 50);
+    for t in &d.trees.instances {
+        let at = t.position * 32.0;
+        assert!(!d.hole_at(at.x, at.y), "a tree over the hole");
+    }
+}
+
+/// A terrain with `count` plain layers named after their index.
+fn layered(count: usize) -> TerrainData {
+    let mut d = sloped();
+    d.layers = (0..count)
+        .map(|i| TerrainLayer {
+            name: format!("L{i}"),
+            ..Default::default()
+        })
+        .collect();
+    d.fit_splat_maps();
+    d
+}
+
+#[test]
+fn more_than_four_layers_get_extra_splat_maps() {
+    let d = layered(4);
+    assert_eq!(d.splat_maps(), 1);
+    assert!(
+        d.alphamap_extra.is_empty(),
+        "four layers: one map, as before"
+    );
+    let mut d = layered(10);
+    assert_eq!(d.splat_maps(), 3);
+    assert_eq!(d.alphamap_extra.len(), 2 * 32 * 32);
+    // Paint layer 9 (the third map) in the middle.
+    let b = Brush {
+        center: Vec2::new(16.0, 16.0),
+        size: 10.0,
+        strength: 1.0,
+        falloff: 0.0,
+    };
+    for _ in 0..40 {
+        brush::paint(&mut d, &b, 0.1, 9);
+    }
+    let w = d.weights_at(16.0, 16.0);
+    assert!(w[9] > 0.97, "layer 9 painted: {w:?}");
+    assert!(w[0] < 0.03, "layer 0 gave way");
+    assert_eq!(d.weights_at(2.0, 2.0)[0], 1.0, "untouched outside");
+    // Every texel's weights over all maps sum to 255.
+    for t in 0..32 * 32 {
+        let sum: u32 = d.layer_weights(t).iter().map(|v| *v as u32).sum();
+        assert_eq!(sum, 255, "texel {t}");
+    }
+    // Back to layer 2 (first map): layer 9 shrinks.
+    for _ in 0..40 {
+        brush::paint(&mut d, &b, 0.1, 2);
+    }
+    let w = d.weights_at(16.0, 16.0);
+    assert!(w[2] > 0.97 && w[9] < 0.03, "{w:?}");
+}
+
+#[test]
+fn extra_splat_maps_round_trip_and_resample() {
+    let mut d = layered(6);
+    let t = 5 * 32 + 7;
+    let mut w = [0u8; MAX_LAYERS];
+    w[1] = 55;
+    w[5] = 200;
+    d.set_layer_weights(t, &w);
+    assert_eq!(d.layer_weight(t, 5), 200);
+    let text = d.to_file_string();
+    assert!(text.contains("alphamap_extra"));
+    assert!(
+        !layered(3).to_file_string().contains("alphamap_extra"),
+        "files with four layers or fewer stay as they were"
+    );
+    let back = TerrainData::from_file_str(&text).unwrap();
+    assert_eq!(back.alphamap_extra, d.alphamap_extra);
+    assert_eq!(back.layer_weights(t), w);
+    let mut big = back.clone();
+    big.set_alphamap_resolution(64);
+    assert_eq!(big.alphamap_extra.len(), 64 * 64);
+    assert!(big.weights_at(7.5, 5.5)[5] > 0.7);
+    // Dropping to four layers folds the lost weight into layer 0.
+    big.layers.truncate(4);
+    big.fit_splat_maps();
+    assert!(big.alphamap_extra.is_empty());
+    let sum: u32 = big
+        .layer_weights(10 * 64 + 15)
+        .iter()
+        .map(|v| *v as u32)
+        .sum();
+    assert_eq!(sum, 255);
+}
+
+#[test]
+fn auto_paint_covers_layers_past_the_fourth() {
+    use auto_paint::AutoPaintRules;
+    let mut d = layered(6);
+    // Base layer 0 everywhere, layer 5 on the slope (the whole terrain is a 17° slope).
+    let rule = |slope: [f32; 2], priority| AutoPaintRules {
+        enabled: true,
+        slope,
+        breakup: 0.0,
+        spread: 0.0,
+        priority,
+        ..Default::default()
+    };
+    d.layers[0].rules = rule([0.0, 90.0], 0);
+    d.layers[5].rules = rule([10.0, 90.0], 1);
+    assert!(auto_paint::generate(&mut d));
+    let w = d.weights_at(16.0, 16.0);
+    assert!(w[5] > 0.95, "{w:?}");
+    let b = Brush {
+        center: Vec2::new(16.0, 16.0),
+        size: 8.0,
+        strength: 1.0,
+        falloff: 0.0,
+    };
+    d.layers[5].rules.enabled = false;
+    for _ in 0..30 {
+        auto_paint::generate_in_brush(&mut d, &b, 0.1);
+    }
+    // Layer 5 is manual now: its weight is kept.
+    assert!(d.weights_at(16.0, 16.0)[5] > 0.95);
 }

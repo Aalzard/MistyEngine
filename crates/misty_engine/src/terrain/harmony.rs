@@ -122,11 +122,20 @@ pub fn mean_linear(rgba: &[u8]) -> Vec3 {
 
 /// Share of the terrain each layer covers (sums to 1 over painted layers).
 pub fn coverage(d: &TerrainData) -> [f32; MAX_LAYERS] {
-    let stride = (d.alphamap.len() / 65_536).max(1);
+    let n = d.alphamap.len();
+    let stride = (n / 65_536).max(1);
     let mut sum = [0.0f32; MAX_LAYERS];
     for px in d.alphamap.iter().step_by(stride) {
         for (s, v) in sum.iter_mut().zip(px) {
             *s += *v as f32;
+        }
+    }
+    // Layers 5.. (their maps, one after another).
+    for (m, map) in d.alphamap_extra.chunks(n.max(1)).enumerate() {
+        for px in map.iter().step_by(stride) {
+            for (s, v) in sum[4 + m * 4..].iter_mut().zip(px) {
+                *s += *v as f32;
+            }
         }
     }
     let total: f32 = sum.iter().sum::<f32>().max(1e-6);

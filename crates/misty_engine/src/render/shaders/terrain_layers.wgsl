@@ -7,6 +7,69 @@
 // Normal (rgb) and height (a): one fetch for both (render/terrain_layers.rs).
 @group(3) @binding(4) var layer_normal: texture_2d_array<f32>;
 @group(3) @binding(6) var layer_sampler: sampler;
+// Splat maps of layers 5.. (one slice per four layers) and, per chunk, the bit mask of the
+// layers painted in it (render/terrain.rs).
+@group(3) @binding(7) var splat_extra: texture_2d_array<f32>;
+@group(3) @binding(8) var chunk_layers: texture_2d<u32>;
+
+// The four layers a pixel of a terrain with more than four layers blends: the strongest of
+// the layers painted in its chunk (ids sorted by weight, weights normalised).
+struct TopLayers {
+    ids: array<u32, 4>,
+    w: array<f32, 4>,
+};
+
+fn terrain_top_layers(uv: vec2<f32>) -> TopLayers {
+    let per = terrain.chunks.x;
+    let cc = vec2<i32>(clamp(floor(uv * per), vec2<f32>(0.0), vec2<f32>(per - 1.0)));
+    let present = textureLoad(chunk_layers, cc, 0).r;
+    let count = min(u32(terrain.size.w), 16u);
+    var out: TopLayers;
+    out.ids = array<u32, 4>(0u, 0u, 0u, 0u);
+    out.w = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+    let maps = (count + 3u) / 4u;
+    for (var m = 0u; m < maps; m++) {
+        // Only the maps of layers painted in this chunk are read.
+        if (((present >> (m * 4u)) & 0xfu) == 0u) {
+            continue;
+        }
+        var px: vec4<f32>;
+        if (m == 0u) {
+            px = textureSampleLevel(splat_map, splat_sampler, uv, 0.0);
+        } else {
+            px = textureSampleLevel(splat_extra, splat_sampler, uv, i32(m - 1u), 0.0);
+        }
+        for (var c = 0u; c < 4u; c++) {
+            let id = m * 4u + c;
+            let v = px[c];
+            if (id >= count || v <= out.w[3]) {
+                continue;
+            }
+            // Insert into the four kept so far (strongest first).
+            var k = 3u;
+            loop {
+                if (k == 0u || out.w[k - 1u] >= v) {
+                    break;
+                }
+                out.w[k] = out.w[k - 1u];
+                out.ids[k] = out.ids[k - 1u];
+                k = k - 1u;
+            }
+            out.w[k] = v;
+            out.ids[k] = id;
+        }
+    }
+    let sum = out.w[0] + out.w[1] + out.w[2] + out.w[3];
+    if (sum > 1e-4) {
+        for (var i = 0u; i < 4u; i++) {
+            out.w[i] = out.w[i] / sum;
+        }
+    } else {
+        out.w[0] = 1.0;
+        out.ids[0] = 0u;
+    }
+    return out;
+}
 
 struct LayerSample {
     albedo: vec3<f32>,
@@ -211,10 +274,18 @@ fn terrain_surface(in: MeshOut) -> Surface {
 
     let local = in.world - draws[in.draw].model[3].xyz;
     var w = array<f32, 4>(wv.x, wv.y, wv.z, wv.w);
+    // The layers of the four slots: the first map's, or (more than four layers) the four
+    // strongest painted here.
+    var ids = array<u32, 4>(0u, 1u, 2u, 3u);
+    if (count > 4u) {
+        let top = terrain_top_layers(in.uv);
+        ids = top.ids;
+        w = top.w;
+    }
     var layers: array<LayerSample, 4>;
     for (var i = 0u; i < 4u; i++) {
         if (w[i] > 0.002) {
-            layers[i] = layer_sample(i, local, dx, dy, n, pw);
+            layers[i] = layer_sample(ids[i], local, dx, dy, n, pw);
         } else {
             w[i] = 0.0;
         }
@@ -248,10 +319,10 @@ fn terrain_surface(in: MeshOut) -> Surface {
     s.smoothness = 0.0;
     for (var i = 0u; i < 4u; i++) {
         if (w[i] > 0.0) {
-            s.albedo += harmonize(layers[i].albedo, terrain.harmony[i]) * w[i];
+            s.albedo += harmonize(layers[i].albedo, terrain.harmony[ids[i]]) * w[i];
             s.normal += layers[i].normal * w[i];
-            s.metallic += terrain.surface[i].x * w[i];
-            s.smoothness += terrain.surface[i].y * w[i];
+            s.metallic += terrain.surface[ids[i]].x * w[i];
+            s.smoothness += terrain.surface[ids[i]].y * w[i];
         }
     }
     // Under grass the ground takes the grass's own colour in deep shade, so the gaps

@@ -287,7 +287,13 @@ impl Default for Grass {
 
 /// What the blades were scattered from: the grass settings (look-only fields cleared), the
 /// flowers, the number of trees (flowers gather around them) and the seed.
-type ScatterKey = (DetailSettings, FlowerSettings, usize, u32);
+type ScatterKey = (
+    DetailSettings,
+    FlowerSettings,
+    usize,
+    u32,
+    Vec<crate::terrain::detail_layers::DetailLayer>,
+);
 
 /// Settings that change where blades are and how big (colours and wind are uniforms).
 fn scatter_key(d: &TerrainData) -> ScatterKey {
@@ -324,7 +330,12 @@ fn scatter_key(d: &TerrainData) -> ScatterKey {
         lod_distance: 0.0,
         map: Vec::new(),
     };
-    (s, f, d.trees.instances.len(), d.rule_seed)
+    // Grass species (their maps are painted by region, like the terrain grass's).
+    let species = (d.detail_layers.iter())
+        .filter(|l| l.kind == crate::terrain::detail_layers::DetailKind::Grass)
+        .map(|l| l.settings())
+        .collect();
+    (s, f, d.trees.instances.len(), d.rule_seed, species)
 }
 
 /// Chunk `(x, z)` is within `r` metres of the camera (terrain-local).
@@ -447,7 +458,7 @@ impl Grass {
             self.restart();
             self.key = Some(key);
         }
-        if !d.details.enabled || d.detail_map.is_empty() {
+        if !crate::terrain::detail_layers::draws_grass(d) {
             self.keep_chunks(|_| false);
             self.restart();
             return;

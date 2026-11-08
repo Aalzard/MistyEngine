@@ -230,6 +230,12 @@ pub struct Placement {
     pub spacing: f32,
     /// Random seed.
     pub seed: u32,
+    /// Terrain heights trees grow at (metres above the terrain's base).
+    pub altitude: [f32; 2],
+    /// Gentlest ground trees grow on (degrees; above 0 keeps them off flats).
+    pub min_slope: f32,
+    /// Each tree turned at random about its trunk (else all face the same way).
+    pub random_rotation: bool,
 }
 
 impl Default for Placement {
@@ -240,7 +246,22 @@ impl Default for Placement {
             max_slope: 30.0,
             spacing: 6.0,
             seed: 1,
+            altitude: [0.0, 10_000.0],
+            min_slope: 0.0,
+            random_rotation: true,
         }
+    }
+}
+
+impl Placement {
+    /// Slope and height at terrain-local `(x, z)` allow a tree (and it is not over a hole).
+    pub fn ground_allows(&self, d: &TerrainData, x: f32, z: f32) -> bool {
+        let slope = slope_at(d, x, z);
+        let h = d.sample_height(x, z);
+        slope <= self.max_slope
+            && slope >= self.min_slope
+            && (self.altitude[0]..=self.altitude[1]).contains(&h)
+            && !d.hole_at(x, z)
     }
 }
 
@@ -263,7 +284,11 @@ pub fn new_instance(
     TreeInstance {
         position: Vec2::new(x / d.size.x, z / d.size.z),
         prototype,
-        rotation: r(13) * std::f32::consts::TAU,
+        rotation: if p.random_rotation {
+            r(13) * std::f32::consts::TAU
+        } else {
+            0.0
+        },
         height_scale: h,
         // Wider trees are a little shorter and the other way round (a stand of individuals).
         width_scale: w * (h / ((p.height[0] + p.height[1]) * 0.5)).powf(0.3),
@@ -273,7 +298,7 @@ pub fn new_instance(
 
 /// Is there room for a tree at local `(x, z)`: ground not too steep, no tree within spacing.
 pub fn room_at(d: &TerrainData, x: f32, z: f32, p: &Placement, placed: &[TreeInstance]) -> bool {
-    if x < 0.0 || z < 0.0 || x > d.size.x || z > d.size.z || slope_at(d, x, z) > p.max_slope {
+    if x < 0.0 || z < 0.0 || x > d.size.x || z > d.size.z || !p.ground_allows(d, x, z) {
         return false;
     }
     let spacing2 = p.spacing * p.spacing;
@@ -307,7 +332,7 @@ pub fn mass_place(d: &mut TerrainData, count: usize, prototypes: &[u16], p: &Pla
         let n = base + i;
         let x = rand(n, 1, p.seed) * d.size.x;
         let z = rand(n, 2, p.seed) * d.size.z;
-        if slope_at(d, x, z) > p.max_slope {
+        if !p.ground_allows(d, x, z) {
             continue;
         }
         let q = Vec2::new(x, z);
@@ -440,6 +465,48 @@ mod tests {
         }
         steep.trees.prototypes.push(TreePrototype::default());
         assert_eq!(mass_place(&mut steep, 50, &[0], &p), 0);
+    }
+
+    /// A ramp from 0 to 50 m along x: height limits keep trees in their band, the brush
+    /// plants within it and erases only the picked tree.
+    #[test]
+    fn height_limits_rotation_and_erase() {
+        let mut d = TerrainData::new(65, Vec3::new(200.0, 50.0, 200.0), 64);
+        for iz in 0..65 {
+            for ix in 0..65 {
+                d.set_height(ix, iz, ix as f32 / 64.0);
+            }
+        }
+        d.trees.prototypes = vec![TreePrototype::default(); 2];
+        let p = Placement {
+            spacing: 5.0,
+            altitude: [10.0, 20.0],
+            random_rotation: false,
+            ..Default::default()
+        };
+        let placed = mass_place(&mut d, 200, &[0], &p);
+        assert!(placed > 20, "{placed}");
+        for t in &d.trees.instances {
+            let h = local_position(&d, t).y;
+            assert!((10.0 - 0.01..=20.01).contains(&h), "tree at {h} m");
+            assert_eq!(t.rotation, 0.0, "no random turn");
+        }
+        // Paint the other tree in the band, then erase only the first one there.
+        let centre = Vec2::new(60.0, 100.0);
+        for _ in 0..80 {
+            paint(&mut d, centre, 30.0, 4.0, Some(1), &p, false);
+        }
+        let inside = |d: &TerrainData, proto: u16| {
+            (d.trees.instances.iter())
+                .filter(|t| t.prototype == proto)
+                .filter(|t| (t.position * 200.0).distance(centre) <= 30.0)
+                .count()
+        };
+        assert!(inside(&d, 1) > 3, "painted");
+        assert!(inside(&d, 0) > 0);
+        paint(&mut d, centre, 30.0, 4.0, Some(0), &p, true);
+        assert_eq!(inside(&d, 0), 0, "erased");
+        assert!(inside(&d, 1) > 3, "the other tree stays");
     }
 
     #[test]
