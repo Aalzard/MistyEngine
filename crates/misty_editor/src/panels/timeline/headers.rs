@@ -169,6 +169,9 @@ fn header(
         ui.add_enabled_ui(editing, |ui| {
             let lock = toggle(ui, "🔒", track.locked, "Lock: the track can't be edited");
             let mute = toggle(ui, "🔇", track.muted, "Mute: the track does nothing");
+            if track.kind == TrackKind::Animation {
+                record_button(ui, s, path, track);
+            }
             if lock {
                 timelines::edit(s, path, "Lock Track", false, |t| {
                     if let Some(x) = t.track_mut(&id) {
@@ -220,6 +223,31 @@ fn name_label(ui: &mut Ui, s: &mut EditorState, path: &str, track: &Track, muted
     );
     if r.double_clicked() {
         s.timeline.renaming = Some((track.id.clone(), track.name.clone()));
+    }
+}
+
+/// ⏺ on an Animation track: arm it so changes to its object become keys at the playhead.
+fn record_button(ui: &mut Ui, s: &mut EditorState, path: &str, track: &Track) {
+    let on = s.timeline.recording.as_deref() == Some(track.id.as_str());
+    let can = super::record::can_record(s, path, &track.id);
+    let color = if on { super::REC } else { theme::TEXT_DIM };
+    let tip = if can {
+        "Record: changes to the bound object in the Scene view or Inspector become keys at the playhead"
+    } else {
+        "Record needs a bound Animation track without clips (keys go to the track itself)"
+    };
+    let r = ui
+        .add_enabled(
+            can || on,
+            egui::Button::new(RichText::new("⏺").color(color).size(12.0))
+                .frame_when_inactive(false)
+                .small(),
+        )
+        .on_hover_text(tip)
+        .on_disabled_hover_text(tip);
+    if r.clicked() {
+        let arm = (!on).then(|| track.id.clone());
+        super::record::arm(s, arm);
     }
 }
 

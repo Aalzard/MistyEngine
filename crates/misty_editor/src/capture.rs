@@ -388,6 +388,11 @@ pub fn apply_env(
         s.timeline.time = t.max(0.0);
         s.timeline.preview = true;
     }
+    // `MISTY_TIMELINE=record=<track>,clip=<track>:<index>` arms a track for recording and shows
+    // a clip in the Inspector (see `panels::timeline::apply_env`).
+    if let Some(v) = std::env::var_os("MISTY_TIMELINE") {
+        crate::panels::timeline::apply_env(s, &v.to_string_lossy());
+    }
     // `MISTY_RELOAD_BAR=1` shows the "changed on disk — Reload / Keep mine" bar for the active
     // scene; `MISTY_RELOAD_TOAST=3` the "Reloaded 3 assets" toast (live reload screenshots;
     // `MISTY_FAKE_NEW_BUILD=1` shows the "New build — Restart" pill, see `live_reload`).

@@ -36,6 +36,11 @@ impl TimelineStore {
         Ok(&self.timelines[path])
     }
 
+    /// A timeline already read (sub-timelines in previews).
+    pub fn loaded(&self, path: &str) -> Option<&TimelineAsset> {
+        self.timelines.get(path)
+    }
+
     /// Assets read so far (watched for changes on disk).
     pub fn loaded_paths(&self) -> Vec<String> {
         self.timelines.keys().cloned().collect()
@@ -134,5 +139,9 @@ pub fn edit(
 impl ClipSource for ClipStore {
     fn clip(&self, path: &str) -> Option<&AnimationClip> {
         self.loaded(path)
+    }
+
+    fn timeline(&self, path: &str) -> Option<&TimelineAsset> {
+        self.timelines.loaded(path)
     }
 }

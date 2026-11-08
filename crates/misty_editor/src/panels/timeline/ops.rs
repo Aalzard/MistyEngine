@@ -153,6 +153,93 @@ pub fn add_clip(s: &mut EditorState, path: &str, id: &str, asset: Option<&str>, 
     }
 }
 
+/// Seconds a new Camera shot or Control clip lasts.
+const REFERENCE_CLIP_LEN: f32 = 3.0;
+
+/// Add a Camera shot / Control clip for `object` to track `id` (at `time`, else after the
+/// last clip): the clip gets a new reference name and the window's director points it at
+/// `object`. Selects the clip.
+pub fn add_reference_clip(
+    s: &mut EditorState,
+    path: &str,
+    id: &str,
+    object: Entity,
+    time: Option<f32>,
+) {
+    let Some((Some(d), _)) = current(s) else {
+        return;
+    };
+    let Ok(t) = s.anim_clips.timelines.get(path) else {
+        return;
+    };
+    let Some(track) = t.track(id) else { return };
+    if !track.kind.clips_reference_objects() || t.is_locked(track) {
+        return;
+    }
+    let after = track.clips.iter().map(|c| c.end()).fold(0.0, f32::max);
+    let start = t.snap(time.unwrap_or(after).max(0.0));
+    let reference = t.next_reference();
+    let clip = TimelineClip {
+        name: s.scene.name(object),
+        start,
+        duration: REFERENCE_CLIP_LEN,
+        reference: Some(reference.clone()),
+        ..Default::default()
+    };
+    set_reference(s, d, &reference, Some(object));
+    let mut index = None;
+    timelines::edit(s, path, "Add Clip", false, |t| {
+        if let Some(tr) = t.track_mut(id) {
+            tr.clips.push(clip);
+            index = Some(tr.clips.len() - 1);
+        }
+    });
+    if let Some(i) = index {
+        s.timeline.selected = Some(TimelineSel::Clip(id.to_owned(), i));
+    }
+}
+
+/// Point the director's clip reference `name` at `object` (with undo).
+pub fn set_reference(s: &mut EditorState, director: Entity, name: &str, object: Option<Entity>) {
+    s.record("Set Clip Object");
+    if let Ok(mut d) = s.scene.world.get::<&mut PlayableDirector>(director) {
+        d.set_reference(name, object);
+    }
+}
+
+/// Objects a Control clip can control: ones with a Playable Director, particles, an Audio
+/// Source or an Impulse Source first, then every other object.
+pub fn controllable(s: &EditorState) -> Vec<(Entity, String)> {
+    use misty_engine::scene::{AudioSource, ParticleSystem};
+    let w = &s.scene.world;
+    let special = |e: Entity| {
+        w.get::<&PlayableDirector>(e).is_ok()
+            || w.get::<&ParticleSystem>(e).is_ok()
+            || w.get::<&AudioSource>(e).is_ok()
+            || w.get::<&misty_engine::vcam::ImpulseSource>(e).is_ok()
+    };
+    let all: Vec<Entity> = s.scene.walk().into_iter().map(|(e, _)| e).collect();
+    let (mut first, rest): (Vec<Entity>, Vec<Entity>) = all.into_iter().partition(|e| special(*e));
+    first.extend(rest);
+    first.into_iter().map(|e| (e, s.scene.name(e))).collect()
+}
+
+/// Ripple: shift every clip that started at or after `from` (in `base`, the clips before the
+/// edit) by `delta`, except clip `skip`.
+pub fn ripple(
+    clips: &mut [TimelineClip],
+    base: &[TimelineClip],
+    skip: usize,
+    from: f32,
+    delta: f32,
+) {
+    for (i, (c, b)) in clips.iter_mut().zip(base).enumerate() {
+        if i != skip && b.start >= from - 1e-4 {
+            c.start = (b.start + delta).max(0.0);
+        }
+    }
+}
+
 /// Add a marker at `time` to a Signal track (`None` = the timeline's markers row).
 pub fn add_marker(s: &mut EditorState, path: &str, track: Option<&str>, time: f32) {
     let mut index = None;
@@ -185,10 +272,17 @@ pub fn delete_selected(s: &mut EditorState, path: &str) {
     match sel {
         TimelineSel::Track(id) => remove_track(s, path, &id),
         TimelineSel::Clip(id, i) => {
+            let ripple = s.timeline.ripple;
             timelines::edit(s, path, "Delete Clip", false, |t| {
                 if let Some(tr) = t.track_mut(&id)
                     && i < tr.clips.len()
                 {
+                    // Ripple closes the gap the clip leaves.
+                    if ripple {
+                        let base = tr.clips.clone();
+                        let gone = &base[i];
+                        self::ripple(&mut tr.clips, &base, i, gone.end(), -gone.duration);
+                    }
                     tr.clips.remove(i);
                 }
             });

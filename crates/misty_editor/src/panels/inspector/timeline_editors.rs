@@ -316,6 +316,53 @@ fn clip_editor(
             ui.label(RichText::new(a.as_str()).color(theme::TEXT_DIM));
             ui.end_row();
         }
+        if kind.clips_reference_objects() {
+            reference_row(ui, state, rel, kind, &mut c);
+        }
+        if kind == TrackKind::Control {
+            grid_sub_header(ui, "Control");
+            let o = &mut c.control;
+            for (label, v, tip) in [
+                (
+                    "Activation",
+                    &mut o.activation,
+                    "The object is active only while the clip plays",
+                ),
+                (
+                    "Sub-Timeline",
+                    &mut o.sub_timeline,
+                    "Play the object's Playable Director timeline at the clip's local time",
+                ),
+                (
+                    "Particles",
+                    &mut o.particles,
+                    "Play its particle systems while the clip plays (Play mode)",
+                ),
+                (
+                    "Audio",
+                    &mut o.audio,
+                    "Play its Audio Source while the clip plays (Play mode)",
+                ),
+                (
+                    "Impulse",
+                    &mut o.impulse,
+                    "Fire its Impulse Source when the clip starts (Play mode)",
+                ),
+            ] {
+                ui.label(label).on_hover_text(tip);
+                ui.checkbox(v, "");
+                ui.end_row();
+            }
+            ui.label("Post-playback State");
+            combo(
+                ui,
+                "tl_ctl_post",
+                &mut o.post_playback,
+                &PostPlayback::ALL,
+                PostPlayback::label,
+            );
+            ui.end_row();
+        }
     });
     c.duration = c.duration.max(1.0 / rate);
     c.ease_in = c.ease_in.min(c.duration);
@@ -327,6 +374,71 @@ fn clip_editor(
                 *x = c;
             }
         });
+    }
+}
+
+/// Camera / Control clip: the scene object it points at, kept on the window's director (a
+/// clip without a reference name gets one).
+fn reference_row(
+    ui: &mut Ui,
+    state: &mut EditorState,
+    rel: &str,
+    kind: TrackKind,
+    c: &mut TimelineClip,
+) {
+    let label = if kind == TrackKind::Camera {
+        "Virtual Camera"
+    } else {
+        "Source Object"
+    };
+    ui.label(label);
+    let Some((Some(d), _)) = crate::panels::timeline::current(state) else {
+        ui.label(RichText::new("Open it on a director to pick").color(theme::TEXT_DIM));
+        ui.end_row();
+        return;
+    };
+    let current = c
+        .reference
+        .as_deref()
+        .and_then(|r| crate::panels::timeline::director(state, d)?.reference(r))
+        .filter(|e| state.scene.contains(*e));
+    let objects: Vec<(Entity, String)> = if kind == TrackKind::Camera {
+        misty_engine::vcam::rig::active_cameras(&state.scene)
+            .into_iter()
+            .map(|e| (e, state.scene.name(e)))
+            .collect()
+    } else {
+        crate::panels::timeline::ops::controllable(state)
+    };
+    let shown = current.map_or("None".to_owned(), |e| state.scene.name(e));
+    let mut chosen = current;
+    egui::ComboBox::from_id_salt("tl_clip_reference")
+        .selected_text(shown)
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut chosen, None, "None");
+            for (e, n) in &objects {
+                ui.selectable_value(&mut chosen, Some(*e), n);
+            }
+        });
+    ui.end_row();
+    if chosen != current {
+        let name = match c.reference.clone() {
+            Some(n) => n,
+            None => {
+                let n = state
+                    .anim_clips
+                    .timelines
+                    .get(rel)
+                    .map(|t| t.next_reference())
+                    .unwrap_or_else(|_| "r1".into());
+                c.reference = Some(n.clone());
+                n
+            }
+        };
+        crate::panels::timeline::ops::set_reference(state, d, &name, chosen);
+        if let Some(e) = chosen {
+            c.name = state.scene.name(e);
+        }
     }
 }
 

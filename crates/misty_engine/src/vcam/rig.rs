@@ -57,12 +57,12 @@ pub struct CameraOverride {
 }
 
 impl CameraOverride {
-    /// The camera with the most weight.
+    /// The camera with the most weight (`None` = the brain's own live camera).
     pub fn dominant(&self) -> Option<Entity> {
         if self.weight >= 0.5 {
-            self.to.or(self.from)
+            self.to
         } else {
-            self.from.or(self.to)
+            self.from
         }
     }
 }
