@@ -1434,6 +1434,35 @@ pub fn generate_variant(
             let e = cg.master_input(master::TRANSMISSION, ValueType::Vec3)?;
             cg.out.push(format!("    o.transmission = {e};"), m);
         }
+        // Standard Lit v2 blocks: written (and their lighting compiled in) when the Graph
+        // Settings turn them on (`o.coat`, `o.anisotropy`, `o.subsurface`, see
+        // render/material_v2.rs).
+        if t.subsurface {
+            let e = cg.master_input(master::SUBSURFACE, ValueType::Vec3)?;
+            cg.out.push(format!("    o.subsurface = {e};"), m);
+            if g.input_connection(MASTER, master::THICKNESS).is_some() {
+                let e = cg.master_input(master::THICKNESS, ValueType::Float)?;
+                cg.out.push(
+                    format!("    o.transmission = o.transmission * (1.0 - saturate({e}));"),
+                    m,
+                );
+            }
+        }
+        if t.clear_coat {
+            let e = cg.master_input(master::COAT_MASK, ValueType::Float)?;
+            cg.out.push(format!("    o.coat = {e};"), m);
+            let e = cg.master_input(master::COAT_SMOOTHNESS, ValueType::Float)?;
+            cg.out.push(format!("    o.coat_smoothness = {e};"), m);
+        }
+        if t.anisotropy {
+            let e = cg.master_input(master::ANISOTROPY, ValueType::Float)?;
+            cg.out.push(format!("    o.anisotropy = {e};"), m);
+            let e = cg.master_input(master::ANISOTROPY_DIRECTION, ValueType::Vec3)?;
+            cg.out.push(
+                format!("    o.anisotropy_direction = tangent_to_world(input, normalize({e}));"),
+                m,
+            );
+        }
         if t.alpha_clip {
             let c = cg.master_input(master::ALPHA_CLIP, ValueType::Float)?;
             cg.out.push(
