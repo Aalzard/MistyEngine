@@ -200,8 +200,19 @@ impl NavMesh {
             }
             let node = nodes[&poly];
             let here = filter.cost(self.area_of(poly));
+            // Through a dearer area, measure via the polygon's centre: a taut line may only
+            // touch its corner, which would make crossing it look free.
+            let center = self.center(poly);
+            let walk = |x: Vec3| {
+                if here > 1.0 + 1e-4 && poly != sp {
+                    node.pos.distance(center) + center.distance(x)
+                } else {
+                    node.pos.distance(x)
+                }
+            };
             let mut relax = |to: PolyRef, g: f32, pos: Vec3, via: Via| {
-                if nodes.get(&to).is_some_and(|n| n.g <= g) {
+                // Finished polygons keep the way they were reached.
+                if closed.contains(&to) || nodes.get(&to).is_some_and(|n| n.g <= g) {
                     return;
                 }
                 nodes.insert(
@@ -225,7 +236,7 @@ impl NavMesh {
                     continue;
                 }
                 let x = portal_point(l.a, l.b, node.pos, e);
-                let mut g = node.g + node.pos.distance(x) * here;
+                let mut g = node.g + walk(x) * here;
                 // The last step goes straight to the target point.
                 if l.to == ep {
                     g += x.distance(e) * filter.cost(area);
@@ -247,7 +258,7 @@ impl NavMesh {
                 } else {
                     filter.cost(link.area)
                 };
-                let mut g = node.g + node.pos.distance(from) * here + from.distance(to) * factor;
+                let mut g = node.g + walk(from) * here + from.distance(to) * factor;
                 if to_poly == ep {
                     g += to.distance(e) * filter.cost(area);
                 }

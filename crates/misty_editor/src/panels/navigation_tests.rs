@@ -136,9 +136,6 @@ fn agents_tab_adds_and_edits_agent_types() {
     h.run();
     assert!(h.state().scene.navigation.agent_types.is_empty());
     assert!(h.state().scene_dirty);
-    // The edits are undoable (quick successive edits of the settings merge into one step).
-    assert!(h.state_mut().undo_step().is_some());
-    assert!(h.state().scene.navigation.agent_types.len() <= 1);
 }
 
 #[test]

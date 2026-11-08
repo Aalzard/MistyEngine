@@ -1294,7 +1294,7 @@
                 "pause": 2.0,
                 "speed": 1.5
               },
-              "path": "Assets/Scripts/Mover.lua"
+              "path": "Assets/Scripts/PingPong.lua"
             }
           ]
         },

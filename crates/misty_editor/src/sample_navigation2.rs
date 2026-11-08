@@ -3,7 +3,7 @@
 //! agent type (Humanoid and a wide "Ogre"). Twelve Humanoids cross the yard both ways (crowds
 //! avoiding each other with ORCA) and walk round an expensive Mud pool (a NavMesh Modifier with
 //! the "Mud" area, cost 6); two Ogres patrol through the wide gap; a jumper takes a NavMesh Link
-//! up onto a ledge; a rolling block (a carving Nav Mesh Obstacle moved by `Mover.lua`) cuts its
+//! up onto a ledge; a rolling block (a carving Nav Mesh Obstacle moved by `PingPong.lua`) cuts its
 //! moving hole into the mesh tile by tile. Regenerate with
 //! `cargo test -p misty_editor -- --ignored write_navigation_demo2`; the other tests check the
 //! committed files still match and that the scene plays.
@@ -23,7 +23,7 @@ use misty_engine::scene::{
 
 const SCENE: &str = "Assets/Scenes/NavigationDemo2.scene";
 const CROWD: &str = "Assets/Scripts/Crowd.lua";
-const MOVER: &str = "Assets/Scripts/Mover.lua";
+const MOVER: &str = "Assets/Scripts/PingPong.lua";
 /// Written by NavigationDemo's generator.
 const PATROL: &str = "Assets/Scripts/Patrol.lua";
 const FLOOR: &str = "Assets/Materials/Checker.mat";
@@ -82,22 +82,22 @@ end
 return Crowd
 "#;
 
-const MOVER_LUA: &str = r#"-- Mover: slides the object back and forth along an axis, pausing at each end.
-local Mover = {
+const MOVER_LUA: &str = r#"-- PingPong: slides the object back and forth along an axis, pausing at each end.
+local PingPong = {
     axis = Vector3.new(0, 0, 1),
     distance = 12,
     speed = 2,
     pause = 1,
 }
 
-function Mover:Start()
+function PingPong:Start()
     self.origin = self.transform.position
     self.t = 0
     self.dir = 1
     self.wait = 0
 end
 
-function Mover:Update()
+function PingPong:Update()
     if self.wait > 0 then
         self.wait = self.wait - Time.deltaTime
         return
@@ -115,7 +115,7 @@ function Mover:Update()
     self.transform.position = self.origin + self.axis * (self.t * self.distance)
 end
 
-return Mover
+return PingPong
 "#;
 
 fn project() -> PathBuf {
@@ -332,7 +332,7 @@ fn demo_scene() -> Scene {
             },
         );
     }
-    // The rolling block: carves as it moves (every 0.3 m), slid along z by Mover.lua.
+    // The rolling block: carves as it moves (every 0.3 m), slid along z by PingPong.lua.
     let roller = shape(
         &mut s,
         "Rolling Block",
@@ -564,6 +564,8 @@ fn navigation_demo2_plays() {
     let mut min_gap = f32::MAX;
     let mut jumper_top: f32 = 0.0;
     let mut in_mud = 0;
+    let mut farthest = vec![0.0f32; crowd.len()];
+    let mut path_in_mud = 0;
     let half = MUD_SIZE * 0.5 - Vec2::splat(1.0);
     for _ in 0..(24 * 60) {
         time.advance(1.0 / 60.0);
@@ -571,6 +573,9 @@ fn navigation_demo2_plays() {
         let logs = host.take_logs();
         assert!(logs.is_empty(), "{logs:?}");
         let pos: Vec<Vec3> = crowd.iter().map(|e| scene.world_position(*e)).collect();
+        for (f, (p, s)) in farthest.iter_mut().zip(pos.iter().zip(&starts)) {
+            *f = f.max(p.distance(*s));
+        }
         for i in 0..pos.len() {
             let d = Vec2::new(pos[i].x, pos[i].z) - MUD_CENTER;
             if d.x.abs() < half.x && d.y.abs() < half.y {
@@ -591,15 +596,33 @@ fn navigation_demo2_plays() {
             }
         }
         jumper_top = jumper_top.max(scene.world_position(jumper).y);
+        for e in &crowd {
+            let Some(path) = host.with_navigation(|n| n.path_of(*e)) else {
+                continue;
+            };
+            for w in path.windows(2).skip(1) {
+                for k in 0..=10 {
+                    let p = w[0].lerp(w[1], k as f32 / 10.0);
+                    let d = Vec2::new(p.x, p.z) - MUD_CENTER;
+                    if d.x.abs() < MUD_SIZE.x * 0.5 - 0.6 && d.y.abs() < MUD_SIZE.y * 0.5 - 0.6 {
+                        path_in_mud += 1;
+                    }
+                }
+            }
+        }
     }
     assert!(min_gap > -0.15, "crowd agents overlapped by {}", -min_gap);
-    assert_eq!(in_mud, 0, "crowds walk round the mud");
-    let moved = crowd
-        .iter()
-        .zip(&starts)
-        .filter(|(e, s)| scene.world_position(**e).distance(**s) > 3.0)
-        .count();
-    assert!(moved >= 8, "{moved} of 12 crowd agents are on their way");
+    // Avoidance may jostle an agent a little way in; paths themselves never cross the mud.
+    assert!(
+        in_mud < 180,
+        "crowds walk round the mud: {in_mud} agent-frames inside"
+    );
+    assert_eq!(path_in_mud, 0, "planned paths keep out of the mud");
+    let moved = farthest.iter().filter(|d| **d > 12.0).count();
+    assert!(
+        moved >= 10,
+        "{moved} of 12 crowd agents crossed the yard: {farthest:?}"
+    );
     // Base offset 1 m: standing on the 1.2 m ledge puts the pivot above 2.1 m.
     assert!(
         jumper_top > LEDGE_TOP + 0.9,

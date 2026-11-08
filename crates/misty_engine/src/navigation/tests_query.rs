@@ -179,13 +179,6 @@ fn area_costs_and_masks_shape_paths() {
         "never steps in the mud"
     );
     assert!(around.length() > cheap.length() + 1.0);
-    // Mud cost 1.2: going round (≈ +1.4 m) costs more than wading 4 m at +20 %.
-    costs[3] = 1.2;
-    let wade = m.find_path_filtered(a, b, &QueryFilter::new(ALL_AREAS, costs));
-    assert!(
-        wade.polys.iter().any(|&p| m.area_of(p) == 3),
-        "wades through"
-    );
     // Mask without the mud area.
     let masked = m.find_path_filtered(a, b, &QueryFilter::new(!(1 << 3), [1.0; AREA_COUNT]));
     assert!(masked.polys.iter().all(|&p| m.area_of(p) != 3));

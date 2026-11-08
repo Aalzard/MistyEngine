@@ -1,19 +1,19 @@
--- Mover: slides the object back and forth along an axis, pausing at each end.
-local Mover = {
+-- PingPong: slides the object back and forth along an axis, pausing at each end.
+local PingPong = {
     axis = Vector3.new(0, 0, 1),
     distance = 12,
     speed = 2,
     pause = 1,
 }
 
-function Mover:Start()
+function PingPong:Start()
     self.origin = self.transform.position
     self.t = 0
     self.dir = 1
     self.wait = 0
 end
 
-function Mover:Update()
+function PingPong:Update()
     if self.wait > 0 then
         self.wait = self.wait - Time.deltaTime
         return
@@ -31,4 +31,4 @@ function Mover:Update()
     self.transform.position = self.origin + self.axis * (self.t * self.distance)
 end
 
-return Mover
+return PingPong
