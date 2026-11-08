@@ -2512,3 +2512,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   colour in the far terrain beyond the grass draw distance (160 m in MeadowDemo).
 - Leaf cards seen edge-on still show stretched texture; linden and birch leaves are still a
   little schematic close up.
+
+## One-click virtual geometry (branch vgeo-button)
+
+### Done (docs/pending/virtual-geometry.md, "Round 3 of vgeo-button")
+- **GameObject ▸ Enable / Disable Virtual Geometry** (also in the Hierarchy context menu, only
+  the one that applies, and as a Mesh Filter Inspector button): turns the Virtual Geometry import
+  setting on or off for the models of the selected objects and their children, re-imports them
+  and shows the cluster builds in a small progress window. Skipped meshes go to the Console with
+  a reason.
+- **Tools ▸ Rendering ▸ Convert Scene / Project to Virtual Geometry** (Tools is a built-in menu
+  now; editor-script items join it): a short dialog with the triangle threshold (default 5 000),
+  "N models, M objects, est. memory", a Quality ▸ Virtual Geometry checkbox for High and Ultra
+  when they have it off, and a collapsed list of what is skipped and why (skinned, blend shapes,
+  alpha-tested, transparent, double-sided, unlit or custom-shader materials, under the
+  threshold, LOD 1+ of a LOD Group). Each conversion is one undo step that puts the import
+  settings and the Quality levels back. Ctrl+K lists all four commands.
+- **Lower fixed cost**: virtual geometry now picks its paths per frame (Auto): clusters are drawn
+  lit unless their triangles are small enough for the visibility buffer to pay, and the main
+  camera is culled in one phase (no Hi-Z pyramid, no split main pass) below 16 384 instances or
+  without GPU culling; all shadow maps are culled by one dispatch per pass. MeadowDemo's rocks
+  through virtual geometry now cost the same as or less than their LOD Groups on Medium–Ultra
+  (they were 1.0–1.6 ms slower).
+
+### Not done yet
+- No LOD Group fallback mode (not needed after the fixed cost went down); no persistent GPU
+  instance buffer (instances are still re-uploaded every frame); per-tile material
+  classification of the visibility resolve.

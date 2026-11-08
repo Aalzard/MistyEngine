@@ -35,6 +35,11 @@ a large mesh cost almost nothing, and occlusion culling works per cluster, not p
 
 ## Workflow (Unity-like)
 
+- **One click** (round 3 of vgeo-button, below): **GameObject ▸ Enable / Disable Virtual
+  Geometry** (also in the Hierarchy context menu and as a Mesh Filter Inspector button) sets the
+  import setting of the selected objects' models; **Tools ▸ Rendering ▸ Convert Scene / Project
+  to Virtual Geometry** does it for every eligible mesh of the open scenes or the project after a
+  short dialog. One undo step each.
 - **Model import settings ▸ Virtual Geometry** (checkbox, next to Generate Lightmap UVs; stored
   in the model's `.meta` as `"virtual_geometry": true`). Turning it on builds the clusters at
   import, like Nanite's per-mesh "enable" checkbox. Skinned models are never built.
@@ -202,7 +207,8 @@ material slot packed in one word, vertex list and local indices, normal cone). G
 
 ### Culling and LOD selection on the GPU (`vgeo_cull.wgsl`)
 
-Per view, five small compute passes:
+Per view, five small compute passes (one dispatch of each covers a whole run of views since
+round 3 of vgeo-button: every shadow map at once, the view in the workgroup id):
 
 | pass | threads | does |
 |---|---|---|
@@ -212,7 +218,10 @@ Per view, five small compute passes:
 | `cs_clusters` | one workgroup per cluster chunk | LOD from the two group bits (own fine, parent not), material slot (skip parts the object doesn't draw, or that cast no shadow in a shadow view), frustum, normal cone and Hi-Z test of the cluster sphere, append (slot's draw, cluster) to the slot's batch and write the cluster's indexed draw arguments |
 | `cs_finish` | one per batch | clamp each batch's count to its region |
 
-Views: the main camera in **two phases** — instances visible last frame (frustum + LOD only),
+Views: the main camera in **one phase** (frustum + LOD only, drawn with the opaque meshes of an
+unsplit main pass) unless it has 16 384 instances or more or GPU culling builds the pyramid
+anyway (`VgeoChoice` Auto, round 3 of vgeo-button); then in **two phases** — instances visible
+last frame (frustum + LOD only),
 then after the opaque depth of phase one is turned into the Hi-Z pyramid, every instance and
 cluster not drawn yet against it (this is `render/gpu_culling`'s pyramid and occlusion test,
 shared: when GPU culling is on both use the same pyramid; when it is off virtual geometry builds
@@ -552,6 +561,153 @@ They all stay on the **heightmap**, which remains the source of truth:
   `render::vgeo::tests::view_regions_never_overlap`, and the ignored demo `vgeo_field`
   (shots + timings).
 
+## Round 3 of vgeo-button: one-click conversion and a lower fixed cost
+
+The user: "make a button where its easy to just turn objects into nanite easily or for all
+scenes", and "work on performance". Branch `vgeo-button`.
+
+### One click (`crates/misty_editor/src/vgeo_convert.rs`)
+
+- **GameObject ▸ Enable Virtual Geometry / Disable Virtual Geometry**, also at the end of the
+  Hierarchy context menu (only the one that applies to the selection is shown) and as a button
+  under a Mesh Filter whose mesh comes from a model file. It acts on the selected objects and
+  their children (a rock prefab's LOD 0 is a child of its LOD Group root): the models their
+  meshes come from get the Virtual Geometry import setting, are re-imported right away
+  (`models::forget`, no half-second poll), and a small progress window counts the imports and
+  the cluster builds on the worker ("Building clusters: 3 of 7 meshes…"). Skipped meshes are
+  listed in the Console with their reason. Enable also turns Quality ▸ Virtual Geometry on for
+  High and Ultra if they have it off (said in the Console).
+- **Tools ▸ Rendering ▸ Convert Scene to Virtual Geometry…** and **Convert Project to Virtual
+  Geometry…** (Tools is now a built-in menu between Component and Window; editor-script
+  `Tools/…` items join it after a separator). A small dialog:
+  - **Min. triangles** (default 5 000; the selection commands use the same value);
+  - the summary, e.g. "2 models, 64 objects, est. 8.6 MB (1 already on)" (the estimate: 32 bytes
+    per source vertex plus 18 per source triangle, what the pool takes for the generated rocks);
+  - **Turn on Quality ▸ Virtual Geometry for High and Ultra** (checked; shown only while one of
+    them has it off; without levels of those names, the default level and the ones after it);
+  - **Skipped (n)**, collapsed: each model left out, how many objects use it and why.
+  - **Convert** / **Cancel**.
+- **Eligible**: a mesh of a model file (not a primitive, generated or Editable Mesh), not
+  skinned and without blend shapes, at least the threshold's triangles, drawn with a Standard,
+  Opaque, single-sided material (the scene plan reads each object's materials; the project plan
+  the model's own). Skipped with a reason: skinned, blend shapes, alpha-tested ("foliage cards
+  lose coverage when simplified"), transparent, double-sided, unlit, custom shader, under the
+  threshold, LOD 1+ of a LOD Group (LOD 0 stands in for every level once it is virtual, see
+  rocks.md), or a model that can't be imported. A model is converted when at least one object
+  uses it eligibly (the others keep drawing the ordinary way, as before).
+- **Undo**: the scene itself doesn't change (a Mesh Filter with a virtual mesh takes the cluster
+  path by itself), so each command is one undo step (`ImportUndo` in `undo.rs`) that writes the
+  models' previous import settings and the previous Quality levels back, saves them and
+  re-imports; redo applies them again.
+- **Ctrl+K**: "Convert Scene to Virtual Geometry", "Convert Project to Virtual Geometry",
+  "Enable Virtual Geometry", "Disable Virtual Geometry".
+- Tests (`vgeo_convert/tests.rs`): material and mesh rules; the scene plan (dense models in,
+  alpha-tested, small and LOD 1 out with their reasons), apply, Quality levels, one undo step,
+  redo; the project plan and its threshold; Enable / Disable on a selection (children of a LOD
+  Group root included) and what the context menu shows; the progress window importing and
+  counting a real build; kittest: Tools ▸ Rendering ▸ Convert Scene… pushes the command, the
+  dialog shows the summary, the Quality checkbox and the skipped list, and Convert applies it;
+  the search palette lists the commands.
+
+### Why it was slower than LOD Groups, and what changed (`render/vgeo/`)
+
+Pass timers in MeadowDemo (High, close view, the rocks through virtual geometry, round 3's
+paths) put the fixed cost here: the visibility buffer's resolve **0.67–1.11 ms** (one
+full-screen pass per material batch and per main phase: the six rock materials × two phases =
+12 full-screen passes reading 4× MSAA ids, for 30–60 k triangles), the Hi-Z pyramid and second
+culling phase **0.14 ms**, the shadow culling **0.13 ms** (five dispatches per cascade), the
+first phase **0.04 ms**, plus the main pass split four ways around the visibility rasters
+(MSAA store and load). Changes:
+
+1. **Auto visibility buffer** (`VgeoChoice`, `Renderer::set_virtual_geometry_visibility`): the
+   clusters go through the visibility buffer only once the main camera draws at least 0.25
+   triangles per pixel and material batch (a frame or two late, from the non-blocking counter
+   readback; off again below 0.18), else lit directly. The rock field (2 M triangles, one
+   batch) keeps it; the meadow's 60 rocks (0.05 M triangles, six batches) draw lit: 0.06–0.6 ms
+   instead of the 0.7–1.1 ms resolve.
+2. **One main phase** for fewer than 16 384 instances when GPU culling is off: instances are
+   culled once (frustum and level of detail, mode 3 in `cs_instances`) and drawn with the
+   opaque meshes of an unsplit main pass — no Hi-Z pyramid, no second culling, no split. With
+   GPU culling on (the pyramid exists anyway) or above the count, two phases as before.
+   `set_virtual_geometry_occlusion` forces either. The 3000-rock field is ~0.6 ms faster in one
+   phase too (its rocks rarely hide each other).
+3. **Views culled together**: every view's uniform is in one array and each culling pass covers
+   a run of views (the main phase, or all shadow maps) with the view in the workgroup id;
+   `cs_prepare` takes the run's largest cluster and group dispatch with atomics. Five dispatches
+   and one copy for all shadow maps instead of five and one per map: shadow culling
+   0.13 → 0.03–0.04 ms with four cascades. The per-view instance words (first group chunk,
+   first decided group) moved to their own area of the instance state, since views now run at
+   the same time.
+
+No LOD Group fallback mode was added: with the fixed cost gone, virtual geometry is at or below
+the LOD Group path everywhere in MeadowDemo, so a fallback would only add a setting. The
+persistent GPU instance buffer stays on the list (instances are re-uploaded every frame; on the
+CPU this is ~60–3000 records here, not measurable on the GPU).
+
+### MeadowDemo rocks (`rock_cost`)
+
+1920 × 1080, RTX 4060, median GPU time of frames 40–160, difference to the same view without
+rocks in ms (each shot and pair of quality levels in its own `gpu-timing.lock` hold; "before" =
+virtual geometry forced onto round 3's paths, the visibility buffer and two phases, in the same
+run). Rocks: 51–60 instances, 400–720 clusters, 0.03–0.06 M main triangles, 0.01–0.19 M
+shadow triangles; LOD Groups draw 0.07–1.6 M more triangles.
+
+| view | quality | LOD Groups | VG before | **VG now** |
+|---|---|---|---|---|
+| close | Low | −0.62 | +0.59 | **−0.75** |
+| | Medium | −0.50 | +0.70 | **−0.74** |
+| | High | −0.70 | +0.57 | **−0.69** |
+| | Ultra | −1.00 | −0.21 | **−1.40** |
+| wide | Low | −0.02 | +3.35 | **+0.06** |
+| | Medium | +0.02 | +0.84 | **−0.48** |
+| | High | +0.18 | +1.50 | **+0.16** |
+| | Ultra | +0.13 | +1.29 | **−0.07** |
+| behind | Low | +0.02 | +1.45 | **+0.09** |
+| | Medium | −0.06 | +1.32 | **+0.01** |
+| | High | +0.26 | +1.40 | **+0.20** |
+| | Ultra | +0.09 | +1.41 | **+0.17** |
+| gallery | Low | 0 (11.19 ms) | +1.39 | **+0.05** |
+| | Medium | +0.18 | +1.21 | **+0.01** |
+| | High | +0.52 | +1.10 | **−0.17** |
+| | Ultra | +0.59 | +0.94 | **−0.31** |
+
+(Close Low is from a second run with pass timers: the first had virtual geometry at +2.95 with
+LOD Groups at +1.11 too, disturbed. Gallery Low's "no rocks" frame was disturbed, so that row is
+against LOD Groups.) The close view gets cheaper with rocks (the boulder hides grass). Run to
+run, cells move by ±0.1–0.2 ms; within that, virtual geometry now **equals the LOD Group path**
+in the open views and is **0.2–0.8 ms cheaper** close to rocks and in the gallery, where LOD 0
+or LOD 1 of the dense meshes is on screen. Before it was 1.0–1.6 ms behind (3.4 ms on Low,
+wide).
+
+Parts now (High, wide, pass timers): shadow culling 0.04, culling 0.04, cluster draw 0.06 ms
+(before: 0.13, 0.04, resolve 0.67, Hi-Z + second phase 0.14).
+
+### The 3000-rock field (`vgeo_field`)
+
+Same machine, `MISTY_VGEO_SHOTS=0 MISTY_VGEO_FULL=0`, one lock hold per quality level. The
+machine was busy (another agent's GPU tests ran outside the lock), so the field was run three
+times and each cell is the **minimum** of the three (the undisturbed value; disturbed runs were
+5–15× slower). "Before" = the visibility buffer and two phases forced (round 3's paths).
+
+| Quality / view | LOD Groups | VG before | **VG now (Auto)** | VG lit, two phases | VG 2 px (before) |
+|---|---|---|---|---|---|
+| High / field | 2.93 | 2.78 | **2.65** (one phase forced: 2.52) | 2.93 | 2.11 |
+| High / close | 3.21 | 2.94 | **2.88** (2.68) | 3.13 | 2.28 |
+| High / aerial | 2.44 | 2.05 | **1.88** | 2.02 | 1.82 |
+| Medium / field | – (no clean run) | 2.25 | **1.99** | 2.36 | 1.84 |
+| Medium / close | 2.28 | 2.43 | **2.11** | 2.58 | 2.02 |
+| Medium / aerial | 1.95 | 2.80 | **1.56** | 1.69 | 1.71 |
+
+GPU ms, 1920 × 1080. Auto picks one phase (3000 < 16 384 instances, GPU culling off) and the
+visibility buffer (≥ 1 triangle per pixel, one material). Triangles (High): LOD Groups
+6.1–7.4 M, VG 1.1–2.6 M (one phase draws the few rocks the Hi-Z test used to hide: 2.6 M
+instead of 2.5 M in the field). CPU: VG 5–7 ms, LOD Groups 9.5–16 ms.
+
+So in the dense scene virtual geometry is now **0.1–0.4 ms faster than an ideal LOD chain on
+High and 0.2–0.4 ms on Medium**, 0.1–0.3 ms faster than before; in MeadowDemo it went from
+1.0–1.6 ms behind to level or ahead. The virtual shadow map rows didn't change (they force the
+old paths).
+
 ## Measurements
 
 `vgeo_field` (ignored GPU test, release): 3000 rocks over 320 × 320 m (3 generated rock
@@ -745,6 +901,14 @@ views:
 
 ## Checks
 
+Round 3 of vgeo-button (release profile, CARGO_INCREMENTAL=0): `cargo fmt --all`, `cargo clippy
+--workspace --all-targets --release` (0 warnings), `cargo test --workspace --release
+--no-fail-fast`: engine 965 passed, editor 611 passed, player 11 passed, 0 failed. The golden
+check (`golden_shots`, run in three lock holds: cycles; meadow Low + Medium; meadow High +
+Ultra) passes unchanged: every shot mean ≤ 0.01, 0.00 % changed (defaults don't change:
+Quality ▸ Virtual Geometry stays off in the presets). New tests: `vgeo_convert::tests` (7, two
+of them kittest), `render::vgeo::gpu_tests::auto_picks_one_phase_and_lit_for_a_few_rocks`.
+
 Round 3 (release profile, CARGO_INCREMENTAL=0): `cargo fmt`, `cargo clippy --release --workspace
 --all-targets` (0 warnings), `cargo test --workspace --release`: engine 946 passed, editor 580
 passed, player 11 passed. Failing: `foliage_lighting_demo_matches_its_generator` (known, not
@@ -762,7 +926,8 @@ Round 1: engine 860, editor 542, player 9 passed, the same known failure.
 Honest list, roughly in the order it should happen (done in round 2: build at import with the
 `.vgeo` cache, the visibility buffer and material resolve, normal cones, the smaller pool;
 in round 3: one decision per group, per-cluster material slots and Cutout, Stats / Profiler /
-debug views / Frame Debugger, 32 shadow views):
+debug views / Frame Debugger, 32 shadow views; in round 3 of vgeo-button: one-click
+conversion, Auto visibility buffer and phases, shadow views culled together):
 
 1. **Visibility resolve cost**: the resolve is a full-screen pass per material batch that
    reads every sample's ids before discarding; with many virtual materials that scales with
@@ -771,6 +936,8 @@ debug views / Frame Debugger, 32 shadow views):
    and sharing the id targets with the grass visibility buffer once both are merged (same id
    rule; 66 MB at 1080p 4× each today). The resolve is worth more the heavier the shading
    (many lights, probes, GI): in the rock field with one sun its gain is small (Measurements).
+   Since vgeo-button the visibility buffer is only used where it pays (Auto), which hides
+   this cost in scenes with few, large triangles; with it on, it is still materials × pixels.
 2. **Better partitioning.** Greedy cluster growth and greedy grouping work but leave more
    locked border edges than a balanced minimum-cut partitioner (METIS-style); that is what
    limits how far groups simplify (stuck groups) and how full clusters are.
@@ -791,7 +958,10 @@ debug views / Frame Debugger, 32 shadow views):
 7. **Culling refinements**: cluster-level occlusion for the instances drawn in the first
    phase (only instance-level today); a persistent GPU instance buffer updated incrementally
    (instances are re-uploaded from the CPU draw list every frame — fine to ~100 k instances,
-   not to millions); normal cones under non-uniform scale (skipped today).
+   not to millions); normal cones under non-uniform scale (skipped today). Occlusion
+   culling (two phases) is now only used from 16 384 instances or with GPU culling: a
+   heuristic from two open scenes (the meadow, the rock field); an occluded scene (a city)
+   would want a measured switch, e.g. from how many instances the second phase rejected.
 8. **Materials and batches**: each material batch owns a fixed equal share of a view's
    visible list (scenes with many virtual materials need GPU-side compaction per material);
    Cutout and Opaque single-sided Standard lit surfaces take the cluster path, double-sided
