@@ -56,6 +56,7 @@ pub fn grid(
                         ch as f32,
                     ],
                     pivot: s.pivot,
+                    border: [0.0; 4],
                 });
             }
             left += cw + s.padding[0];

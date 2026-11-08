@@ -1,4 +1,6 @@
-//! UI pass: draws a scene's canvases on top of a render target's final image.
+//! UI pass: draws a scene's canvases on top of a render target's final image. Overlay canvases
+//! are drawn as they are; World Space and Screen Space - Camera canvases are drawn in the same
+//! pass through their camera, hidden where the scene's depth is nearer.
 
 use std::collections::HashMap;
 
@@ -11,7 +13,7 @@ use crate::scene::Scene;
 use crate::ui::draw::{UiDrawList, UiTexture, UiVertex, build_with};
 use crate::ui::rich::sdf::SdfAtlas;
 use crate::ui::text::{GlyphAtlas, UiFont};
-use crate::ui::{UiInteraction, layout};
+use crate::ui::{UiInteraction, UiView, layout_view};
 use crate::video::{VideoPlayer, VideoRenderMode};
 
 const SHADER: &str = include_str!("shaders/ui.wgsl");
@@ -99,6 +101,8 @@ pub struct UiRenderer {
     pipeline: wgpu::RenderPipeline,
     /// Camera Far Plane video: draws only where the depth buffer is empty.
     far_pipeline: wgpu::RenderPipeline,
+    /// World / camera canvases: hidden behind nearer scene depth.
+    world_pipeline: wgpu::RenderPipeline,
     depth_layout: wgpu::BindGroupLayout,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -192,6 +196,7 @@ impl UiRenderer {
         Self {
             pipeline: pipeline(device, &[&layout], "fs"),
             far_pipeline: pipeline(device, &[&layout, &depth_layout], "fs_far"),
+            world_pipeline: pipeline(device, &[&layout, &depth_layout], "fs_world"),
             depth_layout,
             layout,
             sampler,
@@ -224,8 +229,9 @@ impl UiRenderer {
         self.images.clear();
     }
 
-    /// Lay out `scene`'s canvases for the target's size and draw them over its image.
-    /// `interaction` = button hover/press state while playing.
+    /// Lay out `scene`'s canvases for the target's size and draw them over its image (world and
+    /// camera canvases seen by the game camera). `interaction` = button hover/press state while
+    /// playing.
     pub fn render(
         &mut self,
         device: &wgpu::Device,
@@ -234,28 +240,40 @@ impl UiRenderer {
         scene: &Scene,
         interaction: Option<&UiInteraction>,
     ) {
-        crate::profile_scope!("UI.Render", crate::profiler::Category::Ui);
         // The canvas covers the final image (output resolution, also when upscaled).
         let (w, h) = target.output_size();
         let screen = Vec2::new(w as f32, h as f32);
-        // Video Players on camera planes: behind the scene (sky only), then in front of it.
-        let far = camera_plane_list(scene, screen, true);
-        if !far.vertices.is_empty() {
-            let depth = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("misty ui depth"),
-                layout: &self.depth_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(target.depth_view()),
-                }],
-            });
-            self.draw(device, queue, target.output_view(), &far, Some(&depth));
+        let view = UiView::game(scene, screen);
+        self.render_view(device, queue, target, scene, interaction, &view);
+    }
+
+    /// [`UiRenderer::render`] for any view (the editor's Scene view draws every canvas in the
+    /// world through its own camera). Camera-plane videos only show in game views.
+    pub fn render_view(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &RenderTarget,
+        scene: &Scene,
+        interaction: Option<&UiInteraction>,
+        ui_view: &UiView,
+    ) {
+        crate::profile_scope!("UI.Render", crate::profiler::Category::Ui);
+        let (w, h) = target.output_size();
+        let screen = Vec2::new(w as f32, h as f32);
+        if !ui_view.overlay_in_world {
+            // Video Players on camera planes: behind the scene (sky only), then in front of it.
+            let far = camera_plane_list(scene, screen, true);
+            if !far.vertices.is_empty() {
+                let view = target.output_view();
+                self.draw(device, queue, view, &far, Some(target.depth_view()), true);
+            }
+            let near = camera_plane_list(scene, screen, false);
+            self.draw(device, queue, target.output_view(), &near, None, false);
         }
-        let near = camera_plane_list(scene, screen, false);
-        self.draw(device, queue, target.output_view(), &near, None);
         let l = {
             crate::profile_scope!("UI.Layout");
-            layout(scene, screen)
+            layout_view(scene, ui_view)
         };
         if l.nodes.is_empty() {
             return;
@@ -268,22 +286,36 @@ impl UiRenderer {
             &mut self.atlas,
             &mut self.sdf,
         );
-        self.draw(device, queue, target.output_view(), &list, None);
+        let depth = Some(target.depth_view());
+        self.draw(device, queue, target.output_view(), &list, depth, false);
     }
 
-    /// Draw `list` over `view`; with `depth` (Camera Far Plane) only where the scene is empty.
+    /// Draw `list` over `view`. `far` (Camera Far Plane video) draws only where the scene is
+    /// empty; batches of world / camera canvases are hidden behind nearer scene depth.
     fn draw(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         view: &wgpu::TextureView,
         list: &UiDrawList,
-        depth: Option<&wgpu::BindGroup>,
+        scene_depth: Option<&wgpu::TextureView>,
+        far: bool,
     ) {
         if list.vertices.is_empty() {
             return;
         }
         self.prepare(device, queue, list);
+        let needs_depth = far || list.batches.iter().any(|b| b.depth);
+        let depth = scene_depth.filter(|_| needs_depth).map(|d| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("misty ui depth"),
+                layout: &self.depth_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(d),
+                }],
+            })
+        });
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("misty ui"),
         });
@@ -304,15 +336,26 @@ impl UiRenderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            match depth {
-                Some(d) => {
-                    pass.set_pipeline(&self.far_pipeline);
-                    pass.set_bind_group(1, d, &[]);
-                }
-                None => pass.set_pipeline(&self.pipeline),
+            if let Some(d) = &depth {
+                pass.set_bind_group(1, d, &[]);
             }
             pass.set_vertex_buffer(0, self.vertices.slice(..));
+            // 0 = plain, 1 = world (depth-tested), 2 = far plane.
+            let mut bound = None;
             for b in &list.batches {
+                let want = match (far, b.depth && depth.is_some()) {
+                    (true, _) if depth.is_some() => 2,
+                    (_, true) => 1,
+                    _ => 0,
+                };
+                if bound != Some(want) {
+                    pass.set_pipeline(match want {
+                        2 => &self.far_pipeline,
+                        1 => &self.world_pipeline,
+                        _ => &self.pipeline,
+                    });
+                    bound = Some(want);
+                }
                 let group = match &b.texture {
                     UiTexture::White => &self.white,
                     UiTexture::Glyphs => &self.atlas_group,
@@ -431,7 +474,7 @@ fn pipeline(
         immediate_size: 0,
     });
     let attributes = wgpu::vertex_attr_array![
-        0 => Float32x2, 1 => Float32x2, 2 => Float32x4, 3 => Float32, 4 => Float32x2
+        0 => Float32x4, 1 => Float32x2, 2 => Float32x4, 3 => Float32, 4 => Float32x2
     ];
     // Straight alpha for colour; alpha accumulates so the image stays opaque.
     let blend = wgpu::BlendState {
@@ -492,6 +535,6 @@ mod tests {
         )
         .validate(&module)
         .expect("valid ui shader");
-        assert_eq!(std::mem::size_of::<super::UiVertex>(), 44);
+        assert_eq!(std::mem::size_of::<super::UiVertex>(), 52);
     }
 }

@@ -3,20 +3,27 @@
 //! (`render::ui`). Shared by the editor and player.
 
 pub mod auto_layout;
+pub mod canvas;
 pub mod draw;
 pub mod driven;
 pub mod dropdown;
 pub mod events;
+pub mod image_mesh;
 pub mod input;
 pub mod input_field;
 pub mod layout;
+pub mod navigation;
 pub mod presets;
 pub mod rich;
 pub mod scroll;
 pub mod text;
 pub mod tree;
 
+pub use canvas::{CanvasPlacement, UiView};
 pub use events::{PointerInput, UiEvent, UiInteraction, UiValue};
 pub use input::ButtonState;
 pub use layout::Rect;
-pub use tree::{UiLayout, UiNode, canvas_of, layout};
+pub use tree::{UiLayout, UiNode, canvas_of, layout, layout_view};
+
+#[cfg(test)]
+mod canvas_tests;

@@ -1,28 +1,33 @@
 //! Turn a laid-out UI into textured triangles, batched by texture, ready for the GPU. Quads are
-//! clipped on the CPU to their Mask / Rect Mask 2D rect (UI quads are axis-aligned, so this is
-//! exact and needs no stencil).
+//! clipped on the CPU to their Mask / Rect Mask 2D rect (in canvas pixels, before an object's
+//! rotation, so this is exact and needs no stencil). Overlay canvases come out in clip space
+//! directly; world and camera canvases go through their canvas-to-clip matrix and are drawn by
+//! the depth-tested pipeline (`UiBatch::depth`).
 
 use std::collections::HashMap;
 
 use bytemuck::{Pod, Zeroable};
-use glam::Vec2;
+use glam::{Affine2, Mat4, Vec2, Vec4};
 use hecs::Entity;
 
 use super::driven::{Visuals, display_text, visuals};
 use super::events::{UiInteraction, text_shift};
-use super::layout::Rect;
+use super::image_mesh::{self, Piece};
+use super::layout::{Rect, sprite_pixels_per_unit};
 use super::rich::sdf::{self, SdfAtlas, SdfFull};
 use super::text::{AtlasFull, GlyphAtlas, UiFont, caret_stops, layout_text};
 use super::tree::{UiLayout, UiNode};
-use crate::scene::{Scene, UiImage, UiInputField, UiRawImage, UiText};
+use crate::scene::{
+    CanvasScaler, ImageType, RectTransform, Scene, UiImage, UiInputField, UiRawImage, UiText,
+};
 
 /// One UI vertex. Colour is sRGB + alpha; `mask` = 1 samples glyph coverage instead of colour,
 /// 2 a glyph distance field drawn with `sdf` = (edge threshold, extra softness).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct UiVertex {
-    /// Clip space (x right, y up).
-    pub pos: [f32; 2],
+    /// Clip space (x right, y up; z and w from the canvas' camera, 0 and 1 for overlays).
+    pub pos: [f32; 4],
     pub uv: [f32; 2],
     pub color: [f32; 4],
     pub mask: f32,
@@ -48,6 +53,8 @@ pub struct UiBatch {
     pub texture: UiTexture,
     pub start: u32,
     pub count: u32,
+    /// World / camera canvas: hidden behind the scene's depth.
+    pub depth: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -56,7 +63,53 @@ pub struct UiDrawList {
     pub batches: Vec<UiBatch>,
 }
 
-/// A rectangle to draw: screen pixels (y down), uv corners, colour, texture.
+/// How one object's canvas pixels reach clip space, and its Canvas Group alpha.
+#[derive(Clone, Copy, Debug)]
+pub struct Space {
+    /// Pixel size of an overlay canvas (the image).
+    pub screen: Vec2,
+    /// Canvas pixels → clip space for world / camera canvases.
+    pub to_clip: Option<Mat4>,
+    /// The object's rotation / scale in canvas pixels.
+    pub xf: Affine2,
+    pub alpha: f32,
+}
+
+impl Space {
+    /// An overlay of `screen` pixels, nothing turned or faded.
+    pub fn overlay(screen: Vec2) -> Self {
+        Self {
+            screen,
+            to_clip: None,
+            xf: Affine2::IDENTITY,
+            alpha: 1.0,
+        }
+    }
+
+    fn clip(&self, p: Vec2) -> [f32; 4] {
+        let p = if self.xf == Affine2::IDENTITY {
+            p
+        } else {
+            self.xf.transform_point2(p)
+        };
+        match self.to_clip {
+            Some(m) => (m * Vec4::new(p.x, p.y, 0.0, 1.0)).to_array(),
+            None => [
+                p.x / self.screen.x * 2.0 - 1.0,
+                1.0 - p.y / self.screen.y * 2.0,
+                0.0,
+                1.0,
+            ],
+        }
+    }
+
+    fn fade(&self, mut c: [f32; 4]) -> [f32; 4] {
+        c[3] *= self.alpha;
+        c
+    }
+}
+
+/// A rectangle to draw: canvas pixels (y down), uv corners, colour, texture.
 struct Quad {
     min: Vec2,
     max: Vec2,
@@ -105,21 +158,34 @@ fn clip_quad(mut q: Quad, clip: Option<Rect>) -> Option<Quad> {
 }
 
 impl UiDrawList {
-    fn quad(&mut self, screen: Vec2, q: Quad, clip: Option<Rect>) {
+    fn push(&mut self, verts: &[UiVertex], texture: UiTexture, depth: bool) {
+        let start = self.vertices.len() as u32;
+        self.vertices.extend_from_slice(verts);
+        let n = verts.len() as u32;
+        match self.batches.last_mut() {
+            Some(last) if last.texture == texture && last.depth == depth => last.count += n,
+            _ => self.batches.push(UiBatch {
+                texture,
+                start,
+                count: n,
+                depth,
+            }),
+        }
+    }
+
+    fn quad(&mut self, space: &Space, q: Quad, clip: Option<Rect>) {
         let Some(q) = clip_quad(q, clip) else { return };
-        let clip = |p: Vec2| [p.x / screen.x * 2.0 - 1.0, 1.0 - p.y / screen.y * 2.0];
         let cc = q.corners.unwrap_or([q.color; 4]);
         let v = |p: Vec2, t: Vec2, c: [f32; 4], dx: f32| UiVertex {
-            pos: clip(p + Vec2::new(dx, 0.0)),
+            pos: space.clip(p + Vec2::new(dx, 0.0)),
             uv: t.to_array(),
-            color: c,
+            color: space.fade(c),
             mask: q.mask,
             sdf: q.sdf,
         };
         let (a, b) = (q.min, q.max);
         let (ta, tb) = (q.uv[0], q.uv[1]);
         let (top, bottom) = (q.skew[0], q.skew[1]);
-        let tex = q.texture;
         let corners = [
             v(a, ta, cc[0], top),
             v(Vec2::new(b.x, a.y), Vec2::new(tb.x, ta.y), cc[1], top),
@@ -128,16 +194,37 @@ impl UiDrawList {
             v(b, tb, cc[3], bottom),
             v(Vec2::new(a.x, b.y), Vec2::new(ta.x, tb.y), cc[2], bottom),
         ];
-        let start = self.vertices.len() as u32;
-        self.vertices.extend_from_slice(&corners);
-        match self.batches.last_mut() {
-            Some(last) if last.texture == tex => last.count += 6,
-            _ => self.batches.push(UiBatch {
-                texture: tex,
-                start,
-                count: 6,
-            }),
+        self.push(&corners, q.texture, space.to_clip.is_some());
+    }
+
+    /// A convex polygon (canvas pixels with a uv each) as a triangle fan, cut to `clip`.
+    fn polygon(
+        &mut self,
+        space: &Space,
+        pts: &[(Vec2, Vec2)],
+        color: [f32; 4],
+        texture: UiTexture,
+        clip: Option<Rect>,
+    ) {
+        let pts = match clip {
+            Some(c) => image_mesh::clip_polygon(pts, c),
+            None => pts.to_vec(),
+        };
+        if pts.len() < 3 {
+            return;
         }
+        let v = |(p, t): (Vec2, Vec2)| UiVertex {
+            pos: space.clip(p),
+            uv: t.to_array(),
+            color: space.fade(color),
+            mask: 0.0,
+            sdf: [0.5, 0.0],
+        };
+        let mut verts = Vec::with_capacity((pts.len() - 2) * 3);
+        for i in 1..pts.len() - 1 {
+            verts.extend([v(pts[0]), v(pts[i]), v(pts[i + 1])]);
+        }
+        self.push(&verts, texture, space.to_clip.is_some());
     }
 
     /// A textured rectangle (screen pixels, y down) with the texture's full area.
@@ -150,17 +237,41 @@ impl UiDrawList {
         color: [f32; 4],
     ) {
         let q = Quad::new(min, max, [Vec2::ZERO, Vec2::ONE], color, texture);
-        self.quad(screen, q, None);
+        self.quad(&Space::overlay(screen), q, None);
     }
 
-    fn solid(&mut self, screen: Vec2, min: Vec2, max: Vec2, color: [f32; 4], clip: Option<Rect>) {
+    fn solid(&mut self, space: &Space, min: Vec2, max: Vec2, color: [f32; 4], clip: Option<Rect>) {
         let q = Quad::new(min, max, [Vec2::ZERO, Vec2::ONE], color, UiTexture::White);
-        self.quad(screen, q, clip);
+        self.quad(space, q, clip);
     }
 }
 
 fn mul(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     std::array::from_fn(|i| a[i] * b[i])
+}
+
+/// The sprite an Image shows, if any: its sprite, or its texture as one whole-image sprite.
+fn image_sprite(img: &UiImage) -> Option<crate::sprites::Sprite> {
+    if let Some(s) = img.sprite.as_deref().and_then(crate::sprites::resolve) {
+        return Some(s);
+    }
+    let path = img.texture.as_deref()?;
+    let (imp, size) = crate::sprites::texture_info(path);
+    let size = size?;
+    let border = if imp.sprite_mode == crate::sprites::SpriteMode::Single {
+        imp.border
+    } else {
+        [0.0; 4]
+    };
+    Some(crate::sprites::Sprite {
+        texture: path.to_owned(),
+        name: String::new(),
+        rect: [0.0, 0.0, size[0] as f32, size[1] as f32],
+        pivot: Vec2::from(imp.pivot),
+        pixels_per_unit: imp.pixels_per_unit,
+        texture_size: size,
+        border,
+    })
 }
 
 /// Per-frame drawing context.
@@ -172,6 +283,8 @@ struct Ctx<'a> {
     visuals: Visuals,
     /// Text component → (its Input Field, the field's settings), for caret drawing.
     fields: HashMap<Entity, (Entity, UiInputField)>,
+    /// Canvas-to-clip matrix of each world / camera canvas.
+    to_clip: HashMap<Entity, Mat4>,
 }
 
 /// One of the glyph atlases ran out of room.
@@ -234,6 +347,11 @@ pub fn build_with(
         tints: UiInteraction::tints(interaction, scene, layout),
         visuals: visuals(scene),
         fields,
+        to_clip: layout
+            .canvases
+            .iter()
+            .filter_map(|c| Some((c.canvas, c.to_clip?)))
+            .collect(),
     };
     match ctx.try_build(layout, font, atlas, sdf_atlas) {
         Ok(list) => list,
@@ -259,12 +377,18 @@ impl Ctx<'_> {
     ) -> Result<UiDrawList, Full> {
         let mut list = UiDrawList::default();
         for node in &layout.nodes {
-            if self.visuals.hidden.contains(&node.entity) {
+            if self.visuals.hidden.contains(&node.entity) || node.alpha <= 0.0 {
                 continue;
             }
-            self.image(&mut list, node);
-            self.raw_image(&mut list, node);
-            self.text(&mut list, node, font, atlas, sdf_atlas)?;
+            let space = Space {
+                screen: self.screen,
+                to_clip: self.to_clip.get(&node.canvas).copied(),
+                xf: node.xf,
+                alpha: node.alpha,
+            };
+            self.image(&mut list, node, &space);
+            self.raw_image(&mut list, node, &space);
+            self.text(&mut list, node, &space, font, atlas, sdf_atlas)?;
         }
         Ok(list)
     }
@@ -273,34 +397,134 @@ impl Ctx<'_> {
         self.tints.get(&e).map_or(color, |t| mul(color, *t))
     }
 
-    fn image(&self, list: &mut UiDrawList, n: &UiNode) {
+    fn image(&self, list: &mut UiDrawList, n: &UiNode, space: &Space) {
         let Ok(img) = self.scene.world.get::<&UiImage>(n.entity) else {
             return;
         };
         if !img.enabled {
             return;
         }
-        let sprite = img.sprite.as_deref().and_then(crate::sprites::resolve);
-        let (tex, uv) = match sprite {
-            // The sprite's rect of its texture (uv v runs up, screen y down).
-            Some(s) => {
-                let (lo, hi) = s.uv_rect();
-                let uv = [Vec2::new(lo.x, 1.0 - hi.y), Vec2::new(hi.x, 1.0 - lo.y)];
-                (UiTexture::Image(s.texture), uv)
-            }
-            None => (
-                img.texture
-                    .clone()
-                    .map_or(UiTexture::White, UiTexture::Image),
-                [Vec2::ZERO, Vec2::ONE],
-            ),
-        };
         let color = self.tint(n.entity, img.color);
-        let q = Quad::new(n.screen.min, n.screen.max, uv, color, tex);
-        list.quad(self.screen, q, n.clip);
+        let simple = img.image_type == ImageType::Simple && !img.preserve_aspect;
+        if simple {
+            let sprite = img.sprite.as_deref().and_then(crate::sprites::resolve);
+            let (tex, uv) = match sprite {
+                // The sprite's rect of its texture (uv v runs up, screen y down).
+                Some(s) => {
+                    let (lo, hi) = s.uv_rect();
+                    let uv = [Vec2::new(lo.x, 1.0 - hi.y), Vec2::new(hi.x, 1.0 - lo.y)];
+                    (UiTexture::Image(s.texture), uv)
+                }
+                None => (
+                    img.texture
+                        .clone()
+                        .map_or(UiTexture::White, UiTexture::Image),
+                    [Vec2::ZERO, Vec2::ONE],
+                ),
+            };
+            let q = Quad::new(n.screen.min, n.screen.max, uv, color, tex);
+            list.quad(space, q, n.clip);
+            return;
+        }
+        let sprite = image_sprite(&img);
+        let tex = sprite
+            .as_ref()
+            .map_or(UiTexture::White, |s| UiTexture::Image(s.texture.clone()));
+        let (lo, hi) = sprite
+            .as_ref()
+            .map_or((Vec2::ZERO, Vec2::ONE), |s| s.uv_rect());
+        // Sprite-relative uv (v up) → texture uv (v down).
+        let map_uv = |s: Vec2| {
+            let t = lo + (hi - lo) * s;
+            Vec2::new(t.x, 1.0 - t.y)
+        };
+        // The rect in a local y-up frame at its lower-left corner (canvas pixels).
+        let mut rect = n.screen;
+        let pivot = self
+            .scene
+            .world
+            .get::<&RectTransform>(n.entity)
+            .map_or(Vec2::splat(0.5), |rt| rt.pivot);
+        let preserve =
+            img.preserve_aspect && matches!(img.image_type, ImageType::Simple | ImageType::Filled);
+        if preserve && let Some(s) = &sprite {
+            // Preserve Aspect works in y-up terms; mirror the pivot for pixel rows.
+            let up = Rect::new(Vec2::ZERO, rect.size());
+            let fit = image_mesh::preserve_aspect(up, pivot, s.rect[2] / s.rect[3].max(1e-3));
+            rect = Rect::new(
+                Vec2::new(rect.min.x + fit.min.x, rect.max.y - fit.max.y),
+                Vec2::new(rect.min.x + fit.max.x, rect.max.y - fit.min.y),
+            );
+        }
+        let size = rect.size();
+        let to_px = |l: Vec2| Vec2::new(rect.min.x + l.x, rect.max.y - l.y);
+        let piece_quad = |p: &Piece| {
+            Quad::new(
+                to_px(Vec2::new(p.min.x, p.max.y)),
+                to_px(Vec2::new(p.max.x, p.min.y)),
+                [
+                    map_uv(Vec2::new(p.uv_min.x, p.uv_max.y)),
+                    map_uv(Vec2::new(p.uv_max.x, p.uv_min.y)),
+                ],
+                color,
+                tex.clone(),
+            )
+        };
+        // Sprite pixels → canvas pixels for borders and tiles.
+        let scaler = self
+            .scene
+            .world
+            .get::<&CanvasScaler>(n.canvas)
+            .ok()
+            .map(|s| (*s).clone());
+        let px_per_sprite_px = |s: &crate::sprites::Sprite| {
+            n.scale
+                / sprite_pixels_per_unit(
+                    scaler.as_ref(),
+                    s.pixels_per_unit,
+                    img.pixels_per_unit_multiplier,
+                )
+        };
+        let borders = |s: &crate::sprites::Sprite| {
+            let k = px_per_sprite_px(s);
+            let [w, h] = [s.rect[2].max(1e-3), s.rect[3].max(1e-3)];
+            let b = s.border;
+            (b.map(|v| v * k), [b[0] / w, b[1] / h, b[2] / w, b[3] / h])
+        };
+        let whole = Piece {
+            min: Vec2::ZERO,
+            max: size,
+            uv_min: Vec2::ZERO,
+            uv_max: Vec2::ONE,
+        };
+        let pieces = match (img.image_type, &sprite) {
+            (ImageType::Sliced, Some(s)) if !crate::sprites::import::is_no_border(&s.border) => {
+                let (b, buv) = borders(s);
+                image_mesh::sliced(size, b, buv, img.fill_center)
+            }
+            (ImageType::Tiled, Some(s)) => {
+                let (b, buv) = borders(s);
+                let tile = Vec2::new(s.rect[2], s.rect[3]) * px_per_sprite_px(s);
+                image_mesh::tiled(size, tile, b, buv, img.fill_center)
+            }
+            (ImageType::Filled, _) => {
+                let f = &img.fill;
+                let poly = image_mesh::filled_polygon(f.method, f.origin, f.amount, f.clockwise);
+                let pts: Vec<(Vec2, Vec2)> = poly
+                    .iter()
+                    .map(|p| (to_px(*p * size), map_uv(*p)))
+                    .collect();
+                list.polygon(space, &pts, color, tex, n.clip);
+                return;
+            }
+            _ => vec![whole],
+        };
+        for p in &pieces {
+            list.quad(space, piece_quad(p), n.clip);
+        }
     }
 
-    fn raw_image(&self, list: &mut UiDrawList, n: &UiNode) {
+    fn raw_image(&self, list: &mut UiDrawList, n: &UiNode, space: &Space) {
         let Ok(img) = self.scene.world.get::<&UiRawImage>(n.entity) else {
             return;
         };
@@ -316,13 +540,14 @@ impl Ctx<'_> {
         let uv = [Vec2::new(lo.x, 1.0 - hi.y), Vec2::new(hi.x, 1.0 - lo.y)];
         let color = self.tint(n.entity, img.color);
         let q = Quad::new(n.screen.min, n.screen.max, uv, color, tex);
-        list.quad(self.screen, q, n.clip);
+        list.quad(space, q, n.clip);
     }
 
     fn text(
         &self,
         list: &mut UiDrawList,
         n: &UiNode,
+        space: &Space,
         font: &UiFont,
         atlas: &mut GlyphAtlas,
         sdf_atlas: &mut SdfAtlas,
@@ -335,7 +560,7 @@ impl Ctx<'_> {
         }
         let shown = self.visuals.text.get(&n.entity).unwrap_or(&t.text);
         if !self.fields.contains_key(&n.entity) && super::rich::needs_rich(&t, shown) {
-            return self.rich_text(list, n, &t, shown, sdf_atlas);
+            return self.rich_text(list, n, space, &t, shown, sdf_atlas);
         }
         // Rasterise at the on-screen pixel size so text stays crisp at every scale.
         let px = (t.font_size * n.scale).round().clamp(1.0, 512.0) as u32;
@@ -355,7 +580,7 @@ impl Ctx<'_> {
                 .filter(|ed| ed.field == *fe)
             {
                 shift = text_shift(&stops, size.x, ed.caret);
-                self.caret(list, n, f, &stops, (top, bottom), shift, clip);
+                self.caret(list, n, space, f, &stops, (top, bottom), shift, clip);
             }
         }
         if shown.is_empty() {
@@ -384,17 +609,19 @@ impl Ctx<'_> {
                 UiTexture::Glyphs,
             );
             q.mask = 1.0;
-            list.quad(self.screen, q, clip);
+            list.quad(space, q, clip);
         }
         Ok(())
     }
 
     /// A text through the rich text path: marks, shadow, outline, face (distance field glyphs,
-    /// optional gradient), inline sprites, then underlines and strikethroughs.
+    /// optional gradient; or coverage for raster font assets), inline sprites, then underlines
+    /// and strikethroughs.
     fn rich_text(
         &self,
         list: &mut UiDrawList,
         n: &UiNode,
+        space: &Space,
         t: &UiText,
         shown: &str,
         sdf_atlas: &mut SdfAtlas,
@@ -407,7 +634,7 @@ impl Ctx<'_> {
         let tint = self.tints.get(&n.entity).copied().unwrap_or([1.0; 4]);
         let fx = &t.effects;
         for d in lay.decos.iter().filter(|d| d.kind == DecoKind::Mark) {
-            list.solid(self.screen, o + d.min, o + d.max, mul(d.color, tint), clip);
+            list.solid(space, o + d.min, o + d.max, mul(d.color, tint), clip);
         }
         // Glyph geometry once: (atlas entry, quad min, max, italic skew, bold growth).
         let mut quads = Vec::with_capacity(lay.glyphs.len());
@@ -416,7 +643,7 @@ impl Ctx<'_> {
             let Some(e) = sdf_atlas.glyph(&f, g.glyph)? else {
                 continue;
             };
-            let s = g.px / sdf::BASE;
+            let s = g.px / e.base;
             let min = o + g.pos + e.offset * s;
             let max = min + e.size * s;
             let skew = if g.italic {
@@ -428,10 +655,15 @@ impl Ctx<'_> {
             let grow = if g.bold { g.px * 0.04 } else { 0.0 };
             quads.push((e, min, max, skew, grow, g));
         }
+        // Raster glyphs are coverage (mask 1); distance fields draw their edge (mask 2).
         let glyph_quad = |e: &sdf::SdfGlyph, min: Vec2, max: Vec2, color, skew, th, soft| {
             let mut q = Quad::new(min, max, [e.uv_min, e.uv_max], color, UiTexture::SdfGlyphs);
-            q.mask = 2.0;
-            q.sdf = [th, soft];
+            if e.raster {
+                q.mask = 1.0;
+            } else {
+                q.mask = 2.0;
+                q.sdf = [th, soft];
+            }
             q.skew = skew;
             q
         };
@@ -441,28 +673,28 @@ impl Ctx<'_> {
                 let mut c = mul(fx.shadow_color, tint);
                 c[3] *= g.color[3];
                 let outline = fx.outline_width * n.scale;
-                let th = sdf::threshold(grow + outline, g.px);
-                let soft = sdf::softness(fx.shadow_softness.clamp(0.0, 1.0) * g.px * 0.3, g.px);
+                let th = e.threshold(grow + outline, g.px);
+                let soft = e.softness(fx.shadow_softness.clamp(0.0, 1.0) * g.px * 0.3, g.px);
                 let q = glyph_quad(e, *min + off, *max + off, c, *skew, th, soft);
-                list.quad(self.screen, q, clip);
+                list.quad(space, q, clip);
             }
         }
         if fx.outline_width > 0.0 {
             for (e, min, max, skew, grow, g) in &quads {
                 let mut c = mul(fx.outline_color, tint);
                 c[3] *= g.color[3];
-                let th = sdf::threshold(grow + fx.outline_width * n.scale, g.px);
+                let th = e.threshold(grow + fx.outline_width * n.scale, g.px);
                 let q = glyph_quad(e, *min, *max, c, *skew, th, 0.0);
-                list.quad(self.screen, q, clip);
+                list.quad(space, q, clip);
             }
         }
         for (e, min, max, skew, grow, g) in &quads {
             let c = mul(g.color, tint);
-            let mut q = glyph_quad(e, *min, *max, c, *skew, sdf::threshold(*grow, g.px), 0.0);
+            let mut q = glyph_quad(e, *min, *max, c, *skew, e.threshold(*grow, g.px), 0.0);
             if fx.gradient {
                 q.corners = Some(fx.gradient_colors.map(|k| mul(k, c)));
             }
-            list.quad(self.screen, q, clip);
+            list.quad(space, q, clip);
         }
         for sp in &lay.sprites {
             let Some(tag) = rich.sprites.get(sp.sprite as usize) else {
@@ -481,10 +713,10 @@ impl Ctx<'_> {
             c[3] *= sp.text_color[3];
             let tex = UiTexture::Image(sprite.texture.clone());
             let q = Quad::new(o + sp.min, o + sp.max, uv, mul(c, tint), tex);
-            list.quad(self.screen, q, clip);
+            list.quad(space, q, clip);
         }
         for d in lay.decos.iter().filter(|d| d.kind != DecoKind::Mark) {
-            list.solid(self.screen, o + d.min, o + d.max, mul(d.color, tint), clip);
+            list.solid(space, o + d.min, o + d.max, mul(d.color, tint), clip);
         }
         Ok(())
     }
@@ -495,6 +727,7 @@ impl Ctx<'_> {
         &self,
         list: &mut UiDrawList,
         n: &UiNode,
+        space: &Space,
         f: &UiInputField,
         stops: &[f32],
         (top, bottom): (f32, f32),
@@ -508,7 +741,7 @@ impl Ctx<'_> {
         let (a, b) = ed.selection();
         if a != b {
             let (min, max) = (Vec2::new(x(a), y0), Vec2::new(x(b), y1));
-            list.solid(self.screen, min, max, f.selection_color, clip);
+            list.solid(space, min, max, f.selection_color, clip);
         } else if i.caret_visible(f.caret_blink_rate) {
             let w = (f.caret_width * n.scale).max(1.0);
             let cx = x(ed.caret).round();
@@ -518,7 +751,7 @@ impl Ctx<'_> {
                 .get::<&UiText>(n.entity)
                 .map_or([0.2, 0.2, 0.2, 1.0], |t| t.color);
             list.solid(
-                self.screen,
+                space,
                 Vec2::new(cx, y0),
                 Vec2::new(cx + w, y1),
                 [color[0], color[1], color[2], 1.0],
@@ -576,8 +809,8 @@ mod tests {
         assert_eq!(list.batches[0].texture, UiTexture::White);
         assert_eq!(list.batches[0].count, 6);
         // Full-screen quad spans clip space.
-        assert_eq!(list.vertices[0].pos, [-1.0, 1.0]);
-        assert_eq!(list.vertices[2].pos, [1.0, -1.0]);
+        assert_eq!(list.vertices[0].pos, [-1.0, 1.0, 0.0, 1.0]);
+        assert_eq!(list.vertices[2].pos, [1.0, -1.0, 0.0, 1.0]);
         assert_eq!(list.vertices[0].color, [1.0, 0.0, 0.0, 1.0]);
         assert_eq!(list.batches[1].texture, UiTexture::Glyphs);
         assert_eq!(list.batches[1].count, 4 * 6, "four visible letters");
