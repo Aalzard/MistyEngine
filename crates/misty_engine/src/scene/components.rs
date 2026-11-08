@@ -709,6 +709,7 @@ pub struct BoxCollider {
     pub is_trigger: bool,
     pub surface: PhysicsSurface,
     /// Physics Material asset (`.physicmat`); when set it replaces `surface`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
     pub center: Vec3,
     pub size: Vec3,
@@ -734,6 +735,7 @@ pub struct SphereCollider {
     pub is_trigger: bool,
     pub surface: PhysicsSurface,
     /// Physics Material asset (`.physicmat`); when set it replaces `surface`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
     pub center: Vec3,
     pub radius: f32,
@@ -759,6 +761,7 @@ pub struct CapsuleCollider {
     pub is_trigger: bool,
     pub surface: PhysicsSurface,
     /// Physics Material asset (`.physicmat`); when set it replaces `surface`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
     pub center: Vec3,
     pub radius: f32,
@@ -790,6 +793,7 @@ pub struct MeshCollider {
     pub is_trigger: bool,
     pub surface: PhysicsSurface,
     /// Physics Material asset (`.physicmat`); when set it replaces `surface`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
     pub convex: bool,
 }
