@@ -68,6 +68,11 @@ pub trait AudioBackend {
     }
     /// Drop loaded clips (their import settings changed).
     fn forget_clips(&mut self) {}
+
+    /// Clips kept in memory: (path, bytes, how: "Decoded" / "Compressed" / "Streamed").
+    fn clip_memory(&self) -> Vec<(String, u64, &'static str)> {
+        Vec::new()
+    }
     /// Offline backends: render the next `frames` of the mix.
     fn render(&mut self, frames: usize) -> Option<Vec<Frame>> {
         let _ = frames;

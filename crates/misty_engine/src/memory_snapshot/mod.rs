@@ -2,7 +2,9 @@
 //!
 //! Sizes are estimates from known formats and dimensions (GPU textures and buffers, decoded
 //! audio, component structs, live particles); the process working set is the operating system's
-//! figure when it is available. Two snapshots can be compared ([`diff`]).
+//! figure when it is available. Every item is on the GPU or the CPU ([`MemLocation`]); the CPU
+//! side includes the asset caches ([`cache_items`]: imported meshes, embedded and runtime
+//! textures, audio clips, mesh distance fields). Two snapshots can be compared ([`diff`]).
 
 #[cfg(test)]
 mod tests;
@@ -24,10 +26,12 @@ pub enum MemCategory {
     SceneObjects,
     Particles,
     Lightmaps,
+    /// Misty GI's mesh signed distance field bakes.
+    DistanceFields,
 }
 
 impl MemCategory {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Textures,
         Self::Meshes,
         Self::RenderTargets,
@@ -37,6 +41,7 @@ impl MemCategory {
         Self::SceneObjects,
         Self::Particles,
         Self::Lightmaps,
+        Self::DistanceFields,
     ];
 
     pub fn label(self) -> &'static str {
@@ -50,6 +55,40 @@ impl MemCategory {
             Self::SceneObjects => "Scene Objects",
             Self::Particles => "Particles / VFX",
             Self::Lightmaps => "Lightmaps",
+            Self::DistanceFields => "Mesh Distance Fields",
+        }
+    }
+
+    /// Where items of this category usually live (the renderer's are on the GPU).
+    pub fn default_location(self) -> MemLocation {
+        match self {
+            Self::Textures
+            | Self::Meshes
+            | Self::RenderTargets
+            | Self::Buffers
+            | Self::Particles
+            | Self::Lightmaps => MemLocation::Gpu,
+            Self::Audio | Self::Scripts | Self::SceneObjects | Self::DistanceFields => {
+                MemLocation::Cpu
+            }
+        }
+    }
+}
+
+/// Video memory or system memory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum MemLocation {
+    Gpu,
+    Cpu,
+}
+
+impl MemLocation {
+    pub const ALL: [Self; 2] = [Self::Gpu, Self::Cpu];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Gpu => "GPU",
+            Self::Cpu => "CPU",
         }
     }
 }
@@ -64,6 +103,7 @@ pub struct MemItem {
     pub bytes: u64,
     /// Users (material sets, Mesh Filters, component instances…; 0 = unknown).
     pub refs: u32,
+    pub location: MemLocation,
 }
 
 impl MemItem {
@@ -74,11 +114,18 @@ impl MemItem {
             category,
             bytes,
             refs: 0,
+            location: category.default_location(),
         }
     }
 
     pub fn with_refs(mut self, refs: u32) -> Self {
         self.refs = refs;
+        self
+    }
+
+    /// Held in system memory (an asset cache, a CPU-side copy).
+    pub fn on_cpu(mut self) -> Self {
+        self.location = MemLocation::Cpu;
         self
     }
 
@@ -118,6 +165,32 @@ impl MemorySnapshot {
         self.items
             .iter()
             .filter(|i| i.category == c)
+            .map(|i| i.bytes)
+            .sum()
+    }
+
+    /// Bytes per category of the items in `at` (categories with none left out).
+    pub fn totals_at(&self, at: MemLocation) -> Vec<(MemCategory, u64)> {
+        MemCategory::ALL
+            .iter()
+            .map(|c| {
+                let bytes = self
+                    .items
+                    .iter()
+                    .filter(|i| i.category == *c && i.location == at)
+                    .map(|i| i.bytes)
+                    .sum();
+                (*c, bytes)
+            })
+            .filter(|(_, b)| *b > 0)
+            .collect()
+    }
+
+    /// Sum of the items in `at`.
+    pub fn location_total(&self, at: MemLocation) -> u64 {
+        self.items
+            .iter()
+            .filter(|i| i.location == at)
             .map(|i| i.bytes)
             .sum()
     }
@@ -237,12 +310,15 @@ pub fn scene_items(scene: &Scene) -> Vec<MemItem> {
             .world
             .get::<&crate::scene::GameObject>(e)
             .map_or_else(|_| "Particle System".to_owned(), |g| g.name.clone());
-        out.push(MemItem::new(
-            MemCategory::Particles,
-            "ParticleSystem",
-            name,
-            particle_bytes(emitter),
-        ));
+        out.push(
+            MemItem::new(
+                MemCategory::Particles,
+                "ParticleSystem",
+                name,
+                particle_bytes(emitter),
+            )
+            .on_cpu(),
+        );
     }
     out
 }
@@ -360,4 +436,70 @@ pub fn format_bytes(bytes: u64) -> String {
 pub fn format_delta(delta: i64) -> String {
     let sign = if delta < 0 { "-" } else { "+" };
     format!("{sign}{}", format_bytes(delta.unsigned_abs()))
+}
+
+/// The CPU asset caches: imported models' mesh data and embedded textures, runtime (video)
+/// texture frames and Misty GI's mesh distance field bakes.
+pub fn cache_items() -> Vec<MemItem> {
+    let mut out = Vec::new();
+    for (path, meshes, textures) in crate::models::cache_memory() {
+        out.push(
+            MemItem::new(
+                MemCategory::Meshes,
+                "Mesh (CPU cache)",
+                path.clone(),
+                meshes,
+            )
+            .on_cpu(),
+        );
+        if textures > 0 {
+            out.push(
+                MemItem::new(
+                    MemCategory::Textures,
+                    "Embedded textures (CPU cache)",
+                    path,
+                    textures,
+                )
+                .on_cpu(),
+            );
+        }
+    }
+    for (name, bytes) in crate::video::textures::memory() {
+        out.push(
+            MemItem::new(MemCategory::Textures, "Runtime texture (CPU)", name, bytes).on_cpu(),
+        );
+    }
+    let (bakes, bytes) = crate::render::mesh_sdf_cache_memory();
+    if bakes > 0 {
+        out.push(
+            MemItem::new(
+                MemCategory::DistanceFields,
+                "MeshSdf cache",
+                format!("Mesh distance fields ({bakes} bakes)"),
+                bytes,
+            )
+            .with_refs(bakes as u32),
+        );
+    }
+    out
+}
+
+/// The clips the mixer actually holds (Play mode): decoded frames or compressed bytes.
+pub fn audio_cache_items(clips: Vec<(String, u64, &'static str)>) -> Vec<MemItem> {
+    clips
+        .into_iter()
+        .filter(|(_, bytes, _)| *bytes > 0)
+        .map(|(path, bytes, how)| {
+            let name = match path.find("Assets/") {
+                Some(i) => path[i..].to_owned(),
+                None => path,
+            };
+            MemItem::new(
+                MemCategory::Audio,
+                &format!("AudioClip ({how})"),
+                name,
+                bytes,
+            )
+        })
+        .collect()
 }

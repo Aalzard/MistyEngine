@@ -278,6 +278,46 @@ impl Physics {
         &self.settings
     }
 
+    /// The Profiler's Physics module counters for this frame (`steps` fixed steps ran).
+    pub fn report_profiler(&self, steps: u32) {
+        use crate::profiler::{Counter, set_counter};
+        let w = &self.world;
+        let (mut active, mut sleeping, mut kinematic, mut fixed) = (0, 0, 0, 0);
+        for (_, b) in w.bodies.iter() {
+            if b.is_kinematic() {
+                kinematic += 1;
+            } else if !b.is_dynamic() {
+                fixed += 1;
+            } else if b.is_sleeping() {
+                sleeping += 1;
+            } else {
+                active += 1;
+            }
+        }
+        let triggers = w.colliders.iter().filter(|(_, c)| c.is_sensor()).count();
+        let contacts = w
+            .narrow_phase
+            .contact_pairs()
+            .filter(|p| p.has_any_active_contact())
+            .count();
+        let joints = w.impulse_joints.len() + w.multibody_joints.iter().count();
+        for (c, v) in [
+            (Counter::PhysicsSteps, steps as usize),
+            (Counter::PhysicsBodies, w.bodies.len()),
+            (Counter::PhysicsActiveBodies, active),
+            (Counter::PhysicsSleepingBodies, sleeping),
+            (Counter::PhysicsKinematicBodies, kinematic),
+            (Counter::PhysicsStaticBodies, fixed),
+            (Counter::PhysicsColliders, w.colliders.len()),
+            (Counter::PhysicsTriggers, triggers),
+            (Counter::PhysicsContacts, contacts),
+            (Counter::PhysicsJoints, joints),
+            (Counter::PhysicsCharacterControllers, self.controllers.len()),
+        ] {
+            set_counter(c, v as f32);
+        }
+    }
+
     /// One fixed step; returns the contacts that began or ended.
     pub fn step(&mut self, scene: &Scene) -> Vec<Contact> {
         self.push_kinematic(scene);

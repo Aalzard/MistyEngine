@@ -28,6 +28,18 @@ fn with<R>(f: impl FnOnce(&mut HashMap<String, RuntimeFrame>) -> R) -> R {
     f(g.get_or_insert_with(HashMap::new))
 }
 
+/// Pixels of the published runtime textures: (name, bytes) (Memory Profiler).
+pub fn memory() -> Vec<(String, u64)> {
+    with(|frames| {
+        let mut out: Vec<(String, u64)> = frames
+            .iter()
+            .map(|(k, f)| (k.clone(), f.pixels.len() as u64))
+            .collect();
+        out.sort();
+        out
+    })
+}
+
 /// Is `name` a runtime texture (rather than a project file)?
 pub fn is_runtime(name: &str) -> bool {
     name.starts_with("video://") || name.starts_with("runtime://")

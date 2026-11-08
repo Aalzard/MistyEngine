@@ -4,6 +4,7 @@
 use glam::Mat4;
 
 use super::super::batch::{Batch, Merge, addr};
+use super::super::frame_debug;
 use super::super::frame_lists::FrameLists;
 use super::super::{Frame, RenderStats, RenderTarget, Renderer};
 use super::{CulledBatches, TargetState};
@@ -55,8 +56,8 @@ impl Renderer {
         (self.options.gpu_culling || dynamic && self.options.culling)
             && self.culler.is_some()
             && frame.shaded
-            // The Frame Debugger lists CPU-side draws.
-            && self.capture.is_none()
+            // The Frame Debugger lists CPU-side draws unless it asks for GPU-driven ones.
+            && (self.capture.is_none() || frame_debug::gpu_driven(&self.capture))
             && !self.screen_space_wanted(frame)
             && !super::super::custom_shader::any_in(frame)
     }
@@ -161,6 +162,15 @@ impl Renderer {
             }
             mesh.bind(pass);
             let offset = culled.args_offset(phase, i);
+            let draw = frame_debug::record(&self.capture, |r| {
+                let batches = &culled.batches[i..i + run];
+                let key = lists.prep.pipeline[batches[0].draw];
+                frame_debug::events::culled_event(r, frame, batches, mesh, key, phase, offset)
+            });
+            if !draw {
+                i += run;
+                continue;
+            }
             if run > 1 {
                 pass.multi_draw_indexed_indirect(args, offset, run as u32);
             } else {

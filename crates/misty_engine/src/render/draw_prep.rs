@@ -84,7 +84,14 @@ pub(super) fn shadow_key(d: &MeshDraw, lod: LodState) -> Option<ShadowKey> {
 /// Map `f` over `0..n`, in parallel for large frames.
 pub(super) fn map_draws<T: Send>(n: usize, f: impl Fn(usize) -> T + Sync + Send) -> Vec<T> {
     if n >= PARALLEL_MIN {
-        (0..n).into_par_iter().map(f).collect()
+        // One profiler scope per rayon job (a run of draws), on the worker's Timeline row.
+        (0..n)
+            .into_par_iter()
+            .map_init(
+                || crate::profiler::Scope::begin_lazy(|| "Render.DrawPrep (job)", None),
+                |_, i| f(i),
+            )
+            .collect()
     } else {
         (0..n).map(f).collect()
     }

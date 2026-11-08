@@ -212,6 +212,25 @@ impl AudioBackend for GraphBackend {
         Ok(())
     }
 
+    fn clip_memory(&self) -> Vec<(String, u64, &'static str)> {
+        let mut out: Vec<(String, u64, &'static str)> = self
+            .clips
+            .iter()
+            .map(|(path, c)| {
+                let (bytes, how) = match c {
+                    Clip::Decoded { frames, .. } => {
+                        (std::mem::size_of_val(&**frames) as u64, "Decoded")
+                    }
+                    Clip::Compressed { bytes, .. } => (bytes.len() as u64, "Compressed"),
+                    Clip::Streamed { .. } => (0, "Streamed"),
+                };
+                (path.to_string_lossy().replace('\\', "/"), bytes, how)
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
     fn forget_clips(&mut self) {
         self.clips.clear();
     }

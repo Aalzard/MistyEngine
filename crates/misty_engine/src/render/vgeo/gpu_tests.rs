@@ -557,6 +557,7 @@ fn virtual_geometry_shows_in_stats_debug_views_and_frame_debugger() {
     r.begin_capture(crate::render::CaptureRequest {
         stop_after: Some(at_main - 1),
         labels: Vec::new(),
+        ..Default::default()
     });
     let stopped = render(&device, &queue, &mut r, &target, &cam, &scene, 1);
     r.end_capture();

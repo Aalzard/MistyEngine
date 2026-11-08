@@ -1,13 +1,16 @@
 //! Replay display: after a frame stopped at an event, copy that event's render target into the
-//! output image (tonemapped HDR, an 8-bit copy, or a shadow map's depth).
+//! output image (tonemapped HDR, an 8-bit copy, or a shadow map's depth). The Depth, Normals
+//! and GI views show the depth prepass's depth or normals, or Misty GI's gather, instead.
 
-use super::EventTarget;
+use super::{EventTarget, TargetView};
 use crate::render::{COLOR_FORMAT, RenderTarget, Renderer};
 
 pub(crate) struct DebugBlit {
     tonemap: wgpu::RenderPipeline,
     copy: wgpu::RenderPipeline,
+    normals: wgpu::RenderPipeline,
     depth: wgpu::RenderPipeline,
+    scene_depth: wgpu::RenderPipeline,
     depth_layout: wgpu::BindGroupLayout,
 }
 
@@ -81,6 +84,20 @@ impl DebugBlit {
                 post_layout,
             ),
             copy: pipeline(device, "frame debug copy", color, "fs_copy", post_layout),
+            normals: pipeline(
+                device,
+                "frame debug normals",
+                color,
+                "fs_normals",
+                post_layout,
+            ),
+            scene_depth: pipeline(
+                device,
+                "frame debug scene depth",
+                depth_src,
+                "fs_scene_depth",
+                &depth_layout,
+            ),
             depth: pipeline(
                 device,
                 "frame debug depth",
@@ -94,6 +111,84 @@ impl DebugBlit {
 }
 
 impl Renderer {
+    /// Show the Frame Debugger's `view` (Depth, Normals or GI) in `target`'s output; dark when
+    /// this frame doesn't have it (reported in the capture).
+    pub(in crate::render) fn frame_debug_view(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget,
+        view: TargetView,
+        screen: Option<&crate::render::screen_space::ScreenFrame>,
+    ) {
+        let post_layout = &self.pipelines.post_layout;
+        let blit = self
+            .debug_blit
+            .get_or_insert_with(|| DebugBlit::new(device, post_layout));
+        let sample_group = |view: &wgpu::TextureView| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("misty frame debug view"),
+                layout: post_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.post_sampler),
+                    },
+                ],
+            })
+        };
+        let source: Option<(&wgpu::RenderPipeline, wgpu::BindGroup)> = match view {
+            TargetView::Depth => screen.map(|s| {
+                let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("misty frame debug depth view"),
+                    layout: &blit.depth_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(s.views().0),
+                    }],
+                });
+                (&blit.scene_depth, group)
+            }),
+            TargetView::Normals => screen.map(|s| (&blit.normals, sample_group(s.views().1))),
+            TargetView::Gi => screen
+                .and_then(|s| s.trace.as_ref())
+                .and_then(|t| t.misty.as_ref())
+                .map(|m| (&blit.tonemap, sample_group(&m.gather))),
+            TargetView::Color | TargetView::Emission => None,
+        };
+        super::set_view_available(&self.capture, source.is_some());
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("misty frame debug view"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target.output_view(),
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.02,
+                        g: 0.02,
+                        b: 0.025,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        if let Some((pipeline, group)) = &source {
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+    }
+
     /// Show `display` (the stopped event's image) in `target`'s output.
     pub(in crate::render) fn frame_debug_blit(
         &mut self,

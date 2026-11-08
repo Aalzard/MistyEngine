@@ -881,6 +881,11 @@ impl Grass {
         }
     }
 
+    /// This frame's blades are culled on the GPU and drawn indirectly.
+    pub fn indirect(&self) -> bool {
+        self.cull.as_ref().is_some_and(|c| c.culled())
+    }
+
     /// Draw pass `kind` as planned (pipeline and groups 0–2 already bound).
     pub fn draw(&self, pass: &mut wgpu::RenderPass, kind: usize, stats: &mut super::RenderStats) {
         let Some(cull) = &self.cull else {

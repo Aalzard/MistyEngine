@@ -6,6 +6,7 @@
 //!   behind = turned round to the trees behind the player, oak = towards the broad oak),
 //!   1600×900, 48 frames, wind / cloud / fog clocks fixed, written as `<level>_<shot>.png`
 //!   into `MISTY_GFX_DIR`. `MISTY_PERF_OPTS=cover` turns on look options (see [`apply_opts`]).
+//! - `profiler_overhead_meadow`: the Profiler's cost while recording and while closed.
 //! - `meadow_perf_times`: median GPU frame time, CPU time of `Renderer::render` and the GPU
 //!   time of every part per level (`MISTY_GFX_SHOT=wide,behind`, `MISTY_SIZE=WxH`).
 
@@ -963,4 +964,106 @@ fn scene_shots_vsm() {
             }
         }
     }
+}
+
+/// Profiler overhead on MeadowDemo (round 20E): the CPU time of `Renderer::render` plus
+/// `profiler::end_frame` with the Profiler off and recording (per-pass GPU timestamps on, the
+/// way the Profiler window records), in alternating blocks so clock drift hits both alike;
+/// then the cost of a scope while recording is off. 1920×1080, High (`MISTY_QUALITY`), the GPU
+/// waited for after every frame, `MISTY_GFX_SHOT` view (default wide).
+/// `cargo test --release -p misty_engine --lib profiler_overhead_meadow -- --ignored --nocapture`
+#[test]
+#[ignore = "timing, prints only"]
+fn profiler_overhead_meadow() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let shot = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide".into());
+    let Some(v) = view(&shot) else {
+        return;
+    };
+    let quality = if std::env::var("MISTY_QUALITY").is_ok() {
+        levels()[0].1.clone()
+    } else {
+        QualityLevel::high()
+    };
+    let mut r = Renderer::with_queue(&device, &queue);
+    r.set_view_label("Game");
+    r.set_quality(&device, &quality);
+    let target = r.create_view_target(&device, 1920, 1080);
+    let frame = v.frame();
+    let profiler = crate::profiler::test_serial();
+    crate::profiler::set_enabled(false);
+    for _ in 0..90 {
+        r.render(&device, &queue, &target, &frame);
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        crate::profiler::end_frame();
+    }
+    let (mut off, mut on) = (Vec::new(), Vec::new());
+    let mut scopes = 0usize;
+    let mut passes = 0usize;
+    let mut recorded = 0usize;
+    for block in 0..16 {
+        let recording = block % 2 == 1;
+        crate::profiler::set_enabled(recording);
+        for i in 0..40 {
+            let t = std::time::Instant::now();
+            r.render(&device, &queue, &target, &frame);
+            crate::profiler::end_frame();
+            let ms = t.elapsed().as_secs_f64() * 1000.0;
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            // The first frames of a block settle (timer made, readbacks start).
+            if i >= 5 {
+                match recording {
+                    true => on.push(ms),
+                    false => off.push(ms),
+                }
+            }
+        }
+        if recording {
+            crate::profiler::with_frames(|f| {
+                if let Some(last) = f.iter().rev().nth(3) {
+                    scopes = last.samples.len()
+                        + last.threads.iter().map(|t| t.samples.len()).sum::<usize>();
+                    passes = last.gpu_passes.len();
+                    recorded += 1;
+                }
+            });
+        }
+    }
+    crate::profiler::set_enabled(false);
+    // A scope while recording is off: one relaxed load, the name never evaluated.
+    let n = 10_000_000u32;
+    let t = std::time::Instant::now();
+    for i in 0..n {
+        crate::profile_scope!(format!("never {i}"));
+        std::hint::black_box(i);
+    }
+    let off_ns = t.elapsed().as_secs_f64() * 1e9 / n as f64;
+    drop(profiler);
+    let median = |v: &mut Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+    let (m_off, m_on) = (median(&mut off), median(&mut on));
+    eprintln!(
+        "== profiler overhead, MeadowDemo {shot} 1920x1080 ({} recorded blocks)",
+        recorded
+    );
+    eprintln!(
+        "   render + end_frame CPU: off median {m_off:.3} ms (mean {:.3}), recording median {m_on:.3} ms (mean {:.3})",
+        mean(&off),
+        mean(&on)
+    );
+    eprintln!(
+        "   overhead while recording: {:.3} ms per frame (median), {:.3} ms (mean); {scopes} scopes and {passes} GPU passes per frame",
+        m_on - m_off,
+        mean(&on) - mean(&off)
+    );
+    eprintln!(
+        "   closed (not recording): {off_ns:.2} ns per scope -> {:.4} ms per frame for {scopes} scopes",
+        off_ns * scopes as f64 / 1e6
+    );
 }

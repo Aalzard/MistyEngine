@@ -5,7 +5,10 @@
 //! capture is installed ([`super::Renderer::begin_capture`]) every hook builds a
 //! [`FrameEvent`]; events after [`CaptureRequest::stop_after`] are recorded but not drawn, and
 //! the selected event's render target is shown in the output image (see `blit.rs`).
-//! GPU culling and GPU timing are off while capturing so every draw is a CPU-side event.
+//! GPU timing is off while capturing. GPU culling is too unless the request asks for
+//! GPU-driven draws ([`CaptureRequest::gpu_driven`]): then each indirect multi-draw is one
+//! event. [`CaptureRequest::view`] shows another buffer than the colour target (depth,
+//! normals, GI, emission) in the output image.
 
 mod blit;
 pub(super) mod events;
@@ -13,6 +16,7 @@ pub(super) mod events;
 mod tests;
 
 pub(crate) use blit::DebugBlit;
+pub(crate) use events::emission_only;
 
 use std::sync::Mutex;
 
@@ -34,6 +38,52 @@ pub struct CaptureRequest {
     pub stop_after: Option<usize>,
     /// Object / material names per mesh draw (may be shorter than the draw list).
     pub labels: Vec<DrawLabel>,
+    /// Which buffer the output image shows.
+    pub view: TargetView,
+    /// Keep GPU culling on: opaque meshes draw indirectly (one event per multi-draw) instead
+    /// of as CPU-culled batches.
+    pub gpu_driven: bool,
+}
+
+/// The buffer a capture shows in the output image (the Frame Debugger's view picker).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TargetView {
+    /// The selected event's render target (colour).
+    #[default]
+    Color,
+    /// Scene depth from the depth prepass (near = bright).
+    Depth,
+    /// World-space normals from the depth prepass.
+    Normals,
+    /// Misty GI's gathered irradiance (needs Misty GI on).
+    Gi,
+    /// Materials replaced by their emission (unlit), the rest of the scene as drawn.
+    Emission,
+}
+
+impl TargetView {
+    pub const ALL: [Self; 5] = [
+        Self::Color,
+        Self::Depth,
+        Self::Normals,
+        Self::Gi,
+        Self::Emission,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Color => "Color",
+            Self::Depth => "Depth",
+            Self::Normals => "Normals",
+            Self::Gi => "GI",
+            Self::Emission => "Emission",
+        }
+    }
+
+    /// Shown by forcing the depth + normal prepass.
+    pub fn needs_prepass(self) -> bool {
+        matches!(self, Self::Depth | Self::Normals)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -44,6 +94,8 @@ pub enum EventKind {
     Draw,
     /// A fullscreen triangle (sky, grid, post-processing).
     Fullscreen,
+    /// Geometry whose counts the GPU wrote (GPU culling, virtual geometry, grass, VFX).
+    DrawIndirect,
     /// Compute dispatches (AO, froxels, clouds).
     Compute,
     /// A texture copy (opaque scene copy).
@@ -57,6 +109,7 @@ impl EventKind {
         match self {
             Self::Clear => "Clear",
             Self::Draw => "Draw",
+            Self::DrawIndirect => "Draw Indirect",
             Self::Fullscreen => "Fullscreen",
             Self::Compute => "Compute",
             Self::Copy => "Copy",
@@ -119,6 +172,8 @@ pub struct FrameEvent {
     pub cull: String,
     /// (slot, project-relative texture path).
     pub textures: Vec<(String, String)>,
+    /// What each bind group, buffer and indirect argument holds (slot, description).
+    pub bindings: Vec<(String, String)>,
     /// Material values (name, value).
     pub properties: Vec<(String, String)>,
 }
@@ -144,7 +199,10 @@ impl FrameEvent {
 
     /// Draws geometry (counts toward the draw call total).
     pub fn is_draw(&self) -> bool {
-        matches!(self.kind(), EventKind::Draw | EventKind::Fullscreen)
+        matches!(
+            self.kind(),
+            EventKind::Draw | EventKind::DrawIndirect | EventKind::Fullscreen
+        )
     }
 }
 
@@ -156,6 +214,10 @@ pub struct FrameCapture {
     pub size: (u32, u32),
     /// The event the frame stopped after (when replaying).
     pub stopped_at: Option<usize>,
+    /// The buffer the output image shows, and whether this frame had it (the depth prepass
+    /// ran, Misty GI was on).
+    pub view: TargetView,
+    pub view_available: bool,
 }
 
 impl FrameCapture {
@@ -189,6 +251,7 @@ pub(crate) struct Recorder {
     display: EventTarget,
     events: Vec<FrameEvent>,
     size: (u32, u32),
+    view_available: bool,
 }
 
 impl Recorder {
@@ -200,6 +263,7 @@ impl Recorder {
             display: EventTarget::None,
             events: Vec::new(),
             size: (0, 0),
+            view_available: true,
         }
     }
 
@@ -234,6 +298,8 @@ impl Recorder {
             events: self.events,
             size: self.size,
             stopped_at,
+            view: self.request.view,
+            view_available: self.view_available,
         }
     }
 }
@@ -304,5 +370,23 @@ pub(crate) fn target(name: &str, (width, height): (u32, u32), format: &str) -> T
         width,
         height,
         format: format.to_owned(),
+    }
+}
+
+/// The buffer the capture shows (Color when not capturing).
+pub(crate) fn view(cap: &Capture) -> TargetView {
+    cap.as_ref()
+        .map_or(TargetView::Color, |m| lock(m).request.view)
+}
+
+/// The capture keeps GPU culling on.
+pub(crate) fn gpu_driven(cap: &Capture) -> bool {
+    cap.as_ref().is_some_and(|m| lock(m).request.gpu_driven)
+}
+
+/// Whether the frame had the buffer [`view`] asked for.
+pub(crate) fn set_view_available(cap: &Capture, available: bool) {
+    if let Some(m) = cap {
+        lock(m).view_available = available;
     }
 }

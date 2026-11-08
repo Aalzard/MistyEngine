@@ -538,11 +538,32 @@ impl Engine {
 
     /// Fill `out` with the next frames of the mix.
     pub fn render(&mut self, out: &mut [Frame]) {
+        let started = crate::profiler::enabled().then(std::time::Instant::now);
         self.poll();
         for chunk in out.chunks_mut(BLOCK) {
             self.block(chunk);
         }
+        let underruns = self.underruns;
         self.publish();
+        if let Some(t) = started {
+            self.report_profiler(t, out.len(), underruns);
+        }
+    }
+
+    /// The Profiler's Audio module: voices in the graph, streams, and the time this block took
+    /// against the audio it made.
+    fn report_profiler(&self, started: std::time::Instant, frames: usize, underruns: u64) {
+        use crate::profiler::{Counter, add_counter, set_counter};
+        let streams = self
+            .voices
+            .iter()
+            .filter(|v| matches!(v.reader.source, Source::Stream(_)))
+            .count();
+        set_counter(Counter::AudioGraphVoices, self.voices.len() as f32);
+        set_counter(Counter::AudioStreams, streams as f32);
+        add_counter(Counter::AudioUnderruns, underruns as f32);
+        let secs = frames as f64 / self.sample_rate.max(1.0) as f64;
+        super::note_mix(started.elapsed().as_nanos() as u64, (secs * 1.0e9) as u64);
     }
 
     fn block(&mut self, out: &mut [Frame]) {
@@ -986,6 +1007,8 @@ pub struct EngineSound(pub Engine);
 
 impl kira::sound::Sound for EngineSound {
     fn process(&mut self, out: &mut [Frame], dt: f64, _info: &kira::info::Info) {
+        crate::profiler::name_thread("Audio Thread");
+        crate::profile_scope!("Audio.Mix", crate::profiler::Category::Audio);
         if dt > 0.0 {
             self.0.sample_rate = (1.0 / dt) as f32;
         }

@@ -75,10 +75,11 @@ pub use decals::DecalDraw;
 pub use environment::{Environment, Sun, Wind};
 pub use frame_debug::{
     CaptureRequest, DrawLabel, EventKind, EventTarget, FrameCapture, FrameEvent, TargetInfo,
+    TargetView,
 };
 pub use glow::GlowSource;
 pub use grass_vis::{grass_vis_enabled, set_grass_vis};
-pub use misty_gi::{MistyGiSettings, mesh_sdf_bakes_pending};
+pub use misty_gi::{MistyGiSettings, mesh_sdf_bakes_pending, mesh_sdf_cache_memory};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub(crate) use pipeline_cache::pipeline_cache;
 pub use pipeline_cache::{open_pipeline_cache, pipeline_cache_features, save_pipeline_cache};
@@ -546,8 +547,11 @@ pub struct Renderer {
     stats: RenderStats,
     /// GPU time per render (when the device supports timestamp queries).
     gpu_timer: Option<gpu_timer::GpuTimer>,
-    /// GPU time per part of a render (profiling only, see [`Renderer::set_pass_timing`]).
+    /// GPU time per part of a render: blocking (benchmarks, see [`Renderer::set_pass_timing`])
+    /// or, while the Profiler records, read back later for its GPU module.
     pass_timer: Option<pass_timer::PassTimer>,
+    /// Name of the view being rendered, for the Profiler's GPU module ("Game", "Scene").
+    view_label: std::borrow::Cow<'static, str>,
     /// GPU culling pipelines and buffers (`None` when the device can't draw indirectly with
     /// an instance offset).
     culler: Option<gpu_culling::GpuCuller>,
@@ -729,6 +733,7 @@ impl Renderer {
             stats: RenderStats::default(),
             gpu_timer: None,
             pass_timer: None,
+            view_label: std::borrow::Cow::Borrowed(""),
             culler: gpu_culling::supported(device).then(|| gpu_culling::GpuCuller::new(device)),
             last_gpu_batches: 0,
             vgeo: Default::default(),
@@ -852,6 +857,13 @@ impl Renderer {
             gpu_timer: gpu_timer::GpuTimer::new(device, queue),
             ..Self::new(device)
         };
+        crate::profiler::set_gpu_timing(if pass_timer::supported(device) {
+            crate::profiler::GpuTiming::Passes
+        } else if renderer.gpu_timer.is_some() {
+            crate::profiler::GpuTiming::FrameOnly
+        } else {
+            crate::profiler::GpuTiming::Unsupported
+        });
         if grass_streaming() {
             let view_layout = &renderer.pipelines.view_layout;
             (renderer.volumetrics).prebuild(device, queue, view_layout);
@@ -994,12 +1006,10 @@ impl Renderer {
         queue: &wgpu::Queue,
         on: bool,
     ) -> bool {
-        self.pass_timer = match on {
-            true => self
-                .pass_timer
-                .take()
-                .or_else(|| pass_timer::PassTimer::new(device, queue)),
-            false => None,
+        self.pass_timer = match (on, self.pass_timer.take()) {
+            (true, Some(t)) if !t.is_profiler() => Some(t),
+            (true, _) => pass_timer::PassTimer::new(device, queue),
+            (false, _) => None,
         };
         self.pass_timer.is_some()
     }
@@ -1008,6 +1018,29 @@ impl Renderer {
     /// the time up to the end of the named part from the end of the previous one.
     pub fn pass_times(&self) -> &[(&'static str, f32)] {
         self.pass_timer.as_ref().map_or(&[], |t| t.last())
+    }
+
+    /// Name the views rendered next in the Profiler's GPU module ("Game", "Scene").
+    pub fn set_view_label(&mut self, label: impl Into<std::borrow::Cow<'static, str>>) {
+        self.view_label = label.into();
+    }
+
+    /// While the Profiler records, time every part of each render for its GPU module (read
+    /// back a frame or two later, no waiting); collect the renders that finished. Not while
+    /// the Frame Debugger captures, nor next to a blocking pass timer.
+    fn sync_profiler_timing(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let want = crate::profiler::enabled() && self.capture.is_none() && self.gpu_timer.is_some();
+        match self.pass_timer.as_mut() {
+            Some(t) if t.is_profiler() => {
+                t.poll(device);
+                if !want {
+                    self.pass_timer = None;
+                }
+            }
+            Some(_) => {}
+            None if want => self.pass_timer = pass_timer::PassTimer::new_async(device, queue),
+            None => {}
+        }
     }
 
     /// End of a timed part of the render (between passes).
@@ -1289,6 +1322,24 @@ impl Renderer {
         let mut post = frame.post;
         post.misty_gi = post.misty_gi.capped(self.quality.global_illumination);
         let frame = &Frame { post, ..*frame };
+        // Frame Debugger ▸ Emission: every material unlit, showing only its emission.
+        let emissive: Vec<MeshDraw>;
+        let frame = &match frame_debug::view(&self.capture) {
+            frame_debug::TargetView::Emission => {
+                emissive = frame
+                    .meshes
+                    .iter()
+                    .map(frame_debug::emission_only)
+                    .collect();
+                Frame {
+                    meshes: &emissive,
+                    skybox: false,
+                    background: [0.0; 3],
+                    ..*frame
+                }
+            }
+            _ => Frame { ..*frame },
+        };
         let emitters = if frame.shaded {
             area::emitter_draws(frame.lights)
         } else {
@@ -1346,6 +1397,7 @@ impl Renderer {
         if let Some(timer) = self.gpu_timer.as_mut() {
             timer.poll(device);
         }
+        self.sync_profiler_timing(device, queue);
         // Virtual geometry: meshes built into clusters draw through the cluster path (it needs
         // indirect draws with an instance offset, like GPU culling). While capturing, the
         // Frame Debugger lists its culling and batch draws (vgeo_gate). Prepared before the
@@ -1918,8 +1970,15 @@ impl Renderer {
         if let Some(t) = &self.pass_timer {
             t.resolve(&mut encoder);
         }
-        if let Some(display) = frame_debug::stop_display(&self.capture) {
-            self.frame_debug_blit(device, &mut encoder, target, display);
+        match frame_debug::view(&self.capture) {
+            v if v.needs_prepass() || v == frame_debug::TargetView::Gi => {
+                self.frame_debug_view(device, &mut encoder, target, v, screen.as_ref());
+            }
+            _ => {
+                if let Some(display) = frame_debug::stop_display(&self.capture) {
+                    self.frame_debug_blit(device, &mut encoder, target, display);
+                }
+            }
         }
         if let (Some(timer), Some(slot)) = (self.gpu_timer.as_ref(), timing) {
             timer.resolve(&mut encoder, slot);
@@ -1942,7 +2001,15 @@ impl Renderer {
         self.vsm.submitted();
         self.vsm_frame += 1;
         if let Some(t) = self.pass_timer.as_mut() {
-            t.read(device);
+            if t.is_profiler() {
+                let view = match self.view_label.is_empty() {
+                    true => format!("{}×{}", target.size().0, target.size().1).into(),
+                    false => self.view_label.clone(),
+                };
+                t.submitted(crate::profiler::frame_index(), view);
+            } else {
+                t.read(device);
+            }
         }
         self.slots_scratch = lists.slots;
         let grass = self.terrains.grass_stats();
@@ -2777,6 +2844,14 @@ impl Renderer {
             if let Some(phase) = split.phase {
                 pass.set_bind_group(1, self.lit_group(), &[]);
                 if let Some(culled) = split.culled {
+                    let main = || main_target(target);
+                    let leaf = if phase == 0 {
+                        "First Phase"
+                    } else {
+                        "Second Phase"
+                    };
+                    let path = ["Opaque (GPU-driven)", leaf];
+                    frame_debug::pass(&self.capture, &path, main, EventTarget::Hdr);
                     self.draw_culled(&mut pass, frame, lists, culled, phase, stats);
                 } else if phase == 0 && frame.shaded && !lists.opaque.is_empty() {
                     let opaque = &lists.opaque;
@@ -2867,7 +2942,7 @@ impl Renderer {
                 }
                 let grass = self.terrains.has_grass()
                     && frame_debug::record(&self.capture, |_| {
-                        frame_debug::events::post_event("Draw Grass".to_owned(), "grass.wgsl")
+                        frame_debug::events::grass_event(self.terrains.grass_indirect())
                     });
                 if vis_depth {
                     self.mark_pass(&mut pass, "Main: trees");
@@ -3202,10 +3277,7 @@ impl Renderer {
                     &["Visual Effects"],
                     main,
                     EventTarget::Hdr,
-                    || {
-                        let name = "Draw Visual Effects (indirect)".to_owned();
-                        frame_debug::events::post_event(name, "generated effect shaders")
-                    },
+                    frame_debug::events::effects_event,
                 ))
         {
             self.effects.draw(pass, &self.textures, scene, stats);

@@ -202,6 +202,20 @@ fn shared() -> &'static Mutex<HashMap<u64, Shared>> {
     SHARED.get_or_init(Default::default)
 }
 
+/// Finished bakes kept in memory: (count, bytes of their distances) (Memory Profiler).
+pub fn cache_memory() -> (usize, u64) {
+    let map = shared().lock().unwrap_or_else(|e| e.into_inner());
+    let mut n = 0;
+    let mut bytes = 0u64;
+    for slot in map.values() {
+        if let Some(b) = slot.get() {
+            n += 1;
+            bytes += (b.distances.capacity() * 4 + std::mem::size_of::<Baked>()) as u64;
+        }
+    }
+    (n, bytes)
+}
+
 /// Background bakes started and not finished yet.
 static PENDING: AtomicUsize = AtomicUsize::new(0);
 
@@ -359,6 +373,7 @@ fn request(tris: Vec<[Vec3; 3]>, dir: Option<PathBuf>, wait: bool) -> Shared {
     if start {
         let out = slot.clone();
         let job = move || {
+            crate::profile_scope!("MeshSdf.Bake", crate::profiler::Category::Rendering);
             let baked = load_or_bake(&tris, hash, dir.as_deref());
             let _ = out.set(Arc::new(baked));
         };

@@ -1344,6 +1344,11 @@ impl TerrainCache {
             .collect()
     }
 
+    /// Some terrain's grass draws indirectly this frame (culled on the GPU).
+    pub fn grass_indirect(&self) -> bool {
+        self.entries.values().any(|e| e.grass.indirect())
+    }
+
     /// Any terrain of the frame has grass to draw.
     pub fn has_grass(&self) -> bool {
         self.grass_groups.iter().any(|g| g.is_some())

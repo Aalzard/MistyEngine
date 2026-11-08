@@ -403,6 +403,11 @@ impl ScriptHost {
         self.lua.used_memory()
     }
 
+    /// Audio clips the mixer keeps in memory.
+    pub fn audio_clip_memory(&self) -> Vec<(String, u64, &'static str)> {
+        self.with_world(|w| w.audio.clip_memory())
+    }
+
     /// Create script instances for every script in the scene and run `Awake` (silent audio).
     pub fn start(scene: &mut Scene, physics: Physics, project_root: PathBuf) -> Self {
         let (audio, _) = Audio::null(project_root.clone());
@@ -1100,6 +1105,9 @@ impl ScriptHost {
                 w.physics.sync_out(&mut w.scene);
                 w.physics2d.sync_out(&mut w.scene);
             });
+        }
+        if crate::profiler::enabled() {
+            self.with_world(|w| w.physics.report_profiler(steps));
         }
         if steps > 0 {
             let dt = steps as f32 * self.with_world(|w| w.physics.fixed_dt);
