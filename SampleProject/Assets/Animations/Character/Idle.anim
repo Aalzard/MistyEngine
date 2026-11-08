@@ -1,0 +1,80 @@
+{
+  "length": 2.0,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "Hips",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.95
+        },
+        {
+          "time": 1.0,
+          "value": 0.94
+        },
+        {
+          "time": 2.0,
+          "value": 0.95
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 2.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -4.0
+        },
+        {
+          "time": 1.0,
+          "value": -7.0
+        },
+        {
+          "time": 2.0,
+          "value": -4.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 4.0
+        },
+        {
+          "time": 1.0,
+          "value": 7.0
+        },
+        {
+          "time": 2.0,
+          "value": 4.0
+        }
+      ]
+    }
+  ],
+  "events": []
+}

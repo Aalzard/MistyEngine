@@ -1,0 +1,122 @@
+{
+  "length": 1.0,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0,
+          "tangent": "Linear"
+        },
+        {
+          "time": 1.0,
+          "value": 1.0,
+          "tangent": "Linear"
+        }
+      ]
+    },
+    {
+      "path": "Hips",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.94
+        },
+        {
+          "time": 0.25,
+          "value": 0.96
+        },
+        {
+          "time": 0.5,
+          "value": 0.93
+        },
+        {
+          "time": 0.75,
+          "value": 0.96
+        },
+        {
+          "time": 1.0,
+          "value": 0.94
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpLeg",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 0.25,
+          "value": 18.0
+        },
+        {
+          "time": 0.5,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpLeg",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 0.5,
+          "value": 0.0
+        },
+        {
+          "time": 0.75,
+          "value": 10.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -6.0
+        },
+        {
+          "time": 1.0,
+          "value": -6.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 6.0
+        },
+        {
+          "time": 1.0,
+          "value": 6.0
+        }
+      ]
+    }
+  ],
+  "events": []
+}
