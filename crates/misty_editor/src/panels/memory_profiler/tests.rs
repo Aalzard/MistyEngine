@@ -72,6 +72,8 @@ fn table_sorts_by_each_column_and_filters() {
     assert_eq!(sorted(&s, Column::Refs, false, ""), vec![2, 0, 1]);
     assert_eq!(sorted(&s, Column::Category, true, ""), vec![0, 1, 2]);
     assert_eq!(sorted(&s, Column::Size, false, "GRASS"), vec![0]);
+    // GPU before CPU (audio is system memory).
+    assert_eq!(sorted(&s, Column::Location, true, "")[2], 2);
 }
 
 fn window(s: EditorState) -> Harness<'static, EditorState> {

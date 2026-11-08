@@ -1,8 +1,9 @@
 //! Window ▸ Analysis ▸ Memory Profiler: Capture takes a snapshot of what the engine holds
 //! (GPU textures, meshes, render targets and buffers, audio clips, the Lua heap, scene
-//! components, particles, lightmaps) with sizes estimated from formats and dimensions. Views:
-//! Summary (totals by category), Table (largest items, sortable), Tree Map, and Compare (the
-//! difference between two snapshots).
+//! components, particles, lightmaps, and the CPU asset caches: imported meshes, embedded and
+//! runtime textures, decoded clips, mesh distance fields) with sizes estimated from formats
+//! and dimensions. Views: Summary (GPU and CPU totals by category), Table (largest items,
+//! sortable), Tree Map, and Compare (the difference between two snapshots).
 
 #[cfg(test)]
 mod tests;
@@ -10,7 +11,7 @@ pub mod treemap;
 
 use egui::{Align2, Color32, FontId, RichText, Sense, Ui, vec2};
 use misty_engine::memory_snapshot::{
-    self, Change, MemCategory, MemItem, MemorySnapshot, format_bytes, format_delta,
+    self, Change, MemCategory, MemItem, MemLocation, MemorySnapshot, format_bytes, format_delta,
 };
 
 use crate::state::EditorState;
@@ -48,6 +49,7 @@ pub enum Column {
     Name,
     Type,
     Category,
+    Location,
     #[default]
     Size,
     Refs,
@@ -98,6 +100,7 @@ pub fn category_color(c: MemCategory) -> Color32 {
         MemCategory::SceneObjects => Color32::from_rgb(230, 140, 70),
         MemCategory::Particles => Color32::from_rgb(230, 100, 150),
         MemCategory::Lightmaps => Color32::from_rgb(240, 225, 150),
+        MemCategory::DistanceFields => Color32::from_rgb(150, 200, 230),
     }
 }
 
@@ -108,10 +111,15 @@ pub fn capture(s: &EditorState, gpu: Option<&Gpu>, label: String) -> MemorySnaps
         items.extend(gpu.renderer.memory_items());
         items.extend(gpu.view_target_items());
     }
-    items.extend(memory_snapshot::audio_items(&s.scene));
-    if let Some(rt) = &s.runtime {
-        items.push(memory_snapshot::lua_item(rt.lua_memory()));
+    // Play mode: the clips the mixer holds; else what the scene's sources would decode to.
+    match &s.runtime {
+        Some(rt) => {
+            items.extend(memory_snapshot::audio_cache_items(rt.audio_clip_memory()));
+            items.push(memory_snapshot::lua_item(rt.lua_memory()));
+        }
+        None => items.extend(memory_snapshot::audio_items(&s.scene)),
     }
+    items.extend(memory_snapshot::cache_items());
     items.extend(memory_snapshot::scene_items(&s.scene));
     MemorySnapshot::new(label, items)
 }
@@ -200,8 +208,10 @@ fn header(ui: &mut Ui, snap: &MemorySnapshot) {
         ui.label(RichText::new(&snap.label).strong().size(14.0));
         ui.label(
             RichText::new(format!(
-                "Tracked {}   ·   {} items",
+                "Tracked {} (GPU {}, CPU {})   ·   {} items",
                 format_bytes(snap.total()),
+                format_bytes(snap.location_total(MemLocation::Gpu)),
+                format_bytes(snap.location_total(MemLocation::Cpu)),
                 snap.items.len()
             ))
             .color(theme::TEXT_DIM),
@@ -215,20 +225,51 @@ fn header(ui: &mut Ui, snap: &MemorySnapshot) {
     });
 }
 
-/// Totals by category as soft bars.
+/// Totals by category as soft bars: GPU memory, then CPU memory.
 fn summary(ui: &mut Ui, snap: &MemorySnapshot) {
-    let totals = snap.totals();
-    let max = totals.iter().map(|t| t.1).max().unwrap_or(1).max(1);
     egui::ScrollArea::vertical()
         .id_salt("memory_summary")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            // Stacked strip of the whole snapshot.
+            for at in MemLocation::ALL {
+                let totals = snap.totals_at(at);
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(format!(
+                        "{} memory by category   {}",
+                        at.label(),
+                        format_bytes(snap.location_total(at))
+                    ))
+                    .strong()
+                    .color(theme::TEXT),
+                );
+                ui.add_space(4.0);
+                if totals.is_empty() {
+                    ui.label(RichText::new("Nothing tracked.").color(theme::TEXT_DIM));
+                    continue;
+                }
+                category_bars(ui, snap, at, &totals);
+                ui.add_space(8.0);
+            }
+        });
+}
+
+/// A stacked strip and one bar per category of `totals` (the items in `at`).
+fn category_bars(
+    ui: &mut Ui,
+    snap: &MemorySnapshot,
+    at: MemLocation,
+    totals: &[(MemCategory, u64)],
+) {
+    let max = totals.iter().map(|t| t.1).max().unwrap_or(1).max(1);
+    {
+        {
+            // Stacked strip of this location's memory.
             let (strip, _) =
                 ui.allocate_exact_size(vec2(ui.available_width(), 14.0), Sense::hover());
-            let total = snap.total().max(1) as f32;
+            let total = snap.location_total(at).max(1) as f32;
             let mut x = strip.left();
-            for (c, b) in &totals {
+            for (c, b) in totals {
                 let w = strip.width() * *b as f32 / total;
                 if w > 0.0 {
                     let r = egui::Rect::from_min_size(
@@ -240,7 +281,7 @@ fn summary(ui: &mut Ui, snap: &MemorySnapshot) {
                 }
             }
             ui.add_space(10.0);
-            for (c, bytes) in totals {
+            for &(c, bytes) in totals {
                 let (row, resp) =
                     ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::hover());
                 resp.widget_info(|| {
@@ -278,11 +319,16 @@ fn summary(ui: &mut Ui, snap: &MemorySnapshot) {
                     FontId::monospace(12.0),
                     theme::TEXT,
                 );
-                let count = snap.items.iter().filter(|i| i.category == c).count();
+                let count = snap
+                    .items
+                    .iter()
+                    .filter(|i| i.category == c && i.location == at)
+                    .count();
                 resp.on_hover_text(format!("{count} items"));
                 ui.add_space(3.0);
             }
-        });
+        }
+    }
 }
 
 /// Item indices of `snap` for the table: filtered, then sorted by `col`.
@@ -303,6 +349,7 @@ pub fn sorted(snap: &MemorySnapshot, col: Column, ascending: bool, filter: &str)
             Column::Name => x.name.cmp(&y.name),
             Column::Type => x.kind.cmp(&y.kind),
             Column::Category => x.category.cmp(&y.category),
+            Column::Location => x.location.cmp(&y.location),
             Column::Size => x.bytes.cmp(&y.bytes),
             Column::Refs => x.refs.cmp(&y.refs),
         };
@@ -311,10 +358,11 @@ pub fn sorted(snap: &MemorySnapshot, col: Column, ascending: bool, filter: &str)
     idx
 }
 
-const COLUMNS: [(Column, &str, f32); 5] = [
+const COLUMNS: [(Column, &str, f32); 6] = [
     (Column::Name, "Name", 0.0),
-    (Column::Type, "Type", 150.0),
+    (Column::Type, "Type", 170.0),
     (Column::Category, "Category", 130.0),
+    (Column::Location, "Where", 50.0),
     (Column::Size, "Size", 90.0),
     (Column::Refs, "Refs", 50.0),
 ];
@@ -339,7 +387,10 @@ fn table(ui: &mut Ui, w: &mut MemoryProfilerWindow, snap: &MemorySnapshot) {
                     w.ascending = !w.ascending;
                 } else {
                     w.sort = col;
-                    w.ascending = matches!(col, Column::Name | Column::Type | Column::Category);
+                    w.ascending = matches!(
+                        col,
+                        Column::Name | Column::Type | Column::Category | Column::Location
+                    );
                 }
             }
         }
@@ -366,6 +417,7 @@ fn table(ui: &mut Ui, w: &mut MemoryProfilerWindow, snap: &MemorySnapshot) {
                     it.name.clone(),
                     it.kind.clone(),
                     it.category.label().to_owned(),
+                    it.location.label().to_owned(),
                     format_bytes(it.bytes),
                     if it.refs > 0 {
                         it.refs.to_string()
@@ -387,7 +439,7 @@ fn table(ui: &mut Ui, w: &mut MemoryProfilerWindow, snap: &MemorySnapshot) {
                     x += cw;
                 }
                 let dot = egui::Rect::from_center_size(
-                    egui::pos2(row.left() + name_w + 150.0 - 2.0, row.center().y),
+                    egui::pos2(row.left() + name_w + 170.0 - 2.0, row.center().y),
                     vec2(4.0, 12.0),
                 );
                 p.rect_filled(dot, 2.0, category_color(it.category));

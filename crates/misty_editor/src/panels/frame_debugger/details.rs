@@ -2,7 +2,7 @@
 //! state, bound textures (thumbnails) and material values.
 
 use egui::{Color32, RichText, Ui};
-use misty_engine::render::{EventTarget, FrameEvent};
+use misty_engine::render::{EventTarget, FrameEvent, TargetView};
 
 use super::tree::{kind_color, kind_icon};
 use crate::state::EditorState;
@@ -40,6 +40,17 @@ fn rows(ui: &mut Ui, id: &str, rows: &[(&str, String)]) {
         });
 }
 
+/// What the Game view shows with `view` picked (Color: the event's own target).
+pub fn view_label(view: TargetView, t: EventTarget) -> &'static str {
+    match view {
+        TargetView::Color => display_label(t),
+        TargetView::Depth => "scene depth (depth prepass)",
+        TargetView::Normals => "world normals (depth prepass)",
+        TargetView::Gi => "Misty GI gather (irradiance)",
+        TargetView::Emission => "emission only (materials unlit)",
+    }
+}
+
 /// What the Game view shows while this event is selected.
 pub fn display_label(t: EventTarget) -> &'static str {
     match t {
@@ -70,7 +81,11 @@ pub fn event_rows(e: &FrameEvent) -> Vec<(&'static str, String)> {
         ("Indices", count(e.indices)),
         (
             "Instances",
-            if e.kind() == misty_engine::render::EventKind::Draw {
+            if matches!(
+                e.kind(),
+                misty_engine::render::EventKind::Draw
+                    | misty_engine::render::EventKind::DrawIndirect
+            ) {
                 e.instances.to_string()
             } else {
                 String::new()
@@ -103,7 +118,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, e: &FrameEvent, index: usize, tota
                     "Event {} of {} · Game view shows the {}",
                     index + 1,
                     total,
-                    display_label(e.display)
+                    view_label(s.frame_debugger.view, e.display)
                 ))
                 .color(theme::TEXT_DIM),
             );
@@ -112,6 +127,16 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, e: &FrameEvent, index: usize, tota
             if !e.shader.is_empty() {
                 card(ui, "Shader", |ui| {
                     ui.label(RichText::new(&e.shader).monospace().color(theme::TEXT));
+                });
+            }
+            if !e.bindings.is_empty() {
+                card(ui, "Bindings", |ui| {
+                    let b: Vec<(&str, String)> = e
+                        .bindings
+                        .iter()
+                        .map(|(k, v)| (k.as_str(), v.clone()))
+                        .collect();
+                    rows(ui, "bindings", &b);
                 });
             }
             let t = &e.target;

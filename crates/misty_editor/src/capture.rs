@@ -467,6 +467,18 @@ pub fn apply_env(
         crate::panels::frame_debugger::set_enabled(s, true);
         s.frame_debugger.pending_select = (v != "1").then_some(v);
     }
+    // `MISTY_FRAME_DEBUGGER_VIEW=Depth` (Normals, GI, Emission) picks the view;
+    // `MISTY_FRAME_DEBUGGER_GPU=1` captures GPU-driven draws.
+    if let Ok(v) = std::env::var("MISTY_FRAME_DEBUGGER_VIEW")
+        && let Some(view) = misty_engine::render::TargetView::ALL
+            .into_iter()
+            .find(|t| t.label().eq_ignore_ascii_case(&v))
+    {
+        s.frame_debugger.view = view;
+    }
+    if std::env::var_os("MISTY_FRAME_DEBUGGER_GPU").is_some() {
+        s.frame_debugger.gpu_driven = true;
+    }
     // `MISTY_MEMORY_CAPTURE=2` takes that many Memory Profiler snapshots once the views have
     // drawn; `MISTY_MEMORY_VIEW=Tree Map` picks the view.
     if let Some(n) = std::env::var("MISTY_MEMORY_CAPTURE")
@@ -477,6 +489,23 @@ pub fn apply_env(
     }
     if let Some(view) = std::env::var_os("MISTY_MEMORY_VIEW") {
         s.memory_profiler.set_view_named(&view.to_string_lossy());
+    }
+    // `MISTY_PROFILER_MODULE=GPU` selects a Profiler module (CPU, GPU, Rendering, Memory,
+    // Physics, Audio, UI); `MISTY_PROFILER_VIEW=Timeline` shows the CPU Timeline;
+    // `MISTY_PROFILER_LOAD=<capture.mprof>` shows a capture file instead of the editor.
+    if let Some(m) = std::env::var("MISTY_PROFILER_MODULE")
+        .ok()
+        .and_then(|m| crate::panels::profiler::Module::named(&m))
+    {
+        s.profiler.module = m;
+    }
+    if std::env::var("MISTY_PROFILER_VIEW").is_ok_and(|v| v == "Timeline") {
+        s.profiler.cpu_view = crate::panels::profiler::CpuView::Timeline;
+    }
+    if let Some(path) = std::env::var_os("MISTY_PROFILER_LOAD")
+        && let Err(e) = s.profiler.load(path.into())
+    {
+        eprintln!("profiler capture: {e}");
     }
     // `MISTY_STATS=1` shows the Game view's Stats box.
     if std::env::var_os("MISTY_STATS").is_some() {

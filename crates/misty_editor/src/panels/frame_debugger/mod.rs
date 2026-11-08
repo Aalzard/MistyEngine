@@ -1,6 +1,9 @@
 //! Window ▸ Analysis ▸ Frame Debugger: Enable pauses the Game view on one frame and lists its
 //! render events grouped by pass; selecting an event replays the frame up to it (the Game view
-//! shows that event's render target) and the right pane shows its details.
+//! shows that event's render target, or the depth / normals / GI / emission view picked in the
+//! toolbar) and the right pane shows its details (shader, bindings, state, textures). The
+//! slider steps through every event or, with Draws only, through the draw calls; GPU-driven
+//! keeps GPU culling on so indirect draws are listed as they are issued.
 //!
 //! The Game view installs the renderer's capture each frame while the window is enabled and
 //! visible (see [`FrameDebuggerWindow::request`]); with the window closed nothing is recorded.
@@ -13,7 +16,7 @@ pub mod tree;
 use std::collections::HashSet;
 
 use egui::{Color32, RichText, Ui};
-use misty_engine::render::{CaptureRequest, DrawLabel, FrameCapture};
+use misty_engine::render::{CaptureRequest, DrawLabel, FrameCapture, TargetView};
 
 use crate::state::{EditorState, PlayState};
 use crate::theme;
@@ -41,6 +44,12 @@ pub struct FrameDebuggerWindow {
     scroll_to_selected: bool,
     /// Event to select in the first capture: an index or text in its name (screenshot hook).
     pub pending_select: Option<String>,
+    /// The buffer the Game view shows.
+    pub view: TargetView,
+    /// Capture with GPU culling on (indirect draws as events).
+    pub gpu_driven: bool,
+    /// The slider and arrow keys step through draw calls only.
+    pub draws_only: bool,
 }
 
 impl FrameDebuggerWindow {
@@ -58,6 +67,8 @@ impl FrameDebuggerWindow {
             // First frame after Enable: capture everything, then select the last event.
             stop_after: self.capture.as_ref().map(|_| self.selected),
             labels,
+            view: self.view,
+            gpu_driven: self.gpu_driven,
         })
     }
 
@@ -83,14 +94,46 @@ impl FrameDebuggerWindow {
         self.capture.as_ref().map_or(0, |c| c.events.len())
     }
 
-    /// Move the selection by `delta` events (clamped).
+    /// Move the selection by `delta` events, or draw calls with Draws only (clamped).
     pub fn step(&mut self, delta: i64) {
         let n = self.event_count();
         if n == 0 {
             return;
         }
-        self.selected = (self.selected as i64 + delta).clamp(0, n as i64 - 1) as usize;
+        if self.draws_only {
+            let draws = self.draw_events();
+            if draws.is_empty() {
+                return;
+            }
+            // Position among the draws: the selected one, or where it would be.
+            let at = draws.partition_point(|&i| i < self.selected) as i64;
+            let on_draw = draws.get(at as usize) == Some(&self.selected);
+            let base = if on_draw || delta < 0 { at } else { at - 1 };
+            let to = (base + delta).clamp(0, draws.len() as i64 - 1) as usize;
+            self.selected = draws[to];
+        } else {
+            self.selected = (self.selected as i64 + delta).clamp(0, n as i64 - 1) as usize;
+        }
         self.scroll_to_selected = true;
+    }
+
+    /// Indices of the draw-call events (geometry, indirect and fullscreen draws).
+    pub fn draw_events(&self) -> Vec<usize> {
+        self.capture.as_ref().map_or(Vec::new(), |c| {
+            (0..c.events.len())
+                .filter(|&i| c.events[i].is_draw())
+                .collect()
+        })
+    }
+
+    /// Pick another view or GPU-driven mode: the next capture starts over (the event list
+    /// changes).
+    pub fn set_mode(&mut self, view: TargetView, gpu_driven: bool) {
+        if (view, gpu_driven) != (self.view, self.gpu_driven) {
+            self.view = view;
+            self.gpu_driven = gpu_driven;
+            self.capture = None;
+        }
     }
 }
 
@@ -211,30 +254,93 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState) {
             if ui.button("◀").on_hover_text("Previous event (←)").clicked() {
                 w.step(-1);
             }
-            let mut shown = w.selected + 1;
-            let slider = egui::Slider::new(&mut shown, 1..=n.max(1))
+            // Event space, or draw-call space with Draws only.
+            let draws = w.draw_events();
+            let by_draw = w.draws_only && !draws.is_empty();
+            let (count, mut shown) = match by_draw {
+                true => (
+                    draws.len(),
+                    draws
+                        .partition_point(|&i| i < w.selected)
+                        .min(draws.len() - 1)
+                        + 1,
+                ),
+                false => (n, w.selected + 1),
+            };
+            let slider = egui::Slider::new(&mut shown, 1..=count.max(1))
                 .show_value(false)
                 .handle_shape(egui::style::HandleShape::Rect { aspect_ratio: 0.5 });
+            let tip = match by_draw {
+                true => "Replay the frame up to this draw call",
+                false => "Replay the frame up to this event",
+            };
             if ui
                 .add_sized([160.0, 18.0], slider)
-                .on_hover_text("Replay the frame up to this event")
+                .on_hover_text(tip)
                 .changed()
             {
-                w.selected = shown - 1;
+                w.selected = match by_draw {
+                    true => draws[shown - 1],
+                    false => shown - 1,
+                };
                 w.scroll_to_selected = true;
             }
             if ui.button("▶").on_hover_text("Next event (→)").clicked() {
                 w.step(1);
             }
-            ui.label(
-                RichText::new(format!("{} of {}", (w.selected + 1).min(n), n))
-                    .monospace()
-                    .color(theme::TEXT_DIM),
-            );
+            let text = match by_draw {
+                true => format!("draw {shown} of {count}"),
+                false => format!("{} of {}", (w.selected + 1).min(n), n),
+            };
+            ui.label(RichText::new(text).monospace().color(theme::TEXT_DIM));
+            if toggle_button(
+                ui,
+                w.draws_only,
+                "Draws only",
+                "Step through draw calls only (skip clears, copies and compute)",
+            )
+            .clicked()
+            {
+                w.draws_only = !w.draws_only;
+            }
         });
+        ui.separator();
+        let (mut view, mut gpu_driven) = (w.view, w.gpu_driven);
+        egui::ComboBox::from_id_salt("frame_debugger_view")
+            .selected_text(format!("View: {}", view.label()))
+            .width(110.0)
+            .show_ui(ui, |ui| {
+                for v in TargetView::ALL {
+                    ui.selectable_value(&mut view, v, v.label());
+                }
+            })
+            .response
+            .on_hover_text(
+                "What the Game view shows: the event's target, depth, normals, GI or emission",
+            );
+        if toggle_button(
+            ui,
+            gpu_driven,
+            "GPU-driven",
+            "Keep GPU culling on: opaque meshes draw indirectly, one event per multi-draw",
+        )
+        .clicked()
+        {
+            gpu_driven = !gpu_driven;
+        }
+        w.set_mode(view, gpu_driven);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             search_field(ui, &mut s.frame_debugger.filter, 140.0);
             if let Some(c) = s.frame_debugger.capture.as_ref().filter(|_| enabled) {
+                if !c.view_available {
+                    ui.label(
+                        RichText::new(format!("{} not in this frame", c.view.label()))
+                            .color(Color32::from_rgb(230, 170, 80)),
+                    )
+                    .on_hover_text(
+                        "GI needs Misty GI on; Depth and Normals need a view the prepass fits",
+                    );
+                }
                 ui.label(
                     RichText::new(format!(
                         "{} draw calls · {}×{}",

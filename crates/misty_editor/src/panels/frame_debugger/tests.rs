@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use misty_engine::render::{EventKind, EventTarget, FrameCapture, FrameEvent};
+use misty_engine::render::{EventKind, EventTarget, FrameCapture, FrameEvent, TargetView};
 
 use super::tree::{Row, rows};
 use super::*;
@@ -57,6 +57,7 @@ fn capture() -> FrameCapture {
         ],
         size: (320, 200),
         stopped_at: None,
+        ..Default::default()
     }
 }
 
@@ -179,4 +180,55 @@ fn frame_debugger_opens_beside_the_project_window_and_in_the_menu() {
     assert_eq!(fd.node, dock.find_tab(&Tab::Project).unwrap().node);
     assert!(Tab::ON_DEMAND.contains(&Tab::FrameDebugger));
     assert_eq!(Tab::FrameDebugger.title(), "Frame Debugger");
+}
+
+#[test]
+fn draws_only_steps_over_clears_and_post_steps() {
+    let mut w = FrameDebuggerWindow::default();
+    w.set_capture(capture());
+    // The first capture selects the last event (Composite, a fullscreen draw).
+    assert_eq!(w.selected, 9);
+    w.draws_only = true;
+    // Draws: 1, 3, 5 (sky), 6, 7, 8, 9.
+    assert_eq!(w.draw_events(), vec![1, 3, 5, 6, 7, 8, 9]);
+    w.selected = 4; // a clear: the next draw is 5, the previous 3
+    w.step(1);
+    assert_eq!(w.selected, 5);
+    w.selected = 4;
+    w.step(-1);
+    assert_eq!(w.selected, 3);
+    w.selected = 0;
+    w.step(-1);
+    assert_eq!(w.selected, 1, "clamped to the first draw");
+    w.step(2);
+    assert_eq!(w.selected, 5);
+    w.draws_only = false;
+    w.step(-1);
+    assert_eq!(w.selected, 4);
+}
+
+#[test]
+fn changing_the_view_or_gpu_driven_starts_a_new_capture() {
+    let mut w = FrameDebuggerWindow::default();
+    w.set_capture(capture());
+    w.set_mode(TargetView::Color, false);
+    assert!(w.capture.is_some(), "same mode keeps the capture");
+    w.set_mode(TargetView::Depth, false);
+    assert!(w.capture.is_none());
+    assert_eq!(w.view, TargetView::Depth);
+    w.set_capture(capture());
+    w.set_mode(TargetView::Depth, true);
+    assert!(w.capture.is_none() && w.gpu_driven);
+    let mut indirect = ev(
+        &["Opaque (GPU-driven)"],
+        EventKind::DrawIndirect,
+        "Multi Draw",
+    );
+    indirect.bindings = vec![("Indirect arguments".into(), "args @ 0".into())];
+    assert!(indirect.is_draw());
+    assert_eq!(super::tree::kind_icon(EventKind::DrawIndirect), "◭");
+    assert_eq!(
+        super::details::view_label(TargetView::Normals, EventTarget::Hdr),
+        "world normals (depth prepass)"
+    );
 }
