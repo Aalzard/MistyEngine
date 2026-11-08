@@ -230,8 +230,7 @@ fn flakes_normal(size: u32) -> RgbaImage {
 /// Brushing: fine streaks along U.
 fn brushed_normal(size: u32) -> RgbaImage {
     let h = grey(size, |u, v| {
-        let line = value_noise(u * 0.02, v, 96, 61) * 0.7 + value_noise(u * 0.05, v, 192, 62) * 0.3;
-        line
+        value_noise(u * 0.02, v, 96, 61) * 0.7 + value_noise(u * 0.05, v, 192, 62) * 0.3
     });
     normal_from_height(size, &h, 1.2)
 }
