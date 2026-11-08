@@ -57,9 +57,12 @@ fn controller(transitions: Vec<Transition>) -> AnimatorController {
             param("Speed", ParamKind::Float),
             param("Mode", ParamKind::Int),
         ],
-        states: vec![state("Idle", "idle.anim"), state("Up", "up.anim")],
-        default_state: Some("Idle".into()),
-        transitions,
+        base: StateMachine {
+            states: vec![state("Idle", "idle.anim"), state("Up", "up.anim")],
+            default_state: Some("Idle".into()),
+            transitions,
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
@@ -186,7 +189,7 @@ fn exit_time_waits_for_the_clip() {
         ..Transition::new(Node::state("Up"), Node::state("Idle"))
     };
     let mut c = controller(vec![back]);
-    c.default_state = Some("Up".into());
+    c.base.default_state = Some("Up".into());
     let (mut s, e, mut p) = setup(c);
     p.update(&mut s, 0.0);
     for _ in 0..9 {
@@ -258,16 +261,16 @@ fn any_state_and_exit_transitions() {
 fn play_and_cross_fade_from_scripts() {
     let (mut s, e, mut p) = setup(controller(vec![]));
     p.update(&mut s, 0.0);
-    assert!(p.play(&s, e, "Up", None));
+    assert!(p.play(&s, e, "Up", -1, None));
     p.update(&mut s, 0.0);
     assert_eq!(current(&mut p, &s, e), "Up");
-    assert!(!p.play(&s, e, "Missing", None));
+    assert!(!p.play(&s, e, "Missing", -1, None));
     assert!(
         p.take_logs()
             .iter()
             .any(|l| l.contains("could not be found"))
     );
-    assert!(p.cross_fade(&s, e, "Base Layer.Idle", 0.5, false, 0.0));
+    assert!(p.cross_fade(&s, e, "Base Layer.Idle", 0.5, false, -1, 0.0));
     p.update(&mut s, 0.25);
     assert!((y(&s, e) - 1.0).abs() < 1e-4, "{}", y(&s, e));
 }
@@ -275,8 +278,8 @@ fn play_and_cross_fade_from_scripts() {
 #[test]
 fn speed_and_normalized_time() {
     let mut c = controller(vec![]);
-    c.states[0].motion = Some("ramp.anim".into());
-    c.states[0].speed = 2.0;
+    c.base.states[0].motion = Some("ramp.anim".into());
+    c.base.states[0].speed = 2.0;
     let (mut s, e, mut p) = setup(c);
     s.world.get::<&mut Animator>(e).unwrap().speed = 0.5;
     p.update(&mut s, 0.0);
@@ -292,19 +295,17 @@ fn blend_tree_mixes_children_by_parameter() {
         parameter: "Speed".into(),
         children: vec![
             BlendChild {
-                motion: Some("up.anim".into()),
                 threshold: 1.0,
+                ..BlendChild::clip("up.anim")
             },
-            BlendChild {
-                motion: Some("idle.anim".into()),
-                threshold: 0.0,
-            },
+            BlendChild::clip("idle.anim"),
         ],
+        ..Default::default()
     };
-    assert_eq!(tree.weights(-1.0), vec![(1, 1.0)]);
-    assert_eq!(tree.weights(5.0), vec![(0, 1.0)]);
+    assert_eq!(tree.weights(&|_| -1.0), vec![(1, 1.0)]);
+    assert_eq!(tree.weights(&|_| 5.0), vec![(0, 1.0)]);
     let mut c = controller(vec![]);
-    c.states[0].blend_tree = Some(tree);
+    c.base.states[0].blend_tree = Some(tree);
     let (mut s, e, mut p) = setup(c);
     p.set_param(&s, e, "Speed", animator::FLOAT, 0.25);
     p.update(&mut s, 0.0);
@@ -318,8 +319,8 @@ fn unanimated_properties_return_to_their_rest_value() {
         Node::state("Idle"),
         vec![cond("Up", ConditionMode::IfNot, 0.0)],
     )]);
-    c.default_state = Some("Up".into());
-    c.states[0].motion = None; // Idle animates nothing.
+    c.base.default_state = Some("Up".into());
+    c.base.states[0].motion = None; // Idle animates nothing.
     let (mut s, e, mut p) = setup(c);
     s.set_transform(
         e,
@@ -338,7 +339,7 @@ fn unanimated_properties_return_to_their_rest_value() {
 fn disabling_restarts_unless_state_is_kept() {
     let (mut s, e, mut p) = setup(controller(vec![]));
     p.update(&mut s, 0.0);
-    p.play(&s, e, "Up", None);
+    p.play(&s, e, "Up", -1, None);
     p.update(&mut s, 0.1);
     s.world.get::<&mut Animator>(e).unwrap().enabled = false;
     p.update(&mut s, 0.1);
@@ -349,7 +350,7 @@ fn disabling_restarts_unless_state_is_kept() {
         .get::<&mut Animator>(e)
         .unwrap()
         .keep_state_on_disable = true;
-    p.play(&s, e, "Up", None);
+    p.play(&s, e, "Up", -1, None);
     s.world.get::<&mut Animator>(e).unwrap().enabled = false;
     p.update(&mut s, 0.1);
     s.world.get::<&mut Animator>(e).unwrap().enabled = true;
@@ -371,13 +372,13 @@ fn controller_round_trips_and_follows_renames() {
     assert_eq!(AnimatorController::load(&path).unwrap(), c);
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert_eq!(c.rename_state("Up", "Idle").as_deref(), Some("Idle 1"));
-    assert_eq!(c.transitions[0].to, Node::state("Idle 1"));
+    assert_eq!(c.rename_state(0, "Up", "Idle").as_deref(), Some("Idle 1"));
+    assert_eq!(c.base.transitions[0].to, Node::state("Idle 1"));
     c.rename_parameter("Jump", "Hop");
-    assert_eq!(c.transitions[0].conditions[0].parameter, "Hop");
-    c.remove_state("Idle");
-    assert!(c.transitions.is_empty());
-    assert_eq!(c.default_state.as_deref(), Some("Idle 1"));
+    assert_eq!(c.base.transitions[0].conditions[0].parameter, "Hop");
+    c.base.remove_state("Idle");
+    assert!(c.base.transitions.is_empty());
+    assert_eq!(c.base.default_state.as_deref(), Some("Idle 1"));
     assert_eq!(c.add_parameter(ParamKind::Bool), "New Bool");
     assert_eq!(c.add_parameter(ParamKind::Bool), "New Bool 1");
 
@@ -385,7 +386,12 @@ fn controller_round_trips_and_follows_renames() {
     let text = r#"{"states":[{"name":"A"}],"default_state":"Gone",
         "transitions":[{"from":{"State":"A"},"to":{"State":"Gone"}}]}"#;
     let c = AnimatorController::from_json(text).unwrap();
-    assert_eq!(c.default_state.as_deref(), Some("A"));
-    assert!(c.transitions.is_empty());
+    assert_eq!(c.base.default_state.as_deref(), Some("A"));
+    assert!(c.base.transitions.is_empty());
+    assert_eq!(
+        c.layer_count(),
+        1,
+        "files from before layers have only the base layer"
+    );
     assert!(is_controller("Assets/X.controller"));
 }

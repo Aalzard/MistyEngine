@@ -305,6 +305,18 @@ impl Runtime {
             .with_animator(|a| a.set_param(scene, e, name, &ParamKind::ALL, value));
     }
 
+    /// Change an Animator layer's weight from the editor while playing.
+    pub fn set_animator_layer_weight(
+        &mut self,
+        scene: &Scene,
+        e: hecs::Entity,
+        layer: usize,
+        weight: f32,
+    ) {
+        self.host
+            .with_animator(|a| a.set_layer_weight(scene, e, layer, weight));
+    }
+
     /// Playback time and state of the Playable Director on `e` (the Timeline window's playhead).
     pub fn director_status(&self, e: hecs::Entity) -> (f64, crate::timeline::PlayState) {
         self.host.with_timeline(|t| (t.time(e), t.state(e)))
