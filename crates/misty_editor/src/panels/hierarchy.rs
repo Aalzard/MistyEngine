@@ -616,6 +616,7 @@ fn row_menu(ui: &mut Ui, state: &mut EditorState, e: Entity) {
             }
         });
     }
+    crate::menu_bar::virtual_geometry_items(ui, state);
     ui.separator();
     if ui.button("Select Children").clicked() {
         let mut all = vec![e];

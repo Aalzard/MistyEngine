@@ -57,7 +57,9 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
     within 1–2 brightness levels of an offline path-traced bake, in about 1.1 ms on High.
   - **Virtual geometry, Nanite-like:** dense meshes are cut into small clusters with a hierarchy of
     simpler versions, and the GPU picks the detail per cluster every frame, so thousands of
-    high-poly rocks draw as fast as a hand-made LOD chain, with no LODs to make.
+    high-poly rocks draw as fast as a hand-made LOD chain, with no LODs to make. One click turns
+    it on: **GameObject ▸ Enable Virtual Geometry** on the selection, or **Tools ▸ Rendering ▸
+    Convert Scene to Virtual Geometry** for every dense mesh in the scene.
   - **Virtual shadow maps:** sharp sun shadows from a cached page system, with grass and swaying
     trees in a near layer.
   - **Upscaling** (Off / Quality / Balanced / Performance): render below full resolution and rebuild

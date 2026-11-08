@@ -390,7 +390,9 @@ fn rendering(ui: &mut Ui, l: &mut QualityLevel) -> bool {
         ui,
         "Virtual Geometry",
         "Prototype: models imported with Virtual Geometry draw as clusters with per-cluster \
-        level of detail, culled on the GPU. Off = they draw as ordinary meshes.",
+        level of detail, culled on the GPU (the visibility buffer and occlusion culling are \
+        picked per frame by their cost). Off = they draw as ordinary meshes. Tools ▸ \
+        Rendering ▸ Convert Scene to Virtual Geometry turns it on for dense models.",
         |ui| ui.checkbox(&mut l.virtual_geometry, "").changed(),
     );
     if l.virtual_geometry {

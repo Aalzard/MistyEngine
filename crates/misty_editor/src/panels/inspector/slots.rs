@@ -131,6 +131,31 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         crate::mesh_builder::convert_to_editable(state, e);
         return false;
     }
+    // An imported model's mesh: Virtual Geometry on or off for its model (own undo step).
+    if !ch
+        && let Some(mesh) = f
+            .mesh
+            .as_ref()
+            .filter(|m| crate::vgeo_convert::is_model_mesh(m))
+    {
+        use crate::vgeo_convert::Command;
+        let (label, cmd, tip) = match models::is_virtual(mesh) {
+            false => (
+                "Enable Virtual Geometry",
+                Command::EnableSelected,
+                "Draw this model's dense meshes as clusters with per-cluster level of detail \
+                 (turns on its Virtual Geometry import setting)",
+            ),
+            true => (
+                "Disable Virtual Geometry",
+                Command::DisableSelected,
+                "Draw this model's meshes the ordinary way again",
+            ),
+        };
+        if ui.button(label).on_hover_text(tip).clicked() {
+            state.push(crate::actions::Action::VirtualGeometry(cmd));
+        }
+    }
     if ch {
         let _ = state.scene.world.insert_one(e, f);
     }

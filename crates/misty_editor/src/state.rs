@@ -367,6 +367,8 @@ pub struct EditorState {
     pub snap: crate::snap::SnapSettings,
     /// Grid and Snap window is open.
     pub snap_window_open: bool,
+    /// Tools ▸ Rendering ▸ Convert … to Virtual Geometry and the build progress.
+    pub vgeo: crate::vgeo_convert::VgeoTools,
     /// Save Data and Localization Tables windows.
     pub saveloc: crate::saveloc::SaveLocWindows,
     /// Window ▸ Multiplayer ▸ Multiplayer Play Mode and the player windows it opened.
@@ -470,6 +472,7 @@ impl EditorState {
             scale_locked: false,
             snap: crate::snap::SnapSettings::load(&project.root),
             snap_window_open: false,
+            vgeo: Default::default(),
             saveloc: Default::default(),
             multiplayer: Default::default(),
             assets: AssetDatabase::open(&project.root),
@@ -555,6 +558,7 @@ impl EditorState {
             selection: &mut self.selection,
             clips: &mut self.anim_clips,
             assets: &mut self.assets,
+            project_settings: &mut self.project_settings,
         };
         (&mut self.undo, restore)
     }

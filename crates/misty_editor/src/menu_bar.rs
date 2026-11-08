@@ -1,4 +1,4 @@
-//! Top menu bar: File, Edit, Assets, GameObject, Component, Window, Help.
+//! Top menu bar: File, Edit, Assets, GameObject, Component, Tools, Window, Help.
 
 use egui::Ui;
 
@@ -83,6 +83,10 @@ pub fn show_menus(ui: &mut Ui, state: &mut EditorState) -> f32 {
             top(ui, "Component", |ui| {
                 component_menu(ui, state);
                 scripts(ui, state, "Component");
+            });
+            top(ui, "Tools", |ui| {
+                tools_menu(ui, state);
+                scripts(ui, state, "Tools");
             });
             for name in crate::editor_scripts::menus::extra_tops(state) {
                 top(ui, &name, |ui| scripts(ui, state, &name));
@@ -448,6 +452,35 @@ fn gameobject_menu(ui: &mut Ui, s: &mut EditorState) {
         "Alt+Shift+A",
         Action::ToggleActive,
     );
+    virtual_geometry_items(ui, s);
+}
+
+fn tools_menu(ui: &mut Ui, s: &mut EditorState) {
+    use crate::vgeo_convert::{Command, Scope};
+    sub(ui, "Rendering", |ui| {
+        for scope in [Scope::Scene, Scope::Project] {
+            let action = Action::VirtualGeometry(Command::ConvertDialog(scope));
+            item(ui, s, &format!("{}...", scope.title()), "", action);
+        }
+    });
+}
+
+/// GameObject ▸ Enable / Disable Virtual Geometry: only the ones that apply to the selection.
+pub fn virtual_geometry_items(ui: &mut Ui, s: &mut EditorState) {
+    use crate::vgeo_convert::Command;
+    let (off, on) = crate::vgeo_convert::selection_state(s);
+    if !off && !on {
+        return;
+    }
+    ui.separator();
+    if off {
+        let action = Action::VirtualGeometry(Command::EnableSelected);
+        item(ui, s, "Enable Virtual Geometry", "", action);
+    }
+    if on {
+        let action = Action::VirtualGeometry(Command::DisableSelected);
+        item(ui, s, "Disable Virtual Geometry", "", action);
+    }
 }
 
 fn component_menu(ui: &mut Ui, s: &mut EditorState) {

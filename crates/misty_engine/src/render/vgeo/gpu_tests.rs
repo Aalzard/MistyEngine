@@ -182,6 +182,8 @@ fn virtual_rock_matches_the_mesh_path() {
 
     let mut v = Renderer::with_queue(&device, &queue);
     v.set_quality(&device, &quality(true, 0.1));
+    // One rock covers too few pixels for Auto to pick the visibility buffer: force it.
+    v.set_virtual_geometry_visibility(true);
     let target_v = v.create_target(&device, 480, 320);
     let fine = render(&device, &queue, &mut v, &target_v, &cam, &scene(&virt), 4);
     let fine_stats = v.virtual_geometry_stats(&device, &queue);
@@ -265,6 +267,92 @@ fn virtual_rock_matches_the_mesh_path() {
 /// Cutout with a checker of holes. Through clusters (one instance, one hierarchy, each cluster
 /// in its part's material slot) it looks like the two meshes drawn the ordinary way, holes and
 /// their shadow included.
+/// Auto choices: a few small rocks are culled in one phase and drawn lit (no visibility
+/// buffer, no Hi-Z, no main-pass split) and look like the forced visibility buffer with two
+/// phases; with GPU culling on the two phases come back; a field filling the screen with
+/// small triangles gets the visibility buffer.
+#[test]
+fn auto_picks_one_phase_and_lit_for_a_few_rocks() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let virt = MeshRef::Asset(crate::models::runtime::register_virtual(
+        "vgeo-test-auto-rock",
+        rock::rock(4, 3),
+    ));
+    let cam = camera(Vec3::new(2.5, 2.2, -4.0), Vec3::new(0.0, 0.5, 0.0));
+    let rocks = |n: usize, scale: f32| -> Vec<MeshDraw> {
+        let side = (n as f32).sqrt().ceil() as usize;
+        let mut v = vec![ground(40.0)];
+        for i in 0..n {
+            let (x, z) = ((i % side) as f32, (i / side) as f32);
+            let at = Mat4::from_scale_rotation_translation(
+                Vec3::splat(scale),
+                Quat::from_rotation_y(i as f32),
+                Vec3::new((x - side as f32 * 0.5) * 3.0 * scale, 0.4, z * 3.0 * scale),
+            );
+            v.push(mesh_draw(virt.clone(), at, &rock_material()));
+        }
+        v
+    };
+    let few = rocks(3, 1.0);
+    let mut auto = Renderer::with_queue(&device, &queue);
+    auto.set_quality(&device, &quality(true, 1.0));
+    let target = auto.create_target(&device, 480, 320);
+    let img = render(&device, &queue, &mut auto, &target, &cam, &few, 6);
+    let stats = auto.virtual_geometry_stats(&device, &queue);
+    assert_eq!(stats.instances, 3);
+    assert!(!stats.occlusion && !stats.visibility, "{stats:?}");
+    assert!(
+        stats.triangles > 0 && stats.shadow_triangles > 0,
+        "{stats:?}"
+    );
+
+    let mut forced = Renderer::with_queue(&device, &queue);
+    forced.set_quality(&device, &quality(true, 1.0));
+    forced.set_virtual_geometry_visibility(true);
+    forced.set_virtual_geometry_occlusion(true);
+    let target_f = forced.create_target(&device, 480, 320);
+    let reference = render(&device, &queue, &mut forced, &target_f, &cam, &few, 6);
+    let f = forced.virtual_geometry_stats(&device, &queue);
+    assert!(f.occlusion, "{f:?}");
+    let (mean, off) = difference(&reference, &img);
+    eprintln!(
+        "one phase, lit vs two phases: mean {mean:.3}, {:.3} % off",
+        off * 100.0
+    );
+    assert!(
+        mean < 1.5 && off < 0.004,
+        "mean {mean}, {:.3} % off",
+        off * 100.0
+    );
+
+    // Many instances: occlusion culling pays again (GPU culling on: the pyramid is built
+    // anyway, so from any count).
+    auto.set_options(crate::render::RenderOptions {
+        gpu_culling: true,
+        ..Default::default()
+    });
+    let field = rocks(40, 0.3);
+    let img = render(&device, &queue, &mut auto, &target, &cam, &field, 6);
+    let stats = auto.virtual_geometry_stats(&device, &queue);
+    assert!(stats.occlusion, "{stats:?}");
+    assert!(img.iter().any(|&c| c != 0));
+    // Small triangles filling the screen: the visibility buffer (once the counters of a frame
+    // or two ago have arrived).
+    let mut fine = Renderer::with_queue(&device, &queue);
+    fine.set_quality(&device, &quality(true, 0.1));
+    let target_s = fine.create_target(&device, 160, 120);
+    let near = camera(Vec3::new(0.0, 1.0, -1.2), Vec3::new(0.0, 0.5, 0.0));
+    render(&device, &queue, &mut fine, &target_s, &near, &few, 8);
+    let f = device.features();
+    let can_vis = f.contains(wgpu::Features::PRIMITIVE_INDEX)
+        && f.contains(wgpu::Features::MULTI_DRAW_INDIRECT_COUNT);
+    let stats = fine.virtual_geometry_stats(&device, &queue);
+    assert_eq!(stats.visibility, can_vis, "{stats:?}");
+}
+
 #[test]
 fn virtual_parts_and_cutout_match_the_mesh_path() {
     let Some((device, queue)) = headless() else {
@@ -878,6 +966,18 @@ fn vgeo_field() {
                 ("LOD Groups", &lod_field, Path::LodGroup, false),
                 ("LOD Groups + GPU culling", &lod_field, Path::LodGroup, true),
                 (
+                    "Virtual Geometry 1 px, auto",
+                    &virtual_field,
+                    Path::Virtual,
+                    false,
+                ),
+                (
+                    "Virtual Geometry 1 px, one phase",
+                    &virtual_field,
+                    Path::Virtual,
+                    false,
+                ),
+                (
                     "Virtual Geometry 1 px, lit",
                     &virtual_field,
                     Path::Virtual,
@@ -930,8 +1030,20 @@ fn vgeo_field() {
                     gpu_culling,
                     ..Default::default()
                 });
-                // "lit": clusters drawn lit directly, without the visibility buffer.
-                r.set_virtual_geometry_visibility(!label.ends_with("lit"));
+                // "lit": clusters drawn lit directly, without the visibility buffer; "auto":
+                // the visibility buffer and the phases chosen by cost (the default); "one
+                // phase": no Hi-Z occlusion. The other rows force the visibility buffer and two
+                // phases (the paths before Auto).
+                let auto = label.ends_with("auto");
+                let vis = match auto {
+                    true => crate::render::VgeoChoice::Auto,
+                    false => (!label.ends_with("lit")).into(),
+                };
+                r.set_virtual_geometry_visibility(vis);
+                r.set_virtual_geometry_occlusion(match auto {
+                    true => crate::render::VgeoChoice::Auto,
+                    false => (!label.ends_with("one phase")).into(),
+                });
                 // "edges": the visibility resolve's edge layer.
                 r.vgeo.edge_layer = label.ends_with("edges");
                 r.set_pass_timing(&device, &queue, true);

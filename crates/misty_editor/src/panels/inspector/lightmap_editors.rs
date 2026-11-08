@@ -87,7 +87,9 @@ pub fn model_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             "Build the meshes into clusters with per-cluster level of detail (Misty Virtual \
             Geometry, prototype): dense rocks, cliffs and props then draw about as many \
             triangles as they cover pixels. Needs Virtual Geometry on in the Quality level. \
-            Opaque, non-skinned meshes; not for alpha-tested foliage.",
+            Opaque, non-skinned meshes; not for alpha-tested foliage. (GameObject ▸ Enable \
+            Virtual Geometry and Tools ▸ Rendering ▸ Convert Scene to Virtual Geometry set it \
+            for you.)",
         );
         ch |= ui.checkbox(&mut s.virtual_geometry, "").changed();
         ui.end_row();

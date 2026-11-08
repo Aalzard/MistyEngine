@@ -174,6 +174,12 @@ compared unchanged at every level (mean 0.00, 0.00 % changed).
   UV scale in the Standard shader) would allow 1024 bakes with the same close-up detail.
 - Virtual geometry stays off by default: its fixed per-frame cost (~1–1.4 ms here) outweighs
   65 rocks; per-tile material classification and a persistent instance buffer come first.
+  *Update (branch vgeo-button)*: the fixed cost is gone (Auto picks the lit cluster path and one
+  main phase for these rocks, and all shadow maps are culled together); the rocks through
+  virtual geometry now cost the same as their LOD Groups in the open views and 0.2–0.8 ms less
+  close up and in the gallery (virtual-geometry.md, "Round 3 of vgeo-button"). The presets
+  still keep it off (defaults and golden shots unchanged); Tools ▸ Rendering ▸ Convert Scene
+  to Virtual Geometry offers to turn it on for High and Ultra.
 - No placement tool yet (the optional part): a prefab brush or rocks as terrain "trees" with
   colliders would be the Unity-like way; the meadow's rocks are placed by the generator.
 - The rock prefabs are not static (no static batching of LOD 1–3, no lightmap baking).
