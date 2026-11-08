@@ -1,0 +1,36 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.62,
+    0.04,
+    0.05,
+    1.0
+  ],
+  "metallic": 0.55,
+  "smoothness": 0.5,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": null,
+  "normal_map": "Assets/Textures/MaterialDemo2/Paint Flakes Normal.png",
+  "normal_scale": 0.6,
+  "tiling": [
+    6.0,
+    6.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "clear_coat": {
+    "enabled": true,
+    "strength": 1.0,
+    "smoothness": 0.97,
+    "normal_map": null,
+    "normal_scale": 1.0
+  }
+}

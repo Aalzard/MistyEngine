@@ -111,6 +111,8 @@ mod sample_lightmap;
 #[cfg(test)]
 mod sample_materials;
 #[cfg(test)]
+mod sample_materials2;
+#[cfg(test)]
 mod sample_meadow;
 #[cfg(test)]
 mod sample_mesh_builder;
