@@ -1373,7 +1373,6 @@ fn groups(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View,
 }
 
 /// Sticky notes: soft yellow cards with editable text, dragged by their top strip.
-
 fn notes(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View, area: Rect) {
     let z = view.zoom;
     let count = s.shader_graph.graph.notes.len();
