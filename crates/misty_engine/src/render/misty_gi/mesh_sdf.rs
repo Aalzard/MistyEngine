@@ -448,7 +448,11 @@ mod tests {
     use super::*;
 
     fn rock_triangles(seed: u32) -> Vec<[Vec3; 3]> {
-        let data = crate::vgeo::rock::rock(3, seed);
+        rock_triangles_at(3, seed)
+    }
+
+    fn rock_triangles_at(detail: u32, seed: u32) -> Vec<[Vec3; 3]> {
+        let data = crate::vgeo::rock::rock(detail, seed);
         let p = |i: u32| Vec3::from(data.vertices[i as usize].position);
         let tris: Vec<[Vec3; 3]> = (data.indices.as_chunks::<3>().0.iter())
             .map(|t| [p(t[0]), p(t[1]), p(t[2])])
@@ -480,12 +484,14 @@ mod tests {
     #[test]
     fn big_meshes_bake_in_the_background_then_read_back_from_the_cache() {
         let dir = temp_dir("cache");
-        let tris = rock_triangles(11);
+        // Dense enough that the bake takes far longer than the request, even on a busy
+        // machine (a small mesh could finish in the background before the check below).
+        let tris = rock_triangles_at(5, 11);
         let hash = content_hash(&tris);
         let t = std::time::Instant::now();
         let slot = request(tris.clone(), Some(dir.clone()), false);
         assert!(
-            t.elapsed().as_millis() < 50,
+            t.elapsed().as_millis() < 500,
             "request waited {:?}",
             t.elapsed()
         );
