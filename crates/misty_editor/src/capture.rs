@@ -229,6 +229,17 @@ impl Capture {
     }
 }
 
+/// `MISTY_INSPECTOR_SCROLL=<px>`: the object Inspector scrolled down that far (screenshots of
+/// long components).
+pub fn inspector_scroll() -> Option<f32> {
+    static PX: OnceLock<Option<f32>> = OnceLock::new();
+    *PX.get_or_init(|| {
+        std::env::var("MISTY_INSPECTOR_SCROLL")
+            .ok()
+            .and_then(|v| v.parse().ok())
+    })
+}
+
 /// `MISTY_OPEN_SCENE_AT=<frame>:<scene path>`.
 fn open_scene_at() -> Option<(u32, String)> {
     let v = std::env::var("MISTY_OPEN_SCENE_AT").ok()?;
@@ -301,6 +312,25 @@ pub fn apply_env(
         s.project.selected = Some(abs);
         s.selection.clear();
         s.inspector_asset = Some(rel);
+    }
+    // `MISTY_MIXER=Assets/Audio/AudioDemo2.mixer` shows that mixer in the Audio Mixer window;
+    // `MISTY_MIXER_SELECT=Music` selects a group (`Music/1`: also its second effect) for the
+    // Inspector (combine with `MISTY_TAB=Audio Mixer`).
+    if let Some(rel) = std::env::var_os("MISTY_MIXER") {
+        let rel = rel.to_string_lossy().into_owned();
+        s.audio_mixer.open(Some(rel.clone()));
+        if let Some(sel) = std::env::var("MISTY_MIXER_SELECT").ok()
+            && let Ok(m) = s.anim_clips.mixers.get(&rel)
+        {
+            let (name, fx) = sel.split_once('/').unwrap_or((&sel, ""));
+            if let Some(g) = m.group_by_name(name) {
+                let effect = fx.parse::<usize>().ok().and_then(|i| g.effects.get(i));
+                let item = crate::panels::audio_mixer::MixerItem::Group(g.id, effect.map(|e| e.id));
+                s.audio_mixer.selected = Some(item);
+                s.selection.clear();
+                s.inspector_asset = Some(rel);
+            }
+        }
     }
     // `MISTY_INPUT_ACTIONS=Assets/…/Player.inputactions` opens the Input Actions window;
     // `MISTY_INPUT_SELECT=Player/Move` selects an action, `Player/Move/2` its third binding and

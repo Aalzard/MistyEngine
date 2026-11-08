@@ -828,14 +828,6 @@ fn material_slot(ui: &mut Ui, r: &mut MeshRenderer, i: usize, names: &[String]) 
     ch
 }
 
-/// File stem of a clip path ("Beep").
-pub fn clip_name(path: &str) -> String {
-    std::path::Path::new(path)
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default()
-}
-
 pub(super) fn slider(
     ui: &mut Ui,
     key: &str,

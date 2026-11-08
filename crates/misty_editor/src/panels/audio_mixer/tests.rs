@@ -157,6 +157,68 @@ fn fader_drag_sets_the_snapshot_volume_and_groups_can_be_added() {
 }
 
 #[test]
+fn sends_effect_order_and_wet_levels_in_the_window() {
+    let (mut s, root, music) = project("sends");
+    let mut ids = (0, 0, 0, 0, 0);
+    crate::audio_mixers::edit(&mut s, PATH, "Setup", false, |m| {
+        let sfx = m.group_by_name("SFX").unwrap().id;
+        let chorus = m.add_effect(sfx, EffectKind::Chorus).unwrap();
+        let lowpass = m.add_effect(sfx, EffectKind::Lowpass).unwrap();
+        let send = m.add_effect(sfx, EffectKind::Send).unwrap();
+        let duck = m.add_effect(music, EffectKind::DuckVolume).unwrap();
+        ids = (sfx, chorus, lowpass, send, duck);
+    });
+    let (sfx, chorus, lowpass, send, duck) = ids;
+    let mut h = window(s);
+    for label in ["Chorus", "Lowpass", "Send (none)", "Duck Volume"] {
+        h.get_by_label(label);
+    }
+    // Selecting the Send shows its target picker; pick the Duck Volume on Music.
+    h.get_by_label("Send (none)").click();
+    h.run();
+    assert_eq!(
+        h.state().audio_mixer.selected,
+        Some(MixerItem::Group(sfx, Some(send)))
+    );
+    h.get_by_label("SFX (Audio Mixer Group)");
+    h.get_by_label("Send level");
+    h.get_by_value("None").click();
+    h.run();
+    h.get_by_label("Duck Volume on Music").click();
+    h.run();
+    assert_eq!(saved(&root).effect(sfx, send).unwrap().target, Some(duck));
+    h.get_by_label("Send → Music");
+    h.get_by_label("Duck Volume ← 1");
+    // Every signal effect has a wet mix level; the Inspector shows it.
+    h.get_all_by_label("Wet Mix Level")
+        .next()
+        .expect("wet level row");
+    // Drag Lowpass onto Chorus: the chain becomes Lowpass, Chorus, Send.
+    let from = h
+        .get_all_by_label("Lowpass")
+        .next()
+        .unwrap()
+        .rect()
+        .center();
+    let to = h.get_all_by_label("Chorus").next().unwrap().rect().center();
+    drag(&mut h, from, to);
+    let order: Vec<u32> = saved(&root)
+        .group(sfx)
+        .unwrap()
+        .effects
+        .iter()
+        .map(|e| e.id)
+        .collect();
+    assert_eq!(order, [lowpass, chorus, send]);
+    // Selecting the Duck Volume lists who sends to it.
+    h.get_by_label("Duck Volume ← 1").click();
+    h.run();
+    h.get_by_label("Sends from");
+    h.get_all_by_label("SFX").next().unwrap();
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
 fn create_menu_makes_a_mixer_asset() {
     let (mut s, root, _) = project("create");
     s.project.current = root.join("Assets/Audio");

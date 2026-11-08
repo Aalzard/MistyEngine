@@ -1,9 +1,11 @@
-//! Inspector editors for the Audio Source (with its 3D Sound Settings and rolloff graph), the
-//! Audio Reverb Zone and the Low Pass / High Pass / Echo filters.
+//! Inspector editors for the Audio Source (with its 3D Sound Settings, Spatialize and the rolloff
+//! graph, which edits the curve of Custom Rolloff), the Audio Reverb Zone, the Low Pass / High
+//! Pass / Echo filters, and Audio Clip assets (info, import settings, preview).
 
 use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
+use misty_engine::audio::clip::{AudioImporter, LoadType};
 use misty_engine::audio::mixer::AudioMixer;
-use misty_engine::audio::spatial::rolloff_gain;
+use misty_engine::audio::spatial::distance_gain;
 use misty_engine::audio::{output_ref, split_output};
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
@@ -161,6 +163,107 @@ fn echo(ui: &mut Ui, f: &mut AudioEchoFilter) -> bool {
         }
         ch
     })
+}
+
+// ---- Audio Clip -------------------------------------------------------------------------------
+
+/// Audio clip asset: format and length, import settings (Load Type, Force To Mono) and a
+/// ▶ / ■ preview player.
+pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(crate::state::AUDIO_ICON).size(22.0));
+        ui.label(crate::theme::bold(
+            ui.ctx(),
+            format!("{} (Audio Clip)", clip_name(rel)),
+        ));
+    });
+    crate::asset_guids::path_label(ui, rel);
+    ui.separator();
+    let abs = state.assets.absolute(rel);
+    match misty_engine::audio::clip::info(&abs) {
+        Some(info) => {
+            ui.label(info.summary());
+            ui.label(
+                RichText::new(format!("Format: {}", info.format))
+                    .small()
+                    .color(theme::TEXT_DIM),
+            );
+        }
+        None => {
+            ui.colored_label(theme::WARN, "Can't read this clip (WAV, OGG Vorbis or MP3)");
+        }
+    }
+    let mut imp = AudioImporter::load(&abs);
+    let before = imp.clone();
+    grid(ui, "clip_import", |ui| {
+        ui.label("Load Type");
+        let ch = combo_k(
+            ui,
+            "clip_load_type",
+            "load_type",
+            &mut imp.load_type,
+            &LoadType::ALL,
+            LoadType::label,
+        );
+        ui.end_row();
+        ui.label("Force To Mono");
+        ui.checkbox(&mut imp.force_to_mono, "");
+        ui.end_row();
+        ch
+    });
+    ui.label(
+        RichText::new(match imp.load_type {
+            LoadType::DecompressOnLoad => "Decoded into memory when first played.",
+            LoadType::CompressedInMemory => "Kept encoded in memory; decoded while playing.",
+            LoadType::Streaming => "Read from disk and decoded while playing (long music).",
+        })
+        .small()
+        .color(theme::TEXT_DIM),
+    );
+    if imp != before {
+        match imp.save(&abs) {
+            Ok(()) => {
+                if let Some(p) = state.clip_preview.as_mut() {
+                    p.forget_clips();
+                }
+                if let Some(rt) = state.runtime.as_mut() {
+                    rt.with_audio(|a| a.forget_clips());
+                }
+            }
+            Err(e) => state
+                .console
+                .warn(format!("Could not save import settings: {e}")),
+        }
+    }
+    let playing = state.clip_preview.as_ref().is_some_and(|a| a.any_playing());
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(!playing, egui::Button::new("▶ Play"))
+            .on_hover_text("Preview this clip")
+            .clicked()
+        {
+            let root = state.project.root.clone();
+            let preview = state
+                .clip_preview
+                .get_or_insert_with(|| misty_engine::audio::Audio::with_device(root));
+            preview.stop_all();
+            preview.play_clip(rel, 1.0);
+            for w in preview.take_logs() {
+                state.console.warn(w);
+            }
+        }
+        if ui
+            .add_enabled(playing, egui::Button::new("■ Stop"))
+            .clicked()
+            && let Some(p) = state.clip_preview.as_mut()
+        {
+            p.stop_all();
+        }
+    });
+    if playing {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(100));
+    }
 }
 
 // ---- Audio Source -----------------------------------------------------------------------------
@@ -342,6 +445,13 @@ pub fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         .show(ui, |ui| {
             changed |= grid(ui, "audiosource_3d", |ui| {
                 let mut ch = false;
+                ui.label("Spatialize");
+                ch |= mixed::checkbox(ui, "spatialize", &mut a.spatialize, "")
+                    .on_hover_text(
+                        "Binaural rendering (head model) instead of panning: best on headphones",
+                    )
+                    .changed();
+                ui.end_row();
                 ui.label("Doppler Level");
                 ch |= slider(ui, "doppler_level", &mut a.doppler_level, 0.0..=5.0);
                 ui.end_row();
@@ -378,7 +488,7 @@ pub fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 );
                 ch
             });
-            rolloff_graph(ui, &a, listener);
+            changed |= rolloff_graph(ui, &mut a, listener);
         });
     if changed {
         let _ = state.scene.world.insert_one(e, a);
@@ -397,9 +507,18 @@ fn listener_distance(state: &EditorState, e: Entity) -> Option<f32> {
 }
 
 /// Volume over distance (0 .. Max Distance × 1.1) with the Min Distance and listener marked.
-fn rolloff_graph(ui: &mut Ui, a: &AudioSource, listener: Option<f32>) {
+/// With Custom Rolloff it is a curve editor: drag keys, double-click to add one, right-click a
+/// key to delete it. Returns whether the curve changed.
+fn rolloff_graph(ui: &mut Ui, a: &mut AudioSource, listener: Option<f32>) -> bool {
     let width = ui.available_width().clamp(160.0, 320.0);
-    let (rect, _) = ui.allocate_exact_size(vec2(width, 110.0), Sense::hover());
+    let custom = a.rolloff == AudioRolloff::Custom;
+    let sense = if custom {
+        Sense::click_and_drag()
+    } else {
+        Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 110.0), sense);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Rolloff curve"));
     let p = ui.painter_at(rect.expand(1.0));
     p.rect_filled(rect, 2.0, theme::FIELD_BG);
     let plot = Rect::from_min_max(rect.min + vec2(24.0, 6.0), rect.max - vec2(6.0, 16.0));
@@ -422,10 +541,14 @@ fn rolloff_graph(ui: &mut Ui, a: &AudioSource, listener: Option<f32>) {
         y_of(a.spatial_blend.clamp(0.0, 1.0)),
         Stroke::new(1.0, Color32::from_rgb(90, 180, 90)),
     );
+    let mut changed = false;
+    if custom {
+        changed = edit_curve(ui, &resp, a, &x_of, &y_of, plot, span);
+    }
     let pts: Vec<egui::Pos2> = (0..=96)
         .map(|i| {
             let d = span * i as f32 / 96.0;
-            let v = rolloff_gain(a.rolloff, a.min_distance, a.max_distance, d);
+            let v = distance_gain(a, d);
             pos2(x_of(d), y_of(v))
         })
         .collect();
@@ -433,6 +556,12 @@ fn rolloff_graph(ui: &mut Ui, a: &AudioSource, listener: Option<f32>) {
         pts,
         Stroke::new(1.5, Color32::from_rgb(220, 70, 60)),
     ));
+    if custom {
+        for k in &a.custom_rolloff.keys {
+            let c = pos2(x_of(k[0] * a.max_distance), y_of(k[1]));
+            p.rect_filled(Rect::from_center_size(c, vec2(7.0, 7.0)), 1.0, theme::TEXT);
+        }
+    }
     for (d, color) in [
         (a.min_distance, theme::TEXT_DIM),
         (a.max_distance, theme::TEXT_DIM),
@@ -483,4 +612,89 @@ fn rolloff_graph(ui: &mut Ui, a: &AudioSource, listener: Option<f32>) {
             );
         }
     });
+    if custom {
+        ui.label(
+            RichText::new("Drag keys · double-click adds · right-click deletes")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+    }
+    changed
+}
+
+/// Index of the curve key drawn within 7 px of `at`.
+fn key_near(
+    a: &AudioSource,
+    at: egui::Pos2,
+    x_of: &dyn Fn(f32) -> f32,
+    y_of: &dyn Fn(f32) -> f32,
+) -> Option<usize> {
+    a.custom_rolloff
+        .keys
+        .iter()
+        .enumerate()
+        .map(|(i, k)| {
+            (
+                i,
+                pos2(x_of(k[0] * a.max_distance), y_of(k[1])).distance(at),
+            )
+        })
+        .filter(|(_, d)| *d < 7.0)
+        .min_by(|x, y| x.1.total_cmp(&y.1))
+        .map(|(i, _)| i)
+}
+
+/// Curve-editor interaction on the rolloff graph.
+fn edit_curve(
+    ui: &Ui,
+    resp: &egui::Response,
+    a: &mut AudioSource,
+    x_of: &dyn Fn(f32) -> f32,
+    y_of: &dyn Fn(f32) -> f32,
+    plot: Rect,
+    span: f32,
+) -> bool {
+    let id = resp.id.with("dragged_key");
+    let Some(at) = resp.interact_pointer_pos().or(resp.hover_pos()) else {
+        return false;
+    };
+    let max = a.max_distance.max(0.01);
+    let to_key = |p: egui::Pos2| {
+        let d = (p.x - plot.left()) / plot.width() * span;
+        let v = (plot.bottom() - p.y) / plot.height();
+        [(d / max).clamp(0.0, 1.0), v.clamp(0.0, 1.0)]
+    };
+    if resp.drag_started() {
+        // Where the button went down: the drag only starts after a few pixels of movement.
+        let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or(at);
+        let k = key_near(a, origin, x_of, y_of);
+        ui.data_mut(|d| d.insert_temp(id, k));
+        return false;
+    }
+    if resp.dragged() {
+        let dragged: Option<usize> = ui.data(|d| d.get_temp(id)).flatten();
+        if let Some(i) = dragged.filter(|i| *i < a.custom_rolloff.keys.len()) {
+            a.custom_rolloff.keys[i] = to_key(at);
+            // Keep the dragged key under the pointer after sorting.
+            let moved = a.custom_rolloff.keys[i];
+            a.custom_rolloff.sanitize();
+            let now = a.custom_rolloff.keys.iter().position(|k| *k == moved);
+            ui.data_mut(|d| d.insert_temp(id, now));
+            return true;
+        }
+        return false;
+    }
+    if resp.double_clicked() {
+        a.custom_rolloff.keys.push(to_key(at));
+        a.custom_rolloff.sanitize();
+        return true;
+    }
+    if resp.secondary_clicked()
+        && a.custom_rolloff.keys.len() > 2
+        && let Some(i) = key_near(a, at, x_of, y_of)
+    {
+        a.custom_rolloff.keys.remove(i);
+        return true;
+    }
+    false
 }

@@ -109,37 +109,38 @@ fn show_inner(ui: &mut Ui, state: &mut EditorState) {
         return;
     };
 
-    egui::ScrollArea::vertical()
-        .auto_shrink(false)
-        .show(ui, |ui| {
-            card::begin_body(ui);
-            header(ui, state, &targets);
-            if targets.len() == 1 {
-                prefab_overrides::begin(state, e);
-                prefab_overrides::prefab_row(ui, state, e);
-            } else {
-                prefab_overrides::end();
-            }
-            if targets.len() > 1 {
-                ui.label(
-                    RichText::new(format!("{} objects selected", targets.len()))
-                        .color(theme::TEXT_DIM),
-                );
-            }
-            ui.add_space(6.0);
-            for name in shared_components(state, &targets) {
-                if name == "Scripts" {
-                    editors::script_sections(ui, state, e);
-                } else {
-                    component_section(ui, state, &targets, &name);
-                }
-            }
-            prefab_overrides::removed_components(ui, state);
-            material_previews(ui, state, e);
-            ui.add_space(8.0);
-            editors::add_component_button(ui, state, e);
+    let mut area = egui::ScrollArea::vertical().auto_shrink(false);
+    if let Some(px) = crate::capture::inspector_scroll() {
+        area = area.vertical_scroll_offset(px);
+    }
+    area.show(ui, |ui| {
+        card::begin_body(ui);
+        header(ui, state, &targets);
+        if targets.len() == 1 {
+            prefab_overrides::begin(state, e);
+            prefab_overrides::prefab_row(ui, state, e);
+        } else {
             prefab_overrides::end();
-        });
+        }
+        if targets.len() > 1 {
+            ui.label(
+                RichText::new(format!("{} objects selected", targets.len())).color(theme::TEXT_DIM),
+            );
+        }
+        ui.add_space(6.0);
+        for name in shared_components(state, &targets) {
+            if name == "Scripts" {
+                editors::script_sections(ui, state, e);
+            } else {
+                component_section(ui, state, &targets, &name);
+            }
+        }
+        prefab_overrides::removed_components(ui, state);
+        material_previews(ui, state, e);
+        ui.add_space(8.0);
+        editors::add_component_button(ui, state, e);
+        prefab_overrides::end();
+    });
 }
 
 /// Components present on every target, in the active object's order.
@@ -621,7 +622,7 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         return;
     }
     if misty_engine::audio::is_clip(rel) {
-        audio_clip_asset(ui, state, rel);
+        audio_editors::clip_asset(ui, state, rel);
         return;
     }
     if misty_engine::animation::is_clip(rel) {
@@ -709,66 +710,6 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     } else {
         ui.weak("No import settings for this asset.");
     }
-}
-
-/// Audio clip: file info and a ▶ / ■ preview player.
-fn audio_clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(crate::state::AUDIO_ICON).size(22.0));
-        ui.label(crate::theme::bold(
-            ui.ctx(),
-            format!("{} (Audio Clip)", editors::clip_name(rel)),
-        ));
-    });
-    crate::asset_guids::path_label(ui, rel);
-    ui.separator();
-    let abs = state.assets.absolute(rel);
-    if let Some(info) = clip_info(&abs) {
-        ui.label(info);
-    }
-    let playing = state.clip_preview.as_ref().is_some_and(|a| a.any_playing());
-    ui.horizontal(|ui| {
-        if ui
-            .add_enabled(!playing, egui::Button::new("▶ Play"))
-            .on_hover_text("Preview this clip")
-            .clicked()
-        {
-            let root = state.project.root.clone();
-            let preview = state
-                .clip_preview
-                .get_or_insert_with(|| misty_engine::audio::Audio::with_device(root));
-            preview.stop_all();
-            preview.play_clip(rel, 1.0);
-            for w in preview.take_logs() {
-                state.console.warn(w);
-            }
-        }
-        if ui
-            .add_enabled(playing, egui::Button::new("■ Stop"))
-            .clicked()
-            && let Some(p) = state.clip_preview.as_mut()
-        {
-            p.stop_all();
-        }
-    });
-    if playing {
-        ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(100));
-    }
-}
-
-/// "22050 Hz, Mono, 0.300 s" for PCM WAV files; file size otherwise.
-fn clip_info(path: &std::path::Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    if bytes.len() >= 44 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
-        let channels = u16::from_le_bytes([bytes[22], bytes[23]]);
-        let rate = u32::from_le_bytes(bytes[24..28].try_into().ok()?);
-        let byte_rate = u32::from_le_bytes(bytes[28..32].try_into().ok()?).max(1);
-        let seconds = (bytes.len() - 44) as f32 / byte_rate as f32;
-        let layout = if channels == 1 { "Mono" } else { "Stereo" };
-        return Some(format!("{rate} Hz, {layout}, {seconds:.3} s"));
-    }
-    Some(format!("{:.1} KB", bytes.len() as f32 / 1024.0))
 }
 
 /// Prefab asset: its objects as a tree and the root's components.
@@ -1324,6 +1265,7 @@ mod tests {
         let mut h = inspector(s);
         h.get_by_label("3D Sound Settings");
         h.get_by_label("Spatial Blend");
+        h.get_by_label("Spatialize");
         h.get_by_value("🔊 None (Audio Clip)").click();
         h.run();
         h.get_by_label("Beep").click();
@@ -1341,12 +1283,84 @@ mod tests {
     }
 
     #[test]
+    fn custom_rolloff_keys_drag_in_the_graph() {
+        use misty_engine::scene::{AudioRolloff, AudioSource};
+        let (mut s, root) = audio_project("curve");
+        let e = s.scene.spawn("Speaker", None);
+        s.scene.add(
+            e,
+            AudioSource {
+                rolloff: AudioRolloff::Custom,
+                spatial_blend: 1.0,
+                max_distance: 10.0,
+                ..Default::default()
+            },
+        );
+        s.selection.set(e);
+        // Tall enough for the graph at the bottom of 3D Sound Settings.
+        let mut h = Harness::builder()
+            .with_size([400.0, 1400.0])
+            .build_ui_state(|ui, s: &mut EditorState| show(ui, s), s);
+        h.run();
+        h.get_by_label("Drag keys · double-click adds · right-click deletes");
+        let rect = h.get_by_label("Rolloff curve").rect();
+        // The default curve's second key (20 % of Max Distance, volume 0.5).
+        let (left, right) = (rect.left() + 24.0, rect.right() - 6.0);
+        let (top, bottom) = (rect.top() + 6.0, rect.bottom() - 16.0);
+        let key = egui::pos2(
+            left + 0.2 / 1.1 * (right - left),
+            bottom - 0.5 * (bottom - top),
+        );
+        let to = egui::pos2(key.x, bottom - 0.25 * (bottom - top));
+        h.event(egui::Event::PointerMoved(key));
+        h.step();
+        h.event(egui::Event::PointerButton {
+            pos: key,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.step();
+        for i in 1..=6 {
+            h.event(egui::Event::PointerMoved(
+                key + (to - key) * (i as f32 / 6.0),
+            ));
+            h.step();
+        }
+        h.event(egui::Event::PointerButton {
+            pos: to,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run();
+        let curve = h
+            .state()
+            .scene
+            .world
+            .get::<&AudioSource>(e)
+            .unwrap()
+            .custom_rolloff
+            .clone();
+        assert_eq!(curve.keys.len(), 4);
+        assert!(
+            (curve.keys[1][1] - 0.25).abs() < 0.03,
+            "dragged down: {:?}",
+            curve.keys
+        );
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
     fn audio_clip_asset_shows_info_and_preview_buttons() {
         let (mut s, root) = audio_project("clip");
         s.inspector_asset = Some("Assets/Audio/Beep.wav".into());
         let h = inspector(s);
         h.get_by_label("Beep (Audio Clip)");
         h.get_by_label("22050 Hz, Mono, 0.500 s");
+        h.get_by_label("Format: WAV (PCM)");
+        h.get_by_label("Load Type");
+        h.get_by_label("Force To Mono");
         h.get_by_label("▶ Play");
         h.get_by_label("■ Stop");
         std::fs::remove_dir_all(root).ok();
