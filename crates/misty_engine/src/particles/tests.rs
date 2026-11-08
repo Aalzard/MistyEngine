@@ -890,5 +890,9 @@ fn fast_particles_dont_tunnel_through_thin_boxes() {
             .sweep(Vec3::new(9.0, 0.5, 0.0), Vec3::new(9.0, -0.5, 0.0), 0.05)
             .is_none()
     );
-    assert!(floor.sweep(Vec3::Y, Vec3::new(1.0, 1.0, 0.0), 0.05).is_none());
+    assert!(
+        floor
+            .sweep(Vec3::Y, Vec3::new(1.0, 1.0, 0.0), 0.05)
+            .is_none()
+    );
 }
