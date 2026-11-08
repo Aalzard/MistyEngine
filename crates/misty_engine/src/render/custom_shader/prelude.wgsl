@@ -23,6 +23,9 @@ struct VertexData {
     tangent: vec4<f32>,
     // Index into `draws` (read only): draws[v.draw].model is the object's matrix.
     draw: u32,
+    // The mesh's vertex colour (linear RGBA; white when the mesh has none). Changes reach the
+    // fragment stage as SurfaceInput.vertex_color.
+    color: vec4<f32>,
 };
 
 struct SurfaceInput {
@@ -43,6 +46,8 @@ struct SurfaceInput {
     draw: u32,
     // Seconds (globals.time.x).
     time: f32,
+    // Interpolated vertex colour (linear RGBA; white when the mesh has none).
+    vertex_color: vec4<f32>,
 };
 
 struct SurfaceOutput {
@@ -57,6 +62,8 @@ struct SurfaceOutput {
     alpha: f32,
     // Ambient occlusion (1 = none).
     occlusion: f32,
+    // Light coming through thin surfaces from behind, tinted (0 = none).
+    transmission: vec3<f32>,
 };
 
 fn default_output(input: SurfaceInput) -> SurfaceOutput {
@@ -68,6 +75,7 @@ fn default_output(input: SurfaceInput) -> SurfaceOutput {
     o.emission = vec3<f32>(0.0);
     o.alpha = 1.0;
     o.occlusion = 1.0;
+    o.transmission = vec3<f32>(0.0);
     return o;
 }
 
@@ -150,5 +158,7 @@ fn misty_surface_input(in: MeshOut, front: bool) -> SurfaceInput {
     s.front_facing = front;
     s.draw = in.draw;
     s.time = globals.time.x;
+    s.vertex_color = vec4<f32>(1.0);
     return s;
 }
+

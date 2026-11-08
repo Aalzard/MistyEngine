@@ -375,6 +375,7 @@ fn virtual_parts_and_cutout_match_the_mesh_path() {
             .flatten()
             .copied()
             .collect(),
+        colors: Vec::new(),
     };
     let parts = vec![part(false), part(true)];
     let plain = crate::models::runtime::register_meshes("vgeo-test-parts-plain", parts.clone());

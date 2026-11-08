@@ -8,7 +8,7 @@ mod clouds;
 pub mod contact_shadows;
 pub mod culling;
 pub mod custom_shader;
-mod decals;
+pub(crate) mod decals;
 mod draw_prep;
 pub mod environment;
 pub mod fast_paths;
@@ -494,6 +494,9 @@ struct GpuMesh {
     vertex_count: u32,
     /// Local bounds (culling, shadow fitting).
     bounds: culling::Aabb,
+    /// Vertex colours (RGBA8, parallel to `vertices`) when the mesh has them; custom-shader
+    /// draws of meshes without bind the renderer's white buffer instead.
+    colors: Option<wgpu::Buffer>,
 }
 
 pub struct Renderer {
@@ -584,6 +587,9 @@ pub struct Renderer {
     postfx: postfx::PostFx,
     /// Decal Projectors (decal resolve after the screen-space prepass).
     decals: decals::Decals,
+    /// White vertex colours for custom-shader draws of meshes without colours (as many as the
+    /// largest base vertex + vertex count drawn so far).
+    white_colors: Option<wgpu::Buffer>,
     /// HDRI sky cubes and uniform (view group bindings 4–7).
     sky: hdri_sky::SkyGpu,
     /// Posed Skinned Mesh Renderers (GPU skinning output, see [`skinning`]).
@@ -762,6 +768,7 @@ impl Renderer {
             glows: Default::default(),
             postfx: Default::default(),
             decals: Default::default(),
+            white_colors: None,
             sky,
             skins: Default::default(),
             effects: Default::default(),
@@ -1208,6 +1215,23 @@ impl Renderer {
                     .custom
                     .get_or_insert_with(|| custom_shader::CustomShaders::new(device, queue));
                 custom.prepare(device, queue, &self.pipelines, &mut self.textures, c);
+                // White vertex colours reaching this mesh's vertices.
+                let reach = self
+                    .gpu_mesh(&d.mesh)
+                    .filter(|m| m.colors.is_none())
+                    .map(|m| (m.base_vertex.max(0) as u64 + m.vertex_count as u64) * 4);
+                if let Some(bytes) = reach
+                    && self.white_colors.as_ref().is_none_or(|b| b.size() < bytes)
+                {
+                    let size = bytes.next_power_of_two().max(4096);
+                    self.white_colors = Some(device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("misty white vertex colours"),
+                            contents: &vec![255u8; size as usize],
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    ));
+                }
             } else if frame.shaded {
                 let set = d.material.textures();
                 let layout = &self.pipelines.material_layout;
@@ -2417,6 +2441,12 @@ impl Renderer {
                 pass.set_bind_group(2, group, &[]);
                 stats.texture_binds += 1;
             }
+            if d.material.custom.is_some() {
+                match m.colors.as_ref().or(self.white_colors.as_ref()) {
+                    Some(colors) => pass.set_vertex_buffer(1, colors.slice(..)),
+                    None => continue,
+                }
+            }
             m.draw(pass, b.first..b.first + b.count);
             stats.draw(b.count, m.count, m.vertex_count);
         }
@@ -3384,6 +3414,15 @@ impl GpuMesh {
             count: data.indices.len() as u32,
             vertex_count: data.vertices.len() as u32,
             bounds: culling::Aabb::new(lo, hi),
+            colors: (!data.colors.is_empty() && data.colors.len() == data.vertices.len()).then(
+                || {
+                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(label),
+                        contents: bytemuck::cast_slice(&data.colors),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    })
+                },
+            ),
         }
     }
 
@@ -3411,6 +3450,7 @@ impl GpuMesh {
                 vertex_count: data.vertices.len() as u32,
                 // The same box picking and shadow fitting use.
                 bounds: culling::Aabb::new(-p.half_extents(), p.half_extents()),
+                colors: None,
             })
             .collect()
     }

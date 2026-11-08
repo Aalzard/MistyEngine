@@ -909,6 +909,7 @@ fn misty_gi_lights_custom_shader_surfaces() {
         shader: path.into(),
         values: Default::default(),
         queue: 2000,
+        variant: String::new(),
     });
     let mut renderer = Renderer::new(&gpu.0);
     let target = renderer.create_target(&gpu.0, W, H);
@@ -957,6 +958,7 @@ fn misty_gi_lights_custom_shader_surfaces() {
         shader: glass.into(),
         values: Default::default(),
         queue: 3000,
+        variant: String::new(),
     });
     meshes.push(cube);
     let off = render(

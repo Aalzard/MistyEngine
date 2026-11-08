@@ -1,0 +1,364 @@
+{
+  "version": 1,
+  "target": {
+    "material": "Decal",
+    "surface": "Opaque",
+    "alpha_clip": false,
+    "two_sided": false
+  },
+  "properties": [
+    {
+      "name": "_WaterColor",
+      "display": "Water Color",
+      "kind": "Color",
+      "value": [
+        0.16,
+        0.18,
+        0.2,
+        1.0
+      ]
+    },
+    {
+      "name": "_Edge",
+      "display": "Edge Softness",
+      "kind": "Range",
+      "min": 0.01,
+      "max": 0.4,
+      "value": [
+        0.12,
+        0.12,
+        0.12,
+        0.12
+      ]
+    }
+  ],
+  "keywords": [
+    {
+      "name": "_RIPPLES_ON",
+      "display": "Ripples",
+      "kind": "Boolean",
+      "default": 1
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "type": "Master",
+      "position": [
+        260.0,
+        -60.0
+      ],
+      "values": {
+        "Smoothness": [
+          0.95,
+          0.95,
+          0.95,
+          0.95
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "type": "UV",
+      "position": [
+        -1000.0,
+        -40.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Subtract",
+      "position": [
+        -800.0,
+        -40.0
+      ],
+      "values": {
+        "B": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "Length",
+      "position": [
+        -600.0,
+        -40.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "GradientNoise",
+      "position": [
+        -800.0,
+        140.0
+      ],
+      "values": {
+        "Scale": [
+          5.0,
+          5.0,
+          5.0,
+          5.0
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "Remap",
+      "position": [
+        -600.0,
+        140.0
+      ],
+      "values": {
+        "In Min Max": [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "Out Min Max": [
+          -0.1,
+          0.1,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "Add",
+      "position": [
+        -400.0,
+        40.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Property",
+      "name": "_Edge",
+      "position": [
+        -600.0,
+        300.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Subtract",
+      "position": [
+        -400.0,
+        260.0
+      ],
+      "values": {
+        "A": [
+          0.36,
+          0.36,
+          0.36,
+          0.36
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "type": "Smoothstep",
+      "position": [
+        -200.0,
+        120.0
+      ],
+      "values": {
+        "Edge2": [
+          0.36,
+          0.36,
+          0.36,
+          0.36
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "type": "OneMinus",
+      "position": [
+        0.0,
+        120.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Property",
+      "name": "_WaterColor",
+      "position": [
+        0.0,
+        -160.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "Time",
+      "position": [
+        -800.0,
+        440.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "CustomFunction",
+      "function": "Ripple",
+      "source": "Inline",
+      "body": "let p = UV - vec2<f32>(0.5);\nlet d = max(length(p), 1e-3);\nlet w = sin(d * 70.0 - T * 5.0) * 0.18 * saturate(1.0 - d * 2.4);\nN = normalize(vec3<f32>(p / d * w, 1.0));",
+      "inputs": [
+        {
+          "name": "UV",
+          "ty": "Vec2"
+        },
+        {
+          "name": "T",
+          "ty": "Float"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "N",
+          "ty": "Vec3"
+        }
+      ],
+      "position": [
+        -560.0,
+        440.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Keyword",
+      "name": "_RIPPLES_ON",
+      "position": [
+        -260.0,
+        440.0
+      ],
+      "values": {
+        "Off": [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 2,
+      "input": "A"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 6,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 6,
+      "input": "B"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 8,
+      "input": "B"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 9,
+      "input": "Edge1"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 9,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 0,
+      "input": "Alpha"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 0,
+      "input": "Base Color"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 13,
+      "input": "UV"
+    },
+    {
+      "from": 12,
+      "output": "Time",
+      "to": 13,
+      "input": "T"
+    },
+    {
+      "from": 13,
+      "output": "N",
+      "to": 14,
+      "input": "On"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 0,
+      "input": "Normal"
+    }
+  ],
+  "groups": [
+    {
+      "title": "Ripples",
+      "nodes": [
+        12,
+        13,
+        14
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        -1000.0,
+        -260.0
+      ],
+      "size": [
+        300.0,
+        100.0
+      ],
+      "text": "Decal target: assign a material using this graph to a Decal Projector. It paints the surfaces in the projector's box."
+    }
+  ]
+}

@@ -29,6 +29,7 @@ fn custom(path: &str, queue: u32) -> MaterialParams {
             shader: path.into(),
             values: Arc::new(BTreeMap::new()),
             queue,
+            variant: String::new(),
         }),
         ..Default::default()
     }

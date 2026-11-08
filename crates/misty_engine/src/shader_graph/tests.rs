@@ -83,6 +83,7 @@ fn target_settings_reach_the_header() {
         surface: Surface::Transparent,
         alpha_clip: true,
         two_sided: true,
+        ..Default::default()
     };
     let cg = compile(&g).unwrap();
     let asset = crate::shader_asset::parse(&cg.source).unwrap();

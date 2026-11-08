@@ -93,6 +93,7 @@ pub fn dissolve() -> ShaderGraph {
         surface: Surface::Opaque,
         alpha_clip: true,
         two_sided: true,
+        ..Default::default()
     });
     b.prop(
         "_BaseColor",
@@ -181,6 +182,7 @@ pub fn hologram() -> ShaderGraph {
         surface: Surface::Transparent,
         alpha_clip: false,
         two_sided: false,
+        ..Default::default()
     });
     b.prop(
         "_Color",

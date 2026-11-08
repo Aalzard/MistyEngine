@@ -147,6 +147,8 @@ mod sample_saveloc;
 #[cfg(test)]
 mod sample_shader_graph;
 #[cfg(test)]
+mod sample_shader_graph_examples;
+#[cfg(test)]
 mod sample_shadows;
 #[cfg(test)]
 mod sample_skinning;

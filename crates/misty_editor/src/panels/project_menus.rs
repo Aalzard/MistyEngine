@@ -68,7 +68,12 @@ fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
         }
     });
     ui.menu_button("Shader Graph", |ui| {
-        for kind in [AssetKind::LitShaderGraph, AssetKind::UnlitShaderGraph] {
+        for kind in [
+            AssetKind::LitShaderGraph,
+            AssetKind::UnlitShaderGraph,
+            AssetKind::DecalShaderGraph,
+            AssetKind::ShaderSubGraph,
+        ] {
             if ui.button(kind.label()).clicked() {
                 actions.push(Action::CreateAsset(kind));
                 ui.close();

@@ -24,7 +24,7 @@ use crate::shader_asset::{
     TextureDefault,
 };
 
-pub use wrap::{PropsLayout, check, layout, validate, wrap};
+pub use wrap::{COLOR_LOCATION, PropsLayout, check, layout, validate, wrap};
 
 /// Any draw of the frame uses a `.shader` material (GPU culling and the depth prepass then step
 /// aside: they draw with the built-in variants).
@@ -32,13 +32,27 @@ pub(crate) fn any_in(frame: &super::Frame) -> bool {
     frame.meshes.iter().any(|d| d.material.custom.is_some())
 }
 
-/// The `.shader` part of a draw's material: asset path, property values and render queue.
-#[derive(Clone, Debug, PartialEq)]
+/// The `.shader` part of a draw's material: asset path, property values, render queue and the
+/// keyword variant.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct CustomMaterial {
     pub shader: String,
     /// Declared properties with the material's values (defaults filled in).
     pub values: Arc<BTreeMap<String, PropertyValue>>,
     pub queue: u32,
+    /// Keyword variant (`ShaderAsset::variant_key`; "" = the default variant).
+    pub variant: String,
+}
+
+impl CustomMaterial {
+    /// Compiled pipelines are kept per shader and variant.
+    fn cache_key(&self) -> String {
+        if self.variant.is_empty() {
+            self.shader.clone()
+        } else {
+            format!("{}#{}", self.shader, self.variant)
+        }
+    }
 }
 
 impl CustomMaterial {
@@ -430,7 +444,20 @@ impl CustomShaders {
                 &layout,
                 &self.globals_layout,
             ];
-            let buffers = pipelines::mesh_buffers();
+            let [mesh] = pipelines::mesh_buffers();
+            let color = [wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Unorm8x4,
+                offset: 0,
+                shader_location: wrap::COLOR_LOCATION,
+            }];
+            let buffers = [
+                mesh,
+                wgpu::VertexBufferLayout {
+                    array_stride: 4,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &color,
+                },
+            ];
             let pipeline = pipelines::build(
                 device,
                 Spec {
@@ -482,17 +509,22 @@ impl CustomShaders {
         textures: &mut TextureCache,
         m: &CustomMaterial,
     ) {
-        let loaded = shader_asset::load(&m.shader);
+        let loaded = shader_asset::load_variant(&m.shader, &m.variant);
         let generation = shader_asset::generation(&m.shader);
+        let cache = m.cache_key();
         if self
             .shaders
-            .get(&m.shader)
+            .get(&cache)
             .is_none_or(|c| c.generation != generation)
         {
             let built = loaded.and_then(|asset| self.build(device, p, asset, generation));
             let compiled = match built {
                 Ok(c) => c,
                 Err(e) => {
+                    let mut e = e;
+                    if !m.variant.is_empty() {
+                        e.message = format!("{} (variant {})", e.message, m.variant);
+                    }
                     self.errors.push(console_line(&m.shader, &e));
                     let fallback = self.error_shader(device, p);
                     Compiled {
@@ -504,7 +536,7 @@ impl CustomShaders {
                     }
                 }
             };
-            self.shaders.insert(m.shader.clone(), compiled);
+            self.shaders.insert(cache, compiled);
         }
         let key = self.group_key(m);
         if self.materials.contains_key(&key) {
@@ -521,11 +553,9 @@ impl CustomShaders {
 
     fn group_key(&self, m: &CustomMaterial) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        m.shader.hash(&mut h);
-        self.shaders
-            .get(&m.shader)
-            .map(|c| c.generation)
-            .hash(&mut h);
+        let cache = m.cache_key();
+        cache.hash(&mut h);
+        self.shaders.get(&cache).map(|c| c.generation).hash(&mut h);
         m.hash_values(&mut h);
         h.finish()
     }
@@ -537,7 +567,7 @@ impl CustomShaders {
         textures: &mut TextureCache,
         m: &CustomMaterial,
     ) -> Option<wgpu::BindGroup> {
-        let c = self.shaders.get(&m.shader)?;
+        let c = self.shaders.get(&m.cache_key())?;
         let mut bytes = vec![0u8; c.props.size];
         for f in &c.props.fields {
             let value = m.values.get(&f.name);
@@ -603,7 +633,7 @@ impl CustomShaders {
 
     /// Pipeline and material group prepared for a draw.
     pub fn get(&self, m: &CustomMaterial) -> Option<(&wgpu::RenderPipeline, &wgpu::BindGroup)> {
-        let c = self.shaders.get(&m.shader)?;
+        let c = self.shaders.get(&m.cache_key())?;
         let group = self.materials.get(&self.group_key(m))?;
         Some((&c.pipeline, group))
     }
@@ -611,7 +641,7 @@ impl CustomShaders {
     /// Does the material's shader sample the opaque scene (needs the scene copied first)?
     pub fn uses_scene(&self, m: &CustomMaterial) -> bool {
         self.shaders
-            .get(&m.shader)
+            .get(&m.cache_key())
             .is_some_and(|c| c.asset.uses_scene)
     }
 }

@@ -1,6 +1,8 @@
 //! CPU evaluation of a graph over a small grid, for the Shader Graph window's node previews.
 //! It mirrors the generated WGSL (same hash and noise functions, same conversions), on a flat
-//! quad (UV across the square) or a sphere for nodes that read 3D geometry.
+//! quad (UV across the square) or a sphere for nodes that read 3D geometry. Keyword nodes show
+//! their default variant, Sub Graphs are evaluated inline; Custom Functions (WGSL) have no CPU
+//! preview.
 
 use std::collections::HashMap;
 
@@ -19,10 +21,15 @@ pub struct Context {
     pub sphere: bool,
 }
 
-/// Texture sampling for Sample Texture 2D (by property).
+/// Texture sampling for Sample Texture 2D (by property), and the Sub Graphs nodes use.
 pub trait Textures {
     /// Linear RGBA of `property`'s texture at `uv` (repeating).
     fn sample(&self, property: &GraphProperty, uv: [f32; 2]) -> [f32; 4];
+
+    /// A Sub Graph asset (None: Sub Graph nodes get no preview).
+    fn graph(&self, _path: &str) -> Option<std::sync::Arc<ShaderGraph>> {
+        None
+    }
 }
 
 /// The properties' fallback colours.
@@ -262,13 +269,34 @@ impl Evaluated {
     }
 }
 
+/// A Sub Graph's properties bound to its node's inputs: value columns or texture properties.
+#[derive(Default)]
+struct Bound {
+    values: HashMap<String, (Vec<V>, ValueType)>,
+    textures: HashMap<String, GraphProperty>,
+}
+
 /// Evaluate every node of `g` that can be (nodes on a loop or with missing inputs are skipped).
 pub fn evaluate(g: &ShaderGraph, ctx: &Context, textures: &dyn Textures) -> Evaluated {
-    let types = g.types();
     let n = ctx.size * ctx.size;
     let geo: Vec<Geo> = (0..n)
         .map(|i| geometry(ctx, i % ctx.size, i / ctx.size))
         .collect();
+    evaluate_inner(g, ctx, textures, &geo, &Bound::default(), 0).0
+}
+
+/// Evaluate `g` over `geo`; also returns the texture outputs (property read per output).
+#[allow(clippy::type_complexity)]
+fn evaluate_inner(
+    g: &ShaderGraph,
+    ctx: &Context,
+    textures: &dyn Textures,
+    geo: &[Geo],
+    bound: &Bound,
+    depth: usize,
+) -> (Evaluated, HashMap<(u32, String), GraphProperty>) {
+    let types = g.types();
+    let n = geo.len();
     let mut values: HashMap<(u32, String), Vec<V>> = HashMap::new();
     // Texture outputs carry the property they read.
     let mut tex: HashMap<(u32, String), GraphProperty> = HashMap::new();
@@ -279,7 +307,15 @@ pub fn evaluate(g: &ShaderGraph, ctx: &Context, textures: &dyn Textures) -> Eval
             continue;
         }
         let dynamic = types.dynamic(id);
-        let inputs = node.kind.inputs();
+        let mut inputs = g.inputs(node);
+        if let NodeKind::Keyword { name } = &node.kind {
+            // The default variant's input.
+            let selected = g.keyword(name).and_then(|k| k.port_for(k.default));
+            inputs.retain(|p| Some(p.name) == selected);
+        }
+        if matches!(node.kind, NodeKind::CustomFunction { .. }) {
+            continue;
+        }
         // Per input: per-pixel values (or a texture property).
         let mut ins: Vec<Vec<V>> = Vec::with_capacity(inputs.len());
         let mut tex_in: Option<GraphProperty> = None;
@@ -349,14 +385,65 @@ pub fn evaluate(g: &ShaderGraph, ctx: &Context, textures: &dyn Textures) -> Eval
             ins.push(column);
         }
         let outputs = g.outputs(node);
-        if let NodeKind::Property { name } = &node.kind
-            && let Some(p) = g.property(name)
-            && matches!(p.ty, PropertyType::Texture2D { .. })
-        {
-            tex.insert((id, "Out".into()), p.clone());
-            continue;
+        if let NodeKind::Property { name } = &node.kind {
+            if let Some(p) = bound.textures.get(name) {
+                tex.insert((id, "Out".into()), p.clone());
+                continue;
+            }
+            if let Some((col, ty)) = bound.values.get(name) {
+                let want = types.output(id, "Out").unwrap_or(*ty);
+                values.insert(
+                    (id, "Out".into()),
+                    col.iter().map(|&v| convert(v, *ty, want)).collect(),
+                );
+                continue;
+            }
+            if let Some(p) = g.property(name)
+                && matches!(p.ty, PropertyType::Texture2D { .. })
+            {
+                tex.insert((id, "Out".into()), p.clone());
+                continue;
+            }
         }
         if missing {
+            continue;
+        }
+        if let NodeKind::SubGraph { path, .. } = &node.kind {
+            let Some(sub) = textures.graph(path).filter(|_| depth < 8) else {
+                continue;
+            };
+            let mut inner = Bound::default();
+            let (slots, _) = sub.sub_graph_interface();
+            for ((p, slot), col) in sub.properties.iter().zip(&slots).zip(&ins) {
+                if slot.ty == ValueType::Texture {
+                    if let Some(c) = g.input_connection(id, &slot.name)
+                        && let Some(t) = tex.get(&(c.from, c.output.clone()))
+                    {
+                        inner.textures.insert(p.name.clone(), t.clone());
+                    }
+                } else {
+                    inner.values.insert(p.name.clone(), (col.clone(), slot.ty));
+                }
+            }
+            let (e, _) = evaluate_inner(&sub, ctx, textures, geo, &inner, depth + 1);
+            let Some(master) = sub.node(super::MASTER) else {
+                continue;
+            };
+            for (slot, port) in sub.outputs.iter().zip(&outputs) {
+                let column: Vec<V> = match sub.input_connection(master.id, &slot.name) {
+                    Some(c) => match (
+                        e.values(c.from, &c.output),
+                        e.types.output(c.from, &c.output),
+                    ) {
+                        (Some(src), Some(ty)) => {
+                            src.iter().map(|&v| convert(v, ty, slot.ty)).collect()
+                        }
+                        _ => continue,
+                    },
+                    None => vec![master.value(&slot.input_port()); n],
+                };
+                values.insert((id, port.name.to_owned()), column);
+            }
             continue;
         }
         let mut cols: Vec<Vec<V>> = vec![Vec::with_capacity(n); outputs.len()];
@@ -368,6 +455,11 @@ pub fn evaluate(g: &ShaderGraph, ctx: &Context, textures: &dyn Textures) -> Eval
                     .unwrap_or([0.0; 4])
             };
             let o = pixel(g, node, dynamic, &at, gp, ctx, tex_in.as_ref(), textures);
+            let o = if let NodeKind::Keyword { .. } = node.kind {
+                vec![at(0)]
+            } else {
+                o
+            };
             for (k, col) in cols.iter_mut().enumerate() {
                 col.push(o.get(k).copied().unwrap_or([0.0; 4]));
             }
@@ -376,12 +468,15 @@ pub fn evaluate(g: &ShaderGraph, ctx: &Context, textures: &dyn Textures) -> Eval
             values.insert((id, p.name.to_owned()), col);
         }
     }
-    Evaluated {
-        size: ctx.size,
-        types,
-        values,
-        covered: geo.iter().map(|g| g.covered).collect(),
-    }
+    (
+        Evaluated {
+            size: ctx.size,
+            types,
+            values,
+            covered: geo.iter().map(|g| g.covered).collect(),
+        },
+        tex,
+    )
 }
 
 /// One node's outputs at one pixel; `at(k)` is input k (already converted).
@@ -425,7 +520,9 @@ fn pixel(
         }],
         K::Normal { .. } => vec![v3(geo.normal)],
         K::ViewDirection { .. } => vec![v3(geo.view)],
+        // Previews have no mesh colours: white.
         K::VertexColor => vec![[1.0; 4]],
+
         K::ScreenPosition => vec![[geo.screen[0], geo.screen[1], 0.5, 1.0]],
         K::Add => vec![map2(at(0), at(1), |a, b| a + b)],
         K::Subtract => vec![map2(at(0), at(1), |a, b| a - b)],
@@ -529,7 +626,25 @@ fn pixel(
             let d = dot_n(nn, vv, 3).clamp(0.0, 1.0);
             vec![[(1.0 - d).powf(at(2)[0]); 4]]
         }
+        K::Triplanar { .. } => {
+            let (p, nn, tile, blend) = (at(1), at(2), at(3)[0], at(4)[0].max(0.01));
+            let p = [p[0] * tile, p[1] * tile, p[2] * tile];
+            let w = [
+                nn[0].abs().powf(blend),
+                nn[1].abs().powf(blend),
+                nn[2].abs().powf(blend),
+            ];
+            let sum = (w[0] + w[1] + w[2]).max(1e-6);
+            let (x, y, z) = (
+                sample([p[2], p[1], 0.0, 0.0]),
+                sample([p[0], p[2], 0.0, 0.0]),
+                sample([p[0], p[1], 0.0, 0.0]),
+            );
+            vec![[0, 1, 2, 3].map(|c| (x[c] * w[0] + y[c] * w[1] + z[c] * w[2]) / sum)]
+        }
         K::Preview => vec![at(0)],
+        // Handled by the caller (no CPU code for these).
+        K::Keyword { .. } | K::CustomFunction { .. } | K::SubGraph { .. } => vec![],
     }
 }
 

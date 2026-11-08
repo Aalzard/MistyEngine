@@ -369,6 +369,7 @@ impl Instance {
                 count: base.index_count,
                 vertex_count: base.vertex_count,
                 bounds: culling::Aabb::new(glam::Vec3::ZERO, glam::Vec3::ZERO),
+                colors: None,
             },
             base: base.clone(),
             source: source.to_owned(),

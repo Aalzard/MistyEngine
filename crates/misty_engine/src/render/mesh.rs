@@ -32,6 +32,9 @@ pub struct Vertex {
 pub struct MeshData {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
+    /// Vertex colours (linear RGBA8, one per vertex; empty = white). Only Shader Graph and
+    /// `.shader` materials read them (Vertex Color node, `SurfaceInput.vertex_color`).
+    pub colors: Vec<[u8; 4]>,
 }
 
 impl MeshData {

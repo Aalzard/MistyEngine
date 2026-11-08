@@ -1,15 +1,28 @@
-//! Graph → `.shader` text: a header declaring the Blackboard properties and render state, the
-//! node helpers, an optional `fn vertex` (Position Offset) and the `fn surface` (Lit) or
-//! `fn fragment` (Unlit) that the custom-shader wrapper turns into a pipeline.
+//! Graph → `.shader` text: a header declaring the Blackboard properties, keywords and render
+//! state, the node helpers, Custom Function code, an optional `fn vertex` (Position Offset) and
+//! the `fn surface` (Lit) or `fn fragment` (Unlit) that the custom-shader wrapper turns into a
+//! pipeline. A Decal graph becomes a function the decal pass calls instead ([`generate_decal`]).
 //!
-//! Each node becomes `let n<id>_<output>` lines in dependency order. Every generated line remembers
-//! the node it came from, so a WGSL error is reported on the offending node.
+//! Each node becomes `let n<id>_<output>` lines in dependency order. Sub Graph nodes are inlined
+//! (their nodes prefixed with the Sub Graph node's id). Keyword nodes pass on the input of the
+//! variant being generated, and only the nodes that variant reads are generated. Every generated
+//! line remembers the node it came from (a Sub Graph's lines: the Sub Graph node), so a WGSL error
+//! is reported on the offending node.
+//!
+//! **Custom Function contract.** Inline: the body is placed in
+//! `fn sg_fn_<name>_<hash>(<inputs>) -> <struct of outputs>` with each output a `var` of its
+//! type, so it reads inputs and assigns outputs by name (`Out = In * 2.0;`). File: the `.wgsl`
+//! file is included once and `<name>(<inputs in order>)` is called; it returns the output's type
+//! (one output) or a struct whose fields are named after the outputs.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-use super::nodes::{NodeKind, Port, PortDefault, Space, ValueType, master};
-use super::{MASTER, Node, PropertyType, ShaderGraph, Surface, TargetMaterial};
+use super::nodes::{FunctionSource, NodeKind, Port, PortDefault, Slot, Space, ValueType, master};
+use super::{
+    Keyword, KeywordKind, MASTER, MAX_VARIANTS, Node, NormalSpace, PropertyType, ShaderGraph,
+    Surface, TargetMaterial, Types, Variant,
+};
 
 /// A problem with a graph, on a node when it can be pinned to one.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,12 +56,35 @@ impl std::fmt::Display for GraphError {
     }
 }
 
+/// Reads the assets a graph refers to: Sub Graphs and Custom Function files.
+pub trait Resolver {
+    fn graph(&self, path: &str) -> Result<ShaderGraph, String>;
+    fn text(&self, path: &str) -> Result<String, String>;
+}
+
+/// Reads project files (`crate::assets::absolute`).
+pub struct FileResolver;
+
+impl Resolver for FileResolver {
+    fn graph(&self, path: &str) -> Result<ShaderGraph, String> {
+        ShaderGraph::load(&crate::assets::absolute(path)).map_err(|e| format!("{path}: {e}"))
+    }
+
+    fn text(&self, path: &str) -> Result<String, String> {
+        std::fs::read_to_string(crate::assets::absolute(path)).map_err(|e| format!("{path}: {e}"))
+    }
+}
+
 /// Generated shader text with the node behind each line.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Generated {
     pub source: String,
     /// Node of each line (index = line - 1).
     lines: Vec<Option<u32>>,
+    /// Sub Graphs and Custom Function files read (hot reload follows them).
+    pub deps: Vec<String>,
+    /// Keywords of the shader: the graph's, then those only its Sub Graphs declare.
+    pub keywords: Vec<Keyword>,
 }
 
 impl Generated {
@@ -181,8 +217,9 @@ pub fn linear_color(c: [f32; 4]) -> [f32; 4] {
     ]
 }
 
-/// Functions the node code calls (always emitted; naga ignores the unused ones).
-const HELPERS: &str = r#"fn sg_hash_u32(x: u32) -> u32 {
+/// Functions the node code calls (always emitted; naga ignores the unused ones). They only use
+/// WGSL builtins, so the decal pass includes them too.
+pub const HELPERS: &str = r#"fn sg_hash_u32(x: u32) -> u32 {
     var h = x * 747796405u + 2891336453u;
     h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
     return (h >> 22u) ^ h;
@@ -232,6 +269,10 @@ fn sg_checker(uv: vec2<f32>, a: vec3<f32>, b: vec3<f32>, freq: vec2<f32>) -> vec
     let s = c.x + c.y;
     return mix(a, b, s - 2.0 * floor(s * 0.5));
 }
+fn sg_triplanar_weights(n: vec3<f32>, blend: f32) -> vec3<f32> {
+    let w = pow(abs(n), vec3<f32>(max(blend, 0.01)));
+    return w / max(w.x + w.y + w.z, 1e-6);
+}
 fn sg_object_pos(m: mat4x4<f32>, world: vec3<f32>) -> vec3<f32> {
     let d = world - m[3].xyz;
     return vec3<f32>(
@@ -243,7 +284,10 @@ fn sg_object_dir(m: mat4x4<f32>, dir: vec3<f32>) -> vec3<f32> {
     let r = vec3<f32>(dot(dir, m[0].xyz), dot(dir, m[1].xyz), dot(dir, m[2].xyz));
     return r * inverseSqrt(max(dot(r, r), 1e-12));
 }
-fn sg_vertex_world_pos(v: VertexData) -> vec3<f32> {
+"#;
+
+/// Helpers that read the mesh pipeline's draws and view (not in the decal pass).
+const MESH_HELPERS: &str = r#"fn sg_vertex_world_pos(v: VertexData) -> vec3<f32> {
     return (draws[v.draw].model * vec4<f32>(v.position, 1.0)).xyz;
 }
 fn sg_vertex_world_normal(v: VertexData) -> vec3<f32> {
@@ -256,6 +300,9 @@ fn sg_vertex_screen(v: VertexData) -> vec4<f32> {
     let c = view.view_proj * vec4<f32>(sg_vertex_world_pos(v), 1.0);
     let n = c.xyz / max(c.w, 1e-6);
     return vec4<f32>(n.x * 0.5 + 0.5, 0.5 - n.y * 0.5, n.z, 1.0);
+}
+fn sg_object_normal_to_world(input: SurfaceInput, n: vec3<f32>) -> vec3<f32> {
+    return normalize((draws[input.draw].normal * vec4<f32>(n, 0.0)).xyz);
 }
 "#;
 
@@ -273,17 +320,37 @@ impl Out {
     }
 }
 
+/// What every level of a generation shares.
+struct Ctx<'a> {
+    resolver: &'a dyn Resolver,
+    variant: &'a Variant,
+    /// Generating a decal function (properties come from `input.params`).
+    decal: bool,
+    /// Decal: the parameter slot of each top-level property.
+    decal_slots: HashMap<String, usize>,
+}
+
 struct Gen<'a> {
     g: &'a ShaderGraph,
-    types: super::Types,
+    types: Types,
     stage: Stage,
     /// Output variables generated in the current function: (node, output) → (expr, type).
     vars: HashMap<(u32, String), (String, ValueType)>,
     out: Out,
+    /// Prefix of variable names (a Sub Graph's nodes: `n<sub node id>_`).
+    prefix: String,
+    /// Inside a Sub Graph: the top-level node every line belongs to.
+    blame: Option<u32>,
+    /// Inside a Sub Graph: its properties' values (expressions of the parent's inputs).
+    bindings: Option<HashMap<String, (String, ValueType)>>,
+    /// Sub Graph paths being expanded (a graph inside itself is an error).
+    stack: Vec<String>,
+    ctx: &'a Ctx<'a>,
 }
 
-/// Nodes feeding the given ports of the master stack.
-fn ancestors(g: &ShaderGraph, ports: &[&str]) -> HashSet<u32> {
+/// Nodes feeding the given ports of the master stack in a variant (a Keyword node only follows
+/// the input the variant selects).
+fn needed(g: &ShaderGraph, ports: &[&str], variant: &Variant) -> HashSet<u32> {
     let mut stack: Vec<u32> = g
         .connections
         .iter()
@@ -292,14 +359,80 @@ fn ancestors(g: &ShaderGraph, ports: &[&str]) -> HashSet<u32> {
         .collect();
     let mut seen = HashSet::new();
     while let Some(n) = stack.pop() {
-        if seen.insert(n) {
-            stack.extend(g.connections.iter().filter(|c| c.to == n).map(|c| c.from));
+        if !seen.insert(n) {
+            continue;
         }
+        let selected = match g.node(n).map(|x| &x.kind) {
+            Some(NodeKind::Keyword { name }) => g
+                .keyword(name)
+                .and_then(|k| k.port_for(keyword_value(k, variant))),
+            _ => None,
+        };
+        let is_keyword = matches!(g.node(n).map(|x| &x.kind), Some(NodeKind::Keyword { .. }));
+        stack.extend(
+            g.connections
+                .iter()
+                .filter(|c| c.to == n && (!is_keyword || Some(c.input.as_str()) == selected))
+                .map(|c| c.from),
+        );
     }
     seen
 }
 
-impl Gen<'_> {
+/// A keyword's value in a variant (its default when the variant leaves it out).
+fn keyword_value(k: &Keyword, variant: &Variant) -> u32 {
+    variant
+        .get(&k.name)
+        .copied()
+        .unwrap_or(k.default)
+        .min(k.count() as u32 - 1)
+}
+
+/// Name of an inline Custom Function's generated function (identical code shares one).
+fn inline_fn_name(function: &str, body: &str, inputs: &[Slot], outputs: &[Slot]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (function, body).hash(&mut h);
+    for s in inputs.iter().chain(outputs) {
+        (s.name.as_str(), s.ty).hash(&mut h);
+    }
+    let safe: String = function
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    format!("sg_fn_{safe}_{:08x}", h.finish() as u32)
+}
+
+impl<'a> Gen<'a> {
+    fn new(g: &'a ShaderGraph, stage: Stage, ctx: &'a Ctx<'a>) -> Self {
+        Self {
+            g,
+            types: g.types(),
+            stage,
+            vars: HashMap::new(),
+            out: Out::default(),
+            prefix: String::new(),
+            blame: None,
+            bindings: None,
+            stack: Vec::new(),
+            ctx,
+        }
+    }
+
+    /// The node a line is reported on.
+    fn who(&self, node: u32) -> u32 {
+        self.blame.unwrap_or(node)
+    }
+
+    fn err(&self, node: u32, message: impl Into<String>) -> GraphError {
+        GraphError::on(self.who(node), message)
+    }
+
+    fn emit(&mut self, line: impl Into<String>, node: Option<u32>) {
+        let node = node.map(|n| self.who(n)).or(self.blame);
+        self.out.push(line, node);
+    }
+
     fn binding(&self, d: PortDefault) -> (String, ValueType) {
         let frag = self.stage == Stage::Fragment;
         let (e, ty) = match d {
@@ -342,7 +475,7 @@ impl Gen<'_> {
         }
         match port.default {
             PortDefault::Value(_) => Ok(literal(node.value(port), want)),
-            PortDefault::None => Err(GraphError::on(
+            PortDefault::None => Err(self.err(
                 node.id,
                 format!("connect a Texture2D property to {}", port.name),
             )),
@@ -353,14 +486,20 @@ impl Gen<'_> {
         }
     }
 
-    fn model(&self) -> &'static str {
-        match self.stage {
+    fn model(&self) -> Result<&'static str, String> {
+        if self.ctx.decal {
+            return Err("object space is not available in a Decal graph".into());
+        }
+        Ok(match self.stage {
             Stage::Fragment => "draws[input.draw].model",
             Stage::Vertex => "draws[v.draw].model",
-        }
+        })
     }
 
     fn sample(&self, tex: &str, uv: &str) -> String {
+        if self.ctx.decal {
+            return format!("sg_decal_texture({tex}, {uv}, input.lod)");
+        }
         match self.stage {
             Stage::Fragment => format!("textureSample({tex}, tex_sampler, {uv})"),
             Stage::Vertex => format!("textureSampleLevel({tex}, tex_sampler, {uv}, 0.0)"),
@@ -372,24 +511,48 @@ impl Gen<'_> {
         use NodeKind as K;
         let id = node.id;
         let dynamic = self.types.dynamic(id);
+        match &node.kind {
+            K::Master => return Ok(()),
+            K::Keyword { name } => return self.keyword_node(node, name),
+            K::SubGraph { path, .. } => return self.sub_graph_node(node, path),
+            _ => {}
+        }
         let mut ins: HashMap<&str, String> = HashMap::new();
-        for p in node.kind.inputs() {
+        for p in self.g.inputs(node) {
             let want = p.ty.resolve(dynamic);
             ins.insert(p.name, self.input(node, &p, want)?);
         }
         let i = |name: &str| ins.get(name).cloned().unwrap_or_else(|| "0.0".into());
         let frag = self.stage == Stage::Fragment;
+        let decal = self.ctx.decal;
         let mut pre: Vec<String> = Vec::new();
-        let v = |n: &str| format!("n{id}_{n}");
+        let prefix = self.prefix.clone();
+        let v = |n: &str| format!("{prefix}n{id}_{n}");
+        let model = || self.model().map_err(|e| self.err(id, e));
         let outs: Vec<String> = match &node.kind {
-            K::Master => return Ok(()),
+            K::Master | K::Keyword { .. } | K::SubGraph { .. } => unreachable!(),
             K::Property { name } => {
-                let Some(p) = self.g.property(name) else {
-                    return Err(GraphError::on(id, format!("no property named {name}")));
-                };
-                match p.ty {
-                    PropertyType::Texture2D { .. } => vec![name.clone()],
-                    _ => vec![format!("material.{name}")],
+                if let Some(b) = self.bindings.as_ref().and_then(|b| b.get(name)) {
+                    vec![b.0.clone()]
+                } else {
+                    let Some(p) = self.g.property(name) else {
+                        return Err(self.err(id, format!("no property named {name}")));
+                    };
+                    if decal {
+                        let slot = self.ctx.decal_slots.get(name).copied().unwrap_or(0);
+                        match p.ty {
+                            PropertyType::Texture2D { .. } | PropertyType::Color => {
+                                vec![format!("input.params[{slot}]")]
+                            }
+                            PropertyType::Vector => vec![format!("input.params[{slot}]")],
+                            _ => vec![format!("input.params[{slot}].x")],
+                        }
+                    } else {
+                        match p.ty {
+                            PropertyType::Texture2D { .. } => vec![name.clone()],
+                            _ => vec![format!("material.{name}")],
+                        }
+                    }
                 }
             }
             K::Color { value } => vec![literal(linear_color(*value), ValueType::Vec4)],
@@ -403,16 +566,27 @@ impl Gen<'_> {
                 i("Z"),
                 i("W")
             )],
-            K::Time => ["x", "y", "z", "w"]
-                .iter()
-                .map(|c| format!("globals.time.{c}"))
-                .collect(),
+            K::Time => {
+                if decal {
+                    vec![
+                        "input.time".into(),
+                        "sin(input.time)".into(),
+                        "cos(input.time)".into(),
+                        "0.0166f".into(),
+                    ]
+                } else {
+                    ["x", "y", "z", "w"]
+                        .iter()
+                        .map(|c| format!("globals.time.{c}"))
+                        .collect()
+                }
+            }
             K::Uv => vec![self.binding(PortDefault::Uv).0],
             K::Position { space } => {
                 let world = self.binding(PortDefault::WorldPos).0;
                 vec![match (space, frag) {
                     (Space::World, _) => world,
-                    (Space::Object, true) => format!("sg_object_pos({}, {world})", self.model()),
+                    (Space::Object, true) => format!("sg_object_pos({}, {world})", model()?),
                     (Space::Object, false) => "v.position".into(),
                 }]
             }
@@ -420,7 +594,7 @@ impl Gen<'_> {
                 let world = self.binding(PortDefault::WorldNormal).0;
                 vec![match (space, frag) {
                     (Space::World, _) => world,
-                    (Space::Object, true) => format!("sg_object_dir({}, {world})", self.model()),
+                    (Space::Object, true) => format!("sg_object_dir({}, {world})", model()?),
                     (Space::Object, false) => "v.normal".into(),
                 }]
             }
@@ -428,11 +602,19 @@ impl Gen<'_> {
                 let world = self.binding(PortDefault::ViewDir).0;
                 vec![match space {
                     Space::World => world,
-                    Space::Object => format!("sg_object_dir({}, {world})", self.model()),
+                    Space::Object => format!("sg_object_dir({}, {world})", model()?),
                 }]
             }
-            K::VertexColor => vec!["vec4<f32>(1.0)".into()],
-            K::ScreenPosition => vec![if frag {
+            K::VertexColor => vec![if decal {
+                "vec4<f32>(1.0)".into()
+            } else if frag {
+                "input.vertex_color".into()
+            } else {
+                "v.color".into()
+            }],
+            K::ScreenPosition => vec![if decal {
+                "vec4<f32>(input.screen_uv, 0.0, 1.0)".into()
+            } else if frag {
                 "vec4<f32>(input.screen_uv, input.depth, 1.0)".into()
             } else {
                 "sg_vertex_screen(v)".into()
@@ -554,6 +736,41 @@ impl Gen<'_> {
                     "normalize(vec3<f32>({n}.xy * {k}, mix(1.0, {n}.z, saturate({k}))))"
                 )]
             }
+            K::Triplanar { space } => {
+                let t = i("Texture");
+                let mut pos = i("Position");
+                let mut nrm = i("Normal");
+                if *space == Space::Object {
+                    let m = model()?;
+                    if self.g.input_connection(id, "Position").is_none() {
+                        pos = format!("sg_object_pos({m}, {pos})");
+                    }
+                    if self.g.input_connection(id, "Normal").is_none() {
+                        nrm = format!("sg_object_dir({m}, {nrm})");
+                    }
+                }
+                pre.push(format!("let {} = {pos} * {};", v("p"), i("Tile")));
+                pre.push(format!(
+                    "let {} = sg_triplanar_weights({nrm}, {});",
+                    v("w"),
+                    i("Blend")
+                ));
+                let p = v("p");
+                for (axis, uv) in [("x", "zy"), ("y", "xz"), ("z", "xy")] {
+                    pre.push(format!(
+                        "let {}: vec4<f32> = {};",
+                        v(&format!("t{axis}")),
+                        self.sample(&t, &format!("{p}.{uv}"))
+                    ));
+                }
+                vec![format!(
+                    "({tx} * {w}.x + {ty} * {w}.y + {tz} * {w}.z)",
+                    tx = v("tx"),
+                    ty = v("ty"),
+                    tz = v("tz"),
+                    w = v("w"),
+                )]
+            }
             K::GradientNoise => vec![format!("sg_gradient_noise({}, {})", i("UV"), i("Scale"))],
             K::Voronoi => {
                 pre.push(format!(
@@ -579,10 +796,47 @@ impl Gen<'_> {
                 i("Power")
             )],
             K::Preview => vec![i("In")],
+            K::CustomFunction {
+                function,
+                source,
+                body,
+                inputs,
+                outputs,
+                ..
+            } => {
+                if decal && inputs.iter().any(|s| s.ty == ValueType::Texture) {
+                    return Err(self.err(
+                        id,
+                        "texture inputs of a Custom Function are not available in a Decal graph",
+                    ));
+                }
+                let args: Vec<String> = inputs.iter().map(|s| i(&s.name)).collect();
+                let name = match source {
+                    FunctionSource::Inline => inline_fn_name(function, body, inputs, outputs),
+                    FunctionSource::File => function.clone(),
+                };
+                let call = format!("{name}({})", args.join(", "));
+                if *source == FunctionSource::File && outputs.len() == 1 {
+                    vec![call]
+                } else {
+                    pre.push(format!("let {} = {call};", v("r")));
+                    outputs
+                        .iter()
+                        .map(|s| format!("{}.{}", v("r"), s.name))
+                        .collect()
+                }
+            }
         };
         for line in pre {
-            self.out.push(format!("    {line}"), Some(id));
+            self.emit(format!("    {line}"), Some(id));
         }
+        self.register(node, outs)
+    }
+
+    /// Bind a node's output expressions to `let` variables.
+    fn register(&mut self, node: &Node, outs: Vec<String>) -> Result<(), GraphError> {
+        let id = node.id;
+        let dynamic = self.types.dynamic(id);
         for (k, (port, expr)) in self.g.outputs(node).iter().zip(outs).enumerate() {
             let ty = self
                 .types
@@ -592,20 +846,102 @@ impl Gen<'_> {
                 self.vars.insert((id, port.name.to_owned()), (expr, ty));
                 continue;
             }
-            let name = format!("n{id}_{k}");
-            self.out
-                .push(format!("    let {name}: {} = {expr};", ty.wgsl()), Some(id));
+            let name = format!("{}n{id}_{k}", self.prefix);
+            self.emit(format!("    let {name}: {} = {expr};", ty.wgsl()), Some(id));
             self.vars.insert((id, port.name.to_owned()), (name, ty));
         }
         Ok(())
     }
 
+    /// A Keyword node: the input the variant selects.
+    fn keyword_node(&mut self, node: &Node, name: &str) -> Result<(), GraphError> {
+        let Some(k) = self.g.keyword(name) else {
+            return Err(self.err(node.id, format!("no keyword named {name}")));
+        };
+        let value = keyword_value(k, self.ctx.variant);
+        let Some(port) = k.port_for(value).and_then(|p| self.g.input_port(node, p)) else {
+            return Err(self.err(node.id, format!("{name} has no entries")));
+        };
+        let want = port.ty.resolve(self.types.dynamic(node.id));
+        let expr = self.input(node, &port, want)?;
+        self.register(node, vec![expr])
+    }
+
+    /// A Sub Graph node: its graph inlined with its properties bound to this node's inputs.
+    fn sub_graph_node(&mut self, node: &Node, path: &str) -> Result<(), GraphError> {
+        let id = node.id;
+        if self.stack.iter().any(|p| p == path) || self.stack.len() > 8 {
+            return Err(self.err(id, format!("{path} uses itself")));
+        }
+        let sub = self
+            .ctx
+            .resolver
+            .graph(path)
+            .map_err(|e| self.err(id, format!("cannot read the Sub Graph: {e}")))?;
+        if !sub.is_sub_graph() {
+            return Err(self.err(id, format!("{path} is not a Sub Graph")));
+        }
+        let name = node.kind.title();
+        let (order, types) =
+            check(&sub).map_err(|e| self.err(id, format!("in {name}: {}", e.message)))?;
+        // The parent's inputs by the Sub Graph's property display names.
+        let mut bindings = HashMap::new();
+        let (slots, _) = sub.sub_graph_interface();
+        for (p, slot) in sub.properties.iter().zip(&slots) {
+            let port = slot.input_port();
+            let expr = self.input(node, &port, slot.ty)?;
+            bindings.insert(p.name.clone(), (expr, slot.ty));
+        }
+        let mut inner = Gen {
+            g: &sub,
+            types,
+            stage: self.stage,
+            vars: HashMap::new(),
+            out: std::mem::take(&mut self.out),
+            prefix: format!("{}n{id}_", self.prefix),
+            blame: Some(self.who(id)),
+            bindings: Some(bindings),
+            stack: self
+                .stack
+                .iter()
+                .cloned()
+                .chain([path.to_owned()])
+                .collect(),
+            ctx: self.ctx,
+        };
+        let ports: Vec<&str> = sub.outputs.iter().map(|s| s.name.as_str()).collect();
+        let result = (|| {
+            let want = needed(&sub, &ports, self.ctx.variant);
+            for nid in &order {
+                if want.contains(nid)
+                    && let Some(n) = sub.node(*nid)
+                {
+                    inner.node(n).map_err(|e| GraphError {
+                        node: e.node,
+                        message: if e.message.starts_with("in ") {
+                            e.message
+                        } else {
+                            format!("in {name}: {}", e.message)
+                        },
+                    })?;
+                }
+            }
+            sub.outputs
+                .iter()
+                .map(|s| inner.master_input(&s.name, s.ty))
+                .collect::<Result<Vec<String>, GraphError>>()
+        })();
+        self.out = std::mem::take(&mut inner.out);
+        let outs = result?;
+        self.register(node, outs)
+    }
+
     /// Generate the nodes feeding `ports` of the master stack, in order.
     fn nodes_for(&mut self, order: &[u32], ports: &[&str]) -> Result<(), GraphError> {
-        let needed = ancestors(self.g, ports);
+        let want = needed(self.g, ports, self.ctx.variant);
         let g = self.g;
         for id in order {
-            if needed.contains(id)
+            if want.contains(id)
                 && let Some(n) = g.node(*id)
             {
                 self.node(n)?;
@@ -614,14 +950,15 @@ impl Gen<'_> {
         Ok(())
     }
 
-    /// A master-stack input (None = unconnected and not needed).
+    /// A master-stack input as type `ty`.
     fn master_input(&self, name: &str, ty: ValueType) -> Result<String, GraphError> {
         let m = self
             .g
             .node(MASTER)
             .ok_or_else(|| GraphError::graph("the graph has no master stack"))?;
-        let port = m
-            .input(name)
+        let port = self
+            .g
+            .input_port(m, name)
             .ok_or_else(|| GraphError::graph(format!("no master port {name}")))?;
         self.input(m, &port, ty)
     }
@@ -646,8 +983,28 @@ fn property_line(p: &super::GraphProperty) -> String {
     format!("// @property {} \"{display}\" {kind} = {default}", p.name)
 }
 
-/// Check the graph and generate its shader text (not yet validated by naga; see [`compile`]).
-pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
+/// Header line for one keyword.
+fn keyword_line(k: &Keyword) -> String {
+    let display = k.display.replace('"', "'").replace("//", "/");
+    let kind = match &k.kind {
+        KeywordKind::Boolean => "toggle".to_owned(),
+        KeywordKind::Enum { entries } => format!(
+            "enum({})",
+            entries
+                .iter()
+                .map(|e| e.replace([',', '(', ')'], " "))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    format!(
+        "// @keyword {} \"{display}\" {kind} = {}",
+        k.name, k.default
+    )
+}
+
+/// Structural checks of one graph; returns the node order and resolved types.
+pub fn check(g: &ShaderGraph) -> Result<(Vec<u32>, Types), GraphError> {
     let mut seen = HashSet::new();
     for p in &g.properties {
         if !valid_ident(&p.name) {
@@ -663,11 +1020,96 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
             )));
         }
     }
+    for k in &g.keywords {
+        if !valid_ident(&k.name) {
+            return Err(GraphError::graph(format!(
+                "keyword reference '{}' is not a valid shader name",
+                k.name
+            )));
+        }
+        if !seen.insert(k.name.as_str()) {
+            return Err(GraphError::graph(format!(
+                "two properties or keywords are named {}",
+                k.name
+            )));
+        }
+        if let KeywordKind::Enum { entries } = &k.kind {
+            let mut names = HashSet::new();
+            if entries.is_empty()
+                || !entries
+                    .iter()
+                    .all(|e| !e.trim().is_empty() && names.insert(e))
+            {
+                return Err(GraphError::graph(format!(
+                    "keyword {} needs distinct, named entries",
+                    k.name
+                )));
+            }
+        }
+    }
+    if g.variant_count() > MAX_VARIANTS {
+        let first = g
+            .nodes
+            .iter()
+            .find(|n| matches!(n.kind, NodeKind::Keyword { .. }))
+            .map(|n| n.id);
+        return Err(GraphError {
+            node: first,
+            message: format!(
+                "the keywords make {} variants; the limit is {MAX_VARIANTS}",
+                g.variant_count()
+            ),
+        });
+    }
+    if g.is_sub_graph() {
+        let mut names = HashSet::new();
+        for s in &g.outputs {
+            if s.name.trim().is_empty() || !names.insert(s.name.as_str()) {
+                return Err(GraphError::graph("Sub Graph outputs need distinct names"));
+            }
+        }
+    }
     for n in &g.nodes {
-        if let NodeKind::Property { name } = &n.kind
-            && g.property(name).is_none()
-        {
-            return Err(GraphError::on(n.id, format!("no property named {name}")));
+        match &n.kind {
+            NodeKind::Property { name } if g.property(name).is_none() => {
+                return Err(GraphError::on(n.id, format!("no property named {name}")));
+            }
+            NodeKind::Keyword { name } if g.keyword(name).is_none() => {
+                return Err(GraphError::on(n.id, format!("no keyword named {name}")));
+            }
+            NodeKind::CustomFunction {
+                function,
+                source,
+                inputs,
+                outputs,
+                file,
+                ..
+            } => {
+                let all_valid = std::iter::once(function)
+                    .chain(inputs.iter().map(|s| &s.name))
+                    .chain(outputs.iter().map(|s| &s.name))
+                    .all(|s| valid_ident(s));
+                if !all_valid {
+                    return Err(GraphError::on(
+                        n.id,
+                        "function, input and output names must be valid WGSL names",
+                    ));
+                }
+                let mut names = HashSet::new();
+                if !inputs.iter().chain(outputs).all(|s| names.insert(&s.name)) {
+                    return Err(GraphError::on(n.id, "two ports share a name"));
+                }
+                if outputs.is_empty() {
+                    return Err(GraphError::on(n.id, "a Custom Function needs an output"));
+                }
+                if outputs.iter().any(|s| s.ty == ValueType::Texture) {
+                    return Err(GraphError::on(n.id, "outputs cannot be textures"));
+                }
+                if *source == FunctionSource::File && file.trim().is_empty() {
+                    return Err(GraphError::on(n.id, "choose the .wgsl file"));
+                }
+            }
+            _ => {}
         }
     }
     let order = g
@@ -684,7 +1126,7 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
                 format!("no output named {}", c.output),
             ));
         };
-        let Some(port) = to.input(&c.input) else {
+        let Some(port) = g.input_port(to, &c.input) else {
             return Err(GraphError::on(c.to, format!("no input named {}", c.input)));
         };
         let to_ty = port.ty.resolve(types.dynamic(c.to));
@@ -700,16 +1142,175 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
             ));
         }
     }
+    Ok((order, types))
+}
 
-    let t = g.target;
-    let lit = t.material == TargetMaterial::Lit;
-    let mut cg = Gen {
-        g,
-        types,
-        stage: Stage::Vertex,
-        vars: HashMap::new(),
-        out: Out::default(),
+/// Function definitions of the Custom Function nodes `ids` of `g` reaches (Sub Graphs
+/// included), deduplicated by name: (name, text, node blamed).
+fn collect_functions(
+    g: &ShaderGraph,
+    ids: &HashSet<u32>,
+    ctx: &Ctx<'_>,
+    blame: Option<u32>,
+    stack: &mut Vec<String>,
+    out: &mut Vec<(String, String, u32)>,
+    deps: &mut Vec<String>,
+) -> Result<(), GraphError> {
+    let mut sorted: Vec<&u32> = ids.iter().collect();
+    sorted.sort();
+    for &id in sorted {
+        let Some(n) = g.node(id) else { continue };
+        let who = blame.unwrap_or(id);
+        match &n.kind {
+            NodeKind::CustomFunction {
+                function,
+                source: FunctionSource::Inline,
+                body,
+                inputs,
+                outputs,
+                ..
+            } => {
+                let name = inline_fn_name(function, body, inputs, outputs);
+                if out.iter().any(|(n, _, _)| *n == name) {
+                    continue;
+                }
+                let mut text = format!("struct {name}_out {{\n");
+                for s in outputs {
+                    let _ = writeln!(text, "    {}: {},", s.name, s.ty.wgsl());
+                }
+                text.push_str("};\n");
+                let params: Vec<String> = inputs
+                    .iter()
+                    .map(|s| format!("{}: {}", s.name, s.ty.wgsl()))
+                    .collect();
+                let _ = writeln!(text, "fn {name}({}) -> {name}_out {{", params.join(", "));
+                for s in outputs {
+                    let _ = writeln!(text, "    var {}: {};", s.name, s.ty.wgsl());
+                }
+                for l in body.lines() {
+                    let _ = writeln!(text, "    {l}");
+                }
+                let fields: Vec<&str> = outputs.iter().map(|s| s.name.as_str()).collect();
+                let _ = writeln!(text, "    return {name}_out({});\n}}", fields.join(", "));
+                out.push((name, text, who));
+            }
+            NodeKind::CustomFunction {
+                source: FunctionSource::File,
+                file,
+                ..
+            } => {
+                let key = format!("file:{file}");
+                if out.iter().any(|(n, _, _)| *n == key) {
+                    continue;
+                }
+                let text = ctx.resolver.text(file).map_err(|e| {
+                    GraphError::on(who, format!("cannot read the function file: {e}"))
+                })?;
+                if !deps.contains(file) {
+                    deps.push(file.clone());
+                }
+                out.push((key, text, who));
+            }
+            NodeKind::SubGraph { path, .. } => {
+                if stack.iter().any(|p| p == path) || stack.len() > 8 {
+                    return Err(GraphError::on(who, format!("{path} uses itself")));
+                }
+                if !deps.contains(path) {
+                    deps.push(path.clone());
+                }
+                let Ok(sub) = ctx.resolver.graph(path) else {
+                    // Reported when the node is generated.
+                    continue;
+                };
+                let ports: Vec<&str> = sub.outputs.iter().map(|s| s.name.as_str()).collect();
+                let inner = needed(&sub, &ports, ctx.variant);
+                stack.push(path.clone());
+                collect_functions(&sub, &inner, ctx, Some(who), stack, out, deps)?;
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// The graph's keywords, then those declared only by the Sub Graphs it uses (recursively).
+pub fn effective_keywords(g: &ShaderGraph, resolver: &dyn Resolver) -> Vec<Keyword> {
+    fn walk(
+        g: &ShaderGraph,
+        resolver: &dyn Resolver,
+        out: &mut Vec<Keyword>,
+        stack: &mut Vec<String>,
+    ) {
+        for k in &g.keywords {
+            if !out.iter().any(|o| o.name == k.name) {
+                out.push(k.clone());
+            }
+        }
+        for n in &g.nodes {
+            if let NodeKind::SubGraph { path, .. } = &n.kind
+                && !stack.contains(path)
+                && stack.len() < 8
+                && let Ok(sub) = resolver.graph(path)
+            {
+                stack.push(path.clone());
+                walk(&sub, resolver, out, stack);
+                stack.pop();
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(g, resolver, &mut out, &mut Vec::new());
+    out
+}
+
+/// First line of a Decal graph's shader text (only its header: see [`generate_variant`]).
+pub const DECAL_HEADER: &str =
+    "// Decal Shader Graph: assign a material using it to a Decal Projector.";
+
+/// Check the graph and generate the default variant's shader text (not yet validated by naga;
+/// see [`compile`]).
+pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
+    generate_variant(g, &Variant::new(), &FileResolver)
+}
+
+/// Generate one variant (keyword values; missing ones take their defaults).
+pub fn generate_variant(
+    g: &ShaderGraph,
+    variant: &Variant,
+    resolver: &dyn Resolver,
+) -> Result<Generated, GraphError> {
+    let (order, _) = check(g)?;
+    let keywords = effective_keywords(g, resolver);
+    if g.target.material == TargetMaterial::Decal && !g.is_sub_graph() {
+        // Materials read the header (properties, keywords); the decal pass compiles the graph
+        // itself (`generate_decal`). On a mesh it has no shader function: the error shader.
+        let mut out = Out::default();
+        out.push(DECAL_HEADER, None);
+        for p in &g.properties {
+            out.push(property_line(p), None);
+        }
+        for k in &keywords {
+            out.push(keyword_line(k), None);
+        }
+        return Ok(finish(out, Vec::new(), keywords));
+    }
+    if super::variant_count(&keywords) > MAX_VARIANTS {
+        return Err(GraphError::graph(format!(
+            "the keywords (with the Sub Graphs') make {} variants; the limit is {MAX_VARIANTS}",
+            super::variant_count(&keywords)
+        )));
+    }
+    let ctx = Ctx {
+        resolver,
+        variant,
+        decal: false,
+        decal_slots: HashMap::new(),
     };
+    let t = g.target;
+    let sub = g.is_sub_graph();
+    let lit = t.material == TargetMaterial::Lit && !sub;
+    let mut cg = Gen::new(g, Stage::Vertex, &ctx);
     cg.out.push(
         "// Generated from a Shader Graph: edit the .shadergraph in the Shader Graph window.",
         None,
@@ -718,7 +1319,9 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
         format!("// @shader {}", if lit { "surface" } else { "unlit" }),
         None,
     );
-    if t.surface == Surface::Transparent {
+    if sub {
+        // A Sub Graph's own preview: its first output, unlit.
+    } else if t.surface == Surface::Transparent {
         cg.out.push(
             format!("// @blend {}", if lit { "premultiply" } else { "alpha" }),
             None,
@@ -726,21 +1329,55 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
     } else if t.alpha_clip {
         cg.out.push("// @queue alphatest", None);
     }
-    if t.two_sided {
+    if t.two_sided && !sub {
         cg.out.push("// @cull off", None);
     }
     for p in &g.properties {
         cg.out.push(property_line(p), None);
     }
+    for k in &keywords {
+        cg.out.push(keyword_line(k), None);
+    }
     cg.out.push("", None);
     cg.out.push(HELPERS, None);
+    cg.out.push(MESH_HELPERS, None);
+
+    let vertex_ports = [master::POSITION];
+    let fragment_names: Vec<&'static str> = g
+        .master_ports()
+        .iter()
+        .filter(|(b, _)| *b != super::Block::Vertex)
+        .map(|(_, p)| p.name)
+        .collect();
+    let fragment_ports: Vec<&str> = fragment_names.to_vec();
+    let has_vertex = !sub && g.input_connection(MASTER, master::POSITION).is_some();
+
+    // Custom Function code (and files) of the nodes this variant uses.
+    let mut used = needed(g, &fragment_ports, variant);
+    if has_vertex {
+        used.extend(needed(g, &vertex_ports, variant));
+    }
+    let mut functions = Vec::new();
+    let mut deps = Vec::new();
+    collect_functions(
+        g,
+        &used,
+        &ctx,
+        None,
+        &mut Vec::new(),
+        &mut functions,
+        &mut deps,
+    )?;
+    for (_, text, who) in &functions {
+        cg.out.push(text.as_str(), Some(*who));
+    }
 
     // Vertex stage: only when Position Offset is connected.
-    if g.input_connection(MASTER, master::POSITION).is_some() {
+    if has_vertex {
         cg.out
             .push("fn vertex(v: VertexData) -> VertexData {", None);
         cg.out.push("    var o = v;", None);
-        cg.nodes_for(&order, &[master::POSITION])?;
+        cg.nodes_for(&order, &vertex_ports)?;
         let offset = cg.master_input(master::POSITION, ValueType::Vec3)?;
         cg.out.push(
             format!("    o.position = v.position + {offset};"),
@@ -752,24 +1389,32 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
     // Fragment stage.
     cg.stage = Stage::Fragment;
     cg.vars.clear();
-    let ports: Vec<&str> = g
-        .master_ports()
-        .iter()
-        .filter(|(b, _)| *b == super::Block::Fragment)
-        .map(|(_, p)| p.name)
-        .collect();
-    let base = |cg: &Gen| cg.master_input(master::BASE_COLOR, ValueType::Vec3);
-    if lit {
+    let m = Some(MASTER);
+    if sub {
+        cg.out
+            .push("fn fragment(input: SurfaceInput) -> vec4<f32> {", None);
+        cg.nodes_for(&order, &fragment_ports)?;
+        let color = match g.outputs.first() {
+            Some(s) => cg.master_input(&s.name, ValueType::Vec3)?,
+            None => "vec3<f32>(0.0)".into(),
+        };
+        cg.out
+            .push(format!("    return vec4<f32>({color}, 1.0);\n}}"), m);
+    } else if lit {
+        let base = |cg: &Gen| cg.master_input(master::BASE_COLOR, ValueType::Vec3);
         cg.out
             .push("fn surface(input: SurfaceInput) -> SurfaceOutput {", None);
         cg.out.push("    var o = default_output(input);", None);
-        cg.nodes_for(&order, &ports)?;
-        let m = Some(MASTER);
+        cg.nodes_for(&order, &fragment_ports)?;
         cg.out.push(format!("    o.albedo = {};", base(&cg)?), m);
         if g.input_connection(MASTER, master::NORMAL).is_some() {
             let n = cg.master_input(master::NORMAL, ValueType::Vec3)?;
-            cg.out
-                .push(format!("    o.normal = tangent_to_world(input, {n});"), m);
+            let world = match t.normal_space {
+                NormalSpace::Tangent => format!("tangent_to_world(input, {n})"),
+                NormalSpace::Object => format!("sg_object_normal_to_world(input, {n})"),
+                NormalSpace::World => format!("normalize({n})"),
+            };
+            cg.out.push(format!("    o.normal = {world};"), m);
         }
         for (field, port) in [
             ("metallic", master::METALLIC),
@@ -781,6 +1426,14 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
         }
         let e = cg.master_input(master::EMISSION, ValueType::Vec3)?;
         cg.out.push(format!("    o.emission = {e};"), m);
+        if g.input_connection(MASTER, master::OCCLUSION).is_some() {
+            let e = cg.master_input(master::OCCLUSION, ValueType::Float)?;
+            cg.out.push(format!("    o.occlusion = {e};"), m);
+        }
+        if g.input_connection(MASTER, master::TRANSMISSION).is_some() {
+            let e = cg.master_input(master::TRANSMISSION, ValueType::Vec3)?;
+            cg.out.push(format!("    o.transmission = {e};"), m);
+        }
         if t.alpha_clip {
             let c = cg.master_input(master::ALPHA_CLIP, ValueType::Float)?;
             cg.out.push(
@@ -792,11 +1445,10 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
     } else {
         cg.out
             .push("fn fragment(input: SurfaceInput) -> vec4<f32> {", None);
-        cg.nodes_for(&order, &ports)?;
-        let m = Some(MASTER);
+        cg.nodes_for(&order, &fragment_ports)?;
         let color = format!(
             "{} + {}",
-            base(&cg)?,
+            cg.master_input(master::BASE_COLOR, ValueType::Vec3)?,
             cg.master_input(master::EMISSION, ValueType::Vec3)?
         );
         cg.out.push(format!("    let sg_color = {color};"), m);
@@ -814,23 +1466,174 @@ pub fn generate(g: &ShaderGraph) -> Result<Generated, GraphError> {
             m,
         );
     }
+    Ok(finish(cg.out, deps, keywords))
+}
 
+fn finish(out: Out, deps: Vec<String>, keywords: Vec<Keyword>) -> Generated {
     let mut source = String::new();
-    let mut lines = Vec::with_capacity(cg.out.lines.len());
-    for (l, n) in cg.out.lines {
+    let mut lines = Vec::with_capacity(out.lines.len());
+    for (l, n) in out.lines {
         let _ = writeln!(source, "{l}");
         lines.push(n);
     }
-    Ok(Generated { source, lines })
+    Generated {
+        source,
+        lines,
+        deps,
+        keywords,
+    }
 }
 
-/// Generate and validate a graph as the renderer would compile it; WGSL errors land on the node
-/// whose line failed.
+/// Generate and validate a graph's default variant as the renderer would compile it; WGSL
+/// errors land on the node whose line failed.
 pub fn compile(g: &ShaderGraph) -> Result<Generated, GraphError> {
-    let cg = generate(g)?;
+    compile_variant(g, &Variant::new(), &FileResolver)
+}
+
+/// Generate and validate one variant.
+pub fn compile_variant(
+    g: &ShaderGraph,
+    variant: &Variant,
+    resolver: &dyn Resolver,
+) -> Result<Generated, GraphError> {
+    if g.target.material == TargetMaterial::Decal && !g.is_sub_graph() {
+        return compile_decal(g, variant, resolver).map(|d| Generated {
+            source: d.body,
+            lines: Vec::new(),
+            deps: d.deps,
+            keywords: d.keywords,
+        });
+    }
+    let cg = generate_variant(g, variant, resolver)?;
     crate::render::custom_shader::check(&cg.source).map_err(|e| GraphError {
         node: cg.node_at_line(e.line),
         message: e.message,
     })?;
     Ok(cg)
+}
+
+/// Compile every variant (examples and tests); returns how many there are.
+pub fn compile_all(g: &ShaderGraph, resolver: &dyn Resolver) -> Result<usize, GraphError> {
+    let keywords = effective_keywords(g, resolver);
+    let variants = super::all_variants(&keywords);
+    if variants.is_empty() {
+        return Err(GraphError::graph(format!(
+            "the keywords make more than {MAX_VARIANTS} variants"
+        )));
+    }
+    for v in &variants {
+        compile_variant(g, v, resolver).map_err(|e| GraphError {
+            node: e.node,
+            message: format!(
+                "variant {}: {}",
+                super::variant_key(&keywords, v),
+                e.message
+            ),
+        })?;
+    }
+    Ok(variants.len())
+}
+
+// ---- Decal target --------------------------------------------------------------------------
+
+/// Most Blackboard properties a Decal graph can have (one parameter slot each).
+pub const DECAL_MAX_PROPERTIES: usize = 8;
+
+/// A Decal graph turned into code for the decal pass.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DecalGenerated {
+    /// Function definitions (Custom Functions, files) by name, to include once per module.
+    pub functions: Vec<(String, String)>,
+    /// `fn <name>(input: DecalInput) -> DecalOutput { … }`.
+    pub body: String,
+    /// The properties in parameter-slot order.
+    pub properties: Vec<super::GraphProperty>,
+    pub deps: Vec<String>,
+    pub keywords: Vec<Keyword>,
+}
+
+/// Generate a Decal graph's variant as `fn <fn_name>(input: DecalInput) -> DecalOutput`.
+pub fn generate_decal(
+    g: &ShaderGraph,
+    variant: &Variant,
+    resolver: &dyn Resolver,
+    fn_name: &str,
+) -> Result<DecalGenerated, GraphError> {
+    if g.target.material != TargetMaterial::Decal {
+        return Err(GraphError::graph("not a Decal graph"));
+    }
+    let (order, _) = check(g)?;
+    if g.properties.len() > DECAL_MAX_PROPERTIES {
+        return Err(GraphError::graph(format!(
+            "a Decal graph has at most {DECAL_MAX_PROPERTIES} properties"
+        )));
+    }
+    let keywords = effective_keywords(g, resolver);
+    let ctx = Ctx {
+        resolver,
+        variant,
+        decal: true,
+        decal_slots: g
+            .properties
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.name.clone(), i))
+            .collect(),
+    };
+    let ports: Vec<&'static str> = g.master_ports().iter().map(|(_, p)| p.name).collect();
+    let used = needed(g, &ports, variant);
+    let mut functions = Vec::new();
+    let mut deps = Vec::new();
+    collect_functions(
+        g,
+        &used,
+        &ctx,
+        None,
+        &mut Vec::new(),
+        &mut functions,
+        &mut deps,
+    )?;
+    let mut cg = Gen::new(g, Stage::Fragment, &ctx);
+    cg.out.push(
+        format!("fn {fn_name}(input: DecalInput) -> DecalOutput {{"),
+        None,
+    );
+    cg.out.push("    var o: DecalOutput;", None);
+    cg.nodes_for(&order, &ports)?;
+    let m = Some(MASTER);
+    for (field, port, ty) in [
+        ("albedo", master::BASE_COLOR, ValueType::Vec3),
+        ("alpha", master::ALPHA, ValueType::Float),
+        ("normal", master::NORMAL, ValueType::Vec3),
+        ("metallic", master::METALLIC, ValueType::Float),
+        ("smoothness", master::SMOOTHNESS, ValueType::Float),
+        ("occlusion", master::OCCLUSION, ValueType::Float),
+        ("emission", master::EMISSION, ValueType::Vec3),
+    ] {
+        let e = cg.master_input(port, ty)?;
+        cg.out.push(format!("    o.{field} = {e};"), m);
+    }
+    cg.out.push("    return o;\n}", None);
+    let generated = finish(cg.out, Vec::new(), Vec::new());
+    Ok(DecalGenerated {
+        functions: functions
+            .into_iter()
+            .map(|(name, text, _)| (name, text))
+            .collect(),
+        body: generated.source,
+        properties: g.properties.clone(),
+        deps,
+        keywords,
+    })
+}
+
+/// Generate and validate a Decal graph inside a minimal decal module.
+pub fn compile_decal(
+    g: &ShaderGraph,
+    variant: &Variant,
+    resolver: &dyn Resolver,
+) -> Result<DecalGenerated, GraphError> {
+    let d = generate_decal(g, variant, resolver, "sg_decal_1")?;
+    crate::render::decals::validate_graph_named(&d, "sg_decal_1").map_err(GraphError::graph)?;
+    Ok(d)
 }

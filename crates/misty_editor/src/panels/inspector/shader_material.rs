@@ -78,7 +78,16 @@ pub fn custom_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String
         }
     };
     let mut ch = false;
-    if let Err(e) = misty_engine::render::custom_shader::check(&asset.source) {
+    let decal = asset
+        .source
+        .starts_with(misty_engine::shader_graph::codegen::DECAL_HEADER);
+    if decal {
+        ui.label("");
+        ui.label(
+            RichText::new("Decal material: assign it to a Decal Projector").color(theme::TEXT_DIM),
+        );
+        ui.end_row();
+    } else if let Err(e) = misty_engine::render::custom_shader::check(&asset.source) {
         ui.label("");
         ui.label(
             RichText::new(format!("Does not compile (drawn magenta): {e}"))
@@ -134,6 +143,37 @@ pub fn custom_fields(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String
             m.properties.insert(p.name.clone(), value);
             ch = true;
         }
+    }
+    // Keywords: a checkbox or a dropdown each; every value is its own shader variant.
+    for k in &asset.keywords {
+        ui.label(&k.display)
+            .on_hover_text(format!("Keyword {} (a shader variant per value)", k.name));
+        let mut v = k.value_in(&m.properties);
+        let changed = if k.toggle {
+            let mut on = v > 0;
+            let c = ui.checkbox(&mut on, "").changed();
+            v = on as u32;
+            c
+        } else {
+            let mut c = false;
+            egui::ComboBox::from_id_salt(format!("{id}_kw_{}", k.name))
+                .selected_text(k.options.get(v as usize).cloned().unwrap_or_default())
+                .show_ui(ui, |ui| {
+                    for (i, o) in k.options.iter().enumerate() {
+                        c |= ui.selectable_value(&mut v, i as u32, o).changed();
+                    }
+                });
+            c
+        };
+        ui.end_row();
+        if changed {
+            m.properties
+                .insert(k.name.clone(), PropertyValue::Float(v as f32));
+            ch = true;
+        }
+    }
+    if decal {
+        return ch;
     }
     let s = asset.settings;
     ui.label("Render Queue");

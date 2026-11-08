@@ -41,5 +41,9 @@ pub fn build(d: &TerrainData) -> MeshData {
             indices.extend([i00, i01, i10, i01, i11, i10]);
         }
     }
-    MeshData { vertices, indices }
+    MeshData {
+        vertices,
+        indices,
+        colors: Vec::new(),
+    }
 }

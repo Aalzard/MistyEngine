@@ -1,7 +1,8 @@
-//! The node canvas: grid, nodes (header, ports, settings, preview thumbnail), the master stack,
-//! connections, inline values of unconnected inputs, sticky notes, pan (middle mouse or
-//! Alt+drag) and zoom (wheel), selection (click, Ctrl/Shift+click, rubber band), dragging nodes,
-//! dragging ports to connect, and the right-click menus.
+//! The node canvas: grid, groups, nodes (header, ports, settings, preview thumbnail), the master
+//! stack, connections, inline values of unconnected inputs, sticky notes, pan (middle mouse or
+//! Alt+drag) and zoom (wheel), selection (click, Ctrl/Shift+click, rubber band), dragging nodes
+//! and groups, dragging ports to connect, and the right-click menus (Copy, Cut, Paste,
+//! Duplicate, Group Selection).
 
 use egui::epaint::CubicBezierShape;
 use egui::{
@@ -32,6 +33,10 @@ const SELECT: Color32 = Color32::from_rgb(88, 156, 236);
 /// A Blackboard property dragged onto the canvas.
 #[derive(Clone, Debug)]
 pub struct PropertyPayload(pub String);
+
+/// A Blackboard keyword dragged onto the canvas.
+#[derive(Clone, Debug)]
+pub struct KeywordPayload(pub String);
 
 /// Graph ↔ screen mapping: screen = centre + (graph + pan) × zoom.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -76,6 +81,10 @@ pub(crate) struct CanvasState {
     note_drag: Option<usize>,
     /// Where the canvas menu was opened (screen).
     menu_at: Option<Pos2>,
+    /// Group being dragged by its title bar.
+    group_drag: Option<usize>,
+    /// Group title being renamed: (group, text).
+    pub renaming: Option<(usize, String)>,
 }
 
 /// Port colour by type (soft, readable on the dark canvas).
@@ -97,6 +106,7 @@ fn category_color(kind: &NodeKind) -> Color32 {
         "Texture" => Color32::from_rgb(210, 120, 100),
         "Procedural" => Color32::from_rgb(180, 130, 210),
         "Master" => Color32::from_rgb(200, 160, 80),
+        "Sub Graphs" => Color32::from_rgb(90, 180, 180),
         _ => Color32::from_rgb(150, 150, 150),
     }
 }
@@ -124,6 +134,7 @@ pub fn has_preview(kind: &NodeKind) -> bool {
             | NodeKind::Vector4
             | NodeKind::Time
             | NodeKind::VertexColor
+            | NodeKind::CustomFunction { .. }
     )
 }
 
@@ -135,7 +146,23 @@ fn has_params(kind: &NodeKind) -> bool {
             | NodeKind::Normal { .. }
             | NodeKind::ViewDirection { .. }
             | NodeKind::SampleTexture2D { .. }
+            | NodeKind::Triplanar { .. }
     )
+}
+
+/// A node's title on the canvas (properties and keywords show their display names; a Sub
+/// Graph's master stack is its Output node).
+pub fn node_title(g: &ShaderGraph, node: &Node) -> String {
+    match &node.kind {
+        NodeKind::Property { name } => g
+            .property(name)
+            .map_or_else(|| name.clone(), |p| p.display.clone()),
+        NodeKind::Keyword { name } => g
+            .keyword(name)
+            .map_or_else(|| name.clone(), |k| k.display.clone()),
+        NodeKind::Master if g.is_sub_graph() => "Output".into(),
+        k => k.title(),
+    }
 }
 
 pub fn layout(g: &ShaderGraph, node: &Node) -> NodeLayout {
@@ -151,6 +178,7 @@ pub fn layout(g: &ShaderGraph, node: &Node) -> NodeLayout {
                     match b {
                         Block::Vertex => "Vertex",
                         Block::Fragment => "Fragment",
+                        Block::Output => "Outputs",
                     },
                     y + 10.0,
                 ));
@@ -168,7 +196,7 @@ pub fn layout(g: &ShaderGraph, node: &Node) -> NodeLayout {
             preview: None,
         };
     }
-    let ins = node.kind.inputs();
+    let ins = g.inputs(node);
     let outs = g.outputs(node);
     let rows = ins.len().max(outs.len()) as f32;
     let mut y = HEADER_H + rows * ROW_H + 4.0;
@@ -274,9 +302,12 @@ pub fn connect_refs(w: &mut ShaderGraphWindow, a: &PortRef, b: &PortRef) -> Resu
 
 /// Open the Create Node search at a screen point (optionally connecting to a dragged port).
 pub fn open_search_at(s: &mut EditorState, screen: Pos2, from: Option<PortRef>) {
+    let sub_graphs = search::project_sub_graphs(&s.project.root, s.shader_graph.path.as_deref());
     let w = &mut s.shader_graph;
     let graph = w.canvas.view.map_or(pos2(0.0, 0.0), |v| v.graph(screen));
-    w.search = Some(search::Search::new(screen, graph, from));
+    let mut search = search::Search::new(screen, graph, from);
+    search.sub_graphs = sub_graphs;
+    w.search = Some(search);
 }
 
 fn frame_all(w: &mut ShaderGraphWindow, area: Rect) {
@@ -339,6 +370,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
     s.shader_graph.canvas.view = Some(view);
     draw_grid(&painter, area, view);
 
+    groups(ui, s, &painter, view, area);
     notes(ui, s, &painter, view, area);
     connections(&painter, &s.shader_graph, view);
 
@@ -416,12 +448,21 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
     let menu_at = w.canvas.menu_at;
     resp.context_menu(|ui| canvas_menu(ui, s, menu_at));
 
-    // A Blackboard property dropped on the canvas becomes a Property node.
-    if let Some(p) = resp.dnd_release_payload::<PropertyPayload>() {
+    // A Blackboard property dropped on the canvas becomes a Property node. (Taking a payload
+    // of the wrong type drops it, so check the keyword type first.)
+    let keyword_drag = egui::DragAndDrop::has_payload_of_type::<KeywordPayload>(ui.ctx());
+    if !keyword_drag && let Some(p) = resp.dnd_release_payload::<PropertyPayload>() {
         let at = resp
             .interact_pointer_pos()
             .map_or(pos2(0.0, 0.0), |q| view.graph(q));
         add_property_node(&mut s.shader_graph, &p.0, at);
+    }
+    // A keyword too, as a Keyword node.
+    if let Some(k) = resp.dnd_release_payload::<KeywordPayload>() {
+        let at = resp
+            .interact_pointer_pos()
+            .map_or(pos2(0.0, 0.0), |q| view.graph(q));
+        add_keyword_node(&mut s.shader_graph, &k.0, at);
     }
 
     // Refused connection message.
@@ -445,6 +486,19 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
             w.canvas.flash = None;
         }
     }
+}
+
+/// Add a Keyword node for a Blackboard keyword at a graph point.
+pub fn add_keyword_node(w: &mut ShaderGraphWindow, name: &str, at: Pos2) {
+    if w.graph.keyword(name).is_none() {
+        return;
+    }
+    let mut id = 0;
+    let name = name.to_owned();
+    w.edit("Add Keyword Node", false, |g| {
+        id = g.add_node(NodeKind::Keyword { name }, [at.x, at.y]);
+    });
+    w.selected = [id].into();
 }
 
 /// Add a Property node for a Blackboard property at a graph point.
@@ -555,14 +609,7 @@ fn node_ui(
 ) -> bool {
     let z = view.zoom;
     let id = node.id;
-    let title = match &node.kind {
-        NodeKind::Property { name } => s
-            .shader_graph
-            .graph
-            .property(name)
-            .map_or_else(|| name.clone(), |p| p.display.clone()),
-        k => k.title(),
-    };
+    let title = node_title(&s.shader_graph.graph, node);
     let resp = ui.interact(
         rect.intersect(area),
         ui.id().with(("sg_node", id)),
@@ -1014,7 +1061,8 @@ fn params_ui(ui: &mut Ui, s: &mut EditorState, node: &Node, r: Rect, z: f32) {
             }
             NodeKind::Position { space }
             | NodeKind::Normal { space }
-            | NodeKind::ViewDirection { space } => {
+            | NodeKind::ViewDirection { space }
+            | NodeKind::Triplanar { space } => {
                 ui.label("Space");
                 egui::ComboBox::from_id_salt(("sg_space", node.id))
                     .selected_text(match space {
@@ -1078,10 +1126,42 @@ fn checker(painter: &egui::Painter, r: Rect, z: f32) {
 fn node_menu(ui: &mut Ui, w: &mut ShaderGraphWindow, id: u32) {
     let is_master = id == MASTER;
     if ui
+        .add_enabled(!is_master, egui::Button::new("Copy"))
+        .clicked()
+    {
+        if let Some(text) = w.copy_selected() {
+            ui.ctx().copy_text(text);
+        }
+        ui.close();
+    }
+    if ui
+        .add_enabled(!is_master, egui::Button::new("Cut"))
+        .clicked()
+    {
+        if let Some(text) = w.cut_selected() {
+            ui.ctx().copy_text(text);
+        }
+        ui.close();
+    }
+    if ui
         .add_enabled(!is_master, egui::Button::new("Duplicate"))
         .clicked()
     {
         w.duplicate_selected();
+        ui.close();
+    }
+    if ui
+        .add_enabled(!is_master, egui::Button::new("Group Selection"))
+        .on_hover_text("Ctrl+G")
+        .clicked()
+    {
+        w.group_selected();
+        ui.close();
+    }
+    let grouped = w.graph.groups.iter().any(|g| g.nodes.contains(&id));
+    if grouped && ui.button("Remove From Group").clicked() {
+        let ids: Vec<u32> = w.selected.iter().copied().collect();
+        w.edit("Remove From Group", false, |g| g.ungroup(&ids));
         ui.close();
     }
     if ui.button("Disconnect All").clicked() {
@@ -1117,6 +1197,28 @@ fn canvas_menu(ui: &mut Ui, s: &mut EditorState, at: Option<Pos2>) {
         }
         ui.close();
     }
+    let can_paste = s
+        .shader_graph
+        .clipboard
+        .as_ref()
+        .is_some_and(|c| !c.is_empty());
+    if ui
+        .add_enabled(can_paste, egui::Button::new("Paste"))
+        .clicked()
+    {
+        let w = &mut s.shader_graph;
+        let g = at.zip(w.canvas.view).map(|(p, v)| v.graph(p));
+        w.paste(None, g.map(|g| [g.x, g.y]));
+        ui.close();
+    }
+    let any = !s.shader_graph.selected.is_empty();
+    if ui
+        .add_enabled(any, egui::Button::new("Group Selection"))
+        .clicked()
+    {
+        s.shader_graph.group_selected();
+        ui.close();
+    }
     if ui.button("Create Sticky Note").clicked() {
         let w = &mut s.shader_graph;
         let g = at
@@ -1143,6 +1245,130 @@ fn canvas_menu(ui: &mut Ui, s: &mut EditorState, at: Option<Pos2>) {
     {
         s.shader_graph.delete_selected();
         ui.close();
+    }
+}
+
+/// Screen rect of a group: around its nodes, with a title bar on top.
+fn group_rect(
+    g: &ShaderGraph,
+    group: &misty_engine::shader_graph::Group,
+    view: View,
+) -> Option<Rect> {
+    let mut bounds = Rect::NOTHING;
+    for id in &group.nodes {
+        if let Some(n) = g.node(*id) {
+            let l = layout(g, n);
+            bounds = bounds.union(node_rect(view, n, &l));
+        }
+    }
+    bounds
+        .is_positive()
+        .then(|| bounds.expand2(vec2(14.0, 14.0) * view.zoom))
+        .map(|r| Rect::from_min_max(r.min - vec2(0.0, 26.0 * view.zoom), r.max))
+}
+
+/// Groups: tinted frames behind their nodes. Drag the title bar to move the group,
+/// double-click it to rename; right-click for Rename and Ungroup.
+fn groups(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View, area: Rect) {
+    let z = view.zoom;
+    let busy = interacting(ui.ctx());
+    for i in 0..s.shader_graph.graph.groups.len() {
+        let group = s.shader_graph.graph.groups[i].clone();
+        let Some(r) = group_rect(&s.shader_graph.graph, &group, view) else {
+            continue;
+        };
+        if !r.intersects(area) {
+            continue;
+        }
+        painter.rect_filled(
+            r,
+            8.0 * z,
+            Color32::from_rgba_unmultiplied(120, 140, 170, 28),
+        );
+        painter.rect_stroke(
+            r,
+            8.0 * z,
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(150, 170, 200, 70)),
+            StrokeKind::Inside,
+        );
+        let bar = Rect::from_min_size(r.min, vec2(r.width(), 26.0 * z));
+        let resp = ui.interact(bar, ui.id().with(("sg_group", i)), Sense::click_and_drag());
+        resp.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                true,
+                format!("Group {}", group.title),
+            )
+        });
+        let w = &mut s.shader_graph;
+        let renaming = w.canvas.renaming.as_ref().is_some_and(|(g, _)| *g == i);
+        if renaming {
+            let mut commit = false;
+            ui.scope_builder(
+                UiBuilder::new().max_rect(bar.shrink2(vec2(8.0 * z, 3.0 * z))),
+                |ui| {
+                    if let Some((_, text)) = &mut w.canvas.renaming {
+                        let edit =
+                            ui.add(egui::TextEdit::singleline(text).id_salt(("sg_group_name", i)));
+                        edit.request_focus();
+                        commit = edit.lost_focus();
+                    }
+                },
+            );
+            if commit && let Some((_, text)) = w.canvas.renaming.take() {
+                w.edit("Rename Group", false, |g| {
+                    if let Some(gr) = g.groups.get_mut(i) {
+                        gr.title = text;
+                    }
+                });
+            }
+        } else {
+            painter.text(
+                bar.left_center() + vec2(10.0 * z, 0.0),
+                Align2::LEFT_CENTER,
+                &group.title,
+                FontId::proportional(14.0 * z),
+                theme::TEXT.gamma_multiply(0.9),
+            );
+        }
+        if resp.double_clicked() {
+            w.canvas.renaming = Some((i, group.title.clone()));
+        }
+        if resp.clicked() {
+            w.selected = group.nodes.iter().copied().collect();
+        }
+        if resp.drag_started() {
+            w.canvas.group_drag = Some(i);
+        }
+        if w.canvas.group_drag == Some(i) && resp.dragged() {
+            let d = resp.drag_delta() / z;
+            let ids = group.nodes.clone();
+            w.edit("Move Group", busy, |g| {
+                for n in &mut g.nodes {
+                    if ids.contains(&n.id) {
+                        n.position[0] += d.x;
+                        n.position[1] += d.y;
+                    }
+                }
+            });
+        }
+        if resp.drag_stopped() {
+            w.canvas.group_drag = None;
+        }
+        resp.context_menu(|ui| {
+            if ui.button("Rename").clicked() {
+                s.shader_graph.canvas.renaming = Some((i, group.title.clone()));
+                ui.close();
+            }
+            if ui.button("Ungroup").clicked() {
+                s.shader_graph.edit("Ungroup", false, |g| {
+                    if i < g.groups.len() {
+                        g.groups.remove(i);
+                    }
+                });
+                ui.close();
+            }
+        });
     }
 }
 

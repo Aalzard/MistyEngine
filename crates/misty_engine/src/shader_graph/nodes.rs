@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A value flowing along a connection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ValueType {
     Float,
     Vec2,
@@ -59,12 +59,93 @@ impl ValueType {
         }
     }
 
+    /// Every type a user-defined slot (Custom Function, Sub Graph) can have.
+    pub const ALL: [Self; 5] = [
+        Self::Float,
+        Self::Vec2,
+        Self::Vec3,
+        Self::Vec4,
+        Self::Texture,
+    ];
+
     /// Can a value of this type feed an input of type `to`? Vectors and floats convert into
     /// each other (floats splat, wider vectors truncate, narrower ones pad with zeros); textures
     /// only connect to textures.
     pub fn converts_to(self, to: ValueType) -> bool {
         (self == Self::Texture) == (to == Self::Texture)
     }
+}
+
+/// A `'static` copy of a port name. Ports of Custom Function, Sub Graph and Keyword nodes are
+/// named by the graph rather than the catalog; each distinct name is stored once for the life of
+/// the process (a few bytes per name ever typed), so [`Port`] stays a small `Copy` value.
+pub fn intern(name: &str) -> &'static str {
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+    static NAMES: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+    let mut names = NAMES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(n) = names.get(name) {
+        return n;
+    }
+    let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
+    names.insert(leaked);
+    leaked
+}
+
+/// A user-defined port of a Custom Function or Sub Graph node: name, type and the value an
+/// unconnected input reads.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Slot {
+    pub name: String,
+    pub ty: ValueType,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub value: [f32; 4],
+}
+
+fn is_zero(v: &[f32; 4]) -> bool {
+    *v == [0.0; 4]
+}
+
+impl Slot {
+    pub fn new(name: &str, ty: ValueType) -> Self {
+        Self {
+            name: name.to_owned(),
+            ty,
+            value: [0.0; 4],
+        }
+    }
+
+    pub fn with_value(mut self, value: [f32; 4]) -> Self {
+        self.value = value;
+        self
+    }
+
+    /// As an input port (textures must be connected).
+    pub fn input_port(&self) -> Port {
+        let default = if self.ty == ValueType::Texture {
+            PortDefault::None
+        } else {
+            PortDefault::Value(self.value)
+        };
+        port(intern(&self.name), PortType::Fixed(self.ty), default)
+    }
+
+    pub fn output_port(&self) -> Port {
+        out(intern(&self.name), PortType::Fixed(self.ty))
+    }
+}
+
+/// Where a Custom Function's code comes from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FunctionSource {
+    /// The body is written on the node: it reads the inputs and assigns the outputs by name.
+    #[default]
+    Inline,
+    /// A `.wgsl` file in the project defines the function (see `codegen` for the contract).
+    File,
 }
 
 /// Declared type of a port.
@@ -155,6 +236,8 @@ pub enum Space {
 pub enum Block {
     Vertex,
     Fragment,
+    /// A Sub Graph's Output node.
+    Output,
 }
 
 /// Names of the master stack's ports.
@@ -167,10 +250,13 @@ pub mod master {
     pub const EMISSION: &str = "Emission";
     pub const ALPHA: &str = "Alpha";
     pub const ALPHA_CLIP: &str = "Alpha Clip Threshold";
+    pub const OCCLUSION: &str = "Ambient Occlusion";
+    /// Light coming through thin surfaces from behind, tinted (leaves, paper, cloth).
+    pub const TRANSMISSION: &str = "Transmission";
 }
 
 /// Every master-stack port with its block (which ones apply depends on the target).
-pub const MASTER_PORTS: [(Block, Port); 8] = [
+pub const MASTER_PORTS: [(Block, Port); 10] = [
     (Block::Vertex, value(master::POSITION, PortType::VEC3, ZERO)),
     (
         Block::Fragment,
@@ -191,6 +277,14 @@ pub const MASTER_PORTS: [(Block, Port); 8] = [
     (
         Block::Fragment,
         value(master::EMISSION, PortType::VEC3, ZERO),
+    ),
+    (
+        Block::Fragment,
+        value(master::OCCLUSION, PortType::FLOAT, ONE),
+    ),
+    (
+        Block::Fragment,
+        value(master::TRANSMISSION, PortType::VEC3, ZERO),
     ),
     (Block::Fragment, value(master::ALPHA, PortType::FLOAT, ONE)),
     (
@@ -277,13 +371,56 @@ pub enum NodeKind {
     Voronoi,
     Checkerboard,
     Fresnel,
+    /// Projects a texture along the world (or object) axes and blends by the normal: no UVs
+    /// needed (rocks, cliffs, props without good UVs).
+    Triplanar {
+        #[serde(default)]
+        space: Space,
+    },
     // ---- utility ----
     /// Passes its input through, with a large preview.
     Preview,
+    /// Picks one input per shader variant (a Blackboard keyword: Boolean or Enum).
+    Keyword {
+        name: String,
+    },
+    /// The graph's own WGSL: an inline body or a function in a `.wgsl` file.
+    CustomFunction {
+        /// Function name (for a file: the function it defines).
+        function: String,
+        #[serde(default)]
+        source: FunctionSource,
+        /// Inline code: reads the inputs, assigns the outputs (all by name).
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        body: String,
+        /// Project path of the `.wgsl` file (File source).
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        file: String,
+        #[serde(default)]
+        inputs: Vec<Slot>,
+        #[serde(default)]
+        outputs: Vec<Slot>,
+    },
+    /// A Sub Graph asset (`.shadersubgraph`): its properties are the inputs, its Output node's
+    /// slots the outputs. The interface is cached here and refreshed from the asset.
+    SubGraph {
+        path: String,
+        #[serde(default)]
+        inputs: Vec<Slot>,
+        #[serde(default)]
+        outputs: Vec<Slot>,
+    },
 }
 
 /// Node categories of the Create Node menu.
-pub const CATEGORIES: [&str; 5] = ["Input", "Math", "Texture", "Procedural", "Utility"];
+pub const CATEGORIES: [&str; 6] = [
+    "Input",
+    "Math",
+    "Texture",
+    "Procedural",
+    "Utility",
+    "Sub Graphs",
+];
 
 impl NodeKind {
     /// Every node the Create Node menu offers (the Property node comes from the Blackboard).
@@ -351,7 +488,18 @@ impl NodeKind {
             Voronoi,
             Checkerboard,
             Fresnel,
+            Triplanar {
+                space: Space::World,
+            },
             Preview,
+            CustomFunction {
+                function: "MyFunction".into(),
+                source: FunctionSource::Inline,
+                body: "Out = In;".into(),
+                file: String::new(),
+                inputs: vec![Slot::new("In", ValueType::Vec3)],
+                outputs: vec![Slot::new("Out", ValueType::Vec3)],
+            },
         ]
     }
 
@@ -411,7 +559,14 @@ impl NodeKind {
             Voronoi => "Voronoi".into(),
             Checkerboard => "Checkerboard".into(),
             Fresnel => "Fresnel Effect".into(),
+            Triplanar { .. } => "Triplanar".into(),
             Preview => "Preview".into(),
+            Keyword { name } => name.clone(),
+            CustomFunction { function, .. } => format!("Custom Function ({function})"),
+            SubGraph { path, .. } => std::path::Path::new(path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "Sub Graph".into()),
         }
     }
 
@@ -432,11 +587,15 @@ impl NodeKind {
             | ViewDirection { .. }
             | VertexColor
             | ScreenPosition => "Input",
-            SampleTexture2D { .. } | TilingAndOffset | NormalFromTexture | NormalStrength => {
-                "Texture"
-            }
+            Keyword { .. } => "Input",
+            SampleTexture2D { .. }
+            | TilingAndOffset
+            | NormalFromTexture
+            | NormalStrength
+            | Triplanar { .. } => "Texture",
             GradientNoise | Voronoi | Checkerboard | Fresnel => "Procedural",
-            Preview => "Utility",
+            Preview | CustomFunction { .. } => "Utility",
+            SubGraph { .. } => "Sub Graphs",
             _ => "Math",
         }
     }
@@ -465,11 +624,15 @@ impl NodeKind {
             SampleTexture2D { .. } => "texture tex2d",
             Color { .. } => "colour constant",
             Float => "number constant scalar",
+            Triplanar { .. } => "box mapping world projection",
+            CustomFunction { .. } => "code wgsl hlsl script",
+            VertexColor => "vertex colour paint",
             _ => "",
         }
     }
 
-    /// Input ports (the master stack's come from [`MASTER_PORTS`]).
+    /// Input ports (the master stack's come from [`MASTER_PORTS`]; a Keyword node's from its
+    /// keyword: use `ShaderGraph::inputs`, which knows both).
     pub fn inputs(&self) -> Vec<Port> {
         use NodeKind::*;
         use PortType as T;
@@ -484,7 +647,18 @@ impl NodeKind {
             | Normal { .. }
             | ViewDirection { .. }
             | VertexColor
-            | ScreenPosition => vec![],
+            | ScreenPosition
+            | Keyword { .. } => vec![],
+            CustomFunction { inputs, .. } | SubGraph { inputs, .. } => {
+                inputs.iter().map(Slot::input_port).collect()
+            }
+            Triplanar { .. } => vec![
+                port("Texture", T::TEXTURE, PortDefault::None),
+                port("Position", T::VEC3, PortDefault::WorldPos),
+                port("Normal", T::VEC3, PortDefault::WorldNormal),
+                value("Tile", T::FLOAT, ONE),
+                value("Blend", T::FLOAT, [4.0; 4]),
+            ],
             Float => vec![value("X", T::FLOAT, ZERO)],
             Vector2 => vec![value("X", T::FLOAT, ZERO), value("Y", T::FLOAT, ZERO)],
             Vector3 => vec![
@@ -628,6 +802,10 @@ impl NodeKind {
             GradientNoise | Fresnel => vec![out("Out", T::FLOAT)],
             Voronoi => vec![out("Out", T::FLOAT), out("Cells", T::FLOAT)],
             Checkerboard => vec![out("Out", T::VEC3)],
+            Triplanar { .. } => vec![out("Out", T::VEC4)],
+            CustomFunction { outputs, .. } | SubGraph { outputs, .. } => {
+                outputs.iter().map(Slot::output_port).collect()
+            }
             _ => vec![out("Out", d)],
         }
     }
@@ -640,6 +818,7 @@ impl NodeKind {
                 | NodeKind::Normal { .. }
                 | NodeKind::ViewDirection { .. }
                 | NodeKind::Fresnel
+                | NodeKind::Triplanar { .. }
         )
     }
 }

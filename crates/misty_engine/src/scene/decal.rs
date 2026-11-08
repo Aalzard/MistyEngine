@@ -56,6 +56,10 @@ pub struct DecalProjector {
     pub angle_fade: [f32; 2],
     /// Decals with a higher priority draw over lower ones (ties: Hierarchy order).
     pub priority: i32,
+    /// A Material using a Shader Graph with the Decal target: the graph gives the surface
+    /// values instead of the maps above (left out of files while unset).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<String>,
 }
 
 impl Default for DecalProjector {
@@ -83,6 +87,7 @@ impl Default for DecalProjector {
             start_fade: 0.9,
             angle_fade: [0.0, 180.0],
             priority: 0,
+            material: None,
         }
     }
 }

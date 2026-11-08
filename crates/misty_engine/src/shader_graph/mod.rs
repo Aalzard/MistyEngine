@@ -1,7 +1,13 @@
-//! Shader Graph assets (`.shadergraph`, JSON): nodes, connections, Blackboard properties and a
-//! target (Lit / Unlit, Opaque / Transparent, alpha clip, two-sided). [`codegen`] turns a graph
-//! into the text of a `.shader` asset, so a graph is used by materials exactly like a hand-written
-//! shader: [`crate::shader_asset::load`] generates it when the path ends in `.shadergraph`.
+//! Shader Graph assets (`.shadergraph`, JSON): nodes, connections, Blackboard properties and
+//! keywords, groups, sticky notes and a target (Lit / Unlit / Decal, Opaque / Transparent, alpha
+//! clip, two-sided, normal space). [`codegen`] turns a graph into the text of a `.shader` asset,
+//! so a graph is used by materials exactly like a hand-written shader:
+//! [`crate::shader_asset::load`] generates it when the path ends in `.shadergraph`.
+//!
+//! **Sub Graphs** (`.shadersubgraph`) are graphs whose Blackboard properties are inputs and whose
+//! Output node's slots are outputs; a Sub Graph node inlines one. **Keywords** (Boolean or Enum)
+//! pick a Keyword node's input per shader variant: each combination compiles separately (only the
+//! nodes of that variant), at most [`MAX_VARIANTS`] per graph.
 //!
 //! [`eval`] evaluates the same graph on the CPU for the editor's small node previews.
 
@@ -10,6 +16,8 @@ pub mod eval;
 pub mod nodes;
 
 #[cfg(test)]
+mod feature_tests;
+#[cfg(test)]
 mod tests;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -17,16 +25,23 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-pub use codegen::{GraphError, compile, generate};
+pub use codegen::{
+    FileResolver, GraphError, Resolver, compile, compile_all, compile_variant, generate,
+    generate_variant,
+};
 pub use nodes::{
-    Block, CATEGORIES, MASTER_PORTS, NodeKind, Port, PortDefault, PortType, Space, ValueType,
-    master,
+    Block, CATEGORIES, FunctionSource, MASTER_PORTS, NodeKind, Port, PortDefault, PortType, Slot,
+    Space, ValueType, intern, master,
 };
 
 use crate::shader_asset::TextureDefault;
 
 /// File extension of Shader Graph assets.
 pub const EXTENSION: &str = "shadergraph";
+/// File extension of Sub Graph assets.
+pub const SUB_EXTENSION: &str = "shadersubgraph";
+/// Most shader variants a graph's keywords may make (Unity's default Shader Variant Limit).
+pub const MAX_VARIANTS: usize = 128;
 /// Id of the master stack node.
 pub const MASTER: u32 = 0;
 /// Current file version.
@@ -36,12 +51,60 @@ pub fn is_graph_path(path: &str) -> bool {
     crate::assets::has_extension(path, &[EXTENSION])
 }
 
-/// Lit (the engine's lighting) or Unlit (Base Color is the final colour).
+pub fn is_sub_graph_path(path: &str) -> bool {
+    crate::assets::has_extension(path, &[SUB_EXTENSION])
+}
+
+/// Lit (the engine's lighting), Unlit (Base Color is the final colour) or Decal (a Decal
+/// Projector material: what the projector blends onto the surfaces in its box).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TargetMaterial {
     #[default]
     Lit,
     Unlit,
+    Decal,
+}
+
+impl TargetMaterial {
+    pub const ALL: [Self; 3] = [Self::Lit, Self::Unlit, Self::Decal];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Lit => "Lit",
+            Self::Unlit => "Unlit",
+            Self::Decal => "Decal",
+        }
+    }
+}
+
+/// Space of the master stack's fragment Normal (Unity's Fragment Normal Space).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NormalSpace {
+    /// A normal map sample's space (+Z out of the surface).
+    #[default]
+    Tangent,
+    Object,
+    World,
+}
+
+impl NormalSpace {
+    pub const ALL: [Self; 3] = [Self::Tangent, Self::Object, Self::World];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Tangent => "Tangent",
+            Self::Object => "Object",
+            Self::World => "World",
+        }
+    }
+}
+
+/// A shader graph or a Sub Graph.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GraphKind {
+    #[default]
+    Shader,
+    SubGraph,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -61,6 +124,12 @@ pub struct Target {
     pub alpha_clip: bool,
     /// Draw both faces (back faces get flipped normals).
     pub two_sided: bool,
+    #[serde(skip_serializing_if = "is_default")]
+    pub normal_space: NormalSpace,
+}
+
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
 }
 
 /// Fallback of an unassigned Texture2D property.
@@ -245,17 +314,158 @@ pub struct StickyNote {
     pub text: String,
 }
 
-/// A Shader Graph asset.
+/// A titled frame around nodes; it follows them and moves them when dragged.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Group {
+    pub title: String,
+    pub nodes: Vec<u32>,
+}
+
+/// A Boolean keyword (On / Off) or an Enum keyword (one of its entries).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum KeywordKind {
+    Boolean,
+    Enum { entries: Vec<String> },
+}
+
+/// A Blackboard keyword: each value compiles its own shader variant. Materials store the value
+/// under the reference name like a property (Boolean 0 / 1, Enum the entry index).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Keyword {
+    /// Reference name (`_DETAIL_ON`), also the Keyword node's title fallback.
+    pub name: String,
+    /// Inspector label.
+    pub display: String,
+    #[serde(flatten)]
+    pub kind: KeywordKind,
+    /// Value new materials (and the previews) use.
+    #[serde(default)]
+    pub default: u32,
+}
+
+impl Keyword {
+    /// The values' names: "Off", "On" for a Boolean, else the entries.
+    pub fn options(&self) -> Vec<String> {
+        match &self.kind {
+            KeywordKind::Boolean => vec!["Off".into(), "On".into()],
+            KeywordKind::Enum { entries } => entries.clone(),
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.options().len().max(1)
+    }
+
+    /// The Keyword node's inputs: On / Off for a Boolean (Unity's order), else the entries.
+    pub fn ports(&self) -> Vec<Port> {
+        let names: Vec<String> = match &self.kind {
+            KeywordKind::Boolean => vec!["On".into(), "Off".into()],
+            KeywordKind::Enum { entries } => entries.clone(),
+        };
+        names
+            .iter()
+            .map(|n| Port {
+                name: intern(n),
+                ty: PortType::Dynamic,
+                default: PortDefault::Value([0.0; 4]),
+            })
+            .collect()
+    }
+
+    /// The input a value selects.
+    pub fn port_for(&self, value: u32) -> Option<&'static str> {
+        match &self.kind {
+            KeywordKind::Boolean => Some(if value > 0 { "On" } else { "Off" }),
+            KeywordKind::Enum { entries } => entries
+                .get(value as usize)
+                .or(entries.first())
+                .map(|e| intern(e)),
+        }
+    }
+}
+
+/// Keyword values of one variant (reference name → value); missing keywords use their default.
+pub type Variant = BTreeMap<String, u32>;
+
+/// `"_A=1,_B=2"`: the values that differ from the defaults ("" = the default variant).
+pub fn variant_key(keywords: &[Keyword], variant: &Variant) -> String {
+    keywords
+        .iter()
+        .filter_map(|k| {
+            let v = variant.get(&k.name).copied().unwrap_or(k.default);
+            (v != k.default).then(|| format!("{}={v}", k.name))
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// The variant a key names.
+pub fn parse_variant_key(key: &str) -> Variant {
+    key.split(',')
+        .filter_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            Some((k.trim().to_owned(), v.trim().parse().ok()?))
+        })
+        .collect()
+}
+
+/// Nodes (with their connections among themselves) and what they read, copied out of a graph:
+/// pasted into the same or another graph by [`ShaderGraph::paste`]. Text form for the system
+/// clipboard: [`Clipboard::to_text`].
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Clipboard {
+    pub nodes: Vec<Node>,
+    pub connections: Vec<Connection>,
+    #[serde(default)]
+    pub properties: Vec<GraphProperty>,
+    #[serde(default)]
+    pub keywords: Vec<Keyword>,
+    #[serde(default)]
+    pub notes: Vec<StickyNote>,
+    #[serde(default)]
+    pub groups: Vec<Group>,
+}
+
+/// Marks Shader Graph clipboard text.
+const CLIPBOARD_TAG: &str = "misty-shadergraph-clipboard";
+
+impl Clipboard {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty() && self.notes.is_empty()
+    }
+
+    pub fn to_text(&self) -> String {
+        serde_json::json!({ CLIPBOARD_TAG: self }).to_string()
+    }
+
+    /// Clipboard text written by [`Self::to_text`] (None for anything else).
+    pub fn from_text(text: &str) -> Option<Self> {
+        let v: serde_json::Value = serde_json::from_str(text.trim()).ok()?;
+        serde_json::from_value(v.get(CLIPBOARD_TAG)?.clone()).ok()
+    }
+}
+
+/// A Shader Graph (or Sub Graph) asset.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ShaderGraph {
     pub version: u32,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub kind: GraphKind,
     #[serde(default)]
     pub target: Target,
     #[serde(default)]
     pub properties: Vec<GraphProperty>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<Keyword>,
+    /// A Sub Graph's outputs (its Output node's inputs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outputs: Vec<Slot>,
     pub nodes: Vec<Node>,
     #[serde(default)]
     pub connections: Vec<Connection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<Group>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<StickyNote>,
 }
@@ -288,11 +498,14 @@ impl ShaderGraph {
     pub fn new(material: TargetMaterial) -> Self {
         Self {
             version: VERSION,
+            kind: GraphKind::Shader,
             target: Target {
                 material,
                 ..Default::default()
             },
             properties: Vec::new(),
+            keywords: Vec::new(),
+            outputs: Vec::new(),
             nodes: vec![Node {
                 id: MASTER,
                 kind: NodeKind::Master,
@@ -301,8 +514,22 @@ impl ShaderGraph {
                 hide_preview: false,
             }],
             connections: Vec::new(),
+            groups: Vec::new(),
             notes: Vec::new(),
         }
+    }
+
+    /// An empty Sub Graph: an Output node with one Vector 4 output.
+    pub fn new_sub_graph() -> Self {
+        Self {
+            kind: GraphKind::SubGraph,
+            outputs: vec![Slot::new("Out", ValueType::Vec4)],
+            ..Self::new(TargetMaterial::Lit)
+        }
+    }
+
+    pub fn is_sub_graph(&self) -> bool {
+        self.kind == GraphKind::SubGraph
     }
 
     pub fn to_json(&self) -> String {
@@ -365,7 +592,372 @@ impl ShaderGraph {
         let before = self.nodes.len();
         self.nodes.retain(|n| n.id != id);
         self.connections.retain(|c| c.from != id && c.to != id);
+        for g in &mut self.groups {
+            g.nodes.retain(|n| *n != id);
+        }
+        self.groups.retain(|g| !g.nodes.is_empty());
         self.nodes.len() != before
+    }
+
+    pub fn keyword(&self, name: &str) -> Option<&Keyword> {
+        self.keywords.iter().find(|k| k.name == name)
+    }
+
+    /// Input ports of a node (the master stack's follow the target or the Sub Graph's outputs;
+    /// a Keyword node's follow its keyword).
+    pub fn inputs(&self, node: &Node) -> Vec<Port> {
+        match &node.kind {
+            NodeKind::Master if self.is_sub_graph() => {
+                self.outputs.iter().map(Slot::input_port).collect()
+            }
+            // Every port, also those the target hides (a connection there is kept, unused).
+            NodeKind::Master => MASTER_PORTS.iter().map(|(_, p)| *p).collect(),
+            NodeKind::Keyword { name } => {
+                self.keyword(name).map(Keyword::ports).unwrap_or_default()
+            }
+            k => k.inputs(),
+        }
+    }
+
+    /// One input port of a node by name.
+    pub fn input_port(&self, node: &Node, name: &str) -> Option<Port> {
+        self.inputs(node).into_iter().find(|p| p.name == name)
+    }
+
+    /// Put nodes in a new group; returns its index.
+    pub fn group(&mut self, title: &str, ids: &[u32]) -> Option<usize> {
+        let ids: Vec<u32> = ids
+            .iter()
+            .copied()
+            .filter(|&id| id != MASTER && self.node(id).is_some())
+            .collect();
+        if ids.is_empty() {
+            return None;
+        }
+        for g in &mut self.groups {
+            g.nodes.retain(|n| !ids.contains(n));
+        }
+        self.groups.retain(|g| !g.nodes.is_empty());
+        self.groups.push(Group {
+            title: title.to_owned(),
+            nodes: ids,
+        });
+        Some(self.groups.len() - 1)
+    }
+
+    /// Take nodes out of their groups (empty groups go).
+    pub fn ungroup(&mut self, ids: &[u32]) {
+        for g in &mut self.groups {
+            g.nodes.retain(|n| !ids.contains(n));
+        }
+        self.groups.retain(|g| !g.nodes.is_empty());
+    }
+
+    /// Copy nodes (never the master stack), the connections between them, and the properties
+    /// and keywords they read.
+    pub fn copy(&self, ids: &[u32]) -> Clipboard {
+        let nodes: Vec<Node> = self
+            .nodes
+            .iter()
+            .filter(|n| n.id != MASTER && ids.contains(&n.id))
+            .cloned()
+            .collect();
+        let has = |id: u32| nodes.iter().any(|n| n.id == id);
+        let connections = self
+            .connections
+            .iter()
+            .filter(|c| has(c.from) && has(c.to))
+            .cloned()
+            .collect();
+        let mut properties = Vec::new();
+        let mut keywords = Vec::new();
+        for n in &nodes {
+            match &n.kind {
+                NodeKind::Property { name } => {
+                    if let Some(p) = self.property(name)
+                        && !properties.contains(p)
+                    {
+                        properties.push(p.clone());
+                    }
+                }
+                NodeKind::Keyword { name } => {
+                    if let Some(k) = self.keyword(name)
+                        && !keywords.contains(k)
+                    {
+                        keywords.push(k.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        let groups = self
+            .groups
+            .iter()
+            .filter_map(|g| {
+                let inner: Vec<u32> = g.nodes.iter().copied().filter(|&n| has(n)).collect();
+                (!inner.is_empty()).then(|| Group {
+                    title: g.title.clone(),
+                    nodes: inner,
+                })
+            })
+            .collect();
+        Clipboard {
+            nodes,
+            connections,
+            properties,
+            keywords,
+            notes: Vec::new(),
+            groups,
+        }
+    }
+
+    /// Paste copied nodes, moved by `offset`; returns the new node ids. Properties and keywords
+    /// the nodes read are added when the graph has none of that name (a same-named one of
+    /// another type is kept and the copy gets a new name), so pasting into another graph works.
+    pub fn paste(&mut self, clip: &Clipboard, offset: [f32; 2]) -> Vec<u32> {
+        let mut prop_names: HashMap<String, String> = HashMap::new();
+        for p in &clip.properties {
+            let name = match self.property(&p.name) {
+                Some(q) if q.ty.value_type() == p.ty.value_type() => p.name.clone(),
+                Some(_) => {
+                    let name = self.unique_property_name(&p.name);
+                    self.properties.push(GraphProperty {
+                        name: name.clone(),
+                        ..p.clone()
+                    });
+                    name
+                }
+                None if self.keyword(&p.name).is_some() => {
+                    let name = self.unique_property_name(&p.name);
+                    self.properties.push(GraphProperty {
+                        name: name.clone(),
+                        ..p.clone()
+                    });
+                    name
+                }
+                None => {
+                    self.properties.push(p.clone());
+                    p.name.clone()
+                }
+            };
+            prop_names.insert(p.name.clone(), name);
+        }
+        let mut kw_names: HashMap<String, String> = HashMap::new();
+        for k in &clip.keywords {
+            let name = match self.keyword(&k.name) {
+                Some(q) if q.kind == k.kind => k.name.clone(),
+                Some(_) => {
+                    let name = self.unique_property_name(&k.name);
+                    self.keywords.push(Keyword {
+                        name: name.clone(),
+                        ..k.clone()
+                    });
+                    name
+                }
+                None if self.property(&k.name).is_some() => {
+                    let name = self.unique_property_name(&k.name);
+                    self.keywords.push(Keyword {
+                        name: name.clone(),
+                        ..k.clone()
+                    });
+                    name
+                }
+                None => {
+                    self.keywords.push(k.clone());
+                    k.name.clone()
+                }
+            };
+            kw_names.insert(k.name.clone(), name);
+        }
+        let mut ids: HashMap<u32, u32> = HashMap::new();
+        let mut out = Vec::new();
+        for n in &clip.nodes {
+            if n.kind == NodeKind::Master {
+                continue;
+            }
+            let mut kind = n.kind.clone();
+            match &mut kind {
+                NodeKind::Property { name } => {
+                    if let Some(new) = prop_names.get(name) {
+                        *name = new.clone();
+                    }
+                }
+                NodeKind::Keyword { name } => {
+                    if let Some(new) = kw_names.get(name) {
+                        *name = new.clone();
+                    }
+                }
+                _ => {}
+            }
+            let id = self.add_node(kind, [n.position[0] + offset[0], n.position[1] + offset[1]]);
+            if let Some(m) = self.node_mut(id) {
+                m.values = n.values.clone();
+                m.hide_preview = n.hide_preview;
+            }
+            ids.insert(n.id, id);
+            out.push(id);
+        }
+        for c in &clip.connections {
+            if let (Some(&from), Some(&to)) = (ids.get(&c.from), ids.get(&c.to)) {
+                let _ = self.connect(from, &c.output, to, &c.input);
+            }
+        }
+        for g in &clip.groups {
+            let members: Vec<u32> = g.nodes.iter().filter_map(|n| ids.get(n).copied()).collect();
+            self.group(&g.title, &members);
+        }
+        for n in &clip.notes {
+            self.notes.push(StickyNote {
+                position: [n.position[0] + offset[0], n.position[1] + offset[1]],
+                ..n.clone()
+            });
+        }
+        out
+    }
+
+    /// Add a Blackboard keyword; returns its reference name.
+    pub fn add_keyword(&mut self, label: &str, kind: KeywordKind) -> String {
+        let base = label.to_ascii_uppercase().replace(' ', "_");
+        let mut name = self.unique_property_name(&base);
+        if !name.ends_with("_ON") && kind == KeywordKind::Boolean {
+            name = self.unique_property_name(&format!("{name}_ON"));
+        }
+        let mut display = label.to_owned();
+        let mut i = 1;
+        while self.keywords.iter().any(|k| k.display == display) {
+            display = format!("{label} ({i})");
+            i += 1;
+        }
+        self.keywords.push(Keyword {
+            name: name.clone(),
+            display,
+            kind,
+            default: 0,
+        });
+        name
+    }
+
+    /// Rename a keyword's reference; its Keyword nodes follow.
+    pub fn rename_keyword(&mut self, old: &str, new: &str) -> Result<(), String> {
+        if old == new {
+            return Ok(());
+        }
+        if !codegen::valid_ident(new) {
+            return Err(format!("'{new}' is not a valid shader name"));
+        }
+        if self.property(new).is_some() || self.keyword(new).is_some() {
+            return Err(format!("{new} already exists"));
+        }
+        let Some(k) = self.keywords.iter_mut().find(|k| k.name == old) else {
+            return Err(format!("no keyword {old}"));
+        };
+        k.name = new.to_owned();
+        for n in &mut self.nodes {
+            if let NodeKind::Keyword { name } = &mut n.kind
+                && name == old
+            {
+                *name = new.to_owned();
+            }
+        }
+        Ok(())
+    }
+
+    /// Remove a keyword and its nodes.
+    pub fn remove_keyword(&mut self, name: &str) {
+        self.keywords.retain(|k| k.name != name);
+        let ids: Vec<u32> = self
+            .nodes
+            .iter()
+            .filter(|n| matches!(&n.kind, NodeKind::Keyword { name: k } if k == name))
+            .map(|n| n.id)
+            .collect();
+        for id in ids {
+            self.remove_node(id);
+        }
+    }
+
+    /// Variants the keywords make (saturating).
+    pub fn variant_count(&self) -> usize {
+        variant_count(&self.keywords)
+    }
+
+    /// Every variant (in order; empty when there are more than [`MAX_VARIANTS`]).
+    pub fn variants(&self) -> Vec<Variant> {
+        all_variants(&self.keywords)
+    }
+
+    /// The keyword defaults.
+    pub fn default_variant(&self) -> Variant {
+        self.keywords
+            .iter()
+            .map(|k| (k.name.clone(), k.default))
+            .collect()
+    }
+
+    /// A Sub Graph's interface: (inputs from its properties, outputs).
+    pub fn sub_graph_interface(&self) -> (Vec<Slot>, Vec<Slot>) {
+        let inputs = self
+            .properties
+            .iter()
+            .map(|p| {
+                let value = match p.ty {
+                    PropertyType::Color => codegen::linear_color(p.value),
+                    PropertyType::Float | PropertyType::Range { .. } | PropertyType::Boolean => {
+                        [p.value[0]; 4]
+                    }
+                    _ => p.value,
+                };
+                Slot::new(&p.display, p.ty.value_type()).with_value(value)
+            })
+            .collect();
+        (inputs, self.outputs.clone())
+    }
+
+    /// Re-read every Sub Graph node's interface from its asset; connections to ports that went
+    /// away are dropped. Returns whether anything changed.
+    pub fn refresh_sub_graphs(&mut self, resolver: &dyn Resolver) -> bool {
+        let mut changed = false;
+        for i in 0..self.nodes.len() {
+            let NodeKind::SubGraph { path, .. } = &self.nodes[i].kind else {
+                continue;
+            };
+            let Ok(sub) = resolver.graph(path) else {
+                continue;
+            };
+            let (ins, outs) = sub.sub_graph_interface();
+            if let NodeKind::SubGraph {
+                inputs, outputs, ..
+            } = &mut self.nodes[i].kind
+                && (*inputs != ins || *outputs != outs)
+            {
+                *inputs = ins;
+                *outputs = outs;
+                changed = true;
+            }
+        }
+        if changed {
+            let ports: Vec<(u32, Vec<String>, Vec<String>)> = self
+                .nodes
+                .iter()
+                .map(|n| {
+                    (
+                        n.id,
+                        self.inputs(n).iter().map(|p| p.name.to_owned()).collect(),
+                        self.outputs(n).iter().map(|p| p.name.to_owned()).collect(),
+                    )
+                })
+                .collect();
+            self.connections.retain(|c| {
+                let ok_in = ports
+                    .iter()
+                    .any(|(id, ins, _)| *id == c.to && ins.contains(&c.input));
+                let ok_out = ports
+                    .iter()
+                    .any(|(id, _, outs)| *id == c.from && outs.contains(&c.output));
+                ok_in && ok_out
+            });
+        }
+        changed
     }
 
     /// The connection feeding an input.
@@ -421,7 +1013,7 @@ impl ShaderGraph {
         let Some(out) = self.outputs(a).into_iter().find(|p| p.name == output) else {
             return Some(format!("{} has no output {output}", a.kind.title()));
         };
-        let Some(inp) = b.input(input) else {
+        let Some(inp) = self.input_port(b, input) else {
             return Some(format!("{} has no input {input}", b.kind.title()));
         };
         let types = self.types();
@@ -481,7 +1073,7 @@ impl ShaderGraph {
         };
         let mut name = base.clone();
         let mut i = 1;
-        while self.property(&name).is_some() {
+        while self.property(&name).is_some() || self.keyword(&name).is_some() {
             name = format!("{base}_{i}");
             i += 1;
         }
@@ -510,7 +1102,7 @@ impl ShaderGraph {
         if !codegen::valid_ident(new) {
             return Err(format!("'{new}' is not a valid shader name"));
         }
-        if self.property(new).is_some() {
+        if self.property(new).is_some() || self.keyword(new).is_some() {
             return Err(format!("{new} already exists"));
         }
         let Some(p) = self.properties.iter_mut().find(|p| p.name == old) else {
@@ -541,15 +1133,29 @@ impl ShaderGraph {
         }
     }
 
-    /// Master-stack ports that apply to the target, with their block.
+    /// Master-stack ports that apply to the target, with their block (a Sub Graph's Output
+    /// node: its outputs).
     pub fn master_ports(&self) -> Vec<(Block, Port)> {
-        let lit = self.target.material == TargetMaterial::Lit;
+        if self.is_sub_graph() {
+            return self
+                .outputs
+                .iter()
+                .map(|s| (Block::Output, s.input_port()))
+                .collect();
+        }
+        let m = self.target.material;
+        let lit = m == TargetMaterial::Lit;
+        let decal = m == TargetMaterial::Decal;
         MASTER_PORTS
             .iter()
             .copied()
             .filter(|(_, p)| match p.name {
-                master::NORMAL | master::METALLIC | master::SMOOTHNESS => lit,
-                master::ALPHA_CLIP => self.target.alpha_clip,
+                master::NORMAL | master::METALLIC | master::SMOOTHNESS | master::OCCLUSION => {
+                    lit || decal
+                }
+                master::TRANSMISSION => lit,
+                master::POSITION => !decal,
+                master::ALPHA_CLIP => self.target.alpha_clip && !decal,
                 _ => true,
             })
             .collect()
@@ -596,7 +1202,7 @@ impl ShaderGraph {
         for id in order {
             let Some(node) = self.node(id) else { continue };
             let mut dims = 1;
-            for p in node.kind.inputs() {
+            for p in self.inputs(node) {
                 if p.ty != PortType::Dynamic {
                     continue;
                 }
@@ -616,11 +1222,47 @@ impl ShaderGraph {
         t
     }
 
-    /// Material values for the graph's properties' defaults (new materials, the main preview).
+    /// Material values for the graph's properties' defaults (new materials, the main preview);
+    /// keywords at their defaults too.
     pub fn default_values(&self) -> BTreeMap<String, crate::shader_asset::PropertyValue> {
-        self.properties
+        let mut out: BTreeMap<String, crate::shader_asset::PropertyValue> = self
+            .properties
             .iter()
             .map(|p| (p.name.clone(), p.default_value()))
-            .collect()
+            .collect();
+        for k in &self.keywords {
+            out.insert(
+                k.name.clone(),
+                crate::shader_asset::PropertyValue::Float(k.default as f32),
+            );
+        }
+        out
     }
+}
+
+/// Variants a keyword list makes (saturating).
+pub fn variant_count(keywords: &[Keyword]) -> usize {
+    keywords
+        .iter()
+        .fold(1usize, |n, k| n.saturating_mul(k.count()))
+}
+
+/// Every variant of a keyword list (empty when there are more than [`MAX_VARIANTS`]).
+pub fn all_variants(keywords: &[Keyword]) -> Vec<Variant> {
+    if variant_count(keywords) > MAX_VARIANTS {
+        return Vec::new();
+    }
+    let mut out = vec![Variant::new()];
+    for k in keywords {
+        let mut next = Vec::with_capacity(out.len() * k.count());
+        for v in &out {
+            for i in 0..k.count() as u32 {
+                let mut w = v.clone();
+                w.insert(k.name.clone(), i);
+                next.push(w);
+            }
+        }
+        out = next;
+    }
+    out
 }

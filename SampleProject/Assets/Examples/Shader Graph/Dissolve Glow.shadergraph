@@ -1,0 +1,402 @@
+{
+  "version": 1,
+  "target": {
+    "material": "Lit",
+    "surface": "Opaque",
+    "alpha_clip": true,
+    "two_sided": true
+  },
+  "properties": [
+    {
+      "name": "_BaseColor",
+      "display": "Base Color",
+      "kind": "Color",
+      "value": [
+        0.72,
+        0.76,
+        0.82,
+        1.0
+      ]
+    },
+    {
+      "name": "_EdgeColor",
+      "display": "Edge Color",
+      "kind": "Color",
+      "value": [
+        1.0,
+        0.42,
+        0.08,
+        1.0
+      ]
+    },
+    {
+      "name": "_Threshold",
+      "display": "Threshold",
+      "kind": "Range",
+      "min": 0.0,
+      "max": 1.0,
+      "value": [
+        0.45,
+        0.45,
+        0.45,
+        0.45
+      ]
+    },
+    {
+      "name": "_NoiseScale",
+      "display": "Noise Scale",
+      "kind": "Float",
+      "value": [
+        12.0,
+        12.0,
+        12.0,
+        12.0
+      ]
+    }
+  ],
+  "keywords": [
+    {
+      "name": "_ANIMATE_ON",
+      "display": "Animate",
+      "kind": "Boolean",
+      "default": 0
+    },
+    {
+      "name": "_PATTERN",
+      "display": "Pattern",
+      "kind": "Enum",
+      "entries": [
+        "Gradient",
+        "Cells"
+      ],
+      "default": 0
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "type": "Master",
+      "position": [
+        420.0,
+        -120.0
+      ]
+    },
+    {
+      "id": 1,
+      "type": "Property",
+      "name": "_NoiseScale",
+      "position": [
+        -1180.0,
+        -40.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "GradientNoise",
+      "position": [
+        -960.0,
+        -160.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Multiply",
+      "position": [
+        -960.0,
+        120.0
+      ],
+      "values": {
+        "B": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "Voronoi",
+      "position": [
+        -740.0,
+        120.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Keyword",
+      "name": "_PATTERN",
+      "position": [
+        -500.0,
+        -60.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Property",
+      "name": "_Threshold",
+      "position": [
+        -960.0,
+        360.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Time",
+      "position": [
+        -960.0,
+        480.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Remap",
+      "position": [
+        -740.0,
+        480.0
+      ],
+      "values": {
+        "Out Min Max": [
+          0.15,
+          0.8,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "type": "Keyword",
+      "name": "_ANIMATE_ON",
+      "position": [
+        -500.0,
+        380.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "SubGraph",
+      "path": "Assets/Examples/Shader Graph/Dissolve Edge.shadersubgraph",
+      "inputs": [
+        {
+          "name": "Noise",
+          "ty": "Float",
+          "value": [
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "name": "Threshold",
+          "ty": "Float",
+          "value": [
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "name": "Width",
+          "ty": "Float",
+          "value": [
+            0.06,
+            0.06,
+            0.06,
+            0.06
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Alpha",
+          "ty": "Float"
+        },
+        {
+          "name": "Edge",
+          "ty": "Float"
+        }
+      ],
+      "position": [
+        -260.0,
+        100.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Property",
+      "name": "_BaseColor",
+      "position": [
+        -260.0,
+        -260.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "Property",
+      "name": "_EdgeColor",
+      "position": [
+        -260.0,
+        380.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "Multiply",
+      "position": [
+        -20.0,
+        300.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Multiply",
+      "position": [
+        180.0,
+        300.0
+      ],
+      "values": {
+        "B": [
+          4.0,
+          4.0,
+          4.0,
+          4.0
+        ]
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 2,
+      "input": "Scale"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "A"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 4,
+      "input": "Cell Density"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 5,
+      "input": "Gradient"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 5,
+      "input": "Cells"
+    },
+    {
+      "from": 7,
+      "output": "Sine Time",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 9,
+      "input": "On"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 9,
+      "input": "Off"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 10,
+      "input": "Noise"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 10,
+      "input": "Threshold"
+    },
+    {
+      "from": 10,
+      "output": "Alpha",
+      "to": 0,
+      "input": "Alpha"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 0,
+      "input": "Base Color"
+    },
+    {
+      "from": 10,
+      "output": "Edge",
+      "to": 13,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Out",
+      "to": 13,
+      "input": "B"
+    },
+    {
+      "from": 13,
+      "output": "Out",
+      "to": 14,
+      "input": "A"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 0,
+      "input": "Emission"
+    }
+  ],
+  "groups": [
+    {
+      "title": "Noise",
+      "nodes": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "title": "Threshold",
+      "nodes": [
+        6,
+        7,
+        8,
+        9
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        -1180.0,
+        -330.0
+      ],
+      "size": [
+        300.0,
+        110.0
+      ],
+      "text": "Keywords: Pattern picks the noise, Animate swings the threshold. Each combination is its own shader variant (4 here)."
+    }
+  ]
+}

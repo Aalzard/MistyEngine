@@ -196,7 +196,11 @@ fn cloth_and_ragdoll_timings() {
         let md: Vec<f32> = (0..vertices.len())
             .map(|i| if i % (cols + 1) == 0 { 0.0 } else { -1.0 })
             .collect();
-        let mesh = MeshData { vertices, indices };
+        let mesh = MeshData {
+            vertices,
+            indices,
+            colors: Vec::new(),
+        };
         let t0 = Instant::now();
         let topo = Topology::build(&mesh, &md, Vec3::ONE);
         let build_ms = t0.elapsed().as_secs_f32() * 1000.0;

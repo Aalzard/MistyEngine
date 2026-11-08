@@ -1,0 +1,437 @@
+{
+  "version": 1,
+  "target": {
+    "material": "Lit",
+    "surface": "Opaque",
+    "alpha_clip": false,
+    "two_sided": true
+  },
+  "properties": [
+    {
+      "name": "_RootColor",
+      "display": "Root Color",
+      "kind": "Color",
+      "value": [
+        0.1,
+        0.28,
+        0.06,
+        1.0
+      ]
+    },
+    {
+      "name": "_TipColor",
+      "display": "Tip Color",
+      "kind": "Color",
+      "value": [
+        0.62,
+        0.78,
+        0.22,
+        1.0
+      ]
+    },
+    {
+      "name": "_Strength",
+      "display": "Strength",
+      "kind": "Float",
+      "value": [
+        0.22,
+        0.22,
+        0.22,
+        0.22
+      ]
+    },
+    {
+      "name": "_Speed",
+      "display": "Speed",
+      "kind": "Float",
+      "value": [
+        1.8,
+        1.8,
+        1.8,
+        1.8
+      ]
+    },
+    {
+      "name": "_Wind",
+      "display": "Wind Direction",
+      "kind": "Vector",
+      "value": [
+        1.0,
+        0.0,
+        0.35,
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "type": "Master",
+      "position": [
+        800.0,
+        -200.0
+      ],
+      "values": {
+        "Smoothness": [
+          0.3,
+          0.3,
+          0.3,
+          0.3
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "type": "VertexColor",
+      "position": [
+        -1100.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Split",
+      "position": [
+        -880.0,
+        0.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Time",
+      "position": [
+        -1100.0,
+        -300.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Property",
+      "name": "_Speed",
+      "position": [
+        -1100.0,
+        -160.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Multiply",
+      "position": [
+        -880.0,
+        -260.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Position",
+      "space": "World",
+      "position": [
+        -1100.0,
+        -460.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Split",
+      "position": [
+        -880.0,
+        -460.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Add",
+      "position": [
+        -660.0,
+        -440.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Add",
+      "position": [
+        -440.0,
+        -320.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Sine",
+      "position": [
+        -240.0,
+        -320.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Add",
+      "position": [
+        -40.0,
+        -320.0
+      ],
+      "values": {
+        "B": [
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "type": "Property",
+      "name": "_Strength",
+      "position": [
+        -40.0,
+        -160.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "Multiply",
+      "position": [
+        160.0,
+        -280.0
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Multiply",
+      "position": [
+        360.0,
+        -240.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "Property",
+      "name": "_Wind",
+      "position": [
+        360.0,
+        -420.0
+      ]
+    },
+    {
+      "id": 16,
+      "type": "Multiply",
+      "position": [
+        560.0,
+        -320.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "Property",
+      "name": "_RootColor",
+      "position": [
+        -660.0,
+        120.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "Property",
+      "name": "_TipColor",
+      "position": [
+        -660.0,
+        220.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "Lerp",
+      "position": [
+        -440.0,
+        140.0
+      ]
+    },
+    {
+      "id": 20,
+      "type": "Multiply",
+      "position": [
+        -200.0,
+        260.0
+      ],
+      "values": {
+        "B": [
+          0.35,
+          0.35,
+          0.35,
+          0.35
+        ]
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 2,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "Time",
+      "to": 5,
+      "input": "A"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 5,
+      "input": "B"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 7,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "R",
+      "to": 8,
+      "input": "A"
+    },
+    {
+      "from": 7,
+      "output": "B",
+      "to": 8,
+      "input": "B"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 9,
+      "input": "A"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 9,
+      "input": "B"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 11,
+      "input": "A"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 13,
+      "input": "A"
+    },
+    {
+      "from": 12,
+      "output": "Out",
+      "to": 13,
+      "input": "B"
+    },
+    {
+      "from": 13,
+      "output": "Out",
+      "to": 14,
+      "input": "A"
+    },
+    {
+      "from": 2,
+      "output": "R",
+      "to": 14,
+      "input": "B"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 16,
+      "input": "A"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 16,
+      "input": "B"
+    },
+    {
+      "from": 16,
+      "output": "Out",
+      "to": 0,
+      "input": "Position Offset"
+    },
+    {
+      "from": 17,
+      "output": "Out",
+      "to": 19,
+      "input": "A"
+    },
+    {
+      "from": 18,
+      "output": "Out",
+      "to": 19,
+      "input": "B"
+    },
+    {
+      "from": 2,
+      "output": "R",
+      "to": 19,
+      "input": "T"
+    },
+    {
+      "from": 19,
+      "output": "Out",
+      "to": 0,
+      "input": "Base Color"
+    },
+    {
+      "from": 18,
+      "output": "Out",
+      "to": 20,
+      "input": "A"
+    },
+    {
+      "from": 20,
+      "output": "Out",
+      "to": 0,
+      "input": "Transmission"
+    }
+  ],
+  "groups": [
+    {
+      "title": "Sway",
+      "nodes": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        -1100.0,
+        180.0
+      ],
+      "size": [
+        300.0,
+        100.0
+      ],
+      "text": "Vertex colour red says how far each vertex sways: 0 at the root, 1 at the tip (painted in the model)."
+    }
+  ]
+}

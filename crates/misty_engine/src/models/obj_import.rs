@@ -54,6 +54,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
         let mut data = MeshData {
             vertices,
             indices: m.indices,
+            colors: Vec::new(),
         };
         if data.indices.iter().any(|i| *i as usize >= count) {
             return Err(format!("{}: index out of range", path.display()));
