@@ -2882,3 +2882,31 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Measured HRTF sets and elevation cues; transcoding at import (Vorbis / ADPCM encoders);
   Preload Audio Data / Load In Background; mixer views and effect presets; spread and
   reverb-zone-mix curves over distance; sends between mixers.
+
+## Round 20D — Shader Graph depth: production graphs (branch r20-shadergraph)
+
+### Done (docs/pending/r20-shadergraph.md)
+- **Sub Graphs** (`.shadersubgraph`: properties are inputs, Output node slots are outputs; inlined
+  in code generation, CPU previews too, listed in Create Node), **keywords** (Boolean and Enum on
+  the Blackboard, Keyword node, each combination a variant with only its nodes, capped at 128;
+  materials pick the variant with a checkbox or dropdown; `.shader` files get `@keyword` and
+  `#if` blocks), **Custom Function** (inline WGSL body or a `.wgsl` file, any inputs and outputs,
+  Node Settings card), **groups** (Ctrl+G, drag, rename), copy / cut / paste / duplicate across
+  graphs (window clipboard plus system clipboard text, properties and keywords merged), and a
+  **save prompt** when closing the tab, opening another graph or quitting with unsaved changes.
+- Inputs: real **vertex colours** (glTF `COLOR_0` imported, a second vertex stream for custom
+  shaders, white otherwise) in both stages, with the Vertex block Position Offset; a Triplanar
+  node.
+- Master stack: Ambient Occlusion, Transmission and a Normal Space setting on top of the lit
+  inputs; a **Decal target** whose graph runs inside the decal pass for Decal Projectors with a
+  graph material (new projector Material field).
+- Compile errors land on their node (Custom Function bodies, Sub Graph internals on the Sub Graph
+  node, the variant cap on a Keyword node).
+- Examples in `SampleProject/Assets/Examples/Shader Graph`: Dissolve Glow (+ Dissolve Edge Sub
+  Graph, 4 variants), Triplanar Rock, Wind Sway (vertex-coloured glTF grass), Puddle Decal, and
+  `ShaderGraphExamples.scene`; tests compile every variant and render the scene on a GPU.
+
+### Not done yet
+- Clear coat / anisotropy / detail / parallax outputs wait for the 17D material model (not in
+  main); no CPU preview for Custom Functions; vertex offsets do not move shadows; decal graphs
+  limited to 8 properties; FBX / OBJ / skinned meshes have no vertex colours yet.
