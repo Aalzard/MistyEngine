@@ -23,17 +23,23 @@ pub enum TerrainTool {
     SetHeight,
     Smooth,
     Paint,
+    Holes,
+    Details,
     Trees,
+    Place,
     Settings,
 }
 
 impl TerrainTool {
-    pub const ALL: [TerrainTool; 6] = [
+    pub const ALL: [TerrainTool; 9] = [
         TerrainTool::RaiseLower,
         TerrainTool::SetHeight,
         TerrainTool::Smooth,
         TerrainTool::Paint,
+        TerrainTool::Holes,
+        TerrainTool::Details,
         TerrainTool::Trees,
+        TerrainTool::Place,
         TerrainTool::Settings,
     ];
 
@@ -43,7 +49,10 @@ impl TerrainTool {
             TerrainTool::SetHeight => "⊟",
             TerrainTool::Smooth => "≈",
             TerrainTool::Paint => "🖌",
+            TerrainTool::Holes => "◌",
+            TerrainTool::Details => "🌾",
             TerrainTool::Trees => "🌳",
+            TerrainTool::Place => crate::terrain_place_ui::ICON,
             TerrainTool::Settings => "⚙",
         }
     }
@@ -54,7 +63,10 @@ impl TerrainTool {
             TerrainTool::SetHeight => "Set Height",
             TerrainTool::Smooth => "Smooth Height",
             TerrainTool::Paint => "Paint Texture",
+            TerrainTool::Holes => "Paint Holes",
+            TerrainTool::Details => "Paint Details",
             TerrainTool::Trees => "Paint Trees",
+            TerrainTool::Place => "Place Objects",
             TerrainTool::Settings => "Terrain Settings",
         }
     }
@@ -69,8 +81,17 @@ impl TerrainTool {
             TerrainTool::Paint => {
                 "Select a layer, then left click to paint it. Auto Paint Rules and Generate paint the whole terrain."
             }
+            TerrainTool::Holes => {
+                "Left click to cut holes (caves, tunnels) out of the terrain and its collider. Hold Shift and click to fill them in."
+            }
+            TerrainTool::Details => {
+                "Pick grass or a detail mesh, then left click to paint it towards the target density. Hold Shift and click to erase."
+            }
             TerrainTool::Trees => {
                 "Pick a tree, then left click to plant trees. Hold Shift and click to remove them. Mass Place scatters trees over the whole terrain."
+            }
+            TerrainTool::Place => {
+                "Pick a prefab (rocks, bushes, props), then left click to scatter it on the terrain. Hold Shift and click to erase."
             }
             TerrainTool::Settings => "Size, resolution and rendering of this terrain.",
         }
@@ -83,7 +104,10 @@ impl TerrainTool {
             TerrainTool::SetHeight => "Set Terrain Height",
             TerrainTool::Smooth => "Smooth Terrain",
             TerrainTool::Paint => "Paint Terrain",
+            TerrainTool::Holes => "Paint Terrain Holes",
+            TerrainTool::Details => "Paint Details",
             TerrainTool::Trees => "Paint Trees",
+            TerrainTool::Place => "Place Objects",
             TerrainTool::Settings => "Change Terrain Settings",
         }
     }
@@ -128,6 +152,18 @@ pub struct TerrainTools {
     pub tree_density: f32,
     pub tree_placement: misty_engine::terrain::trees::Placement,
     pub mass_count: usize,
+    /// Paint Details: the list row (0 = the terrain grass, `i + 1` = detail layer `i`) and
+    /// the density the brush paints towards (0..1).
+    pub detail: usize,
+    pub detail_target: f32,
+    /// Place Objects: the prefab palette, the selected prefab, how new objects are placed,
+    /// whether Shift erases only the selected prefab's instances, and the stroke's state.
+    pub prefabs: Vec<String>,
+    pub prefab: usize,
+    pub object_placement: misty_engine::terrain::placement::ObjectPlacement,
+    pub erase_selected_only: bool,
+    pub(crate) place_recorded: bool,
+    pub(crate) place_step: u32,
     /// Brush centre on the selected terrain under the mouse.
     pub hover: Option<(Entity, Vec3)>,
     pending: Option<PendingEdit>,
@@ -150,6 +186,14 @@ impl Default for TerrainTools {
             tree_density: 1.0,
             tree_placement: Default::default(),
             mass_count: 200,
+            detail: 0,
+            detail_target: 1.0,
+            prefabs: Vec::new(),
+            prefab: 0,
+            object_placement: Default::default(),
+            erase_selected_only: false,
+            place_recorded: false,
+            place_step: 0,
             hover: None,
             pending: None,
             painting: false,
@@ -245,8 +289,13 @@ pub fn scene_view(
     });
     if pressed && response.hovered() && !alt && hover.is_some() {
         state.terrain_tools.painting = true;
-        let label = state.terrain_tools.tool.step_name();
-        begin_edit(state, &path, label);
+        if state.terrain_tools.tool == TerrainTool::Place {
+            // Scene objects: one scene undo step, taken with the stroke's first change.
+            state.terrain_tools.place_recorded = false;
+        } else {
+            let label = state.terrain_tools.tool.step_name();
+            begin_edit(state, &path, label);
+        }
     }
     if !down {
         state.terrain_tools.painting = false;
@@ -271,7 +320,14 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
     };
     let (tool, target, layer, generated) = (t.tool, t.target_height, t.layer, t.generate_in_brush);
     let flowers = t.paint_flowers;
+    let (detail, detail_target) = (t.detail, t.detail_target);
     misty_engine::profile_scope!("Terrain.Brush");
+    if tool == TerrainTool::Place {
+        if let Some((e, _)) = brush_target(state) {
+            crate::terrain_place_ui::apply(state, e, path, b.center, shift);
+        }
+        return;
+    }
     if tool == TerrainTool::Trees {
         // Trees don't touch the maps: a settings edit (no terrain re-upload).
         let (tree, density, placement) = (t.tree as u16, t.tree_density, t.tree_placement);
@@ -301,7 +357,15 @@ fn apply(state: &mut EditorState, path: &str, at: Vec3, shift: bool, dt: f32) {
         TerrainTool::Paint if flowers => misty_engine::terrain::flowers::paint(d, &b, dt, shift),
         TerrainTool::Paint if generated => auto_paint::generate_in_brush(d, &b, dt),
         TerrainTool::Paint => brush::paint(d, &b, dt, layer),
-        TerrainTool::Trees | TerrainTool::Settings => {}
+        TerrainTool::Holes => {
+            brush::paint_holes(d, &b, shift);
+        }
+        TerrainTool::Details => {
+            let k = (brush::PAINT_RATE * b.strength * dt).min(1.0);
+            let which = crate::terrain_details_ui::target(detail);
+            misty_engine::terrain::detail_layers::paint(d, &b, k, which, detail_target, shift);
+        }
+        TerrainTool::Trees | TerrainTool::Place | TerrainTool::Settings => {}
     });
 }
 

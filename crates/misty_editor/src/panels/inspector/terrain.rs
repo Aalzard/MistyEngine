@@ -8,7 +8,8 @@ use egui::{RichText, Ui};
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Terrain, TerrainCollider};
 use misty_engine::terrain::{
-    ALPHAMAP_RESOLUTIONS, HEIGHTMAP_RESOLUTIONS, MAX_LAYERS, TerrainData, TerrainLayer, store,
+    ALPHAMAP_RESOLUTIONS, HEIGHTMAP_RESOLUTIONS, LAYERS_PER_MAP, MAX_LAYERS, TerrainData,
+    TerrainLayer, store,
 };
 
 use super::editors::grid;
@@ -178,6 +179,11 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 crate::terrain_trees_ui::trees_tab(ui, state, &path, d);
             }
         }
+        TerrainTool::Place => {
+            if let Some(d) = data.as_deref() {
+                crate::terrain_place_ui::place_tab(ui, state, e, d);
+            }
+        }
         _ => {
             brush_settings(ui, state, data.as_deref().map(|d| d.size.y).unwrap_or(1.0));
             if tool == TerrainTool::Paint
@@ -194,6 +200,30 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
                 crate::terrain_flowers_ui::flowers_section(ui, state, &path, d);
                 crate::terrain_rules::cliffs_section(ui, state, &path, d);
                 crate::terrain_rules::harmony_section(ui, state, &path, d);
+            }
+            if tool == TerrainTool::Details
+                && let Some(d) = data.as_deref()
+            {
+                crate::terrain_details_ui::details_tab(ui, state, &path, d);
+            }
+            if tool == TerrainTool::Holes
+                && let Some(d) = data.as_deref()
+            {
+                let cut = d.holes.iter().filter(|h| **h != 0).count();
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.weak(format!(
+                        "{cut} of {} cells cut out (holes are saved in the terrain data).",
+                        d.cells() * d.cells()
+                    ));
+                    if ui
+                        .add_enabled(cut > 0, egui::Button::new("Fill All Holes"))
+                        .clicked()
+                    {
+                        terrain_tools::begin_edit(state, &path, "Fill Terrain Holes");
+                        store::modify(&path, |d| d.holes.clear());
+                    }
+                });
             }
             if tool == TerrainTool::SetHeight
                 && let Some(d) = data.as_deref()
@@ -274,16 +304,25 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
             .clicked()
         {
             terrain_tools::begin_edit(state, path, "Add Terrain Layer");
-            store::modify_settings(path, |d| {
+            let new_map = d.layers.len() % LAYERS_PER_MAP == 0 && !d.layers.is_empty();
+            let add = |d: &mut TerrainData| {
                 d.layers.push(TerrainLayer {
                     name: format!("Layer {}", d.layers.len()),
                     ..Default::default()
-                })
-            });
+                });
+                // Layers 5, 9, 13 start another splat map.
+                d.fit_splat_maps();
+            };
+            if new_map {
+                store::modify(path, add);
+            } else {
+                store::modify_settings(path, add);
+            }
             state.terrain_tools.layer = d.layers.len();
         }
         if ui
             .add_enabled(selected < d.layers.len(), egui::Button::new("− Remove"))
+            .on_hover_text("Remove this layer (its weight goes to the other layers)")
             .clicked()
         {
             terrain_tools::begin_edit(state, path, "Remove Terrain Layer");
@@ -354,19 +393,23 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
     }
 }
 
-/// Drop a layer and move its splat channel's weight to the remaining layers.
-fn remove_layer(d: &mut TerrainData, index: usize) {
+/// Drop a layer and move its splat channel's weight to the remaining layers (later layers
+/// move down a channel, across splat maps).
+pub(crate) fn remove_layer(d: &mut TerrainData, index: usize) {
     if index >= d.layers.len() {
         return;
     }
+    let n = d.alphamap_resolution * d.alphamap_resolution;
+    let before: Vec<[u8; MAX_LAYERS]> = (0..n).map(|t| d.layer_weights(t)).collect();
     d.layers.remove(index);
     let count = d.layers.len();
-    for px in &mut d.alphamap {
+    d.fit_splat_maps();
+    for (t, px) in before.into_iter().enumerate() {
         let mut w: Vec<u8> = px.to_vec();
         w.remove(index);
         w.push(0);
         let sum: u32 = w.iter().take(count).map(|v| *v as u32).sum();
-        let mut out = [0u8; 4];
+        let mut out = [0u8; MAX_LAYERS];
         // Remaining weights rescaled to 255; nothing left goes to the first layer.
         if let Some(scale) = (255 * 256u32).checked_div(sum) {
             for (o, v) in out.iter_mut().zip(&w).take(count) {
@@ -375,7 +418,7 @@ fn remove_layer(d: &mut TerrainData, index: usize) {
         }
         let total: u32 = out.iter().map(|v| *v as u32).sum();
         out[0] = (out[0] as u32 + 255 - total.min(255)) as u8;
-        *px = out;
+        d.set_layer_weights(t, &out);
     }
 }
 
@@ -460,6 +503,32 @@ fn resolution_combo(ui: &mut Ui, id: &str, value: &mut usize, options: &[usize])
             }
         });
     ch
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removing_a_layer_moves_later_layers_down_across_maps() {
+        let mut d = TerrainData::new(33, glam::Vec3::splat(32.0), 32);
+        d.layers = (0..6).map(|_| TerrainLayer::default()).collect();
+        d.fit_splat_maps();
+        let mut w = [0u8; MAX_LAYERS];
+        w[2] = 100;
+        w[5] = 155;
+        d.set_layer_weights(0, &w);
+        // Layer 2 goes: layer 5 (second map) becomes layer 4.
+        remove_layer(&mut d, 2);
+        assert_eq!(d.layers.len(), 5);
+        let after = d.layer_weights(0);
+        assert!(after[4] >= 254, "{after:?}");
+        assert_eq!(after.iter().map(|v| *v as u32).sum::<u32>(), 255);
+        // Down to four layers: one map again.
+        remove_layer(&mut d, 0);
+        assert!(d.alphamap_extra.is_empty());
+        assert!(d.layer_weights(0)[3] >= 254);
+    }
 }
 
 fn collider(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {

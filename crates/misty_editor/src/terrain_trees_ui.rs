@@ -220,9 +220,20 @@ Double-click to edit the tree",
             .on_hover_text("Closest two trees stand, trunk to trunk");
         ui.add(egui::Slider::new(&mut p.spacing, 0.5..=40.0).suffix(" m"));
         ui.end_row();
-        ui.label("Max Slope")
-            .on_hover_text("No trees on steeper ground");
-        ui.add(egui::Slider::new(&mut p.max_slope, 0.0..=60.0).suffix("°"));
+        ui.label("Slope")
+            .on_hover_text("Ground steepness trees grow on");
+        let mut slope = [p.min_slope, p.max_slope];
+        range(ui, &mut slope, 0.0, 90.0);
+        [p.min_slope, p.max_slope] = slope;
+        ui.end_row();
+        ui.label("Height")
+            .on_hover_text("Terrain heights trees grow at (above the terrain's base)");
+        p.altitude[1] = p.altitude[1].min(d.size.y);
+        range(ui, &mut p.altitude, 0.0, d.size.y);
+        ui.end_row();
+        ui.label("Random Rotation")
+            .on_hover_text("Turn every new tree at random about its trunk");
+        ui.checkbox(&mut p.random_rotation, "");
         ui.end_row();
     });
     ui.horizontal(|ui| {
