@@ -127,15 +127,18 @@ pub fn anchor_points(scene: &Scene, l: &UiLayout, n: &UiNode) -> Option<[Vec2; 4
     ])
 }
 
-/// Visualize Navigation: an arrow from each selectable to where each move goes.
-pub fn paint_navigation(ui: &Ui, rect: Rect, scene: &Scene, l: &UiLayout) {
+/// Visualize Navigation: an arrow from each selectable to where each move goes. The links come
+/// from the game's layout for a `screen`-sized view (where navigation really runs), drawn
+/// between the objects as the Scene view shows them (`l`).
+pub fn paint_navigation(ui: &Ui, rect: Rect, scene: &Scene, l: &UiLayout, screen: Vec2) {
+    let game = misty_engine::ui::layout(scene, screen);
     let painter = ui.painter().with_clip_rect(rect);
     let centre = |e: Entity| {
         let n = l.node(e)?;
         let c = n.corners();
         to_screen(l, rect, n.canvas, (c[0] + c[2]) * 0.5)
     };
-    for (from, to, dir) in misty_engine::ui::navigation::links(scene, l) {
+    for (from, to, dir) in misty_engine::ui::navigation::links(scene, &game) {
         let (Some(a), Some(b)) = (centre(from), centre(to)) else {
             continue;
         };

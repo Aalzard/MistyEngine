@@ -312,6 +312,11 @@ pub fn demo_scene() -> Scene {
                 target: Some(showcase),
                 method: "Waved".into(),
             }],
+            // Pointer only: the gamepad stays in the pause menu.
+            navigation: Navigation {
+                mode: NavigationMode::None,
+                ..Default::default()
+            },
             ..Default::default()
         },
     );

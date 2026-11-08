@@ -686,6 +686,7 @@
             1.0
           ],
           "interactable": true,
+          "navigation": "None",
           "normal_color": [
             1.0,
             1.0,

@@ -317,7 +317,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     if state.scene_view.gizmos {
         crate::ui_gizmos::paint(ui, rect, state, &ui_layout);
         if crate::ui_gizmos::visualizing_navigation() {
-            crate::ui_gizmos::paint_navigation(ui, rect, &state.scene, &ui_layout);
+            let screen = crate::ui_gizmos::game_screen(state);
+            crate::ui_gizmos::paint_navigation(ui, rect, &state.scene, &ui_layout, screen);
         }
         draw_icons(ui, rect, state, &camera);
         crate::editor_scripts::gizmos::paint(ui, rect, &camera, state);
