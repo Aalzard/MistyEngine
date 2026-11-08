@@ -446,7 +446,7 @@ fn controller() -> AnimatorController {
         ],
         sub_machines: vec![SubMachine {
             path: "Emotes".into(),
-            position: [300.0, 0.0],
+            position: [300.0, 120.0],
             default_state: Some("Bow".into()),
             ..Default::default()
         }],
