@@ -8,6 +8,7 @@ mod clouds;
 pub mod contact_shadows;
 pub mod culling;
 pub mod custom_shader;
+mod decals;
 mod draw_prep;
 pub mod environment;
 mod finish;
@@ -34,6 +35,7 @@ mod pass_timer;
 mod pipeline_cache;
 mod pipelines;
 pub mod post;
+mod postfx;
 mod prebuilt;
 mod prepass;
 pub mod probes;
@@ -68,6 +70,7 @@ pub use crate::terrain::TerrainDraw;
 pub use ao::AoSettings;
 pub use area::AreaShape;
 pub use contact_shadows::ContactShadowSettings;
+pub use decals::DecalDraw;
 pub use environment::{Environment, Sun, Wind};
 pub use frame_debug::{
     CaptureRequest, DrawLabel, EventKind, EventTarget, FrameCapture, FrameEvent, TargetInfo,
@@ -562,6 +565,10 @@ pub struct Renderer {
     shadow_denoise: shadow_denoise::ShadowDenoise,
     /// Light halos and lens flares.
     glows: glow::Glows,
+    /// Auto Exposure, Depth of Field and Motion Blur (after the temporal resolve).
+    postfx: postfx::PostFx,
+    /// Decal Projectors (decal resolve after the screen-space prepass).
+    decals: decals::Decals,
     /// HDRI sky cubes and uniform (view group bindings 4–7).
     sky: hdri_sky::SkyGpu,
     /// Posed Skinned Mesh Renderers (GPU skinning output, see [`skinning`]).
@@ -726,6 +733,8 @@ impl Renderer {
             screen_trace,
             shadow_denoise,
             glows: Default::default(),
+            postfx: Default::default(),
+            decals: Default::default(),
             sky,
             skins: Default::default(),
             effects: Default::default(),
@@ -1045,7 +1054,9 @@ impl Renderer {
                 + self.volumetrics.texture_bytes()
                 + self.clouds.texture_bytes()
                 + self.taa.bytes()
-                + self.vsm.bytes(),
+                + self.vsm.bytes()
+                + self.postfx.bytes()
+                + self.decals.bytes(),
         }
     }
 
@@ -1061,6 +1072,7 @@ impl Renderer {
         changed.extend(models::poll_changes());
         changed.extend(crate::shader_asset::poll_changes());
         changed.extend(crate::vfx::library::poll_changes());
+        self.decals.reload(&changed);
         changed
     }
 
@@ -1074,7 +1086,9 @@ impl Renderer {
 
     /// Texture load errors since the last call.
     pub fn take_warnings(&mut self) -> Vec<String> {
-        self.textures.take_warnings()
+        let mut warnings = self.textures.take_warnings();
+        warnings.extend(self.decals.take_warnings());
+        warnings
     }
 
     /// Upload imported meshes and build texture bind groups and shader variants used by this
@@ -1375,6 +1389,8 @@ impl Renderer {
         }
         let scene_copy = self.needs_scene_copy(frame);
         self.prepare_scene_inputs(device, queue, target, frame, scene_copy);
+        // (Before culling: decals in view turn the screen-space prepass on.)
+        self.prepare_decals(device, queue, target, frame);
         if scene_copy && let Some(c) = self.scene_copies.current(target.size()) {
             self.effects.scene_depth(device, c.id, &c.depth_view);
         }
@@ -1580,6 +1596,15 @@ impl Renderer {
         }
 
         let particle_draws = self.upload_particles(device, queue, frame, &lists.particles);
+        (self.postfx).prepare(
+            device,
+            queue,
+            &self.pipelines.view_layout,
+            target,
+            frame,
+            motion.prev_view_proj,
+            motion.continuous,
+        );
         // No GPU timing while capturing: a replay may skip the pass that ends the timing.
         let timing = match self.capture {
             Some(_) => None,
@@ -1683,6 +1708,8 @@ impl Renderer {
         {
             self.screen_space_passes(&mut encoder, frame, &lists, ss, &mut stats);
             self.mark(&mut encoder, "AO prepass + GTAO");
+            self.decal_pass(device, queue, &mut encoder, ss);
+            self.mark(&mut encoder, "Decals");
             // The virtual shadow map marks its pages from this single-sampled depth (cheaper
             // than the main pass's multisampled one, which then needn't be kept for it).
             if self.vsm.wants_marks() {
@@ -1843,7 +1870,9 @@ impl Renderer {
             (self.taa).stretch(device, &mut encoder, &self.view_bind_group, input, output);
         }
         self.mark(&mut encoder, "TAA");
-        self.bloom_passes(&mut encoder, target, timing);
+        let composite = self.postfx_passes(device, &mut encoder, target);
+        let composite = composite.as_ref().unwrap_or(&target.composite_group);
+        self.bloom_passes(&mut encoder, target, composite, timing);
         self.mark(&mut encoder, "Bloom, tonemap, finish");
         if let Some(t) = &self.pass_timer {
             t.resolve(&mut encoder);
@@ -2044,6 +2073,7 @@ impl Renderer {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         target: &RenderTarget,
+        composite_group: &wgpu::BindGroup,
         timing: Option<usize>,
     ) {
         let levels = &target.bloom;
@@ -2135,7 +2165,7 @@ impl Renderer {
             encoder,
             composite_to,
             &p.composite,
-            &target.composite_group,
+            composite_group,
             true,
             if finish.is_none() {
                 self.timestamps(timing, false, true)
@@ -2598,9 +2628,11 @@ impl Renderer {
         let copy = last && (split.scene_copy || split.trace.is_some());
         // Sun shafts and glow occlusion read the depth after the main pass.
         // So does the virtual shadow map's page marking (unless it marked the screen-space
-        // prepass's depth already).
-        let keep_depth =
-            self.volumetrics.keeps_depth() || self.glows.keeps_depth() || self.vsm.wants_marks();
+        // prepass's depth already), and depth of field and motion blur.
+        let keep_depth = self.volumetrics.keeps_depth()
+            || self.glows.keeps_depth()
+            || self.vsm.wants_marks()
+            || self.postfx.keeps_depth();
         // Virtual geometry's visibility raster splits the phase's pass in two around it.
         let vis = split.phase.is_some() && self.vgeo.visibility_active();
         // The grass visibility buffer ends the last part after the grass depth (kept for the

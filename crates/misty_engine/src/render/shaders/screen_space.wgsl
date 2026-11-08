@@ -130,3 +130,49 @@ fn contact_shadow(li: LightItem, world: vec3<f32>, n: vec3<f32>, l: vec3<f32>) -
     }
     return 1.0;
 }
+
+// Decals in the lit shaders (render/decals; here so every lit shader has it). The decal resolve
+// (decals/decals.wgsl) wrote, after the texels above, what the decals put on the surface each
+// pixel shows: albedo, normal, mask and emission, premultiplied by their opacity (forward.w = 1
+// in the header). `shade` blends them into the surface before lighting. Only the surface the
+// prepass saw takes them (not a transparent one in front); with no decals the flag is 0 and
+// the surface is untouched.
+
+fn decal_surface(world: vec3<f32>, s: Surface) -> Surface {
+    if (screen.forward.w < 0.5) {
+        return s;
+    }
+    let px = screen_pixel(world);
+    if (px.z < 0.5) {
+        return s;
+    }
+    let p = vec2<u32>(px.xy);
+    let width = u32(screen.misc.z);
+    let i = p.y * width + p.x;
+    let z = screen_depth(world);
+    if (abs(screen.texels[i].y - z) > 0.02 * z + 0.05) {
+        return s;
+    }
+    let base = width * u32(screen.misc.w) + 2u * i;
+    let a = bitcast<vec2<u32>>(screen.texels[base]);
+    let b = bitcast<vec2<u32>>(screen.texels[base + 1u]);
+    if ((a.x | a.y | b.x | b.y) == 0u) {
+        return s;
+    }
+    var out = s;
+    let albedo = unpack4x8unorm(a.x);
+    out.albedo = s.albedo * (1.0 - albedo.a) + albedo.rgb * albedo.rgb;
+    let n = unpack4x8snorm(a.y);
+    let na = n.w * 0.5 + 0.5;
+    if (na > 0.004) {
+        out.normal = normalize(s.normal * (1.0 - na) + n.xyz);
+    }
+    let m = unpack4x8unorm(b.x);
+    out.metallic = s.metallic * (1.0 - m.a) + m.r;
+    out.smoothness = s.smoothness * (1.0 - m.a) + m.g;
+    out.occlusion = s.occlusion * (1.0 - m.a) + m.b;
+    if (b.y != 0u) {
+        out.emission = s.emission + unpack4x8unorm(b.y).rgb * exp2(f32(b.y >> 24u) - 128.0);
+    }
+    return out;
+}

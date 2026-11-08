@@ -5,6 +5,8 @@
 @group(1) @binding(0) var hdr: texture_2d<f32>;
 @group(1) @binding(1) var samp: sampler;
 @group(1) @binding(2) var bloom: texture_2d<f32>;
+// Auto Exposure (render/postfx): x = multiplier of the scene and bloom (exactly 1 while off).
+@group(1) @binding(3) var<storage, read> auto_exposure: vec4<f32>;
 
 // Over-bright colours keep their hue and whiten gradually instead of clipping per channel.
 fn compress(c: vec3<f32>) -> vec3<f32> {
@@ -139,7 +141,7 @@ fn fs_main(in: FullscreenOut) -> @location(0) vec4<f32> {
     let uv = vec2<f32>(in.ndc.x * 0.5 + 0.5, 0.5 - in.ndc.y * 0.5);
     let scene = textureSampleLevel(hdr, samp, uv, 0.0).rgb;
     let glow = textureSampleLevel(bloom, samp, uv, 0.0).rgb;
-    var c = scene + glow * view.bloom.x * view.bloom_tint.rgb;
+    var c = (scene + glow * view.bloom.x * view.bloom_tint.rgb) * auto_exposure.x;
     if (view.vignette.x > 0.0) {
         let d = abs(uv - 0.5) * view.vignette.x;
         let v = pow(clamp(1.0 - dot(d, d), 0.0, 1.0), view.vignette.y);

@@ -70,8 +70,12 @@ pub struct RenderTarget {
     /// Samples the resolved glow image (bloom prefilter input).
     pub(crate) hdr_group: wgpu::BindGroup,
     pub(crate) bloom: Vec<BloomLevel>,
-    /// HDR image + bloom level 0, for the final composite.
+    /// HDR image + bloom level 0 + exposure, for the final composite.
     pub(crate) composite_group: wgpu::BindGroup,
+    /// Auto Exposure's multiplier for the composite (1 while it is off, see `postfx`).
+    pub(crate) exposure: wgpu::Buffer,
+    /// The composite's sampler (groups made later, see [`RenderTarget::composite_group_for`]).
+    sampler: wgpu::Sampler,
     /// Screen-space effects' textures and AO history (created when first needed).
     pub(crate) screen_space: super::screen_space::TargetSlot,
     /// SSGI / SSR images, lit colour history and texels (created when first needed).
@@ -230,26 +234,22 @@ impl RenderTarget {
             })
             .collect();
 
-        let composite_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("misty composite group"),
-            layout: layouts.composite,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        upscaled.as_ref().map_or(&hdr_view, |u| &u.1),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(layouts.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&bloom[0].view),
-                },
-            ],
-        });
+        let exposure = wgpu::util::DeviceExt::create_buffer_init(
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("misty exposure"),
+                contents: bytemuck::bytes_of(&super::postfx::EXPOSURE_OFF),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            },
+        );
+        let composite_group = composite_group(
+            device,
+            layouts.composite,
+            layouts.sampler,
+            upscaled.as_ref().map_or(&hdr_view, |u| &u.1),
+            &bloom[0].view,
+            &exposure,
+        );
 
         let pre_finish_view = view(&pre_finish);
         let pre_finish_group = sample_group("misty finish group", layouts.post, &pre_finish_view);
@@ -294,6 +294,8 @@ impl RenderTarget {
             hdr_group,
             bloom,
             composite_group,
+            exposure,
+            sampler: layouts.sampler.clone(),
             screen_space: Default::default(),
             screen_trace: Default::default(),
             misty_gi: Default::default(),
@@ -301,6 +303,24 @@ impl RenderTarget {
             culling: Default::default(),
             grass_vis: Default::default(),
         }
+    }
+
+    /// A composite group reading `hdr` (an output-resolution image after the resolved one:
+    /// depth of field, motion blur) instead of the resolved image.
+    pub(crate) fn composite_group_for(
+        &self,
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        hdr: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        composite_group(
+            device,
+            layout,
+            &self.sampler,
+            hdr,
+            &self.bloom[0].view,
+            &self.exposure,
+        )
     }
 
     /// Internal resolution the scene renders at (the output size unless upscaled).
@@ -404,6 +424,39 @@ impl RenderTarget {
     pub(crate) fn depth_view(&self) -> &wgpu::TextureView {
         &self.depth_view
     }
+}
+
+/// The composite's inputs: HDR image, sampler, bloom level 0 and the exposure buffer.
+fn composite_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    hdr: &wgpu::TextureView,
+    bloom: &wgpu::TextureView,
+    exposure: &wgpu::Buffer,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("misty composite group"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(hdr),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(bloom),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: exposure.as_entire_binding(),
+            },
+        ],
+    })
 }
 
 /// Internal resolution for an `out` image rendered at `scale` (each side rounded, at least 1).

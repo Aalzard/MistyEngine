@@ -382,7 +382,9 @@ fn grass_near_shadow(world: vec3<f32>, l: vec3<f32>) -> f32 {
 }
 
 // Ambient, sky reflections, lights with shadows, emission and fog for one surface point.
-fn shade(world: vec3<f32>, s: Surface) -> MeshTargets {
+fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
+    // Decals (render/decals) change the surface before it is lit.
+    let s = decal_surface(world, surface);
     let albedo = s.albedo;
     let metallic = clamp(s.metallic, 0.0, 1.0);
     let smoothness = clamp(s.smoothness, 0.0, 1.0);

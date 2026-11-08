@@ -124,6 +124,7 @@ pub fn environment(scene: &Scene, lights: &[LightData]) -> Environment {
         .with_probes(crate::render::probes::scene_probes(scene));
     env.fog_volumes = fog_volumes(scene);
     env.glows = glow_sources(scene);
+    env.decals = decal_draws(scene);
     env.lights_2d = crate::light2d::collect(scene);
     env.lightmaps = crate::lightmap::scene_lightmaps(scene);
     env.wind = crate::scene::wind_zone::scene_wind(scene);
@@ -184,6 +185,22 @@ pub fn fog_volumes(scene: &Scene) -> Vec<LocalFog> {
         .filter_map(|(e, _)| {
             let v = scene.world.get::<&FogVolume>(e).ok()?;
             v.enabled.then(|| LocalFog::new(&v, scene.world_matrix(e)))
+        })
+        .collect()
+}
+
+/// The scene's enabled, active Decal Projectors (Hierarchy order: the tie-break of Priority).
+pub fn decal_draws(scene: &Scene) -> Vec<crate::render::DecalDraw> {
+    scene
+        .walk()
+        .into_iter()
+        .filter(|(e, _)| scene.active_in_hierarchy(*e))
+        .filter_map(|(e, _)| {
+            let d = scene.world.get::<&crate::scene::DecalProjector>(e).ok()?;
+            d.enabled.then(|| crate::render::DecalDraw {
+                object: scene.world_matrix(e),
+                decal: (*d).clone(),
+            })
         })
         .collect()
 }

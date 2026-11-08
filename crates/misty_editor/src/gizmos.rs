@@ -1,6 +1,8 @@
 //! Scene-view gizmo lines: camera frustum, light ranges, particle shapes and mesh wireframes.
 //! Joint and Character Controller gizmos are in `physics_gizmos`, navigation ones in `nav_gizmos`.
 
+#[path = "decal_gizmos.rs"]
+mod decal;
 #[path = "fog_gizmos.rs"]
 mod fog;
 #[path = "nav_gizmos.rs"]
@@ -353,6 +355,7 @@ pub fn scene_lines(scene: &Scene, selection: &Selection) -> Lines {
         lines.wheel(scene, e);
         lines.nav_shapes(scene, e);
         lines.fog_volume(scene, e);
+        lines.decal_projector(scene, e);
         lines.occlusion_area(scene, e);
         lines.virtual_camera(scene, e);
         lines.bones(scene, e);

@@ -28,6 +28,8 @@ pub struct Environment {
     pub fog_volumes: Vec<super::LocalFog>,
     /// Light halos and lens flares (render/glow).
     pub glows: Vec<super::GlowSource>,
+    /// Decal Projectors (render/decals).
+    pub decals: Vec<super::DecalDraw>,
     /// The decoded HDRI while the skybox is HDRI and its file loads.
     pub hdri: Option<crate::hdri::HdriHandle>,
     /// 2D lights and their shadow maps (see [`crate::light2d`]); empty = sprites unlit.
@@ -96,6 +98,7 @@ impl Environment {
             probes: Default::default(),
             fog_volumes: Vec::new(),
             glows: Vec::new(),
+            decals: Vec::new(),
             hdri,
             lights_2d: Default::default(),
             lightmaps: Default::default(),

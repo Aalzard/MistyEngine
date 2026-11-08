@@ -362,8 +362,9 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
         item(ui, s, "Audio Source", "", create(Create::AudioSource));
     });
     sub(ui, "Rendering", |ui| {
-        let what = Create::FogVolume;
-        item(ui, s, what.default_name(), "", create(what));
+        for what in [Create::FogVolume, Create::DecalProjector] {
+            item(ui, s, what.default_name(), "", create(what));
+        }
     });
     ui.menu_button("Water", |ui| {
         for kind in misty_engine::water::WaterKind::ALL {

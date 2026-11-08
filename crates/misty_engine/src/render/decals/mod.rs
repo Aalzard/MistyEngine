@@ -1,0 +1,678 @@
+//! Decal Projectors (URP / HDRP-like): box-projected albedo, normal, mask (metallic,
+//! smoothness, occlusion) and emission on opaque meshes, virtual geometry and terrain.
+//!
+//! **Approach: screen-space decals into a decal buffer, applied by the forward shaders** (the
+//! "DBuffer" technique Unity URP uses with its forward renderer). The engine is a forward
+//! renderer with MSAA and no G-buffer, so a classic deferred decal (blending into G-buffer
+//! targets before lighting) has nothing to write into, and blending decals onto the lit image
+//! would leave their lighting wrong (no normal map, no change of smoothness). Instead:
+//! 1. while any decal is in view the screen-space prepass runs (render/screen_space.rs: depth
+//!    + world normals of opaque meshes, virtual geometry, terrain, near grass and trees);
+//! 2. a compute pass (decals.wgsl) reads that depth and those normals, lists the decals per
+//!    8×8 tile from their screen rectangles (sorted by Priority, then Hierarchy order),
+//!    projects each pixel into the decal boxes, applies the angle and distance fades and
+//!    blends the decals' surface values into a per-pixel decal buffer: four words per pixel
+//!    in the screen-space texel buffer, after the AO texels (no extra binding: the lit
+//!    fragment stage is at WebGPU's storage buffer limit);
+//! 3. the lit shaders' `shade` (mesh.wgsl, via `decal_surface` in screen_space.wgsl) blends
+//!    that into the surface before lighting, so decals are lit, shadowed, reflect and take
+//!    GI like the surface they lie on. A fragment only takes the decal buffer where its depth
+//!    matches the prepass (transparent surfaces and blades in front keep theirs).
+//!
+//! Clustered forward decals (each lit fragment looping over a cluster's decals and sampling
+//! their textures itself) were the alternative; they need a decal list and an atlas binding
+//! in every lit pipeline and loop per MSAA-shaded fragment (overdraw included), where the
+//! screen-space pass touches each pixel once and the lit shaders read four words.
+//!
+//! Decal textures go into one 512² texture array with mips (base maps decoded from sRGB in
+//! the shader), rebuilt when the set of textures in use changes.
+
+use std::collections::HashMap;
+
+use bytemuck::{Pod, Zeroable};
+use glam::{Mat4, Vec3, Vec4Swizzles};
+
+use super::{Frame, RenderTarget, Renderer, srgb_to_linear};
+use crate::scene::DecalProjector;
+
+const SRC: &str = include_str!("decals.wgsl");
+/// Most decals one view draws (the tile lists are 32 words of bits).
+pub const MAX_DECALS: usize = 1024;
+/// Side of each texture array layer.
+const LAYER_SIZE: u32 = 512;
+/// Bytes per pixel the decal buffer adds to the screen-space texel buffer.
+pub(super) const TEXEL_BYTES: u64 = 16;
+
+/// A Decal Projector as the renderer sees it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecalDraw {
+    /// The projector's object → world matrix.
+    pub object: Mat4,
+    pub decal: DecalProjector,
+}
+
+impl DecalDraw {
+    /// Unit box (-0.5..0.5) → world.
+    pub fn box_to_world(&self) -> Mat4 {
+        self.object * self.decal.box_matrix()
+    }
+}
+
+/// `Decal` in decals.wgsl.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct GpuDecal {
+    world_to_box: [[f32; 4]; 4],
+    right: [f32; 4],
+    up: [f32; 4],
+    forward: [f32; 4],
+    color: [f32; 4],
+    uv: [f32; 4],
+    surface: [f32; 4],
+    emission: [f32; 4],
+    fade: [f32; 4],
+    rect: [f32; 4],
+}
+
+/// `DecalParams` in decals.wgsl.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct DecalParams {
+    size: [f32; 4],
+    pixel: [f32; 4],
+    words: [u32; 4],
+}
+
+/// One texture of a decal: its project path and whether it holds colour (sRGB mips).
+type LayerKey = (String, bool);
+
+struct Gpu {
+    layout: wgpu::BindGroupLayout,
+    pipeline: wgpu::ComputePipeline,
+    sampler: wgpu::Sampler,
+    params: wgpu::Buffer,
+}
+
+/// The decal texture array.
+struct Layers {
+    keys: Vec<LayerKey>,
+    view: wgpu::TextureView,
+    /// Decoded, resized images (None = could not be loaded).
+    images: HashMap<LayerKey, Option<Vec<image::RgbaImage>>>,
+}
+
+/// The renderer's part.
+#[derive(Default)]
+pub(super) struct Decals {
+    gpu: Option<Gpu>,
+    layers: Option<Layers>,
+    buffer: Option<wgpu::Buffer>,
+    /// Decals this render draws (0 = the decal pass is off).
+    pub count: u32,
+    warnings: Vec<String>,
+}
+
+/// Decals are in this view (the screen-space prepass must run).
+pub(super) fn wanted(frame: &Frame) -> bool {
+    frame.shaded && !frame.environment.decals.is_empty()
+}
+
+/// Screen rectangle (pixels of a `size` image, inclusive) of a box, or None when it is off
+/// screen. A box reaching behind the camera covers the whole screen; one wholly behind it
+/// is off screen.
+pub(super) fn screen_rect(
+    box_to_world: Mat4,
+    view_proj: Mat4,
+    size: (u32, u32),
+) -> Option<[f32; 4]> {
+    let (w, h) = (size.0 as f32, size.1 as f32);
+    let mut lo = glam::Vec2::splat(f32::MAX);
+    let mut hi = glam::Vec2::splat(f32::MIN);
+    let mut behind = 0;
+    for i in 0..8 {
+        let corner = Vec3::new(
+            if i & 1 == 0 { -0.5 } else { 0.5 },
+            if i & 2 == 0 { -0.5 } else { 0.5 },
+            if i & 4 == 0 { -0.5 } else { 0.5 },
+        );
+        let clip = view_proj * (box_to_world * corner.extend(1.0));
+        if clip.w <= 1e-4 {
+            behind += 1;
+            continue;
+        }
+        let ndc = clip.xy() / clip.w;
+        let px = glam::Vec2::new((ndc.x * 0.5 + 0.5) * w, (0.5 - ndc.y * 0.5) * h);
+        lo = lo.min(px);
+        hi = hi.max(px);
+    }
+    match behind {
+        0 => {}
+        8 => return None,
+        _ => return Some([0.0, 0.0, w, h]),
+    }
+    let (lo, hi) = (lo - 1.0, hi + 1.0);
+    if hi.x < 0.0 || hi.y < 0.0 || lo.x > w || lo.y > h {
+        return None;
+    }
+    Some([lo.x.max(0.0), lo.y.max(0.0), hi.x.min(w), hi.y.min(h)])
+}
+
+/// Cosines of the angle fade (start, end), or (2, 1) when it is off (0..180).
+pub(super) fn angle_fade(degrees: [f32; 2]) -> [f32; 2] {
+    let (a, b) = (degrees[0].clamp(0.0, 180.0), degrees[1].clamp(0.0, 180.0));
+    if a <= 0.0 && b >= 180.0 {
+        return [2.0, 1.0];
+    }
+    let (a, b) = (a.min(b), a.max(b).max(a.min(b) + 0.5));
+    [a.to_radians().cos(), b.to_radians().cos()]
+}
+
+fn gpu_decal(d: &DecalDraw, rect: [f32; 4], layers: [f32; 3]) -> GpuDecal {
+    let p = &d.decal;
+    let m = d.box_to_world();
+    let axis = |v: Vec3| v.normalize_or(Vec3::X);
+    let (right, up, forward) = (
+        axis(m.x_axis.truncate()),
+        axis(m.y_axis.truncate()),
+        axis(m.z_axis.truncate()),
+    );
+    let color = srgb_to_linear([p.color[0], p.color[1], p.color[2]]);
+    let emission = srgb_to_linear(p.emission).map(|c| c * p.emission_intensity.max(0.0));
+    let flags =
+        p.affects_albedo as u32 | (p.affects_normal as u32) << 1 | (p.affects_mask as u32) << 2;
+    // Texels per metre across the decal (mip selection).
+    let tiling = glam::Vec2::from(p.tiling).abs();
+    let width = m.x_axis.truncate().length().max(1e-4);
+    let height = m.y_axis.truncate().length().max(1e-4);
+    let texels = LAYER_SIZE as f32 * (tiling.x / width).max(tiling.y / height);
+    let fade = angle_fade(p.angle_fade);
+    let far = p.draw_distance.max(0.0);
+    GpuDecal {
+        world_to_box: m.inverse().to_cols_array_2d(),
+        right: right.extend(layers[0]).to_array(),
+        up: up.extend(layers[1]).to_array(),
+        forward: forward.extend(layers[2]).to_array(),
+        color: [
+            color[0],
+            color[1],
+            color[2],
+            p.color[3].clamp(0.0, 1.0) * p.opacity.clamp(0.0, 1.0),
+        ],
+        uv: [p.tiling[0], p.tiling[1], p.offset[0], p.offset[1]],
+        surface: [
+            p.normal_strength.clamp(0.0, 1.0),
+            p.metallic.clamp(0.0, 1.0),
+            p.smoothness.clamp(0.0, 1.0),
+            flags as f32,
+        ],
+        emission: [emission[0], emission[1], emission[2], texels],
+        fade: [fade[0], fade[1], far, far * p.start_fade.clamp(0.0, 1.0)],
+        rect,
+    }
+}
+
+/// The decals a view draws, in draw order (Priority, then the list's order), with their
+/// screen rectangles: the enabled ones in front of the camera, within their draw distance.
+pub(super) fn visible(
+    decals: &[DecalDraw],
+    camera: &crate::camera::Camera,
+    view_proj: Mat4,
+    size: (u32, u32),
+) -> Vec<(usize, [f32; 4])> {
+    let mut out: Vec<(usize, [f32; 4])> = decals
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| d.decal.enabled && d.decal.opacity > 0.0)
+        .filter_map(|(i, d)| {
+            let m = d.box_to_world();
+            let reach =
+                (m.x_axis.truncate() + m.y_axis.truncate() + m.z_axis.truncate()).length() * 0.5;
+            let near = camera.position.distance(m.w_axis.truncate()) - reach;
+            if near > d.decal.draw_distance {
+                return None;
+            }
+            Some((i, screen_rect(m, view_proj, size)?))
+        })
+        .collect();
+    out.sort_by_key(|(i, _)| decals[*i].decal.priority);
+    out.truncate(MAX_DECALS);
+    out
+}
+
+impl Gpu {
+    fn new(device: &wgpu::Device, view_layout: &wgpu::BindGroupLayout) -> Self {
+        use wgpu::ShaderStages as S;
+        let entry = |binding, ty| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: S::COMPUTE,
+            ty,
+            count: None,
+        };
+        let tex = |sample_type, view_dimension| wgpu::BindingType::Texture {
+            sample_type,
+            view_dimension,
+            multisampled: false,
+        };
+        let buffer = |ty| wgpu::BindingType::Buffer {
+            ty,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        };
+        let float = wgpu::TextureSampleType::Float { filterable: true };
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("misty decals"),
+            entries: &[
+                entry(
+                    0,
+                    tex(
+                        wgpu::TextureSampleType::Depth,
+                        wgpu::TextureViewDimension::D2,
+                    ),
+                ),
+                entry(
+                    1,
+                    tex(
+                        wgpu::TextureSampleType::Float { filterable: false },
+                        wgpu::TextureViewDimension::D2,
+                    ),
+                ),
+                entry(2, tex(float, wgpu::TextureViewDimension::D2Array)),
+                entry(
+                    3,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ),
+                entry(4, buffer(wgpu::BufferBindingType::Uniform)),
+                entry(
+                    5,
+                    buffer(wgpu::BufferBindingType::Storage { read_only: true }),
+                ),
+                entry(
+                    6,
+                    buffer(wgpu::BufferBindingType::Storage { read_only: false }),
+                ),
+            ],
+        });
+        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("decals"),
+            source: wgpu::ShaderSource::Wgsl(format!("{}\n{SRC}", super::pipelines::COMMON).into()),
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("misty decals"),
+            bind_group_layouts: &[Some(view_layout), Some(&layout)],
+            immediate_size: 0,
+        });
+        super::pipelines::note_pipeline();
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("decals"),
+            layout: Some(&pipeline_layout),
+            module: &module,
+            entry_point: Some("cs_decals"),
+            compilation_options: Default::default(),
+            cache: super::pipeline_cache(device).as_ref(),
+        });
+        Self {
+            layout,
+            pipeline,
+            sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("misty decals"),
+                address_mode_u: wgpu::AddressMode::Repeat,
+                address_mode_v: wgpu::AddressMode::Repeat,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                anisotropy_clamp: 4,
+                ..Default::default()
+            }),
+            params: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("misty decals"),
+                size: std::mem::size_of::<DecalParams>() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+        }
+    }
+}
+
+/// A decal texture decoded and resized to a layer, with its mips.
+fn load_layer(key: &LayerKey) -> Result<Vec<image::RgbaImage>, String> {
+    let path = crate::assets::absolute(&key.0);
+    let img = super::texture::load_image(&path)?;
+    let img = image::imageops::resize(
+        &img,
+        LAYER_SIZE,
+        LAYER_SIZE,
+        image::imageops::FilterType::Triangle,
+    );
+    Ok(super::texture::mip_chain(img, key.1))
+}
+
+impl Layers {
+    /// An array holding `keys` (layers that failed to load stay transparent).
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        keys: Vec<LayerKey>,
+        mut images: HashMap<LayerKey, Option<Vec<image::RgbaImage>>>,
+        warnings: &mut Vec<String>,
+    ) -> Self {
+        let mips = super::texture::mip_count(LAYER_SIZE, LAYER_SIZE);
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("misty decal textures"),
+            size: wgpu::Extent3d {
+                width: LAYER_SIZE,
+                height: LAYER_SIZE,
+                depth_or_array_layers: keys.len().max(1) as u32,
+            },
+            mip_level_count: mips,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        for (layer, key) in keys.iter().enumerate() {
+            let loaded = images.entry(key.clone()).or_insert_with(|| {
+                load_layer(key)
+                    .map_err(|e| warnings.push(format!("Decal texture: {e}")))
+                    .ok()
+            });
+            let Some(chain) = loaded else {
+                continue;
+            };
+            for (mip, img) in chain.iter().enumerate().take(mips as usize) {
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: mip as u32,
+                        origin: wgpu::Origin3d {
+                            x: 0,
+                            y: 0,
+                            z: layer as u32,
+                        },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    img.as_raw(),
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * img.width()),
+                        rows_per_image: Some(img.height()),
+                    },
+                    wgpu::Extent3d {
+                        width: img.width(),
+                        height: img.height(),
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+        }
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+        Self { keys, view, images }
+    }
+
+    fn layer(&self, key: Option<(&str, bool)>) -> f32 {
+        key.and_then(|(path, srgb)| {
+            self.keys
+                .iter()
+                .position(|k| k.0 == path && k.1 == srgb)
+                .filter(|_| matches!(self.images.get(&(path.to_owned(), srgb)), Some(Some(_))))
+        })
+        .map_or(-1.0, |i| i as f32)
+    }
+
+    fn bytes(&self) -> u64 {
+        // 4 bytes per texel, a third more for the mips.
+        self.keys.len().max(1) as u64 * (LAYER_SIZE as u64).pow(2) * 4 * 4 / 3
+    }
+}
+
+impl Decals {
+    /// Drop decoded textures whose files changed (they are decoded again on next use).
+    pub(super) fn reload(&mut self, changed: &[String]) {
+        if let Some(l) = &mut self.layers
+            && l.keys.iter().any(|k| changed.contains(&k.0))
+        {
+            l.images.retain(|k, _| !changed.contains(&k.0));
+            l.keys.clear();
+        }
+    }
+
+    pub(super) fn take_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.warnings)
+    }
+
+    pub(super) fn bytes(&self) -> u64 {
+        self.layers.as_ref().map_or(0, Layers::bytes) + self.buffer.as_ref().map_or(0, |b| b.size())
+    }
+}
+
+impl Renderer {
+    /// This render's decals: culled, sorted, their textures and list uploaded. Sets
+    /// `decals.count` (0 = no decal pass). Call before `prepare_screen_space`.
+    pub(super) fn prepare_decals(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: &RenderTarget,
+        frame: &Frame,
+    ) {
+        let d = &mut self.decals;
+        d.count = 0;
+        if !wanted(frame) {
+            return;
+        }
+        let all = &frame.environment.decals;
+        let size = target.size();
+        let view_proj = frame.camera.view_projection(target.aspect());
+        let list = visible(all, frame.camera, view_proj, size);
+        if list.is_empty() {
+            return;
+        }
+        if d.gpu.is_none() {
+            d.gpu = Some(Gpu::new(device, &self.pipelines.view_layout));
+        }
+        // The textures in use (base maps are colour; normal and mask maps data).
+        let mut keys: Vec<LayerKey> = Vec::new();
+        for (i, _) in &list {
+            let [base, normal, mask] = all[*i].decal.textures();
+            for (path, srgb) in [(base, true), (normal, false), (mask, false)] {
+                if let Some(p) = path
+                    && !keys.iter().any(|k| k.0 == p && k.1 == srgb)
+                {
+                    keys.push((p.to_owned(), srgb));
+                }
+            }
+        }
+        keys.sort();
+        if d.layers.as_ref().is_none_or(|l| l.keys != keys) {
+            let images = d.layers.take().map(|l| l.images).unwrap_or_default();
+            d.layers = Some(Layers::new(device, queue, keys, images, &mut d.warnings));
+        }
+        let layers = d.layers.as_ref().expect("made above");
+        let gpu_list: Vec<GpuDecal> = list
+            .iter()
+            .map(|(i, rect)| {
+                let p = &all[*i].decal;
+                let layer = |path: Option<&str>, srgb| layers.layer(path.map(|p| (p, srgb)));
+                let ids = [
+                    layer(p.base_map.as_deref(), true),
+                    layer(p.normal_map.as_deref(), false),
+                    layer(p.mask_map.as_deref(), false),
+                ];
+                gpu_decal(&all[*i], *rect, ids)
+            })
+            .collect();
+        let bytes = std::mem::size_of_val(gpu_list.as_slice()) as u64;
+        if d.buffer.as_ref().is_none_or(|b| b.size() < bytes) {
+            d.buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("misty decal list"),
+                size: bytes.next_power_of_two().max(1024),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        let buffer = d.buffer.as_ref().expect("made above");
+        queue.write_buffer(buffer, 0, bytemuck::cast_slice(&gpu_list));
+        let cam = frame.camera;
+        let (pixel, ortho) = match cam.projection {
+            crate::camera::Projection::Perspective { fov_y } => {
+                (2.0 * (fov_y.to_radians() * 0.5).tan() / size.1 as f32, 0.0)
+            }
+            crate::camera::Projection::Orthographic { size: s } => (2.0 * s / size.1 as f32, 1.0),
+        };
+        let params = DecalParams {
+            size: [size.0 as f32, size.1 as f32, gpu_list.len() as f32, 0.0],
+            pixel: [pixel, ortho, 0.0, 0.0],
+            words: [0; 4],
+        };
+        let gpu = d.gpu.as_ref().expect("made above");
+        queue.write_buffer(&gpu.params, 0, bytemuck::bytes_of(&params));
+        d.count = gpu_list.len() as u32;
+    }
+
+    /// The decal resolve into the screen-space texel buffer (after the prepass).
+    pub(super) fn decal_pass(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        ss: &super::screen_space::ScreenFrame,
+    ) {
+        let d = &self.decals;
+        let (Some(gpu), Some(layers), Some(list), Some((texels, first_word))) = (
+            d.gpu.as_ref(),
+            d.layers.as_ref(),
+            d.buffer.as_ref(),
+            ss.decal_texels(),
+        ) else {
+            return;
+        };
+        if d.count == 0 {
+            return;
+        }
+        // Where the decal texels start (`words.x`).
+        queue.write_buffer(&gpu.params, 32, bytemuck::bytes_of(&first_word));
+        let (depth, normals, _) = ss.views();
+        let tex = |binding, view| wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::TextureView(view),
+        };
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty decals"),
+            layout: &gpu.layout,
+            entries: &[
+                tex(0, depth),
+                tex(1, normals),
+                tex(2, &layers.view),
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&gpu.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: gpu.params.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: list.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: texels.as_entire_binding(),
+                },
+            ],
+        });
+        let (w, h) = ss.size();
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("misty decals"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&gpu.pipeline);
+        pass.set_bind_group(0, &self.view_bind_group, &[]);
+        pass.set_bind_group(1, &group, &[]);
+        pass.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
+    }
+}
+
+#[cfg(test)]
+mod gpu_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::camera::{Camera, Projection};
+    use glam::Quat;
+
+    #[test]
+    fn decal_shader_validates() {
+        let src = format!("{}\n{SRC}", super::super::pipelines::COMMON);
+        let module = wgpu::naga::front::wgsl::parse_str(&src)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(&src)));
+        wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap();
+        assert_eq!(std::mem::size_of::<GpuDecal>(), 64 + 9 * 16);
+    }
+
+    #[test]
+    fn angle_fade_is_off_for_the_full_range() {
+        assert_eq!(angle_fade([0.0, 180.0]), [2.0, 1.0]);
+        let [start, end] = angle_fade([30.0, 60.0]);
+        assert!((start - 30f32.to_radians().cos()).abs() < 1e-6);
+        assert!((end - 0.5).abs() < 1e-5);
+        // Swapped ends still fade from the smaller angle.
+        assert_eq!(angle_fade([60.0, 30.0]), angle_fade([30.0, 60.0]));
+    }
+
+    fn camera() -> Camera {
+        Camera {
+            position: Vec3::new(0.0, 2.0, -5.0),
+            rotation: Quat::IDENTITY,
+            projection: Projection::Perspective { fov_y: 60.0 },
+            near: 0.1,
+            far: 100.0,
+        }
+    }
+
+    #[test]
+    fn decals_are_culled_and_sorted_by_priority() {
+        let cam = camera();
+        let vp = cam.view_projection(1.0);
+        let at = |x: f32, z: f32, priority: i32| DecalDraw {
+            object: Mat4::from_translation(Vec3::new(x, 0.0, z)),
+            decal: DecalProjector {
+                priority,
+                ..Default::default()
+            },
+        };
+        let list = vec![
+            at(0.0, 0.0, 2),
+            at(0.5, 0.0, -1),
+            at(0.0, -20.0, 0), // behind the camera
+            at(300.0, 0.0, 0), // far off to the side
+            DecalDraw {
+                decal: DecalProjector {
+                    draw_distance: 2.0,
+                    ..Default::default()
+                },
+                ..at(0.0, 10.0, 0)
+            },
+        ];
+        let seen = visible(&list, &cam, vp, (400, 400));
+        let order: Vec<usize> = seen.iter().map(|(i, _)| *i).collect();
+        assert_eq!(order, vec![1, 0], "lower priority first, the rest culled");
+        let r = seen[1].1;
+        assert!(r[0] > 100.0 && r[2] < 300.0 && r[1] < r[3], "{r:?}");
+        // A box around the camera covers the whole screen.
+        let around = at(0.0, -5.0, 0).box_to_world() * Mat4::from_scale(Vec3::splat(10.0));
+        assert_eq!(
+            screen_rect(around, vp, (400, 300)),
+            Some([0.0, 0.0, 400.0, 300.0])
+        );
+    }
+}

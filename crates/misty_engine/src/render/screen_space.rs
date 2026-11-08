@@ -53,6 +53,11 @@ const TEXEL_BYTES: u64 = 8;
 fn buffer_bytes(texels: u64) -> u64 {
     (HEADER_BYTES + texels * TEXEL_BYTES).next_multiple_of(16)
 }
+
+/// Buffer size with the decal texels after the AO texels (render/decals).
+fn decal_buffer_bytes(texels: u64) -> u64 {
+    (HEADER_BYTES + texels * (TEXEL_BYTES + super::decals::TEXEL_BYTES)).next_multiple_of(16)
+}
 /// Share of last frame's AO in the temporal blend (about ten frames of history).
 const HISTORY_WEIGHT: f32 = 0.9;
 
@@ -97,6 +102,16 @@ struct Passes {
 }
 
 impl ScreenFrame {
+    /// The texel buffer and the first word of the decal texels, when decals run.
+    pub(super) fn decal_texels(&self) -> Option<(&wgpu::Buffer, u32)> {
+        self.decals.as_ref().map(|(b, w)| (b, *w))
+    }
+
+    /// Texels across and down (the internal resolution).
+    pub(super) fn size(&self) -> (u32, u32) {
+        self.full
+    }
+
     /// The prepass depth, world normals and motion vectors (the shadow mask reads them too).
     pub(super) fn views(&self) -> (&wgpu::TextureView, &wgpu::TextureView, &wgpu::TextureView) {
         (&self.depth_view, &self.normal_view, &self.velocity_view)
@@ -171,6 +186,8 @@ pub(super) struct ScreenFrame {
     full: (u32, u32),
     /// SSGI / SSR work of this render (they share the prepass).
     pub trace: Option<super::screen_trace::TraceFrame>,
+    /// This render's texel buffer and the first word of its decal texels (None = no decals).
+    decals: Option<(wgpu::Buffer, u32)>,
 }
 
 impl Renderer {
@@ -188,12 +205,14 @@ impl Renderer {
             frame.post.ao.active() && self.quality.ambient_occlusion != crate::quality::Tier::Off;
         let contact =
             frame.post.contact_shadows.active() && frame.lights.iter().any(|l| l.contact_shadows);
-        // SSGI, SSR and the soft-shadow mask trace through the same prepass.
+        // SSGI, SSR and the soft-shadow mask trace through the same prepass, and decals
+        // project from it (render/decals).
         frame.shaded
             && (ao
                 || contact
                 || super::screen_trace::wanted(frame)
-                || self.shadow_mask_wanted(frame))
+                || self.shadow_mask_wanted(frame)
+                || self.decals.count > 0)
     }
 
     /// Set up this render's screen-space effects; `None` when they are off (or the view is
@@ -215,17 +234,27 @@ impl Renderer {
             return None;
         }
         let full = target.size();
-        let bytes = buffer_bytes(full.0 as u64 * full.1 as u64);
-        if bytes > device.limits().max_storage_buffer_binding_size {
+        let texels = full.0 as u64 * full.1 as u64;
+        let limit = device.limits().max_storage_buffer_binding_size;
+        if buffer_bytes(texels) > limit {
             return None;
         }
+        // Decals need room after the AO texels (too large a view: no decals).
+        let decals = self.decals.count > 0 && decal_buffer_bytes(texels) <= limit;
+        let bytes = match decals {
+            true => decal_buffer_bytes(texels),
+            false => buffer_bytes(texels),
+        };
         if self.screen_space.passes.is_none() {
             self.screen_space.passes = Some(Passes::new(device, &self.pipelines));
         }
         let passes = self.screen_space.passes.as_ref()?;
         let scale = if ao.full_resolution { 1 } else { 2 };
         let mut slot = target.screen_space.0.lock().ok()?;
-        if slot.as_ref().is_none_or(|s| s.scale != scale) {
+        if slot
+            .as_ref()
+            .is_none_or(|s| s.scale != scale || s.buffers[0].size() < bytes)
+        {
             *slot = Some(TargetState::new(device, passes, full, scale, bytes));
         }
         let state = slot.as_mut()?;
@@ -266,9 +295,14 @@ impl Renderer {
                 full.0 as f32,
                 full.1 as f32,
             ],
-            forward: cam.forward().extend(0.0).to_array(),
+            // w = 1: decal texels follow the AO texels (render/decals).
+            forward: cam.forward().extend(decals as u32 as f32).to_array(),
         };
         let buffer = &state.buffers[current];
+        let decal_texels = decals.then(|| {
+            let first = (HEADER_BYTES + texels * TEXEL_BYTES) / 4;
+            (buffer.clone(), first as u32)
+        });
         queue.write_buffer(buffer, 0, bytemuck::bytes_of(&header));
         let trace = self.screen_trace.prepare(
             device,
@@ -316,6 +350,7 @@ impl Renderer {
             ao_size: state.ao_size,
             full,
             trace,
+            decals: decal_texels,
         })
     }
 
