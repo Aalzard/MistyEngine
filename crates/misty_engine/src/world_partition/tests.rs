@@ -534,3 +534,37 @@ return W
     );
     assert!(rt.streaming().stats().loaded >= 1);
 }
+
+/// Edit mode: the main camera doesn't stream; a source handed in (the Scene view camera) does,
+/// and cells stay when it goes.
+#[test]
+fn edit_mode_streams_only_around_a_given_source() {
+    let root = temp_root("edit");
+    let (mut s, wp) = world(&root);
+    convert::convert(&mut s, wp, &root).unwrap();
+    let mut st = Streamer::new();
+    st.auto = false;
+    st.update(&mut s, &[], &mut NoHooks);
+    assert!(st.settle(&mut s, &[], &mut NoHooks, Duration::from_secs(5)));
+    assert!(
+        loaded(&st).is_empty(),
+        "the main camera doesn't stream in Edit mode"
+    );
+    let scene_camera = Source {
+        name: "Scene Camera".into(),
+        position: Vec3::new(175.0, 50.0, 175.0),
+        load_radius: 20.0,
+        unload_radius: 40.0,
+    };
+    assert!(st.settle(
+        &mut s,
+        std::slice::from_ref(&scene_camera),
+        &mut NoHooks,
+        Duration::from_secs(20)
+    ));
+    assert_eq!(loaded(&st), [(3, 3)]);
+    for _ in 0..5 {
+        st.update(&mut s, &[], &mut NoHooks);
+    }
+    assert_eq!(loaded(&st), [(3, 3)], "stays when the source goes");
+}

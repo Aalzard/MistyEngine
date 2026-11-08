@@ -441,8 +441,10 @@ impl Streamer {
             let c = info.coord();
             let want = super::wanted(wp, sources, c);
             let cell = self.cells.entry(c).or_default();
-            let unload = cell.unload || (!cell.pinned && self.auto && want.is_none());
-            let load = !cell.unload && (cell.pinned || (self.auto && want == Some(true)));
+            // Sources drive cells in Play mode, or when given (the Scene camera in Edit mode).
+            let driven = !sources.is_empty();
+            let unload = cell.unload || (!cell.pinned && driven && want.is_none());
+            let load = !cell.unload && (cell.pinned || (driven && want == Some(true)));
             if cell.unload && matches!(cell.phase, Phase::Unloaded | Phase::Failed(_)) {
                 cell.unload = false;
             }
@@ -822,6 +824,8 @@ fn read_cell(
             "tree" => {
                 let _ = crate::trees::store::get(&rel);
             }
+            // Its textures are decoded here, not on the render thread at the first draw.
+            "mat" => crate::render::texture::prefetch_material(&rel),
             e if crate::models::EXTENSIONS.contains(&e) => {
                 if let Ok(m) = crate::models::model(&rel) {
                     models.push(m);

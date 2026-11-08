@@ -138,6 +138,11 @@ fn streaming_flythrough_frames() {
     let frames = (start.distance(end) / (speed * dt)).ceil() as usize;
     let mut flight = Vec::with_capacity(frames);
     let mut prev_events = still.last().map_or(0, |f| f.events);
+    // Profiler scopes of every flight frame (the slow ones are listed with theirs).
+    let profiler = crate::profiler::test_serial();
+    crate::profiler::set_enabled(true);
+    crate::profiler::clear();
+    let mut scopes: std::collections::HashMap<usize, Vec<(String, f32)>> = Default::default();
     for i in 0..=frames {
         place(&mut scene, start.lerp(end, i as f32 / frames as f32));
         let mut f = step(&mut scene, &mut rt, &mut time);
@@ -145,7 +150,28 @@ fn streaming_flythrough_frames() {
         f.events = total - prev_events;
         prev_events = total;
         flight.push(f);
+        crate::profiler::end_frame();
+        // A slow frame's scopes, while the profiler still holds them.
+        if flight.last().is_some_and(|f| f.wall_ms > 16.0) {
+            crate::profiler::with_frames(|recorded| {
+                if let Some(fr) = recorded.iter().max_by_key(|fr| fr.index) {
+                    let tree = crate::profiler::HierarchyTree::build(fr);
+                    let mut list: Vec<(String, f32)> = tree
+                        .nodes
+                        .iter()
+                        .skip(1)
+                        .filter(|n| n.self_ms > 0.3)
+                        .map(|n| (n.name.clone(), n.self_ms))
+                        .collect();
+                    list.sort_by(|a, b| b.1.total_cmp(&a.1));
+                    list.truncate(5);
+                    scopes.insert(i, list);
+                }
+            });
+        }
     }
+    crate::profiler::set_enabled(false);
+    drop(profiler);
     let pick = |v: &[Frame], f: fn(&Frame) -> f32| v.iter().map(f).collect::<Vec<f32>>();
     eprintln!(
         "StreamingDemo flythrough, {w}x{h} High, 120 m/s, {} frames:",
@@ -204,6 +230,10 @@ fn streaming_flythrough_frames() {
             f.loaded,
             f.pending
         );
+        if let Some(list) = scopes.get(i) {
+            let s: Vec<String> = list.iter().map(|(n, ms)| format!("{n} {ms:.2}")).collect();
+            eprintln!("      [{}]", s.join(", "));
+        }
     }
     let stats = rt.streaming().stats();
     eprintln!(

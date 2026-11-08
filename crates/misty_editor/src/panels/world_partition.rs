@@ -126,6 +126,10 @@ pub fn stats_lines(s: &StreamingStats) -> Vec<String> {
             "Main thread: {:.2} ms (max {:.2}, budget {:.1}, {} over)",
             s.last_ms, s.max_ms, s.budget_ms, s.over_budget
         ),
+        match &s.slowest {
+            Some((what, ms)) => format!("Slowest step: {what} ({ms:.2} ms)"),
+            None => "Slowest step: -".to_owned(),
+        },
     ]
 }
 
@@ -569,10 +573,9 @@ pub fn overlay(ui: &Ui, state: &EditorState, view: Rect) {
     let lines = stats_lines(s);
     let font = FontId::monospace(11.0);
     let graph_h = 26.0;
-    let rect = Rect::from_min_size(
-        view.left_top() + vec2(8.0, 8.0),
-        vec2(330.0, 10.0 + lines.len() as f32 * 14.0 + graph_h + 6.0),
-    );
+    // Bottom left: the Scene view's tool bar sits at the top.
+    let size = vec2(360.0, 10.0 + lines.len() as f32 * 14.0 + graph_h + 6.0);
+    let rect = Rect::from_min_size(view.left_bottom() + vec2(8.0, -size.y - 8.0), size);
     let painter = ui.painter().with_clip_rect(view);
     painter.rect_filled(rect, 4.0, Color32::from_rgba_unmultiplied(20, 20, 20, 200));
     for (i, line) in lines.iter().enumerate() {
@@ -586,7 +589,7 @@ pub fn overlay(ui: &Ui, state: &EditorState, view: Rect) {
     }
     let graph = Rect::from_min_size(
         rect.left_top() + vec2(8.0, 8.0 + lines.len() as f32 * 14.0),
-        vec2(314.0, graph_h),
+        vec2(344.0, graph_h),
     );
     painter.rect_filled(graph, 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 120));
     let st = streamer(state);

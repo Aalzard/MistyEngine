@@ -513,7 +513,12 @@ impl TextureCache {
             TextureKind::Normal => sprites::compress::Use::Normal,
             TextureKind::Linear => sprites::compress::Use::Linear,
         };
-        let view = match sprites::compress::texture_upload(rel, usage, bc) {
+        BC.store(bc, std::sync::atomic::Ordering::Relaxed);
+        let upload = match take_ahead(rel, kind) {
+            Some(up) => Ok(up),
+            None => sprites::compress::texture_upload(rel, usage, bc),
+        };
+        let view = match upload {
             Ok(sprites::compress::Upload::Rgba(img)) => Some(upload_with(
                 device,
                 queue,
@@ -855,4 +860,76 @@ mod tests {
         assert!((186..=190).contains(&px[0]), "{px:?}");
         assert_eq!(mip_chain(img, false)[1].get_pixel(0, 0).0[0], 128);
     }
+}
+
+// ---- reading ahead (World Partition cells) ------------------------------------------------
+
+/// Textures decoded (or read from the compressed cache) ahead on a background thread, waiting
+/// for the renderer's first use; and the ones some renderer already loaded.
+#[derive(Default)]
+struct Ahead {
+    ready: HashMap<(String, TextureKind), sprites::compress::Upload>,
+    loaded: std::collections::HashSet<(String, TextureKind)>,
+}
+
+fn ahead() -> std::sync::MutexGuard<'static, Ahead> {
+    static AHEAD: OnceLock<std::sync::Mutex<Ahead>> = OnceLock::new();
+    AHEAD
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Whether the GPU takes block-compressed textures (set by the first renderer).
+static BC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Most textures waiting at once (beyond that, nothing more is read ahead).
+const AHEAD_MAX: usize = 48;
+
+/// Read a material texture ahead (on the calling thread, a background one): its first draw
+/// then only uploads it instead of decoding a JPEG / PNG on the render thread.
+pub fn prefetch(rel: &str, kind: TextureKind) {
+    let key = (rel.to_owned(), kind);
+    {
+        let a = ahead();
+        if a.loaded.contains(&key) || a.ready.contains_key(&key) || a.ready.len() >= AHEAD_MAX {
+            return;
+        }
+    }
+    let usage = match kind {
+        TextureKind::Color => sprites::compress::Use::Color,
+        TextureKind::Normal => sprites::compress::Use::Normal,
+        TextureKind::Linear => sprites::compress::Use::Linear,
+    };
+    let bc = BC.load(std::sync::atomic::Ordering::Relaxed);
+    if let Ok(up) = sprites::compress::texture_upload(rel, usage, bc) {
+        ahead().ready.insert(key, up);
+    }
+}
+
+/// The textures of a material asset, read ahead.
+pub fn prefetch_material(rel: &str) {
+    let Ok(m) = crate::assets::Material::load(&assets::absolute(rel)) else {
+        return;
+    };
+    for (path, kind) in [
+        (&m.albedo_map, TextureKind::Color),
+        (&m.normal_map, TextureKind::Normal),
+        (&m.metallic_map, TextureKind::Linear),
+        (&m.occlusion_map, TextureKind::Linear),
+        (&m.emission_map, TextureKind::Color),
+    ] {
+        if let Some(p) = path {
+            prefetch(p, kind);
+        }
+    }
+}
+
+/// A texture read ahead for this use, if any (the renderer marks it loaded either way).
+fn take_ahead(rel: &str, kind: TextureKind) -> Option<sprites::compress::Upload> {
+    let key = (rel.to_owned(), kind);
+    let mut a = ahead();
+    let up = a.ready.remove(&key);
+    a.loaded.insert(key);
+    up
 }
