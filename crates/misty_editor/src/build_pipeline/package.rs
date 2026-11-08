@@ -365,6 +365,33 @@ pub fn pack_compressed_textures<W: std::io::Write + std::io::Seek>(
             pak.add(&key, &bytes)?;
         }
     }
+    // The textures the renderer makes from several images (tree maps and impostors, terrain
+    // layer arrays, grass and flower atlases), keyed by their packed pixels.
+    send(Msg::Progress(
+        0.91,
+        "Compressing tree and terrain textures".into(),
+    ));
+    let (made, warnings) = misty_engine::render::bake_made_textures(&req.project, files, platform);
+    for w in warnings {
+        send(Msg::Warning(format!("texture compression: {w}")));
+    }
+    for key in made {
+        if !packed.insert(key.clone()) {
+            continue;
+        }
+        let bytes = std::fs::read(req.project.join(&key))?;
+        if let Some(c) = compress::Compressed::from_file(&bytes) {
+            let rgba = misty_engine::render::texture::texture_bytes(
+                misty_engine::wgpu::TextureFormat::Rgba8Unorm,
+                c.width,
+                c.height,
+                c.levels.len() as u32,
+                1,
+            );
+            saved += rgba.saturating_sub(c.bytes() as u64);
+        }
+        pak.add(&key, &bytes)?;
+    }
     Ok((packed.len(), saved))
 }
 

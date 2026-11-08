@@ -20,6 +20,7 @@ use super::RenderStats;
 use super::culling::{Aabb, Frustum};
 use super::environment::Environment;
 use super::pipelines::{Depth, Spec, build};
+use crate::sprites::compress::generated::{self, Ctx, Layers, Role, Spec as TexSpec};
 use crate::terrain::TerrainDraw;
 use crate::terrain::trees::local_position;
 use crate::trees::generate::{TreeMesh, TreeVertex};
@@ -415,7 +416,11 @@ struct GpuTree {
     lods: [GpuMesh; 2],
     /// Bark, bark normal, leaves, leaf normal, impostor, impostor normal.
     textures: [wgpu::TextureView; 6],
+    /// Meshes and textures.
     bytes: u64,
+    texture_bytes: u64,
+    /// Texture cache keys being encoded in the background (uploaded as RGBA8 meanwhile).
+    waiting: Vec<String>,
 }
 
 /// Coverage-keeping mip chain of an alpha-tested atlas with `cols` × `rows` cells: each level's
@@ -474,45 +479,6 @@ pub(super) fn coverage_mips(
     chain
 }
 
-fn upload(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    label: &str,
-    chain: &[image::RgbaImage],
-    srgb: bool,
-) -> (wgpu::TextureView, u64) {
-    let (w, h) = chain[0].dimensions();
-    let data: Vec<u8> = chain
-        .iter()
-        .flat_map(|m| m.as_raw().iter().copied())
-        .collect();
-    let bytes = data.len() as u64;
-    let texture = device.create_texture_with_data(
-        queue,
-        &wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: chain.len() as u32,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: if srgb {
-                wgpu::TextureFormat::Rgba8UnormSrgb
-            } else {
-                wgpu::TextureFormat::Rgba8Unorm
-            },
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        },
-        wgpu::util::TextureDataOrder::LayerMajor,
-        &data,
-    );
-    (texture.create_view(&Default::default()), bytes)
-}
-
 /// A texture of the asset, or a 1×1 stand-in (white, a flat normal).
 fn texture_or(rel: &str, normal: bool) -> image::RgbaImage {
     if !rel.is_empty()
@@ -560,17 +526,21 @@ fn pack_channel(dst: &mut image::RgbaImage, rel: &str, channel: usize, fallback:
     }
 }
 
-/// A tree's texture mip chains (decoded and filtered on any thread), ready to upload.
-struct TreeTextures {
+/// A tree's textures (decoded, packed and mip-mapped on any thread), ready to upload.
+pub(super) struct TreeTextures {
     built: Arc<Built>,
-    /// Bark, bark normal, leaves, leaf normal, impostor albedo, impostor normal: (mips, sRGB).
-    chains: [(Vec<image::RgbaImage>, bool); 6],
+    /// Bark, bark normal, leaves, leaf normal, impostor albedo, impostor normal: blocks
+    /// (`Library/TextureCache`) or RGBA8 mip chains.
+    pub(super) textures: [Layers; 6],
 }
 
 impl TreeTextures {
-    /// Load the asset's textures and build every mip chain (a hundred milliseconds or so for
-    /// 2K textures: on a worker thread while streaming).
-    fn build(built: Arc<Built>) -> Self {
+    /// Load the asset's textures, pack them and build every mip chain, or read their blocks
+    /// from the texture cache (a hundred milliseconds or so for 2K textures: on a worker thread
+    /// while streaming). Formats (`compress::generated`): colour with alpha (bark + height,
+    /// leaf and impostor cutouts) and the packed normal maps BC7, by the Compression setting of
+    /// the albedo / normal map file.
+    pub(super) fn build(built: Arc<Built>, ctx: &Ctx) -> Self {
         let a = &built.asset;
         let m = &built.model;
         // The material maps ride in the spare channels (one texture pair per draw): bark
@@ -585,46 +555,103 @@ impl TreeTextures {
         pack_channel(&mut leaf_n, &a.leaf_roughness, 2, 150);
         pack_channel(&mut leaf_n, &a.leaf_translucency, 3, 255);
         let leaf = texture_or(&a.leaf_texture, false);
-        let leaf = if leaf.width() >= 64 {
-            coverage_mips(leaf, 2, 2)
-        } else {
-            vec![leaf]
+        let colour = |rel: &str| TexSpec {
+            recipe: "tree box srgb",
+            format: ctx.format(Role::ColorAlpha, rel),
+            srgb: true,
+            coverage: false,
         };
-        let imp = coverage_mips(m.impostor.albedo.clone(), impostor::VIEWS, 1);
-        let imp_n = super::texture::mip_chain(m.impostor.normal.clone(), false);
-        let chains = [
-            (super::texture::mip_chain(bark, true), true),
-            (super::texture::mip_chain(bark_n, false), false),
-            (leaf, true),
-            (super::texture::mip_chain(leaf_n, false), false),
-            (imp, true),
-            (imp_n, false),
+        let packed = |rel: &str| TexSpec {
+            recipe: "tree box linear",
+            format: ctx.format(Role::Packed, rel),
+            srgb: false,
+            coverage: false,
+        };
+        let srgb_mips = |i| super::texture::mip_chain(i, true);
+        let linear_mips = |i| super::texture::mip_chain(i, false);
+        let leaves = if leaf.width() >= 64 {
+            let spec = TexSpec {
+                recipe: "tree coverage 2x2",
+                coverage: true,
+                ..colour(&a.leaf_texture)
+            };
+            generated::make_one(leaf, &spec, ctx, |i| coverage_mips(i, 2, 2))
+        } else {
+            let spec = TexSpec {
+                recipe: "tree one level",
+                coverage: true,
+                ..colour(&a.leaf_texture)
+            };
+            generated::make_one(leaf, &spec, ctx, |i| vec![i])
+        };
+        let impostor = TexSpec {
+            recipe: "tree impostor coverage",
+            coverage: true,
+            ..colour("")
+        };
+        let textures = [
+            generated::make_one(bark, &colour(&a.bark_texture), ctx, srgb_mips),
+            generated::make_one(bark_n, &packed(&a.bark_normal), ctx, linear_mips),
+            leaves,
+            generated::make_one(leaf_n, &packed(&a.leaf_normal), ctx, linear_mips),
+            generated::make_one(m.impostor.albedo.clone(), &impostor, ctx, |i| {
+                coverage_mips(i, impostor::VIEWS, 1)
+            }),
+            generated::make_one(m.impostor.normal.clone(), &packed(""), ctx, linear_mips),
         ];
-        Self { built, chains }
+        Self { built, textures }
+    }
+
+    /// Keys still being encoded in the background (the textures are RGBA8 meanwhile).
+    fn waiting(&self) -> Vec<String> {
+        self.textures
+            .iter()
+            .flat_map(|t| t.waiting.iter().cloned())
+            .collect()
     }
 }
 
+/// Make sure the texture cache under the context's project holds the blocks of the tree
+/// asset at `path` (builds: the model is built here, as a player builds it); returns the
+/// project-relative cache entries.
+pub(crate) fn bake_textures(path: &str, ctx: &Ctx) -> Result<Vec<String>, String> {
+    let asset = crate::trees::TreeAsset::load(&crate::assets::absolute(path))?;
+    let t = TreeTextures::build(Arc::new(store::build(asset)), ctx);
+    Ok(t.textures.iter().flat_map(Layers::entries).collect())
+}
+
 impl GpuTree {
-    /// Upload a built tree: meshes and the texture chains.
+    /// Upload a built tree: meshes and textures.
     fn new(device: &wgpu::Device, queue: &wgpu::Queue, t: TreeTextures) -> Self {
-        let TreeTextures { built, chains } = t;
+        let waiting = t.waiting();
+        let TreeTextures { built, textures } = t;
         let m = &built.model;
         let lods = [
             GpuMesh::new(device, &m.lods[0]),
             GpuMesh::new(device, &m.lods[1]),
         ];
         let mut bytes = lods.iter().map(GpuMesh::bytes).sum::<u64>();
-        let textures = chains.map(|(chain, srgb)| {
-            let (view, b) = upload(device, queue, "misty tree texture", &chain, srgb);
-            bytes += b;
+        let mut texture_bytes = 0;
+        let textures = textures.map(|t| {
+            let (view, b) =
+                super::texture::upload_made(device, queue, "misty tree texture", &t.layers, false);
+            texture_bytes += b;
             view
         });
+        bytes += texture_bytes;
         Self {
             built,
             lods,
             textures,
             bytes,
+            texture_bytes,
+            waiting,
         }
+    }
+
+    /// Whether textures that went up uncompressed have their blocks in the cache now.
+    fn blocks_ready(&self) -> bool {
+        !self.waiting.is_empty() && !generated::waiting(&self.waiting)
     }
 }
 
@@ -859,16 +886,22 @@ impl TreeRenderer {
         path: &str,
         built: Arc<Built>,
     ) -> bool {
+        // (Built again when its textures' blocks became ready: a cache hit then.)
         let current = self
             .trees
             .get(path)
-            .is_some_and(|g| g.built.version == built.version);
+            .is_some_and(|g| g.built.version == built.version && !g.blocks_ready());
         if current {
             return true;
         }
+        let ctx = Ctx::runtime(
+            device
+                .features()
+                .contains(wgpu::Features::TEXTURE_COMPRESSION_BC),
+        );
         if !super::grass_streaming() {
             crate::profile_scope!("Trees.Upload");
-            let t = TreeTextures::build(built);
+            let t = TreeTextures::build(built, &ctx);
             self.trees
                 .insert(path.to_owned(), GpuTree::new(device, queue, t));
             return true;
@@ -890,7 +923,7 @@ impl TreeRenderer {
                 let spawned = std::thread::Builder::new()
                     .name("misty tree textures".into())
                     .spawn(move || {
-                        let _ = tx.send(TreeTextures::build(built));
+                        let _ = tx.send(TreeTextures::build(built, &ctx));
                     });
                 if spawned.is_ok() {
                     let rx = std::sync::Mutex::new(rx);
@@ -915,6 +948,11 @@ impl TreeRenderer {
     /// Uploaded tree assets and their GPU bytes (Memory module).
     pub fn memory(&self) -> (usize, u64) {
         (self.trees.len(), self.trees.values().map(|t| t.bytes).sum())
+    }
+
+    /// GPU bytes of the uploaded trees' textures (bark, leaves, impostors).
+    pub fn texture_bytes(&self) -> u64 {
+        self.trees.values().map(|t| t.texture_bytes).sum()
     }
 
     /// Bring tree assets up to date, sort this frame's trees into instance lists per pass and

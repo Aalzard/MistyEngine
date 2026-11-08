@@ -70,17 +70,18 @@ fn meadow_texture_memory() {
         let rgba =
             crate::render::texture::texture_bytes(wgpu::TextureFormat::Rgba8Unorm, w, h, mips, 1);
         // Material textures go through the compressed upload; the terrain layers, trees and
-        // grass detail atlases have their own loaders (not switched yet).
+        // grass detail atlases pack these files into textures of their own, compressed through
+        // `generated` (their GPU memory: `render::made_textures_tests::made_textures_memory`).
         let (usage, category) = match uses.get(rel) {
             Some(u) => (*u, "material (compressed)"),
             None => {
                 let lower = rel.to_ascii_lowercase();
                 let cat = if lower.contains("tree") {
-                    "trees (own loader)"
+                    "trees (source files)"
                 } else if lower.contains("flower") || lower.contains("grass") {
-                    "grass and flowers (own loader)"
+                    "grass and flowers (source files)"
                 } else {
-                    "terrain and other (own loader)"
+                    "terrain and other (source files)"
                 };
                 (Use::of(&imp), cat)
             }
