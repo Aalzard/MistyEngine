@@ -615,7 +615,6 @@ impl Pipelines {
             entry(2, S::FRAGMENT, filtering),
             entry(3, S::FRAGMENT, array),
             entry(4, S::FRAGMENT, array),
-            entry(5, S::FRAGMENT, array),
             entry(6, S::FRAGMENT, filtering),
             entry(12, S::VERTEX, unfiltered),
             entry(13, S::VERTEX_FRAGMENT, filtered),

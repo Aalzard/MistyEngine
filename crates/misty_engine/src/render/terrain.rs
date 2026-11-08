@@ -611,7 +611,6 @@ impl TerrainCache {
                 (2, wgpu::BindingResource::Sampler(&self.splat_sampler)),
                 (3, tex(&layers.albedo)),
                 (4, tex(&layers.normal)),
-                (5, tex(&layers.height)),
                 (6, wgpu::BindingResource::Sampler(textures.sampler())),
                 (12, tex(&heights)),
                 (13, tex(&normals)),

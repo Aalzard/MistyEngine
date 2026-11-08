@@ -4,8 +4,8 @@
 @group(3) @binding(1) var splat_map: texture_2d<f32>;
 @group(3) @binding(2) var splat_sampler: sampler;
 @group(3) @binding(3) var layer_albedo: texture_2d_array<f32>;
+// Normal (rgb) and height (a): one fetch for both (render/terrain_layers.rs).
 @group(3) @binding(4) var layer_normal: texture_2d_array<f32>;
-@group(3) @binding(5) var layer_height: texture_2d_array<f32>;
 @group(3) @binding(6) var layer_sampler: sampler;
 
 struct LayerSample {
@@ -20,8 +20,12 @@ struct LayerSample {
 // repeat does not show as a grid.
 fn layer_projection(i: u32, p: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>) -> LayerSample {
     let t = terrain.tiles[i];
-    let a = layer_tile(i, (p + t.zw) / t.xy, gx / t.xy, gy / t.xy);
     let w = smoothstep(0.3, 0.7, grass_noise(p / (max(t.x, 0.1) * 2.3) + 3.7));
+    // Where the noise saturates, one copy alone makes the result (mix by 0 or 1).
+    var a: LayerSample;
+    if (w < 1.0) {
+        a = layer_tile(i, (p + t.zw) / t.xy, gx / t.xy, gy / t.xy);
+    }
     if (w < 0.01) {
         return a;
     }
@@ -54,10 +58,11 @@ fn layer_tile(i: u32, uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> LayerSampl
     let mean = textureSampleLevel(layer_albedo, layer_sampler, uv, i, 12.0).rgb;
     let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
     s.albedo *= clamp(mix(1.0, dot(broad, luma) / max(dot(mean, luma), 0.02), 0.6), 0.5, 1.6);
-    let m = textureSampleGrad(layer_normal, layer_sampler, uv, i, gx, gy).xyz * 2.0 - 1.0;
+    let nh = textureSampleGrad(layer_normal, layer_sampler, uv, i, gx, gy);
+    let m = nh.xyz * 2.0 - 1.0;
     // Tangent-space normal here; `layer_sample` turns it into world space.
     s.normal = vec3<f32>(m.xy * terrain.surface[i].z, max(m.z, 1e-3));
-    s.height = textureSampleGrad(layer_height, layer_sampler, uv, i, gx, gy).r;
+    s.height = nh.a;
     return s;
 }
 
@@ -266,8 +271,12 @@ fn terrain_surface(in: MeshOut) -> Surface {
         ) * grass_far_tint(dist);
         // Far away the canopy reads darker than lit soil (blades shade each other) and
         // mottled: tufts, dips and clumps a few metres across.
-        let mottle = 0.3 * grass_noise(local.xz / 1.3 + 8.7) + 0.4 * grass_noise(local.xz / 6.0 + 5.1)
-            + 0.3 * grass_noise(local.xz / 21.0 + 2.3);
+        // (Within 8 m the mottle has no weight: not evaluated.)
+        var mottle = 0.0;
+        if (dist > 8.0) {
+            mottle = 0.3 * grass_noise(local.xz / 1.3 + 8.7) + 0.4 * grass_noise(local.xz / 6.0 + 5.1)
+                + 0.3 * grass_noise(local.xz / 21.0 + 2.3);
+        }
         let shade = mix(0.3, 0.66, far) * mix(1.0, 0.7 + 0.6 * mottle, smoothstep(8.0, 50.0, dist));
         // The soil texture's light and dark spots stay as litter and shadowed stems.
         let soil = dot(s.albedo, vec3<f32>(0.2126, 0.7152, 0.0722));
@@ -279,7 +288,11 @@ fn terrain_surface(in: MeshOut) -> Surface {
         // Past a few metres single gaps are too small to read as ground: the canopy colour
         // takes over quickly, so the pale litter does not mottle the middle distance.
         let mid = smoothstep(4.0, 25.0, dist);
-        let worn = grass_worn(local.xz) * (1.0 - mid);
+        // (Past 25 m no worn spots: not evaluated.)
+        var worn = 0.0;
+        if (mid < 1.0) {
+            worn = grass_worn(local.xz) * (1.0 - mid);
+        }
         let take = tint * mix(0.85, 1.0, mid) * (1.0 - 0.9 * worn);
         let under = mix(0.4, 1.0, max(worn, mid));
         s.albedo = mix(s.albedo * under, grass * shade * litter, take);
