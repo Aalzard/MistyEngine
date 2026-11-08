@@ -3028,3 +3028,35 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Clear coat / anisotropy / detail / parallax outputs wait for the 17D material model (not in
   main); no CPU preview for Custom Functions; vertex offsets do not move shadows; decal graphs
   limited to 8 properties; FBX / OBJ / skinned meshes have no vertex colours yet.
+
+## Round 21E — Version control, API reference, accessibility (branch r21-ecosystem)
+
+### Done (docs/pending/r21-ecosystem.md)
+- **Version control** through the `git` command line (no libgit2): the project's repository is
+  found with `rev-parse` (a project inside a bigger repo works), status is polled every 3 s on a
+  worker thread, and Project files / folders and the Hierarchy's scene rows get Modified / Added /
+  Untracked / Conflicted badges. **Window ▸ Version Control…**: staged / unstaged / conflict
+  lists with a checkbox per file, coloured diffs of text assets, a commit message and Commit,
+  Stage All, Discard with a confirmation (new files go to the trash). No push or pull buttons:
+  the commands are shown with Copy buttons.
+- **Scene diff**: objects keyed by Hierarchy path, references compared by object rather than by
+  list index; added / removed / changed objects, components and every changed field, plus lighting
+  and order changes. **Scene merge helper** for a conflicted scene: each object takes ours or
+  theirs (one-sided changes preselected), Save Merged Scene writes and stages it. Tests use temp
+  repositories only (git refuses folders outside the temp folder in test builds).
+- **Lua API reference**: `misty --api-docs <folder>` and Help ▸ Scripting Reference generate
+  Markdown and one static HTML page from the binding sources (`scripting/*.rs`, scanned for
+  tables, userdata members, closure parameters and the comment above each binding) and the
+  autocomplete table. `docs/api/` is committed; a test fails when it is stale.
+- **Accessibility**: AccessKit screen-reader support named in the manifest, new controls labelled
+  and an audit helper (`a11y::unnamed_controls`) checked on the toolbar, Hierarchy, Project,
+  Preferences, Version Control and Player settings; Edit ▸ Preferences ▸ UI Scale (75–200 %,
+  per user). Runtime: Project Settings ▸ Player ▸ Accessibility with a UI text scale and a
+  colour-blind filter (protanopia / deuteranopia / tritanopia correction or simulation, strength)
+  applied over the final image including the UI, in the player and the Game view; Lua
+  `Accessibility.textScale / colorBlindMode / filterStrength / simulate`. Off costs nothing, so
+  golden images are unchanged.
+
+### Not done yet
+- Hunk staging, history and branch views; folder-tree badges; per-field scene merges and prefab
+  object diffs; accessible names for the older Inspector rows.
