@@ -771,6 +771,7 @@ impl EditorApp {
 
 impl eframe::App for EditorApp {
     fn on_exit(&mut self) {
+        crate::mcp::live::shutdown(&mut self.state);
         self.save_layout(true);
         crate::editor_scripts::on_exit(&mut self.state);
         self.save_hub_thumbnail();
@@ -924,6 +925,8 @@ impl eframe::App for EditorApp {
         if let Some(rel) = self.capture.as_mut().and_then(Capture::scene_due) {
             self.state.push(Action::OpenScenePath(rel));
         }
+        // AI tools (MCP): requests from the loopback bridge, before queued actions apply.
+        crate::mcp::live::frame(&ctx, &mut self.state, self.gpu.as_mut());
         self.apply_actions(&ctx);
         crate::saveloc::frame(&mut self.state);
         // SaveSystem.Save asked for a thumbnail of the game's last frame.

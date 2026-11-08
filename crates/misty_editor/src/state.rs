@@ -405,6 +405,8 @@ pub struct EditorState {
     pub editor_scripts: crate::editor_scripts::EditorScripts,
     /// Prefab Mode levels, outermost first (empty: editing the scenes).
     pub prefab_stages: Vec<crate::prefab_mode::PrefabStage>,
+    /// AI tools (MCP) in the running editor: the loopback bridge and requests in flight.
+    pub mcp: crate::mcp::live::Bridge,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
 }
@@ -525,6 +527,7 @@ impl EditorState {
             live: Default::default(),
             editor_scripts: crate::editor_scripts::EditorScripts::new(&root),
             prefab_stages: Vec::new(),
+            mcp: Default::default(),
             actions: Vec::new(),
         };
         crate::project_settings::load(&mut s);

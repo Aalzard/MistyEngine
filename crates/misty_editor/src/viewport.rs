@@ -197,6 +197,20 @@ impl Gpu {
         Some((w, h, pixels))
     }
 
+    /// One view's last frame `(width, height, RGBA8)`, `None` before it has drawn (MCP
+    /// screenshots).
+    pub fn view_pixels(&self, view: ViewId) -> Option<(u32, u32, Vec<u8>)> {
+        let vp = match view {
+            ViewId::Scene => &self.scene,
+            ViewId::Game => &self.game,
+        };
+        let target = vp.target.as_ref()?;
+        let (w, h) = target.output_size();
+        let pixels =
+            crate::project_thumbnail::read_pixels(&self.state.device, &self.state.queue, target);
+        Some((w, h, pixels))
+    }
+
     /// The last frame of the view the user was looking at: the one drawn most recently, the
     /// Scene view when both were on screen. `(width, height, RGBA8)`.
     pub fn last_view_pixels(&self) -> Option<(u32, u32, Vec<u8>)> {

@@ -964,6 +964,7 @@ fn prompt(ctx: &egui::Context, s: &mut EditorState) {
 
 /// Edit ▸ Preferences: the external script editor choice and the Code Editor options.
 fn preferences(ctx: &egui::Context, s: &mut EditorState) {
+    let (mcp, project) = (&mut s.mcp, &s.project.root);
     let ce = &mut s.code_editor;
     let mut open = ce.ui.prefs_open;
     let before = ce.settings.clone();
@@ -996,6 +997,8 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
             ui.separator();
             ui.strong("Code Editor");
             settings_ui(ui, &mut ce.settings);
+            ui.separator();
+            crate::mcp::live::preferences_ui(ui, mcp, project);
         });
     ce.ui.prefs_open = open;
     if ce.settings != before {

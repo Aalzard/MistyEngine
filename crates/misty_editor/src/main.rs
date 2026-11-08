@@ -35,6 +35,7 @@ mod light_probe_tools;
 mod lightmap_tools;
 mod live_reload;
 mod material_preview;
+mod mcp;
 mod menu_bar;
 mod mesh_builder;
 mod model_import;
@@ -254,14 +255,22 @@ fn parse_args() -> Result<Start, String> {
             let project = live_reload::restore::set_pending(Path::new(file))?;
             Ok(Start::Editor(project))
         }
+        // MCP server for AI agents over stdio (see `mcp`): the project without a window, or
+        // a proxy to the running editor.
+        [flag, rest @ ..] if flag == "--mcp" => std::process::exit(mcp::headless::main(rest)),
+        [flag, rest @ ..] if flag == "--mcp-connect" => {
+            std::process::exit(mcp::bridge::connect_main(rest))
+        }
         [flag, rest @ ..] if flag == "--run-tests" => {
             // Headless test run for CI: JUnit XML and the exit code (see `testing::cli`).
             let code = misty_engine::testing::cli::run(rest, &mut std::io::stdout());
             std::process::exit(code)
         }
         [flag, ..] if flag.starts_with("--") => Err(format!(
-            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> <output folder> | {} ({flag}?)",
-            misty_engine::testing::cli::USAGE
+            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> <output folder> | {} | {} | {} ({flag}?)",
+            misty_engine::testing::cli::USAGE,
+            mcp::headless::USAGE,
+            mcp::bridge::CONNECT_USAGE
         )),
         [project, ..] => Ok(Start::Editor(PathBuf::from(project))),
     }
@@ -287,7 +296,14 @@ fn attach_parent_console() {}
 
 fn main() -> eframe::Result<()> {
     capture::mark_process_start();
-    attach_parent_console();
+    // MCP modes talk on the pipes their client gave them; a terminal's console must not replace
+    // them.
+    if !std::env::args()
+        .nth(1)
+        .is_some_and(|a| a.starts_with("--mcp"))
+    {
+        attach_parent_console();
+    }
     // `MISTY_PROFILE=capture.jsonl misty …` records the profiler from the first frame into a
     // capture file (JSON Lines, one frame per line), as the player does.
     if let Some(path) = std::env::var_os("MISTY_PROFILE")
