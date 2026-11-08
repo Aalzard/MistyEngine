@@ -870,3 +870,25 @@ fn older_scenes_keep_their_text() {
     let back: ParticleSystem = serde_json::from_str(&text).unwrap();
     assert_eq!(back, s);
 }
+
+#[test]
+fn fast_particles_dont_tunnel_through_thin_boxes() {
+    let floor = ColliderShape::Box {
+        center: Vec3::ZERO,
+        axes: [Vec3::X, Vec3::Y, Vec3::Z],
+        half: Vec3::new(5.0, 0.005, 5.0),
+    };
+    // A whole step from above to below the floor: hit on the top face.
+    let (at, n) = floor
+        .sweep(Vec3::new(1.0, 0.5, 0.0), Vec3::new(1.0, -0.5, 0.0), 0.05)
+        .expect("crossed the floor");
+    assert!((at.y - 0.055).abs() < 1e-4, "{at}");
+    assert_eq!(n, Vec3::Y);
+    // Missing it to the side, or moving above it: no hit.
+    assert!(
+        floor
+            .sweep(Vec3::new(9.0, 0.5, 0.0), Vec3::new(9.0, -0.5, 0.0), 0.05)
+            .is_none()
+    );
+    assert!(floor.sweep(Vec3::Y, Vec3::new(1.0, 1.0, 0.0), 0.05).is_none());
+}

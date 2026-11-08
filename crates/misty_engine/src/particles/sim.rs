@@ -111,6 +111,46 @@ pub struct Collider {
 }
 
 impl ColliderShape {
+    /// Where a sphere of radius `r` moving from `from` to `to` first touches the shape (and the
+    /// surface normal), so fast particles don't pass through thin boxes; else
+    /// [`Self::push_out`] at `to`.
+    pub fn sweep(&self, from: Vec3, to: Vec3, r: f32) -> Option<(Vec3, Vec3)> {
+        if let Self::Box { center, axes, half } = *self {
+            let h = half + Vec3::splat(r);
+            let rel = from - center;
+            let d = to - from;
+            let o = Vec3::new(rel.dot(axes[0]), rel.dot(axes[1]), rel.dot(axes[2]));
+            let dir = Vec3::new(d.dot(axes[0]), d.dot(axes[1]), d.dot(axes[2]));
+            let outside = (0..3).any(|i| o[i].abs() > h[i]);
+            if outside {
+                let (mut enter, mut exit, mut axis) = (f32::MIN, f32::MAX, None);
+                for i in 0..3 {
+                    if dir[i].abs() < 1e-9 {
+                        if o[i].abs() > h[i] {
+                            return None;
+                        }
+                        continue;
+                    }
+                    let t1 = (-h[i] - o[i]) / dir[i];
+                    let t2 = (h[i] - o[i]) / dir[i];
+                    let (lo, hi) = (t1.min(t2), t1.max(t2));
+                    if lo > enter {
+                        enter = lo;
+                        axis = Some(i);
+                    }
+                    exit = exit.min(hi);
+                }
+                return match axis {
+                    Some(k) if enter <= exit && (0.0..=1.0).contains(&enter) => {
+                        Some((from + d * enter, axes[k] * -dir[k].signum()))
+                    }
+                    _ => None,
+                };
+            }
+        }
+        self.push_out(to, r)
+    }
+
     /// Where a sphere of radius `r` at `p` goes to leave the shape, and the surface normal.
     pub fn push_out(&self, p: Vec3, r: f32) -> Option<(Vec3, Vec3)> {
         match *self {
@@ -575,7 +615,7 @@ impl ParticleEmitter {
                         if c.collides_with & (1u32 << (col.layer as u32 & 31)) == 0 {
                             return None;
                         }
-                        col.shape.push_out(pw, radius)
+                        col.shape.sweep(prevw, pw, radius)
                     }),
                 };
                 if let Some((at, nrm)) = hit {
