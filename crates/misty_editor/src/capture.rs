@@ -367,6 +367,11 @@ pub fn apply_env(
     if let Some(rel) = std::env::var_os("MISTY_GROUP_ENTRY") {
         s.asset_groups.selected_entry = Some(rel.to_string_lossy().into_owned());
     }
+    // `MISTY_ANIMATOR=layers,machine:Emotes,select:Bow` sets up the Animator window for the
+    // selected object (see `panels::animator::demo`).
+    if let Some(spec) = std::env::var_os("MISTY_ANIMATOR") {
+        crate::panels::animator::demo(s, &spec.to_string_lossy());
+    }
     // Several tabs may be listed: `MISTY_TAB=Game,Profiler`.
     if let Some(titles) = std::env::var_os("MISTY_TAB") {
         for title in titles.to_string_lossy().split(',') {

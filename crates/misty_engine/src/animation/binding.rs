@@ -34,6 +34,7 @@ pub fn path_of(scene: &Scene, root: Entity, e: Entity) -> Option<String> {
 pub fn has(scene: &Scene, e: Entity, p: Property) -> bool {
     match p.component() {
         "Light" => scene.world.get::<&Light>(e).is_ok(),
+        "Humanoid" => false,
         "SkinnedMeshRenderer" => scene
             .world
             .get::<&crate::scene::SkinnedMeshRenderer>(e)
@@ -66,6 +67,8 @@ pub fn read(scene: &Scene, e: Entity, p: Property) -> Option<f32> {
         } else {
             0.0
         }),
+        // Humanoid curves are resolved through an Avatar, never read from an object.
+        Property::HumanRotation(_) | Property::HumanPosition(_) => None,
         Property::LightIntensity | Property::LightRange | Property::LightColor(_) => {
             let l = scene.world.get::<&Light>(e).ok()?;
             match p {
@@ -100,6 +103,7 @@ pub fn write(scene: &mut Scene, e: Entity, p: Property, value: f32) {
             scene.set_transform(e, t);
         }
         Property::Active => scene.game_object_mut(e).active = value >= 0.5,
+        Property::HumanRotation(_) | Property::HumanPosition(_) => {}
         Property::BlendShape(i) => {
             if let Ok(mut r) = scene.world.get::<&mut crate::scene::SkinnedMeshRenderer>(e) {
                 r.set_blend_shape_weight(i as usize, value);

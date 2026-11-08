@@ -1,0 +1,116 @@
+{
+  "transforms": [
+    {
+      "path": "",
+      "active": false
+    },
+    {
+      "path": "Hips",
+      "active": false
+    },
+    {
+      "path": "Hips/Hips Mesh",
+      "active": false
+    },
+    {
+      "path": "Hips/Spine",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/Chest Mesh",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/Head",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/Head/Head Mesh",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftArm",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftArm/LeftArm Mesh",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftArm/LeftForearm",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftArm/LeftForearm/LeftForearm Mesh",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/RightArm",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/RightArm/RightArm Mesh",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/RightArm/RightForearm",
+      "active": true
+    },
+    {
+      "path": "Hips/Spine/Chest/RightArm/RightForearm/RightForearm Mesh",
+      "active": true
+    },
+    {
+      "path": "Hips/LeftUpLeg",
+      "active": false
+    },
+    {
+      "path": "Hips/LeftUpLeg/LeftUpLeg Mesh",
+      "active": false
+    },
+    {
+      "path": "Hips/LeftUpLeg/LeftLeg",
+      "active": false
+    },
+    {
+      "path": "Hips/LeftUpLeg/LeftLeg/LeftLeg Mesh",
+      "active": false
+    },
+    {
+      "path": "Hips/LeftUpLeg/LeftLeg/LeftFoot",
+      "active": false
+    },
+    {
+      "path": "Hips/LeftUpLeg/LeftLeg/LeftFoot/LeftFoot Mesh",
+      "active": false
+    },
+    {
+      "path": "Hips/RightUpLeg",
+      "active": false
+    },
+    {
+      "path": "Hips/RightUpLeg/RightUpLeg Mesh",
+      "active": false
+    },
+    {
+      "path": "Hips/RightUpLeg/RightLeg",
+      "active": false
+    },
+    {
+      "path": "Hips/RightUpLeg/RightLeg/RightLeg Mesh",
+      "active": false
+    },
+    {
+      "path": "Hips/RightUpLeg/RightLeg/RightFoot",
+      "active": false
+    },
+    {
+      "path": "Hips/RightUpLeg/RightLeg/RightFoot/RightFoot Mesh",
+      "active": false
+    }
+  ]
+}

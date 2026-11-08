@@ -105,6 +105,13 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .create(&rel, Default::default())
                 .map(|_| path)
         }
+        AssetKind::AvatarMask => {
+            let ext = misty_engine::animation::mask::MASK_EXTENSION;
+            let path = asset_ops::unique_path(&dir, "New Avatar Mask", ext);
+            misty_engine::animation::AvatarMask::default()
+                .save(&path)
+                .map(|_| path)
+        }
         AssetKind::Timeline => {
             let ext = misty_engine::timeline::EXTENSION;
             let path = asset_ops::unique_path(&dir, "New Timeline", ext);

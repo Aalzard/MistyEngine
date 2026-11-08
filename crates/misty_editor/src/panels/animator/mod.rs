@@ -1,25 +1,34 @@
-//! Animator window (Window ▸ Animation ▸ Animator): the Parameters list and the base layer's
-//! state machine graph of the selected object's Animator Controller (or a selected
-//! `.controller` asset). In Play mode it shows the live state, progress and parameter values.
+//! Animator window (Window ▸ Animation ▸ Animator): the Layers and Parameters lists and the
+//! state machine graph of one layer (and sub-state machine) of the selected object's Animator
+//! Controller (or a selected `.controller` asset), with a breadcrumb to go back up; a blend
+//! tree state opens a blend tree view. In Play mode it shows the live states, progress, layer
+//! weights and parameter values.
 
+pub mod blend_view;
 mod graph;
+mod layers;
 mod params;
 
 #[cfg(test)]
 mod tests;
 
 use egui::{Align2, FontId, Rect, RichText, Sense, Ui, UiBuilder, Vec2, pos2, vec2};
+use misty_engine::animation::AnimatorController;
 use misty_engine::animation::animator::AnimatorStatus;
-use misty_engine::animation::controller::Node;
+use misty_engine::animation::controller::{Node, machine_parent};
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Animator, clip_name};
 
-use crate::anim_controllers::{self, interacting};
+use crate::anim_controllers::interacting;
 use crate::state::EditorState;
 use crate::theme;
 
 /// Icon of Animator Controllers (Project window, Inspector, tab title).
 pub const CONTROLLER_ICON: &str = "⇄";
+/// Icon of Avatar Masks.
+pub const MASK_ICON: &str = "◐";
+/// Icon of humanoid Avatars.
+pub const AVATAR_ICON: &str = "☺";
 /// Width of the Parameters panel on the left.
 const PARAMS_W: f32 = 230.0;
 
@@ -31,11 +40,29 @@ pub enum GraphItem {
     Transition(usize),
 }
 
+/// Which list the left side shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LeftTab {
+    Layers,
+    #[default]
+    Parameters,
+}
+
 /// Animator window state (kept while the tab is closed).
 #[derive(Default)]
 pub struct AnimatorWindow {
     /// Controller shown (project-relative path).
     pub controller: Option<String>,
+    /// Layer whose state machine is shown.
+    pub layer: usize,
+    /// Sub-state machine shown ("" = the layer's top machine).
+    pub machine: String,
+    /// Blend tree state shown in the blend tree view instead of the graph.
+    pub blend_view: Option<String>,
+    /// Motion highlighted in blend tree diagrams.
+    pub blend_selected: Option<usize>,
+    pub left_tab: LeftTab,
+    /// Selection in the shown layer.
     pub selected: Option<GraphItem>,
     /// Object whose Animator plays the controller (live view in Play mode).
     pub target: Option<Entity>,
@@ -44,6 +71,8 @@ pub struct AnimatorWindow {
     pub zoom: f32,
     /// Make Transition in progress: the arrow starts at this node.
     pub making: Option<Node>,
+    /// Make Transition ended on "(Up)": pick the destination at this screen position.
+    up_menu: Option<(Node, egui::Pos2)>,
     /// Node being dragged.
     drag: Option<Node>,
     /// What the context menu was opened on and where (graph coordinates).
@@ -61,10 +90,25 @@ impl AnimatorWindow {
     pub fn open(&mut self, path: Option<String>) {
         if self.controller != path {
             self.controller = path;
-            self.selected = None;
-            self.making = None;
+            self.show_layer(0);
             self.renaming = None;
         }
+    }
+
+    /// Show another layer's top machine.
+    pub fn show_layer(&mut self, layer: usize) {
+        self.layer = layer;
+        self.enter_machine(String::new());
+    }
+
+    /// Show a sub-state machine of the shown layer ("" = its top machine).
+    pub fn enter_machine(&mut self, path: String) {
+        self.machine = path;
+        self.selected = None;
+        self.making = None;
+        self.up_menu = None;
+        self.blend_view = None;
+        self.blend_selected = None;
     }
 
     pub fn zoom(&self) -> f32 {
@@ -103,6 +147,10 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         .controllers
         .end_interaction(interacting(ui.ctx()));
     let live = live_status(s, &path);
+    if s.animator.layer >= ctrl.layer_count() {
+        s.animator.show_layer(0);
+    }
+    let live_layer = live.as_ref().and_then(|l| l.layers.get(s.animator.layer));
 
     let left = Rect::from_min_size(
         full.min,
@@ -116,12 +164,29 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         egui::Stroke::new(1.0, theme::BORDER),
     );
     ui.scope_builder(UiBuilder::new().max_rect(left.shrink(4.0)), |ui| {
-        params::show(ui, s, &path, &ctrl, live.as_ref());
+        ui.horizontal(|ui| {
+            for (tab, label) in [
+                (LeftTab::Layers, "Layers"),
+                (LeftTab::Parameters, "Parameters"),
+            ] {
+                ui.selectable_value(&mut s.animator.left_tab, tab, label);
+            }
+        });
+        ui.separator();
+        match s.animator.left_tab {
+            LeftTab::Layers => layers::show(ui, s, &path, &ctrl, live.as_ref()),
+            LeftTab::Parameters => params::show(ui, s, &path, &ctrl, live.as_ref()),
+        }
     });
     let bar = Rect::from_min_size(right.min, vec2(right.width(), 22.0));
-    toolbar(ui, s, bar, &path);
+    toolbar(ui, s, bar, &path, &ctrl);
     let canvas = Rect::from_min_max(pos2(right.left(), bar.bottom()), right.max);
-    graph::show(ui, s, canvas, &path, &ctrl, live.as_ref());
+    match s.animator.blend_view.clone() {
+        Some(state) => {
+            blend_view::show_tree_view(ui, s, canvas, &path, &ctrl, &state, live.as_ref())
+        }
+        None => graph::show(ui, s, canvas, &path, &ctrl, live_layer),
+    }
 
     // Delete removes the selected state or transition.
     if s.animator.focused
@@ -133,14 +198,38 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
     }
 }
 
-/// Breadcrumb ("Base Layer") and the controller's name.
-fn toolbar(ui: &mut Ui, s: &EditorState, bar: Rect, path: &str) {
+/// Breadcrumb ("Base Layer ▸ Combat ▸ Locomotion"; click a part to go back) and the
+/// controller's name.
+fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect, path: &str, c: &AnimatorController) {
     ui.painter().rect_filled(bar, 0.0, theme::TAB_BAR_BG);
     ui.scope_builder(
         UiBuilder::new().max_rect(bar.shrink2(vec2(6.0, 2.0))),
         |ui| {
             ui.horizontal_centered(|ui| {
-                ui.label(RichText::new("Base Layer").strong());
+                let parts = graph::breadcrumb(c, s.animator.layer, &s.animator.machine);
+                let last = parts.len() - 1;
+                let in_tree = s.animator.blend_view.clone();
+                for (i, (label, machine)) in parts.into_iter().enumerate() {
+                    if i > 0 {
+                        ui.label(RichText::new("▸").color(theme::TEXT_DIM));
+                    }
+                    let text = RichText::new(label).strong();
+                    if i == last && in_tree.is_none() {
+                        ui.label(text);
+                    } else if ui.add(egui::Button::new(text).frame(false)).clicked() {
+                        s.animator.enter_machine(machine);
+                    }
+                }
+                if let Some(state) = in_tree {
+                    ui.label(RichText::new("▸").color(theme::TEXT_DIM));
+                    ui.label(RichText::new(format!("{state} (Blend Tree)")).strong());
+                }
+                if !s.animator.machine.is_empty() && s.animator.blend_view.is_none() {
+                    let up = machine_parent(&s.animator.machine).to_owned();
+                    if ui.small_button("⏶").on_hover_text("Up one level").clicked() {
+                        s.animator.enter_machine(up);
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
                         RichText::new(format!("{CONTROLLER_ICON} {}", clip_name(path)))
@@ -153,6 +242,50 @@ fn toolbar(ui: &mut Ui, s: &EditorState, bar: Rect, path: &str) {
             });
         },
     );
+}
+
+/// Screenshot setup (`MISTY_ANIMATOR`): comma-separated `layers` (Layers tab), `layer:N`,
+/// `machine:Path`, `blend:State` (blend tree view), `motion:N` (highlighted blend motion),
+/// `select:State` / `transition:N` / `machine-node:Path` (selected, shown in the Inspector) for the
+/// selected object's controller.
+pub fn demo(s: &mut EditorState, spec: &str) {
+    let ctrl = s.selection.active().and_then(|e| {
+        s.scene
+            .world
+            .get::<&Animator>(e)
+            .ok()
+            .map(|a| (e, a.controller.clone()))
+    });
+    let Some((e, Some(path))) = ctrl else {
+        return;
+    };
+    s.animator.open(Some(path.clone()));
+    s.animator.target = Some(e);
+    s.animator.followed = s.selection.active();
+    for item in spec.split(',').map(str::trim) {
+        let (key, value) = item.split_once(':').unwrap_or((item, ""));
+        let item_selected = |s: &mut EditorState, g: GraphItem| {
+            s.animator.selected = Some(g);
+            s.selection.clear();
+            s.animator.followed = None;
+            s.inspector_asset = Some(path.clone());
+        };
+        match key {
+            "layers" => s.animator.left_tab = LeftTab::Layers,
+            "layer" => s.animator.show_layer(value.parse().unwrap_or(0)),
+            "machine" => s.animator.enter_machine(value.to_owned()),
+            "blend" => s.animator.blend_view = Some(value.to_owned()),
+            "motion" => s.animator.blend_selected = value.parse().ok(),
+            "select" => item_selected(s, GraphItem::Node(Node::State(value.to_owned()))),
+            "machine-node" => item_selected(s, GraphItem::Node(Node::Machine(value.to_owned()))),
+            "transition" => {
+                if let Ok(i) = value.parse() {
+                    item_selected(s, GraphItem::Transition(i));
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The selected object (or its nearest parent) with an Animator decides the controller.
@@ -215,22 +348,29 @@ pub(super) fn select(s: &mut EditorState, path: &str, item: Option<GraphItem>) {
     }
 }
 
-/// Delete a state (with its transitions) or one transition.
+/// Delete a state (with its transitions), a sub-state machine (with everything in it) or one
+/// transition of the shown layer.
 pub(super) fn delete(s: &mut EditorState, path: &str, item: &GraphItem) {
     match item {
         GraphItem::Node(Node::State(name)) => {
             let name = name.clone();
-            anim_controllers::edit(s, path, "Delete State", false, |c| c.remove_state(&name));
+            graph::edit_machine(s, path, "Delete State", false, |m| m.remove_state(&name));
+        }
+        GraphItem::Node(Node::Machine(p)) => {
+            let p = p.clone();
+            graph::edit_machine(s, path, "Delete Sub-State Machine", false, |m| {
+                m.remove_sub_machine(&p)
+            });
         }
         GraphItem::Transition(i) => {
             let i = *i;
-            anim_controllers::edit(s, path, "Delete Transition", false, |c| {
-                if i < c.transitions.len() {
-                    c.transitions.remove(i);
+            graph::edit_machine(s, path, "Delete Transition", false, |m| {
+                if i < m.transitions.len() {
+                    m.transitions.remove(i);
                 }
             });
         }
-        // Entry, Any State and Exit always exist.
+        // Entry, Any State, Exit and Up always exist.
         GraphItem::Node(_) => return,
     }
     s.animator.selected = None;

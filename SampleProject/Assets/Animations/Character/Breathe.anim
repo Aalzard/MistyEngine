@@ -1,0 +1,44 @@
+{
+  "length": 3.0,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "Hips/Spine",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.5,
+          "value": -3.0
+        },
+        {
+          "time": 3.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.25
+        },
+        {
+          "time": 1.5,
+          "value": 0.262
+        },
+        {
+          "time": 3.0,
+          "value": 0.25
+        }
+      ]
+    }
+  ],
+  "events": []
+}

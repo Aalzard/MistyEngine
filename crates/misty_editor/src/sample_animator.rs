@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use glam::{Vec2, Vec3};
 use misty_engine::animation::controller::{
     BlendChild, BlendTree, Condition, ConditionMode, Node, NodePositions, ParamKind, Parameter,
-    State, Transition,
+    State, StateMachine, Transition,
 };
 use misty_engine::animation::{AnimationClip, AnimatorController, Property, TangentMode};
 use misty_engine::scene::{
@@ -155,71 +155,74 @@ fn controller() -> AnimatorController {
             param("Jump", ParamKind::Trigger),
             param("Dance", ParamKind::Bool),
         ],
-        states: vec![
-            State {
-                name: "Locomotion".into(),
-                blend_tree: Some(BlendTree {
-                    parameter: "Speed".into(),
-                    children: vec![
-                        BlendChild {
-                            motion: Some(IDLE.into()),
-                            threshold: 0.0,
-                        },
-                        BlendChild {
-                            motion: Some(WALK.into()),
-                            threshold: 1.0,
-                        },
-                    ],
-                }),
-                position: [0.0, 0.0],
+        base: StateMachine {
+            states: vec![
+                State {
+                    name: "Locomotion".into(),
+                    blend_tree: Some(BlendTree {
+                        parameter: "Speed".into(),
+                        children: vec![
+                            BlendChild::clip(IDLE),
+                            BlendChild {
+                                threshold: 1.0,
+                                ..BlendChild::clip(WALK)
+                            },
+                        ],
+                        ..Default::default()
+                    }),
+                    position: [0.0, 0.0],
+                    ..Default::default()
+                },
+                State {
+                    name: "Jump".into(),
+                    motion: Some(JUMP.into()),
+                    looping: false,
+                    position: [0.0, -140.0],
+                    ..Default::default()
+                },
+                State {
+                    name: "Dance".into(),
+                    motion: Some(DANCE.into()),
+                    position: [260.0, 110.0],
+                    ..Default::default()
+                },
+            ],
+            default_state: Some("Locomotion".into()),
+            transitions: vec![
+                fade(
+                    Node::AnyState,
+                    Node::state("Jump"),
+                    0.1,
+                    vec![cond("Jump", ConditionMode::If)],
+                ),
+                Transition {
+                    has_exit_time: true,
+                    exit_time: 0.9,
+                    duration: 0.1,
+                    ..Transition::new(Node::state("Jump"), Node::Exit)
+                },
+                fade(
+                    Node::state("Locomotion"),
+                    Node::state("Dance"),
+                    0.25,
+                    vec![cond("Dance", ConditionMode::If)],
+                ),
+                fade(
+                    Node::state("Dance"),
+                    Node::state("Locomotion"),
+                    0.25,
+                    vec![cond("Dance", ConditionMode::IfNot)],
+                ),
+            ],
+            nodes: NodePositions {
+                entry: [-280.0, 0.0],
+                any_state: [-280.0, -140.0],
+                exit: [280.0, -140.0],
                 ..Default::default()
             },
-            State {
-                name: "Jump".into(),
-                motion: Some(JUMP.into()),
-                looping: false,
-                position: [0.0, -140.0],
-                ..Default::default()
-            },
-            State {
-                name: "Dance".into(),
-                motion: Some(DANCE.into()),
-                position: [260.0, 110.0],
-                ..Default::default()
-            },
-        ],
-        default_state: Some("Locomotion".into()),
-        transitions: vec![
-            fade(
-                Node::AnyState,
-                Node::state("Jump"),
-                0.1,
-                vec![cond("Jump", ConditionMode::If)],
-            ),
-            Transition {
-                has_exit_time: true,
-                exit_time: 0.9,
-                duration: 0.1,
-                ..Transition::new(Node::state("Jump"), Node::Exit)
-            },
-            fade(
-                Node::state("Locomotion"),
-                Node::state("Dance"),
-                0.25,
-                vec![cond("Dance", ConditionMode::If)],
-            ),
-            fade(
-                Node::state("Dance"),
-                Node::state("Locomotion"),
-                0.25,
-                vec![cond("Dance", ConditionMode::IfNot)],
-            ),
-        ],
-        nodes: NodePositions {
-            entry: [-280.0, 0.0],
-            any_state: [-280.0, -140.0],
-            exit: [280.0, -140.0],
+            ..Default::default()
         },
+        ..Default::default()
     }
 }
 

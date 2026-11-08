@@ -15,6 +15,7 @@ mod asset_guids;
 mod asset_ops;
 mod assets;
 mod audio_mixers;
+mod avatar_masks;
 mod branding;
 mod build_pipeline;
 mod build_settings;
@@ -78,6 +79,8 @@ mod sample_area_lights;
 mod sample_assets;
 #[cfg(test)]
 mod sample_audio;
+#[cfg(test)]
+mod sample_character_animator;
 #[cfg(test)]
 mod sample_clouds;
 #[cfg(test)]

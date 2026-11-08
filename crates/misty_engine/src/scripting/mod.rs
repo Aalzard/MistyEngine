@@ -722,9 +722,53 @@ impl ScriptHost {
         });
     }
 
+    /// Objects with a runnable script instance defining `function`.
+    fn entities_with(&self, function: &str) -> HashSet<Entity> {
+        self.instances
+            .iter()
+            .filter(|i| {
+                self.lua
+                    .registry_value::<Table>(&i.table)
+                    .ok()
+                    .and_then(|t| t.get::<Option<Function>>(function).ok().flatten())
+                    .is_some()
+            })
+            .filter(|i| self.runnable(i))
+            .map(|i| i.entity)
+            .collect()
+    }
+
+    /// Apply the Animators' root motion (or call `OnAnimatorMove` on objects whose scripts
+    /// handle it), then move objects matching a target.
+    fn root_motion(&mut self, dt: f32) {
+        let moves = self.with_world(|w| w.animator.take_moves());
+        for m in moves {
+            if m.by_script {
+                for i in 0..self.instances.len() {
+                    if self.instances[i].entity == m.entity && self.runnable(&self.instances[i]) {
+                        self.call(i, "OnAnimatorMove", None);
+                        self.flush_spawned();
+                    }
+                }
+            } else {
+                self.with_world(|w| {
+                    animator_api::apply_root_motion(
+                        w,
+                        m.entity,
+                        m.delta_position,
+                        m.delta_rotation,
+                        dt,
+                    )
+                });
+            }
+        }
+        self.with_world(|w| w.animator.apply_match_targets(&mut w.scene));
+    }
+
     /// Advance animations (after Update, before LateUpdate) and call their events' functions on
     /// the animated object's scripts.
     fn animate(&mut self, dt: f32) {
+        let script_moves = self.entities_with("OnAnimatorMove");
         let events = self.with_world(|w| {
             let World {
                 animation,
@@ -734,9 +778,11 @@ impl ScriptHost {
             } = w;
             // An Animator on the same object runs last, so it wins for shared properties.
             let mut events = animation.update(scene, dt);
+            animator.set_script_moves(script_moves);
             events.extend(animator.update(scene, dt));
             events
         });
+        self.root_motion(dt);
         for (e, function) in events {
             for i in 0..self.instances.len() {
                 if self.instances[i].entity == e && self.runnable(&self.instances[i]) {

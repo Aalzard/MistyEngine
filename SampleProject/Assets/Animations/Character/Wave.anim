@@ -1,0 +1,80 @@
+{
+  "length": 1.2,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "Hips/Spine/Chest/RightArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 150.0
+        },
+        {
+          "time": 1.2,
+          "value": 150.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightArm",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.2,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightArm/RightForearm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 10.0
+        },
+        {
+          "time": 0.3,
+          "value": 45.0
+        },
+        {
+          "time": 0.6,
+          "value": 10.0
+        },
+        {
+          "time": 0.9,
+          "value": 45.0
+        },
+        {
+          "time": 1.2,
+          "value": 10.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Head",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 0.6,
+          "value": 10.0
+        },
+        {
+          "time": 1.2,
+          "value": 0.0
+        }
+      ]
+    }
+  ],
+  "events": []
+}

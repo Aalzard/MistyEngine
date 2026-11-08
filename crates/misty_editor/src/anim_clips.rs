@@ -14,6 +14,7 @@ pub enum ClipSnapshot {
     Controller(String, misty_engine::animation::AnimatorController),
     Mixer(String, misty_engine::audio::AudioMixer),
     Timeline(String, misty_engine::timeline::TimelineAsset),
+    Mask(String, misty_engine::animation::AvatarMask),
 }
 
 #[derive(Default)]
@@ -28,6 +29,8 @@ pub struct ClipStore {
     pub mixers: crate::audio_mixers::MixerStore,
     /// Timelines being edited.
     pub timelines: crate::timelines::TimelineStore,
+    /// Avatar Masks being edited.
+    pub masks: crate::avatar_masks::MaskStore,
 }
 
 impl ClipStore {
@@ -36,6 +39,7 @@ impl ClipStore {
             controllers: crate::anim_controllers::ControllerStore::new(root.clone()),
             mixers: crate::audio_mixers::MixerStore::new(root.clone()),
             timelines: crate::timelines::TimelineStore::new(root.clone()),
+            masks: crate::avatar_masks::MaskStore::new(root.clone()),
             root,
             ..Default::default()
         }
@@ -94,6 +98,7 @@ impl ClipStore {
             ClipSnapshot::Controller(path, c) => return self.controllers.restore(path, c),
             ClipSnapshot::Mixer(path, m) => return self.mixers.restore(path, m),
             ClipSnapshot::Timeline(path, t) => return self.timelines.restore(path, t),
+            ClipSnapshot::Mask(path, m) => return self.masks.restore(path, m),
         };
         let old = self.clips.insert(path.clone(), clip).unwrap_or_default();
         self.dirty.insert(path.clone());
@@ -110,6 +115,7 @@ impl ClipStore {
     /// Follow an asset rename/move of `old` (a clip or a folder of clips) to `new`.
     pub fn rename(&mut self, old: &str, new: &str) {
         self.controllers.rename(old, new);
+        self.masks.rename(old, new);
         self.mixers.rename(old, new);
         self.timelines.rename(old, new);
         let keys: Vec<String> = self.clips.keys().cloned().collect();

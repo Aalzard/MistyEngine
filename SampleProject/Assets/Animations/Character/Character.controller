@@ -1,0 +1,355 @@
+{
+  "parameters": [
+    {
+      "name": "MoveX",
+      "type": "Float",
+      "default": 0.0
+    },
+    {
+      "name": "MoveZ",
+      "type": "Float",
+      "default": 0.0
+    },
+    {
+      "name": "Emote",
+      "type": "Trigger",
+      "default": 0.0
+    },
+    {
+      "name": "EmoteId",
+      "type": "Int",
+      "default": 0.0
+    }
+  ],
+  "states": [
+    {
+      "name": "Locomotion",
+      "motion": null,
+      "blend_tree": {
+        "blend_type": "FreeformDirectional2D",
+        "parameter": "MoveX",
+        "parameter_y": "MoveZ",
+        "normalize": false,
+        "children": [
+          {
+            "motion": "Assets/Animations/Character/Idle.anim",
+            "threshold": 0.0,
+            "position": [
+              0.0,
+              0.0
+            ],
+            "direct_parameter": "",
+            "time_scale": 1.0
+          },
+          {
+            "motion": "Assets/Animations/Character/Walk.anim",
+            "threshold": 0.0,
+            "position": [
+              0.0,
+              1.0
+            ],
+            "direct_parameter": "",
+            "time_scale": 1.0
+          },
+          {
+            "motion": "Assets/Animations/Character/Run.anim",
+            "threshold": 0.0,
+            "position": [
+              0.0,
+              2.0
+            ],
+            "direct_parameter": "",
+            "time_scale": 1.0
+          },
+          {
+            "motion": "Assets/Animations/Character/WalkBack.anim",
+            "threshold": 0.0,
+            "position": [
+              0.0,
+              -1.0
+            ],
+            "direct_parameter": "",
+            "time_scale": 1.0
+          },
+          {
+            "motion": "Assets/Animations/Character/StrafeLeft.anim",
+            "threshold": 0.0,
+            "position": [
+              -1.0,
+              0.0
+            ],
+            "direct_parameter": "",
+            "time_scale": 1.0
+          },
+          {
+            "motion": "Assets/Animations/Character/StrafeRight.anim",
+            "threshold": 0.0,
+            "position": [
+              1.0,
+              0.0
+            ],
+            "direct_parameter": "",
+            "time_scale": 1.0
+          }
+        ]
+      },
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": true,
+      "tag": "",
+      "machine": "",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "Bow",
+      "motion": "Assets/Animations/Character/Bow.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": false,
+      "tag": "Emote",
+      "machine": "Emotes",
+      "position": [
+        0.0,
+        -70.0
+      ]
+    },
+    {
+      "name": "Cheer",
+      "motion": "Assets/Animations/Character/Cheer.anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": false,
+      "tag": "Emote",
+      "machine": "Emotes",
+      "position": [
+        0.0,
+        70.0
+      ]
+    }
+  ],
+  "default_state": "Locomotion",
+  "transitions": [
+    {
+      "from": {
+        "State": "Locomotion"
+      },
+      "to": {
+        "Machine": "Emotes"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.2,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "Emote",
+          "mode": "If",
+          "threshold": 0.0
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": "Entry",
+      "to": {
+        "State": "Cheer"
+      },
+      "has_exit_time": false,
+      "exit_time": 0.75,
+      "fixed_duration": true,
+      "duration": 0.25,
+      "offset": 0.0,
+      "conditions": [
+        {
+          "parameter": "EmoteId",
+          "mode": "Equals",
+          "threshold": 1.0
+        }
+      ],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false,
+      "machine": "Emotes"
+    },
+    {
+      "from": {
+        "State": "Bow"
+      },
+      "to": "Exit",
+      "has_exit_time": true,
+      "exit_time": 0.9,
+      "fixed_duration": true,
+      "duration": 0.25,
+      "offset": 0.0,
+      "conditions": [],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    },
+    {
+      "from": {
+        "State": "Cheer"
+      },
+      "to": "Exit",
+      "has_exit_time": true,
+      "exit_time": 0.9,
+      "fixed_duration": true,
+      "duration": 0.25,
+      "offset": 0.0,
+      "conditions": [],
+      "interruption_source": "None",
+      "ordered_interruption": true,
+      "can_transition_to_self": false,
+      "mute": false,
+      "solo": false
+    }
+  ],
+  "nodes": {
+    "entry": [
+      -250.0,
+      0.0
+    ],
+    "any_state": [
+      -250.0,
+      -80.0
+    ],
+    "exit": [
+      350.0,
+      0.0
+    ],
+    "up": [
+      350.0,
+      -80.0
+    ]
+  },
+  "sub_machines": [
+    {
+      "path": "Emotes",
+      "position": [
+        300.0,
+        120.0
+      ],
+      "default_state": "Bow",
+      "nodes": {
+        "entry": [
+          -250.0,
+          0.0
+        ],
+        "any_state": [
+          -250.0,
+          -80.0
+        ],
+        "exit": [
+          350.0,
+          0.0
+        ],
+        "up": [
+          350.0,
+          -80.0
+        ]
+      }
+    }
+  ],
+  "layers": [
+    {
+      "name": "Upper Body",
+      "weight": 0.0,
+      "blending": "Override",
+      "mask": "Assets/Animations/Character/UpperBody.mask",
+      "sync_source": null,
+      "states": [
+        {
+          "name": "Wave",
+          "motion": "Assets/Animations/Character/Wave.anim",
+          "blend_tree": null,
+          "speed": 1.0,
+          "speed_parameter": "",
+          "loop": true,
+          "tag": "",
+          "machine": "",
+          "position": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "default_state": "Wave",
+      "transitions": [],
+      "nodes": {
+        "entry": [
+          -250.0,
+          0.0
+        ],
+        "any_state": [
+          -250.0,
+          -80.0
+        ],
+        "exit": [
+          350.0,
+          0.0
+        ],
+        "up": [
+          350.0,
+          -80.0
+        ]
+      }
+    },
+    {
+      "name": "Breathing",
+      "weight": 1.0,
+      "blending": "Additive",
+      "mask": null,
+      "sync_source": null,
+      "states": [
+        {
+          "name": "Breathe",
+          "motion": "Assets/Animations/Character/Breathe.anim",
+          "blend_tree": null,
+          "speed": 1.0,
+          "speed_parameter": "",
+          "loop": true,
+          "tag": "",
+          "machine": "",
+          "position": [
+            0.0,
+            0.0
+          ]
+        }
+      ],
+      "default_state": "Breathe",
+      "transitions": [],
+      "nodes": {
+        "entry": [
+          -250.0,
+          0.0
+        ],
+        "any_state": [
+          -250.0,
+          -80.0
+        ],
+        "exit": [
+          350.0,
+          0.0
+        ],
+        "up": [
+          350.0,
+          -80.0
+        ]
+      }
+    }
+  ]
+}

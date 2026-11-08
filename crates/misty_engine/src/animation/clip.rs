@@ -22,6 +22,11 @@ pub enum Property {
     Active,
     /// Skinned Mesh Renderer blend shape weight (0–100) by shape index.
     BlendShape(u8),
+    /// Humanoid clips (path "@Bone"): quaternion component (x, y, z, w) of the bone's rotation
+    /// change from its rest pose, in the Animator's space. Played through an Avatar.
+    HumanRotation(u8),
+    /// Humanoid clips: the hips' move from rest in the Animator's space, in hips heights.
+    HumanPosition(u8),
 }
 
 const AXES: [&str; 3] = ["x", "y", "z"];
@@ -54,6 +59,7 @@ impl Property {
             Self::LightIntensity | Self::LightRange | Self::LightColor(_) => "Light",
             Self::Active => "GameObject",
             Self::BlendShape(_) => "SkinnedMeshRenderer",
+            Self::HumanRotation(_) | Self::HumanPosition(_) => "Humanoid",
         }
     }
 
@@ -68,6 +74,8 @@ impl Property {
             Self::LightColor(_) => "Color",
             Self::Active => "Is Active",
             Self::BlendShape(_) => "BlendShape",
+            Self::HumanRotation(_) => "Muscle Rotation",
+            Self::HumanPosition(_) => "Muscle Position",
         }
     }
 
@@ -84,7 +92,10 @@ impl Property {
 
     fn channel(self) -> Option<&'static str> {
         match self {
-            Self::Position(i) | Self::Rotation(i) | Self::Scale(i) => AXES.get(i as usize).copied(),
+            Self::Position(i) | Self::Rotation(i) | Self::Scale(i) | Self::HumanPosition(i) => {
+                AXES.get(i as usize).copied()
+            }
+            Self::HumanRotation(i) => ["x", "y", "z", "w"].get(i as usize).copied(),
             Self::LightColor(i) => CHANNELS.get(i as usize).copied(),
             _ => None,
         }
@@ -101,6 +112,8 @@ impl Property {
             Self::LightColor(_) => "color",
             Self::Active => "active",
             Self::BlendShape(i) => return format!("{}.blendShape.{i}", self.component()),
+            Self::HumanRotation(_) => "rotation",
+            Self::HumanPosition(_) => "position",
         };
         match self.channel() {
             Some(c) => format!("{}.{field}.{c}", self.component()),
@@ -112,13 +125,22 @@ impl Property {
         if let Some(i) = name.strip_prefix("SkinnedMeshRenderer.blendShape.") {
             return i.parse().ok().map(Self::BlendShape);
         }
+        let human = (0..4)
+            .map(Self::HumanRotation)
+            .chain((0..3).map(Self::HumanPosition));
+        if let Some(p) = human.into_iter().find(|p| p.name() == name) {
+            return Some(p);
+        }
         Self::ALL.into_iter().find(|p| p.name() == name)
     }
 
     /// Properties shown as one row group (Position.x/y/z share "Position").
     pub fn siblings(self) -> Vec<Property> {
-        if let Self::BlendShape(_) = self {
-            return vec![self];
+        match self {
+            Self::BlendShape(_) => return vec![self],
+            Self::HumanRotation(_) => return (0..4).map(Self::HumanRotation).collect(),
+            Self::HumanPosition(_) => return (0..3).map(Self::HumanPosition).collect(),
+            _ => {}
         }
         Self::ALL
             .into_iter()

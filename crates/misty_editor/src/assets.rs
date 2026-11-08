@@ -45,6 +45,10 @@ pub struct AssetDatabase {
     pub anims: BTreeSet<String>,
     /// Project-relative paths of Animator Controllers (.controller).
     pub controllers: BTreeSet<String>,
+    /// Avatar Masks (`.mask`).
+    pub masks: BTreeSet<String>,
+    /// Humanoid Avatars (`.avatar`).
+    pub avatars: BTreeSet<String>,
     /// Project-relative paths of Timeline assets (.timeline).
     pub timelines: BTreeSet<String>,
     /// Project-relative paths of Effect Graphs (.effect).
@@ -95,6 +99,8 @@ impl AssetDatabase {
             input_actions: BTreeSet::new(),
             anims: BTreeSet::new(),
             controllers: BTreeSet::new(),
+            masks: BTreeSet::new(),
+            avatars: BTreeSet::new(),
             timelines: BTreeSet::new(),
             effects: BTreeSet::new(),
             presets: BTreeMap::new(),
@@ -130,6 +136,8 @@ impl AssetDatabase {
         self.input_actions.clear();
         self.anims.clear();
         self.controllers.clear();
+        self.masks.clear();
+        self.avatars.clear();
         self.timelines.clear();
         self.effects.clear();
         self.textures.clear();
@@ -172,6 +180,10 @@ impl AssetDatabase {
                     self.anims.insert(self.relative(&path));
                 } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {
                     self.controllers.insert(self.relative(&path));
+                } else if misty_engine::animation::is_mask(&path.to_string_lossy()) {
+                    self.masks.insert(self.relative(&path));
+                } else if misty_engine::animation::is_avatar(&path.to_string_lossy()) {
+                    self.avatars.insert(self.relative(&path));
                 } else if misty_engine::timeline::is_timeline(&path.to_string_lossy()) {
                     self.timelines.insert(self.relative(&path));
                 } else if misty_engine::vfx::is_effect_path(&path.to_string_lossy()) {
