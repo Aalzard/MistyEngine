@@ -167,6 +167,17 @@ pub fn package(
             Err(e) => send(Msg::Warning(format!("virtual geometry of {rel}: {e}"))),
         }
     }
+    // Compressed textures (made now if the cache is missing them), at every size the quality
+    // levels load them at, so players upload blocks instead of decoding images.
+    let files: Vec<String> = deps.files.iter().cloned().collect();
+    let (packed, saved) =
+        pack_compressed_textures(req, &files, &mut pak, send).map_err(|e| io(&pak_path, e))?;
+    if packed > 0 {
+        send(Msg::Log(format!(
+            "Compressed textures: {packed} ({:.1} MB of GPU memory saved)",
+            saved as f64 / 1e6
+        )));
+    }
     let mut settings = req.settings.clone();
     // The player reads its settings from here, so migrate old projects' window options.
     settings.player = Some(player_settings.clone());
@@ -272,6 +283,89 @@ pub fn package(
         files: deps.files.len(),
         pak_bytes,
     })
+}
+
+/// The texture import Platform name of a build target.
+pub fn texture_platform(target: BuildTarget) -> &'static str {
+    match target.os() {
+        TargetOs::Windows => "Windows",
+        TargetOs::Linux => "Linux",
+        TargetOs::MacOs => "macOS",
+    }
+}
+
+/// Pack the compressed blocks of the build's textures (`Library/TextureCache/<key>.mtc`, the
+/// path players look them up at). Returns the entries packed and the GPU bytes they save over
+/// RGBA8.
+pub fn pack_compressed_textures<W: std::io::Write + std::io::Seek>(
+    req: &PackageRequest,
+    files: &[String],
+    pak: &mut PakWriter<W>,
+    send: &mut dyn FnMut(Msg),
+) -> std::io::Result<(usize, u64)> {
+    use misty_engine::sprites::compress;
+    let platform = texture_platform(req.build.target);
+    let textures: Vec<&String> = files
+        .iter()
+        .filter(|r| misty_engine::assets::is_texture(r))
+        .collect();
+    // How the packed materials sample each texture (a Default texture in a normal map slot is
+    // compressed as a normal map).
+    let mut uses: std::collections::HashMap<String, Vec<compress::Use>> = Default::default();
+    for rel in files.iter().filter(|r| r.ends_with(".mat")) {
+        let Ok(m) = misty_engine::assets::Material::load(&req.project.join(rel)) else {
+            continue;
+        };
+        for (map, usage) in [
+            (&m.albedo_map, compress::Use::Color),
+            (&m.normal_map, compress::Use::Normal),
+            (&m.metallic_map, compress::Use::Linear),
+            (&m.occlusion_map, compress::Use::Linear),
+            (&m.emission_map, compress::Use::Color),
+        ] {
+            if let Some(p) = map {
+                uses.entry(p.clone()).or_default().push(usage);
+            }
+        }
+    }
+    let mut packed = std::collections::BTreeSet::new();
+    let mut saved = 0u64;
+    for (i, rel) in textures.iter().enumerate() {
+        if i % 8 == 0 {
+            let f = 0.90 + 0.01 * i as f32 / textures.len().max(1) as f32;
+            send(Msg::Progress(f, format!("Compressing {rel}")));
+        }
+        let used = uses
+            .get(rel.as_str())
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let entries = match compress::bake(&req.project, rel, platform, &req.settings.quality, used)
+        {
+            Ok(b) => b.entries,
+            Err(e) => {
+                send(Msg::Warning(format!("texture compression of {rel}: {e}")));
+                continue;
+            }
+        };
+        for key in entries {
+            if !packed.insert(key.clone()) {
+                continue;
+            }
+            let bytes = std::fs::read(req.project.join(&key))?;
+            if let Some(c) = compress::Compressed::from_file(&bytes) {
+                let rgba = misty_engine::render::texture::texture_bytes(
+                    misty_engine::wgpu::TextureFormat::Rgba8Unorm,
+                    c.width,
+                    c.height,
+                    c.levels.len() as u32,
+                    1,
+                );
+                saved += rgba.saturating_sub(c.bytes() as u64);
+            }
+            pak.add(&key, &bytes)?;
+        }
+    }
+    Ok((packed.len(), saved))
 }
 
 /// JSON text of a settings value (no BOM, trailing newline).
@@ -522,5 +616,45 @@ mod tests {
         assert_eq!(built.exe, contents.join("MacOS/My_ Game"));
         assert!(contents.join("Resources/My_ Game_Data/data.pak").is_file());
         assert!(contents.join("Info.plist").is_file());
+    }
+
+    /// Textures a build packs get their compressed blocks packed too, as each material samples
+    /// them (a Default texture in a normal map slot as BC5), under the path players read.
+    #[test]
+    fn packs_compressed_textures_for_their_material_uses() {
+        use misty_engine::sprites::compress::{BcFormat, Compressed};
+        let root = project("bc");
+        use misty_engine::image;
+        let img = image::RgbaImage::from_fn(64, 64, |x, y| {
+            image::Rgba([(x * 4) as u8, (y * 4) as u8, 200, 255])
+        });
+        img.save(root.join("Assets/Wall.png")).unwrap();
+        img.save(root.join("Assets/WallNormal.png")).unwrap();
+        std::fs::write(
+            root.join("Assets/Red.mat"),
+            r#"{ "albedo_map": "Assets/Wall.png", "normal_map": "Assets/WallNormal.png" }"#,
+        )
+        .unwrap();
+        let req = request(&root, BuildTarget::WindowsX64);
+        let files: Vec<String> = ["Assets/Red.mat", "Assets/Wall.png", "Assets/WallNormal.png"]
+            .map(str::to_owned)
+            .to_vec();
+        let mut pak = PakWriter::new(std::io::Cursor::new(Vec::new()), false).unwrap();
+        let (packed, saved) =
+            pack_compressed_textures(&req, &files, &mut pak, &mut |_| {}).unwrap();
+        assert_eq!(packed, 2);
+        assert!(saved > 0);
+        let pak = Pak::from_reader(Box::new(std::io::Cursor::new(
+            pak.finish().unwrap().into_inner(),
+        )))
+        .unwrap();
+        let mut formats: Vec<BcFormat> = pak
+            .paths()
+            .filter(|p| p.starts_with("Library/TextureCache/"))
+            .map(|p| Compressed::from_file(&pak.read(p).unwrap()).unwrap().format)
+            .collect();
+        formats.sort_by_key(|f| f.label());
+        assert_eq!(formats, [BcFormat::Bc1, BcFormat::Bc5]);
+        std::fs::remove_dir_all(&root).ok();
     }
 }

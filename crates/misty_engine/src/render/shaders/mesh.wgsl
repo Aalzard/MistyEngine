@@ -140,8 +140,10 @@ fn mapped_normal(in: MeshOut, d: Draw, sampled: vec3<f32>) -> vec3<f32> {
     }
     let t = normalize(in.tangent.xyz - n * dot(n, in.tangent.xyz));
     let b = cross(n, t) * in.tangent.w;
-    var m = sampled * 2.0 - 1.0;
-    m = vec3<f32>(m.xy * d.params.w, max(m.z, 1e-3));
+    // X and Y from the map, Z rebuilt: BC5-compressed normal maps store only X and Y.
+    let xy = sampled.xy * 2.0 - 1.0;
+    let z = sqrt(saturate(1.0 - dot(xy, xy)));
+    let m = vec3<f32>(xy * d.params.w, max(z, 1e-3));
     return normalize(t * m.x + b * m.y + n * m.z);
 }
 

@@ -46,6 +46,9 @@ use misty_engine::input::Gamepads;
 const SCREENSHOT_FRAME: u64 = 60;
 
 fn main() {
+    // Players read compressed textures from the build (or the project's Library); they never
+    // encode.
+    misty_engine::sprites::compress::set_mode(misty_engine::sprites::compress::Mode::CacheOnly);
     let args = match startup::parse_args(std::env::args().skip(1)) {
         Ok(a) => a,
         Err(e) => {
