@@ -291,6 +291,7 @@ fn assets(l: &mut List) {
         AssetKind::LitShaderGraph,
         AssetKind::UnlitShaderGraph,
         AssetKind::EffectGraph,
+        AssetKind::EffectSubgraph,
         AssetKind::MaterialFromShader,
         AssetKind::Test(misty_engine::testing::TestMode::EditMode),
         AssetKind::Test(misty_engine::testing::TestMode::PlayMode),

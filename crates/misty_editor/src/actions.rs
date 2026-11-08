@@ -86,6 +86,8 @@ pub enum AssetKind {
     UnlitShaderGraph,
     /// Visual Effects ▸ Effect Graph.
     EffectGraph,
+    /// Visual Effects ▸ Effect Sub-graph (`.vfxoperator`).
+    EffectSubgraph,
     /// Testing ▸ EditMode Test / PlayMode Test (in `Assets/Tests`).
     Test(misty_engine::testing::TestMode),
     /// A procedural tree (`.tree`, an oak to start from) for terrains' Paint Trees.
@@ -134,6 +136,7 @@ impl AssetKind {
             AssetKind::LitShaderGraph => "Lit Shader Graph",
             AssetKind::UnlitShaderGraph => "Unlit Shader Graph",
             AssetKind::EffectGraph => "Effect Graph",
+            AssetKind::EffectSubgraph => "Effect Sub-graph",
             AssetKind::Test(misty_engine::testing::TestMode::EditMode) => "EditMode Test",
             AssetKind::Test(misty_engine::testing::TestMode::PlayMode) => "PlayMode Test",
         }

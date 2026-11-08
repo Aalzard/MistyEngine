@@ -60,9 +60,11 @@ fn create_shader_items(ui: &mut Ui, actions: &mut Vec<Action>) {
         }
     });
     ui.menu_button("Visual Effects", |ui| {
-        if ui.button(AssetKind::EffectGraph.label()).clicked() {
-            actions.push(Action::CreateAsset(AssetKind::EffectGraph));
-            ui.close();
+        for kind in [AssetKind::EffectGraph, AssetKind::EffectSubgraph] {
+            if ui.button(kind.label()).clicked() {
+                actions.push(Action::CreateAsset(kind));
+                ui.close();
+            }
         }
     });
     ui.menu_button("Shader Graph", |ui| {

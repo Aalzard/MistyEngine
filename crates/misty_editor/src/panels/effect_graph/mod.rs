@@ -8,7 +8,7 @@
 mod blackboard;
 pub(crate) use blackboard::value_ui as blackboard_value;
 mod canvas;
-mod fields;
+pub(crate) mod fields;
 pub(crate) mod layout;
 mod search;
 
@@ -114,6 +114,12 @@ impl EffectGraphWindow {
     pub fn open(&mut self, file: &std::path::Path, rel: &str) {
         if let Some(old) = self.path.clone() {
             library::clear_working_copy(&old);
+            if misty_engine::vfx::subgraph::is_subgraph_path(&old) {
+                misty_engine::vfx::subgraph::forget(&old);
+                for e in library::users_of(&old) {
+                    library::reload(&e);
+                }
+            }
         }
         let loaded = EffectGraph::load(file);
         *self = Self {
@@ -129,6 +135,13 @@ impl EffectGraphWindow {
             }
             Err(e) => self.load_error = Some(e),
         }
+    }
+
+    /// Is the open document a sub-graph (`.vfxoperator`: operators and Output nodes only)?
+    pub fn is_subgraph(&self) -> bool {
+        self.path
+            .as_deref()
+            .is_some_and(misty_engine::vfx::subgraph::is_subgraph_path)
     }
 
     pub fn zoom(&self) -> f32 {
@@ -284,6 +297,17 @@ impl EffectGraphWindow {
             return;
         }
         self.compiled_key = Some(key);
+        if self.is_subgraph() {
+            // Sub-graphs compile inside the effects that use them; those follow the edit live.
+            self.errors.clear();
+            if let Some(rel) = &self.path {
+                misty_engine::vfx::subgraph::register(rel, self.graph.clone());
+                for e in library::users_of(rel) {
+                    library::reload(&e);
+                }
+            }
+            return;
+        }
         self.errors = misty_engine::vfx::compile(&self.graph)
             .err()
             .unwrap_or_default();
@@ -572,4 +596,24 @@ fn centered(ui: &mut Ui, rect: Rect, text: &str) {
 /// system (constant rate, sphere, velocity, lifetime, drag, colour over life).
 pub fn new_graph() -> EffectGraph {
     EffectGraph::new_default()
+}
+
+/// A new Effect Sub-graph (Assets ▸ Create ▸ Visual Effects ▸ Effect Sub-graph): an input
+/// property doubled into one Output, to start from.
+pub fn new_subgraph() -> EffectGraph {
+    use misty_engine::vfx::{OperatorKind, PropertyValue, types::Value};
+    let mut g = EffectGraph::default();
+    g.add_property("In", PropertyValue::Float(1.0));
+    let p = g.add_operator(OperatorKind::Property { name: "In".into() }, [0.0, 0.0]);
+    let m = g.add_operator(OperatorKind::Multiply, [200.0, 0.0]);
+    if let Some(o) = g.operator_mut(m) {
+        o.values.insert("B".into(), Value::Float(2.0));
+    }
+    let out = g.add_operator(
+        OperatorKind::SubgraphOutput { name: "Out".into() },
+        [400.0, 0.0],
+    );
+    let _ = g.connect(p, "Out", m, "A");
+    let _ = g.connect(m, "Out", out, "Value");
+    g
 }

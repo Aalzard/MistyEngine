@@ -135,6 +135,14 @@ pub enum OperatorKind {
     // Sampling.
     SampleGradient,
     SampleCurve,
+    /// A sub-graph asset (`.vfxoperator`): its properties are inputs, its Output nodes outputs.
+    Subgraph {
+        path: String,
+    },
+    /// Inside a sub-graph asset: one output of the sub-graph.
+    SubgraphOutput {
+        name: String,
+    },
 }
 
 impl OperatorKind {
@@ -197,6 +205,8 @@ impl OperatorKind {
             Self::SampleGradient => "Sample Gradient".into(),
             Self::SampleCurve => "Sample Curve".into(),
             Self::Vector3 => "Vector3".into(),
+            Self::Subgraph { path } => super::subgraph::title(path),
+            Self::SubgraphOutput { name } => format!("Output: {name}"),
             k => format!("{k:?}"),
         }
     }
@@ -215,6 +225,7 @@ impl OperatorKind {
             | Self::Split => "Vector",
             Self::Random { .. } | Self::Noise | Self::CurlNoise => "Random / Noise",
             Self::SampleGradient | Self::SampleCurve => "Sampling",
+            Self::Subgraph { .. } | Self::SubgraphOutput { .. } => "Sub-graph",
             _ => "Math",
         }
     }
@@ -235,6 +246,8 @@ impl OperatorKind {
             Self::Combine => "vector3 compose append",
             Self::Split => "components xyz",
             Self::GetAttribute { .. } => "attribute particle read",
+            Self::Subgraph { .. } => "subgraph function macro",
+            Self::SubgraphOutput { .. } => "subgraph result return",
             _ => "",
         }
     }
@@ -301,6 +314,10 @@ impl OperatorKind {
                 Port::curve("Curve", Curve::default()),
                 Port::float("Time", 0.0),
             ],
+            Self::Subgraph { path } => super::subgraph::info(path)
+                .map(|i| i.inputs.clone())
+                .unwrap_or_default(),
+            Self::SubgraphOutput { .. } => vec![Port::dynamic("Value", 0.0)],
         }
     }
 
@@ -332,6 +349,10 @@ impl OperatorKind {
             ],
             Self::SampleGradient => vec![Port::out("Out", f(ValueType::Color))],
             Self::SampleCurve => vec![Port::out("Out", f(ValueType::Float))],
+            Self::Subgraph { path } => super::subgraph::info(path)
+                .map(|i| i.outputs.clone())
+                .unwrap_or_default(),
+            Self::SubgraphOutput { .. } => Vec::new(),
             _ => vec![Port::out("Out", PortType::Dynamic)],
         }
     }

@@ -794,19 +794,22 @@ fn demo_effects_compile_with_their_features() {
         let c = misty_engine::vfx::compile(&g).unwrap_or_else(|e| panic!("{path}: {e:?}"));
         match path {
             FIREFLIES => {
-                assert!(c.sim_source.contains("vfx_curl"), "turbulence");
-                assert!(c.outputs[0].source.contains("sin("), "flicker");
+                assert!(c.root().sim_source.contains("vfx_curl"), "turbulence");
+                assert!(c.root().outputs[0].source.contains("sin("), "flicker");
             }
             SPARKS => {
                 assert_eq!(c.spawn.len(), 2, "rate + periodic burst");
-                assert!(c.sim_source.contains("next < 0.0f"), "plane collision");
+                assert!(
+                    c.root().sim_source.contains("next < 0.0f"),
+                    "plane collision"
+                );
             }
             PORTAL => {
-                assert_eq!(c.outputs.len(), 2, "quads and lines");
+                assert_eq!(c.root().outputs.len(), 2, "quads and lines");
                 assert!(c.slot("Rate").is_some() && c.slot("Color").is_some());
-                assert!(c.sim_source.contains("tangent"), "vortex");
+                assert!(c.root().sim_source.contains("tangent"), "vortex");
             }
-            _ => assert_eq!(c.capacity, 1 << 20),
+            _ => assert_eq!(c.capacity(), 1 << 20),
         }
     }
 }

@@ -9,6 +9,16 @@
 //! update; update ages, moves and reaps the particles of that list, appending survivors to the
 //! other alive list (reaped ones go back on the dead list); `cs_finish` writes the indirect draw
 //! arguments. The lists swap every step.
+//!
+//! A graph can hold several systems: the main one (system 0, started by its Spawn context) and
+//! GPU Event systems, each started by a GPU Event context that listens to a parent system. The
+//! parent's update appends an event record (position, size, velocity) to a queue in the shared
+//! events buffer when a particle dies or collides; the child's `cs_event_args` turns the queue
+//! length into an indirect emit dispatch and its `cs_emit` spawns `count` particles per event.
+//! Every system compiles to its own simulation shader and buffers; they step in index order
+//! (parents first) in one encoder.
+//!
+//! Sub-graph nodes are flattened into the graph before anything else ([`super::subgraph`]).
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher as _};
@@ -17,8 +27,8 @@ use glam::Vec3;
 
 use super::blocks::{Attribute, BlockKind, Composition, ContextType, OrientMode, ShapeMode};
 use super::graph::{
-    BlendMode, Block, ContextKind, EffectGraph, EffectProperty, Item, MAX_CAPACITY, OutputKind,
-    OutputSettings, PropertyValue, SimulationSpace,
+    BlendMode, Block, ContextKind, EffectGraph, EffectProperty, EventSource, Item, MAX_CAPACITY,
+    MAX_TRAIL_POINTS, OutputKind, OutputSettings, PropertyValue, SimulationSpace,
 };
 use super::operators::{OperatorKind, RandomMode};
 use super::types::{Curve, Gradient, Value, ValueType, color_to_linear, lit};
@@ -37,6 +47,7 @@ pub const WORKGROUP: u32 = 64;
 pub const SIM_BINDINGS: &str = r#"
 struct VfxSimParams {
     world: mat4x4<f32>,
+    inv_world: mat4x4<f32>,
     dt: f32,
     time: f32,
     spawn_count: u32,
@@ -66,6 +77,136 @@ struct VfxCounters {
 @group(0) @binding(6) var<storage, read_write> vfx_indirect: array<u32>;
 @group(0) @binding(7) var<uniform> vfx_props: VfxProps;
 @group(0) @binding(8) var<storage, read> vfx_ramps: array<vec4<f32>>;
+// Trail outputs: the last positions of every particle (a ring of `points` per particle).
+@group(0) @binding(9) var<storage, read_write> vfx_trail: array<vec4<f32>>;
+// GPU event queues of every system of the instance: [count, 0, 0, 0, records of 8 words…].
+@group(0) @binding(10) var<storage, read_write> vfx_events: array<atomic<u32>>;
+
+// Depth buffer collision: the last opaque scene depth a view rendered, and its camera.
+struct VfxDepthCam {
+    view_proj: mat4x4<f32>,
+    inv_view_proj: mat4x4<f32>,
+    // xyz = camera position, w = 1 when a depth buffer is bound.
+    camera: vec4<f32>,
+    // xy = depth texture size in pixels.
+    size: vec4<f32>,
+};
+
+@group(1) @binding(0) var vfx_depth: texture_2d<f32>;
+@group(1) @binding(1) var<uniform> vfx_depth_cam: VfxDepthCam;
+"#;
+
+/// Helpers of the simulation shader (after [`COMMON`]): event records and depth collision.
+pub const SIM_HELPERS: &str = r#"
+// Append an event record (position, size, velocity, lifetime) to the queue at word `q`.
+fn vfx_push_event(q: u32, cap: u32, p: VfxParticle) {
+    let slot = atomicAdd(&vfx_events[q], 1u);
+    if (slot >= cap) {
+        return;
+    }
+    let b = q + 4u + slot * 8u;
+    atomicStore(&vfx_events[b], bitcast<u32>(p.position.x));
+    atomicStore(&vfx_events[b + 1u], bitcast<u32>(p.position.y));
+    atomicStore(&vfx_events[b + 2u], bitcast<u32>(p.position.z));
+    atomicStore(&vfx_events[b + 3u], bitcast<u32>(p.size));
+    atomicStore(&vfx_events[b + 4u], bitcast<u32>(p.velocity.x));
+    atomicStore(&vfx_events[b + 5u], bitcast<u32>(p.velocity.y));
+    atomicStore(&vfx_events[b + 6u], bitcast<u32>(p.velocity.z));
+    atomicStore(&vfx_events[b + 7u], bitcast<u32>(p.lifetime));
+}
+
+fn vfx_event_word(i: u32) -> f32 {
+    return bitcast<f32>(atomicLoad(&vfx_events[i]));
+}
+
+// World position of a depth texel.
+fn vfx_depth_point(px: vec2<i32>, d: f32) -> vec3<f32> {
+    let size = vfx_depth_cam.size.xy;
+    let ndc = vec2<f32>(
+        (f32(px.x) + 0.5) / size.x * 2.0 - 1.0,
+        1.0 - (f32(px.y) + 0.5) / size.y * 2.0,
+    );
+    let h = vfx_depth_cam.inv_view_proj * vec4<f32>(ndc, d, 1.0);
+    return h.xyz / h.w;
+}
+
+struct VfxDepthHit {
+    hit: bool,
+    // Where the particle goes (simulation space) and the surface normal there.
+    position: vec3<f32>,
+    normal: vec3<f32>,
+};
+
+// Does a particle at `pos` moving by `vel` × dt end up behind what the depth camera saw
+// (within `thickness`)? Positions and velocities are in simulation space.
+fn vfx_depth_collide(pos: vec3<f32>, vel: vec3<f32>, radius: f32, dt: f32, thickness: f32) -> VfxDepthHit {
+    var r: VfxDepthHit;
+    r.hit = false;
+    if (vfx_depth_cam.camera.w < 0.5) {
+        return r;
+    }
+    var wp = pos;
+    var wv = vel;
+    if (vfx_params.world_space == 0u) {
+        wp = (vfx_params.world * vec4<f32>(pos, 1.0)).xyz;
+        wv = (vfx_params.world * vec4<f32>(vel, 0.0)).xyz;
+    }
+    let next = wp + wv * dt;
+    let clip = vfx_depth_cam.view_proj * vec4<f32>(next, 1.0);
+    if (clip.w <= 0.0001) {
+        return r;
+    }
+    let ndc = clip.xyz / clip.w;
+    if (abs(ndc.x) >= 1.0 || abs(ndc.y) >= 1.0) {
+        return r;
+    }
+    let size = vfx_depth_cam.size.xy;
+    let maxp = vec2<i32>(size) - vec2<i32>(1);
+    let px = clamp(vec2<i32>(vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * size), vec2<i32>(0), maxp);
+    let d = textureLoad(vfx_depth, px, 0).r;
+    if (d >= 1.0) {
+        return r;
+    }
+    let surf = vfx_depth_point(px, d);
+    let cam = vfx_depth_cam.camera.xyz;
+    let dp = distance(next, cam);
+    let ds = distance(surf, cam);
+    if (dp < ds - radius) {
+        return r;
+    }
+    // Normal from the neighbouring texels (the side facing the camera).
+    let pa = clamp(px + vec2<i32>(1, 0), vec2<i32>(0), maxp);
+    let pb = clamp(px + vec2<i32>(0, 1), vec2<i32>(0), maxp);
+    let da = textureLoad(vfx_depth, pa, 0).r;
+    let db = textureLoad(vfx_depth, pb, 0).r;
+    var n = normalize(cam - surf);
+    if (da < 1.0 && db < 1.0 && pa.x != px.x && pb.y != px.y) {
+        let c = cross(vfx_depth_point(pb, db) - surf, vfx_depth_point(pa, da) - surf);
+        if (length(c) > 1e-10) {
+            n = normalize(c);
+            if (dot(n, cam - surf) < 0.0) {
+                n = -n;
+            }
+        }
+    }
+    // How far behind the surface (along its normal): deeper than the thickness is behind
+    // the object, not in it.
+    let pen = dot(surf - next, n) + radius;
+    if (pen <= 0.0 || pen > thickness + radius) {
+        return r;
+    }
+    let on = next + n * pen;
+    var outp = on;
+    var outn = n;
+    if (vfx_params.world_space == 0u) {
+        outp = (vfx_params.inv_world * vec4<f32>(on, 1.0)).xyz;
+        outn = vfx_safe_normalize((vfx_params.inv_world * vec4<f32>(n, 0.0)).xyz);
+    }
+    r.hit = true;
+    r.position = outp;
+    r.normal = outn;
+    return r;
+}
 "#;
 
 /// Bindings of an output shader (group 0 is the renderer's view group).
@@ -80,6 +221,8 @@ struct VfxRenderParams {
     flipbook: vec4<f32>,
     // x = line length per unit of speed, y = soft particle distance (0 = off).
     misc: vec4<f32>,
+    // Trail outputs: x = ring slot of the newest point, y = points per particle.
+    trail: vec4<f32>,
 };
 
 @group(1) @binding(0) var vfx_tex: texture_2d<f32>;
@@ -89,6 +232,9 @@ struct VfxRenderParams {
 @group(2) @binding(2) var<uniform> vfx_props: VfxProps;
 @group(2) @binding(3) var<storage, read> vfx_ramps: array<vec4<f32>>;
 @group(2) @binding(4) var<uniform> vfx_params: VfxRenderParams;
+@group(2) @binding(5) var<storage, read> vfx_trail: array<vec4<f32>>;
+// Mesh outputs: position, normal (xyz) per triangle-list vertex.
+@group(2) @binding(6) var<storage, read> vfx_mesh: array<vec4<f32>>;
 // The opaque scene's depth (soft particles; a far 1×1 texture when there is no copy).
 @group(3) @binding(0) var vfx_scene_depth: texture_2d<f32>;
 "#;
@@ -143,13 +289,70 @@ impl SpawnBlock {
     }
 }
 
+/// Order an output's particles are drawn in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SortKey {
+    /// Back to front from the camera (alpha blending).
+    Distance,
+    /// Youngest first (ribbons join particles in the order they were born).
+    Age,
+}
+
 /// One Output context, ready for the renderer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CompiledOutput {
     pub source: String,
     pub settings: OutputSettings,
-    /// Vertices per particle (6 quad, 1 point, 2 line).
+    /// Vertices per particle (6 quad, 1 point, 2 line, the mesh's, 6 per trail segment).
     pub vertex_count: u32,
+    /// Drawn from a sorted list instead of the alive list.
+    pub sort: Option<SortKey>,
+}
+
+/// An event queue in the instance's events buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EventQueue {
+    /// Word offset of the queue's counter.
+    pub offset: u32,
+    /// Records it holds (more events in one step are dropped).
+    pub capacity: u32,
+}
+
+/// Words of one event record.
+pub const EVENT_WORDS: u32 = 8;
+
+/// A child system's GPU Event context.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompiledEvent {
+    /// Index of the parent in [`CompiledEffect::systems`].
+    pub parent: usize,
+    pub source: EventSource,
+    pub count: u32,
+    pub queue: usize,
+}
+
+/// One particle system of an effect: its simulation shader, outputs and buffers' sizes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompiledSystem {
+    /// System index in the graph.
+    pub index: u32,
+    pub sim_source: String,
+    pub outputs: Vec<CompiledOutput>,
+    pub capacity: u32,
+    /// GPU Event systems: where their particles come from.
+    pub event: Option<CompiledEvent>,
+    /// Points per particle of the trail ring (0 = no Trail output).
+    pub trail_points: u32,
+}
+
+impl CompiledSystem {
+    /// Sort keys any output of this system needs.
+    pub fn sort_keys(&self) -> Vec<SortKey> {
+        let mut v: Vec<SortKey> = self.outputs.iter().filter_map(|o| o.sort).collect();
+        v.sort_by_key(|k| *k as u8);
+        v.dedup();
+        v
+    }
 }
 
 /// A graph turned into shaders and the data instances need.
@@ -157,9 +360,13 @@ pub struct CompiledOutput {
 pub struct CompiledEffect {
     /// Content hash (pipelines and GPU state are keyed by it).
     pub hash: u64,
-    pub sim_source: String,
-    pub outputs: Vec<CompiledOutput>,
-    pub capacity: u32,
+    /// The main system first, then GPU Event systems (parents before children).
+    pub systems: Vec<CompiledSystem>,
+    pub queues: Vec<EventQueue>,
+    /// Words of the events buffer.
+    pub event_words: u32,
+    /// Some system collides with the depth buffer (needs the scene depth copy).
+    pub depth_collision: bool,
     pub bounds_center: Vec3,
     pub bounds_size: Vec3,
     pub space: SimulationSpace,
@@ -174,6 +381,21 @@ pub struct CompiledEffect {
 impl CompiledEffect {
     pub fn slot(&self, name: &str) -> Option<usize> {
         self.slots.iter().find(|(n, _)| n == name).map(|(_, s)| *s)
+    }
+
+    /// The main system (the one the Spawn context feeds).
+    pub fn root(&self) -> &CompiledSystem {
+        &self.systems[0]
+    }
+
+    /// Most particles of the main system.
+    pub fn capacity(&self) -> u32 {
+        self.root().capacity
+    }
+
+    /// Every output of every system, in order (instances keep one texture per entry).
+    pub fn all_outputs(&self) -> impl Iterator<Item = &CompiledOutput> {
+        self.systems.iter().flat_map(|s| s.outputs.iter())
     }
 }
 
@@ -511,6 +733,13 @@ impl<'a> Gen<'a> {
                 let t = i(self, "Time");
                 Some(format!("vfx_ramp({c}, {t}).x"))
             }
+            OperatorKind::Subgraph { path } => {
+                // Flattened before compiling; one left here couldn't be read.
+                self.errors
+                    .push(err(Some(id), format!("can't read sub-graph {path}")));
+                None
+            }
+            OperatorKind::SubgraphOutput { .. } => None,
         };
         let result = expr.map(|e| {
             let name = self.var(out_ty, e);
@@ -690,11 +919,14 @@ impl<'a> Gen<'a> {
                 self.line("        p.position = p.position - n * min(now, 0.0f);");
                 self.line("        let vn = dot(p.velocity, n);");
                 self.line("        if (vn < 0.0f) {");
+                // Land on the plane this step (where the move would have taken it).
+                self.line("            p.position = p.position - n * max(now, 0.0f);");
                 self.line("            let vt = p.velocity - n * vn;");
                 self.line(format!(
                     "            p.velocity = vt * (1.0f - clamp({fr}, 0.0f, 1.0f)) - n * vn * {bounce};"
                 ));
                 self.line(format!("            p.age = p.age + {loss} * p.lifetime;"));
+                self.line("            collided = collided || vn < -1.0f;");
                 self.line("        }");
                 self.line("    }");
             }
@@ -720,8 +952,41 @@ impl<'a> Gen<'a> {
                 self.line(format!(
                     "            p.velocity = vt * (1.0f - clamp({fr}, 0.0f, 1.0f)) - n * vn * {bounce};"
                 ));
+                self.line("            collided = collided || vn < -1.0f;");
                 self.line("        }");
                 self.line("    }");
+            }
+            BlockKind::CollideDepthBuffer => {
+                let bounce = f(self, "Bounce");
+                let fr = f(self, "Friction");
+                let loss = f(self, "Lifetime Loss");
+                let thick = f(self, "Surface Thickness");
+                self.line(format!(
+                    "    let hit = vfx_depth_collide(p.position, p.velocity, p.size * 0.5f, dt, max({thick}, 0.0f));"
+                ));
+                self.line("    if (hit.hit) {");
+                self.line("        p.position = hit.position;");
+                self.line("        let n = hit.normal;");
+                self.line("        let vn = dot(p.velocity, n);");
+                self.line("        if (vn < 0.0f) {");
+                self.line("            let vt = p.velocity - n * vn;");
+                self.line(format!(
+                    "            p.velocity = vt * (1.0f - clamp({fr}, 0.0f, 1.0f)) - n * vn * {bounce};"
+                ));
+                self.line(format!("            p.age = p.age + {loss} * p.lifetime;"));
+                self.line("            collided = collided || vn < -1.0f;");
+                self.line("        }");
+                self.line("    }");
+            }
+            BlockKind::InheritSourceVelocity => {
+                let m = f(self, "Multiplier");
+                self.line(format!(
+                    "    inherited_velocity = inherited_velocity + source_velocity * {m};"
+                ));
+            }
+            BlockKind::InheritSourceSize => {
+                let m = f(self, "Multiplier");
+                self.line(format!("    p.size = source_size * {m};"));
             }
             BlockKind::KillSphere => {
                 let c = v3(self, "Center");
@@ -803,15 +1068,36 @@ impl Source {
     }
 }
 
-fn sim_shader(
-    init: &[(String, Option<u32>)],
-    update: &[(String, Option<u32>)],
-    update_settings: &super::graph::UpdateSettings,
-    outputs: &[(u32, u32)],
-) -> Source {
+/// What one system's simulation shader needs besides its block bodies.
+struct SimConfig<'a> {
+    init: &'a [(String, Option<u32>)],
+    update: &'a [(String, Option<u32>)],
+    settings: &'a super::graph::UpdateSettings,
+    /// (output index, vertices per particle).
+    outputs: &'a [(u32, u32)],
+    /// GPU Event systems: (queue, records, particles per event).
+    event_in: Option<(EventQueue, u32)>,
+    /// Queues this system fills when its particles die / collide.
+    die: Option<EventQueue>,
+    collide: Option<EventQueue>,
+    trail_points: u32,
+    /// Spread births over the step (ribbons join particles by age).
+    spread_births: bool,
+}
+
+fn sim_shader(c: &SimConfig) -> Source {
     let mut s = Source::new();
     s.push(SIM_BINDINGS);
     s.push(COMMON);
+    s.push(SIM_HELPERS);
+    let trail_init = if c.trail_points > 0 {
+        format!(
+            "    for (var t = 0u; t < {n}u; t = t + 1u) {{\n        vfx_trail[index * {n}u + t] = vec4<f32>(p.position, 1.0);\n    }}\n",
+            n = c.trail_points
+        )
+    } else {
+        String::new()
+    };
     s.push(&format!(
         r#"
 @compute @workgroup_size({WORKGROUP})
@@ -831,10 +1117,43 @@ fn cs_reset(@builtin(global_invocation_id) gid: vec3<u32>) {{
         vfx_counters.last_alive = 0u;
     }}
 }}
-
+"#
+    ));
+    // How many particles this step emits, and the event record of a GPU Event system.
+    let (emit_count, event_read) = match c.event_in {
+        None => (
+            "vfx_params.spawn_count".to_owned(),
+            "    let source_position = vec3<f32>(0.0);\n    let source_velocity = vec3<f32>(0.0);\n    let source_size = 0.1;\n".to_owned(),
+        ),
+        Some((q, count)) => {
+            s.push(&format!(
+                r#"
+@compute @workgroup_size(1)
+fn cs_event_args() {{
+    let n = min(atomicLoad(&vfx_events[{o}u]), {cap}u) * {count}u;
+    vfx_indirect[4] = (n + 63u) / 64u;
+    vfx_indirect[5] = 1u;
+    vfx_indirect[6] = 1u;
+}}
+"#,
+                o = q.offset,
+                cap = q.capacity
+            ));
+            (
+                format!("min(atomicLoad(&vfx_events[{o}u]), {cap}u) * {count}u", o = q.offset, cap = q.capacity),
+                format!(
+                    "    let rec = {o}u + 4u + (gid.x / {count}u) * {EVENT_WORDS}u;\n    let source_position = vec3<f32>(vfx_event_word(rec), vfx_event_word(rec + 1u), vfx_event_word(rec + 2u));\n    let source_size = vfx_event_word(rec + 3u);\n    let source_velocity = vec3<f32>(vfx_event_word(rec + 4u), vfx_event_word(rec + 5u), vfx_event_word(rec + 6u));\n",
+                    o = q.offset
+                ),
+            )
+        }
+    };
+    s.push(&format!(
+        r#"
 @compute @workgroup_size({WORKGROUP})
 fn cs_emit(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    if (gid.x >= vfx_params.spawn_count) {{
+    let emit_count = {emit_count};
+    if (gid.x >= emit_count) {{
         return;
     }}
     let old = atomicSub(&vfx_counters.dead, 1);
@@ -844,7 +1163,7 @@ fn cs_emit(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }}
     let index = vfx_dead[u32(old - 1)];
     vfx_rng = vfx_hash(vfx_params.seed ^ vfx_hash(vfx_params.serial * 2654435769u + gid.x));
-    var p: VfxParticle;
+{event_read}    var p: VfxParticle;
     p.position = vec3<f32>(0.0);
     p.velocity = vec3<f32>(0.0);
     p.age = 0.0;
@@ -855,31 +1174,62 @@ fn cs_emit(@builtin(global_invocation_id) gid: vec3<u32>) {{
     p.seed = vfx_hash(vfx_rng ^ 0x68bc21ebu);
     p.alive = 1u;
     var direction = vec3<f32>(0.0, 1.0, 0.0);
+    var inherited_velocity = vec3<f32>(0.0);
     let dt = vfx_params.dt;
 "#
     ));
-    s.body(init);
-    s.push(
-        r#"
+    s.body(c.init);
+    let mut tail = String::new();
+    if c.event_in.is_some() {
+        // Offsets and velocities are in the object's frame; the source is in simulation space.
+        tail.push_str(
+            r#"
+    if (vfx_params.world_space == 1u) {
+        p.position = (vfx_params.world * vec4<f32>(p.position, 0.0)).xyz;
+        p.velocity = (vfx_params.world * vec4<f32>(p.velocity, 0.0)).xyz;
+    }
+    p.position = p.position + source_position;
+"#,
+        );
+    } else {
+        tail.push_str(
+            r#"
     if (vfx_params.world_space == 1u) {
         p.position = (vfx_params.world * vec4<f32>(p.position, 1.0)).xyz;
         p.velocity = (vfx_params.world * vec4<f32>(p.velocity, 0.0)).xyz;
     }
-    p.alive = 1u;
+"#,
+        );
+    }
+    tail.push_str("    p.velocity = p.velocity + inherited_velocity;\n");
+    if c.spread_births {
+        tail.push_str("    p.age = p.age - dt * (f32(gid.x) + 0.5) / f32(max(emit_count, 1u));\n");
+    }
+    tail.push_str(&format!(
+        r#"    p.alive = 1u;
     vfx_particles[index] = p;
-    let slot = atomicAdd(&vfx_counters.alive[vfx_params.parity], 1u);
+{trail_init}    let slot = atomicAdd(&vfx_counters.alive[vfx_params.parity], 1u);
     vfx_alive_in[slot] = index;
     atomicAdd(&vfx_counters.spawned, 1u);
-}
+}}
 
 @compute @workgroup_size(1)
-fn cs_args() {
+fn cs_args() {{
     let n = atomicLoad(&vfx_counters.alive[vfx_params.parity]);
     vfx_indirect[0] = (n + 63u) / 64u;
     vfx_indirect[1] = 1u;
     vfx_indirect[2] = 1u;
     atomicStore(&vfx_counters.alive[1u - vfx_params.parity], 0u);
-}
+"#
+    ));
+    for q in [c.die, c.collide].into_iter().flatten() {
+        tail.push_str(&format!(
+            "    atomicStore(&vfx_events[{}u], 0u);\n",
+            q.offset
+        ));
+    }
+    tail.push_str(
+        r#"}
 
 @compute @workgroup_size(64)
 fn cs_update(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -892,45 +1242,66 @@ fn cs_update(@builtin(global_invocation_id) gid: vec3<u32>) {
     vfx_rng = vfx_hash(p.seed ^ vfx_hash(vfx_params.serial));
     let dt = vfx_params.dt;
     var kill = false;
+    var collided = false;
 "#,
     );
-    s.body(update);
+    s.push(&tail);
+    s.body(c.update);
     let mut tail = String::new();
-    if update_settings.integrate {
+    if c.settings.integrate {
         tail.push_str("    p.position = p.position + p.velocity * dt;\n");
     }
-    if update_settings.age {
+    if c.settings.age {
         tail.push_str("    p.age = p.age + dt;\n");
     }
-    let reap = if update_settings.reap {
+    if c.trail_points > 0 {
+        tail.push_str(&format!(
+            "    vfx_trail[index * {n}u + vfx_params.serial % {n}u] = vec4<f32>(p.position, 1.0);\n",
+            n = c.trail_points
+        ));
+    }
+    let reap = if c.settings.reap {
         "kill || p.age >= p.lifetime"
     } else {
         "kill"
     };
-    tail.push_str(&format!(
-        r#"    if ({reap}) {{
+    tail.push_str(&format!("    let dying = {reap};\n"));
+    if let Some(q) = c.collide {
+        tail.push_str(&format!(
+            "    if (collided) {{\n        vfx_push_event({}u, {}u, p);\n    }}\n",
+            q.offset, q.capacity
+        ));
+    }
+    if let Some(q) = c.die {
+        tail.push_str(&format!(
+            "    if (dying) {{\n        vfx_push_event({}u, {}u, p);\n    }}\n",
+            q.offset, q.capacity
+        ));
+    }
+    tail.push_str(
+        r#"    if (dying) {
         p.alive = 0u;
         vfx_particles[index] = p;
         let d = atomicAdd(&vfx_counters.dead, 1);
         vfx_dead[u32(d)] = index;
         atomicAdd(&vfx_counters.reaped, 1u);
         return;
-    }}
+    }
     vfx_particles[index] = p;
     let slot = atomicAdd(&vfx_counters.alive[1u - vfx_params.parity], 1u);
     vfx_alive_out[slot] = index;
-}}
+}
 
 @compute @workgroup_size(1)
-fn cs_finish() {{
+fn cs_finish() {
     let n = atomicLoad(&vfx_counters.alive[1u - vfx_params.parity]);
     vfx_counters.last_alive = n;
-"#
-    ));
+"#,
+    );
     // Indirect draw arguments per output: [vertex_count, instance_count, first, first_instance]
-    // at 16 + 32 × k bytes.
-    for (k, verts) in outputs {
-        let base = 4 + 8 * k;
+    // at word 8 + 4 × k (words 0..3 = the update dispatch, 4..7 = the event emit dispatch).
+    for (k, verts) in c.outputs {
+        let base = 8 + 4 * k;
         tail.push_str(&format!(
             "    vfx_indirect[{base}u] = {verts}u;\n    vfx_indirect[{}u] = n;\n    vfx_indirect[{}u] = 0u;\n    vfx_indirect[{}u] = 0u;\n",
             base + 1,
@@ -943,17 +1314,46 @@ fn cs_finish() {{
     s
 }
 
-fn render_shader(body: &[(String, Option<u32>)], settings: &OutputSettings) -> Source {
-    let mut s = Source::new();
-    s.push(RENDER_BINDINGS);
-    s.push(COMMON);
-    s.push(
-        r#"
+/// Vertices of a primitive mesh as a triangle list (position, normal) for Mesh outputs.
+pub fn mesh_vertices(m: crate::scene::PrimitiveMesh) -> Vec<[f32; 4]> {
+    let data = crate::render::mesh::primitive(m);
+    let mut out = Vec::with_capacity(data.indices.len() * 2);
+    for i in &data.indices {
+        let v = &data.vertices[*i as usize];
+        out.push([v.position[0], v.position[1], v.position[2], 1.0]);
+        out.push([v.normal[0], v.normal[1], v.normal[2], 0.0]);
+    }
+    out
+}
+
+/// Vertices a Mesh output draws per particle.
+pub fn mesh_vertex_count(m: crate::scene::PrimitiveMesh) -> u32 {
+    crate::render::mesh::primitive(m).indices.len() as u32
+}
+
+/// Vertices per particle of an output.
+pub fn vertex_count(s: &OutputSettings) -> u32 {
+    match s.kind {
+        OutputKind::Quad | OutputKind::Ribbon => 6,
+        OutputKind::Point => 1,
+        OutputKind::Line => 2,
+        OutputKind::Mesh => mesh_vertex_count(s.mesh),
+        OutputKind::Trail => 6 * (trail_points(s) - 1),
+    }
+}
+
+/// Points of a Trail output's ring.
+pub fn trail_points(s: &OutputSettings) -> u32 {
+    s.trail_points.clamp(2, MAX_TRAIL_POINTS)
+}
+
+const RENDER_HEAD: &str = r#"
 struct VfxOut {
     @builtin(position) pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) color: vec4<f32>,
     @location(2) world: vec3<f32>,
+    @location(3) normal: vec3<f32>,
 };
 
 struct VfxTargets {
@@ -961,24 +1361,169 @@ struct VfxTargets {
     @location(1) glow: vec4<f32>,
 };
 
-@vertex
-fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VfxOut {
-    var p = vfx_particles[vfx_alive[ii]];
-    vfx_rng = vfx_hash(p.seed ^ 0x2545f491u);
-    let dt = vfx_params.dt;
-    var orient = 0u;
-    var stretch = 0.0;
-"#,
-    );
-    s.body(body);
-    let shape = match settings.kind {
-        OutputKind::Quad => {
-            r#"
+struct VfxApplied {
+    p: VfxParticle,
+    orient: u32,
+    stretch: f32,
+};
+
+fn vfx_to_world(v: vec3<f32>, w: f32) -> vec3<f32> {
+    if (vfx_params.world_space == 0u) {
+        return (vfx_params.world * vec4<f32>(v, w)).xyz;
+    }
+    return v;
+}
+
+fn vfx_corner(i: u32) -> vec2<f32> {
     var corners = array<vec2<f32>, 6>(
         vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
         vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
     );
-    let c = corners[vi % 6u];
+    return corners[i];
+}
+
+// The Output blocks applied to one particle (what is drawn, not what is stored).
+fn vfx_apply(p_in: VfxParticle) -> VfxApplied {
+    var p = p_in;
+    vfx_rng = vfx_hash(p.seed ^ 0x2545f491u);
+    let dt = vfx_params.dt;
+    var orient = 0u;
+    var stretch = 0.0;
+"#;
+
+const RENDER_APPLY_END: &str = r#"
+    var a: VfxApplied;
+    a.p = p;
+    a.orient = orient;
+    a.stretch = stretch;
+    return a;
+}
+
+// A camera-facing ribbon segment from `a` to `b`: corner c (x across, y 0 at a, 1 at b).
+fn vfx_strip(a: vec3<f32>, b: vec3<f32>, c: vec2<f32>, half_width: f32) -> vec3<f32> {
+    let along = mix(a, b, c.y * 0.5 + 0.5);
+    let side = vfx_safe_normalize(cross(b - a, view.camera_pos.xyz - along));
+    return along + side * (c.x * half_width);
+}
+"#;
+
+fn render_vertex(kind: OutputKind) -> &'static str {
+    match kind {
+        OutputKind::Quad | OutputKind::Point | OutputKind::Line => {
+            r#"
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VfxOut {
+    let applied = vfx_apply(vfx_particles[vfx_alive[ii]]);
+    let p = applied.p;
+    let orient = applied.orient;
+    let stretch = applied.stretch;
+    let center = vfx_to_world(p.position, 1.0);
+    let vel = vfx_to_world(p.velocity, 0.0);
+    var out: VfxOut;
+    out.normal = vec3<f32>(0.0);
+"#
+        }
+        OutputKind::Mesh => {
+            r#"
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VfxOut {
+    let applied = vfx_apply(vfx_particles[vfx_alive[ii]]);
+    let p = applied.p;
+    let center = vfx_to_world(p.position, 1.0);
+    let vel = vfx_to_world(p.velocity, 0.0);
+    let mv = vfx_mesh[vi * 2u].xyz;
+    let mn = vfx_mesh[vi * 2u + 1u].xyz;
+    // Orientation: tumbling around a random axis by Angle, along the velocity, or upright.
+    var x = vec3<f32>(1.0, 0.0, 0.0);
+    var y = vec3<f32>(0.0, 1.0, 0.0);
+    var z = vec3<f32>(0.0, 0.0, 1.0);
+    let speed = length(vel);
+    let a = radians(p.angle);
+    if (applied.orient == 1u && speed > 0.0001) {
+        y = vel / speed;
+        x = vfx_safe_normalize(cross(y, select(vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(1.0, 0.0, 0.0), abs(y.z) > 0.9)));
+        z = cross(x, y);
+        let xr = x * cos(a) - z * sin(a);
+        z = x * sin(a) + z * cos(a);
+        x = xr;
+    } else if (applied.orient == 0u) {
+        let k = vfx_safe_normalize(vfx_prand3(p.seed, 77u) * 2.0 - vec3<f32>(1.0));
+        let c = cos(a);
+        let s = sin(a);
+        let t = 1.0 - c;
+        x = vec3<f32>(t * k.x * k.x + c, t * k.x * k.y + s * k.z, t * k.x * k.z - s * k.y);
+        y = vec3<f32>(t * k.x * k.y - s * k.z, t * k.y * k.y + c, t * k.y * k.z + s * k.x);
+        z = vec3<f32>(t * k.x * k.z + s * k.y, t * k.y * k.z - s * k.x, t * k.z * k.z + c);
+    }
+    var rot = mat3x3<f32>(x, y, z);
+    if (vfx_params.world_space == 0u) {
+        let w = vfx_params.world;
+        rot = mat3x3<f32>(normalize(w[0].xyz), normalize(w[1].xyz), normalize(w[2].xyz)) * rot;
+    }
+    let world = center + rot * (mv * p.size);
+    var out: VfxOut;
+    out.normal = normalize(rot * mn);
+    var uv = vec2<f32>(0.5, 0.5);
+"#
+        }
+        OutputKind::Trail => {
+            r#"
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VfxOut {
+    let index = vfx_alive[ii];
+    let applied = vfx_apply(vfx_particles[index]);
+    let p = applied.p;
+    let points = u32(vfx_params.trail.y);
+    let head = u32(vfx_params.trail.x);
+    let seg = vi / 6u;
+    let c = vfx_corner(vi % 6u);
+    // Ring slots of the segment's ends (0 = the newest point).
+    let sa = (head + points - seg % points) % points;
+    let sb = (head + points - (seg + 1u) % points) % points;
+    let a = vfx_to_world(vfx_trail[index * points + sa].xyz, 1.0);
+    let b = vfx_to_world(vfx_trail[index * points + sb].xyz, 1.0);
+    let t = (f32(seg) + (c.y * 0.5 + 0.5)) / f32(points - 1u);
+    let world = vfx_strip(a, b, c, p.size * 0.5 * (1.0 - t));
+    var out: VfxOut;
+    out.normal = vec3<f32>(0.0);
+    var uv = vec2<f32>(t, c.x * 0.5 + 0.5);
+    var color = p.color;
+    color.a = color.a * (1.0 - t);
+"#
+        }
+        OutputKind::Ribbon => {
+            r#"
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VfxOut {
+    let c = vfx_corner(vi % 6u);
+    var out: VfxOut;
+    out.normal = vec3<f32>(0.0);
+    let count = arrayLength(&vfx_alive);
+    if (ii + 1u >= count) {
+        out.pos = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+        return out;
+    }
+    let i0 = vfx_alive[ii];
+    let i1 = vfx_alive[ii + 1u];
+    if (i0 == 0xffffffffu || i1 == 0xffffffffu) {
+        out.pos = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+        return out;
+    }
+    let a = vfx_to_world(vfx_particles[i0].position, 1.0);
+    let b = vfx_to_world(vfx_particles[i1].position, 1.0);
+    let end = select(i0, i1, c.y > 0.0);
+    let applied = vfx_apply(vfx_particles[end]);
+    let p = applied.p;
+    let world = vfx_strip(a, b, c, p.size * 0.5);
+    var uv = vec2<f32>(vfx_life(p), c.x * 0.5 + 0.5);
+    let color = p.color;
+"#
+        }
+    }
+}
+
+const QUAD_SHAPE: &str = r#"
+    let c = vfx_corner(vi % 6u);
     var ax = normalize((view.inv_view_proj * vec4<f32>(1.0, 0.0, 0.0, 0.0)).xyz);
     var ay = normalize((view.inv_view_proj * vec4<f32>(0.0, 1.0, 0.0, 0.0)).xyz);
     var half_y = p.size * 0.5;
@@ -996,34 +1541,6 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
     let ry = ay * cos(a) - ax * sin(a);
     let world = center + rx * (c.x * p.size * 0.5) + ry * (c.y * half_y);
     var uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
-"#
-        }
-        OutputKind::Point => {
-            r#"
-    let world = center;
-    var uv = vec2<f32>(0.5, 0.5);
-"#
-        }
-        OutputKind::Line => {
-            r#"
-    let world = center - vel * vfx_params.misc.x * f32(vi % 2u);
-    var uv = vec2<f32>(0.5, f32(vi % 2u));
-"#
-        }
-    };
-    s.push(
-        r#"
-    var center = p.position;
-    var vel = p.velocity;
-    if (vfx_params.world_space == 0u) {
-        center = (vfx_params.world * vec4<f32>(center, 1.0)).xyz;
-        vel = (vfx_params.world * vec4<f32>(vel, 0.0)).xyz;
-    }
-"#,
-    );
-    s.push(shape);
-    s.push(
-        r#"
     // Flipbook: pick the frame and squeeze the UVs into its cell.
     let cols = max(vfx_params.flipbook.x, 1.0);
     let rows = max(vfx_params.flipbook.y, 1.0);
@@ -1037,17 +1554,100 @@ fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> 
         let cell = vec2<f32>(frame % cols, floor(frame / cols));
         uv = (cell + uv) / vec2<f32>(cols, rows);
     }
-    var out: VfxOut;
+    let color = p.color;
+"#;
+
+const POINT_SHAPE: &str = r#"
+    let world = center;
+    var uv = vec2<f32>(0.5, 0.5);
+    let color = p.color;
+"#;
+
+const LINE_SHAPE: &str = r#"
+    let world = center - vel * vfx_params.misc.x * f32(vi % 2u);
+    var uv = vec2<f32>(0.5, f32(vi % 2u));
+    let color = p.color;
+"#;
+
+fn render_shader(body: &[(String, Option<u32>)], settings: &OutputSettings) -> Source {
+    let mut s = Source::new();
+    s.push(RENDER_BINDINGS);
+    s.push(COMMON);
+    s.push(RENDER_HEAD);
+    s.body(body);
+    s.push(RENDER_APPLY_END);
+    s.push(render_vertex(settings.kind));
+    match settings.kind {
+        OutputKind::Quad => s.push(QUAD_SHAPE),
+        OutputKind::Point => s.push(POINT_SHAPE),
+        OutputKind::Line => s.push(LINE_SHAPE),
+        OutputKind::Mesh => s.push("    let color = p.color;\n"),
+        OutputKind::Trail | OutputKind::Ribbon => {}
+    }
+    s.push(
+        r#"
     out.pos = view.view_proj * vec4<f32>(world, 1.0);
     out.uv = uv;
-    out.color = p.color;
+    out.color = color;
     out.world = world;
-    if (p.size <= 0.0 && vfx_params.misc.z < 0.5) {
+"#,
+    );
+    if matches!(settings.kind, OutputKind::Quad | OutputKind::Mesh) {
+        s.push(
+            r#"    if (p.size <= 0.0) {
         out.pos = vec4<f32>(2.0, 2.0, 2.0, 1.0);
     }
-    return out;
+"#,
+        );
+    }
+    s.push("    return out;\n}\n");
+    // The shape a fragment cuts out of its particle.
+    let shape = match settings.kind {
+        OutputKind::Quad => {
+            r#"
+fn vfx_shape(in: VfxOut) -> vec4<f32> {
+    if (vfx_params.textured == 1u) {
+        return textureSample(vfx_tex, vfx_sampler, in.uv);
+    }
+    let r = length(in.uv * 2.0 - 1.0);
+    let f = clamp(1.0 - r, 0.0, 1.0);
+    return vec4<f32>(1.0, 1.0, 1.0, f * f * (3.0 - 2.0 * f));
 }
-
+"#
+        }
+        OutputKind::Trail | OutputKind::Ribbon => {
+            r#"
+fn vfx_shape(in: VfxOut) -> vec4<f32> {
+    if (vfx_params.textured == 1u) {
+        return textureSample(vfx_tex, vfx_sampler, in.uv);
+    }
+    let f = clamp(1.0 - abs(in.uv.y * 2.0 - 1.0), 0.0, 1.0);
+    return vec4<f32>(1.0, 1.0, 1.0, sqrt(f));
+}
+"#
+        }
+        OutputKind::Mesh => {
+            r#"
+fn vfx_shape(in: VfxOut) -> vec4<f32> {
+    // Lit by the sun with a flat ambient term.
+    let n = normalize(in.normal);
+    let sun = max(dot(n, view.sun_dir.xyz), 0.0) * view.sun_dir.w;
+    let sky = 0.35 + 0.15 * n.y;
+    return vec4<f32>(view.sun_color.rgb * sun + vec3<f32>(sky), 1.0);
+}
+"#
+        }
+        OutputKind::Point | OutputKind::Line => {
+            r#"
+fn vfx_shape(in: VfxOut) -> vec4<f32> {
+    return vec4<f32>(1.0);
+}
+"#
+        }
+    };
+    s.push(shape);
+    s.push(
+        r#"
 // Fade near opaque geometry: 0 where the particle meets it, 1 a soft distance in front.
 fn vfx_soft(in: VfxOut) -> f32 {
     if (vfx_params.misc.y <= 0.0) {
@@ -1066,14 +1666,7 @@ fn vfx_soft(in: VfxOut) -> f32 {
 }
 
 fn vfx_shade(in: VfxOut) -> VfxTargets {
-    var shape = vec4<f32>(1.0);
-    if (vfx_params.textured == 1u) {
-        shape = textureSample(vfx_tex, vfx_sampler, in.uv);
-    } else if (vfx_params.misc.z < 0.5) {
-        let r = length(in.uv * 2.0 - 1.0);
-        let f = clamp(1.0 - r, 0.0, 1.0);
-        shape = vec4<f32>(1.0, 1.0, 1.0, f * f * (3.0 - 2.0 * f));
-    }
+    let shape = vfx_shape(in);
     let c = vec4<f32>(in.color.rgb * shape.rgb, in.color.a * shape.a * vfx_soft(in));
     let bright = max(max(c.r, c.g), c.b);
     var out: VfxTargets;
@@ -1168,32 +1761,69 @@ fn validate_compute(src: &Source) -> Result<(), GraphError> {
 /// Problems of the graph's structure (contexts, blocks, links), before any code.
 pub fn check(g: &EffectGraph) -> Vec<GraphError> {
     let mut errors = Vec::new();
-    for ty in [
-        ContextType::Spawn,
-        ContextType::Initialize,
-        ContextType::Update,
-    ] {
-        let list: Vec<u32> = g
-            .contexts
-            .iter()
-            .filter(|c| c.kind.ty() == ty)
-            .map(|c| c.id)
-            .collect();
-        for extra in list.iter().skip(1) {
-            errors.push(err(
-                Some(*extra),
-                format!("only one {} context per effect", ty.label()),
-            ));
+    let systems = g.systems();
+    for &sys in &systems {
+        for ty in [
+            ContextType::Spawn,
+            ContextType::GpuEvent,
+            ContextType::Initialize,
+            ContextType::Update,
+        ] {
+            let list: Vec<u32> = g
+                .contexts
+                .iter()
+                .filter(|c| c.system == sys && c.kind.ty() == ty)
+                .map(|c| c.id)
+                .collect();
+            for extra in list.iter().skip(1) {
+                errors.push(err(
+                    Some(*extra),
+                    format!("only one {} context per system", ty.label()),
+                ));
+            }
         }
-    }
-    if g.context_of(ContextType::Spawn).is_none() {
-        errors.push(err(None, "add a Spawn context"));
-    }
-    if g.context_of(ContextType::Initialize).is_none() {
-        errors.push(err(None, "add an Initialize Particle context"));
-    }
-    if g.context_of(ContextType::Output).is_none() {
-        errors.push(err(None, "add an Output Particle context"));
+        let event = g.system_context(sys, ContextType::GpuEvent);
+        if sys == 0 {
+            if g.context_of(ContextType::Spawn).is_none() {
+                errors.push(err(None, "add a Spawn context"));
+            }
+            if let Some(e) = event {
+                errors.push(err(
+                    Some(e.id),
+                    "a GPU Event context starts its own system (GPU Event System in the menu)",
+                ));
+            }
+        } else {
+            match event {
+                None => {
+                    let any = g.contexts.iter().find(|c| c.system == sys).map(|c| c.id);
+                    errors.push(err(any, format!("system {sys} needs a GPU Event context")));
+                }
+                Some(e) => {
+                    if let ContextKind::GpuEvent(s) = &e.kind
+                        && (s.parent >= sys || !systems.contains(&s.parent))
+                    {
+                        errors.push(err(
+                            Some(e.id),
+                            "the parent system must be an earlier system",
+                        ));
+                    }
+                }
+            }
+            if let Some(sp) = g.system_context(sys, ContextType::Spawn) {
+                errors.push(err(
+                    Some(sp.id),
+                    "GPU Event systems spawn from events, not a Spawn context",
+                ));
+            }
+        }
+        let anchor = event.map(|c| c.id);
+        if g.system_context(sys, ContextType::Initialize).is_none() {
+            errors.push(err(anchor, "add an Initialize Particle context"));
+        }
+        if g.system_context(sys, ContextType::Output).is_none() {
+            errors.push(err(anchor, "add an Output Particle context"));
+        }
     }
     for c in &g.contexts {
         let ty = c.kind.ty();
@@ -1210,6 +1840,12 @@ pub fn check(g: &EffectGraph) -> Vec<GraphError> {
                 errors.push(err(
                     Some(c.id),
                     format!("Capacity must be between 1 and {MAX_CAPACITY}"),
+                ));
+            }
+            ContextKind::GpuEvent(s) if s.count == 0 || s.count > 1024 => {
+                errors.push(err(
+                    Some(c.id),
+                    "Count (particles per event) must be between 1 and 1024",
                 ));
             }
             ContextKind::Output(s) => {
@@ -1282,73 +1918,204 @@ fn cpu_op(g: &EffectGraph, op: u32) -> CpuExpr {
     }
 }
 
-/// Compile a graph: structure checks, WGSL for the simulation and each output, the spawn
-/// system. Errors carry the context, block or operator they belong to.
+/// Compile a graph: sub-graphs flattened, structure checks, WGSL for every system's simulation
+/// and outputs, the spawn system. Errors carry the context, block or operator they belong to
+/// (errors inside a sub-graph land on its node).
 pub fn compile(g: &EffectGraph) -> Result<CompiledEffect, Vec<GraphError>> {
+    let (flat, origin) = super::subgraph::expand(g)?;
+    compile_flat(&flat).map_err(|errors| {
+        errors
+            .into_iter()
+            .map(|mut e| {
+                if let Some(n) = e.node.and_then(|n| origin.get(&n)) {
+                    e.node = Some(*n);
+                }
+                e
+            })
+            .collect()
+    })
+}
+
+/// Event queues: one per (parent system, event kind) some GPU Event context listens to.
+fn plan_queues(g: &EffectGraph) -> Vec<((u32, EventSource), EventQueue)> {
+    let mut out: Vec<((u32, EventSource), EventQueue)> = Vec::new();
+    for sys in g.systems() {
+        let Some(ContextKind::GpuEvent(ev)) = g
+            .system_context(sys, ContextType::GpuEvent)
+            .map(|c| &c.kind)
+        else {
+            continue;
+        };
+        let cap = match g
+            .system_context(sys, ContextType::Initialize)
+            .map(|c| &c.kind)
+        {
+            Some(ContextKind::Initialize(s)) => s.capacity,
+            _ => 1024,
+        };
+        let want = (cap / ev.count.max(1)).clamp(64, 1 << 18);
+        match out.iter_mut().find(|(k, _)| *k == (ev.parent, ev.source)) {
+            Some((_, q)) => q.capacity = q.capacity.max(want),
+            None => out.push((
+                (ev.parent, ev.source),
+                EventQueue {
+                    offset: 0,
+                    capacity: want,
+                },
+            )),
+        }
+    }
+    let mut offset = 0;
+    for (_, q) in &mut out {
+        q.offset = offset;
+        offset += 4 + q.capacity * EVENT_WORDS;
+    }
+    out
+}
+
+fn compile_flat(g: &EffectGraph) -> Result<CompiledEffect, Vec<GraphError>> {
     let mut errors = check(g);
     if !errors.is_empty() {
         return Err(errors);
     }
     let mut cg = Gen::new(g);
-    let init_ctx = g.context_of(ContextType::Initialize).expect("checked");
-    let ContextKind::Initialize(init) = &init_ctx.kind else {
+    let root_init = g.context_of(ContextType::Initialize).expect("checked");
+    let ContextKind::Initialize(root_settings) = &root_init.kind else {
         unreachable!("context_of returns the asked type")
     };
-    cg.stage = Stage::Init;
-    for b in &init_ctx.blocks {
-        cg.block(b);
-    }
-    let init_body = cg.take_body();
-    cg.stage = Stage::Update;
-    let update_ctx = g.context_of(ContextType::Update);
-    let update_settings = match update_ctx.map(|c| &c.kind) {
-        Some(ContextKind::Update(s)) => s.clone(),
-        _ => Default::default(),
-    };
-    if let Some(c) = update_ctx {
-        for b in &c.blocks {
+    let queues = plan_queues(g);
+    let queue_index =
+        |parent: u32, source: EventSource| queues.iter().position(|(k, _)| *k == (parent, source));
+    let mut systems = Vec::new();
+    let mut sims = Vec::new();
+    let mut depth_collision = false;
+    for sys in g.systems() {
+        let init_ctx = g
+            .system_context(sys, ContextType::Initialize)
+            .expect("checked");
+        let ContextKind::Initialize(init) = &init_ctx.kind else {
+            unreachable!("system_context returns the asked type")
+        };
+        cg.stage = Stage::Init;
+        for b in &init_ctx.blocks {
             cg.block(b);
         }
-    }
-    let update_body = cg.take_body();
+        let init_body = cg.take_body();
+        cg.stage = Stage::Update;
+        let update_ctx = g.system_context(sys, ContextType::Update);
+        let update_settings = match update_ctx.map(|c| &c.kind) {
+            Some(ContextKind::Update(s)) => s.clone(),
+            _ => Default::default(),
+        };
+        if let Some(c) = update_ctx {
+            for b in &c.blocks {
+                cg.block(b);
+                depth_collision |= b.enabled && b.kind == BlockKind::CollideDepthBuffer;
+            }
+        }
+        let update_body = cg.take_body();
 
-    let mut outputs = Vec::new();
-    let mut draws = Vec::new();
-    cg.stage = Stage::Output;
-    for c in g
-        .contexts
-        .iter()
-        .filter(|c| c.kind.ty() == ContextType::Output)
-    {
-        let ContextKind::Output(settings) = &c.kind else {
-            continue;
-        };
-        for b in &c.blocks {
-            cg.block(b);
+        let mut outputs = Vec::new();
+        let mut draws = Vec::new();
+        let out_ctxs: Vec<&super::graph::Context> = g
+            .contexts
+            .iter()
+            .filter(|c| c.system == sys && c.kind.ty() == ContextType::Output)
+            .collect();
+        // Every Trail output of a system shares one ring (the longest asked for).
+        let trail = out_ctxs
+            .iter()
+            .filter_map(|c| match &c.kind {
+                ContextKind::Output(s) if s.kind == OutputKind::Trail => Some(trail_points(s)),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        cg.stage = Stage::Output;
+        for c in out_ctxs {
+            let ContextKind::Output(settings) = &c.kind else {
+                continue;
+            };
+            for b in &c.blocks {
+                cg.block(b);
+            }
+            let body = cg.take_body();
+            let mut settings = settings.clone();
+            if settings.kind == OutputKind::Trail {
+                settings.trail_points = trail;
+            }
+            let vertex_count = vertex_count(&settings);
+            draws.push((outputs.len() as u32, vertex_count));
+            let src = render_shader(&body, &settings);
+            let sort = if settings.kind == OutputKind::Ribbon {
+                Some(SortKey::Age)
+            } else if settings.sorted() {
+                Some(SortKey::Distance)
+            } else {
+                None
+            };
+            outputs.push(CompiledOutput {
+                source: src.text,
+                settings,
+                vertex_count,
+                sort,
+            });
         }
-        let body = cg.take_body();
-        let vertex_count = match settings.kind {
-            OutputKind::Quad => 6,
-            OutputKind::Point => 1,
-            OutputKind::Line => 2,
+        let event = match g
+            .system_context(sys, ContextType::GpuEvent)
+            .map(|c| &c.kind)
+        {
+            Some(ContextKind::GpuEvent(ev)) => {
+                let parent = systems
+                    .iter()
+                    .position(|s: &CompiledSystem| s.index == ev.parent)
+                    .unwrap_or(0);
+                queue_index(ev.parent, ev.source).map(|q| CompiledEvent {
+                    parent,
+                    source: ev.source,
+                    count: ev.count,
+                    queue: q,
+                })
+            }
+            _ => None,
         };
-        draws.push((outputs.len() as u32, vertex_count));
-        let src = render_shader(&body, settings);
-        outputs.push(CompiledOutput {
-            source: src.text,
-            settings: settings.clone(),
-            vertex_count,
+        let die = queue_index(sys, EventSource::OnDie).map(|i| queues[i].1);
+        let collide = queue_index(sys, EventSource::OnCollide).map(|i| queues[i].1);
+        let spread = outputs
+            .iter()
+            .any(|o| o.settings.kind == OutputKind::Ribbon);
+        let sim = sim_shader(&SimConfig {
+            init: &init_body,
+            update: &update_body,
+            settings: &update_settings,
+            outputs: &draws,
+            event_in: event.as_ref().map(|e| (queues[e.queue].1, e.count)),
+            die,
+            collide,
+            trail_points: trail,
+            spread_births: spread,
         });
+        systems.push(CompiledSystem {
+            index: sys,
+            sim_source: sim.text.clone(),
+            outputs,
+            capacity: init.capacity,
+            event,
+            trail_points: trail,
+        });
+        sims.push(sim);
     }
-    let sim = sim_shader(&init_body, &update_body, &update_settings, &draws);
     errors.append(&mut cg.errors);
-    if errors.is_empty()
-        && let Err(e) = validate_compute(&sim)
-    {
-        errors.push(e);
+    if errors.is_empty() {
+        for sim in &sims {
+            if let Err(e) = validate_compute(sim) {
+                errors.push(e);
+                break;
+            }
+        }
     }
     if errors.is_empty() {
-        for o in &outputs {
+        for o in systems.iter().flat_map(|s| s.outputs.iter()) {
             if let Err(e) = crate::render::vfx::validate_output(&o.source) {
                 errors.push(err(None, format!("output shader: {e}")));
             }
@@ -1378,20 +2145,27 @@ pub fn compile(g: &EffectGraph) -> Result<CompiledEffect, Vec<GraphError>> {
         .unwrap_or_default();
 
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    sim.text.hash(&mut h);
-    for o in &outputs {
-        o.source.hash(&mut h);
-        format!("{:?}", o.settings).hash(&mut h);
+    for s in &systems {
+        s.sim_source.hash(&mut h);
+        s.capacity.hash(&mut h);
+        for o in &s.outputs {
+            o.source.hash(&mut h);
+            format!("{:?}", o.settings).hash(&mut h);
+        }
     }
-    init.capacity.hash(&mut h);
+    let event_words = queues
+        .iter()
+        .map(|(_, q)| 4 + q.capacity * EVENT_WORDS)
+        .sum();
     Ok(CompiledEffect {
         hash: h.finish(),
-        sim_source: sim.text,
-        outputs,
-        capacity: init.capacity,
-        bounds_center: Vec3::from(init.bounds_center),
-        bounds_size: Vec3::from(init.bounds_size),
-        space: init.space,
+        systems,
+        queues: queues.iter().map(|(_, q)| *q).collect(),
+        event_words,
+        depth_collision,
+        bounds_center: Vec3::from(root_settings.bounds_center),
+        bounds_size: Vec3::from(root_settings.bounds_size),
+        space: root_settings.space,
         spawn,
         properties: g.properties.clone(),
         slots: cg.slots.clone(),

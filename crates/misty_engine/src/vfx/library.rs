@@ -19,6 +19,8 @@ struct Entry {
     effect: Compiled,
     /// An unsaved graph from the editor is shown instead of the file.
     working_copy: bool,
+    /// Sub-graph files the effect uses and their modification times (edits recompile it).
+    deps: Vec<(String, Option<SystemTime>)>,
 }
 
 #[derive(Default)]
@@ -48,6 +50,7 @@ fn mtime(rel: &str) -> Option<SystemTime> {
 }
 
 fn read(rel: &str) -> Entry {
+    let mut deps = Vec::new();
     let effect = crate::vfs::read_to_string(assets::absolute(rel))
         .map_err(|e| {
             vec![GraphError {
@@ -63,13 +66,21 @@ fn read(rel: &str) -> Entry {
                 }]
             })
         })
-        .and_then(|g| compile(&g).map(Arc::new));
+        .and_then(|g| {
+            deps = super::subgraph::dependencies(&g);
+            compile(&g).map(Arc::new)
+        });
     Entry {
         modified: mtime(rel),
         generation: next_generation(),
         effect,
         working_copy: false,
+        deps,
     }
+}
+
+fn deps_changed(deps: &[(String, Option<SystemTime>)]) -> bool {
+    deps.iter().any(|(p, t)| mtime(p) != *t)
 }
 
 /// The compiled effect at a project path, read on first use, and its load generation.
@@ -100,12 +111,22 @@ pub fn poll_changes() -> Vec<String> {
     lib.last_poll = Some(now);
     let mut changed = Vec::new();
     for (rel, entry) in lib.entries.iter_mut() {
-        if !entry.working_copy && entry.modified != mtime(rel) {
+        if !entry.working_copy && (entry.modified != mtime(rel) || deps_changed(&entry.deps)) {
             *entry = read(rel);
             changed.push(rel.clone());
         }
     }
     changed
+}
+
+/// Effects in the cache that use the sub-graph at `rel`.
+pub fn users_of(rel: &str) -> Vec<String> {
+    lock()
+        .entries
+        .iter()
+        .filter(|(_, e)| e.deps.iter().any(|(p, _)| p == rel))
+        .map(|(k, _)| k.clone())
+        .collect()
 }
 
 /// Re-read one effect now (after saving it); drops a working copy.
@@ -141,6 +162,7 @@ pub fn set_working_copy(rel: &str, graph: &EffectGraph) {
             generation: next_generation(),
             effect: compiled,
             working_copy: true,
+            deps: super::subgraph::dependencies(graph),
         },
     );
 }

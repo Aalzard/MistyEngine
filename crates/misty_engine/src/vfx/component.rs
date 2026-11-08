@@ -164,8 +164,7 @@ impl EffectInstance {
             id: self.id,
             bounds: super::world_bounds(&effect, &world),
             textures: effect
-                .outputs
-                .iter()
+                .all_outputs()
                 .map(|o| super::output_texture(&effect, o, component))
                 .collect(),
             effect,
@@ -306,7 +305,7 @@ impl EffectInstance {
                 overrides: &overrides,
             };
             let n = spawn::step(&effect.spawn, &mut self.spawn, &props, dt);
-            self.spawn_count = n.min(effect.capacity);
+            self.spawn_count = n.min(effect.capacity());
             self.requested += self.spawn_count as u64;
         }
     }

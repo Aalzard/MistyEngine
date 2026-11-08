@@ -78,19 +78,102 @@ pub enum OutputKind {
     Point,
     /// A segment along the velocity.
     Line,
+    /// A built-in mesh per particle, lit by the sun.
+    Mesh,
+    /// Each particle leaves a ribbon through its last positions.
+    Trail,
+    /// One ribbon joining every particle in the order they were born.
+    Ribbon,
 }
 
 impl OutputKind {
-    pub const ALL: [Self; 3] = [Self::Quad, Self::Point, Self::Line];
+    pub const ALL: [Self; 6] = [
+        Self::Quad,
+        Self::Point,
+        Self::Line,
+        Self::Mesh,
+        Self::Trail,
+        Self::Ribbon,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Quad => "Quad",
             Self::Point => "Point",
             Self::Line => "Line",
+            Self::Mesh => "Mesh",
+            Self::Trail => "Trail",
+            Self::Ribbon => "Ribbon",
         }
     }
 }
+
+/// Back-to-front sorting of an output's particles (on the GPU, every view).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SortMode {
+    /// Sort Alpha Blend outputs only.
+    #[default]
+    Auto,
+    On,
+    Off,
+}
+
+impl SortMode {
+    pub const ALL: [Self; 3] = [Self::Auto, Self::On, Self::Off];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Sort: Auto",
+            Self::On => "Sort: On",
+            Self::Off => "Sort: Off",
+        }
+    }
+}
+
+/// The event a GPU Event context listens to on its parent system.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EventSource {
+    /// A parent particle died (age or a kill block).
+    #[default]
+    OnDie,
+    /// A parent particle hit something (plane, sphere or depth buffer collision).
+    OnCollide,
+}
+
+impl EventSource {
+    pub const ALL: [Self; 2] = [Self::OnDie, Self::OnCollide];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::OnDie => "On Die",
+            Self::OnCollide => "On Collide",
+        }
+    }
+}
+
+/// A GPU Event context: spawns its system's particles where parent particles die or collide.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EventSettings {
+    pub source: EventSource,
+    /// Particles spawned per event.
+    pub count: u32,
+    /// System whose particles send the events (0 = the main system).
+    pub parent: u32,
+}
+
+impl Default for EventSettings {
+    fn default() -> Self {
+        Self {
+            source: EventSource::OnDie,
+            count: 8,
+            parent: 0,
+        }
+    }
+}
+
+/// Most points a Trail output keeps per particle.
+pub const MAX_TRAIL_POINTS: u32 = 32;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BlendMode {
@@ -142,6 +225,12 @@ pub struct OutputSettings {
     pub soft_distance: f32,
     /// Line length per unit of speed (Line output).
     pub line_length: f32,
+    /// Back-to-front sorting (Auto = alpha-blended outputs).
+    pub sort: SortMode,
+    /// Mesh of a Mesh output.
+    pub mesh: crate::scene::PrimitiveMesh,
+    /// Positions a Trail output remembers per particle (one per step).
+    pub trail_points: u32,
 }
 
 impl Default for OutputSettings {
@@ -157,6 +246,20 @@ impl Default for OutputSettings {
             soft_particles: false,
             soft_distance: 0.5,
             line_length: 0.05,
+            sort: SortMode::Auto,
+            mesh: crate::scene::PrimitiveMesh::Cube,
+            trail_points: 8,
+        }
+    }
+}
+
+impl OutputSettings {
+    /// Does this output draw its particles sorted back to front?
+    pub fn sorted(&self) -> bool {
+        match self.sort {
+            SortMode::On => true,
+            SortMode::Off => false,
+            SortMode::Auto => self.blend == BlendMode::Alpha,
         }
     }
 }
@@ -166,6 +269,8 @@ impl Default for OutputSettings {
 #[serde(tag = "type")]
 pub enum ContextKind {
     Spawn,
+    /// Starts a child system from its parent's events (instead of a Spawn context).
+    GpuEvent(EventSettings),
     Initialize(InitSettings),
     Update(UpdateSettings),
     Output(OutputSettings),
@@ -175,6 +280,7 @@ impl ContextKind {
     pub fn ty(&self) -> ContextType {
         match self {
             Self::Spawn => ContextType::Spawn,
+            Self::GpuEvent(_) => ContextType::GpuEvent,
             Self::Initialize(_) => ContextType::Initialize,
             Self::Update(_) => ContextType::Update,
             Self::Output(_) => ContextType::Output,
@@ -184,11 +290,16 @@ impl ContextKind {
     pub fn new(ty: ContextType) -> Self {
         match ty {
             ContextType::Spawn => Self::Spawn,
+            ContextType::GpuEvent => Self::GpuEvent(Default::default()),
             ContextType::Initialize => Self::Initialize(Default::default()),
             ContextType::Update => Self::Update(Default::default()),
             ContextType::Output => Self::Output(Default::default()),
         }
     }
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
 }
 
 fn yes() -> bool {
@@ -227,6 +338,9 @@ pub struct Context {
     pub id: u32,
     #[serde(flatten)]
     pub kind: ContextKind,
+    /// The particle system this context belongs to (0 = main; GPU Event systems count up).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub system: u32,
     pub position: [f32; 2],
     #[serde(default)]
     pub blocks: Vec<Block>,
@@ -481,9 +595,51 @@ impl EffectGraph {
         self.contexts.iter_mut().find(|c| c.id == id)
     }
 
-    /// The first context of a type.
+    /// The first context of a type in the main system.
     pub fn context_of(&self, ty: ContextType) -> Option<&Context> {
-        self.contexts.iter().find(|c| c.kind.ty() == ty)
+        self.system_context(0, ty)
+    }
+
+    /// The first context of a type in a system.
+    pub fn system_context(&self, system: u32, ty: ContextType) -> Option<&Context> {
+        self.contexts
+            .iter()
+            .find(|c| c.system == system && c.kind.ty() == ty)
+    }
+
+    /// Systems in the graph (0 first), sorted.
+    pub fn systems(&self) -> Vec<u32> {
+        let mut v: Vec<u32> = self.contexts.iter().map(|c| c.system).collect();
+        v.push(0);
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    /// Add a GPU Event system: GPU Event → Initialize → Update → Output (quads) at `position`,
+    /// listening to `parent`'s particles. Returns the new system's index.
+    pub fn add_event_system(
+        &mut self,
+        parent: u32,
+        source: EventSource,
+        position: [f32; 2],
+    ) -> u32 {
+        let system = self.systems().last().copied().unwrap_or(0) + 1;
+        let [x, y] = position;
+        let ev = self.add_context(ContextType::GpuEvent, [x, y]);
+        let init = self.add_context(ContextType::Initialize, [x, y + 150.0]);
+        let update = self.add_context(ContextType::Update, [x, y + 380.0]);
+        let out = self.add_context(ContextType::Output, [x, y + 520.0]);
+        for id in [ev, init, update, out] {
+            if let Some(c) = self.context_mut(id) {
+                c.system = system;
+                if let ContextKind::GpuEvent(s) = &mut c.kind {
+                    s.parent = parent;
+                    s.source = source;
+                }
+            }
+        }
+        system
     }
 
     pub fn block(&self, id: u32) -> Option<&Block> {
@@ -524,6 +680,7 @@ impl EffectGraph {
         self.contexts.push(Context {
             id,
             kind: ContextKind::new(ty),
+            system: 0,
             position,
             blocks: Vec::new(),
         });
@@ -851,9 +1008,14 @@ impl EffectGraph {
         }
     }
 
-    /// Asset paths the graph references (textures).
+    /// Asset paths the graph references (textures, sub-graphs).
     pub fn references(&self) -> Vec<String> {
         let mut out = Vec::new();
+        for o in &self.operators {
+            if let OperatorKind::Subgraph { path } = &o.kind {
+                out.push(path.clone());
+            }
+        }
         for c in &self.contexts {
             if let ContextKind::Output(s) = &c.kind
                 && let Some(t) = &s.texture

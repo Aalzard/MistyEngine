@@ -1326,6 +1326,7 @@ impl Renderer {
                 &mut self.textures,
                 effects,
                 &view_proj,
+                frame.camera.position,
                 cull,
             );
         }
@@ -1416,7 +1417,14 @@ impl Renderer {
         // (Before culling: decals in view turn the screen-space prepass on.)
         self.prepare_decals(device, queue, target, frame);
         if scene_copy && let Some(c) = self.scene_copies.current(target.size()) {
-            self.effects.scene_depth(device, c.id, &c.depth_view);
+            self.effects.scene_depth(
+                device,
+                c.id,
+                &c.depth_view,
+                view_proj,
+                frame.camera.position,
+                target.size(),
+            );
         }
 
         // Culling and batching for the camera and every shadow map.
