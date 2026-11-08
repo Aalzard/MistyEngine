@@ -721,6 +721,11 @@ pub(super) struct TreeRenderer {
     frame_trees: Vec<String>,
     /// Per (terrain, prototype): bark, leaves and impostor groups.
     groups: Vec<[wgpu::BindGroup; 3]>,
+    /// Those groups and their parameter buffer per (tree asset, terrain), kept across frames
+    /// (the parameters are rewritten each frame instead of a new buffer and groups).
+    group_cache: HashMap<(String, String), CachedGroups>,
+    /// Frames prepared (which cached groups were used this frame).
+    stamp: u64,
     main: Vec<Batch>,
     shadows: Vec<Vec<Batch>>,
     /// Trees in the virtual shadow map's near layer (by placement), kept across frames for
@@ -798,6 +803,8 @@ impl TreeRenderer {
             instance_buffer: None,
             frame_trees: Vec::new(),
             groups: Vec::new(),
+            group_cache: HashMap::new(),
+            stamp: 0,
             main: Vec::new(),
             shadows: Vec::new(),
             near_set: Default::default(),
@@ -920,6 +927,7 @@ impl TreeRenderer {
         f: &TreeFrame,
     ) {
         crate::profile_scope!("Trees.Prepare");
+        self.stamp += 1;
         self.frame_trees.clear();
         self.groups.clear();
         self.main.clear();
@@ -1013,7 +1021,29 @@ impl TreeRenderer {
                 let group = self.groups.len();
                 let bind = {
                     crate::profile_scope!("Trees.BindGroup");
-                    self.bind_group(device, &self.trees[&p.tree], t, f)
+                    let gpu = &self.trees[&p.tree];
+                    let params = tree_params(gpu, t, f);
+                    let key = (p.tree.clone(), t.key.clone());
+                    match self.group_cache.get_mut(&key) {
+                        Some(c) if c.textures == gpu.textures => {
+                            queue.write_buffer(&c.buffer, 0, bytemuck::bytes_of(&params));
+                            c.stamp = self.stamp;
+                            c.groups.clone()
+                        }
+                        _ => {
+                            let c = CachedGroups::new(
+                                device,
+                                &self.layout,
+                                &self.sampler,
+                                gpu,
+                                &params,
+                                self.stamp,
+                            );
+                            let groups = c.groups.clone();
+                            self.group_cache.insert(key, c);
+                            groups
+                        }
+                    }
                 };
                 self.groups.push(bind);
                 protos.push(Some((group, tree)));
@@ -1177,6 +1207,9 @@ impl TreeRenderer {
                 }
             }
         }
+        // Groups no terrain drew with this frame go.
+        let stamp = self.stamp;
+        self.group_cache.retain(|_, c| c.stamp == stamp);
         // Trees that entered or left the near layer: the virtual shadow map's pages under them
         // render again (without or with them).
         if f.near.is_some() || !self.near_set.is_empty() {
@@ -1252,73 +1285,6 @@ impl TreeRenderer {
         }
     }
 
-    fn bind_group(
-        &self,
-        device: &wgpu::Device,
-        gpu: &GpuTree,
-        t: &TerrainDraw,
-        f: &TreeFrame,
-    ) -> [wgpu::BindGroup; 3] {
-        let a = &gpu.built.asset;
-        let m = &gpu.built.model;
-        let [strength, speed, dx, dz, gusts, flutter] =
-            super::terrain_grass::wind(&t.data.details, f.environment.wind.as_ref());
-        let lin = |c: [f32; 3]| c.map(impostor::lin);
-        let [lr, lg, lb] = lin(a.leaf_color);
-        let [br, bg, bb] = lin(a.bark_color);
-        let sun = f.sun.unwrap_or(Vec3::Y);
-        let params = ParamsGpu {
-            origin: [t.position.x, t.position.y, t.position.z, f.time],
-            wind: [strength, speed, dx, dz],
-            gust: [gusts, flutter, t.data.details.gust_scale.max(1.0), f.dt],
-            leaf: [lr, lg, lb, a.translucency],
-            bark: [br, bg, bb, a.height],
-            motion: [
-                a.wind.trunk_bend,
-                a.wind.branch_sway,
-                a.wind.leaf_flutter,
-                a.leaf_variation,
-            ],
-            impostor: [
-                m.impostor.width,
-                m.impostor.height,
-                m.impostor.bottom,
-                impostor::VIEWS as f32,
-            ],
-            light: [sun.x, sun.y, sun.z, if f.taa { 1.0 } else { 0.0 }],
-        };
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("misty tree params"),
-            contents: bytemuck::bytes_of(&params),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
-        std::array::from_fn(|part| {
-            let entries = [
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&gpu.textures[part * 2]),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&gpu.textures[part * 2 + 1]),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-            ];
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("misty tree group"),
-                layout: &self.layout,
-                entries: &entries,
-            })
-        })
-    }
-
     fn draw_list(
         &self,
         pass: &mut wgpu::RenderPass,
@@ -1386,6 +1352,96 @@ impl TreeRenderer {
     pub fn draw_prepass(&self, pass: &mut wgpu::RenderPass, stats: &mut RenderStats) {
         if let Some(p) = &self.pipelines {
             self.draw_list(pass, &self.main, &p.prepass, stats);
+        }
+    }
+}
+
+/// The parameters a tree of terrain `t` draws with this frame.
+fn tree_params(gpu: &GpuTree, t: &TerrainDraw, f: &TreeFrame) -> ParamsGpu {
+    let a = &gpu.built.asset;
+    let m = &gpu.built.model;
+    let [strength, speed, dx, dz, gusts, flutter] =
+        super::terrain_grass::wind(&t.data.details, f.environment.wind.as_ref());
+    let lin = |c: [f32; 3]| c.map(impostor::lin);
+    let [lr, lg, lb] = lin(a.leaf_color);
+    let [br, bg, bb] = lin(a.bark_color);
+    let sun = f.sun.unwrap_or(Vec3::Y);
+    ParamsGpu {
+        origin: [t.position.x, t.position.y, t.position.z, f.time],
+        wind: [strength, speed, dx, dz],
+        gust: [gusts, flutter, t.data.details.gust_scale.max(1.0), f.dt],
+        leaf: [lr, lg, lb, a.translucency],
+        bark: [br, bg, bb, a.height],
+        motion: [
+            a.wind.trunk_bend,
+            a.wind.branch_sway,
+            a.wind.leaf_flutter,
+            a.leaf_variation,
+        ],
+        impostor: [
+            m.impostor.width,
+            m.impostor.height,
+            m.impostor.bottom,
+            impostor::VIEWS as f32,
+        ],
+        light: [sun.x, sun.y, sun.z, if f.taa { 1.0 } else { 0.0 }],
+    }
+}
+
+/// Bark, leaves and impostor groups of one (tree asset, terrain) and their parameter buffer.
+struct CachedGroups {
+    buffer: wgpu::Buffer,
+    groups: [wgpu::BindGroup; 3],
+    /// The tree's textures the groups bind (a reloaded tree gets new groups).
+    textures: [wgpu::TextureView; 6],
+    /// Last frame they were used ([`TreeRenderer::stamp`]).
+    stamp: u64,
+}
+
+impl CachedGroups {
+    fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        gpu: &GpuTree,
+        params: &ParamsGpu,
+        stamp: u64,
+    ) -> Self {
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("misty tree params"),
+            contents: bytemuck::bytes_of(params),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let groups = std::array::from_fn(|part| {
+            let entries = [
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&gpu.textures[part * 2]),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&gpu.textures[part * 2 + 1]),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ];
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("misty tree group"),
+                layout,
+                entries: &entries,
+            })
+        });
+        Self {
+            buffer,
+            groups,
+            textures: gpu.textures.clone(),
+            stamp,
         }
     }
 }
