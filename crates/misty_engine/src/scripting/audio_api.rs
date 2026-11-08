@@ -1,7 +1,10 @@
-//! Lua audio API: the AudioSource component, `AudioSource.PlayClipAtPoint`, and Audio Mixers
-//! (`AudioMixer.Find(name)` → `SetFloat` / `GetFloat` / `ClearFloat`, `FindSnapshot(name)` →
-//! `TransitionTo(time)`, `FindMatchingGroups(path)`). Mixers are found by file name among the
-//! project's `.mixer` assets, so no Resources folder is needed.
+//! Lua audio API: the AudioSource component (with `spatialize` and custom rolloff curves),
+//! `AudioSource.PlayClipAtPoint`, and Audio Mixers (`AudioMixer.Find(name)` → `SetFloat` /
+//! `GetFloat` / `ClearFloat` on exposed parameters — volumes, pitches, any effect parameter or
+//! wet level —, `FindSnapshot(name)` → `TransitionTo(time)`, `TransitionToSnapshots(snapshots,
+//! weights, time)`, `FindMatchingGroups(path)`, `outputAudioMixerGroup` for nested mixers).
+//! Mixers are found by file name among the project's `.mixer` assets, so no Resources folder is
+//! needed.
 
 use hecs::Entity;
 use mlua::{Lua, Result, Table, UserData, UserDataFields, UserDataMethods, Value};
@@ -89,8 +92,9 @@ type BoolField = (
     fn(&AudioSource) -> bool,
     fn(&mut AudioSource, bool),
 );
-const FLAGS: [BoolField; 7] = [
+const FLAGS: [BoolField; 8] = [
     ("loop", |s| s.looping, |s, v| s.looping = v),
+    ("spatialize", |s| s.spatialize, |s, v| s.spatialize = v),
     ("mute", |s| s.mute, |s, v| s.mute = v),
     ("enabled", |s| s.enabled, |s, v| s.enabled = v),
     (
@@ -147,6 +151,7 @@ impl UserData for LAudioSource {
             let mode = match v.as_str() {
                 "Linear" => AudioRolloff::Linear,
                 "Logarithmic" => AudioRolloff::Logarithmic,
+                "Custom" => AudioRolloff::Custom,
                 other => {
                     return Err(mlua::Error::runtime(format!("unknown rolloffMode {other}")));
                 }
@@ -201,6 +206,34 @@ impl UserData for LAudioSource {
         m.add_method("UnPause", |lua, a, ()| {
             with_world(lua, |w| w.audio.unpause(a.0))
         });
+        // `SetCustomCurve("CustomRolloff", {{0, 1}, {0.5, 0.2}, {1, 0}})`: (distance as a share
+        // of Max Distance, volume) keys; also switches the source to Custom Rolloff.
+        m.add_method("SetCustomCurve", |lua, a, (kind, keys): (String, Table)| {
+            if kind != "CustomRolloff" {
+                return Err(mlua::Error::runtime(format!("unknown curve {kind}")));
+            }
+            let mut curve = crate::audio::spatial::RolloffCurve { keys: Vec::new() };
+            for k in keys.sequence_values::<Table>() {
+                let k = k?;
+                curve.keys.push([k.get(1)?, k.get(2)?]);
+            }
+            curve.sanitize();
+            source_set(lua, a.0, |s| {
+                s.custom_rolloff = curve;
+                s.rolloff = AudioRolloff::Custom;
+            })
+        });
+        m.add_method("GetCustomCurve", |lua, a, kind: String| {
+            if kind != "CustomRolloff" {
+                return Err(mlua::Error::runtime(format!("unknown curve {kind}")));
+            }
+            let keys = source_get(lua, a.0, |s| s.custom_rolloff.keys.clone())?;
+            let t = lua.create_table()?;
+            for (i, k) in keys.into_iter().enumerate() {
+                t.set(i + 1, lua.create_sequence_from(k)?)?;
+            }
+            Ok(t)
+        });
         m.add_method(
             "PlayOneShot",
             |lua, a, (clip, volume): (String, Option<f32>)| {
@@ -235,6 +268,24 @@ fn mixer<R>(lua: &Lua, i: usize, f: impl FnOnce(&mut crate::audio::MixerState) -
 impl UserData for LMixer {
     fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
         f.add_field_method_get("name", |lua, m| mixer(lua, m.0, |s| s.name()));
+        // Nested mixers: the group of another mixer this one's Master plays into.
+        f.add_field_method_get("outputAudioMixerGroup", |lua, m| {
+            mixer(lua, m.0, |s| s.asset.output.clone().map(LMixerGroup))
+        });
+        f.add_field_method_set(
+            "outputAudioMixerGroup",
+            |lua, m, g: Option<mlua::UserDataRef<LMixerGroup>>| {
+                let output = g.map(|g| g.0.clone());
+                with_world(lua, |w| {
+                    let Some(s) = w.audio.mixer(m.0) else {
+                        return;
+                    };
+                    let (path, mut asset) = (s.path.clone(), s.asset.clone());
+                    asset.output = output;
+                    w.audio.replace_mixer(&path, asset);
+                })
+            },
+        );
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
@@ -251,6 +302,25 @@ impl UserData for LMixer {
             let i = mixer(lua, mx.0, |s| s.asset.snapshot_index(&name))?;
             Ok(i.map(|i| LSnapshot(mx.0, i)))
         });
+        // `TransitionToSnapshots({a, b}, {wa, wb}, time)`: move to a weighted blend.
+        m.add_method(
+            "TransitionToSnapshots",
+            |lua, mx, (snaps, weights, time): (Table, Table, f32)| {
+                let mut blend = Vec::new();
+                for (i, s) in snaps
+                    .sequence_values::<mlua::UserDataRef<LSnapshot>>()
+                    .enumerate()
+                {
+                    let s = s?;
+                    if s.0 != mx.0 {
+                        return Err(mlua::Error::runtime("snapshot of another mixer"));
+                    }
+                    let w: f32 = weights.get(i + 1).unwrap_or(0.0);
+                    blend.push((s.1, w));
+                }
+                mixer(lua, mx.0, |s| s.transition_to_weighted(&blend, time))
+            },
+        );
         // Groups whose path ("Master/SFX/Steps") ends with `path`, like the reference API.
         m.add_method("FindMatchingGroups", |lua, mx, path: String| {
             let found = mixer(lua, mx.0, |s| {
