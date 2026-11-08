@@ -433,11 +433,23 @@ impl Lines {
     }
 }
 
-/// Mesh triangle edges for the Wireframe / Shaded Wireframe draw modes.
+/// Most edges the wireframe draw modes add in one frame. Dense scenes (MeadowDemo's
+/// 82k-triangle rocks) would otherwise need a line buffer bigger than the GPU allows; past the
+/// budget the remaining meshes draw shaded only.
+pub const WIREFRAME_EDGE_BUDGET: usize = 2_000_000;
+
+/// Mesh triangle edges for the Wireframe / Shaded Wireframe draw modes, up to
+/// [`WIREFRAME_EDGE_BUDGET`] edges.
 pub fn wireframe(lines: &mut Lines, meshes: &[MeshDraw], color: [f32; 4]) {
+    let mut left = WIREFRAME_EDGE_BUDGET;
     for d in meshes {
+        if left == 0 {
+            break;
+        }
         models::with_edges(&d.mesh, |edges| {
-            for [a, b] in edges {
+            let take = edges.len().min(left);
+            left -= take;
+            for [a, b] in &edges[..take] {
                 lines.line(
                     d.model.transform_point3(*a),
                     d.model.transform_point3(*b),

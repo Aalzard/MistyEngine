@@ -517,6 +517,9 @@ pub struct Renderer {
     draws_bind_group: wgpu::BindGroup,
     line_buffer: wgpu::Buffer,
     line_capacity: usize,
+    /// Line and overlay vertices written this frame (capped to the largest buffer allowed).
+    lines_drawn: u32,
+    overlay_drawn: u32,
     particle_instances: particles::InstanceBuffer,
     terrains: terrain::TerrainCache,
     /// Terrain trees (render/trees.rs).
@@ -700,6 +703,8 @@ impl Renderer {
             draws_bind_group,
             line_buffer: line_buffer(device, line_capacity),
             line_capacity,
+            lines_drawn: 0,
+            overlay_drawn: 0,
             particle_instances: particles::InstanceBuffer::new(device),
             terrains: terrain::TerrainCache::new(device),
             trees: trees::TreeRenderer::new(device),
@@ -1607,22 +1612,26 @@ impl Renderer {
         self.prepare_glows(device, queue, target, frame);
         self.prepare_clouds(device, queue, target, frame);
 
-        // Overlay triangles follow the lines in the same buffer.
-        let line_vertices = frame.lines.len() + frame.overlay.len();
+        // Overlay triangles follow the lines in the same buffer, which never grows past the
+        // device's largest buffer: overlays are kept whole, lines are cut to what fits.
+        let max_vertices = (device.limits().max_buffer_size as usize
+            / std::mem::size_of::<LineVertex>())
+        .max(1024);
+        let overlay = &frame.overlay[..frame.overlay.len().min(max_vertices)];
+        let lines = &frame.lines[..frame.lines.len().min(max_vertices - overlay.len())];
+        self.lines_drawn = lines.len() as u32;
+        self.overlay_drawn = overlay.len() as u32;
+        let line_vertices = lines.len() + overlay.len();
         if line_vertices > self.line_capacity {
-            self.line_capacity = line_vertices.next_power_of_two();
+            self.line_capacity = line_vertices.next_power_of_two().min(max_vertices);
             self.line_buffer = line_buffer(device, self.line_capacity);
         }
-        if !frame.lines.is_empty() {
-            queue.write_buffer(&self.line_buffer, 0, bytemuck::cast_slice(frame.lines));
+        if !lines.is_empty() {
+            queue.write_buffer(&self.line_buffer, 0, bytemuck::cast_slice(lines));
         }
-        if !frame.overlay.is_empty() {
-            let offset = std::mem::size_of_val(frame.lines) as u64;
-            queue.write_buffer(
-                &self.line_buffer,
-                offset,
-                bytemuck::cast_slice(frame.overlay),
-            );
+        if !overlay.is_empty() {
+            let offset = std::mem::size_of_val(lines) as u64;
+            queue.write_buffer(&self.line_buffer, offset, bytemuck::cast_slice(overlay));
         }
 
         let particle_draws = self.upload_particles(device, queue, frame, &lists.particles);
@@ -3210,17 +3219,17 @@ impl Renderer {
                 frame_debug::events::post_event(name.to_owned(), shader)
             })
         };
-        if !frame.overlay.is_empty() && gizmo("Draw Overlay Triangles", "lines.wgsl") {
-            let first = frame.lines.len() as u32;
+        if self.overlay_drawn > 0 && gizmo("Draw Overlay Triangles", "lines.wgsl") {
+            let first = self.lines_drawn;
             pass.set_pipeline(&self.pipelines.overlay);
             pass.set_vertex_buffer(0, self.line_buffer.slice(..));
-            pass.draw(first..first + frame.overlay.len() as u32, 0..1);
+            pass.draw(first..first + self.overlay_drawn, 0..1);
         }
 
-        if !frame.lines.is_empty() && gizmo("Draw Gizmo Lines", "lines.wgsl") {
+        if self.lines_drawn > 0 && gizmo("Draw Gizmo Lines", "lines.wgsl") {
             pass.set_pipeline(&self.pipelines.lines);
             pass.set_vertex_buffer(0, self.line_buffer.slice(..));
-            pass.draw(0..frame.lines.len() as u32, 0..1);
+            pass.draw(0..self.lines_drawn, 0..1);
         }
 
         if outline && gizmo("Draw Selection Outline", "outline.wgsl") {

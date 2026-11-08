@@ -828,11 +828,32 @@ pub fn dialog_contents(ui: &mut Ui, s: &mut EditorState) {
     ui.add_space(6.0);
     let change = plan.to_change();
     let mut close = false;
+    // Nothing left to turn on: say so instead of leaving a silently greyed-out button.
+    let nothing_to_do = change.is_empty() && levels.is_empty();
+    if nothing_to_do {
+        let what = match d.scope {
+            Scope::Scene => "this scene",
+            Scope::Project => "the project",
+        };
+        let line = if plan.models.is_empty() {
+            format!("Nothing in {what} is dense enough to convert.")
+        } else {
+            format!("Everything eligible in {what} already uses Virtual Geometry.")
+        };
+        ui.colored_label(ui.visuals().widgets.active.fg_stroke.color, line);
+        ui.add_space(4.0);
+    }
     ui.horizontal(|ui| {
         let convert =
             !change.is_empty() || (d.quality && !levels.is_empty() && !plan.models.is_empty());
         if ui
             .add_enabled(convert, egui::Button::new("Convert"))
+            .on_disabled_hover_text(if nothing_to_do {
+                "Nothing to convert: every eligible model already has Virtual Geometry on, \
+                and Quality ▸ Virtual Geometry is on."
+            } else {
+                "Tick the Quality box above, or lower Min. triangles."
+            })
             .clicked()
         {
             s.vgeo.min_triangles = d.min_triangles;
