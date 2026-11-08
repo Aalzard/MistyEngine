@@ -1,0 +1,25 @@
+{
+  "platform": "Windows",
+  "target": "WindowsX64",
+  "override_scenes": true,
+  "scenes": [
+    {
+      "path": "Assets/Scenes/FirstPersonDemo.scene",
+      "enabled": true
+    },
+    {
+      "path": "Assets/Scenes/VehicleDemo.scene",
+      "enabled": true
+    }
+  ],
+  "defines": [
+    "DEMO"
+  ],
+  "texture_compression": null,
+  "max_texture_size": 512,
+  "quality_level": "Low",
+  "development": false,
+  "compression": true,
+  "create_zip": true,
+  "output_folder": "Builds/Demo"
+}

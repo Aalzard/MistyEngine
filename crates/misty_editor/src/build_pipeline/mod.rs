@@ -24,7 +24,7 @@ pub enum Msg {
     Warning(String),
     /// Fraction done (0–1) and what is happening.
     Progress(f32, String),
-    Done(Result<Built, String>),
+    Done(Box<Result<Built, String>>),
 }
 
 /// A log line of the build window.
@@ -56,7 +56,7 @@ impl BuildJob {
                     let _ = tx.send(m);
                 };
                 let result = build(&req, &mut send);
-                let _ = tx.send(Msg::Done(result));
+                let _ = tx.send(Msg::Done(Box::new(result)));
             })
             .expect("spawn the build thread");
         Self {
@@ -91,6 +91,7 @@ impl BuildJob {
                     self.stage = stage;
                 }
                 Msg::Done(r) => {
+                    let r = *r;
                     self.progress = 1.0;
                     self.stage = if r.is_ok() { "Done" } else { "Failed" }.into();
                     if let Err(e) = &r {

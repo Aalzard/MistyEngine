@@ -80,7 +80,7 @@ fn platform_profiles_are_listed_and_switching_is_saved() {
     h.get_by_label("Development Build");
     h.get_by_label("Output Folder");
     h.get_by_label("Steam App ID");
-    h.get_by_label("＋ Add Build Profile");
+    h.get_by_label("+ Add Build Profile");
 
     // Show the Linux profile and make it active.
     h.get_by_label("🐧  Linux").click();

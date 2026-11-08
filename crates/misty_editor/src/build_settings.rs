@@ -48,6 +48,8 @@ pub struct BuildSettingsWindow {
     pub new_define: String,
     /// Report of the last build of the shown profile.
     pub report: Option<BuildReport>,
+    /// Scroll the page there on the next frame (screenshots).
+    pub scroll_to: Option<f32>,
 }
 
 /// Build settings and profiles of the project at `s.project.root`; problems go to the Console.
@@ -173,7 +175,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
     let mut open = s.build_window.open;
     egui::Window::new("Build Profiles")
         .open(&mut open)
-        .default_size([820.0, 600.0])
+        .default_size([820.0, 760.0])
         .collapsible(false)
         .show(ctx, |ui| contents(ui, s));
     s.build_window.open = open;
@@ -198,13 +200,16 @@ pub fn contents(ui: &mut Ui, s: &mut EditorState) {
         });
         ui.separator();
         ui.vertical(|ui| {
-            egui::ScrollArea::vertical()
+            let mut area = egui::ScrollArea::vertical()
                 .id_salt("build_profile_page")
-                .auto_shrink([false, true])
-                .show(ui, |ui| match shown(s) {
-                    None => shared_scene_page(ui, s),
-                    Some(i) => profile_page(ui, s, i),
-                });
+                .auto_shrink([false, true]);
+            if let Some(y) = s.build_window.scroll_to.take() {
+                area = area.vertical_scroll_offset(y);
+            }
+            area.show(ui, |ui| match shown(s) {
+                None => shared_scene_page(ui, s),
+                Some(i) => profile_page(ui, s, i),
+            });
         });
     });
 }
@@ -291,7 +296,7 @@ fn sidebar(ui: &mut Ui, s: &mut EditorState) {
         ui.weak("None yet");
     }
     ui.add_space(4.0);
-    ui.menu_button("＋ Add Build Profile", |ui| {
+    ui.menu_button("+ Add Build Profile", |ui| {
         for platform in ProfilePlatform::ALL {
             if ui.button(platform.label()).clicked() {
                 add_profile(s, None, platform);
@@ -318,7 +323,7 @@ fn profile_row_text(p: &BuildProfile, active: bool) -> String {
     let icon = match p.platform {
         ProfilePlatform::Windows => "⊞",
         ProfilePlatform::Linux => "🐧",
-        ProfilePlatform::MacOs => "",
+        ProfilePlatform::MacOs => "🍎",
         ProfilePlatform::DedicatedServer => "🖧",
     };
     let mut t = format!("{icon}  {}", p.name);
@@ -539,11 +544,18 @@ fn profile_page(ui: &mut Ui, s: &mut EditorState, i: usize) {
     section(ui, "Scripting Defines");
     edited |= defines(ui, s, i);
 
-    section(ui, "Texture Overrides");
-    edited |= textures(ui, &mut s.build_profiles.profiles[i]);
+    if p.is_server() {
+        section(ui, "Server");
+        ui.weak(
+            "Textures, audio and video stay out of server builds, and nothing renders, so              the texture and quality overrides don't apply. The server listens on the scene's              Network Manager port (`--port N` overrides it).",
+        );
+    } else {
+        section(ui, "Texture Overrides");
+        edited |= textures(ui, &mut s.build_profiles.profiles[i]);
 
-    section(ui, "Quality");
-    edited |= quality(ui, s, i);
+        section(ui, "Quality");
+        edited |= quality(ui, s, i);
+    }
 
     section(ui, "Build Options");
     edited |= options(ui, s, i);

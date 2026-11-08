@@ -576,6 +576,10 @@ pub fn apply_env(
                 )
             };
         }
+        // `MISTY_BUILD_SCROLL=<px>` scrolls the profile page down (the report at the bottom).
+        s.build_window.scroll_to = std::env::var("MISTY_BUILD_SCROLL")
+            .ok()
+            .and_then(|v| v.trim().parse().ok());
         if let Some(path) = std::env::var_os("MISTY_BUILD_REPORT") {
             s.build_window.report =
                 misty_engine::build_report::BuildReport::load(std::path::Path::new(&path)).ok();

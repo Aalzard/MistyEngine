@@ -61,7 +61,17 @@ pub fn run(root: &Path, launch: &Launch, args: &Args) -> i32 {
         log.write(kind, &text);
     }
     match game.network_port() {
-        Some(port) => log.write(LogKind::Info, &format!("Server listening on port {port}")),
+        Some(port) => {
+            let mode = game.network_stats().map(|n| n.mode);
+            if mode == Some(misty_engine::network::NetMode::Client) {
+                log.write(
+                    LogKind::Info,
+                    &format!("Client connecting from port {port}"),
+                );
+            } else {
+                log.write(LogKind::Info, &format!("Server listening on port {port}"));
+            }
+        }
         None if options.network.is_some() => log.write(
             LogKind::Warning,
             "the network didn't start: the scene needs a Network Manager",
