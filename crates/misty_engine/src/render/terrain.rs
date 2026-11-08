@@ -133,7 +133,7 @@ struct HoleIndices {
 /// not a hole; the chunk's first cell is `(x0, z0)`.
 fn without_holes(pattern: &[u32], res: usize, x0: usize, z0: usize, d: &TerrainData) -> Vec<u32> {
     let mut out = Vec::with_capacity(pattern.len());
-    for tri in pattern.chunks_exact(3) {
+    for tri in pattern.as_chunks::<3>().0 {
         let (mut sx, mut sz) = (0usize, 0usize);
         for i in tri {
             sx += *i as usize % res;
@@ -1680,41 +1680,6 @@ fn hole_indices(
     }
 }
 
-#[cfg(test)]
-mod hole_tests {
-    use super::*;
-
-    /// A chunk's pattern without its hole cells keeps every other cell's two triangles.
-    #[test]
-    fn hole_cells_leave_the_chunk_pattern() {
-        let mut d = TerrainData::new(129, Vec3::splat(128.0), 128);
-        let cells = terrain_lod::chunk_cells(129);
-        let (indices, ranges) = terrain_lod::patterns(129, cells);
-        let full = &indices[ranges[0][0].start as usize..ranges[0][0].end as usize];
-        assert_eq!(
-            without_holes(full, 129, 0, 0, &d),
-            full,
-            "no holes: all kept"
-        );
-        // Three holes in the second chunk along x, one in the first.
-        for (x, z) in [(70, 3), (71, 3), (100, 40), (5, 5)] {
-            d.set_hole(x, z, true);
-        }
-        let kept = without_holes(full, 129, cells, 0, &d);
-        assert_eq!(kept.len(), full.len() - 3 * 6);
-        let first = without_holes(full, 129, 0, 0, &d);
-        assert_eq!(first.len(), full.len() - 6);
-        // The cut cell's samples no longer form a triangle there.
-        let cell = (5 * 129 + 5) as u32;
-        assert!(
-            !first
-                .chunks(3)
-                .any(|t| t.contains(&cell) && t.contains(&(cell + 1)) && t.contains(&(cell + 129))),
-            "cell (5, 5) left out"
-        );
-    }
-}
-
 /// Per-draw values of a terrain: translation only, white, receives shadows.
 pub(super) fn draw_uniform(t: &TerrainDraw) -> DrawUniform {
     let model = Mat4::from_translation(t.position);
@@ -1822,4 +1787,39 @@ fn params(
         p.harmony = harmony::adjustments(&d.harmony, &tones, light);
     }
     p
+}
+
+#[cfg(test)]
+mod hole_tests {
+    use super::*;
+
+    /// A chunk's pattern without its hole cells keeps every other cell's two triangles.
+    #[test]
+    fn hole_cells_leave_the_chunk_pattern() {
+        let mut d = TerrainData::new(129, Vec3::splat(128.0), 128);
+        let cells = terrain_lod::chunk_cells(129);
+        let (indices, ranges) = terrain_lod::patterns(129, cells);
+        let full = &indices[ranges[0][0].start as usize..ranges[0][0].end as usize];
+        assert_eq!(
+            without_holes(full, 129, 0, 0, &d),
+            full,
+            "no holes: all kept"
+        );
+        // Three holes in the second chunk along x, one in the first.
+        for (x, z) in [(70, 3), (71, 3), (100, 40), (5, 5)] {
+            d.set_hole(x, z, true);
+        }
+        let kept = without_holes(full, 129, cells, 0, &d);
+        assert_eq!(kept.len(), full.len() - 3 * 6);
+        let first = without_holes(full, 129, 0, 0, &d);
+        assert_eq!(first.len(), full.len() - 6);
+        // The cut cell's samples no longer form a triangle there.
+        let cell = (5 * 129 + 5) as u32;
+        assert!(
+            !first
+                .chunks(3)
+                .any(|t| t.contains(&cell) && t.contains(&(cell + 1)) && t.contains(&(cell + 129))),
+            "cell (5, 5) left out"
+        );
+    }
 }

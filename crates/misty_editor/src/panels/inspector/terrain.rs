@@ -305,7 +305,7 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
             .clicked()
         {
             terrain_tools::begin_edit(state, path, "Add Terrain Layer");
-            let new_map = d.layers.len() % LAYERS_PER_MAP == 0 && !d.layers.is_empty();
+            let new_map = d.layers.len().is_multiple_of(LAYERS_PER_MAP) && !d.layers.is_empty();
             let add = |d: &mut TerrainData| {
                 d.layers.push(TerrainLayer {
                     name: format!("Layer {}", d.layers.len()),
@@ -506,32 +506,6 @@ fn resolution_combo(ui: &mut Ui, id: &str, value: &mut usize, options: &[usize])
     ch
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn removing_a_layer_moves_later_layers_down_across_maps() {
-        let mut d = TerrainData::new(33, glam::Vec3::splat(32.0), 32);
-        d.layers = (0..6).map(|_| TerrainLayer::default()).collect();
-        d.fit_splat_maps();
-        let mut w = [0u8; MAX_LAYERS];
-        w[2] = 100;
-        w[5] = 155;
-        d.set_layer_weights(0, &w);
-        // Layer 2 goes: layer 5 (second map) becomes layer 4.
-        remove_layer(&mut d, 2);
-        assert_eq!(d.layers.len(), 5);
-        let after = d.layer_weights(0);
-        assert!(after[4] >= 254, "{after:?}");
-        assert_eq!(after.iter().map(|v| *v as u32).sum::<u32>(), 255);
-        // Down to four layers: one map again.
-        remove_layer(&mut d, 0);
-        assert!(d.alphamap_extra.is_empty());
-        assert!(d.layer_weights(0)[3] >= 254);
-    }
-}
-
 fn collider(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let Ok(mut c) = state
         .scene
@@ -573,4 +547,30 @@ fn collider(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         let _ = state.scene.world.insert_one(e, c);
     }
     ch
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removing_a_layer_moves_later_layers_down_across_maps() {
+        let mut d = TerrainData::new(33, glam::Vec3::splat(32.0), 32);
+        d.layers = (0..6).map(|_| TerrainLayer::default()).collect();
+        d.fit_splat_maps();
+        let mut w = [0u8; MAX_LAYERS];
+        w[2] = 100;
+        w[5] = 155;
+        d.set_layer_weights(0, &w);
+        // Layer 2 goes: layer 5 (second map) becomes layer 4.
+        remove_layer(&mut d, 2);
+        assert_eq!(d.layers.len(), 5);
+        let after = d.layer_weights(0);
+        assert!(after[4] >= 254, "{after:?}");
+        assert_eq!(after.iter().map(|v| *v as u32).sum::<u32>(), 255);
+        // Down to four layers: one map again.
+        remove_layer(&mut d, 0);
+        assert!(d.alphamap_extra.is_empty());
+        assert!(d.layer_weights(0)[3] >= 254);
+    }
 }
