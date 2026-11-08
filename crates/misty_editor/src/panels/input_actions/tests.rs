@@ -257,8 +257,6 @@ fn player_input_inspector_edits_the_component() {
         .behavior = PlayerInputBehavior::InvokeEvents;
     h.run();
     h.get_by_label("Events");
-    h.get_by_label("Player").click();
-    h.run();
     h.get_by_label("Jump (CallbackContext)");
     let plus = h.get_all_by_label("+").count();
     assert!(plus >= 7, "one + per Player action: {plus}");

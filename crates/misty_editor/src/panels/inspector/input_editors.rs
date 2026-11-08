@@ -185,7 +185,7 @@ fn behavior_help(ui: &mut Ui, c: &PlayerInput, asset: &InputActionAsset) {
         }
     };
     egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.label(RichText::new(text).color(theme::TEXT_DIM).small());
+        ui.label(RichText::new(text).color(theme::TEXT_DIM));
     });
 }
 
@@ -207,9 +207,10 @@ fn events(
         .id_salt(("pi_events", e))
         .default_open(true)
         .show(ui, |ui| {
-            for map in &asset.maps {
+            for (mi, map) in asset.maps.iter().enumerate() {
                 egui::CollapsingHeader::new(&map.name)
                     .id_salt(("pi_map_events", e, &map.name))
+                    .default_open(mi == 0)
                     .show(ui, |ui| {
                         for a in &map.actions {
                             let full = format!("{}/{}", map.name, a.name);

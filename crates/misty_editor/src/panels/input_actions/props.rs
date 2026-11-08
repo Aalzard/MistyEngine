@@ -176,7 +176,7 @@ fn composite_props(ui: &mut Ui, b: &mut misty_engine::input::actions::Binding) {
             .map_or(b.composite.clone(), |k| k.1.to_owned());
         egui::ComboBox::from_id_salt("ia_comp_type")
             .selected_text(current)
-            .width(180.0)
+            .width(150.0)
             .show_ui(ui, |ui| {
                 for (kind, lbl, parts, params) in composites::KINDS {
                     if ui.selectable_label(b.composite == *kind, *lbl).clicked()
@@ -416,6 +416,7 @@ fn params_list(ui: &mut Ui, title: &str, id: &str, text: &mut String, kinds: Kin
     ui.horizontal(|ui| {
         ui.label(theme::bold(ui.ctx(), title));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_space(10.0);
             ui.menu_button("+", |ui| {
                 let names: Vec<(&str, &str)> = match kinds {
                     Kinds::Interactions => interactions::KINDS.to_vec(),

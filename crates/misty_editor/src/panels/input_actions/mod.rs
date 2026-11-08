@@ -562,29 +562,27 @@ fn actions_column(ui: &mut Ui, s: &mut EditorState, a: &mut InputActionAsset) {
                 }
             } else {
                 let label = format!("▾ {}", act.name);
-                let r = ui
-                    .horizontal(|ui| {
-                        let full = ui.available_width();
-                        let r = ui
-                            .allocate_ui(vec2(full - 24.0, ROW_H), |ui| {
-                                row(ui, w.selection == Selection::Action(ai), 0.0, &label, Look::Bold)
-                            })
-                            .inner;
-                        ui.menu_button("+", |ui| {
-                            if ui.button("Add Binding").clicked() {
-                                op = Some(ActionOp::AddBinding(ai, None));
+                let sel = w.selection == Selection::Action(ai);
+                let r = row(ui, sel, 0.0, &label, Look::Bold);
+                // The + menu sits over the right end of the row.
+                let plus = Rect::from_min_size(
+                    pos2(r.rect.right() - 24.0, r.rect.top() + 1.0),
+                    vec2(22.0, ROW_H - 2.0),
+                );
+                ui.scope_builder(UiBuilder::new().max_rect(plus), |ui| {
+                    ui.menu_button("+", |ui| {
+                        if ui.button("Add Binding").clicked() {
+                            op = Some(ActionOp::AddBinding(ai, None));
+                            ui.close();
+                        }
+                        for (kind, label, _, _) in misty_engine::input::actions::composites::KINDS {
+                            if ui.button(format!("Add {label}")).clicked() {
+                                op = Some(ActionOp::AddBinding(ai, Some(kind)));
                                 ui.close();
                             }
-                            for (kind, label, _, _) in misty_engine::input::actions::composites::KINDS {
-                                if ui.button(format!("Add {label}")).clicked() {
-                                    op = Some(ActionOp::AddBinding(ai, Some(kind)));
-                                    ui.close();
-                                }
-                            }
-                        });
-                        r
-                    })
-                    .inner;
+                        }
+                    });
+                });
                 if r.clicked() {
                     w.selection = Selection::Action(ai);
                     w.listening = false;
