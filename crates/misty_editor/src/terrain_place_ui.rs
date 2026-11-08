@@ -62,6 +62,18 @@ fn range(ui: &mut Ui, v: &mut [f32; 2], lo: f32, hi: f32, speed: f64, suffix: &s
 }
 
 pub fn place_tab(ui: &mut Ui, state: &mut EditorState, e: Entity, d: &TerrainData) {
+    // An empty palette starts with the prefabs already placed on this terrain.
+    if state.terrain_tools.prefabs.is_empty() {
+        let scene = &state.scene;
+        let mut found: Vec<String> = (scene.children(e).into_iter())
+            .filter(|c| scene.name(*c) == placement::HOLDER)
+            .flat_map(|h| scene.children(h))
+            .filter_map(|c| scene.prefab_link(c))
+            .collect();
+        found.sort();
+        found.dedup();
+        state.terrain_tools.prefabs = found;
+    }
     let tools = &mut state.terrain_tools;
     if tools.prefab >= tools.prefabs.len() {
         tools.prefab = tools.prefabs.len().saturating_sub(1);

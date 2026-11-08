@@ -163,6 +163,8 @@ mod sample_terrain;
 #[cfg(test)]
 mod sample_terrain2;
 #[cfg(test)]
+mod sample_terrain_tools;
+#[cfg(test)]
 mod sample_tilemap;
 #[cfg(test)]
 mod sample_timeline;
