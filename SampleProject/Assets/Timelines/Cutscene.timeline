@@ -171,7 +171,21 @@
             "impulse": false,
             "post_playback": "Revert"
           }
-        },
+        }
+      ],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t5",
+      "name": "Lights",
+      "kind": "Control",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [
         {
           "name": "Flash Flicker",
           "start": 12.0,
@@ -199,7 +213,7 @@
       "recorded": null
     },
     {
-      "id": "t5",
+      "id": "t6",
       "name": "Cues",
       "kind": "Signal",
       "group": null,

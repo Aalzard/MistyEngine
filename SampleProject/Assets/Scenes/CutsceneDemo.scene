@@ -343,7 +343,7 @@
         "Mesh Renderer": {
           "cast_shadows": true,
           "enabled": true,
-          "material": "Assets/Materials/Blue Metal.mat",
+          "material": "Assets/Materials/VCam Runner.mat",
           "receive_shadows": true
         },
         "Transform": {
@@ -1223,9 +1223,9 @@
             0.0
           ],
           "position": [
-            1.0,
-            2.2,
-            -4.0
+            10.0,
+            3.0,
+            -3.0
           ],
           "rotation": [
             0.17364818,
@@ -1534,7 +1534,7 @@
             },
             {
               "object": 19,
-              "track": "t5"
+              "track": "t6"
             }
           ],
           "enabled": true,

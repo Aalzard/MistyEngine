@@ -34,7 +34,7 @@ const SCRIPT: &str = "Assets/Scripts/CutsceneDemo.lua";
 const GROUND: &str = "Assets/Materials/VCam Ground.mat";
 const PILLAR: &str = "Assets/Materials/VCam Pillar.mat";
 const HERO_MAT: &str = "Assets/Materials/Red.mat";
-const ALLY_MAT: &str = "Assets/Materials/Blue Metal.mat";
+const ALLY_MAT: &str = "Assets/Materials/VCam Runner.mat";
 const RIVAL_MAT: &str = "Assets/Materials/Lightmap Green.mat";
 const FIRE_MAT: &str = "Assets/Materials/Lantern Glow.mat";
 
@@ -130,6 +130,7 @@ fn timeline() -> TimelineAsset {
     let walk = t.add_track(TrackKind::Animation, None);
     let turn = t.add_track(TrackKind::Animation, None);
     let fx = t.add_track(TrackKind::Control, None);
+    let lights = t.add_track(TrackKind::Control, None);
     let cues = t.add_track(TrackKind::Signal, None);
     let name = |t: &mut TimelineAsset, id: &str, n: &str| {
         t.track_mut(id).expect("added").name = n.into();
@@ -138,6 +139,7 @@ fn timeline() -> TimelineAsset {
     name(&mut t, &walk, "Hero Walk");
     name(&mut t, &turn, "Ally Turn");
     name(&mut t, &fx, "Effects");
+    name(&mut t, &lights, "Lights");
     // Keys recorded straight onto the track (record mode): the Ally turns to greet the Hero.
     let mut greet = AnimationClip {
         looping: false,
@@ -166,7 +168,8 @@ fn timeline() -> TimelineAsset {
     boom.control.impulse = false;
     let mut flicker = shot("Flash Flicker", EXPLOSION_AT, 2.0, "r6");
     flicker.control.activation = false;
-    t.track_mut(&fx).expect("added").clips = vec![boom, flicker];
+    t.track_mut(&fx).expect("added").clips = vec![boom];
+    t.track_mut(&lights).expect("added").clips = vec![flicker];
     let cue = |time: f32, method: &str, text: Option<&str>| Marker {
         time,
         method: method.into(),
@@ -383,7 +386,7 @@ pub fn demo_scene() -> Scene {
     cam(
         &mut s,
         "Explosion Cam",
-        Vec3::new(1.0, 2.2, -4.0),
+        Vec3::new(10.0, 3.0, -3.0),
         still(barrel),
     );
     let mut free = VirtualCamera {
