@@ -244,6 +244,47 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect, path: &str, c: &Animator
     );
 }
 
+/// Screenshot setup (`MISTY_ANIMATOR`): comma-separated `layers` (Layers tab), `layer:N`,
+/// `machine:Path`, `blend:State` (blend tree view), `motion:N` (highlighted blend motion),
+/// `select:State` / `transition:N` / `machine-node:Path` (selected, shown in the Inspector) for the
+/// selected object's controller.
+pub fn demo(s: &mut EditorState, spec: &str) {
+    let ctrl = s
+        .selection
+        .active()
+        .and_then(|e| s.scene.world.get::<&Animator>(e).ok().map(|a| (e, a.controller.clone())));
+    let Some((e, Some(path))) = ctrl else {
+        return;
+    };
+    s.animator.open(Some(path.clone()));
+    s.animator.target = Some(e);
+    s.animator.followed = s.selection.active();
+    for item in spec.split(',').map(str::trim) {
+        let (key, value) = item.split_once(':').unwrap_or((item, ""));
+        let item_selected = |s: &mut EditorState, g: GraphItem| {
+            s.animator.selected = Some(g);
+            s.selection.clear();
+            s.animator.followed = None;
+            s.inspector_asset = Some(path.clone());
+        };
+        match key {
+            "layers" => s.animator.left_tab = LeftTab::Layers,
+            "layer" => s.animator.show_layer(value.parse().unwrap_or(0)),
+            "machine" => s.animator.enter_machine(value.to_owned()),
+            "blend" => s.animator.blend_view = Some(value.to_owned()),
+            "motion" => s.animator.blend_selected = value.parse().ok(),
+            "select" => item_selected(s, GraphItem::Node(Node::State(value.to_owned()))),
+            "machine-node" => item_selected(s, GraphItem::Node(Node::Machine(value.to_owned()))),
+            "transition" => {
+                if let Ok(i) = value.parse() {
+                    item_selected(s, GraphItem::Transition(i));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// The selected object (or its nearest parent) with an Animator decides the controller.
 fn follow_selection(s: &mut EditorState) {
     let active = s.selection.active();
