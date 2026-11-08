@@ -2012,6 +2012,10 @@ impl Renderer {
         if frame.shaded && !frame.water.is_empty() {
             self.water
                 .prepare(device, queue, &self.pipelines, frame, target.size(), copy);
+        } else {
+            // A render without water draws none: the last plan (a deleted surface, the
+            // underwater pass of a camera that was under it) must not carry over.
+            self.water.forget();
         }
     }
 
@@ -3052,10 +3056,10 @@ impl Renderer {
             frame_debug::pass(&self.capture, &["Water"], main, EventTarget::Hdr);
         }
         if frame.shaded
-            && (frame.water.is_empty()
-                || frame_debug::record(&self.capture, |_| {
-                    frame_debug::events::post_event("Draw Water Surfaces".to_owned(), "water.wgsl")
-                }))
+            && !frame.water.is_empty()
+            && frame_debug::record(&self.capture, |_| {
+                frame_debug::events::post_event("Draw Water Surfaces".to_owned(), "water.wgsl")
+            })
         {
             pass.set_bind_group(1, self.lit_group(), &[]);
             self.water.draw(&mut pass, frame, stats);

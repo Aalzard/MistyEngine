@@ -244,3 +244,56 @@ fn water_demo_ocean_fades_into_fog() {
     let reference = render(&gpu, &env, off, &cam, &view.water, &[]);
     check("WaterDemo", &fogged, &reference, &clear);
 }
+
+/// A lake deleted while the camera is under it: renders without water plan no water. (The
+/// last plan used to carry over, so the editor kept drawing the deleted lake's surface and
+/// underwater pass as a dark box over the view.)
+#[test]
+fn deleted_lake_is_not_drawn() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let cam = camera();
+    let lake = WaterSurface::new(crate::water::WaterKind::Lake);
+    let water = [WaterDraw::new(
+        &lake,
+        Mat4::from_translation(Vec3::new(0.0, 6.0, 0.0)),
+        0.0,
+    )];
+    let env = Environment::default();
+    let mut renderer = Renderer::new(&device);
+    let target = renderer.create_target(&device, W, H);
+    for (water, expect) in [(&water[..], true), (&[][..], false), (&[][..], false)] {
+        let f = Frame {
+            camera: &cam,
+            grid: None,
+            skybox: true,
+            background: [0.0; 3],
+            environment: &env,
+            post: PostSettings::default(),
+            lines: &[],
+            overlay: &[],
+            meshes: &[],
+            particles: &[],
+            terrains: &[],
+            water,
+            shaded: true,
+            lights: &[],
+        };
+        renderer.render(&device, &queue, &target, &f);
+        let planned = &renderer.water.planned;
+        assert_eq!(
+            planned.underwater.is_some(),
+            expect,
+            "underwater pass planned with {} surfaces",
+            water.len()
+        );
+        assert_eq!(
+            !planned.surfaces.is_empty(),
+            expect,
+            "surfaces planned with {} surfaces",
+            water.len()
+        );
+    }
+}
