@@ -1,16 +1,30 @@
-//! Imported 3D models (`.gltf`, `.glb`, `.obj`) and the process-wide cache that the renderer,
-//! physics and editor read meshes from.
+//! Imported 3D models (`.gltf`, `.glb`, `.fbx`, `.obj`) and the process-wide cache that the
+//! renderer, physics and editor read meshes from.
 //!
 //! Files are right-handed (+Z towards the viewer); the engine is left-handed, so import mirrors X
-//! (positions, normals, node translations and rotations) and flips triangle winding.
+//! (positions, normals, node translations and rotations) and flips triangle winding. FBX files
+//! are read with ufbx, converted to glTF's space (right-handed, Y up, metres) and then go
+//! through the same steps, so FBX and glTF models behave alike. Import settings
+//! ([`ModelImporter`]) are applied afterwards ([`process`]).
 
 mod extract;
+mod fbx_import;
 mod gltf_anim;
 mod gltf_import;
 mod obj_import;
+pub mod preview;
+pub mod process;
 pub mod runtime;
+pub mod settings;
 pub mod skin;
 pub mod virtual_build;
+
+#[cfg(test)]
+mod fbx_sample;
+#[cfg(test)]
+mod fbx_tests;
+#[cfg(test)]
+pub(crate) mod fbx_write;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -25,17 +39,26 @@ use crate::scene::MeshRef;
 
 pub use extract::{
     animation_asset_path, extract_animations, extract_materials, material_asset_path,
+    refresh_animations,
 };
+pub use gltf_anim::SAMPLE_RATE;
+pub use settings::{AxisConversion, ClipSettings, LodSetting, ModelImporter, VectorSource};
 pub use skin::{BlendShape, MeshSkin, ModelAnimation, ModelSkin};
 
 /// Model file extensions.
-pub const EXTENSIONS: [&str; 3] = ["gltf", "glb", "obj"];
+pub const EXTENSIONS: [&str; 4] = ["gltf", "glb", "fbx", "obj"];
 
 pub fn is_model(path: &str) -> bool {
     assets::has_extension(path, &EXTENSIONS)
 }
 
-/// One mesh of a model (a glTF primitive or an OBJ object), already in engine space.
+/// Whether the model is an FBX file (the import settings show Convert Units for it).
+pub fn is_fbx(path: &str) -> bool {
+    assets::has_extension(path, &["fbx"])
+}
+
+/// One mesh of a model (a glTF primitive, an FBX mesh's material part or an OBJ object),
+/// already in engine space.
 pub struct ModelMesh {
     pub name: String,
     pub data: MeshData,
@@ -43,7 +66,7 @@ pub struct ModelMesh {
     pub material: Option<usize>,
     pub bounds: (Vec3, Vec3),
     edges: OnceLock<Vec<[Vec3; 2]>>,
-    /// Bone influences (skinned glTF meshes).
+    /// Bone influences (skinned meshes).
     pub skin: Option<MeshSkin>,
     /// Morph targets; the file's default weights (0–100) alongside.
     pub blend_shapes: Vec<BlendShape>,
@@ -52,14 +75,31 @@ pub struct ModelMesh {
     /// first primitive in [`Model::meshes`] and this one's slot. Virtual Geometry builds the
     /// primitives as one hierarchy, held by the first ([`virtual_mesh`]).
     pub primitive: Option<(usize, u32)>,
+    /// The normals came from the file (not calculated on import).
+    pub file_normals: bool,
+    /// The tangents came from the file (import setting Tangents: Import keeps them).
+    pub file_tangents: bool,
 }
 
 impl ModelMesh {
-    fn new(name: String, mut data: MeshData, material: Option<usize>) -> Self {
-        if data.vertices.iter().all(|v| v.normal == [0.0; 3]) {
+    fn new(name: String, data: MeshData, material: Option<usize>) -> Self {
+        Self::with_vectors(name, data, material, false)
+    }
+
+    /// A mesh whose vertices hold the file's tangents when `tangents` (else they are calculated).
+    fn with_vectors(
+        name: String,
+        mut data: MeshData,
+        material: Option<usize>,
+        tangents: bool,
+    ) -> Self {
+        let file_normals = !data.vertices.iter().all(|v| v.normal == [0.0; 3]);
+        if !file_normals {
             data.compute_normals();
         }
-        data.compute_tangents();
+        if !tangents {
+            data.compute_tangents();
+        }
         Self {
             name,
             bounds: data.bounds(),
@@ -70,11 +110,19 @@ impl ModelMesh {
             blend_shapes: Vec::new(),
             default_weights: Vec::new(),
             primitive: None,
+            file_normals,
+            file_tangents: tangents,
         }
     }
 
     pub fn edges(&self) -> &[[Vec3; 2]] {
         self.edges.get_or_init(|| self.data.edges())
+    }
+
+    /// Recompute the bounds (and forget cached edges) after the vertices changed.
+    pub(crate) fn refresh(&mut self) {
+        self.bounds = self.data.bounds();
+        self.edges = OnceLock::new();
     }
 }
 
@@ -89,14 +137,18 @@ pub struct ModelNode {
     pub meshes: Vec<usize>,
     /// Skin deforming this node's meshes (index into [`Model::skins`]).
     pub skin: Option<usize>,
+    /// Generated LODs (import setting Generate LODs): per level from LOD 1, the simplified
+    /// copies of [`Self::meshes`], in the same order.
+    pub lods: Vec<Vec<usize>>,
 }
 
 /// Where a material's texture comes from.
 #[derive(Clone, Debug)]
 pub enum TextureSource {
-    /// An image file next to the model (absolute path).
+    /// An image file in the project (absolute path).
     File(std::path::PathBuf),
-    /// Image bytes stored inside the model (GLB buffer views).
+    /// Image bytes stored inside the model (GLB buffer views, FBX embedded media) or read
+    /// from a file outside the project; extraction writes them next to the materials.
     Embedded(Vec<u8>),
 }
 
@@ -107,6 +159,13 @@ pub struct ModelMaterial {
     pub normal: Option<TextureSource>,
 }
 
+/// One animation of the file before clip splitting (a take): its name and length (seconds).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Take {
+    pub name: String,
+    pub length: f32,
+}
+
 #[derive(Default)]
 pub struct Model {
     pub meshes: Vec<ModelMesh>,
@@ -115,6 +174,14 @@ pub struct Model {
     pub materials: Vec<ModelMaterial>,
     pub skins: Vec<ModelSkin>,
     pub animations: Vec<ModelAnimation>,
+    /// The file's animations as read, before the import settings split them into clips.
+    pub takes: Vec<Take>,
+    /// Generated LODs: each level's LOD Group screen height, LOD 0 first (empty: none).
+    pub lod_heights: Vec<f32>,
+    /// Import setting Read/Write Enabled.
+    pub read_write: bool,
+    /// Import setting: project folder the materials are extracted to ("" = next to the model).
+    pub material_folder: String,
     /// Import setting Virtual Geometry: its static meshes draw as clusters with per-cluster
     /// level of detail when the Quality level has Virtual Geometry on (render/vgeo).
     pub virtual_geometry: bool,
@@ -134,75 +201,59 @@ impl Model {
         names.reverse();
         names.join("/")
     }
-}
 
-/// Import settings of a model file (its `.meta`).
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct ModelImporter {
-    /// Generate lightmap UVs (the second UV set) for every non-skinned mesh on import.
-    pub generate_lightmap_uvs: bool,
-    /// Build the meshes for Misty Virtual Geometry (clusters and a cluster hierarchy): dense
-    /// static meshes then draw with per-cluster level of detail. Opaque, non-skinned meshes
-    /// only; left out of the `.meta` when off.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub virtual_geometry: bool,
-}
-
-impl Default for ModelImporter {
-    fn default() -> Self {
-        Self {
-            generate_lightmap_uvs: true,
-            virtual_geometry: false,
-        }
-    }
-}
-
-impl ModelImporter {
-    /// Settings of `model` (defaults without a readable `.meta`).
-    pub fn load(model: &Path) -> Self {
-        crate::vfs::read_to_string(crate::asset_db::meta::meta_path(model))
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default()
-    }
-
-    /// Write the settings into the `.meta` file, keeping its GUID.
-    pub fn save(&self, model: &Path) -> Result<(), String> {
-        crate::asset_db::meta::write_settings(model, self)
-    }
-}
-
-/// Apply import settings to a freshly read model (`rel` = its project path).
-fn import(mut model: Model, settings: &ModelImporter, rel: &str) -> Model {
-    // Skinned meshes deform: no clusters for them.
-    model.virtual_geometry = settings.virtual_geometry && model.skins.is_empty();
-    if settings.generate_lightmap_uvs {
-        for m in &mut model.meshes {
-            // Skins and blend shapes index the vertices: those meshes keep their own uv2.
-            if m.skin.is_none() && m.blend_shapes.is_empty() {
-                m.data = crate::lightmap::uv::unwrap(&m.data, crate::lightmap::uv::MARGIN);
+    /// Give each skinned mesh its skin's bind poses (like a mesh asset's bindposes) and joint
+    /// bounds, for meshes the importer has not bound yet.
+    pub(crate) fn bind_skins(&mut self) {
+        for node in &self.nodes {
+            let Some(skin) = node.skin.and_then(|s| self.skins.get(s)) else {
+                continue;
+            };
+            for &m in &node.meshes {
+                let mesh = &mut self.meshes[m];
+                let pad = mesh
+                    .blend_shapes
+                    .iter()
+                    .map(|s| s.max_offset())
+                    .sum::<f32>();
+                let positions: Vec<[f32; 3]> =
+                    mesh.data.vertices.iter().map(|v| v.position).collect();
+                if let Some(s) = mesh.skin.as_mut().filter(|s| s.bind_poses.is_empty()) {
+                    s.bind(&skin.inverse_bind, &positions, pad);
+                }
             }
         }
     }
-    if model.virtual_geometry {
-        model.virtual_builds = virtual_build::start(&model, rel);
-    }
-    model
 }
 
-/// Read a model file.
+/// Read a model file with default import settings.
 pub fn load(path: &Path) -> Result<Model, String> {
+    load_with(path, &ModelImporter::default())
+}
+
+/// Read a model file. FBX files use the settings that change how the file is read (Convert
+/// Units, Axis Conversion); the rest are applied by [`process::apply`].
+pub fn load_with(path: &Path, settings: &ModelImporter) -> Result<Model, String> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    match ext.as_str() {
+    let mut model = match ext.as_str() {
         "gltf" | "glb" => gltf_import::load(path),
+        "fbx" => fbx_import::load(path, settings),
         "obj" => obj_import::load(path),
         _ => Err(format!("{}: not a model file", path.display())),
-    }
+    }?;
+    model.takes = model
+        .animations
+        .iter()
+        .map(|a| Take {
+            name: a.name.clone(),
+            length: a.clip.length,
+        })
+        .collect();
+    Ok(model)
 }
 
 /// Right-handed file space → engine space: mirror X and keep triangles facing outward.
@@ -210,6 +261,9 @@ fn mirror_x(data: &mut MeshData) {
     for v in &mut data.vertices {
         v.position[0] = -v.position[0];
         v.normal[0] = -v.normal[0];
+        // A mirrored frame flips the bitangent's side.
+        v.tangent[0] = -v.tangent[0];
+        v.tangent[3] = -v.tangent[3];
     }
     for t in data.indices.as_chunks_mut::<3>().0 {
         t.swap(1, 2);
@@ -252,10 +306,11 @@ pub fn model(rel: &str) -> Result<Arc<Model>, String> {
         return e.model.clone();
     }
     let abs = assets::absolute(rel);
+    let settings = ModelImporter::load(&abs);
     let entry = Entry {
         modified: mtime(&abs),
-        model: load(&abs)
-            .map(|m| import(m, &ModelImporter::load(&abs), rel))
+        model: load_with(&abs, &settings)
+            .map(|m| process::apply(m, &settings, rel))
             .map(Arc::new),
     };
     let result = entry.model.clone();

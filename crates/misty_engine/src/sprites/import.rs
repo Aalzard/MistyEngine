@@ -109,6 +109,63 @@ impl WrapMode {
     }
 }
 
+/// Compression: GPU block compression (BCn) of the texture, made on import and cached in
+/// `Library/TextureCache` (see [`super::compress`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TextureCompression {
+    /// Uncompressed RGBA8 (4 bytes per pixel).
+    None,
+    /// BC1 (opaque, 0.5 byte per pixel) or BC3 (with alpha, 1 byte); normal maps BC5.
+    #[default]
+    NormalQuality,
+    /// BC7 (1 byte per pixel, close to the source); normal maps BC5.
+    HighQuality,
+}
+
+impl TextureCompression {
+    pub const ALL: [Self; 3] = [Self::None, Self::NormalQuality, Self::HighQuality];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::NormalQuality => "Normal Quality",
+            Self::HighQuality => "High Quality",
+        }
+    }
+}
+
+/// Platforms a texture can override its Max Size and Compression for.
+pub const PLATFORMS: [&str; 3] = ["Windows", "Linux", "macOS"];
+
+/// The platform the program runs on, as named in [`PLATFORMS`].
+pub fn current_platform() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "macOS",
+        "linux" => "Linux",
+        _ => "Windows",
+    }
+}
+
+/// A per-platform override of Max Size and Compression (Unity's platform tabs, kept simple).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PlatformOverride {
+    /// One of [`PLATFORMS`].
+    pub platform: String,
+    pub max_size: u32,
+    pub compression: TextureCompression,
+}
+
+impl Default for PlatformOverride {
+    fn default() -> Self {
+        Self {
+            platform: current_platform().to_owned(),
+            max_size: 2048,
+            compression: TextureCompression::NormalQuality,
+        }
+    }
+}
+
 /// One sprite of a Multiple-mode texture: a pixel rect (origin bottom-left) and its pivot.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SpriteRect {
@@ -141,6 +198,13 @@ pub struct TextureImporter {
     pub aniso_level: u8,
     /// Colour data stored in sRGB (off for masks; Normal Map textures are always linear).
     pub srgb: bool,
+    /// Compression; `None` = the type's default (Normal Quality for 3D textures and normal
+    /// maps, uncompressed sprites). Left out of the `.meta` while unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compression: Option<TextureCompression>,
+    /// Per-platform Max Size and Compression.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub overrides: Vec<PlatformOverride>,
 }
 
 impl Default for TextureImporter {
@@ -157,6 +221,8 @@ impl Default for TextureImporter {
             max_size: 2048,
             aniso_level: 1,
             srgb: true,
+            compression: None,
+            overrides: Vec::new(),
         }
     }
 }
@@ -194,6 +260,29 @@ impl TextureImporter {
 
     pub fn is_sprite(&self) -> bool {
         self.texture_type == TextureType::Sprite
+    }
+
+    /// The override for `platform`, if any.
+    pub fn override_for(&self, platform: &str) -> Option<&PlatformOverride> {
+        self.overrides.iter().find(|o| o.platform == platform)
+    }
+
+    /// Compression used on `platform`: its override, the texture's setting, or the type's
+    /// default (sprites stay uncompressed: block artefacts show on pixel art and UI).
+    pub fn compression_for(&self, platform: &str) -> TextureCompression {
+        if let Some(o) = self.override_for(platform) {
+            return o.compression;
+        }
+        self.compression.unwrap_or(match self.texture_type {
+            TextureType::Sprite => TextureCompression::None,
+            _ => TextureCompression::NormalQuality,
+        })
+    }
+
+    /// Max Size used on `platform` (its override or the texture's).
+    pub fn max_size_for(&self, platform: &str) -> u32 {
+        self.override_for(platform)
+            .map_or(self.max_size, |o| o.max_size)
     }
 
     /// Whether colour is decoded from sRGB on the GPU.

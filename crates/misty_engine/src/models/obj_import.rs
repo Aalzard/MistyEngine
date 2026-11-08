@@ -72,6 +72,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
             scale: Vec3::ONE,
             meshes: vec![model.meshes.len()],
             skin: None,
+            lods: Vec::new(),
         });
         model.meshes.push(ModelMesh::new(name, data, m.material_id));
     }

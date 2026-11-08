@@ -551,6 +551,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "block_compression"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5ca8c67a97492f3c8263ce18d307053f8aa657e8ecbf191484676bb25ae5f4a"
+dependencies = [
+ "bytemuck",
+ "half",
+]
+
+[[package]]
 name = "blocking"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2516,6 +2526,7 @@ name = "misty_engine"
 version = "0.2.1"
 dependencies = [
  "ab_glyph",
+ "block_compression",
  "bytemuck",
  "epaint_default_fonts",
  "flate2",
@@ -2539,6 +2550,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tobj",
+ "ufbx",
  "unicode-bidi",
  "ureq",
  "wgpu",
@@ -4771,6 +4783,15 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ufbx"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "260522f1eb74139f0e78b29dd82a58e5437d728c5498024a39e5af7282694240"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

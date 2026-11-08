@@ -24,6 +24,7 @@ mod material;
 mod mesh_builder_editor;
 mod mixed;
 mod mixer_inspector;
+mod model_settings;
 mod nav_editors;
 mod net_editors;
 mod occlusion_editors;
@@ -657,7 +658,7 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         return;
     }
     if misty_engine::models::is_model(rel) {
-        lightmap_editors::model_asset(ui, state, rel);
+        model_settings::model_asset(ui, state, rel);
         return;
     }
     if misty_engine::lightmap::is_lightmap(rel) {

@@ -66,6 +66,14 @@ pub fn load(path: &Path) -> Result<Model, String> {
                     v.uv2 = uv;
                 }
             }
+            // The file's tangents (kept by the import setting Tangents: Import).
+            let mut has_tangents = false;
+            if let Some(tangents) = reader.read_tangents() {
+                for (v, t) in vertices.iter_mut().zip(tangents) {
+                    v.tangent = t;
+                }
+                has_tangents = true;
+            }
             let mut indices: Vec<u32> = match reader.read_indices() {
                 Some(i) => i.into_u32().collect(),
                 None => (0..vertices.len() as u32).collect(),
@@ -89,7 +97,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
                 base.clone()
             };
             ours.push(model.meshes.len());
-            let mut m = ModelMesh::new(name, data, prim.material().index());
+            let mut m = ModelMesh::with_vectors(name, data, prim.material().index(), has_tangents);
             m.skin = skin;
             m.default_weights = (0..shapes.len())
                 .map(|i| default_weights.get(i).copied().unwrap_or(0.0))
@@ -143,6 +151,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
                 .map(|m| mesh_map[m.index()].clone())
                 .unwrap_or_default(),
             skin: node.skin().map(|s| s.index()),
+            lods: Vec::new(),
         });
         let children: Vec<_> = node.children().collect();
         for c in children.into_iter().rev() {
@@ -151,23 +160,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
     }
     model.skins = super::gltf_anim::skins(doc, &buffers, &node_map);
     // Meshes keep their skin's bind poses (like a mesh asset's bindposes).
-    for node in &model.nodes {
-        let Some(skin) = node.skin.and_then(|s| model.skins.get(s)) else {
-            continue;
-        };
-        for &m in &node.meshes {
-            let mesh = &mut model.meshes[m];
-            let pad = mesh
-                .blend_shapes
-                .iter()
-                .map(|s| s.max_offset())
-                .sum::<f32>();
-            let positions: Vec<[f32; 3]> = mesh.data.vertices.iter().map(|v| v.position).collect();
-            if let Some(s) = mesh.skin.as_mut().filter(|s| s.bind_poses.is_empty()) {
-                s.bind(&skin.inverse_bind, &positions, pad);
-            }
-        }
-    }
+    model.bind_skins();
     model.animations = super::gltf_anim::animations(doc, &buffers, &node_map, &model);
 
     // Listed in index order, so `model.materials[i]` is glTF material i.

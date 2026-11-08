@@ -1,5 +1,6 @@
 //! Texture import settings in the Inspector (selected `.png` / `.jpg`): Texture Type, Sprite
-//! Mode, Pixels Per Unit, Pivot, Max Size, Filter Mode and mipmaps on top; Wrap Mode, sRGB and
+//! Mode, Pixels Per Unit, Pivot, Max Size, Filter Mode, mipmaps and Compression on top, with
+//! per-platform Max Size and Compression overrides; Wrap Mode, sRGB and
 //! Aniso Level under a collapsed "Advanced"; a grid slicer for Multiple mode, Revert / Apply and
 //! a preview that outlines the sprites.
 //!
@@ -8,7 +9,9 @@
 use egui::{Color32, RichText, Stroke, Ui, pos2, vec2};
 use misty_engine::sprites::import::{MAX_SIZES, PIVOTS, max_size_label};
 use misty_engine::sprites::slice::{self, GridSlice};
-use misty_engine::sprites::{self, FilterMode, SpriteMode, TextureImporter, TextureType, WrapMode};
+use misty_engine::sprites::{
+    self, FilterMode, SpriteMode, TextureCompression, TextureImporter, TextureType, WrapMode,
+};
 
 use crate::state::EditorState;
 
@@ -133,6 +136,60 @@ fn combo<T: PartialEq + Copy>(
     ch
 }
 
+/// Per-platform Max Size and Compression (Unity's platform tabs, kept simple: a row per
+/// overridden platform).
+fn platform_overrides(ui: &mut Ui, s: &mut TextureImporter) {
+    use sprites::import::{PLATFORMS, PlatformOverride};
+    egui::CollapsingHeader::new("Platform Overrides")
+        .id_salt("texture_import_platforms")
+        .default_open(!s.overrides.is_empty())
+        .show(ui, |ui| {
+            for platform in PLATFORMS {
+                let index = s.overrides.iter().position(|o| o.platform == platform);
+                let mut on = index.is_some();
+                ui.horizontal(|ui| {
+                    if ui
+                        .checkbox(&mut on, format!("Override for {platform}"))
+                        .changed()
+                    {
+                        if on {
+                            s.overrides.push(PlatformOverride {
+                                platform: platform.to_owned(),
+                                max_size: s.max_size,
+                                compression: s.compression_for(platform),
+                            });
+                        } else if let Some(i) = index {
+                            s.overrides.remove(i);
+                        }
+                    }
+                });
+                let Some(o) = s.overrides.iter_mut().find(|o| o.platform == platform) else {
+                    continue;
+                };
+                ui.indent(("tex_platform", platform), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.weak("Max Size");
+                        egui::ComboBox::from_id_salt(("tex_platform_size", platform))
+                            .selected_text(max_size_label(o.max_size))
+                            .show_ui(ui, |ui| {
+                                for v in MAX_SIZES {
+                                    ui.selectable_value(&mut o.max_size, v, max_size_label(v));
+                                }
+                            });
+                        ui.weak("Compression");
+                        combo(
+                            ui,
+                            &format!("tex_platform_comp_{platform}"),
+                            &mut o.compression,
+                            &TextureCompression::ALL,
+                            TextureCompression::label,
+                        );
+                    });
+                });
+            }
+        });
+}
+
 fn settings_ui(ui: &mut Ui, s: &mut TextureImporter) {
     crate::panels::inspector::card::PropertyGrid::new("texture_import_grid").show(ui, |ui| {
         ui.label("Texture Type")
@@ -198,7 +255,28 @@ fn settings_ui(ui: &mut Ui, s: &mut TextureImporter) {
             .on_hover_text("Smaller copies used far away: less shimmer, faster. Off for UI.");
         ui.checkbox(&mut s.generate_mip_maps, "");
         ui.end_row();
+        ui.label("Compression").on_hover_text(
+            "GPU block compression (made on import, cached in Library/TextureCache, packed in \
+            builds). Normal Quality: BC1, or BC3 with alpha. High Quality: BC7. Normal maps \
+            use BC5. Uncompressed on GPUs without BC support.",
+        );
+        let platform = sprites::import::current_platform();
+        let mut c = s.compression_for(platform);
+        let overridden = s.override_for(platform).is_some();
+        ui.add_enabled_ui(!overridden, |ui| {
+            if combo(
+                ui,
+                "tex_compression",
+                &mut c,
+                &TextureCompression::ALL,
+                TextureCompression::label,
+            ) {
+                s.compression = Some(c);
+            }
+        });
+        ui.end_row();
     });
+    platform_overrides(ui, s);
     egui::CollapsingHeader::new("Advanced")
         .id_salt("texture_import_advanced")
         .default_open(false)

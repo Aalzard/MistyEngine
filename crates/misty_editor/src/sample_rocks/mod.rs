@@ -465,12 +465,14 @@ fn write_rocks() {
         ModelImporter {
             generate_lightmap_uvs: false,
             virtual_geometry: true,
+            ..Default::default()
         }
         .save(&root.join(rock.mesh_path()))
         .unwrap();
         ModelImporter {
             generate_lightmap_uvs: false,
             virtual_geometry: false,
+            ..Default::default()
         }
         .save(&root.join(rock.lods_path()))
         .unwrap();

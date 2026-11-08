@@ -142,7 +142,8 @@ const MAX_LIGHTS: usize = 8;
 /// Device features to request when the adapter has them: timestamp queries for GPU timing
 /// (see [`Renderer::with_queue`]), indirect draws with an instance offset (GPU culling) and
 /// the adapter's own format capabilities (2× MSAA of the HDR targets is not guaranteed by
-/// WebGPU, only 1× and 4×) and indirect draw counts (virtual geometry's indexed cluster draws).
+/// WebGPU, only 1× and 4×), indirect draw counts (virtual geometry's indexed cluster draws) and
+/// BC texture compression.
 pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
     adapter.features()
         & (wgpu::Features::TIMESTAMP_QUERY
@@ -153,7 +154,10 @@ pub fn timestamp_features(adapter: &wgpu::Adapter) -> wgpu::Features {
             // Virtual geometry draws each cluster as an indexed sub-draw, counted on the GPU,
             // and its visibility buffer names the triangle of each sample.
             | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT
-            | wgpu::Features::PRIMITIVE_INDEX)
+            | wgpu::Features::PRIMITIVE_INDEX
+            // Block-compressed material textures (sprites::compress); without it they upload
+            // uncompressed.
+            | wgpu::Features::TEXTURE_COMPRESSION_BC)
 }
 
 /// `base` with the per-stage binding limits raised to what the adapter has (capped): the

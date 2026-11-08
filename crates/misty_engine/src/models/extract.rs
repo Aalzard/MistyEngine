@@ -36,7 +36,11 @@ fn base(model_rel: &str) -> (PathBuf, String) {
 /// Project-relative `.mat` path for material `index` of the model at `model_rel`.
 pub fn material_asset_path(model_rel: &str, model: &Model, index: usize) -> Option<String> {
     let m = model.materials.get(index)?;
-    let (dir, stem) = base(model_rel);
+    let (mut dir, stem) = base(model_rel);
+    // Import setting: materials extracted to another folder ("Extract Materials…").
+    if !model.material_folder.is_empty() {
+        dir = assets::absolute(&model.material_folder);
+    }
     // Two materials with the same name get the index appended.
     let dupes = model.materials.iter().filter(|o| o.name == m.name).count();
     let name = if dupes > 1 {
@@ -59,11 +63,12 @@ pub fn extract_materials(model_rel: &str, model: &Model) -> Result<Vec<String>, 
         if path.exists() {
             continue;
         }
+        let dir = path.parent().unwrap_or(Path::new("."));
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         let stem = path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let dir = path.parent().unwrap_or(Path::new("."));
         let mut material = m.material.clone();
         for (slot, source, target) in [
             ("Albedo", &m.albedo, &mut material.albedo_map),
@@ -127,4 +132,18 @@ pub fn extract_animations(model_rel: &str, model: &Model) -> Result<Vec<String>,
         created.push(rel);
     }
     Ok(created)
+}
+
+/// Write every clip of the model, replacing extracted `.anim` files (the clip settings were
+/// applied: the clips are made again from the file). Returns the paths written.
+pub fn refresh_animations(model_rel: &str, model: &Model) -> Result<Vec<String>, String> {
+    let mut written = Vec::new();
+    for (i, a) in model.animations.iter().enumerate() {
+        let Some(rel) = animation_asset_path(model_rel, model, i) else {
+            continue;
+        };
+        a.clip.save(&assets::absolute(&rel))?;
+        written.push(rel);
+    }
+    Ok(written)
 }

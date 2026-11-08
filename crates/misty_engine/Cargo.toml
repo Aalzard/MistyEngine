@@ -18,6 +18,11 @@ mlua.workspace = true
 kira.workspace = true
 image.workspace = true
 gltf.workspace = true
+# FBX import: ufbx (single-file C library, MIT or public domain) through its official binding.
+ufbx = "0.11.5"
+# GPU texture compression: BC1, BC3, BC5, BC6H and BC7 encoders and decoders on the CPU (pure
+# Rust port of the Intel ISPC kernels, MIT); its wgpu compute path is left out.
+block_compression = { version = "0.11", default-features = false, features = ["bc15", "bc6h", "bc7"] }
 # World Builder: OS-independent sin/cos/pow, so a seed builds the same world everywhere.
 libm = "0.2.16"
 tobj.workspace = true

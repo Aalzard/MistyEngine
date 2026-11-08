@@ -69,6 +69,8 @@ fn store_parts(name: &str, meshes: Vec<MeshData>, virtual_geometry: bool, parts:
                 blend_shapes: Vec::new(),
                 default_weights: Vec::new(),
                 primitive: (parts && n > 1).then_some((0, i as u32)),
+                file_normals: true,
+                file_tangents: true,
             })
             .collect(),
         virtual_geometry,
@@ -147,6 +149,8 @@ pub fn register_new(name: &str, data: MeshData) -> String {
             blend_shapes: Vec::new(),
             default_weights: Vec::new(),
             primitive: None,
+            file_normals: true,
+            file_tangents: true,
         }],
         ..Default::default()
     };

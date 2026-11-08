@@ -301,6 +301,9 @@ fn attach_parent_console() {}
 
 fn main() -> eframe::Result<()> {
     capture::mark_process_start();
+    // Textures draw uncompressed until their compressed blocks are made on a worker (then
+    // read from Library/TextureCache).
+    misty_engine::sprites::compress::set_mode(misty_engine::sprites::compress::Mode::Background);
     // MCP modes talk on the pipes their client gave them; a terminal's console must not replace
     // them.
     if !std::env::args()

@@ -7,6 +7,7 @@
 //! in Layer and then camera distance.
 
 pub mod builtin;
+pub mod compress;
 pub mod import;
 mod render;
 pub mod slice;
@@ -20,7 +21,10 @@ use glam::Vec2;
 use image::RgbaImage;
 
 use crate::assets;
-pub use import::{FilterMode, SpriteMode, SpriteRect, TextureImporter, TextureType, WrapMode};
+pub use import::{
+    FilterMode, PlatformOverride, SpriteMode, SpriteRect, TextureCompression, TextureImporter,
+    TextureType, WrapMode,
+};
 pub use render::{draw_of, draws, local_bounds, world_corners};
 
 /// Name of the material every Sprite Renderer uses.
@@ -143,7 +147,8 @@ pub fn load_texture(rel: &str) -> Result<RgbaImage, String> {
     if builtin::is_builtin(rel) {
         return Ok(img);
     }
-    let limit = crate::quality::active().texture_size_limit(importer(rel).max_size);
+    let max = importer(rel).max_size_for(import::current_platform());
+    let limit = crate::quality::active().texture_size_limit(max);
     Ok(crate::render::texture::fit(img, limit))
 }
 

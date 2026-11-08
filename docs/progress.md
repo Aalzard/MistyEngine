@@ -2686,3 +2686,23 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Cheaper sharp sun shafts; the walking cost of Misty GI (toroidal clipmap scrolling would
   keep settled probes); the terrain's shadow lookups where the shadow mask can't serve them.
+
+## Round 18D — Asset pipeline (branch r18-assets)
+
+### Done (docs/pending/r18-assets.md)
+- FBX import through ufbx (binary and ASCII): meshes per material part, hierarchy, skins and skeleton, blend
+  shapes, baked animation stacks, PBR-mapped materials with resolved or embedded textures. FBX models are
+  read-only prefabs with Skinned Mesh Renderers and an Animation, like `.glb` ones.
+- Model import settings in the Inspector (Revert / Apply): Scale Factor, Convert Units, Axis Conversion,
+  Normals (Import / Calculate with Smoothing Angle / None), Tangents, Read/Write, Generate Lightmap UVs,
+  Virtual Geometry, Generate LODs (vgeo simplifier, LOD Group on instances), Extract Materials… to a folder,
+  clip splitting by frame range with a clip preview.
+- GPU texture compression: Compression None / Normal Quality (BC1, BC3) / High Quality (BC7), BC5 normal maps,
+  BC6H encoder for HDR; platform overrides; cached in `Library/TextureCache` by content hash and settings,
+  encoded in the background in the editor, packed in builds, uncompressed without `TEXTURE_COMPRESSION_BC`.
+  MeadowDemo's material textures go from 125.8 MB to 21.0 MB; goldens unchanged (mean ≤ 0.01).
+- Samples `Tentacle.fbx` (Z-up, centimetres, rigged, Bend take, blend shapes) and `Crate.fbx`, made in code.
+
+### Not done yet
+- Tree, grass/flower and terrain-layer textures still upload RGBA8 (their own loaders; would save ~167 MB more
+  in MeadowDemo). No ETC2/ASTC fallback, no BC6H skies, no Humanoid rigs, LODs not cached in Library.

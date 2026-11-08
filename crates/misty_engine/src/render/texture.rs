@@ -172,6 +172,36 @@ pub(crate) fn upload_with(
     texture.create_view(&Default::default())
 }
 
+/// Upload block-compressed levels (see [`sprites::compress`]).
+pub(crate) fn upload_compressed(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    c: &sprites::compress::Compressed,
+) -> wgpu::TextureView {
+    let data: Vec<u8> = c.levels.concat();
+    let texture = device.create_texture_with_data(
+        queue,
+        &wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: c.width,
+                height: c.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: c.levels.len() as u32,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: c.wgpu_format(),
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::LayerMajor,
+        &data,
+    );
+    texture.create_view(&Default::default())
+}
+
 /// Sampler state from a texture's import settings (Filter Mode, Wrap Mode, Aniso Level) and
 /// the active quality level's Anisotropic Textures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -378,17 +408,27 @@ impl TextureCache {
             return c.view.clone();
         }
         let imp = sprites::importer(rel);
-        let view = match sprites::load_texture(rel) {
-            Ok(img) => {
-                let srgb = kind == TextureKind::Color && imp.is_srgb();
-                Some(upload_with(
-                    device,
-                    queue,
-                    rel,
-                    img,
-                    srgb,
-                    imp.generate_mip_maps,
-                ))
+        let srgb = kind == TextureKind::Color && imp.is_srgb();
+        // Block-compressed (cached in Library/TextureCache) when the device supports BC.
+        let bc = device
+            .features()
+            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
+        let usage = match kind {
+            TextureKind::Color => sprites::compress::Use::Color,
+            TextureKind::Normal => sprites::compress::Use::Normal,
+            TextureKind::Linear => sprites::compress::Use::Linear,
+        };
+        let view = match sprites::compress::texture_upload(rel, usage, bc) {
+            Ok(sprites::compress::Upload::Rgba(img)) => Some(upload_with(
+                device,
+                queue,
+                rel,
+                img,
+                srgb,
+                imp.generate_mip_maps,
+            )),
+            Ok(sprites::compress::Upload::Compressed(c)) => {
+                Some(upload_compressed(device, queue, rel, &c))
             }
             Err(e) => {
                 self.warnings.push(format!("Could not load texture {e}"));
@@ -563,13 +603,13 @@ impl TextureCache {
         self.sets.get(set)
     }
 
-    /// Loaded textures and their estimated bytes (RGBA8 with mips ≈ 4/3 of the base level).
+    /// Loaded textures and their GPU bytes (by format: block-compressed ones by block size).
     pub fn memory(&self) -> (usize, u64) {
         let views = self.textures.values().filter_map(|c| c.view.as_ref());
         views.fold((0, 0), |(n, bytes), v| {
-            let size = v.texture().size();
-            let base = size.width as u64 * size.height as u64 * 4;
-            (n + 1, bytes + base * 4 / 3)
+            let t = v.texture();
+            let b = texture_bytes(t.format(), t.width(), t.height(), t.mip_level_count(), 1);
+            (n + 1, bytes + b)
         })
     }
 
@@ -624,6 +664,14 @@ impl TextureCache {
         }
         self.last_poll = Some(now);
         let mut changed = Vec::new();
+        // Textures whose compressed blocks were made in the background reload with them.
+        let compressed = sprites::compress::take_finished();
+        let before = self.textures.len();
+        self.textures
+            .retain(|(rel, _), _| !compressed.contains(rel));
+        if self.textures.len() != before {
+            self.sets.clear();
+        }
         self.textures.retain(|(rel, _), c| {
             let same = c.modified == stamps(rel);
             if !same && !changed.contains(rel) {

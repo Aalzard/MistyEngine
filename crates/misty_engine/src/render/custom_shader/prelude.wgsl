@@ -73,8 +73,10 @@ fn default_output(input: SurfaceInput) -> SurfaceOutput {
 
 // Tangent-space normal from a normal map sample (OpenGL convention, green = up).
 fn unpack_normal(sample: vec4<f32>, scale: f32) -> vec3<f32> {
-    let m = sample.xyz * 2.0 - 1.0;
-    return normalize(vec3<f32>(m.xy * scale, max(m.z, 1e-3)));
+    // X and Y from the map, Z rebuilt: BC5-compressed normal maps store only X and Y.
+    let xy = sample.xy * 2.0 - 1.0;
+    let z = sqrt(saturate(1.0 - dot(xy, xy)));
+    return normalize(vec3<f32>(xy * scale, max(z, 1e-3)));
 }
 
 // Tangent-space normal to world space.
