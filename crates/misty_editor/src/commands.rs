@@ -27,10 +27,10 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
             | Action::ReloadScene
             | Action::TogglePlay
             | Action::Quit
-            | Action::OpenHub { .. } => {
-                if !crate::prefab_mode::leave_for_scene_change(s) {
-                    return None;
-                }
+            | Action::OpenHub { .. }
+                if !crate::prefab_mode::leave_for_scene_change(s) =>
+            {
+                return None;
             }
             _ => {}
         }

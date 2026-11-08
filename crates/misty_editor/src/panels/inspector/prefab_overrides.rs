@@ -227,7 +227,9 @@ fn property_menu(
         return;
     };
     ui.label(RichText::new(format!("{component} ▸ {}", field_label(field))).weak());
-    apply_buttons(ui, state, ctx, &[item.key.clone()], |o| matches(o));
+    apply_buttons(ui, state, ctx, std::slice::from_ref(&item.key), |o| {
+        matches(o)
+    });
     if ui.button("Revert").clicked() {
         state.push(Action::RevertPrefabOverrides {
             root: ctx.root,

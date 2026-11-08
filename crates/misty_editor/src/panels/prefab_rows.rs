@@ -74,7 +74,7 @@ impl Rows {
     /// Tops of the subtrees the instance at `root` added (worked out at most twice a second
     /// per instance: comparing a big instance with its prefab every frame would cost).
     fn added_in(&mut self, s: &mut EditorState, root: Entity) -> &HashSet<Entity> {
-        if !self.added.contains_key(&root) {
+        if let std::collections::hash_map::Entry::Vacant(slot) = self.added.entry(root) {
             let key = (root, s.scene.name.clone());
             let cached = ADDED.with(|c| {
                 c.borrow()
@@ -98,7 +98,7 @@ impl Rows {
                 });
                 set
             });
-            self.added.insert(root, set);
+            slot.insert(set);
         }
         &self.added[&root]
     }

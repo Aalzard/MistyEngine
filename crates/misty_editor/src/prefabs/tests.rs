@@ -266,7 +266,7 @@ fn nested_prefab_changes_update_the_outer_prefab_file() {
     );
     assert_eq!(
         s.assets.prefab(&cart_rel).unwrap().nested_paths(),
-        [wheel_rel.clone()]
+        std::slice::from_ref(&wheel_rel)
     );
     // A prefab can't go inside itself.
     assert!(instantiate(&mut s, &cart_rel, Some(inner)).is_none());
