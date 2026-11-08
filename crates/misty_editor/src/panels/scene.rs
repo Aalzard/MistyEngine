@@ -133,8 +133,6 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             }
             let mut lines = if sv.gizmos {
                 let mut l = gizmos::scene_lines(&state.scene, &state.selection);
-                let screen = state.game_view.screen_px;
-                crate::ui_gizmos::ui_lines(&mut l, &state.scene, &state.selection, screen);
                 crate::probe_gizmos::lines(&mut l, state, sv.draw_mode == PROBES_MODE);
                 crate::light_probe_tools::lines(state, &mut l);
                 l.0.extend(script_lines.0);
@@ -283,6 +281,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 gpu.renderer.set_virtual_geometry_debug_view(view);
             }
             let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
+            // Canvases in the world, drawn with the scene's depth.
+            gpu.render_scene_ui(&state.scene, &camera, crate::ui_gizmos::game_screen(state));
             crate::scene_camera::bench::scene_rendered(gpu);
             // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
             // show up as they land.
@@ -307,14 +307,21 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         let lines = crate::panels::occlusion::summary(state);
         gizmos::occlusion_overlay(ui, rect, &lines);
     }
-    // Object icons and click-to-select (Ctrl toggles, Shift adds).
+    // UI outlines (and Visualize Navigation), object icons and click-to-select (Ctrl toggles,
+    // Shift adds).
+    let ui_layout = crate::ui_gizmos::scene_layout(state, &camera, rect);
     if state.scene_view.gizmos {
+        crate::ui_gizmos::paint(ui, rect, state, &ui_layout);
+        if crate::ui_gizmos::visualizing_navigation(ui.ctx()) {
+            crate::ui_gizmos::paint_navigation(ui, rect, &state.scene, &ui_layout);
+        }
         draw_icons(ui, rect, state, &camera);
         crate::editor_scripts::gizmos::paint(ui, rect, &camera, state);
     }
     // 2D handles (sprite Rect tool, Edit Collider) take the mouse before the transform handles.
     let hovered = response.hovered();
     if !brush_active
+        && !crate::ui_rect_tool::show(ui, state, rect, hovered, &ui_layout)
         && !crate::sprite_handles::show(ui, state, &camera, rect, hovered)
         && !crate::probe_gizmos::handles(ui, state, &camera, rect, hovered)
         && !crate::light_probe_tools::handles(ui, state, &camera, rect, hovered)
@@ -337,7 +344,17 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         && !ui.input(|i| i.modifiers.alt)
         && let Some(click) = response.interact_pointer_pos()
     {
-        let hit = picking::pick(&state.scene, &camera, rect, click, &state.scene_view.icons);
+        let mut hit = picking::pick(&state.scene, &camera, rect, click, &state.scene_view.icons);
+        // A UI graphic under the click wins unless a scene object is nearer.
+        if let Some((ui_hit, d)) =
+            crate::ui_gizmos::pick(&state.scene, &ui_layout, &camera, rect, click)
+        {
+            let nearer =
+                hit.is_some_and(|h| state.scene.world_position(h).distance(camera.position) < d);
+            if !nearer {
+                hit = Some(ui_hit);
+            }
+        }
         let mods = ui.input(|i| i.modifiers);
         match hit {
             Some(e) if mods.command => state.selection.toggle(e),

@@ -73,6 +73,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 });
             }
             let interaction = state.runtime.as_ref().map(|r| r.ui_interaction());
+            // Constant Physical Size canvases size themselves by the screen DPI.
+            misty_engine::ui::layout::set_screen_dpi(96.0 * ui.ctx().pixels_per_point());
             if !debugging || ui_event(gpu, &state.scene) {
                 gpu.render_ui(&state.scene, interaction);
             }

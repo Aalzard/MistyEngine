@@ -483,7 +483,13 @@ impl ApplicationHandler for Player {
                 };
                 self.input.wheel(d);
             }
-            WindowEvent::RedrawRequested => self.frame(event_loop),
+            WindowEvent::RedrawRequested => {
+                // Constant Physical Size canvases size themselves by the screen DPI.
+                if let Some(w) = &self.window {
+                    misty_engine::ui::layout::set_screen_dpi(96.0 * w.scale_factor() as f32);
+                }
+                self.frame(event_loop)
+            }
             _ => {}
         }
     }
