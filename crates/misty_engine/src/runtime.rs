@@ -441,6 +441,20 @@ impl Runtime {
     }
 
     /// Project Settings ▸ Physics the world was built with (layer matrix, queries).
+    /// The playing physics world (debug view, cloth stats).
+    pub fn with_physics<R>(&self, f: impl FnOnce(&mut crate::physics::Physics) -> R) -> R {
+        self.host.with_physics(f)
+    }
+
+    /// The playing physics world with the scene (switching a ragdoll from the editor).
+    pub fn with_physics_scene<R>(
+        &mut self,
+        scene: &mut Scene,
+        f: impl FnOnce(&mut crate::physics::Physics, &mut Scene) -> R,
+    ) -> R {
+        self.host.with_physics_scene(scene, f)
+    }
+
     pub fn physics_settings(&self) -> crate::settings::PhysicsSettings {
         self.host.physics_settings()
     }

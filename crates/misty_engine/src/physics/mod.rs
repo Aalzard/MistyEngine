@@ -4,14 +4,21 @@
 //! Rigidbody on themselves or a parent, otherwise they are static. Collider sizes include the
 //! object's world scale. Character Controllers are kinematic capsules moved by scripts; joints
 //! connect bodies to each other or to the world. Submodules: `colliders` (shapes and layers),
-//! `joints`, `character`, `queries` (raycasts and overlaps), `layers`, `vehicles` (Wheel Colliders).
+//! `joints` (with break forces), `material` (Physics Material assets), `character`, `queries`
+//! (raycasts and overlaps), `layers`, `vehicles` (Wheel Colliders), `ragdoll` (the Ragdoll
+//! Wizard and switching ragdolls on and off), `cloth` (XPBD cloth on the background pool) and
+//! `debug` (the Scene view's Physics Debug lines).
 
 mod character;
+pub mod cloth;
 mod colliders;
 mod convert;
+pub mod debug;
 mod joints;
 pub mod layers;
+pub mod material;
 mod queries;
+pub mod ragdoll;
 mod vehicles;
 
 use std::collections::HashMap;
@@ -25,6 +32,7 @@ use crate::settings::PhysicsSettings;
 use convert::{gv, parts, pose, rv};
 
 pub use character::ControllerHit;
+pub use joints::{JointBreak, joint_basis};
 pub use layers::{ALL_LAYERS, DEFAULT_RAYCAST_LAYERS, LAYERS};
 pub use queries::RaycastHit;
 pub use vehicles::world_pose_of as wheel_world_pose;
@@ -103,6 +111,16 @@ pub struct Physics {
     /// Contacts found while building, reported by the next step.
     pending: Vec<rp::CollisionEvent>,
     wheels: Vec<vehicles::Wheel>,
+    /// Rapier joints with their break limits, projection and soft limits.
+    joints: Vec<joints::JointRecord>,
+    /// Joints broken since the script host last asked.
+    joint_breaks: Vec<JointBreak>,
+    /// Colliders with a Physics Material (static / dynamic friction picked per contact).
+    materials: HashMap<rp::ColliderHandle, material::PhysicsMaterial>,
+    /// Loaded Physics Material assets by path (`None` = missing).
+    material_assets: HashMap<String, Option<material::PhysicsMaterial>>,
+    ragdolls: ragdoll::Ragdolls,
+    cloth: cloth::ClothSystem,
 }
 
 /// Rigid (unscaled) world pose and world scale of an object.
@@ -141,6 +159,12 @@ impl Physics {
             controller_hits: Vec::new(),
             pending: Vec::new(),
             wheels: Vec::new(),
+            joints: Vec::new(),
+            joint_breaks: Vec::new(),
+            materials: HashMap::new(),
+            material_assets: HashMap::new(),
+            ragdolls: ragdoll::Ragdolls::default(),
+            cloth: cloth::ClothSystem::default(),
         };
         let objects: Vec<Entity> = scene.walk().into_iter().map(|(e, _)| e).collect();
         physics.add_objects(scene, &objects);
@@ -171,6 +195,8 @@ impl Physics {
         self.add_colliders(scene, &objects);
         self.add_joints(scene, &objects);
         self.add_wheels(scene, &objects);
+        self.add_ragdolls(scene, &objects);
+        self.cloth.add(scene, &objects);
         // A zero-length step registers the new bodies and fills the broad phase, so queries
         // work before the first real step; contacts found now are reported by that step.
         let dt = self.world.integration_parameters.dt;
@@ -266,7 +292,12 @@ impl Physics {
             }
         }
         let events = EventLog::default();
-        self.world.step_with_events(&(), &events);
+        let hooks = material::MaterialHooks {
+            materials: &self.materials,
+        };
+        self.world.step_with_events(&hooks, &events);
+        self.check_breaks();
+        self.project_joints();
         let mut raw = std::mem::take(&mut self.pending);
         raw.extend(events.0.into_inner().unwrap_or_default());
         raw.into_iter()
@@ -289,7 +320,7 @@ impl Physics {
     pub fn sync_out(&self, scene: &mut Scene) {
         let alpha = (self.accumulator / self.fixed_dt).clamp(0.0, 1.0);
         for (e, b) in &self.bodies {
-            if b.kinematic || !scene.contains(*e) {
+            if b.kinematic || !scene.contains(*e) || self.ragdolls.is_bone(*e) {
                 continue;
             }
             let Some(body) = self.world.bodies.get(b.handle) else {
@@ -304,6 +335,8 @@ impl Physics {
             scene.set_world_rotation(*e, r);
         }
         self.sync_wheels(scene);
+        // Ragdoll bones parent each other: written parents first.
+        self.pose_ragdolls(scene);
     }
 
     fn body_mut(&mut self, e: Entity) -> Option<&mut rp::RigidBody> {
@@ -425,7 +458,10 @@ impl Physics {
             self.world.remove_body_with_colliders(b.handle, true);
         }
         self.controllers.remove(&e);
+        self.cloth.remove(e);
         self.remove_springs(e);
+        let colliders = &self.world.colliders;
+        self.materials.retain(|h, _| colliders.get(*h).is_some());
         self.remove_wheels(e);
         let handles: Vec<_> = self
             .colliders
@@ -488,6 +524,8 @@ pub fn collider_matrix(scene: &Scene, e: Entity, center: Vec3) -> Mat4 {
 
 #[cfg(test)]
 mod character_tests;
+#[cfg(test)]
+mod joint_config_tests;
 #[cfg(test)]
 mod joint_tests;
 #[cfg(test)]

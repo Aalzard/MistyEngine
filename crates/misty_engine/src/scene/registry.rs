@@ -91,6 +91,18 @@ impl SceneComponent for SpringJoint {
     const NAME: &'static str = "Spring Joint";
     const CATEGORY: &'static str = "Physics";
 }
+impl SceneComponent for ConfigurableJoint {
+    const NAME: &'static str = "Configurable Joint";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for CharacterJoint {
+    const NAME: &'static str = "Character Joint";
+    const CATEGORY: &'static str = "Physics";
+}
+impl SceneComponent for Ragdoll {
+    const NAME: &'static str = "Ragdoll";
+    const CATEGORY: &'static str = "Physics";
+}
 impl SceneComponent for super::WheelCollider {
     const NAME: &'static str = "Wheel Collider";
     const CATEGORY: &'static str = "Physics";
@@ -355,6 +367,10 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<FixedJoint>(),
             ComponentInfo::of::<HingeJoint>(),
             ComponentInfo::of::<SpringJoint>(),
+            ComponentInfo::of::<ConfigurableJoint>(),
+            ComponentInfo::of::<CharacterJoint>(),
+            ComponentInfo::of::<Ragdoll>(),
+            ComponentInfo::of::<super::Cloth>(),
             ComponentInfo::of::<super::WheelCollider>(),
             ComponentInfo::of::<Rigidbody2D>(),
             ComponentInfo::of::<BoxCollider2D>(),
@@ -425,7 +441,8 @@ pub fn components() -> &'static [ComponentInfo] {
 /// Components added together with `name` (like a RequireComponent attribute).
 pub fn requires(name: &str) -> &'static [&'static str] {
     match name {
-        "Fixed Joint" | "Hinge Joint" | "Spring Joint" => &["Rigidbody"],
+        "Fixed Joint" | "Hinge Joint" | "Spring Joint" | "Configurable Joint"
+        | "Character Joint" => &["Rigidbody"],
         "Editable Mesh" => &["Mesh Filter", "Mesh Renderer"],
         "Spline Extrude" => &["Mesh Filter", "Mesh Renderer"],
         "Network Transform" => &["Network Object"],

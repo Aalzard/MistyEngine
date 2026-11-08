@@ -1,5 +1,7 @@
-//! Lua physics API: `Physics.Raycast/RaycastAll/SphereCast/OverlapSphere`, `LayerMask`, and
-//! the CharacterController component (`Move`, `SimpleMove`, `isGrounded`, `velocity`).
+//! Lua physics API: `Physics.Raycast/RaycastAll/SphereCast/OverlapSphere`, `LayerMask`,
+//! `Ragdoll.Enable(go)` / `Ragdoll.Disable(go [, blendTime])` / `Ragdoll.IsEnabled(go)` (`go`
+//! is the ragdoll's root or any of its bones), and the CharacterController component (`Move`,
+//! `SimpleMove`, `isGrounded`, `velocity`).
 //!
 //! Hits are tables: `point`, `normal`, `distance`, `gameObject`, `collider` (the collider's
 //! GameObject), `transform`, `rigidbody` (or nil).
@@ -146,7 +148,46 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
     g.set("LayerMask", layer_mask)?;
+
+    let ragdoll = lua.create_table()?;
+    ragdoll.set(
+        "Enable",
+        lua.create_function(|lua, go: Value| {
+            let e = object(&go, "Ragdoll.Enable")?;
+            with_world(lua, |w| {
+                let World { physics, scene, .. } = w;
+                physics.set_ragdoll(scene, e, true, None)
+            })
+        })?,
+    )?;
+    ragdoll.set(
+        "Disable",
+        lua.create_function(|lua, (go, blend): (Value, Option<f32>)| {
+            let e = object(&go, "Ragdoll.Disable")?;
+            with_world(lua, |w| {
+                let World { physics, scene, .. } = w;
+                physics.set_ragdoll(scene, e, false, blend)
+            })
+        })?,
+    )?;
+    ragdoll.set(
+        "IsEnabled",
+        lua.create_function(|lua, go: Value| {
+            let e = object(&go, "Ragdoll.IsEnabled")?;
+            with_world(lua, |w| w.physics.ragdoll_enabled(e).unwrap_or(false))
+        })?,
+    )?;
+    g.set("Ragdoll", ragdoll)?;
     Ok(())
+}
+
+/// The object a GameObject or Transform argument stands for.
+fn object(v: &Value, what: &str) -> Result<Entity> {
+    match v {
+        Value::UserData(ud) if ud.is::<LGameObject>() => Ok(ud.borrow::<LGameObject>()?.0),
+        Value::UserData(ud) if ud.is::<LTransform>() => Ok(ud.borrow::<LTransform>()?.0),
+        _ => Err(mlua::Error::runtime(format!("{what} expects a GameObject"))),
+    }
 }
 
 /// The project's layer names (the built-in ones outside a running game).
@@ -286,3 +327,7 @@ pub fn controller_hit_table(lua: &Lua, hit: &crate::physics::ControllerHit) -> R
 #[cfg(test)]
 #[path = "physics_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "joint_ragdoll_tests.rs"]
+mod joint_ragdoll_tests;

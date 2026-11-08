@@ -4,6 +4,7 @@
 //! are public fields shown in the Inspector; functions are callbacks:
 //! `Awake`, `Start`, `Update`, `FixedUpdate`, `LateUpdate`,
 //! `OnCollisionEnter/Exit(other)`, `OnTriggerEnter/Exit(other)`, `OnControllerColliderHit(hit)`,
+//! `OnJointBreak(breakForce)` (then the joint component is removed),
 //! and the 2D `OnCollisionEnter2D/Stay2D/Exit2D(collision)`, `OnTriggerEnter2D/Stay2D/Exit2D(other)`.
 //! `Instantiate(prefabPath or gameObject [, position])` creates objects while playing; their
 //! scripts get `Awake` right after the callback that created them.
@@ -917,6 +918,25 @@ impl ScriptHost {
         }
     }
 
+    /// `OnJointBreak(breakForce)` on the scripts of objects whose joint broke in the last step;
+    /// then the joint component is removed (like the familiar engine does).
+    fn joint_breaks(&mut self) {
+        let breaks = self.with_world(|w| w.physics.take_joint_breaks());
+        for b in breaks {
+            for i in 0..self.instances.len() {
+                if self.instances[i].entity == b.entity && self.runnable(&self.instances[i]) {
+                    self.call(i, "OnJointBreak", Some(Value::Number(f64::from(b.force))));
+                }
+            }
+            self.with_world(|w| {
+                if w.scene.contains(b.entity) {
+                    w.scene.remove_by_name(b.entity, b.joint);
+                }
+            });
+            self.flush_spawned();
+        }
+    }
+
     /// `OnCollision*2D(collision)` / `OnTrigger*2D(other)` for 2D contacts.
     fn dispatch_2d(&mut self, contacts: &[Contact2D]) {
         for c in contacts {
@@ -1011,6 +1031,7 @@ impl ScriptHost {
             let contacts = self.with_world(|w| w.physics.step(&w.scene));
             self.dispatch(&contacts);
             self.flush_spawned();
+            self.joint_breaks();
             let contacts_2d = self.with_world(|w| {
                 w.physics2d.refresh_tilemaps(&w.scene);
                 w.physics2d.step()
@@ -1056,6 +1077,14 @@ impl ScriptHost {
             profile_scope!("Animation.Rigging", Category::Animation);
             self.with_world(|w| {
                 crate::rigging::evaluate(&mut w.scene, &mut w.rigging, time.delta, None)
+            });
+        }
+        {
+            // Ragdolls put their physics pose over the animation; cloth starts its next step.
+            profile_scope!("Physics.Ragdoll+Cloth", Category::Physics);
+            self.with_world(|w| {
+                let World { physics, scene, .. } = w;
+                physics.after_animation(scene, time.delta);
             });
         }
         {
@@ -1330,6 +1359,28 @@ impl ScriptHost {
 
     pub fn physics_config(&self) -> (Vec3, f32) {
         self.with_world(|w| (w.physics.gravity(), w.physics.fixed_dt))
+    }
+
+    /// The playing physics world (debug view, cloth stats).
+    pub fn with_physics<R>(&self, f: impl FnOnce(&mut Physics) -> R) -> R {
+        self.with_world(|w| f(&mut w.physics))
+    }
+
+    /// The playing physics world and scene together (ragdoll switches from the editor).
+    pub fn with_physics_scene<R>(
+        &mut self,
+        scene: &mut Scene,
+        f: impl FnOnce(&mut Physics, &mut Scene) -> R,
+    ) -> R {
+        let taken = std::mem::take(scene);
+        let (r, back) = self.with_world(|w| {
+            let mine = std::mem::replace(&mut w.scene, taken);
+            let r = f(&mut w.physics, &mut w.scene);
+            let played = std::mem::replace(&mut w.scene, mine);
+            (r, played)
+        });
+        *scene = back;
+        r
     }
 
     pub fn instance_count(&self) -> usize {

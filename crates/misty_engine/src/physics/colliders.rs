@@ -6,6 +6,7 @@ use hecs::Entity;
 use rapier3d::prelude as rp;
 
 use super::convert::{pose, rv};
+use super::material::PhysicsMaterial;
 use super::{Physics, layers, world_pose};
 use crate::scene::{
     BoxCollider, CapsuleCollider, MeshCollider, MeshFilter, PhysicsSurface, Scene, SphereCollider,
@@ -17,7 +18,7 @@ impl Physics {
         for &e in objects {
             let owner = self.owner(scene, e);
             let groups = layers::groups(&self.settings, scene.game_object(e).layer);
-            for collider in self.colliders_for(scene, e) {
+            for (collider, material) in self.colliders_for(scene, e) {
                 // Mass comes from the Rigidbody, not collider density.
                 let mut collider = collider
                     .density(0.0)
@@ -27,7 +28,13 @@ impl Physics {
                     // Triggers also fire for kinematic bodies and controllers.
                     collider = collider.active_collision_types(rp::ActiveCollisionTypes::all());
                 }
-                self.insert_collider(scene, e, owner, collider);
+                if material.is_some() {
+                    collider = collider.active_hooks(rp::ActiveHooks::MODIFY_SOLVER_CONTACTS);
+                }
+                let h = self.insert_collider(scene, e, owner, collider);
+                if let Some(m) = material {
+                    self.materials.insert(h, m);
+                }
             }
             // Terrain Collider: a static heightfield placed in world space (ignores rotation).
             if let Some(c) = crate::terrain::collider(scene, e) {
@@ -96,20 +103,78 @@ impl Physics {
         }
     }
 
-    /// Collider builders for `e`'s collider components (in the object's local frame, scaled).
-    fn colliders_for(&mut self, scene: &Scene, e: Entity) -> Vec<rp::ColliderBuilder> {
+    /// The Physics Material asset at `path` (loaded once per build; a warning when missing).
+    fn physics_material(
+        &mut self,
+        scene: &Scene,
+        e: Entity,
+        path: &str,
+    ) -> Option<PhysicsMaterial> {
+        if let Some(m) = self.material_assets.get(path) {
+            return m.clone();
+        }
+        let loaded = match PhysicsMaterial::load_asset(path) {
+            Ok(m) => Some(m),
+            Err(err) => {
+                self.warnings.push(format!(
+                    "'{}': Physics Material {path} could not be loaded ({err}).",
+                    scene.name(e)
+                ));
+                None
+            }
+        };
+        self.material_assets.insert(path.to_owned(), loaded.clone());
+        loaded
+    }
+
+    /// Collider builders for `e`'s collider components (in the object's local frame, scaled),
+    /// with the Physics Material each one uses.
+    fn colliders_for(
+        &mut self,
+        scene: &Scene,
+        e: Entity,
+    ) -> Vec<(rp::ColliderBuilder, Option<PhysicsMaterial>)> {
         let w = &scene.world;
         let (_, _, s) = world_pose(scene, e);
         let name = scene.name(e);
-        let finish =
-            |b: rp::ColliderBuilder, center: Vec3, surface: PhysicsSurface, trigger: bool| {
-                let b = b
-                    .friction(surface.friction)
-                    .restitution(surface.bounciness)
-                    .sensor(trigger);
-                (b, center * s)
+        let paths = [
+            w.get::<&BoxCollider>(e)
+                .ok()
+                .and_then(|c| c.material.clone()),
+            w.get::<&SphereCollider>(e)
+                .ok()
+                .and_then(|c| c.material.clone()),
+            w.get::<&CapsuleCollider>(e)
+                .ok()
+                .and_then(|c| c.material.clone()),
+            w.get::<&MeshCollider>(e)
+                .ok()
+                .and_then(|c| c.material.clone()),
+        ];
+        let mats: Vec<Option<PhysicsMaterial>> = paths
+            .iter()
+            .map(|p| {
+                p.as_deref()
+                    .and_then(|p| self.physics_material(scene, e, p))
+            })
+            .collect();
+        let w = &scene.world;
+        let finish = |b: rp::ColliderBuilder,
+                      center: Vec3,
+                      surface: PhysicsSurface,
+                      trigger: bool,
+                      material: &Option<PhysicsMaterial>| {
+            let b = match material {
+                Some(m) => b
+                    .friction(m.dynamic_friction.max(0.0))
+                    .friction_combine_rule(m.friction_combine.rapier())
+                    .restitution(m.bounciness.clamp(0.0, 1.0))
+                    .restitution_combine_rule(m.bounce_combine.rapier()),
+                None => b.friction(surface.friction).restitution(surface.bounciness),
             };
-        let mut shaped: Vec<(rp::ColliderBuilder, Vec3)> = Vec::new();
+            (b.sensor(trigger), center * s, material.clone())
+        };
+        let mut shaped: Vec<(rp::ColliderBuilder, Vec3, Option<PhysicsMaterial>)> = Vec::new();
         if let Ok(c) = w.get::<&BoxCollider>(e)
             && c.enabled
         {
@@ -119,6 +184,7 @@ impl Physics {
                 c.center,
                 c.surface,
                 c.is_trigger,
+                &mats[0],
             ));
         }
         if let Ok(c) = w.get::<&SphereCollider>(e)
@@ -130,6 +196,7 @@ impl Physics {
                 c.center,
                 c.surface,
                 c.is_trigger,
+                &mats[1],
             ));
         }
         if let Ok(c) = w.get::<&CapsuleCollider>(e)
@@ -144,7 +211,7 @@ impl Physics {
                 1 => rp::ColliderBuilder::capsule_y(half, r),
                 _ => rp::ColliderBuilder::capsule_z(half, r),
             };
-            shaped.push(finish(builder, c.center, c.surface, c.is_trigger));
+            shaped.push(finish(builder, c.center, c.surface, c.is_trigger, &mats[2]));
         }
         if let Ok(c) = w.get::<&MeshCollider>(e)
             && c.enabled
@@ -170,7 +237,9 @@ impl Physics {
                         rp::ColliderBuilder::trimesh(verts, tris).ok()
                     };
                     match builder {
-                        Some(b) => shaped.push(finish(b, Vec3::ZERO, c.surface, c.is_trigger)),
+                        Some(b) => {
+                            shaped.push(finish(b, Vec3::ZERO, c.surface, c.is_trigger, &mats[3]))
+                        }
                         None => self
                             .warnings
                             .push(format!("'{name}': could not build Mesh Collider.")),
@@ -187,7 +256,7 @@ impl Physics {
         }
         shaped
             .into_iter()
-            .map(|(b, center)| offset(b, center))
+            .map(|(b, center, m)| (offset(b, center), m))
             .collect()
     }
 }
@@ -200,6 +269,8 @@ pub(super) fn offset(b: rp::ColliderBuilder, center: Vec3) -> rp::ColliderBuilde
     let shape = b.shape.clone();
     rp::ColliderBuilder::compound(vec![(pose(center, Quat::IDENTITY), shape)])
         .friction(b.friction)
+        .friction_combine_rule(b.friction_combine_rule)
         .restitution(b.restitution)
+        .restitution_combine_rule(b.restitution_combine_rule)
         .sensor(b.is_sensor)
 }

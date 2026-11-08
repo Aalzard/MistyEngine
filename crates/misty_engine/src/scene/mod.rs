@@ -2,6 +2,7 @@
 
 pub mod animator_component;
 pub mod audio_components;
+pub mod cloth_component;
 pub mod clouds;
 pub mod components;
 pub mod decal;
@@ -43,6 +44,7 @@ use hecs::{Entity, EntityBuilder, World};
 pub use crate::mesh_builder::EditableMesh;
 pub use animator_component::Animator;
 pub use audio_components::*;
+pub use cloth_component::{Cloth, ColorChannel};
 pub use clouds::{CloudPreset, CloudsOverride};
 pub use components::*;
 pub use decal::DecalProjector;

@@ -708,6 +708,8 @@ pub struct BoxCollider {
     pub enabled: bool,
     pub is_trigger: bool,
     pub surface: PhysicsSurface,
+    /// Physics Material asset (`.physicmat`); when set it replaces `surface`.
+    pub material: Option<String>,
     pub center: Vec3,
     pub size: Vec3,
 }
@@ -718,6 +720,7 @@ impl Default for BoxCollider {
             enabled: true,
             is_trigger: false,
             surface: PhysicsSurface::default(),
+            material: None,
             center: Vec3::ZERO,
             size: Vec3::ONE,
         }
@@ -730,6 +733,8 @@ pub struct SphereCollider {
     pub enabled: bool,
     pub is_trigger: bool,
     pub surface: PhysicsSurface,
+    /// Physics Material asset (`.physicmat`); when set it replaces `surface`.
+    pub material: Option<String>,
     pub center: Vec3,
     pub radius: f32,
 }
@@ -740,6 +745,7 @@ impl Default for SphereCollider {
             enabled: true,
             is_trigger: false,
             surface: PhysicsSurface::default(),
+            material: None,
             center: Vec3::ZERO,
             radius: 0.5,
         }
@@ -752,6 +758,8 @@ pub struct CapsuleCollider {
     pub enabled: bool,
     pub is_trigger: bool,
     pub surface: PhysicsSurface,
+    /// Physics Material asset (`.physicmat`); when set it replaces `surface`.
+    pub material: Option<String>,
     pub center: Vec3,
     pub radius: f32,
     pub height: f32,
@@ -765,6 +773,7 @@ impl Default for CapsuleCollider {
             enabled: true,
             is_trigger: false,
             surface: PhysicsSurface::default(),
+            material: None,
             center: Vec3::ZERO,
             radius: 0.5,
             height: 2.0,
@@ -780,6 +789,8 @@ pub struct MeshCollider {
     pub enabled: bool,
     pub is_trigger: bool,
     pub surface: PhysicsSurface,
+    /// Physics Material asset (`.physicmat`); when set it replaces `surface`.
+    pub material: Option<String>,
     pub convex: bool,
 }
 
@@ -789,6 +800,7 @@ impl Default for MeshCollider {
             enabled: true,
             is_trigger: false,
             surface: PhysicsSurface::default(),
+            material: None,
             convex: false,
         }
     }

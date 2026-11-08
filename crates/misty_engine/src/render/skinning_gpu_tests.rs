@@ -51,6 +51,7 @@ fn bent_pose(rel: &str) -> SkinPose {
         weights: vec![0.8, 0.35],
         bounds,
         version: 0,
+        vertices: None,
     }
 }
 
