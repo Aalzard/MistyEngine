@@ -84,6 +84,8 @@ pub struct InputState {
     typed: Vec<String>,
     /// Wheel movement in pixels (y > 0 = away from the user).
     scroll: Vec2,
+    /// Fingers on a touch screen (render-target pixels).
+    touches: misty_engine::input::TouchTracker,
 }
 
 impl InputState {
@@ -148,6 +150,11 @@ impl InputState {
         self.text.extend(text.chars().filter(|c| !c.is_control()));
     }
 
+    /// A touch event (`WindowEvent::Touch`), position in render-target pixels.
+    pub fn touch(&mut self, e: misty_engine::input::touch::TouchEvent) {
+        self.touches.event(e);
+    }
+
     /// Mouse wheel movement in pixels.
     pub fn wheel(&mut self, delta: Vec2) {
         self.scroll += delta;
@@ -178,6 +185,7 @@ impl InputState {
             scroll_delta: std::mem::take(&mut self.scroll),
             // Gamepads are polled by the caller.
             joysticks: Vec::new(),
+            touches: self.touches.frame(),
         }
     }
 }
