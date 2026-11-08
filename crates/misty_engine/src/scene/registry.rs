@@ -228,6 +228,18 @@ impl SceneComponent for crate::world_gen::ScatterSet {
     const NAME: &'static str = "Scatter";
     const CATEGORY: &'static str = "";
 }
+impl SceneComponent for crate::world_partition::WorldPartition {
+    const NAME: &'static str = "World Partition";
+    const CATEGORY: &'static str = "World Partition";
+}
+impl SceneComponent for crate::world_partition::StreamingSource {
+    const NAME: &'static str = "Streaming Source";
+    const CATEGORY: &'static str = "World Partition";
+}
+impl SceneComponent for crate::world_partition::AlwaysLoaded {
+    const NAME: &'static str = "Always Loaded";
+    const CATEGORY: &'static str = "World Partition";
+}
 impl SceneComponent for super::WaterSurface {
     const NAME: &'static str = "Water Surface";
     const CATEGORY: &'static str = "Rendering";
@@ -437,6 +449,10 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<crate::world_gen::WorldBuilder>(),
             ComponentInfo::of::<crate::world_gen::WorldStamp>(),
             ComponentInfo::of::<crate::world_gen::ScatterSet>(),
+            // World Partition (world_partition).
+            ComponentInfo::of::<crate::world_partition::WorldPartition>(),
+            ComponentInfo::of::<crate::world_partition::StreamingSource>(),
+            ComponentInfo::of::<crate::world_partition::AlwaysLoaded>(),
             ComponentInfo::of::<super::WaterSurface>(),
             ComponentInfo::of::<super::Floater>(),
             ComponentInfo::of::<NavMeshAgent>(),

@@ -1252,6 +1252,11 @@ impl TreeRenderer {
         // Groups no terrain drew with this frame go.
         let stamp = self.stamp;
         self.group_cache.retain(|_, c| c.stamp == stamp);
+        // Placed trees of terrains that are gone (streamed tiles that unloaded).
+        if self.terrains.len() > f.terrains.len() {
+            self.terrains
+                .retain(|k, _| f.terrains.iter().any(|t| &t.key == k));
+        }
         // Trees that entered or left the near layer: the virtual shadow map's pages under them
         // render again (without or with them).
         if f.near.is_some() || !self.near_set.is_empty() {

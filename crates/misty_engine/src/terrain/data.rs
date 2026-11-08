@@ -103,6 +103,11 @@ pub struct TerrainData {
     pub holes: Vec<u8>,
     /// More grass species and detail meshes, each with its painted density (Paint Details).
     pub detail_layers: Vec<super::detail_layers::DetailLayer>,
+    /// Heights one sample beyond each edge (a tile of a larger terrain: its neighbours'
+    /// samples), so edge normals match the neighbour's and lighting has no seam. Four runs of
+    /// `heightmap_resolution` values: x = -1 and x = res (along z), then z = -1 and z = res
+    /// (along x). Empty = none (edge normals use one-sided differences).
+    pub border: Vec<f32>,
 }
 
 impl Default for TerrainData {
@@ -141,6 +146,7 @@ impl TerrainData {
             trees: TreeSettings::default(),
             holes: Vec::new(),
             detail_layers: Vec::new(),
+            border: Vec::new(),
         }
     }
 
@@ -193,6 +199,17 @@ impl TerrainData {
         let r = self.heightmap_resolution;
         let s = self.spacing();
         let h = |x: usize, z: usize| self.height(x, z) * self.size.y;
+        if self.border.len() == 4 * r {
+            // A tile: central differences everywhere, the border standing in past the edges.
+            let b = |run: usize, i: usize| self.border[run * r + i] * self.size.y;
+            let left = if ix == 0 { b(0, iz) } else { h(ix - 1, iz) };
+            let right = if ix + 1 == r { b(1, iz) } else { h(ix + 1, iz) };
+            let back = if iz == 0 { b(2, ix) } else { h(ix, iz - 1) };
+            let front = if iz + 1 == r { b(3, ix) } else { h(ix, iz + 1) };
+            let dx = (right - left) / (2.0 * s.x).max(1e-6);
+            let dz = (front - back) / (2.0 * s.y).max(1e-6);
+            return Vec3::new(-dx, 1.0, -dz).normalize();
+        }
         let (x0, x1) = (ix.saturating_sub(1), (ix + 1).min(r - 1));
         let (z0, z1) = (iz.saturating_sub(1), (iz + 1).min(r - 1));
         let dx = (h(x1, iz) - h(x0, iz)) / ((x1 - x0) as f32 * s.x).max(1e-6);
@@ -357,6 +374,7 @@ impl TerrainData {
             }
         }
         self.heights = heights;
+        self.border.clear();
         // Holes follow the cells they covered (nearest cell).
         if !self.holes.is_empty() {
             let (oc, nc) = (old - 1, res - 1);
@@ -442,6 +460,9 @@ impl TerrainData {
         }
         if self.detail_map.len() != a * a {
             self.detail_map.clear();
+        }
+        if !self.border.is_empty() && self.border.len() != 4 * r {
+            self.border.clear();
         }
         if self.holes.len() != (r - 1) * (r - 1) || !self.has_holes() {
             self.holes.clear();

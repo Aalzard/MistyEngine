@@ -191,6 +191,8 @@ impl DrawCache {
         crate::world_gen::scatter_set::draws(scene, materials, keep, &mut scatter);
         // Terrain detail meshes (instances cached per terrain version).
         crate::terrain::detail_layers::draws(scene, materials, keep, &mut scatter);
+        // World Partition proxies of the cells that are not loaded.
+        crate::world_partition::hlod::draws(scene, materials, keep, &mut scatter);
         // Skinned Mesh Renderers: posed every call (bones move without touching the renderer).
         let world = |e: Entity| {
             views

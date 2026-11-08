@@ -57,6 +57,7 @@ pub mod vehicle_api;
 pub mod vfx_api;
 pub mod video_api;
 pub mod water_api;
+pub mod world_partition_api;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -271,6 +272,8 @@ pub struct World {
     pub cursor: CursorState,
     /// Multiplayer: mode, connections, spawned network objects.
     pub network: crate::network::NetSession,
+    /// World Partition streaming as scripts see it (`WorldPartition`), and their requests.
+    pub streaming: world_partition_api::ScriptStreaming,
 }
 
 impl World {
@@ -331,6 +334,7 @@ impl World {
             video_events: Vec::new(),
             cursor: CursorState::default(),
             network,
+            streaming: Default::default(),
         }
     }
 }
@@ -1058,6 +1062,10 @@ impl ScriptHost {
             // Before Start, so objects loaded this frame get Start before their first Update.
             profile_scope!("Assets.Update", Category::Scripts);
             self.assets_update();
+        }
+        {
+            profile_scope!("WorldPartition.Scripts", Category::Scripts);
+            self.world_partition_tick();
         }
         {
             profile_scope!("Scripts.Start", Category::Scripts);
