@@ -493,7 +493,6 @@ impl EditorApp {
             }
             Action::RestartIntoNewBuild => crate::live_reload::dev_build::request_restart(s),
 
-            Action::Build => build_settings::build(s, false, true),
             Action::BuildAndRun => build_settings::build(s, true, false),
             Action::TogglePlay => {
                 if s.play.in_play_mode() {

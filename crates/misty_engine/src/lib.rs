@@ -3,6 +3,7 @@
 //! Coordinate system matches the editor conventions users expect: left-handed, +Y up, +Z forward,
 //! +X right. Euler angles are degrees applied in Z, X, Y order.
 
+pub mod achievements;
 pub mod animation;
 pub mod asset_db;
 pub mod asset_deps;
@@ -11,6 +12,8 @@ pub mod assets;
 pub mod audio;
 pub mod background;
 pub mod build;
+pub mod build_profile;
+pub mod build_report;
 pub mod camera;
 pub mod clock;
 pub mod draw_cache;

@@ -575,12 +575,26 @@ pub fn bake(
     quality: &crate::quality::QualitySettings,
     uses: &[Use],
 ) -> Result<Baked, String> {
+    let imp = TextureImporter::load(&root.join(rel));
+    bake_with(root, rel, platform, quality, uses, &imp)
+}
+
+/// [`bake`] with import settings `imp` instead of the texture's `.meta` (a Build Profile's
+/// texture overrides; the build packs the matching `.meta`).
+pub fn bake_with(
+    root: &Path,
+    rel: &str,
+    platform: &str,
+    quality: &crate::quality::QualitySettings,
+    uses: &[Use],
+    imp: &TextureImporter,
+) -> Result<Baked, String> {
     let mut out = Baked::default();
     if super::builtin::is_builtin(rel) {
         return Ok(out);
     }
     let abs = root.join(rel);
-    let imp = TextureImporter::load(&abs);
+    let imp = imp.clone();
     if imp.compression_for(platform) == TextureCompression::None {
         return Ok(out);
     }

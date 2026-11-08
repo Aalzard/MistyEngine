@@ -206,6 +206,10 @@ pub struct BuildSettings {
     /// Steam App ID (digits); empty = not a Steam game.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub steam_app_id: String,
+    /// The Build Profile builds use (see [`crate::build_profile`]); empty = the platform
+    /// profile of [`BuildSettings::target`].
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub active_profile: String,
 }
 
 impl Default for BuildSettings {
@@ -221,6 +225,7 @@ impl Default for BuildSettings {
             compression: true,
             create_zip: false,
             steam_app_id: String::new(),
+            active_profile: String::new(),
         }
     }
 }
@@ -337,6 +342,16 @@ pub struct BuildInfo {
     /// Target triple the player was built for.
     pub target: String,
     pub version: String,
+    /// A dedicated server: the player runs headless (no window, audio or GPU) and starts the
+    /// network server.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub server: bool,
+    /// The Build Profile it was built with.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub profile: String,
+    /// Scripting defines of the build (the profile's and the built-in ones).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub defines: Vec<String>,
 }
 
 /// File-system-safe stem for a product name ("Rolling Ball", "a_b_").

@@ -180,6 +180,17 @@ pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
         });
     } else if ext == misty_engine::scene::file::EXTENSION {
         state.push(Action::OpenScenePath(state.assets.relative(&path)));
+    } else if ext == misty_engine::build_profile::EXTENSION {
+        // A Build Profile asset opens in File ▸ Build Profiles.
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        crate::build_settings::load(state);
+        if let Some(i) = state.build_profiles.index_of(&name) {
+            state.build_window.page = crate::build_settings::Page::Profile(i);
+        }
+        state.build_window.open = true;
     } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {
         state.animator.open(Some(state.assets.relative(&path)));
         state.push(Action::FocusTab(crate::layout::Tab::Animator));

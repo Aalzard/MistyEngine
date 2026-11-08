@@ -17,6 +17,7 @@ const TABLE: &str = r#"
 |SceneManager||Load scenes from Build Settings
 |LoadSceneMode||Single or Additive scene loading
 |Application||Application control
+|Achievements||Unlock and check achievements (stored locally)
 |LayerMask||Layer names and masks
 |ForceMode||Force modes for AddForce / AddTorque
 |RenderSettings||The open scene's lighting values
@@ -106,6 +107,13 @@ SceneManager|GetSceneCount|GetSceneCount()|Number of loaded scenes
 LoadSceneMode|Single|Single|Replace the open scenes
 LoadSceneMode|Additive|Additive|Add to the open scenes
 Application|Quit|Quit()|Close the built game
+Application|HasDefine|HasDefine(name)|True when the Build Profile's scripting defines include the name ("DEMO")
+Application|isDedicatedServer|isDedicatedServer|True in a Dedicated Server build (headless, no window or audio)
+Application|isEditor|isEditor|True in the editor's Play mode
+Achievements|Unlock|Unlock(id)|Unlock an achievement; true the first time
+Achievements|IsUnlocked|IsUnlocked(id)|True when the achievement is unlocked
+Achievements|Clear|Clear(id)|Lock an achievement again (testing)
+Achievements|GetUnlocked|GetUnlocked()|Ids of every unlocked achievement
 LayerMask|GetMask|GetMask(name, ...)|Bit mask of the named layers
 LayerMask|NameToLayer|NameToLayer(name)|Layer index, or -1
 LayerMask|LayerToName|LayerToName(index)|Layer name

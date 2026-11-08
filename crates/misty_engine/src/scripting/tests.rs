@@ -564,3 +564,62 @@ return Orbiter
     assert!(plain.attributes.is_empty());
     super::test_scripts(&[], "assert(Range(0, 1).attribute == 'Range')").unwrap();
 }
+
+/// `Achievements` store through the installed backend; `--#if` blocks and
+/// `Application.HasDefine` follow the active defines.
+#[test]
+fn achievements_and_scripting_defines() {
+    let root = project(&[(
+        "Goals.lua",
+        r#"
+local Goals = {}
+function Goals:Start()
+    Debug.Log("new " .. tostring(Achievements.Unlock("FIRST_WIN")))
+    Debug.Log("again " .. tostring(Achievements.Unlock("FIRST_WIN")))
+    Debug.Log("has " .. tostring(Achievements.IsUnlocked("FIRST_WIN")))
+    Achievements.Unlock("SECRET")
+    Achievements.Clear("SECRET")
+    Debug.Log("secret " .. tostring(Achievements.IsUnlocked("SECRET")))
+--#if DEMO && !STEAM
+    Debug.Log("demo build")
+--#else
+    Debug.Log("full build")
+--#endif
+    Debug.Log("define " .. tostring(Application.HasDefine("DEMO")))
+end
+return Goals
+"#,
+    )]);
+    let file = root.join("achievements.json");
+    crate::achievements::set_backend(Box::new(crate::achievements::LocalAchievements::open(
+        &file,
+    )));
+    crate::build_profile::set_active_defines(vec!["DEMO".into()]);
+    let mut scene = Scene::default();
+    let e = scene.spawn("Goals", None);
+    attach(&mut scene, e, "Goals.lua", &[]);
+    let logs: Vec<String> = run(&mut scene, root.clone(), 2, Input::default())
+        .into_iter()
+        .map(|(_, l)| l)
+        .collect();
+    crate::build_profile::set_active_defines(Vec::new());
+    crate::achievements::reset_backend();
+    for want in [
+        "new true",
+        "again false",
+        "has true",
+        "secret false",
+        "demo build",
+        "define true",
+        "Achievement unlocked: FIRST_WIN",
+    ] {
+        assert!(logs.iter().any(|l| l == want), "{want}: {logs:?}");
+    }
+    assert!(!logs.iter().any(|l| l == "full build"), "{logs:?}");
+    let saved = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        saved.contains("FIRST_WIN") && !saved.contains("SECRET"),
+        "{saved}"
+    );
+    std::fs::remove_dir_all(root).ok();
+}

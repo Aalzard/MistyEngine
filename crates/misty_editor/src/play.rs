@@ -55,6 +55,8 @@ pub fn start(s: &mut EditorState) {
     }
     // Each Play session picks its locale like a game launch (Localization ▸ Startup Locale).
     misty_engine::localization::reset_session();
+    // The active Build Profile's scripting defines (`--#if`, `Application.HasDefine`).
+    misty_engine::build_profile::set_active_defines(crate::build_settings::play_defines(s));
     let mut audio = Audio::with_device(s.project.root.clone());
     audio.set_muted(s.game_view.mute);
     let mut runtime = Runtime::start_with_audio(

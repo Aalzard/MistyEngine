@@ -893,7 +893,18 @@ pub fn register(lua: &Lua) -> Result<()> {
         "Quit",
         lua.create_function(|lua, ()| with_world(lua, |w| w.requests.push(Request::Quit)))?,
     )?;
+    // Scripting defines of the Build Profile (`Application.HasDefine("DEMO")`).
+    app.set(
+        "HasDefine",
+        lua.create_function(|_, name: String| Ok(crate::build_profile::has_define(&name)))?,
+    )?;
+    app.set(
+        "isDedicatedServer",
+        crate::build_profile::has_define("MISTY_SERVER"),
+    )?;
+    app.set("isEditor", crate::build_profile::has_define("MISTY_EDITOR"))?;
     g.set("Application", app)?;
+    crate::achievements::register_lua(lua)?;
     super::assets_api::register(lua)?;
     Ok(())
 }

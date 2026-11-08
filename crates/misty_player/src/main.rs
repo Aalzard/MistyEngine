@@ -14,6 +14,8 @@
 //! once the scene runs; `--scene Assets/…scene [--scene-file copy.scene]` plays that scene;
 //! `--title`, `--size 800x450` and `--pos 40,40` place the window (the editor's Multiplayer
 //! Play Mode launches its player windows this way).
+//! Dedicated Server builds (and `--headless` / `-batchmode`) run without a window, audio or
+//! GPU and start the network server (`--port N`); see [`server`].
 
 // Release builds are windowed apps with no console; output goes to Player.log.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -22,6 +24,7 @@ mod game;
 mod gfx;
 mod input;
 mod screen;
+mod server;
 mod startup;
 
 use std::io::Write;
@@ -66,6 +69,16 @@ fn main() {
         }
     };
     let root = launch.root.clone();
+    // Scripting defines of the build (`--#if`, `Application.HasDefine`); a loose project
+    // plays with the platform's.
+    misty_engine::build_profile::set_active_defines(if launch.packed {
+        launch.info.defines.clone()
+    } else {
+        loose_defines(launch.info.server || args.headless())
+    });
+    if launch.info.server || args.headless() {
+        std::process::exit(server::run(&root, &launch, &args));
+    }
     if launch.info.development && launch.packed {
         startup::open_console();
     }
@@ -90,16 +103,7 @@ fn main() {
             std::process::exit(1);
         }
     };
-    if let Some(p) = &prefs_file {
-        prefs::open(p);
-    }
-    // Save games go to the per-user folder next to PlayerPrefs.
-    misty_engine::save::set_folder_override(misty_engine::save::player_folder(
-        &player.company_name,
-        &product,
-    ));
-    // The startup locale may come from PlayerPrefs, which are only open now.
-    misty_engine::localization::reset_session();
+    open_user_data(&player, &product, &launch);
     game.apply_saved_quality();
     let source = if launch.packed { "pak" } else { "folder" };
     log.write(
@@ -160,6 +164,46 @@ fn main() {
         app.log
             .write(LogKind::Warning, &format!("profiler capture: {e}"));
     }
+}
+
+/// PlayerPrefs, save games and achievements live in the per-user folder of the game.
+pub(crate) fn open_user_data(player: &PlayerSettings, product: &str, launch: &startup::Launch) {
+    let prefs_file = prefs::default_path(&player.company_name, product);
+    if let Some(p) = &prefs_file {
+        prefs::open(p);
+    }
+    // Save games go to the per-user folder next to PlayerPrefs.
+    misty_engine::save::set_folder_override(misty_engine::save::player_folder(
+        &player.company_name,
+        product,
+    ));
+    // Achievements of a built game are stored there too (a loose project keeps them in its
+    // Library like the editor).
+    if launch.packed
+        && let Some(dir) = prefs_file.as_deref().and_then(Path::parent)
+    {
+        misty_engine::achievements::set_backend(Box::new(
+            misty_engine::achievements::LocalAchievements::open(
+                dir.join(misty_engine::achievements::PLAYER_FILE),
+            ),
+        ));
+    }
+    // The startup locale may come from PlayerPrefs, which are only open now.
+    misty_engine::localization::reset_session();
+}
+
+/// The defines of a project played from its folder: this platform's (and the server's).
+fn loose_defines(server: bool) -> Vec<String> {
+    let mut p = misty_engine::build_profile::BuildProfile::for_platform(if server {
+        misty_engine::build_profile::ProfilePlatform::DedicatedServer
+    } else {
+        misty_engine::build_profile::ProfilePlatform::Windows
+    });
+    if let Some(host) = misty_engine::build::BuildTarget::host() {
+        p.target = host;
+    }
+    p.development = true;
+    p.build_defines()
 }
 
 struct Player {
@@ -543,12 +587,12 @@ impl ApplicationHandler for Player {
 }
 
 /// Game output: stderr plus `Player.log` (next to the executable, or in `dir`).
-struct Log {
+pub(crate) struct Log {
     file: Option<std::fs::File>,
 }
 
 impl Log {
-    fn open(dir: Option<PathBuf>) -> Self {
+    pub(crate) fn open(dir: Option<PathBuf>) -> Self {
         let dir = dir.or_else(|| {
             std::env::current_exe()
                 .ok()
@@ -561,7 +605,7 @@ impl Log {
         Self { file }
     }
 
-    fn write(&mut self, kind: LogKind, text: &str) {
+    pub(crate) fn write(&mut self, kind: LogKind, text: &str) {
         let line = match kind {
             LogKind::Info => text.to_owned(),
             LogKind::Warning => format!("Warning: {text}"),
