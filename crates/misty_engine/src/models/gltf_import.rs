@@ -66,6 +66,11 @@ pub fn load(path: &Path) -> Result<Model, String> {
                     v.uv2 = uv;
                 }
             }
+            // Vertex colours (COLOR_0, linear), for Shader Graph and `.shader` materials.
+            let colors: Vec<[u8; 4]> = reader
+                .read_colors(0)
+                .map(|c| c.into_rgba_u8().collect())
+                .unwrap_or_default();
             // The file's tangents (kept by the import setting Tangents: Import).
             let mut has_tangents = false;
             if let Some(tangents) = reader.read_tangents() {
@@ -79,7 +84,11 @@ pub fn load(path: &Path) -> Result<Model, String> {
                 None => (0..vertices.len() as u32).collect(),
             };
             indices.truncate(indices.len() / 3 * 3);
-            let mut data = MeshData { vertices, indices };
+            let mut data = MeshData {
+                vertices,
+                indices,
+                colors,
+            };
             if data
                 .indices
                 .iter()

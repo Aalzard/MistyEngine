@@ -15,6 +15,9 @@ use super::super::pipelines::{COMMON, MESH_SRC};
 
 const PRELUDE: &str = include_str!("prelude.wgsl");
 
+/// Vertex attribute location of the vertex colour (second vertex buffer, RGBA8 unorm).
+pub const COLOR_LOCATION: u32 = 5;
+
 /// Group 2 bindings: the material uniform, the sampler, then one per texture property.
 pub const UNIFORM_BINDING: u32 = 16;
 pub const SAMPLER_BINDING: u32 = 17;
@@ -120,8 +123,40 @@ fn entries(asset: &ShaderAsset) -> String {
     };
     let mut s = format!(
         r#"
+// MeshOut plus the vertex colour.
+struct CustomOut {{
+    @builtin(position) @invariant clip: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) @interpolate(flat) draw: u32,
+    @location(4) tangent: vec4<f32>,
+    @location(5) lightmap_uv: vec2<f32>,
+    @location(6) clip_prev: vec3<f32>,
+    @location(7) color: vec4<f32>,
+}};
+
+fn misty_custom_mesh_out(c: CustomOut) -> MeshOut {{
+    var m: MeshOut;
+    m.clip = c.clip;
+    m.world = c.world;
+    m.normal = c.normal;
+    m.uv = c.uv;
+    m.draw = c.draw;
+    m.tangent = c.tangent;
+    m.lightmap_uv = c.lightmap_uv;
+    m.clip_prev = c.clip_prev;
+    return m;
+}}
+
+fn misty_custom_input(c: CustomOut, front: bool) -> SurfaceInput {{
+    var s = misty_surface_input(misty_custom_mesh_out(c), front);
+    s.vertex_color = c.color;
+    return s;
+}}
+
 @vertex
-fn vs_custom(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {{
+fn vs_custom(in: MeshIn, @location({COLOR_LOCATION}) color: vec4<f32>, @builtin(instance_index) instance: u32) -> CustomOut {{
     let draw_index = slots[instance];
     let d = draws[draw_index];
     var v: VertexData;
@@ -130,8 +165,9 @@ fn vs_custom(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {{
     v.uv = in.uv;
     v.tangent = in.tangent;
     v.draw = draw_index;
+    v.color = color;
 {vertex_call}    let world = d.model * vec4<f32>(v.position, 1.0);
-    var out: MeshOut;
+    var out: CustomOut;
     out.clip = view.view_proj * world;
     out.world = world.xyz;
     out.normal = (d.normal * vec4<f32>(v.normal, 0.0)).xyz;
@@ -140,6 +176,7 @@ fn vs_custom(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {{
     out.tangent = vec4<f32>((d.model * vec4<f32>(v.tangent.xyz, 0.0)).xyz, v.tangent.w * d.emission.w);
     // Motion vectors follow the object; a vertex function's own motion is not tracked.
     out.clip_prev = prev_clip((d.prev_model * vec4<f32>(v.position, 1.0)).xyz);
+    out.color = v.color;
     return out;
 }}
 "#
@@ -151,8 +188,9 @@ fn vs_custom(in: MeshIn, @builtin(instance_index) instance: u32) -> MeshOut {{
                 s,
                 r#"
 @fragment
-fn fs_custom(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {{
-    let o = surface(misty_surface_input(in, front));
+fn fs_custom(c: CustomOut, @builtin(front_facing) front: bool) -> MeshTargets {{
+    let in = misty_custom_mesh_out(c);
+    let o = surface(misty_custom_input(c, front));
     var s: Surface;
     s.albedo = o.albedo;
     s.alpha = o.alpha;
@@ -162,6 +200,7 @@ fn fs_custom(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {{
     s.emission = o.emission;
     s.receive_shadows = draws[in.draw].params.z > 0.5;
     s.occlusion = o.occlusion;
+    s.transmission = o.transmission;
     s.premultiply = {premultiply};
     var out = shade(in.world, s);
     out.velocity = mesh_velocity(in);
@@ -173,14 +212,16 @@ fn fs_custom(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {{
         ShaderModel::Unlit => s.push_str(
             r#"
 @fragment
-fn fs_custom(in: MeshOut, @builtin(front_facing) front: bool) -> MeshTargets {
-    let c = fragment(misty_surface_input(in, front));
+fn fs_custom(v: CustomOut, @builtin(front_facing) front: bool) -> MeshTargets {
+    let in = misty_custom_mesh_out(v);
+    let c = fragment(misty_custom_input(v, front));
     var out: MeshTargets;
     out.color = c;
     out.glow = vec4<f32>(0.0, 0.0, 0.0, c.a);
     out.velocity = mesh_velocity(in);
     return out;
 }
+
 "#,
         ),
     }

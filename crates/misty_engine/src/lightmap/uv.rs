@@ -70,6 +70,9 @@ pub fn unwrap(mesh: &MeshData, margin: f32) -> MeshData {
                     let mut v = mesh.vertices[src as usize];
                     v.uv2 = uv.to_array();
                     out.vertices.push(v);
+                    if let Some(c) = mesh.colors.get(src as usize) {
+                        out.colors.push(*c);
+                    }
                     out.vertices.len() as u32 - 1
                 });
                 out.indices.push(index);

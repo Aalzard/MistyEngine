@@ -32,7 +32,7 @@ fn grid(n: usize, size: f32, vertical: bool) -> MeshData {
             indices.extend_from_slice(&[a, a + w, a + 1, a + 1, a + w, a + w + 1]);
         }
     }
-    MeshData { vertices, indices }
+    MeshData { vertices, indices, colors: Vec::new() }
 }
 
 /// Max distances pinning the top row of a vertical grid.

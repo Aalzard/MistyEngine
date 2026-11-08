@@ -275,6 +275,10 @@ fn vectors(model: &mut Model, settings: &ModelImporter) {
 /// Replace a mesh's vertices with `data`, whose vertex `i` copies the old vertex `remap[i]`
 /// (skin influences and blend shape offsets follow).
 fn remap_mesh(m: &mut ModelMesh, data: MeshData, remap: &[u32]) {
+    let mut data = data;
+    if m.data.colors.len() == m.data.vertices.len() && !m.data.colors.is_empty() {
+        data.colors = remap.iter().map(|&i| m.data.colors[i as usize]).collect();
+    }
     if let Some(skin) = &mut m.skin {
         skin.joints = remap.iter().map(|&i| skin.joints[i as usize]).collect();
         skin.weights = remap.iter().map(|&i| skin.weights[i as usize]).collect();

@@ -219,9 +219,15 @@ impl Material {
     /// A `.shader` material: render state from the shader's header, values from `properties`
     /// (defaults for the rest). A missing or broken shader draws magenta.
     fn custom_params(&self) -> MaterialParams {
-        let (settings, values) = match shader_asset::load(&self.shader) {
-            Ok(a) => (a.settings, resolve_values(&a, &self.properties)),
-            Err(_) => (Default::default(), self.properties.clone()),
+        let (settings, values, variant) = match shader_asset::load(&self.shader) {
+            Ok(a) => {
+                let variant = a.variant_key(&self.properties);
+                // The variant decides the render state too (a keyword may switch features).
+                let settings = shader_asset::load_variant(&self.shader, &variant)
+                    .map_or(a.settings, |v| v.settings);
+                (settings, resolve_values(&a, &self.properties), variant)
+            }
+            Err(_) => (Default::default(), self.properties.clone(), String::new()),
         };
         MaterialParams {
             unlit: settings.model == ShaderModel::Unlit,
@@ -235,6 +241,7 @@ impl Material {
                 shader: self.shader.clone(),
                 values: Arc::new(values),
                 queue: settings.queue,
+                variant,
             }),
             ..Default::default()
         }

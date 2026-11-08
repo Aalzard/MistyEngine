@@ -152,6 +152,7 @@ pub fn rock(subdivisions: u32, seed: u32) -> MeshData {
             })
             .collect(),
         indices: Vec::with_capacity(faces.len() * 3),
+        colors: Vec::new(),
     };
     for [a, b, c] in faces {
         // Outward faces: (p1 - p0) × (p2 - p0) points away from the centre.

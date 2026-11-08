@@ -10,11 +10,18 @@
 //! // @property _Speed float range(0, 10) = 1   // tooltip shown in the Inspector
 //! // @property _MainTex texture2d = white
 //! // @property _Glow toggle = 1             (a checkbox; the shader reads 0 or 1)
+//! // @keyword _DETAIL_ON "Detail" toggle = 0  (a shader variant per value)
+//! // @keyword _QUALITY enum(Low, Medium, High) = 1
 //! ```
+//!
+//! Keywords select code with `#if _DETAIL_ON` / `#if _QUALITY == High` (or `!= 2`), `#elif`,
+//! `#else` and `#endif` lines; [`preprocess`] blanks the other branches (line numbers kept).
+
+use std::collections::BTreeMap;
 
 use super::{
-    Blend, Cull, PropertyKind, PropertyValue, ShaderAsset, ShaderError, ShaderModel,
-    ShaderProperty, ShaderSettings, TextureDefault,
+    Blend, Cull, PropertyKind, PropertyValue, ShaderAsset, ShaderError, ShaderKeyword,
+    ShaderModel, ShaderProperty, ShaderSettings, TextureDefault,
 };
 
 fn err(line: usize, message: impl Into<String>) -> ShaderError {
@@ -30,6 +37,7 @@ pub fn parse(source: &str) -> Result<ShaderAsset, ShaderError> {
     let mut settings = ShaderSettings::default();
     let (mut zwrite, mut queue) = (None, None);
     let mut properties: Vec<ShaderProperty> = Vec::new();
+    let mut keywords: Vec<ShaderKeyword> = Vec::new();
     for (i, raw) in source.lines().enumerate() {
         let line = i + 1;
         let Some(rest) = raw.trim_start().strip_prefix("//") else {
@@ -83,20 +91,210 @@ pub fn parse(source: &str) -> Result<ShaderAsset, ShaderError> {
                 }
                 properties.push(p);
             }
+            "keyword" => {
+                let k = parse_keyword(args, line)?;
+                if keywords.iter().any(|q| q.name == k.name)
+                    || properties.iter().any(|q| q.name == k.name)
+                {
+                    return Err(err(line, format!("{} declared twice", k.name)));
+                }
+                keywords.push(k);
+            }
             _ => return Err(err(line, format!("unknown directive @{word}"))),
         }
     }
     let blended = settings.blend != Blend::Off;
     settings.zwrite = zwrite.unwrap_or(!blended);
     settings.queue = queue.unwrap_or(if blended { 3000 } else { 2000 });
-    let code = strip_comments(source);
+    let has_directives = source
+        .lines()
+        .any(|l| l.trim_start().starts_with("#if") || l.trim_start().starts_with("#endif"));
+    let (text, template) = if has_directives {
+        (
+            preprocess(source, &keywords, &BTreeMap::new())?,
+            Some(std::sync::Arc::from(source)),
+        )
+    } else {
+        (source.to_owned(), None)
+    };
+    let code = strip_comments(&text);
     Ok(ShaderAsset {
-        source: source.to_owned(),
-        settings,
-        properties,
         has_vertex: defines_fn(&code, "vertex"),
         uses_scene: SCENE_NAMES.iter().any(|w| has_word(&code, w)),
+        source: text,
+        settings,
+        properties,
+        keywords,
+        template,
     })
+}
+
+impl ShaderAsset {
+    /// This shader for a variant (keyword values; missing ones take their defaults): `#if`
+    /// blocks resolved for it.
+    pub fn with_variant(&self, variant: &BTreeMap<String, u32>) -> Result<ShaderAsset, ShaderError> {
+        let Some(template) = &self.template else {
+            return Ok(self.clone());
+        };
+        let text = preprocess(template, &self.keywords, variant)?;
+        let code = strip_comments(&text);
+        Ok(ShaderAsset {
+            has_vertex: defines_fn(&code, "vertex"),
+            uses_scene: SCENE_NAMES.iter().any(|w| has_word(&code, w)),
+            source: text,
+            ..self.clone()
+        })
+    }
+}
+
+/// `NAME ["Display"] toggle|enum(A, B, …) [= DEFAULT]` (the default: a number or an entry).
+fn parse_keyword(args: &str, line: usize) -> Result<ShaderKeyword, ShaderError> {
+    let (left, default) = args
+        .split_once('=')
+        .map(|(l, d)| (l.trim(), Some(d.trim())))
+        .unwrap_or((args.trim(), None));
+    let (name, rest) = left
+        .split_once(char::is_whitespace)
+        .ok_or_else(|| err(line, "a keyword needs a name and toggle or enum(…)"))?;
+    if !valid_ident(name) {
+        return Err(err(line, format!("'{name}' is not a valid WGSL name")));
+    }
+    let (display, ty) = match (rest.find('"'), rest.rfind('"')) {
+        (Some(a), Some(b)) if b > a => (
+            Some(rest[a + 1..b].to_owned()),
+            format!("{} {}", &rest[..a], &rest[b + 1..]),
+        ),
+        _ => (None, rest.to_owned()),
+    };
+    let ty = ty.trim();
+    let lower = ty.to_ascii_lowercase();
+    let (options, toggle) = if matches!(lower.as_str(), "toggle" | "bool" | "boolean") {
+        (vec!["Off".to_owned(), "On".to_owned()], true)
+    } else if let Some(inner) = lower
+        .starts_with("enum(")
+        .then(|| ty[5..].strip_suffix(')'))
+        .flatten()
+    {
+        let entries: Vec<String> = inner.split(',').map(|e| e.trim().to_owned()).collect();
+        if entries.iter().any(String::is_empty) {
+            return Err(err(line, "enum entries need names"));
+        }
+        (entries, false)
+    } else {
+        return Err(err(line, format!("unknown keyword type '{ty}'")));
+    };
+    let default = match default {
+        None => 0,
+        Some(d) => match d.parse::<u32>() {
+            Ok(v) => v,
+            Err(_) => options
+                .iter()
+                .position(|o| o.eq_ignore_ascii_case(d))
+                .ok_or_else(|| err(line, format!("bad default value for {name}")))?
+                as u32,
+        },
+    };
+    if default as usize >= options.len() {
+        return Err(err(line, format!("bad default value for {name}")));
+    }
+    Ok(ShaderKeyword {
+        name: name.to_owned(),
+        display: display.unwrap_or_else(|| name.trim_start_matches('_').to_owned()),
+        options,
+        default,
+        toggle,
+        line,
+    })
+}
+
+/// Resolve `#if` / `#elif` / `#else` / `#endif` lines for a variant: lines of branches not taken
+/// and the directives themselves become empty (so line numbers stay those of the file).
+pub fn preprocess(
+    source: &str,
+    keywords: &[ShaderKeyword],
+    variant: &BTreeMap<String, u32>,
+) -> Result<String, ShaderError> {
+    struct Level {
+        /// The enclosing level is active.
+        parent: bool,
+        /// A branch of this `#if` was taken already.
+        taken: bool,
+        active: bool,
+    }
+    let value = |name: &str, line: usize| -> Result<(u32, &ShaderKeyword), ShaderError> {
+        let k = keywords
+            .iter()
+            .find(|k| k.name == name)
+            .ok_or_else(|| err(line, format!("{name} is not a declared @keyword")))?;
+        let v = variant.get(name).copied().unwrap_or(k.default);
+        Ok((v, k))
+    };
+    let condition = |text: &str, line: usize| -> Result<bool, ShaderError> {
+        let text = text.trim();
+        if let Some(name) = text.strip_prefix('!') {
+            return Ok(value(name.trim(), line)?.0 == 0);
+        }
+        let (name, op, rhs) = if let Some((a, b)) = text.split_once("==") {
+            (a.trim(), true, Some(b.trim()))
+        } else if let Some((a, b)) = text.split_once("!=") {
+            (a.trim(), false, Some(b.trim()))
+        } else {
+            (text, true, None)
+        };
+        let (v, k) = value(name, line)?;
+        let Some(rhs) = rhs else {
+            return Ok(v != 0);
+        };
+        let want = match rhs.parse::<u32>() {
+            Ok(n) => n,
+            Err(_) => k
+                .options
+                .iter()
+                .position(|o| o.eq_ignore_ascii_case(rhs))
+                .ok_or_else(|| err(line, format!("{name} has no value {rhs}")))?
+                as u32,
+        };
+        Ok((v == want) == op)
+    };
+    let mut stack: Vec<Level> = Vec::new();
+    let mut out = String::with_capacity(source.len());
+    for (i, raw) in source.lines().enumerate() {
+        let line = i + 1;
+        let t = raw.trim_start();
+        let active = stack.last().is_none_or(|l| l.active);
+        if let Some(c) = t.strip_prefix("#if ") {
+            let on = active && condition(c, line)?;
+            stack.push(Level {
+                parent: active,
+                taken: on,
+                active: on,
+            });
+        } else if let Some(c) = t.strip_prefix("#elif ") {
+            let Some(l) = stack.last_mut() else {
+                return Err(err(line, "#elif without #if"));
+            };
+            let on = l.parent && !l.taken && condition(c, line)?;
+            l.active = on;
+            l.taken |= on;
+        } else if t.starts_with("#else") {
+            let Some(l) = stack.last_mut() else {
+                return Err(err(line, "#else without #if"));
+            };
+            l.active = l.parent && !l.taken;
+            l.taken = true;
+        } else if t.starts_with("#endif") {
+            if stack.pop().is_none() {
+                return Err(err(line, "#endif without #if"));
+            }
+        } else if active {
+            out.push_str(raw);
+        }
+        out.push('\n');
+    }
+    if !stack.is_empty() {
+        return Err(err(source.lines().count(), "#if without #endif"));
+    }
+    Ok(out)
 }
 
 /// Prelude names that read the opaque scene copy.
@@ -421,7 +619,54 @@ fn surface(input: SurfaceInput) -> SurfaceOutput {
     }
 
     #[test]
+    fn keywords_parse_and_select_code() {
+        let src = "\
+// @shader unlit
+// @keyword _GLOW_ON \"Glow\" toggle = 1
+// @keyword _MODE enum(Red, Green, Blue) = Green
+fn fragment(input: SurfaceInput) -> vec4<f32> {
+#if _MODE == Red
+    var c = vec3<f32>(1.0, 0.0, 0.0);
+#elif _MODE != 2
+    var c = vec3<f32>(0.0, 1.0, 0.0);
+#else
+    var c = vec3<f32>(0.0, 0.0, 1.0);
+#endif
+#if !_GLOW_ON
+    c = c * 0.5;
+#endif
+    return vec4<f32>(c, 1.0);
+}
+";
+        let s = parse(src).unwrap();
+        assert_eq!(s.keywords.len(), 2);
+        assert!(s.keywords[0].toggle && s.keywords[0].default == 1);
+        assert_eq!(s.keywords[1].options, ["Red", "Green", "Blue"]);
+        assert_eq!(s.keywords[1].default, 1);
+        assert_eq!(s.source.lines().count(), src.lines().count(), "lines kept");
+        assert!(s.source.contains("0.0, 1.0, 0.0") && !s.source.contains("1.0, 0.0, 0.0)"));
+        assert!(!s.source.contains("c * 0.5"));
+        let v = BTreeMap::from([("_MODE".to_owned(), 2), ("_GLOW_ON".to_owned(), 0)]);
+        let b = s.with_variant(&v).unwrap();
+        assert!(b.source.contains("0.0, 0.0, 1.0") && b.source.contains("c * 0.5"));
+        let values = BTreeMap::from([("_MODE".to_owned(), PropertyValue::Float(2.0))]);
+        assert_eq!(s.variant_key(&values), "_MODE=2");
+        assert_eq!(s.variant_key(&BTreeMap::new()), "");
+        for (src, text) in [
+            ("#if _X\n#endif", "not a declared"),
+            ("// @keyword _A toggle\n#if _A\n", "without #endif"),
+            ("#endif", "without #if"),
+            ("// @keyword _A enum(X, Y) = Z", "default"),
+            ("// @keyword _A shape", "keyword type"),
+        ] {
+            let e = parse(src).unwrap_err();
+            assert!(e.message.contains(text), "{src}: {}", e.message);
+        }
+    }
+
+    #[test]
     fn values_round_trip_through_json() {
+
         let values = [
             PropertyValue::Float(2.0),
             PropertyValue::Vector([1.0, 0.0, 0.0, 1.0]),

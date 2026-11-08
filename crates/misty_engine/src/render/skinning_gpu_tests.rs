@@ -185,6 +185,7 @@ fn skinned_frames_match_the_cpu_deformed_mesh_in_every_pass() {
     let data = crate::render::mesh::MeshData {
         vertices: skinning::deform_pose(&pose).unwrap(),
         indices: model.meshes[0].data.indices.clone(),
+        colors: Vec::new(),
     };
     let cpu_key = models::runtime::register("skin-gpu-test-reference", data);
     let key = "skinned://gpu-frame-test/1#0";

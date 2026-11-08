@@ -9,8 +9,8 @@ mod library;
 mod parse;
 pub mod templates;
 
-pub use library::{generation, load, poll_changes, reload, set_source};
-pub use parse::parse;
+pub use library::{generation, load, load_variant, poll_changes, reload, set_graph, set_source};
+pub use parse::{parse, preprocess};
 
 use serde::{Deserialize, Serialize};
 
@@ -199,24 +199,72 @@ pub struct ShaderProperty {
     pub line: usize,
 }
 
+/// One `// @keyword` line: a Boolean (`toggle`) or Enum keyword. Each combination of values is
+/// its own shader variant; a material picks one by storing the values like properties.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShaderKeyword {
+    pub name: String,
+    pub display: String,
+    /// Value names ("Off", "On" for a toggle).
+    pub options: Vec<String>,
+    pub default: u32,
+    pub toggle: bool,
+    /// 1-based line in the file.
+    pub line: usize,
+}
+
+impl ShaderKeyword {
+    /// The value a material's stored properties select.
+    pub fn value_in(&self, values: &std::collections::BTreeMap<String, PropertyValue>) -> u32 {
+        let max = self.options.len().saturating_sub(1) as u32;
+        values
+            .get(&self.name)
+            .and_then(PropertyValue::as_float)
+            .map_or(self.default, |v| v.round().max(0.0) as u32)
+            .min(max)
+    }
+}
+
 /// A parsed shader file.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShaderAsset {
-    /// The whole file (the header lines are WGSL comments, so it compiles as is).
+    /// The code that compiles: the file, with `#if` blocks of other keyword values blanked
+    /// (line numbers kept). The header lines are WGSL comments.
     pub source: String,
     pub settings: ShaderSettings,
     pub properties: Vec<ShaderProperty>,
+    pub keywords: Vec<ShaderKeyword>,
     /// Defines `fn vertex(v: VertexData) -> VertexData` (vertex displacement).
     pub has_vertex: bool,
     /// Reads `scene_color` / `scene_depth` (needs the opaque scene copied first).
     pub uses_scene: bool,
+    /// The file before `#if` blocks were resolved (when it has any).
+    pub template: Option<std::sync::Arc<str>>,
 }
 
 impl ShaderAsset {
     pub fn property(&self, name: &str) -> Option<&ShaderProperty> {
         self.properties.iter().find(|p| p.name == name)
     }
+
+    pub fn keyword(&self, name: &str) -> Option<&ShaderKeyword> {
+        self.keywords.iter().find(|k| k.name == name)
+    }
+
+    /// The variant a material's values select: `"_A=1,_B=2"` of the keywords off their
+    /// defaults ("" = the default variant).
+    pub fn variant_key(&self, values: &std::collections::BTreeMap<String, PropertyValue>) -> String {
+        self.keywords
+            .iter()
+            .filter_map(|k| {
+                let v = k.value_in(values);
+                (v != k.default).then(|| format!("{}={v}", k.name))
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
 }
+
 
 /// A problem in a shader file: 1-based line and column (0 = unknown) and the message.
 #[derive(Clone, Debug, PartialEq, Eq)]
