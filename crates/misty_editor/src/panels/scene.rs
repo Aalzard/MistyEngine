@@ -14,7 +14,7 @@ use crate::widgets::{panel_toolbar, search_field, toggle_button};
 use crate::{gizmos, handles, picking, render_scene};
 
 /// Scene view draw modes, indexed by `SceneView::draw_mode` (see the `*_MODE` constants).
-pub const DRAW_MODES: [&str; 17] = [
+pub const DRAW_MODES: [&str; 18] = [
     "Shaded",
     "Wireframe",
     "Shaded Wireframe",
@@ -32,6 +32,7 @@ pub const DRAW_MODES: [&str; 17] = [
     "Virtual Geometry Levels",
     "Virtual Geometry Overdraw",
     "Virtual Geometry Materials",
+    "Physics Debug",
 ];
 /// Wireframe only, no shading.
 const WIREFRAME_MODE: usize = 1;
@@ -64,6 +65,8 @@ const VGEO_CLUSTERS_MODE: usize = 13;
 const VGEO_LEVELS_MODE: usize = 14;
 const VGEO_OVERDRAW_MODE: usize = 15;
 const VGEO_MATERIALS_MODE: usize = 16;
+/// Colliders by body state, contacts, joints, sleeping bodies and cloth (`physics_debug_view`).
+pub const PHYSICS_DEBUG_MODE: usize = 17;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     crate::prefab_mode::bar(ui, state);
@@ -102,6 +105,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     let tile_click = crate::tile_palette::scene_view(ui, state, &camera, rect, &response);
     let brush_active = brush_active || tiles_active;
     let brush_click = brush_click || tile_click;
+    // Cloth ▸ Edit Constraints paints max distances.
+    let cloth_active = crate::cloth_tools::active(state);
+    let cloth_click = crate::cloth_tools::scene_view(ui, state, &camera, rect, &response);
+    let brush_active = brush_active || cloth_active;
+    let brush_click = brush_click || cloth_click;
+    let mut physics_counts = None;
     match gpu {
         Some(gpu) => {
             let occlusion_view = crate::panels::occlusion::visualizing(state, ui.ctx());
@@ -148,6 +157,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                     gizmos::wireframe(&mut lines, &meshes, [0.0, 0.0, 0.0, 0.35])
                 }
                 _ => {}
+            }
+            if sv.draw_mode == PHYSICS_DEBUG_MODE {
+                physics_counts = Some(crate::physics_debug_view::lines(state, &mut lines));
+                ui.ctx().request_repaint();
             }
             crate::terrain_tools::brush_lines(&mut lines, state);
             crate::tile_palette::lines(&mut lines, state);
@@ -310,6 +323,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     // Object icons and click-to-select (Ctrl toggles, Shift adds).
     if state.scene_view.gizmos {
         draw_icons(ui, rect, state, &camera);
+        crate::cloth_tools::overlay(ui, state, &camera, rect);
+        if let Some(counts) = physics_counts {
+            crate::physics_debug_view::legend(ui, rect, counts);
+        }
         crate::editor_scripts::gizmos::paint(ui, rect, &camera, state);
     }
     // 2D handles (sprite Rect tool, Edit Collider) take the mouse before the transform handles.

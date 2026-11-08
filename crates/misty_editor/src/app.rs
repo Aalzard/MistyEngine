@@ -917,6 +917,7 @@ impl eframe::App for EditorApp {
         crate::saveloc::show(&ctx, &mut self.state);
         crate::multiplayer::show(&ctx, &mut self.state);
         crate::mesh_builder::shape_window(&ctx, &mut self.state);
+        crate::ragdoll_wizard::window(&ctx, &mut self.state);
         crate::panels::preset_window(&ctx, &mut self.state);
         crate::branding::about::show(&ctx, &mut self.state.about_open);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);

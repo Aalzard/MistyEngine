@@ -123,6 +123,7 @@ fn create(s: &mut EditorState, kind: AssetKind) {
         }
         AssetKind::Tile2D(k) => crate::tile_palette::create_asset(&dir, k),
         AssetKind::Tree => crate::terrain_trees_ui::create_tree_asset(&s.project.root, &dir),
+        AssetKind::PhysicsMaterial => crate::panels::create_physics_material(&dir),
         AssetKind::InputActions => {
             use misty_engine::input::actions::{InputActionAsset, asset::EXTENSION};
             let path = asset_ops::unique_path(&dir, "New Input Actions", EXTENSION);

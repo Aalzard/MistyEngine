@@ -20,6 +20,7 @@ mod branding;
 mod build_pipeline;
 mod build_settings;
 mod capture;
+mod cloth_tools;
 mod commands;
 mod component_ops;
 mod console;
@@ -46,6 +47,7 @@ mod open_scenes;
 mod packages;
 mod panels;
 mod particle_preview;
+mod physics_debug_view;
 mod picking;
 mod play;
 mod prefab_mode;
@@ -62,6 +64,7 @@ mod project_settings_presets;
 mod project_settings_quality;
 mod project_settings_tags;
 mod project_thumbnail;
+mod ragdoll_wizard;
 mod render_scene;
 #[cfg(test)]
 mod sample_2d;
@@ -119,6 +122,8 @@ mod sample_occlusion;
 mod sample_particles;
 #[cfg(test)]
 mod sample_physics;
+#[cfg(test)]
+mod sample_physics2;
 #[cfg(test)]
 mod sample_postfx;
 #[cfg(test)]

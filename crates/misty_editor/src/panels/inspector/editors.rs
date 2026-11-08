@@ -935,18 +935,26 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
     ch
 }
 
-/// Is Trigger + friction/bounciness rows shared by every collider.
+/// Is Trigger, Material + friction/bounciness rows shared by every collider (a Physics
+/// Material replaces the friction and bounciness).
 fn collider_common(
     ui: &mut Ui,
     id: &str,
     trigger: &mut bool,
     surface: &mut PhysicsSurface,
+    material: &mut Option<String>,
 ) -> bool {
     grid(ui, id, |ui| {
         let mut ch = false;
         ui.label("Is Trigger");
         ch |= mixed::checkbox(ui, "is_trigger", trigger, "").changed();
         ui.end_row();
+        ui.label("Material");
+        ch |= super::physics_material_editor::slot(ui, &format!("{id}_mat"), material);
+        ui.end_row();
+        if material.is_some() {
+            return ch;
+        }
         ui.label("Friction");
         ch |= ui
             .add(mixed::slider(
@@ -977,7 +985,13 @@ fn vec3_field(ui: &mut Ui, label: &str, key: &str, v: &mut Vec3, speed: f32) -> 
 }
 
 fn box_collider(ui: &mut Ui, c: &mut BoxCollider) -> bool {
-    let mut ch = collider_common(ui, "box_col", &mut c.is_trigger, &mut c.surface);
+    let mut ch = collider_common(
+        ui,
+        "box_col",
+        &mut c.is_trigger,
+        &mut c.surface,
+        &mut c.material,
+    );
     ch |= vec3_field(ui, "Center", "center", &mut c.center, 0.01);
     if vec3_field(ui, "Size", "size", &mut c.size, 0.01) {
         c.size = c.size.max(Vec3::ZERO);
@@ -987,7 +1001,13 @@ fn box_collider(ui: &mut Ui, c: &mut BoxCollider) -> bool {
 }
 
 fn sphere_collider(ui: &mut Ui, c: &mut SphereCollider) -> bool {
-    let mut ch = collider_common(ui, "sphere_col", &mut c.is_trigger, &mut c.surface);
+    let mut ch = collider_common(
+        ui,
+        "sphere_col",
+        &mut c.is_trigger,
+        &mut c.surface,
+        &mut c.material,
+    );
     ch |= vec3_field(ui, "Center", "center", &mut c.center, 0.01);
     ch |= grid(ui, "sphere_col_r", |ui| {
         ui.label("Radius");
@@ -1005,7 +1025,13 @@ fn sphere_collider(ui: &mut Ui, c: &mut SphereCollider) -> bool {
 }
 
 fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
-    let mut ch = collider_common(ui, "capsule_col", &mut c.is_trigger, &mut c.surface);
+    let mut ch = collider_common(
+        ui,
+        "capsule_col",
+        &mut c.is_trigger,
+        &mut c.surface,
+        &mut c.material,
+    );
     ch |= vec3_field(ui, "Center", "center", &mut c.center, 0.01);
     ch |= grid(ui, "capsule_col_dims", |ui| {
         let mut ch = false;
@@ -1049,7 +1075,13 @@ fn mesh_collider(ui: &mut Ui, c: &mut MeshCollider) -> bool {
         ui.end_row();
         r
     });
-    ch |= collider_common(ui, "mesh_col", &mut c.is_trigger, &mut c.surface);
+    ch |= collider_common(
+        ui,
+        "mesh_col",
+        &mut c.is_trigger,
+        &mut c.surface,
+        &mut c.material,
+    );
     ui.weak("Uses the Mesh Filter's mesh.");
     ch
 }

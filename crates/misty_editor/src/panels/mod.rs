@@ -10,6 +10,7 @@ pub(crate) mod folder_colors;
 mod game;
 mod hierarchy;
 mod inspector;
+pub(crate) use inspector::create_physics_material;
 pub use inspector::preset_window;
 pub(crate) use inspector::script_fields;
 #[cfg(test)]
