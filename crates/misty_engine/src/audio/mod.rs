@@ -571,6 +571,8 @@ pub fn listener(scene: &Scene) -> Option<Mat4> {
 }
 
 #[cfg(test)]
+mod cost_report;
+#[cfg(test)]
 mod graph_tests;
 #[cfg(test)]
 mod mixer_tests;

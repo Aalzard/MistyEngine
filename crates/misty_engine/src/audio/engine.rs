@@ -478,22 +478,22 @@ impl Engine {
             } => {
                 if let Some(t) = self.tracks.get_mut(&id) {
                     t.volume.set(volume, fade * 0.5);
-                    let live: Vec<usize> = (0..t.chain.len())
-                        .filter(|i| !t.chain[*i].removing)
-                        .collect();
+                    let mut retargeted = false;
                     for (n, spec) in effects.iter().enumerate() {
                         let slot = if spec.id != 0 {
                             t.chain
                                 .iter_mut()
                                 .find(|s| s.spec.id == spec.id && !s.removing)
                         } else {
-                            live.get(n).and_then(|i| t.chain.get_mut(*i))
+                            t.chain.iter_mut().filter(|s| !s.removing).nth(n)
                         };
                         if let Some(s) = slot.filter(|s| s.spec.kind == spec.kind) {
+                            retargeted |= s.spec.target != spec.target;
                             s.update(spec, fade);
                         }
                     }
-                    self.order_dirty = true;
+                    // Only a Send pointing elsewhere changes the processing order.
+                    self.order_dirty |= retargeted;
                 }
             }
             Command::SetChain { id, chain } => {
