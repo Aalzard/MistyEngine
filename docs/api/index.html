@@ -47,6 +47,7 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <ul>
 <li><a href="#globals">Globals</a></li>
 <li><a href="#accessibility">Accessibility</a></li>
+<li><a href="#achievements">Achievements</a></li>
 <li><a href="#application">Application</a></li>
 <li><a href="#assets">Assets</a></li>
 <li><a href="#audiomixer">AudioMixer</a></li>
@@ -234,13 +235,53 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <p class="notes">Multiplies every UI Text's font size (0.5 to 3; 1 = as designed).</p>
 </div>
 </section>
+<section id="achievements">
+<h2>Achievements</h2>
+<p>Unlock and check achievements (stored locally)</p>
+<div class="entry" data-key="achievements.clear(id) lock an achievement again (testing)">
+<div class="sig">Achievements.Clear(id)</div>
+<div class="meta">function</div>
+<p>Lock an achievement again (testing)</p>
+</div>
+<div class="entry" data-key="achievements.getunlocked() ids of every unlocked achievement">
+<div class="sig">Achievements.GetUnlocked()</div>
+<div class="meta">function</div>
+<p>Ids of every unlocked achievement</p>
+</div>
+<div class="entry" data-key="achievements.isunlocked(id) true when the achievement is unlocked">
+<div class="sig">Achievements.IsUnlocked(id)</div>
+<div class="meta">function</div>
+<p>True when the achievement is unlocked</p>
+</div>
+<div class="entry" data-key="achievements.unlock(id) unlock an achievement; true the first time">
+<div class="sig">Achievements.Unlock(id)</div>
+<div class="meta">function</div>
+<p>Unlock an achievement; true the first time</p>
+</div>
+</section>
 <section id="application">
 <h2>Application</h2>
 <p>Application control</p>
+<div class="entry" data-key="application.hasdefine(name) true when the build profile's scripting defines include the name (&quot;demo&quot;)">
+<div class="sig">Application.HasDefine(name)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True when the Build Profile's scripting defines include the name (&quot;DEMO&quot;)</p>
+<p class="notes">Scripting defines of the Build Profile (<code>Application.HasDefine(&quot;DEMO&quot;)</code>).</p>
+</div>
 <div class="entry" data-key="application.quit() close the built game">
 <div class="sig">Application.Quit()</div>
 <div class="meta">function · source: <code>api.rs</code></div>
 <p>Close the built game</p>
+</div>
+<div class="entry" data-key="application.isdedicatedserver true in a dedicated server build (headless, no window or audio)">
+<div class="sig">Application.isDedicatedServer</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>True in a Dedicated Server build (headless, no window or audio)</p>
+</div>
+<div class="entry" data-key="application.iseditor true in the editor's play mode">
+<div class="sig">Application.isEditor</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>True in the editor's Play mode</p>
 </div>
 </section>
 <section id="assets">
