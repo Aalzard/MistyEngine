@@ -114,6 +114,7 @@ fn icon_importer() -> TextureImporter {
             name: (*name).into(),
             rect: [i as f32 * 32.0, 0.0, 32.0, 32.0],
             pivot: [0.5, 0.5],
+            border: [0.0; 4],
         })
         .collect();
     imp

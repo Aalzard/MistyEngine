@@ -158,6 +158,8 @@ mod sample_timeline;
 #[cfg(test)]
 mod sample_ui;
 #[cfg(test)]
+mod sample_ui_showcase;
+#[cfg(test)]
 mod sample_ui_widgets;
 #[cfg(test)]
 mod sample_vcam;
@@ -205,6 +207,7 @@ mod tree_lines;
 mod tutorials;
 mod ui_create;
 mod ui_gizmos;
+mod ui_rect_tool;
 mod undo;
 mod undo_names;
 mod undo_terrain;

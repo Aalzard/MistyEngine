@@ -15,6 +15,7 @@ pub mod player_input;
 pub mod processors;
 pub mod state;
 pub mod system;
+pub mod ui_module;
 pub mod value;
 
 pub use asset::{

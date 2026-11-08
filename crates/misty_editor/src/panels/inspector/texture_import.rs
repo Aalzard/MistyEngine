@@ -88,6 +88,7 @@ pub fn texture_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     if p.settings.is_sprite() && p.settings.sprite_mode == SpriteMode::Multiple {
         slicer(ui, rel, &mut p, size);
     }
+    super::sprite_border::border_ui(ui, rel, &mut p.settings, size);
     ui.add_space(6.0);
     let dirty = p.settings != on_disk;
     ui.horizontal(|ui| {
@@ -415,6 +416,7 @@ fn preview(
             painter.rect_stroke(r, 0.0, stroke, egui::StrokeKind::Inside);
         }
     }
+    super::sprite_border::paint(&painter, rect, scale, h, s);
     let info = match size {
         Some([w, h]) => format!("{w}×{h}"),
         None => "unreadable".into(),

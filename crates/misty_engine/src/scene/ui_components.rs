@@ -6,26 +6,46 @@ use serde::{Deserialize, Serialize};
 
 use super::components::entity_bits;
 use super::registry::SceneComponent;
+use super::ui_image::{ImageFill, ImageType};
 
-/// How a Canvas is placed on screen (only the overlay mode exists so far).
+/// How a Canvas is placed: on top of the image, on a plane in front of a camera, or in the world.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CanvasRenderMode {
     /// Drawn on top of the camera image, sized to the screen.
     #[default]
     ScreenSpaceOverlay,
+    /// Sized to the screen but placed `plane_distance` in front of the Render Camera, so scene
+    /// objects nearer than the plane draw over it. Unlit, sorted with the scene. Without a
+    /// camera it behaves like an overlay.
+    ScreenSpaceCamera,
+    /// A rectangle in the world (its Transform places it, its Rect Transform sizes it), drawn
+    /// with depth and clicked through the camera.
+    WorldSpace,
 }
 
 impl CanvasRenderMode {
-    pub const ALL: [Self; 1] = [Self::ScreenSpaceOverlay];
+    pub const ALL: [Self; 3] = [
+        Self::ScreenSpaceOverlay,
+        Self::ScreenSpaceCamera,
+        Self::WorldSpace,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::ScreenSpaceOverlay => "Screen Space - Overlay",
+            Self::ScreenSpaceCamera => "Screen Space - Camera",
+            Self::WorldSpace => "World Space",
         }
     }
 }
 
-/// Root of a UI: everything below it with a Rect Transform is laid out on screen.
+fn is_plane_distance(v: &f32) -> bool {
+    *v == Canvas::PLANE_DISTANCE
+}
+
+/// Root of a UI: everything below it with a Rect Transform is laid out on screen (or on the
+/// canvas' plane). The camera settings are left out of files while at their defaults, so older
+/// scenes re-save unchanged.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Canvas {
@@ -33,6 +53,12 @@ pub struct Canvas {
     pub render_mode: CanvasRenderMode,
     /// Canvases with a higher sort order draw on top (and get clicks first).
     pub sort_order: i32,
+    /// Screen Space - Camera: the Render Camera the canvas sits in front of.
+    #[serde(with = "entity_bits::option", skip_serializing_if = "Option::is_none")]
+    pub world_camera: Option<hecs::Entity>,
+    /// Screen Space - Camera: distance of the canvas plane from the camera.
+    #[serde(skip_serializing_if = "is_plane_distance")]
+    pub plane_distance: f32,
 }
 
 impl Default for Canvas {
@@ -41,31 +67,131 @@ impl Default for Canvas {
             enabled: true,
             render_mode: CanvasRenderMode::ScreenSpaceOverlay,
             sort_order: 0,
+            world_camera: None,
+            plane_distance: Self::PLANE_DISTANCE,
         }
     }
+}
+
+impl Canvas {
+    pub const PLANE_DISTANCE: f32 = 100.0;
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UiScaleMode {
     /// One canvas unit = `scale_factor` screen pixels.
     ConstantPixelSize,
-    /// Scale so the reference resolution fills the screen (blending width/height by `match`).
+    /// Scale so the reference resolution fills the screen (see [`ScreenMatchMode`]).
     #[default]
     ScaleWithScreenSize,
+    /// Canvas units are a physical length (centimetres, points, …) at the screen's DPI.
+    ConstantPhysicalSize,
 }
 
 impl UiScaleMode {
-    pub const ALL: [Self; 2] = [Self::ConstantPixelSize, Self::ScaleWithScreenSize];
+    pub const ALL: [Self; 3] = [
+        Self::ConstantPixelSize,
+        Self::ScaleWithScreenSize,
+        Self::ConstantPhysicalSize,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::ConstantPixelSize => "Constant Pixel Size",
             Self::ScaleWithScreenSize => "Scale With Screen Size",
+            Self::ConstantPhysicalSize => "Constant Physical Size",
         }
     }
 }
 
-/// Canvas Scaler: how canvas units map to screen pixels.
+/// How Scale With Screen Size fits the reference resolution to a screen of another shape.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScreenMatchMode {
+    /// Blend between matching the width and the height (`match_width_or_height`).
+    #[default]
+    MatchWidthOrHeight,
+    /// The canvas is never smaller than the reference (scale by the smaller ratio).
+    Expand,
+    /// The canvas is never larger than the reference (scale by the larger ratio).
+    Shrink,
+}
+
+impl ScreenMatchMode {
+    pub const ALL: [Self; 3] = [Self::MatchWidthOrHeight, Self::Expand, Self::Shrink];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MatchWidthOrHeight => "Match Width Or Height",
+            Self::Expand => "Expand",
+            Self::Shrink => "Shrink",
+        }
+    }
+}
+
+/// Length unit of Constant Physical Size.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PhysicalUnit {
+    Centimeters,
+    Millimeters,
+    Inches,
+    #[default]
+    Points,
+    Picas,
+}
+
+impl PhysicalUnit {
+    pub const ALL: [Self; 5] = [
+        Self::Centimeters,
+        Self::Millimeters,
+        Self::Inches,
+        Self::Points,
+        Self::Picas,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Centimeters => "Centimeters",
+            Self::Millimeters => "Millimeters",
+            Self::Inches => "Inches",
+            Self::Points => "Points",
+            Self::Picas => "Picas",
+        }
+    }
+
+    /// How many of this unit make an inch.
+    pub fn per_inch(self) -> f32 {
+        match self {
+            Self::Centimeters => 2.54,
+            Self::Millimeters => 25.4,
+            Self::Inches => 1.0,
+            Self::Points => 72.0,
+            Self::Picas => 6.0,
+        }
+    }
+}
+
+fn is_match_mode(m: &ScreenMatchMode) -> bool {
+    *m == ScreenMatchMode::MatchWidthOrHeight
+}
+
+fn is_points(u: &PhysicalUnit) -> bool {
+    *u == PhysicalUnit::Points
+}
+
+fn is_96(v: &f32) -> bool {
+    *v == 96.0
+}
+
+fn is_100(v: &f32) -> bool {
+    *v == 100.0
+}
+
+fn is_unit_f32(v: &f32) -> bool {
+    *v == 1.0
+}
+
+/// Canvas Scaler: how canvas units map to screen pixels. Settings added with the later modes are
+/// left out of files while at their defaults.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CanvasScaler {
@@ -76,6 +202,22 @@ pub struct CanvasScaler {
     pub reference_resolution: Vec2,
     /// 0 = match width, 1 = match height.
     pub match_width_or_height: f32,
+    #[serde(skip_serializing_if = "is_match_mode")]
+    pub screen_match_mode: ScreenMatchMode,
+    #[serde(skip_serializing_if = "is_points")]
+    pub physical_unit: PhysicalUnit,
+    /// Constant Physical Size: DPI assumed when the screen's is unknown.
+    #[serde(skip_serializing_if = "is_96")]
+    pub fallback_screen_dpi: f32,
+    /// Constant Physical Size: DPI sprites are authored at.
+    #[serde(skip_serializing_if = "is_96")]
+    pub default_sprite_dpi: f32,
+    /// Sprite pixels per canvas unit for a sprite of 100 Pixels Per Unit (sliced borders, tiles).
+    #[serde(skip_serializing_if = "is_100")]
+    pub reference_pixels_per_unit: f32,
+    /// World Space canvases: pixels per canvas unit that text and masks are made at.
+    #[serde(skip_serializing_if = "is_unit_f32")]
+    pub dynamic_pixels_per_unit: f32,
 }
 
 impl Default for CanvasScaler {
@@ -86,6 +228,12 @@ impl Default for CanvasScaler {
             scale_factor: 1.0,
             reference_resolution: Vec2::new(800.0, 600.0),
             match_width_or_height: 0.0,
+            screen_match_mode: ScreenMatchMode::MatchWidthOrHeight,
+            physical_unit: PhysicalUnit::Points,
+            fallback_screen_dpi: 96.0,
+            default_sprite_dpi: 96.0,
+            reference_pixels_per_unit: 100.0,
+            dynamic_pixels_per_unit: 1.0,
         }
     }
 }
@@ -207,6 +355,27 @@ pub struct UiImage {
     /// is drawn. Left out of files when unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sprite: Option<String>,
+    /// Simple, Sliced, Tiled or Filled (the settings below are left out of files at their
+    /// defaults).
+    #[serde(skip_serializing_if = "is_simple")]
+    pub image_type: ImageType,
+    /// Sliced / Tiled: draw the middle part too.
+    #[serde(skip_serializing_if = "is_true")]
+    pub fill_center: bool,
+    /// Filled: method, origin, amount and direction.
+    #[serde(skip_serializing_if = "ImageFill::is_default")]
+    pub fill: ImageFill,
+    /// Simple / Filled: shrink the drawn rect to the sprite's width / height ratio.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub preserve_aspect: bool,
+    /// Sliced / Tiled: multiplies the sprite's pixels per unit (2 = borders and tiles half as
+    /// large).
+    #[serde(skip_serializing_if = "is_unit_f32")]
+    pub pixels_per_unit_multiplier: f32,
+}
+
+fn is_simple(t: &ImageType) -> bool {
+    *t == ImageType::Simple
 }
 
 impl Default for UiImage {
@@ -217,6 +386,11 @@ impl Default for UiImage {
             texture: None,
             raycast_target: true,
             sprite: None,
+            image_type: ImageType::Simple,
+            fill_center: true,
+            fill: ImageFill::default(),
+            preserve_aspect: false,
+            pixels_per_unit_multiplier: 1.0,
         }
     }
 }
@@ -434,6 +608,9 @@ pub struct UiButton {
     pub selected_color: [f32; 4],
     pub color_multiplier: f32,
     pub on_click: Vec<ButtonCall>,
+    /// Keyboard / gamepad navigation (left out of files at its defaults).
+    #[serde(flatten)]
+    pub navigation: super::ui_widgets::Navigation,
 }
 
 const DEFAULT_SELECTED: [f32; 4] = [245.0 / 255.0, 245.0 / 255.0, 245.0 / 255.0, 1.0];
@@ -454,6 +631,7 @@ impl Default for UiButton {
             selected_color: DEFAULT_SELECTED,
             color_multiplier: 1.0,
             on_click: Vec::new(),
+            navigation: Default::default(),
         }
     }
 }

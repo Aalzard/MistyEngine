@@ -39,6 +39,7 @@ fn import_settings_round_trip_and_default_without_meta() {
             name: "A".into(),
             rect: [0.0, 0.0, 4.0, 4.0],
             pivot: [0.5, 0.0],
+            border: [0.0; 4],
         }],
         ..TextureImporter::sprite()
     };
@@ -176,6 +177,7 @@ fn uv_transform_maps_the_rect_and_flips() {
         pivot: Vec2::splat(0.5),
         pixels_per_unit: 16.0,
         texture_size: [64, 32],
+        border: [0.0; 4],
     };
     let at = |(t, o): ([f32; 2], [f32; 2]), uv: Vec2| Vec2::from(t) * uv + Vec2::from(o);
     // Quad uv (0,0) = top-left of the sprite; image rows count down: bottom row starts at v=0.5.

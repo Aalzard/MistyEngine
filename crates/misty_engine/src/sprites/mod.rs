@@ -42,6 +42,8 @@ pub struct Sprite {
     pub pivot: Vec2,
     pub pixels_per_unit: f32,
     pub texture_size: [u32; 2],
+    /// 9-slice border in pixels (left, bottom, right, top).
+    pub border: [f32; 4],
 }
 
 impl Sprite {
@@ -177,14 +179,19 @@ pub fn resolve(reference: &str) -> Option<Sprite> {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let (name, rect, pivot) = match imp.sprite_mode {
-        SpriteMode::Single => (stem, [0.0, 0.0, size[0] as f32, size[1] as f32], imp.pivot),
+    let (name, rect, pivot, border) = match imp.sprite_mode {
+        SpriteMode::Single => (
+            stem,
+            [0.0, 0.0, size[0] as f32, size[1] as f32],
+            imp.pivot,
+            imp.border,
+        ),
         SpriteMode::Multiple => {
             let r = match name {
                 Some(n) => imp.find(n)?,
                 None => imp.sprites.first()?,
             };
-            (r.name.clone(), r.rect, r.pivot)
+            (r.name.clone(), r.rect, r.pivot, r.border)
         }
     };
     Some(Sprite {
@@ -194,6 +201,7 @@ pub fn resolve(reference: &str) -> Option<Sprite> {
         pivot: Vec2::from(pivot),
         pixels_per_unit: imp.pixels_per_unit,
         texture_size: size,
+        border,
     })
 }
 

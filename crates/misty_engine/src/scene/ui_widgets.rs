@@ -35,7 +35,68 @@ impl Default for ColorBlock {
     }
 }
 
-/// What every selectable widget has: Interactable, the graphic it tints and its colours.
+/// How keyboard / gamepad navigation leaves a selectable.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NavigationMode {
+    /// Never selected by navigation.
+    None,
+    /// Only left / right move on (to the best selectable in that direction).
+    Horizontal,
+    /// Only up / down move on.
+    Vertical,
+    /// The best selectable in each direction.
+    #[default]
+    Automatic,
+    /// The selectables named in the Select On fields.
+    Explicit,
+}
+
+impl NavigationMode {
+    pub const ALL: [Self; 5] = [
+        Self::None,
+        Self::Horizontal,
+        Self::Vertical,
+        Self::Automatic,
+        Self::Explicit,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Horizontal => "Horizontal",
+            Self::Vertical => "Vertical",
+            Self::Automatic => "Automatic",
+            Self::Explicit => "Explicit",
+        }
+    }
+}
+
+fn is_automatic(m: &NavigationMode) -> bool {
+    *m == NavigationMode::Automatic
+}
+
+/// Navigation settings of a selectable, stored flat in it and left out of files at their
+/// defaults (Automatic, no explicit targets).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Navigation {
+    #[serde(rename = "navigation", skip_serializing_if = "is_automatic")]
+    pub mode: NavigationMode,
+    /// Horizontal / Vertical: moving past the last selectable comes back at the first.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub wrap_around: bool,
+    #[serde(with = "entity_bits::option", skip_serializing_if = "Option::is_none")]
+    pub select_on_up: Option<hecs::Entity>,
+    #[serde(with = "entity_bits::option", skip_serializing_if = "Option::is_none")]
+    pub select_on_down: Option<hecs::Entity>,
+    #[serde(with = "entity_bits::option", skip_serializing_if = "Option::is_none")]
+    pub select_on_left: Option<hecs::Entity>,
+    #[serde(with = "entity_bits::option", skip_serializing_if = "Option::is_none")]
+    pub select_on_right: Option<hecs::Entity>,
+}
+
+/// What every selectable widget has: Interactable, the graphic it tints, its colours and its
+/// navigation.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Selectable {
@@ -44,6 +105,8 @@ pub struct Selectable {
     #[serde(with = "entity_bits::option")]
     pub target_graphic: Option<hecs::Entity>,
     pub colors: ColorBlock,
+    #[serde(flatten)]
+    pub navigation: Navigation,
 }
 
 impl Default for Selectable {
@@ -52,6 +115,7 @@ impl Default for Selectable {
             interactable: true,
             target_graphic: None,
             colors: ColorBlock::default(),
+            navigation: Navigation::default(),
         }
     }
 }
@@ -435,6 +499,31 @@ pub struct EventSystem {
     pub send_navigation_events: bool,
     /// Pixels the pointer moves before a press becomes a drag.
     pub drag_threshold: f32,
+    /// Input Actions asset whose "UI" map (Navigate, Submit, Cancel) drives navigation; `None`
+    /// = the default UI actions (arrows, Return, Esc, gamepad stick / d-pad, South / East).
+    /// With Active Input Handling set to the Input Manager, the keys and joystick are read
+    /// directly instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actions_asset: Option<String>,
+    /// Seconds a held direction waits before it repeats.
+    #[serde(skip_serializing_if = "is_repeat_delay")]
+    pub move_repeat_delay: f32,
+    /// Seconds between repeats of a held direction.
+    #[serde(skip_serializing_if = "is_repeat_rate")]
+    pub move_repeat_rate: f32,
+}
+
+fn is_repeat_delay(v: &f32) -> bool {
+    *v == EventSystem::REPEAT_DELAY
+}
+
+fn is_repeat_rate(v: &f32) -> bool {
+    *v == EventSystem::REPEAT_RATE
+}
+
+impl EventSystem {
+    pub const REPEAT_DELAY: f32 = 0.5;
+    pub const REPEAT_RATE: f32 = 0.1;
 }
 
 impl Default for EventSystem {
@@ -444,6 +533,9 @@ impl Default for EventSystem {
             first_selected: None,
             send_navigation_events: true,
             drag_threshold: 10.0,
+            actions_asset: None,
+            move_repeat_delay: Self::REPEAT_DELAY,
+            move_repeat_rate: Self::REPEAT_RATE,
         }
     }
 }
@@ -508,13 +600,39 @@ pub const WIDGET_REFS: &[(&str, &str, &str)] = &[
     ("Scroll Rect", "", "horizontal_scrollbar"),
     ("Scroll Rect", "", "vertical_scrollbar"),
     ("Event System", "", "first_selected"),
+    ("Canvas", "", "world_camera"),
+    ("Button", "", "select_on_up"),
+    ("Button", "", "select_on_down"),
+    ("Button", "", "select_on_left"),
+    ("Button", "", "select_on_right"),
 ];
 
-/// The nested Target Graphic reference of each selectable widget.
+/// The nested references of each selectable widget: Target Graphic and the explicit
+/// navigation targets.
 pub const SELECTABLE_REFS: &[(&str, &str, &str)] = &[
     ("Toggle", "selectable", "target_graphic"),
     ("Slider", "selectable", "target_graphic"),
     ("Scrollbar", "selectable", "target_graphic"),
     ("Input Field", "selectable", "target_graphic"),
     ("Dropdown", "selectable", "target_graphic"),
+    ("Toggle", "selectable", "select_on_up"),
+    ("Toggle", "selectable", "select_on_down"),
+    ("Toggle", "selectable", "select_on_left"),
+    ("Toggle", "selectable", "select_on_right"),
+    ("Slider", "selectable", "select_on_up"),
+    ("Slider", "selectable", "select_on_down"),
+    ("Slider", "selectable", "select_on_left"),
+    ("Slider", "selectable", "select_on_right"),
+    ("Scrollbar", "selectable", "select_on_up"),
+    ("Scrollbar", "selectable", "select_on_down"),
+    ("Scrollbar", "selectable", "select_on_left"),
+    ("Scrollbar", "selectable", "select_on_right"),
+    ("Input Field", "selectable", "select_on_up"),
+    ("Input Field", "selectable", "select_on_down"),
+    ("Input Field", "selectable", "select_on_left"),
+    ("Input Field", "selectable", "select_on_right"),
+    ("Dropdown", "selectable", "select_on_up"),
+    ("Dropdown", "selectable", "select_on_down"),
+    ("Dropdown", "selectable", "select_on_left"),
+    ("Dropdown", "selectable", "select_on_right"),
 ];

@@ -174,6 +174,14 @@ pub struct SpriteRect {
     pub rect: [f32; 4],
     /// Normalised pivot inside the rect (0.5, 0.5 = centre).
     pub pivot: [f32; 2],
+    /// 9-slice border in pixels (left, bottom, right, top) for Sliced / Tiled UI images.
+    #[serde(default, skip_serializing_if = "is_no_border")]
+    pub border: [f32; 4],
+}
+
+/// No 9-slice border set.
+pub fn is_no_border(b: &[f32; 4]) -> bool {
+    *b == [0.0; 4]
 }
 
 /// Import settings of one image.
@@ -205,6 +213,10 @@ pub struct TextureImporter {
     /// Per-platform Max Size and Compression.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overrides: Vec<PlatformOverride>,
+    /// Single mode: 9-slice border in pixels (left, bottom, right, top); left out of the
+    /// `.meta` file while unset.
+    #[serde(skip_serializing_if = "is_no_border")]
+    pub border: [f32; 4],
 }
 
 impl Default for TextureImporter {
@@ -223,6 +235,7 @@ impl Default for TextureImporter {
             srgb: true,
             compression: None,
             overrides: Vec::new(),
+            border: [0.0; 4],
         }
     }
 }
@@ -326,6 +339,7 @@ impl TextureImporter {
             }
         };
         fix(&mut self.pivot);
+        fix_border(&mut self.border);
         // Snap to the nearest Max Size choice.
         let size = self
             .max_size
@@ -341,12 +355,22 @@ impl TextureImporter {
             }
             s.rect[2] = s.rect[2].max(1.0);
             s.rect[3] = s.rect[3].max(1.0);
+            fix_border(&mut s.border);
         }
     }
 
     /// The sprite rect called `name` (Multiple mode).
     pub fn find(&self, name: &str) -> Option<&SpriteRect> {
         self.sprites.iter().find(|s| s.name == name)
+    }
+}
+
+/// Borders are finite and not negative.
+fn fix_border(b: &mut [f32; 4]) {
+    for v in b {
+        if !v.is_finite() || *v < 0.0 {
+            *v = 0.0;
+        }
     }
 }
 

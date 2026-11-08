@@ -5,8 +5,8 @@ use egui::{Grid, RichText, Ui};
 use glam::Vec2;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    ButtonCall, Canvas, CanvasRenderMode, CanvasScaler, RectTransform, SceneComponent, TextAnchor,
-    UiButton, UiImage, UiScaleMode, UiText,
+    AspectRatioFitter, ButtonCall, Canvas, CanvasGroup, CanvasRenderMode, CanvasScaler,
+    RectTransform, SceneComponent, TextAnchor, Transform, UiButton, UiImage, UiText,
 };
 use misty_engine::ui::layout::{AnchorAxis, apply_anchor_preset};
 
@@ -15,6 +15,9 @@ use crate::theme;
 
 #[path = "ui_widget_editors.rs"]
 mod widgets;
+
+#[path = "ui_canvas_editors.rs"]
+mod canvas_eds;
 
 /// Names of the UI components handled here (widgets and layout in `ui_widget_editors.rs`).
 pub const NAMES: &[&str] = &[
@@ -39,6 +42,8 @@ pub const NAMES: &[&str] = &[
     "Grid Layout Group",
     "Content Size Fitter",
     "Layout Element",
+    "Canvas Group",
+    "Aspect Ratio Fitter",
     "Event System",
 ];
 
@@ -50,6 +55,8 @@ pub fn icon(name: &str) -> Option<&'static str> {
         "Image" => "🖼",
         "Text" => "T",
         "Button" => "▣",
+        "Canvas Group" => "◫",
+        "Aspect Ratio Fitter" => "⊡",
         other => return widgets::icon(other),
     })
 }
@@ -62,6 +69,8 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
         "Canvas Scaler" => w.get::<&CanvasScaler>(e).ok().map(|c| c.enabled),
         "Image" => w.get::<&UiImage>(e).ok().map(|c| c.enabled),
         "Text" => w.get::<&UiText>(e).ok().map(|c| c.enabled),
+        "Canvas Group" => w.get::<&CanvasGroup>(e).ok().map(|c| c.enabled),
+        "Aspect Ratio Fitter" => w.get::<&AspectRatioFitter>(e).ok().map(|c| c.enabled),
         other => widgets::enabled_flag(state, e, other),
     }
 }
@@ -73,6 +82,10 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
         "Canvas Scaler" => w.get::<&mut CanvasScaler>(e).map(|mut c| c.enabled = on),
         "Image" => w.get::<&mut UiImage>(e).map(|mut c| c.enabled = on),
         "Text" => w.get::<&mut UiText>(e).map(|mut c| c.enabled = on),
+        "Canvas Group" => w.get::<&mut CanvasGroup>(e).map(|mut c| c.enabled = on),
+        "Aspect Ratio Fitter" => w
+            .get::<&mut AspectRatioFitter>(e)
+            .map(|mut c| c.enabled = on),
         other => return widgets::set_enabled(state, e, other, on),
     };
 }
@@ -81,11 +94,22 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
 pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool {
     match name {
         "Rect Transform" => rect_transform(ui, state, e),
-        "Canvas" => with::<Canvas>(ui, state, e, canvas),
-        "Canvas Scaler" => with::<CanvasScaler>(ui, state, e, canvas_scaler),
+        "Canvas" => canvas(ui, state, e),
+        "Canvas Scaler" => {
+            let world = state
+                .scene
+                .world
+                .get::<&Canvas>(e)
+                .is_ok_and(|c| c.render_mode == CanvasRenderMode::WorldSpace);
+            edit_copy::<CanvasScaler>(state, e, |c| canvas_eds::canvas_scaler(ui, c, world))
+        }
         "Image" => {
             let textures = state.assets.textures.clone();
             edit_copy::<UiImage>(state, e, |c| image(ui, c, &textures))
+        }
+        "Canvas Group" => edit_copy::<CanvasGroup>(state, e, |c| canvas_eds::canvas_group(ui, c)),
+        "Aspect Ratio Fitter" => {
+            edit_copy::<AspectRatioFitter>(state, e, |c| canvas_eds::aspect_ratio_fitter(ui, c))
         }
         "Text" => {
             let textures = state.assets.textures.clone();
@@ -93,7 +117,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
             edit_copy::<UiText>(state, e, |c| text(ui, c, &textures, &fonts))
         }
         "Button" => {
-            let objects: Vec<(Entity, String)> = state
+            let objects: canvas_eds::Objects = state
                 .scene
                 .walk()
                 .into_iter()
@@ -119,15 +143,6 @@ pub(super) fn edit_copy<T: SceneComponent>(
         let _ = state.scene.world.insert_one(e, copy);
     }
     changed
-}
-
-fn with<T: SceneComponent>(
-    ui: &mut Ui,
-    state: &mut EditorState,
-    e: Entity,
-    draw: fn(&mut Ui, &mut T) -> bool,
-) -> bool {
-    edit_copy(state, e, |c| draw(ui, c))
 }
 
 pub(super) fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
@@ -179,8 +194,13 @@ fn parent_size(state: &EditorState, e: Entity) -> Vec2 {
 }
 
 fn rect_transform(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
-    // A root canvas' rect is the screen: the Canvas drives it.
-    let driven = state.scene.world.get::<&Canvas>(e).is_ok()
+    // A root screen-space canvas' rect is the screen: the Canvas drives it (a World Space
+    // canvas sizes itself with its Rect Transform).
+    let driven = state
+        .scene
+        .world
+        .get::<&Canvas>(e)
+        .is_ok_and(|c| c.render_mode != CanvasRenderMode::WorldSpace)
         && state
             .scene
             .parent(e)
@@ -360,80 +380,72 @@ fn presets_button(ui: &mut Ui, id: egui::Id, rt: &mut RectTransform, parent: Vec
 
 // ---- Canvas ----------------------------------------------------------------------------------
 
-fn canvas(ui: &mut Ui, c: &mut Canvas) -> bool {
-    grid(ui, "canvas_grid", |ui| {
-        let mut ch = false;
-        ui.label("Render Mode");
-        egui::ComboBox::from_id_salt("canvas_mode")
-            .selected_text(c.render_mode.label())
-            .show_ui(ui, |ui| {
-                for m in CanvasRenderMode::ALL {
-                    ch |= ui
-                        .selectable_value(&mut c.render_mode, m, m.label())
-                        .changed();
-                }
-            });
-        ui.end_row();
-        ui.label("Sort Order");
-        ch |= ui.add(egui::DragValue::new(&mut c.sort_order)).changed();
-        ui.end_row();
-        ch
-    })
-}
-
-fn canvas_scaler(ui: &mut Ui, s: &mut CanvasScaler) -> bool {
-    grid(ui, "canvas_scaler_grid", |ui| {
-        let mut ch = false;
-        ui.label("UI Scale Mode");
-        egui::ComboBox::from_id_salt("scaler_mode")
-            .selected_text(s.mode.label())
-            .show_ui(ui, |ui| {
-                for m in UiScaleMode::ALL {
-                    ch |= ui.selectable_value(&mut s.mode, m, m.label()).changed();
-                }
-            });
-        ui.end_row();
-        match s.mode {
-            UiScaleMode::ConstantPixelSize => {
-                ui.label("Scale Factor");
-                ch |= ui
-                    .add(
-                        egui::DragValue::new(&mut s.scale_factor)
-                            .speed(0.01)
-                            .range(0.01..=100.0),
-                    )
-                    .changed();
-                ui.end_row();
-            }
-            UiScaleMode::ScaleWithScreenSize => {
-                ui.label("Reference Resolution");
-                ch |= vec2(ui, &mut s.reference_resolution, 1.0);
-                s.reference_resolution = s.reference_resolution.max(Vec2::ONE);
-                ui.end_row();
-                ui.label("Screen Match Mode");
-                ui.label("Match Width Or Height");
-                ui.end_row();
-                ui.label("Match");
-                ui.vertical(|ui| {
-                    ch |= ui
-                        .add(egui::Slider::new(&mut s.match_width_or_height, 0.0..=1.0))
-                        .changed();
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Width").small().color(theme::TEXT_DIM));
-                        ui.add_space(110.0);
-                        ui.label(RichText::new("Height").small().color(theme::TEXT_DIM));
-                    });
-                });
-                ui.end_row();
-            }
+/// The Canvas: switching to World Space gives the canvas the size it had on screen and a
+/// Transform scale of 0.01 (a canvas unit becomes a centimetre), so it doesn't fill the world.
+fn canvas(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
+    let cameras: canvas_eds::Objects = state
+        .scene
+        .walk()
+        .into_iter()
+        .filter(|(o, _)| {
+            state
+                .scene
+                .world
+                .get::<&misty_engine::scene::Camera>(*o)
+                .is_ok()
+        })
+        .map(|(o, _)| (o, state.scene.name(o)))
+        .collect();
+    let before = state
+        .scene
+        .world
+        .get::<&Canvas>(e)
+        .map(|c| c.render_mode)
+        .ok();
+    let changed = edit_copy::<Canvas>(state, e, |c| canvas_eds::canvas(ui, c, &cameras));
+    let after = state
+        .scene
+        .world
+        .get::<&Canvas>(e)
+        .map(|c| c.render_mode)
+        .ok();
+    if changed
+        && after == Some(CanvasRenderMode::WorldSpace)
+        && before != after
+        && let Some(n) = misty_engine::ui::layout(&state.scene, state.game_view.screen_px)
+            .node(e)
+            .copied()
+    {
+        if let Ok(mut rt) = state.scene.world.get::<&mut RectTransform>(e) {
+            *rt = RectTransform::sized(n.rect.size().x, n.rect.size().y);
         }
-        ch
-    })
+        let t = state.scene.transform(e);
+        if t.scale == glam::Vec3::ONE {
+            state.scene.set_transform(
+                e,
+                Transform {
+                    scale: glam::Vec3::splat(0.01),
+                    ..t
+                },
+            );
+        }
+    }
+    changed
 }
 
 // ---- Image / Text / Button ---------------------------------------------------------------------
 
 fn image(ui: &mut Ui, img: &mut UiImage, textures: &[String]) -> bool {
+    let has_border = img
+        .sprite
+        .as_deref()
+        .and_then(misty_engine::sprites::resolve)
+        .or_else(|| {
+            img.texture
+                .as_deref()
+                .and_then(misty_engine::sprites::resolve)
+        })
+        .is_some_and(|s| !misty_engine::sprites::import::is_no_border(&s.border));
     grid(ui, "ui_image_grid", |ui| {
         let mut ch = false;
         ui.label("Source Image");
@@ -450,6 +462,7 @@ fn image(ui: &mut Ui, img: &mut UiImage, textures: &[String]) -> bool {
         ui.label("Raycast Target");
         ch |= ui.checkbox(&mut img.raycast_target, "").changed();
         ui.end_row();
+        ch |= canvas_eds::image_type_rows(ui, img, has_border);
         ch
     })
 }
@@ -732,6 +745,7 @@ fn button(ui: &mut Ui, b: &mut UiButton, objects: &[(Entity, String)]) -> bool {
             .add(egui::Slider::new(&mut b.color_multiplier, 1.0..=5.0))
             .changed();
         ui.end_row();
+        c |= canvas_eds::navigation_rows(ui, "ui_button", &mut b.navigation, &objects.to_vec());
         c
     });
     ui.add_space(4.0);

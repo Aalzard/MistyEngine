@@ -163,6 +163,8 @@ pub struct InputSystem {
     prev_input: Input,
     /// Problems for the Console.
     pub logs: Vec<String>,
+    /// The UI event system's action map (see `ui_module`).
+    pub ui_module: Option<super::ui_module::UiModule>,
 }
 
 impl InputSystem {
@@ -185,6 +187,7 @@ impl InputSystem {
             connected: Vec::new(),
             prev_input: Input::default(),
             logs: Vec::new(),
+            ui_module: None,
         }
     }
 
@@ -202,7 +205,7 @@ impl InputSystem {
         self.sets.len() - 1
     }
 
-    fn load_asset(&self, path: &str) -> Result<InputActionAsset, String> {
+    pub(super) fn load_asset(&self, path: &str) -> Result<InputActionAsset, String> {
         InputActionAsset::load(&self.root.join(path))
     }
 
@@ -561,6 +564,10 @@ impl InputSystem {
                 for event in set.update_from(input, Some(prev), now) {
                     events.push(SystemEvent::Action { set: id, event });
                 }
+            }
+            // The UI map: read by the event system, not heard by scripts.
+            if let Some(ui) = &mut self.ui_module {
+                ui.set.update_from(input, Some(prev), now);
             }
         }
         self.prev_input = input.clone();

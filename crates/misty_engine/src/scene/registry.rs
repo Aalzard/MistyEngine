@@ -326,6 +326,8 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<super::GridLayoutGroup>(),
             ComponentInfo::of::<super::ContentSizeFitter>(),
             ComponentInfo::of::<super::LayoutElement>(),
+            ComponentInfo::of::<super::CanvasGroup>(),
+            ComponentInfo::of::<super::AspectRatioFitter>(),
             ComponentInfo::of::<super::EventSystem>(),
             ComponentInfo::of::<Camera>(),
             ComponentInfo::of::<Light>(),

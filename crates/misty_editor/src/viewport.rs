@@ -74,6 +74,32 @@ impl Gpu {
     }
 }
 
+impl Gpu {
+    /// Draw the scene's canvases into the Scene view image rendered this frame: overlays in the
+    /// world at one unit per pixel of a `screen`-sized game view, the others where they are, all
+    /// seen by the scene `camera` and hidden behind nearer scene depth.
+    pub fn render_scene_ui(
+        &mut self,
+        scene: &Scene,
+        camera: &misty_engine::camera::Camera,
+        screen: glam::Vec2,
+    ) {
+        if let Some(target) = self.scene.target.as_ref() {
+            let (w, h) = target.output_size();
+            let size = glam::Vec2::new(w as f32, h as f32);
+            let view = misty_engine::ui::UiView::scene_view(screen, size, *camera);
+            self.ui.render_view(
+                &self.state.device,
+                &self.state.queue,
+                target,
+                scene,
+                None,
+                &view,
+            );
+        }
+    }
+}
+
 /// Which view to draw into.
 #[derive(Clone, Copy)]
 pub enum ViewId {

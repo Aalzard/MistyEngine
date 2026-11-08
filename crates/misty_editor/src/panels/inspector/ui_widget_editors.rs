@@ -159,7 +159,10 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
         "Grid Layout Group" => edit_copy::<GridLayoutGroup>(state, e, |c| grid_layout(ui, c)),
         "Content Size Fitter" => edit_copy::<ContentSizeFitter>(state, e, |c| fitter(ui, c)),
         "Layout Element" => edit_copy::<LayoutElement>(state, e, |c| layout_element(ui, c)),
-        "Event System" => edit_copy::<EventSystem>(state, e, |c| event_system(ui, c, &objs)),
+        "Event System" => {
+            let assets: Vec<String> = state.assets.input_actions.iter().cloned().collect();
+            edit_copy::<EventSystem>(state, e, |c| event_system(ui, c, &objs, &assets))
+        }
         _ => false,
     }
 }
@@ -240,6 +243,7 @@ fn selectable(ui: &mut Ui, id: &str, s: &mut Selectable, objs: &Objects) -> bool
         .add(egui::Slider::new(&mut b.multiplier, 1.0..=5.0))
         .changed();
     ui.end_row();
+    c |= super::canvas_eds::navigation_rows(ui, id, &mut s.navigation, objs);
     c
 }
 
@@ -774,7 +778,7 @@ fn layout_element(ui: &mut Ui, le: &mut LayoutElement) -> bool {
     })
 }
 
-fn event_system(ui: &mut Ui, es: &mut EventSystem, objs: &Objects) -> bool {
+fn event_system(ui: &mut Ui, es: &mut EventSystem, objs: &Objects, assets: &[String]) -> bool {
     grid(ui, "ui_event_system", |ui| {
         let mut c = false;
         ui.label("First Selected");
@@ -788,9 +792,7 @@ fn event_system(ui: &mut Ui, es: &mut EventSystem, objs: &Objects) -> bool {
             .add(egui::DragValue::new(&mut es.drag_threshold).range(0.0..=100.0))
             .changed();
         ui.end_row();
-        ui.label("Input");
-        ui.label(RichText::new("Mouse + keyboard (built in)").color(theme::TEXT_DIM));
-        ui.end_row();
+        c |= super::canvas_eds::event_system_input(ui, es, assets);
         c
     })
 }

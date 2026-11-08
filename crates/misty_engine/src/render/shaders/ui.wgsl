@@ -1,8 +1,10 @@
-// Screen-space UI: textured, vertex-coloured triangles drawn over the final image.
+// UI: textured, vertex-coloured triangles drawn over the final image. Overlay canvases come in
+// clip space with z 0 and w 1; world and camera canvases carry their camera's clip position and
+// are hidden where the scene is nearer (fs_world).
 // Vertex colours are sRGB; the target is an sRGB texture, so we output linear values.
 
 struct VIn {
-    @location(0) pos: vec2<f32>,
+    @location(0) pos: vec4<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) mask: f32,
@@ -15,20 +17,20 @@ struct VOut {
     @location(1) color: vec4<f32>,
     @location(2) mask: f32,
     @location(3) sdf: vec2<f32>,
-    // Screen position (NDC): Camera Far Plane videos look the scene depth up with it, which
-    // may be smaller than the image when the 3D view is upscaled.
-    @location(4) ndc: vec2<f32>,
+    // Clip position: the scene depth is looked up through it (the depth image may be smaller
+    // than this one when the 3D view is upscaled).
+    @location(4) clip: vec4<f32>,
 };
 
 @vertex
 fn vs(v: VIn) -> VOut {
     var o: VOut;
-    o.pos = vec4<f32>(v.pos, 0.0, 1.0);
+    o.pos = v.pos;
     o.uv = v.uv;
     o.color = v.color;
     o.mask = v.mask;
     o.sdf = v.sdf;
-    o.ndc = v.pos;
+    o.clip = v.pos;
     return o;
 }
 
@@ -56,18 +58,33 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
     return shade(i);
 }
 
-// Camera Far Plane video: only where nothing was drawn (the depth buffer still holds its clear
-// value, the sky).
 @group(1) @binding(0) var scene_depth: texture_depth_multisampled_2d;
 
+// The scene depth under a fragment.
+fn depth_under(i: VOut) -> f32 {
+    let size = vec2<i32>(textureDimensions(scene_depth));
+    let ndc = i.clip.xy / i.clip.w;
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    let p = clamp(vec2<i32>(uv * vec2<f32>(size)), vec2<i32>(0), size - vec2<i32>(1));
+    return textureLoad(scene_depth, p, 0);
+}
+
+// Camera Far Plane video: only where nothing was drawn (the depth buffer still holds its clear
+// value, the sky).
 @fragment
 fn fs_far(i: VOut) -> @location(0) vec4<f32> {
     let c = shade(i);
-    let size = vec2<i32>(textureDimensions(scene_depth));
-    let uv = vec2<f32>(i.ndc.x * 0.5 + 0.5, 0.5 - i.ndc.y * 0.5);
-    let p = clamp(vec2<i32>(uv * vec2<f32>(size)), vec2<i32>(0), size - vec2<i32>(1));
-    let d = textureLoad(scene_depth, p, 0);
-    if (d < 0.99999) {
+    if (depth_under(i) < 0.99999) {
+        discard;
+    }
+    return c;
+}
+
+// World Space and Screen Space - Camera canvases: hidden behind nearer scene surfaces.
+@fragment
+fn fs_world(i: VOut) -> @location(0) vec4<f32> {
+    let c = shade(i);
+    if (i.pos.z > depth_under(i) + 0.000002) {
         discard;
     }
     return c;

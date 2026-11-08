@@ -66,6 +66,11 @@ impl ScriptHost {
 
     pub(super) fn ui_event(&mut self, ev: UiEvent) {
         let (e, event, label, arg) = match ev {
+            // Scripts on the selected object hear Cancel as OnCancel().
+            UiEvent::Cancel(e) => {
+                self.call_if_defined(e, "OnCancel", None);
+                return;
+            }
             UiEvent::Click(b) => (b, "onClick", "On Click", None),
             UiEvent::ValueChanged(e, v) => (e, "onValueChanged", "On Value Changed", Some(v)),
             UiEvent::EndEdit(e, t) => (e, "onEndEdit", "On End Edit", Some(UiValue::Text(t))),

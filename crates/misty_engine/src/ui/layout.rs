@@ -1,9 +1,11 @@
 //! Pure Rect Transform maths: rect from parent rect + anchors, offsets, anchor presets and the
 //! Canvas Scaler factor. Canvas space is y-up with the origin at the canvas' lower-left corner.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use glam::Vec2;
 
-use crate::scene::{CanvasScaler, RectTransform, UiScaleMode};
+use crate::scene::{CanvasScaler, RectTransform, ScreenMatchMode, UiScaleMode};
 
 /// Axis-aligned rectangle (canvas units, y up; or pixels, y down, depending on use).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -167,8 +169,31 @@ pub fn apply_anchor_preset(
     }
 }
 
+/// Screen DPI reported by the window (0 = unknown), stored as f32 bits.
+static SCREEN_DPI: AtomicU32 = AtomicU32::new(0);
+
+/// Tell Constant Physical Size canvases the screen's DPI (0 = unknown: their fallback DPI).
+pub fn set_screen_dpi(dpi: f32) {
+    let dpi = if dpi.is_finite() && dpi > 0.0 {
+        dpi
+    } else {
+        0.0
+    };
+    SCREEN_DPI.store(dpi.to_bits(), Ordering::Relaxed);
+}
+
+/// The screen DPI set with [`set_screen_dpi`] (0 = unknown).
+pub fn screen_dpi() -> f32 {
+    f32::from_bits(SCREEN_DPI.load(Ordering::Relaxed))
+}
+
 /// Screen pixels per canvas unit.
 pub fn scale_factor(scaler: Option<&CanvasScaler>, screen: Vec2) -> f32 {
+    scale_factor_at(scaler, screen, screen_dpi())
+}
+
+/// [`scale_factor`] for a screen of `dpi` dots per inch (0 = unknown).
+pub fn scale_factor_at(scaler: Option<&CanvasScaler>, screen: Vec2, dpi: f32) -> f32 {
     let Some(s) = scaler.filter(|s| s.enabled) else {
         return 1.0;
     };
@@ -176,14 +201,49 @@ pub fn scale_factor(scaler: Option<&CanvasScaler>, screen: Vec2) -> f32 {
         UiScaleMode::ConstantPixelSize => s.scale_factor,
         UiScaleMode::ScaleWithScreenSize => {
             let r = s.reference_resolution.max(Vec2::ONE);
-            // Blend in log space so e.g. half width + double height averages to 1.
-            let w = (screen.x.max(1.0) / r.x).log2();
-            let h = (screen.y.max(1.0) / r.y).log2();
-            let t = s.match_width_or_height.clamp(0.0, 1.0);
-            2f32.powf(w + (h - w) * t)
+            let (sx, sy) = (screen.x.max(1.0) / r.x, screen.y.max(1.0) / r.y);
+            match s.screen_match_mode {
+                ScreenMatchMode::MatchWidthOrHeight => {
+                    // Blend in log space so e.g. half width + double height averages to 1.
+                    let (w, h) = (sx.log2(), sy.log2());
+                    let t = s.match_width_or_height.clamp(0.0, 1.0);
+                    2f32.powf(w + (h - w) * t)
+                }
+                ScreenMatchMode::Expand => sx.min(sy),
+                ScreenMatchMode::Shrink => sx.max(sy),
+            }
+        }
+        UiScaleMode::ConstantPhysicalSize => {
+            let dpi = if dpi > 0.0 {
+                dpi
+            } else {
+                s.fallback_screen_dpi
+            };
+            // One canvas unit is one physical unit: dpi / (units per inch) pixels.
+            dpi / s.physical_unit.per_inch()
         }
     };
     if f.is_finite() && f > 1e-4 { f } else { 1.0 }
+}
+
+/// Sprite pixels per canvas unit (sliced borders, tiles): the scaler's Reference Pixels Per
+/// Unit over the sprite's own, scaled by an Image's multiplier. Constant Physical Size counts
+/// sprite pixels at their authoring DPI.
+pub fn sprite_pixels_per_unit(
+    scaler: Option<&CanvasScaler>,
+    sprite_ppu: f32,
+    multiplier: f32,
+) -> f32 {
+    let (reference, dpi_ratio) = match scaler.filter(|s| s.enabled) {
+        Some(s) if s.mode == UiScaleMode::ConstantPhysicalSize => (
+            s.reference_pixels_per_unit,
+            s.physical_unit.per_inch() / s.default_sprite_dpi.max(1e-3),
+        ),
+        Some(s) => (s.reference_pixels_per_unit, 1.0),
+        None => (100.0, 1.0),
+    };
+    let ppu = sprite_ppu.max(1e-3) / reference.max(1e-3) / dpi_ratio.max(1e-6);
+    (ppu * multiplier.max(1e-3)).max(1e-4)
 }
 
 #[cfg(test)]

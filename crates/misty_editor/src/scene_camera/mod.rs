@@ -614,7 +614,8 @@ impl SceneCamera {
 
     /// Smoothly move the pivot onto a point (Frame Selected, F).
     pub fn frame(&mut self, center: Vec3, radius: f32) {
-        let mut target = self.pose;
+        // Mid-transition (2D on, a snapped view), keep where that transition is going.
+        let mut target = self.anim.map_or(self.pose, |(_, to, _)| to);
         target.pivot = center;
         target.distance =
             (radius.max(0.25) * 2.5) / (self.settings.fov.to_radians() * 0.5).tan().max(0.1);

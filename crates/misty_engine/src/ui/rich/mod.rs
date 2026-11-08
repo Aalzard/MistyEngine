@@ -6,6 +6,7 @@
 //! effects, a font asset, spacing, an overflow mode, auto-size or right-to-left script), so
 //! existing texts render exactly as before.
 
+pub mod font_asset;
 pub mod fonts;
 pub mod layout;
 pub mod parse;

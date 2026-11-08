@@ -68,7 +68,10 @@ own (`radius = Range(0, 1)`). The functions exist in games too and cost nothing 
 | MeshRenderer | `GetComponent("MeshRenderer")` / `("Renderer")`: `material`, `sharedMaterial`, `materials`, `sharedMaterials`, `enabled`, `castShadows`, `receiveShadows`, `gameObject` (see Materials below) |
 | Material | `color`, `mainTextureOffset`, `mainTextureScale`, `shader`, `name`, `renderQueue`, `SetColor`/`GetColor`, `SetFloat`/`GetFloat`, `SetTexture`/`GetTexture`, `SetTextureOffset`/`SetTextureScale`, `HasProperty`, `EnableKeyword`/`DisableKeyword`/`IsKeywordEnabled` |
 | Text (UI) | `GetComponent("Text")`: `text` (numbers are shown as text), `fontSize`, `color`, `enabled`, `gameObject` |
-| Image (UI) | `GetComponent("Image")`: `color`, `texture` (project path or nil), `raycastTarget`, `enabled`, `gameObject` |
+| Image (UI) | `GetComponent("Image")`: `color`, `texture` (project path or nil), `raycastTarget`, `enabled`, `gameObject`, `type` (`"Simple"`, `"Sliced"`, `"Tiled"`, `"Filled"`), `fillAmount` (0..1), `fillMethod` (`"Horizontal"`, `"Vertical"`, `"Radial90"`, `"Radial180"`, `"Radial360"`), `fillOrigin` (index of the method's origins), `fillClockwise`, `fillCenter`, `preserveAspect` |
+| Canvas (UI) | `GetComponent("Canvas")`: `renderMode` (`"ScreenSpaceOverlay"`, `"ScreenSpaceCamera"`, `"WorldSpace"`), `sortingOrder`, `planeDistance`, `enabled`, `gameObject` |
+| CanvasGroup (UI) | `GetComponent("CanvasGroup")`: `alpha`, `interactable`, `blocksRaycasts`, `ignoreParentGroups`, `enabled`, `gameObject` |
+| AspectRatioFitter (UI) | `GetComponent("AspectRatioFitter")`: `aspectMode` (`"None"`, `"WidthControlsHeight"`, `"HeightControlsWidth"`, `"FitInParent"`, `"EnvelopeParent"`), `aspectRatio`, `gameObject` |
 | Button (UI) | `GetComponent("Button")`: `interactable`, `gameObject`, `onClick`; clicks call the On Click methods set in the Inspector |
 | Toggle (UI) | `GetComponent("Toggle")`: `isOn`, `interactable`, `group` (ToggleGroup or nil), `onValueChanged` (bool) |
 | ToggleGroup (UI) | `allowSwitchOff`, `AnyTogglesOn()`, `SetAllTogglesOff()` |
@@ -394,6 +397,14 @@ Events run in the UI step of the frame (before `FixedUpdate`/`Update`). A value 
 `slider.value = 3`) is reported in the next frame's UI step rather than inside the assignment; a widget created
 this frame starts reporting from the next one. Sample: `Assets/Scenes/UIWidgetsDemo.scene` with
 `Assets/Scripts/SettingsMenu.lua`.
+
+Keyboard and gamepad navigation moves the selection between selectables (each one's Navigation: Automatic,
+Horizontal, Vertical, Explicit or None). The Event System reads Navigate / Submit / Cancel from the "UI" map of
+its Actions Asset (the default UI actions when none is set: arrows, Return, Esc, the gamepad's stick, d-pad,
+South and East); with Active Input Handling set to the Input Manager it reads the arrow keys, Return / Space /
+Esc and the first joystick. Cancel closes an open dropdown, or calls `OnCancel()` on the selected object's
+scripts. Sample: `Assets/Scenes/UIShowcase.scene` with `Assets/Scripts/UIShowcase.lua` (a gamepad menu, a
+radial health ring driven by `fillAmount`, a World Space sign and a Screen Space - Camera HUD).
 
 ### Particle systems
 

@@ -1,6 +1,8 @@
 //! Pointer raycasts against UI graphics and the selectable widgets that handle them
 //! (Button, Toggle, Slider, Scrollbar, Input Field, Dropdown), with their Colour Tint states.
 
+use std::collections::HashMap;
+
 use glam::Vec2;
 use hecs::Entity;
 
@@ -33,18 +35,26 @@ fn is_raycast_target(scene: &Scene, e: Entity) -> bool {
             .is_ok_and(|t| t.enabled && t.raycast_target)
 }
 
-/// Topmost raycast-target graphic under `p` (screen pixels, y down). Masks clip hits too.
+/// Topmost raycast-target graphic under `p` (image pixels, y down). Masks, rotations and Canvas
+/// Groups that let the pointer through are respected; world and camera canvases are hit through
+/// the camera.
 pub fn raycast(layout: &UiLayout, scene: &Scene, p: Vec2) -> Option<Entity> {
-    layout
-        .nodes
-        .iter()
-        .rev()
-        .find(|n| {
-            n.screen.contains(p)
-                && n.clip.is_none_or(|c| c.contains(p))
-                && is_raycast_target(scene, n.entity)
-        })
-        .map(|n| n.entity)
+    raycast_hit(layout, scene, p).map(|(e, _)| e)
+}
+
+/// [`raycast`] plus the hit point in the canvas pixels of the hit object's canvas.
+pub fn raycast_hit(layout: &UiLayout, scene: &Scene, p: Vec2) -> Option<(Entity, Vec2)> {
+    let mut points: HashMap<Entity, Option<Vec2>> = HashMap::new();
+    layout.nodes.iter().rev().find_map(|n| {
+        if !n.blocks_raycasts {
+            return None;
+        }
+        let q = *points
+            .entry(n.canvas)
+            .or_insert_with(|| layout.to_canvas(n.canvas, p));
+        let q = q?;
+        (n.contains(q) && is_raycast_target(scene, n.entity)).then_some((n.entity, q))
+    })
 }
 
 /// `e` itself or its nearest ancestor matching `f`.
@@ -74,6 +84,7 @@ pub fn selectable(scene: &Scene, e: Entity) -> Option<Selectable> {
                 disabled: b.disabled_color,
                 multiplier: b.color_multiplier,
             },
+            navigation: b.navigation,
         });
     }
     w.get::<&UiToggle>(e)
@@ -89,8 +100,10 @@ pub fn is_selectable(scene: &Scene, e: Entity) -> bool {
     selectable(scene, e).is_some()
 }
 
+/// Interactable, and no Canvas Group above turns interaction off.
 pub fn interactable(scene: &Scene, e: Entity) -> bool {
     selectable(scene, e).is_some_and(|s| s.interactable)
+        && super::tree::groups_allow_interaction(scene, e)
 }
 
 /// Tint colour for a state (Colour Tint transition), multiplier applied.
