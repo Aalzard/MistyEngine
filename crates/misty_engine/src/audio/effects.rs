@@ -1,7 +1,14 @@
 //! Audio effects shared by mixer groups and the per-source filter components: their kinds,
 //! parameter tables (name, unit, range, default) and the plain description handed to backends.
+//!
+//! Besides the signal effects there are three routing units, as in the familiar mixer: **Send**
+//! copies the signal at its place in the chain (scaled by its Send level) to a **Receive** or a
+//! **Duck Volume** unit on another group; Receive mixes what it is sent into its own group;
+//! Duck Volume turns its group down while what it is sent is loud (a side-chain compressor).
 
 use serde::{Deserialize, Serialize};
+
+use super::backend::TrackId;
 
 /// An effect that can sit in a mixer group's chain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -12,6 +19,13 @@ pub enum EffectKind {
     Reverb,
     Distortion,
     Compressor,
+    Chorus,
+    Flange,
+    PitchShifter,
+    ParamEQ,
+    Send,
+    Receive,
+    DuckVolume,
 }
 
 /// One tweakable effect parameter.
@@ -58,15 +72,62 @@ const COMPRESSOR: [ParamDef; 5] = [
     p("Release", "ms", 0.0, 1000.0, 50.0),
     p("Make up gain", "dB", 0.0, 30.0, 0.0),
 ];
+const CHORUS: [ParamDef; 7] = [
+    p("Dry mix", "%", 0.0, 100.0, 50.0),
+    p("Wet mix tap 1", "%", 0.0, 100.0, 50.0),
+    p("Wet mix tap 2", "%", 0.0, 100.0, 50.0),
+    p("Wet mix tap 3", "%", 0.0, 100.0, 50.0),
+    p("Delay", "ms", 0.1, 100.0, 40.0),
+    p("Rate", "Hz", 0.0, 20.0, 0.8),
+    p("Depth", "%", 0.0, 100.0, 3.0),
+];
+const FLANGE: [ParamDef; 4] = [
+    p("Dry mix", "%", 0.0, 100.0, 45.0),
+    p("Wet mix", "%", 0.0, 100.0, 55.0),
+    p("Depth", "", 0.01, 1.0, 1.0),
+    p("Rate", "Hz", 0.1, 20.0, 0.1),
+];
+const PITCH: [ParamDef; 3] = [
+    p("Pitch", "×", 0.5, 2.0, 1.0),
+    p("FFT size", "", 256.0, 4096.0, 1024.0),
+    p("Overlap", "", 2.0, 32.0, 4.0),
+];
+const PARAM_EQ: [ParamDef; 3] = [
+    p("Center freq", "Hz", 20.0, 22000.0, 8000.0),
+    p("Octave range", "", 0.2, 5.0, 1.0),
+    p("Frequency gain", "×", 0.05, 3.0, 1.0),
+];
+const SEND: [ParamDef; 1] = [p("Send level", "dB", MIN_DB, MAX_DB, MIN_DB)];
+const DUCK: [ParamDef; 7] = [
+    p("Threshold", "dB", -60.0, 0.0, -25.0),
+    p("Ratio", ":1", 1.0, 20.0, 4.0),
+    p("Attack", "ms", 0.0, 1000.0, 50.0),
+    p("Release", "ms", 0.0, 5000.0, 300.0),
+    p("Make up gain", "dB", 0.0, 30.0, 0.0),
+    p("Knee", "dB", 0.0, 50.0, 10.0),
+    p("Sidechain mix", "%", 0.0, 100.0, 100.0),
+];
+
+/// Name of the wet mix level every signal effect has besides its own parameters (keys
+/// `"<group>/<effect>/Wet"`): how much of the effect's output replaces the dry signal.
+pub const WET: &str = "Wet";
+const WET_DEF: ParamDef = p(WET, "%", 0.0, 100.0, 100.0);
 
 impl EffectKind {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 13] = [
         Self::Lowpass,
         Self::Highpass,
         Self::Echo,
         Self::Reverb,
         Self::Distortion,
         Self::Compressor,
+        Self::Chorus,
+        Self::Flange,
+        Self::PitchShifter,
+        Self::ParamEQ,
+        Self::Send,
+        Self::Receive,
+        Self::DuckVolume,
     ];
 
     pub fn label(self) -> &'static str {
@@ -77,6 +138,13 @@ impl EffectKind {
             Self::Reverb => "Reverb",
             Self::Distortion => "Distortion",
             Self::Compressor => "Compressor",
+            Self::Chorus => "Chorus",
+            Self::Flange => "Flange",
+            Self::PitchShifter => "Pitch Shifter",
+            Self::ParamEQ => "ParamEQ",
+            Self::Send => "Send",
+            Self::Receive => "Receive",
+            Self::DuckVolume => "Duck Volume",
         }
     }
 
@@ -87,11 +155,44 @@ impl EffectKind {
             Self::Reverb => &REVERB,
             Self::Distortion => &DISTORTION,
             Self::Compressor => &COMPRESSOR,
+            Self::Chorus => &CHORUS,
+            Self::Flange => &FLANGE,
+            Self::PitchShifter => &PITCH,
+            Self::ParamEQ => &PARAM_EQ,
+            Self::Send => &SEND,
+            Self::Receive => &[],
+            Self::DuckVolume => &DUCK,
         }
     }
 
+    /// Routing units (Send, Receive, Duck Volume) have no wet mix: they don't replace the
+    /// signal with a processed copy.
+    pub fn has_wet(self) -> bool {
+        !self.is_routing()
+    }
+
+    pub fn is_routing(self) -> bool {
+        matches!(self, Self::Send | Self::Receive | Self::DuckVolume)
+    }
+
+    /// Whether a Send can feed this kind of unit.
+    pub fn receives_sends(self) -> bool {
+        matches!(self, Self::Receive | Self::DuckVolume)
+    }
+
+    /// A parameter by name, including the wet mix level.
     pub fn param(self, name: &str) -> Option<&'static ParamDef> {
-        self.params().iter().find(|d| d.name == name)
+        self.keyed_params().find(|d| d.name == name)
+    }
+
+    /// Every value a snapshot stores for this effect: its parameters, then the wet level.
+    pub fn keyed_params(self) -> impl Iterator<Item = &'static ParamDef> {
+        let wet: &'static [ParamDef] = if self.has_wet() {
+            std::slice::from_ref(&WET_DEF)
+        } else {
+            &[]
+        };
+        self.params().iter().chain(wet)
     }
 
     /// Default values in parameter order.
@@ -101,12 +202,20 @@ impl EffectKind {
 }
 
 /// An effect as a backend builds and updates it: kind, values in [`EffectKind::params`] order,
-/// and bypass (the effect passes the signal through untouched).
+/// bypass (the effect passes the signal through untouched), wet level and, for a Send, the
+/// unit it feeds.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EffectSpec {
     pub kind: EffectKind,
     pub values: Vec<f32>,
     pub bypass: bool,
+    /// Identity across chain edits: an effect keeps its state (delay lines, reverb tail) while
+    /// effects around it are added, removed or moved. 0 = anonymous (matched by position).
+    pub id: u32,
+    /// 0..1: share of the processed signal (1 = only the effect's output).
+    pub wet: f32,
+    /// Send only: the track and effect id of the Receive / Duck Volume it feeds.
+    pub target: Option<(TrackId, u32)>,
 }
 
 impl EffectSpec {
@@ -115,7 +224,15 @@ impl EffectSpec {
             kind,
             values,
             bypass: false,
+            id: 0,
+            wet: 1.0,
+            target: None,
         }
+    }
+
+    pub fn with_id(mut self, id: u32) -> Self {
+        self.id = id;
+        self
     }
 
     /// Value of parameter `i`, or its default.

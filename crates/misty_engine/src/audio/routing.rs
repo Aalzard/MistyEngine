@@ -51,10 +51,6 @@ impl Route {
             mixers.get(m)?.tracks.get(&g).copied()
         })
     }
-
-    pub fn mixer(&self) -> Option<usize> {
-        self.group.map(|(m, _)| m)
-    }
 }
 
 /// What mixing a frame needs besides the voices themselves.
@@ -117,10 +113,10 @@ impl<'a> Ctx<'a> {
         let at = scene.world_position(e);
         let mut p = spatial::mix(src, at, self.ear, self.muted);
         if let Some((m, g)) = route.group
-            && let Some(m) = self.mixers.get(m)
+            && let Some(mixer) = self.mixers.get(m)
         {
-            p.pitch *= m.pitch(g);
-            if !m.solo_passes(g) {
+            p.pitch *= nested_pitch(self.mixers, m, g);
+            if !mixer.solo_passes(g) {
                 p.volume = 0.0;
             }
         }
@@ -191,6 +187,19 @@ impl<'a> Ctx<'a> {
         let pos = sources.map(|e| (e, scene.world_position(e))).collect();
         (self.ear_pos, pos)
     }
+}
+
+/// Pitch of group `g` of mixer `m`, times the pitch of the groups a nested mixer plays into.
+fn nested_pitch(mixers: &[MixerState], m: usize, g: u32) -> f32 {
+    let mut pitch = 1.0;
+    let mut at = Some((m, g));
+    for _ in 0..8 {
+        let Some((m, g)) = at else { break };
+        let Some(mixer) = mixers.get(m) else { break };
+        pitch *= mixer.pitch(g);
+        at = mixer.output_group;
+    }
+    pitch
 }
 
 /// A slot whose component was removed while playing: passes the sound through.
@@ -295,10 +304,64 @@ impl Audio {
         found
     }
 
+    /// Build mixer `m`'s tracks, first those of the mixer its Output plays into.
     fn ensure_tracks(&mut self, m: usize) {
+        self.ensure_tracks_nested(m, 0);
+    }
+
+    fn ensure_tracks_nested(&mut self, m: usize, depth: usize) {
+        if !self.mixers[m].tracks.is_empty() {
+            return;
+        }
+        let output = self.resolve_nested_output(m, depth);
+        self.mixers[m].output_group = output;
+        self.mixers[m].output_track =
+            output.and_then(|(o, g)| self.mixers[o].tracks.get(&g).copied());
         if let Some(b) = self.backend.as_mut() {
             self.mixers[m].ensure_tracks(b.as_mut(), &mut self.logs);
         }
+    }
+
+    /// Mixer index and group the Output of mixer `m` names (its tracks built), or `None`
+    /// (no output, not found, or a loop of mixers: warned once).
+    fn resolve_nested_output(&mut self, m: usize, depth: usize) -> Option<(usize, u32)> {
+        let output = self.mixers[m].asset.output.clone()?;
+        let (path, group) = split_output(&output);
+        let path = path.to_owned();
+        let found = self.load_mixer(&path).and_then(|o| {
+            let g = self.mixers[o].asset.group_by_name(group)?.id;
+            Some((o, g))
+        });
+        let looped = found.is_some_and(|(o, _)| o == m || self.feeds_into(o, m)) || depth > 8;
+        match found {
+            Some((o, g)) if !looped => {
+                self.ensure_tracks_nested(o, depth + 1);
+                Some((o, g))
+            }
+            _ => {
+                if self.bad_clips.insert(output.clone()) {
+                    let why = if looped { "would loop" } else { "not found" };
+                    self.logs.push(format!(
+                        "Audio Mixer {} output {output} {why}; playing straight out",
+                        self.mixers[m].path
+                    ));
+                }
+                None
+            }
+        }
+    }
+
+    /// Whether mixer `a` plays (through nested outputs) into mixer `b`.
+    fn feeds_into(&self, a: usize, b: usize) -> bool {
+        let mut at = self.mixers.get(a).and_then(|x| x.output_group);
+        for _ in 0..16 {
+            match at {
+                Some((o, _)) if o == b => return true,
+                Some((o, _)) => at = self.mixers.get(o).and_then(|x| x.output_group),
+                None => return false,
+            }
+        }
+        true
     }
 
     /// Index of the mixer at `path` (project-relative), loading it on first use.
@@ -375,35 +438,89 @@ impl Audio {
             .collect()
     }
 
-    /// The Mixer window edited a loaded mixer while playing: use the new values now. Changes
-    /// to groups or effect chains rebuild its tracks and restart the sources routed there.
+    /// Strongest gain reduction (dB, ≤ 0) of each group's Compressor / Duck Volume since the
+    /// last call (for the Mixer window's ducking readout).
+    pub fn mixer_reductions(&mut self, path: &str) -> HashMap<u32, f32> {
+        let Some(m) = self.mixers.iter().find(|m| m.path == path) else {
+            return HashMap::new();
+        };
+        let Some(b) = self.backend.as_mut() else {
+            return HashMap::new();
+        };
+        m.tracks
+            .iter()
+            .map(|(g, t)| (*g, b.track_reduction(*t)))
+            .collect()
+    }
+
+    /// The Mixer window edited a loaded mixer while playing: use the new values now. Groups and
+    /// effects added, removed, moved or rerouted change the running graph in place (crossfaded);
+    /// nothing routed there restarts. Voices of a removed group move to its nearest surviving
+    /// parent.
     pub fn replace_mixer(&mut self, path: &str, asset: AudioMixer) {
         let Some(i) = self.mixers.iter().position(|m| m.path == path) else {
             return;
         };
-        if !self.mixers[i].replace_asset(asset) || self.mixers[i].tracks.is_empty() {
+        let old = self.mixers[i].asset.clone();
+        let changed = self.mixers[i].replace_asset(asset);
+        if self.mixers[i].tracks.is_empty() {
             return;
         }
-        let routed: Vec<Entity> = self
-            .sources
-            .iter()
-            .filter(|(_, v)| v.route.mixer() == Some(i))
-            .map(|(e, _)| *e)
-            .collect();
-        for e in routed {
-            self.stop(e);
-            self.restart.push(e);
+        if changed {
+            self.move_orphans(i, &old);
+            if let Some(b) = self.backend.as_mut() {
+                self.mixers[i].sync_layout(b.as_mut(), &old);
+            }
         }
-        let (shots, keep): (Vec<_>, Vec<_>) = std::mem::take(&mut self.one_shots)
-            .into_iter()
-            .partition(|o| o.route.mixer() == Some(i));
-        self.one_shots = keep;
-        for o in shots {
-            self.end(o.id, o.route);
+        if old.output != self.mixers[i].asset.output {
+            self.mixers[i].output_group = None;
+            let output = self.resolve_nested_output(i, 0);
+            let track = output.and_then(|(o, g)| self.mixers[o].tracks.get(&g).copied());
+            self.mixers[i].output_group = output;
+            if let Some(b) = self.backend.as_mut() {
+                self.mixers[i].set_output(b.as_mut(), track);
+            }
         }
-        if let Some(b) = self.backend.as_mut() {
-            self.mixers[i].remove_tracks(b.as_mut());
-        }
-        self.ensure_tracks(i);
     }
+
+    /// Voices on groups of mixer `i` that the edit removed: onto the nearest surviving parent.
+    fn move_orphans(&mut self, i: usize, old: &AudioMixer) {
+        let m = &self.mixers[i];
+        let mut moves: Vec<(VoiceIdOrTrack, u32)> = Vec::new();
+        let routes = self
+            .sources
+            .values_mut()
+            .map(|v| (v.id, &mut v.route))
+            .chain(self.one_shots.iter_mut().map(|o| (o.id, &mut o.route)));
+        for (voice, route) in routes {
+            if let Some((mi, g)) = route.group
+                && mi == i
+                && m.asset.group(g).is_none()
+            {
+                let to = m.survivor(old, g);
+                route.group = Some((i, to));
+                let what = match route.own {
+                    Some(own) => VoiceIdOrTrack::Track(own),
+                    None => VoiceIdOrTrack::Voice(voice),
+                };
+                moves.push((what, to));
+            }
+        }
+        let Some(b) = self.backend.as_mut() else {
+            return;
+        };
+        for (what, to) in moves {
+            let track = self.mixers[i].tracks.get(&to).copied();
+            match what {
+                VoiceIdOrTrack::Voice(v) => b.move_voice(v, track),
+                VoiceIdOrTrack::Track(t) => b.set_parent(t, track),
+            }
+        }
+    }
+}
+
+/// What to reroute when a voice's group goes: the voice, or its own filter track.
+enum VoiceIdOrTrack {
+    Voice(super::VoiceId),
+    Track(TrackId),
 }

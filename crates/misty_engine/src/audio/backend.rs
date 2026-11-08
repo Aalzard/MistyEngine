@@ -1,21 +1,16 @@
-//! Audio output backends: kira on the real sound device, and a silent recorder for tests.
+//! Audio output backends: our mixer graph (on the sound device or rendered offline, see
+//! [`super::graph_backend`]), and a silent recorder for tests.
 //!
 //! Voices play on tracks: a tree of sub-mixes with volume, an effect chain and a peak meter.
 //! Mixer groups and per-source filters are tracks; a voice without a track goes straight out.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 
-use kira::sound::PlaybackState;
-use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
-use kira::track::{TrackBuilder, TrackHandle};
-use kira::{AudioManager, AudioManagerSettings, Decibels, DefaultBackend, Tween};
-
 use super::VoiceParams;
-use super::effects::{EffectSpec, amplitude_to_db};
-use super::kira_fx::{self, FxHandle, PeakMeter};
+use super::dsp::Frame;
+use super::effects::EffectSpec;
 
 /// Handle to one playing sound.
 pub type VoiceId = u64;
@@ -40,7 +35,7 @@ pub trait AudioBackend {
     /// Playback position in seconds.
     fn position(&self, voice: VoiceId) -> f64;
     fn seek(&mut self, voice: VoiceId, seconds: f64);
-    /// A track under `parent` (`None` = main output) with an effect chain fixed from now on.
+    /// A track under `parent` (`None` = main output) with an effect chain.
     fn add_track(
         &mut self,
         parent: Option<TrackId>,
@@ -48,210 +43,35 @@ pub trait AudioBackend {
     ) -> Result<TrackId, String>;
     /// New volume (linear) and effect values; `effects` matches the chain it was built with.
     fn set_track(&mut self, track: TrackId, volume: f32, effects: &[EffectSpec]);
+    /// Give a track a different chain (effects added, removed or moved) while it plays: effects
+    /// that stay keep their state, the change crossfades.
+    fn set_chain(&mut self, track: TrackId, effects: &[EffectSpec]);
+    /// Route a track into another parent (crossfaded).
+    fn set_parent(&mut self, track: TrackId, parent: Option<TrackId>);
+    /// Move a playing voice to another track (crossfaded).
+    fn move_voice(&mut self, voice: VoiceId, track: Option<TrackId>);
     /// Remove a track (its sounds stop). Remove children first.
     fn remove_track(&mut self, track: TrackId);
     /// Loudest sample (linear) on the track since the last call.
     fn track_peak(&mut self, track: TrackId) -> f32;
+    /// Strongest gain reduction (dB, ≤ 0) of a Compressor / Duck Volume on the track since the
+    /// last call.
+    fn track_reduction(&mut self, track: TrackId) -> f32 {
+        let _ = track;
+        0.0
+    }
     /// Decode an in-memory sound file and play it whenever `path` is played (sound that has no
     /// file, such as a video's audio track).
     fn preload(&mut self, path: &Path, bytes: Vec<u8>) -> Result<(), String> {
         let _ = (path, bytes);
         Ok(())
     }
-}
-
-// ---- kira ------------------------------------------------------------------------------------
-
-struct KiraTrack {
-    handle: TrackHandle,
-    effects: Vec<FxHandle>,
-    meter: Arc<AtomicU32>,
-}
-
-/// Plays through the default output device with kira.
-pub struct KiraBackend {
-    manager: AudioManager<DefaultBackend>,
-    clips: HashMap<PathBuf, StaticSoundData>,
-    voices: HashMap<VoiceId, (StaticSoundHandle, bool)>,
-    tracks: HashMap<TrackId, KiraTrack>,
-    next: u64,
-}
-
-impl KiraBackend {
-    pub fn new() -> Result<Self, String> {
-        let manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
-            .map_err(|e| e.to_string())?;
-        Ok(Self {
-            manager,
-            clips: HashMap::new(),
-            voices: HashMap::new(),
-            tracks: HashMap::new(),
-            next: 1,
-        })
-    }
-
-    fn clip(&mut self, path: &Path) -> Result<StaticSoundData, String> {
-        if let Some(c) = self.clips.get(path) {
-            return Ok(c.clone());
-        }
-        let bytes = crate::vfs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let data =
-            StaticSoundData::from_cursor(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
-        self.clips.insert(path.to_owned(), data.clone());
-        Ok(data)
-    }
-
-    fn fresh(&mut self) -> u64 {
-        self.next += 1;
-        self.next - 1
-    }
-}
-
-/// Linear amplitude to kira's decibels (-80 dB and below is silence).
-fn decibels(amplitude: f32) -> Decibels {
-    if amplitude <= 1e-4 {
-        Decibels::SILENCE
-    } else {
-        Decibels(amplitude_to_db(amplitude))
-    }
-}
-
-/// kira can't play backwards; negative pitch plays forwards at that speed.
-fn rate(pitch: f32) -> f64 {
-    pitch.abs().max(0.01) as f64
-}
-
-impl AudioBackend for KiraBackend {
-    fn preload(&mut self, path: &Path, bytes: Vec<u8>) -> Result<(), String> {
-        let data =
-            StaticSoundData::from_cursor(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
-        self.clips.insert(path.to_owned(), data);
-        Ok(())
-    }
-
-    fn play(
-        &mut self,
-        path: &Path,
-        p: VoiceParams,
-        track: Option<TrackId>,
-    ) -> Result<VoiceId, String> {
-        let mut data = self
-            .clip(path)?
-            .volume(decibels(p.volume))
-            .playback_rate(rate(p.pitch))
-            .panning(p.pan);
-        if p.looping {
-            data = data.loop_region(..);
-        }
-        let handle = match track.and_then(|t| self.tracks.get_mut(&t)) {
-            Some(t) => t.handle.play(data),
-            None => self.manager.play(data),
-        }
-        .map_err(|e| e.to_string())?;
-        let id = self.fresh();
-        self.voices.insert(id, (handle, p.looping));
-        Ok(id)
-    }
-
-    fn set(&mut self, voice: VoiceId, p: VoiceParams) {
-        let Some((h, looping)) = self.voices.get_mut(&voice) else {
-            return;
-        };
-        let tween = Tween::default();
-        h.set_volume(decibels(p.volume), tween);
-        h.set_playback_rate(rate(p.pitch), tween);
-        h.set_panning(p.pan, tween);
-        if *looping != p.looping {
-            *looping = p.looping;
-            if p.looping {
-                h.set_loop_region(..);
-            } else {
-                h.set_loop_region(None);
-            }
-        }
-    }
-
-    fn pause(&mut self, voice: VoiceId) {
-        if let Some((h, _)) = self.voices.get_mut(&voice) {
-            h.pause(Tween::default());
-        }
-    }
-
-    fn resume(&mut self, voice: VoiceId) {
-        if let Some((h, _)) = self.voices.get_mut(&voice) {
-            h.resume(Tween::default());
-        }
-    }
-
-    fn stop(&mut self, voice: VoiceId) {
-        if let Some((mut h, _)) = self.voices.remove(&voice) {
-            h.stop(Tween::default());
-        }
-    }
-
-    fn is_alive(&self, voice: VoiceId) -> bool {
-        self.voices
-            .get(&voice)
-            .is_some_and(|(h, _)| h.state() != PlaybackState::Stopped)
-    }
-
-    fn position(&self, voice: VoiceId) -> f64 {
-        self.voices.get(&voice).map_or(0.0, |(h, _)| h.position())
-    }
-
-    fn seek(&mut self, voice: VoiceId, seconds: f64) {
-        if let Some((h, _)) = self.voices.get_mut(&voice) {
-            h.seek_to(seconds.max(0.0));
-        }
-    }
-
-    fn add_track(
-        &mut self,
-        parent: Option<TrackId>,
-        effects: &[EffectSpec],
-    ) -> Result<TrackId, String> {
-        let mut builder = TrackBuilder::new();
-        let fx = effects
-            .iter()
-            .map(|spec| kira_fx::add(&mut builder, spec))
-            .collect();
-        let meter = Arc::new(AtomicU32::new(0));
-        builder.add_effect(PeakMeter(meter.clone()));
-        let handle = match parent.and_then(|p| self.tracks.get_mut(&p)) {
-            Some(p) => p.handle.add_sub_track(builder),
-            None => self.manager.add_sub_track(builder),
-        }
-        .map_err(|e| e.to_string())?;
-        let id = self.fresh();
-        self.tracks.insert(
-            id,
-            KiraTrack {
-                handle,
-                effects: fx,
-                meter,
-            },
-        );
-        Ok(id)
-    }
-
-    fn set_track(&mut self, track: TrackId, volume: f32, effects: &[EffectSpec]) {
-        if let Some(t) = self.tracks.get_mut(&track) {
-            t.handle.set_volume(decibels(volume), Tween::default());
-            for (h, spec) in t.effects.iter_mut().zip(effects) {
-                kira_fx::set(h, spec);
-            }
-        }
-    }
-
-    fn remove_track(&mut self, track: TrackId) {
-        // Dropping the handle removes the track.
-        self.tracks.remove(&track);
-    }
-
-    fn track_peak(&mut self, track: TrackId) -> f32 {
-        self.tracks
-            .get(&track)
-            .map_or(0.0, |t| kira_fx::take_peak(&t.meter))
+    /// Drop loaded clips (their import settings changed).
+    fn forget_clips(&mut self) {}
+    /// Offline backends: render the next `frames` of the mix.
+    fn render(&mut self, frames: usize) -> Option<Vec<Frame>> {
+        let _ = frames;
+        None
     }
 }
 
@@ -437,12 +257,30 @@ impl AudioBackend for NullBackend {
     fn set_track(&mut self, track: TrackId, volume: f32, effects: &[EffectSpec]) {
         if let Some(t) = self.log().tracks.get_mut(&track) {
             t.volume = volume;
-            // Like kira: the chain itself is fixed, only values change.
+            // The chain itself only changes with `set_chain`.
             for (fx, new) in t.effects.iter_mut().zip(effects) {
                 if fx.kind == new.kind {
                     *fx = new.clone();
                 }
             }
+        }
+    }
+
+    fn set_chain(&mut self, track: TrackId, effects: &[EffectSpec]) {
+        if let Some(t) = self.log().tracks.get_mut(&track) {
+            t.effects = effects.to_vec();
+        }
+    }
+
+    fn set_parent(&mut self, track: TrackId, parent: Option<TrackId>) {
+        if let Some(t) = self.log().tracks.get_mut(&track) {
+            t.parent = parent;
+        }
+    }
+
+    fn move_voice(&mut self, voice: VoiceId, track: Option<TrackId>) {
+        if let Some(v) = self.log().voices.get_mut(&voice) {
+            v.track = track;
         }
     }
 

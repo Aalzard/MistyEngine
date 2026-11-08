@@ -3,7 +3,11 @@
 //! parameters scripts can set by name.
 //!
 //! Values are addressed by string keys: `"<group id>/Volume"`, `"<group id>/Pitch"` and
-//! `"<group id>/<effect id>/<parameter>"`. Ids never change, so renaming keeps snapshots valid.
+//! `"<group id>/<effect id>/<parameter>"` (including `"<group>/<effect>/Wet"`, the wet mix level).
+//! Ids never change, so renaming keeps snapshots valid.
+//!
+//! Send units name the Receive or Duck Volume unit they feed by effect id. A mixer's Output can
+//! be a group of another mixer: its Master then plays into that group (nested mixers).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -33,6 +37,10 @@ pub struct AudioMixer {
     pub exposed: Vec<ExposedParam>,
     /// Next free group / effect id.
     pub next_id: u32,
+    /// Group of another mixer this mixer's Master plays into (`"Assets/Audio/Main.mixer#Music"`);
+    /// `None` = straight to the listener.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -54,6 +62,9 @@ pub struct MixerEffect {
     pub kind: EffectKind,
     #[serde(default)]
     pub bypass: bool,
+    /// Send: id of the Receive / Duck Volume unit it feeds (in this mixer).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -86,6 +97,7 @@ impl Default for AudioMixer {
             start_snapshot: 0,
             exposed: Vec::new(),
             next_id: 1,
+            output: None,
         }
     }
 }
@@ -176,6 +188,20 @@ impl AudioMixer {
             .max()
             .unwrap_or(0);
         self.next_id = self.next_id.max(max_id + 1);
+        // Sends feed receiving units on other groups only.
+        let receivers = self.receivers();
+        for g in &mut self.groups {
+            let gid = g.id;
+            for fx in &mut g.effects {
+                let ok = fx.kind == EffectKind::Send
+                    && fx
+                        .target
+                        .is_some_and(|t| receivers.iter().any(|(rg, re)| *re == t && *rg != gid));
+                if !ok {
+                    fx.target = None;
+                }
+            }
+        }
     }
 
     fn fresh_id(&mut self) -> u32 {
@@ -289,6 +315,7 @@ impl AudioMixer {
                 gone.contains(&g)
             }
         });
+        self.sanitize();
     }
 
     /// Rename a group; false if the name is empty or taken.
@@ -329,6 +356,7 @@ impl AudioMixer {
             id,
             kind,
             bypass: false,
+            target: None,
         });
         Some(id)
     }
@@ -338,6 +366,80 @@ impl AudioMixer {
             g.effects.retain(|e| e.id != effect);
         }
         self.prune(|t| matches!(t, KeyTarget::Effect(g, e, _) if g == group && e == effect));
+        self.sanitize();
+    }
+
+    /// Move an effect to position `to` of its chain (drag and drop).
+    pub fn move_effect_to(&mut self, group: u32, effect: u32, to: usize) {
+        if let Some(g) = self.group_mut(group)
+            && let Some(i) = g.effects.iter().position(|e| e.id == effect)
+        {
+            let fx = g.effects.remove(i);
+            let to = to.min(g.effects.len());
+            g.effects.insert(to, fx);
+        }
+    }
+
+    /// The group holding effect `effect`.
+    pub fn group_of_effect(&self, effect: u32) -> Option<u32> {
+        self.groups
+            .iter()
+            .find(|g| g.effects.iter().any(|e| e.id == effect))
+            .map(|g| g.id)
+    }
+
+    /// Every Receive and Duck Volume unit: (group, effect).
+    pub fn receivers(&self) -> Vec<(u32, u32)> {
+        self.groups
+            .iter()
+            .flat_map(|g| {
+                g.effects
+                    .iter()
+                    .filter(|e| e.kind.receives_sends())
+                    .map(move |e| (g.id, e.id))
+            })
+            .collect()
+    }
+
+    /// Point a Send at a Receive / Duck Volume unit (`None` = nowhere); false if not allowed.
+    pub fn set_send_target(&mut self, group: u32, send: u32, target: Option<u32>) -> bool {
+        let allowed =
+            target.is_none_or(|t| self.receivers().iter().any(|(g, e)| *e == t && *g != group));
+        match self
+            .group_mut(group)
+            .and_then(|g| g.effects.iter_mut().find(|e| e.id == send))
+        {
+            Some(fx) if allowed && fx.kind == EffectKind::Send => {
+                fx.target = target;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The Sends feeding receiving unit `effect`: (group, send effect).
+    pub fn sends_to(&self, effect: u32) -> Vec<(u32, u32)> {
+        self.groups
+            .iter()
+            .flat_map(|g| {
+                g.effects
+                    .iter()
+                    .filter(move |e| e.target == Some(effect))
+                    .map(move |e| (g.id, e.id))
+            })
+            .collect()
+    }
+
+    /// "Duck Volume on Music".
+    pub fn effect_label(&self, effect: u32) -> String {
+        match self.group_of_effect(effect) {
+            Some(g) => {
+                let kind = self.effect(g, effect).map_or("?", |e| e.kind.label());
+                let name = self.group(g).map_or("?", |g| g.name.as_str());
+                format!("{kind} on {name}")
+            }
+            None => "None".into(),
+        }
     }
 
     /// Move an effect one slot earlier (`-1`) or later (`1`) in its chain.
@@ -405,8 +507,7 @@ impl AudioMixer {
             for fx in &g.effects {
                 out.extend(
                     fx.kind
-                        .params()
-                        .iter()
+                        .keyed_params()
                         .map(|d| effect_key(g.id, fx.id, d.name)),
                 );
             }
@@ -422,6 +523,11 @@ impl AudioMixer {
             Some(KeyTarget::Pitch(g)) => format!("Pitch of {}", name(g)),
             Some(KeyTarget::Effect(g, e, p)) => {
                 let fx = self.effect(g, e).map_or("?", |fx| fx.kind.label());
+                let p = if p == super::effects::WET {
+                    "Wet mix level"
+                } else {
+                    p
+                };
                 format!("{p} of {fx} on {}", name(g))
             }
             None => key.to_owned(),
