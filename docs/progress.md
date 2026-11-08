@@ -2535,3 +2535,26 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Cascade grass casters still fade smoothly with the camera's distance (near-map hand-over,
   grass LOD); the camera's terrain LOD has no hysteresis (main view only now).
+
+## Prefabs 2.0 (branch r18-prefabs)
+
+### Done (docs/pending/r18-prefabs.md)
+- Per-property overrides on stable object ids (`Prefab Source`), with added / removed components
+  and child objects; instances follow asset changes in place and keep their overrides (Apply, Apply
+  All on other instances, Prefab Mode saves, live reload of `.prefab` files, scene reloads through
+  the override record saved in scene files).
+- Inspector: Overrides (n) ▾ dropdown with per-item Revert / Apply and Revert All / Apply All; bold
+  overridden labels with a blue bar, right-click ▸ Apply to Prefab (outer or nested) / Revert;
+  per-component Apply / Revert in the ⋮ menu; removed components listed; red Missing Prefab state.
+- Prefab Mode: open from the Project, the Hierarchy's › arrow or the Inspector; breadcrumb bar
+  (Scenes ▸ Cart ▸ Wheel), Save / Ctrl+S, Auto Save, In Context (scene dimmed behind), nested
+  levels, Save / Discard / Cancel in the bar.
+- Nested prefabs propagate (outer prefab files rewritten); Prefab Variants (Create ▸ Prefab Variant)
+  inherit through chains; Unpack / Unpack Completely; model files as read-only prefabs.
+- Format additions are backward compatible; SampleProject and the generator tests unchanged.
+
+### Not done yet
+- Closed scenes keep old instance copies until opened (builds pack them as saved).
+- A few component editors label fields differently from the field name: those overrides show on the
+  header bar and in the dropdown but not as a bold label.
+- No comparison view in the Overrides dropdown, no per-element list overrides.
