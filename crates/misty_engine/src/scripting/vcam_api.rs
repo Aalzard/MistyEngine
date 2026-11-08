@@ -409,4 +409,89 @@ return D
             Some(hero)
         );
     }
+
+    #[test]
+    fn scripts_drive_free_look_axes_impulses_and_target_groups() {
+        use crate::vcam::{ImpulseSource, TargetGroup};
+        let dir = std::env::temp_dir().join(format!("misty_vcam_api_r19_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("Assets")).unwrap();
+        std::fs::write(
+            dir.join("Assets/Shaker.lua"),
+            r#"local S = {}
+function S:Start()
+    local v = GameObject.Find("Free Look"):GetComponent("VirtualCamera")
+    v.xAxis = 45
+    v.yAxis = 3
+    print(string.format("axes %.1f %.1f", v.xAxis, v.yAxis))
+    v.inputAction = "Player/Look"
+    v.xAxisInput = ""
+    print("input", v.inputAction, v.xAxisInput == "")
+    local boom = GameObject.Find("Boom")
+    local src = boom:GetComponent("ImpulseSource")
+    print("generated", tostring(src:GenerateImpulse()))
+    Impulse.GenerateImpulse(boom, 2.0)
+    Impulse.GenerateImpulse(boom, Vector3.new(0, 1, 0))
+    Impulse.GenerateImpulseAt(Vector3.new(0, 0, 0), Vector3.new(1, 0, 0))
+    print("no source", tostring(Impulse.GenerateImpulse(GameObject.Find("Free Look"))))
+    local g = GameObject.Find("Group"):GetComponent("TargetGroup")
+    g:AddMember(GameObject.Find("Hero"), 2, 1.5)
+    g:AddMember(boom)
+    g:RemoveMember(boom)
+    print("members", g.memberCount)
+end
+return S
+"#,
+        )
+        .unwrap();
+        let mut s = Scene::new("v");
+        let cam = s.spawn("Main Camera", None);
+        s.add(cam, Camera::default());
+        s.add(cam, CameraBrain::default());
+        let hero = s.spawn("Hero", None);
+        let fl = s.spawn("Free Look", None);
+        s.add(
+            fl,
+            VirtualCamera {
+                follow: Some(hero),
+                ..VirtualCamera::free_look()
+            },
+        );
+        let boom = s.spawn("Boom", None);
+        s.add(boom, ImpulseSource::default());
+        let group = s.spawn("Group", None);
+        s.add(group, TargetGroup::default());
+        s.add(
+            hero,
+            Scripts {
+                list: vec![ScriptRef {
+                    path: "Assets/Shaker.lua".into(),
+                    ..Default::default()
+                }],
+            },
+        );
+        let physics = Physics::build(&s, Vec3::ZERO);
+        let mut host = ScriptHost::start(&mut s, physics, dir);
+        let mut time = Time::default();
+        time.advance(1.0 / 60.0);
+        host.update(&mut s, &time, Default::default());
+        let logs: Vec<String> = host.take_logs().into_iter().map(|l| l.1).collect();
+        assert_eq!(
+            logs,
+            [
+                "axes 45.0 1.0",
+                "input Player/Look true",
+                "generated true",
+                "no source false",
+                "members 1"
+            ]
+        );
+        assert_eq!(host.with_cameras(|r| r.impulses.events.len()), 4);
+        let v = s.world.get::<&VirtualCamera>(fl).unwrap().clone();
+        assert_eq!(v.orbital.x_axis.input_action, "Player/Look");
+        assert_eq!(v.orbital.y_axis.input_action, "Player/Look");
+        let g = s.world.get::<&TargetGroup>(group).unwrap().clone();
+        assert_eq!(g.members.len(), 1);
+        assert_eq!(g.members[0].target, Some(hero));
+        assert!((g.members[0].weight - 2.0).abs() < 1e-6);
+    }
 }
