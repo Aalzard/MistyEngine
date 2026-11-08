@@ -575,6 +575,11 @@ impl TerrainCache {
         self.lit_fans_only
     }
 
+    /// The lit grass draws the flat fans (not with Quality ▸ Grass Ground Cover).
+    pub fn draws_fans(&self) -> bool {
+        self.ground_cover.is_none()
+    }
+
     pub fn set_ground_cover(&mut self, cover: Option<f32>) {
         self.ground_cover = cover;
     }

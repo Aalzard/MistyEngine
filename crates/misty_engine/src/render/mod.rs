@@ -3100,12 +3100,17 @@ impl Renderer {
                 let standing = grass_cull::DEPTH;
                 self.terrains
                     .draw_grass(&mut pass, frame.terrains, standing, stats);
-                pass.set_pipeline(pipes.raster_fans());
+                // (With the ground cover there are no fans: the lit lane holds only blades.)
+                if self.terrains.draws_fans() {
+                    pass.set_pipeline(pipes.raster_fans());
+                    self.terrains
+                        .draw_grass(&mut pass, frame.terrains, lit, stats);
+                }
             } else {
                 pass.set_pipeline(pipes.raster());
+                self.terrains
+                    .draw_grass(&mut pass, frame.terrains, lit, stats);
             }
-            self.terrains
-                .draw_grass(&mut pass, frame.terrains, lit, stats);
         }
         self.mark(encoder, "Grass visibility");
         let terrains = self.terrains.grass_vis_terrains(frame.terrains);
