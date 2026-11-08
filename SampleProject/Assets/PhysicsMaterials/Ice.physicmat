@@ -1,0 +1,7 @@
+{
+  "dynamic_friction": 0.02,
+  "static_friction": 0.05,
+  "bounciness": 0.0,
+  "friction_combine": "Minimum",
+  "bounce_combine": "Average"
+}
