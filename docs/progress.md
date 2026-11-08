@@ -2813,3 +2813,33 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Watershed regions, automatic drop / jump links, links across surfaces, a compressed tile cache
   for carving (tiles rebuild from collected geometry), physics colliders as bake geometry,
   `SamplePathPosition`.
+
+## Wireframe draw modes on the GPU (branch wireframe)
+
+### Done (`render/wireframe.rs`, screenshots `docs/screenshots/gfx/wireframe_*`)
+- The Scene view's Wireframe and Shaded Wireframe now show everything the GPU draws, not just ordinary meshes:
+  each part draws its triangles a second time as edges with its own vertex stage and the culling and LOD the
+  frame picked: meshes (each visible draw, both faces), terrain chunks (their LOD index ranges), trees (bark,
+  leaf cards, impostor quads far away), grass and flowers (6 % of the standing blades within 10 m, thinning
+  out over the last 5 m, like Unity's sparse detail meshes) and virtual geometry clusters (both culling phases).
+- Edges come from polygon mode Line (`POLYGON_MODE_LINE`, requested when the adapter has it); without it, from
+  filled triangles that keep the pixels within half a pixel of an edge (`SHADER_BARYCENTRICS`); without
+  either, the editor keeps its CPU edge lists with the 2M-edge budget. `MISTY_WIREFRAME=cpu|barycentric`
+  forces a fallback.
+- Shaded Wireframe: edges at the end of the main pass (before the gizmo lines), depth tested against the
+  scene with a small bias, in the old colour (black, 35 %). Wireframe: the geometry renders unlit, without
+  lights, shadows, water, particles, transparents or post-processing, for its depth only; a flat background
+  (the view's grey) is painted over its colour, then the grid and the edges (dark grey, 90 %). Hidden lines are
+  removed by the real surfaces (alpha-tested leaves and blades included), which keeps MeadowDemo readable.
+- The edge colour is a new `wire` vec4 at the end of the view uniform (the shadow views' stride went from 512
+  to 768 bytes). Shaded modes are untouched.
+- Cost, MeadowDemo wide at 1920×1080, High (`wireframe_cost`): shaded 15.3 ms GPU / 2.0 ms CPU; Shaded
+  Wireframe 16.1 ms / 2.1 ms (+0.8 ms; +0.5 ms with virtual geometry on); Wireframe 6.6 ms / 0.8 ms (no
+  lighting, shadows or post-processing).
+- Tests: `wireframe_meadow_draws_terrain_edges` (both modes, virtual geometry off and on, no validation
+  errors, edges over the ground, flat background above the horizon) and the barycentric fallback on a device
+  that has barycentrics.
+
+### Not done yet
+- The Wireframe mode still pays for the geometry's shading passes (unlit); a depth-only path would be
+  cheaper. Water and particles show no edges. Shaded Wireframe edges go through TAA like the gizmo lines.
