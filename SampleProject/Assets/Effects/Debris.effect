@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "properties": [],
+  "contexts": [
+    {
+      "id": 1,
+      "type": "Spawn",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "id": 2,
+          "type": "PeriodicBurst",
+          "values": {
+            "Count": {
+              "Float": 40.0
+            },
+            "Delay": {
+              "Float": 0.0
+            },
+            "Period": {
+              "Float": 2.5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Initialize",
+      "capacity": 256,
+      "bounds_center": [
+        0.0,
+        2.0,
+        0.0
+      ],
+      "bounds_size": [
+        10.0,
+        6.0,
+        10.0
+      ],
+      "space": "Local",
+      "position": [
+        0.0,
+        226.0
+      ],
+      "blocks": [
+        {
+          "id": 4,
+          "type": "PositionCone",
+          "mode": "Volume",
+          "values": {
+            "Angle": {
+              "Float": 30.0
+            },
+            "Height": {
+              "Float": 0.1
+            },
+            "Radius": {
+              "Float": 0.2
+            }
+          }
+        },
+        {
+          "id": 5,
+          "type": "VelocityFromDirection",
+          "values": {
+            "Max Speed": {
+              "Float": 6.0
+            },
+            "Min Speed": {
+              "Float": 3.0
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Lifetime": {
+              "Float": 4.5
+            }
+          }
+        },
+        {
+          "id": 7,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 0.1
+            },
+            "B": {
+              "Float": 0.22
+            }
+          }
+        },
+        {
+          "id": 8,
+          "type": "SetAttribute",
+          "attribute": "Angle",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 0.0
+            },
+            "B": {
+              "Float": 360.0
+            }
+          }
+        },
+        {
+          "id": 9,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Color": [
+                0.9,
+                0.55,
+                0.3,
+                1.0
+              ]
+            },
+            "B": {
+              "Color": [
+                0.5,
+                0.6,
+                0.7,
+                1.0
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "position": [
+        0.0,
+        1025.0
+      ],
+      "blocks": [
+        {
+          "id": 11,
+          "type": "Gravity"
+        },
+        {
+          "id": 12,
+          "type": "CollidePlane",
+          "values": {
+            "Bounce": {
+              "Float": 0.45
+            },
+            "Friction": {
+              "Float": 0.35
+            }
+          }
+        },
+        {
+          "id": 13,
+          "type": "SetAttribute",
+          "attribute": "Angle",
+          "random": false,
+          "composition": "Add"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "Output",
+      "kind": "Mesh",
+      "blend": "Opaque",
+      "flipbook": [
+        1,
+        1
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": false,
+      "soft_distance": 0.5,
+      "line_length": 0.05,
+      "sort": "Auto",
+      "mesh": "Cube",
+      "trail_points": 8,
+      "position": [
+        0.0,
+        1455.0
+      ],
+      "blocks": []
+    }
+  ],
+  "operators": [
+    {
+      "id": 14,
+      "type": "Time",
+      "position": [
+        -520.0,
+        1360.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "Multiply",
+      "position": [
+        -260.0,
+        1333.0
+      ],
+      "values": {
+        "B": {
+          "Float": 240.0
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "from": 14,
+      "output": "Delta",
+      "to": 15,
+      "input": "A"
+    },
+    {
+      "from": 15,
+      "output": "Out",
+      "to": 13,
+      "input": "Angle"
+    }
+  ],
+  "next_id": 17
+}

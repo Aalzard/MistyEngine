@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "properties": [
+    {
+      "name": "Radius",
+      "value": {
+        "Float": 1.6
+      }
+    },
+    {
+      "name": "Speed",
+      "value": {
+        "Float": 1.8
+      }
+    }
+  ],
+  "contexts": [],
+  "operators": [
+    {
+      "id": 1,
+      "type": "Property",
+      "name": "Radius",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Property",
+      "name": "Speed",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Time",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Multiply",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Cosine",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Sine",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Multiply",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Multiply",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Multiply",
+      "position": [
+        -300.0,
+        0.0
+      ],
+      "values": {
+        "B": {
+          "Float": 2.3
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "Sine",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Remap",
+      "position": [
+        -300.0,
+        0.0
+      ],
+      "values": {
+        "In Max": {
+          "Float": 1.0
+        },
+        "In Min": {
+          "Float": -1.0
+        },
+        "Out Max": {
+          "Float": 2.0
+        },
+        "Out Min": {
+          "Float": 1.2
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "Combine",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "SubgraphOutput",
+      "name": "Position",
+      "position": [
+        -300.0,
+        0.0
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": 3,
+      "output": "Total",
+      "to": 4,
+      "input": "A"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 4,
+      "input": "B"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 5,
+      "input": "Input"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 6,
+      "input": "Input"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 7,
+      "input": "A"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 7,
+      "input": "B"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "A"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 8,
+      "input": "B"
+    },
+    {
+      "from": 3,
+      "output": "Total",
+      "to": 9,
+      "input": "A"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 10,
+      "input": "Input"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 11,
+      "input": "Input"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 12,
+      "input": "X"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 12,
+      "input": "Y"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 12,
+      "input": "Z"
+    },
+    {
+      "from": 12,
+      "output": "Out",
+      "to": 13,
+      "input": "Value"
+    }
+  ],
+  "next_id": 14
+}

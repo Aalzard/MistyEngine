@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "properties": [],
+  "contexts": [
+    {
+      "id": 1,
+      "type": "Spawn",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "id": 2,
+          "type": "ConstantRate",
+          "values": {
+            "Rate": {
+              "Float": 70.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Initialize",
+      "capacity": 512,
+      "bounds_center": [
+        0.0,
+        1.6,
+        0.0
+      ],
+      "bounds_size": [
+        5.0,
+        4.0,
+        5.0
+      ],
+      "space": "World",
+      "position": [
+        0.0,
+        182.0
+      ],
+      "blocks": [
+        {
+          "id": 4,
+          "type": "SetAttribute",
+          "attribute": "Position",
+          "random": false,
+          "composition": "Overwrite"
+        },
+        {
+          "id": 6,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Lifetime": {
+              "Float": 1.6
+            }
+          }
+        },
+        {
+          "id": 7,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Size": {
+              "Float": 0.18
+            }
+          }
+        },
+        {
+          "id": 8,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Color": {
+              "Color": [
+                0.6,
+                2.2,
+                3.0,
+                1.0
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "position": [
+        0.0,
+        717.0
+      ],
+      "blocks": []
+    },
+    {
+      "id": 10,
+      "type": "Output",
+      "kind": "Ribbon",
+      "blend": "Additive",
+      "flipbook": [
+        1,
+        1
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": false,
+      "soft_distance": 0.5,
+      "line_length": 0.05,
+      "sort": "Auto",
+      "mesh": "Cube",
+      "trail_points": 8,
+      "position": [
+        0.0,
+        872.0
+      ],
+      "blocks": [
+        {
+          "id": 11,
+          "type": "ColorOverLife",
+          "values": {
+            "Gradient": {
+              "Gradient": {
+                "color_keys": [
+                  {
+                    "time": 0.0,
+                    "color": [
+                      1.0,
+                      1.0,
+                      1.0
+                    ]
+                  },
+                  {
+                    "time": 1.0,
+                    "color": [
+                      1.0,
+                      0.3,
+                      1.0
+                    ]
+                  }
+                ],
+                "alpha_keys": [
+                  {
+                    "time": 0.0,
+                    "alpha": 1.0
+                  },
+                  {
+                    "time": 1.0,
+                    "alpha": 0.0
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 12,
+          "type": "SizeOverLife",
+          "values": {
+            "Curve": {
+              "Curve": {
+                "keys": [
+                  [
+                    0.0,
+                    1.0
+                  ],
+                  [
+                    1.0,
+                    0.1
+                  ]
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "operators": [
+    {
+      "id": 5,
+      "type": "Subgraph",
+      "path": "Assets/Effects/Orbit.vfxoperator",
+      "position": [
+        -260.0,
+        364.0
+      ],
+      "values": {
+        "Speed": {
+          "Float": 2.2
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "from": 5,
+      "output": "Position",
+      "to": 4,
+      "input": "Position"
+    }
+  ],
+  "next_id": 13
+}

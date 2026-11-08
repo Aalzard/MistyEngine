@@ -1,0 +1,266 @@
+{
+  "version": 1,
+  "properties": [],
+  "contexts": [
+    {
+      "id": 1,
+      "type": "Spawn",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "id": 2,
+          "type": "ConstantRate",
+          "values": {
+            "Rate": {
+              "Float": 14.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Initialize",
+      "capacity": 256,
+      "bounds_center": [
+        0.0,
+        2.5,
+        0.0
+      ],
+      "bounds_size": [
+        6.0,
+        6.0,
+        6.0
+      ],
+      "space": "Local",
+      "position": [
+        0.0,
+        182.0
+      ],
+      "blocks": [
+        {
+          "id": 4,
+          "type": "PositionSphere",
+          "mode": "Volume",
+          "values": {
+            "Radius": {
+              "Float": 0.3
+            }
+          }
+        },
+        {
+          "id": 5,
+          "type": "SetAttribute",
+          "attribute": "Velocity",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Vec3": [
+                -0.15,
+                0.5,
+                -0.15
+              ]
+            },
+            "B": {
+              "Vec3": [
+                0.15,
+                0.9,
+                0.15
+              ]
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 4.0
+            },
+            "B": {
+              "Float": 5.5
+            }
+          }
+        },
+        {
+          "id": 7,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 0.7
+            },
+            "B": {
+              "Float": 1.0
+            }
+          }
+        },
+        {
+          "id": 8,
+          "type": "SetAttribute",
+          "attribute": "Angle",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 0.0
+            },
+            "B": {
+              "Float": 360.0
+            }
+          }
+        },
+        {
+          "id": 9,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Color": {
+              "Color": [
+                0.55,
+                0.55,
+                0.6,
+                0.7
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "position": [
+        0.0,
+        981.0
+      ],
+      "blocks": [
+        {
+          "id": 11,
+          "type": "Turbulence",
+          "values": {
+            "Frequency": {
+              "Float": 0.5
+            },
+            "Intensity": {
+              "Float": 0.3
+            }
+          }
+        },
+        {
+          "id": 12,
+          "type": "LinearDrag",
+          "values": {
+            "Drag": {
+              "Float": 0.3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "Output",
+      "kind": "Quad",
+      "blend": "Alpha",
+      "texture": "Assets/Textures/VfxDemo2 Smoke Sheet.png",
+      "flipbook": [
+        4,
+        4
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": true,
+      "soft_distance": 0.5,
+      "line_length": 0.05,
+      "sort": "Auto",
+      "mesh": "Cube",
+      "trail_points": 8,
+      "position": [
+        0.0,
+        1290.0
+      ],
+      "blocks": [
+        {
+          "id": 14,
+          "type": "ColorOverLife",
+          "values": {
+            "Gradient": {
+              "Gradient": {
+                "color_keys": [
+                  {
+                    "time": 0.0,
+                    "color": [
+                      1.0,
+                      1.0,
+                      1.0
+                    ]
+                  },
+                  {
+                    "time": 1.0,
+                    "color": [
+                      0.8,
+                      0.8,
+                      0.8
+                    ]
+                  }
+                ],
+                "alpha_keys": [
+                  {
+                    "time": 0.0,
+                    "alpha": 0.0
+                  },
+                  {
+                    "time": 0.15,
+                    "alpha": 1.0
+                  },
+                  {
+                    "time": 1.0,
+                    "alpha": 0.0
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": 15,
+          "type": "SizeOverLife",
+          "values": {
+            "Curve": {
+              "Curve": {
+                "keys": [
+                  [
+                    0.0,
+                    0.6
+                  ],
+                  [
+                    1.0,
+                    2.2
+                  ]
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "operators": [],
+  "links": [],
+  "next_id": 16
+}
