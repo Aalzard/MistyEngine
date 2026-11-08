@@ -92,10 +92,12 @@ pub enum AssetKind {
     Tree,
     /// Input Actions (`.inputactions`, starting with Player and UI maps).
     InputActions,
+    /// Physics Material (`.physicmat`): friction, bounciness and combine modes for colliders.
+    PhysicsMaterial,
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 11] = [
+    pub const ALL: [AssetKind; 12] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
@@ -107,6 +109,7 @@ impl AssetKind {
         AssetKind::Timeline,
         AssetKind::Tree,
         AssetKind::InputActions,
+        AssetKind::PhysicsMaterial,
     ];
 
     /// Menu label.
@@ -123,6 +126,7 @@ impl AssetKind {
             AssetKind::Timeline => "Timeline",
             AssetKind::Tree => "Tree",
             AssetKind::InputActions => "Input Actions",
+            AssetKind::PhysicsMaterial => "Physics Material",
             AssetKind::SurfaceShader => "Surface Shader",
             AssetKind::UnlitShader => "Unlit Shader",
             AssetKind::MaterialFromShader => "Material from Shader",

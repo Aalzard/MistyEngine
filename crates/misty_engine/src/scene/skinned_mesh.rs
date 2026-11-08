@@ -84,7 +84,7 @@ impl SkinnedMeshRenderer {
 }
 
 /// Bone lists stored as entity id bits, `null` for missing bones.
-mod bone_list {
+pub(crate) mod bone_list {
     use hecs::Entity;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

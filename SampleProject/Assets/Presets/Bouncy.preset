@@ -17,6 +17,7 @@
   "excluded": [
     "enabled",
     "is_trigger",
+    "material",
     "center",
     "radius"
   ]

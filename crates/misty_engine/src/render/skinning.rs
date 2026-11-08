@@ -1,7 +1,8 @@
 //! GPU skinning: one compute dispatch per changed [`crate::skinning::SkinPose`] writes the posed
 //! vertices into a buffer that is also a vertex buffer, so every pass (shadows, depth prepass,
 //! main, outlines) draws the deformed mesh through the ordinary [`GpuMesh`] path. Static poses
-//! are not re-skinned; meshes that aren't skinned never reach this module.
+//! are not re-skinned; meshes that aren't skinned never reach this module. A pose carrying
+//! cloth vertices ([`SkinPose::vertices`]) is uploaded into the same buffer instead of skinned.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -81,24 +82,32 @@ fn storage(
 }
 
 impl Base {
-    fn new(device: &wgpu::Device, key: &str) -> Option<Self> {
-        let (model, i) = skinning::model_mesh(&crate::scene::MeshRef::Asset(key.to_owned()))?;
-        let m = &model.meshes[i];
-        if m.data.indices.is_empty() {
+    fn new(device: &wgpu::Device, source: &crate::scene::MeshRef) -> Option<Self> {
+        let key = source_key(source);
+        let key = key.as_str();
+        // Built-in primitives (cloth on a Plane) have no skin or blend shapes.
+        let model = skinning::model_mesh(source);
+        let data = models::mesh(source)?;
+        let m_skin = model.as_ref().and_then(|(m, i)| m.meshes[*i].skin.as_ref());
+        let shapes: &[models::BlendShape] = match &model {
+            Some((m, i)) => &m.meshes[*i].blend_shapes,
+            None => &[],
+        };
+        if data.indices.is_empty() {
             return None;
         }
-        let n = m.data.vertices.len();
+        let n = data.vertices.len();
         let mut influences: Vec<[u32; 4]> = Vec::with_capacity(n * 2);
         for v in 0..n {
-            let (j, w) = match &m.skin {
+            let (j, w) = match m_skin {
                 Some(s) => (s.joints[v], s.weights[v]),
                 None => ([0; 4], [1.0, 0.0, 0.0, 0.0]),
             };
             influences.push(j.map(u32::from));
             influences.push(w.map(f32::to_bits));
         }
-        let mut deltas: Vec<f32> = Vec::with_capacity(m.blend_shapes.len() * n * 6);
-        for s in &m.blend_shapes {
+        let mut deltas: Vec<f32> = Vec::with_capacity(shapes.len() * n * 6);
+        for s in shapes {
             for v in 0..n {
                 deltas.extend(s.positions.get(v).copied().unwrap_or_default());
                 deltas.extend(s.normals.get(v).copied().unwrap_or_default());
@@ -106,17 +115,17 @@ impl Base {
         }
         let copy = wgpu::BufferUsages::empty();
         Some(Self {
-            src: storage(device, key, bytemuck::cast_slice(&m.data.vertices), copy),
+            src: storage(device, key, bytemuck::cast_slice(&data.vertices), copy),
             influences: storage(device, key, bytemuck::cast_slice(&influences), copy),
             deltas: storage(device, key, bytemuck::cast_slice(&deltas), copy),
             indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(key),
-                contents: bytemuck::cast_slice(&m.data.indices),
+                contents: bytemuck::cast_slice(&data.indices),
                 usage: wgpu::BufferUsages::INDEX,
             }),
             vertex_count: n as u32,
-            index_count: m.data.indices.len() as u32,
-            shape_count: m.blend_shapes.len() as u32,
+            index_count: data.indices.len() as u32,
+            shape_count: shapes.len() as u32,
         })
     }
 }
@@ -214,13 +223,14 @@ impl Skins {
         key: &str,
         pose: &SkinPose,
     ) -> bool {
-        let Some(source) = pose_source(pose) else {
+        let Some(mesh_ref) = pose_source(pose) else {
             return false;
         };
+        let source = source_key(&mesh_ref);
         let base = match self.bases.get(&source) {
             Some(b) => b.clone(),
             None => {
-                let b = Base::new(device, &source).map(Arc::new);
+                let b = Base::new(device, &mesh_ref).map(Arc::new);
                 self.bases.insert(source.clone(), b.clone());
                 b
             }
@@ -252,6 +262,13 @@ impl Skins {
             return false;
         }
         i.version = Some(pose.version);
+        // Cloth: the simulated vertices go straight into the drawn buffer.
+        if let Some(v) = &pose.vertices {
+            if v.0.len() == base.vertex_count as usize {
+                queue.write_buffer(&i.mesh.vertices, 0, bytemuck::cast_slice(&v.0));
+            }
+            return false;
+        }
         let params = Params {
             vertex_count: base.vertex_count,
             joint_count: joints as u32,
@@ -269,11 +286,19 @@ impl Skins {
     }
 }
 
-/// Mesh key ("path#index") of a pose's source mesh.
-fn pose_source(pose: &SkinPose) -> Option<String> {
+/// The source mesh of a pose (an imported mesh or a built-in primitive).
+fn pose_source(pose: &SkinPose) -> Option<crate::scene::MeshRef> {
     match &pose.mesh {
-        crate::scene::MeshRef::Asset(k) if !skinning::is_pose_key(k) => Some(k.clone()),
-        _ => None,
+        crate::scene::MeshRef::Asset(k) if skinning::is_pose_key(k) => None,
+        m => Some(m.clone()),
+    }
+}
+
+/// Cache key of a source mesh ("path#index", or "primitive:Plane").
+fn source_key(m: &crate::scene::MeshRef) -> String {
+    match m {
+        crate::scene::MeshRef::Asset(k) => k.clone(),
+        crate::scene::MeshRef::Primitive(p) => format!("primitive:{p:?}"),
     }
 }
 
@@ -292,7 +317,8 @@ impl Instance {
             size: (n * std::mem::size_of::<mesh::Vertex>()).max(16) as u64,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::VERTEX
-                | wgpu::BufferUsages::COPY_SRC,
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {

@@ -5,6 +5,7 @@ mod anim;
 mod animator;
 mod audio_editors;
 pub(crate) mod card;
+mod cloth_editors;
 mod cloud_editors;
 mod decal_editors;
 mod editors;
@@ -12,6 +13,7 @@ mod fog_editors;
 mod font_asset_editor;
 mod glow_editors;
 mod input_editors;
+mod joint_editors;
 mod layer_mask;
 mod light_area;
 mod light_probe_editor;
@@ -32,6 +34,7 @@ mod occlusion_editors;
 mod overrides;
 pub(in crate::panels) mod particles;
 mod physics_editors;
+mod physics_material_editor;
 mod post_volume;
 mod post_volume_fx;
 mod post_volume_screen;
@@ -596,6 +599,11 @@ fn material_previews(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     });
 }
 
+/// Assets ▸ Create ▸ Physics Material.
+pub fn create_physics_material(dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    physics_material_editor::create(dir)
+}
+
 /// Inspector for a Project asset: material editor, or a read-only prefab summary.
 fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     crate::panels::asset_groups::addressable_header(ui, state, rel);
@@ -629,6 +637,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::animation::is_avatar(rel) {
         mask_editor::avatar_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::physics::material::is_physics_material(rel) {
+        physics_material_editor::physics_material_asset(ui, state, rel);
         return;
     }
     if misty_engine::audio::is_mixer(rel) {

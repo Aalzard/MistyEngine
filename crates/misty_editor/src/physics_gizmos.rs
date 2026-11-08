@@ -1,16 +1,22 @@
 //! Scene-view gizmos of the selected object's joints (anchor, hinge axis and limit arc, spring
-//! line), its Character Controller capsule and its Wheel Collider (suspension, tyre, contact).
+//! line; the Configurable and Character Joints' axes, limit arcs and linear limits), its
+//! Character Controller capsule and its Wheel Collider (suspension, tyre, contact).
 
 use glam::{Mat4, Quat, Vec3};
 use misty_engine::hecs::Entity;
 use misty_engine::physics::collider_matrix;
 use misty_engine::scene::{
-    CharacterController, FixedJoint, HingeJoint, Scene, SpringJoint, WheelCollider,
+    CharacterController, CharacterJoint, ConfigurableJoint, FixedJoint, HingeJoint, JointMotion,
+    Scene, SpringJoint, WheelCollider,
 };
 
 use super::{COLLIDER, Lines};
 
 const JOINT: [f32; 4] = [1.0, 0.6, 0.15, 0.95];
+/// Secondary (swing) axis of Configurable and Character Joints.
+const SECONDARY: [f32; 4] = [0.45, 0.9, 0.35, 0.95];
+/// Limit arcs and linear limits.
+const LIMIT: [f32; 4] = [1.0, 0.85, 0.3, 0.8];
 /// Ground contact of a Wheel Collider while playing.
 const CONTACT: [f32; 4] = [1.0, 0.25, 0.2, 1.0];
 
@@ -62,6 +68,58 @@ impl Lines {
                 self.cross(c, 0.05, JOINT);
             }
         }
+        if let Ok(j) = w.get::<&ConfigurableJoint>(e) {
+            let anchor = m.transform_point3(j.anchor);
+            let frame = rot * misty_engine::physics::joint_basis(j.axis, j.secondary_axis);
+            let (x, y, z) = (frame * Vec3::X, frame * Vec3::Y, frame * Vec3::Z);
+            self.cross(anchor, 0.08, JOINT);
+            self.arrow(anchor, x, 0.8, JOINT);
+            self.arrow(anchor, y, 0.5, SECONDARY);
+            if j.angular_x_motion == JointMotion::Limited {
+                let (lo, hi) = (j.low_angular_x_limit.limit, j.high_angular_x_limit.limit);
+                self.limit_arc_colored(anchor, x, y, lo, hi, 0.5, LIMIT);
+            }
+            if j.angular_y_motion == JointMotion::Limited {
+                let l = j.angular_y_limit.limit.abs();
+                self.limit_arc_colored(anchor, y, x, -l, l, 0.4, LIMIT);
+            }
+            if j.angular_z_motion == JointMotion::Limited {
+                let l = j.angular_z_limit.limit.abs();
+                self.limit_arc_colored(anchor, z, x, -l, l, 0.35, LIMIT);
+            }
+            // Linear limits: the range each Limited axis may slide.
+            let l = j.linear_limit.limit.max(0.0);
+            for (axis, motion) in [(x, j.x_motion), (y, j.y_motion), (z, j.z_motion)] {
+                if motion == JointMotion::Limited && l > 0.0 {
+                    self.line(anchor - axis * l, anchor + axis * l, LIMIT);
+                    let side = axis.any_orthonormal_vector() * 0.05;
+                    for end in [anchor - axis * l, anchor + axis * l] {
+                        self.line(end - side, end + side, LIMIT);
+                    }
+                }
+            }
+            if !j.auto_configure_connected_anchor {
+                let c = connected_point(scene, j.connected_body, j.connected_anchor);
+                self.cross(c, 0.05, JOINT);
+            }
+        }
+        if let Ok(j) = w.get::<&CharacterJoint>(e) {
+            let anchor = m.transform_point3(j.anchor);
+            let frame = rot * misty_engine::physics::joint_basis(j.axis, j.swing_axis);
+            let (x, y, z) = (frame * Vec3::X, frame * Vec3::Y, frame * Vec3::Z);
+            self.cross(anchor, 0.06, JOINT);
+            self.arrow(anchor, x, 0.4, JOINT);
+            self.arrow(anchor, y, 0.3, SECONDARY);
+            let (lo, hi) = (j.low_twist_limit.limit, j.high_twist_limit.limit);
+            self.limit_arc_colored(anchor, x, y, lo, hi, 0.3, LIMIT);
+            let s1 = j.swing1_limit.limit.abs();
+            self.limit_arc_colored(anchor, y, z, -s1, s1, 0.25, SECONDARY);
+            let s2 = j.swing2_limit.limit.abs();
+            self.limit_arc_colored(anchor, z, y, -s2, s2, 0.2, SECONDARY);
+            if let Some(b) = j.connected_body.filter(|b| scene.contains(*b)) {
+                self.line(anchor, scene.world_position(b), JOINT);
+            }
+        }
         if let Ok(j) = w.get::<&SpringJoint>(e) {
             let anchor = m.transform_point3(j.anchor);
             self.cross(anchor, 0.08, JOINT);
@@ -76,6 +134,44 @@ impl Lines {
                 self.zigzag(anchor, o);
             }
         }
+    }
+
+    /// Axis arrow from `at` along `dir`.
+    fn arrow(&mut self, at: Vec3, dir: Vec3, len: f32, color: [f32; 4]) {
+        let dir = dir.normalize_or_zero();
+        let tip = at + dir * len;
+        self.line(at, tip, color);
+        let side = dir.any_orthonormal_vector();
+        for s in [side, dir.cross(side)] {
+            self.line(tip, tip - dir * 0.1 + s * 0.05, color);
+            self.line(tip, tip - dir * 0.1 - s * 0.05, color);
+        }
+    }
+
+    /// [`Self::limit_arc`] with a radius and colour; the angle is measured from the rest
+    /// direction `side` of the limited body.
+    #[allow(clippy::too_many_arguments)]
+    fn limit_arc_colored(
+        &mut self,
+        at: Vec3,
+        axis: Vec3,
+        side: Vec3,
+        min: f32,
+        max: f32,
+        r: f32,
+        color: [f32; 4],
+    ) {
+        let axis = axis.normalize_or_zero();
+        let side = (side - axis * side.dot(axis)).normalize_or_zero();
+        let point = |deg: f32| at + Quat::from_axis_angle(axis, deg.to_radians()) * side * r;
+        let steps = 24;
+        for i in 0..steps {
+            let a = min + (max - min) * i as f32 / steps as f32;
+            let b = min + (max - min) * (i + 1) as f32 / steps as f32;
+            self.line(point(a), point(b), color);
+        }
+        self.line(at, point(min), color);
+        self.line(at, point(max), color);
     }
 
     /// Arc from `min` to `max` degrees around `axis`, starting along `side`.

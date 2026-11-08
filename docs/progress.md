@@ -2731,3 +2731,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - No scripted selection (`SetSelectedGameObject`), no Blocking Objects for world canvases, rotated sliders map
   the pointer unrotated, no draggable border handles in the import preview, no baked-charset font assets.
+
+## Ragdolls and cloth, round 19C (branch r19-physics)
+
+### Done (docs/pending/r19-physics.md)
+- Configurable Joint (per-axis Locked / Limited / Free, hard or spring limits, linear and angular
+  drives with targets and Maximum Force, projection) and Character Joint (twist and two swing
+  limits); Break Force / Break Torque on every joint with `OnJointBreak(breakForce)` in Lua (the
+  joint component is then removed); Inspectors and Scene-view gizmos (axes, limit arcs, ranges).
+- Physics Material assets (`.physicmat`: dynamic and static friction, bounciness, combine modes)
+  with a Material slot on every collider; static friction while resting, dynamic while sliding.
+- Ragdoll Wizard (GameObject ▸ 3D Object ▸ Ragdoll…): bones auto-filled from the humanoid Avatar or
+  bone names; capsules, boxes and a head sphere, body-segment masses, Character Joints with
+  humanlike limits. A Ragdoll component switches animated ↔ physics while playing with a blend back
+  to the animation; Lua `Ragdoll.Enable / Disable / IsEnabled`.
+- XPBD cloth on skinned, plain and primitive meshes: stretch, bending, tethers, per-vertex max
+  distance (painted in the Scene view or read from a vertex colour channel), sphere and capsule
+  colliders, the Wind Zone, optional self-collision. One job per cloth per frame on the background
+  pool (the main thread never waits), drawn through the GPU skinning hook.
+- Scene view ▸ Physics Debug draw mode: colliders by body state, contacts, joints, sleeping bodies,
+  cloth particles, with a legend.
+- PhysicsDemo2 sample: a ragdoll dummy you knock over with thrown balls (R to get up), a flag in the
+  wind, a bridge an anvil snaps, ice and rubber on a ramp.
+
+### Not done yet
+- Cloth collision with boxes, meshes and terrain, continuous collision, tearing, a GPU solver;
+  ragdoll root following the body and get-up matching; Configurable Joint world-space frames,
+  swap bodies, mass scales and a true slerp drive.

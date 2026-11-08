@@ -9,6 +9,11 @@
 //!
 //! Skin matrices are in the renderer object's space: `inverse(renderer) * bone * bind_pose`, so
 //! the draw keeps the renderer's world matrix like an ordinary mesh.
+//!
+//! Cloth hooks in here: a renderer whose object has a [`crate::physics::cloth::ClothPose`]
+//! publishes the simulated vertices with its pose ([`SkinPose::vertices`]), and the GPU pass
+//! uploads them instead of skinning. Renderers of built-in primitive meshes (no skin) work too,
+//! so Cloth can go on a Plane.
 
 pub mod sample;
 
@@ -32,6 +37,17 @@ pub fn is_pose_key(key: &str) -> bool {
     key.starts_with(PREFIX)
 }
 
+/// Vertices computed on the CPU for a renderer (cloth), in the renderer's space. Compared by
+/// identity: each simulation result is a new list.
+#[derive(Clone, Debug)]
+pub struct PosedVertices(pub Arc<Vec<Vertex>>);
+
+impl PartialEq for PosedVertices {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// One posed Skinned Mesh Renderer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkinPose {
@@ -45,6 +61,8 @@ pub struct SkinPose {
     pub bounds: (Vec3, Vec3),
     /// Bumped whenever the matrices or weights change (the GPU re-skins only then).
     pub version: u64,
+    /// Final vertices from a cloth simulation (replace skinning when set).
+    pub vertices: Option<PosedVertices>,
 }
 
 struct Published {
@@ -83,7 +101,8 @@ pub fn publish(key: &str, mut pose: SkinPose) -> Arc<SkinPose> {
         old.touched = now;
         let same = old.pose.mesh == pose.mesh
             && old.pose.matrices == pose.matrices
-            && old.pose.weights == pose.weights;
+            && old.pose.weights == pose.weights
+            && old.pose.vertices == pose.vertices;
         if same {
             if old.pose.bounds != pose.bounds {
                 pose.version = old.pose.version;
@@ -156,12 +175,33 @@ pub fn compute_pose(
     world: &dyn Fn(Entity) -> Mat4,
 ) -> Option<SkinPose> {
     let mesh = r.mesh.clone()?;
-    let (model, index) = model_mesh(&mesh)?;
-    let m = &model.meshes[index];
     let renderer = world(e);
     if renderer.determinant().abs() < 1e-12 {
         return None;
     }
+    let cloth = scene
+        .world
+        .get::<&crate::physics::cloth::ClothPose>(e)
+        .ok()
+        .map(|c| (PosedVertices(c.vertices.clone()), c.bounds));
+    let Some((model, index)) = model_mesh(&mesh) else {
+        // A built-in primitive: nothing to skin, only cloth to draw.
+        mesh.primitive()?;
+        let bounds = models::bounds(&mesh)?;
+        let (vertices, bounds) = match cloth {
+            Some((v, b)) => (Some(v), b),
+            None => (None, bounds),
+        };
+        return Some(SkinPose {
+            mesh,
+            matrices: Vec::new(),
+            weights: Vec::new(),
+            bounds,
+            version: 0,
+            vertices,
+        });
+    };
+    let m = &model.meshes[index];
     let inv = renderer.inverse();
     let bone = |j: usize| {
         r.bones
@@ -204,12 +244,17 @@ pub fn compute_pose(
             (m.bounds.0 - Vec3::splat(pad), m.bounds.1 + Vec3::splat(pad))
         }
     };
+    let (vertices, bounds) = match cloth {
+        Some((v, b)) => (Some(v), b),
+        None => (None, bounds),
+    };
     Some(SkinPose {
         mesh,
         matrices,
         weights,
         bounds,
         version: 0,
+        vertices,
     })
 }
 
@@ -300,6 +345,12 @@ pub fn deform(
 
 /// The posed vertices of a published pose (CPU, for picking and tests).
 pub fn deform_pose(pose: &SkinPose) -> Option<Vec<Vertex>> {
+    if let Some(v) = &pose.vertices {
+        return Some(v.0.as_ref().clone());
+    }
+    if pose.mesh.primitive().is_some() {
+        return models::mesh(&pose.mesh).map(|m| m.vertices.clone());
+    }
     let (model, i) = model_mesh(&pose.mesh)?;
     let m = &model.meshes[i];
     Some(deform(

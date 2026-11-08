@@ -302,6 +302,14 @@ pub fn create_menu_items(ui: &mut Ui, s: &mut EditorState, parent: Option<Entity
             crate::mesh_builder::open_new_shape(s);
             ui.close();
         }
+        let ragdoll = ui
+            .button("Ragdoll…")
+            .on_hover_text("Colliders, rigidbodies and joints on a character's bones");
+        targets::header(ui, "Ragdoll…", ragdoll.rect);
+        if ragdoll.clicked() {
+            crate::ragdoll_wizard::open(s, parent);
+            ui.close();
+        }
     });
     // Player ▸ HeadBobVertical ▸ HeadBobHorizontal ▸ Camera with the controller scripts.
     let fps = ui.button(crate::fps_player::NAME).on_hover_text(

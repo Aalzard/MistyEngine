@@ -1,29 +1,38 @@
 //! Inspector editors for the Character Controller and the Fixed, Hinge and Spring Joints (the
-//! Wheel Collider's is in `vehicle_editors`).
+//! Wheel Collider's is in `vehicle_editors`, the Configurable and Character Joints' in
+//! `joint_editors`, the Cloth's and the Ragdoll's in `cloth_editors`).
 
 use egui::Ui;
 use glam::Vec3;
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{
-    CharacterController, FixedJoint, HingeJoint, Rigidbody, SceneComponent, SpringJoint,
+    CharacterController, CharacterJoint, ConfigurableJoint, FixedJoint, HingeJoint, Rigidbody,
+    SceneComponent, SpringJoint,
 };
 
 use crate::state::EditorState;
 use crate::widgets::vec3_row;
 
 /// Names of the components handled here.
-pub const NAMES: [&str; 5] = [
+pub const NAMES: [&str; 9] = [
     "Character Controller",
     "Fixed Joint",
     "Hinge Joint",
     "Spring Joint",
+    "Configurable Joint",
+    "Character Joint",
+    "Ragdoll",
+    "Cloth",
     "Wheel Collider",
 ];
 
 pub fn icon(name: &str) -> Option<&'static str> {
     Some(match name {
         "Character Controller" => "🚶",
-        "Fixed Joint" | "Hinge Joint" | "Spring Joint" => "🔗",
+        "Fixed Joint" | "Hinge Joint" | "Spring Joint" | "Configurable Joint"
+        | "Character Joint" => "🔗",
+        "Ragdoll" => "🕺",
+        "Cloth" => "🏳",
         "Wheel Collider" => "◎",
         _ => return None,
     })
@@ -45,13 +54,21 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
         "Fixed Joint" => edit_copy::<FixedJoint>(state, e, |j| fixed(ui, j, &bodies)),
         "Hinge Joint" => edit_copy::<HingeJoint>(state, e, |j| hinge(ui, j, &bodies)),
         "Spring Joint" => edit_copy::<SpringJoint>(state, e, |j| spring(ui, j, &bodies)),
+        "Configurable Joint" => edit_copy::<ConfigurableJoint>(state, e, |j| {
+            super::joint_editors::configurable(ui, j, &bodies)
+        }),
+        "Character Joint" => edit_copy::<CharacterJoint>(state, e, |j| {
+            super::joint_editors::character(ui, j, &bodies)
+        }),
+        "Ragdoll" => super::cloth_editors::ragdoll(ui, state, e),
+        "Cloth" => super::cloth_editors::cloth(ui, state, e),
         "Wheel Collider" => super::vehicle_editors::wheel_collider(ui, state, e),
         _ => false,
     }
 }
 
 /// Edit a copy of `T` with `f` and store it if anything changed.
-fn edit_copy<T: SceneComponent>(
+pub(super) fn edit_copy<T: SceneComponent>(
     state: &mut EditorState,
     e: Entity,
     f: impl FnOnce(&mut T) -> bool,
@@ -66,12 +83,19 @@ fn edit_copy<T: SceneComponent>(
     changed
 }
 
-fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
+pub(super) fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui) -> bool) -> bool {
     super::card::grid(ui, id, body)
 }
 
 /// Label + number row inside a grid.
-fn number(ui: &mut Ui, label: &str, v: &mut f32, speed: f64, min: f32, max: f32) -> bool {
+pub(super) fn number(
+    ui: &mut Ui,
+    label: &str,
+    v: &mut f32,
+    speed: f64,
+    min: f32,
+    max: f32,
+) -> bool {
     ui.label(label);
     let ch = ui
         .add(
@@ -85,14 +109,14 @@ fn number(ui: &mut Ui, label: &str, v: &mut f32, speed: f64, min: f32, max: f32)
     ch
 }
 
-fn check(ui: &mut Ui, label: &str, v: &mut bool) -> bool {
+pub(super) fn check(ui: &mut Ui, label: &str, v: &mut bool) -> bool {
     ui.label(label);
     let ch = ui.checkbox(v, "").changed();
     ui.end_row();
     ch
 }
 
-fn vec3(ui: &mut Ui, label: &str, v: &mut Vec3) -> bool {
+pub(super) fn vec3(ui: &mut Ui, label: &str, v: &mut Vec3) -> bool {
     let mut a = v.to_array();
     let ch = vec3_row(ui, label, &mut a, 0.01);
     if ch {
@@ -102,7 +126,7 @@ fn vec3(ui: &mut Ui, label: &str, v: &mut Vec3) -> bool {
 }
 
 /// Connected Body picker: "None (Rigidbody)" connects to the world.
-fn connected_body(
+pub(super) fn connected_body(
     ui: &mut Ui,
     id: &str,
     v: &mut Option<Entity>,
@@ -154,12 +178,13 @@ fn fixed(ui: &mut Ui, j: &mut FixedJoint, bodies: &[(Entity, String)]) -> bool {
     grid(ui, "fixed_joint", |ui| {
         let mut ch = connected_body(ui, "fixed_cb", &mut j.connected_body, bodies);
         ch |= check(ui, "Enable Collision", &mut j.enable_collision);
+        ch |= super::joint_editors::break_rows(ui, &mut j.break_force, &mut j.break_torque);
         ch
     })
 }
 
 /// Anchor, Auto Configure Connected Anchor, Connected Anchor rows.
-fn anchor_rows(
+pub(super) fn anchor_rows(
     ui: &mut Ui,
     id: &str,
     anchor: &mut Vec3,
@@ -238,7 +263,9 @@ fn hinge(ui: &mut Ui, j: &mut HingeJoint, bodies: &[(Entity, String)]) -> bool {
             });
         });
     ch |= grid(ui, "hinge_collision", |ui| {
-        check(ui, "Enable Collision", &mut j.enable_collision)
+        let mut ch = check(ui, "Enable Collision", &mut j.enable_collision);
+        ch |= super::joint_editors::break_rows(ui, &mut j.break_force, &mut j.break_torque);
+        ch
     });
     ch
 }
@@ -260,6 +287,7 @@ fn spring(ui: &mut Ui, j: &mut SpringJoint, bodies: &[(Entity, String)]) -> bool
         ch |= number(ui, "Min Distance", &mut j.min_distance, 0.01, 0.0, 1e6);
         ch |= number(ui, "Max Distance", &mut j.max_distance, 0.01, 0.0, 1e6);
         ch |= check(ui, "Enable Collision", &mut j.enable_collision);
+        ch |= super::joint_editors::break_rows(ui, &mut j.break_force, &mut j.break_torque);
         ch
     });
     ch

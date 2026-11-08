@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
+//! `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 
 use std::path::PathBuf;
@@ -576,6 +576,14 @@ pub fn apply_env(
     // `MISTY_ABOUT=1` opens Help ▸ About Misty Engine.
     if std::env::var_os("MISTY_ABOUT").is_some() {
         s.about_open = true;
+    }
+    // `MISTY_RAGDOLL_WIZARD=1` opens the Ragdoll Wizard for the selection; `MISTY_CLOTH_PAINT=1`
+    // starts Edit Constraints on the selected Cloth.
+    if std::env::var_os("MISTY_RAGDOLL_WIZARD").is_some() {
+        crate::ragdoll_wizard::open(s, None);
+    }
+    if std::env::var_os("MISTY_CLOTH_PAINT").is_some() {
+        crate::cloth_tools::set_editing(s.selection.active());
     }
     // `MISTY_PLAY=1` enters Play mode (live views such as the Audio Mixer meters).
     if std::env::var_os("MISTY_PLAY").is_some() {

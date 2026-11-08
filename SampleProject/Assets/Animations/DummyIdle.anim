@@ -1,0 +1,1844 @@
+{
+  "length": 2.0,
+  "loop": true,
+  "sample_rate": 60.0,
+  "curves": [
+    {
+      "path": "Hips",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 1.0
+        },
+        {
+          "time": 1.0,
+          "value": 1.0
+        },
+        {
+          "time": 2.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "path": "Hips",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.15
+        },
+        {
+          "time": 1.0,
+          "value": 0.15
+        },
+        {
+          "time": 2.0,
+          "value": 0.15
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.2
+        },
+        {
+          "time": 1.0,
+          "value": 0.2
+        },
+        {
+          "time": 2.0,
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 3.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.3
+        },
+        {
+          "time": 1.0,
+          "value": 0.3
+        },
+        {
+          "time": 2.0,
+          "value": 0.3
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck/Head",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck/Head",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.08
+        },
+        {
+          "time": 1.0,
+          "value": 0.08
+        },
+        {
+          "time": 2.0,
+          "value": 0.08
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck/Head",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck/Head",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": -2.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck/Head",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 4.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/Neck/Head",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.27
+        },
+        {
+          "time": 1.0,
+          "value": -0.27
+        },
+        {
+          "time": 2.0,
+          "value": -0.27
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.25
+        },
+        {
+          "time": 1.0,
+          "value": 0.25
+        },
+        {
+          "time": 2.0,
+          "value": 0.25
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": -5.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.28
+        },
+        {
+          "time": 1.0,
+          "value": -0.28
+        },
+        {
+          "time": 2.0,
+          "value": -0.28
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm/LeftHand",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm/LeftHand",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.27
+        },
+        {
+          "time": 1.0,
+          "value": -0.27
+        },
+        {
+          "time": 2.0,
+          "value": -0.27
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm/LeftHand",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm/LeftHand",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm/LeftHand",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/LeftUpperArm/LeftLowerArm/LeftHand",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.27
+        },
+        {
+          "time": 1.0,
+          "value": 0.27
+        },
+        {
+          "time": 2.0,
+          "value": 0.27
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.25
+        },
+        {
+          "time": 1.0,
+          "value": 0.25
+        },
+        {
+          "time": 2.0,
+          "value": 0.25
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 5.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.28
+        },
+        {
+          "time": 1.0,
+          "value": -0.28
+        },
+        {
+          "time": 2.0,
+          "value": -0.28
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm/RightHand",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm/RightHand",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.27
+        },
+        {
+          "time": 1.0,
+          "value": -0.27
+        },
+        {
+          "time": 2.0,
+          "value": -0.27
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm/RightHand",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm/RightHand",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm/RightHand",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/Spine/Chest/RightUpperArm/RightLowerArm/RightHand",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.1
+        },
+        {
+          "time": 1.0,
+          "value": -0.1
+        },
+        {
+          "time": 2.0,
+          "value": -0.1
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.06
+        },
+        {
+          "time": 1.0,
+          "value": -0.06
+        },
+        {
+          "time": 2.0,
+          "value": -0.06
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.44
+        },
+        {
+          "time": 1.0,
+          "value": -0.44
+        },
+        {
+          "time": 2.0,
+          "value": -0.44
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg/LeftFoot",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg/LeftFoot",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.42
+        },
+        {
+          "time": 1.0,
+          "value": -0.42
+        },
+        {
+          "time": 2.0,
+          "value": -0.42
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg/LeftFoot",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg/LeftFoot",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg/LeftFoot",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/LeftUpperLeg/LeftLowerLeg/LeftFoot",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.1
+        },
+        {
+          "time": 1.0,
+          "value": 0.1
+        },
+        {
+          "time": 2.0,
+          "value": 0.1
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.06
+        },
+        {
+          "time": 1.0,
+          "value": -0.06
+        },
+        {
+          "time": 2.0,
+          "value": -0.06
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.44
+        },
+        {
+          "time": 1.0,
+          "value": -0.44
+        },
+        {
+          "time": 2.0,
+          "value": -0.44
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg/RightFoot",
+      "property": "Transform.position.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg/RightFoot",
+      "property": "Transform.position.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": -0.42
+        },
+        {
+          "time": 1.0,
+          "value": -0.42
+        },
+        {
+          "time": 2.0,
+          "value": -0.42
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg/RightFoot",
+      "property": "Transform.position.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg/RightFoot",
+      "property": "Transform.rotation.x",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg/RightFoot",
+      "property": "Transform.rotation.y",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "path": "Hips/RightUpperLeg/RightLowerLeg/RightFoot",
+      "property": "Transform.rotation.z",
+      "keys": [
+        {
+          "time": 0.0,
+          "value": 0.0
+        },
+        {
+          "time": 1.0,
+          "value": 0.0
+        },
+        {
+          "time": 2.0,
+          "value": 0.0
+        }
+      ]
+    }
+  ],
+  "events": []
+}
