@@ -403,7 +403,7 @@ fn velocity_force_and_limit_modules_shape_the_motion() {
     let mut e = started(&s);
     run(&mut e, &s, 1.0);
     let speed = e.particles[0].velocity.length();
-    assert!(speed < 3.05 && speed >= 3.0 - 1e-3, "{speed}");
+    assert!((3.0 - 1e-3..3.05).contains(&speed), "{speed}");
 }
 
 #[test]
