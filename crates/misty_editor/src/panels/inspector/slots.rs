@@ -143,7 +143,8 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             false => (
                 "Enable Virtual Geometry",
                 Command::EnableSelected,
-                "Draw this model's dense meshes as clusters with per-cluster level of detail                  (turns on its Virtual Geometry import setting)",
+                "Draw this model's dense meshes as clusters with per-cluster level of detail \
+                 (turns on its Virtual Geometry import setting)",
             ),
             true => (
                 "Disable Virtual Geometry",

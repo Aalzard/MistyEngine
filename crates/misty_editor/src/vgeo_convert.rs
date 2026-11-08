@@ -782,7 +782,7 @@ pub fn dialog_contents(ui: &mut Ui, s: &mut EditorState) {
         let plan = match d.scope {
             Scope::Scene => {
                 let roots = s.scene.roots();
-                plan_objects(s, &roots, d.min_triangles)
+                plan_objects(s, roots, d.min_triangles)
             }
             Scope::Project => plan_project(s, d.min_triangles),
         };
