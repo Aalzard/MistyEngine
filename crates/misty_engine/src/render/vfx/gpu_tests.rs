@@ -888,7 +888,7 @@ fn vfx_cost_report() {
         let fx_or_dummy = fx.clone().unwrap_or_else(|| falling(false, 16, 0.0, false));
         let (mut scene, e) = floor_scene(fx_or_dummy);
         if fx.is_none() {
-            let _ = scene.world.despawn(e);
+            scene.game_object_mut(e).active = false;
         }
         let mut renderer = Renderer::new(&device);
         renderer.effects.timer = super::StepTimer::new(&device, &queue);
@@ -898,18 +898,20 @@ fn vfx_cost_report() {
         for i in 0..240 {
             crate::vfx::update(&mut scene, 1.0 / 60.0);
             let view = crate::render_scene::GameView::new(&scene, &materials).unwrap();
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            // Whole frame: submit and wait (GPU-bound at this size; same CPU work every run).
+            let started = std::time::Instant::now();
             renderer.render_with_effects(&device, &queue, &target, &view.frame(), &view.effects);
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            let wall = started.elapsed().as_secs_f32() * 1000.0;
             if i >= 180 {
                 if let Some(t) = &renderer.effects.timer
                     && !view.effects.is_empty()
                 {
                     sim += t.read_ms(&device);
                 }
-                if let Some(ms) = renderer.gpu_ms() {
-                    frame_ms += ms;
-                    n += 1;
-                }
+                frame_ms += wall;
+                n += 1;
             }
             if i == 239
                 && let Ok(inst) = scene.world.get::<&EffectInstance>(e)
