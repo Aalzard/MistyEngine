@@ -86,7 +86,7 @@ where
 }
 
 /// Right-handed matrix → engine space (mirror X on both sides).
-fn mirror_matrix(m: Mat4) -> Mat4 {
+pub(super) fn mirror_matrix(m: Mat4) -> Mat4 {
     let s = Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0));
     s * m * s
 }
@@ -231,7 +231,7 @@ pub fn continuous_euler(q: Quat, prev: Option<Vec3>) -> Vec3 {
 }
 
 /// Drop keys that linear interpolation of their neighbours reproduces.
-fn simplify(clip: &mut AnimationClip) {
+pub(super) fn simplify(clip: &mut AnimationClip) {
     for c in &mut clip.curves {
         let keys = c.keys.as_slice().to_vec();
         if keys.len() <= 2 {
