@@ -273,6 +273,11 @@ fn padded(img: &RgbaImage) -> RgbaImage {
 
 /// Blocks of one image (any size; padded to whole blocks). Rows of blocks encode in parallel.
 pub fn encode_level(img: &RgbaImage, format: BcFormat) -> Vec<u8> {
+    encode_level_as(img, format, format.variant())
+}
+
+/// [`encode_level`] with the encoder settings of `variant` (a variant of `format`).
+fn encode_level_as(img: &RgbaImage, format: BcFormat, variant: CompressionVariant) -> Vec<u8> {
     let p = padded(img);
     let (w, h) = p.dimensions();
     let row_bytes = w as usize / 4 * format.block_bytes();
@@ -283,14 +288,7 @@ pub fn encode_level(img: &RgbaImage, format: BcFormat) -> Vec<u8> {
         .enumerate()
         .for_each(|(by, blocks)| {
             let rows = &src[by * 4 * stride..(by * 4 + 4) * stride];
-            block_compression::encode::compress_rgba8(
-                format.variant(),
-                rows,
-                blocks,
-                w,
-                4,
-                stride as u32,
-            );
+            block_compression::encode::compress_rgba8(variant, rows, blocks, w, 4, stride as u32);
         });
     out
 }
@@ -459,8 +457,11 @@ pub fn cached(root: &Path, key: &str) -> Option<Compressed> {
 pub fn store(root: &Path, key: &str, c: &Compressed) -> Option<PathBuf> {
     let path = root.join(cache_rel(key));
     std::fs::create_dir_all(path.parent()?).ok()?;
-    // Write then rename, so a reader never sees half a file.
-    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+    // Write then rename, so a reader never sees half a file (one temporary file per write:
+    // two threads may store the same entry).
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("{}.{n}.tmp", std::process::id()));
     std::fs::write(&tmp, c.to_file()).ok()?;
     std::fs::rename(&tmp, &path).ok()?;
     Some(path)
@@ -635,6 +636,8 @@ pub fn bake(
     }
     Ok(out)
 }
+
+pub mod generated;
 
 #[cfg(test)]
 mod meadow;

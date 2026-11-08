@@ -1019,15 +1019,28 @@ impl Renderer {
         }
     }
 
+    /// GPU bytes of the textures the renderer makes itself: tree maps (bark, leaves,
+    /// impostors), terrain layer arrays and grass atlases (block-compressed or RGBA8).
+    pub fn made_texture_bytes(&self) -> [(&'static str, u64); 3] {
+        [
+            ("Trees", self.trees.texture_bytes()),
+            ("Terrain layers", self.terrains.layer_bytes()),
+            ("Grass and flowers", self.terrains.atlas_bytes()),
+        ]
+    }
+
     /// GPU resources held (Profiler Memory module).
     pub fn memory(&self) -> RenderMemory {
         let imported = self.imported.values().flatten();
         let meshes = self.meshes.iter().chain(imported.clone());
         let mesh_bytes: u64 = meshes.map(GpuMesh::bytes).sum::<u64>() + self.skins.bytes();
         let (terrains, terrain_bytes) = self.terrains.memory();
-        // Tree assets (meshes and textures together) count with the terrains.
+        // Tree assets count with the terrains; the textures the renderer makes (tree maps,
+        // terrain layer arrays, grass atlases) with the textures.
         let (_, tree_bytes) = self.trees.memory();
-        let terrain_bytes = terrain_bytes + tree_bytes;
+        let made = self.made_texture_bytes();
+        let made_total = made.iter().map(|m| m.1).sum::<u64>();
+        let terrain_bytes = (terrain_bytes + tree_bytes).saturating_sub(made_total);
         let (textures, texture_bytes) = self.textures.memory();
         let buffers = [
             &self.draws_buffer,
@@ -1052,6 +1065,7 @@ impl Renderer {
                 + self.particle_instances.buffer.size()
                 + self.effects.bytes(),
             texture_bytes: texture_bytes
+                + made_total
                 + shadow_bytes
                 + self.probes.bytes()
                 + self.lightmaps.bytes()
@@ -3743,6 +3757,45 @@ mod flowers_gpu_tests;
 mod golden_tests;
 #[cfg(test)]
 mod gpu_checks;
+/// Make sure project `root`'s texture cache holds the blocks of the textures the renderer makes
+/// from the packed `files` for `platform`: tree maps and impostors (`.tree`), terrain layer
+/// arrays, the grass atlas and flower layers (`.terrain`). Returns the cache entries
+/// (project-relative, what a build packs) and warnings. The images are read from the open
+/// project (`assets::absolute`), which a build's project is.
+pub fn bake_made_textures(
+    root: &std::path::Path,
+    files: &[String],
+    platform: &'static str,
+) -> (Vec<String>, Vec<String>) {
+    let ctx = crate::sprites::compress::generated::Ctx::bake(root, platform);
+    let (mut entries, mut warnings) = (Vec::new(), Vec::new());
+    for rel in files {
+        if rel.ends_with(".tree") {
+            match trees::bake_textures(rel, &ctx) {
+                Ok(e) => entries.extend(e),
+                Err(e) => warnings.push(format!("{rel}: {e}")),
+            }
+        } else if rel.ends_with(".terrain") {
+            let d = match crate::terrain::TerrainData::load(&crate::assets::absolute(rel)) {
+                Ok(d) => d,
+                Err(e) => {
+                    warnings.push(e);
+                    continue;
+                }
+            };
+            entries.extend(terrain_layers::bake_textures(&d.layers, &ctx));
+            if d.details.enabled && !d.detail_map.is_empty() {
+                let flowers = d.flowers.enabled && !d.flowers.kinds.is_empty();
+                let kinds = flowers.then_some(&d.flowers.kinds[..]);
+                entries.extend(terrain_grass::bake_textures(kinds, &ctx));
+            }
+        }
+    }
+    entries.sort();
+    entries.dedup();
+    (entries, warnings)
+}
+
 #[cfg(test)]
 pub(crate) mod gpu_tests;
 #[cfg(test)]
@@ -3751,6 +3804,8 @@ mod grass_study;
 mod grass_vis_tests;
 #[cfg(test)]
 mod hitch_tests;
+#[cfg(test)]
+mod made_textures_tests;
 #[cfg(test)]
 mod meadow_perf_tests;
 #[cfg(test)]

@@ -16,6 +16,8 @@ use wgpu::util::DeviceExt;
 use super::culling::{Aabb, Frustum};
 use super::grass_cull::{self, Arena, CullFrame, CullPipelines, JobDraw, KINDS, PlannedKind};
 use super::grass_pool::{BladePool, Slot};
+use crate::sprites::compress::generated::{self, Ctx, Layers, Made, Role, Spec as TexSpec};
+use crate::sprites::compress::{Compressed, Mode, encode_level};
 use crate::terrain::TerrainData;
 use crate::terrain::details::{self, Blade, DetailSettings};
 use crate::terrain::flowers::FlowerSettings;
@@ -1049,23 +1051,61 @@ fn atlas_mips(image: image::RgbaImage) -> Vec<image::RgbaImage> {
     chain
 }
 
-/// The built-in atlas decoded with its coverage-keeping mips: (width, height, levels, texels).
-/// Made once per process (40 ms of PNG decoding and filtering), on a worker thread when
-/// [`prewarm_atlas`] ran first.
-fn atlas_data() -> &'static (u32, u32, u32, Vec<u8>) {
-    static DATA: std::sync::OnceLock<(u32, u32, u32, Vec<u8>)> = std::sync::OnceLock::new();
-    DATA.get_or_init(|| {
-        let image = image::load_from_memory(ATLAS_PNG)
-            .expect("built-in grass atlas")
-            .into_rgba8();
-        let (w, h) = image.dimensions();
-        let chain = atlas_mips(image);
-        let data = chain
-            .iter()
-            .flat_map(|m| m.as_raw().iter().copied())
-            .collect();
-        (w, h, chain.len() as u32, data)
-    })
+/// The built-in atlas decoded with its coverage-keeping mips (RGBA8, sRGB). Made once per
+/// process (40 ms of PNG decoding and filtering), on a worker thread when [`prewarm_atlas`]
+/// ran first.
+fn atlas_chain() -> &'static Vec<image::RgbaImage> {
+    static CHAIN: std::sync::OnceLock<Vec<image::RgbaImage>> = std::sync::OnceLock::new();
+    CHAIN.get_or_init(|| atlas_mips(atlas_image()))
+}
+
+fn atlas_image() -> image::RgbaImage {
+    image::load_from_memory(ATLAS_PNG)
+        .expect("built-in grass atlas")
+        .into_rgba8()
+}
+
+/// How the built-in atlas is compressed: colour with alpha-tested coverage (BC7, sRGB).
+fn atlas_spec(ctx: &Ctx) -> TexSpec<'static> {
+    TexSpec {
+        recipe: "grass atlas coverage 8 cells",
+        format: ctx.format(Role::ColorAlpha, ""),
+        srgb: true,
+        coverage: true,
+    }
+}
+
+/// The built-in atlas under `ctx`: its blocks from the texture cache, else encoded now when
+/// the context encodes, else RGBA8.
+pub(super) fn atlas_layers(ctx: &Ctx) -> Layers {
+    generated::make_one(atlas_image(), &atlas_spec(ctx), ctx, atlas_mips)
+}
+
+/// The built-in atlas's blocks of this run (None: not compressed, or still being encoded on a
+/// worker in the editor: the RGBA8 atlas draws until then, see [`Atlas::outdated`]).
+fn atlas_blocks(ctx: &Ctx) -> Option<&'static Compressed> {
+    static BLOCKS: std::sync::OnceLock<Option<Compressed>> = std::sync::OnceLock::new();
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    atlas_spec(ctx).format?;
+    let make = |ctx: Ctx| match atlas_layers(&ctx).layers.pop() {
+        Some(Made::Blocks(c)) => Some(c),
+        _ => None,
+    };
+    if ctx.mode == Mode::Background {
+        let ctx = Ctx {
+            mode: Mode::Blocking,
+            ..ctx.clone()
+        };
+        STARTED.call_once(|| {
+            let _ = std::thread::Builder::new()
+                .name("misty grass atlas blocks".into())
+                .spawn(move || {
+                    BLOCKS.get_or_init(|| make(ctx));
+                });
+        });
+        return BLOCKS.get().and_then(Option::as_ref);
+    }
+    BLOCKS.get_or_init(|| make(ctx.clone())).as_ref()
 }
 
 /// Start decoding the grass atlas on a worker thread (once per process).
@@ -1075,7 +1115,7 @@ pub(super) fn prewarm_atlas() {
         let _ = std::thread::Builder::new()
             .name("misty grass atlas".into())
             .spawn(|| {
-                atlas_data();
+                atlas_chain();
             });
     });
 }
@@ -1087,29 +1127,12 @@ pub(super) fn atlas(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> (wgpu::TextureView, wgpu::Sampler) {
-    let (w, h, levels, data) = atlas_data();
-    let (w, h, levels) = (*w, *h, *levels);
-    let texture = wgpu::util::DeviceExt::create_texture_with_data(
-        device,
-        queue,
-        &wgpu::TextureDescriptor {
-            label: Some("misty grass atlas"),
-            size: wgpu::Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: levels,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        },
-        wgpu::util::TextureDataOrder::LayerMajor,
-        data,
-    );
-    let view = texture.create_view(&Default::default());
+    let layer = Made::Rgba {
+        chain: atlas_chain().clone(),
+        srgb: true,
+    };
+    let (view, _) =
+        super::texture::upload_made(device, queue, "misty grass atlas", &[layer], false);
     (view, atlas_sampler(device))
 }
 
@@ -1119,8 +1142,8 @@ pub(super) fn atlas(
 /// their linear values). Each with its mip chain (the albedo keeping its alpha-tested coverage
 /// per head and plant cell).
 pub(super) struct FlowerLayers {
-    albedo: Vec<image::RgbaImage>,
-    material: Vec<image::RgbaImage>,
+    /// Albedo, material: blocks (both) or RGBA8 mip chains.
+    pub(super) layers: Layers,
 }
 
 /// The textures a terrain's flower layers are made from (the cache key of [`flower_layers`]).
@@ -1142,9 +1165,11 @@ pub(super) fn flower_key(kinds: &[crate::terrain::flowers::FlowerKind]) -> Vec<S
 /// Build the flower layers from the kinds' textures (decoding and filtering: tens of
 /// milliseconds, on a worker thread while streaming). Missing textures leave their column
 /// transparent (albedo) or flat (material).
-pub(super) fn flower_layers(kinds: &[crate::terrain::flowers::FlowerKind]) -> FlowerLayers {
-    let (w, h, _, _) = atlas_data();
-    let (w, h) = (*w, *h);
+pub(super) fn flower_layers(
+    kinds: &[crate::terrain::flowers::FlowerKind],
+    ctx: &Ctx,
+) -> FlowerLayers {
+    let (w, h) = atlas_chain()[0].dimensions();
     let cols = crate::terrain::flowers::MAX_KINDS as u32;
     let cw = w / cols;
     let load = |rel: &str| -> Option<image::RgbaImage> {
@@ -1204,58 +1229,154 @@ pub(super) fn flower_layers(kinds: &[crate::terrain::flowers::FlowerKind]) -> Fl
             p[c] = encode[p[c] as usize];
         }
     }
-    FlowerLayers {
-        albedo: super::trees::coverage_mips(albedo, cols, 4),
-        material: super::texture::mip_chain(material, true),
+    // Compressed like the built-in layer (one array): BC7, by the kinds' Compression settings
+    // (their albedo / normal map files).
+    let kinds = &kinds[..kinds.len().min(cols as usize)];
+    let albedo_spec = TexSpec {
+        recipe: "flower albedo coverage 4x4",
+        format: ctx.format_of_all(Role::ColorAlpha, kinds.iter().map(|k| k.texture.as_str())),
+        srgb: true,
+        coverage: true,
+    };
+    let material_spec = TexSpec {
+        recipe: "flower material box srgb",
+        format: ctx.format_of_all(Role::Packed, kinds.iter().map(|k| k.normal.as_str())),
+        srgb: true,
+        coverage: false,
+    };
+    let albedo = generated::make_one(albedo, &albedo_spec, ctx, |i| {
+        super::trees::coverage_mips(i, cols, 4)
+    });
+    let material = generated::make_one(material, &material_spec, ctx, |i| {
+        super::texture::mip_chain(i, true)
+    });
+    let mut layers = albedo;
+    layers.layers.extend(material.layers);
+    layers.keys.extend(material.keys);
+    layers.waiting.extend(material.waiting);
+    layers.layers = generated::same_kind(layers.layers);
+    FlowerLayers { layers }
+}
+
+/// The cache entries of the built-in atlas and of a terrain's flower layers under `ctx` (a
+/// build's), encoding what is missing.
+pub(crate) fn bake_textures(
+    kinds: Option<&[crate::terrain::flowers::FlowerKind]>,
+    ctx: &Ctx,
+) -> Vec<String> {
+    let mut out = atlas_layers(ctx).entries();
+    if let Some(kinds) = kinds {
+        out.extend(flower_layers(kinds, ctx).layers.entries());
+    }
+    out
+}
+
+/// A grass atlas array on the GPU.
+pub(super) struct Atlas {
+    pub view: wgpu::TextureView,
+    pub sampler: wgpu::Sampler,
+    pub bytes: u64,
+    /// Flower slices being encoded in the background (the array is RGBA8 meanwhile).
+    waiting: Vec<String>,
+    /// Uploaded RGBA8 while the built-in layer's blocks were still being made.
+    wants_blocks: bool,
+}
+
+impl Atlas {
+    /// Whether a compressed atlas can replace this one now (build it again: cache hits).
+    pub fn outdated(&self) -> bool {
+        if !self.waiting.is_empty() {
+            return !generated::waiting(&self.waiting);
+        }
+        self.wants_blocks && atlas_blocks(&Ctx::runtime(true)).is_some()
+    }
+
+    /// Keep this atlas as it is (building it again failed).
+    pub fn keep(&mut self) {
+        self.waiting.clear();
+        self.wants_blocks = false;
     }
 }
 
 /// Upload the grass atlas as a three-layer array: the built-in grass (layer 0) and the flower
 /// layers (transparent while `flowers` is None), with coverage-keeping mips (sRGB) and the
-/// clamped trilinear, anisotropic sampler of [`atlas`].
+/// clamped trilinear, anisotropic sampler of [`atlas`]. Block-compressed (BC7) when the device,
+/// the settings and the texture cache allow it; else RGBA8.
 pub(super) fn atlas_array(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     flowers: Option<&FlowerLayers>,
-) -> (wgpu::TextureView, wgpu::Sampler) {
-    let (w, h, levels, grass) = atlas_data();
-    let (w, h, levels) = (*w, *h, *levels);
-    let mut data = grass.clone();
-    match flowers {
-        Some(f) if f.albedo.len() == levels as usize && f.material.len() == levels as usize => {
-            for chain in [&f.albedo, &f.material] {
-                for mip in chain {
-                    data.extend_from_slice(mip.as_raw());
-                }
-            }
-        }
-        _ => data.resize(grass.len() * 3, 0),
-    }
-    let texture = wgpu::util::DeviceExt::create_texture_with_data(
-        device,
-        queue,
-        &wgpu::TextureDescriptor {
-            label: Some("misty grass atlas"),
-            size: wgpu::Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: 3,
-            },
-            mip_level_count: levels,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        },
-        wgpu::util::TextureDataOrder::LayerMajor,
-        &data,
+) -> Atlas {
+    let ctx = Ctx::runtime(
+        device
+            .features()
+            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC),
     );
-    let view = texture.create_view(&wgpu::TextureViewDescriptor {
-        dimension: Some(wgpu::TextureViewDimension::D2Array),
-        ..Default::default()
-    });
-    (view, atlas_sampler(device))
+    let chain = atlas_chain();
+    let (size, levels) = (chain[0].dimensions(), chain.len() as u32);
+    let fits = |m: &Made| m.size() == size && m.level_count() == levels;
+    let flower_layers = flowers
+        .map(|f| &f.layers)
+        .filter(|l| l.layers.len() == 2 && l.layers.iter().all(fits));
+    let waiting = flower_layers.map(|l| l.waiting.clone()).unwrap_or_default();
+    let compressible = atlas_spec(&ctx).format.is_some()
+        && flower_layers.is_none_or(|l| l.layers.iter().all(Made::is_compressed));
+    let layers: Vec<Made> = match atlas_blocks(&ctx) {
+        Some(grass) if compressible => {
+            let flower = match flower_layers {
+                Some(l) => l.layers.clone(),
+                None => vec![transparent(grass); 2],
+            };
+            std::iter::once(Made::Blocks(grass.clone()))
+                .chain(flower)
+                .collect()
+        }
+        _ => {
+            let flower = match flower_layers {
+                Some(l) => l.layers.iter().cloned().map(Made::into_rgba).collect(),
+                None => {
+                    let empty: Vec<image::RgbaImage> = chain
+                        .iter()
+                        .map(|m| image::RgbaImage::new(m.width(), m.height()))
+                        .collect();
+                    let layer = Made::Rgba {
+                        chain: empty,
+                        srgb: true,
+                    };
+                    vec![layer; 2]
+                }
+            };
+            let grass = Made::Rgba {
+                chain: chain.clone(),
+                srgb: true,
+            };
+            std::iter::once(grass).chain(flower).collect()
+        }
+    };
+    let wants_blocks = compressible && !layers[0].is_compressed();
+    let (view, bytes) =
+        super::texture::upload_made(device, queue, "misty grass atlas", &layers, true);
+    Atlas {
+        view,
+        sampler: atlas_sampler(device),
+        bytes,
+        waiting,
+        wants_blocks,
+    }
+}
+
+/// Transparent black blocks the shape of `like` (the empty flower layers).
+fn transparent(like: &Compressed) -> Made {
+    let block = encode_level(&image::RgbaImage::new(4, 4), like.format);
+    let levels = like
+        .levels
+        .iter()
+        .map(|l| block.repeat(l.len() / block.len()))
+        .collect();
+    Made::Blocks(Compressed {
+        levels,
+        ..like.clone()
+    })
 }
 
 fn atlas_sampler(device: &wgpu::Device) -> wgpu::Sampler {

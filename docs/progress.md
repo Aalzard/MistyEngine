@@ -2758,3 +2758,28 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Cloth collision with boxes, meshes and terrain, continuous collision, tearing, a GPU solver;
   ragdoll root following the body and get-up matching; Configurable Joint world-space frames,
   swap bodies, mass scales and a true slerp drive.
+
+- No ETC2/ASTC fallback, no BC6H skies, no Humanoid rigs, LODs not cached in Library. (Tree, grass/flower and
+  terrain-layer textures: done in the follow-up below.)
+
+## Round 18D follow-up — compressed tree, grass and terrain textures (branch tex-compress2)
+
+### Done (docs/pending/r18-assets.md, "Tree, grass and terrain textures")
+- The renderer's own textures use the BC blocks too: tree bark / leaf maps and impostors, the grass atlas with
+  its flower layers, the terrain layer arrays (`sprites/compress/generated.rs`). Formats by role from the main
+  source file's Compression: opaque terrain albedo BC1 (BC7 at High Quality); colour + alpha (bark + height,
+  leaf / grass / flower cutouts, impostors) BC7; packed data (normal x, y + roughness, occlusion,
+  translucency or height) BC7, four channels in one texture.
+- Coverage-keeping mips are kept (encoded level by level); BC7's edge-alpha bias is taken out of cutouts; a
+  30 dB quality gate keeps data BC7 cannot hold uncompressed (MeadowDemo's meadow thatch normal + height).
+- Cached in `Library/TextureCache` by packed pixels and recipe; encoded in the background in the editor with
+  the RGBA8 textures drawing until the blocks are ready; baked into builds from the packed `.tree` and
+  `.terrain` files; players read the cache only.
+- MeadowDemo: renderer-made textures 218.1 → 68.5 MB of GPU memory (trees 139.8 → 35.0, terrain layers
+  44.7 → 25.2, grass and flowers 33.6 → 8.4); all GPU textures 403.3 → 253.7 MB. GPU frame time at 1080p High 3–4 % lower (wide 16.00 → 15.51 ms, behind 17.28 →
+  16.59 ms, oak 14.66 → 14.16 ms). Golden shots within tolerance (meadow mean 0.15–0.39, changed ≤ 0.03 %), references
+  not updated.
+
+### Not done yet
+- The terrain normal + height array of MeadowDemo stays RGBA8 (BC5 + BC4 would need another binding); identical
+  textures of different tree assets are uploaded once per asset.

@@ -92,6 +92,60 @@ LOD Group on the root with the levels' screen heights. Defaults: 100% / 50% / 20
   the `.mtc` entries; players read them through the pak like the editor reads `Library`.
 - The Memory Profiler counts texture bytes by format now (block sizes for BC).
 
+## Tree, grass and terrain textures (`sprites/compress/generated.rs`, branch tex-compress2)
+
+The renderer's own textures go through the same blocks now: tree maps and impostors
+(`render/trees.rs`), the grass atlas with its flower layers (`render/terrain_grass.rs`) and the
+terrain layer arrays (`render/terrain_layers.rs`). They are packed from several images (spare
+channels, atlas cells, array slices) and have coverage-keeping mips, so they are not file
+textures:
+
+- **Formats by role**, from the Compression setting of the role's main source file (an array
+  takes None when any slice's file says None, High Quality when any says it; the built-in
+  grass atlas and the impostors count as Normal Quality):
+
+  | Role | Textures | Normal Quality | High Quality |
+  |---|---|---|---|
+  | Opaque colour | terrain layer albedo (alpha unused) | BC1 | BC7 |
+  | Colour + alpha | bark albedo + height, leaf atlas, impostor albedo, grass atlas, flower albedo | BC7 | BC7 |
+  | Four data channels | bark / leaf normal (x, y, roughness, occlusion / translucency), impostor normal (xyz, AO), terrain normal + height, flower material | BC7 | BC7 |
+
+- Why: BC5 holds two channels, so a normal map with roughness and occlusion packed in would
+  need BC5 + BC4 (two textures, 1.5 bytes a texel, new bindings and shader changes); BC7 keeps
+  the four channels at 1 byte a texel and its normal error is 0.5–2.2° (BC3's 5:6:5 colour
+  endpoints: 1.4–3.9°). For colour + alpha BC7 has 4–10 dB better colour than BC3 at the same
+  size, with the alpha as good. The grass atlas and the flower layers share one array, so one
+  format.
+- **Cutouts**: the mips stay the coverage-keeping ones (made before encoding, each level
+  encoded as it is). BC7 keeps each level's alpha-tested coverage within 0.42 % on levels of
+  64 texels and more (0.08–0.42 %; up to 1.95 % on the 16–32 texel levels, a few texels).
+  It rounds edge alpha up by about 0.6/255 on average, which alpha to coverage turns into
+  slightly denser grass; cutout levels whose edges come out more than 0.2/255 off are encoded
+  again with the bias taken out (dithered).
+- **Quality gate**: blocks whose worst channel is under 30 dB PSNR are not used, the array
+  stays RGBA8 (a `<key>.raw` marker in the cache remembers it). MeadowDemo's meadow thatch
+  normal + height map is noise to 4×4 blocks (BC7: 15° mean normal error, height 22 dB; even
+  BC5 is 6°) and moved the golden `meadow_low_close` shot over its tolerance (mean 0.62); with
+  the gate the terrain's normal + height array stays RGBA8 and every other texture is
+  compressed (each keeps 38 dB or more in every channel).
+- **Cache**: `Library/TextureCache/<key>.mtc` like file textures; the key hashes the packed
+  level-0 pixels with the recipe (how the mips are made), format, sRGB, cutout and the encoder
+  settings. A hit skips the mips (the slow part) and the encode; textures shared between tree
+  assets (the oaks' bark and leaves) share entries.
+- **Encoder**: BC7 with the ISPC kernels' "alpha very fast" settings, within 0.1–1 dB of
+  "alpha basic" at a third to a sixth of the time (`made_textures_bc7_settings`): all of
+  MeadowDemo's made textures encode in about 12 s on the rayon pool on a first load (about
+  40 s with "alpha basic"); later loads are cache hits.
+- **Editor**: misses are encoded on the rayon pool while the textures draw RGBA8; the owner
+  (tree, layer cache, flower atlas, built-in atlas) builds them again once the blocks are in
+  the cache (`generated::waiting`), the old ones drawing meanwhile. **Players** read the cache
+  only. **Tests** encode on the spot. Without `TEXTURE_COMPRESSION_BC` everything stays RGBA8.
+- **Builds**: `pack_compressed_textures` also calls `render::bake_made_textures` for the packed
+  `.tree` and `.terrain` files (trees are built as a player builds them, the impostor bake is
+  deterministic) and packs those entries.
+- The Memory module counts these textures under Textures now (they were in the terrain's
+  buffer bytes); `Renderer::made_texture_bytes` gives them per category.
+
 ## Measurements
 
 MeadowDemo, every texture the scene uses, at the default quality level (Windows, Normal
@@ -99,15 +153,45 @@ Quality defaults; `sprites/compress/meadow.rs`, ignored test):
 
 | Textures | Count | RGBA8 + mips | Compressed | Saved | Path |
 |---|---|---|---|---|---|
-| Rocks and other material textures | 18 | 125.8 MB | 21.0 MB | 83% | compressed now |
-| Trees (bark, leaves) | 27 | 151.0 MB | 21.0 MB | 86% | own loader, not switched |
-| Grass and flowers | 16 | 22.4 MB | 3.5 MB | 84% | own loader, not switched |
-| Terrain layers and other | 6 | 21.0 MB | 2.6 MB | 87% | own loader, not switched |
+| Rocks and other material textures | 18 | 125.8 MB | 21.0 MB | 83% | compressed (round 18D) |
+| Trees (bark, leaves) | 27 | 151.0 MB | 21.0 MB | 86% | source files; see below |
+| Grass and flowers | 16 | 22.4 MB | 3.5 MB | 84% | source files; see below |
+| Terrain layers and other | 6 | 21.0 MB | 2.6 MB | 87% | source files; see below |
 
 - Material textures (the rocks' albedo BC1, masks BC3, normals BC5) save **104.8 MB** of GPU
-  memory in MeadowDemo now. The other 46 textures would save another 167 MB once the tree,
-  grass and terrain-layer uploaders (renderer code: `trees.rs`, `terrain_grass.rs`,
-  `terrain_layers.rs`) use the same blocks.
+  memory in MeadowDemo. The table's other rows are the source files; what the GPU holds of
+  them is the renderer's packed textures, measured on the GPU below.
+
+Renderer-made textures on the GPU (MeadowDemo, High, every tree, the terrain and the flowers
+loaded; `made_textures_memory`, ignored test):
+
+| Textures | RGBA8 + mips | Compressed | Saved |
+|---|---|---|---|
+| Trees (5 assets × bark, bark normal, leaves, leaf normal, impostor, impostor normal) | 139.8 MB | 35.0 MB | 75% |
+| Terrain layers (albedo array BC1; normal + height array kept RGBA8 by the quality gate) | 44.7 MB | 25.2 MB | 44% |
+| Grass atlas and flower layers (two 3-slice arrays) | 33.6 MB | 8.4 MB | 75% |
+| **Total** | **218.1 MB** | **68.5 MB** | **69%** |
+
+- All GPU texture memory in the Memory module: 403.3 → 253.7 MB.
+- GPU frame time (`made_textures_times`: 1920×1080, High, uncompressed and compressed runs
+  alternating, three each, medians of 60 frames after 60): wide 16.00 → 15.51 ms (−0.50),
+  behind 17.28 → 16.59 ms (−0.70), oak 14.66 → 14.16 ms (−0.49). Less texture bandwidth in
+  the passes that sample trees, grass and terrain: 3–4 % of the frame. (main before this
+  branch, `meadow_perf_times`: wide 16.01 ms, behind 17.25 ms, the uncompressed numbers.)
+- Golden check (`golden_shots`, all 20 shots, RTX 4060 reference): every shot within tolerance,
+  references **not** updated. Meadow shots mean 0.15–0.39 (wide 0.19–0.26, close 0.28–0.39,
+  behind 0.28–0.34, oak 0.15–0.20), changed pixels ≤ 0.03 %; CyclesRoomDemo 0.00. Before the
+  quality gate the terrain's normal + height array was BC7 too and `meadow_low_close` drifted
+  (mean 0.62 > 0.5): leaving out the grass atlas brought it to 0.40, the trees changed nothing,
+  BC7 instead of BC1 for the terrain albedo changed nothing, leaving out the terrain normal +
+  height array brought it to 0.39. Hence the gate.
+- Close-ups (`docs/screenshots/gfx/texcomp_*.png`: uncompressed | compressed | difference ×8,
+  High, 1600×900 telephoto views from the look-check spots, 400×300 crops at 2×): no visible
+  difference in any. Mean absolute difference of the crops: bark 0.16, leaves 0.14, flowers
+  0.74, terrain cliff 1.30 (BC1 albedo; the largest single difference 7/255, a smooth shift),
+  terrain ground 1.13, meadow 0.83. Where the differences are larger they are single-pixel
+  sparkle on blade and petal edges (alpha to coverage and TAA settling on slightly different
+  samples), not blocks or colour shifts.
 - Quality (PSNR of level 0 against the image): rock albedo BC1 37–43 dB, masks BC3 50–53 dB,
   rock normals BC5 40–54 dB; tree and flower colour maps 33–46 dB. Encoding all 67 textures
   takes about 2 s (rayon, release); later loads are cache hits.
@@ -125,6 +209,14 @@ Quality defaults; `sprites/compress/meadow.rs`, ignored test):
   (alpha, type, normal slot, sprites, overrides), cache file round trip and damage, cache key,
   bake writes once then hits, pak round trip, GPU upload without validation errors, build packing
   for material uses.
+- Renderer-made textures (`generated::tests`, `render/made_textures_tests.rs`): formats by role
+  and Compression, cache key (pixels, recipe, format, sRGB), encode once then hit, background
+  encode with the RGBA8 fallback, quality gate and its marker, off-grid sizes and mixed arrays,
+  BC7 keeping a cutout's coverage per mip, uploads of every kind (whole arrays and slice by
+  slice) without validation errors, and a build baking a tree and MeadowDemo's terrain that a
+  player then uploads as blocks. Ignored: `made_textures_quality` (PSNR, normal error,
+  coverage drift per texture and format), `made_textures_bc7_settings`,
+  `made_textures_memory`, `made_textures_times`, `made_textures_closeups`.
 
 ## Samples
 
@@ -136,9 +228,13 @@ binary FBX writer `models/fbx_write.rs`:
 
 ## Not done yet
 
-- Tree textures, grass/flower atlases and terrain layer arrays still upload RGBA8 (their
-  loaders are renderer code owned by another workstream); the helpers (`compress::encode`,
-  `cached`, `store`, `upload_compressed`) are ready for them. HDRI skies don't use BC6H yet.
+- HDRI skies don't use BC6H yet.
+- Renderer-made textures: the terrain's normal + height array stays RGBA8 in MeadowDemo (the
+  meadow thatch map fails the quality gate; BC5 normals + a BC4 height array would hold it
+  better but need another binding); the three oak assets upload their identical bark and leaf
+  textures once each (cache entries are shared, GPU textures are not); a player whose impostor
+  bake differs in a bit from the editor's draws that impostor uncompressed; the Library keeps
+  entries of textures that changed (no cache cleanup, as for file textures).
 - Normal maps: the standard shader and the custom-shader prelude rebuild Z (needed for BC5);
   shader code that decodes normal maps by hand keeps reading Z from blue.
 - No BC compression on adapters without `TEXTURE_COMPRESSION_BC` (most mobile/web): no

@@ -9,6 +9,12 @@
 //! player) it runs on a worker thread: a terrain draws with neutral placeholder layers for the
 //! first frames of a scene, and keeps its old layers while a changed texture is rebuilt.
 //! With streaming off (tests, screenshots) the arrays are built in the frame that needs them.
+//!
+//! The slices are block-compressed when the device and the textures' Compression settings
+//! allow (`compress::generated`): albedo BC1 (BC7 at High Quality; its alpha is unused),
+//! normal + height BC7 (four channels). Their blocks are kept in `Library/TextureCache`, keyed
+//! by the slice's pixels; while the editor encodes them in the background the arrays go up as
+//! RGBA8 and are built again once the blocks are ready.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -17,10 +23,10 @@ use std::time::{Instant, SystemTime};
 
 use glam::Vec3;
 use image::RgbaImage;
-use wgpu::util::DeviceExt;
 
 use super::texture::{load_image, mip_chain};
 use crate::assets;
+use crate::sprites::compress::generated::{self, Ctx, Layers, Made, Role, Spec};
 use crate::terrain::{MAX_LAYERS, TerrainLayer, harmony};
 
 /// Largest slice side (4 layers × 2 arrays at 1024² ≈ 43 MB with mips).
@@ -41,20 +47,37 @@ pub(super) struct LayerSet {
 }
 
 /// Texture paths of each layer slot (albedo, normal, height).
-type Key = Vec<[Option<String>; 3]>;
+pub(super) type Key = Vec<[Option<String>; 3]>;
 
 struct Cached {
     stamps: Vec<Option<SystemTime>>,
+    /// Slices being encoded in the background (the arrays are RGBA8 until then).
+    waiting: Vec<String>,
     set: LayerSet,
 }
 
+impl Cached {
+    /// A file changed, or the blocks of slices that went up uncompressed are ready.
+    fn stale(&self, key: &Key) -> bool {
+        self.stamps != stamps(key)
+            || (!self.waiting.is_empty() && !generated::waiting(&self.waiting))
+    }
+}
+
 /// Slices built on a worker, ready to upload.
-struct Prepared {
+pub(super) struct Prepared {
     stamps: Vec<Option<SystemTime>>,
-    albedo: ArrayData,
+    pub(super) albedo: Layers,
     /// Normal (rgb) and height (a).
-    normal: ArrayData,
+    pub(super) normal: Layers,
     means: [Option<Vec3>; MAX_LAYERS],
+}
+
+impl Prepared {
+    fn waiting(&self) -> Vec<String> {
+        let (a, n) = (&self.albedo.waiting, &self.normal.waiting);
+        a.iter().chain(n).cloned().collect()
+    }
 }
 
 #[derive(Default)]
@@ -69,7 +92,7 @@ pub(super) struct LayerCache {
     last_poll: Option<Instant>,
 }
 
-fn key(layers: &[TerrainLayer]) -> Key {
+pub(super) fn key(layers: &[TerrainLayer]) -> Key {
     (0..MAX_LAYERS)
         .map(|i| {
             let l = layers.get(i);
@@ -105,6 +128,11 @@ impl LayerCache {
     ) -> &LayerSet {
         let key = key(layers);
         let streaming = super::grass_streaming();
+        let ctx = Ctx::runtime(
+            device
+                .features()
+                .contains(wgpu::Features::TEXTURE_COMPRESSION_BC),
+        );
         let now = Instant::now();
         let poll = self
             .last_poll
@@ -117,14 +145,14 @@ impl LayerCache {
                     self.pending.contains_key(k) || self.uploading.iter().any(|u| u.0 == *k)
                 };
                 let stale: Vec<Key> = (self.sets.iter())
-                    .filter(|(k, c)| !busy(k) && c.stamps != stamps(k))
+                    .filter(|(k, c)| !busy(k) && c.stale(k))
                     .map(|(k, _)| k.clone())
                     .collect();
                 for k in stale {
-                    self.spawn(k);
+                    self.spawn(k, &ctx);
                 }
             } else {
-                self.sets.retain(|k, c| c.stamps == stamps(k));
+                self.sets.retain(|k, c| !c.stale(k));
             }
         }
         self.finish_pending(device, queue);
@@ -132,10 +160,10 @@ impl LayerCache {
             |k: &Key| self.pending.contains_key(k) || self.uploading.iter().any(|u| u.0 == *k);
         if !self.sets.contains_key(&key) && !busy(&key) {
             if streaming {
-                self.spawn(key.clone());
+                self.spawn(key.clone(), &ctx);
             } else {
                 crate::profile_scope!("Terrain.LayerArrays");
-                let set = upload(device, queue, prepare(&key));
+                let set = upload(device, queue, prepare(&key, &ctx));
                 self.sets.insert(key.clone(), set);
             }
         }
@@ -147,13 +175,13 @@ impl LayerCache {
     }
 
     /// Start building the arrays of `key` on a worker thread.
-    fn spawn(&mut self, key: Key) {
+    fn spawn(&mut self, key: Key, ctx: &Ctx) {
         let (tx, rx) = std::sync::mpsc::channel();
-        let job = key.clone();
+        let (job, ctx) = (key.clone(), ctx.clone());
         let spawned = std::thread::Builder::new()
             .name("misty terrain layers".into())
             .spawn(move || {
-                let _ = tx.send(prepare(&job));
+                let _ = tx.send(prepare(&job, &ctx));
             });
         if spawned.is_ok() {
             self.pending.insert(key, Mutex::new(rx));
@@ -228,8 +256,9 @@ fn luminance_height(albedo: &RgbaImage) -> RgbaImage {
     })
 }
 
-/// Decode, fit and mip-map the slices of `key` (any thread).
-fn prepare(key: &Key) -> Prepared {
+/// Decode, fit and mip-map the slices of `key`, or read their blocks from the texture cache
+/// (any thread).
+pub(super) fn prepare(key: &Key, ctx: &Ctx) -> Prepared {
     let stamps = stamps(key);
     let images: Vec<[Option<RgbaImage>; 3]> = key
         .iter()
@@ -260,12 +289,34 @@ fn prepare(key: &Key) -> Prepared {
             .unwrap_or_else(|| solid([128, 128, 128, 255]));
         normal.push(with_height(n, &h));
     }
+    let paths = |slot: usize| key.iter().filter_map(move |k| k[slot].as_deref());
+    let albedo_spec = Spec {
+        recipe: "terrain albedo box srgb",
+        format: ctx.format_of_all(Role::Opaque, paths(0)),
+        srgb: true,
+        coverage: false,
+    };
+    let normal_spec = Spec {
+        recipe: "terrain normal height box linear",
+        format: ctx.format_of_all(Role::Packed, paths(1).chain(paths(2))),
+        srgb: false,
+        coverage: false,
+    };
     Prepared {
         stamps,
-        albedo: ArrayData::new(albedo, true),
-        normal: ArrayData::new(normal, false),
+        albedo: generated::make(albedo, &albedo_spec, ctx, |s| mip_chain(s, true)),
+        normal: generated::make(normal, &normal_spec, ctx, |s| mip_chain(s, false)),
         means,
     }
+}
+
+/// The cache entries of the layer arrays of `layers` under `ctx` (a build's), encoding what
+/// is missing.
+pub(crate) fn bake_textures(layers: &[TerrainLayer], ctx: &Ctx) -> Vec<String> {
+    let p = prepare(&key(layers), ctx);
+    let mut out = p.albedo.entries();
+    out.extend(p.normal.entries());
+    out
 }
 
 /// The normal map with the height map's red channel in its alpha (the mip chain filters every
@@ -278,10 +329,12 @@ fn with_height(mut normal: RgbaImage, height: &RgbaImage) -> RgbaImage {
 }
 
 fn upload(device: &wgpu::Device, queue: &wgpu::Queue, p: Prepared) -> Cached {
-    let (a, b1) = array(device, queue, "misty terrain albedo", &p.albedo);
-    let (n, b2) = array(device, queue, "misty terrain normals", &p.normal);
+    let waiting = p.waiting();
+    let (a, b1) = array(device, queue, "misty terrain albedo", &p.albedo.layers);
+    let (n, b2) = array(device, queue, "misty terrain normals", &p.normal.layers);
     Cached {
         stamps: p.stamps,
+        waiting,
         set: LayerSet {
             albedo: a,
             normal: n,
@@ -294,18 +347,25 @@ fn upload(device: &wgpu::Device, queue: &wgpu::Queue, p: Prepared) -> Cached {
 /// Built arrays whose textures exist and are written one (array, layer) at a time.
 struct Uploading {
     stamps: Vec<Option<SystemTime>>,
+    waiting: Vec<String>,
     means: [Option<Vec3>; MAX_LAYERS],
-    /// Albedo, normal + height.
-    arrays: [(wgpu::Texture, ArrayData); 2],
+    /// Albedo, normal + height: the texture and its slices.
+    arrays: [(wgpu::Texture, Vec<Made>); 2],
     /// Next piece: array * layers + layer.
     next: u32,
 }
 
 impl Uploading {
     fn new(device: &wgpu::Device, p: Prepared) -> Self {
-        let make = |label: &str, a: ArrayData| (texture(device, label, &a, true), a);
+        let make = |label: &str, a: Layers| {
+            let texture =
+                super::texture::made_texture(device, label, &a.layers[0], a.layers.len() as u32);
+            (texture, a.layers)
+        };
+        let waiting = p.waiting();
         Self {
             stamps: p.stamps,
+            waiting,
             means: p.means,
             arrays: [
                 make("misty terrain albedo", p.albedo),
@@ -316,7 +376,7 @@ impl Uploading {
     }
 
     fn pieces(&self) -> u32 {
-        2 * self.arrays[0].1.layers
+        2 * self.arrays[0].1.len() as u32
     }
 
     fn done(&self) -> bool {
@@ -328,49 +388,20 @@ impl Uploading {
         if self.done() {
             return 0;
         }
-        let layers = self.arrays[0].1.layers;
-        let (texture, a) = &self.arrays[(self.next / layers) as usize];
+        let layers = self.arrays[0].1.len() as u32;
+        let (texture, slices) = &self.arrays[(self.next / layers) as usize];
         let layer = self.next % layers;
         self.next += 1;
-        let per_layer = a.data.len() / a.layers as usize;
-        let mut offset = layer as usize * per_layer;
-        for level in 0..a.levels {
-            let side = (a.side >> level).max(1);
-            let len = (side * side * 4) as usize;
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture,
-                    mip_level: level,
-                    origin: wgpu::Origin3d {
-                        x: 0,
-                        y: 0,
-                        z: layer,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &a.data[offset..offset + len],
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(side * 4),
-                    rows_per_image: Some(side),
-                },
-                wgpu::Extent3d {
-                    width: side,
-                    height: side,
-                    depth_or_array_layers: 1,
-                },
-            );
-            offset += len;
-        }
-        per_layer
+        super::texture::write_made(queue, texture, layer, &slices[layer as usize])
     }
 
     fn finish(self) -> Cached {
         let [a, n] = self
             .arrays
-            .map(|(t, d)| (array_view(&t), d.data.len() as u64));
+            .map(|(t, d)| (array_view(&t), d.iter().map(Made::bytes).sum::<u64>()));
         Cached {
             stamps: self.stamps,
+            waiting: self.waiting,
             set: LayerSet {
                 albedo: a.0,
                 normal: n.0,
@@ -383,19 +414,22 @@ impl Uploading {
 
 /// Neutral layers (grey, flat, mid height) drawn while a terrain's own are built.
 fn placeholder(device: &wgpu::Device, queue: &wgpu::Queue) -> LayerSet {
-    let solid = |c: [u8; 4]| vec![RgbaImage::from_pixel(4, 4, image::Rgba(c)); MAX_LAYERS];
+    let solid = |c: [u8; 4], srgb: bool| {
+        let chain = mip_chain(RgbaImage::from_pixel(4, 4, image::Rgba(c)), srgb);
+        vec![Made::Rgba { chain, srgb }; MAX_LAYERS]
+    };
     let (albedo, _) = array(
         device,
         queue,
         "misty terrain albedo (loading)",
-        &ArrayData::new(solid([128, 128, 128, 255]), true),
+        &solid([128, 128, 128, 255], true),
     );
     // Flat, mid height (alpha).
     let (normal, _) = array(
         device,
         queue,
         "misty terrain normals (loading)",
-        &ArrayData::new(solid([128, 128, 255, 128]), false),
+        &solid([128, 128, 255, 128], false),
     );
     LayerSet {
         albedo,
@@ -405,82 +439,14 @@ fn placeholder(device: &wgpu::Device, queue: &wgpu::Queue) -> LayerSet {
     }
 }
 
-/// Square slices with their mips, layer-major, ready for a 2D array texture.
-struct ArrayData {
-    side: u32,
-    layers: u32,
-    levels: u32,
-    srgb: bool,
-    data: Vec<u8>,
-}
-
-impl ArrayData {
-    fn new(slices: Vec<RgbaImage>, srgb: bool) -> Self {
-        let side = slices[0].width();
-        let layers = slices.len() as u32;
-        let mut levels = 0;
-        let mut data = Vec::new();
-        for s in slices {
-            let chain = mip_chain(s, srgb);
-            levels = chain.len() as u32;
-            for m in chain {
-                data.extend_from_slice(m.as_raw());
-            }
-        }
-        Self {
-            side,
-            layers,
-            levels,
-            srgb,
-            data,
-        }
-    }
-}
-
-/// Upload square slices with mips as a 2D array.
+/// Upload slices (blocks or RGBA8 with their mips) as a 2D array.
 fn array(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     label: &str,
-    a: &ArrayData,
+    slices: &[Made],
 ) -> (wgpu::TextureView, u64) {
-    let texture = device.create_texture_with_data(
-        queue,
-        &descriptor(label, a, false),
-        wgpu::util::TextureDataOrder::LayerMajor,
-        &a.data,
-    );
-    (array_view(&texture), a.data.len() as u64)
-}
-
-/// An empty array texture for `a`, written later (`copy_dst`).
-fn texture(device: &wgpu::Device, label: &str, a: &ArrayData, copy_dst: bool) -> wgpu::Texture {
-    device.create_texture(&descriptor(label, a, copy_dst))
-}
-
-fn descriptor<'a>(label: &'a str, a: &ArrayData, copy_dst: bool) -> wgpu::TextureDescriptor<'a> {
-    let mut usage = wgpu::TextureUsages::TEXTURE_BINDING;
-    if copy_dst {
-        usage |= wgpu::TextureUsages::COPY_DST;
-    }
-    wgpu::TextureDescriptor {
-        label: Some(label),
-        size: wgpu::Extent3d {
-            width: a.side,
-            height: a.side,
-            depth_or_array_layers: a.layers,
-        },
-        mip_level_count: a.levels,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: if a.srgb {
-            wgpu::TextureFormat::Rgba8UnormSrgb
-        } else {
-            wgpu::TextureFormat::Rgba8Unorm
-        },
-        usage,
-        view_formats: &[],
-    }
+    super::texture::upload_made(device, queue, label, slices, true)
 }
 
 fn array_view(texture: &wgpu::Texture) -> wgpu::TextureView {

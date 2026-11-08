@@ -16,10 +16,11 @@ use super::culling::{Aabb, Frustum};
 use super::environment::Environment;
 use super::grass_cull::{self, CullPipelines};
 use super::grass_near_shadow::{self, RADIUS as NEAR_RADIUS};
-use super::terrain_grass::{Grass, GrassParams, Limit};
+use super::terrain_grass::{Atlas, Grass, GrassParams, Limit};
 use super::terrain_layers::LayerCache;
 use super::terrain_lod;
 use super::{DrawUniform, RenderStats};
+use crate::sprites::compress::generated::Ctx;
 use crate::terrain::store::{self, Region};
 use crate::terrain::{MAX_LAYERS, TerrainData, TerrainDraw, harmony};
 
@@ -404,11 +405,12 @@ pub(super) struct TerrainCache {
     /// This frame the lit lane holds only the flat fans (the grass visibility raster draws
     /// the standing blades from the depth lane: `Renderer::grass_vis_passes`).
     lit_fans_only: bool,
-    /// The built-in grass atlas with empty flower layers (uploaded with the first grass).
-    grass_atlas: Option<(wgpu::TextureView, wgpu::Sampler)>,
+    /// The built-in grass atlas with empty flower layers (uploaded with the first grass) and
+    /// its id.
+    grass_atlas: Option<(Atlas, u64)>,
     /// Grass atlases with a terrain's flower layers, per set of flower textures.
     flower_atlases: HashMap<Vec<String>, FlowerAtlas>,
-    /// Ids handed to grass atlases (0 = the one without flowers).
+    /// Ids handed to grass atlases.
     next_atlas_id: u64,
     /// Camera of the current frame (grass LOD).
     camera: Vec3,
@@ -419,11 +421,35 @@ pub(super) struct TerrainCache {
     started: Instant,
 }
 
-/// A grass atlas with flower layers: being built on a worker thread, or uploaded (with its id).
+/// Flower layers being built on a worker thread. (Behind a lock only so the renderer stays
+/// `Sync`.)
+type LayersRx = std::sync::Mutex<std::sync::mpsc::Receiver<super::terrain_grass::FlowerLayers>>;
+
+/// A grass atlas with flower layers: being built on a worker thread, or uploaded (with its id;
+/// `next`: built again on a worker now that its blocks are in the texture cache, the uploaded
+/// one drawing meanwhile).
 enum FlowerAtlas {
-    /// (Behind a lock only so the renderer stays `Sync`.)
-    Building(std::sync::Mutex<std::sync::mpsc::Receiver<super::terrain_grass::FlowerLayers>>),
-    Ready(wgpu::TextureView, wgpu::Sampler, u64),
+    Building(LayersRx),
+    Ready {
+        atlas: Atlas,
+        id: u64,
+        next: Option<LayersRx>,
+    },
+}
+
+/// Build the flower layers of `kinds` on a worker thread.
+fn spawn_flower_layers(kinds: &[crate::terrain::flowers::FlowerKind], ctx: Ctx) -> LayersRx {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let kinds = kinds.to_vec();
+    let spawned = std::thread::Builder::new()
+        .name("misty flower atlas".into())
+        .spawn(move || {
+            let _ = tx.send(super::terrain_grass::flower_layers(&kinds, &ctx));
+        });
+    if let Err(e) = spawned {
+        eprintln!("flower atlas worker: {e}");
+    }
+    std::sync::Mutex::new(rx)
 }
 
 /// The grass atlas with the flower layers of `kinds` once it is ready (the layers are built on
@@ -436,53 +462,85 @@ fn flower_atlas<'a>(
     kinds: &[crate::terrain::flowers::FlowerKind],
 ) -> Option<(&'a wgpu::TextureView, &'a wgpu::Sampler, u64)> {
     let key = super::terrain_grass::flower_key(kinds);
+    let streaming = super::terrain_grass::grass_streaming();
+    let ctx = Ctx::runtime(
+        device
+            .features()
+            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC),
+    );
     if !atlases.contains_key(&key) {
         // (A handful of terrains at most; forget atlases of texture sets no longer used.)
         if atlases.len() > 8 {
             atlases.clear();
         }
-        let state = if super::terrain_grass::grass_streaming() {
-            let (tx, rx) = std::sync::mpsc::channel();
-            let kinds = kinds.to_vec();
-            let spawned = std::thread::Builder::new()
-                .name("misty flower atlas".into())
-                .spawn(move || {
-                    let _ = tx.send(super::terrain_grass::flower_layers(&kinds));
-                });
-            if let Err(e) = spawned {
-                eprintln!("flower atlas worker: {e}");
-            }
-            FlowerAtlas::Building(std::sync::Mutex::new(rx))
+        let state = if streaming {
+            FlowerAtlas::Building(spawn_flower_layers(kinds, ctx.clone()))
         } else {
-            let layers = super::terrain_grass::flower_layers(kinds);
-            let (view, sampler) = super::terrain_grass::atlas_array(device, queue, Some(&layers));
+            let layers = super::terrain_grass::flower_layers(kinds, &ctx);
             *next_id += 1;
-            FlowerAtlas::Ready(view, sampler, *next_id)
+            FlowerAtlas::Ready {
+                atlas: super::terrain_grass::atlas_array(device, queue, Some(&layers)),
+                id: *next_id,
+                next: None,
+            }
         };
         atlases.insert(key.clone(), state);
     }
     let entry = atlases.get_mut(&key)?;
-    if let FlowerAtlas::Building(rx) = entry {
-        let got = rx.get_mut().unwrap_or_else(|e| e.into_inner()).try_recv();
-        match got {
-            Ok(layers) => {
-                crate::profile_scope!("Grass.FlowerAtlas");
-                let (view, sampler) =
-                    super::terrain_grass::atlas_array(device, queue, Some(&layers));
-                *next_id += 1;
-                *entry = FlowerAtlas::Ready(view, sampler, *next_id);
+    match entry {
+        FlowerAtlas::Building(rx) => {
+            let got = rx.get_mut().unwrap_or_else(|e| e.into_inner()).try_recv();
+            let atlas = match got {
+                Ok(layers) => {
+                    crate::profile_scope!("Grass.FlowerAtlas");
+                    super::terrain_grass::atlas_array(device, queue, Some(&layers))
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+                // The worker failed: draw without the flowers' textures from now on.
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    super::terrain_grass::atlas_array(device, queue, None)
+                }
+            };
+            *next_id += 1;
+            *entry = FlowerAtlas::Ready {
+                atlas,
+                id: *next_id,
+                next: None,
+            };
+        }
+        FlowerAtlas::Ready { atlas, id, next } => {
+            // Went up uncompressed while its blocks were encoded: build it again (cache hits).
+            if next.is_none() && atlas.outdated() {
+                if streaming {
+                    *next = Some(spawn_flower_layers(kinds, ctx));
+                } else {
+                    let layers = super::terrain_grass::flower_layers(kinds, &ctx);
+                    *atlas = super::terrain_grass::atlas_array(device, queue, Some(&layers));
+                    *next_id += 1;
+                    *id = *next_id;
+                }
             }
-            Err(std::sync::mpsc::TryRecvError::Empty) => return None,
-            // The worker failed: draw without the flowers' textures from now on.
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                let (view, sampler) = super::terrain_grass::atlas_array(device, queue, None);
-                *next_id += 1;
-                *entry = FlowerAtlas::Ready(view, sampler, *next_id);
+            if let Some(rx) = next {
+                let got = rx.get_mut().unwrap_or_else(|e| e.into_inner()).try_recv();
+                match got {
+                    Ok(layers) => {
+                        crate::profile_scope!("Grass.FlowerAtlas");
+                        *atlas = super::terrain_grass::atlas_array(device, queue, Some(&layers));
+                        *next_id += 1;
+                        *id = *next_id;
+                        *next = None;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        atlas.keep();
+                        *next = None;
+                    }
+                }
             }
         }
     }
     match entry {
-        FlowerAtlas::Ready(view, sampler, id) => Some((view, sampler, *id)),
+        FlowerAtlas::Ready { atlas, id, .. } => Some((&atlas.view, &atlas.sampler, *id)),
         FlowerAtlas::Building(_) => None,
     }
 }
@@ -759,9 +817,12 @@ impl TerrainCache {
                     .update(device, queue, &t.data, camera - t.position, density);
             }
             let has_grass = d.details.enabled && !d.detail_map.is_empty();
-            if has_grass && self.grass_atlas.is_none() {
+            // (Uploaded again when it went up uncompressed and its blocks are ready now.)
+            if has_grass && self.grass_atlas.as_ref().is_none_or(|(a, _)| a.outdated()) {
                 crate::profile_scope!("Grass.Atlas");
-                self.grass_atlas = Some(super::terrain_grass::atlas_array(device, queue, None));
+                self.next_atlas_id += 1;
+                let atlas = super::terrain_grass::atlas_array(device, queue, None);
+                self.grass_atlas = Some((atlas, self.next_atlas_id));
             }
             let flowers = (has_grass && d.flowers.enabled && !d.flowers.kinds.is_empty())
                 .then(|| {
@@ -776,7 +837,7 @@ impl TerrainCache {
                 .flatten();
             let (atlas_view, atlas_sampler, atlas_id) = match (flowers, &self.grass_atlas) {
                 (Some(f), _) => f,
-                (None, Some((v, s))) if has_grass => (v, s, 0),
+                (None, Some((a, id))) if has_grass => (&a.view, &a.sampler, *id),
                 _ => {
                     self.grass_groups.push(None);
                     self.grass_shadow_groups.push(None);
@@ -903,8 +964,23 @@ impl TerrainCache {
     pub fn memory(&self) -> (usize, u64) {
         let bytes = self.entries.values().map(|g| g.bytes()).sum::<u64>()
             + self.patterns.values().map(|p| p.buffer.size()).sum::<u64>()
-            + self.layers.bytes();
+            + self.layers.bytes()
+            + self.atlas_bytes();
         (self.entries.len(), bytes)
+    }
+
+    /// GPU bytes of the terrain layer arrays.
+    pub fn layer_bytes(&self) -> u64 {
+        self.layers.bytes()
+    }
+
+    /// GPU bytes of the grass atlases (built-in grass and the flower layers).
+    pub fn atlas_bytes(&self) -> u64 {
+        let flowers = self.flower_atlases.values().map(|f| match f {
+            FlowerAtlas::Ready { atlas, .. } => atlas.bytes,
+            FlowerAtlas::Building(_) => 0,
+        });
+        self.grass_atlas.as_ref().map_or(0, |(a, _)| a.bytes) + flowers.sum::<u64>()
     }
 
     /// Draw the frame's terrains `filter(i)` keeps (`first` = draw index of terrain 0).

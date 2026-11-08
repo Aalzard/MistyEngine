@@ -202,6 +202,101 @@ pub(crate) fn upload_compressed(
     texture.create_view(&Default::default())
 }
 
+/// An empty texture for renderer-made slices (`layers` of the size and format of `first`),
+/// written by [`write_made`].
+pub(crate) fn made_texture(
+    device: &wgpu::Device,
+    label: &str,
+    first: &sprites::compress::generated::Made,
+    layers: u32,
+) -> wgpu::Texture {
+    let (width, height) = first.size();
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: layers,
+        },
+        mip_level_count: first.level_count(),
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: first.format(),
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
+/// Write slice `layer` of `texture` (every level of `m`, blocks or RGBA8); returns the bytes.
+pub(crate) fn write_made(
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    layer: u32,
+    m: &sprites::compress::generated::Made,
+) -> usize {
+    let format = m.format();
+    let (bw, bh) = format.block_dimensions();
+    let block = format.block_copy_size(None).unwrap_or(4);
+    let (width, height) = m.size();
+    let mut bytes = 0;
+    for level in 0..m.level_count() {
+        let (w, h) = ((width >> level).max(1), (height >> level).max(1));
+        // Whole blocks (the physical size of a level smaller than a block).
+        let (cols, rows) = (w.div_ceil(bw), h.div_ceil(bh));
+        let data = m.level(level as usize);
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture,
+                mip_level: level,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    z: layer,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(cols * block),
+                rows_per_image: Some(rows),
+            },
+            wgpu::Extent3d {
+                width: cols * bw,
+                height: rows * bh,
+                depth_or_array_layers: 1,
+            },
+        );
+        bytes += data.len();
+    }
+    bytes
+}
+
+/// Upload renderer-made slices (all of one size and format) as a texture (`array`: viewed as a
+/// 2D array); returns the view and the GPU bytes.
+pub(crate) fn upload_made(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    layers: &[sprites::compress::generated::Made],
+    array: bool,
+) -> (wgpu::TextureView, u64) {
+    let texture = made_texture(device, label, &layers[0], layers.len() as u32);
+    let mut bytes = 0;
+    for (i, m) in layers.iter().enumerate() {
+        bytes += write_made(queue, &texture, i as u32, m) as u64;
+    }
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(if array {
+            wgpu::TextureViewDimension::D2Array
+        } else {
+            wgpu::TextureViewDimension::D2
+        }),
+        ..Default::default()
+    });
+    (view, bytes)
+}
+
 /// Sampler state from a texture's import settings (Filter Mode, Wrap Mode, Aniso Level) and
 /// the active quality level's Anisotropic Textures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
