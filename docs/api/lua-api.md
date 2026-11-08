@@ -2712,7 +2712,7 @@ Disable a shader keyword
 
 Enable a shader keyword ("_EMISSION")
 
-> Only `_EMISSION` is a switch; the other keywords follow the material's settings.
+> `_EMISSION` and the feature keywords are switches; the other keywords follow the material's settings.
 
 ### `material:GetColor(name)`
 
