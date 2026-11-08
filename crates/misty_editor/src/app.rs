@@ -964,6 +964,7 @@ impl eframe::App for EditorApp {
                 let stats = gpu.renderer.stats();
                 capture.note_loading(stats.loading > 0 || stats.grass_pending > 0);
             }
+            capture.hold(crate::panels::timeline::capture_waiting(&self.state));
             capture.update(&ctx);
             // Screenshot runs close without a save prompt (and never save the scene).
             if capture.saved() {

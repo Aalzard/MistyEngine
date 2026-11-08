@@ -241,6 +241,18 @@ pub fn apply_env(s: &mut EditorState, value: &str) {
     }
 }
 
+/// `MISTY_CAPTURE_PLAY_TIME=<seconds>` (screenshots of cutscenes): hold the screenshot until
+/// Play mode has run that many seconds of game time.
+pub fn capture_waiting(s: &EditorState) -> bool {
+    let Some(at) = std::env::var("MISTY_CAPTURE_PLAY_TIME")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+    else {
+        return false;
+    };
+    !(s.play.in_play_mode() && s.time.time >= at)
+}
+
 /// The timeline being shown: (director, asset path).
 pub fn current(s: &EditorState) -> Option<(Option<Entity>, String)> {
     if let Some(d) = s.timeline.director

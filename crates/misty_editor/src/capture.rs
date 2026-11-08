@@ -118,6 +118,8 @@ pub struct Capture {
     path: PathBuf,
     frames: u32,
     requested: bool,
+    /// Something asked to wait before the shot (see [`Capture::hold`]).
+    held: bool,
     saved: bool,
     /// `MISTY_THEME=light`: egui's light visuals, to check theme-tinted icons (the editor
     /// itself only has the dark theme).
@@ -134,6 +136,7 @@ impl Capture {
             path: p.into(),
             frames: 0,
             requested: false,
+            held: false,
             saved: false,
             light: std::env::var("MISTY_THEME").is_ok_and(|t| t == "light"),
             times: Vec::new(),
@@ -170,6 +173,12 @@ impl Capture {
         Some(rel)
     }
 
+    /// Keep the shot back while `waiting` (e.g. until Play mode reaches a moment, see
+    /// `panels::timeline::capture_waiting`).
+    pub fn hold(&mut self, waiting: bool) {
+        self.held = waiting;
+    }
+
     /// The views are still streaming in assets this frame (see [`FrameClock::last_loading`]).
     pub fn note_loading(&mut self, loading: bool) {
         if loading && !self.requested {
@@ -195,7 +204,7 @@ impl Capture {
         if self.frames > at / 2 && !self.requested {
             self.times.push(ctx.input(|i| i.unstable_dt) * 1000.0);
         }
-        if self.frames >= at && !self.requested {
+        if self.frames >= at && !self.requested && !self.held {
             let mut t = self.times.clone();
             t.sort_by(f32::total_cmp);
             if let Some(&median) = t.get(t.len() / 2) {
