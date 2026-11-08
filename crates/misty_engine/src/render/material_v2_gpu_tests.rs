@@ -468,51 +468,91 @@ fn material_feature_costs() {
         v.sort_by(f32::total_cmp);
         v[v.len() / 2]
     };
-    let mut base = 0.0;
     eprintln!("material feature costs, 1600x900, 154 spheres + a wall filling the view:");
-    for (name, m) in &cases {
-        let meshes = grid(m);
-        let frame = Frame {
-            camera: &cam,
-            grid: None,
-            skybox: true,
-            background: [0.1; 3],
-            environment: &environment,
-            post: PostSettings::default(),
-            lines: &[],
-            overlay: &[],
-            meshes: &meshes,
-            particles: &[],
-            terrains: &[],
-            shaded: true,
-            lights: &lights,
-            water: &[],
-        };
-        let (mut main, mut total) = (Vec::new(), Vec::new());
-        for i in 0..80 {
-            renderer.render(&device, &queue, &target, &frame);
-            let _ = device.poll(wgpu::PollType::wait_indefinitely());
-            if i < 20 {
-                continue;
-            }
-            let mut sum = 0.0;
-            let mut all = 0.0;
-            for &(label, ms) in renderer.pass_times() {
-                all += ms;
-                if label.starts_with("Main pass") || label.contains("Opaque") {
-                    sum += ms;
+    // Three interleaved rounds (each case's median of 60 frames per round); the smallest of
+    // a case's round medians is kept, which drops most of the noise of a shared machine.
+    type Parts = Vec<(&'static str, f32)>;
+    let mut best: Vec<(f32, Parts)> = vec![(f32::MAX, Vec::new()); cases.len()];
+    for _round in 0..3 {
+        for (c, (_, m)) in cases.iter().enumerate() {
+            let meshes = grid(m);
+            let frame = Frame {
+                camera: &cam,
+                grid: None,
+                skybox: true,
+                background: [0.1; 3],
+                environment: &environment,
+                post: PostSettings::default(),
+                lines: &[],
+                overlay: &[],
+                meshes: &meshes,
+                particles: &[],
+                terrains: &[],
+                shaded: true,
+                lights: &lights,
+                water: &[],
+            };
+            let mut totals = Vec::new();
+            let mut parts: Vec<(&'static str, Vec<f32>)> = Vec::new();
+            for i in 0..80 {
+                renderer.render(&device, &queue, &target, &frame);
+                let _ = device.poll(wgpu::PollType::wait_indefinitely());
+                if i < 20 {
+                    continue;
                 }
+                let mut all = 0.0;
+                let mut seen: Vec<(&'static str, f32)> = Vec::new();
+                for &(label, ms) in renderer.pass_times() {
+                    all += ms;
+                    match seen.iter_mut().find(|(l, _)| *l == label) {
+                        Some(s) => s.1 += ms,
+                        None => seen.push((label, ms)),
+                    }
+                }
+                for (label, ms) in seen {
+                    match parts.iter_mut().find(|(l, _)| *l == label) {
+                        Some(p) => p.1.push(ms),
+                        None => parts.push((label, vec![ms])),
+                    }
+                }
+                totals.push(all);
             }
-            main.push(sum);
-            total.push(all);
+            let total = median(totals);
+            if total < best[c].0 {
+                best[c] = (
+                    total,
+                    parts.into_iter().map(|(l, v)| (l, median(v))).collect(),
+                );
+            }
         }
-        let (main, total) = (median(main), median(total));
-        if *name == "plain Standard" {
-            base = main;
-        }
+    }
+    let (base, base_parts) = best[0].clone();
+    for (label, ms) in &base_parts {
+        eprintln!("    plain: {label:<40} {ms:6.3} ms");
+    }
+    for ((name, _), (total, parts)) in cases.iter().zip(&best) {
+        // The passes that changed most (the lit draws).
+        let mut deltas: Vec<(&str, f32)> = parts
+            .iter()
+            .map(|(l, ms)| {
+                let b = base_parts
+                    .iter()
+                    .find(|(bl, _)| bl == l)
+                    .map_or(0.0, |p| p.1);
+                (*l, ms - b)
+            })
+            .filter(|(_, d)| d.abs() >= 0.005)
+            .collect();
+        deltas.sort_by(|a, b| b.1.abs().total_cmp(&a.1.abs()));
+        let detail: Vec<String> = deltas
+            .iter()
+            .take(3)
+            .map(|(l, d)| format!("{l} {d:+.3}"))
+            .collect();
         eprintln!(
-            "  {name:<16} main pass {main:6.3} ms ({:+6.3} ms)   frame {total:6.3} ms",
-            main - base
+            "  {name:<16} frame {total:6.3} ms ({:+6.3} ms)  {}",
+            total - base,
+            detail.join(", ")
         );
     }
 }
