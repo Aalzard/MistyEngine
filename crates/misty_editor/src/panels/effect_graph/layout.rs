@@ -56,6 +56,7 @@ pub struct OperatorLayout {
 pub fn setting_rows(kind: &ContextKind) -> usize {
     match kind {
         ContextKind::Spawn => 0,
+        ContextKind::GpuEvent(_) => 1,
         ContextKind::Initialize(_) => 4,
         ContextKind::Update(_) => 1,
         ContextKind::Output(_) => 4,
@@ -79,7 +80,10 @@ pub fn has_settings(kind: &BlockKind) -> bool {
 /// Operators with a settings row.
 pub fn op_has_settings(kind: &misty_engine::vfx::OperatorKind) -> bool {
     use misty_engine::vfx::OperatorKind as K;
-    matches!(kind, K::GetAttribute { .. } | K::Random { .. })
+    matches!(
+        kind,
+        K::GetAttribute { .. } | K::Random { .. } | K::SubgraphOutput { .. }
+    )
 }
 
 pub fn context(c: &Context) -> ContextLayout {
@@ -218,27 +222,41 @@ pub fn output_ports(g: &EffectGraph) -> Vec<(u32, &'static str, Pos2, ValueType)
     out
 }
 
-/// Flow order of the contexts (Spawn → Initialize → Update → Outputs): pairs to connect.
+/// Flow order of the contexts (Spawn / GPU Event → Initialize → Update → Outputs, per system,
+/// and parent → GPU Event): pairs to connect.
 pub fn flow(g: &EffectGraph) -> Vec<(u32, u32)> {
-    let first = |t| g.contexts.iter().find(|c| c.kind.ty() == t).map(|c| c.id);
-    let spawn = first(ContextType::Spawn);
-    let init = first(ContextType::Initialize);
-    let update = first(ContextType::Update);
     let mut out = Vec::new();
-    if let (Some(a), Some(b)) = (spawn, init) {
-        out.push((a, b));
-    }
-    let before_out = update.or(init);
-    if let (Some(a), Some(b)) = (init, update) {
-        out.push((a, b));
-    }
-    if let Some(a) = before_out {
-        for c in g
-            .contexts
-            .iter()
-            .filter(|c| c.kind.ty() == ContextType::Output)
+    for sys in g.systems() {
+        let first = |t| g.system_context(sys, t).map(|c| c.id);
+        let start = first(ContextType::Spawn).or(first(ContextType::GpuEvent));
+        let init = first(ContextType::Initialize);
+        let update = first(ContextType::Update);
+        if let (Some(a), Some(b)) = (start, init) {
+            out.push((a, b));
+        }
+        let before_out = update.or(init);
+        if let (Some(a), Some(b)) = (init, update) {
+            out.push((a, b));
+        }
+        if let Some(a) = before_out {
+            for c in g
+                .contexts
+                .iter()
+                .filter(|c| c.system == sys && c.kind.ty() == ContextType::Output)
+            {
+                out.push((a, c.id));
+            }
+        }
+        // The parent system's Update (or Initialize) sends the events.
+        if let Some(ev) = g.system_context(sys, ContextType::GpuEvent)
+            && let ContextKind::GpuEvent(s) = &ev.kind
         {
-            out.push((a, c.id));
+            let from = g
+                .system_context(s.parent, ContextType::Update)
+                .or(g.system_context(s.parent, ContextType::Initialize));
+            if let Some(f) = from {
+                out.push((f.id, ev.id));
+            }
         }
     }
     out
@@ -260,32 +278,41 @@ pub fn bounds(g: &EffectGraph) -> Rect {
 /// operator left of the input it feeds (operators feeding operators further left).
 pub fn arrange(g: &mut EffectGraph) {
     let gap = 60.0;
-    let mut y = 0.0;
-    for t in [
-        ContextType::Spawn,
-        ContextType::Initialize,
-        ContextType::Update,
-    ] {
-        let ids: Vec<u32> = g
+    // Systems side by side: each a column of contexts with its outputs in a row below.
+    let mut x0 = 0.0;
+    for sys in g.systems() {
+        let mut y = 0.0;
+        let mut right: f32 = x0 + CTX_W;
+        for t in [
+            ContextType::Spawn,
+            ContextType::GpuEvent,
+            ContextType::Initialize,
+            ContextType::Update,
+        ] {
+            let ids: Vec<u32> = g
+                .contexts
+                .iter()
+                .filter(|c| c.system == sys && c.kind.ty() == t)
+                .map(|c| c.id)
+                .collect();
+            for id in ids {
+                let c = g.context_mut(id).expect("listed");
+                c.position = [x0, y];
+                y = context(c).rect.bottom() + gap;
+            }
+        }
+        let outs: Vec<u32> = g
             .contexts
             .iter()
-            .filter(|c| c.kind.ty() == t)
+            .filter(|c| c.system == sys && c.kind.ty() == ContextType::Output)
             .map(|c| c.id)
             .collect();
-        for id in ids {
-            let c = g.context_mut(id).expect("listed");
-            c.position = [0.0, y];
-            y = context(c).rect.bottom() + gap;
+        for (i, id) in outs.into_iter().enumerate() {
+            let x = x0 + i as f32 * (CTX_W + 50.0);
+            g.context_mut(id).expect("listed").position = [x, y];
+            right = right.max(x + CTX_W);
         }
-    }
-    let outs: Vec<u32> = g
-        .contexts
-        .iter()
-        .filter(|c| c.kind.ty() == ContextType::Output)
-        .map(|c| c.id)
-        .collect();
-    for (i, id) in outs.into_iter().enumerate() {
-        g.context_mut(id).expect("listed").position = [i as f32 * (CTX_W + 50.0), y];
+        x0 = right + 120.0;
     }
     // Consumers before producers: reverse dependency order.
     let mut order = g.operator_order();

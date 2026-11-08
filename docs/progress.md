@@ -2936,3 +2936,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Per-pass GPU times without timestamps inside encoders; visible instance counts of indirect
   draws; Player discovery / autoconnect; live resource views in the Bindings card.
+## Round 20C — Deeper VFX: GPU graph features and Particle System modules (branch r20-vfx)
+
+### Done (docs/pending/r20-vfx.md, screenshots `docs/screenshots/r20/vfx_*`)
+- Effect Graph: GPU back-to-front sorting (bitonic, sized by the live count; Sort Auto / On /
+  Off per output), Mesh outputs (built-in primitives, lit), Trail outputs (a ring of past
+  positions per particle) and Ribbon outputs (one strip, youngest first), Collide with Depth
+  Buffer (the last scene depth copy and its camera), GPU Event systems (On Die / On Collide,
+  count per event, Inherit Source Velocity / Size) and operator sub-graphs (`.vfxoperator`,
+  flattened before compiling, errors on the node, live recompile of users).
+- Particle System: MinMax curves (four modes) and MinMaxColor gradients everywhere the
+  familiar engine has them; Velocity / Limit Velocity / Force over Lifetime, Color by Speed,
+  Size by Speed, Rotation over Lifetime / by Speed, Noise, Collision (planes and world
+  colliders), Sub Emitters (birth / collision / death), Texture Sheet Animation, Trails
+  (particles and ribbon), stretched / horizontal / vertical billboards; Inspector sections for
+  each. Older scenes keep their exact text.
+- Sample `VfxDemo2`: fireworks, rain splashing off the depth buffer, lit debris, a sub-graph
+  ribbon, sorted flipbook smoke, and Particle Systems with noise, trails, sub emitters and
+  world collisions.
+- Measured (`vfx_cost_report`, 1080p, GPU lock): 100k GPU particles alpha-sorted every frame
+  with depth collision cost 0.50 ms of GPU simulation + sort (sort ≈ 0.34 ms, depth test
+  ≈ 0) and +2.1 ms on a whole frame over the floor alone (drawing ≈ 0.8–1.0 ms, the depth
+  copy collision needs ≈ 0.7 ms).
+
+### Not done yet
+- Imported-mesh outputs, sub-graph blocks, strip ids for several ribbons, colour in GPU event
+  records, off-screen depth collision; CPU Inherit Velocity / Lights / External Forces / Custom
+  Data modules, more Shape types, smooth curve tangents.

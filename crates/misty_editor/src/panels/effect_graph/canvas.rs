@@ -9,7 +9,7 @@ use egui::{
     Vec2, pos2, vec2,
 };
 use misty_engine::vfx::graph::{
-    BlendMode, ContextKind, FlipbookMode, Item, OutputKind, SimulationSpace,
+    BlendMode, ContextKind, EventSource, FlipbookMode, Item, OutputKind, SimulationSpace, SortMode,
 };
 use misty_engine::vfx::types::{Value, ValueType};
 use misty_engine::vfx::{
@@ -76,6 +76,7 @@ pub fn type_color(t: ValueType) -> Color32 {
 pub fn context_color(t: ContextType) -> Color32 {
     match t {
         ContextType::Spawn => Color32::from_rgb(110, 190, 120),
+        ContextType::GpuEvent => Color32::from_rgb(226, 112, 96),
         ContextType::Initialize => Color32::from_rgb(222, 170, 80),
         ContextType::Update => Color32::from_rgb(96, 156, 226),
         ContextType::Output => Color32::from_rgb(186, 126, 222),
@@ -92,13 +93,25 @@ fn op_color(kind: &OperatorKind) -> Color32 {
     }
 }
 
-/// Title of a context (Output contexts name what they draw).
+/// Title of a context (Output contexts name what they draw; GPU Event systems say which
+/// system they are).
 pub fn context_title(kind: &ContextKind) -> String {
     match kind {
         ContextKind::Output(o) => {
             format!("Output Particle {} ({})", o.kind.label(), o.blend.label())
         }
+        ContextKind::GpuEvent(e) => format!("GPU Event ({})", e.source.label()),
         k => k.ty().label().to_owned(),
+    }
+}
+
+/// [`context_title`] with the system number for GPU Event systems.
+pub fn context_title_in(c: &misty_engine::vfx::graph::Context) -> String {
+    let t = context_title(&c.kind);
+    if c.system == 0 {
+        t
+    } else {
+        format!("{t} · System {}", c.system)
     }
 }
 
@@ -465,7 +478,7 @@ fn context_ui(
         0.0,
         accent,
     );
-    let title = context_title(&ctx.kind);
+    let title = context_title_in(&ctx);
     painter.text(
         header.left_center() + vec2(12.0 * z, 0.0),
         Align2::LEFT_CENTER,
@@ -530,7 +543,10 @@ fn context_ui(
         clicked |= block_ui(ui, s, painter, view, ty, bl, busy);
     }
 
-    // Add Block footer.
+    // Add Block footer (GPU Event contexts take no blocks).
+    if ty == ContextType::GpuEvent {
+        return clicked;
+    }
     let foot = scr(view, l.foot);
     let fresp = ui.interact(foot, ui.id().with(("vfx_foot", id)), Sense::click());
     let label = format!("Add Block to {}", ty.label());
@@ -666,6 +682,36 @@ fn context_settings(
     let row = |i: usize| scr(view, rows[i]);
     match &mut k {
         ContextKind::Spawn => {}
+        ContextKind::GpuEvent(st) => {
+            let systems = s.effect_graph.graph.systems();
+            small_scope(ui, row(0), z, |ui| {
+                ui.horizontal_centered(|ui| {
+                    combo(
+                        ui,
+                        ("vfx_evsrc", id),
+                        &mut st.source,
+                        &EventSource::ALL,
+                        |v| v.label().to_owned(),
+                    );
+                    row_label(ui, "Count");
+                    ui.add(egui::DragValue::new(&mut st.count).range(1..=1024))
+                        .on_hover_text("Particles spawned per event");
+                    row_label(ui, "From");
+                    let parents: Vec<u32> = systems
+                        .iter()
+                        .copied()
+                        .filter(|p| *p < s.effect_graph.graph.context(id).map_or(0, |c| c.system))
+                        .collect();
+                    combo(ui, ("vfx_evparent", id), &mut st.parent, &parents, |p| {
+                        if p == 0 {
+                            "Main System".to_owned()
+                        } else {
+                            format!("System {p}")
+                        }
+                    });
+                });
+            });
+        }
         ContextKind::Initialize(st) => {
             small_scope(ui, row(0), z, |ui| {
                 ui.horizontal_centered(|ui| {
@@ -721,10 +767,24 @@ fn context_settings(
                     combo(ui, ("vfx_blend", id), &mut st.blend, &BlendMode::ALL, |v| {
                         v.label().to_owned()
                     });
+                    combo(ui, ("vfx_sort", id), &mut st.sort, &SortMode::ALL, |v| {
+                        v.label().to_owned()
+                    });
                 });
             });
             small_scope(ui, row(1), z, |ui| {
                 ui.horizontal_centered(|ui| {
+                    if st.kind == OutputKind::Mesh {
+                        row_label(ui, "Mesh");
+                        combo(
+                            ui,
+                            ("vfx_mesh", id),
+                            &mut st.mesh,
+                            &misty_engine::scene::PrimitiveMesh::ALL,
+                            |m| m.name().to_owned(),
+                        );
+                        return;
+                    }
                     row_label(ui, "Texture");
                     if st.texture_property.is_none() {
                         crate::panels::inspector::slots::texture_slot(
@@ -753,6 +813,18 @@ fn context_settings(
             });
             small_scope(ui, row(2), z, |ui| {
                 ui.horizontal_centered(|ui| {
+                    if st.kind == OutputKind::Trail {
+                        row_label(ui, "Trail Points");
+                        ui.add(
+                            egui::DragValue::new(&mut st.trail_points)
+                                .range(2..=misty_engine::vfx::graph::MAX_TRAIL_POINTS),
+                        )
+                        .on_hover_text("Positions remembered per particle (one per step)");
+                        return;
+                    }
+                    if st.kind != OutputKind::Quad {
+                        return;
+                    }
                     row_label(ui, "Flipbook");
                     ui.add(
                         egui::DragValue::new(&mut st.flipbook[0])
@@ -788,7 +860,7 @@ fn context_settings(
                                 .speed(0.005)
                                 .range(0.0..=10.0),
                         );
-                    } else {
+                    } else if st.kind == OutputKind::Quad {
                         ui.checkbox(&mut st.soft_particles, "Soft Particles")
                             .on_hover_text("Fade where particles meet opaque geometry");
                         if st.soft_particles {
@@ -1292,6 +1364,10 @@ fn operator_ui(
                         },
                     );
                 }
+                OperatorKind::SubgraphOutput { name } => {
+                    row_label(ui, "Name");
+                    ui.add(egui::TextEdit::singleline(name).desired_width(f32::INFINITY));
+                }
                 _ => {}
             });
         });
@@ -1455,6 +1531,28 @@ fn canvas_menu(ui: &mut Ui, s: &mut EditorState, at: Option<Pos2>) {
             w.search = Some(search::Search::nodes(p, graph));
         }
         ui.close();
+    }
+    if !s.effect_graph.is_subgraph() {
+        ui.menu_button("GPU Event System", |ui| {
+            for source in EventSource::ALL {
+                if ui.button(source.label()).clicked() {
+                    let w = &mut s.effect_graph;
+                    let graph = match (at, w.canvas.view) {
+                        (Some(p), Some(v)) => v.graph(p),
+                        _ => pos2(layout::bounds(&w.graph).right() + 60.0, 0.0),
+                    };
+                    let mut first = None;
+                    w.edit("GPU Event System", false, |g| {
+                        let sys = g.add_event_system(0, source, [graph.x, graph.y]);
+                        first = g.contexts.iter().find(|c| c.system == sys).map(|c| c.id);
+                    });
+                    if let Some(id) = first {
+                        w.selected = [id].into();
+                    }
+                    ui.close();
+                }
+            }
+        });
     }
     ui.separator();
     if ui.button("Frame All").clicked() {

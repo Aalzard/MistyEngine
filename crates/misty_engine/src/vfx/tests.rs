@@ -26,11 +26,14 @@ fn compiles(g: &EffectGraph, what: &str) {
 fn default_graph_compiles() {
     let g = EffectGraph::new_default();
     let c = compile(&g).unwrap();
-    assert_eq!(c.capacity, 4096);
-    assert_eq!(c.outputs.len(), 1);
+    assert_eq!(c.capacity(), 4096);
+    assert_eq!(c.root().outputs.len(), 1);
     assert_eq!(c.spawn.len(), 1);
     for entry in ["cs_reset", "cs_emit", "cs_args", "cs_update", "cs_finish"] {
-        assert!(c.sim_source.contains(&format!("fn {entry}(")), "{entry}");
+        assert!(
+            c.root().sim_source.contains(&format!("fn {entry}(")),
+            "{entry}"
+        );
     }
 }
 
@@ -131,9 +134,9 @@ fn outputs_of_every_kind_and_blend_validate() {
             let second = g.add_context(ContextType::Output, [400.0, 640.0]);
             g.add_block(second, BlockKind::SizeOverLife);
             let c = compile(&g).unwrap_or_else(|e| panic!("{kind:?} {blend:?}: {e:?}"));
-            assert_eq!(c.outputs.len(), 2);
+            assert_eq!(c.root().outputs.len(), 2);
             assert!(
-                c.sim_source.contains("vfx_indirect[12u]"),
+                c.root().sim_source.contains("vfx_indirect[12u]"),
                 "second draw args"
             );
         }
@@ -471,7 +474,7 @@ fn working_copies_replace_the_file_until_cleared() {
     EffectGraph::new_default().save(&file).unwrap();
     let rel = file.to_string_lossy().replace('\\', "/");
     let (g0, c0) = super::library::get(&rel);
-    assert_eq!(c0.unwrap().capacity, 4096);
+    assert_eq!(c0.unwrap().capacity(), 4096);
     let mut edited = EffectGraph::new_default();
     for c in &mut edited.contexts {
         if let ContextKind::Initialize(s) = &mut c.kind {
@@ -481,11 +484,425 @@ fn working_copies_replace_the_file_until_cleared() {
     super::library::set_working_copy(&rel, &edited);
     let (g1, c1) = super::library::get(&rel);
     assert!(g1 > g0);
-    assert_eq!(c1.unwrap().capacity, 100);
+    assert_eq!(c1.unwrap().capacity(), 100);
     // Same content again: no new generation (instances keep their particles).
     super::library::set_working_copy(&rel, &edited);
     assert_eq!(super::library::generation(&rel), g1);
     super::library::clear_working_copy(&rel);
-    assert_eq!(super::library::get(&rel).1.unwrap().capacity, 4096);
+    assert_eq!(super::library::get(&rel).1.unwrap().capacity(), 4096);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---- Round 20: sorting, mesh / trail / ribbon outputs, depth collision, GPU events,
+// sub-graphs.
+
+fn output_settings(g: &mut EffectGraph, s: OutputSettings) -> u32 {
+    let out = ctx(g, ContextType::Output);
+    g.context_mut(out).unwrap().kind = ContextKind::Output(s);
+    out
+}
+
+#[test]
+fn alpha_outputs_sort_by_distance_and_ribbons_by_age() {
+    use super::codegen::SortKey;
+    use super::graph::SortMode;
+    let mut g = EffectGraph::new_default();
+    output_settings(
+        &mut g,
+        OutputSettings {
+            blend: BlendMode::Alpha,
+            ..Default::default()
+        },
+    );
+    let c = compile(&g).unwrap();
+    assert_eq!(c.root().outputs[0].sort, Some(SortKey::Distance));
+    assert_eq!(c.root().sort_keys(), vec![SortKey::Distance]);
+    // Additive outputs don't sort unless asked; Off wins over Alpha Blend.
+    output_settings(&mut g, OutputSettings::default());
+    assert_eq!(compile(&g).unwrap().root().outputs[0].sort, None);
+    output_settings(
+        &mut g,
+        OutputSettings {
+            sort: SortMode::On,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        compile(&g).unwrap().root().outputs[0].sort,
+        Some(SortKey::Distance)
+    );
+    output_settings(
+        &mut g,
+        OutputSettings {
+            blend: BlendMode::Alpha,
+            sort: SortMode::Off,
+            ..Default::default()
+        },
+    );
+    assert_eq!(compile(&g).unwrap().root().outputs[0].sort, None);
+    // A ribbon joins particles by age and spreads births over the step.
+    output_settings(
+        &mut g,
+        OutputSettings {
+            kind: OutputKind::Ribbon,
+            ..Default::default()
+        },
+    );
+    let c = compile(&g).unwrap();
+    assert_eq!(c.root().outputs[0].sort, Some(SortKey::Age));
+    assert!(
+        c.root()
+            .sim_source
+            .contains("p.age = p.age - dt * (f32(gid.x)")
+    );
+    assert!(c.root().outputs[0].source.contains("vfx_strip"));
+}
+
+#[test]
+fn mesh_and_trail_outputs_size_their_draws() {
+    use crate::scene::PrimitiveMesh;
+    let mut g = EffectGraph::new_default();
+    output_settings(
+        &mut g,
+        OutputSettings {
+            kind: OutputKind::Mesh,
+            mesh: PrimitiveMesh::Cube,
+            blend: BlendMode::Opaque,
+            ..Default::default()
+        },
+    );
+    let c = compile(&g).unwrap();
+    let verts = super::codegen::mesh_vertex_count(PrimitiveMesh::Cube);
+    assert_eq!(verts, 36, "a cube is 12 triangles");
+    assert_eq!(c.root().outputs[0].vertex_count, verts);
+    assert_eq!(super::codegen::mesh_vertices(PrimitiveMesh::Cube).len(), 72);
+    assert!(
+        c.root()
+            .sim_source
+            .contains(&format!("vfx_indirect[8u] = {verts}u;"))
+    );
+    // Trails: a ring per particle, written every update and filled at birth.
+    output_settings(
+        &mut g,
+        OutputSettings {
+            kind: OutputKind::Trail,
+            trail_points: 12,
+            ..Default::default()
+        },
+    );
+    let c = compile(&g).unwrap();
+    assert_eq!(c.root().trail_points, 12);
+    assert_eq!(c.root().outputs[0].vertex_count, 6 * 11);
+    assert!(
+        c.root()
+            .sim_source
+            .contains("vfx_trail[index * 12u + vfx_params.serial % 12u]")
+    );
+    assert!(c.root().sim_source.contains("for (var t = 0u; t < 12u;"));
+    // Out-of-range points clamp.
+    output_settings(
+        &mut g,
+        OutputSettings {
+            kind: OutputKind::Trail,
+            trail_points: 500,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        compile(&g).unwrap().root().trail_points,
+        super::graph::MAX_TRAIL_POINTS
+    );
+}
+
+#[test]
+fn depth_collision_needs_the_scene_depth() {
+    let mut g = EffectGraph::new_default();
+    assert!(!compile(&g).unwrap().depth_collision);
+    let upd = ctx(&g, ContextType::Update);
+    let b = g.add_block(upd, BlockKind::CollideDepthBuffer).unwrap();
+    let c = compile(&g).unwrap();
+    assert!(c.depth_collision);
+    assert!(c.root().sim_source.contains("vfx_depth_collide("));
+    // Disabled blocks don't ask for it.
+    g.block_mut(b).unwrap().enabled = false;
+    assert!(!compile(&g).unwrap().depth_collision);
+}
+
+/// The main system (with a collision) and a GPU Event system listening to it.
+fn with_event_system(source: super::graph::EventSource) -> (EffectGraph, u32) {
+    let mut g = EffectGraph::new_default();
+    let upd = ctx(&g, ContextType::Update);
+    g.add_block(upd, BlockKind::CollidePlane).unwrap();
+    let sys = g.add_event_system(0, source, [500.0, 0.0]);
+    let init = g.system_context(sys, ContextType::Initialize).unwrap().id;
+    g.add_block(init, BlockKind::InheritSourceVelocity).unwrap();
+    g.add_block(init, BlockKind::InheritSourceSize).unwrap();
+    g.add_block(
+        init,
+        BlockKind::PositionSphere {
+            mode: ShapeMode::Surface,
+        },
+    )
+    .unwrap();
+    (g, sys)
+}
+
+#[test]
+fn gpu_event_systems_compile_to_their_own_kernels() {
+    use super::graph::EventSource;
+    for source in EventSource::ALL {
+        let (g, sys) = with_event_system(source);
+        assert_eq!(g.systems(), vec![0, sys]);
+        let c = compile(&g).unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(c.systems.len(), 2);
+        assert_eq!(c.queues.len(), 1);
+        let q = c.queues[0];
+        assert_eq!(c.event_words, 4 + q.capacity * super::codegen::EVENT_WORDS);
+        let child = &c.systems[1];
+        let ev = child.event.as_ref().unwrap();
+        assert_eq!((ev.parent, ev.source, ev.count), (0, source, 8));
+        assert!(child.sim_source.contains("fn cs_event_args("));
+        assert!(child.sim_source.contains("source_velocity * 1.0f"));
+        assert!(child.sim_source.contains("p.size = source_size * 1.0f"));
+        let root = &c.root().sim_source;
+        // The parent clears its queue every step and fills it from the update.
+        assert!(root.contains(&format!("atomicStore(&vfx_events[{}u], 0u);", q.offset)));
+        let push = match source {
+            EventSource::OnDie => "if (dying) {\n        vfx_push_event(",
+            EventSource::OnCollide => "if (collided) {\n        vfx_push_event(",
+        };
+        assert!(root.contains(push), "{source:?}");
+        assert!(root.contains("collided = collided || vn < -1.0f;"));
+        assert!(!root.contains("fn cs_event_args("));
+    }
+}
+
+#[test]
+fn gpu_event_structure_errors() {
+    use super::graph::EventSource;
+    // A GPU Event context in the main system.
+    let mut g = EffectGraph::new_default();
+    let ev = g.add_context(ContextType::GpuEvent, [600.0, 0.0]);
+    let errors = compile(&g).unwrap_err();
+    assert_eq!(errors[0].node, Some(ev), "{errors:?}");
+    // A child system without its GPU Event context.
+    let (mut g, sys) = with_event_system(EventSource::OnDie);
+    let ev = g.system_context(sys, ContextType::GpuEvent).unwrap().id;
+    g.remove(ev);
+    let errors = compile(&g).unwrap_err();
+    assert!(errors[0].message.contains("GPU Event"), "{errors:?}");
+    // A parent that isn't an earlier system.
+    let (mut g, sys) = with_event_system(EventSource::OnDie);
+    let ev = g.system_context(sys, ContextType::GpuEvent).unwrap().id;
+    if let Some(c) = g.context_mut(ev)
+        && let ContextKind::GpuEvent(s) = &mut c.kind
+    {
+        s.parent = sys;
+    }
+    assert_eq!(compile(&g).unwrap_err()[0].node, Some(ev));
+    // Spawn contexts only start the main system.
+    let (mut g, sys) = with_event_system(EventSource::OnDie);
+    let sp = g.add_context(ContextType::Spawn, [900.0, 0.0]);
+    g.context_mut(sp).unwrap().system = sys;
+    assert_eq!(compile(&g).unwrap_err()[0].node, Some(sp));
+    // GPU Event contexts take no blocks.
+    assert!(
+        BlockKind::catalog()
+            .iter()
+            .all(|b| !b.allowed_in(ContextType::GpuEvent))
+    );
+}
+
+#[test]
+fn systems_and_new_output_settings_round_trip_and_old_files_load() {
+    use super::graph::{EventSource, SortMode};
+    let (mut g, sys) = with_event_system(EventSource::OnCollide);
+    let out = g.system_context(sys, ContextType::Output).unwrap().id;
+    g.context_mut(out).unwrap().kind = ContextKind::Output(OutputSettings {
+        kind: OutputKind::Mesh,
+        mesh: crate::scene::PrimitiveMesh::Sphere,
+        sort: SortMode::On,
+        trail_points: 5,
+        ..Default::default()
+    });
+    let text = g.to_json();
+    assert!(text.contains("\"system\": 1"));
+    assert!(text.contains("\"type\": \"GpuEvent\""));
+    let back = EffectGraph::from_json(&text).unwrap();
+    assert_eq!(back, g);
+    // A round 13 file (no system, sort, mesh or trail fields) still loads with defaults.
+    let old = r#"{"version":1,"contexts":[
+        {"id":1,"type":"Spawn","position":[0,0],"blocks":[{"id":2,"type":"ConstantRate"}]},
+        {"id":3,"type":"Initialize","position":[0,100]},
+        {"id":4,"type":"Output","kind":"Quad","blend":"Alpha","position":[0,300]}],
+        "next_id":5}"#;
+    let g = EffectGraph::from_json(old).unwrap();
+    let c = g.context(4).unwrap();
+    assert_eq!(c.system, 0);
+    let ContextKind::Output(s) = &c.kind else {
+        panic!("output")
+    };
+    assert_eq!(s.sort, SortMode::Auto);
+    assert!(s.sorted(), "old alpha outputs now sort");
+    assert_eq!(s.trail_points, 8);
+    compiles(&g, "round 13 graph");
+}
+
+/// A sub-graph: `Out = In × Gain`, and `Twice = Out + Out`.
+fn subgraph_doc() -> EffectGraph {
+    let mut s = EffectGraph::default();
+    s.add_property("In", PropertyValue::Float(1.0));
+    s.add_property("Gain", PropertyValue::Float(3.0));
+    let pin = s.add_operator(OperatorKind::Property { name: "In".into() }, [0.0, 0.0]);
+    let pg = s.add_operator(
+        OperatorKind::Property {
+            name: "Gain".into(),
+        },
+        [0.0, 100.0],
+    );
+    let mul = s.add_operator(OperatorKind::Multiply, [200.0, 0.0]);
+    s.connect(pin, "Out", mul, "A").unwrap();
+    s.connect(pg, "Out", mul, "B").unwrap();
+    let out = s.add_operator(
+        OperatorKind::SubgraphOutput { name: "Out".into() },
+        [400.0, 0.0],
+    );
+    s.connect(mul, "Out", out, "Value").unwrap();
+    let add = s.add_operator(OperatorKind::Add, [400.0, 100.0]);
+    s.connect(mul, "Out", add, "A").unwrap();
+    s.connect(mul, "Out", add, "B").unwrap();
+    let twice = s.add_operator(
+        OperatorKind::SubgraphOutput {
+            name: "Twice".into(),
+        },
+        [600.0, 100.0],
+    );
+    s.connect(add, "Out", twice, "Value").unwrap();
+    s
+}
+
+#[test]
+fn subgraphs_flatten_into_the_graph() {
+    let path = "Assets/Tests/Gain.vfxoperator";
+    super::subgraph::register(path, subgraph_doc());
+    let kind = OperatorKind::Subgraph { path: path.into() };
+    let ins: Vec<&str> = kind.inputs().iter().map(|p| p.name).collect();
+    assert_eq!(ins, ["In", "Gain"]);
+    let outs: Vec<&str> = kind.outputs(None).iter().map(|p| p.name).collect();
+    assert_eq!(outs, ["Out", "Twice"]);
+    assert_eq!(kind.title(), "Gain");
+
+    let mut g = EffectGraph::new_default();
+    let node = g.add_operator(kind, [-400.0, 0.0]);
+    // In comes from a Float operator (7), Gain is left inline (5).
+    let seven = g.add_operator(OperatorKind::Float, [-600.0, 0.0]);
+    g.operator_mut(seven)
+        .unwrap()
+        .values
+        .insert("Value".into(), Value::Float(7.0));
+    g.connect(seven, "Out", node, "In").unwrap();
+    g.operator_mut(node)
+        .unwrap()
+        .values
+        .insert("Gain".into(), Value::Float(5.0));
+    let init = ctx(&g, ContextType::Initialize);
+    let size = g
+        .add_block(
+            init,
+            BlockKind::SetAttribute {
+                attribute: Attribute::Size,
+                random: false,
+                composition: Composition::Overwrite,
+            },
+        )
+        .unwrap();
+    g.connect(node, "Out", size, "Size").unwrap();
+    let life = g
+        .add_block(
+            init,
+            BlockKind::SetAttribute {
+                attribute: Attribute::Lifetime,
+                random: false,
+                composition: Composition::Overwrite,
+            },
+        )
+        .unwrap();
+    g.connect(node, "Twice", life, "Lifetime").unwrap();
+
+    let (flat, origin) = super::subgraph::expand(&g).unwrap();
+    assert!(flat.operator(node).is_none(), "the node is replaced");
+    assert!(
+        !flat
+            .operators
+            .iter()
+            .any(|o| matches!(o.kind, OperatorKind::Subgraph { .. }))
+    );
+    // The size block is now fed by the copied Multiply, whose A comes from the Float 7.
+    let feed = flat.input_link(size, "Size").unwrap().from;
+    assert!(matches!(
+        flat.operator(feed).unwrap().kind,
+        OperatorKind::Multiply
+    ));
+    assert_eq!(flat.input_link(feed, "A").unwrap().from, seven);
+    assert_eq!(origin[&feed], node);
+    let gain = flat.input_link(feed, "B").unwrap().from;
+    assert_eq!(
+        flat.operator(gain).unwrap().values.get("Value"),
+        Some(&Value::Float(5.0)),
+        "the inline Gain became a constant"
+    );
+    let c = compile(&g).unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(c.root().sim_source.contains("7.0f"));
+    assert!(c.root().sim_source.contains("5.0f"));
+    assert!(g.references().contains(&path.to_owned()));
+}
+
+#[test]
+fn errors_inside_a_subgraph_land_on_its_node() {
+    // A sub-graph using a sub-graph that doesn't exist.
+    let path = "Assets/Tests/Broken.vfxoperator";
+    let mut s = EffectGraph::default();
+    let missing = s.add_operator(
+        OperatorKind::Subgraph {
+            path: "Assets/Tests/Missing.vfxoperator".into(),
+        },
+        [0.0, 0.0],
+    );
+    let out = s.add_operator(
+        OperatorKind::SubgraphOutput { name: "Out".into() },
+        [200.0, 0.0],
+    );
+    s.links.push(super::graph::Link {
+        from: missing,
+        output: "Out".into(),
+        to: out,
+        input: "Value".into(),
+    });
+    super::subgraph::register(path, s);
+    let mut g = EffectGraph::new_default();
+    let node = g.add_operator(OperatorKind::Subgraph { path: path.into() }, [0.0, 0.0]);
+    let errors = compile(&g).unwrap_err();
+    assert_eq!(errors[0].node, Some(node), "{errors:?}");
+    // A sub-graph that uses itself stops at the depth limit.
+    let selfish = "Assets/Tests/Selfish.vfxoperator";
+    let mut s = EffectGraph::default();
+    s.add_operator(
+        OperatorKind::Subgraph {
+            path: selfish.into(),
+        },
+        [0.0, 0.0],
+    );
+    super::subgraph::register(selfish, s);
+    let mut g = EffectGraph::new_default();
+    g.add_operator(
+        OperatorKind::Subgraph {
+            path: selfish.into(),
+        },
+        [0.0, 0.0],
+    );
+    let errors = compile(&g).unwrap_err();
+    assert!(
+        errors.iter().any(|e| e.message.contains("nested")),
+        "{errors:?}"
+    );
 }

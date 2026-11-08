@@ -53,6 +53,8 @@ pub struct AssetDatabase {
     pub timelines: BTreeSet<String>,
     /// Project-relative paths of Effect Graphs (.effect).
     pub effects: BTreeSet<String>,
+    /// Effect Sub-graphs (`.vfxoperator`).
+    pub subgraphs: BTreeSet<String>,
     /// Project-relative paths of audio clips (.wav/.ogg/.mp3).
     pub clips: BTreeSet<String>,
     /// Video clips (.avi, .gif, and video files that can't be played, which explain why).
@@ -103,6 +105,7 @@ impl AssetDatabase {
             avatars: BTreeSet::new(),
             timelines: BTreeSet::new(),
             effects: BTreeSet::new(),
+            subgraphs: BTreeSet::new(),
             presets: BTreeMap::new(),
             prefabs: BTreeMap::new(),
             textures: Vec::new(),
@@ -140,6 +143,7 @@ impl AssetDatabase {
         self.avatars.clear();
         self.timelines.clear();
         self.effects.clear();
+        self.subgraphs.clear();
         self.textures.clear();
         self.shaders.clear();
         self.hdris.clear();
@@ -188,6 +192,8 @@ impl AssetDatabase {
                     self.timelines.insert(self.relative(&path));
                 } else if misty_engine::vfx::is_effect_path(&path.to_string_lossy()) {
                     self.effects.insert(self.relative(&path));
+                } else if misty_engine::vfx::subgraph::is_subgraph_path(&path.to_string_lossy()) {
+                    self.subgraphs.insert(self.relative(&path));
                 } else if misty_engine::audio::is_clip(&path.to_string_lossy()) {
                     self.clips.insert(self.relative(&path));
                 } else if misty_engine::audio::is_mixer(&path.to_string_lossy()) {

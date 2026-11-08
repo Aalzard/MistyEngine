@@ -5,14 +5,37 @@ use std::ops::Range;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 
-/// One billboard: world position, size, linear HDR colour, flags (x = textured).
+/// One billboard (or trail segment): world position, size, linear HDR colour, shape and mode,
+/// texture-sheet UVs and an axis.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable)]
 pub struct ParticleInstance {
     pub position: [f32; 3],
     pub size: f32,
     pub color: [f32; 4],
+    /// x = shape (0 soft dot, 1 textured, 2 soft strip), y = rotation (radians), z = mode
+    /// (0 billboard, 1 stretched, 2 horizontal, 3 vertical, 4 segment), w = stretched length
+    /// scale.
     pub params: [f32; 4],
+    /// Texture rectangle: offset xy, scale zw.
+    pub uv: [f32; 4],
+    /// Stretched: world velocity (xyz) and speed scale (w); segment: the vector to the end
+    /// (xyz) and the end width (w).
+    pub axis: [f32; 4],
+}
+
+impl ParticleInstance {
+    /// A camera-facing billboard of the built-in soft dot.
+    pub fn dot(position: [f32; 3], size: f32, color: [f32; 4]) -> Self {
+        Self {
+            position,
+            size,
+            color,
+            params: [0.0; 4],
+            uv: [0.0, 0.0, 1.0, 1.0],
+            axis: [0.0; 4],
+        }
+    }
 }
 
 /// The live particles of one Particle System.
@@ -119,12 +142,7 @@ mod tests {
     use super::*;
 
     fn at(z: f32) -> ParticleInstance {
-        ParticleInstance {
-            position: [0.0, 0.0, z],
-            size: 1.0,
-            color: [1.0; 4],
-            params: [0.0; 4],
-        }
+        ParticleInstance::dot([0.0, 0.0, z], 1.0, [1.0; 4])
     }
 
     fn batch(z: f32, additive: bool, zs: &[f32]) -> ParticleBatch {
@@ -138,7 +156,7 @@ mod tests {
 
     #[test]
     fn instance_matches_shader_layout() {
-        assert_eq!(std::mem::size_of::<ParticleInstance>(), 48);
+        assert_eq!(std::mem::size_of::<ParticleInstance>(), 80);
     }
 
     #[test]

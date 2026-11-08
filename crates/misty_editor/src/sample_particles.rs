@@ -87,11 +87,7 @@ fn fire() -> ParticleSystem {
     p.main.start_lifetime = MinMax::between(0.6, 1.1);
     p.main.start_speed = MinMax::between(1.2, 2.2);
     p.main.start_size = MinMax::between(0.5, 0.9);
-    p.main.start_color = MinMaxColor {
-        a: [1.0, 0.62, 0.2, 1.0],
-        b: [1.0, 0.35, 0.08, 1.0],
-        random: true,
-    };
+    p.main.start_color = MinMaxColor::between([1.0, 0.62, 0.2, 1.0], [1.0, 0.35, 0.08, 1.0]);
     p.main.gravity_modifier = -0.1;
     p.main.max_particles = 300;
     p.emission.rate_over_time = MinMax::constant(35.0);
@@ -149,11 +145,7 @@ fn smoke() -> ParticleSystem {
     p.main.start_lifetime = MinMax::between(2.5, 3.5);
     p.main.start_speed = MinMax::between(0.6, 1.0);
     p.main.start_size = MinMax::between(0.8, 1.3);
-    p.main.start_color = MinMaxColor {
-        a: [0.3, 0.3, 0.3, 0.45],
-        b: [0.18, 0.18, 0.2, 0.35],
-        random: true,
-    };
+    p.main.start_color = MinMaxColor::between([0.3, 0.3, 0.3, 0.45], [0.18, 0.18, 0.2, 0.35]);
     p.main.prewarm = true;
     p.emission.rate_over_time = MinMax::constant(8.0);
     p.color_over_lifetime.enabled = true;

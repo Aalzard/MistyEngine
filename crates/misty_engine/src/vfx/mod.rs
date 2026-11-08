@@ -18,6 +18,7 @@ pub mod graph;
 pub mod library;
 pub mod operators;
 pub mod spawn;
+pub mod subgraph;
 pub mod types;
 
 #[cfg(test)]
@@ -33,8 +34,8 @@ pub use blocks::{Attribute, BlockKind, Composition, ContextType, OrientMode, Sha
 pub use codegen::{CompiledEffect, GraphError, compile};
 pub use component::{EffectInstance, PropertyOverride, VisualEffect};
 pub use graph::{
-    BlendMode, ContextKind, EffectGraph, EffectProperty, OutputKind, OutputSettings, PropertyValue,
-    SimulationSpace,
+    BlendMode, ContextKind, EffectGraph, EffectProperty, EventSettings, EventSource, OutputKind,
+    OutputSettings, PropertyValue, SimulationSpace, SortMode,
 };
 pub use operators::{AttributeRead, OperatorKind, RandomMode};
 pub use types::{Curve, Gradient, Value, ValueType};

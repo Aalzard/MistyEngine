@@ -9,17 +9,26 @@ use super::types::{AlphaKey, ColorKey, Curve, Gradient, Port, PortType, ValueTyp
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ContextType {
     Spawn,
+    /// Spawns a child system's particles from its parent's events.
+    GpuEvent,
     Initialize,
     Update,
     Output,
 }
 
 impl ContextType {
-    pub const ALL: [Self; 4] = [Self::Spawn, Self::Initialize, Self::Update, Self::Output];
+    pub const ALL: [Self; 5] = [
+        Self::Spawn,
+        Self::GpuEvent,
+        Self::Initialize,
+        Self::Update,
+        Self::Output,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Spawn => "Spawn",
+            Self::GpuEvent => "GPU Event",
             Self::Initialize => "Initialize Particle",
             Self::Update => "Update Particle",
             Self::Output => "Output Particle",
@@ -203,6 +212,12 @@ pub enum BlockKind {
         #[serde(default)]
         inverted: bool,
     },
+    /// Bounce off what the camera sees (the opaque scene's depth buffer).
+    CollideDepthBuffer,
+    /// Child systems: start with the parent particle's velocity (scaled).
+    InheritSourceVelocity,
+    /// Child systems: start with the parent particle's size (scaled).
+    InheritSourceSize,
     /// Kill particles inside a sphere.
     KillSphere,
     // Over life (Update overwrites; Output multiplies).
@@ -284,8 +299,11 @@ impl BlockKind {
             Self::Turbulence,
             Self::ConformToSphere,
             Self::Vortex,
+            Self::InheritSourceVelocity,
+            Self::InheritSourceSize,
             Self::CollidePlane,
             Self::CollideSphere { inverted: false },
+            Self::CollideDepthBuffer,
             Self::KillSphere,
             Self::ColorOverLife,
             Self::SizeOverLife,
@@ -331,6 +349,9 @@ impl BlockKind {
             Self::CollidePlane => "Collide with Plane".into(),
             Self::CollideSphere { inverted: false } => "Collide with Sphere".into(),
             Self::CollideSphere { inverted: true } => "Collide with Sphere (Inside)".into(),
+            Self::CollideDepthBuffer => "Collide with Depth Buffer".into(),
+            Self::InheritSourceVelocity => "Inherit Source Velocity".into(),
+            Self::InheritSourceSize => "Inherit Source Size".into(),
             Self::KillSphere => "Kill (Sphere)".into(),
             Self::ColorOverLife => "Set Color over Life".into(),
             Self::SizeOverLife => "Set Size over Life".into(),
@@ -348,12 +369,16 @@ impl BlockKind {
             | Self::PositionCone { .. }
             | Self::PositionCircle { .. }
             | Self::VelocityFromDirection => "Position / Velocity",
+            Self::InheritSourceVelocity | Self::InheritSourceSize => "GPU Event",
             Self::Gravity
             | Self::LinearDrag
             | Self::Turbulence
             | Self::ConformToSphere
             | Self::Vortex => "Forces",
-            Self::CollidePlane | Self::CollideSphere { .. } | Self::KillSphere => "Collision",
+            Self::CollidePlane
+            | Self::CollideSphere { .. }
+            | Self::CollideDepthBuffer
+            | Self::KillSphere => "Collision",
             Self::ColorOverLife | Self::SizeOverLife => "Over Life",
             Self::Orient { .. } => "Orientation",
         }
@@ -373,6 +398,8 @@ impl BlockKind {
             Self::Vortex => "swirl rotate spin",
             Self::ConformToSphere => "attract magnet",
             Self::CollidePlane | Self::CollideSphere { .. } => "bounce floor ground",
+            Self::CollideDepthBuffer => "bounce scene screen depth z-buffer world",
+            Self::InheritSourceVelocity | Self::InheritSourceSize => "parent event child",
             Self::KillSphere => "destroy reap",
             Self::ColorOverLife => "gradient fade",
             Self::SizeOverLife => "curve scale",
@@ -389,7 +416,7 @@ impl BlockKind {
         match self {
             Self::ConstantRate | Self::SingleBurst | Self::PeriodicBurst => ctx == C::Spawn,
             Self::SetAttribute { attribute, .. } => match ctx {
-                C::Spawn => false,
+                C::Spawn | C::GpuEvent => false,
                 C::Initialize | C::Update => true,
                 // Output blocks change what is drawn only (not the stored particle).
                 C::Output => matches!(
@@ -401,7 +428,9 @@ impl BlockKind {
             | Self::PositionBox { .. }
             | Self::PositionCone { .. }
             | Self::PositionCircle { .. }
-            | Self::VelocityFromDirection => ctx == C::Initialize,
+            | Self::VelocityFromDirection
+            | Self::InheritSourceVelocity
+            | Self::InheritSourceSize => ctx == C::Initialize,
             Self::Gravity
             | Self::LinearDrag
             | Self::Turbulence
@@ -409,6 +438,7 @@ impl BlockKind {
             | Self::Vortex
             | Self::CollidePlane
             | Self::CollideSphere { .. }
+            | Self::CollideDepthBuffer
             | Self::KillSphere => ctx == C::Update,
             Self::ColorOverLife | Self::SizeOverLife => matches!(ctx, C::Update | C::Output),
             Self::Orient { .. } => ctx == C::Output,
@@ -505,6 +535,15 @@ impl BlockKind {
                 Port::float("Bounce", 0.4),
                 Port::float("Friction", 0.2),
             ],
+            Self::CollideDepthBuffer => vec![
+                Port::float("Bounce", 0.4),
+                Port::float("Friction", 0.2),
+                Port::float("Lifetime Loss", 0.0),
+                Port::float("Surface Thickness", 0.5),
+            ],
+            Self::InheritSourceVelocity | Self::InheritSourceSize => {
+                vec![Port::float("Multiplier", 1.0)]
+            }
             Self::KillSphere => {
                 vec![Port::vec3("Center", [0.0; 3]), Port::float("Radius", 0.5)]
             }
@@ -527,6 +566,14 @@ impl BlockKind {
         matches!(
             self,
             Self::ConstantRate | Self::SingleBurst | Self::PeriodicBurst
+        )
+    }
+
+    /// Does this block bounce particles (and so can send On Collide events)?
+    pub fn collides(&self) -> bool {
+        matches!(
+            self,
+            Self::CollidePlane | Self::CollideSphere { .. } | Self::CollideDepthBuffer
         )
     }
 }

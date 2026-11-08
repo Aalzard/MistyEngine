@@ -1,0 +1,1659 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.015,
+            0.02,
+            0.045,
+            0.0
+          ],
+          "clear_flags": "SolidColor",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            12.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            4.5,
+            -15.0
+          ],
+          "rotation": [
+            0.104528464,
+            0.0,
+            0.0,
+            0.9945219
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            0.6,
+            0.7,
+            1.0
+          ],
+          "enabled": true,
+          "intensity": 0.35,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.4082179,
+            -0.23456971,
+            0.10938165,
+            0.87542605
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Mesh Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ground",
+          "tag": "Untagged"
+        },
+        "Mesh Collider": {
+          "convex": false,
+          "enabled": true,
+          "is_trigger": false,
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Vfx Demo2 Ground.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.0,
+            1.0,
+            2.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rain Crate",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Vfx Demo2 Crate.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -3.0,
+            0.6,
+            2.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.2,
+            1.2,
+            1.2
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "Box Collider": {
+          "center": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "enabled": true,
+          "is_trigger": false,
+          "size": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "surface": {
+            "bounciness": 0.0,
+            "friction": 0.6
+          }
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Box Collider"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Spark Crate",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Vfx Demo2 Crate.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.6,
+            0.6,
+            -3.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.2,
+            1.2,
+            1.2
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Visual Effect"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Fireworks",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -8.0,
+            0.0,
+            6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Visual Effect": {
+          "effect": "Assets/Effects/Fireworks.effect",
+          "play_on_awake": true,
+          "reseed_on_play": false,
+          "seed": 31
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Visual Effect"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rain Splash",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -3.0,
+            0.0,
+            2.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Visual Effect": {
+          "effect": "Assets/Effects/Rain Splash.effect",
+          "play_on_awake": true,
+          "reseed_on_play": false,
+          "seed": 32
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Visual Effect"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Debris",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            1.5,
+            0.0,
+            1.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Visual Effect": {
+          "effect": "Assets/Effects/Debris.effect",
+          "play_on_awake": true,
+          "reseed_on_play": false,
+          "seed": 33
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Visual Effect"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ribbon",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            4.5,
+            0.0,
+            2.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Visual Effect": {
+          "effect": "Assets/Effects/Ribbon.effect",
+          "play_on_awake": true,
+          "reseed_on_play": false,
+          "seed": 34
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Visual Effect"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Smoke",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            8.0,
+            0.0,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Visual Effect": {
+          "effect": "Assets/Effects/Smoke.effect",
+          "play_on_awake": true,
+          "reseed_on_play": false,
+          "seed": 35
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Particle System"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Embers",
+          "tag": "Untagged"
+        },
+        "Particle System": {
+          "color_over_lifetime": {
+            "enabled": true,
+            "gradient": {
+              "alpha_keys": [
+                {
+                  "alpha": 1.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 1.0,
+                  "time": 0.8
+                },
+                {
+                  "alpha": 0.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    1.0,
+                    0.3,
+                    0.1
+                  ],
+                  "time": 1.0
+                }
+              ]
+            }
+          },
+          "emission": {
+            "bursts": [],
+            "enabled": true,
+            "rate_over_time": {
+              "a": 30.0,
+              "b": 30.0,
+              "random": false
+            }
+          },
+          "main": {
+            "duration": 5.0,
+            "gravity_modifier": 0.0,
+            "looping": true,
+            "max_particles": 400,
+            "play_on_awake": true,
+            "prewarm": false,
+            "simulation_space": "World",
+            "start_color": {
+              "a": [
+                1.0,
+                0.55,
+                0.15,
+                1.0
+              ],
+              "b": [
+                1.0,
+                0.8,
+                0.3,
+                1.0
+              ],
+              "random": true
+            },
+            "start_delay": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "start_lifetime": {
+              "a": 1.8,
+              "b": 2.6,
+              "random": true
+            },
+            "start_size": {
+              "a": 0.06,
+              "b": 0.12,
+              "random": true
+            },
+            "start_speed": {
+              "a": 0.6,
+              "b": 1.4,
+              "random": true
+            }
+          },
+          "noise": {
+            "damping": true,
+            "enabled": true,
+            "frequency": 0.9,
+            "octave_multiplier": 0.5,
+            "octave_scale": 2.0,
+            "octaves": 2,
+            "position_amount": 1.0,
+            "rotation_amount": 0.0,
+            "scroll_speed": 0.6,
+            "size_amount": 0.0,
+            "strength": {
+              "a": 1.2,
+              "b": 1.2,
+              "curve": true,
+              "curve_max": {
+                "keys": [
+                  [
+                    0.0,
+                    0.3
+                  ],
+                  [
+                    1.0,
+                    1.0
+                  ]
+                ]
+              },
+              "random": false
+            }
+          },
+          "renderer": {
+            "blend": "Additive",
+            "enabled": true,
+            "intensity": 3.0,
+            "texture": null
+          },
+          "seed": 21,
+          "shape": {
+            "angle": 15.0,
+            "box_size": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "enabled": true,
+            "radius": 0.4,
+            "shape": "Cone"
+          },
+          "size_over_lifetime": {
+            "enabled": true,
+            "end": 1.0,
+            "size": {
+              "a": 1.0,
+              "b": 1.0,
+              "curve": true,
+              "curve_max": {
+                "keys": [
+                  [
+                    0.0,
+                    0.4
+                  ],
+                  [
+                    0.2,
+                    1.0
+                  ],
+                  [
+                    1.0,
+                    0.5
+                  ]
+                ]
+              },
+              "random": false
+            },
+            "start": 0.0
+          },
+          "sub_emitters": {
+            "enabled": true,
+            "list": [
+              {
+                "count": 6,
+                "emitter": "Ember Pops",
+                "inherit_color": true,
+                "inherit_size": false,
+                "inherit_velocity": 0.0,
+                "probability": 0.5,
+                "trigger": "Death"
+              }
+            ]
+          },
+          "trails": {
+            "color_over_lifetime": {
+              "alpha_keys": [
+                {
+                  "alpha": 1.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 1.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 1.0
+                }
+              ]
+            },
+            "color_over_trail": {
+              "alpha_keys": [
+                {
+                  "alpha": 1.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 0.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 1.0
+                }
+              ]
+            },
+            "die_with_particles": true,
+            "enabled": true,
+            "inherit_particle_color": true,
+            "lifetime": {
+              "a": 0.25,
+              "b": 0.25,
+              "random": false
+            },
+            "min_vertex_distance": 0.05,
+            "mode": "Particles",
+            "ratio": 1.0,
+            "size_affects_width": true,
+            "width_over_trail": {
+              "a": 1.0,
+              "b": 1.0,
+              "curve": true,
+              "curve_max": {
+                "keys": [
+                  [
+                    0.0,
+                    1.0
+                  ],
+                  [
+                    1.0,
+                    0.0
+                  ]
+                ]
+              },
+              "random": false
+            },
+            "world_space": true
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            -90.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -6.0,
+            0.1,
+            -2.0
+          ],
+          "rotation": [
+            -0.70710677,
+            0.0,
+            0.0,
+            0.70710677
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Particle System"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ember Pops",
+          "tag": "Untagged"
+        },
+        "Particle System": {
+          "color_over_lifetime": {
+            "enabled": false,
+            "gradient": {
+              "alpha_keys": [
+                {
+                  "alpha": 1.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 1.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 1.0
+                }
+              ]
+            }
+          },
+          "emission": {
+            "bursts": [],
+            "enabled": true,
+            "rate_over_time": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            }
+          },
+          "main": {
+            "duration": 5.0,
+            "gravity_modifier": 0.5,
+            "looping": true,
+            "max_particles": 1000,
+            "play_on_awake": false,
+            "prewarm": false,
+            "simulation_space": "World",
+            "start_color": {
+              "a": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "b": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "random": false
+            },
+            "start_delay": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "start_lifetime": {
+              "a": 0.3,
+              "b": 0.6,
+              "random": true
+            },
+            "start_size": {
+              "a": 0.03,
+              "b": 0.03,
+              "random": false
+            },
+            "start_speed": {
+              "a": 0.8,
+              "b": 1.8,
+              "random": true
+            }
+          },
+          "renderer": {
+            "blend": "Additive",
+            "enabled": true,
+            "intensity": 4.0,
+            "texture": null
+          },
+          "seed": 22,
+          "shape": {
+            "angle": 25.0,
+            "box_size": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "enabled": true,
+            "radius": 0.02,
+            "shape": "Sphere"
+          },
+          "size_over_lifetime": {
+            "enabled": false,
+            "end": 1.0,
+            "start": 0.0
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 10
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Particle System"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Sparks Shower",
+          "tag": "Untagged"
+        },
+        "Particle System": {
+          "collision": {
+            "bounce": 0.4,
+            "collides_with": 4294967295,
+            "dampen": 0.2,
+            "enabled": true,
+            "kind": "World",
+            "lifetime_loss": 0.2,
+            "max_kill_speed": 10000.0,
+            "min_kill_speed": 0.0,
+            "planes": [
+              {
+                "normal": [
+                  0.0,
+                  1.0,
+                  0.0
+                ],
+                "point": [
+                  0.0,
+                  0.0,
+                  0.0
+                ]
+              }
+            ],
+            "radius_scale": 1.0
+          },
+          "color_over_lifetime": {
+            "enabled": true,
+            "gradient": {
+              "alpha_keys": [
+                {
+                  "alpha": 1.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 0.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    1.0,
+                    0.6,
+                    0.2
+                  ],
+                  "time": 0.5
+                },
+                {
+                  "color": [
+                    0.8,
+                    0.2,
+                    0.1
+                  ],
+                  "time": 1.0
+                }
+              ]
+            }
+          },
+          "emission": {
+            "bursts": [
+              {
+                "count": 40,
+                "cycles": 0,
+                "interval": 0.4,
+                "probability": 1.0,
+                "time": 0.0
+              }
+            ],
+            "enabled": true,
+            "rate_over_time": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            }
+          },
+          "limit_velocity_over_lifetime": {
+            "dampen": 0.3,
+            "drag": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "enabled": true,
+            "limit": {
+              "a": 7.0,
+              "b": 7.0,
+              "random": false
+            }
+          },
+          "main": {
+            "duration": 5.0,
+            "gravity_modifier": 1.0,
+            "looping": true,
+            "max_particles": 600,
+            "play_on_awake": true,
+            "prewarm": false,
+            "simulation_space": "World",
+            "start_color": {
+              "a": [
+                1.0,
+                0.75,
+                0.35,
+                1.0
+              ],
+              "b": [
+                1.0,
+                0.75,
+                0.35,
+                1.0
+              ],
+              "random": false
+            },
+            "start_delay": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "start_lifetime": {
+              "a": 3.0,
+              "b": 3.0,
+              "random": false
+            },
+            "start_size": {
+              "a": 0.05,
+              "b": 0.05,
+              "random": false
+            },
+            "start_speed": {
+              "a": 2.0,
+              "b": 4.0,
+              "random": true
+            }
+          },
+          "renderer": {
+            "blend": "Additive",
+            "enabled": true,
+            "intensity": 4.0,
+            "render_mode": "Stretched",
+            "speed_scale": 0.06,
+            "texture": null
+          },
+          "seed": 23,
+          "shape": {
+            "angle": 35.0,
+            "box_size": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "enabled": true,
+            "radius": 0.05,
+            "shape": "Cone"
+          },
+          "size_over_lifetime": {
+            "enabled": false,
+            "end": 1.0,
+            "start": 0.0
+          },
+          "sub_emitters": {
+            "enabled": true,
+            "list": [
+              {
+                "count": 3,
+                "emitter": "Spark Splash",
+                "inherit_color": false,
+                "inherit_size": false,
+                "inherit_velocity": 0.2,
+                "probability": 1.0,
+                "trigger": "Collision"
+              }
+            ]
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            90.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.5,
+            -3.0
+          ],
+          "rotation": [
+            0.70710677,
+            0.0,
+            0.0,
+            0.70710677
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Particle System"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Spark Splash",
+          "tag": "Untagged"
+        },
+        "Particle System": {
+          "color_over_lifetime": {
+            "enabled": false,
+            "gradient": {
+              "alpha_keys": [
+                {
+                  "alpha": 1.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 1.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 1.0
+                }
+              ]
+            }
+          },
+          "emission": {
+            "bursts": [],
+            "enabled": true,
+            "rate_over_time": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            }
+          },
+          "main": {
+            "duration": 5.0,
+            "gravity_modifier": 0.5,
+            "looping": true,
+            "max_particles": 800,
+            "play_on_awake": false,
+            "prewarm": false,
+            "simulation_space": "World",
+            "start_color": {
+              "a": [
+                1.0,
+                0.85,
+                0.5,
+                1.0
+              ],
+              "b": [
+                1.0,
+                0.85,
+                0.5,
+                1.0
+              ],
+              "random": false
+            },
+            "start_delay": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "start_lifetime": {
+              "a": 0.15,
+              "b": 0.3,
+              "random": true
+            },
+            "start_size": {
+              "a": 0.03,
+              "b": 0.03,
+              "random": false
+            },
+            "start_speed": {
+              "a": 0.8,
+              "b": 1.8,
+              "random": true
+            }
+          },
+          "renderer": {
+            "blend": "Additive",
+            "enabled": true,
+            "intensity": 4.0,
+            "texture": null
+          },
+          "seed": 24,
+          "shape": {
+            "angle": 25.0,
+            "box_size": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "enabled": true,
+            "radius": 0.02,
+            "shape": "Sphere"
+          },
+          "size_over_lifetime": {
+            "enabled": false,
+            "end": 1.0,
+            "start": 0.0
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": 12
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Particle System"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Flipbook Smoke",
+          "tag": "Untagged"
+        },
+        "Particle System": {
+          "color_over_lifetime": {
+            "enabled": true,
+            "gradient": {
+              "alpha_keys": [
+                {
+                  "alpha": 0.0,
+                  "time": 0.0
+                },
+                {
+                  "alpha": 1.0,
+                  "time": 0.2
+                },
+                {
+                  "alpha": 0.0,
+                  "time": 1.0
+                }
+              ],
+              "color_keys": [
+                {
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "time": 0.0
+                },
+                {
+                  "color": [
+                    0.7,
+                    0.7,
+                    0.7
+                  ],
+                  "time": 1.0
+                }
+              ]
+            }
+          },
+          "emission": {
+            "bursts": [],
+            "enabled": true,
+            "rate_over_time": {
+              "a": 12.0,
+              "b": 12.0,
+              "curve": true,
+              "curve_max": {
+                "keys": [
+                  [
+                    0.0,
+                    0.5
+                  ],
+                  [
+                    0.5,
+                    1.0
+                  ],
+                  [
+                    1.0,
+                    0.5
+                  ]
+                ]
+              },
+              "random": false
+            }
+          },
+          "main": {
+            "duration": 5.0,
+            "gravity_modifier": 0.0,
+            "looping": true,
+            "max_particles": 120,
+            "play_on_awake": true,
+            "prewarm": false,
+            "simulation_space": "Local",
+            "start_color": {
+              "a": [
+                0.6,
+                0.62,
+                0.68,
+                0.8
+              ],
+              "b": [
+                0.6,
+                0.62,
+                0.68,
+                0.8
+              ],
+              "random": false
+            },
+            "start_delay": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "start_lifetime": {
+              "a": 3.0,
+              "b": 4.0,
+              "random": true
+            },
+            "start_rotation": {
+              "a": 0.0,
+              "b": 360.0,
+              "random": true
+            },
+            "start_size": {
+              "a": 0.8,
+              "b": 1.2,
+              "random": true
+            },
+            "start_speed": {
+              "a": 0.2,
+              "b": 0.5,
+              "random": true
+            }
+          },
+          "renderer": {
+            "blend": "Alpha",
+            "enabled": true,
+            "intensity": 1.0,
+            "texture": "Assets/Textures/VfxDemo2 Smoke Sheet.png"
+          },
+          "rotation_over_lifetime": {
+            "angular_velocity": {
+              "a": -30.0,
+              "b": 30.0,
+              "random": true
+            },
+            "enabled": true
+          },
+          "seed": 25,
+          "shape": {
+            "angle": 10.0,
+            "box_size": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "enabled": true,
+            "radius": 0.3,
+            "shape": "Cone"
+          },
+          "size_over_lifetime": {
+            "enabled": true,
+            "end": 1.0,
+            "size": {
+              "a": 1.0,
+              "b": 1.0,
+              "curve": true,
+              "curve_max": {
+                "keys": [
+                  [
+                    0.0,
+                    0.7
+                  ],
+                  [
+                    1.0,
+                    2.4
+                  ]
+                ]
+              },
+              "curve_min": {
+                "keys": [
+                  [
+                    0.0,
+                    0.5
+                  ],
+                  [
+                    1.0,
+                    1.6
+                  ]
+                ]
+              },
+              "random": true
+            },
+            "start": 0.0
+          },
+          "texture_sheet_animation": {
+            "animation": "WholeSheet",
+            "cycles": 1.0,
+            "enabled": true,
+            "frame_over_time": {
+              "a": 1.0,
+              "b": 1.0,
+              "curve": true,
+              "curve_max": {
+                "keys": [
+                  [
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    1.0,
+                    1.0
+                  ]
+                ]
+              },
+              "random": false
+            },
+            "random_row": true,
+            "row": 0,
+            "start_frame": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "tiles_x": 4,
+            "tiles_y": 4
+          },
+          "velocity_over_lifetime": {
+            "enabled": true,
+            "space": "World",
+            "speed_modifier": {
+              "a": 1.0,
+              "b": 1.0,
+              "random": false
+            },
+            "x": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            },
+            "y": {
+              "a": 0.6,
+              "b": 0.6,
+              "curve": true,
+              "curve_max": {
+                "keys": [
+                  [
+                    0.0,
+                    1.0
+                  ],
+                  [
+                    1.0,
+                    0.2
+                  ]
+                ]
+              },
+              "random": false
+            },
+            "z": {
+              "a": 0.0,
+              "b": 0.0,
+              "random": false
+            }
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            -90.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            5.0,
+            0.2,
+            -2.5
+          ],
+          "rotation": [
+            -0.70710677,
+            0.0,
+            0.0,
+            0.70710677
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

@@ -1,0 +1,402 @@
+{
+  "version": 1,
+  "properties": [],
+  "contexts": [
+    {
+      "id": 1,
+      "type": "Spawn",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "id": 2,
+          "type": "PeriodicBurst",
+          "values": {
+            "Count": {
+              "Float": 3.0
+            },
+            "Delay": {
+              "Float": 0.2
+            },
+            "Period": {
+              "Float": 1.4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Initialize",
+      "capacity": 64,
+      "bounds_center": [
+        0.0,
+        7.0,
+        0.0
+      ],
+      "bounds_size": [
+        16.0,
+        16.0,
+        16.0
+      ],
+      "space": "World",
+      "position": [
+        0.0,
+        226.0
+      ],
+      "blocks": [
+        {
+          "id": 4,
+          "type": "PositionBox",
+          "mode": "Volume",
+          "values": {
+            "Size": {
+              "Vec3": [
+                3.0,
+                0.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "id": 5,
+          "type": "SetAttribute",
+          "attribute": "Velocity",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Vec3": [
+                -1.2,
+                9.0,
+                -0.8
+              ]
+            },
+            "B": {
+              "Vec3": [
+                1.2,
+                11.0,
+                0.8
+              ]
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 1.0
+            },
+            "B": {
+              "Float": 1.25
+            }
+          }
+        },
+        {
+          "id": 7,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Size": {
+              "Float": 0.12
+            }
+          }
+        },
+        {
+          "id": 8,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Color": {
+              "Color": [
+                4.0,
+                2.6,
+                1.2,
+                1.0
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "position": [
+        0.0,
+        904.0
+      ],
+      "blocks": [
+        {
+          "id": 10,
+          "type": "Gravity"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Output",
+      "kind": "Trail",
+      "blend": "Additive",
+      "flipbook": [
+        1,
+        1
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": false,
+      "soft_distance": 0.5,
+      "line_length": 0.05,
+      "sort": "Auto",
+      "mesh": "Cube",
+      "trail_points": 16,
+      "position": [
+        0.0,
+        1114.0
+      ],
+      "blocks": []
+    },
+    {
+      "id": 12,
+      "type": "GpuEvent",
+      "source": "OnDie",
+      "count": 90,
+      "parent": 0,
+      "system": 1,
+      "position": [
+        420.0,
+        0.0
+      ],
+      "blocks": []
+    },
+    {
+      "id": 13,
+      "type": "Initialize",
+      "capacity": 8192,
+      "bounds_center": [
+        0.0,
+        7.0,
+        0.0
+      ],
+      "bounds_size": [
+        16.0,
+        16.0,
+        16.0
+      ],
+      "space": "Local",
+      "system": 1,
+      "position": [
+        420.0,
+        155.0
+      ],
+      "blocks": [
+        {
+          "id": 16,
+          "type": "PositionSphere",
+          "mode": "Surface",
+          "values": {
+            "Radius": {
+              "Float": 0.05
+            }
+          }
+        },
+        {
+          "id": 17,
+          "type": "VelocityFromDirection",
+          "values": {
+            "Max Speed": {
+              "Float": 6.0
+            },
+            "Min Speed": {
+              "Float": 3.5
+            }
+          }
+        },
+        {
+          "id": 18,
+          "type": "InheritSourceVelocity",
+          "values": {
+            "Multiplier": {
+              "Float": 0.3
+            }
+          }
+        },
+        {
+          "id": 19,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 1.2
+            },
+            "B": {
+              "Float": 2.0
+            }
+          }
+        },
+        {
+          "id": 20,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 0.04
+            },
+            "B": {
+              "Float": 0.08
+            }
+          }
+        },
+        {
+          "id": 21,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Color": [
+                5.0,
+                1.2,
+                2.5,
+                1.0
+              ]
+            },
+            "B": {
+              "Color": [
+                1.2,
+                2.5,
+                6.0,
+                1.0
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "system": 1,
+      "position": [
+        420.0,
+        910.0
+      ],
+      "blocks": [
+        {
+          "id": 22,
+          "type": "Gravity",
+          "values": {
+            "Force": {
+              "Vec3": [
+                0.0,
+                -3.0,
+                0.0
+              ]
+            }
+          }
+        },
+        {
+          "id": 23,
+          "type": "LinearDrag",
+          "values": {
+            "Drag": {
+              "Float": 1.2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "Output",
+      "kind": "Trail",
+      "blend": "Additive",
+      "flipbook": [
+        1,
+        1
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": false,
+      "soft_distance": 0.5,
+      "line_length": 0.05,
+      "sort": "Auto",
+      "mesh": "Cube",
+      "trail_points": 10,
+      "system": 1,
+      "position": [
+        420.0,
+        1175.0
+      ],
+      "blocks": [
+        {
+          "id": 25,
+          "type": "ColorOverLife",
+          "values": {
+            "Gradient": {
+              "Gradient": {
+                "color_keys": [
+                  {
+                    "time": 0.0,
+                    "color": [
+                      1.0,
+                      1.0,
+                      1.0
+                    ]
+                  },
+                  {
+                    "time": 1.0,
+                    "color": [
+                      1.0,
+                      0.6,
+                      0.4
+                    ]
+                  }
+                ],
+                "alpha_keys": [
+                  {
+                    "time": 0.0,
+                    "alpha": 1.0
+                  },
+                  {
+                    "time": 0.7,
+                    "alpha": 0.9
+                  },
+                  {
+                    "time": 1.0,
+                    "alpha": 0.0
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "operators": [],
+  "links": [],
+  "next_id": 26
+}

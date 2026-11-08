@@ -164,6 +164,13 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .save(&path)
                 .map(|_| path)
         }
+        AssetKind::EffectSubgraph => {
+            let ext = misty_engine::vfx::subgraph::EXTENSION;
+            let path = asset_ops::unique_path(&dir, "New Effect Sub-graph", ext);
+            crate::panels::effect_graph::new_subgraph()
+                .save(&path)
+                .map(|_| path)
+        }
         AssetKind::Test(mode) => {
             crate::panels::test_runner::create_test_file(&s.project.root, &dir, mode)
         }

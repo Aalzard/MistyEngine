@@ -1,0 +1,373 @@
+{
+  "version": 1,
+  "properties": [],
+  "contexts": [
+    {
+      "id": 1,
+      "type": "Spawn",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "id": 2,
+          "type": "ConstantRate",
+          "values": {
+            "Rate": {
+              "Float": 500.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Initialize",
+      "capacity": 4096,
+      "bounds_center": [
+        0.0,
+        3.0,
+        0.0
+      ],
+      "bounds_size": [
+        8.0,
+        8.0,
+        8.0
+      ],
+      "space": "World",
+      "position": [
+        0.0,
+        182.0
+      ],
+      "blocks": [
+        {
+          "id": 4,
+          "type": "PositionBox",
+          "mode": "Volume",
+          "values": {
+            "Center": {
+              "Vec3": [
+                0.0,
+                6.0,
+                0.0
+              ]
+            },
+            "Size": {
+              "Vec3": [
+                5.0,
+                0.5,
+                5.0
+              ]
+            }
+          }
+        },
+        {
+          "id": 5,
+          "type": "SetAttribute",
+          "attribute": "Velocity",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Vec3": [
+                -0.2,
+                -10.0,
+                -0.2
+              ]
+            },
+            "B": {
+              "Vec3": [
+                0.2,
+                -8.0,
+                0.2
+              ]
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Lifetime": {
+              "Float": 2.0
+            }
+          }
+        },
+        {
+          "id": 7,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Size": {
+              "Float": 0.02
+            }
+          }
+        },
+        {
+          "id": 8,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Color": {
+              "Color": [
+                0.7,
+                0.8,
+                1.6,
+                0.7
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "position": [
+        0.0,
+        838.0
+      ],
+      "blocks": [
+        {
+          "id": 10,
+          "type": "CollideDepthBuffer",
+          "values": {
+            "Bounce": {
+              "Float": 0.0
+            },
+            "Lifetime Loss": {
+              "Float": 1.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Output",
+      "kind": "Line",
+      "blend": "Additive",
+      "flipbook": [
+        1,
+        1
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": false,
+      "soft_distance": 0.5,
+      "line_length": 0.03,
+      "sort": "Auto",
+      "mesh": "Cube",
+      "trail_points": 8,
+      "position": [
+        0.0,
+        1114.0
+      ],
+      "blocks": []
+    },
+    {
+      "id": 12,
+      "type": "GpuEvent",
+      "source": "OnCollide",
+      "count": 4,
+      "parent": 0,
+      "system": 1,
+      "position": [
+        420.0,
+        0.0
+      ],
+      "blocks": []
+    },
+    {
+      "id": 13,
+      "type": "Initialize",
+      "capacity": 8192,
+      "bounds_center": [
+        0.0,
+        3.0,
+        0.0
+      ],
+      "bounds_size": [
+        8.0,
+        8.0,
+        8.0
+      ],
+      "space": "Local",
+      "system": 1,
+      "position": [
+        420.0,
+        155.0
+      ],
+      "blocks": [
+        {
+          "id": 16,
+          "type": "PositionSphere",
+          "mode": "Surface",
+          "values": {
+            "Radius": {
+              "Float": 0.03
+            }
+          }
+        },
+        {
+          "id": 17,
+          "type": "VelocityFromDirection",
+          "values": {
+            "Max Speed": {
+              "Float": 1.6
+            },
+            "Min Speed": {
+              "Float": 0.6
+            }
+          }
+        },
+        {
+          "id": 18,
+          "type": "SetAttribute",
+          "attribute": "Lifetime",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 0.25
+            },
+            "B": {
+              "Float": 0.45
+            }
+          }
+        },
+        {
+          "id": 19,
+          "type": "SetAttribute",
+          "attribute": "Size",
+          "random": true,
+          "composition": "Overwrite",
+          "values": {
+            "A": {
+              "Float": 0.03
+            },
+            "B": {
+              "Float": 0.06
+            }
+          }
+        },
+        {
+          "id": 20,
+          "type": "SetAttribute",
+          "attribute": "Color",
+          "random": false,
+          "composition": "Overwrite",
+          "values": {
+            "Color": {
+              "Color": [
+                0.8,
+                0.9,
+                1.0,
+                0.8
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "Update",
+      "integrate": true,
+      "age": true,
+      "reap": true,
+      "system": 1,
+      "position": [
+        420.0,
+        833.0
+      ],
+      "blocks": [
+        {
+          "id": 21,
+          "type": "Gravity"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "Output",
+      "kind": "Quad",
+      "blend": "Alpha",
+      "flipbook": [
+        1,
+        1
+      ],
+      "flipbook_mode": "OverLife",
+      "flipbook_fps": 12.0,
+      "soft_particles": false,
+      "soft_distance": 0.5,
+      "line_length": 0.05,
+      "sort": "Auto",
+      "mesh": "Cube",
+      "trail_points": 8,
+      "system": 1,
+      "position": [
+        420.0,
+        1043.0
+      ],
+      "blocks": [
+        {
+          "id": 23,
+          "type": "ColorOverLife",
+          "values": {
+            "Gradient": {
+              "Gradient": {
+                "color_keys": [
+                  {
+                    "time": 0.0,
+                    "color": [
+                      1.0,
+                      1.0,
+                      1.0
+                    ]
+                  },
+                  {
+                    "time": 1.0,
+                    "color": [
+                      1.0,
+                      1.0,
+                      1.0
+                    ]
+                  }
+                ],
+                "alpha_keys": [
+                  {
+                    "time": 0.0,
+                    "alpha": 1.0
+                  },
+                  {
+                    "time": 0.7,
+                    "alpha": 0.9
+                  },
+                  {
+                    "time": 1.0,
+                    "alpha": 0.0
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "operators": [],
+  "links": [],
+  "next_id": 24
+}

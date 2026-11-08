@@ -3,7 +3,7 @@
 //! Type to filter; arrows + Enter or a click picks.
 
 use egui::{FontId, Key, Pos2, RichText, Ui};
-use misty_engine::vfx::{BlockKind, ContextType, OperatorKind};
+use misty_engine::vfx::{BlockKind, ContextType, EventSource, OperatorKind};
 
 use crate::state::EditorState;
 use crate::theme;
@@ -49,6 +49,8 @@ impl Search {
 #[derive(Clone, Debug)]
 pub enum What {
     Context(ContextType),
+    /// A GPU Event system listening to the main system.
+    EventSystem(EventSource),
     Operator(OperatorKind),
     Block(BlockKind),
 }
@@ -67,23 +69,56 @@ pub fn entries(s: &EditorState) -> Vec<Entry> {
         return Vec::new();
     };
     let g = &s.effect_graph.graph;
+    let subgraph = s.effect_graph.is_subgraph();
     match &search.mode {
         Mode::Nodes { .. } => {
-            let mut out: Vec<Entry> = ContextType::ALL
-                .into_iter()
-                .map(|t| Entry {
-                    what: What::Context(t),
-                    title: format!("Context: {}", t.label()),
+            let mut out: Vec<Entry> = Vec::new();
+            if subgraph {
+                out.push(Entry {
+                    what: What::Operator(OperatorKind::SubgraphOutput {
+                        name: free_output_name(g),
+                    }),
+                    title: "Output".into(),
+                    category: "Sub-graph",
+                    keywords: "subgraph result return",
+                });
+            } else {
+                out.extend(
+                    ContextType::ALL
+                        .into_iter()
+                        .filter(|t| *t != ContextType::GpuEvent)
+                        .map(|t| Entry {
+                            what: What::Context(t),
+                            title: format!("Context: {}", t.label()),
+                            category: "Contexts",
+                            keywords: "system stack",
+                        }),
+                );
+                out.extend(EventSource::ALL.into_iter().map(|src| Entry {
+                    what: What::EventSystem(src),
+                    title: format!("GPU Event System ({})", src.label()),
                     category: "Contexts",
-                    keywords: "system stack",
-                })
-                .collect();
+                    keywords: "spawn child sub emitter trigger die death collide collision",
+                }));
+            }
             out.extend(OperatorKind::catalog().into_iter().map(|k| Entry {
                 title: k.title(),
                 category: k.category(),
                 keywords: k.keywords(),
                 what: What::Operator(k),
             }));
+            let open = s.effect_graph.path.clone().unwrap_or_default();
+            for path in &s.assets.subgraphs {
+                if *path == open {
+                    continue;
+                }
+                out.push(Entry {
+                    what: What::Operator(OperatorKind::Subgraph { path: path.clone() }),
+                    title: format!("Sub-graph: {}", misty_engine::vfx::subgraph::title(path)),
+                    category: "Sub-graph",
+                    keywords: "subgraph operator function",
+                });
+            }
             for p in &g.properties {
                 if p.value.value_type().is_none() {
                     continue;
@@ -115,6 +150,22 @@ pub fn entries(s: &EditorState) -> Vec<Entry> {
                 .collect()
         }
     }
+}
+
+/// "Out", "Out 1", … whichever no Output node of the sub-graph uses yet.
+fn free_output_name(g: &misty_engine::vfx::EffectGraph) -> String {
+    let used = |n: &str| {
+        g.operators
+            .iter()
+            .any(|o| matches!(&o.kind, OperatorKind::SubgraphOutput { name } if name == n))
+    };
+    let mut name = "Out".to_owned();
+    let mut i = 1;
+    while used(&name) {
+        name = format!("Out {i}");
+        i += 1;
+    }
+    name
 }
 
 fn matches(e: &Entry, query: &str) -> bool {
@@ -152,8 +203,31 @@ pub fn create(s: &mut EditorState, e: &Entry) {
         (Mode::Nodes { graph }, What::Context(t)) => {
             let t = *t;
             let at = [graph.x, graph.y];
+            // A new context joins the system of the nearest context.
+            let system = w
+                .graph
+                .contexts
+                .iter()
+                .min_by(|a, b| {
+                    let d = |c: &&misty_engine::vfx::graph::Context| {
+                        (c.position[0] - at[0]).powi(2) + (c.position[1] - at[1]).powi(2)
+                    };
+                    d(a).total_cmp(&d(b))
+                })
+                .map_or(0, |c| c.system);
             w.edit("Create Context", false, |g| {
-                new_id = Some(g.add_context(t, at));
+                let id = g.add_context(t, at);
+                if let Some(c) = g.context_mut(id) {
+                    c.system = system;
+                }
+                new_id = Some(id);
+            });
+        }
+        (Mode::Nodes { graph }, What::EventSystem(src)) => {
+            let (src, at) = (*src, [graph.x, graph.y]);
+            w.edit("GPU Event System", false, |g| {
+                let sys = g.add_event_system(0, src, at);
+                new_id = g.contexts.iter().find(|c| c.system == sys).map(|c| c.id);
             });
         }
         (Mode::Nodes { graph }, What::Operator(k)) => {

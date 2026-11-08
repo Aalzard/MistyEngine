@@ -221,11 +221,12 @@ fn test_particles() -> Vec<ParticleBatch> {
     let batch = |origin: Vec3| ParticleBatch {
         origin,
         particles: (0..20)
-            .map(|i| ParticleInstance {
-                position: (origin + Vec3::new(i as f32 * 0.1, i as f32 * 0.05, 0.0)).to_array(),
-                size: 0.3,
-                color: [1.0, 0.8, 0.5, 0.8],
-                params: [0.0; 4],
+            .map(|i| {
+                ParticleInstance::dot(
+                    (origin + Vec3::new(i as f32 * 0.1, i as f32 * 0.05, 0.0)).to_array(),
+                    0.3,
+                    [1.0, 0.8, 0.5, 0.8],
+                )
             })
             .collect(),
         texture: None,
