@@ -2831,8 +2831,10 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   lights, shadows, water, particles, transparents or post-processing, for its depth only; a flat background
   (the view's grey) is painted over its colour, then the grid and the edges (dark grey, 90 %). Hidden lines are
   removed by the real surfaces (alpha-tested leaves and blades included), which keeps MeadowDemo readable.
-- The edge colour is a new `wire` vec4 at the end of the view uniform (the shadow views' stride went from 512
-  to 768 bytes). Shaded modes are untouched.
+- The edges' opacity rides in the view uniform's unused `view_tan.w` and their colour is the pass's blend
+  constant, so the shared shader prelude stays byte for byte as it was: changing it made every pipeline new to
+  the driver's shader cache (MeadowDemo's first frame 0.3 → 2.5 s in the hitch test). Shaded modes are
+  untouched.
 - Cost, MeadowDemo wide at 1920×1080, High (`wireframe_cost`): shaded 15.3 ms GPU / 2.0 ms CPU; Shaded
   Wireframe 16.1 ms / 2.1 ms (+0.8 ms; +0.5 ms with virtual geometry on); Wireframe 6.6 ms / 0.8 ms (no
   lighting, shadows or post-processing).

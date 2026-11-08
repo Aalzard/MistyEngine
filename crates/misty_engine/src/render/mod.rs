@@ -427,8 +427,6 @@ struct ViewUniform {
     /// Camera rotation (quaternion) and the tangents of half the field of view (x, y): view
     /// rays without inverting the view-projection (see [`view_ray`]).
     view_ray: [[f32; 4]; 2],
-    /// Linear colour and opacity of the wireframe draw modes' edges ([`wireframe`]).
-    wire: [f32; 4],
 }
 
 /// One `draws[]` entry (320 bytes). Its layout (and the only WGSL copy of it) is documented
@@ -1416,17 +1414,16 @@ impl Renderer {
         // Motion vectors: last frame's camera, draws and grass clock.
         let grass_time = self.terrains.grass_time(frame.environment);
         let motion = self.motion.begin(target.id, frame, view_proj, grass_time);
-        let view = ViewUniform {
-            wire: self.wire_color(),
-            ..view_uniform(
-                frame,
-                aspect,
-                jitter,
-                target.size(),
-                motion.prev_view_proj,
-                mip_bias,
-            )
-        };
+        let mut view = view_uniform(
+            frame,
+            aspect,
+            jitter,
+            target.size(),
+            motion.prev_view_proj,
+            mip_bias,
+        );
+        // view_tan.w (unused elsewhere): the wireframe edges' opacity ([`wireframe`]).
+        view.view_ray[1][3] = self.wire.map_or(0.0, |w| w.color[3]);
         queue.write_buffer(&self.view_buffer, 0, bytemuck::bytes_of(&view));
         #[cfg(test)]
         {
@@ -3779,7 +3776,6 @@ fn view_uniform(
             r[1][2] = mip_bias;
             r
         },
-        wire: [0.0; 4],
     }
 }
 
@@ -3886,11 +3882,10 @@ mod tests {
             16 + 64 + 48 + 112 * MAX_LIGHTS + 64 * shadows::MAX_LOCAL_LAYERS
         );
         // Matrices, camera/grid/background, 8 environment and 6 post vec4s, the previous
-        // view-projection, the motion vec4, the view-ray pair and the wireframe colour
-        // (common.wgsl).
+        // view-projection, the motion vec4 and the view-ray pair (common.wgsl).
         assert_eq!(
             std::mem::size_of::<ViewUniform>(),
-            128 + 48 + 16 * 14 + 64 + 16 + 32 + 16
+            128 + 48 + 16 * 14 + 64 + 16 + 32
         );
         assert!(std::mem::size_of::<ViewUniform>() as u64 <= shadows::VIEW_STRIDE);
     }

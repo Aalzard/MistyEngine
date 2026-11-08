@@ -9,5 +9,5 @@ fn fs_wire_bary(@builtin(barycentric) b: vec3<f32>) -> @location(0) vec4<f32> {
     if (min(px.x, min(px.y, px.z)) > 0.5) {
         discard;
     }
-    return view.wire;
+    return wire_out();
 }

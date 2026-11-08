@@ -18,8 +18,11 @@
 //!   by the real surfaces (alpha-tested leaves and blades included) keeps a dense scene
 //!   readable, which see-through edges of a meadow would not be.
 //!
-//! The edges blend into the HDR image in the main pass like the gizmo lines, in the colour of
-//! the view uniform's `wire` (common.wgsl).
+//! The edges blend into the HDR image in the main pass like the gizmo lines. Their opacity
+//! rides in the view uniform's unused `view_tan.w` and their colour is the pass's blend
+//! constant: the shared shader prelude (common.wgsl) stays byte for byte as it was, so no
+//! other shader changes (a new prelude makes every pipeline compile afresh: MeadowDemo's
+//! first frame went from 0.3 to 2.5 s where the driver's cache had the old ones).
 
 use super::pipelines::{self, Depth, Spec};
 use super::{DEPTH_FORMAT, HDR_FORMAT, Renderer, grass_cull};
@@ -87,6 +90,17 @@ const BIAS: wgpu::DepthBiasState = wgpu::DepthBiasState {
     clamp: 0.0,
 };
 
+/// The fragment stage writes the opacity `a` in every channel: colour = blend constant × a +
+/// scene × (1 − a).
+const BLEND: wgpu::BlendState = wgpu::BlendState {
+    color: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::Constant,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    },
+    alpha: wgpu::BlendComponent::OVER,
+};
+
 /// `base` (a pipeline's shader source) with the wireframe fragment stages.
 pub(super) fn source(base: &str, path: WirePath) -> String {
     match path {
@@ -122,7 +136,7 @@ pub(super) fn spec<'a>(
             bias: BIAS,
         }),
         color: Some(HDR_FORMAT),
-        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+        blend: Some(BLEND),
         samples: super::sample_count(),
         glow: Some(false),
         alpha_to_coverage: false,
@@ -247,12 +261,16 @@ impl Renderer {
         self.wire_only = self.wire.is_some_and(|w| !w.shaded);
     }
 
-    /// The view uniform's `wire`: linear colour and opacity (0 without a wireframe).
-    pub(super) fn wire_color(&self) -> [f32; 4] {
-        self.wire.map_or([0.0; 4], |w| {
-            let [r, g, b] = super::srgb_to_linear([w.color[0], w.color[1], w.color[2]]);
-            [r, g, b, w.color[3]]
-        })
+    /// The edges' linear colour (the blend constant of their draws).
+    fn wire_color(w: &Wireframe) -> wgpu::Color {
+        let [r, g, b] = super::srgb_to_linear([w.color[0], w.color[1], w.color[2]]);
+        let c = |v: f32| v as f64;
+        wgpu::Color {
+            r: c(r),
+            g: c(g),
+            b: c(b),
+            a: c(w.color[3]),
+        }
     }
 
     /// Build this render's wireframe pipelines (once per path and MSAA samples).
@@ -289,9 +307,10 @@ impl Renderer {
         frame: &super::Frame,
         lists: &super::frame_lists::FrameLists,
     ) {
-        let (Some(_), Some(w)) = (self.wire, &self.wire_pipelines) else {
+        let (Some(wire), Some(w)) = (self.wire, &self.wire_pipelines) else {
             return;
         };
+        pass.set_blend_constant(Self::wire_color(&wire));
         let mut stats = super::RenderStats::default();
         // Ordinary meshes: each draw in view (and shown by its LOD); virtual meshes drawn as
         // clusters have theirs below.
