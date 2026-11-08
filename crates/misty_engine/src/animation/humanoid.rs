@@ -211,7 +211,7 @@ fn normalise(name: &str) -> (String, i32) {
 /// The human bone a normalised name stands for (sides resolved by the caller).
 fn classify(base: &str) -> Option<(&'static str, bool)> {
     // (kind, sided)
-    let has = |words: &[&str]| words.iter().any(|w| base == *w);
+    let has = |words: &[&str]| words.contains(&base);
     let trimmed = base.trim_end_matches(|c: char| c.is_ascii_digit());
     let starts = |w: &str| trimmed == w;
     if has(&["hips", "hip", "pelvis"]) {
