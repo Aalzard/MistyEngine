@@ -12,7 +12,8 @@ struct Level {
     sdf: vec4<f32>,
     // xyz = first probe cell (world cell coordinates), w = probe spacing (m).
     probe: vec4<f32>,
-    // x = 1 when recomposed this frame, y = first index in `lists`, z = index count.
+    // x = 1 when recomposed this frame, y = first index in `lists`, z = index count, w = 1 when
+    // the level has settled (probes.wgsl).
     flags: vec4<f32>,
 };
 
