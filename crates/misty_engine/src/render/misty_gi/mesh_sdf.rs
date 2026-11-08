@@ -301,10 +301,36 @@ pub fn save(dir: &Path, hash: u64, baked: &Baked) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// Bakes that looked in a cache folder: (read from it, baked because it was not there).
+#[cfg(test)]
+static CACHE_READS: [AtomicUsize; 2] = [AtomicUsize::new(0), AtomicUsize::new(0)];
+
+/// (cache hits, cache misses) of the process so far (tests: proves a session read `Library`
+/// instead of baking, without timing it).
+#[cfg(test)]
+pub(crate) fn cache_reads() -> (usize, usize) {
+    let [hits, misses] = &CACHE_READS;
+    (hits.load(Ordering::Relaxed), misses.load(Ordering::Relaxed))
+}
+
+/// Tests that reset or check the process-wide bake map ([`forget_all`], `Arc::ptr_eq` on a
+/// shared slot, the cache counters) hold this, so none clears another's entries mid-test.
+#[cfg(test)]
+pub(crate) fn test_serial() -> std::sync::MutexGuard<'static, ()> {
+    static SERIAL: Mutex<()> = Mutex::new(());
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// The bake of `tris` cached in `dir`, or a fresh one (then saved there).
 fn load_or_bake(tris: &[[Vec3; 3]], hash: u64, dir: Option<&Path>) -> Baked {
     if let Some(b) = dir.and_then(|d| load(d, hash)) {
+        #[cfg(test)]
+        CACHE_READS[0].fetch_add(1, Ordering::Relaxed);
         return b;
+    }
+    #[cfg(test)]
+    if dir.is_some() {
+        CACHE_READS[1].fetch_add(1, Ordering::Relaxed);
     }
     let baked = bake(tris);
     if let Some(d) = dir
@@ -433,11 +459,20 @@ pub fn bake(tris: &[[Vec3; 3]]) -> Baked {
 }
 
 /// Forget every bake of the process (tests: the next request bakes or reads the disk again).
-/// Waits for the background bakes first, so none lands in a forgotten slot.
+/// Waits for the background bakes first (each has written its cache file when it is no longer
+/// pending), so none lands in a forgotten slot. The caller holds [`test_serial`].
 #[cfg(test)]
 pub(crate) fn forget_all() {
     let t = std::time::Instant::now();
-    while pending() > 0 && t.elapsed().as_secs() < 600 {
+    while pending() > 0 {
+        // Generous: a dense rock is ~80 s of CPU on below-normal-priority workers, and a busy
+        // machine runs other tests' work at normal priority.
+        assert!(
+            t.elapsed().as_secs() < 1800,
+            "{} mesh SDF bakes still pending after {:?}",
+            pending(),
+            t.elapsed()
+        );
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     shared().lock().unwrap_or_else(|e| e.into_inner()).clear();
@@ -480,6 +515,9 @@ mod tests {
     /// of baking again, keyed by content (not by path).
     #[test]
     fn big_meshes_bake_in_the_background_then_read_back_from_the_cache() {
+        // The MeadowDemo hitch test forgets every bake of the process: not while this test
+        // checks that a second renderer shares its slot.
+        let _serial = test_serial();
         let dir = temp_dir("cache");
         // Dense enough that the bake takes far longer than the request, even on a busy
         // machine (a small mesh could finish in the background before the check below).

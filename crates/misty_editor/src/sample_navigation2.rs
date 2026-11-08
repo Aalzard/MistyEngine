@@ -628,6 +628,18 @@ fn navigation_demo2_plays() {
         jumper_top > LEDGE_TOP + 0.9,
         "the jumper reached the ledge: {jumper_top}"
     );
+    // The rolling block's tile rebuilds run on the background pool (below normal priority) and
+    // the loop above plays far faster than real time: on a busy machine they can all still be
+    // in flight. Keep playing, at real-time pace, until they come in (a game gets 24 s of wall
+    // time for 24 s of play).
+    let waited = std::time::Instant::now();
+    while host.with_navigation(|n| n.stats.tiles_rebuilt) <= 4 && waited.elapsed().as_secs() < 600 {
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        assert!(logs.is_empty(), "{logs:?}");
+        std::thread::sleep(std::time::Duration::from_millis(16));
+    }
     let (rebuilt, live) = host.with_navigation(|n| (n.stats.tiles_rebuilt, n.meshes().count()));
     assert_eq!(live, 2);
     assert!(

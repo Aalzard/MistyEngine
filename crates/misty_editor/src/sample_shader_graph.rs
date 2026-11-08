@@ -562,19 +562,34 @@ fn shader_graph_demo_renders() {
         return;
     };
     let root = project();
-    // Material values resolve against the graphs (by project path) when the view is built.
     misty_engine::assets::set_project_root(&root);
     let (scene, _) = Scene::load(&root.join(SCENE)).unwrap();
-    let assets = misty_engine::assets::AssetCache::open(&root);
-    let mut view = misty_engine::render_scene::GameView::new(&scene, &assets).unwrap();
-    // Absolute shader paths: independent of the process-wide project root other tests change.
-    for d in std::sync::Arc::make_mut(&mut view.meshes) {
-        if let Some(c) = &mut d.material.custom {
-            let abs = root.join(&c.shader).to_string_lossy().replace('\\', "/");
+    let mut assets = misty_engine::assets::AssetCache::open(&root);
+    // Absolute shader paths, before the view is built: a material's render state and values
+    // resolve against its graph then, and the shader library caches by path (a failed load
+    // too). By project path they followed the process-wide project root, which tests running
+    // alongside move: the Hologram then drew opaque with every value zero (black).
+    for m in assets.materials.values_mut() {
+        if m.is_custom() {
+            let abs = root.join(&m.shader).to_string_lossy().replace('\\', "/");
             misty_engine::shader_asset::load(&abs).unwrap_or_else(|e| panic!("{abs}: {e}"));
-            c.shader = abs;
+            m.shader = abs;
         }
     }
+    let view = misty_engine::render_scene::GameView::new(&scene, &assets).unwrap();
+    let customs = view
+        .meshes
+        .iter()
+        .filter_map(|d| d.material.custom.as_ref());
+    assert!(
+        customs.clone().all(|c| !c.values.is_empty()),
+        "the graphs' property values did not resolve"
+    );
+    assert!(
+        customs
+            .clone()
+            .all(|c| std::path::Path::new(&c.shader).is_absolute())
+    );
     let img = crate::sample_render::render(&gpu, &view.frame(), 2);
     if let Some(out) = std::env::var_os("MISTY_SG_DUMP") {
         misty_engine::image::save_buffer(
