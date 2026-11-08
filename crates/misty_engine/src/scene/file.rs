@@ -91,9 +91,17 @@ fn all_refs() -> impl Iterator<Item = &'static (&'static str, &'static str, &'st
         .chain(crate::video::VIDEO_REFS)
 }
 
+/// Components that can hold object references.
+pub(super) fn ref_components() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = all_refs().map(|r| r.0).collect();
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
 /// Rewrite every object reference with `f` (entity bits ↔ object index); unmapped → null.
 /// The middle entry names a list of items or a nested object holding the field.
-fn remap_refs(
+pub(super) fn remap_refs(
     components: &mut BTreeMap<String, serde_json::Value>,
     f: impl Fn(u64) -> Option<u64>,
 ) {
@@ -272,6 +280,22 @@ impl Scene {
             .map(|(e, _)| e)
             .filter(|e| keep(*e))
             .collect();
+        self.entries_of(&order)
+    }
+
+    /// Object entries for `order` (parents before children); references to objects outside it
+    /// become null.
+    pub(super) fn entries_of(&self, order: &[Entity]) -> Vec<ObjectEntry> {
+        self.entries_mapped(order, None)
+    }
+
+    /// [`Self::entries_of`], with references to objects outside `order` written as `outside`
+    /// (null when `None`).
+    pub(super) fn entries_mapped(
+        &self,
+        order: &[Entity],
+        outside: Option<u64>,
+    ) -> Vec<ObjectEntry> {
         let index: BTreeMap<Entity, usize> =
             order.iter().enumerate().map(|(i, e)| (*e, i)).collect();
         let mut objects: Vec<ObjectEntry> = order
@@ -292,7 +316,9 @@ impl Scene {
             o.components.values_mut().for_each(tidy_numbers);
             // Object references become list indices (null when outside the saved objects).
             remap_refs(&mut o.components, |bits| {
-                Entity::from_bits(bits).and_then(|e| index.get(&e).map(|i| *i as u64))
+                Entity::from_bits(bits)
+                    .and_then(|e| index.get(&e).map(|i| *i as u64))
+                    .or(outside)
             });
         }
         objects

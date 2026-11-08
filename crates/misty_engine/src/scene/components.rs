@@ -870,6 +870,27 @@ pub struct Scripts {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrefabLink {
     pub path: String,
+    /// What this instance overrode when it was last saved (sorted). With it, an instance whose
+    /// asset changed while the scene was closed catches up on load and keeps its overrides.
+    /// `None` in files saved before per-property overrides (left out of the file).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<Vec<super::prefab::Override>>,
+}
+
+impl PrefabLink {
+    pub fn new(path: &str) -> Self {
+        Self {
+            path: path.to_owned(),
+            overrides: None,
+        }
+    }
+}
+
+/// The id of a prefab instance's object in its asset (see `scene::prefab::ids`). Copied with
+/// the object; hidden from the Inspector.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefabSource {
+    pub id: u64,
 }
 
 // ---- audio ---------------------------------------------------------------------------------

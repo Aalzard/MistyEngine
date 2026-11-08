@@ -108,6 +108,11 @@ impl SceneComponent for PrefabLink {
     const CATEGORY: &'static str = "";
     const REMOVABLE: bool = false;
 }
+impl SceneComponent for PrefabSource {
+    const NAME: &'static str = "Prefab Source";
+    const CATEGORY: &'static str = "";
+    const REMOVABLE: bool = false;
+}
 impl SceneComponent for MeshCollider {
     const NAME: &'static str = "Mesh Collider";
     const CATEGORY: &'static str = "Physics";
@@ -283,7 +288,10 @@ impl ComponentInfo {
 
     /// Shown in the Inspector / Add Component menu (not GameObject or Node).
     pub fn user_visible(&self) -> bool {
-        !matches!(self.name, "GameObject" | "Node" | "Prefab")
+        !matches!(
+            self.name,
+            "GameObject" | "Node" | "Prefab" | "Prefab Source"
+        )
     }
 }
 
@@ -405,6 +413,7 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<crate::save::Saveable>(),
             ComponentInfo::of::<crate::localization::LocalizedText>(),
             ComponentInfo::of::<PrefabLink>(),
+            ComponentInfo::of::<PrefabSource>(),
             ComponentInfo::of::<super::HierarchyFolder>(),
         ]
     })
