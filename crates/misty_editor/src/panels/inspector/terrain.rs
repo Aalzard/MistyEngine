@@ -127,23 +127,26 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let Ok(mut t) = state.scene.world.get::<&Terrain>(e).map(|c| (*c).clone()) else {
         return false;
     };
-    // Tool tabs.
-    ui.horizontal(|ui| {
+    // Tool tabs (nine: they wrap in a narrow Inspector).
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
         for tool in TerrainTool::ALL {
             let selected = state.terrain_tools.tool == tool;
             let b = egui::Button::new(RichText::new(tool.icon()).size(16.0))
                 .selected(selected)
-                .min_size(egui::vec2(34.0, 26.0));
+                .min_size(egui::vec2(30.0, 26.0));
             let b = ui.add(b);
             targets::header(ui, &format!("tool/{}", tool.label()), b.rect);
             if b.on_hover_text(tool.label()).clicked() {
                 state.terrain_tools.tool = tool;
             }
         }
-        // The World Builder generates whole terrains: make it easy to find from here.
+    });
+    // The World Builder generates whole terrains: make it easy to find from here.
+    ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let b = ui
-                .add(egui::Button::new("⛰ World Builder").min_size(egui::vec2(0.0, 26.0)))
+                .add(egui::Button::new("⛰ World Builder").min_size(egui::vec2(0.0, 22.0)))
                 .on_hover_text(
                     "Generate this terrain from a template, noise, erosion, stamps and biomes \
                     (opens the World Builder; creates one for this terrain if needed)",
@@ -211,19 +214,17 @@ fn terrain(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             {
                 let cut = d.holes.iter().filter(|h| **h != 0).count();
                 ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.weak(format!(
-                        "{cut} of {} cells cut out (holes are saved in the terrain data).",
-                        d.cells() * d.cells()
-                    ));
-                    if ui
-                        .add_enabled(cut > 0, egui::Button::new("Fill All Holes"))
-                        .clicked()
-                    {
-                        terrain_tools::begin_edit(state, &path, "Fill Terrain Holes");
-                        store::modify(&path, |d| d.holes.clear());
-                    }
-                });
+                ui.weak(format!(
+                    "{cut} of {} cells cut out (holes are saved in the terrain data).",
+                    d.cells() * d.cells()
+                ));
+                if ui
+                    .add_enabled(cut > 0, egui::Button::new("Fill All Holes"))
+                    .clicked()
+                {
+                    terrain_tools::begin_edit(state, &path, "Fill Terrain Holes");
+                    store::modify(&path, |d| d.holes.clear());
+                }
             }
             if tool == TerrainTool::SetHeight
                 && let Some(d) = data.as_deref()

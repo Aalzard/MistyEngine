@@ -212,9 +212,11 @@ fn terrain_data() -> TerrainData {
         ..Default::default()
     };
     trees::mass_place(&mut d, 70, &[0, 1], &p);
-    d.trees
-        .instances
-        .retain(|t| (t.position * 160.0).y > 30.0 || (t.position.x * 160.0 - 75.0).abs() > 30.0);
+    // Clear of the sinkhole and of the view up the path from the camera.
+    d.trees.instances.retain(|t| {
+        let p = t.position * 160.0;
+        p.distance(HOLE.0) > 26.0 && !(p.x > 45.0 && p.x < 115.0 && p.y < 45.0)
+    });
     d
 }
 
@@ -254,33 +256,40 @@ fn demo_scene(d: &TerrainData, root: &Path) -> Scene {
     s.add(terrain, TerrainCollider::default());
     // A pit under the sinkhole: floor and walls.
     let c = CORNER + Vec3::new(HOLE.0.x, 0.0, HOLE.0.y);
-    let top = ground(d, c.x, c.z);
+    let r = HOLE.1 + 1.0;
+    // The walls' tops stay just under the lowest ground around the hole.
+    let top = (0..16)
+        .map(|i| {
+            let a = i as f32 / 16.0 * std::f32::consts::TAU;
+            ground(d, c.x + a.cos() * r * 1.42, c.z + a.sin() * r * 1.42)
+        })
+        .fold(f32::MAX, f32::min)
+        - 0.4;
     let pit = s.spawn("Pit", None);
-    let r = HOLE.1 + 1.5;
     for (name, pos, scale) in [
         (
             "Floor",
-            Vec3::new(0.0, -7.0, 0.0),
+            Vec3::new(0.0, -7.5, 0.0),
             Vec3::new(2.0 * r, 1.0, 2.0 * r),
         ),
         (
             "Wall N",
-            Vec3::new(0.0, -3.5, r),
+            Vec3::new(0.0, -4.0, r),
             Vec3::new(2.0 * r, 8.0, 0.5),
         ),
         (
             "Wall S",
-            Vec3::new(0.0, -3.5, -r),
+            Vec3::new(0.0, -4.0, -r),
             Vec3::new(2.0 * r, 8.0, 0.5),
         ),
         (
             "Wall E",
-            Vec3::new(r, -3.5, 0.0),
+            Vec3::new(r, -4.0, 0.0),
             Vec3::new(0.5, 8.0, 2.0 * r),
         ),
         (
             "Wall W",
-            Vec3::new(-r, -3.5, 0.0),
+            Vec3::new(-r, -4.0, 0.0),
             Vec3::new(0.5, 8.0, 2.0 * r),
         ),
     ] {

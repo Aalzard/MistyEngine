@@ -53,7 +53,7 @@ fn range(ui: &mut Ui, v: &mut [f32; 2], lo: f32, hi: f32, speed: f64) -> bool {
 fn icon(kind: DetailKind) -> &'static str {
     match kind {
         DetailKind::Grass => "🌾",
-        DetailKind::Mesh => "🪨",
+        DetailKind::Mesh => "▦",
     }
 }
 

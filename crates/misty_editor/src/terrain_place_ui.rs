@@ -12,7 +12,7 @@ use misty_engine::terrain::{TerrainData, store};
 use crate::state::EditorState;
 
 /// Icon of the tab and its list.
-pub const ICON: &str = "🪨";
+pub const ICON: &str = "◆";
 
 fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui)) {
     egui::Grid::new(id)
@@ -87,7 +87,10 @@ pub fn place_tab(ui: &mut Ui, state: &mut EditorState, e: Entity, d: &TerrainDat
         }
         for (i, p) in tools.prefabs.iter().enumerate() {
             if ui
-                .selectable_label(i == tools.prefab, format!("{ICON} {}", stem(p)))
+                .selectable_label(
+                    i == tools.prefab,
+                    format!("{} {}", crate::state::PREFAB_ICON, stem(p)),
+                )
                 .on_hover_text(p)
                 .clicked()
             {
