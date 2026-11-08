@@ -253,7 +253,10 @@ impl ShaderAsset {
 
     /// The variant a material's values select: `"_A=1,_B=2"` of the keywords off their
     /// defaults ("" = the default variant).
-    pub fn variant_key(&self, values: &std::collections::BTreeMap<String, PropertyValue>) -> String {
+    pub fn variant_key(
+        &self,
+        values: &std::collections::BTreeMap<String, PropertyValue>,
+    ) -> String {
         self.keywords
             .iter()
             .filter_map(|k| {
@@ -264,7 +267,6 @@ impl ShaderAsset {
             .join(",")
     }
 }
-
 
 /// A problem in a shader file: 1-based line and column (0 = unknown) and the message.
 #[derive(Clone, Debug, PartialEq, Eq)]

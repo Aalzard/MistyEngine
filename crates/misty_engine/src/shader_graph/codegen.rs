@@ -368,10 +368,7 @@ fn needed(g: &ShaderGraph, ports: &[&str], variant: &Variant) -> HashSet<u32> {
                 .and_then(|k| k.port_for(keyword_value(k, variant))),
             _ => None,
         };
-        let is_keyword = matches!(
-            g.node(n).map(|x| &x.kind),
-            Some(NodeKind::Keyword { .. })
-        );
+        let is_keyword = matches!(g.node(n).map(|x| &x.kind), Some(NodeKind::Keyword { .. }));
         stack.extend(
             g.connections
                 .iter()
@@ -862,10 +859,7 @@ impl<'a> Gen<'a> {
             return Err(self.err(node.id, format!("no keyword named {name}")));
         };
         let value = keyword_value(k, self.ctx.variant);
-        let Some(port) = k
-            .port_for(value)
-            .and_then(|p| self.g.input_port(node, p))
-        else {
+        let Some(port) = k.port_for(value).and_then(|p| self.g.input_port(node, p)) else {
             return Err(self.err(node.id, format!("{name} has no entries")));
         };
         let want = port.ty.resolve(self.types.dynamic(node.id));
@@ -888,7 +882,8 @@ impl<'a> Gen<'a> {
             return Err(self.err(id, format!("{path} is not a Sub Graph")));
         }
         let name = node.kind.title();
-        let (order, types) = check(&sub).map_err(|e| self.err(id, format!("in {name}: {}", e.message)))?;
+        let (order, types) =
+            check(&sub).map_err(|e| self.err(id, format!("in {name}: {}", e.message)))?;
         // The parent's inputs by the Sub Graph's property display names.
         let mut bindings = HashMap::new();
         let (slots, _) = sub.sub_graph_interface();
@@ -906,7 +901,12 @@ impl<'a> Gen<'a> {
             prefix: format!("{}n{id}_", self.prefix),
             blame: Some(self.who(id)),
             bindings: Some(bindings),
-            stack: self.stack.iter().cloned().chain([path.to_owned()]).collect(),
+            stack: self
+                .stack
+                .iter()
+                .cloned()
+                .chain([path.to_owned()])
+                .collect(),
             ctx: self.ctx,
         };
         let ports: Vec<&str> = sub.outputs.iter().map(|s| s.name.as_str()).collect();
@@ -997,7 +997,10 @@ fn keyword_line(k: &Keyword) -> String {
                 .join(", ")
         ),
     };
-    format!("// @keyword {} \"{display}\" {kind} = {}", k.name, k.default)
+    format!(
+        "// @keyword {} \"{display}\" {kind} = {}",
+        k.name, k.default
+    )
 }
 
 /// Structural checks of one graph; returns the node order and resolved types.
@@ -1032,7 +1035,11 @@ pub fn check(g: &ShaderGraph) -> Result<(Vec<u32>, Types), GraphError> {
         }
         if let KeywordKind::Enum { entries } = &k.kind {
             let mut names = HashSet::new();
-            if entries.is_empty() || !entries.iter().all(|e| !e.trim().is_empty() && names.insert(e)) {
+            if entries.is_empty()
+                || !entries
+                    .iter()
+                    .all(|e| !e.trim().is_empty() && names.insert(e))
+            {
                 return Err(GraphError::graph(format!(
                     "keyword {} needs distinct, named entries",
                     k.name
@@ -1196,10 +1203,9 @@ fn collect_functions(
                 if out.iter().any(|(n, _, _)| *n == key) {
                     continue;
                 }
-                let text = ctx
-                    .resolver
-                    .text(file)
-                    .map_err(|e| GraphError::on(who, format!("cannot read the function file: {e}")))?;
+                let text = ctx.resolver.text(file).map_err(|e| {
+                    GraphError::on(who, format!("cannot read the function file: {e}"))
+                })?;
                 if !deps.contains(file) {
                     deps.push(file.clone());
                 }
@@ -1353,7 +1359,15 @@ pub fn generate_variant(
     }
     let mut functions = Vec::new();
     let mut deps = Vec::new();
-    collect_functions(g, &used, &ctx, None, &mut Vec::new(), &mut functions, &mut deps)?;
+    collect_functions(
+        g,
+        &used,
+        &ctx,
+        None,
+        &mut Vec::new(),
+        &mut functions,
+        &mut deps,
+    )?;
     for (_, text, who) in &functions {
         cg.out.push(text.as_str(), Some(*who));
     }
@@ -1384,7 +1398,8 @@ pub fn generate_variant(
             Some(s) => cg.master_input(&s.name, ValueType::Vec3)?,
             None => "vec3<f32>(0.0)".into(),
         };
-        cg.out.push(format!("    return vec4<f32>({color}, 1.0);\n}}"), m);
+        cg.out
+            .push(format!("    return vec4<f32>({color}, 1.0);\n}}"), m);
     } else if lit {
         let base = |cg: &Gen| cg.master_input(master::BASE_COLOR, ValueType::Vec3);
         cg.out
@@ -1509,7 +1524,11 @@ pub fn compile_all(g: &ShaderGraph, resolver: &dyn Resolver) -> Result<usize, Gr
     for v in &variants {
         compile_variant(g, v, resolver).map_err(|e| GraphError {
             node: e.node,
-            message: format!("variant {}: {}", super::variant_key(&keywords, v), e.message),
+            message: format!(
+                "variant {}: {}",
+                super::variant_key(&keywords, v),
+                e.message
+            ),
         })?;
     }
     Ok(variants.len())
@@ -1565,7 +1584,15 @@ pub fn generate_decal(
     let used = needed(g, &ports, variant);
     let mut functions = Vec::new();
     let mut deps = Vec::new();
-    collect_functions(g, &used, &ctx, None, &mut Vec::new(), &mut functions, &mut deps)?;
+    collect_functions(
+        g,
+        &used,
+        &ctx,
+        None,
+        &mut Vec::new(),
+        &mut functions,
+        &mut deps,
+    )?;
     let mut cg = Gen::new(g, Stage::Fragment, &ctx);
     cg.out.push(
         format!("fn {fn_name}(input: DecalInput) -> DecalOutput {{"),

@@ -69,13 +69,12 @@ fn keywords_compile_as_variants_with_only_their_nodes() {
         off.source
             .contains("// @keyword _NOISE_ON \"Noise\" toggle = 0")
     );
-    let on = compile_variant(
-        &g,
-        &Variant::from([("_NOISE_ON".into(), 1)]),
-        &FileResolver,
-    )
-    .unwrap();
-    assert!(on.source.contains(&format!("let n{noise}_0")), "{}", on.source);
+    let on = compile_variant(&g, &Variant::from([("_NOISE_ON".into(), 1)]), &FileResolver).unwrap();
+    assert!(
+        on.source.contains(&format!("let n{noise}_0")),
+        "{}",
+        on.source
+    );
     // An Enum keyword multiplies the variants; every one compiles.
     let mode = g.add_keyword(
         "Mode",
@@ -272,7 +271,10 @@ fn sub_graphs_inline_with_their_inputs_and_outputs() {
         cg.source
     );
     assert!(cg.source.contains("0.2f, 0.4f, 0.6f"));
-    assert!(cg.source.contains(&format!(": f32 = n{f}_0;")), "the input feeds the property");
+    assert!(
+        cg.source.contains(&format!(": f32 = n{f}_0;")),
+        "the input feeds the property"
+    );
     assert_eq!(cg.deps, ["Assets/Noise.shadersubgraph"]);
     // The CPU preview evaluates it too.
     struct Graphs(std::sync::Arc<ShaderGraph>);
@@ -347,7 +349,11 @@ fn groups_and_copy_paste_across_graphs() {
     // Copy both (the master stack stays behind) into a graph without the property.
     let clip = a.copy(&[p, one, MASTER]);
     assert_eq!(clip.nodes.len(), 2);
-    assert_eq!(clip.connections.len(), 1, "only the connection between them");
+    assert_eq!(
+        clip.connections.len(),
+        1,
+        "only the connection between them"
+    );
     assert_eq!(clip.properties.len(), 1);
     let text = clip.to_text();
     let back = Clipboard::from_text(&text).unwrap();
@@ -384,9 +390,8 @@ fn groups_and_copy_paste_across_graphs() {
 #[test]
 fn master_stack_follows_the_target() {
     let mut g = ShaderGraph::new(TargetMaterial::Lit);
-    let names = |g: &ShaderGraph| -> Vec<&str> {
-        g.master_ports().iter().map(|(_, p)| p.name).collect()
-    };
+    let names =
+        |g: &ShaderGraph| -> Vec<&str> { g.master_ports().iter().map(|(_, p)| p.name).collect() };
     for p in [
         master::OCCLUSION,
         master::TRANSMISSION,
@@ -404,13 +409,23 @@ fn master_stack_follows_the_target() {
         [0.0; 2],
     );
     g.connect(c, "Out", MASTER, master::TRANSMISSION).unwrap();
-    let n = g.add_node(NodeKind::Normal { space: Space::World }, [0.0; 2]);
+    let n = g.add_node(
+        NodeKind::Normal {
+            space: Space::World,
+        },
+        [0.0; 2],
+    );
     g.connect(n, "Out", MASTER, master::NORMAL).unwrap();
     let src = compile(&g).unwrap().source;
     assert!(src.contains("o.occlusion =") && src.contains("o.transmission ="));
     assert!(src.contains("tangent_to_world(input,"));
     g.target.normal_space = NormalSpace::World;
-    assert!(compile(&g).unwrap().source.contains("o.normal = normalize("));
+    assert!(
+        compile(&g)
+            .unwrap()
+            .source
+            .contains("o.normal = normalize(")
+    );
     g.target.normal_space = NormalSpace::Object;
     assert!(
         compile(&g)

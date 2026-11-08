@@ -821,5 +821,4 @@ impl NodeKind {
                 | NodeKind::Triplanar { .. }
         )
     }
-
 }

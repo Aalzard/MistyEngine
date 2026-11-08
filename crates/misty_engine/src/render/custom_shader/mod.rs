@@ -643,6 +643,5 @@ impl CustomShaders {
         self.shaders
             .get(&m.cache_key())
             .is_some_and(|c| c.asset.uses_scene)
-
     }
 }

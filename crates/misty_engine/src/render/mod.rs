@@ -3328,7 +3328,6 @@ impl GpuMesh {
                 // The same box picking and shadow fitting use.
                 bounds: culling::Aabb::new(-p.half_extents(), p.half_extents()),
                 colors: None,
-
             })
             .collect()
     }

@@ -196,8 +196,10 @@ pub fn set_source(rel: &str, text: &str) {
     if unchanged {
         return;
     }
-    lib.entries
-        .insert(rel.to_owned(), entry(parse(text).map(Arc::new), None, Vec::new(), rel));
+    lib.entries.insert(
+        rel.to_owned(),
+        entry(parse(text).map(Arc::new), None, Vec::new(), rel),
+    );
 }
 
 /// Use an unsaved graph for a shader path (the Shader Graph window's main preview): its

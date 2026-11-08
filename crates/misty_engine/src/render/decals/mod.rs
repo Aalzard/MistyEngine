@@ -113,7 +113,9 @@ pub fn validate_graph_named(
     name: &str,
 ) -> Result<(), String> {
     let mut one = g.clone();
-    one.body = one.body.replacen(&format!("fn {name}("), "fn sg_decal_1(", 1);
+    one.body = one
+        .body
+        .replacen(&format!("fn {name}("), "fn sg_decal_1(", 1);
     validate_module(&module_source(&[&one]))
 }
 
@@ -128,8 +130,20 @@ struct GraphDecal {
 /// `.mat` files and Decal graphs read for graph decals (re-read when their files change).
 #[derive(Default)]
 struct GraphAssets {
-    materials: HashMap<String, (Option<std::time::SystemTime>, Option<crate::assets::Material>)>,
-    graphs: HashMap<String, (Option<std::time::SystemTime>, Option<Arc<crate::shader_graph::ShaderGraph>>)>,
+    materials: HashMap<
+        String,
+        (
+            Option<std::time::SystemTime>,
+            Option<crate::assets::Material>,
+        ),
+    >,
+    graphs: HashMap<
+        String,
+        (
+            Option<std::time::SystemTime>,
+            Option<Arc<crate::shader_graph::ShaderGraph>>,
+        ),
+    >,
     last_check: Option<std::time::Instant>,
 }
 
@@ -183,7 +197,10 @@ impl GraphAssets {
     }
 
     /// A projector's Decal graph material.
-    fn resolve(&mut self, rel: &str) -> Option<(GraphDecal, Arc<crate::shader_graph::ShaderGraph>)> {
+    fn resolve(
+        &mut self,
+        rel: &str,
+    ) -> Option<(GraphDecal, Arc<crate::shader_graph::ShaderGraph>)> {
         let m = self.material(rel)?;
         if !crate::shader_graph::is_graph_path(&m.shader) {
             return None;
@@ -192,8 +209,10 @@ impl GraphAssets {
         if g.target.material != crate::shader_graph::TargetMaterial::Decal {
             return None;
         }
-        let keywords =
-            crate::shader_graph::codegen::effective_keywords(&g, &crate::shader_graph::FileResolver);
+        let keywords = crate::shader_graph::codegen::effective_keywords(
+            &g,
+            &crate::shader_graph::FileResolver,
+        );
         let variant: crate::shader_graph::Variant = keywords
             .iter()
             .map(|k| {
@@ -422,7 +441,10 @@ fn graph_params(
     use crate::shader_graph::{PropertyType, TextureFallback};
     let mut out = [[0.0; 4]; GRAPH_PARAMS];
     for (slot, p) in out.iter_mut().zip(properties) {
-        let value = values.get(&p.name).cloned().unwrap_or_else(|| p.default_value());
+        let value = values
+            .get(&p.name)
+            .cloned()
+            .unwrap_or_else(|| p.default_value());
         *slot = match (p.ty, value) {
             (PropertyType::Texture2D { fallback }, v) => {
                 let colour = fallback != TextureFallback::Normal;
@@ -997,7 +1019,6 @@ mod tests {
         );
         assert_eq!(std::mem::size_of::<DecalParams>(), 64);
     }
-
 
     #[test]
     fn angle_fade_is_off_for_the_full_range() {

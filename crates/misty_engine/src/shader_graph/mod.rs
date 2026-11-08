@@ -612,7 +612,9 @@ impl ShaderGraph {
             }
             // Every port, also those the target hides (a connection there is kept, unused).
             NodeKind::Master => MASTER_PORTS.iter().map(|(_, p)| *p).collect(),
-            NodeKind::Keyword { name } => self.keyword(name).map(Keyword::ports).unwrap_or_default(),
+            NodeKind::Keyword { name } => {
+                self.keyword(name).map(Keyword::ports).unwrap_or_default()
+            }
             k => k.inputs(),
         }
     }
@@ -787,10 +789,7 @@ impl ShaderGraph {
                 }
                 _ => {}
             }
-            let id = self.add_node(
-                kind,
-                [n.position[0] + offset[0], n.position[1] + offset[1]],
-            );
+            let id = self.add_node(kind, [n.position[0] + offset[0], n.position[1] + offset[1]]);
             if let Some(m) = self.node_mut(id) {
                 m.values = n.values.clone();
                 m.hide_preview = n.hide_preview;
@@ -1267,4 +1266,3 @@ pub fn all_variants(keywords: &[Keyword]) -> Vec<Variant> {
     }
     out
 }
-

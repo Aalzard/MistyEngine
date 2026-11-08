@@ -422,9 +422,7 @@ fn evaluate_inner(
                         inner.textures.insert(p.name.clone(), t.clone());
                     }
                 } else {
-                    inner
-                        .values
-                        .insert(p.name.clone(), (col.clone(), slot.ty));
+                    inner.values.insert(p.name.clone(), (col.clone(), slot.ty));
                 }
             }
             let (e, _) = evaluate_inner(&sub, ctx, textures, geo, &inner, depth + 1);
@@ -433,11 +431,16 @@ fn evaluate_inner(
             };
             for (slot, port) in sub.outputs.iter().zip(&outputs) {
                 let column: Vec<V> = match sub.input_connection(master.id, &slot.name) {
-                    Some(c) => match (e.values(c.from, &c.output), e.types.output(c.from, &c.output)) {
-                        (Some(src), Some(ty)) => src.iter().map(|&v| convert(v, ty, slot.ty)).collect(),
+                    Some(c) => match (
+                        e.values(c.from, &c.output),
+                        e.types.output(c.from, &c.output),
+                    ) {
+                        (Some(src), Some(ty)) => {
+                            src.iter().map(|&v| convert(v, ty, slot.ty)).collect()
+                        }
                         _ => continue,
                     },
-                    None => vec![convert(slot.value, slot.ty, slot.ty); n],
+                    None => vec![master.value(&slot.input_port()); n],
                 };
                 values.insert((id, port.name.to_owned()), column);
             }

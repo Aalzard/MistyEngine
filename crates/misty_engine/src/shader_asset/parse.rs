@@ -20,8 +20,8 @@
 use std::collections::BTreeMap;
 
 use super::{
-    Blend, Cull, PropertyKind, PropertyValue, ShaderAsset, ShaderError, ShaderKeyword,
-    ShaderModel, ShaderProperty, ShaderSettings, TextureDefault,
+    Blend, Cull, PropertyKind, PropertyValue, ShaderAsset, ShaderError, ShaderKeyword, ShaderModel,
+    ShaderProperty, ShaderSettings, TextureDefault,
 };
 
 fn err(line: usize, message: impl Into<String>) -> ShaderError {
@@ -132,7 +132,10 @@ pub fn parse(source: &str) -> Result<ShaderAsset, ShaderError> {
 impl ShaderAsset {
     /// This shader for a variant (keyword values; missing ones take their defaults): `#if`
     /// blocks resolved for it.
-    pub fn with_variant(&self, variant: &BTreeMap<String, u32>) -> Result<ShaderAsset, ShaderError> {
+    pub fn with_variant(
+        &self,
+        variant: &BTreeMap<String, u32>,
+    ) -> Result<ShaderAsset, ShaderError> {
         let Some(template) = &self.template else {
             return Ok(self.clone());
         };
@@ -666,7 +669,6 @@ fn fragment(input: SurfaceInput) -> vec4<f32> {
 
     #[test]
     fn values_round_trip_through_json() {
-
         let values = [
             PropertyValue::Float(2.0),
             PropertyValue::Vector([1.0, 0.0, 0.0, 1.0]),
