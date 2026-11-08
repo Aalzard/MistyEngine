@@ -101,6 +101,8 @@ fn main() {
     // The startup locale may come from PlayerPrefs, which are only open now.
     misty_engine::localization::reset_session();
     game.apply_saved_quality();
+    // UI text scale and colour-blind filter from Project Settings ▸ Player ▸ Accessibility.
+    misty_engine::accessibility::install(&game.player_settings().accessibility);
     let source = if launch.packed { "pak" } else { "folder" };
     log.write(
         LogKind::Info,

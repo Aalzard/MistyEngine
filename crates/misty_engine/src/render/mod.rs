@@ -5,6 +5,7 @@ pub mod area;
 mod batch;
 mod cascades;
 mod clouds;
+pub mod color_filter;
 pub mod contact_shadows;
 pub mod culling;
 pub mod custom_shader;

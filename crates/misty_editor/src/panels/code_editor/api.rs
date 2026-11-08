@@ -24,6 +24,7 @@ const TABLE: &str = r#"
 |AudioMixer||Find mixers by name
 |Terrain||The active terrain(s)
 |Water||Water surface heights (buoyancy, wading)
+|Accessibility||UI text scale and colour-blind filter (for options menus)
 |Instantiate|Instantiate(prefabPathOrObject [, position])|Clone a prefab or object; returns the new GameObject
 |Destroy|Destroy(gameObject)|Destroy an object at the end of the frame
 |print|print(...)|Same as Debug.Log
@@ -125,6 +126,11 @@ AudioMixer|Find|Find(name)|The project mixer with that file name, or nil
 Terrain|activeTerrain|activeTerrain|The first enabled terrain, or nil
 Terrain|activeTerrains|activeTerrains|Every terrain in the scene
 Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a Vector3), nil when dry
+Accessibility|textScale|textScale|UI text size multiplier (0.5–3, 1 = as designed)
+Accessibility|colorBlindMode|colorBlindMode|"Off", "Protanopia", "Deuteranopia" or "Tritanopia"
+Accessibility|filterStrength|filterStrength|Colour-blind filter strength (0–1)
+Accessibility|simulate|simulate|Show how colour-blind players see the game instead of correcting it
+Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #self|gameObject|gameObject|The GameObject this script is attached to
 #self|transform|transform|This object's Transform
 #GameObject|name|name|Object name

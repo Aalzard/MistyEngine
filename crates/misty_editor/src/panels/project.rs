@@ -30,11 +30,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let vcs = &state.vcs;
     // One toolbar row: Create on the left, search, type filter and refresh on the right.
     panel_toolbar(ui, |ui| {
-        ui.menu_button("➕ ⏷", |ui| {
+        let create = ui.menu_button("➕ ⏷", |ui| {
             project_menus::create_items(ui, &mut req.actions)
         });
+        crate::a11y::name(create.response, egui::WidgetType::Button, "Create");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("⟳").on_hover_text("Refresh (Ctrl+R)").clicked() {
+            let refresh = ui.button("⟳").on_hover_text("Refresh (Ctrl+R)");
+            if crate::a11y::name(refresh, egui::WidgetType::Button, "Refresh").clicked() {
                 req.actions.push(Action::Refresh);
             }
             type_filter(ui, &mut browser.search);
@@ -54,7 +56,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     ui.label(browser.display_path(sel));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add(egui::Slider::new(&mut browser.icon_size, 0.0..=1.0).show_value(false));
+                    let size = ui.add(
+                        egui::Slider::new(&mut browser.icon_size, 0.0..=1.0).show_value(false),
+                    );
+                    crate::a11y::name(size, egui::WidgetType::Slider, "Icon size");
                 });
             });
         });

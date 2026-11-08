@@ -107,8 +107,21 @@ pub fn load(s: &mut EditorState) {
     s.project_settings.apply_globals();
     let q = &s.project_settings.quality;
     misty_engine::quality::install(q, q.default_level);
+    install_accessibility(s);
     // PlayerPrefs in Play mode are kept per project, outside version control.
     misty_engine::prefs::open(&s.project.root.join("Library/PlayerPrefs.json"));
+}
+
+/// Player ▸ Accessibility as the settings in effect: the Game view shows the colour-blind
+/// filter and text scale while editing too, and Play starts from them.
+pub fn install_accessibility(s: &EditorState) {
+    let a = s
+        .project_settings
+        .player
+        .as_ref()
+        .map(|p| p.accessibility)
+        .unwrap_or_default();
+    misty_engine::accessibility::install(&a);
 }
 
 /// Clamp, save, and apply what can change live (time scale while playing).
@@ -117,6 +130,7 @@ pub fn changed(s: &mut EditorState) {
     s.project_settings.apply_globals();
     // Keep previewing the same level with its new values.
     misty_engine::quality::install(&s.project_settings.quality, misty_engine::quality::level());
+    install_accessibility(s);
     if let Err(e) = s.project_settings.save(&s.project.root) {
         s.console.log(
             crate::console::LogLevel::Error,

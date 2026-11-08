@@ -1,0 +1,4069 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Misty Lua API</title>
+<style>
+:root { --bg: #fbfbfc; --fg: #1d1f23; --dim: #5d6470; --line: #e2e4e8; --card: #ffffff;
+  --accent: #2f6fd0; --code: #f1f3f6; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1b1c1f; --fg: #e4e6ea; --dim: #9aa1ad; --line: #33363c; --card: #232428;
+    --accent: #7fb0ff; --code: #2c2e33; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+nav { position: fixed; top: 0; bottom: 0; left: 0; width: 260px; overflow-y: auto;
+  border-right: 1px solid var(--line); padding: 16px; background: var(--card); }
+nav h1 { font-size: 17px; margin: 0 0 10px; }
+nav input { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); font: inherit; }
+nav ul { list-style: none; margin: 10px 0 0; padding: 0; }
+nav a { display: block; padding: 2px 4px; color: var(--fg); text-decoration: none;
+  border-radius: 4px; }
+nav a:hover, nav a:focus { background: var(--code); }
+main { margin-left: 260px; padding: 24px 32px; max-width: 980px; }
+section { margin-bottom: 28px; }
+h2 { border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.entry { padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.sig { font: 14px ui-monospace, Consolas, monospace; font-weight: 600; }
+.meta { color: var(--dim); font-size: 13px; }
+.notes { color: var(--dim); border-left: 3px solid var(--line); padding-left: 8px; margin: 4px 0; }
+code { background: var(--code); padding: 0 3px; border-radius: 3px;
+  font: 13px ui-monospace, Consolas, monospace; }
+.hidden { display: none; }
+@media (max-width: 760px) {
+  nav { position: static; width: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { margin-left: 0; padding: 16px; }
+}
+</style>
+</head>
+<body>
+<nav aria-label="Sections">
+<h1>Misty Lua API</h1>
+<label for="filter" class="meta">Filter</label>
+<input id="filter" type="search" placeholder="GetKey, position…">
+<ul>
+<li><a href="#globals">Globals</a></li>
+<li><a href="#accessibility">Accessibility</a></li>
+<li><a href="#application">Application</a></li>
+<li><a href="#assets">Assets</a></li>
+<li><a href="#audiomixer">AudioMixer</a></li>
+<li><a href="#audiosource">AudioSource</a></li>
+<li><a href="#color">Color</a></li>
+<li><a href="#debug">Debug</a></li>
+<li><a href="#forcemode">ForceMode</a></li>
+<li><a href="#forcemode2d">ForceMode2D</a></li>
+<li><a href="#gameobject">GameObject</a></li>
+<li><a href="#impulse">Impulse</a></li>
+<li><a href="#input">Input</a></li>
+<li><a href="#inputactions">InputActions</a></li>
+<li><a href="#layermask">LayerMask</a></li>
+<li><a href="#lightprobes">LightProbes</a></li>
+<li><a href="#loadscenemode">LoadSceneMode</a></li>
+<li><a href="#localization">Localization</a></li>
+<li><a href="#mathf">Mathf</a></li>
+<li><a href="#navmesh">NavMesh</a></li>
+<li><a href="#network">Network</a></li>
+<li><a href="#physics">Physics</a></li>
+<li><a href="#physics2d">Physics2D</a></li>
+<li><a href="#playerprefs">PlayerPrefs</a></li>
+<li><a href="#qualitysettings">QualitySettings</a></li>
+<li><a href="#ragdoll">Ragdoll</a></li>
+<li><a href="#rendersettings">RenderSettings</a></li>
+<li><a href="#rpctarget">RpcTarget</a></li>
+<li><a href="#savesystem">SaveSystem</a></li>
+<li><a href="#scenemanager">SceneManager</a></li>
+<li><a href="#screen">Screen</a></li>
+<li><a href="#terrain">Terrain</a></li>
+<li><a href="#time">Time</a></li>
+<li><a href="#vector2">Vector2</a></li>
+<li><a href="#vector3">Vector3</a></li>
+<li><a href="#water">Water</a></li>
+<li><a href="#type-action">Action (object)</a></li>
+<li><a href="#type-actionmap">ActionMap (object)</a></li>
+<li><a href="#type-actions">Actions (object)</a></li>
+<li><a href="#type-animation">Animation (object)</a></li>
+<li><a href="#type-animator">Animator (object)</a></li>
+<li><a href="#type-aspectratiofitter">AspectRatioFitter (object)</a></li>
+<li><a href="#type-audiomixer">AudioMixer (object)</a></li>
+<li><a href="#type-audiomixergroup">AudioMixerGroup (object)</a></li>
+<li><a href="#type-audiomixersnapshot">AudioMixerSnapshot (object)</a></li>
+<li><a href="#type-audiosource">AudioSource (object)</a></li>
+<li><a href="#type-button">Button (object)</a></li>
+<li><a href="#type-camera">Camera (object)</a></li>
+<li><a href="#type-camerabrain">CameraBrain (object)</a></li>
+<li><a href="#type-canvas">Canvas (object)</a></li>
+<li><a href="#type-canvasgroup">CanvasGroup (object)</a></li>
+<li><a href="#type-charactercontroller">CharacterController (object)</a></li>
+<li><a href="#type-collider2d">Collider2D (object)</a></li>
+<li><a href="#type-dropdown">Dropdown (object)</a></li>
+<li><a href="#type-gameobject">GameObject (object)</a></li>
+<li><a href="#type-gamepad">Gamepad (object)</a></li>
+<li><a href="#type-image">Image (object)</a></li>
+<li><a href="#type-impulsesource">ImpulseSource (object)</a></li>
+<li><a href="#type-inputevent">InputEvent (object)</a></li>
+<li><a href="#type-inputfield">InputField (object)</a></li>
+<li><a href="#type-light2d">Light2D (object)</a></li>
+<li><a href="#type-localeevent">LocaleEvent (object)</a></li>
+<li><a href="#type-localizedtext">LocalizedText (object)</a></li>
+<li><a href="#type-material">Material (object)</a></li>
+<li><a href="#type-meshrenderer">MeshRenderer (object)</a></li>
+<li><a href="#type-navmeshagent">NavMeshAgent (object)</a></li>
+<li><a href="#type-navmeshobstacle">NavMeshObstacle (object)</a></li>
+<li><a href="#type-navmeshsurface">NavMeshSurface (object)</a></li>
+<li><a href="#type-netevent">NetEvent (object)</a></li>
+<li><a href="#type-networkobject">NetworkObject (object)</a></li>
+<li><a href="#type-networktransform">NetworkTransform (object)</a></li>
+<li><a href="#type-particlesystem">ParticleSystem (object)</a></li>
+<li><a href="#type-playabledirector">PlayableDirector (object)</a></li>
+<li><a href="#type-playerinput">PlayerInput (object)</a></li>
+<li><a href="#type-rawimage">RawImage (object)</a></li>
+<li><a href="#type-raycasthit">RaycastHit (object)</a></li>
+<li><a href="#type-rebind">Rebind (object)</a></li>
+<li><a href="#type-rigcomponent">RigComponent (object)</a></li>
+<li><a href="#type-rigidbody">Rigidbody (object)</a></li>
+<li><a href="#type-rigidbody2d">Rigidbody2D (object)</a></li>
+<li><a href="#type-rpctarget">RpcTarget (object)</a></li>
+<li><a href="#type-saveable">Saveable (object)</a></li>
+<li><a href="#type-scrollbar">Scrollbar (object)</a></li>
+<li><a href="#type-scrollrect">ScrollRect (object)</a></li>
+<li><a href="#type-self">self (object)</a></li>
+<li><a href="#type-skinnedmeshrenderer">SkinnedMeshRenderer (object)</a></li>
+<li><a href="#type-slider">Slider (object)</a></li>
+<li><a href="#type-splineanimate">SplineAnimate (object)</a></li>
+<li><a href="#type-splinecontainer">SplineContainer (object)</a></li>
+<li><a href="#type-spriterenderer">SpriteRenderer (object)</a></li>
+<li><a href="#type-targetgroup">TargetGroup (object)</a></li>
+<li><a href="#type-terrain">Terrain (object)</a></li>
+<li><a href="#type-text">Text (object)</a></li>
+<li><a href="#type-tilemap">Tilemap (object)</a></li>
+<li><a href="#type-toggle">Toggle (object)</a></li>
+<li><a href="#type-togglegroup">ToggleGroup (object)</a></li>
+<li><a href="#type-touchscreen">Touchscreen (object)</a></li>
+<li><a href="#type-transform">Transform (object)</a></li>
+<li><a href="#type-uievent">UiEvent (object)</a></li>
+<li><a href="#type-vector3">Vector3 (object)</a></li>
+<li><a href="#type-videoplayer">VideoPlayer (object)</a></li>
+<li><a href="#type-virtualcamera">VirtualCamera (object)</a></li>
+<li><a href="#type-visualeffect">VisualEffect (object)</a></li>
+<li><a href="#type-wheelcollider">WheelCollider (object)</a></li>
+</ul>
+</nav>
+<main>
+<p class="meta">Generated by <code>misty --api-docs docs/api</code> from the engine's Lua bindings (<code>crates/misty_engine/src/scripting</code>) and the Code Editor's autocomplete tables. Do not edit by hand: a test fails when this file no longer matches the bindings.</p>
+<section id="globals">
+<h2>Globals</h2>
+<div class="entry" data-key="destroy(gameobject) destroy an object at the end of the frame">
+<div class="sig">Destroy(gameObject)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Destroy an object at the end of the frame</p>
+</div>
+<div class="entry" data-key="header(text) ">
+<div class="sig">Header(text)</div>
+<div class="meta">function · source: <code>attributes.rs</code></div>
+</div>
+<div class="entry" data-key="hideininspector() ">
+<div class="sig">HideInInspector()</div>
+<div class="meta">function · source: <code>attributes.rs</code></div>
+</div>
+<div class="entry" data-key="instantiate(prefabpathorobject [, position]) clone a prefab or object; returns the new gameobject">
+<div class="sig">Instantiate(prefabPathOrObject [, position])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Clone a prefab or object; returns the new GameObject</p>
+</div>
+<div class="entry" data-key="range(min, max) ">
+<div class="sig">Range(min, max)</div>
+<div class="meta">function · source: <code>attributes.rs</code></div>
+</div>
+<div class="entry" data-key="space([px]) ">
+<div class="sig">Space([px])</div>
+<div class="meta">function · source: <code>attributes.rs</code></div>
+</div>
+<div class="entry" data-key="tooltip(text) ">
+<div class="sig">Tooltip(text)</div>
+<div class="meta">function · source: <code>attributes.rs</code></div>
+</div>
+<div class="entry" data-key="print(...) same as debug.log">
+<div class="sig">print(...)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Same as Debug.Log</p>
+</div>
+</section>
+<section id="accessibility">
+<h2>Accessibility</h2>
+<p>UI text scale and colour-blind filter (for options menus)</p>
+<div class="entry" data-key="accessibility.colorblindmode &quot;off&quot;, &quot;protanopia&quot;, &quot;deuteranopia&quot; or &quot;tritanopia&quot;">
+<div class="sig">Accessibility.colorBlindMode</div>
+<div class="meta">property (read / write) · source: <code>accessibility_api.rs</code></div>
+<p>&quot;Off&quot;, &quot;Protanopia&quot;, &quot;Deuteranopia&quot; or &quot;Tritanopia&quot;</p>
+<p class="notes">The colour-blind filter: &quot;Off&quot;, &quot;Protanopia&quot;, &quot;Deuteranopia&quot; or &quot;Tritanopia&quot;.</p>
+</div>
+<div class="entry" data-key="accessibility.colorblindmodes the mode names, for a dropdown">
+<div class="sig">Accessibility.colorBlindModes</div>
+<div class="meta">property · source: <code>accessibility_api.rs</code></div>
+<p>The mode names, for a dropdown</p>
+<p class="notes">The filter mode names, for an options menu.</p>
+</div>
+<div class="entry" data-key="accessibility.filterstrength colour-blind filter strength (0–1)">
+<div class="sig">Accessibility.filterStrength</div>
+<div class="meta">property (read / write) · source: <code>accessibility_api.rs</code></div>
+<p>Colour-blind filter strength (0–1)</p>
+<p class="notes">How strongly the filter applies (0 to 1).</p>
+</div>
+<div class="entry" data-key="accessibility.maxtextscale ">
+<div class="sig">Accessibility.maxTextScale</div>
+<div class="meta">property · source: <code>accessibility_api.rs</code></div>
+</div>
+<div class="entry" data-key="accessibility.mintextscale ">
+<div class="sig">Accessibility.minTextScale</div>
+<div class="meta">property · source: <code>accessibility_api.rs</code></div>
+<p class="notes">Smallest and largest text scale.</p>
+</div>
+<div class="entry" data-key="accessibility.simulate show how colour-blind players see the game instead of correcting it">
+<div class="sig">Accessibility.simulate</div>
+<div class="meta">property (read / write) · source: <code>accessibility_api.rs</code></div>
+<p>Show how colour-blind players see the game instead of correcting it</p>
+<p class="notes">Show the image as a colour-blind player sees it instead of correcting it (for testing).</p>
+</div>
+<div class="entry" data-key="accessibility.textscale ui text size multiplier (0.5–3, 1 = as designed)">
+<div class="sig">Accessibility.textScale</div>
+<div class="meta">property (read / write) · source: <code>accessibility_api.rs</code></div>
+<p>UI text size multiplier (0.5–3, 1 = as designed)</p>
+<p class="notes">Multiplies every UI Text's font size (0.5 to 3; 1 = as designed).</p>
+</div>
+</section>
+<section id="application">
+<h2>Application</h2>
+<p>Application control</p>
+<div class="entry" data-key="application.quit() close the built game">
+<div class="sig">Application.Quit()</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Close the built game</p>
+</div>
+</section>
+<section id="assets">
+<h2>Assets</h2>
+<div class="entry" data-key="assets.__prim ">
+<div class="sig">Assets.__prim</div>
+<div class="meta">property · source: <code>assets_api.rs</code></div>
+</div>
+</section>
+<section id="audiomixer">
+<h2>AudioMixer</h2>
+<p>Find mixers by name</p>
+<div class="entry" data-key="audiomixer.find(name) the project mixer with that file name, or nil">
+<div class="sig">AudioMixer.Find(name)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>The project mixer with that file name, or nil</p>
+</div>
+</section>
+<section id="audiosource">
+<h2>AudioSource</h2>
+<p>PlayClipAtPoint</p>
+<div class="entry" data-key="audiosource.playclipatpoint(clippath, position [, volume]) a 3d one-shot at a fixed point">
+<div class="sig">AudioSource.PlayClipAtPoint(clipPath, position [, volume])</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>A 3D one-shot at a fixed point</p>
+</div>
+</section>
+<section id="color">
+<h2>Color</h2>
+<p>RGBA colours (0..1)</p>
+<div class="entry" data-key="color.lerp(a, b, t) linear interpolation">
+<div class="sig">Color.Lerp(a, b, t)</div>
+<div class="meta">function · source: <code>ui_api.rs</code></div>
+<p>Linear interpolation</p>
+</div>
+<div class="entry" data-key="color.new(r, g, b [, a]) a new colour (0..1)">
+<div class="sig">Color.new(r, g, b [, a])</div>
+<div class="meta">function · source: <code>ui_api.rs</code></div>
+<p>A new colour (0..1)</p>
+</div>
+<div class="entry" data-key="color.black (0, 0, 0, 1)">
+<div class="sig">Color.black</div>
+<div class="meta">property</div>
+<p>(0, 0, 0, 1)</p>
+</div>
+<div class="entry" data-key="color.blue (0, 0, 1, 1)">
+<div class="sig">Color.blue</div>
+<div class="meta">property</div>
+<p>(0, 0, 1, 1)</p>
+</div>
+<div class="entry" data-key="color.clear (0, 0, 0, 0)">
+<div class="sig">Color.clear</div>
+<div class="meta">property</div>
+<p>(0, 0, 0, 0)</p>
+</div>
+<div class="entry" data-key="color.cyan (0, 1, 1, 1)">
+<div class="sig">Color.cyan</div>
+<div class="meta">property</div>
+<p>(0, 1, 1, 1)</p>
+</div>
+<div class="entry" data-key="color.gray (0.5, 0.5, 0.5, 1)">
+<div class="sig">Color.gray</div>
+<div class="meta">property</div>
+<p>(0.5, 0.5, 0.5, 1)</p>
+</div>
+<div class="entry" data-key="color.green (0, 1, 0, 1)">
+<div class="sig">Color.green</div>
+<div class="meta">property</div>
+<p>(0, 1, 0, 1)</p>
+</div>
+<div class="entry" data-key="color.magenta (1, 0, 1, 1)">
+<div class="sig">Color.magenta</div>
+<div class="meta">property</div>
+<p>(1, 0, 1, 1)</p>
+</div>
+<div class="entry" data-key="color.red (1, 0, 0, 1)">
+<div class="sig">Color.red</div>
+<div class="meta">property</div>
+<p>(1, 0, 0, 1)</p>
+</div>
+<div class="entry" data-key="color.white (1, 1, 1, 1)">
+<div class="sig">Color.white</div>
+<div class="meta">property</div>
+<p>(1, 1, 1, 1)</p>
+</div>
+<div class="entry" data-key="color.yellow (1, 0.92, 0.016, 1)">
+<div class="sig">Color.yellow</div>
+<div class="meta">property</div>
+<p>(1, 0.92, 0.016, 1)</p>
+</div>
+</section>
+<section id="debug">
+<h2>Debug</h2>
+<p>Console logging</p>
+<div class="entry" data-key="debug.log(...) write a message to the console">
+<div class="sig">Debug.Log(...)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Write a message to the Console</p>
+</div>
+<div class="entry" data-key="debug.logerror(...) write an error to the console (error pause stops on it)">
+<div class="sig">Debug.LogError(...)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Write an error to the Console (Error Pause stops on it)</p>
+</div>
+<div class="entry" data-key="debug.logwarning(...) write a warning to the console">
+<div class="sig">Debug.LogWarning(...)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Write a warning to the Console</p>
+</div>
+</section>
+<section id="forcemode">
+<h2>ForceMode</h2>
+<p>Force modes for AddForce / AddTorque</p>
+<div class="entry" data-key="forcemode.acceleration continuous acceleration">
+<div class="sig">ForceMode.Acceleration</div>
+<div class="meta">property</div>
+<p>Continuous acceleration</p>
+</div>
+<div class="entry" data-key="forcemode.force continuous force (uses mass and time)">
+<div class="sig">ForceMode.Force</div>
+<div class="meta">property</div>
+<p>Continuous force (uses mass and time)</p>
+</div>
+<div class="entry" data-key="forcemode.impulse instant force (uses mass)">
+<div class="sig">ForceMode.Impulse</div>
+<div class="meta">property</div>
+<p>Instant force (uses mass)</p>
+</div>
+<div class="entry" data-key="forcemode.velocitychange instant velocity change">
+<div class="sig">ForceMode.VelocityChange</div>
+<div class="meta">property</div>
+<p>Instant velocity change</p>
+</div>
+</section>
+<section id="forcemode2d">
+<h2>ForceMode2D</h2>
+<div class="entry" data-key="forcemode2d.force ">
+<div class="sig">ForceMode2D.Force</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="forcemode2d.impulse ">
+<div class="sig">ForceMode2D.Impulse</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+</section>
+<section id="gameobject">
+<h2>GameObject</h2>
+<p>Find objects by name</p>
+<div class="entry" data-key="gameobject.find(name) the first active object with that name, or nil">
+<div class="sig">GameObject.Find(name)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>The first active object with that name, or nil</p>
+</div>
+<div class="entry" data-key="gameobject.findgameobjectswithtag(tag) ">
+<div class="sig">GameObject.FindGameObjectsWithTag(tag)</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+</div>
+<div class="entry" data-key="gameobject.findwithtag(tag) ">
+<div class="sig">GameObject.FindWithTag(tag)</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+</div>
+</section>
+<section id="impulse">
+<h2>Impulse</h2>
+<div class="entry" data-key="impulse.generateimpulse(obj, arg) ">
+<div class="sig">Impulse.GenerateImpulse(obj, arg)</div>
+<div class="meta">function · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="impulse.generateimpulseat(at, velocity) ">
+<div class="sig">Impulse.GenerateImpulseAt(at, velocity)</div>
+<div class="meta">function · source: <code>vcam_api.rs</code></div>
+</div>
+</section>
+<section id="input">
+<h2>Input</h2>
+<p>Keyboard, mouse and axes (the Game view must have focus)</p>
+<div class="entry" data-key="input.getaxis(name) &quot;horizontal&quot;, &quot;vertical&quot;, &quot;mouse x&quot;, &quot;mouse y&quot; (-1..1)">
+<div class="sig">Input.GetAxis(name)</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+<p>&quot;Horizontal&quot;, &quot;Vertical&quot;, &quot;Mouse X&quot;, &quot;Mouse Y&quot; (-1..1)</p>
+</div>
+<div class="entry" data-key="input.getaxisraw(name) ">
+<div class="sig">Input.GetAxisRaw(name)</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+</div>
+<div class="entry" data-key="input.getbutton(...) ">
+<div class="sig">Input.GetButton(...)</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+</div>
+<div class="entry" data-key="input.getbuttondown(...) ">
+<div class="sig">Input.GetButtonDown(...)</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+</div>
+<div class="entry" data-key="input.getbuttonup(...) ">
+<div class="sig">Input.GetButtonUp(...)</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+</div>
+<div class="entry" data-key="input.getjoysticknames() ">
+<div class="sig">Input.GetJoystickNames()</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+</div>
+<div class="entry" data-key="input.getkey(name) true while the key is held (&quot;w&quot;, &quot;space&quot;, &quot;left shift&quot;, …)">
+<div class="sig">Input.GetKey(name)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True while the key is held (&quot;w&quot;, &quot;space&quot;, &quot;left shift&quot;, …)</p>
+</div>
+<div class="entry" data-key="input.getkeydown(name) true on the frame the key was pressed">
+<div class="sig">Input.GetKeyDown(name)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True on the frame the key was pressed</p>
+</div>
+<div class="entry" data-key="input.getkeyup(name) true on the frame the key was released">
+<div class="sig">Input.GetKeyUp(name)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True on the frame the key was released</p>
+</div>
+<div class="entry" data-key="input.getmousebutton(button) true while a mouse button is held (0 left, 1 right, 2 middle)">
+<div class="sig">Input.GetMouseButton(button)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True while a mouse button is held (0 left, 1 right, 2 middle)</p>
+</div>
+<div class="entry" data-key="input.getmousebuttondown(button) true on the frame a mouse button was pressed">
+<div class="sig">Input.GetMouseButtonDown(button)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True on the frame a mouse button was pressed</p>
+</div>
+<div class="entry" data-key="input.getmousebuttonup(button) true on the frame a mouse button was released">
+<div class="sig">Input.GetMouseButtonUp(button)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True on the frame a mouse button was released</p>
+</div>
+<div class="entry" data-key="input.gettouch(i) ">
+<div class="sig">Input.GetTouch(i)</div>
+<div class="meta">function · source: <code>input_api.rs</code></div>
+</div>
+</section>
+<section id="inputactions">
+<h2>InputActions</h2>
+<div class="entry" data-key="inputactions.instantiate(path) ">
+<div class="sig">InputActions.Instantiate(path)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="inputactions.load(path) ">
+<div class="sig">InputActions.Load(path)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="layermask">
+<h2>LayerMask</h2>
+<p>Layer names and masks</p>
+<div class="entry" data-key="layermask.getmask(name, ...) bit mask of the named layers">
+<div class="sig">LayerMask.GetMask(name, ...)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Bit mask of the named layers</p>
+</div>
+<div class="entry" data-key="layermask.layertoname(index) layer name">
+<div class="sig">LayerMask.LayerToName(index)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Layer name</p>
+</div>
+<div class="entry" data-key="layermask.nametolayer(name) layer index, or -1">
+<div class="sig">LayerMask.NameToLayer(name)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Layer index, or -1</p>
+</div>
+</section>
+<section id="lightprobes">
+<h2>LightProbes</h2>
+<div class="entry" data-key="lightprobes.getinterpolatedprobe(position) ">
+<div class="sig">LightProbes.GetInterpolatedProbe(position)</div>
+<div class="meta">function · source: <code>light_probes_api.rs</code></div>
+</div>
+</section>
+<section id="loadscenemode">
+<h2>LoadSceneMode</h2>
+<p>Single or Additive scene loading</p>
+<div class="entry" data-key="loadscenemode.additive add to the open scenes">
+<div class="sig">LoadSceneMode.Additive</div>
+<div class="meta">property · source: <code>scene_api.rs</code></div>
+<p>Add to the open scenes</p>
+</div>
+<div class="entry" data-key="loadscenemode.single replace the open scenes">
+<div class="sig">LoadSceneMode.Single</div>
+<div class="meta">property · source: <code>scene_api.rs</code></div>
+<p>Replace the open scenes</p>
+</div>
+</section>
+<section id="localization">
+<h2>Localization</h2>
+<div class="entry" data-key="localization.get(key, [args], [table]) ">
+<div class="sig">Localization.Get(key, [args], [table])</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+<p class="notes">Called with a dot: <code>Localization.Get(key, args, table)</code>.</p>
+</div>
+<div class="entry" data-key="localization.getasset(key, [table]) ">
+<div class="sig">Localization.GetAsset(key, [table])</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+<p class="notes">Asset Tables: the asset path for the current locale.</p>
+</div>
+<div class="entry" data-key="localization.haskey(key, [table]) ">
+<div class="sig">Localization.HasKey(key, [table])</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localization.onlocalechanged ">
+<div class="sig">Localization.OnLocaleChanged</div>
+<div class="meta">property · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localization.isrighttoleft ">
+<div class="sig">Localization.isRightToLeft</div>
+<div class="meta">property · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localization.locale ">
+<div class="sig">Localization.locale</div>
+<div class="meta">property (read / write) · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localization.locales ">
+<div class="sig">Localization.locales</div>
+<div class="meta">property · source: <code>localization_api.rs</code></div>
+</div>
+</section>
+<section id="mathf">
+<h2>Mathf</h2>
+<p>Math helpers</p>
+<div class="entry" data-key="mathf.abs(x) absolute value">
+<div class="sig">Mathf.Abs(x)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Absolute value</p>
+</div>
+<div class="entry" data-key="mathf.clamp(value, min, max) value limited to min..max">
+<div class="sig">Mathf.Clamp(value, min, max)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Value limited to min..max</p>
+</div>
+<div class="entry" data-key="mathf.clamp01(value) value limited to 0..1">
+<div class="sig">Mathf.Clamp01(value)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Value limited to 0..1</p>
+</div>
+<div class="entry" data-key="mathf.cos(radians) cosine">
+<div class="sig">Mathf.Cos(radians)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Cosine</p>
+</div>
+<div class="entry" data-key="mathf.floor(x) round down">
+<div class="sig">Mathf.Floor(x)</div>
+<div class="meta">function</div>
+<p>Round down</p>
+</div>
+<div class="entry" data-key="mathf.lerp(a, b, t) linear interpolation (t clamped)">
+<div class="sig">Mathf.Lerp(a, b, t)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Linear interpolation (t clamped)</p>
+</div>
+<div class="entry" data-key="mathf.max(a, b) larger value">
+<div class="sig">Mathf.Max(a, b)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Larger value</p>
+</div>
+<div class="entry" data-key="mathf.min(a, b) smaller value">
+<div class="sig">Mathf.Min(a, b)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Smaller value</p>
+</div>
+<div class="entry" data-key="mathf.round(x) round to nearest">
+<div class="sig">Mathf.Round(x)</div>
+<div class="meta">function</div>
+<p>Round to nearest</p>
+</div>
+<div class="entry" data-key="mathf.sign(x) 1 or -1">
+<div class="sig">Mathf.Sign(x)</div>
+<div class="meta">function</div>
+<p>1 or -1</p>
+</div>
+<div class="entry" data-key="mathf.sin(radians) sine">
+<div class="sig">Mathf.Sin(radians)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Sine</p>
+</div>
+<div class="entry" data-key="mathf.sqrt(x) square root">
+<div class="sig">Mathf.Sqrt(x)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Square root</p>
+</div>
+<div class="entry" data-key="mathf.deg2rad degrees to radians factor">
+<div class="sig">Mathf.Deg2Rad</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Degrees to radians factor</p>
+</div>
+<div class="entry" data-key="mathf.infinity positive infinity">
+<div class="sig">Mathf.Infinity</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Positive infinity</p>
+</div>
+<div class="entry" data-key="mathf.pi 3.14159…">
+<div class="sig">Mathf.PI</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>3.14159…</p>
+</div>
+<div class="entry" data-key="mathf.rad2deg radians to degrees factor">
+<div class="sig">Mathf.Rad2Deg</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Radians to degrees factor</p>
+</div>
+</section>
+<section id="navmesh">
+<h2>NavMesh</h2>
+<div class="entry" data-key="navmesh.calculatepath(a, b, [mask], [agent]) ">
+<div class="sig">NavMesh.CalculatePath(a, b, [mask], [agent])</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+<p class="notes">CalculatePath(from, to [, areaMask [, agentTypeID]]) → list of corners with <code>status</code>.</p>
+</div>
+<div class="entry" data-key="navmesh.findclosestedge(p, [mask], [agent]) ">
+<div class="sig">NavMesh.FindClosestEdge(p, [mask], [agent])</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+<p class="notes">FindClosestEdge(position [, areaMask [, agentTypeID]]) → { position, normal, distance }.</p>
+</div>
+<div class="entry" data-key="navmesh.getareacost(area) ">
+<div class="sig">NavMesh.GetAreaCost(area)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmesh.getareafromname(name) ">
+<div class="sig">NavMesh.GetAreaFromName(name)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmesh.raycast(a, b, [mask], [agent]) ">
+<div class="sig">NavMesh.Raycast(a, b, [mask], [agent])</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+<p class="notes">Raycast(from, to [, areaMask [, agentTypeID]]) → blocked, { hit, position, normal, distance, mask } (nil when <code>from</code> isn't near the mesh).</p>
+</div>
+<div class="entry" data-key="navmesh.sampleposition(p, max, [mask], [agent]) ">
+<div class="sig">NavMesh.SamplePosition(p, max, [mask], [agent])</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+<p class="notes">SamplePosition(position, maxDistance [, areaMask [, agentTypeID]]) → { position, distance, hit, mask } or nil.</p>
+</div>
+<div class="entry" data-key="navmesh.setareacost(area, cost) ">
+<div class="sig">NavMesh.SetAreaCost(area, cost)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmesh.allareas ">
+<div class="sig">NavMesh.AllAreas</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+</section>
+<section id="network">
+<h2>Network</h2>
+<div class="entry" data-key="network.disconnectclient(client) ">
+<div class="sig">Network.DisconnectClient(client)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.findlangames() ">
+<div class="sig">Network.FindLanGames()</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.getnetworkobject(id) ">
+<div class="sig">Network.GetNetworkObject(id)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.getplayerobject(client) ">
+<div class="sig">Network.GetPlayerObject(client)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.shutdown() ">
+<div class="sig">Network.Shutdown()</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.spawn(what, [position], [owner]) ">
+<div class="sig">Network.Spawn(what, [position], [owner])</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.startclient([addr], [port]) ">
+<div class="sig">Network.StartClient([addr], [port])</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.starthost() ">
+<div class="sig">Network.StartHost()</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.startserver() ">
+<div class="sig">Network.StartServer()</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.connectedclientsids ">
+<div class="sig">Network.ConnectedClientsIds</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.connectionapproval ">
+<div class="sig">Network.ConnectionApproval</div>
+<div class="meta">property (read / write) · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.isclient ">
+<div class="sig">Network.IsClient</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.isconnectedclient ">
+<div class="sig">Network.IsConnectedClient</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.ishost ">
+<div class="sig">Network.IsHost</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.islistening ">
+<div class="sig">Network.IsListening</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.isserver ">
+<div class="sig">Network.IsServer</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.langames ">
+<div class="sig">Network.LanGames</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.localclientid ">
+<div class="sig">Network.LocalClientId</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.localplayer ">
+<div class="sig">Network.LocalPlayer</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.mode ">
+<div class="sig">Network.Mode</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.senderclientid ">
+<div class="sig">Network.SenderClientId</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.serverclientid ">
+<div class="sig">Network.ServerClientId</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="network.connectiondata ">
+<div class="sig">Network.connectionData</div>
+<div class="meta">property (read / write) · source: <code>network_api.rs</code></div>
+</div>
+</section>
+<section id="physics">
+<h2>Physics</h2>
+<p>Raycasts and overlap queries</p>
+<div class="entry" data-key="physics.overlapsphere(center, radius [, layermask]) gameobjects touching a sphere">
+<div class="sig">Physics.OverlapSphere(center, radius [, layerMask])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>GameObjects touching a sphere</p>
+</div>
+<div class="entry" data-key="physics.raycast(origin, direction [, maxdistance [, layermask]]) nearest hit or nil (point, normal, distance, gameobject, …)">
+<div class="sig">Physics.Raycast(origin, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Nearest hit or nil (point, normal, distance, gameObject, …)</p>
+</div>
+<div class="entry" data-key="physics.raycastall(origin, direction [, maxdistance [, layermask]]) every hit, nearest first">
+<div class="sig">Physics.RaycastAll(origin, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Every hit, nearest first</p>
+</div>
+<div class="entry" data-key="physics.spherecast(origin, radius, direction [, maxdistance [, layermask]]) like raycast with a sphere">
+<div class="sig">Physics.SphereCast(origin, radius, direction [, maxDistance [, layerMask]])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Like Raycast with a sphere</p>
+</div>
+<div class="entry" data-key="physics.alllayers every layer">
+<div class="sig">Physics.AllLayers</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+<p>Every layer</p>
+</div>
+<div class="entry" data-key="physics.defaultraycastlayers every layer but ignore raycast">
+<div class="sig">Physics.DefaultRaycastLayers</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+<p>Every layer but Ignore Raycast</p>
+</div>
+<div class="entry" data-key="physics.ignoreraycastlayer the ignore raycast layer mask">
+<div class="sig">Physics.IgnoreRaycastLayer</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+<p>The Ignore Raycast layer mask</p>
+</div>
+</section>
+<section id="physics2d">
+<h2>Physics2D</h2>
+<div class="entry" data-key="physics2d.overlapbox(c, s, [angle], [m]) ">
+<div class="sig">Physics2D.OverlapBox(c, s, [angle], [m])</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="physics2d.overlapcircle(c, r, [m]) ">
+<div class="sig">Physics2D.OverlapCircle(c, r, [m])</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="physics2d.overlapcircleall(c, r, [m]) ">
+<div class="sig">Physics2D.OverlapCircleAll(c, r, [m])</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="physics2d.overlappoint(p, [m]) ">
+<div class="sig">Physics2D.OverlapPoint(p, [m])</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="physics2d.raycast(...) ">
+<div class="sig">Physics2D.Raycast(...)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="physics2d.raycastall(...) ">
+<div class="sig">Physics2D.RaycastAll(...)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="physics2d.alllayers ">
+<div class="sig">Physics2D.AllLayers</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="physics2d.defaultraycastlayers ">
+<div class="sig">Physics2D.DefaultRaycastLayers</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+</section>
+<section id="playerprefs">
+<h2>PlayerPrefs</h2>
+<div class="entry" data-key="playerprefs.deleteall() ">
+<div class="sig">PlayerPrefs.DeleteAll()</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.deletekey(k) ">
+<div class="sig">PlayerPrefs.DeleteKey(k)</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.getfloat(k, [d]) ">
+<div class="sig">PlayerPrefs.GetFloat(k, [d])</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.getint(k, [d]) ">
+<div class="sig">PlayerPrefs.GetInt(k, [d])</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.getstring(k, [d]) ">
+<div class="sig">PlayerPrefs.GetString(k, [d])</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.haskey(k) ">
+<div class="sig">PlayerPrefs.HasKey(k)</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.save() ">
+<div class="sig">PlayerPrefs.Save()</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.setfloat(k, v) ">
+<div class="sig">PlayerPrefs.SetFloat(k, v)</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.setint(k, v) ">
+<div class="sig">PlayerPrefs.SetInt(k, v)</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerprefs.setstring(k, v) ">
+<div class="sig">PlayerPrefs.SetString(k, v)</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+</section>
+<section id="qualitysettings">
+<h2>QualitySettings</h2>
+<div class="entry" data-key="qualitysettings.getqualitylevel() ">
+<div class="sig">QualitySettings.GetQualityLevel()</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="qualitysettings.setqualitylevel(i, [value]) ">
+<div class="sig">QualitySettings.SetQualityLevel(i, [value])</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="qualitysettings.names ">
+<div class="sig">QualitySettings.names</div>
+<div class="meta">property · source: <code>app_api.rs</code></div>
+</div>
+</section>
+<section id="ragdoll">
+<h2>Ragdoll</h2>
+<div class="entry" data-key="ragdoll.disable(go, [blend]) ">
+<div class="sig">Ragdoll.Disable(go, [blend])</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+</div>
+<div class="entry" data-key="ragdoll.enable(go) ">
+<div class="sig">Ragdoll.Enable(go)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+</div>
+<div class="entry" data-key="ragdoll.isenabled(go) ">
+<div class="sig">Ragdoll.IsEnabled(go)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+</div>
+</section>
+<section id="rendersettings">
+<h2>RenderSettings</h2>
+<p>The open scene's lighting values</p>
+<div class="entry" data-key="rendersettings.ambientintensity environment lighting intensity">
+<div class="sig">RenderSettings.ambientIntensity</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Environment Lighting intensity</p>
+</div>
+<div class="entry" data-key="rendersettings.fog fog on/off">
+<div class="sig">RenderSettings.fog</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Fog on/off</p>
+</div>
+<div class="entry" data-key="rendersettings.fogcolor fog colour">
+<div class="sig">RenderSettings.fogColor</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Fog colour</p>
+</div>
+<div class="entry" data-key="rendersettings.fogdensity exponential fog density">
+<div class="sig">RenderSettings.fogDensity</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Exponential fog density</p>
+</div>
+<div class="entry" data-key="rendersettings.fogenddistance linear fog end">
+<div class="sig">RenderSettings.fogEndDistance</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Linear fog end</p>
+</div>
+<div class="entry" data-key="rendersettings.fogstartdistance linear fog start">
+<div class="sig">RenderSettings.fogStartDistance</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Linear fog start</p>
+</div>
+<div class="entry" data-key="rendersettings.reflectionintensity environment reflections intensity">
+<div class="sig">RenderSettings.reflectionIntensity</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Environment Reflections intensity</p>
+</div>
+</section>
+<section id="rpctarget">
+<h2>RpcTarget</h2>
+<div class="entry" data-key="rpctarget.client(id) ">
+<div class="sig">RpcTarget.Client(id)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="rpctarget.clients(ids) ">
+<div class="sig">RpcTarget.Clients(ids)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="rpctarget.everyone ">
+<div class="sig">RpcTarget.Everyone</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="rpctarget.notowner ">
+<div class="sig">RpcTarget.NotOwner</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="rpctarget.notserver ">
+<div class="sig">RpcTarget.NotServer</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="rpctarget.owner ">
+<div class="sig">RpcTarget.Owner</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+</section>
+<section id="savesystem">
+<h2>SaveSystem</h2>
+<div class="entry" data-key="savesystem.delete(slot) ">
+<div class="sig">SaveSystem.Delete(slot)</div>
+<div class="meta">function · source: <code>save_api.rs</code></div>
+</div>
+<div class="entry" data-key="savesystem.exists(slot) ">
+<div class="sig">SaveSystem.Exists(slot)</div>
+<div class="meta">function · source: <code>save_api.rs</code></div>
+</div>
+<div class="entry" data-key="savesystem.getplaytime() ">
+<div class="sig">SaveSystem.GetPlayTime()</div>
+<div class="meta">function · source: <code>save_api.rs</code></div>
+</div>
+<div class="entry" data-key="savesystem.listslots() ">
+<div class="sig">SaveSystem.ListSlots()</div>
+<div class="meta">function · source: <code>save_api.rs</code></div>
+</div>
+<div class="entry" data-key="savesystem.load(slot) ">
+<div class="sig">SaveSystem.Load(slot)</div>
+<div class="meta">function · source: <code>save_api.rs</code></div>
+</div>
+<div class="entry" data-key="savesystem.save(slot) ">
+<div class="sig">SaveSystem.Save(slot)</div>
+<div class="meta">function · source: <code>save_api.rs</code></div>
+</div>
+<div class="entry" data-key="savesystem.compress ">
+<div class="sig">SaveSystem.compress</div>
+<div class="meta">property · source: <code>save_api.rs</code></div>
+</div>
+<div class="entry" data-key="savesystem.thumbnails ">
+<div class="sig">SaveSystem.thumbnails</div>
+<div class="meta">property · source: <code>save_api.rs</code></div>
+</div>
+<div class="entry" data-key="savesystem.version ">
+<div class="sig">SaveSystem.version</div>
+<div class="meta">property · source: <code>save_api.rs</code></div>
+</div>
+</section>
+<section id="scenemanager">
+<h2>SceneManager</h2>
+<p>Load scenes from Build Settings</p>
+<div class="entry" data-key="scenemanager.getactivescene() the active scene (name, path, isloaded)">
+<div class="sig">SceneManager.GetActiveScene()</div>
+<div class="meta">function · source: <code>scene_api.rs</code></div>
+<p>The active scene (name, path, isLoaded)</p>
+</div>
+<div class="entry" data-key="scenemanager.getscenebyname(name) a loaded scene, or nil">
+<div class="sig">SceneManager.GetSceneByName(name)</div>
+<div class="meta">function · source: <code>scene_api.rs</code></div>
+<p>A loaded scene, or nil</p>
+</div>
+<div class="entry" data-key="scenemanager.getscenecount() number of loaded scenes">
+<div class="sig">SceneManager.GetSceneCount()</div>
+<div class="meta">function · source: <code>scene_api.rs</code></div>
+<p>Number of loaded scenes</p>
+</div>
+<div class="entry" data-key="scenemanager.loadscene(nameorindex, mode) load a build settings scene after this frame (loadscenemode.additive keeps the open ones)">
+<div class="sig">SceneManager.LoadScene(nameOrIndex, mode)</div>
+<div class="meta">function · source: <code>scene_api.rs</code></div>
+<p>Load a Build Settings scene after this frame (LoadSceneMode.Additive keeps the open ones)</p>
+</div>
+<div class="entry" data-key="scenemanager.setactivescene(sceneorname) make a loaded scene active (its lighting is used)">
+<div class="sig">SceneManager.SetActiveScene(sceneOrName)</div>
+<div class="meta">function · source: <code>scene_api.rs</code></div>
+<p>Make a loaded scene active (its lighting is used)</p>
+</div>
+<div class="entry" data-key="scenemanager.unloadsceneasync(nameorindex) unload an additively loaded scene after this frame">
+<div class="sig">SceneManager.UnloadSceneAsync(nameOrIndex)</div>
+<div class="meta">function · source: <code>scene_api.rs</code></div>
+<p>Unload an additively loaded scene after this frame</p>
+</div>
+<div class="entry" data-key="scenemanager.unloadscene ">
+<div class="sig">SceneManager.UnloadScene</div>
+<div class="meta">property · source: <code>scene_api.rs</code></div>
+</div>
+</section>
+<section id="screen">
+<h2>Screen</h2>
+<div class="entry" data-key="screen.setresolution(w, h, [mode]) ">
+<div class="sig">Screen.SetResolution(w, h, [mode])</div>
+<div class="meta">function · source: <code>app_api.rs</code></div>
+<p class="notes">Called with a dot (<code>Screen.SetResolution(w, h, mode)</code>), so there is no <code>self</code> value.</p>
+</div>
+<div class="entry" data-key="screen.fullscreen ">
+<div class="sig">Screen.fullScreen</div>
+<div class="meta">property (read / write) · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="screen.fullscreenmode ">
+<div class="sig">Screen.fullScreenMode</div>
+<div class="meta">property · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="screen.height ">
+<div class="sig">Screen.height</div>
+<div class="meta">property · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="screen.resolutions ">
+<div class="sig">Screen.resolutions</div>
+<div class="meta">property · source: <code>app_api.rs</code></div>
+</div>
+<div class="entry" data-key="screen.width ">
+<div class="sig">Screen.width</div>
+<div class="meta">property · source: <code>app_api.rs</code></div>
+</div>
+</section>
+<section id="terrain">
+<h2>Terrain</h2>
+<p>The active terrain(s)</p>
+<div class="entry" data-key="terrain.activeterrain the first enabled terrain, or nil">
+<div class="sig">Terrain.activeTerrain</div>
+<div class="meta">property · source: <code>terrain_api.rs</code></div>
+<p>The first enabled terrain, or nil</p>
+</div>
+<div class="entry" data-key="terrain.activeterrains every terrain in the scene">
+<div class="sig">Terrain.activeTerrains</div>
+<div class="meta">property · source: <code>terrain_api.rs</code></div>
+<p>Every terrain in the scene</p>
+</div>
+</section>
+<section id="time">
+<h2>Time</h2>
+<p>Frame timing</p>
+<div class="entry" data-key="time.deltatime seconds since the last frame (scaled)">
+<div class="sig">Time.deltaTime</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Seconds since the last frame (scaled)</p>
+</div>
+<div class="entry" data-key="time.fixeddeltatime physics step (project settings)">
+<div class="sig">Time.fixedDeltaTime</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Physics step (Project Settings)</p>
+</div>
+<div class="entry" data-key="time.framecount frames since play started">
+<div class="sig">Time.frameCount</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Frames since Play started</p>
+</div>
+<div class="entry" data-key="time.time seconds since play started">
+<div class="sig">Time.time</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Seconds since Play started</p>
+</div>
+<div class="entry" data-key="time.timescale game speed multiplier (project settings)">
+<div class="sig">Time.timeScale</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Game speed multiplier (Project Settings)</p>
+</div>
+<div class="entry" data-key="time.unscaleddeltatime frame time ignoring timescale">
+<div class="sig">Time.unscaledDeltaTime</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Frame time ignoring timeScale</p>
+</div>
+</section>
+<section id="vector2">
+<h2>Vector2</h2>
+<div class="entry" data-key="vector2.distance(a, b) ">
+<div class="sig">Vector2.Distance(a, b)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="vector2.dot(a, b) ">
+<div class="sig">Vector2.Dot(a, b)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="vector2.lerp(a, b, t) ">
+<div class="sig">Vector2.Lerp(a, b, t)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="vector2.new([x], [y]) ">
+<div class="sig">Vector2.new([x], [y])</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+</section>
+<section id="vector3">
+<h2>Vector3</h2>
+<p>3D vectors</p>
+<div class="entry" data-key="vector3.cross(a, b) cross product">
+<div class="sig">Vector3.Cross(a, b)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Cross product</p>
+</div>
+<div class="entry" data-key="vector3.distance(a, b) distance between two points">
+<div class="sig">Vector3.Distance(a, b)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Distance between two points</p>
+</div>
+<div class="entry" data-key="vector3.dot(a, b) dot product">
+<div class="sig">Vector3.Dot(a, b)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Dot product</p>
+</div>
+<div class="entry" data-key="vector3.lerp(a, b, t) linear interpolation">
+<div class="sig">Vector3.Lerp(a, b, t)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Linear interpolation</p>
+</div>
+<div class="entry" data-key="vector3.new(x, y, z) a new vector">
+<div class="sig">Vector3.new(x, y, z)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>A new vector</p>
+</div>
+<div class="entry" data-key="vector3.back (0, 0, -1)">
+<div class="sig">Vector3.back</div>
+<div class="meta">property</div>
+<p>(0, 0, -1)</p>
+</div>
+<div class="entry" data-key="vector3.down (0, -1, 0)">
+<div class="sig">Vector3.down</div>
+<div class="meta">property</div>
+<p>(0, -1, 0)</p>
+</div>
+<div class="entry" data-key="vector3.forward (0, 0, 1)">
+<div class="sig">Vector3.forward</div>
+<div class="meta">property</div>
+<p>(0, 0, 1)</p>
+</div>
+<div class="entry" data-key="vector3.left (-1, 0, 0)">
+<div class="sig">Vector3.left</div>
+<div class="meta">property</div>
+<p>(-1, 0, 0)</p>
+</div>
+<div class="entry" data-key="vector3.one (1, 1, 1)">
+<div class="sig">Vector3.one</div>
+<div class="meta">property</div>
+<p>(1, 1, 1)</p>
+</div>
+<div class="entry" data-key="vector3.right (1, 0, 0)">
+<div class="sig">Vector3.right</div>
+<div class="meta">property</div>
+<p>(1, 0, 0)</p>
+</div>
+<div class="entry" data-key="vector3.up (0, 1, 0)">
+<div class="sig">Vector3.up</div>
+<div class="meta">property</div>
+<p>(0, 1, 0)</p>
+</div>
+<div class="entry" data-key="vector3.zero (0, 0, 0)">
+<div class="sig">Vector3.zero</div>
+<div class="meta">property</div>
+<p>(0, 0, 0)</p>
+</div>
+</section>
+<section id="water">
+<h2>Water</h2>
+<p>Water surface heights (buoyancy, wading)</p>
+<div class="entry" data-key="water.getheight(x, z) height of the water surface under a point (or a vector3), nil when dry">
+<div class="sig">Water.GetHeight(x, z)</div>
+<div class="meta">function · source: <code>water_api.rs</code></div>
+<p>Height of the water surface under a point (or a Vector3), nil when dry</p>
+</div>
+</section>
+<section id="type-action">
+<h2>Action (object)</h2>
+<div class="entry" data-key="action:applybindingoverride(x, [y]) ">
+<div class="sig">action:ApplyBindingOverride(x, [y])</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+<p class="notes"><code>ApplyBindingOverride(path)</code> (first binding) or <code>ApplyBindingOverride(index, path)</code>.</p>
+</div>
+<div class="entry" data-key="action:disable() ">
+<div class="sig">action:Disable()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:enable() ">
+<div class="sig">action:Enable()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:getbindingdisplaystring([index]) ">
+<div class="sig">action:GetBindingDisplayString([index])</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:isinprogress() ">
+<div class="sig">action:IsInProgress()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:ispressed() ">
+<div class="sig">action:IsPressed()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:performinteractiverebinding([index]) ">
+<div class="sig">action:PerformInteractiveRebinding([index])</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:readvalue() ">
+<div class="sig">action:ReadValue()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:removeallbindingoverrides() ">
+<div class="sig">action:RemoveAllBindingOverrides()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:removebindingoverride(index) ">
+<div class="sig">action:RemoveBindingOverride(index)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:wasperformedthisframe() ">
+<div class="sig">action:WasPerformedThisFrame()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:waspressedthisframe() ">
+<div class="sig">action:WasPressedThisFrame()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action:wasreleasedthisframe() ">
+<div class="sig">action:WasReleasedThisFrame()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.actionmap ">
+<div class="sig">action.actionMap</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.activecontrol ">
+<div class="sig">action.activeControl</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.bindings ">
+<div class="sig">action.bindings</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.canceled ">
+<div class="sig">action.canceled</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.enabled ">
+<div class="sig">action.enabled</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.id ">
+<div class="sig">action.id</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.name ">
+<div class="sig">action.name</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.performed ">
+<div class="sig">action.performed</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.phase ">
+<div class="sig">action.phase</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.started ">
+<div class="sig">action.started</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.triggered ">
+<div class="sig">action.triggered</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="action.type ">
+<div class="sig">action.type</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="type-actionmap">
+<h2>ActionMap (object)</h2>
+<div class="entry" data-key="actionmap:disable() ">
+<div class="sig">actionMap:Disable()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actionmap:enable() ">
+<div class="sig">actionMap:Enable()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actionmap:findaction(name) ">
+<div class="sig">actionMap:FindAction(name)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actionmap.actions ">
+<div class="sig">actionMap.actions</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actionmap.enabled ">
+<div class="sig">actionMap.enabled</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actionmap.name ">
+<div class="sig">actionMap.name</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="type-actions">
+<h2>Actions (object)</h2>
+<div class="entry" data-key="actions:disable() ">
+<div class="sig">actions:Disable()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions:enable() ">
+<div class="sig">actions:Enable()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions:findaction(name) ">
+<div class="sig">actions:FindAction(name)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions:findactionmap(name) ">
+<div class="sig">actions:FindActionMap(name)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions:loadbindingoverridesfromjson(json) ">
+<div class="sig">actions:LoadBindingOverridesFromJson(json)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions:removeallbindingoverrides() ">
+<div class="sig">actions:RemoveAllBindingOverrides()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions:savebindingoverridesasjson() ">
+<div class="sig">actions:SaveBindingOverridesAsJson()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions.actionmaps ">
+<div class="sig">actions.actionMaps</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions.bindingmask ">
+<div class="sig">actions.bindingMask</div>
+<div class="meta">property (read / write) · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions.controlschemes ">
+<div class="sig">actions.controlSchemes</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions.enabled ">
+<div class="sig">actions.enabled</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="actions.name ">
+<div class="sig">actions.name</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="type-animation">
+<h2>Animation (object)</h2>
+<div class="entry" data-key="animation:isplaying(name) true when that clip is playing">
+<div class="sig">animation:IsPlaying(name)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True when that clip is playing</p>
+</div>
+<div class="entry" data-key="animation:play([name]) play the default clip or a named one">
+<div class="sig">animation:Play([name])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Play the default clip or a named one</p>
+<p class="notes">Play([name]): the default clip, or the clip with that file name. Returns false if missing.</p>
+</div>
+<div class="entry" data-key="animation:stop() stop and rewind">
+<div class="sig">animation:Stop()</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Stop and rewind</p>
+</div>
+<div class="entry" data-key="animation.clip ">
+<div class="sig">animation.clip</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="animation.enabled ">
+<div class="sig">animation.enabled</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="animation.gameobject ">
+<div class="sig">animation.gameObject</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="animation.isplaying any clip playing">
+<div class="sig">animation.isPlaying</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Any clip playing</p>
+</div>
+<div class="entry" data-key="animation.speed playback speed (negative = backwards)">
+<div class="sig">animation.speed</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Playback speed (negative = backwards)</p>
+</div>
+<div class="entry" data-key="animation.time ">
+<div class="sig">animation.time</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+</div>
+</section>
+<section id="type-animator">
+<h2>Animator (object)</h2>
+<div class="entry" data-key="animator:applybuiltinrootmotion() ">
+<div class="sig">animator:ApplyBuiltinRootMotion()</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p class="notes">ApplyBuiltinRootMotion(): from OnAnimatorMove, apply the motion the usual way.</p>
+</div>
+<div class="entry" data-key="animator:crossfade(state, normalizedduration [, layer [, offset]]) blend to a state">
+<div class="sig">animator:CrossFade(state, normalizedDuration [, layer [, offset]])</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Blend to a state</p>
+<p class="notes">CrossFade(state, normalizedDuration [, layer [, normalizedOffset]]).</p>
+</div>
+<div class="entry" data-key="animator:crossfadeinfixedtime(state, d, [layer], [off]) ">
+<div class="sig">animator:CrossFadeInFixedTime(state, d, [layer], [off])</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p class="notes">CrossFadeInFixedTime(state, seconds [, layer [, normalizedOffset]]).</p>
+</div>
+<div class="entry" data-key="animator:getbool(name) read a bool parameter">
+<div class="sig">animator:GetBool(name)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Read a bool parameter</p>
+</div>
+<div class="entry" data-key="animator:getcurrentanimatorstateinfo(layer) normalizedtime, length, isname(name)…">
+<div class="sig">animator:GetCurrentAnimatorStateInfo(layer)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>normalizedTime, length, IsName(name)…</p>
+</div>
+<div class="entry" data-key="animator:getfloat(name) read a float parameter">
+<div class="sig">animator:GetFloat(name)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Read a float parameter</p>
+</div>
+<div class="entry" data-key="animator:getinteger(name) read an int parameter">
+<div class="sig">animator:GetInteger(name)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Read an int parameter</p>
+</div>
+<div class="entry" data-key="animator:getlayerindex(name) ">
+<div class="sig">animator:GetLayerIndex(name)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getlayername(layer) ">
+<div class="sig">animator:GetLayerName(layer)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getlayerweight(layer) ">
+<div class="sig">animator:GetLayerWeight(layer)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:getnextanimatorstateinfo([layer]) ">
+<div class="sig">animator:GetNextAnimatorStateInfo([layer])</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:interruptmatchtarget([complete]) ">
+<div class="sig">animator:InterruptMatchTarget([complete])</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p class="notes">InterruptMatchTarget([completeMatch = true]).</p>
+</div>
+<div class="entry" data-key="animator:isintransition(layer) true while blending">
+<div class="sig">animator:IsInTransition(layer)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>True while blending</p>
+</div>
+<div class="entry" data-key="animator:matchtarget(pos, rot, target, [mask], start, [end]) ">
+<div class="sig">animator:MatchTarget(pos, rot, target, [mask], start, [end])</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p class="notes">MatchTarget(position, rotation, target, weightMask, startTime [, targetTime]).</p>
+</div>
+<div class="entry" data-key="animator:play(state [, layer [, normalizedtime]]) jump to a state">
+<div class="sig">animator:Play(state [, layer [, normalizedTime]])</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Jump to a state</p>
+<p class="notes">Play(state [, layer [, normalizedTime]]).</p>
+</div>
+<div class="entry" data-key="animator:resettrigger(name) clear a trigger">
+<div class="sig">animator:ResetTrigger(name)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Clear a trigger</p>
+</div>
+<div class="entry" data-key="animator:setbool(name, value) set a bool parameter">
+<div class="sig">animator:SetBool(name, value)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Set a bool parameter</p>
+</div>
+<div class="entry" data-key="animator:setfloat(name, value) set a float parameter">
+<div class="sig">animator:SetFloat(name, value)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Set a float parameter</p>
+<p class="notes">SetFloat(name, value [, dampTime, deltaTime]).</p>
+</div>
+<div class="entry" data-key="animator:setinteger(name, value) set an int parameter">
+<div class="sig">animator:SetInteger(name, value)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Set an int parameter</p>
+</div>
+<div class="entry" data-key="animator:setlayerweight(layer, weight) ">
+<div class="sig">animator:SetLayerWeight(layer, weight)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator:settrigger(name) set a trigger">
+<div class="sig">animator:SetTrigger(name)</div>
+<div class="meta">function · source: <code>animator_api.rs</code></div>
+<p>Set a trigger</p>
+</div>
+<div class="entry" data-key="animator.applyrootmotion ">
+<div class="sig">animator.applyRootMotion</div>
+<div class="meta">property (read / write) · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator.deltaposition ">
+<div class="sig">animator.deltaPosition</div>
+<div class="meta">property · source: <code>animator_api.rs</code></div>
+<p class="notes">World-space movement of the last update's root motion.</p>
+</div>
+<div class="entry" data-key="animator.deltarotation ">
+<div class="sig">animator.deltaRotation</div>
+<div class="meta">property · source: <code>animator_api.rs</code></div>
+<p class="notes">Turn of the last update (Euler degrees; apply with <code>transform:Rotate</code>).</p>
+</div>
+<div class="entry" data-key="animator.enabled ">
+<div class="sig">animator.enabled</div>
+<div class="meta">property (read / write) · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator.gameobject ">
+<div class="sig">animator.gameObject</div>
+<div class="meta">property · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator.ismatchingtarget ">
+<div class="sig">animator.isMatchingTarget</div>
+<div class="meta">property · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator.layercount ">
+<div class="sig">animator.layerCount</div>
+<div class="meta">property · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator.speed ">
+<div class="sig">animator.speed</div>
+<div class="meta">property (read / write) · source: <code>animator_api.rs</code></div>
+</div>
+<div class="entry" data-key="animator.velocity ">
+<div class="sig">animator.velocity</div>
+<div class="meta">property · source: <code>animator_api.rs</code></div>
+</div>
+</section>
+<section id="type-aspectratiofitter">
+<h2>AspectRatioFitter (object)</h2>
+<div class="entry" data-key="aspectratiofitter.aspectmode ">
+<div class="sig">aspectRatioFitter.aspectMode</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="aspectratiofitter.aspectratio ">
+<div class="sig">aspectRatioFitter.aspectRatio</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="aspectratiofitter.gameobject ">
+<div class="sig">aspectRatioFitter.gameObject</div>
+<div class="meta">property · source: <code>ui_api.rs</code></div>
+</div>
+</section>
+<section id="type-audiomixer">
+<h2>AudioMixer (object)</h2>
+<div class="entry" data-key="audiomixer:clearfloat(name) back to the snapshot's value">
+<div class="sig">audioMixer:ClearFloat(name)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Back to the snapshot's value</p>
+</div>
+<div class="entry" data-key="audiomixer:findmatchinggroups(path) groups whose path ends with it">
+<div class="sig">audioMixer:FindMatchingGroups(path)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Groups whose path ends with it</p>
+<p class="notes">Groups whose path (&quot;Master/SFX/Steps&quot;) ends with <code>path</code>, like the reference API.</p>
+</div>
+<div class="entry" data-key="audiomixer:findsnapshot(name) a snapshot by name, or nil">
+<div class="sig">audioMixer:FindSnapshot(name)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>A snapshot by name, or nil</p>
+</div>
+<div class="entry" data-key="audiomixer:getfloat(name) read an exposed parameter (nil if none)">
+<div class="sig">audioMixer:GetFloat(name)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Read an exposed parameter (nil if none)</p>
+</div>
+<div class="entry" data-key="audiomixer:setfloat(name, value) set an exposed parameter">
+<div class="sig">audioMixer:SetFloat(name, value)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Set an exposed parameter</p>
+</div>
+<div class="entry" data-key="audiomixer:transitiontosnapshots(snapshots, weights, seconds) move to a weighted blend of snapshots">
+<div class="sig">audioMixer:TransitionToSnapshots(snapshots, weights, seconds)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Move to a weighted blend of snapshots</p>
+<p class="notes"><code>TransitionToSnapshots({a, b}, {wa, wb}, time)</code>: move to a weighted blend.</p>
+</div>
+<div class="entry" data-key="audiomixer.name ">
+<div class="sig">audioMixer.name</div>
+<div class="meta">property · source: <code>audio_api.rs</code></div>
+</div>
+<div class="entry" data-key="audiomixer.outputaudiomixergroup group of another mixer it plays into">
+<div class="sig">audioMixer.outputAudioMixerGroup</div>
+<div class="meta">property (read / write) · source: <code>audio_api.rs</code></div>
+<p>Group of another mixer it plays into</p>
+<p class="notes">Nested mixers: the group of another mixer this one's Master plays into.</p>
+</div>
+</section>
+<section id="type-audiomixergroup">
+<h2>AudioMixerGroup (object)</h2>
+<div class="entry" data-key="audiomixergroup.audiomixer ">
+<div class="sig">audioMixerGroup.audioMixer</div>
+<div class="meta">property · source: <code>audio_api.rs</code></div>
+</div>
+<div class="entry" data-key="audiomixergroup.name ">
+<div class="sig">audioMixerGroup.name</div>
+<div class="meta">property · source: <code>audio_api.rs</code></div>
+</div>
+</section>
+<section id="type-audiomixersnapshot">
+<h2>AudioMixerSnapshot (object)</h2>
+<div class="entry" data-key="audiomixersnapshot:transitionto(seconds) blend to this snapshot">
+<div class="sig">audioMixerSnapshot:TransitionTo(seconds)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Blend to this snapshot</p>
+</div>
+<div class="entry" data-key="audiomixersnapshot.audiomixer ">
+<div class="sig">audioMixerSnapshot.audioMixer</div>
+<div class="meta">property · source: <code>audio_api.rs</code></div>
+</div>
+<div class="entry" data-key="audiomixersnapshot.name ">
+<div class="sig">audioMixerSnapshot.name</div>
+<div class="meta">property · source: <code>audio_api.rs</code></div>
+</div>
+</section>
+<section id="type-audiosource">
+<h2>AudioSource (object)</h2>
+<div class="entry" data-key="audiosource:getcustomcurve(&quot;customrolloff&quot;) the custom rolloff keys">
+<div class="sig">audioSource:GetCustomCurve(&quot;CustomRolloff&quot;)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>The custom rolloff keys</p>
+</div>
+<div class="entry" data-key="audiosource:pause() pause">
+<div class="sig">audioSource:Pause()</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Pause</p>
+</div>
+<div class="entry" data-key="audiosource:play() play the clip from the start">
+<div class="sig">audioSource:Play()</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Play the clip from the start</p>
+</div>
+<div class="entry" data-key="audiosource:playoneshot(clippath [, volumescale]) play an extra copy of a clip">
+<div class="sig">audioSource:PlayOneShot(clipPath [, volumeScale])</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Play an extra copy of a clip</p>
+</div>
+<div class="entry" data-key="audiosource:setcustomcurve(&quot;customrolloff&quot;, keys) custom rolloff keys {{distance 0..1, volume}, ...}">
+<div class="sig">audioSource:SetCustomCurve(&quot;CustomRolloff&quot;, keys)</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Custom rolloff keys {{distance 0..1, volume}, ...}</p>
+<p class="notes"><code>SetCustomCurve(&quot;CustomRolloff&quot;, {{0, 1}, {0.5, 0.2}, {1, 0}})</code>: (distance as a share of Max Distance, volume) keys; also switches the source to Custom Rolloff.</p>
+</div>
+<div class="entry" data-key="audiosource:stop() stop playing">
+<div class="sig">audioSource:Stop()</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Stop playing</p>
+</div>
+<div class="entry" data-key="audiosource:unpause() resume">
+<div class="sig">audioSource:UnPause()</div>
+<div class="meta">function · source: <code>audio_api.rs</code></div>
+<p>Resume</p>
+</div>
+<div class="entry" data-key="audiosource.clip clip path or nil">
+<div class="sig">audioSource.clip</div>
+<div class="meta">property (read / write) · source: <code>audio_api.rs</code></div>
+<p>Clip path or nil</p>
+</div>
+<div class="entry" data-key="audiosource.gameobject ">
+<div class="sig">audioSource.gameObject</div>
+<div class="meta">property · source: <code>audio_api.rs</code></div>
+</div>
+<div class="entry" data-key="audiosource.isplaying playing now (read-only)">
+<div class="sig">audioSource.isPlaying</div>
+<div class="meta">property · source: <code>audio_api.rs</code></div>
+<p>Playing now (read-only)</p>
+</div>
+<div class="entry" data-key="audiosource.loop loop the clip">
+<div class="sig">audioSource.loop</div>
+<div class="meta">property</div>
+<p>Loop the clip</p>
+</div>
+<div class="entry" data-key="audiosource.mute muted">
+<div class="sig">audioSource.mute</div>
+<div class="meta">property</div>
+<p>Muted</p>
+</div>
+<div class="entry" data-key="audiosource.outputaudiomixergroup mixer group it plays through">
+<div class="sig">audioSource.outputAudioMixerGroup</div>
+<div class="meta">property (read / write) · source: <code>audio_api.rs</code></div>
+<p>Mixer group it plays through</p>
+</div>
+<div class="entry" data-key="audiosource.pitch pitch">
+<div class="sig">audioSource.pitch</div>
+<div class="meta">property</div>
+<p>Pitch</p>
+</div>
+<div class="entry" data-key="audiosource.priority ">
+<div class="sig">audioSource.priority</div>
+<div class="meta">property (read / write) · source: <code>audio_api.rs</code></div>
+</div>
+<div class="entry" data-key="audiosource.rolloffmode &quot;logarithmic&quot;, &quot;linear&quot; or &quot;custom&quot;">
+<div class="sig">audioSource.rolloffMode</div>
+<div class="meta">property (read / write) · source: <code>audio_api.rs</code></div>
+<p>&quot;Logarithmic&quot;, &quot;Linear&quot; or &quot;Custom&quot;</p>
+</div>
+<div class="entry" data-key="audiosource.spatialize binaural (head model) 3d sound instead of panning">
+<div class="sig">audioSource.spatialize</div>
+<div class="meta">property</div>
+<p>Binaural (head model) 3D sound instead of panning</p>
+</div>
+<div class="entry" data-key="audiosource.time seconds into the clip">
+<div class="sig">audioSource.time</div>
+<div class="meta">property (read / write) · source: <code>audio_api.rs</code></div>
+<p>Seconds into the clip</p>
+</div>
+<div class="entry" data-key="audiosource.volume volume 0..1">
+<div class="sig">audioSource.volume</div>
+<div class="meta">property</div>
+<p>Volume 0..1</p>
+</div>
+</section>
+<section id="type-button">
+<h2>Button (object)</h2>
+<div class="entry" data-key="button.gameobject ">
+<div class="sig">button.gameObject</div>
+<div class="meta">property · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="button.interactable accepts clicks">
+<div class="sig">button.interactable</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+<p>Accepts clicks</p>
+</div>
+<div class="entry" data-key="button.onclick addlistener(fn) / removelistener / removealllisteners">
+<div class="sig">button.onClick</div>
+<div class="meta">property · source: <code>ui_api.rs</code></div>
+<p>AddListener(fn) / RemoveListener / RemoveAllListeners</p>
+</div>
+</section>
+<section id="type-camera">
+<h2>Camera (object)</h2>
+<div class="entry" data-key="camera:screenpointtoray(p) ">
+<div class="sig">camera:ScreenPointToRay(p)</div>
+<div class="meta">function · source: <code>camera_api.rs</code></div>
+<p class="notes">Ray through a screen point (pixels, origin bottom-left): { origin, direction }.</p>
+</div>
+<div class="entry" data-key="camera:worldtoscreenpoint(p) ">
+<div class="sig">camera:WorldToScreenPoint(p)</div>
+<div class="meta">function · source: <code>camera_api.rs</code></div>
+<p class="notes">Screen pixels (origin bottom-left) and depth in front of the camera.</p>
+</div>
+<div class="entry" data-key="camera.cullingmask ">
+<div class="sig">camera.cullingMask</div>
+<div class="meta">property (read / write) · source: <code>camera_api.rs</code></div>
+<p class="notes">Layer bits the camera renders (<code>~(1 &lt;&lt; layer)</code> hides one).</p>
+</div>
+<div class="entry" data-key="camera.enabled ">
+<div class="sig">camera.enabled</div>
+<div class="meta">property (read / write) · source: <code>camera_api.rs</code></div>
+</div>
+<div class="entry" data-key="camera.farclipplane ">
+<div class="sig">camera.farClipPlane</div>
+<div class="meta">property (read / write) · source: <code>camera_api.rs</code></div>
+</div>
+<div class="entry" data-key="camera.fieldofview ">
+<div class="sig">camera.fieldOfView</div>
+<div class="meta">property (read / write) · source: <code>camera_api.rs</code></div>
+<p class="notes">Vertical field of view in degrees (a sprint FOV kick lerps it).</p>
+</div>
+<div class="entry" data-key="camera.gameobject ">
+<div class="sig">camera.gameObject</div>
+<div class="meta">property · source: <code>camera_api.rs</code></div>
+</div>
+<div class="entry" data-key="camera.nearclipplane ">
+<div class="sig">camera.nearClipPlane</div>
+<div class="meta">property (read / write) · source: <code>camera_api.rs</code></div>
+</div>
+<div class="entry" data-key="camera.orthographic ">
+<div class="sig">camera.orthographic</div>
+<div class="meta">property (read / write) · source: <code>camera_api.rs</code></div>
+</div>
+<div class="entry" data-key="camera.orthographicsize ">
+<div class="sig">camera.orthographicSize</div>
+<div class="meta">property (read / write) · source: <code>camera_api.rs</code></div>
+</div>
+<div class="entry" data-key="camera.transform ">
+<div class="sig">camera.transform</div>
+<div class="meta">property · source: <code>camera_api.rs</code></div>
+</div>
+<div class="entry" data-key="camera.useocclusionculling ">
+<div class="sig">camera.useOcclusionCulling</div>
+<div class="meta">property (read / write) · source: <code>camera_api.rs</code></div>
+<p class="notes">Baked occlusion culling for this camera.</p>
+</div>
+</section>
+<section id="type-camerabrain">
+<h2>CameraBrain (object)</h2>
+<div class="entry" data-key="camerabrain.activevirtualcamera ">
+<div class="sig">cameraBrain.activeVirtualCamera</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+<p class="notes">GameObject of the live virtual camera (the one being blended to), or nil.</p>
+</div>
+<div class="entry" data-key="camerabrain.blendweight ">
+<div class="sig">cameraBrain.blendWeight</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+<p class="notes">Weight of the incoming camera, 0..1 (1 when not blending).</p>
+</div>
+<div class="entry" data-key="camerabrain.gameobject ">
+<div class="sig">cameraBrain.gameObject</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="camerabrain.isblending ">
+<div class="sig">cameraBrain.isBlending</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="camerabrain.transform ">
+<div class="sig">cameraBrain.transform</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+</section>
+<section id="type-canvas">
+<h2>Canvas (object)</h2>
+<div class="entry" data-key="canvas.enabled ">
+<div class="sig">canvas.enabled</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvas.gameobject ">
+<div class="sig">canvas.gameObject</div>
+<div class="meta">property · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvas.planedistance ">
+<div class="sig">canvas.planeDistance</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvas.rendermode ">
+<div class="sig">canvas.renderMode</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvas.sortingorder ">
+<div class="sig">canvas.sortingOrder</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+</section>
+<section id="type-canvasgroup">
+<h2>CanvasGroup (object)</h2>
+<div class="entry" data-key="canvasgroup.alpha ">
+<div class="sig">canvasGroup.alpha</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvasgroup.blocksraycasts ">
+<div class="sig">canvasGroup.blocksRaycasts</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvasgroup.enabled ">
+<div class="sig">canvasGroup.enabled</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvasgroup.gameobject ">
+<div class="sig">canvasGroup.gameObject</div>
+<div class="meta">property · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvasgroup.ignoreparentgroups ">
+<div class="sig">canvasGroup.ignoreParentGroups</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="canvasgroup.interactable ">
+<div class="sig">canvasGroup.interactable</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+</section>
+<section id="type-charactercontroller">
+<h2>CharacterController (object)</h2>
+<div class="entry" data-key="charactercontroller:move(motion) move by a world displacement, sliding along walls">
+<div class="sig">characterController:Move(motion)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Move by a world displacement, sliding along walls</p>
+<p class="notes">Move(motion): world-space displacement for this frame (no gravity added).</p>
+</div>
+<div class="entry" data-key="charactercontroller:simplemove(speed) move at a speed with gravity; returns isgrounded">
+<div class="sig">characterController:SimpleMove(speed)</div>
+<div class="meta">function · source: <code>physics_api.rs</code></div>
+<p>Move at a speed with gravity; returns isGrounded</p>
+<p class="notes">SimpleMove(speed): units per second, Y ignored, gravity applied. Returns isGrounded.</p>
+</div>
+<div class="entry" data-key="charactercontroller.center capsule centre">
+<div class="sig">characterController.center</div>
+<div class="meta">property (read / write) · source: <code>physics_api.rs</code></div>
+<p>Capsule centre</p>
+</div>
+<div class="entry" data-key="charactercontroller.gameobject ">
+<div class="sig">characterController.gameObject</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+</div>
+<div class="entry" data-key="charactercontroller.height capsule height">
+<div class="sig">characterController.height</div>
+<div class="meta">property (read / write) · source: <code>physics_api.rs</code></div>
+<p>Capsule height</p>
+</div>
+<div class="entry" data-key="charactercontroller.isgrounded touching the ground after the last move">
+<div class="sig">characterController.isGrounded</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+<p>Touching the ground after the last move</p>
+</div>
+<div class="entry" data-key="charactercontroller.radius capsule radius">
+<div class="sig">characterController.radius</div>
+<div class="meta">property (read / write) · source: <code>physics_api.rs</code></div>
+<p>Capsule radius</p>
+</div>
+<div class="entry" data-key="charactercontroller.skinwidth ">
+<div class="sig">characterController.skinWidth</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+</div>
+<div class="entry" data-key="charactercontroller.slopelimit steepest climbable slope">
+<div class="sig">characterController.slopeLimit</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+<p>Steepest climbable slope</p>
+</div>
+<div class="entry" data-key="charactercontroller.stepoffset highest climbable step">
+<div class="sig">characterController.stepOffset</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+<p>Highest climbable step</p>
+</div>
+<div class="entry" data-key="charactercontroller.transform ">
+<div class="sig">characterController.transform</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+</div>
+<div class="entry" data-key="charactercontroller.velocity velocity of the last move">
+<div class="sig">characterController.velocity</div>
+<div class="meta">property · source: <code>physics_api.rs</code></div>
+<p>Velocity of the last move</p>
+</div>
+</section>
+<section id="type-collider2d">
+<h2>Collider2D (object)</h2>
+<div class="entry" data-key="collider2d:comparetag(tag) ">
+<div class="sig">collider2D:CompareTag(tag)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="collider2d.attachedrigidbody ">
+<div class="sig">collider2D.attachedRigidbody</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="collider2d.enabled ">
+<div class="sig">collider2D.enabled</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="collider2d.gameobject ">
+<div class="sig">collider2D.gameObject</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="collider2d.istrigger ">
+<div class="sig">collider2D.isTrigger</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="collider2d.offset ">
+<div class="sig">collider2D.offset</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="collider2d.radius ">
+<div class="sig">collider2D.radius</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="collider2d.size ">
+<div class="sig">collider2D.size</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="collider2d.transform ">
+<div class="sig">collider2D.transform</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+</section>
+<section id="type-dropdown">
+<h2>Dropdown (object)</h2>
+<div class="entry" data-key="dropdown:addoptions(t) ">
+<div class="sig">dropdown:AddOptions(t)</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="dropdown:clearoptions() ">
+<div class="sig">dropdown:ClearOptions()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="dropdown:refreshshownvalue() ">
+<div class="sig">dropdown:RefreshShownValue()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+<p class="notes">The caption follows the value every frame; kept for familiarity.</p>
+</div>
+<div class="entry" data-key="dropdown.captiontext ">
+<div class="sig">dropdown.captionText</div>
+<div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="dropdown.options ">
+<div class="sig">dropdown.options</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="dropdown.value ">
+<div class="sig">dropdown.value</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+</section>
+<section id="type-gameobject">
+<h2>GameObject (object)</h2>
+<div class="entry" data-key="gameobject:comparetag(tag) true when the tag matches">
+<div class="sig">gameObject:CompareTag(tag)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>True when the tag matches</p>
+</div>
+<div class="entry" data-key="gameobject:getcomponent(type) a component (&quot;rigidbody&quot;, &quot;animator&quot;, …) or nil">
+<div class="sig">gameObject:GetComponent(type)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>A component (&quot;Rigidbody&quot;, &quot;Animator&quot;, …) or nil</p>
+</div>
+<div class="entry" data-key="gameobject:setactive(active) enable or disable the object">
+<div class="sig">gameObject:SetActive(active)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Enable or disable the object</p>
+</div>
+<div class="entry" data-key="gameobject.activeself own active flag">
+<div class="sig">gameObject.activeSelf</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Own active flag</p>
+</div>
+<div class="entry" data-key="gameobject.gameobject ">
+<div class="sig">gameObject.gameObject</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p class="notes">So <code>hit.collider.gameObject</code> works on query hits.</p>
+</div>
+<div class="entry" data-key="gameobject.layer layer index">
+<div class="sig">gameObject.layer</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Layer index</p>
+</div>
+<div class="entry" data-key="gameobject.name object name">
+<div class="sig">gameObject.name</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Object name</p>
+</div>
+<div class="entry" data-key="gameobject.tag tag">
+<div class="sig">gameObject.tag</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Tag</p>
+</div>
+<div class="entry" data-key="gameobject.transform the object's transform">
+<div class="sig">gameObject.transform</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>The object's Transform</p>
+</div>
+</section>
+<section id="type-gamepad">
+<h2>Gamepad (object)</h2>
+<div class="entry" data-key="gamepad:pausehaptics() ">
+<div class="sig">gamepad:PauseHaptics()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="gamepad:resethaptics() ">
+<div class="sig">gamepad:ResetHaptics()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="gamepad:setmotorspeeds(low, high) ">
+<div class="sig">gamepad:SetMotorSpeeds(low, high)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="gamepad.dpad ">
+<div class="sig">gamepad.dpad</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="gamepad.index ">
+<div class="sig">gamepad.index</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="gamepad.lefttrigger ">
+<div class="sig">gamepad.leftTrigger</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="gamepad.name ">
+<div class="sig">gamepad.name</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="gamepad.righttrigger ">
+<div class="sig">gamepad.rightTrigger</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="type-image">
+<h2>Image (object)</h2>
+<div class="entry" data-key="image.color ">
+<div class="sig">image.color</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.enabled ">
+<div class="sig">image.enabled</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.fillamount ">
+<div class="sig">image.fillAmount</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.fillcenter ">
+<div class="sig">image.fillCenter</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.fillclockwise ">
+<div class="sig">image.fillClockwise</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.fillmethod ">
+<div class="sig">image.fillMethod</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.fillorigin ">
+<div class="sig">image.fillOrigin</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.gameobject ">
+<div class="sig">image.gameObject</div>
+<div class="meta">property · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.preserveaspect ">
+<div class="sig">image.preserveAspect</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.raycasttarget ">
+<div class="sig">image.raycastTarget</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.sprite ">
+<div class="sig">image.sprite</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.texture ">
+<div class="sig">image.texture</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="image.type ">
+<div class="sig">image.type</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+</section>
+<section id="type-impulsesource">
+<h2>ImpulseSource (object)</h2>
+<div class="entry" data-key="impulsesource:generateimpulse(arg) ">
+<div class="sig">impulseSource:GenerateImpulse(arg)</div>
+<div class="meta">function · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="impulsesource:generateimpulsewithforce(force) ">
+<div class="sig">impulseSource:GenerateImpulseWithForce(force)</div>
+<div class="meta">function · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="impulsesource.gameobject ">
+<div class="sig">impulseSource.gameObject</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="impulsesource.transform ">
+<div class="sig">impulseSource.transform</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+</section>
+<section id="type-inputevent">
+<h2>InputEvent (object)</h2>
+<div class="entry" data-key="inputevent:addlistener(f) ">
+<div class="sig">inputEvent:AddListener(f)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="inputevent:removealllisteners() ">
+<div class="sig">inputEvent:RemoveAllListeners()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="inputevent:removelistener(f) ">
+<div class="sig">inputEvent:RemoveListener(f)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="type-inputfield">
+<h2>InputField (object)</h2>
+<div class="entry" data-key="inputfield.characterlimit ">
+<div class="sig">inputField.characterLimit</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="inputfield.contenttype ">
+<div class="sig">inputField.contentType</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="inputfield.onendedit ">
+<div class="sig">inputField.onEndEdit</div>
+<div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="inputfield.readonly ">
+<div class="sig">inputField.readOnly</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="inputfield.text ">
+<div class="sig">inputField.text</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+</section>
+<section id="type-light2d">
+<h2>Light2D (object)</h2>
+<div class="entry" data-key="light2d.color ">
+<div class="sig">light2D.color</div>
+<div class="meta">property (read / write) · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="light2d.enabled ">
+<div class="sig">light2D.enabled</div>
+<div class="meta">property (read / write) · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="light2d.gameobject ">
+<div class="sig">light2D.gameObject</div>
+<div class="meta">property · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="light2d.intensity ">
+<div class="sig">light2D.intensity</div>
+<div class="meta">property (read / write) · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="light2d.pointlightinnerradius ">
+<div class="sig">light2D.pointLightInnerRadius</div>
+<div class="meta">property (read / write) · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="light2d.pointlightouterradius ">
+<div class="sig">light2D.pointLightOuterRadius</div>
+<div class="meta">property (read / write) · source: <code>tilemap_api.rs</code></div>
+</div>
+</section>
+<section id="type-localeevent">
+<h2>LocaleEvent (object)</h2>
+<div class="entry" data-key="localeevent:addlistener(f) ">
+<div class="sig">localeEvent:AddListener(f)</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localeevent:removealllisteners() ">
+<div class="sig">localeEvent:RemoveAllListeners()</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localeevent:removelistener(f) ">
+<div class="sig">localeEvent:RemoveListener(f)</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+</div>
+</section>
+<section id="type-localizedtext">
+<h2>LocalizedText (object)</h2>
+<div class="entry" data-key="localizedtext:refreshstring() ">
+<div class="sig">localizedText:RefreshString()</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localizedtext.args ">
+<div class="sig">localizedText.args</div>
+<div class="meta">property (read / write) · source: <code>localization_api.rs</code></div>
+<p class="notes"><code>{ 3, name = &quot;Ana&quot; }</code>: positional values, then <code>name=value</code> entries.</p>
+</div>
+<div class="entry" data-key="localizedtext.enabled ">
+<div class="sig">localizedText.enabled</div>
+<div class="meta">property (read / write) · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localizedtext.key ">
+<div class="sig">localizedText.key</div>
+<div class="meta">property (read / write) · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localizedtext.table ">
+<div class="sig">localizedText.table</div>
+<div class="meta">property (read / write) · source: <code>localization_api.rs</code></div>
+</div>
+<div class="entry" data-key="localizedtext.text ">
+<div class="sig">localizedText.text</div>
+<div class="meta">property · source: <code>localization_api.rs</code></div>
+</div>
+</section>
+<section id="type-material">
+<h2>Material (object)</h2>
+<div class="entry" data-key="material:disablekeyword(name) disable a shader keyword">
+<div class="sig">material:DisableKeyword(name)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+<p>Disable a shader keyword</p>
+</div>
+<div class="entry" data-key="material:enablekeyword(name) enable a shader keyword (&quot;_emission&quot;)">
+<div class="sig">material:EnableKeyword(name)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+<p>Enable a shader keyword (&quot;_EMISSION&quot;)</p>
+<p class="notes">Only <code>_EMISSION</code> is a switch; the other keywords follow the material's settings.</p>
+</div>
+<div class="entry" data-key="material:getcolor(name) read a colour property">
+<div class="sig">material:GetColor(name)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+<p>Read a colour property</p>
+</div>
+<div class="entry" data-key="material:getfloat(name) read a float property">
+<div class="sig">material:GetFloat(name)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+<p>Read a float property</p>
+</div>
+<div class="entry" data-key="material:gettexture(name) ">
+<div class="sig">material:GetTexture(name)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material:gettextureoffset(name) ">
+<div class="sig">material:GetTextureOffset(name)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+<p class="notes">The Standard shader's main maps share one tiling/offset.</p>
+</div>
+<div class="entry" data-key="material:gettexturescale(name) ">
+<div class="sig">material:GetTextureScale(name)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material:hasproperty(name) ">
+<div class="sig">material:HasProperty(name)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material:iskeywordenabled(k) ">
+<div class="sig">material:IsKeywordEnabled(k)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material:setcolor(name, color) set a colour property (&quot;_emissioncolor&quot;)">
+<div class="sig">material:SetColor(name, color)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+<p>Set a colour property (&quot;_EmissionColor&quot;)</p>
+</div>
+<div class="entry" data-key="material:setfloat(name, value) set a float property (&quot;_metallic&quot;)">
+<div class="sig">material:SetFloat(name, value)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+<p>Set a float property (&quot;_Metallic&quot;)</p>
+</div>
+<div class="entry" data-key="material:settexture(name, path) set a texture property">
+<div class="sig">material:SetTexture(name, path)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+<p>Set a texture property</p>
+</div>
+<div class="entry" data-key="material:settextureoffset(name, v) ">
+<div class="sig">material:SetTextureOffset(name, v)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material:settexturescale(name, v) ">
+<div class="sig">material:SetTextureScale(name, v)</div>
+<div class="meta">function · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material.color main colour">
+<div class="sig">material.color</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+<p>Main colour</p>
+</div>
+<div class="entry" data-key="material.maintextureoffset ">
+<div class="sig">material.mainTextureOffset</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material.maintexturescale ">
+<div class="sig">material.mainTextureScale</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material.name ">
+<div class="sig">material.name</div>
+<div class="meta">property · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material.renderqueue ">
+<div class="sig">material.renderQueue</div>
+<div class="meta">property · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="material.shader ">
+<div class="sig">material.shader</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+</div>
+</section>
+<section id="type-meshrenderer">
+<h2>MeshRenderer (object)</h2>
+<div class="entry" data-key="meshrenderer.castshadows ">
+<div class="sig">meshRenderer.castShadows</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="meshrenderer.enabled drawn or not">
+<div class="sig">meshRenderer.enabled</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+<p>Drawn or not</p>
+</div>
+<div class="entry" data-key="meshrenderer.gameobject ">
+<div class="sig">meshRenderer.gameObject</div>
+<div class="meta">property · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="meshrenderer.material this object's own material copy">
+<div class="sig">meshRenderer.material</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+<p>This object's own material copy</p>
+</div>
+<div class="entry" data-key="meshrenderer.materials all material copies">
+<div class="sig">meshRenderer.materials</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+<p>All material copies</p>
+</div>
+<div class="entry" data-key="meshrenderer.receiveshadows ">
+<div class="sig">meshRenderer.receiveShadows</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="meshrenderer.sharedmaterial the material asset">
+<div class="sig">meshRenderer.sharedMaterial</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+<p>The material asset</p>
+</div>
+<div class="entry" data-key="meshrenderer.sharedmaterials ">
+<div class="sig">meshRenderer.sharedMaterials</div>
+<div class="meta">property (read / write) · source: <code>material_api.rs</code></div>
+</div>
+<div class="entry" data-key="meshrenderer.transform ">
+<div class="sig">meshRenderer.transform</div>
+<div class="meta">property · source: <code>material_api.rs</code></div>
+</div>
+</section>
+<section id="type-navmeshagent">
+<h2>NavMeshAgent (object)</h2>
+<div class="entry" data-key="navmeshagent:calculatepath(target) ">
+<div class="sig">navMeshAgent:CalculatePath(target)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:completeoffmeshlink() ">
+<div class="sig">navMeshAgent:CompleteOffMeshLink()</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:findclosestedge() ">
+<div class="sig">navMeshAgent:FindClosestEdge()</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:getareacost(area) ">
+<div class="sig">navMeshAgent:GetAreaCost(area)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:move(offset) ">
+<div class="sig">navMeshAgent:Move(offset)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:raycast(target) ">
+<div class="sig">navMeshAgent:Raycast(target)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:resetpath() ">
+<div class="sig">navMeshAgent:ResetPath()</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:setareacost(area, cost) ">
+<div class="sig">navMeshAgent:SetAreaCost(area, cost)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:setdestination(v) ">
+<div class="sig">navMeshAgent:SetDestination(v)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent:warp(v) ">
+<div class="sig">navMeshAgent:Warp(v)</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.areamask ">
+<div class="sig">navMeshAgent.areaMask</div>
+<div class="meta">property (read / write) · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.currentoffmeshlinkdata ">
+<div class="sig">navMeshAgent.currentOffMeshLinkData</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.desiredvelocity ">
+<div class="sig">navMeshAgent.desiredVelocity</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.destination ">
+<div class="sig">navMeshAgent.destination</div>
+<div class="meta">property (read / write) · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.gameobject ">
+<div class="sig">navMeshAgent.gameObject</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.haspath ">
+<div class="sig">navMeshAgent.hasPath</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.isonnavmesh ">
+<div class="sig">navMeshAgent.isOnNavMesh</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.isonoffmeshlink ">
+<div class="sig">navMeshAgent.isOnOffMeshLink</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.isstopped ">
+<div class="sig">navMeshAgent.isStopped</div>
+<div class="meta">property (read / write) · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.nextposition ">
+<div class="sig">navMeshAgent.nextPosition</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.obstacleavoidancetype ">
+<div class="sig">navMeshAgent.obstacleAvoidanceType</div>
+<div class="meta">property (read / write) · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.path ">
+<div class="sig">navMeshAgent.path</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.pathpending ">
+<div class="sig">navMeshAgent.pathPending</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+<p class="notes">Paths are planned at once, except while the nav mesh under them is rebuilding or the agent is crossing a link.</p>
+</div>
+<div class="entry" data-key="navmeshagent.pathstatus ">
+<div class="sig">navMeshAgent.pathStatus</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.remainingdistance ">
+<div class="sig">navMeshAgent.remainingDistance</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.steeringtarget ">
+<div class="sig">navMeshAgent.steeringTarget</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.transform ">
+<div class="sig">navMeshAgent.transform</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshagent.velocity ">
+<div class="sig">navMeshAgent.velocity</div>
+<div class="meta">property (read / write) · source: <code>navigation_api.rs</code></div>
+</div>
+</section>
+<section id="type-navmeshobstacle">
+<h2>NavMeshObstacle (object)</h2>
+<div class="entry" data-key="navmeshobstacle.carveonlystationary ">
+<div class="sig">navMeshObstacle.carveOnlyStationary</div>
+<div class="meta">property (read / write) · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshobstacle.carving ">
+<div class="sig">navMeshObstacle.carving</div>
+<div class="meta">property (read / write) · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshobstacle.enabled ">
+<div class="sig">navMeshObstacle.enabled</div>
+<div class="meta">property (read / write) · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshobstacle.gameobject ">
+<div class="sig">navMeshObstacle.gameObject</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+</section>
+<section id="type-navmeshsurface">
+<h2>NavMeshSurface (object)</h2>
+<div class="entry" data-key="navmeshsurface:buildnavmesh() ">
+<div class="sig">navMeshSurface:BuildNavMesh()</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+<p class="notes">Rebuild every tile (in the background).</p>
+</div>
+<div class="entry" data-key="navmeshsurface:updatenavmesh() ">
+<div class="sig">navMeshSurface:UpdateNavMesh()</div>
+<div class="meta">function · source: <code>navigation_api.rs</code></div>
+<p class="notes">Rebuild only tiles whose objects changed (in the background).</p>
+</div>
+<div class="entry" data-key="navmeshsurface.agenttypeid ">
+<div class="sig">navMeshSurface.agentTypeID</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+<div class="entry" data-key="navmeshsurface.gameobject ">
+<div class="sig">navMeshSurface.gameObject</div>
+<div class="meta">property · source: <code>navigation_api.rs</code></div>
+</div>
+</section>
+<section id="type-netevent">
+<h2>NetEvent (object)</h2>
+<div class="entry" data-key="netevent:addlistener(f) ">
+<div class="sig">netEvent:AddListener(f)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="netevent:removelistener(f) ">
+<div class="sig">netEvent:RemoveListener(f)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+</section>
+<section id="type-networkobject">
+<h2>NetworkObject (object)</h2>
+<div class="entry" data-key="networkobject:changeownership(owner) ">
+<div class="sig">networkObject:ChangeOwnership(owner)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject:despawn([destroy]) ">
+<div class="sig">networkObject:Despawn([destroy])</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject:removeownership() ">
+<div class="sig">networkObject:RemoveOwnership()</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject:spawn([owner]) ">
+<div class="sig">networkObject:Spawn([owner])</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject:spawnasplayerobject(owner) ">
+<div class="sig">networkObject:SpawnAsPlayerObject(owner)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject:spawnwithownership(owner) ">
+<div class="sig">networkObject:SpawnWithOwnership(owner)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject.islocalplayer ">
+<div class="sig">networkObject.IsLocalPlayer</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject.isownedbyserver ">
+<div class="sig">networkObject.IsOwnedByServer</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject.isowner ">
+<div class="sig">networkObject.IsOwner</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject.isplayerobject ">
+<div class="sig">networkObject.IsPlayerObject</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject.isspawned ">
+<div class="sig">networkObject.IsSpawned</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject.networkobjectid ">
+<div class="sig">networkObject.NetworkObjectId</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject.ownerclientid ">
+<div class="sig">networkObject.OwnerClientId</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networkobject.gameobject ">
+<div class="sig">networkObject.gameObject</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+</section>
+<section id="type-networktransform">
+<h2>NetworkTransform (object)</h2>
+<div class="entry" data-key="networktransform:teleport(pos, [euler]) ">
+<div class="sig">networkTransform:Teleport(pos, [euler])</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+<p class="notes">Move at once: remote copies jump instead of sliding there.</p>
+</div>
+<div class="entry" data-key="networktransform.cancommittotransform ">
+<div class="sig">networkTransform.CanCommitToTransform</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+<p class="notes">Whether this peer moves the object (the server or the owner, by authority).</p>
+</div>
+<div class="entry" data-key="networktransform.authority ">
+<div class="sig">networkTransform.authority</div>
+<div class="meta">property · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="networktransform.interpolate ">
+<div class="sig">networkTransform.interpolate</div>
+<div class="meta">property (read / write) · source: <code>network_api.rs</code></div>
+</div>
+</section>
+<section id="type-particlesystem">
+<h2>ParticleSystem (object)</h2>
+<div class="entry" data-key="particlesystem:clear() remove live particles">
+<div class="sig">particleSystem:Clear()</div>
+<div class="meta">function · source: <code>particles_api.rs</code></div>
+<p>Remove live particles</p>
+</div>
+<div class="entry" data-key="particlesystem:emit(count) emit particles now">
+<div class="sig">particleSystem:Emit(count)</div>
+<div class="meta">function · source: <code>particles_api.rs</code></div>
+<p>Emit particles now</p>
+</div>
+<div class="entry" data-key="particlesystem:pause() freeze">
+<div class="sig">particleSystem:Pause()</div>
+<div class="meta">function · source: <code>particles_api.rs</code></div>
+<p>Freeze</p>
+</div>
+<div class="entry" data-key="particlesystem:play() start or resume">
+<div class="sig">particleSystem:Play()</div>
+<div class="meta">function · source: <code>particles_api.rs</code></div>
+<p>Start or resume</p>
+</div>
+<div class="entry" data-key="particlesystem:stop() stop emitting">
+<div class="sig">particleSystem:Stop()</div>
+<div class="meta">function · source: <code>particles_api.rs</code></div>
+<p>Stop emitting</p>
+</div>
+<div class="entry" data-key="particlesystem.gameobject ">
+<div class="sig">particleSystem.gameObject</div>
+<div class="meta">property · source: <code>particles_api.rs</code></div>
+</div>
+<div class="entry" data-key="particlesystem.ispaused ">
+<div class="sig">particleSystem.isPaused</div>
+<div class="meta">property · source: <code>particles_api.rs</code></div>
+</div>
+<div class="entry" data-key="particlesystem.isplaying playing">
+<div class="sig">particleSystem.isPlaying</div>
+<div class="meta">property · source: <code>particles_api.rs</code></div>
+<p>Playing</p>
+</div>
+<div class="entry" data-key="particlesystem.isstopped ">
+<div class="sig">particleSystem.isStopped</div>
+<div class="meta">property · source: <code>particles_api.rs</code></div>
+</div>
+<div class="entry" data-key="particlesystem.particlecount live particles">
+<div class="sig">particleSystem.particleCount</div>
+<div class="meta">property · source: <code>particles_api.rs</code></div>
+<p>Live particles</p>
+</div>
+<div class="entry" data-key="particlesystem.time ">
+<div class="sig">particleSystem.time</div>
+<div class="meta">property · source: <code>particles_api.rs</code></div>
+</div>
+</section>
+<section id="type-playabledirector">
+<h2>PlayableDirector (object)</h2>
+<div class="entry" data-key="playabledirector:evaluate() ">
+<div class="sig">playableDirector:Evaluate()</div>
+<div class="meta">function · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector:getgenericbinding(track) ">
+<div class="sig">playableDirector:GetGenericBinding(track)</div>
+<div class="meta">function · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector:pause() ">
+<div class="sig">playableDirector:Pause()</div>
+<div class="meta">function · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector:play() ">
+<div class="sig">playableDirector:Play()</div>
+<div class="meta">function · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector:resume() ">
+<div class="sig">playableDirector:Resume()</div>
+<div class="meta">function · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector:setgenericbinding(track, obj) ">
+<div class="sig">playableDirector:SetGenericBinding(track, obj)</div>
+<div class="meta">function · source: <code>timeline_api.rs</code></div>
+<p class="notes">Bind a track (by name or id) to a GameObject / Transform, or nil to clear it.</p>
+</div>
+<div class="entry" data-key="playabledirector:stop() ">
+<div class="sig">playableDirector:Stop()</div>
+<div class="meta">function · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector.duration ">
+<div class="sig">playableDirector.duration</div>
+<div class="meta">property · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector.gameobject ">
+<div class="sig">playableDirector.gameObject</div>
+<div class="meta">property · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector.playonawake ">
+<div class="sig">playableDirector.playOnAwake</div>
+<div class="meta">property (read / write) · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector.played ">
+<div class="sig">playableDirector.played</div>
+<div class="meta">property · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector.signalreceived ">
+<div class="sig">playableDirector.signalReceived</div>
+<div class="meta">property · source: <code>timeline_api.rs</code></div>
+<p class="notes">Every marker this director passes: listeners get (director, method, parameter).</p>
+</div>
+<div class="entry" data-key="playabledirector.state ">
+<div class="sig">playableDirector.state</div>
+<div class="meta">property · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector.stopped ">
+<div class="sig">playableDirector.stopped</div>
+<div class="meta">property · source: <code>timeline_api.rs</code></div>
+</div>
+<div class="entry" data-key="playabledirector.time ">
+<div class="sig">playableDirector.time</div>
+<div class="meta">property (read / write) · source: <code>timeline_api.rs</code></div>
+</div>
+</section>
+<section id="type-playerinput">
+<h2>PlayerInput (object)</h2>
+<div class="entry" data-key="playerinput:activateinput() ">
+<div class="sig">playerInput:ActivateInput()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput:deactivateinput() ">
+<div class="sig">playerInput:DeactivateInput()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput:getdevice(kind) ">
+<div class="sig">playerInput:GetDevice(kind)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+<p class="notes"><code>GetDevice(&quot;Gamepad&quot;)</code>: the player's first paired gamepad (nil when none).</p>
+</div>
+<div class="entry" data-key="playerinput:switchcurrentactionmap(name) ">
+<div class="sig">playerInput:SwitchCurrentActionMap(name)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput:switchcurrentcontrolscheme(name) ">
+<div class="sig">playerInput:SwitchCurrentControlScheme(name)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput.actions ">
+<div class="sig">playerInput.actions</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput.currentactionmap ">
+<div class="sig">playerInput.currentActionMap</div>
+<div class="meta">property (read / write) · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput.currentcontrolscheme ">
+<div class="sig">playerInput.currentControlScheme</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput.devices ">
+<div class="sig">playerInput.devices</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput.gameobject ">
+<div class="sig">playerInput.gameObject</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput.inputisactive ">
+<div class="sig">playerInput.inputIsActive</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput.notificationbehavior ">
+<div class="sig">playerInput.notificationBehavior</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="playerinput.playerindex ">
+<div class="sig">playerInput.playerIndex</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="type-rawimage">
+<h2>RawImage (object)</h2>
+<div class="entry" data-key="rawimage.color ">
+<div class="sig">rawImage.color</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="rawimage.enabled ">
+<div class="sig">rawImage.enabled</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="rawimage.gameobject ">
+<div class="sig">rawImage.gameObject</div>
+<div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="rawimage.texture ">
+<div class="sig">rawImage.texture</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+</section>
+<section id="type-raycasthit">
+<h2>RaycastHit (object)</h2>
+<div class="entry" data-key="raycasthit.distance distance from the origin">
+<div class="sig">raycastHit.distance</div>
+<div class="meta">property</div>
+<p>Distance from the origin</p>
+</div>
+<div class="entry" data-key="raycasthit.gameobject object hit">
+<div class="sig">raycastHit.gameObject</div>
+<div class="meta">property</div>
+<p>Object hit</p>
+</div>
+<div class="entry" data-key="raycasthit.normal surface normal">
+<div class="sig">raycastHit.normal</div>
+<div class="meta">property</div>
+<p>Surface normal</p>
+</div>
+<div class="entry" data-key="raycasthit.point hit point">
+<div class="sig">raycastHit.point</div>
+<div class="meta">property</div>
+<p>Hit point</p>
+</div>
+<div class="entry" data-key="raycasthit.rigidbody rigidbody hit or nil">
+<div class="sig">raycastHit.rigidbody</div>
+<div class="meta">property</div>
+<p>Rigidbody hit or nil</p>
+</div>
+</section>
+<section id="type-rebind">
+<h2>Rebind (object)</h2>
+<div class="entry" data-key="rebind:cancel() ">
+<div class="sig">rebind:Cancel()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind:dispose() ">
+<div class="sig">rebind:Dispose()</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind:oncancel(r, f) ">
+<div class="sig">rebind:OnCancel(r, f)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind:oncomplete(r, f) ">
+<div class="sig">rebind:OnComplete(r, f)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind:onmatchwaitforanother(r, secs) ">
+<div class="sig">rebind:OnMatchWaitForAnother(r, secs)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind:start(r) ">
+<div class="sig">rebind:Start(r)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind:withcancelingthrough(r, path) ">
+<div class="sig">rebind:WithCancelingThrough(r, path)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind:withcontrolsexcluding(r, path) ">
+<div class="sig">rebind:WithControlsExcluding(r, path)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind:withtargetbinding(r, index) ">
+<div class="sig">rebind:WithTargetBinding(r, index)</div>
+<div class="meta">function · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind.bindingindex ">
+<div class="sig">rebind.bindingIndex</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind.canceled ">
+<div class="sig">rebind.canceled</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind.completed ">
+<div class="sig">rebind.completed</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind.selectedcontrol ">
+<div class="sig">rebind.selectedControl</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="rebind.started ">
+<div class="sig">rebind.started</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="type-rigcomponent">
+<h2>RigComponent (object)</h2>
+<div class="entry" data-key="rigcomponent:addsource(obj, [w]) ">
+<div class="sig">rigComponent:AddSource(obj, [w])</div>
+<div class="meta">function · source: <code>rigging_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigcomponent:getsource(i) ">
+<div class="sig">rigComponent:GetSource(i)</div>
+<div class="meta">function · source: <code>rigging_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigcomponent:getsourceweight(i) ">
+<div class="sig">rigComponent:GetSourceWeight(i)</div>
+<div class="meta">function · source: <code>rigging_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigcomponent:setsource(i, obj) ">
+<div class="sig">rigComponent:SetSource(i, obj)</div>
+<div class="meta">function · source: <code>rigging_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigcomponent:setsourceweight(i, w) ">
+<div class="sig">rigComponent:SetSourceWeight(i, w)</div>
+<div class="meta">function · source: <code>rigging_api.rs</code></div>
+</div>
+</section>
+<section id="type-rigidbody">
+<h2>Rigidbody (object)</h2>
+<div class="entry" data-key="rigidbody:addforce(v [, mode]) apply a force (forcemode.force by default)">
+<div class="sig">rigidbody:AddForce(v [, mode])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Apply a force (ForceMode.Force by default)</p>
+</div>
+<div class="entry" data-key="rigidbody:addtorque(v [, mode]) apply a torque">
+<div class="sig">rigidbody:AddTorque(v [, mode])</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Apply a torque</p>
+</div>
+<div class="entry" data-key="rigidbody:moveposition(v) move a kinematic body">
+<div class="sig">rigidbody:MovePosition(v)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Move a kinematic body</p>
+<p class="notes">MovePosition(v): kinematic bodies sweep there in the next step, pushing others.</p>
+</div>
+<div class="entry" data-key="rigidbody:moverotation(eulerdegrees) rotate a kinematic body">
+<div class="sig">rigidbody:MoveRotation(eulerDegrees)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Rotate a kinematic body</p>
+<p class="notes">MoveRotation(euler): Euler angles in degrees (there is no Quaternion type).</p>
+</div>
+<div class="entry" data-key="rigidbody.angularvelocity angular velocity">
+<div class="sig">rigidbody.angularVelocity</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Angular velocity</p>
+</div>
+<div class="entry" data-key="rigidbody.gameobject ">
+<div class="sig">rigidbody.gameObject</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody.iskinematic moved by scripts only">
+<div class="sig">rigidbody.isKinematic</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Moved by scripts only</p>
+</div>
+<div class="entry" data-key="rigidbody.mass mass">
+<div class="sig">rigidbody.mass</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Mass</p>
+</div>
+<div class="entry" data-key="rigidbody.position ">
+<div class="sig">rigidbody.position</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p class="notes">Pose in the physics world (the Transform may be interpolated).</p>
+</div>
+<div class="entry" data-key="rigidbody.usegravity affected by gravity">
+<div class="sig">rigidbody.useGravity</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Affected by gravity</p>
+</div>
+<div class="entry" data-key="rigidbody.velocity linear velocity">
+<div class="sig">rigidbody.velocity</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Linear velocity</p>
+</div>
+</section>
+<section id="type-rigidbody2d">
+<h2>Rigidbody2D (object)</h2>
+<div class="entry" data-key="rigidbody2d:addforce(...) ">
+<div class="sig">rigidbody2D:AddForce(...)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d:addtorque(torque, [mode]) ">
+<div class="sig">rigidbody2D:AddTorque(torque, [mode])</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+<p class="notes">AddTorque(degrees-ish torque [, mode]): counter-clockwise positive.</p>
+</div>
+<div class="entry" data-key="rigidbody2d:moveposition(...) ">
+<div class="sig">rigidbody2D:MovePosition(...)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d:moverotation(degrees) ">
+<div class="sig">rigidbody2D:MoveRotation(degrees)</div>
+<div class="meta">function · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.angularvelocity ">
+<div class="sig">rigidbody2D.angularVelocity</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.bodytype ">
+<div class="sig">rigidbody2D.bodyType</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.freezerotation ">
+<div class="sig">rigidbody2D.freezeRotation</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.gameobject ">
+<div class="sig">rigidbody2D.gameObject</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.gravityscale ">
+<div class="sig">rigidbody2D.gravityScale</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.iskinematic ">
+<div class="sig">rigidbody2D.isKinematic</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.mass ">
+<div class="sig">rigidbody2D.mass</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.position ">
+<div class="sig">rigidbody2D.position</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.rotation ">
+<div class="sig">rigidbody2D.rotation</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.transform ">
+<div class="sig">rigidbody2D.transform</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="rigidbody2d.velocity ">
+<div class="sig">rigidbody2D.velocity</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+</section>
+<section id="type-rpctarget">
+<h2>RpcTarget (object)</h2>
+<div class="entry" data-key="rpctarget:addlistener(f) ">
+<div class="sig">rpcTarget:AddListener(f)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+<div class="entry" data-key="rpctarget:removelistener(f) ">
+<div class="sig">rpcTarget:RemoveListener(f)</div>
+<div class="meta">function · source: <code>network_api.rs</code></div>
+</div>
+</section>
+<section id="type-saveable">
+<h2>Saveable (object)</h2>
+<div class="entry" data-key="saveable.saveid ">
+<div class="sig">saveable.saveId</div>
+<div class="meta">property · source: <code>localization_api.rs</code></div>
+</div>
+</section>
+<section id="type-scrollbar">
+<h2>Scrollbar (object)</h2>
+<div class="entry" data-key="scrollbar.numberofsteps ">
+<div class="sig">scrollbar.numberOfSteps</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="scrollbar.size ">
+<div class="sig">scrollbar.size</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="scrollbar.value ">
+<div class="sig">scrollbar.value</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+</section>
+<section id="type-scrollrect">
+<h2>ScrollRect (object)</h2>
+<div class="entry" data-key="scrollrect.content ">
+<div class="sig">scrollRect.content</div>
+<div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="scrollrect.enabled ">
+<div class="sig">scrollRect.enabled</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="scrollrect.gameobject ">
+<div class="sig">scrollRect.gameObject</div>
+<div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="scrollrect.horizontal ">
+<div class="sig">scrollRect.horizontal</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="scrollrect.vertical ">
+<div class="sig">scrollRect.vertical</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+</section>
+<section id="type-self">
+<h2>self (object)</h2>
+<div class="entry" data-key="self.gameobject the gameobject this script is attached to">
+<div class="sig">self.gameObject</div>
+<div class="meta">property</div>
+<p>The GameObject this script is attached to</p>
+</div>
+<div class="entry" data-key="self.transform this object's transform">
+<div class="sig">self.transform</div>
+<div class="meta">property</div>
+<p>This object's Transform</p>
+</div>
+</section>
+<section id="type-skinnedmeshrenderer">
+<h2>SkinnedMeshRenderer (object)</h2>
+<div class="entry" data-key="skinnedmeshrenderer:getblendshapeindex(name) ">
+<div class="sig">skinnedMeshRenderer:GetBlendShapeIndex(name)</div>
+<div class="meta">function · source: <code>skinning_api.rs</code></div>
+</div>
+<div class="entry" data-key="skinnedmeshrenderer:getblendshapename(i) ">
+<div class="sig">skinnedMeshRenderer:GetBlendShapeName(i)</div>
+<div class="meta">function · source: <code>skinning_api.rs</code></div>
+</div>
+<div class="entry" data-key="skinnedmeshrenderer:getblendshapeweight(i) ">
+<div class="sig">skinnedMeshRenderer:GetBlendShapeWeight(i)</div>
+<div class="meta">function · source: <code>skinning_api.rs</code></div>
+</div>
+<div class="entry" data-key="skinnedmeshrenderer:setblendshapeweight(i, v) ">
+<div class="sig">skinnedMeshRenderer:SetBlendShapeWeight(i, v)</div>
+<div class="meta">function · source: <code>skinning_api.rs</code></div>
+</div>
+<div class="entry" data-key="skinnedmeshrenderer.blendshapecount ">
+<div class="sig">skinnedMeshRenderer.blendShapeCount</div>
+<div class="meta">property · source: <code>skinning_api.rs</code></div>
+</div>
+<div class="entry" data-key="skinnedmeshrenderer.enabled ">
+<div class="sig">skinnedMeshRenderer.enabled</div>
+<div class="meta">property (read / write) · source: <code>skinning_api.rs</code></div>
+</div>
+<div class="entry" data-key="skinnedmeshrenderer.gameobject ">
+<div class="sig">skinnedMeshRenderer.gameObject</div>
+<div class="meta">property · source: <code>skinning_api.rs</code></div>
+</div>
+<div class="entry" data-key="skinnedmeshrenderer.rootbone ">
+<div class="sig">skinnedMeshRenderer.rootBone</div>
+<div class="meta">property · source: <code>skinning_api.rs</code></div>
+</div>
+<div class="entry" data-key="skinnedmeshrenderer.updatewhenoffscreen ">
+<div class="sig">skinnedMeshRenderer.updateWhenOffscreen</div>
+<div class="meta">property (read / write) · source: <code>skinning_api.rs</code></div>
+</div>
+</section>
+<section id="type-slider">
+<h2>Slider (object)</h2>
+<div class="entry" data-key="slider.maxvalue ">
+<div class="sig">slider.maxValue</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="slider.minvalue ">
+<div class="sig">slider.minValue</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="slider.normalizedvalue ">
+<div class="sig">slider.normalizedValue</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="slider.onvaluechanged addlistener(fn(value))">
+<div class="sig">slider.onValueChanged</div>
+<div class="meta">property</div>
+<p>AddListener(fn(value))</p>
+</div>
+<div class="entry" data-key="slider.value current value">
+<div class="sig">slider.value</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+<p>Current value</p>
+</div>
+<div class="entry" data-key="slider.wholenumbers ">
+<div class="sig">slider.wholeNumbers</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+</section>
+<section id="type-splineanimate">
+<h2>SplineAnimate (object)</h2>
+<div class="entry" data-key="splineanimate:pause() stop where it is">
+<div class="sig">splineAnimate:Pause()</div>
+<div class="meta">function</div>
+<p>Stop where it is</p>
+</div>
+<div class="entry" data-key="splineanimate:play() start or resume moving along the spline">
+<div class="sig">splineAnimate:Play()</div>
+<div class="meta">function</div>
+<p>Start or resume moving along the spline</p>
+</div>
+<div class="entry" data-key="splineanimate:restart() back to the start and play">
+<div class="sig">splineAnimate:Restart()</div>
+<div class="meta">function</div>
+<p>Back to the start and play</p>
+</div>
+<div class="entry" data-key="splineanimate.duration seconds per pass">
+<div class="sig">splineAnimate.duration</div>
+<div class="meta">property (read / write) · source: <code>spline_api.rs</code></div>
+<p>Seconds per pass</p>
+</div>
+<div class="entry" data-key="splineanimate.elapsedtime seconds played">
+<div class="sig">splineAnimate.elapsedTime</div>
+<div class="meta">property (read / write) · source: <code>spline_api.rs</code></div>
+<p>Seconds played</p>
+</div>
+<div class="entry" data-key="splineanimate.enabled ">
+<div class="sig">splineAnimate.enabled</div>
+<div class="meta">property (read / write) · source: <code>spline_api.rs</code></div>
+</div>
+<div class="entry" data-key="splineanimate.gameobject ">
+<div class="sig">splineAnimate.gameObject</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+</div>
+<div class="entry" data-key="splineanimate.isplaying moving (read-only)">
+<div class="sig">splineAnimate.isPlaying</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+<p>Moving (read-only)</p>
+</div>
+<div class="entry" data-key="splineanimate.length ">
+<div class="sig">splineAnimate.length</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+</div>
+<div class="entry" data-key="splineanimate.normalizedtime progress: passes done plus share of the current one">
+<div class="sig">splineAnimate.normalizedTime</div>
+<div class="meta">property (read / write) · source: <code>spline_api.rs</code></div>
+<p>Progress: passes done plus share of the current one</p>
+</div>
+<div class="entry" data-key="splineanimate.speed ">
+<div class="sig">splineAnimate.speed</div>
+<div class="meta">property (read / write) · source: <code>spline_api.rs</code></div>
+</div>
+<div class="entry" data-key="splineanimate.transform ">
+<div class="sig">splineAnimate.transform</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+</div>
+</section>
+<section id="type-splinecontainer">
+<h2>SplineContainer (object)</h2>
+<div class="entry" data-key="splinecontainer:calculatelength() world length of the spline">
+<div class="sig">splineContainer:CalculateLength()</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+<p>World length of the spline</p>
+</div>
+<div class="entry" data-key="splinecontainer:evaluatecurvature(t) curvature (1 / radius) at t">
+<div class="sig">splineContainer:EvaluateCurvature(t)</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+<p>Curvature (1 / radius) at t</p>
+</div>
+<div class="entry" data-key="splinecontainer:evaluateposition(t) world position at t (0–1 by distance); optional spline index">
+<div class="sig">splineContainer:EvaluatePosition(t)</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+<p>World position at t (0–1 by distance); optional spline index</p>
+</div>
+<div class="entry" data-key="splinecontainer:evaluatetangent(t) world tangent (velocity) at t">
+<div class="sig">splineContainer:EvaluateTangent(t)</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+<p>World tangent (velocity) at t</p>
+</div>
+<div class="entry" data-key="splinecontainer:evaluateupvector(t) world up vector at t">
+<div class="sig">splineContainer:EvaluateUpVector(t)</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+<p>World up vector at t</p>
+</div>
+<div class="entry" data-key="splinecontainer:getknotposition(index) world position of a knot (from 1)">
+<div class="sig">splineContainer:GetKnotPosition(index)</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+<p>World position of a knot (from 1)</p>
+</div>
+<div class="entry" data-key="splinecontainer:getlength([i]) ">
+<div class="sig">splineContainer:GetLength([i])</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+</div>
+<div class="entry" data-key="splinecontainer:getnearestpoint(position) closest point on the spline and its t">
+<div class="sig">splineContainer:GetNearestPoint(position)</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+<p>Closest point on the spline and its t</p>
+</div>
+<div class="entry" data-key="splinecontainer:knotcount() number of knots">
+<div class="sig">splineContainer:KnotCount()</div>
+<div class="meta">function · source: <code>spline_api.rs</code></div>
+<p>Number of knots</p>
+</div>
+<div class="entry" data-key="splinecontainer.closed ">
+<div class="sig">splineContainer.closed</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+</div>
+<div class="entry" data-key="splinecontainer.gameobject ">
+<div class="sig">splineContainer.gameObject</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+</div>
+<div class="entry" data-key="splinecontainer.length ">
+<div class="sig">splineContainer.length</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+</div>
+<div class="entry" data-key="splinecontainer.splinecount number of splines">
+<div class="sig">splineContainer.splineCount</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+<p>Number of splines</p>
+</div>
+<div class="entry" data-key="splinecontainer.transform ">
+<div class="sig">splineContainer.transform</div>
+<div class="meta">property · source: <code>spline_api.rs</code></div>
+</div>
+</section>
+<section id="type-spriterenderer">
+<h2>SpriteRenderer (object)</h2>
+<div class="entry" data-key="spriterenderer.color ">
+<div class="sig">spriteRenderer.color</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="spriterenderer.enabled ">
+<div class="sig">spriteRenderer.enabled</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="spriterenderer.flipx ">
+<div class="sig">spriteRenderer.flipX</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="spriterenderer.flipy ">
+<div class="sig">spriteRenderer.flipY</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="spriterenderer.gameobject ">
+<div class="sig">spriteRenderer.gameObject</div>
+<div class="meta">property · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="spriterenderer.sortinglayername ">
+<div class="sig">spriteRenderer.sortingLayerName</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="spriterenderer.sortingorder ">
+<div class="sig">spriteRenderer.sortingOrder</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+<div class="entry" data-key="spriterenderer.sprite ">
+<div class="sig">spriteRenderer.sprite</div>
+<div class="meta">property (read / write) · source: <code>physics2d_api.rs</code></div>
+</div>
+</section>
+<section id="type-targetgroup">
+<h2>TargetGroup (object)</h2>
+<div class="entry" data-key="targetgroup:addmember(obj, [weight], [radius]) ">
+<div class="sig">targetGroup:AddMember(obj, [weight], [radius])</div>
+<div class="meta">function · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="targetgroup:removemember(obj) ">
+<div class="sig">targetGroup:RemoveMember(obj)</div>
+<div class="meta">function · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="targetgroup.gameobject ">
+<div class="sig">targetGroup.gameObject</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="targetgroup.membercount ">
+<div class="sig">targetGroup.memberCount</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="targetgroup.radius ">
+<div class="sig">targetGroup.radius</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+<p class="notes">Bounding sphere radius of the members this frame.</p>
+</div>
+<div class="entry" data-key="targetgroup.transform ">
+<div class="sig">targetGroup.transform</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+</section>
+<section id="type-terrain">
+<h2>Terrain (object)</h2>
+<div class="entry" data-key="terrain:getposition() world position of the corner">
+<div class="sig">terrain:GetPosition()</div>
+<div class="meta">function · source: <code>terrain_api.rs</code></div>
+<p>World position of the corner</p>
+</div>
+<div class="entry" data-key="terrain:sampleheight(position) surface height under a point">
+<div class="sig">terrain:SampleHeight(position)</div>
+<div class="meta">function · source: <code>terrain_api.rs</code></div>
+<p>Surface height under a point</p>
+<p class="notes">Height of the surface under a world position, relative to the terrain's position.</p>
+</div>
+<div class="entry" data-key="terrain.gameobject ">
+<div class="sig">terrain.gameObject</div>
+<div class="meta">property · source: <code>terrain_api.rs</code></div>
+</div>
+<div class="entry" data-key="terrain.terraindata size, heightmapresolution, …">
+<div class="sig">terrain.terrainData</div>
+<div class="meta">property · source: <code>terrain_api.rs</code></div>
+<p>size, heightmapResolution, …</p>
+</div>
+<div class="entry" data-key="terrain.transform ">
+<div class="sig">terrain.transform</div>
+<div class="meta">property · source: <code>terrain_api.rs</code></div>
+</div>
+</section>
+<section id="type-text">
+<h2>Text (object)</h2>
+<div class="entry" data-key="text.color text colour">
+<div class="sig">text.color</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+<p>Text colour</p>
+</div>
+<div class="entry" data-key="text.enabled ">
+<div class="sig">text.enabled</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="text.fontsize font size">
+<div class="sig">text.fontSize</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+<p>Font size</p>
+</div>
+<div class="entry" data-key="text.gameobject ">
+<div class="sig">text.gameObject</div>
+<div class="meta">property · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="text.onlinkclicked ">
+<div class="sig">text.onLinkClicked</div>
+<div class="meta">property · source: <code>ui_api.rs</code></div>
+<p class="notes"><code>text.onLinkClicked:AddListener(function(id) … end)</code>.</p>
+</div>
+<div class="entry" data-key="text.page ">
+<div class="sig">text.page</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="text.richtext ">
+<div class="sig">text.richText</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+</div>
+<div class="entry" data-key="text.text shown text">
+<div class="sig">text.text</div>
+<div class="meta">property (read / write) · source: <code>ui_api.rs</code></div>
+<p>Shown text</p>
+</div>
+</section>
+<section id="type-tilemap">
+<h2>Tilemap (object)</h2>
+<div class="entry" data-key="tilemap:celltoworld(...) ">
+<div class="sig">tilemap:CellToWorld(...)</div>
+<div class="meta">function · source: <code>tilemap_api.rs</code></div>
+<p class="notes">The cell's lower-left corner, like the reference API (the centre is GetCellCenterWorld).</p>
+</div>
+<div class="entry" data-key="tilemap:clearalltiles() ">
+<div class="sig">tilemap:ClearAllTiles()</div>
+<div class="meta">function · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="tilemap:getcellcenterworld(...) ">
+<div class="sig">tilemap:GetCellCenterWorld(...)</div>
+<div class="meta">function · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="tilemap:gettile(...) ">
+<div class="sig">tilemap:GetTile(...)</div>
+<div class="meta">function · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="tilemap:getusedtilescount() ">
+<div class="sig">tilemap:GetUsedTilesCount()</div>
+<div class="meta">function · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="tilemap:hastile(...) ">
+<div class="sig">tilemap:HasTile(...)</div>
+<div class="meta">function · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="tilemap:settile(...) ">
+<div class="sig">tilemap:SetTile(...)</div>
+<div class="meta">function · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="tilemap:worldtocell(p) ">
+<div class="sig">tilemap:WorldToCell(p)</div>
+<div class="meta">function · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="tilemap.color ">
+<div class="sig">tilemap.color</div>
+<div class="meta">property (read / write) · source: <code>tilemap_api.rs</code></div>
+</div>
+<div class="entry" data-key="tilemap.gameobject ">
+<div class="sig">tilemap.gameObject</div>
+<div class="meta">property · source: <code>tilemap_api.rs</code></div>
+</div>
+</section>
+<section id="type-toggle">
+<h2>Toggle (object)</h2>
+<div class="entry" data-key="toggle.group ">
+<div class="sig">toggle.group</div>
+<div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="toggle.ison checked">
+<div class="sig">toggle.isOn</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+<p>Checked</p>
+</div>
+<div class="entry" data-key="toggle.onvaluechanged addlistener(fn(ison))">
+<div class="sig">toggle.onValueChanged</div>
+<div class="meta">property</div>
+<p>AddListener(fn(isOn))</p>
+</div>
+</section>
+<section id="type-togglegroup">
+<h2>ToggleGroup (object)</h2>
+<div class="entry" data-key="togglegroup:anytoggleson() ">
+<div class="sig">toggleGroup:AnyTogglesOn()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="togglegroup:setalltogglesoff() ">
+<div class="sig">toggleGroup:SetAllTogglesOff()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="togglegroup.allowswitchoff ">
+<div class="sig">toggleGroup.allowSwitchOff</div>
+<div class="meta">property (read / write) · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="togglegroup.gameobject ">
+<div class="sig">toggleGroup.gameObject</div>
+<div class="meta">property · source: <code>ui_widgets_api.rs</code></div>
+</div>
+</section>
+<section id="type-touchscreen">
+<h2>Touchscreen (object)</h2>
+<div class="entry" data-key="touchscreen.primarytouch ">
+<div class="sig">touchscreen.primaryTouch</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+<div class="entry" data-key="touchscreen.touches ">
+<div class="sig">touchscreen.touches</div>
+<div class="meta">property · source: <code>input_actions_api.rs</code></div>
+</div>
+</section>
+<section id="type-transform">
+<h2>Transform (object)</h2>
+<div class="entry" data-key="transform:find(path) ">
+<div class="sig">transform:Find(path)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p class="notes">Find(&quot;Head/Camera&quot;): a child by name, or a descendant by a slash-separated path; nil when missing.</p>
+</div>
+<div class="entry" data-key="transform:getchild(i) ">
+<div class="sig">transform:GetChild(i)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p class="notes">GetChild(i): the i-th child (0-based, Hierarchy order), or an error past the end.</p>
+</div>
+<div class="entry" data-key="transform:lookat(target) turn to face a point or transform">
+<div class="sig">transform:LookAt(target)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Turn to face a point or Transform</p>
+</div>
+<div class="entry" data-key="transform:rotate(eulerdegrees) rotate by euler angles">
+<div class="sig">transform:Rotate(eulerDegrees)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Rotate by Euler angles</p>
+<p class="notes">Rotate by Euler degrees around the object's own axes.</p>
+</div>
+<div class="entry" data-key="transform:translate(v) move by a vector">
+<div class="sig">transform:Translate(v)</div>
+<div class="meta">function · source: <code>api.rs</code></div>
+<p>Move by a vector</p>
+<p class="notes">Translate in the object's own axes (Space.Self).</p>
+</div>
+<div class="entry" data-key="transform.childcount ">
+<div class="sig">transform.childCount</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="transform.eulerangles world rotation in degrees">
+<div class="sig">transform.eulerAngles</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>World rotation in degrees</p>
+</div>
+<div class="entry" data-key="transform.forward blue axis in world space">
+<div class="sig">transform.forward</div>
+<div class="meta">property</div>
+<p>Blue axis in world space</p>
+</div>
+<div class="entry" data-key="transform.gameobject ">
+<div class="sig">transform.gameObject</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="transform.localeulerangles local rotation in degrees">
+<div class="sig">transform.localEulerAngles</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Local rotation in degrees</p>
+</div>
+<div class="entry" data-key="transform.localposition position relative to the parent">
+<div class="sig">transform.localPosition</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Position relative to the parent</p>
+</div>
+<div class="entry" data-key="transform.localscale local scale">
+<div class="sig">transform.localScale</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Local scale</p>
+</div>
+<div class="entry" data-key="transform.name ">
+<div class="sig">transform.name</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="transform.parent parent transform or nil">
+<div class="sig">transform.parent</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Parent Transform or nil</p>
+</div>
+<div class="entry" data-key="transform.position world position">
+<div class="sig">transform.position</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>World position</p>
+</div>
+<div class="entry" data-key="transform.right red axis in world space">
+<div class="sig">transform.right</div>
+<div class="meta">property</div>
+<p>Red axis in world space</p>
+</div>
+<div class="entry" data-key="transform.up green axis in world space">
+<div class="sig">transform.up</div>
+<div class="meta">property</div>
+<p>Green axis in world space</p>
+</div>
+</section>
+<section id="type-uievent">
+<h2>UiEvent (object)</h2>
+<div class="entry" data-key="uievent:addlistener(f) ">
+<div class="sig">uiEvent:AddListener(f)</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="uievent:removealllisteners() ">
+<div class="sig">uiEvent:RemoveAllListeners()</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
+<div class="entry" data-key="uievent:removelistener(f) ">
+<div class="sig">uiEvent:RemoveListener(f)</div>
+<div class="meta">function · source: <code>ui_widgets_api.rs</code></div>
+</div>
+</section>
+<section id="type-vector3">
+<h2>Vector3 (object)</h2>
+<div class="entry" data-key="vector3.magnitude length">
+<div class="sig">vector3.magnitude</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Length</p>
+</div>
+<div class="entry" data-key="vector3.normalized unit-length copy">
+<div class="sig">vector3.normalized</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+<p>Unit-length copy</p>
+</div>
+<div class="entry" data-key="vector3.sqrmagnitude ">
+<div class="sig">vector3.sqrMagnitude</div>
+<div class="meta">property · source: <code>api.rs</code></div>
+</div>
+<div class="entry" data-key="vector3.x x component">
+<div class="sig">vector3.x</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>X component</p>
+</div>
+<div class="entry" data-key="vector3.y y component">
+<div class="sig">vector3.y</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Y component</p>
+</div>
+<div class="entry" data-key="vector3.z z component">
+<div class="sig">vector3.z</div>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Z component</p>
+</div>
+</section>
+<section id="type-videoplayer">
+<h2>VideoPlayer (object)</h2>
+<div class="entry" data-key="videoplayer:pause() ">
+<div class="sig">videoPlayer:Pause()</div>
+<div class="meta">function · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer:play() ">
+<div class="sig">videoPlayer:Play()</div>
+<div class="meta">function · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer:prepare() ">
+<div class="sig">videoPlayer:Prepare()</div>
+<div class="meta">function · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer:stop() ">
+<div class="sig">videoPlayer:Stop()</div>
+<div class="meta">function · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.clip ">
+<div class="sig">videoPlayer.clip</div>
+<div class="meta">property (read / write) · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.frame ">
+<div class="sig">videoPlayer.frame</div>
+<div class="meta">property (read / write) · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.framecount ">
+<div class="sig">videoPlayer.frameCount</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.framerate ">
+<div class="sig">videoPlayer.frameRate</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.gameobject ">
+<div class="sig">videoPlayer.gameObject</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.height ">
+<div class="sig">videoPlayer.height</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.islooping ">
+<div class="sig">videoPlayer.isLooping</div>
+<div class="meta">property (read / write) · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.ispaused ">
+<div class="sig">videoPlayer.isPaused</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.isplaying ">
+<div class="sig">videoPlayer.isPlaying</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.isprepared ">
+<div class="sig">videoPlayer.isPrepared</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.length ">
+<div class="sig">videoPlayer.length</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.playonawake ">
+<div class="sig">videoPlayer.playOnAwake</div>
+<div class="meta">property (read / write) · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.playbackspeed ">
+<div class="sig">videoPlayer.playbackSpeed</div>
+<div class="meta">property (read / write) · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.texture ">
+<div class="sig">videoPlayer.texture</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.time ">
+<div class="sig">videoPlayer.time</div>
+<div class="meta">property (read / write) · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.url ">
+<div class="sig">videoPlayer.url</div>
+<div class="meta">property (read / write) · source: <code>video_api.rs</code></div>
+</div>
+<div class="entry" data-key="videoplayer.width ">
+<div class="sig">videoPlayer.width</div>
+<div class="meta">property · source: <code>video_api.rs</code></div>
+</div>
+</section>
+<section id="type-virtualcamera">
+<h2>VirtualCamera (object)</h2>
+<div class="entry" data-key="virtualcamera.dutch ">
+<div class="sig">virtualCamera.dutch</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.enabled ">
+<div class="sig">virtualCamera.enabled</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.fieldofview ">
+<div class="sig">virtualCamera.fieldOfView</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.follow ">
+<div class="sig">virtualCamera.follow</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.gameobject ">
+<div class="sig">virtualCamera.gameObject</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.inputaction ">
+<div class="sig">virtualCamera.inputAction</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.islive ">
+<div class="sig">virtualCamera.isLive</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+<p class="notes">Shown by a brain (live, or blending to or from it).</p>
+</div>
+<div class="entry" data-key="virtualcamera.lookat ">
+<div class="sig">virtualCamera.lookAt</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.priority ">
+<div class="sig">virtualCamera.priority</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.transform ">
+<div class="sig">virtualCamera.transform</div>
+<div class="meta">property · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.xaxis ">
+<div class="sig">virtualCamera.xAxis</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+<p class="notes">Orbital / Free Look axes: horizontal angle in degrees, vertical angle (Sphere) or rig position 0..1 (Three Rings). Setting one moves the camera there.</p>
+</div>
+<div class="entry" data-key="virtualcamera.xaxisinput ">
+<div class="sig">virtualCamera.xAxisInput</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+<p class="notes">Input names driving the axes (&quot;&quot; = none): Input Manager axes, or an Input System action (&quot;Map/Action&quot;) read as a 2D value.</p>
+</div>
+<div class="entry" data-key="virtualcamera.yaxis ">
+<div class="sig">virtualCamera.yAxis</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+<div class="entry" data-key="virtualcamera.yaxisinput ">
+<div class="sig">virtualCamera.yAxisInput</div>
+<div class="meta">property (read / write) · source: <code>vcam_api.rs</code></div>
+</div>
+</section>
+<section id="type-visualeffect">
+<h2>VisualEffect (object)</h2>
+<div class="entry" data-key="visualeffect:getfloat(name) read a float property">
+<div class="sig">visualEffect:GetFloat(name)</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>Read a Float property</p>
+</div>
+<div class="entry" data-key="visualeffect:hasproperty(name) the effect exposes it">
+<div class="sig">visualEffect:HasProperty(name)</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>The effect exposes it</p>
+</div>
+<div class="entry" data-key="visualeffect:play() start spawning">
+<div class="sig">visualEffect:Play()</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>Start spawning</p>
+</div>
+<div class="entry" data-key="visualeffect:reinit() clear the particles and restart">
+<div class="sig">visualEffect:Reinit()</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>Clear the particles and restart</p>
+</div>
+<div class="entry" data-key="visualeffect:resetoverride(name) back to the graph's default">
+<div class="sig">visualEffect:ResetOverride(name)</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>Back to the graph's default</p>
+</div>
+<div class="entry" data-key="visualeffect:sendevent(name) &quot;onplay&quot; or &quot;onstop&quot;">
+<div class="sig">visualEffect:SendEvent(name)</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>&quot;OnPlay&quot; or &quot;OnStop&quot;</p>
+</div>
+<div class="entry" data-key="visualeffect:setcolor(name, color) override a color property">
+<div class="sig">visualEffect:SetColor(name, color)</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>Override a Color property</p>
+</div>
+<div class="entry" data-key="visualeffect:setfloat(name, value) override a float property">
+<div class="sig">visualEffect:SetFloat(name, value)</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>Override a Float property</p>
+</div>
+<div class="entry" data-key="visualeffect:setvector3(name, v) override a vector3 property">
+<div class="sig">visualEffect:SetVector3(name, v)</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>Override a Vector3 property</p>
+</div>
+<div class="entry" data-key="visualeffect:stop() stop spawning (live particles finish)">
+<div class="sig">visualEffect:Stop()</div>
+<div class="meta">function · source: <code>vfx_api.rs</code></div>
+<p>Stop spawning (live particles finish)</p>
+</div>
+<div class="entry" data-key="visualeffect.alivecount live particles (read back from the gpu)">
+<div class="sig">visualEffect.aliveCount</div>
+<div class="meta">property · source: <code>vfx_api.rs</code></div>
+<p>Live particles (read back from the GPU)</p>
+</div>
+<div class="entry" data-key="visualeffect.gameobject ">
+<div class="sig">visualEffect.gameObject</div>
+<div class="meta">property · source: <code>vfx_api.rs</code></div>
+</div>
+<div class="entry" data-key="visualeffect.isplaying spawning">
+<div class="sig">visualEffect.isPlaying</div>
+<div class="meta">property · source: <code>vfx_api.rs</code></div>
+<p>Spawning</p>
+</div>
+<div class="entry" data-key="visualeffect.seed ">
+<div class="sig">visualEffect.seed</div>
+<div class="meta">property · source: <code>vfx_api.rs</code></div>
+</div>
+</section>
+<section id="type-wheelcollider">
+<h2>WheelCollider (object)</h2>
+<div class="entry" data-key="wheelcollider:getgroundhit() wheelhit table (point, normal, force, slips) or nil">
+<div class="sig">wheelCollider:GetGroundHit()</div>
+<div class="meta">function · source: <code>vehicle_api.rs</code></div>
+<p>WheelHit table (point, normal, force, slips) or nil</p>
+<p class="notes">GetGroundHit(): what the wheel touches, or nil in the air.</p>
+</div>
+<div class="entry" data-key="wheelcollider:getworldpose() wheel centre and euler rotation, for a wheel model">
+<div class="sig">wheelCollider:GetWorldPose()</div>
+<div class="meta">function · source: <code>vehicle_api.rs</code></div>
+<p>Wheel centre and Euler rotation, for a wheel model</p>
+<p class="notes">GetWorldPose(): wheel centre and rotation (Euler degrees), with steering and rolling.</p>
+</div>
+<div class="entry" data-key="wheelcollider.braketorque braking torque (n·m)">
+<div class="sig">wheelCollider.brakeTorque</div>
+<div class="meta">property (read / write) · source: <code>vehicle_api.rs</code></div>
+<p>Braking torque (N·m)</p>
+</div>
+<div class="entry" data-key="wheelcollider.enabled ">
+<div class="sig">wheelCollider.enabled</div>
+<div class="meta">property (read / write) · source: <code>vehicle_api.rs</code></div>
+</div>
+<div class="entry" data-key="wheelcollider.gameobject ">
+<div class="sig">wheelCollider.gameObject</div>
+<div class="meta">property · source: <code>vehicle_api.rs</code></div>
+</div>
+<div class="entry" data-key="wheelcollider.isgrounded touching the ground (read-only)">
+<div class="sig">wheelCollider.isGrounded</div>
+<div class="meta">property · source: <code>vehicle_api.rs</code></div>
+<p>Touching the ground (read-only)</p>
+</div>
+<div class="entry" data-key="wheelcollider.motortorque drive torque on the axle (n·m)">
+<div class="sig">wheelCollider.motorTorque</div>
+<div class="meta">property (read / write) · source: <code>vehicle_api.rs</code></div>
+<p>Drive torque on the axle (N·m)</p>
+</div>
+<div class="entry" data-key="wheelcollider.radius wheel radius (read-only)">
+<div class="sig">wheelCollider.radius</div>
+<div class="meta">property · source: <code>vehicle_api.rs</code></div>
+<p>Wheel radius (read-only)</p>
+</div>
+<div class="entry" data-key="wheelcollider.rpm wheel speed in revolutions per minute (read-only)">
+<div class="sig">wheelCollider.rpm</div>
+<div class="meta">property · source: <code>vehicle_api.rs</code></div>
+<p>Wheel speed in revolutions per minute (read-only)</p>
+</div>
+<div class="entry" data-key="wheelcollider.steerangle steering angle in degrees">
+<div class="sig">wheelCollider.steerAngle</div>
+<div class="meta">property (read / write) · source: <code>vehicle_api.rs</code></div>
+<p>Steering angle in degrees</p>
+</div>
+<div class="entry" data-key="wheelcollider.suspensiondistance ">
+<div class="sig">wheelCollider.suspensionDistance</div>
+<div class="meta">property · source: <code>vehicle_api.rs</code></div>
+</div>
+<div class="entry" data-key="wheelcollider.transform ">
+<div class="sig">wheelCollider.transform</div>
+<div class="meta">property · source: <code>vehicle_api.rs</code></div>
+</div>
+</section>
+</main>
+<script>
+const box = document.getElementById('filter');
+box.addEventListener('input', () => {
+  const q = box.value.trim().toLowerCase();
+  document.querySelectorAll('section').forEach(sec => {
+    let any = false;
+    sec.querySelectorAll('.entry').forEach(e => {
+      const hit = !q || e.dataset.key.includes(q);
+      e.classList.toggle('hidden', !hit);
+      any = any || hit;
+    });
+    sec.classList.toggle('hidden', !any);
+    const link = document.querySelector('nav a[href="#' + sec.id + '"]');
+    if (link) link.parentElement.classList.toggle('hidden', !any);
+  });
+});
+</script>
+</body>
+</html>

@@ -660,6 +660,13 @@ fn help_menu(ui: &mut Ui, s: &mut EditorState) {
         ui.close();
     }
     todo(ui, s, "Manual", "");
-    todo(ui, s, "Scripting Reference", "");
+    let reference = ui
+        .button("Scripting Reference")
+        .on_hover_text("Write the Lua API reference to Library/ApiDocs and open it");
+    targets::header(ui, "Scripting Reference", reference.rect);
+    if reference.clicked() {
+        crate::api_docs::open_reference(s);
+        ui.close();
+    }
     crate::live_reload::dev_build::menu(ui, s);
 }

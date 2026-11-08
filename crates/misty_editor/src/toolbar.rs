@@ -14,11 +14,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let full = ui.available_rect_before_wrap();
     ui.horizontal(|ui| {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            egui::ComboBox::from_id_salt("layout_dropdown")
+            let layout = egui::ComboBox::from_id_salt("layout_dropdown")
                 .selected_text(state.layouts.current_name.clone())
                 .width(80.0)
                 .show_ui(ui, |ui| crate::menu_bar::layouts_menu(ui, state));
-            egui::ComboBox::from_id_salt("layers_dropdown")
+            crate::a11y::name(layout.response, egui::WidgetType::ComboBox, "Layout");
+            let layers = egui::ComboBox::from_id_salt("layers_dropdown")
                 .selected_text("Layers")
                 .width(80.0)
                 .show_ui(ui, |ui| {
@@ -26,6 +27,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                         ui.label(format!("👁 {layer}"));
                     }
                 });
+            crate::a11y::name(layers.response, egui::WidgetType::ComboBox, "Layers");
             // Green "⬆ Update" pill, only while an update is available.
             if crate::updater::ui::update_button(ui, &state.updater) {
                 crate::updater::editor::request_install(state);

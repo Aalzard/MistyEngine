@@ -95,6 +95,8 @@ pub fn stop(s: &mut EditorState) {
     s.selection.retain_existing(&s.scene);
     s.undo = session.undo;
     s.scene_dirty = session.dirty;
+    // Scripts may have changed the text scale or colour filter: back to Player Settings.
+    crate::project_settings::install_accessibility(s);
     s.play = PlayState::Edit;
     s.console.info("Exited Play mode.");
 }

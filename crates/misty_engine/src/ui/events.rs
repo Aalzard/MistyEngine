@@ -971,7 +971,7 @@ fn pointer_caret(
         return 0;
     };
     let shown = display_text(f, &f.text);
-    let px = (t.font_size * n.scale).round().max(1.0);
+    let px = (t.scaled_font_size() * n.scale).round().max(1.0);
     let (stops, _, _) = caret_stops(builtin_font(), &shown, px, n.screen.size(), t.alignment);
     let shift = text_shift(&stops, n.screen.size().x, shown_caret);
     caret_at(&stops, p.x - n.screen.min.x + shift)

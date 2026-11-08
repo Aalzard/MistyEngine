@@ -411,6 +411,8 @@ pub struct EditorState {
     pub mcp: crate::mcp::live::Bridge,
     /// Git status badges and the Version Control window.
     pub vcs: crate::vcs::Vcs,
+    /// Edit ▸ Preferences ▸ UI Scale (the editor app loads the saved value).
+    pub ui_scale: crate::a11y::UiScale,
     /// Commands to apply after the UI pass.
     pub actions: Vec<Action>,
 }
@@ -534,6 +536,7 @@ impl EditorState {
             prefab_stages: Vec::new(),
             mcp: Default::default(),
             vcs: Default::default(),
+            ui_scale: Default::default(),
             actions: Vec::new(),
         };
         crate::project_settings::load(&mut s);

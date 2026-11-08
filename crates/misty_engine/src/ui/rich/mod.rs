@@ -89,7 +89,7 @@ pub fn layout_ui_text(
         })
         .collect();
     let p = LayoutParams {
-        px: (t.font_size * scale).max(0.5),
+        px: (t.scaled_font_size() * scale).max(0.5),
         scale,
         size,
         align: t.alignment,
@@ -99,7 +99,10 @@ pub fn layout_ui_text(
         word_spacing: t.word_spacing,
         overflow: t.overflow,
         page: t.page,
-        auto_size: t.auto_size.then_some((t.font_size_min, t.font_size_max)),
+        auto_size: t.auto_size.then(|| {
+            let k = crate::accessibility::text_scale();
+            (t.font_size_min * k, t.font_size_max * k)
+        }),
         color: t.color,
         sprite_aspects,
     };

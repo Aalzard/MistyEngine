@@ -38,7 +38,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     update_focus(ui, state, panel);
 
     panel_toolbar(ui, |ui| {
-        ui.menu_button("➕ ⏷", |ui| create_menu_items(ui, state, None));
+        let create = ui.menu_button("➕ ⏷", |ui| create_menu_items(ui, state, None));
+        crate::a11y::name(create.response, egui::WidgetType::Button, "Create");
         search_field(ui, &mut state.hierarchy.search, ui.available_width())
             .on_hover_text("Name words and filters: t:Light t:Camera tag:Player layer:UI");
     });

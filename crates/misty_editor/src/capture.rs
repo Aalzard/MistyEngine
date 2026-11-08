@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO`, and `MISTY_THEME=light` (and
+//! `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 
 use std::path::PathBuf;
@@ -451,6 +451,8 @@ pub fn apply_env(
     if std::env::var_os("MISTY_UNDO_DEMO").is_some() {
         undo_demo(s);
     }
+    vcs_env(s);
+    accessibility_env(s);
     // `MISTY_OCCLUSION_PAGE=Object|Bake|Visualization` picks the Occlusion Culling window's page.
     if let Some(page) = std::env::var_os("MISTY_OCCLUSION_PAGE") {
         use crate::panels::occlusion::Page;
@@ -742,6 +744,76 @@ fn save_png(path: &PathBuf, image: &egui::ColorImage) -> Result<(), Box<dyn std:
 
 /// Real edits, each recorded like the editor does: create, drag, Inspector change, rename,
 /// duplicate; the last two are then undone so the window shows redoable steps.
+/// `MISTY_VCS=1` opens Window ▸ Version Control; `MISTY_VCS_SELECT=Assets/…` selects a changed
+/// file (`…:objects` shows a scene's object diff, `…:staged` its staged side);
+/// `MISTY_VCS_MERGE=Assets/….scene` opens the merge helper for a conflicted scene.
+fn vcs_env(s: &mut crate::state::EditorState) {
+    let open = std::env::var_os("MISTY_VCS").is_some();
+    let select = std::env::var("MISTY_VCS_SELECT").ok();
+    let merge = std::env::var("MISTY_VCS_MERGE").ok();
+    if !open && select.is_none() && merge.is_none() {
+        return;
+    }
+    let root = s.project.root.clone();
+    s.vcs.refresh_now(&root);
+    s.vcs.window.open = true;
+    if let Some(sel) = select {
+        let mut parts = sel.split(':');
+        let path = parts.next().unwrap_or_default().to_owned();
+        let flags: Vec<&str> = parts.collect();
+        if flags.contains(&"objects") {
+            s.vcs.window.view = crate::vcs::window::DiffView::Objects;
+        }
+        s.vcs.window.selected = Some((path, flags.contains(&"staged")));
+    }
+    if let Some(rel) = merge
+        && let Some(repo) = s.vcs.repo.clone()
+    {
+        match crate::vcs::window::open_merge(&repo, &rel) {
+            Ok(m) => s.vcs.window.merge = Some((rel, m)),
+            Err(e) => eprintln!("MISTY_VCS_MERGE: {e}"),
+        }
+    }
+}
+
+/// `MISTY_COLOR_FILTER=deuteranopia` (optionally `:simulate` and `:0.5` for the strength) and
+/// `MISTY_TEXT_SCALE=1.5` set the accessibility settings in effect; `MISTY_PROJECT_SETTINGS=Player`
+/// opens Project Settings on that page.
+fn accessibility_env(s: &mut crate::state::EditorState) {
+    if let Ok(v) = std::env::var("MISTY_COLOR_FILTER") {
+        let mut parts = v.split(':');
+        let mode = parts
+            .next()
+            .and_then(misty_engine::accessibility::ColorBlindMode::from_name);
+        let rest: Vec<&str> = parts.collect();
+        misty_engine::accessibility::update(|a| {
+            if let Some(m) = mode {
+                a.color_filter = m;
+            }
+            a.simulate = rest.contains(&"simulate");
+            if let Some(k) = rest.iter().find_map(|r| r.parse::<f32>().ok()) {
+                a.filter_strength = k;
+            }
+        });
+    }
+    if let Some(k) = std::env::var("MISTY_TEXT_SCALE")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+    {
+        misty_engine::accessibility::update(|a| a.text_scale = k);
+    }
+    if let Ok(page) = std::env::var("MISTY_PROJECT_SETTINGS") {
+        use crate::project_settings::Category;
+        if let Some(c) = Category::ALL
+            .into_iter()
+            .find(|c| format!("{c:?}").eq_ignore_ascii_case(page.trim()))
+        {
+            s.project_settings_window.open = true;
+            s.project_settings_window.category = c;
+        }
+    }
+}
+
 fn undo_demo(s: &mut crate::state::EditorState) {
     use crate::actions::{Action, Create};
     use misty_engine::scene::{Light, PrimitiveMesh};

@@ -38,6 +38,11 @@ pub struct WindowState {
     pub note: Option<(String, bool)>,
 }
 
+/// Width of the file lists, width and height of the diff.
+const LIST_W: f32 = 340.0;
+const DIFF_W: f32 = 600.0;
+const PANE_H: f32 = 440.0;
+
 /// Draw the window if it is open.
 pub fn show(ctx: &egui::Context, s: &mut EditorState) {
     let mut open = s.vcs.window.open;
@@ -47,8 +52,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
     let root = s.project.root.clone();
     egui::Window::new("Version Control")
         .open(&mut open)
-        .default_size([900.0, 560.0])
-        .min_size([560.0, 320.0])
+        .resizable(false)
         .collapsible(false)
         .show(ctx, |ui| contents(ui, &mut s.vcs, &root));
     s.vcs.window.open = open;
@@ -75,16 +79,19 @@ pub fn contents(ui: &mut Ui, v: &mut Vcs, project: &std::path::Path) {
     };
     header(ui, v, &repo, project);
     ui.separator();
-    let height = (ui.available_height() - 64.0).max(160.0);
+    // Fixed sizes: a window that sizes itself from its own available space keeps growing.
     ui.horizontal_top(|ui| {
-        ui.allocate_ui_with_layout(vec2(340.0, height), Layout::top_down(Align::Min), |ui| {
-            ui.set_min_size(vec2(340.0, height));
+        let left = vec2(LIST_W, PANE_H);
+        ui.allocate_ui_with_layout(left, Layout::top_down(Align::Min), |ui| {
+            ui.set_min_size(left);
+            ui.set_max_width(LIST_W);
             file_lists(ui, v, &repo, project);
         });
         ui.separator();
-        let w = ui.available_width();
-        ui.allocate_ui_with_layout(vec2(w, height), Layout::top_down(Align::Min), |ui| {
-            ui.set_min_size(vec2(w, height));
+        let right = vec2(DIFF_W, PANE_H);
+        ui.allocate_ui_with_layout(right, Layout::top_down(Align::Min), |ui| {
+            ui.set_min_size(right);
+            ui.set_max_width(DIFF_W);
             diff_pane(ui, v, &repo);
         });
     });
@@ -585,7 +592,7 @@ fn merge_window(ctx: &egui::Context, v: &mut Vcs, project: &std::path::Path) {
     egui::Window::new(title)
         .id(egui::Id::new("vcs_merge_window"))
         .open(&mut open)
-        .default_size([720.0, 460.0])
+        .resizable(false)
         .collapsible(false)
         .show(ctx, |ui| done = merge_contents(ui, v, project));
     if !open || done {
@@ -613,11 +620,11 @@ pub fn merge_contents(ui: &mut Ui, v: &mut Vcs, project: &std::path::Path) -> bo
         }
     });
     ui.separator();
-    let h = (ui.available_height() - 40.0).max(120.0);
     egui::ScrollArea::vertical()
         .id_salt("vcs_merge_items")
-        .max_height(h)
-        .auto_shrink([false, true])
+        .max_height(360.0)
+        .min_scrolled_width(640.0)
+        .auto_shrink([true, true])
         .show(ui, |ui| {
             egui::Grid::new("vcs_merge_grid")
                 .striped(true)
@@ -736,6 +743,8 @@ mod tests {
         v.refresh_now(&project);
         let mut h = harness(v, project.clone());
         h.get_by_label("Changes (2)");
+        let unnamed = crate::a11y::unnamed_controls(&h);
+        assert!(unnamed.is_empty(), "unnamed controls: {unnamed:?}");
         // Select the script: its diff shows.
         h.get_by_label("Assets/Scripts/Player.lua").click();
         h.run_steps(2);

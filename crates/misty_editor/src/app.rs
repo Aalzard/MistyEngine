@@ -98,6 +98,7 @@ impl EditorApp {
             crate::capture::apply_env(&mut state, &mut dock);
         }
         crate::tutorials::from_env(&mut state);
+        state.ui_scale = crate::a11y::UiScale::load();
         // Version control badges: poll the project's git repository (if any).
         let root = state.project.root.clone();
         state.vcs.start(&root);
@@ -806,6 +807,7 @@ impl eframe::App for EditorApp {
         let ctx = ui.ctx().clone();
         crate::scene_camera::bench::frame_start(&ctx);
         apply_vsync(&mut self.state, frame);
+        self.state.ui_scale.apply(&ctx);
         let s = &mut self.state;
         let (clips, clip) = (&mut s.anim_clips, &s.animation.clip);
         s.undo
