@@ -68,6 +68,8 @@ pub enum AssetKind {
     Scene,
     Animation,
     AnimatorController,
+    /// Avatar Mask (`.mask`): which bones an Animator layer animates.
+    AvatarMask,
     AudioMixer,
     Timeline,
     /// Shader ▸ Surface Shader (lit, from the template).
@@ -91,13 +93,14 @@ pub enum AssetKind {
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 9] = [
+    pub const ALL: [AssetKind; 10] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
         AssetKind::Scene,
         AssetKind::Animation,
         AssetKind::AnimatorController,
+        AssetKind::AvatarMask,
         AssetKind::AudioMixer,
         AssetKind::Timeline,
         AssetKind::Tree,
@@ -112,6 +115,7 @@ impl AssetKind {
             AssetKind::Scene => "Scene",
             AssetKind::Animation => "Animation",
             AssetKind::AnimatorController => "Animator Controller",
+            AssetKind::AvatarMask => "Avatar Mask",
             AssetKind::AudioMixer => "Audio Mixer",
             AssetKind::Timeline => "Timeline",
             AssetKind::Tree => "Tree",

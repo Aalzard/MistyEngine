@@ -2,7 +2,7 @@
 //! (double-click), delete (right-click), and each value. In Edit mode values are the defaults
 //! saved in the controller; in Play mode they are the live values (editable too).
 
-use egui::{RichText, Ui};
+use egui::Ui;
 use misty_engine::animation::AnimatorController;
 use misty_engine::animation::animator::AnimatorStatus;
 use misty_engine::animation::controller::ParamKind;
@@ -19,7 +19,6 @@ pub fn show(
 ) {
     let busy = interacting(ui.ctx());
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Parameters").strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.menu_button("+", |ui| {
                 for kind in ParamKind::ALL {

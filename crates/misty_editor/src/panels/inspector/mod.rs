@@ -16,6 +16,8 @@ mod light_probe_editor;
 mod light_shadows;
 mod lightmap_editors;
 mod lod_editor;
+mod mask_editor;
+pub use mask_editor::IMPORT_LABEL as MASK_IMPORT_LABEL;
 mod material;
 mod mesh_builder_editor;
 mod mixed;
@@ -614,6 +616,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::animation::is_controller(rel) {
         animator::controller_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::animation::is_mask(rel) {
+        mask_editor::mask_asset(ui, state, rel);
         return;
     }
     if misty_engine::audio::is_mixer(rel) {

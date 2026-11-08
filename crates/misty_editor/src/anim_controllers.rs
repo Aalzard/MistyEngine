@@ -70,8 +70,8 @@ impl ControllerStore {
         Ok(())
     }
 
-    /// Follow an asset rename/move of `old` (a controller or a folder) to `new`; clip paths
-    /// inside open controllers follow too.
+    /// Follow an asset rename/move of `old` (a controller or a folder) to `new`; clip and mask
+    /// paths inside open controllers follow too.
     pub fn rename(&mut self, old: &str, new: &str) {
         let keys: Vec<String> = self.controllers.keys().cloned().collect();
         for key in keys {
@@ -81,16 +81,9 @@ impl ControllerStore {
             }
         }
         for c in self.controllers.values_mut() {
-            for s in &mut c.states {
-                let clips = s.motion.iter_mut().chain(
-                    s.blend_tree
-                        .iter_mut()
-                        .flat_map(|b| b.children.iter_mut().filter_map(|c| c.motion.as_mut())),
-                );
-                for m in clips {
-                    if let Some(to) = crate::asset_ops::remap(m, old, new) {
-                        *m = to;
-                    }
+            for m in c.asset_paths_mut() {
+                if let Some(to) = crate::asset_ops::remap(m, old, new) {
+                    *m = to;
                 }
             }
         }
