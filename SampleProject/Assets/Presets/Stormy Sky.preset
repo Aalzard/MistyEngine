@@ -93,6 +93,9 @@
     "contact_shadows",
     "screen_space_gi",
     "screen_space_reflections",
-    "misty_gi"
+    "misty_gi",
+    "depth_of_field",
+    "motion_blur",
+    "auto_exposure"
   ]
 }
