@@ -1560,6 +1560,13 @@ impl Renderer {
             let prepass = screen
                 .as_ref()
                 .and_then(|_| screen_space::grass_prepass_range(self.quality.ambient_occlusion));
+            // The grass visibility raster draws the standing blades from the depth lane
+            // (`grass_vis_passes`), so the lit lane needs only the flat fans.
+            let fans_only = fast_paths::grass_vis_depth()
+                && fast_paths::sky_late()
+                && self.capture.is_none()
+                && grass_vis::grass_vis_enabled()
+                && frame.shaded;
             self.terrains.plan_grass(
                 device,
                 queue,
@@ -1568,6 +1575,7 @@ impl Renderer {
                 &cascades,
                 grass_near.as_ref(),
                 prepass,
+                fans_only,
             );
         }
 
@@ -2879,6 +2887,12 @@ impl Renderer {
                         grass_vis_drawn = true;
                     } else {
                         pass.set_pipeline(&self.pipelines.grass);
+                        if self.terrains.lit_fans_only() {
+                            // The lit lane holds only the fans this frame (planned for the
+                            // visibility buffer, which then could not run): blades first.
+                            let standing = grass_cull::DEPTH;
+                            (self.terrains).draw_grass(&mut pass, frame.terrains, standing, stats);
+                        }
                         let lit = grass_cull::LIT;
                         self.terrains
                             .draw_grass(&mut pass, frame.terrains, lit, stats);
