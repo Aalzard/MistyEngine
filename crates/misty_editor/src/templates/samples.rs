@@ -86,27 +86,41 @@ fn copy_tree(from: &Path, to: &Path) -> Result<usize, String> {
 
 /// The committed sample project: `git archive HEAD` of its Assets and settings, as a zip
 /// whose entries start with `SampleProject/`.
+///
+/// One archive at a time per process (each is the whole sample project, ~100 MB, and the
+/// template tests ask for several at once), and a failed one is tried again twice: the object
+/// store can be shared with other checkouts (git worktrees) whose commits repack it, and a
+/// read racing a repack fails once and then succeeds.
 pub(super) fn git_archive(repo: &Path) -> Result<zip::ZipArchive<Cursor<Vec<u8>>>, String> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args([
-            "archive",
-            "--format=zip",
-            "HEAD",
-            "SampleProject/Assets",
-            "SampleProject/ProjectSettings/ProjectSettings.json",
-        ])
-        .output()
-        .map_err(|e| format!("git archive in {}: {e}", repo.display()))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git archive failed in {}: {}",
-            repo.display(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let mut failed = String::new();
+    for attempt in 0..3 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(attempt));
+        }
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args([
+                "archive",
+                "--format=zip",
+                "HEAD",
+                "SampleProject/Assets",
+                "SampleProject/ProjectSettings/ProjectSettings.json",
+            ])
+            .output()
+            .map_err(|e| format!("git archive in {}: {e}", repo.display()))?;
+        if out.status.success() {
+            return zip::ZipArchive::new(Cursor::new(out.stdout))
+                .map_err(|e| format!("git archive: {e}"));
+        }
+        failed = String::from_utf8_lossy(&out.stderr).trim().to_owned();
     }
-    zip::ZipArchive::new(Cursor::new(out.stdout)).map_err(|e| format!("git archive: {e}"))
+    Err(format!(
+        "git archive failed in {} (3 tries): {failed}",
+        repo.display()
+    ))
 }
 
 /// [`git_archive`] unpacked into `root`.
