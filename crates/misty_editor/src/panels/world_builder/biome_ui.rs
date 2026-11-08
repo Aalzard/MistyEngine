@@ -252,6 +252,41 @@ fn scatter_item(ui: &mut Ui, item: &mut ScatterItem, i: usize, prefabs: &[String
             ch = true;
         }
         ui.end_row();
+        ui.label("Terrain Tree").on_hover_text(
+            "The .tree asset this item becomes with Scatter Storage ▸ Terrain Trees \
+             (tree shapes use the World Builder's own tree when empty)",
+        );
+        let auto = match misty_engine::world_gen::tree_asset(&ScatterItem {
+            tree: None,
+            ..item.clone()
+        }) {
+            Some(t) => format!("Auto ({})", display_name(&t)),
+            None => "None (scene objects)".into(),
+        };
+        egui::ComboBox::from_id_salt(("wb_tree", i))
+            .selected_text(
+                item.tree
+                    .as_deref()
+                    .map(display_name)
+                    .unwrap_or(auto.clone()),
+            )
+            .show_ui(ui, |ui| {
+                ch |= ui.selectable_value(&mut item.tree, None, auto).changed();
+                let ext = format!(".{}", misty_engine::trees::EXTENSION);
+                let mut trees = misty_engine::asset_db::with(|db| {
+                    db.paths()
+                        .filter(|p| p.ends_with(&ext))
+                        .map(str::to_owned)
+                        .collect::<Vec<String>>()
+                })
+                .unwrap_or_default();
+                trees.sort();
+                for t in trees {
+                    let name = display_name(&t);
+                    ch |= ui.selectable_value(&mut item.tree, Some(t), name).changed();
+                }
+            });
+        ui.end_row();
         if item.prefab.is_none() {
             ui.label("Shape");
             ch |= super::stamp_ui::combo(
