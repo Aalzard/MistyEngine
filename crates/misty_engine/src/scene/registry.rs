@@ -397,6 +397,8 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<NavMeshAgent>(),
             ComponentInfo::of::<NavMeshObstacle>(),
             ComponentInfo::of::<Scripts>(),
+            // Input System (input::actions).
+            ComponentInfo::of::<crate::input::actions::PlayerInput>(),
             // Netcode (network).
             ComponentInfo::of::<crate::network::NetworkManager>(),
             ComponentInfo::of::<crate::network::NetworkObject>(),
