@@ -11,6 +11,7 @@ mod extract;
 mod fbx_import;
 mod gltf_anim;
 mod gltf_import;
+mod gltf_materials;
 mod obj_import;
 pub mod preview;
 pub mod process;
@@ -157,6 +158,31 @@ pub struct ModelMaterial {
     pub material: Material,
     pub albedo: Option<TextureSource>,
     pub normal: Option<TextureSource>,
+    /// Maps of the optional Standard features (glTF extensions), written on extraction.
+    pub extra_maps: Vec<(ExtraMap, TextureSource)>,
+}
+
+/// A feature map a model's material brings (see [`ModelMaterial::extra_maps`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExtraMap {
+    /// `KHR_materials_clearcoat` normal texture → Clear Coat ▸ Normal Map.
+    ClearCoatNormal,
+}
+
+impl ExtraMap {
+    /// Suffix of the extracted texture file ("Model_Paint_ClearCoatNormal.png").
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ClearCoatNormal => "ClearCoatNormal",
+        }
+    }
+
+    /// The material field the map goes into.
+    pub fn slot(self, m: &mut Material) -> &mut Option<String> {
+        match self {
+            Self::ClearCoatNormal => &mut m.features.clear_coat.normal_map,
+        }
+    }
 }
 
 /// One animation of the file before clip splitting (a take): its name and length (seconds).
@@ -376,7 +402,12 @@ pub fn cache_memory() -> Vec<(String, u64, u64)> {
             let textures = m
                 .materials
                 .iter()
-                .flat_map(|mat| [&mat.albedo, &mat.normal])
+                .flat_map(|mat| {
+                    let extra = mat.extra_maps.iter().map(|(_, t)| Some(t));
+                    [mat.albedo.as_ref(), mat.normal.as_ref()]
+                        .into_iter()
+                        .chain(extra)
+                })
                 .map(|t| match t {
                     Some(TextureSource::Embedded(bytes)) => bytes.len() as u64,
                     _ => 0,

@@ -13,14 +13,40 @@ pub struct Variants {
     shadow: HashMap<ShadowKey, wgpu::RenderPipeline>,
 }
 
+/// The main-pass shader of a variant: the Standard shader, or its copy with the variant's
+/// optional features compiled in.
+pub(super) fn mesh_source(key: PipelineKey) -> &'static str {
+    match key.features {
+        0 => MESH_SRC,
+        f => super::material_v2::lit_source(f),
+    }
+}
+
 impl Pipelines {
+    /// Group 2 layout of a main-pass variant (feature variants have the bigger one).
+    pub(super) fn group2_layout(&self, key: PipelineKey) -> &wgpu::BindGroupLayout {
+        match key.features {
+            0 => &self.material_layout,
+            _ => &self.lit_layout,
+        }
+    }
+
     /// Build the main-pass pipeline for `key` if it doesn't exist yet.
     pub fn ensure_mesh(&mut self, device: &wgpu::Device, key: PipelineKey) {
         if self.variants.mesh.contains_key(&key) {
             return;
         }
         let buffers = pipelines::mesh_buffers();
-        let layouts = [&self.view_layout, &self.mesh_layout, &self.material_layout];
+        let layouts = [
+            &self.view_layout,
+            &self.mesh_layout,
+            self.group2_layout(key),
+        ];
+        let name = if key.features == 0 {
+            "mesh"
+        } else {
+            "mesh lit"
+        };
         let pipeline = pipelines::build(
             device,
             Spec {
@@ -35,7 +61,7 @@ impl Pipelines {
                 // Opaque and cutout surfaces write their motion; blended ones leave the
                 // motion of what is behind them (they don't write depth either).
                 velocity: key.depth_write(),
-                ..Spec::new("mesh", MESH_SRC, &layouts)
+                ..Spec::new(name, mesh_source(key), &layouts)
             },
         );
         self.variants.mesh.insert(key, pipeline);

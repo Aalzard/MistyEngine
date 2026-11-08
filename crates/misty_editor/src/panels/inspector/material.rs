@@ -167,6 +167,17 @@ fn standard(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String]) -> boo
         ui.end_row();
     }
     ch |= tiling_offset(ui, m);
+    ui.label("UV Rotation");
+    ch |= ui
+        .add(
+            egui::DragValue::new(&mut m.uv_rotation)
+                .speed(1.0)
+                .range(-180.0..=180.0)
+                .suffix("°"),
+        )
+        .changed();
+    ui.end_row();
+    ch |= super::material_features::feature_sections(ui, id, &mut m.features, textures);
 
     section(ui, "Advanced Options");
     ui.label("Render Queue");
@@ -178,6 +189,7 @@ fn standard(ui: &mut Ui, id: &str, m: &mut Material, textures: &[String]) -> boo
     ui.label("Double Sided");
     ch |= ui.checkbox(&mut m.double_sided, "").changed();
     ui.end_row();
+    ch |= super::material_features::specular_row(ui, &mut m.features);
     ch
 }
 
@@ -250,7 +262,7 @@ pub fn material_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
 }
 
-/// Preview at the bottom of the material Inspector: drag to rotate, sphere or cube.
+/// Preview at the bottom of the material Inspector: drag to rotate, sphere, cube or plane.
 pub fn preview(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     let Some(m) = state.assets.materials.get(rel).cloned() else {
         return;
@@ -261,7 +273,9 @@ pub fn preview(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     ui.horizontal(|ui| {
         ui.label(crate::theme::bold(ui.ctx(), "Preview"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Right to left: shown as Sphere, Cube, Plane.
             for (shape, icon, tip) in [
+                (PreviewShape::Plane, "▱", "Plane"),
                 (PreviewShape::Cube, "▣", "Cube"),
                 (PreviewShape::Sphere, "◍", "Sphere"),
             ] {

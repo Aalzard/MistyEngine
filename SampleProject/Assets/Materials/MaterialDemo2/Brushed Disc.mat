@@ -1,0 +1,35 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.86,
+    0.86,
+    0.88,
+    1.0
+  ],
+  "metallic": 1.0,
+  "smoothness": 0.78,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": null,
+  "normal_map": null,
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "anisotropy": {
+    "enabled": true,
+    "strength": 0.85,
+    "direction": "Radial",
+    "rotation": 0.0
+  }
+}

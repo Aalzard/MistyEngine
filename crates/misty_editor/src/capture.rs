@@ -322,6 +322,15 @@ pub fn apply_env(
         s.selection.clear();
         s.inspector_asset = Some(rel);
     }
+    // `MISTY_PREVIEW_SHAPE=plane` (sphere / cube / plane): the material Inspector preview's shape.
+    if let Some(shape) = std::env::var_os("MISTY_PREVIEW_SHAPE") {
+        use crate::material_preview::PreviewShape;
+        s.project.thumbnails.materials.shape = match shape.to_string_lossy().as_ref() {
+            "cube" => PreviewShape::Cube,
+            "plane" => PreviewShape::Plane,
+            _ => PreviewShape::Sphere,
+        };
+    }
     // `MISTY_MIXER=Assets/Audio/AudioDemo2.mixer` shows that mixer in the Audio Mixer window;
     // `MISTY_MIXER_SELECT=Music` selects a group (`Music/1`: also its second effect) for the
     // Inspector (combine with `MISTY_TAB=Audio Mixer`).

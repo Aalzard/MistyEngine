@@ -142,6 +142,9 @@ pub struct Pipelines {
     pub draws_layout: wgpu::BindGroupLayout,
     /// Per-material albedo, normal, sampler, metallic, occlusion, emission (mesh pass, group 2).
     pub material_layout: wgpu::BindGroupLayout,
+    /// Group 2 of the Standard feature variants: the six material bindings, the feature
+    /// values and maps (`render/material_v2.rs`).
+    pub lit_layout: wgpu::BindGroupLayout,
     /// Selection mask texture (outline pass).
     pub mask_layout: wgpu::BindGroupLayout,
     /// One sampled texture + sampler (bloom passes).
@@ -476,6 +479,16 @@ impl Pipelines {
                 entry(5, S::FRAGMENT, filtered),
             ],
         );
+        let mut lit_entries = vec![
+            entry(0, S::FRAGMENT, filtered),
+            entry(1, S::FRAGMENT, filtered),
+            entry(2, S::FRAGMENT, filtering),
+            entry(3, S::FRAGMENT, filtered),
+            entry(4, S::FRAGMENT, filtered),
+            entry(5, S::FRAGMENT, filtered),
+        ];
+        lit_entries.extend(super::material_v2::layout_entries());
+        let lit_layout = layout("misty material lit", &lit_entries);
         let composite_layout = layout(
             "misty composite",
             &[
@@ -903,6 +916,7 @@ impl Pipelines {
             mesh_layout,
             draws_layout,
             material_layout,
+            lit_layout,
             mask_layout,
             sky,
             sky_late,

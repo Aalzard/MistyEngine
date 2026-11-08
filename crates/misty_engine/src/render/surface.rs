@@ -101,15 +101,20 @@ pub struct PipelineKey {
     pub mode: RenderingMode,
     /// Cull Off (both faces drawn).
     pub double_sided: bool,
+    /// Optional Standard features compiled into the variant
+    /// ([`super::material_v2::feature`] bits; 0 = the plain Standard shader).
+    pub features: u8,
 }
 
 impl PipelineKey {
-    /// Fragment entry point in `mesh.wgsl`.
+    /// Fragment entry point in `mesh.wgsl` (feature variants: `mesh_lit.wgsl`).
     pub fn entry(self) -> &'static str {
-        match (self.unlit, self.mode) {
-            (true, _) => "fs_unlit",
-            (false, RenderingMode::Cutout) => "fs_cutout",
-            (false, _) => "fs_main",
+        match (self.unlit, self.mode, self.features != 0) {
+            (true, _, _) => "fs_unlit",
+            (false, RenderingMode::Cutout, false) => "fs_cutout",
+            (false, RenderingMode::Cutout, true) => "fs_lit_cutout",
+            (false, _, false) => "fs_main",
+            (false, _, true) => "fs_lit",
         }
     }
 
@@ -243,6 +248,7 @@ mod tests {
             unlit: false,
             mode,
             double_sided: false,
+            features: 0,
         };
         let opaque = key(RenderingMode::Opaque);
         assert_eq!(opaque.blend(), None);
@@ -276,6 +282,27 @@ mod tests {
             ..fade
         };
         assert_eq!(unlit.entry(), "fs_unlit");
+        let coat = PipelineKey {
+            features: super::super::material_v2::feature::CLEARCOAT,
+            ..opaque
+        };
+        assert_eq!(coat.entry(), "fs_lit");
+        assert_eq!(
+            PipelineKey {
+                mode: RenderingMode::Cutout,
+                ..coat
+            }
+            .entry(),
+            "fs_lit_cutout"
+        );
+        assert_eq!(
+            PipelineKey {
+                unlit: true,
+                ..coat
+            }
+            .entry(),
+            "fs_unlit"
+        );
     }
 
     #[test]

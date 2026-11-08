@@ -447,6 +447,8 @@ pub fn texture_bytes(
 pub struct TextureCache {
     textures: HashMap<(String, TextureKind), Cached>,
     sets: HashMap<TextureSet, wgpu::BindGroup>,
+    /// Group 2 of the Standard feature variants (render/material_v2.rs), by textures and values.
+    lit_sets: HashMap<super::material_v2::LitSet, wgpu::BindGroup>,
     /// Created on first use.
     defaults: Option<Defaults>,
     /// Bilinear repeat (textures without import settings).
@@ -471,6 +473,7 @@ impl TextureCache {
         Self {
             textures: HashMap::new(),
             sets: HashMap::new(),
+            lit_sets: HashMap::new(),
             defaults: None,
             sampler,
             samplers: HashMap::new(),
@@ -485,6 +488,7 @@ impl TextureCache {
     pub fn sync_runtime(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         if self.runtime.sync(device, queue) {
             self.sets.clear();
+            self.lit_sets.clear();
         }
     }
 
@@ -577,6 +581,7 @@ impl TextureCache {
             self.quality = quality;
             self.textures.clear();
             self.sets.clear();
+            self.lit_sets.clear();
             self.samplers.clear();
         }
         if self.sets.contains_key(set) {
@@ -698,6 +703,85 @@ impl TextureCache {
         self.sets.get(set)
     }
 
+    /// Make sure group 2 of a feature variant exists: the Standard textures (as
+    /// [`Self::prepare_set`]), the feature values and the feature maps.
+    pub fn prepare_lit(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        set: &super::material_v2::LitSet,
+    ) {
+        // (A new quality level clears these in `prepare_set`, which the renderer calls first.)
+        if self.lit_sets.contains_key(set) {
+            return;
+        }
+        let b = &set.base;
+        let (albedo, normal) = self.views(device, queue, b.albedo.as_deref(), b.normal.as_deref());
+        let d = self.defaults(device, queue);
+        let (white, white_linear, flat) = (d.white.clone(), d.white_linear.clone(), d.flat.clone());
+        let mut load = |rel: &Option<String>, kind, fallback: &wgpu::TextureView| {
+            rel.as_deref()
+                .and_then(|r| self.texture(device, queue, r, kind))
+                .unwrap_or_else(|| fallback.clone())
+        };
+        let metallic = load(&b.metallic, TextureKind::Linear, &white_linear);
+        let occlusion = load(&b.occlusion, TextureKind::Linear, &white_linear);
+        let emission = load(&b.emission, TextureKind::Color, &white);
+        let [d_albedo, d_normal, d_mask, height, coat_normal, thickness] = &set.maps;
+        let feature_views = [
+            load(d_albedo, TextureKind::Color, &white),
+            load(d_normal, TextureKind::Normal, &flat),
+            load(d_mask, TextureKind::Linear, &white_linear),
+            load(height, TextureKind::Linear, &white_linear),
+            load(coat_normal, TextureKind::Normal, &flat),
+            load(thickness, TextureKind::Linear, &white_linear),
+        ];
+        let key = SamplerKey::of(b.albedo.as_deref());
+        let sampler = self
+            .samplers
+            .entry(key)
+            .or_insert_with(|| key.create(device));
+        let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("misty material features"),
+            contents: bytemuck::cast_slice(&set.values),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let view = |binding, v| wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::TextureView(v),
+        };
+        let mut entries = vec![
+            view(0, &albedo),
+            view(1, &normal),
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            view(3, &metallic),
+            view(4, &occlusion),
+            view(5, &emission),
+            wgpu::BindGroupEntry {
+                binding: 6,
+                resource: uniform.as_entire_binding(),
+            },
+        ];
+        for (i, v) in feature_views.iter().enumerate() {
+            entries.push(view(7 + i as u32, v));
+        }
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("misty material lit"),
+            layout,
+            entries: &entries,
+        });
+        self.lit_sets.insert(set.clone(), group);
+    }
+
+    /// Group 2 prepared for a feature variant's set.
+    pub fn get_lit(&self, set: &super::material_v2::LitSet) -> Option<&wgpu::BindGroup> {
+        self.lit_sets.get(set)
+    }
+
     /// Loaded textures and their GPU bytes (by format: block-compressed ones by block size).
     pub fn memory(&self) -> (usize, u64) {
         let views = self.textures.values().filter_map(|c| c.view.as_ref());
@@ -724,7 +808,12 @@ impl TextureCache {
                             .into_iter()
                             .any(|p| p.as_deref() == Some(rel.as_str()))
                     })
-                    .count() as u32;
+                    .count() as u32
+                    + self
+                        .lit_sets
+                        .keys()
+                        .filter(|s| s.maps.iter().any(|p| p.as_deref() == Some(rel.as_str())))
+                        .count() as u32;
                 Some(TextureEntry {
                     path: rel.clone(),
                     kind: format!("{kind:?}"),
@@ -766,6 +855,7 @@ impl TextureCache {
             .retain(|(rel, _), _| !compressed.contains(rel));
         if self.textures.len() != before {
             self.sets.clear();
+            self.lit_sets.clear();
         }
         self.textures.retain(|(rel, _), c| {
             let same = c.modified == stamps(rel);
@@ -776,6 +866,7 @@ impl TextureCache {
         });
         if !changed.is_empty() {
             self.sets.clear();
+            self.lit_sets.clear();
         }
         changed
     }

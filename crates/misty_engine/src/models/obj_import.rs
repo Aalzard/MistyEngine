@@ -98,6 +98,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
             },
             albedo: texture(m.diffuse_texture),
             normal: texture(m.normal_texture),
+            extra_maps: Vec::new(),
         });
     }
     Ok(model)

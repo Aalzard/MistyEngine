@@ -1,0 +1,44 @@
+{
+  "shader": "Standard",
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 0.25,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Textures/MaterialDemo2/Rock Albedo.png",
+  "normal_map": "Assets/Textures/MaterialDemo2/Rock Normal.png",
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "detail": {
+    "enabled": true,
+    "albedo_map": "Assets/Textures/MaterialDemo2/Rock Detail.png",
+    "normal_map": "Assets/Textures/MaterialDemo2/Rock Detail Normal.png",
+    "normal_scale": 1.0,
+    "mask": "Assets/Textures/MaterialDemo2/Rock Detail Mask.png",
+    "tiling": [
+      8.0,
+      8.0
+    ],
+    "offset": [
+      0.0,
+      0.0
+    ]
+  }
+}

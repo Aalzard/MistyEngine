@@ -24,6 +24,7 @@ mod mask_editor;
 #[cfg(test)]
 pub use mask_editor::IMPORT_LABEL as MASK_IMPORT_LABEL;
 mod material;
+mod material_features;
 mod mesh_builder_editor;
 mod mixed;
 mod mixer_inspector;
@@ -103,8 +104,20 @@ fn show_inner(ui: &mut Ui, state: &mut EditorState) {
     let Some(&e) = targets.first() else {
         // Nothing in the scene selected: show the selected asset, if any.
         if let Some(rel) = state.inspector_asset.clone() {
-            card::begin_body(ui);
-            asset_inspector(ui, state, &rel);
+            if !rel.ends_with(".mat") {
+                card::begin_body(ui);
+                asset_inspector(ui, state, &rel);
+                return;
+            }
+            // A Standard material with its feature sections is taller than the panel: scroll.
+            let mut area = egui::ScrollArea::vertical().auto_shrink(false);
+            if let Some(px) = crate::capture::inspector_scroll() {
+                area = area.vertical_scroll_offset(px);
+            }
+            area.show(ui, |ui| {
+                card::begin_body(ui);
+                asset_inspector(ui, state, &rel);
+            });
         }
         return;
     };

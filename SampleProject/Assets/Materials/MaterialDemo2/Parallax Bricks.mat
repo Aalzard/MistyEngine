@@ -1,0 +1,35 @@
+{
+  "shader": "Standard",
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 0.15,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Textures/MaterialDemo2/Brick Albedo.png",
+  "normal_map": "Assets/Textures/MaterialDemo2/Brick Normal.png",
+  "normal_scale": 1.0,
+  "tiling": [
+    2.0,
+    1.5
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "parallax": {
+    "enabled": true,
+    "height_map": "Assets/Textures/MaterialDemo2/Brick Height.png",
+    "scale": 0.05,
+    "steps": 32
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "shader": "Standard",
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 0.35,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": "Assets/Textures/MaterialDemo2/Leaf.png",
+  "normal_map": null,
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "rendering_mode": "Cutout",
+  "double_sided": true,
+  "translucency": {
+    "enabled": true,
+    "color": [
+      0.55,
+      0.85,
+      0.2
+    ],
+    "strength": 0.6,
+    "wrap": 0.5,
+    "thickness_map": "Assets/Textures/MaterialDemo2/Leaf Thickness.png",
+    "thickness": 1.0
+  }
+}

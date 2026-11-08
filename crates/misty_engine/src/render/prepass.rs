@@ -29,7 +29,7 @@ impl Prepass {
             return;
         }
         let buffers = pipelines::mesh_buffers();
-        let layouts = [&p.view_layout, &p.mesh_layout, &p.material_layout];
+        let layouts = [&p.view_layout, &p.mesh_layout, p.group2_layout(key)];
         self.depth.entry(key.double_sided).or_insert_with(|| {
             pipelines::build(
                 device,
@@ -58,7 +58,11 @@ impl Prepass {
                     blend: key.blend(),
                     glow: Some(true),
                     velocity: true,
-                    ..Spec::new("mesh after prepass", MESH_SRC, &layouts)
+                    ..Spec::new(
+                        "mesh after prepass",
+                        super::variants::mesh_source(key),
+                        &layouts,
+                    )
                 },
             )
         });
