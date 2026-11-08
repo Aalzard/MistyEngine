@@ -1,9 +1,8 @@
 //! Mesh Renderer ▸ Lighting: Contribute Global Illumination, Receive Global Illumination and the
-//! Lightmapping values (Scale In Lightmap, the baked lightmap index); model import settings
-//! (Generate Lightmap UVs) and the baked lightmap asset preview.
+//! Lightmapping values (Scale In Lightmap, the baked lightmap index), the virtual geometry line of
+//! the model import Inspector and the baked lightmap asset preview.
 
 use egui::Ui;
-use misty_engine::models::ModelImporter;
 use misty_engine::scene::{MeshRenderer, ReceiveGi};
 
 use crate::state::EditorState;
@@ -62,75 +61,10 @@ pub fn renderer_section(ui: &mut Ui, r: &mut MeshRenderer, is_static: bool) -> b
     })
 }
 
-/// Model import settings: Generate Lightmap UVs, Virtual Geometry (written to the `.meta`,
-/// re-imports the model).
-pub fn model_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
-    let name = std::path::Path::new(rel)
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    ui.label(crate::theme::bold(
-        ui.ctx(),
-        format!("{name} (Model) Import Settings"),
-    ));
-    crate::asset_guids::path_label(ui, rel);
-    ui.separator();
-    let abs = state.assets.absolute(rel);
-    let mut s = ModelImporter::load(&abs);
-    let changed = grid(ui, "model_import_grid", |ui| {
-        ui.label("Generate Lightmap UVs").on_hover_text(
-            "Unwrap a second UV set (non-overlapping charts with padding) for baked lighting",
-        );
-        let mut ch = ui.checkbox(&mut s.generate_lightmap_uvs, "").changed();
-        ui.end_row();
-        ui.label("Virtual Geometry").on_hover_text(
-            "Build the meshes into clusters with per-cluster level of detail (Misty Virtual \
-            Geometry, prototype): dense rocks, cliffs and props then draw about as many \
-            triangles as they cover pixels. Needs Virtual Geometry on in the Quality level. \
-            Opaque, non-skinned meshes; not for alpha-tested foliage. (GameObject ▸ Enable \
-            Virtual Geometry and Tools ▸ Rendering ▸ Convert Scene to Virtual Geometry set it \
-            for you.)",
-        );
-        ch |= ui.checkbox(&mut s.virtual_geometry, "").changed();
-        ui.end_row();
-        ch
-    });
-    if changed {
-        match s.save(&abs) {
-            Ok(()) => {
-                misty_engine::models::poll_changes();
-                state.console.info(format!("Re-imported {name}."));
-            }
-            Err(e) => state
-                .console
-                .warn(format!("Could not save import settings: {e}")),
-        }
-    }
-    if let Ok(model) = misty_engine::models::model(rel) {
-        ui.add_space(6.0);
-        ui.weak(format!(
-            "{} mesh{}, {} vertices",
-            model.meshes.len(),
-            if model.meshes.len() == 1 { "" } else { "es" },
-            model
-                .meshes
-                .iter()
-                .map(|m| m.data.vertices.len())
-                .sum::<usize>()
-        ));
-        if model.virtual_geometry {
-            ui.weak(virtual_geometry_summary(&model.virtual_builds.summary()));
-            if !model.virtual_builds.complete() {
-                // The build runs on a worker: show its result when it lands.
-                ui.ctx()
-                    .request_repaint_after(std::time::Duration::from_millis(250));
-            }
-        }
-    }
-}
-
 /// The import Inspector's line about a model's virtual geometry build.
-fn virtual_geometry_summary(s: &misty_engine::models::virtual_build::BuildSummary) -> String {
+pub(super) fn virtual_geometry_summary(
+    s: &misty_engine::models::virtual_build::BuildSummary,
+) -> String {
     if s.built < s.meshes {
         return format!(
             "Virtual Geometry: building clusters ({} of {} meshes done)…",

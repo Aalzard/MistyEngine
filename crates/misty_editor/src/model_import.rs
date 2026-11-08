@@ -10,7 +10,9 @@ use std::path::Path;
 
 use misty_engine::hecs::Entity;
 use misty_engine::models::{self, Model};
-use misty_engine::scene::{Animation, MeshFilter, MeshRef, MeshRenderer, Scene, Transform};
+use misty_engine::scene::{
+    Animation, LodGroup, LodLevel, MeshFilter, MeshRef, MeshRenderer, Scene, Transform,
+};
 use misty_engine::skinning;
 
 use crate::state::EditorState;
@@ -126,8 +128,11 @@ pub fn spawn_with_clips(
         t
     };
 
+    // Generated LODs need a root for the LOD Group.
+    let lods = !model.lod_heights.is_empty() && model.nodes.iter().any(|n| !n.lods.is_empty());
     if let [node] = model.nodes.as_slice()
         && node.meshes.len() <= 1
+        && !lods
     {
         let e = scene.spawn(&stem, parent);
         scene.set_transform(e, node_transform(node));
@@ -147,6 +152,8 @@ pub fn spawn_with_clips(
     let mut ids: Vec<Entity> = Vec::with_capacity(model.nodes.len());
     // Skinned meshes bind to bones made later: (object, node, mesh), added at the end.
     let mut skinned: Vec<(Entity, usize, usize)> = Vec::new();
+    // Objects of each LOD level (generated LODs).
+    let mut levels: Vec<Vec<Entity>> = vec![Vec::new(); model.lod_heights.len()];
     for (n, node) in model.nodes.iter().enumerate() {
         let p = node
             .parent
@@ -154,6 +161,24 @@ pub fn spawn_with_clips(
             .unwrap_or(root);
         let e = scene.spawn(&node.name, Some(p));
         scene.set_transform(e, node_transform(node));
+        if !node.lods.is_empty() && levels.len() == node.lods.len() + 1 {
+            // Each level is a child object ("Hull_LOD0", "Hull_LOD1", …) with its meshes.
+            let sets = std::iter::once(&node.meshes).chain(&node.lods);
+            for (level, meshes) in sets.enumerate() {
+                let object = scene.spawn(&format!("{}_LOD{level}", node.name), Some(e));
+                for (k, &i) in meshes.iter().enumerate() {
+                    let target = if k == 0 {
+                        object
+                    } else {
+                        scene.spawn(&model.meshes[i].name, Some(object))
+                    };
+                    add_mesh(scene, target, i);
+                }
+                levels[level].push(object);
+            }
+            ids.push(e);
+            continue;
+        }
         // Extra meshes of a node (multi-material glTF meshes) become children.
         let skin = skinning::is_skinned_node(model, n);
         for (k, &i) in node.meshes.iter().enumerate() {
@@ -173,6 +198,20 @@ pub fn spawn_with_clips(
     for (e, n, i) in skinned {
         let r = skinning::renderer_for(model, rel, n, i, &ids, material_of(i));
         scene.add(e, r);
+    }
+    if levels.iter().any(|l| !l.is_empty()) {
+        let group = LodGroup {
+            lods: levels
+                .into_iter()
+                .zip(&model.lod_heights)
+                .map(|(renderers, h)| LodLevel {
+                    screen_height: *h,
+                    renderers,
+                })
+                .collect(),
+            ..Default::default()
+        };
+        scene.add(root, group);
     }
     add_clips(scene, root, clips);
     root
@@ -252,5 +291,64 @@ f 4 6 5
         assert_eq!(scene.name(e), "Ramp");
         assert!(scene.children(e).is_empty());
         assert_eq!(mesh_of(&scene, e), Some(MeshRef::asset(&rel, 0)));
+    }
+
+    fn sample_model(name: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../SampleProject/Assets/Models")
+            .join(name)
+    }
+
+    /// An FBX instance is built like a glTF one: bones, a Skinned Mesh Renderer bound to them,
+    /// the blend shapes and an Animation playing the take.
+    #[test]
+    fn fbx_model_instantiates_like_a_gltf_one() {
+        let rel = sample_model("Tentacle.fbx")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let model = models::model(&rel).unwrap();
+        let mut scene = Scene::default();
+        let clips = vec!["Assets/Models/Tentacle_Bend.anim".to_owned()];
+        let e = spawn_with_clips(&mut scene, &rel, &model, &[], &clips, None);
+        assert_eq!(scene.name(e), "Tentacle");
+        let mesh = scene.find_by_name("TentacleMesh").expect("mesh object");
+        let r = scene
+            .world
+            .get::<&misty_engine::scene::SkinnedMeshRenderer>(mesh)
+            .expect("skinned renderer");
+        assert_eq!(r.bones.len(), 4);
+        assert!(r.bones.iter().all(Option::is_some));
+        assert_eq!(r.blend_shape_weights.len(), 2);
+        assert!(scene.world.get::<&Animation>(e).is_ok());
+    }
+
+    /// Generate LODs: each level is a child object, and a LOD Group on the root switches them.
+    #[test]
+    fn generated_lods_get_a_lod_group() {
+        let dir = std::env::temp_dir().join(format!("misty_model_lods_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Crate.fbx");
+        std::fs::copy(sample_model("Crate.fbx"), &file).unwrap();
+        std::fs::write(dir.join("Crate.fbx.meta"), r#"{ "generate_lods": true }"#).unwrap();
+        let rel = file.to_string_lossy().replace('\\', "/");
+        let model = models::model(&rel).unwrap();
+        assert_eq!(model.lod_heights.len(), 3);
+        let mut scene = Scene::default();
+        let e = spawn(&mut scene, &rel, &model, &[], None);
+        let group = scene
+            .world
+            .get::<&LodGroup>(e)
+            .expect("LOD Group on the root");
+        assert_eq!(group.lods.len(), 3);
+        for (i, level) in group.lods.iter().enumerate() {
+            assert_eq!(level.renderers.len(), 1);
+            let object = level.renderers[0];
+            assert_eq!(scene.name(object), format!("Crate_LOD{i}"));
+            assert!(mesh_of(&scene, object).is_some());
+            assert!((level.screen_height - model.lod_heights[i]).abs() < 1e-6);
+        }
+        drop(group);
+        std::fs::remove_dir_all(dir).ok();
     }
 }
