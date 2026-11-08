@@ -56,14 +56,49 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     else {
         return false;
     };
+    // Materials that can drive a decal: those using a Shader Graph (Decal target).
+    let mut graph_materials: Vec<String> = state
+        .assets
+        .materials
+        .iter()
+        .filter(|(_, m)| misty_engine::shader_graph::is_graph_path(&m.shader))
+        .map(|(p, _)| p.clone())
+        .collect();
+    graph_materials.sort();
     let textures = state.assets.textures.clone();
     let mut ch = vec3_row(ui, "Size", &mut d.size, 0.02);
     ch |= vec3_row(ui, "Pivot", &mut d.pivot, 0.02);
     ch |= grid(ui, "decal_grid", |ui| {
+        let mut ch = row(ui, "Material", |ui| {
+            let current = d.material.as_deref().map_or(
+                "None (texture maps)".to_owned(),
+                misty_engine::scene::clip_name,
+            );
+            let mut changed = false;
+            egui::ComboBox::from_id_salt("decal_material")
+                .selected_text(current)
+                .show_ui(ui, |ui| {
+                    changed |= ui
+                        .selectable_value(&mut d.material, None, "None (texture maps)")
+                        .changed();
+                    for m in &graph_materials {
+                        changed |= ui
+                            .selectable_value(
+                                &mut d.material,
+                                Some(m.clone()),
+                                misty_engine::scene::clip_name(m),
+                            )
+                            .changed();
+                    }
+                })
+                .response
+                .on_hover_text("A material using a Decal Shader Graph replaces the maps below");
+            changed
+        });
         let slot = |ui: &mut Ui, id: &str, v: &mut Option<String>| {
             super::slots::texture_slot(ui, id, v, &textures)
         };
-        let mut ch = row(ui, "Base Map", |ui| slot(ui, "decal_base", &mut d.base_map));
+        ch |= row(ui, "Base Map", |ui| slot(ui, "decal_base", &mut d.base_map));
         ch |= row(ui, "Normal Map", |ui| {
             slot(ui, "decal_normal", &mut d.normal_map)
         });

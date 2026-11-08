@@ -110,6 +110,15 @@ impl TabViewer for PanelViewer<'_> {
         }
     }
 
+    // The Shader Graph tab with unsaved changes asks first (Save, Don't Save, Cancel).
+    fn on_close(&mut self, tab: &mut Tab) -> egui_dock::widgets::tab_viewer::OnCloseResponse {
+        use egui_dock::widgets::tab_viewer::OnCloseResponse;
+        if *tab == Tab::ShaderGraph && !shader_graph::may_close_tab(self.state) {
+            return OnCloseResponse::Focus;
+        }
+        OnCloseResponse::Close
+    }
+
     // Scene/Game views draw edge to edge; the other panels manage their own scrolling.
     fn scroll_bars(&self, _tab: &Tab) -> [bool; 2] {
         [false, false]

@@ -84,6 +84,10 @@ pub enum AssetKind {
     LitShaderGraph,
     /// Shader Graph ▸ Unlit Shader Graph.
     UnlitShaderGraph,
+    /// Shader Graph ▸ Decal Shader Graph.
+    DecalShaderGraph,
+    /// Shader Graph ▸ Sub Graph.
+    ShaderSubGraph,
     /// Visual Effects ▸ Effect Graph.
     EffectGraph,
     /// Testing ▸ EditMode Test / PlayMode Test (in `Assets/Tests`).
@@ -133,6 +137,8 @@ impl AssetKind {
             AssetKind::Tile2D(k) => k.label(),
             AssetKind::LitShaderGraph => "Lit Shader Graph",
             AssetKind::UnlitShaderGraph => "Unlit Shader Graph",
+            AssetKind::DecalShaderGraph => "Decal Shader Graph",
+            AssetKind::ShaderSubGraph => "Sub Graph",
             AssetKind::EffectGraph => "Effect Graph",
             AssetKind::Test(misty_engine::testing::TestMode::EditMode) => "EditMode Test",
             AssetKind::Test(misty_engine::testing::TestMode::PlayMode) => "PlayMode Test",

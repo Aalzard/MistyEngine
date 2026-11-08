@@ -1,15 +1,23 @@
-//! Shader Graph window (double-click a `.shadergraph`): the node canvas, the Blackboard of
-//! exposed properties, Graph Settings (target), the main preview and Save Asset.
+//! Shader Graph window (double-click a `.shadergraph` or `.shadersubgraph`): the node canvas
+//! with groups and sticky notes, the Blackboard of exposed properties and keywords, Graph
+//! Settings (target, or a Sub Graph's outputs), Node Settings (Custom Function, Sub Graph), the
+//! main preview and Save Asset.
 //!
 //! The window edits a working copy of the graph with its own undo/redo; Save Asset writes it and
 //! reloads the shader for every material using it. While editing, the generated shader goes to a
 //! private preview path, so the main preview shows unsaved changes without touching the scene.
+//! Copy / Cut / Paste / Duplicate go through a clipboard that outlives the open graph (and the
+//! system clipboard as text), so nodes paste into another graph. Closing the tab, opening another
+//! graph or quitting with unsaved changes asks first.
 
 mod blackboard;
 pub(crate) mod canvas;
+mod node_settings;
 mod previews;
 mod search;
 
+#[cfg(test)]
+mod feature_tests;
 #[cfg(test)]
 mod tests;
 
@@ -19,7 +27,10 @@ use std::hash::{Hash, Hasher};
 use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Ui, UiBuilder, Vec2, pos2, vec2};
 use misty_engine::assets::Material;
 use misty_engine::shader_asset;
-use misty_engine::shader_graph::{GraphError, ShaderGraph, Surface, TargetMaterial, generate};
+use misty_engine::shader_graph::{
+    Clipboard, FileResolver, GraphError, NormalSpace, ShaderGraph, Slot, Surface, TargetMaterial,
+    ValueType,
+};
 
 use crate::layout::Tab;
 use crate::material_preview::PreviewShape;
@@ -35,6 +46,17 @@ const UNDO_LIMIT: usize = 100;
 struct Snapshot {
     label: String,
     graph: ShaderGraph,
+}
+
+/// What happens after the unsaved-changes prompt is answered (Save or Don't Save).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AfterPrompt {
+    /// Close the Shader Graph tab.
+    CloseTab,
+    /// Open this graph instead.
+    Open(String),
+    /// Quit the editor.
+    Quit,
 }
 
 /// Shader Graph window state (kept while the tab is closed).
@@ -74,6 +96,14 @@ pub struct ShaderGraphWindow {
     pub preview_shape: PreviewShape,
     pub preview_yaw: f32,
     pub preview_pitch: f32,
+    /// Copied nodes (kept while other graphs are opened).
+    pub clipboard: Option<Clipboard>,
+    /// Pastes since the last copy (each lands a little further along).
+    pastes: u32,
+    /// The unsaved-changes prompt is up.
+    pub prompt: Option<AfterPrompt>,
+    /// The prompt was answered for quitting: let the window close.
+    pub quit_confirmed: bool,
 }
 
 impl Default for ShaderGraphWindow {
@@ -104,6 +134,10 @@ impl Default for ShaderGraphWindow {
             preview_shape: PreviewShape::Sphere,
             preview_yaw: 0.0,
             preview_pitch: 0.0,
+            clipboard: None,
+            pastes: 0,
+            prompt: None,
+            quit_confirmed: false,
         }
     }
 }
@@ -134,17 +168,125 @@ impl ShaderGraphWindow {
             show_settings: self.show_settings,
             show_preview: self.show_preview,
             preview_shape: self.preview_shape,
+            clipboard: self.clipboard.take(),
+            quit_confirmed: self.quit_confirmed,
             ..Default::default()
         };
         self.path = Some(rel.to_owned());
         match loaded {
-            Ok(g) => {
+            Ok(mut g) => {
+                // Sub Graph nodes take their assets' current inputs and outputs.
+                g.refresh_sub_graphs(&FileResolver);
                 self.saved = g.clone();
                 self.graph = g;
                 self.frame_all_later();
             }
             Err(e) => self.load_error = Some(e),
         }
+    }
+
+    /// Forget unsaved edits (Don't Save): back to the file's graph.
+    pub fn revert(&mut self) {
+        self.graph = self.saved.clone();
+        self.undo.clear();
+        self.redo.clear();
+        self.selected.clear();
+        self.version += 1;
+    }
+
+    /// The editor is closing: true (and the prompt is up) when there are unsaved changes.
+    pub fn cancel_close(&mut self) -> bool {
+        if std::mem::take(&mut self.quit_confirmed) || !self.dirty() {
+            return false;
+        }
+        self.prompt = Some(AfterPrompt::Quit);
+        true
+    }
+
+    /// The selected nodes (never the master stack).
+    fn selection(&self) -> Vec<u32> {
+        self.selected
+            .iter()
+            .copied()
+            .filter(|&id| id != misty_engine::shader_graph::MASTER)
+            .collect()
+    }
+
+    /// Copy the selected nodes; returns the clipboard text (for the system clipboard).
+    pub fn copy_selected(&mut self) -> Option<String> {
+        let ids = self.selection();
+        if ids.is_empty() {
+            return None;
+        }
+        let clip = self.graph.copy(&ids);
+        let text = clip.to_text();
+        self.clipboard = Some(clip);
+        self.pastes = 0;
+        Some(text)
+    }
+
+    /// Copy, then delete the selected nodes.
+    pub fn cut_selected(&mut self) -> Option<String> {
+        let text = self.copy_selected()?;
+        let ids = self.selection();
+        self.edit("Cut", false, |g| {
+            for id in &ids {
+                g.remove_node(*id);
+            }
+        });
+        self.selected.clear();
+        self.pastes = 0;
+        Some(text)
+    }
+
+    /// Paste the clipboard (or `text` from the system clipboard when it holds nodes), moved by
+    /// `offset` graph units; the pasted nodes become the selection.
+    pub fn paste(&mut self, text: Option<&str>, at: Option<[f32; 2]>) -> bool {
+        let clip = text
+            .and_then(Clipboard::from_text)
+            .or_else(|| self.clipboard.clone());
+        let Some(clip) = clip.filter(|c| !c.is_empty()) else {
+            return false;
+        };
+        self.pastes += 1;
+        let offset = match at {
+            // At a point: the copied nodes' top-left corner goes there.
+            Some(p) => {
+                let min_x = clip
+                    .nodes
+                    .iter()
+                    .map(|n| n.position[0])
+                    .fold(f32::MAX, f32::min);
+                let min_y = clip
+                    .nodes
+                    .iter()
+                    .map(|n| n.position[1])
+                    .fold(f32::MAX, f32::min);
+                [p[0] - min_x, p[1] - min_y]
+            }
+            None => {
+                let d = 30.0 * self.pastes as f32;
+                [d, d]
+            }
+        };
+        let mut ids = Vec::new();
+        self.edit("Paste", false, |g| {
+            ids = g.paste(&clip, offset);
+            g.refresh_sub_graphs(&FileResolver);
+        });
+        self.selected = ids.into_iter().collect();
+        true
+    }
+
+    /// Group the selected nodes.
+    pub fn group_selected(&mut self) {
+        let ids = self.selection();
+        if ids.is_empty() {
+            return;
+        }
+        self.edit("Group Selection", false, |g| {
+            g.group("New Group", &ids);
+        });
     }
 
     pub fn zoom(&self) -> f32 {
@@ -247,41 +389,17 @@ impl ShaderGraphWindow {
         self.selected.clear();
     }
 
-    /// Duplicate the selected nodes (and the connections between them), offset a little.
+    /// Duplicate the selected nodes (and the connections between them), offset a little. The
+    /// clipboard is left alone.
     pub fn duplicate_selected(&mut self) {
-        let ids: Vec<u32> = self
-            .selected
-            .iter()
-            .copied()
-            .filter(|&id| id != misty_engine::shader_graph::MASTER)
-            .collect();
+        let ids = self.selection();
         if ids.is_empty() {
             return;
         }
+        let clip = self.graph.copy(&ids);
         let mut new_ids = Vec::new();
         self.edit("Duplicate Nodes", false, |g| {
-            let mut map = std::collections::HashMap::new();
-            for id in &ids {
-                let Some(n) = g.node(*id).cloned() else {
-                    continue;
-                };
-                let new = g.add_node(n.kind.clone(), [n.position[0] + 30.0, n.position[1] + 30.0]);
-                if let Some(m) = g.node_mut(new) {
-                    m.values = n.values.clone();
-                    m.hide_preview = n.hide_preview;
-                }
-                map.insert(*id, new);
-                new_ids.push(new);
-            }
-            let inner: Vec<_> = g
-                .connections
-                .iter()
-                .filter(|c| map.contains_key(&c.from) && map.contains_key(&c.to))
-                .cloned()
-                .collect();
-            for c in inner {
-                let _ = g.connect(map[&c.from], &c.output, map[&c.to], &c.input);
-            }
+            new_ids = g.paste(&clip, [30.0, 30.0]);
         });
         self.selected = new_ids.into_iter().collect();
     }
@@ -309,17 +427,21 @@ impl ShaderGraphWindow {
         if self.compiled_key != Some(key) {
             self.compiled_key = Some(key);
             self.error = misty_engine::shader_graph::compile(&self.graph).err();
-            if let (Some(rel), Ok(cg)) = (&self.path, generate(&self.graph)) {
-                shader_asset::set_source(&preview_path(rel), &cg.source);
+            if let Some(rel) = &self.path {
+                shader_asset::set_graph(&preview_path(rel), &self.graph);
             }
             self.previews.invalidate();
         }
         self.previews.update(ctx, &self.graph);
     }
 
-    /// The material drawn in the main preview: the graph's working copy with its defaults.
+    /// The material drawn in the main preview: the graph's working copy with its defaults
+    /// (none for a Decal graph: it draws on a Decal Projector).
     pub fn preview_material(&self) -> Option<Material> {
         let rel = self.path.as_ref()?;
+        if self.graph.target.material == TargetMaterial::Decal && !self.graph.is_sub_graph() {
+            return None;
+        }
         Some(Material {
             shader: preview_path(rel),
             properties: self.graph.default_values(),
@@ -340,16 +462,23 @@ pub fn preview_path(rel: &str) -> String {
     )
 }
 
-/// Open a graph in the window and bring the tab forward.
+/// Open a graph in the window and bring the tab forward (unsaved changes to the graph shown
+/// ask first).
 pub fn open(s: &mut EditorState, rel: &str) {
     if s.shader_graph.path.as_deref() != Some(rel) {
+        if s.shader_graph.dirty() {
+            s.shader_graph.prompt = Some(AfterPrompt::Open(rel.to_owned()));
+            s.push(crate::actions::Action::FocusTab(Tab::ShaderGraph));
+            return;
+        }
         let file = s.assets.absolute(rel);
         s.shader_graph.open(&file, rel);
     }
     s.push(crate::actions::Action::FocusTab(Tab::ShaderGraph));
 }
 
-fn save(s: &mut EditorState) {
+/// Save Asset; false when it failed (the Console says why).
+fn save(s: &mut EditorState) -> bool {
     let file = s
         .assets
         .absolute(s.shader_graph.path.as_deref().unwrap_or_default());
@@ -358,10 +487,82 @@ fn save(s: &mut EditorState) {
             let rel = s.shader_graph.path.clone().unwrap_or_default();
             s.console.info(format!("Saved {rel}"));
             s.refresh_assets();
+            // Graphs using a saved Sub Graph recompile from the file.
+            if misty_engine::shader_graph::is_sub_graph_path(&rel) {
+                misty_engine::shader_asset::poll_changes();
+            }
+            true
         }
-        Err(e) => s
-            .console
-            .warn(format!("Could not save the Shader Graph: {e}")),
+        Err(e) => {
+            s.console
+                .warn(format!("Could not save the Shader Graph: {e}"));
+            false
+        }
+    }
+}
+
+/// The window's tab is being closed: false (and the prompt is up) with unsaved changes.
+pub fn may_close_tab(s: &mut EditorState) -> bool {
+    if s.shader_graph.dirty() {
+        s.shader_graph.prompt = Some(AfterPrompt::CloseTab);
+        return false;
+    }
+    true
+}
+
+/// The unsaved-changes prompt (drawn even while the tab is hidden).
+pub fn show_windows(ctx: &egui::Context, s: &mut EditorState) {
+    let Some(after) = s.shader_graph.prompt.clone() else {
+        return;
+    };
+    let name = s
+        .shader_graph
+        .path
+        .as_deref()
+        .map(misty_engine::scene::clip_name)
+        .unwrap_or_default();
+    let mut answer = None;
+    egui::Modal::new(egui::Id::new("shader_graph_save_prompt")).show(ctx, |ui| {
+        ui.set_width(380.0);
+        ui.heading("Save changes?");
+        ui.add_space(6.0);
+        ui.label(format!(
+            "{name} has unsaved changes. Save them before {}?",
+            match &after {
+                AfterPrompt::CloseTab => "closing the Shader Graph window",
+                AfterPrompt::Open(_) => "opening the other graph",
+                AfterPrompt::Quit => "quitting",
+            }
+        ));
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            if ui.button("Save").clicked() {
+                answer = Some(true);
+            }
+            if ui.button("Don't Save").clicked() {
+                answer = Some(false);
+            }
+            if ui.button("Cancel").clicked() {
+                s.shader_graph.prompt = None;
+            }
+        });
+    });
+    let Some(save_it) = answer else { return };
+    s.shader_graph.prompt = None;
+    if save_it {
+        if !save(s) {
+            return;
+        }
+    } else {
+        s.shader_graph.revert();
+    }
+    match after {
+        AfterPrompt::CloseTab => s.push(crate::actions::Action::CloseTab(Tab::ShaderGraph)),
+        AfterPrompt::Open(rel) => open(s, &rel),
+        AfterPrompt::Quit => {
+            s.shader_graph.quit_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
     }
 }
 
@@ -409,10 +610,22 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
     if s.shader_graph.show_settings {
         let r = Rect::from_min_size(
             pos2(area.right() - right_w - pad, top),
-            vec2(right_w, 150.0),
+            vec2(right_w, settings_height(&s.shader_graph.graph)),
         );
         settings_panel(ui, s, r);
         top = r.bottom() + pad;
+    }
+    if let Some(id) = node_settings::selected(&s.shader_graph) {
+        let h = node_settings::height(&s.shader_graph.graph, id)
+            .min(area.bottom() - top - pad)
+            .max(60.0);
+        let x = if s.shader_graph.show_settings || s.shader_graph.show_preview {
+            area.right() - 2.0 * (right_w + pad)
+        } else {
+            area.right() - right_w - pad
+        };
+        let r = Rect::from_min_size(pos2(x, area.top() + pad), vec2(right_w, h));
+        node_settings::show(ui, s, r, id);
     }
     if s.shader_graph.show_preview {
         let h = (right_w + 30.0).min(area.bottom() - top - pad);
@@ -451,6 +664,29 @@ fn shortcuts(ui: &mut Ui, s: &mut EditorState) {
     }
     if pressed(ui, ctrl, Key::D) {
         s.shader_graph.duplicate_selected();
+    }
+    if pressed(ui, ctrl, Key::G) {
+        s.shader_graph.group_selected();
+    }
+    // Copy / Cut / Paste arrive as events (the system clipboard's text comes with Paste).
+    let events = ui.input(|i| i.events.clone());
+    for e in events {
+        match e {
+            egui::Event::Copy => {
+                if let Some(text) = s.shader_graph.copy_selected() {
+                    ui.ctx().copy_text(text);
+                }
+            }
+            egui::Event::Cut => {
+                if let Some(text) = s.shader_graph.cut_selected() {
+                    ui.ctx().copy_text(text);
+                }
+            }
+            egui::Event::Paste(text) => {
+                s.shader_graph.paste(Some(&text), None);
+            }
+            _ => {}
+        }
     }
     if pressed(ui, Modifiers::NONE, Key::Delete) || pressed(ui, Modifiers::NONE, Key::Backspace) {
         s.shader_graph.delete_selected();
@@ -532,6 +768,17 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                         ui.label(RichText::new("✔ Compiled").color(theme::TEXT_DIM));
                     }
                 }
+                let variants = s.shader_graph.graph.variant_count();
+                if variants > 1 {
+                    ui.label(
+                        RichText::new(format!(
+                            "{variants} variants (limit {})",
+                            misty_engine::shader_graph::MAX_VARIANTS
+                        ))
+                        .color(theme::TEXT_DIM),
+                    )
+                    .on_hover_text("Each combination of keyword values compiles its own shader");
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let w = &mut s.shader_graph;
                     ui.toggle_value(&mut w.show_preview, "Main Preview");
@@ -574,12 +821,28 @@ pub(crate) fn card(ui: &Ui, rect: Rect, title: &str) -> Rect {
     Rect::from_min_max(rect.min + vec2(8.0, 28.0), rect.max - vec2(8.0, 8.0))
 }
 
+/// Height of the Graph Settings card.
+fn settings_height(g: &ShaderGraph) -> f32 {
+    if g.is_sub_graph() {
+        return 70.0 + g.outputs.len() as f32 * 26.0;
+    }
+    match g.target.material {
+        TargetMaterial::Decal => 70.0,
+        TargetMaterial::Lit => 180.0,
+        TargetMaterial::Unlit => 150.0,
+    }
+}
+
 fn settings_panel(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
     ui.interact(
         rect,
         ui.id().with("sg_settings_bg"),
         Sense::click_and_drag(),
     );
+    if s.shader_graph.graph.is_sub_graph() {
+        sub_graph_outputs(ui, s, rect);
+        return;
+    }
     let inner = card(ui, rect, "Graph Settings");
     let mut t = s.shader_graph.graph.target;
     ui.scope_builder(UiBuilder::new().max_rect(inner), |ui| {
@@ -589,15 +852,18 @@ fn settings_panel(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
             .show(ui, |ui| {
                 ui.label("Material");
                 egui::ComboBox::from_id_salt("sg_material")
-                    .selected_text(match t.material {
-                        TargetMaterial::Lit => "Lit",
-                        TargetMaterial::Unlit => "Unlit",
-                    })
+                    .selected_text(t.material.label())
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut t.material, TargetMaterial::Lit, "Lit");
-                        ui.selectable_value(&mut t.material, TargetMaterial::Unlit, "Unlit");
-                    });
+                        for m in TargetMaterial::ALL {
+                            ui.selectable_value(&mut t.material, m, m.label());
+                        }
+                    })
+                    .response
+                    .on_hover_text("Decal: a material for Decal Projectors");
                 ui.end_row();
+                if t.material == TargetMaterial::Decal {
+                    return;
+                }
                 ui.label("Surface");
                 egui::ComboBox::from_id_salt("sg_surface")
                     .selected_text(match t.surface {
@@ -615,12 +881,87 @@ fn settings_panel(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                 ui.label("Two Sided");
                 ui.checkbox(&mut t.two_sided, "");
                 ui.end_row();
+                if t.material == TargetMaterial::Lit {
+                    ui.label("Normal Space");
+                    egui::ComboBox::from_id_salt("sg_normal_space")
+                        .selected_text(t.normal_space.label())
+                        .show_ui(ui, |ui| {
+                            for n in NormalSpace::ALL {
+                                ui.selectable_value(&mut t.normal_space, n, n.label());
+                            }
+                        })
+                        .response
+                        .on_hover_text("Space of the Fragment Normal input");
+                    ui.end_row();
+                }
             });
     });
     if t != s.shader_graph.graph.target {
         s.shader_graph
             .edit("Graph Settings", false, |g| g.target = t);
     }
+}
+
+/// A Sub Graph's settings: its outputs (name and type), added and removed here.
+fn sub_graph_outputs(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
+    let inner = card(ui, rect, "Sub Graph Outputs");
+    let busy = interacting(ui.ctx());
+    let mut outputs = s.shader_graph.graph.outputs.clone();
+    let mut remove = None;
+    ui.scope_builder(UiBuilder::new().max_rect(inner), |ui| {
+        for (i, o) in outputs.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut o.name).desired_width(80.0));
+                slot_type_combo(ui, ("sg_out_ty", i), &mut o.ty, false);
+                if ui.small_button("✕").on_hover_text("Remove").clicked() {
+                    remove = Some(i);
+                }
+            });
+        }
+        if ui.button("+ Output").clicked() {
+            let mut n = outputs.len() + 1;
+            while outputs.iter().any(|o| o.name == format!("Out{n}")) {
+                n += 1;
+            }
+            outputs.push(Slot::new(&format!("Out{n}"), ValueType::Vec4));
+        }
+    });
+    if let Some(i) = remove {
+        outputs.remove(i);
+    }
+    if outputs != s.shader_graph.graph.outputs {
+        s.shader_graph.edit("Edit Outputs", busy, |g| {
+            let old: Vec<String> = g.outputs.iter().map(|o| o.name.clone()).collect();
+            g.outputs = outputs;
+            // Connections into outputs that went away go too.
+            let names: Vec<String> = g.outputs.iter().map(|o| o.name.clone()).collect();
+            g.connections.retain(|c| {
+                c.to != misty_engine::shader_graph::MASTER
+                    || names.contains(&c.input)
+                    || !old.contains(&c.input)
+            });
+        });
+    }
+}
+
+/// A slot type dropdown (textures only for inputs).
+pub(crate) fn slot_type_combo(
+    ui: &mut Ui,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    ty: &mut ValueType,
+    textures: bool,
+) {
+    egui::ComboBox::from_id_salt(id)
+        .width(80.0)
+        .selected_text(ty.label())
+        .show_ui(ui, |ui| {
+            for t in ValueType::ALL {
+                if t == ValueType::Texture && !textures {
+                    continue;
+                }
+                ui.selectable_value(ty, t, t.label());
+            }
+        });
 }
 
 fn main_preview(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
@@ -632,6 +973,17 @@ fn main_preview(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
         let w = &mut s.shader_graph;
         w.preview_yaw -= d.x * 0.6;
         w.preview_pitch = (w.preview_pitch - d.y * 0.6).clamp(-89.0, 89.0);
+    }
+    if s.shader_graph.graph.target.material == TargetMaterial::Decal
+        && !s.shader_graph.graph.is_sub_graph()
+    {
+        ui.painter().text(
+            image.center(),
+            Align2::CENTER_CENTER,
+            "Decal graphs draw on a\nDecal Projector: assign a\nmaterial using this graph.",
+            FontId::proportional(12.0),
+            theme::TEXT_DIM,
+        );
     }
     if let Some(m) = s.shader_graph.preview_material() {
         let size = [
@@ -712,5 +1064,16 @@ pub fn new_graph(material: TargetMaterial) -> ShaderGraph {
         misty_engine::shader_graph::MASTER,
         master::BASE_COLOR,
     );
+    g
+}
+
+/// A new Sub Graph asset (Assets ▸ Create ▸ Shader Graph ▸ Sub Graph): one Color input
+/// passed to its output.
+pub fn new_sub_graph() -> ShaderGraph {
+    use misty_engine::shader_graph::{NodeKind, PropertyType};
+    let mut g = ShaderGraph::new_sub_graph();
+    let name = g.add_property("In", PropertyType::Color);
+    let n = g.add_node(NodeKind::Property { name }, [0.0, 0.0]);
+    let _ = g.connect(n, "Out", misty_engine::shader_graph::MASTER, "Out");
     g
 }

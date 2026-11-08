@@ -24,6 +24,8 @@ pub struct NodePreviews {
 impl NodePreviews {
     pub fn invalidate(&mut self) {
         self.dirty = true;
+        // A saved Sub Graph shows on the next refresh.
+        self.images.graphs.borrow_mut().clear();
     }
 
     pub fn texture(&self, node: u32) -> Option<egui::TextureId> {
@@ -117,6 +119,8 @@ type Decoded = Option<(usize, usize, Vec<[f32; 4]>)>;
 #[derive(Default)]
 struct ImageCache {
     images: RefCell<HashMap<(String, bool), Decoded>>,
+    /// Sub Graphs nodes use (read once per window session).
+    graphs: RefCell<HashMap<String, Option<std::sync::Arc<ShaderGraph>>>>,
 }
 
 fn decode(path: &str, linear: bool) -> Decoded {
@@ -141,6 +145,18 @@ fn decode(path: &str, linear: bool) -> Decoded {
 }
 
 impl Textures for ImageCache {
+    fn graph(&self, path: &str) -> Option<std::sync::Arc<ShaderGraph>> {
+        let mut cache = self.graphs.borrow_mut();
+        cache
+            .entry(path.to_owned())
+            .or_insert_with(|| {
+                ShaderGraph::load(&misty_engine::assets::absolute(path))
+                    .ok()
+                    .map(std::sync::Arc::new)
+            })
+            .clone()
+    }
+
     fn sample(&self, property: &GraphProperty, uv: [f32; 2]) -> [f32; 4] {
         let Some(path) = &property.texture else {
             return eval::fallback_color(property);

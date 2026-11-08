@@ -290,6 +290,8 @@ fn assets(l: &mut List) {
         AssetKind::UnlitShader,
         AssetKind::LitShaderGraph,
         AssetKind::UnlitShaderGraph,
+        AssetKind::DecalShaderGraph,
+        AssetKind::ShaderSubGraph,
         AssetKind::EffectGraph,
         AssetKind::MaterialFromShader,
         AssetKind::Test(misty_engine::testing::TestMode::EditMode),

@@ -145,15 +145,22 @@ fn create(s: &mut EditorState, kind: AssetKind) {
                 .map_err(|e| e.to_string())
         }
         AssetKind::MaterialFromShader => material_from_shader(s, &dir),
-        AssetKind::LitShaderGraph | AssetKind::UnlitShaderGraph => {
+        AssetKind::LitShaderGraph | AssetKind::UnlitShaderGraph | AssetKind::DecalShaderGraph => {
             use misty_engine::shader_graph::{EXTENSION, TargetMaterial};
-            let (stem, material) = if kind == AssetKind::LitShaderGraph {
-                ("New Lit Shader Graph", TargetMaterial::Lit)
-            } else {
-                ("New Unlit Shader Graph", TargetMaterial::Unlit)
+            let (stem, material) = match kind {
+                AssetKind::LitShaderGraph => ("New Lit Shader Graph", TargetMaterial::Lit),
+                AssetKind::UnlitShaderGraph => ("New Unlit Shader Graph", TargetMaterial::Unlit),
+                _ => ("New Decal Shader Graph", TargetMaterial::Decal),
             };
             let path = asset_ops::unique_path(&dir, stem, EXTENSION);
             crate::panels::shader_graph::new_graph(material)
+                .save(&path)
+                .map(|_| path)
+        }
+        AssetKind::ShaderSubGraph => {
+            let ext = misty_engine::shader_graph::SUB_EXTENSION;
+            let path = asset_ops::unique_path(&dir, "New Sub Graph", ext);
+            crate::panels::shader_graph::new_sub_graph()
                 .save(&path)
                 .map(|_| path)
         }

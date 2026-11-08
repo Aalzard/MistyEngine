@@ -1,9 +1,10 @@
 //! Create Node: a search popup (Space, right-click ▸ Create Node, or a connection dropped on empty
 //! canvas). Type to filter; arrows + Enter or a click creates the node. Opened from a dragged
-//! port it only lists nodes that fit, and connects the new node to that port.
+//! port it only lists nodes that fit, and connects the new node to that port. The project's Sub
+//! Graphs and the Blackboard's properties and keywords are listed too.
 
 use egui::{FontId, Key, Pos2, RichText, Ui};
-use misty_engine::shader_graph::{NodeKind, ValueType};
+use misty_engine::shader_graph::{FileResolver, Node, NodeKind, ShaderGraph, ValueType};
 
 use super::canvas::PortRef;
 use crate::state::EditorState;
@@ -17,6 +18,8 @@ pub struct Search {
     pub from: Option<PortRef>,
     pub highlighted: usize,
     focus: bool,
+    /// Sub Graph nodes of the project's `.shadersubgraph` assets (interfaces read).
+    pub sub_graphs: Vec<NodeKind>,
 }
 
 impl Search {
@@ -28,8 +31,47 @@ impl Search {
             from,
             highlighted: 0,
             focus: true,
+            sub_graphs: Vec::new(),
         }
     }
+}
+
+/// Sub Graph nodes for every `.shadersubgraph` under the project's Assets (`current`, the graph
+/// being edited, left out: a Sub Graph cannot use itself).
+pub fn project_sub_graphs(root: &std::path::Path, current: Option<&str>) -> Vec<NodeKind> {
+    let mut paths = Vec::new();
+    let mut stack = vec![root.join("Assets")];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Ok(rel) = p.strip_prefix(root) {
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                if misty_engine::shader_graph::is_sub_graph_path(&rel)
+                    && current != Some(rel.as_str())
+                {
+                    paths.push((rel, p));
+                }
+            }
+        }
+    }
+    paths.sort();
+    paths
+        .into_iter()
+        .filter_map(|(rel, file)| {
+            let g = ShaderGraph::load(&file).ok()?;
+            let (inputs, outputs) = g.sub_graph_interface();
+            Some(NodeKind::SubGraph {
+                path: rel,
+                inputs,
+                outputs,
+            })
+        })
+        .collect()
 }
 
 /// One entry of the list.
@@ -40,10 +82,12 @@ pub struct Entry {
     pub category: &'static str,
 }
 
-/// Every creatable node: the catalog, then one Property node per Blackboard property.
-pub fn entries(g: &misty_engine::shader_graph::ShaderGraph) -> Vec<Entry> {
+/// Every creatable node: the catalog, the Sub Graphs, then one Property node per Blackboard
+/// property and one Keyword node per keyword.
+pub fn entries(g: &ShaderGraph, sub_graphs: &[NodeKind]) -> Vec<Entry> {
     let mut out: Vec<Entry> = NodeKind::catalog()
         .into_iter()
+        .chain(sub_graphs.iter().cloned())
         .map(|k| Entry {
             title: k.title(),
             category: k.category(),
@@ -57,6 +101,15 @@ pub fn entries(g: &misty_engine::shader_graph::ShaderGraph) -> Vec<Entry> {
             },
             title: format!("Property: {}", p.display),
             category: "Properties",
+        });
+    }
+    for k in &g.keywords {
+        out.push(Entry {
+            kind: NodeKind::Keyword {
+                name: k.name.clone(),
+            },
+            title: format!("Keyword: {}", k.display),
+            category: "Keywords",
         });
     }
     out
@@ -77,21 +130,27 @@ fn matches(e: &Entry, query: &str) -> bool {
 }
 
 /// The port of a new `kind` node that a dragged port connects to.
-pub fn fitting_port(
-    g: &misty_engine::shader_graph::ShaderGraph,
-    kind: &NodeKind,
-    from: &PortRef,
-) -> Option<&'static str> {
+pub fn fitting_port(g: &ShaderGraph, kind: &NodeKind, from: &PortRef) -> Option<&'static str> {
     let types = g.types();
     if from.output {
         let ty = types.output(from.node, &from.port)?;
-        kind.inputs()
+        let probe = Node {
+            id: u32::MAX,
+            kind: kind.clone(),
+            position: [0.0; 2],
+            values: Default::default(),
+            hide_preview: false,
+        };
+        g.inputs(&probe)
             .into_iter()
             .find(|p| ty.converts_to(p.ty.resolve(ValueType::Float)))
             .map(|p| p.name)
     } else {
         let node = g.node(from.node)?;
-        let want = node.input(&from.port)?.ty.resolve(types.dynamic(from.node));
+        let want = g
+            .input_port(node, &from.port)?
+            .ty
+            .resolve(types.dynamic(from.node));
         let prop = match kind {
             NodeKind::Property { name } => g.property(name).map(|p| p.ty.value_type()),
             _ => None,
@@ -109,7 +168,7 @@ pub fn filtered(s: &EditorState) -> Vec<Entry> {
         return Vec::new();
     };
     let g = &s.shader_graph.graph;
-    entries(g)
+    entries(g, &search.sub_graphs)
         .into_iter()
         .filter(|e| matches(e, &search.query))
         .filter(|e| {
@@ -136,6 +195,8 @@ pub fn create(s: &mut EditorState, e: &Entry) {
     let mut id = 0;
     w.edit("Create Node", false, |g| {
         id = g.add_node(kind, at);
+        g.refresh_sub_graphs(&FileResolver);
+
         if let (Some(f), Some(p)) = (&search.from, port) {
             let _ = if f.output {
                 g.connect(f.node, &f.port, id, p)

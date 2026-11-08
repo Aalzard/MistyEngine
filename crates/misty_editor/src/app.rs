@@ -677,6 +677,9 @@ impl EditorApp {
         let closing = ctx.input(|i| i.viewport().close_requested());
         if closing && s.code_editor.cancel_close() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        } else if closing && s.shader_graph.cancel_close() {
+            // The Shader Graph window asks about its unsaved graph first.
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         } else if closing && !s.files.quit_confirmed && crate::prefab_mode::active(s) {
             // Leave Prefab Mode first (Auto Save saves, otherwise its bar asks), then close.
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -921,6 +924,7 @@ impl eframe::App for EditorApp {
         crate::panels::preset_window(&ctx, &mut self.state);
         crate::branding::about::show(&ctx, &mut self.state.about_open);
         crate::panels::code_editor::show_windows(&ctx, &mut self.state);
+        crate::panels::shader_graph::show_windows(&ctx, &mut self.state);
         crate::editor_scripts::progress_ui(&ctx, &self.state);
         // Last, so the tutorial card and highlight sit on top of everything drawn above.
         crate::tutorials::frame(&ctx, &mut self.state);
