@@ -523,6 +523,9 @@ impl Renderer {
             return;
         }
         self.sharp_shaft_passes(device, encoder, target);
+        if self.volumetrics.sharp_now {
+            self.mark(encoder, "Sun shafts (sharp)");
+        }
         let v = &self.volumetrics;
         if !v.shafts_now {
             return;

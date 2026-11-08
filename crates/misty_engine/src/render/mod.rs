@@ -2500,6 +2500,10 @@ impl Renderer {
             pass.set_viewport(0.0, 0.0, side, side, 0.0, 1.0);
             stats.set_pass += 1;
             (self.terrains).draw_grass_near_shadow(&mut pass, frame.terrains, i, stats);
+            drop(pass);
+            if i == 0 {
+                self.mark(encoder, "Grass near shadow map (inner)");
+            }
         }
     }
 
@@ -3048,13 +3052,12 @@ impl Renderer {
     }
 
     /// The grass visibility raster (after the main pass's first part, which kept its depth)
-    /// and the resolve that shades each visible blade once.
-    /// The grass visibility raster and resolve. `depth`: the main pass left the grass depth
-    /// out, so the standing blades write it here (in the grass depth pass's order and test,
-    /// the last one at the nearest depth keeping a sample, as before), then the flat fans
-    /// test against it without writing. The only difference to the lit grass's order: a fan
-    /// now always shows over a standing blade behind it (before, a blade drawn after the fan
-    /// covered it).
+    /// and the resolve that shades each visible blade once. `depth`: the main pass left the
+    /// grass depth out, so the standing blades write it here (in the grass depth pass's order
+    /// and test, the last one at the nearest depth keeping a sample, as before), then the flat
+    /// fans test against it without writing. The only difference to the lit grass's order: a
+    /// fan now always shows over a standing blade behind it (before, a blade drawn after the
+    /// fan covered it).
     fn grass_vis_passes(
         &self,
         device: &wgpu::Device,
