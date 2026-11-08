@@ -78,3 +78,19 @@ than their roots.
   graph rather than a node; graph decals draw only in views where decals run (the screen-space
   prepass), like texture decals.
 - Skinned meshes and FBX / OBJ imports have no vertex colours yet (white).
+
+## Screenshots
+
+`docs/screenshots/r20/`: `shadergraph_dissolve_keywords_subgraph.png` (Dissolve Glow: Keyword
+nodes, the Dissolve Edge Sub Graph node, groups, a sticky note, "4 variants"),
+`shadergraph_triplanar_rock_custom_function.png`, `shadergraph_wind_sway_vertex_color.png`,
+`shadergraph_puddle_decal_target.png`, `shadergraph_sub_graph_outputs.png` (a Sub Graph with its
+outputs card) and `shadergraph_examples_scene.png` (ShaderGraphExamples in the Game view).
+
+## Checks
+
+`cargo fmt`, `cargo clippy --workspace --all-targets --release` (0 warnings), `cargo test
+--workspace --release --no-fail-fast` (three failures under load, all passing alone:
+`opening_a_scene_lifts_a_view_left_under_the_terrain` (known flaky),
+`real_udp_sockets_on_localhost`, and the examples render test, since fixed to load its model by
+absolute path), golden shots unchanged (all 20 ok).
