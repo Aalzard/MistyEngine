@@ -286,8 +286,10 @@ mod tests {
                 assert!(pos.x <= 32.5, "nothing on the wall: {pos}");
                 assert!((0.8..=1.3).contains(&scale));
                 assert!((pos.y - d.sample_height(pos.x, pos.z)).abs() < 1e-4);
-                // Flat ground: aligned objects stand upright.
-                assert!((rot * Vec3::Y).dot(Vec3::Y) > 0.999);
+                // Flat ground (clear of the wall's foot): aligned objects stand upright.
+                if pos.x < 30.0 {
+                    assert!((rot * Vec3::Y).dot(Vec3::Y) > 0.999, "{pos}");
+                }
                 have.push(Vec2::new(pos.x, pos.z));
             }
         }
