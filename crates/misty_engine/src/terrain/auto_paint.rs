@@ -172,6 +172,14 @@ fn texel_weights(
 /// Run `f(row index, row)` over the rows of `out` on all cores.
 pub(crate) fn par_rows<T: Send>(out: &mut [T], row_len: usize, f: impl Fn(usize, &mut [T]) + Sync) {
     let rows = out.len() / row_len.max(1);
+    // Small grids (streamed terrain tiles) are quicker in place than starting threads, which
+    // on a busy machine can take tens of milliseconds to get a core.
+    if out.len() <= 32 * 1024 {
+        for (r, row) in out.chunks_mut(row_len.max(1)).enumerate() {
+            f(r, row);
+        }
+        return;
+    }
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
