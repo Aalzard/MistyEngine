@@ -53,6 +53,8 @@ pub struct LoadedFont {
     font: FontArc,
     /// Font units → pixels at 1 px em size.
     units: f32,
+    /// Its font asset settings (atlas mode, sampling size, fallbacks).
+    pub settings: super::font_asset::FontImporter,
 }
 
 impl LoadedFont {
@@ -69,6 +71,7 @@ impl LoadedFont {
             index,
             font,
             units,
+            settings: Default::default(),
         })
     }
 
@@ -204,9 +207,11 @@ pub fn load(path: &str) -> Result<FontId, String> {
     let result = crate::vfs::read(&abs)
         .map_err(|e| format!("{path}: {e}"))
         .and_then(|data| {
+            let settings = super::font_asset::FontImporter::load(&abs);
             let mut lib = lock();
             let id = lib.fonts.len() as FontId;
-            let f = LoadedFont::new(id, path.to_owned(), data, 0)?;
+            let mut f = LoadedFont::new(id, path.to_owned(), data, 0)?;
+            f.settings = settings;
             lib.fonts.push(Arc::new(f));
             Ok(id)
         });
@@ -214,6 +219,12 @@ pub fn load(path: &str) -> Result<FontId, String> {
         .by_path
         .insert(path.to_owned(), result.as_ref().ok().copied());
     result
+}
+
+/// Forget a loaded font so its next use reads the file and its settings again (the editor
+/// applied new import settings). Glyphs already made keep the old id and are not reused.
+pub fn reload(path: &str) {
+    lock().by_path.remove(path);
 }
 
 /// System fonts with wide script coverage (Arabic, Hebrew, Greek, Cyrillic, …), tried in order.
@@ -284,11 +295,22 @@ pub struct FontSet {
 }
 
 impl FontSet {
-    /// Fonts for `primary` (a project font path; None = the built-in font).
+    /// Fonts for `primary` (a project font; None = the built-in font): it, its font asset's
+    /// fallback fonts, then the built-in font.
     pub fn new(primary: Option<FontId>) -> Self {
-        let mut fonts = Vec::new();
+        let mut fonts: Vec<Arc<LoadedFont>> = Vec::new();
         if let Some(p) = primary.filter(|p| *p != BUILTIN) {
-            fonts.push(font(p));
+            let main = font(p);
+            for path in &main.settings.fallback_fonts {
+                if let Ok(id) = load(path)
+                    && id != p
+                    && id != BUILTIN
+                    && !fonts.iter().any(|f| f.id == id)
+                {
+                    fonts.push(font(id));
+                }
+            }
+            fonts.insert(0, main);
         }
         fonts.push(font(BUILTIN));
         Self {

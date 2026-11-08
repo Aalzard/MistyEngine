@@ -1,6 +1,8 @@
-//! Signed distance field glyph atlas: each glyph is rendered once at [`BASE`] pixels per em
-//! (supersampled, then an exact Euclidean distance transform) and stored as distances, so one
-//! atlas entry draws crisply at any size and gives outlines, soft shadows and bold for free.
+//! Glyph atlas of the rich text path. By default each glyph is rendered once at [`BASE`] pixels
+//! per em (supersampled, then an exact Euclidean distance transform) and stored as distances, so
+//! one atlas entry draws crisply at any size and gives outlines, soft shadows and bold for free.
+//! A font asset can choose its own sampling size and padding, or smooth coverage instead of a
+//! distance field (see `font_asset`).
 
 use std::collections::HashMap;
 
@@ -15,7 +17,7 @@ pub const SPREAD: f32 = 8.0;
 /// Supersampling of the coverage the distances are measured on.
 const SS: u32 = 4;
 
-/// Where a glyph sits in the atlas; offsets and sizes are pixels at [`BASE`].
+/// Where a glyph sits in the atlas; offsets and sizes are pixels at `base`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SdfGlyph {
     pub uv_min: Vec2,
@@ -23,6 +25,25 @@ pub struct SdfGlyph {
     /// Top-left of the (padded) bitmap relative to the pen position on the baseline.
     pub offset: Vec2,
     pub size: Vec2,
+    /// Em size the glyph was made at.
+    pub base: f32,
+    /// Distance field spread (atlas pixels).
+    pub spread: f32,
+    /// Coverage instead of distances.
+    pub raster: bool,
+}
+
+impl SdfGlyph {
+    /// Edge threshold after growing by `grow` screen pixels at em size `px` ([`threshold`] for
+    /// this glyph's sampling).
+    pub fn threshold(&self, grow: f32, px: f32) -> f32 {
+        threshold_at(grow, px, self.base, self.spread)
+    }
+
+    /// Extra edge width for a blur of `px_blur` screen pixels ([`softness`]).
+    pub fn softness(&self, px_blur: f32, px: f32) -> f32 {
+        softness_at(px_blur, px, self.base, self.spread)
+    }
 }
 
 /// "Far away" for the distance transform (larger than any squared distance in a glyph).
@@ -93,8 +114,51 @@ fn edt_2d(grid: &mut [f64], w: usize, h: usize) {
 /// The distance field of one glyph: (width, height, offset at BASE, 0–255 values where 128 is
 /// the outline and larger is inside). `None` for blank glyphs.
 pub fn glyph_field(font: &LoadedFont, glyph: u16) -> Option<(u32, u32, Vec2, Vec<u8>)> {
-    let (cw, ch, off, cov) = font.coverage(glyph, BASE * SS as f32)?;
-    let pad = (SPREAD as u32 + 1) * SS;
+    glyph_field_at(font, glyph, BASE, SPREAD)
+}
+
+/// Smooth coverage of one glyph at em size `base`: rendered 4×4 larger and box-filtered down,
+/// with a one-pixel empty border. Same layout as [`glyph_field`] (255 = fully inside).
+pub fn glyph_coverage(
+    font: &LoadedFont,
+    glyph: u16,
+    base: f32,
+) -> Option<(u32, u32, Vec2, Vec<u8>)> {
+    let (cw, ch, off, cov) = font.coverage(glyph, base * SS as f32)?;
+    let ss = SS as usize;
+    let (cw, ch) = (cw as usize, ch as usize);
+    let (w, h) = (cw + 2 * ss, ch + 2 * ss);
+    let (lw, lh) = (w.div_ceil(ss), h.div_ceil(ss));
+    let mut data = vec![0u8; lw * lh];
+    for ly in 0..lh {
+        for lx in 0..lw {
+            let mut sum = 0.0f32;
+            for sy in 0..ss {
+                for sx in 0..ss {
+                    let (x, y) = (lx * ss + sx, ly * ss + sy);
+                    if x < ss || y < ss || x - ss >= cw || y - ss >= ch {
+                        continue;
+                    }
+                    sum += cov[(y - ss) * cw + (x - ss)];
+                }
+            }
+            let v = sum / (ss * ss) as f32;
+            data[ly * lw + lx] = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        }
+    }
+    let offset = (Vec2::from(off) - Vec2::splat(ss as f32)) / SS as f32;
+    Some((lw as u32, lh as u32, offset, data))
+}
+
+/// [`glyph_field`] at em size `base` with a field reaching `spread` pixels from the outline.
+pub fn glyph_field_at(
+    font: &LoadedFont,
+    glyph: u16,
+    base: f32,
+    spread: f32,
+) -> Option<(u32, u32, Vec2, Vec<u8>)> {
+    let (cw, ch, off, cov) = font.coverage(glyph, base * SS as f32)?;
+    let pad = (spread as u32 + 1) * SS;
     let (w, h) = ((cw + 2 * pad) as usize, (ch + 2 * pad) as usize);
     let inside = |x: usize, y: usize| -> bool {
         let (cx, cy) = (x as i64 - pad as i64, y as i64 - pad as i64);
@@ -139,7 +203,7 @@ pub fn glyph_field(font: &LoadedFont, glyph: u16) -> Option<(u32, u32, Vec2, Vec
                 }
             }
             let d = (sum / n.max(1.0) / SS as f64) as f32;
-            let v = (0.5 - d / (2.0 * SPREAD)).clamp(0.0, 1.0);
+            let v = (0.5 - d / (2.0 * spread)).clamp(0.0, 1.0);
             data[ly * lw + lx] = (v * 255.0).round() as u8;
         }
     }
@@ -189,14 +253,29 @@ impl SdfAtlas {
         self.entries.is_empty()
     }
 
-    /// The entry for a glyph, generating its field on first use (`Ok(None)` = blank glyph).
+    /// The entry for a glyph, generating it on first use with its font asset's settings
+    /// (`Ok(None)` = blank glyph).
     pub fn glyph(&mut self, font: &LoadedFont, glyph: u16) -> Result<Option<SdfGlyph>, SdfFull> {
         if let Some(e) = self.entries.get(&(font.id, glyph)) {
             return Ok(*e);
         }
-        let entry = match glyph_field(font, glyph) {
+        let s = &font.settings;
+        let raster = s.render_mode == super::font_asset::FontRenderMode::Raster;
+        let (base, spread) = (s.sampling_size, s.padding);
+        let made = if raster {
+            glyph_coverage(font, glyph, base)
+        } else if base == BASE && spread == SPREAD {
+            glyph_field(font, glyph)
+        } else {
+            glyph_field_at(font, glyph, base, spread)
+        };
+        let entry = match made {
             None => None,
-            Some((w, h, offset, data)) => Some(self.insert(w, h, offset, &data)?),
+            Some((w, h, offset, data)) => {
+                let mut g = self.insert(w, h, offset, &data)?;
+                (g.base, g.spread, g.raster) = (base, spread, raster);
+                Some(g)
+            }
         };
         self.entries.insert((font.id, glyph), entry);
         Ok(entry)
@@ -229,6 +308,9 @@ impl SdfAtlas {
             uv_max: Vec2::new((x0 + w) as f32 / s, (y0 + h) as f32 / s),
             offset,
             size: Vec2::new(w as f32, h as f32),
+            base: BASE,
+            spread: SPREAD,
+            raster: false,
         })
     }
 }
@@ -236,11 +318,21 @@ impl SdfAtlas {
 /// Distance threshold (0–1 value of the drawn edge) after growing the glyph by `grow` pixels
 /// on screen at em size `px` (negative shrinks).
 pub fn threshold(grow: f32, px: f32) -> f32 {
-    let base_px = grow * BASE / px.max(0.01);
-    (0.5 - base_px / (2.0 * SPREAD)).clamp(0.02, 0.98)
+    threshold_at(grow, px, BASE, SPREAD)
 }
 
 /// Extra edge width (0–1 units) for a blur of `px_blur` screen pixels at em size `px`.
 pub fn softness(px_blur: f32, px: f32) -> f32 {
-    (px_blur * BASE / px.max(0.01) / (2.0 * SPREAD)).clamp(0.0, 0.5)
+    softness_at(px_blur, px, BASE, SPREAD)
+}
+
+/// [`threshold`] for glyphs made at em size `base` with field `spread`.
+pub fn threshold_at(grow: f32, px: f32, base: f32, spread: f32) -> f32 {
+    let base_px = grow * base / px.max(0.01);
+    (0.5 - base_px / (2.0 * spread)).clamp(0.02, 0.98)
+}
+
+/// [`softness`] for glyphs made at em size `base` with field `spread`.
+pub fn softness_at(px_blur: f32, px: f32, base: f32, spread: f32) -> f32 {
+    (px_blur * base / px.max(0.01) / (2.0 * spread)).clamp(0.0, 0.5)
 }
