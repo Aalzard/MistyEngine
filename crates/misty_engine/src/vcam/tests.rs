@@ -18,6 +18,7 @@ fn step(rig: &mut CameraRig, s: &mut Scene, physics: Option<&Physics>, dt: f32) 
         aspect: 16.0 / 9.0,
         physics,
         axis: &no_axis,
+        action: &solve::no_action,
     };
     rig.update(s, BrainUpdate::LateUpdate, &cx);
 }
@@ -61,6 +62,7 @@ fn highest_priority_wins_and_ties_go_to_the_latest_enabled() {
     let (mut s, brain) = brain_scene(BlendDefinition {
         style: BlendStyle::Cut,
         duration: 0.0,
+        ..Default::default()
     });
     let low = fixed_vcam(&mut s, "Low", 5, Vec3::X);
     let a = fixed_vcam(&mut s, "A", 20, Vec3::Y);
@@ -92,6 +94,7 @@ fn blend_weights_follow_the_curve_over_time() {
     let (mut s, brain) = brain_scene(BlendDefinition {
         style: BlendStyle::Linear,
         duration: 1.0,
+        ..Default::default()
     });
     let a = fixed_vcam(&mut s, "A", 20, Vec3::ZERO);
     let b = fixed_vcam(&mut s, "B", 10, Vec3::new(10.0, 0.0, 0.0));
@@ -134,6 +137,7 @@ fn custom_blends_match_pairs_before_any() {
                 blend: BlendDefinition {
                     style: BlendStyle::Cut,
                     duration: 0.0,
+                    ..Default::default()
                 },
             },
             CustomBlend {
@@ -142,6 +146,7 @@ fn custom_blends_match_pairs_before_any() {
                 blend: BlendDefinition {
                     style: BlendStyle::Linear,
                     duration: 3.0,
+                    ..Default::default()
                 },
             },
         ],
@@ -157,6 +162,7 @@ fn a_blend_interrupted_half_way_starts_from_where_the_camera_was() {
     let (mut s, brain) = brain_scene(BlendDefinition {
         style: BlendStyle::Linear,
         duration: 1.0,
+        ..Default::default()
     });
     let a = fixed_vcam(&mut s, "A", 20, Vec3::ZERO);
     let b = fixed_vcam(&mut s, "B", 10, Vec3::new(10.0, 0.0, 0.0));
@@ -442,7 +448,10 @@ fn orbital_turns_with_its_input_axis() {
     let mut s = Scene::new("t");
     let target = s.spawn("Hero", None);
     let vcam = s.spawn("Free Look", None);
-    let mut vc = VirtualCamera::free_look();
+    let mut vc = VirtualCamera {
+        body: BodyKind::Orbital,
+        ..Default::default()
+    };
     vc.follow = Some(target);
     vc.look_at = Some(target);
     vc.orbital.y_axis.value = 0.0;
@@ -457,6 +466,7 @@ fn orbital_turns_with_its_input_axis() {
         aspect: 1.0,
         physics: None,
         axis: &push,
+        action: &solve::no_action,
     };
     rig.update(&mut s, BrainUpdate::LateUpdate, &cx);
     let v = s.world.get::<&VirtualCamera>(vcam).unwrap().orbital.clone();
@@ -483,6 +493,7 @@ fn virtual_cameras_round_trip_through_scene_files() {
                 blend: BlendDefinition {
                     style: BlendStyle::Linear,
                     duration: 0.7,
+                    ..Default::default()
                 },
             }],
             ..Default::default()

@@ -287,6 +287,7 @@ impl World {
         let navigation = crate::navigation::NavRuntime::load(&scene, &project_root);
         let project_root_for_video = project_root.clone();
         let project_root_for_input = project_root.clone();
+        let project_root_for_cameras = project_root.clone();
         let save = crate::save::SaveRuntime::begin(&scene);
         let (localization, table_warnings) =
             crate::localization::Localizer::load(&project_root, &settings.localization);
@@ -325,7 +326,7 @@ impl World {
                 settings.input.active_handling,
             ),
             tags_layers: settings.tags_and_layers.clone(),
-            cameras: Default::default(),
+            cameras: crate::vcam::CameraRig::new(project_root_for_cameras),
             video: crate::video::VideoPlayback::new(project_root_for_video),
             video_events: Vec::new(),
             cursor: CursorState::default(),
@@ -816,9 +817,15 @@ impl ScriptHost {
                 timeline,
                 scene,
                 audio,
+                physics,
+                cameras,
                 ..
             } = w;
-            timeline.update(scene, audio, dt, unscaled)
+            timeline.gravity = physics.gravity();
+            let events = timeline.update(scene, audio, dt, unscaled);
+            // Camera tracks take their brains over for this frame's camera pass.
+            cameras.set_overrides(timeline.camera_overrides());
+            events
         });
         self.director_events(events);
         let logs = self.with_world(|w| {
@@ -882,28 +889,58 @@ impl ScriptHost {
         for ev in events {
             match ev {
                 DirectorEvent::Signal {
+                    director,
                     target,
                     method,
                     parameter,
                 } => {
                     let arg = parameter
-                        .and_then(|p| self.lua.create_string(&p).ok())
+                        .as_ref()
+                        .and_then(|p| self.lua.create_string(p).ok())
                         .map(Value::String);
-                    self.send_message_with(target, &method, arg, "Signal");
+                    self.send_message_with(target, &method, arg.clone(), "Signal");
+                    let d = self
+                        .lua
+                        .create_userdata(timeline_api::LDirector(director))
+                        .map(Value::UserData)
+                        .unwrap_or(Value::Nil);
+                    let m = self
+                        .lua
+                        .create_string(&method)
+                        .map(Value::String)
+                        .unwrap_or(Value::Nil);
+                    for f in ui_widgets_api::listeners(&self.lua, director, "signalReceived") {
+                        let p = arg.clone().unwrap_or(Value::Nil);
+                        if let Err(err) = f.call::<()>((d.clone(), m.clone(), p)) {
+                            self.log(LogKind::Error, format!("signalReceived listener: {err}"));
+                        }
+                        self.flush_spawned();
+                    }
                 }
-                DirectorEvent::Stopped(e) => {
+                DirectorEvent::Impulse(source) => {
+                    self.with_world(|w| {
+                        let World { cameras, scene, .. } = w;
+                        cameras.impulses.generate(scene, source, None, 1.0);
+                    });
+                }
+                DirectorEvent::Stopped(e) | DirectorEvent::Played(e) => {
+                    let name = if matches!(ev, DirectorEvent::Stopped(_)) {
+                        "stopped"
+                    } else {
+                        "played"
+                    };
                     let arg = self
                         .lua
                         .create_userdata(timeline_api::LDirector(e))
                         .map(Value::UserData)
                         .ok();
-                    for f in ui_widgets_api::listeners(&self.lua, e, "stopped") {
+                    for f in ui_widgets_api::listeners(&self.lua, e, name) {
                         let result = match &arg {
                             Some(a) => f.call::<()>(a.clone()),
                             None => f.call::<()>(()),
                         };
                         if let Err(err) = result {
-                            self.log(LogKind::Error, format!("stopped listener: {err}"));
+                            self.log(LogKind::Error, format!("{name} listener: {err}"));
                         }
                         self.flush_spawned();
                     }
@@ -1047,6 +1084,8 @@ impl ScriptHost {
             profile_scope!("Physics.Step", Category::Physics);
             let contacts = self.with_world(|w| w.physics.step(&w.scene));
             self.dispatch(&contacts);
+            // Impulse Sources that fire on collision.
+            self.with_world(|w| w.cameras.impulses.on_contacts(&w.scene, &contacts));
             self.flush_spawned();
             self.joint_breaks();
             let contacts_2d = self.with_world(|w| {
@@ -1129,7 +1168,9 @@ impl ScriptHost {
                 physics,
                 axes,
                 input,
+                input_system,
                 cameras,
+                logs,
                 ..
             } = w;
             let size = input.screen_size;
@@ -1139,13 +1180,21 @@ impl ScriptHost {
                 16.0 / 9.0
             };
             let axis = |name: &str| axes.axis(name).unwrap_or(0.0);
+            let action = |name: &str| crate::vcam::solve::action_value(input_system, name);
             let cx = crate::vcam::SolveContext {
                 dt,
                 aspect,
                 physics: Some(physics),
                 axis: &axis,
+                action: &action,
             };
             cameras.update(scene, pass, &cx);
+            logs.extend(
+                cameras
+                    .take_logs()
+                    .into_iter()
+                    .map(|l| (LogKind::Warning, l)),
+            );
         });
     }
 

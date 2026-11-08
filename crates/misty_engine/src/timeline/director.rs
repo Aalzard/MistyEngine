@@ -1,18 +1,23 @@
-//! Play-mode playback of Playable Directors: time, wrap modes, pausing, signals, audio voices
-//! and the `stopped` event.
+//! Play-mode playback of Playable Directors: time, wrap modes, pausing, signals, audio voices,
+//! Control clips (sub-timelines, particles, audio, impulses), Camera track overrides and the
+//! `played` / `stopped` events.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use glam::Vec3;
 use hecs::Entity;
 
-use super::asset::{TimelineAsset, TrackKind};
-use super::evaluate::{self, Baseline};
+use super::asset::{Marker, TimelineAsset, TrackKind};
+use super::evaluate::{self, Baseline, ClipSource, MAX_DEPTH};
 use super::tracks;
 use crate::animation::AnimationClip;
 use crate::audio::Audio;
-use crate::scene::{AudioSource, DirectorUpdateMode, DirectorWrapMode, PlayableDirector, Scene};
+use crate::scene::{
+    AudioSource, DirectorUpdateMode, DirectorWrapMode, ParticleSystem, PlayableDirector, Scene,
+};
+use crate::vcam::CameraOverride;
 
 /// `PlayableDirector.state`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -36,15 +41,24 @@ impl PlayState {
 /// Something a director did this frame that scripts hear about.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DirectorEvent {
-    /// A marker was passed: call `method` on the scripts of `target`.
+    /// A marker was passed: call `method` on the scripts of `target` (and tell the
+    /// director's `signalReceived` listeners).
     Signal {
+        director: Entity,
         target: Entity,
         method: String,
         parameter: Option<String>,
     },
+    /// The director started playing (`Play()` from stopped, or Play On Awake).
+    Played(Entity),
     /// The director stopped (reached the end with Wrap Mode None, or `Stop()`).
     Stopped(Entity),
+    /// A Control clip started on an object with an Impulse Source: fire it.
+    Impulse(Entity),
 }
+
+/// A Control clip playing: (track id, clip index) → its object.
+type ControlKey = (String, usize);
 
 /// Live state of one director.
 #[derive(Default)]
@@ -57,17 +71,24 @@ struct Instance {
     base: Baseline,
     /// Audio track id → (clip index, Audio Source) playing.
     voices: HashMap<String, (usize, Entity)>,
+    /// Control clips playing last frame and the object each controls.
+    control: HashMap<ControlKey, Entity>,
+    /// Camera track overrides from the last evaluation.
+    shots: Vec<CameraOverride>,
 }
 
 pub struct DirectorPlayer {
     root: PathBuf,
     assets: HashMap<String, Option<Arc<TimelineAsset>>>,
     clips: HashMap<String, Arc<AnimationClip>>,
-    failed_clips: std::collections::HashSet<String>,
+    failed_clips: HashSet<String>,
     instances: HashMap<Entity, Instance>,
-    /// Events made between frames (`Stop()` from a script), handed out with the next update.
+    /// Events made between frames (`Play()` / `Stop()` from a script), handed out with the
+    /// next update.
     pending: Vec<DirectorEvent>,
     logs: Vec<String>,
+    /// Gravity for particle systems Control clips start (set by the host from physics).
+    pub gravity: Vec3,
 }
 
 fn director(scene: &Scene, e: Entity) -> Option<PlayableDirector> {
@@ -76,6 +97,22 @@ fn director(scene: &Scene, e: Entity) -> Option<PlayableDirector> {
         .get::<&PlayableDirector>(e)
         .ok()
         .map(|d| (*d).clone())
+}
+
+/// Loaded clips and timelines, as evaluation reads them.
+struct Sources<'a> {
+    clips: &'a HashMap<String, Arc<AnimationClip>>,
+    assets: &'a HashMap<String, Option<Arc<TimelineAsset>>>,
+}
+
+impl ClipSource for Sources<'_> {
+    fn clip(&self, path: &str) -> Option<&AnimationClip> {
+        self.clips.get(path).map(|c| c.as_ref())
+    }
+
+    fn timeline(&self, path: &str) -> Option<&TimelineAsset> {
+        self.assets.get(path)?.as_deref()
+    }
 }
 
 impl DirectorPlayer {
@@ -89,6 +126,7 @@ impl DirectorPlayer {
             instances: HashMap::new(),
             pending: Vec::new(),
             logs: Vec::new(),
+            gravity: Vec3::new(0.0, -9.81, 0.0),
         }
     }
 
@@ -134,10 +172,41 @@ impl DirectorPlayer {
         }
     }
 
-    /// The director's asset, loaded.
+    /// Load the sub-timelines Control clips play (through `d`'s references), nested.
+    fn preload_nested(
+        &mut self,
+        scene: &Scene,
+        asset: &TimelineAsset,
+        d: &PlayableDirector,
+        depth: usize,
+    ) {
+        if depth + 1 >= MAX_DEPTH {
+            return;
+        }
+        for tr in asset.tracks.iter().filter(|t| t.kind == TrackKind::Control) {
+            for c in tr.clips.iter().filter(|c| c.control.sub_timeline) {
+                let Some(obj) = tracks::control::object(c, d, scene) else {
+                    continue;
+                };
+                let Some((sub, path)) = tracks::control::sub_director(scene, obj) else {
+                    continue;
+                };
+                let first = !self.assets.contains_key(&path);
+                if let Some(nested) = self.asset(&path)
+                    && first
+                {
+                    self.preload_nested(scene, &nested, &sub, depth + 1);
+                }
+            }
+        }
+    }
+
+    /// The director's asset, loaded (with its sub-timelines).
     fn asset_of(&mut self, scene: &Scene, e: Entity) -> Option<Arc<TimelineAsset>> {
-        let path = director(scene, e)?.playable?;
-        self.asset(&path)
+        let d = director(scene, e)?;
+        let asset = self.asset(d.playable.as_deref()?)?;
+        self.preload_nested(scene, &asset, &d, 0);
+        Some(asset)
     }
 
     /// Start every enabled director with Play On Awake (below `under`, or in the whole scene).
@@ -157,7 +226,8 @@ impl DirectorPlayer {
         }
     }
 
-    /// `Play()`: start from the initial time, or carry on after `Pause()`.
+    /// `Play()`: start from the initial time, or carry on after `Pause()`. Starting from
+    /// stopped fires `played` (with the next update).
     pub fn play(&mut self, scene: &Scene, e: Entity) -> bool {
         let Some(d) = director(scene, e) else {
             return false;
@@ -177,6 +247,7 @@ impl DirectorPlayer {
                 if inst.time <= 0.0 {
                     inst.time = d.initial_time.max(0.0) as f64;
                 }
+                self.pending.push(DirectorEvent::Played(e));
             }
         }
         true
@@ -206,8 +277,8 @@ impl DirectorPlayer {
         }
     }
 
-    /// `Stop()`: sounds stop, Activation tracks apply their Post-playback State, time goes back
-    /// to 0 and `stopped` fires (with the next update).
+    /// `Stop()`: sounds stop, Activation and Control tracks apply their Post-playback State,
+    /// camera overrides end, time goes back to 0 and `stopped` fires (with the next update).
     pub fn stop(&mut self, scene: &mut Scene, audio: &mut Audio, e: Entity) {
         if let Some(ev) = self.finish(scene, audio, e) {
             self.pending.push(ev);
@@ -215,22 +286,30 @@ impl DirectorPlayer {
     }
 
     fn finish(&mut self, scene: &mut Scene, audio: &mut Audio, e: Entity) -> Option<DirectorEvent> {
+        let gravity = self.gravity;
         let inst = self.instances.get_mut(&e)?;
         if inst.state == PlayState::Stopped {
             return None;
         }
         inst.state = PlayState::Stopped;
         inst.time = 0.0;
+        inst.shots.clear();
         for (_, (_, src)) in inst.voices.drain() {
             audio.stop(src);
         }
+        for (_, obj) in inst.control.drain() {
+            control_end(scene, audio, obj, gravity);
+        }
         if let (Some(asset), Some(d)) = (inst.asset.clone(), director(scene, e)) {
-            for tr in &asset.tracks {
-                if tr.kind == TrackKind::Activation
-                    && !asset.is_muted(tr)
-                    && let Some(obj) = d.binding(&tr.id)
-                {
-                    tracks::activation::finish(scene, tr, obj, &inst.base);
+            for tr in asset.tracks.iter().filter(|t| !asset.is_muted(t)) {
+                match tr.kind {
+                    TrackKind::Activation => {
+                        if let Some(obj) = d.binding(&tr.id) {
+                            tracks::activation::finish(scene, tr, obj, &inst.base);
+                        }
+                    }
+                    TrackKind::Control => tracks::control::finish(scene, tr, &d, &inst.base),
+                    _ => {}
                 }
             }
         }
@@ -260,6 +339,21 @@ impl DirectorPlayer {
         self.asset_of(scene, e).map_or(0.0, |a| a.duration() as f64)
     }
 
+    /// Camera track overrides of every playing or paused director, for the camera rig.
+    pub fn camera_overrides(&self) -> Vec<CameraOverride> {
+        let mut playing: Vec<(&Entity, &Instance)> = self
+            .instances
+            .iter()
+            .filter(|(_, i)| i.state != PlayState::Stopped)
+            .collect();
+        // Stable order (the last override on a brain wins).
+        playing.sort_by_key(|(e, _)| e.to_bits());
+        playing
+            .into_iter()
+            .flat_map(|(_, i)| i.shots.iter().copied())
+            .collect()
+    }
+
     /// `Evaluate()`: pose the scene at the current time now (also while stopped or paused).
     pub fn evaluate(&mut self, scene: &mut Scene, e: Entity) {
         let Some(asset) = self.asset_of(scene, e) else {
@@ -268,12 +362,15 @@ impl DirectorPlayer {
         let Some(d) = director(scene, e) else { return };
         let inst = self.instances.entry(e).or_default();
         let t = inst.time as f32;
-        let bind = |id: &str| d.binding(id);
-        evaluate::apply(scene, &asset, &bind, &self.clips, t, &mut inst.base);
+        let src = Sources {
+            clips: &self.clips,
+            assets: &self.assets,
+        };
+        inst.shots = evaluate::apply(scene, &asset, &d, &src, t, &mut inst.base);
     }
 
-    /// Advance every playing director by its clock, pose the scene, keep audio in step and
-    /// collect the signals and stops of this frame.
+    /// Advance every playing director by its clock, pose the scene, keep audio and Control
+    /// clips in step and collect the signals, impulses and stops of this frame.
     pub fn update(
         &mut self,
         scene: &mut Scene,
@@ -301,12 +398,17 @@ impl DirectorPlayer {
             .filter(|(_, i)| i.state == PlayState::Playing)
             .map(|(e, _)| *e)
             .collect();
+        let gravity = self.gravity;
         for e in playing {
             let Some(d) = director(scene, e) else {
                 continue;
             };
             if !d.enabled || !scene.active_in_hierarchy(e) {
                 continue;
+            }
+            // Sub-timelines bound after Play started load here.
+            if let Some(a) = self.instances.get(&e).and_then(|i| i.asset.clone()) {
+                self.preload_nested(scene, &a, &d, 0);
             }
             let inst = self.instances.get_mut(&e).expect("listed");
             let Some(asset) = inst.asset.clone() else {
@@ -345,37 +447,16 @@ impl DirectorPlayer {
             }
             let t = if ended { duration } else { inst.time } as f32;
 
-            // Markers on the timeline's row go to the director's own object.
-            let mut fire = |markers: &[super::asset::Marker], target: Entity| {
-                for (i, &(a, b)) in spans.iter().enumerate() {
-                    for m in markers {
-                        if tracks::signal::fires(m, a, b, fresh && i == 0) && !m.method.is_empty() {
-                            events.push(DirectorEvent::Signal {
-                                target,
-                                method: m.method.clone(),
-                                parameter: m.parameter.clone(),
-                            });
-                        }
-                    }
-                }
+            let src = Sources {
+                clips: &self.clips,
+                assets: &self.assets,
             };
-            fire(&asset.markers, e);
-            for tr in &asset.tracks {
-                if tr.kind == TrackKind::Signal && !asset.is_muted(tr) {
-                    fire(&tr.markers, d.binding(&tr.id).unwrap_or(e));
-                }
-            }
+            signals(scene, &src, &asset, e, &d, &spans, fresh, 0, &mut events);
 
-            let bind = |id: &str| d.binding(id);
-            evaluate::apply(scene, &asset, &bind, &self.clips, t, &mut inst.base);
-            sync_audio(
-                scene,
-                audio,
-                &asset,
-                &d,
-                inst,
-                evaluate::sample_time(t, duration as f32),
-            );
+            inst.shots = evaluate::apply(scene, &asset, &d, &src, t, &mut inst.base);
+            let ts = evaluate::sample_time(t, duration as f32);
+            sync_audio(scene, audio, &asset, &d, inst, ts);
+            sync_control(scene, audio, &asset, &d, inst, ts, gravity, &mut events);
             if ended && let Some(ev) = self.finish(scene, audio, e) {
                 events.push(ev);
             }
@@ -385,6 +466,188 @@ impl DirectorPlayer {
 
     pub fn take_logs(&mut self) -> Vec<String> {
         std::mem::take(&mut self.logs)
+    }
+}
+
+/// Markers passed during `spans` (parent time): the timeline's own row goes to the director's
+/// object, Signal tracks to their bound object, and Control clips' sub-timelines fire theirs
+/// at the mapped local times.
+#[allow(clippy::too_many_arguments)]
+fn signals(
+    scene: &Scene,
+    src: &Sources,
+    asset: &TimelineAsset,
+    e: Entity,
+    d: &PlayableDirector,
+    spans: &[(f32, f32)],
+    fresh: bool,
+    depth: usize,
+    events: &mut Vec<DirectorEvent>,
+) {
+    let mut fire = |markers: &[Marker], target: Entity| {
+        for (i, &(a, b)) in spans.iter().enumerate() {
+            for m in markers {
+                if tracks::signal::fires(m, a, b, fresh && i == 0) && !m.method.is_empty() {
+                    events.push(DirectorEvent::Signal {
+                        director: e,
+                        target,
+                        method: m.method.clone(),
+                        parameter: m.parameter.clone(),
+                    });
+                }
+            }
+        }
+    };
+    fire(&asset.markers, e);
+    for tr in &asset.tracks {
+        if tr.kind == TrackKind::Signal && !asset.is_muted(tr) {
+            fire(&tr.markers, d.binding(&tr.id).unwrap_or(e));
+        }
+    }
+    if depth + 1 >= MAX_DEPTH {
+        return;
+    }
+    for tr in asset
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Control && !asset.is_muted(t))
+    {
+        for c in tr.clips.iter().filter(|c| c.control.sub_timeline) {
+            let Some(obj) = tracks::control::object(c, d, scene) else {
+                continue;
+            };
+            let Some((sub, path)) = tracks::control::sub_director(scene, obj) else {
+                continue;
+            };
+            let Some(nested) = src.timeline(&path) else {
+                continue;
+            };
+            // The part of each span inside the clip, in the sub-timeline's time.
+            let local: Vec<(f32, f32)> = spans
+                .iter()
+                .filter_map(|&(a, b)| {
+                    let (a2, b2) = (a.max(c.start - 1e-6), b.min(c.end()));
+                    (b2 > a2).then(|| {
+                        let la = if a2 < c.start {
+                            c.clip_in - 1e-6
+                        } else {
+                            evaluate::local_time(c, a2)
+                        };
+                        (la, evaluate::local_time(c, b2))
+                    })
+                })
+                .collect();
+            if !local.is_empty() {
+                signals(
+                    scene,
+                    src,
+                    nested,
+                    obj,
+                    &sub,
+                    &local,
+                    false,
+                    depth + 1,
+                    events,
+                );
+            }
+        }
+    }
+}
+
+/// Particle systems on `e` and below it.
+fn particle_objects(scene: &Scene, e: Entity) -> Vec<Entity> {
+    scene
+        .walk()
+        .into_iter()
+        .map(|(x, _)| x)
+        .filter(|x| scene.is_ancestor(e, *x) && scene.world.get::<&ParticleSystem>(*x).is_ok())
+        .collect()
+}
+
+/// A Control clip started on `obj`: particles and audio play.
+fn control_start(
+    scene: &mut Scene,
+    audio: &mut Audio,
+    obj: Entity,
+    gravity: Vec3,
+    particles: bool,
+    audio_on: bool,
+) {
+    for p in particle_objects(scene, obj)
+        .into_iter()
+        .filter(|_| particles)
+    {
+        crate::particles::with_emitter(scene, p, gravity, |em, sys, m| em.restart(sys, m, gravity));
+    }
+    if audio_on && scene.world.get::<&AudioSource>(obj).is_ok() {
+        audio.play(scene, obj);
+    }
+}
+
+/// A Control clip ended on `obj`: particles stop emitting, audio stops.
+fn control_end(scene: &mut Scene, audio: &mut Audio, obj: Entity, gravity: Vec3) {
+    if !scene.contains(obj) {
+        return;
+    }
+    for p in particle_objects(scene, obj) {
+        crate::particles::with_emitter(scene, p, gravity, |em, _, _| em.stop());
+    }
+    if scene.world.get::<&AudioSource>(obj).is_ok() {
+        audio.stop(obj);
+    }
+}
+
+/// Start and end the Play-mode side of Control clips (particles, audio, impulses) for time
+/// `t`.
+#[allow(clippy::too_many_arguments)]
+fn sync_control(
+    scene: &mut Scene,
+    audio: &mut Audio,
+    asset: &TimelineAsset,
+    d: &PlayableDirector,
+    inst: &mut Instance,
+    t: f32,
+    gravity: Vec3,
+    events: &mut Vec<DirectorEvent>,
+) {
+    let mut now: HashMap<ControlKey, Entity> = HashMap::new();
+    for tr in asset
+        .tracks
+        .iter()
+        .filter(|t| t.kind == TrackKind::Control && !asset.is_muted(t))
+    {
+        for (i, c) in tr.clips.iter().enumerate() {
+            if tracks::control::covers(c, t)
+                && let Some(obj) = tracks::control::object(c, d, scene)
+            {
+                now.insert((tr.id.clone(), i), obj);
+            }
+        }
+    }
+    let ended: Vec<(ControlKey, Entity)> = inst
+        .control
+        .iter()
+        .filter(|(k, o)| now.get(*k) != Some(*o))
+        .map(|(k, o)| (k.clone(), *o))
+        .collect();
+    for (k, obj) in ended {
+        inst.control.remove(&k);
+        control_end(scene, audio, obj, gravity);
+    }
+    for (k, obj) in now {
+        if inst.control.contains_key(&k) {
+            continue;
+        }
+        let opts = asset
+            .track(&k.0)
+            .and_then(|tr| tr.clips.get(k.1))
+            .map(|c| c.control)
+            .unwrap_or_default();
+        control_start(scene, audio, obj, gravity, opts.particles, opts.audio);
+        if opts.impulse && scene.world.get::<&crate::vcam::ImpulseSource>(obj).is_ok() {
+            events.push(DirectorEvent::Impulse(obj));
+        }
+        inst.control.insert(k, obj);
     }
 }
 

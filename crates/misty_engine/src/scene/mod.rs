@@ -58,7 +58,9 @@ pub use multi_scene::{SceneEntry, SceneId};
 pub use occlusion_area::OcclusionArea;
 pub use physics_components::*;
 pub use physics2d_components::*;
-pub use playable_director::{DirectorUpdateMode, DirectorWrapMode, PlayableDirector, TrackBinding};
+pub use playable_director::{
+    DirectorUpdateMode, DirectorWrapMode, ExposedReference, PlayableDirector, TrackBinding,
+};
 pub use post_process::*;
 pub use postfx_overrides::{
     AdaptationMode, AutoExposureOverride, DepthOfFieldOverride, DofMode, MeteringMode,

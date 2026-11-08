@@ -81,6 +81,7 @@ const OBJECT_REFS: &[(&str, &str, &str)] = &[
     ("Virtual Camera", "", "follow"),
     ("Virtual Camera", "", "look_at"),
     ("Playable Director", "bindings", "object"),
+    ("Playable Director", "references", "object"),
     ("Skinned Mesh Renderer", "", "root_bone"),
     ("Skinned Mesh Renderer", "", "bones"),
 ];
@@ -95,6 +96,7 @@ fn all_refs() -> impl Iterator<Item = &'static (&'static str, &'static str, &'st
         .chain(crate::splines::SPLINE_REFS)
         .chain(crate::video::VIDEO_REFS)
         .chain(crate::input::actions::player_input::PLAYER_INPUT_REFS)
+        .chain(crate::vcam::VCAM_REFS)
 }
 
 /// Components that can hold object references.

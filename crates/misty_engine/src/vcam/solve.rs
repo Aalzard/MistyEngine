@@ -5,7 +5,7 @@ use glam::{EulerRot, Quat, Vec3};
 use hecs::Entity;
 
 use super::components::*;
-use super::noise;
+use super::{group, noise};
 use crate::camera::euler_to_quat;
 use crate::physics::Physics;
 use crate::scene::Scene;
@@ -48,6 +48,11 @@ pub struct VcamRuntime {
     pub pulled_in: f32,
     pub noise_time: f32,
     pub output: Option<CamState>,
+    /// Group Composer: distance to the group centre and field of view it settled on.
+    pub group_distance: f32,
+    pub group_fov: f32,
+    /// Confiner: how far the camera is pushed back inside its volume.
+    pub confine: Vec3,
 }
 
 /// Frame inputs shared by every camera.
@@ -58,6 +63,35 @@ pub struct SolveContext<'a> {
     pub physics: Option<&'a Physics>,
     /// Input Manager axis value by name (orbital input).
     pub axis: &'a dyn Fn(&str) -> f32,
+    /// Input System action value by name ("Map/Action"), for orbit axes that use one.
+    pub action: &'a dyn Fn(&str) -> glam::Vec2,
+}
+
+/// No Input System actions (tests, edit-mode previews).
+pub fn no_action(_: &str) -> glam::Vec2 {
+    glam::Vec2::ZERO
+}
+
+/// No Input Manager axes.
+pub fn no_axis(_: &str) -> f32 {
+    0.0
+}
+
+/// The value of Input System action `name` ("Map/Action", or just "Action" in any map) from
+/// the first playing Player Input that has it enabled, as a 2D vector (a 1D action gives x).
+pub fn action_value(system: &crate::input::actions::InputSystem, name: &str) -> glam::Vec2 {
+    for p in &system.players {
+        let Some(set) = system.set(p.set) else {
+            continue;
+        };
+        if let Some((m, a)) = set.asset.find_action(name)
+            && let Some(st) = set.state(m, a)
+            && st.enabled
+        {
+            return st.value.as_vec2();
+        }
+    }
+    glam::Vec2::ZERO
 }
 
 /// Fraction of a gap closed over `dt` when it should be ~99 % closed after `time` seconds.
@@ -165,8 +199,11 @@ pub fn solve(
             }
             BodyKind::Orbital => {
                 let o = &mut vc.orbital;
-                for axis in [&mut o.x_axis, &mut o.y_axis] {
-                    let input = if axis.input_axis.is_empty() {
+                for (i, axis) in [&mut o.x_axis, &mut o.y_axis].into_iter().enumerate() {
+                    let input = if !axis.input_action.is_empty() {
+                        let v = (cx.action)(&axis.input_action);
+                        if i == 0 { v.x } else { v.y }
+                    } else if axis.input_axis.is_empty() {
                         0.0
                     } else {
                         (cx.axis)(&axis.input_axis)
@@ -183,21 +220,47 @@ pub fn solve(
                     BindingMode::World => 0.0,
                     _ => yaw_pitch(trot * Vec3::Z).0,
                 };
-                let q = from_yaw_pitch(
-                    heading + o.x_axis.value.to_radians(),
-                    o.y_axis.value.to_radians(),
-                );
+                let yaw = heading + o.x_axis.value.to_radians();
                 let center = tracked + Vec3::Y * o.height_offset;
-                position = center - q * Vec3::Z * o.radius;
-                rotation = q;
+                match o.style {
+                    OrbitStyle::Sphere => {
+                        let q = from_yaw_pitch(yaw, o.y_axis.value.to_radians());
+                        position = center - q * Vec3::Z * o.radius;
+                        rotation = q;
+                    }
+                    OrbitStyle::ThreeRings => {
+                        let (h, r) = o.ring_at(o.y_axis.value);
+                        position = center + Vec3::Y * h - Quat::from_rotation_y(yaw) * Vec3::Z * r;
+                        let (ly, lp) = yaw_pitch(center - position);
+                        rotation = from_yaw_pitch(ly, lp);
+                    }
+                }
             }
         }
     }
 
-    // Aim: rotation.
+    // Confiner: back inside the volume (before aiming, so the aim sees the final place).
+    if vc.confiner.enabled
+        && let Some(v) = vc.confiner.volume.filter(|v| *v != e && scene.contains(*v))
+    {
+        let inside = confine(scene, v, position);
+        let push = inside - position;
+        st.confine = if valid && vc.confiner.damping > 1e-4 {
+            st.confine + (push - st.confine) * damp(1.0, vc.confiner.damping, dt)
+        } else {
+            push
+        };
+        position += st.confine;
+    } else {
+        st.confine = Vec3::ZERO;
+    }
+
+    // Aim: rotation (the Group Composer may also dolly and zoom).
     let look = target_pose(scene, e, vc.look_at);
     let mut look_point = None;
-    if let Some((_, lpos, lrot)) = look {
+    let mut dolly = None;
+    let mut fov = vc.lens.fov;
+    if let Some((look_e, lpos, lrot)) = look {
         match vc.aim {
             AimKind::DoNothing => {}
             AimKind::HardLookAt => {
@@ -219,11 +282,25 @@ pub fn solve(
                 );
                 look_point = Some(p);
             }
+            AimKind::GroupComposer => {
+                let b = group::group_bounds(scene, look_e).unwrap_or(group::GroupBounds {
+                    center: lpos,
+                    radius: 0.5,
+                    average: lpos,
+                });
+                let (p, r, f) = frame_group(vc, cx.aspect, position, prev_rot, b, st, valid, dt);
+                dolly = Some(p);
+                rotation = r;
+                fov = f;
+                look_point = Some(b.center);
+            }
         }
     }
+    // The object keeps the body's position (a dolly moves only the shown camera).
     st.raw_position = position;
     st.raw_rotation = rotation;
     st.valid = true;
+    let position = dolly.unwrap_or(position);
 
     // Collider: pull in front of whatever blocks the view of the target.
     let mut final_pos = position;
@@ -281,12 +358,150 @@ pub fn solve(
     let out = CamState {
         position: final_pos,
         rotation: final_rot.normalize(),
-        fov: vc.lens.fov,
+        fov,
         near: vc.lens.near,
         far: vc.lens.far,
     };
     st.output = Some(out);
     out
+}
+
+/// Tangent of the half angle the group has to fit in: the vertical one, the horizontal one or
+/// the tighter of the two.
+fn framing_tan(mode: FramingMode, fov: f32, aspect: f32) -> f32 {
+    let tv = (fov.clamp(1.0, 179.0).to_radians() * 0.5).tan();
+    let th = tv * aspect.max(1e-3);
+    match mode {
+        FramingMode::Horizontal => th,
+        FramingMode::Vertical => tv,
+        FramingMode::HorizontalAndVertical => tv.min(th),
+    }
+}
+
+/// Group Composer: from the body's `position`, move along the line to the group centre
+/// (dolly) and / or change the field of view (zoom) so the group's bounding sphere fills the
+/// framing size, then aim at the centre with the Composer's settings. Returns the shown
+/// position, rotation and vertical field of view.
+#[allow(clippy::too_many_arguments)]
+fn frame_group(
+    vc: &VirtualCamera,
+    aspect: f32,
+    position: Vec3,
+    prev_rot: Quat,
+    b: group::GroupBounds,
+    st: &mut VcamRuntime,
+    valid: bool,
+    dt: f32,
+) -> (Vec3, Quat, f32) {
+    let g = &vc.group_framing;
+    let framing = g.framing_size.clamp(0.01, 10.0);
+    let r = b.radius.max(0.01);
+    let to_cam = position - b.center;
+    let d0 = to_cam.length();
+    let dir = if d0 > 1e-3 {
+        to_cam / d0
+    } else {
+        -(prev_rot * Vec3::Z)
+    };
+    let mut d = d0.max(1e-3);
+    if g.adjustment != GroupAdjustment::ZoomOnly {
+        // Distance at which the sphere's half angle is `framing` of the screen's.
+        let ta = framing * framing_tan(g.framing_mode, vc.lens.fov, aspect);
+        let fit = r * (1.0 + ta * ta).sqrt() / ta.max(1e-4);
+        let near = g.minimum_distance.max(0.0);
+        d = fit
+            .clamp(d0 - g.max_dolly_in.max(0.0), d0 + g.max_dolly_out.max(0.0))
+            .clamp(near, g.maximum_distance.max(near));
+    }
+    let mut fov = vc.lens.fov;
+    if g.adjustment != GroupAdjustment::DollyOnly {
+        let (lo, hi) = (
+            g.minimum_fov.clamp(1.0, 179.0),
+            g.maximum_fov.clamp(1.0, 179.0),
+        );
+        fov = if d <= r * 1.0001 {
+            hi
+        } else {
+            // Tangent of the sphere's half angle, then of the screen half angle it needs.
+            let need = r / (d * d - r * r).sqrt() / framing;
+            let tv = match g.framing_mode {
+                FramingMode::Horizontal => need / aspect.max(1e-3),
+                FramingMode::Vertical => need,
+                FramingMode::HorizontalAndVertical => need / aspect.clamp(1e-3, 1.0),
+            };
+            (2.0 * tv.atan().to_degrees()).clamp(lo.min(hi), hi.max(lo))
+        };
+    }
+    if valid && g.damping > 1e-4 {
+        d = st.group_distance + damp(d - st.group_distance, g.damping, dt);
+        fov = st.group_fov + damp(fov - st.group_fov, g.damping, dt);
+    }
+    st.group_distance = d;
+    st.group_fov = fov;
+    let shown = b.center + dir * d;
+    let lens = Lens { fov, ..vc.lens };
+    let rot = compose(
+        &vc.composer,
+        &lens,
+        aspect,
+        shown,
+        prev_rot,
+        b.center,
+        valid,
+        dt,
+    );
+    (shown, rot, fov)
+}
+
+/// `p` moved to the nearest point inside the confining volume of `v`: its Box Collider, else
+/// its Sphere Collider, else the unit cube of its transform.
+pub fn confine(scene: &Scene, v: Entity, p: Vec3) -> Vec3 {
+    use crate::scene::{BoxCollider, SphereCollider};
+    let m = scene.world_matrix(v);
+    if let Ok(s) = scene.world.get::<&SphereCollider>(v) {
+        let (scale, _, _) = m.to_scale_rotation_translation();
+        let c = m.transform_point3(s.center);
+        let r = s.radius.max(0.0) * scale.abs().max_element();
+        let off = p - c;
+        return if off.length() <= r {
+            p
+        } else {
+            c + off.normalize_or_zero() * r
+        };
+    }
+    let (center, size) = scene
+        .world
+        .get::<&BoxCollider>(v)
+        .map(|b| (b.center, b.size))
+        .unwrap_or((Vec3::ZERO, Vec3::ONE));
+    let local = m.inverse().transform_point3(p) - center;
+    let half = size.abs() * 0.5;
+    let clamped = local.clamp(-half, half);
+    if clamped == local {
+        p
+    } else {
+        m.transform_point3(clamped + center)
+    }
+}
+
+/// A camera's pose right now without any memory (no damping): edit-mode previews (the
+/// Timeline window's Camera track) use it.
+pub fn preview_pose(scene: &Scene, e: Entity, aspect: f32) -> Option<CamState> {
+    let mut vc = scene
+        .world
+        .get::<&VirtualCamera>(e)
+        .ok()
+        .map(|v| (*v).clone())?;
+    let mut st = VcamRuntime::default();
+    vc.noise.enabled = false;
+    let cx = SolveContext {
+        dt: 0.0,
+        aspect,
+        physics: None,
+        axis: &no_axis,
+        action: &no_action,
+    };
+    Some(solve(scene, e, &mut vc, &mut st, &cx))
 }
 
 /// Composer rotation: keep `target` inside the dead zone (damped), never outside the soft zone.

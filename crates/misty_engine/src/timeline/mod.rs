@@ -5,8 +5,10 @@
 //! - [`asset`]: the file format (tracks, clips, markers, groups, mute / lock).
 //! - [`evaluate`]: clip weights (eases, blends between overlapping clips) and posing the scene
 //!   at a time, shared by Play mode and the editor's preview.
-//! - [`tracks`]: one module per track kind (Activation, Animation, Audio, Signal).
-//! - [`director`]: Play-mode playback (wrap modes, pause, signals, audio, `stopped`).
+//! - [`tracks`]: one module per track kind (Activation, Animation, Audio, Signal, Camera,
+//!   Control).
+//! - [`director`]: Play-mode playback (wrap modes, pause, signals, audio, sub-timelines,
+//!   camera overrides, `played` / `stopped`).
 
 pub mod asset;
 pub mod director;
@@ -14,11 +16,14 @@ pub mod evaluate;
 pub mod tracks;
 
 pub use asset::{
-    DurationMode, EXTENSION, Extrapolation, Marker, PostPlayback, TimelineAsset, TimelineClip,
-    Track, TrackKind, is_timeline,
+    ControlOptions, DurationMode, EXTENSION, Extrapolation, Marker, PostPlayback, TimelineAsset,
+    TimelineClip, Track, TrackKind, is_timeline,
 };
 pub use director::{DirectorEvent, DirectorPlayer, PlayState};
-pub use evaluate::{Baseline, ClipSource};
+pub use evaluate::{Baseline, Bindings, ClipSource, Resolver};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tests_r19;

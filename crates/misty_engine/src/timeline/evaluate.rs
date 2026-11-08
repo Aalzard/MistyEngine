@@ -10,7 +10,8 @@ use hecs::Entity;
 use super::asset::{Extrapolation, TimelineAsset, TimelineClip, TrackKind};
 use super::tracks;
 use crate::animation::{AnimationClip, Property};
-use crate::scene::Scene;
+use crate::scene::{Camera, PlayableDirector, Scene, Transform};
+use crate::vcam::CameraOverride;
 
 /// Ease curve shared by eases and blends: `s(x) + s(1 - x) = 1`, so the two clips of a blend
 /// always add up to full weight.
@@ -135,14 +136,49 @@ pub fn sample_time(t: f32, duration: f32) -> f32 {
     }
 }
 
-/// Animation clips by path, for evaluation.
+/// Animation clips (and timelines, for sub-timelines) by path, for evaluation.
 pub trait ClipSource {
     fn clip(&self, path: &str) -> Option<&AnimationClip>;
+
+    /// A timeline asset already loaded (Control clips play sub-timelines from it).
+    fn timeline(&self, _path: &str) -> Option<&TimelineAsset> {
+        None
+    }
 }
 
 impl ClipSource for HashMap<String, Arc<AnimationClip>> {
     fn clip(&self, path: &str) -> Option<&AnimationClip> {
         self.get(path).map(|c| c.as_ref())
+    }
+}
+
+/// Where a timeline's tracks and clips find their scene objects: a Playable Director's
+/// bindings (tracks) and references (Camera / Control clips).
+pub trait Resolver {
+    /// The object track `id` is bound to.
+    fn binding(&self, id: &str) -> Option<Entity>;
+    /// The object a clip's reference `name` points at.
+    fn reference(&self, _name: &str) -> Option<Entity> {
+        None
+    }
+}
+
+impl Resolver for PlayableDirector {
+    fn binding(&self, id: &str) -> Option<Entity> {
+        PlayableDirector::binding(self, id)
+    }
+
+    fn reference(&self, name: &str) -> Option<Entity> {
+        PlayableDirector::reference(self, name)
+    }
+}
+
+/// Track bindings from a function (no clip references).
+pub struct Bindings<'a>(pub &'a dyn Fn(&str) -> Option<Entity>);
+
+impl Resolver for Bindings<'_> {
+    fn binding(&self, id: &str) -> Option<Entity> {
+        (self.0)(id)
     }
 }
 
@@ -152,6 +188,8 @@ impl ClipSource for HashMap<String, Arc<AnimationClip>> {
 pub struct Baseline {
     pub values: HashMap<(Entity, Property), f32>,
     pub active: HashMap<Entity, bool>,
+    /// Edit-mode Camera track previews: each brain camera's transform and lens before.
+    pub cameras: HashMap<Entity, (Transform, Option<Camera>)>,
 }
 
 impl Baseline {
@@ -165,32 +203,63 @@ impl Baseline {
                 scene.game_object_mut(e).active = on;
             }
         }
+        for (&e, (t, cam)) in &self.cameras {
+            tracks::camera::put_back(scene, e, t, cam.as_ref());
+        }
     }
 }
 
-/// Pose the bound objects as the timeline is at `t`: Activation tracks switch their object
-/// on or off, Animation tracks blend their clips. Audio and Signal tracks are left to the
+/// Sub-timelines nest at most this deep (a timeline that plays itself stops there).
+pub const MAX_DEPTH: usize = 8;
+
+/// Pose the scene as the timeline is at `t`: Activation tracks switch their object on or off,
+/// Animation tracks blend their clips, Control tracks activate their objects and pose their
+/// sub-timelines. Camera tracks don't move anything here: they return the brain overrides
+/// for this time (Play mode hands them to the camera rig; the editor's preview poses the
+/// brain itself with [`tracks::camera::preview`]). Audio and Signal tracks are left to the
 /// director (they only act while playing). Muted tracks do nothing.
 pub fn apply(
     scene: &mut Scene,
     asset: &TimelineAsset,
-    binding: &dyn Fn(&str) -> Option<Entity>,
+    resolver: &dyn Resolver,
     clips: &dyn ClipSource,
     t: f32,
     base: &mut Baseline,
+) -> Vec<CameraOverride> {
+    let mut shots = Vec::new();
+    apply_nested(scene, asset, resolver, clips, t, base, 0, &mut shots);
+    shots
+}
+
+/// [`apply`] for a timeline nested `depth` levels deep, adding camera overrides to `shots`.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_nested(
+    scene: &mut Scene,
+    asset: &TimelineAsset,
+    resolver: &dyn Resolver,
+    clips: &dyn ClipSource,
+    t: f32,
+    base: &mut Baseline,
+    depth: usize,
+    shots: &mut Vec<CameraOverride>,
 ) {
     let t = sample_time(t, asset.duration());
     for track in &asset.tracks {
         if asset.is_muted(track) {
             continue;
         }
-        let Some(e) = binding(&track.id).filter(|e| scene.contains(*e)) else {
+        if track.kind == TrackKind::Control {
+            tracks::control::apply(scene, track, resolver, clips, t, base, depth, shots);
+            continue;
+        }
+        let Some(e) = resolver.binding(&track.id).filter(|e| scene.contains(*e)) else {
             continue;
         };
         match track.kind {
             TrackKind::Activation => tracks::activation::apply(scene, track, e, t, base),
             TrackKind::Animation => tracks::animation::apply(scene, track, e, clips, t, base),
-            TrackKind::Audio | TrackKind::Signal | TrackKind::Group => {}
+            TrackKind::Camera => shots.extend(tracks::camera::shot(track, resolver, e, t)),
+            TrackKind::Audio | TrackKind::Signal | TrackKind::Group | TrackKind::Control => {}
         }
     }
 }

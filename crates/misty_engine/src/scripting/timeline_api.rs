@@ -1,7 +1,9 @@
 //! Lua `PlayableDirector` (`GetComponent("PlayableDirector")`): `Play()`, `Pause()`,
-//! `Resume()`, `Stop()`, `Evaluate()`, `time` (read / write), `duration`, `state`
-//! ("Playing", "Paused" or "Stopped"), `playOnAwake`, `gameObject` and the `stopped` event
-//! (`director.stopped:AddListener(function(d) … end)`).
+//! `Resume()`, `Stop()`, `Evaluate()`, `SetGenericBinding(track, object)`,
+//! `GetGenericBinding(track)` (tracks by name or id), `time` (read / write), `duration`,
+//! `state` ("Playing", "Paused" or "Stopped"), `playOnAwake`, `gameObject` and the events
+//! `played`, `stopped` (`director.stopped:AddListener(function(d) … end)`) and
+//! `signalReceived` (`function(d, method, parameter)`, for every marker it passes).
 
 use hecs::Entity;
 use mlua::{Lua, Result, UserData, UserDataFields, UserDataMethods, Value};
@@ -81,6 +83,19 @@ impl UserData for LDirector {
                 event: "stopped",
             })
         });
+        f.add_field_method_get("played", |_, d| {
+            Ok(LUiEvent {
+                entity: d.0,
+                event: "played",
+            })
+        });
+        // Every marker this director passes: listeners get (director, method, parameter).
+        f.add_field_method_get("signalReceived", |_, d| {
+            Ok(LUiEvent {
+                entity: d.0,
+                event: "signalReceived",
+            })
+        });
     }
 
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
@@ -99,7 +114,76 @@ impl UserData for LDirector {
         m.add_method("Evaluate", |lua, d, ()| {
             player(lua, d.0, |p, s, _| p.evaluate(s, d.0))
         });
+        // Bind a track (by name or id) to a GameObject / Transform, or nil to clear it.
+        m.add_method(
+            "SetGenericBinding",
+            |lua, d, (track, obj): (String, Value)| {
+                let obj = object_arg(obj)?;
+                let id = track_id(lua, d.0, &track)?;
+                with_world(lua, |w| {
+                    w.scene
+                        .world
+                        .get::<&mut PlayableDirector>(d.0)
+                        .map(|mut c| c.set_binding(&id, obj))
+                        .map_err(|_| missing())
+                })?
+            },
+        );
+        m.add_method("GetGenericBinding", |lua, d, track: String| {
+            let id = track_id(lua, d.0, &track)?;
+            with_world(lua, |w| {
+                w.scene
+                    .world
+                    .get::<&PlayableDirector>(d.0)
+                    .map(|c| c.binding(&id).map(LGameObject))
+                    .map_err(|_| missing())
+            })?
+        });
     }
+}
+
+/// A GameObject, a Transform or nil.
+fn object_arg(v: Value) -> Result<Option<Entity>> {
+    use super::api::LTransform;
+    match v {
+        Value::Nil => Ok(None),
+        Value::UserData(ud) => {
+            if let Ok(g) = ud.borrow::<LGameObject>() {
+                Ok(Some(g.0))
+            } else if let Ok(t) = ud.borrow::<LTransform>() {
+                Ok(Some(t.0))
+            } else {
+                Err(mlua::Error::runtime(
+                    "expected a GameObject, Transform or nil",
+                ))
+            }
+        }
+        _ => Err(mlua::Error::runtime(
+            "expected a GameObject, Transform or nil",
+        )),
+    }
+}
+
+/// The id of the director's track named (or with id) `key`.
+fn track_id(lua: &Lua, e: Entity, key: &str) -> Result<String> {
+    let path = with_world(lua, |w| {
+        w.scene
+            .world
+            .get::<&PlayableDirector>(e)
+            .map(|c| c.playable.clone())
+            .map_err(|_| missing())
+    })??;
+    let asset = player(lua, e, |p, _, _| path.and_then(|path| p.asset(&path)))?;
+    let Some(asset) = asset else {
+        return Err(mlua::Error::runtime("the director has no timeline"));
+    };
+    asset
+        .tracks
+        .iter()
+        .find(|t| t.name == key)
+        .or_else(|| asset.track(key))
+        .map(|t| t.id.clone())
+        .ok_or_else(|| mlua::Error::runtime(format!("no track named '{key}'")))
 }
 
 /// `GetComponent("PlayableDirector")`.

@@ -361,6 +361,8 @@ pub fn components() -> &'static [ComponentInfo] {
             ComponentInfo::of::<Light>(),
             ComponentInfo::of::<crate::vcam::CameraBrain>(),
             ComponentInfo::of::<crate::vcam::VirtualCamera>(),
+            ComponentInfo::of::<crate::vcam::TargetGroup>(),
+            ComponentInfo::of::<crate::vcam::ImpulseSource>(),
             ComponentInfo::of::<super::LensFlare>(),
             ComponentInfo::of::<super::PostProcessVolume>(),
             ComponentInfo::of::<super::ReflectionProbe>(),

@@ -106,7 +106,14 @@ fn activation_track_switches_the_bound_object() {
     let clips: HashMap<String, Arc<AnimationClip>> = HashMap::new();
     let mut base = Baseline::default();
     let mut at = |t: f32, scene: &mut Scene| {
-        evaluate::apply(scene, &asset, &bind, &clips, t, &mut base);
+        evaluate::apply(
+            scene,
+            &asset,
+            &evaluate::Bindings(&bind),
+            &clips,
+            t,
+            &mut base,
+        );
         scene.game_object(lamp).active
     };
     assert!(!at(0.5, &mut scene));
@@ -136,7 +143,14 @@ fn muted_tracks_and_groups_do_nothing() {
     let bind = |tid: &str| (tid == id).then_some(lamp);
     let clips: HashMap<String, Arc<AnimationClip>> = HashMap::new();
     let mut base = Baseline::default();
-    evaluate::apply(&mut scene, &asset, &bind, &clips, 0.0, &mut base);
+    evaluate::apply(
+        &mut scene,
+        &asset,
+        &evaluate::Bindings(&bind),
+        &clips,
+        0.0,
+        &mut base,
+    );
     assert!(scene.game_object(lamp).active, "group muted: untouched");
 }
 
@@ -170,7 +184,14 @@ fn animation_track_blends_clips_and_returns_to_the_base_pose() {
     let bind = |tid: &str| (tid == id).then_some(cube);
     let mut base = Baseline::default();
     let mut x = |t: f32, scene: &mut Scene| {
-        evaluate::apply(scene, &asset, &bind, &clips, t, &mut base);
+        evaluate::apply(
+            scene,
+            &asset,
+            &evaluate::Bindings(&bind),
+            &clips,
+            t,
+            &mut base,
+        );
         scene.transform(cube).position.x
     };
     assert!(near(x(0.5, &mut scene), 10.0));
@@ -196,9 +217,23 @@ fn ease_in_blends_from_the_scene_value() {
     let cube = scene.spawn("Cube", None);
     let bind = |tid: &str| (tid == id).then_some(cube);
     let mut base = Baseline::default();
-    evaluate::apply(&mut scene, &asset, &bind, &clips, 0.5, &mut base);
+    evaluate::apply(
+        &mut scene,
+        &asset,
+        &evaluate::Bindings(&bind),
+        &clips,
+        0.5,
+        &mut base,
+    );
     assert!(near(scene.transform(cube).position.x, 5.0));
-    evaluate::apply(&mut scene, &asset, &bind, &clips, 3.0, &mut base);
+    evaluate::apply(
+        &mut scene,
+        &asset,
+        &evaluate::Bindings(&bind),
+        &clips,
+        3.0,
+        &mut base,
+    );
     assert!(
         near(scene.transform(cube).position.x, 0.0),
         "gap: back to base"
@@ -216,7 +251,14 @@ fn recorded_keys_play_on_a_track_without_clips() {
     let bind = |tid: &str| (tid == id).then_some(cube);
     let clips: HashMap<String, Arc<AnimationClip>> = HashMap::new();
     let mut base = Baseline::default();
-    evaluate::apply(&mut scene, &asset, &bind, &clips, 0.5, &mut base);
+    evaluate::apply(
+        &mut scene,
+        &asset,
+        &evaluate::Bindings(&bind),
+        &clips,
+        0.5,
+        &mut base,
+    );
     assert!(near(scene.transform(cube).position.x, 2.0));
 }
 

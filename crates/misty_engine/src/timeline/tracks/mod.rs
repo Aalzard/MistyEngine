@@ -3,4 +3,6 @@
 pub mod activation;
 pub mod animation;
 pub mod audio;
+pub mod camera;
+pub mod control;
 pub mod signal;
