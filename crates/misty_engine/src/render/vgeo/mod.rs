@@ -338,6 +338,9 @@ pub(super) struct VirtualGeometry {
     readback: Vec<Readback>,
     /// The last counters read back (a frame or two old).
     latest: VgeoStats,
+    /// The clusters' edges in the wireframe draw modes (built on their first render; the path
+    /// and MSAA samples it was built for).
+    wire: Option<(super::WirePath, u32, wgpu::RenderPipeline)>,
 }
 
 /// One staging buffer of the counter readback.
@@ -615,6 +618,7 @@ impl Default for VirtualGeometry {
             last_instances: usize::MAX,
             readback: Vec::new(),
             latest: VgeoStats::default(),
+            wire: None,
         }
     }
 }
@@ -1239,6 +1243,64 @@ impl VirtualGeometry {
             true
         };
         self.draw_view(pass, phase, VgeoPass::Lit, gate, &mut setup);
+    }
+
+    /// Build the clusters' wireframe pipeline for `path` (the lit vertex stage, with edges).
+    pub fn ensure_wire(&mut self, device: &wgpu::Device, p: &Pipelines, path: super::WirePath) {
+        let Some(gpu) = self.gpu.as_ref() else {
+            return;
+        };
+        let samples = super::sample_count();
+        if (self.wire.as_ref()).is_some_and(|(w, s, _)| *w == path && *s == samples) {
+            return;
+        }
+        let base = format!(
+            "{MESH_SRC}
+{FETCH_SRC}
+{MESH_ENTRY_SRC}"
+        );
+        let src = super::wireframe::source(&base, path);
+        let layouts = [
+            &p.view_layout,
+            &p.mesh_layout,
+            &p.material_layout,
+            &gpu.render_layout,
+        ];
+        let shaded = Spec {
+            vs: if gpu.indexed {
+                "vs_cluster_indexed"
+            } else {
+                "vs_cluster"
+            },
+            cull: Some(wgpu::Face::Back),
+            ..Spec::new("vgeo mesh", "", &layouts)
+        };
+        let spec = super::wireframe::spec(shaded, "vgeo wireframe", &src, path);
+        self.wire = Some((path, samples, pipelines::build(device, spec)));
+    }
+
+    /// The clusters this frame's culling kept (every main phase), as edges (main pass; groups
+    /// 0 and 1 bound: the view and the lit group; after [`Self::ensure_wire`]).
+    pub fn draw_wire<'a>(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        material: &dyn Fn(usize) -> Option<&'a wgpu::BindGroup>,
+    ) {
+        let Some((_, _, pipeline)) = &self.wire else {
+            return;
+        };
+        let mut setup = |pass: &mut wgpu::RenderPass<'_>, _: usize, draw: usize, _: bool| {
+            let Some(group) = material(draw) else {
+                return false;
+            };
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(2, group, &[]);
+            true
+        };
+        let phases = if self.single_phase() { 1 } else { 2 };
+        for view in 0..phases {
+            self.draw_view(pass, view, VgeoPass::Lit, &|_| true, &mut setup);
+        }
     }
 
     /// Does the main pass draw this frame's clusters through the visibility buffer

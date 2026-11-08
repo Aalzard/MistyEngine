@@ -17,8 +17,9 @@ pub const MAX_LOCAL_LAYERS: usize = 16;
 /// Field of view of a rectangle light's single shadow map (soft shadows off: points further off
 /// its axis are unshadowed).
 pub const RECT_SHADOW_FOV: f32 = 120.0;
-/// Dynamic-offset stride for the per-pass view uniforms.
-pub const VIEW_STRIDE: u64 = 512;
+/// Dynamic-offset stride for the per-pass view uniforms (a multiple of 256 that holds
+/// `ViewUniform`).
+pub const VIEW_STRIDE: u64 = 768;
 /// Cascades first, then the local layers (the order of [`ShadowPlan::matrices`]).
 pub const VIEW_SLOTS: usize = MAX_CASCADES + MAX_LOCAL_LAYERS;
 

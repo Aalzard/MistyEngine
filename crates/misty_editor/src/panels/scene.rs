@@ -149,12 +149,24 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             } else {
                 gizmos::Lines::default()
             };
-            match sv.draw_mode {
-                WIREFRAME_MODE => gizmos::wireframe(&mut lines, &meshes, gizmos::WIREFRAME),
-                SHADED_WIREFRAME_MODE => {
-                    gizmos::wireframe(&mut lines, &meshes, [0.0, 0.0, 0.0, 0.35])
-                }
-                _ => {}
+            // The wireframe modes: every mesh, terrain, tree, grass blade and virtual geometry
+            // cluster drawn as edges on the GPU; where the device can't, the meshes' edges as
+            // CPU lines (within their edge budget).
+            let wire = match sv.draw_mode {
+                WIREFRAME_MODE => Some(misty_engine::render::Wireframe {
+                    color: gizmos::WIREFRAME,
+                    shaded: false,
+                }),
+                SHADED_WIREFRAME_MODE => Some(misty_engine::render::Wireframe {
+                    color: gizmos::SHADED_WIREFRAME,
+                    shaded: true,
+                }),
+                _ => None,
+            };
+            if let Some(w) = wire
+                && !gpu.renderer.gpu_wireframe()
+            {
+                gizmos::wireframe(&mut lines, &meshes, w.color);
             }
             if sv.draw_mode == PHYSICS_DEBUG_MODE {
                 physics_counts = Some(crate::physics_debug_view::lines(state, &mut lines));
@@ -292,6 +304,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             };
             if let Some(view) = vgeo_debug {
                 gpu.renderer.set_virtual_geometry_debug_view(view);
+            }
+            if let Some(w) = wire {
+                gpu.renderer.set_wireframe(w);
             }
             misty_engine::render::ui::set_keeps_depth(misty_engine::render::ui::needs_depth(
                 &state.scene,

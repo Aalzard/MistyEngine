@@ -734,6 +734,9 @@ pub(super) struct TreeRenderer {
     pipelines: Option<Pipelines>,
     /// The pipelines being built on a worker since the renderer was made (streaming only).
     prebuilt: super::prebuilt::Prebuilt<Pipelines>,
+    /// Bark, leaves and impostor edges of the wireframe draw modes (built on their first
+    /// render; the path and MSAA samples they were built for).
+    wire: Option<(super::WirePath, u32, [wgpu::RenderPipeline; 3])>,
     trees: HashMap<String, GpuTree>,
     /// Texture chains being built on worker threads, per tree asset (while streaming).
     pending: HashMap<String, Pending>,
@@ -822,6 +825,7 @@ impl TreeRenderer {
             sampler,
             pipelines: None,
             prebuilt: Default::default(),
+            wire: None,
             trees: HashMap::new(),
             pending: HashMap::new(),
             loading: 0,
@@ -1376,6 +1380,55 @@ impl TreeRenderer {
     pub fn draw_main(&self, pass: &mut wgpu::RenderPass, stats: &mut RenderStats) {
         if let Some(p) = &self.pipelines {
             self.draw_list(pass, &self.main, &p.main, stats);
+        }
+    }
+
+    /// Build the wireframe pipelines for `path` (the main pass's, with edges).
+    pub fn ensure_wire(
+        &mut self,
+        device: &wgpu::Device,
+        pipelines: &super::pipelines::Pipelines,
+        path: super::WirePath,
+    ) {
+        let samples = super::sample_count();
+        if (self.wire.as_ref()).is_some_and(|(p, s, _)| *p == path && *s == samples) {
+            return;
+        }
+        let l = TreeLayouts::of(pipelines, &self.layout);
+        let lit = [&l.view, &l.mesh, &l.tree];
+        let (mesh, imp) = (vertex_layouts(), [instance_layout()]);
+        let back = Some(wgpu::Face::Back);
+        let src = super::wireframe::source(TREE_SRC, path);
+        let wire = |name, shaded| build(device, super::wireframe::spec(shaded, name, &src, path));
+        let (bark, leaves, impostor) = (
+            main_spec("tree bark", &lit, "vs_tree", "", &mesh, back, false),
+            main_spec("tree leaves", &lit, "vs_tree", "", &mesh, None, false),
+            main_spec(
+                "tree impostor",
+                &lit,
+                "vs_tree_impostor",
+                "",
+                &imp,
+                None,
+                false,
+            ),
+        );
+        self.wire = Some((
+            path,
+            samples,
+            [
+                wire("tree bark wireframe", bark),
+                wire("tree leaves wireframe", leaves),
+                wire("tree impostor wireframe", impostor),
+            ],
+        ));
+    }
+
+    /// This frame's trees as edges (main pass, groups 0 and 1 bound: the view and the lit
+    /// group; after [`Self::ensure_wire`]).
+    pub fn draw_wire(&self, pass: &mut wgpu::RenderPass, stats: &mut RenderStats) {
+        if let Some((_, _, p)) = &self.wire {
+            self.draw_list(pass, &self.main, p, stats);
         }
     }
 

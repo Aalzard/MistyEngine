@@ -49,6 +49,8 @@ struct View {
     // (0 when orthographic): exact view rays (`view_ray`).
     view_rotation: vec4<f32>,
     view_tan: vec4<f32>,
+    // Linear colour and opacity of the wireframe draw modes' edges (render/wireframe.rs).
+    wire: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> view: View;
