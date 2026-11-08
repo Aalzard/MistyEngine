@@ -123,6 +123,105 @@ end
 ```
 Sample: `Scenes/InputDemo.scene` with `InputMover.lua` and `GamepadHint.lua`.
 
+### Input System (actions)
+
+Action-based input next to the Input Manager. An **Input Actions** asset (`.inputactions`, Assets ▸ Create ▸
+Input Actions, edited in Window ▸ Input ▸ Input Actions or by double-clicking it) holds **action maps** (Player,
+UI, …) of **actions**. Each action has a type and **bindings**:
+
+- **Value** (the most actuated control drives it; started + performed when it leaves its default, performed on
+  every change, canceled back at the default), **Button** (performed past the press point 0.5, canceled on
+  release), **Pass Through** (every change of every control is performed). The control type (Any, Button,
+  Axis, Vector 2) sets what `ReadValue` returns.
+- **Binding paths**: `<Keyboard>/w`, `<Keyboard>/leftShift`, `<Keyboard>/shift` (either), `<Mouse>/delta`
+  (pixels, y up), `<Mouse>/scroll` (notches), `<Mouse>/position`, `<Mouse>/leftButton`,
+  `<Gamepad>/leftStick` (also `/x`, `/y`, `/up` …), `<Gamepad>/buttonSouth` (`a`/`cross` aliases),
+  `<Gamepad>/leftTrigger`, `<Gamepad>/dpad`, `<Gamepad>/start`, `<Touchscreen>/primaryTouch/position`,
+  `<Touchscreen>/primaryTouch/press`, `<Pointer>/position`.
+- **Composites**: `2DVector` (up/down/left/right, modes DigitalNormalized, Digital, Analog: WASD),
+  `1DAxis` (negative/positive, `whichSideWins`, `minValue`, `maxValue`), `ButtonWithOneModifier`
+  (Shift + B), `ButtonWithTwoModifiers`, `OneModifier` (modifier + any binding).
+- **Processors** (on a binding or an action, left to right): `invert`, `invertVector2(invertX,invertY)`,
+  `normalize(min,max,zero)`, `normalizeVector2`, `scale(factor)`, `scaleVector2(x,y)`, `clamp(min,max)`,
+  `axisDeadzone(min,max)`, `stickDeadzone(min,max)` (defaults 0.125 / 0.925).
+- **Interactions**: `press(behavior=PressOnly|ReleaseOnly|PressAndRelease)`, `hold(duration=0.4)`,
+  `tap(duration=0.2)`, `slowTap(duration=0.5)`, `multiTap(tapCount=2,tapTime=0.2,tapDelay=0.75)`, all with
+  `pressPoint`. With several, the first to start drives the action; when it cancels another one that started
+  takes over (`hold,tap` on one key: a quick press taps, a long one holds).
+- **Control schemes** (Keyboard&Mouse, Gamepad, Touch) list the devices they need; bindings join them through
+  their groups ("Use in control scheme").
+
+The **Player Input** component (Component ▸ Input) plays an asset for one player: Actions, Default Map, Default
+Scheme, Auto-Switch and a Behavior:
+
+- **Send Messages** calls `On<Action>(value)` on the object's scripts (`OnMove(v)`, `OnJump()`): on performed,
+  and on canceled for Value / Pass Through actions (with the zero value). Also `OnControlsChanged(player)`,
+  `OnDeviceLost(player)`, `OnDeviceRegained(player)`. **Broadcast Messages** does the same on the children.
+- **Invoke Events** calls the methods listed under Events (per action) with a callback context on started,
+  performed and canceled.
+
+A single player may use every device; its binding mask follows the current control scheme, which switches when
+another device is used (Auto-Switch). With several Player Inputs each one is paired with its own devices in
+Hierarchy order (the first gets the keyboard and mouse, the next ones a gamepad each), gets its own copy of the
+asset, and is told when its pad is unplugged and comes back.
+
+```lua
+local Player = {}
+function Player:Start()
+    local pi = self.gameObject:GetComponent("PlayerInput")
+    self.move = pi.actions["Move"]            -- or pi.actions:FindAction("Player/Move")
+    self.fire = pi.actions:FindAction("Attack")
+    self.fire.performed:AddListener(function(ctx) self:Shoot(ctx:ReadValue()) end)
+    pi.onControlsChanged:AddListener(function(p) Debug.Log(p.currentControlScheme) end)
+end
+function Player:Update()
+    local v = self.move:ReadValue()               -- Vector2
+    self.cc:Move(Vector3.new(v.x, 0, v.y) * (5 * Time.deltaTime))
+end
+function Player:OnJump() self:Jump() end          -- Send Messages
+return Player
+```
+
+| API | |
+|---|---|
+| Assets | `InputActions.Load(path)` (the shared copy; Player Input's first player uses it too), `InputActions.Instantiate(path)` (a separate copy); `actions:FindAction("Map/Action" or "Action")`, `actions["Move"]`, `actions:FindActionMap(name)`, `actions:Enable()` / `Disable()`, `actionMaps`, `controlSchemes`, `bindingMask` |
+| Maps | `map:Enable()` / `Disable()`, `map.enabled`, `map.name`, `map.actions`, `map:FindAction(name)`, `map["Jump"]` |
+| Actions | `action:ReadValue()` (number or Vector2), `IsPressed()`, `WasPressedThisFrame()`, `WasReleasedThisFrame()`, `WasPerformedThisFrame()`, `IsInProgress()`, `triggered`, `phase` ("Disabled", "Waiting", "Started", "Performed", "Canceled"), `activeControl` (path), `enabled`, `Enable()` / `Disable()`, `name`, `type`, `bindings` (`path`, `effectivePath`, `overridePath`, `groups`, `isComposite`, `isPartOfComposite`), `actionMap` |
+| Callbacks | `action.started` / `performed` / `canceled`: `AddListener(f)`, `RemoveListener(f)`, `RemoveAllListeners()`; `f(ctx)` with `ctx.action`, `ctx.phase`, `ctx.started` / `performed` / `canceled`, `ctx:ReadValue()`, `ctx:ReadValueAsButton()`, `ctx.time`, `ctx.startTime`, `ctx.duration`, `ctx.interaction`, `ctx.control` |
+| Player Input | `GetComponent("PlayerInput")`: `actions`, `currentActionMap` (also settable by name), `SwitchCurrentActionMap(name)`, `currentControlScheme`, `SwitchCurrentControlScheme(name)`, `playerIndex`, `devices`, `inputIsActive`, `ActivateInput()`, `DeactivateInput()`, `GetDevice("Gamepad")`, `notificationBehavior`, events `onActionTriggered`, `onControlsChanged`, `onDeviceLost`, `onDeviceRegained`; `PlayerInput.all`, `PlayerInput.GetPlayerByIndex(i)` |
+| Rebinding | `action:GetBindingDisplayString(index?)` ("W", "W/A/S/D", "Shift+B"), `ApplyBindingOverride(index, path)` / `(path)`, `RemoveBindingOverride(index)`, `RemoveAllBindingOverrides()`; `actions:SaveBindingOverridesAsJson()`, `LoadBindingOverridesFromJson(json)`, `RemoveAllBindingOverrides()`; `action:PerformInteractiveRebinding(index?)` then `:WithControlsExcluding(path)`, `:WithCancelingThrough(path)` (default `<Keyboard>/escape`), `:WithTargetBinding(i)`, `:OnMatchWaitForAnother(s)`, `:OnComplete(f)`, `:OnCancel(f)`, `:Start()`, `:Cancel()`, `:Dispose()`, `op.completed`, `op.canceled`, `op.selectedControl` |
+| Devices | `Gamepad.current` (last used), `Gamepad.all`: `name`, `leftStick`, `rightStick`, `dpad`, `leftTrigger`, `rightTrigger`, `buttonSouth.isPressed` / `wasPressedThisFrame` / `wasReleasedThisFrame` (and the other buttons), `SetMotorSpeeds(low, high)`, `ResetHaptics()`, `PauseHaptics()`; `Keyboard.current.spaceKey.isPressed`, `Mouse.current.delta`, `Mouse.current.leftButton.wasPressedThisFrame`; `Touchscreen.current.primaryTouch`, `.touches`; legacy `Input.touchCount`, `Input.GetTouch(i)` (`fingerId`, `position`, `deltaPosition`, `phase`), `Input.touches`, `Input.touchSupported` |
+
+Rebinding listens for the next key, mouse button, gamepad button, trigger or stick direction (a whole stick for
+Vector 2 bindings), skips `<Mouse>/position` and `<Mouse>/delta`, disables the action meanwhile and turns it back
+on once the chosen control is released. Overrides are kept by binding id; save them with PlayerPrefs:
+
+```lua
+local saved = PlayerPrefs.GetString("rebinds", "")
+if saved ~= "" then actions:LoadBindingOverridesFromJson(saved) end
+jump:PerformInteractiveRebinding(0)
+    :WithCancelingThrough("<Keyboard>/escape")
+    :OnComplete(function(op)
+        PlayerPrefs.SetString("rebinds", actions:SaveBindingOverridesAsJson())
+        PlayerPrefs.Save()
+        op:Dispose()
+    end)
+    :Start()
+```
+
+An action enabled while its button is already held (say the map comes back on with the key still down) doesn't
+count that as a press. Gamepad rumble uses force feedback where the platform has it (Windows and Linux through
+`gilrs`; ignored elsewhere) and stops when Play stops. Touches come from the window's touch events.
+
+**Active Input Handling** (Edit ▸ Project Settings ▸ Input Manager): Input Manager (actions never read devices),
+Input System (the `Input.GetAxis` / `GetButton*` / `GetKey*` / `GetMouseButton*` functions raise an error) or Both
+(the default).
+
+Sample: `Scenes/InputSystemDemo.scene` — the First Person Player with a Player Input on `Input/Player.inputactions`
+(`FirstPersonController.lua` reads Move, Look, Jump, Sprint and Crouch when a Player Input is on its object),
+`PlayerActions.lua` (Send Messages: holding E / X rumbles the pad) and `RebindMenu.lua` (Tab / Start: rebinding
+saved to PlayerPrefs).
+
 ### Layers
 
 `LayerMask.NameToLayer("Hidden")`, `LayerMask.LayerToName(8)` and `LayerMask.GetMask("Water", "Hidden")` use
@@ -371,7 +470,10 @@ Player              Character Controller (1.8 m, radius 0.35) + FirstPersonContr
 The scripts are added to `Assets/Scripts` when the project has none (never overwritten), so every field below
 can be tuned in the Inspector. WASD moves (Horizontal / Vertical), Shift runs (Run), Space jumps (Jump), Ctrl
 crouches (Crouch), the mouse looks (Mouse X / Mouse Y) and Escape gives the cursor back (a click takes it
-again).
+again). Add a **Player Input** to the Player and the controller reads its Move, Look, Jump, Sprint and Crouch
+actions instead (the mouse Look binding scaled by 0.1 like Mouse X / Mouse Y; the right stick turns at
+`stickLookSpeed` degrees per second); while that map is off it stands still and leaves the cursor alone — see
+`Scenes/InputSystemDemo.scene` and `Input/Player.inputactions`.
 
 **FirstPersonController** owns the pose: mouse look turns the Player (yaw) and pitches the Camera; nothing else
 rotates them. Locomotion is a small state machine (Idle, Walk, Run, Jump, Fall, Land, Crouch) whose planar

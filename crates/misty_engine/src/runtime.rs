@@ -387,6 +387,21 @@ impl Runtime {
         self.host.release_cursor();
     }
 
+    /// Gamepad motor speeds scripts asked for since the last call: (slot, low, high).
+    pub fn take_rumble(&self) -> Option<Vec<(usize, f32, f32)>> {
+        self.host.take_rumble()
+    }
+
+    /// A playing Player Input as Inspector rows.
+    pub fn player_input_info(&self, e: hecs::Entity) -> Option<Vec<(String, String)>> {
+        self.host.player_input_info(e)
+    }
+
+    /// Stop every gamepad motor.
+    pub fn reset_haptics(&self) {
+        self.host.reset_haptics();
+    }
+
     pub fn take_logs(&mut self) -> Vec<(LogKind, String)> {
         let mut out: Vec<(LogKind, String)> = std::mem::take(&mut self.pending)
             .into_iter()

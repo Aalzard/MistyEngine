@@ -204,6 +204,12 @@ impl Player {
         let mut input = self.input.frame();
         input.joysticks = self.gamepads.poll();
         self.game.frame(dt, input);
+        // Gamepad rumble scripts asked for.
+        if let Some(motors) = self.game.take_rumble() {
+            for (pad, low, high) in motors {
+                self.gamepads.set_motor_speeds(pad, low, high);
+            }
+        }
         for (kind, text) in self.game.take_logs() {
             self.log.write(kind, &text);
         }
@@ -458,6 +464,17 @@ impl ApplicationHandler for Player {
                 self.input.cursor_pixels(Some(px));
             }
             WindowEvent::CursorLeft { .. } => self.input.cursor_pixels(None),
+            WindowEvent::Touch(t) => {
+                use misty_engine::input::touch::TouchEvent;
+                let rs = self.gfx.as_ref().map_or(1.0, Gfx::render_scale);
+                let p = Vec2::new(t.location.x as f32, t.location.y as f32) * rs;
+                self.input.touch(match t.phase {
+                    winit::event::TouchPhase::Started => TouchEvent::Start(t.id, p),
+                    winit::event::TouchPhase::Moved => TouchEvent::Move(t.id, p),
+                    winit::event::TouchPhase::Ended => TouchEvent::End(t.id, p),
+                    winit::event::TouchPhase::Cancelled => TouchEvent::Cancel(t.id, p),
+                });
+            }
             WindowEvent::MouseWheel { delta, .. } => {
                 // Lines → pixels like a browser would (about 50 per notch).
                 let d = match delta {

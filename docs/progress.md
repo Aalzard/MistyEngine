@@ -2609,3 +2609,28 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - A few component editors label fields differently from the field name: those overrides show on the
   header bar and in the dropdown but not as a bold label.
 - No comparison view in the Overrides dropdown, no per-element list overrides.
+
+## Round 18C — Input System (branch r18-input)
+
+### Done (docs/pending/r18-input.md)
+- Action-based input next to the Input Manager (`input::actions`): Input Actions assets (`.inputactions`) with
+  action maps, Value / Button / Pass Through actions, binding paths for keyboard, mouse, gamepad, touch and
+  pointer, composites (2D Vector, 1D Axis, one / two modifiers), processors (invert, normalize, scale,
+  clamp, axis and stick dead zones), interactions (press, hold, tap, slow tap, multi-tap) and control schemes.
+- Player Input component (Send Messages `OnMove(value)` / `OnJump()`, Broadcast Messages, Invoke Events with
+  per-action calls), control scheme auto-switching, device pairing for local multiplayer, device lost /
+  regained.
+- Lua: `InputActions.Load`, `ReadValue`, `IsPressed`, `WasPressedThisFrame`, `WasReleasedThisFrame`, `started`
+  / `performed` / `canceled` listeners, `Enable` / `Disable` maps and actions, binding overrides, interactive
+  rebinding saved to PlayerPrefs, `Gamepad.current:SetMotorSpeeds`, touches, `Keyboard.current` /
+  `Mouse.current`. Active Input Handling (Input Manager / Input System / Both); the Input Manager is unchanged.
+- Editor: Input Actions window (maps | actions and bindings | properties, path picker, Listen, schemes,
+  interactions and processors, Save Asset / Auto-Save), Player Input Inspector, Assets ▸ Create ▸ Input
+  Actions. Player: touch events and rumble.
+- Sample `InputSystemDemo` (First Person Player on `Player.inputactions`, rumble on hold, a rebinding menu);
+  `FirstPersonController.lua` uses a Player Input when its object has one. Screenshots
+  `docs/screenshots/r18/input_*`.
+
+### Not done yet
+- No PlayerInputManager (joining / split screen), no UI input module (the UI map doesn't drive the UI), no
+  on-screen controls, no undo inside the Input Actions window; rumble untested on real pads.

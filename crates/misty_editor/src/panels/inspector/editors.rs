@@ -46,6 +46,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::decal_editors::icon(other))
             .or_else(|| super::occlusion_editors::icon(other))
             .or_else(|| super::saveloc_editors::icon(other))
+            .or_else(|| super::input_editors::icon(other))
             .or_else(|| super::glow_editors::icon(other))
             .or_else(|| super::vcam_editors::icon(other))
             .or_else(|| super::timeline_editors::icon(other))
@@ -331,6 +332,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         }
         sl if super::saveloc_editors::NAMES.contains(&sl) => {
             super::saveloc_editors::edit(ui, state, e, sl)
+        }
+        pi if super::input_editors::NAMES.contains(&pi) => {
+            super::input_editors::edit(ui, state, e, pi)
         }
         glow if super::glow_editors::NAMES.contains(&glow) => {
             super::glow_editors::edit(ui, state, e, glow)

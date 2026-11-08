@@ -89,6 +89,7 @@ pub fn stop(s: &mut EditorState) {
     };
     crate::multiplayer::on_play_stopped(s);
     s.runtime = None;
+    crate::game_input::stop_rumble();
     s.scene = session.scene;
     s.selection = session.selection;
     s.selection.retain_existing(&s.scene);

@@ -337,6 +337,8 @@ pub struct EditorState {
     pub effect_graph: crate::panels::effect_graph::EffectGraphWindow,
     /// Audio Mixer window: shown mixer, snapshot, selected group/effect, meters.
     pub audio_mixer: crate::panels::audio_mixer::MixerWindow,
+    /// Input Actions window: the asset being edited.
+    pub input_actions: crate::panels::input_actions::InputActionsWindow,
     /// Code Editor window: open scripts, find state, preferences.
     pub code_editor: crate::panels::code_editor::CodeEditor,
     pub hierarchy: HierarchyState,
@@ -458,6 +460,7 @@ impl EditorState {
             shader_graph: Default::default(),
             effect_graph: Default::default(),
             audio_mixer: Default::default(),
+            input_actions: Default::default(),
             code_editor: crate::panels::code_editor::CodeEditor::new(&project.root),
             hierarchy: HierarchyState::default(),
             handles: HandleState::default(),

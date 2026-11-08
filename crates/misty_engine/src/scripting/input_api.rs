@@ -1,6 +1,8 @@
 //! Lua `Input` Manager functions (`GetAxis`, `GetAxisRaw`, `GetButton/Down/Up`,
-//! `GetJoystickNames`, `anyKey`, `anyKeyDown`, `mouseScrollDelta`, `mouseDelta`) and tag lookups
-//! (`GameObject.FindWithTag`, `FindGameObjectsWithTag`).
+//! `GetJoystickNames`, `anyKey`, `anyKeyDown`, `mouseScrollDelta`, `mouseDelta`), touches
+//! (`touchCount`, `GetTouch`, `touches`, `touchSupported`) and tag lookups
+//! (`GameObject.FindWithTag`, `FindGameObjectsWithTag`). With Active Input Handling set to the
+//! Input System only, the Input Manager functions raise an error.
 
 use glam::Vec3;
 use mlua::{Function, Lua, Result, Table, Value};
@@ -39,6 +41,15 @@ pub fn register(lua: &Lua) -> Result<()> {
             with_world(lua, |w| w.axes.axis_raw(&name))?.ok_or_else(|| not_setup(&name))
         })?,
     )?;
+    input.set(
+        "GetTouch",
+        lua.create_function(|lua, i: usize| {
+            super::input_actions_api::touches(lua)?
+                .into_iter()
+                .nth(i)
+                .ok_or_else(|| mlua::Error::runtime(format!("Input.GetTouch: no touch {i}")))
+        })?,
+    )?;
     input.set("GetButton", button(lua, Input::button_held)?)?;
     input.set("GetButtonDown", button(lua, Input::button_pressed)?)?;
     input.set("GetButtonUp", button(lua, Input::button_released)?)?;
@@ -52,6 +63,39 @@ pub fn register(lua: &Lua) -> Result<()> {
         })?,
     )?;
 
+    // The Input Manager functions are off when only the Input System is active.
+    for name in [
+        "GetAxis",
+        "GetAxisRaw",
+        "GetButton",
+        "GetButtonDown",
+        "GetButtonUp",
+        "GetKey",
+        "GetKeyDown",
+        "GetKeyUp",
+        "GetMouseButton",
+        "GetMouseButtonDown",
+        "GetMouseButtonUp",
+    ] {
+        let Ok(f) = input.get::<Function>(name) else {
+            continue;
+        };
+        input.set(
+            name,
+            lua.create_function(move |lua, args: mlua::MultiValue| {
+                let allowed = with_world(lua, |w| w.input_system.handling.legacy_allowed())?;
+                if !allowed {
+                    return Err(mlua::Error::runtime(format!(
+                        "Input.{name}: you are reading input with the Input Manager, but \
+                         Active Input Handling is set to the Input System only (Edit ▸ \
+                         Project Settings ▸ Input Manager)"
+                    )));
+                }
+                f.call::<mlua::MultiValue>(args)
+            })?,
+        )?;
+    }
+
     // Properties, falling back to the earlier lookup (mousePosition).
     let meta = input.metatable().unwrap_or(lua.create_table()?);
     let previous: Option<Function> = meta.get("__index").ok();
@@ -59,6 +103,18 @@ pub fn register(lua: &Lua) -> Result<()> {
         "__index",
         lua.create_function(move |lua, (t, key): (Table, String)| {
             let value = with_world(lua, |w| property(w, &key))?;
+            match key.as_str() {
+                "touchCount" => {
+                    return Ok(Value::Integer(
+                        super::input_actions_api::touches(lua)?.len() as i64,
+                    ));
+                }
+                "touches" => {
+                    let list = super::input_actions_api::touches(lua)?;
+                    return Ok(Value::Table(lua.create_sequence_from(list)?));
+                }
+                _ => {}
+            }
             match (value, &previous) {
                 (Some(Prop::Bool(b)), _) => Ok(Value::Boolean(b)),
                 (Some(Prop::Vec(v)), _) => Ok(Value::UserData(lua.create_userdata(LVec3(v))?)),
@@ -95,6 +151,8 @@ fn property(w: &World, key: &str) -> Option<Prop> {
     Some(match key {
         "anyKey" => Prop::Bool(w.input.any_key()),
         "anyKeyDown" => Prop::Bool(w.input.any_key_down()),
+        // A touch screen has been used this session.
+        "touchSupported" => Prop::Bool(w.input_system.touch_seen || !w.input.touches.is_empty()),
         "mouseScrollDelta" => {
             let n = w.input.scroll_notches();
             Prop::Vec(Vec3::new(n.x, n.y, 0.0))

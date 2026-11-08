@@ -26,6 +26,7 @@ pub mod attributes;
 pub mod audio_api;
 pub mod camera_api;
 pub mod cursor_api;
+pub mod input_actions_api;
 pub mod input_api;
 pub mod light_probes_api;
 pub mod localization_api;
@@ -103,6 +104,8 @@ pub struct Input {
     pub scroll_delta: Vec2,
     /// Connected gamepads by joystick number - 1.
     pub joysticks: Vec<crate::input::Joystick>,
+    /// Fingers on a touch screen this frame.
+    pub touches: Vec<crate::input::Touch>,
 }
 
 impl Input {
@@ -232,6 +235,8 @@ pub struct World {
     pub navigation: crate::navigation::NavRuntime,
     /// Input Manager axes (`Input.GetAxis`, `GetButton`).
     pub axes: crate::input::InputManager,
+    /// The Input System: action sets, Player Inputs, rebinding, rumble.
+    pub input_system: crate::input::actions::InputSystem,
     /// Project tags and layer names (`LayerMask.NameToLayer`, `FindWithTag`).
     pub tags_layers: crate::tags_layers::TagsAndLayers,
     /// Camera Brains and Virtual Cameras.
@@ -263,6 +268,7 @@ impl World {
     ) -> Self {
         let navigation = crate::navigation::NavRuntime::load(&scene, &project_root);
         let project_root_for_video = project_root.clone();
+        let project_root_for_input = project_root.clone();
         let save = crate::save::SaveRuntime::begin(&scene);
         let (localization, table_warnings) =
             crate::localization::Localizer::load(&project_root, &settings.localization);
@@ -296,6 +302,10 @@ impl World {
             rigging: Default::default(),
             timeline: crate::timeline::DirectorPlayer::new(project_root),
             axes: crate::input::InputManager::new(&settings.input),
+            input_system: crate::input::actions::InputSystem::new(
+                &project_root_for_input,
+                settings.input.active_handling,
+            ),
             tags_layers: settings.tags_and_layers.clone(),
             cameras: Default::default(),
             video: crate::video::VideoPlayback::new(project_root_for_video),
@@ -456,6 +466,8 @@ impl ScriptHost {
                 host.instantiate(e, slot, script);
             }
         }
+        // Player Inputs enable their default map before any Awake.
+        host.input_sync();
         host.call_all("Awake");
         host.flush_spawned();
         host.localization_frame();
@@ -900,6 +912,10 @@ impl ScriptHost {
             w.axes.update(&input, time.unscaled_delta);
             w.input = input;
         });
+        let input_events = {
+            profile_scope!("Input.Update", Category::Scripts);
+            self.input_update(time.unscaled_delta)
+        };
         if let Some(w) = self.lua.app_data_ref::<World>()
             && let Err(e) = api::refresh_time(&self.lua, &w)
         {
@@ -929,6 +945,11 @@ impl ScriptHost {
             }
         }
 
+        {
+            // After Start (listeners added there hear this frame), before Update.
+            profile_scope!("Input.Events", Category::Scripts);
+            self.input_events(input_events);
+        }
         {
             profile_scope!("UI.Events", Category::Ui);
             self.ui_events();
@@ -1033,6 +1054,70 @@ impl ScriptHost {
             };
             cameras.update(scene, pass, &cx);
         });
+    }
+
+    /// Start or stop Player Inputs to match the scene.
+    fn input_sync(&mut self) {
+        self.with_world(|w| {
+            let World {
+                input_system,
+                scene,
+                input,
+                logs,
+                ..
+            } = w;
+            input_system.sync_players(scene, input);
+            logs.extend(input_system.logs.drain(..).map(|l| (LogKind::Warning, l)));
+        });
+    }
+
+    /// Step the Input System with this frame's input.
+    fn input_update(&mut self, dt: f32) -> Vec<crate::input::actions::SystemEvent> {
+        self.with_world(|w| {
+            let World {
+                input_system,
+                scene,
+                input,
+                logs,
+                ..
+            } = w;
+            let events = input_system.update(scene, input, dt);
+            logs.extend(input_system.logs.drain(..).map(|l| (LogKind::Warning, l)));
+            events
+        })
+    }
+
+    /// Gamepad motor speeds scripts asked for since the last call: (slot, low, high).
+    pub fn take_rumble(&self) -> Option<Vec<(usize, f32, f32)>> {
+        self.with_world(|w| w.input_system.take_rumble())
+    }
+
+    /// A playing Player Input as Inspector rows (index, scheme, devices, map, active).
+    pub fn player_input_info(&self, e: Entity) -> Option<Vec<(String, String)>> {
+        self.with_world(|w| {
+            let p = w.input_system.player(e)?;
+            let set = w.input_system.set(p.set)?;
+            let map = p
+                .map
+                .and_then(|m| set.asset.maps.get(m))
+                .map_or("<None>".to_owned(), |m| m.name.clone());
+            let devices: Vec<String> = p.devices.iter().map(|d| d.name(&w.input)).collect();
+            Some(vec![
+                ("Player Index".into(), p.index.to_string()),
+                (
+                    "Control Scheme".into(),
+                    p.scheme.clone().unwrap_or_else(|| "<None>".into()),
+                ),
+                ("Devices".into(), devices.join(", ")),
+                ("Action Map".into(), map),
+                ("Input Active".into(), p.active.to_string()),
+            ])
+        })
+    }
+
+    /// Stop every gamepad motor (Play stopping).
+    pub fn reset_haptics(&self) {
+        self.with_world(|w| w.input_system.reset_haptics());
     }
 
     /// Camera Brains and Virtual Cameras between frames (live camera, blends).

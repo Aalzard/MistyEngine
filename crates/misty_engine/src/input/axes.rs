@@ -158,6 +158,9 @@ impl InputAxis {
 #[serde(default)]
 pub struct InputSettings {
     pub axes: Vec<InputAxis>,
+    /// Input Manager, Input System or both (left out of files at the default, Both).
+    #[serde(skip_serializing_if = "super::actions::ActiveInputHandling::is_both")]
+    pub active_handling: super::actions::ActiveInputHandling,
 }
 
 impl Default for InputSettings {
@@ -190,7 +193,10 @@ impl Default for InputSettings {
             InputAxis::button("Submit", "enter", "space"),
             InputAxis::button("Cancel", "escape", "joystick button 1"),
         ];
-        Self { axes }
+        Self {
+            axes,
+            active_handling: Default::default(),
+        }
     }
 }
 

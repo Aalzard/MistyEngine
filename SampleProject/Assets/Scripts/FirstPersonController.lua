@@ -7,6 +7,12 @@
 -- SmoothDamp acceleration, coyote time, jump buffering, gravity with a terminal velocity and
 -- reduced air control. It publishes `self.signal` for the head bob scripts
 -- (GetComponent("FirstPersonController").signal): see Locomotion:publish below.
+--
+-- Input: with a Player Input on the same object, the Move, Look, Jump, Sprint and Crouch
+-- actions of its Input Actions asset drive it (Scenes/InputSystemDemo, Input/Player.inputactions);
+-- while that map is disabled (a menu switched to another map) the player stands still and
+-- leaves the cursor alone. Without one, it reads the Input Manager axes (Horizontal, Vertical,
+-- Mouse X, Mouse Y, Run, Crouch, Jump) with key fallbacks.
 local FirstPersonController = {
     walkSpeed = 4,
     runSpeed = 7,
@@ -23,6 +29,7 @@ local FirstPersonController = {
     landingMinSpeed = 4, -- fall speed (m/s) where the landing impulse starts
     landingMaxSpeed = 12, -- fall speed giving a full (1.0) landing impulse
     mouseSensitivity = 2, -- degrees per Mouse X / Mouse Y unit
+    stickLookSpeed = 150, -- degrees per second at full right stick (Input System Look action)
     mouseSmoothing = 0, -- seconds of look smoothing (0 = raw)
     pitchMin = -85,
     pitchMax = 85,
@@ -310,10 +317,38 @@ function FirstPersonController:Start()
     if self.lockCursor then
         Cursor.lockState = CursorLockMode.Locked
     end
+    self._input = self:_findActions()
+end
+
+-- The actions of a Player Input on this object, or nil (Input Manager axes then).
+function FirstPersonController:_findActions()
+    local player = self.gameObject:GetComponent("PlayerInput")
+    if player == nil then return nil end
+    local ok, actions = pcall(function() return player.actions end)
+    if not ok or actions == nil then return nil end
+    local move = actions:FindAction("Move")
+    if move == nil then return nil end
+    return {
+        player = player,
+        move = move,
+        look = actions:FindAction("Look"),
+        jump = actions:FindAction("Jump"),
+        sprint = actions:FindAction("Sprint"),
+        crouch = actions:FindAction("Crouch"),
+    }
+end
+
+-- Is the Player Input's movement map switched off (a menu is open)?
+function FirstPersonController:_inputPaused()
+    return self._input ~= nil and not self._input.move.enabled
 end
 
 -- Esc releases the cursor, a click on the game takes it again.
 function FirstPersonController:_updateCursor()
+    if self:_inputPaused() then
+        self._cursorLocked = false
+        return
+    end
     if not self.lockCursor then
         self._cursorLocked = true
         return
@@ -332,7 +367,17 @@ end
 -- Returns the yaw turned this frame in degrees per second.
 function FirstPersonController:_updateLook(dt)
     local mx, my = 0, 0
-    if self._cursorLocked then
+    local look = self._input and self._input.look
+    if look ~= nil then
+        -- The mouse binding is scaled like the Mouse X / Y axes; a stick turns at a rate.
+        local v = look:ReadValue()
+        if self._input.player.currentControlScheme == "Gamepad" then
+            local k = self.stickLookSpeed * dt / math.max(0.001, self.mouseSensitivity)
+            mx, my = v.x * k, v.y * k
+        elseif self._cursorLocked then
+            mx, my = v.x, v.y
+        end
+    elseif self._cursorLocked then
         mx = axis("Mouse X", function() return Input.mouseDelta.x * 0.1 end)
         my = axis("Mouse Y", function() return Input.mouseDelta.y * 0.1 end)
     end
@@ -381,17 +426,30 @@ function FirstPersonController:Update()
     self:_updateCursor()
     local turnRate = self:_updateLook(dt)
 
-    local h = axis("Horizontal", function() return 0 end)
-    local v = axis("Vertical", function() return 0 end)
+    local h, v, run, crouch, jump
+    local actions = self._input
+    if actions ~= nil then
+        local m = actions.move:ReadValue()
+        h, v = m.x, m.y
+        run = actions.sprint ~= nil and actions.sprint:IsPressed()
+        crouch = actions.crouch ~= nil and actions.crouch:IsPressed()
+        jump = actions.jump ~= nil and actions.jump:WasPressedThisFrame()
+    else
+        h = axis("Horizontal", function() return 0 end)
+        v = axis("Vertical", function() return 0 end)
+        run = button("Run", "left shift")
+        crouch = button("Crouch", "left ctrl")
+        jump = buttonDown("Jump", "space")
+    end
     local wish = Vector3.new(h, 0, v)
     if wish.magnitude > 1 then wish = wish.normalized end
     local dir = self.transform.right * wish.x + self.transform.forward * wish.z
     local input = {
         move = { x = dir.x, z = dir.z },
         forward = v,
-        run = button("Run", "left shift"),
-        crouch = button("Crouch", "left ctrl"),
-        jump = buttonDown("Jump", "space"),
+        run = run,
+        crouch = crouch,
+        jump = jump,
         canStand = self:_canStand(),
     }
     local vx, vy, vz = loco:step(input, dt, self.cc.isGrounded)

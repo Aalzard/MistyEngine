@@ -7,6 +7,9 @@
 //! 3 right stick X, 4 right stick Y (+1 = down), 5 d-pad X, 6 d-pad Y (+1 = up),
 //! 8 left trigger (0..1), 9 right trigger (0..1).
 
+use std::collections::HashMap;
+
+use gilrs::ff::{BaseEffect, BaseEffectType, Effect, EffectBuilder, Repeat, Replay, Ticks};
 use gilrs::{Axis, Button, GamepadId, Gilrs};
 
 use super::keys::Joystick;
@@ -105,6 +108,8 @@ pub struct Gamepads {
     started: bool,
     slots: Vec<Option<GamepadId>>,
     last: Vec<Joystick>,
+    /// Running rumble effects by slot (dropping one stops it).
+    rumble: HashMap<usize, Effect>,
 }
 
 impl Gamepads {
@@ -124,9 +129,10 @@ impl Gamepads {
         // Events update gilrs' cached state.
         while g.next_event().is_some() {}
         let connected: Vec<GamepadId> = g.gamepads().map(|(id, _)| id).collect();
-        for s in &mut self.slots {
+        for (i, s) in self.slots.iter_mut().enumerate() {
             if s.is_some_and(|id| !connected.contains(&id)) {
                 *s = None;
+                self.rumble.remove(&i);
             }
         }
         for id in connected {
@@ -158,5 +164,57 @@ impl Gamepads {
         }
         self.last = now.clone();
         now
+    }
+}
+
+/// 0..1 motor speed → force feedback magnitude.
+fn magnitude(v: f32) -> u16 {
+    (v.clamp(0.0, 1.0) * f32::from(u16::MAX)).round() as u16
+}
+
+impl Gamepads {
+    /// Rumble a pad: `low` drives the low-frequency (strong, left) motor, `high` the
+    /// high-frequency (weak, right) one, 0..1; both 0 stops. Silently does nothing where the
+    /// platform or the pad has no force feedback.
+    pub fn set_motor_speeds(&mut self, slot: usize, low: f32, high: f32) {
+        self.rumble.remove(&slot);
+        let (Some(g), Some(Some(id))) = (self.gilrs.as_mut(), self.slots.get(slot).copied()) else {
+            return;
+        };
+        if (low <= 0.0 && high <= 0.0) || !g.gamepad(id).is_ff_supported() {
+            return;
+        }
+        let scheduling = Replay {
+            play_for: Ticks::from_ms(1000),
+            ..Default::default()
+        };
+        let effect = EffectBuilder::new()
+            .add_effect(BaseEffect {
+                kind: BaseEffectType::Strong {
+                    magnitude: magnitude(low),
+                },
+                scheduling,
+                envelope: Default::default(),
+            })
+            .add_effect(BaseEffect {
+                kind: BaseEffectType::Weak {
+                    magnitude: magnitude(high),
+                },
+                scheduling,
+                envelope: Default::default(),
+            })
+            .gamepads(&[id])
+            .repeat(Repeat::Infinitely)
+            .finish(g);
+        if let Ok(e) = effect
+            && e.play().is_ok()
+        {
+            self.rumble.insert(slot, e);
+        }
+    }
+
+    /// Stop every pad's motors (Play stopped).
+    pub fn stop_rumble(&mut self) {
+        self.rumble.clear();
     }
 }

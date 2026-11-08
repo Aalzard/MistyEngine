@@ -89,6 +89,7 @@ fn all_refs() -> impl Iterator<Item = &'static (&'static str, &'static str, &'st
         .chain(crate::rigging::RIG_REFS)
         .chain(crate::splines::SPLINE_REFS)
         .chain(crate::video::VIDEO_REFS)
+        .chain(crate::input::actions::player_input::PLAYER_INPUT_REFS)
 }
 
 /// Components that can hold object references.

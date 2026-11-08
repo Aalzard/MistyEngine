@@ -252,6 +252,11 @@ impl Game {
         }
     }
 
+    /// Gamepad motor speeds scripts asked for since the last call.
+    pub fn take_rumble(&self) -> Option<Vec<(usize, f32, f32)>> {
+        self.runtime.as_ref().and_then(Runtime::take_rumble)
+    }
+
     pub fn take_logs(&mut self) -> Vec<(LogKind, String)> {
         std::mem::take(&mut self.logs)
     }

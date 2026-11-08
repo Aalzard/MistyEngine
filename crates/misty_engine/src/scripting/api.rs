@@ -430,7 +430,7 @@ impl UserData for LGameObject {
 /// (`GetComponent("Rotator")` is that object's `Rotator.lua` instance table); nil otherwise.
 fn other_component(lua: &Lua, e: Entity, name: &str) -> Result<Value> {
     type Lookup = fn(&Lua, Entity, &str) -> Result<Option<Value>>;
-    const LOOKUPS: [Lookup; 11] = [
+    const LOOKUPS: [Lookup; 12] = [
         super::physics_api::component,
         super::ui_api::component,
         super::material_api::component,
@@ -442,6 +442,7 @@ fn other_component(lua: &Lua, e: Entity, name: &str) -> Result<Value> {
         super::timeline_api::component,
         super::camera_api::component,
         super::network_api::component,
+        super::input_actions_api::component,
     ];
     for lookup in LOOKUPS {
         if let Some(v) = lookup(lua, e, name)? {
@@ -847,6 +848,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     g.set("GameObject", go)?;
     // Axes, buttons and tags (needs Input, its mousePosition lookup and GameObject).
     super::input_api::register(lua)?;
+    super::input_actions_api::register(lua)?;
     g.set(
         "Instantiate",
         lua.create_function(|lua, args: Variadic<Value>| {
