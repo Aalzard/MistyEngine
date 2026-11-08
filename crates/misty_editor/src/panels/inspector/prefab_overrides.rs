@@ -594,7 +594,15 @@ fn overrides_dropdown(ui: &mut Ui, state: &mut EditorState, root: Entity, rel: &
 }
 
 /// `MISTY_PREFAB_DEMO`: overrides on the selected instance, for screenshots (memory only).
+/// A comma list of: `overrides` (and open the dropdown), `added` (no dropdown), `bold` (select
+/// the overridden child), `missing` (add an instance of a prefab that doesn't exist).
 pub fn demo(state: &mut EditorState, what: &str) {
+    for part in what.split(',').map(str::trim) {
+        demo_one(state, part);
+    }
+}
+
+fn demo_one(state: &mut EditorState, what: &str) {
     if what == "missing" {
         let e = state.scene.spawn("Old Crate", None);
         state
@@ -606,17 +614,23 @@ pub fn demo(state: &mut EditorState, what: &str) {
     let Some(root) = state
         .selection
         .active()
-        .filter(|e| state.scene.prefab_link(*e).is_some())
+        .and_then(|e| state.scene.outermost_prefab_root(e))
     else {
         return;
     };
-    state.scene.add(root, misty_engine::scene::Light::default());
-    let added = state.scene.spawn("Lantern", Some(root));
-    let _ = added;
+    if state
+        .scene
+        .world
+        .get::<&misty_engine::scene::Light>(root)
+        .is_err()
+    {
+        state.scene.add(root, misty_engine::scene::Light::default());
+        state.scene.spawn("Lantern", Some(root));
+    }
     let child = state.scene.children(root).into_iter().next();
-    if let Some(c) = child {
+    if let Some(c) = child.filter(|c| state.scene.name(*c) != "Lantern") {
         let mut t = state.scene.transform(c);
-        t.scale *= 1.5;
+        t.scale = glam::Vec3::splat(1.5);
         state.scene.set_transform(c, t);
     }
     state.hierarchy.expanded.insert(root);
@@ -626,6 +640,7 @@ pub fn demo(state: &mut EditorState, what: &str) {
                 state.select(c);
             }
         }
-        _ => OPEN_DROPDOWN.with(|o| o.set(true)),
+        "overrides" => OPEN_DROPDOWN.with(|o| o.set(true)),
+        _ => {}
     }
 }

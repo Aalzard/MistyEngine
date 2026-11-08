@@ -150,8 +150,17 @@ pub fn open(s: &mut EditorState, rel: &str, from: Option<Entity>) -> bool {
         context_draws: None,
         stash,
     });
+    // Frame the whole prefab (wider in context, so the scene around it shows).
+    s.selection.set_many(s.scene.subtree(root));
+    if let Some((center, radius)) = crate::commands::selection_bounds(s) {
+        let radius = if context.is_some() {
+            radius.max(1.0) * 3.0
+        } else {
+            radius.max(0.25)
+        };
+        s.scene_view.camera.frame(center, radius);
+    }
     s.select(root);
-    s.push(Action::FrameSelected);
     s.console.info(format!("Opened {rel} in Prefab Mode"));
     true
 }
