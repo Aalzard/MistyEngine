@@ -101,6 +101,7 @@ pub fn window(ctx: &egui::Context, state: &mut EditorState) {
         .resizable(true)
         .collapsible(false)
         .default_width(340.0)
+        .default_pos([420.0, 110.0])
         .show(ctx, |ui| {
             ui.weak(
                 "Bodies, colliders and Character Joints on the character's bones. \

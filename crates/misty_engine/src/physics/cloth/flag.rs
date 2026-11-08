@@ -136,9 +136,12 @@ fn glb(doc: &Value, bin: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Vertex colours (COLOR_0, RGBA) of mesh `mesh` of the glTF file at `path`, counting meshes the
-/// way the importer does (each triangle primitive with positions is one mesh).
-pub fn gltf_colors(path: &std::path::Path, mesh: usize) -> Result<Option<Vec<[f32; 4]>>, String> {
+/// Positions and vertex colours (COLOR_0, RGBA) of mesh `mesh` of the glTF file at `path`, in
+/// file space, counting meshes the way the importer does (each triangle primitive with positions
+/// is one mesh).
+pub type FileColors = (Vec<[f32; 3]>, Option<Vec<[f32; 4]>>);
+
+pub fn gltf_colors(path: &std::path::Path, mesh: usize) -> Result<FileColors, String> {
     let bytes = crate::vfs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let (doc, buffers, _) =
         gltf::import_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -149,11 +152,12 @@ pub fn gltf_colors(path: &std::path::Path, mesh: usize) -> Result<Option<Vec<[f3
                 continue;
             }
             let reader = prim.reader(|b| buffers.get(b.index()).map(|d| &d.0[..]));
-            if reader.read_positions().is_none() {
+            let Some(positions) = reader.read_positions() else {
                 continue;
-            }
+            };
             if k == mesh {
-                return Ok(reader.read_colors(0).map(|c| c.into_rgba_f32().collect()));
+                let colors = reader.read_colors(0).map(|c| c.into_rgba_f32().collect());
+                return Ok((positions.collect(), colors));
             }
             k += 1;
         }
@@ -161,7 +165,9 @@ pub fn gltf_colors(path: &std::path::Path, mesh: usize) -> Result<Option<Vec<[f3
     Err(format!("{}: no mesh {mesh}", path.display()))
 }
 
-/// Max distances from a vertex colour channel: channel value × `scale` (0 pins the vertex).
+/// Max distances from a vertex colour channel: channel value × `scale` (0 pins the vertex), one
+/// per vertex of the **imported** mesh. Colours are matched to the imported vertices by position
+/// (the import mirrors X and may reorder or split vertices when it makes lightmap UVs).
 pub fn max_distances_from_colors(
     mesh: &MeshRef,
     channel: ColorChannel,
@@ -173,14 +179,29 @@ pub fn max_distances_from_colors(
     if !path.to_lowercase().ends_with(".glb") && !path.to_lowercase().ends_with(".gltf") {
         return Err("Vertex colours are read from glTF files only.".into());
     }
-    let colors = gltf_colors(&crate::assets::absolute(path), index)?
-        .ok_or("The mesh has no vertex colours.")?;
-    let expected = crate::models::mesh(mesh).map(|m| m.vertices.len());
-    if expected.is_some_and(|n| n != colors.len()) {
-        return Err("The vertex colours don't match the imported mesh's vertices.".into());
-    }
-    Ok(colors
+    let (positions, colors) = gltf_colors(&crate::assets::absolute(path), index)?;
+    let colors = colors.ok_or("The mesh has no vertex colours.")?;
+    let imported = crate::models::mesh(mesh).ok_or("The mesh could not be imported.")?;
+    let key = |p: [f32; 3]| {
+        let q = |v: f32| (v * 1.0e4).round() as i64;
+        (q(p[0]), q(p[1]), q(p[2]))
+    };
+    let by_position: std::collections::HashMap<(i64, i64, i64), f32> = positions
         .iter()
-        .map(|c| c[channel.index()].clamp(0.0, 1.0) * scale.max(0.0))
-        .collect())
+        .zip(&colors)
+        // File space is right-handed: the importer mirrors X.
+        .map(|(p, c)| (key([-p[0], p[1], p[2]]), c[channel.index()].clamp(0.0, 1.0)))
+        .collect();
+    imported
+        .vertices
+        .iter()
+        .map(|v| {
+            by_position
+                .get(&key(v.position))
+                .map(|c| c * scale.max(0.0))
+                .ok_or_else(|| {
+                    "The vertex colours don't match the imported mesh's vertices.".into()
+                })
+        })
+        .collect()
 }

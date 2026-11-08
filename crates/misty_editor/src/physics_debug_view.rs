@@ -83,8 +83,9 @@ pub fn legend(ui: &Ui, rect: Rect, counts: Counts) {
         (debug::CONTACT, format!("Contacts ({})", counts.contacts)),
         (debug::JOINT, format!("Joints ({})", counts.joints)),
     ];
-    let x = rect.right() - 150.0;
-    let mut y = rect.top() + 36.0;
+    // Bottom right, clear of the view gizmo and the toolbar overlays.
+    let x = rect.right() - 160.0;
+    let mut y = rect.bottom() - (18.0 * 8.0 + 14.0);
     painter.rect_filled(
         Rect::from_min_size(
             egui::pos2(x - 8.0, y - 6.0),

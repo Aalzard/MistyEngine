@@ -225,8 +225,8 @@ pub fn overlay(ui: &Ui, state: &EditorState, camera: &Camera, rect: Rect) {
         format!("Painting max distance {:.2} m (Shift: free)", b.value)
     };
     painter.text(
-        rect.left_top() + egui::vec2(10.0, 30.0),
-        egui::Align2::LEFT_TOP,
+        rect.left_bottom() + egui::vec2(10.0, -12.0),
+        egui::Align2::LEFT_BOTTOM,
         text,
         egui::FontId::proportional(13.0),
         Color32::WHITE,

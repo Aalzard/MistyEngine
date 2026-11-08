@@ -453,13 +453,16 @@ fn dummy(s: &mut Scene) -> Entity {
     root
 }
 
-/// Max distances from the flag's colour channel (red × 3 m: 0 pins the pole edge).
+/// Max distances from the flag's colour channel (red × 3 m: 0 pins the pole edge), for the
+/// imported mesh's vertices (read from the project's `Flag.glb`, by its full path: other tests
+/// move the global project root).
 fn flag_max_distances() -> Vec<f32> {
-    flag::flag_grid()
-        .2
-        .iter()
-        .map(|c| c[ColorChannel::Red.index()] * 3.0)
-        .collect()
+    let abs = project()
+        .join(FLAG_MODEL)
+        .to_string_lossy()
+        .replace('\\', "/");
+    flag::max_distances_from_colors(&MeshRef::asset(&abs, 0), ColorChannel::Red, 3.0)
+        .expect("write_physics_demo2 writes the flag first")
 }
 
 fn flag_pole(s: &mut Scene) -> Entity {
