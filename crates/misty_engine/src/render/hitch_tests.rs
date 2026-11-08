@@ -453,6 +453,7 @@ fn meadow_demo_opens_without_a_frozen_frame() {
         r.set_quality(&device, &QualityLevel::high());
         let target = r.create_target(&device, 640, 360);
         let mut times = Vec::new();
+        let opened = std::time::Instant::now();
         for i in 0.. {
             let started = std::time::Instant::now();
             r.render_with_effects(&device, &queue, &target, &view.frame(), &view.effects);
@@ -462,9 +463,16 @@ fn meadow_demo_opens_without_a_frozen_frame() {
             if i + 1 >= frames && !(until_baked && baking) {
                 break;
             }
+            assert!(
+                opened.elapsed().as_secs() < 1800,
+                "mesh SDFs still pending after {} frames",
+                times.len()
+            );
         }
         times
     };
+    // Forgetting every bake of the process: the mesh SDF tests that check the shared map wait.
+    let _sdf = super::misty_gi::mesh_sdf_test_serial();
     crate::render::set_grass_streaming(true);
     super::misty_gi::forget_mesh_sdfs();
     // First launch (or a Library already holding the bakes): every frame goes on.
@@ -475,15 +483,24 @@ fn meadow_demo_opens_without_a_frozen_frame() {
         first[0],
         crate::render::mesh_sdf_bakes_pending()
     );
-    // Let the bakes land (first run on a machine: a minute at most), then a new session.
+    // Let the bakes land and write their cache files (first run on a machine: minutes on a
+    // busy one; forgetting waits for every pending bake), then a new session.
     super::misty_gi::forget_mesh_sdfs();
     let library = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../SampleProject")
         .join(super::misty_gi::MESH_SDF_DIR);
     let cached = std::fs::read_dir(library).map_or(0, |d| d.count());
+    let (hits, misses) = super::misty_gi::mesh_sdf_cache_reads();
     let started = std::time::Instant::now();
+    // Frames until every rock's field has landed (read back on the background pool).
     let again = open(2, true);
     let reread = started.elapsed();
+    let (hits_after, misses_after) = super::misty_gi::mesh_sdf_cache_reads();
+    eprintln!(
+        "second open: {reread:?}, {} frames, {} cache reads",
+        again.len(),
+        hits_after - hits
+    );
     crate::render::set_grass_streaming(false);
     assert!(
         worst < BUDGET_MS,
@@ -493,10 +510,18 @@ fn meadow_demo_opens_without_a_frozen_frame() {
         cached >= 6,
         "the rocks' distance fields were not cached ({cached} files)"
     );
-    assert!(
-        reread.as_secs_f32() < 5.0 && again.len() < 60,
+    // Counted, not timed: on a busy machine the second open's first frames alone can take
+    // seconds, and a bake on below-normal-priority workers far longer.
+    assert_eq!(
+        misses_after,
+        misses,
         "the second open baked again instead of reading the cache: {reread:?}, {} frames",
         again.len()
+    );
+    assert!(
+        hits_after - hits >= 6,
+        "the second open read {} distance fields from the cache, not every rock's",
+        hits_after - hits
     );
 }
 

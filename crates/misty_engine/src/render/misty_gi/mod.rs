@@ -29,7 +29,10 @@ mod settings;
 
 pub use mesh_sdf::pending as mesh_sdf_bakes_pending;
 #[cfg(test)]
-pub(crate) use mesh_sdf::{LIBRARY_DIR as MESH_SDF_DIR, forget_all as forget_mesh_sdfs};
+pub(crate) use mesh_sdf::{
+    LIBRARY_DIR as MESH_SDF_DIR, cache_reads as mesh_sdf_cache_reads,
+    forget_all as forget_mesh_sdfs, test_serial as mesh_sdf_test_serial,
+};
 pub use settings::MistyGiSettings;
 use settings::Sizes;
 
