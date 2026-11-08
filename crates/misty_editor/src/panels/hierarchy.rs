@@ -249,6 +249,20 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
         );
     }
 
+    // Version control status of the scene file, left of the ⋮ menu.
+    let badge = state
+        .scene
+        .entry(id)
+        .and_then(|e| e.path.clone())
+        .and_then(|p| state.vcs.badge(&p));
+    let resp = match badge {
+        Some(b) => {
+            crate::vcs::paint_badge(ui, pos2(rect.right() - 30.0, rect.center().y), b, 12.0);
+            resp.on_hover_text(crate::vcs::badge_tip(b))
+        }
+        None => resp,
+    };
+
     // ⋮ menu at the right edge, same items as the right-click menu.
     let menu_rect = Rect::from_min_max(pos2(rect.right() - 20.0, rect.top()), rect.max);
     let menu = ui.interact(menu_rect, Id::new(("hier_scene_menu", id)), Sense::click());

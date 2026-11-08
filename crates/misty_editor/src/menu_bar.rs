@@ -592,6 +592,14 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         item(ui, s, "Multiplayer Play Mode", "", open);
     });
     ui.separator();
+    let vcs = ui.button("Version Control…");
+    targets::header(ui, "Version Control…", vcs.rect);
+    if vcs.clicked() {
+        s.vcs.window.open = true;
+        let root = s.project.root.clone();
+        s.vcs.refresh_now(&root);
+        ui.close();
+    }
     item(
         ui,
         s,

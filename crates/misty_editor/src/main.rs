@@ -232,6 +232,7 @@ mod undo_names;
 mod undo_terrain;
 mod updater;
 mod vcam_tools;
+mod vcs;
 mod vfx_preview;
 mod vgeo_convert;
 mod viewport;
