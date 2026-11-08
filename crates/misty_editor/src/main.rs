@@ -115,6 +115,8 @@ mod sample_multiscene;
 #[cfg(test)]
 mod sample_navigation;
 #[cfg(test)]
+mod sample_navigation2;
+#[cfg(test)]
 mod sample_network;
 #[cfg(test)]
 mod sample_occlusion;
