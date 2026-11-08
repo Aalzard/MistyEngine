@@ -103,7 +103,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "editor.build",
         title: "Build player",
-        description: "Build the game (Build Settings scenes and target) into an output folder and return the executable's path. The live editor asks the user first.",
+        description: "Build the game (the active Build Profile's scenes, target and options) into an output folder and return the executable's path. The live editor asks the user first.",
         kind: Kind::Destructive,
         idempotent: false,
         schema: build_schema,
@@ -299,10 +299,10 @@ fn gate(s: &EditorState, action: &Action, live: bool) -> Gate {
         | Action::RestartIntoNewBuild => {
             Gate::Refuse("this command closes or restarts the editor".into())
         }
-        Action::Build | Action::BuildAndRun if live => {
+        Action::BuildAndRun if live => {
             Gate::Confirm("run File > Build (pick a folder and build the game)".into())
         }
-        Action::Build | Action::BuildAndRun => {
+        Action::BuildAndRun => {
             Gate::Refuse("builds need a folder: use editor.build with \"output\"".into())
         }
         Action::OpenScene | Action::SaveSceneAs if !live => {

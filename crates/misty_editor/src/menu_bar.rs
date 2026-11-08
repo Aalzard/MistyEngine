@@ -146,7 +146,7 @@ fn file_menu(ui: &mut Ui, s: &mut EditorState) {
     item(
         ui,
         s,
-        "Build Settings...",
+        "Build Profiles...",
         "Ctrl+Shift+B",
         Action::OpenBuildSettings,
     );

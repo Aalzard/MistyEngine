@@ -3028,3 +3028,32 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Clear coat / anisotropy / detail / parallax outputs wait for the 17D material model (not in
   main); no CPU preview for Custom Functions; vertex offsets do not move shadows; decal graphs
   limited to 8 properties; FBX / OBJ / skinned meshes have no vertex colours yet.
+
+## Round 21A — Build Profiles, dedicated server, achievements, build report (branch r21-buildprofiles)
+
+### Done (docs/pending/r21-buildprofiles.md)
+- **Build Profiles** window (File ▸ Build Profiles, Ctrl+Shift+B) in place of Build Settings:
+  Windows, Linux, macOS and Dedicated Server platform profiles plus custom profiles (add,
+  duplicate, rename, delete), each with its own scene list or the shared one, scripting defines,
+  texture compression and max size overrides, a quality level, Development / Compress / Zip and
+  an output folder. Saved as `.buildprofile` assets (`ProjectSettings/BuildProfiles/`,
+  `Assets/Settings/Build Profiles/`); one is active for Ctrl+B and Play mode. CLI:
+  `misty --build <project> [<out>] --profile <name>`.
+- Lua scripting defines: `--#if NAME` / `--#elif` / `--#else` / `--#endif` blocks and
+  `Application.HasDefine`, `Application.isDedicatedServer`, `Application.isEditor`.
+- **Dedicated server**: the player runs headless (no window, audio device or GPU) for Dedicated
+  Server builds or `--headless`, starts the network server (`--port`) and ticks at the Target
+  Frame Rate; textures, audio, video, compressed textures and the icon are stripped from server
+  builds. Tested end to end: a server build of the real player plus a headless client process.
+- **Achievements**: Lua `Achievements.Unlock` / `IsUnlocked` / `Clear` / `GetUnlocked` over a
+  pluggable `AchievementBackend`; local JSON storage (editor Library, player user folder).
+- **Build report**: sizes per asset type and the 20 largest assets, shown in the window after a
+  build, saved as `BuildReport.txt` in the build and `Library/BuildReports/<Profile>.json`.
+- Sample profiles in SampleProject: Demo and Net Server.
+
+### Not done yet
+- No Steam backend for achievements: there is no pure-Rust, permissively licensed Steamworks
+  client (the crates wrap Valve's proprietary SDK). The backend trait is where it would plug in.
+- The server is the same player binary run headless, not a separately compiled player without
+  winit / wgpu. Texture overrides don't reach the textures the renderer makes from several
+  images (terrain arrays, tree atlases). Profiles have no per-profile Player Settings overrides.

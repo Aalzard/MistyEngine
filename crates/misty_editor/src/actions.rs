@@ -169,13 +169,12 @@ pub enum Action {
     FocusTab(Tab),
     /// Edit ▸ Project Settings.
     OpenProjectSettings,
-    /// File ▸ Build Settings.
+    /// File ▸ Build Profiles.
     OpenBuildSettings,
     /// Window ▸ Multiplayer ▸ Multiplayer Play Mode.
     OpenMultiplayerPlayMode,
-    /// Build into a folder picked now.
-    Build,
-    /// Build into the last build folder (asks the first time), then run it.
+    /// Build the active Build Profile into its output folder (asks the first time), then run
+    /// it.
     BuildAndRun,
     /// Window ▸ Layouts: apply a built-in or saved layout.
     LoadLayout(LayoutRef),

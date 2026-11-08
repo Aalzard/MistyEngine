@@ -381,6 +381,8 @@ pub struct EditorState {
     pub project_settings_window: ProjectSettingsWindow,
     /// File ▸ Build Settings values (saved in the project).
     pub build_settings: BuildSettings,
+    /// File ▸ Build Profiles: the platform and custom profiles (saved as assets).
+    pub build_profiles: misty_engine::build_profile::BuildProfiles,
     pub build_window: BuildSettingsWindow,
     pub assets: AssetDatabase,
     /// Asset shown in the Inspector when no scene object is selected.
@@ -488,6 +490,7 @@ impl EditorState {
             project_settings: ProjectSettings::default(),
             project_settings_window: ProjectSettingsWindow::default(),
             build_settings: BuildSettings::default(),
+            build_profiles: Default::default(),
             build_window: BuildSettingsWindow::default(),
             scene_view: SceneViewSettings {
                 draw_mode: 0,

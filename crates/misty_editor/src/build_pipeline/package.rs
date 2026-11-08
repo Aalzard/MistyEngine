@@ -7,7 +7,12 @@
 //! <Out>/steam_appid.txt          development builds with a Steam App ID
 //! <Out>/steam/                   SteamPipe upload scripts (with a Steam App ID)
 //! <Out>.zip / <Product>-<ver>-<platform>.zip   when "Create .zip" is on
+//! <Out>/BuildReport.txt          sizes by asset type and the largest assets
 //! ```
+//!
+//! A Build Profile ([`misty_engine::build_profile`]) decides the scenes, defines, texture
+//! overrides, quality level and options. A Dedicated Server profile packs a headless player:
+//! no textures, audio or video, no icon and no compressed textures.
 //!
 //! macOS builds are an app bundle: `<Product>.app/Contents/MacOS/<Product>` with the data folder
 //! in `Contents/Resources`.
@@ -18,6 +23,8 @@ use misty_engine::asset_deps;
 use misty_engine::build::{
     self, BUILD_INFO_FILE, BuildInfo, BuildSettings, BuildTarget, PAK_FILE, TargetOs,
 };
+use misty_engine::build_profile::{self, BuildProfile, TextureOverride};
+use misty_engine::build_report::{self, BuildReport};
 use misty_engine::pak::PakWriter;
 use misty_engine::settings::ProjectSettings;
 
@@ -30,9 +37,59 @@ pub struct PackageRequest {
     pub out: PathBuf,
     pub build: BuildSettings,
     pub settings: ProjectSettings,
+    /// The Build Profile (`build` already has its scenes, target and options); `None` builds
+    /// with `build` alone.
+    pub profile: Option<BuildProfile>,
 }
 
 impl PackageRequest {
+    /// A build of `profile`: the shared Build Settings with the profile applied.
+    pub fn with_profile(
+        project: &Path,
+        out: &Path,
+        shared: &BuildSettings,
+        settings: &ProjectSettings,
+        profile: &BuildProfile,
+    ) -> Self {
+        Self {
+            project: project.to_path_buf(),
+            out: out.to_path_buf(),
+            build: profile.apply(shared),
+            settings: settings.clone(),
+            profile: Some(profile.clone()),
+        }
+    }
+
+    /// A dedicated server build.
+    pub fn server(&self) -> bool {
+        self.profile.as_ref().is_some_and(BuildProfile::is_server)
+    }
+
+    pub fn profile_name(&self) -> String {
+        self.profile
+            .as_ref()
+            .map_or_else(|| self.build.target.label().to_owned(), |p| p.name.clone())
+    }
+
+    /// The scripting defines the build runs with.
+    pub fn defines(&self) -> Vec<String> {
+        match &self.profile {
+            Some(p) => p.build_defines(),
+            None => BuildProfile {
+                target: self.build.target,
+                development: self.build.development,
+                ..Default::default()
+            }
+            .build_defines(),
+        }
+    }
+
+    fn texture_override(&self) -> Option<TextureOverride> {
+        self.profile
+            .as_ref()
+            .and_then(BuildProfile::texture_override)
+    }
+
     pub fn product(&self) -> String {
         self.settings
             .player_or(&self.build)
@@ -48,6 +105,8 @@ pub struct Built {
     pub zip: Option<PathBuf>,
     pub files: usize,
     pub pak_bytes: u64,
+    /// Sizes by asset type and the largest assets.
+    pub report: BuildReport,
 }
 
 /// Refuse output folders inside the project's Assets / ProjectSettings (or the project itself).
@@ -72,8 +131,18 @@ pub fn package(
     player: &Path,
     send: &mut dyn FnMut(Msg),
 ) -> Result<Built, String> {
+    let started = std::time::Instant::now();
+    let warnings = std::cell::Cell::new(0usize);
+    let send = &mut |m: Msg| {
+        if matches!(m, Msg::Warning(_)) {
+            warnings.set(warnings.get() + 1);
+        }
+        send(m)
+    };
     check_output(&req.project, &req.out)?;
     let target = req.build.target;
+    let server = req.server();
+    let mut report = BuildReport::default();
     let player_settings = req.settings.player_or(&req.build);
     let product = req.product();
     let stem = build::file_stem(&product);
@@ -110,9 +179,11 @@ pub fn package(
     if roots.is_empty() {
         return Err("no scenes in Build Settings: add one with \"Add Open Scenes\"".into());
     }
-    roots.extend(player_settings.icon.clone());
-    roots.extend(player_settings.splash.image.clone());
-    let deps = asset_deps::collect(&req.project, &roots);
+    if !server {
+        roots.extend(player_settings.icon.clone());
+        roots.extend(player_settings.splash.image.clone());
+    }
+    let mut deps = asset_deps::collect(&req.project, &roots);
     for (missing, from) in &deps.missing {
         let from = if from.is_empty() {
             "the build list"
@@ -128,6 +199,53 @@ pub fn package(
         deps.files.len(),
         req.build.enabled().count()
     )));
+    // A dedicated server has nothing to show or play: textures, audio and video stay out.
+    if server {
+        let stripped: Vec<String> = deps
+            .files
+            .iter()
+            .filter(|r| build_profile::server_strips(r))
+            .cloned()
+            .collect();
+        for rel in &stripped {
+            let bytes = std::fs::metadata(req.project.join(rel)).map_or(0, |m| m.len());
+            report.strip(bytes);
+            deps.files.remove(rel);
+        }
+        send(Msg::Log(format!(
+            "Dedicated server: {} visual and audio files left out ({})",
+            report.stripped,
+            build_report::size_text(report.stripped_bytes)
+        )));
+    }
+    // The profile's texture overrides go into the packed import settings, so players look up
+    // the compressed blocks this build makes.
+    let platform = texture_platform(target);
+    let texture_override = req.texture_override().filter(|_| !server);
+    let mut metas: std::collections::BTreeMap<String, String> = Default::default();
+    if let Some(o) = &texture_override {
+        for rel in deps
+            .files
+            .iter()
+            .filter(|r| misty_engine::assets::is_texture(r))
+        {
+            let meta = format!("{rel}.meta");
+            let old = misty_engine::vfs::read_to_string(req.project.join(&meta)).ok();
+            match o.apply_meta(old.as_deref(), platform) {
+                Ok(text) => {
+                    metas.insert(meta, text);
+                }
+                Err(e) => send(Msg::Warning(format!("{meta}: {e}"))),
+            }
+        }
+        send(Msg::Log(format!(
+            "Texture overrides: compression {}, max size {} ({} textures)",
+            o.compression.map_or("as imported", |c| c.label()),
+            o.max_size.map_or("as imported".into(), |m| m.to_string()),
+            metas.len()
+        )));
+        deps.files.extend(metas.keys().cloned());
+    }
 
     // The pak: assets, then settings.
     let pak_path = data_dir.join(PAK_FILE);
@@ -136,9 +254,14 @@ pub fn package(
         .map_err(|e| io(&pak_path, e))?;
     let total = deps.files.len().max(1);
     for (i, rel) in deps.files.iter().enumerate() {
-        let bytes =
-            misty_engine::vfs::read(req.project.join(rel)).map_err(|e| format!("{rel}: {e}"))?;
-        pak.add(rel, &bytes).map_err(|e| io(&pak_path, e))?;
+        let bytes = match metas.get(rel) {
+            Some(text) => text.clone().into_bytes(),
+            None => {
+                misty_engine::vfs::read(req.project.join(rel)).map_err(|e| format!("{rel}: {e}"))?
+            }
+        };
+        let packed = pak.add_counted(rel, &bytes).map_err(|e| io(&pak_path, e))?;
+        report.add(rel, bytes.len() as u64, packed);
         if i % 16 == 0 {
             let f = 0.76 + 0.14 * i as f32 / total as f32;
             send(Msg::Progress(f, format!("Packing {rel}")));
@@ -149,7 +272,7 @@ pub fn package(
     for rel in deps
         .files
         .iter()
-        .filter(|r| misty_engine::models::is_model(r))
+        .filter(|r| !server && misty_engine::models::is_model(r))
     {
         match misty_engine::models::virtual_build::bake(rel) {
             Ok(Some(path)) => {
@@ -160,7 +283,10 @@ pub fn package(
                     misty_engine::models::virtual_build::LIBRARY_DIR,
                     name.unwrap_or_default()
                 );
-                pak.add(&key, &bytes).map_err(|e| io(&pak_path, e))?;
+                let packed = pak
+                    .add_counted(&key, &bytes)
+                    .map_err(|e| io(&pak_path, e))?;
+                report.add(&key, bytes.len() as u64, packed);
                 send(Msg::Log(format!("Virtual geometry: {key}")));
             }
             Ok(None) => {}
@@ -170,8 +296,12 @@ pub fn package(
     // Compressed textures (made now if the cache is missing them), at every size the quality
     // levels load them at, so players upload blocks instead of decoding images.
     let files: Vec<String> = deps.files.iter().cloned().collect();
-    let (packed, saved) =
-        pack_compressed_textures(req, &files, &mut pak, send).map_err(|e| io(&pak_path, e))?;
+    let (packed, saved) = if server {
+        (0, 0)
+    } else {
+        pack_compressed_textures(req, &files, &mut pak, &mut report, send)
+            .map_err(|e| io(&pak_path, e))?
+    };
     if packed > 0 {
         send(Msg::Log(format!(
             "Compressed textures: {packed} ({:.1} MB of GPU memory saved)",
@@ -181,11 +311,37 @@ pub fn package(
     let mut settings = req.settings.clone();
     // The player reads its settings from here, so migrate old projects' window options.
     settings.player = Some(player_settings.clone());
+    // The profile's quality level is the one the game starts on.
+    if let Some(p) = &req.profile
+        && let Some(name) = &p.quality_level
+    {
+        match p.quality_index(&settings.quality) {
+            Some(i) => {
+                settings.quality.default_level = i;
+                send(Msg::Log(format!("Quality level: {name}")));
+            }
+            None => send(Msg::Warning(format!(
+                "the profile's quality level \"{name}\" doesn't exist; using the default"
+            ))),
+        }
+    }
+    let defines = req.defines();
     let info = BuildInfo {
         development: req.build.development,
         target: target.triple().into(),
         version: player_settings.version.clone(),
+        server,
+        profile: req
+            .profile
+            .as_ref()
+            .map(|p| p.name.clone())
+            .unwrap_or_default(),
+        defines: defines.clone(),
     };
+    send(Msg::Log(format!(
+        "Scripting defines: {}",
+        defines.join(";")
+    )));
     // GUID → path of the packed assets, so the player resolves references like the editor.
     let guids: std::collections::BTreeMap<String, String> =
         misty_engine::asset_db::GuidDatabase::read(&req.project)
@@ -199,8 +355,11 @@ pub fn package(
         (BUILD_INFO_FILE, json(&info)),
         (misty_engine::asset_db::MAP_FILE, json(&guids)),
     ] {
-        pak.add(rel, text?.as_bytes())
+        let text = text?;
+        let packed = pak
+            .add_counted(rel, text.as_bytes())
             .map_err(|e| io(&pak_path, e))?;
+        report.add(rel, text.len() as u64, packed);
     }
     pak.finish().map_err(|e| io(&pak_path, e))?;
     let pak_bytes = std::fs::metadata(&pak_path).map_or(0, |m| m.len());
@@ -215,7 +374,7 @@ pub fn package(
 
     // Icon: next to the data, and inside the .exe on Windows.
     send(Msg::Progress(0.92, "Icon".into()));
-    if let Some(icon) = &player_settings.icon {
+    if let Some(icon) = player_settings.icon.as_ref().filter(|_| !server) {
         match misty_engine::vfs::read(req.project.join(icon)) {
             Ok(bytes) => icon_files(&bytes, &data_dir, &exe, target, send),
             Err(e) => send(Msg::Warning(format!("icon {icon}: {e}"))),
@@ -266,7 +425,12 @@ pub fn package(
             .strip_prefix(out)
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .unwrap_or_default();
-        let skip = |r: &str| r == "steam_appid.txt" || r == "Player.log" || r.starts_with("steam/");
+        let skip = |r: &str| {
+            r == "steam_appid.txt"
+                || r == "Player.log"
+                || r == build_report::TEXT_FILE
+                || r.starts_with("steam/")
+        };
         let size = zip::zip_dir(out, &path, &stem, |r| r == exe_rel, skip)?;
         send(Msg::Log(format!(
             "{}: {:.1} MB",
@@ -277,11 +441,43 @@ pub fn package(
     } else {
         None
     };
+    // The report: shown by the window, saved next to the game and in the project.
+    report.product = product.clone();
+    report.profile = req.profile_name();
+    report.target = target.label().to_owned();
+    report.server = server;
+    report.development = req.build.development;
+    report.output = std::path::absolute(out).unwrap_or_else(|_| out.clone());
+    report.time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    report.executable_bytes = std::fs::metadata(&exe).map_or(0, |m| m.len());
+    report.pak_bytes = pak_bytes;
+    let text_path = out.join(build_report::TEXT_FILE);
+    let _ = std::fs::remove_file(&text_path);
+    report.total_bytes = build_report::folder_bytes(out);
+    report.seconds = started.elapsed().as_secs_f32();
+    report.warnings = warnings.get();
+    report.finish();
+    if let Err(e) = std::fs::write(&text_path, report.to_text()) {
+        send(Msg::Warning(format!("{}: {e}", text_path.display())));
+    }
+    let lib = BuildReport::library_path(&req.project, &report.profile);
+    if let Err(e) = report.save(&lib) {
+        send(Msg::Warning(format!("build report: {e}")));
+    }
+    send(Msg::Log(format!(
+        "Build report: {} total, largest type {} ({})",
+        build_report::size_text(report.total_bytes),
+        report.categories.first().map_or("-", |c| c.name.as_str()),
+        text_path.display()
+    )));
     Ok(Built {
         exe,
         zip,
         files: deps.files.len(),
         pak_bytes,
+        report,
     })
 }
 
@@ -301,10 +497,12 @@ pub fn pack_compressed_textures<W: std::io::Write + std::io::Seek>(
     req: &PackageRequest,
     files: &[String],
     pak: &mut PakWriter<W>,
+    report: &mut BuildReport,
     send: &mut dyn FnMut(Msg),
 ) -> std::io::Result<(usize, u64)> {
     use misty_engine::sprites::compress;
     let platform = texture_platform(req.build.target);
+    let texture_override = req.texture_override();
     let textures: Vec<&String> = files
         .iter()
         .filter(|r| misty_engine::assets::is_texture(r))
@@ -339,8 +537,19 @@ pub fn pack_compressed_textures<W: std::io::Write + std::io::Seek>(
             .get(rel.as_str())
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let entries = match compress::bake(&req.project, rel, platform, &req.settings.quality, used)
-        {
+        let mut imp =
+            misty_engine::sprites::import::TextureImporter::load(&req.project.join(rel.as_str()));
+        if let Some(o) = &texture_override {
+            imp = o.apply(&imp, platform);
+        }
+        let entries = match compress::bake_with(
+            &req.project,
+            rel,
+            platform,
+            &req.settings.quality,
+            used,
+            &imp,
+        ) {
             Ok(b) => b.entries,
             Err(e) => {
                 send(Msg::Warning(format!("texture compression of {rel}: {e}")));
@@ -362,7 +571,8 @@ pub fn pack_compressed_textures<W: std::io::Write + std::io::Seek>(
                 );
                 saved += rgba.saturating_sub(c.bytes() as u64);
             }
-            pak.add(&key, &bytes)?;
+            let stored = pak.add_counted(&key, &bytes)?;
+            report.add(&key, bytes.len() as u64, stored);
         }
     }
     // The textures the renderer makes from several images (tree maps and impostors, terrain
@@ -390,7 +600,8 @@ pub fn pack_compressed_textures<W: std::io::Write + std::io::Seek>(
             );
             saved += rgba.saturating_sub(c.bytes() as u64);
         }
-        pak.add(&key, &bytes)?;
+        let stored = pak.add_counted(&key, &bytes)?;
+        report.add(&key, bytes.len() as u64, stored);
     }
     Ok((packed.len(), saved))
 }
@@ -563,6 +774,7 @@ mod tests {
                 ..Default::default()
             },
             settings: ProjectSettings::default(),
+            profile: None,
         }
     }
 
@@ -668,7 +880,8 @@ mod tests {
             .to_vec();
         let mut pak = PakWriter::new(std::io::Cursor::new(Vec::new()), false).unwrap();
         let (packed, saved) =
-            pack_compressed_textures(&req, &files, &mut pak, &mut |_| {}).unwrap();
+            pack_compressed_textures(&req, &files, &mut pak, &mut Default::default(), &mut |_| {})
+                .unwrap();
         assert_eq!(packed, 2);
         assert!(saved > 0);
         let pak = Pak::from_reader(Box::new(std::io::Cursor::new(
@@ -682,6 +895,178 @@ mod tests {
             .collect();
         formats.sort_by_key(|f| f.label());
         assert_eq!(formats, [BcFormat::Bc1, BcFormat::Bc5]);
+        std::fs::remove_dir_all(&root).ok();
+    }
+    /// A project with two scenes, a textured material, an audio clip and a script.
+    fn profile_project(name: &str) -> PathBuf {
+        let root = project(name);
+        use misty_engine::image;
+        let img =
+            image::RgbaImage::from_fn(256, 256, |x, y| image::Rgba([x as u8, y as u8, 100, 255]));
+        img.save(root.join("Assets/Wall.png")).unwrap();
+        std::fs::write(
+            root.join("Assets/Wall.png.meta"),
+            "{\n  \"guid\": \"00112233445566778899aabbccddeeff\"\n}\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("Assets/Shot.wav"), vec![0u8; 4096]).unwrap();
+        std::fs::write(
+            root.join("Assets/Red.mat"),
+            r#"{ "albedo_map": "Assets/Wall.png" }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("Assets/Scenes/Demo.scene"),
+            r#"{ "m": "Assets/Red.mat", "clip": "Assets/Shot.wav" }"#,
+        )
+        .unwrap();
+        root
+    }
+
+    fn built_pak(out: &Path) -> Pak {
+        Pak::open(&out.join("Game_Data/data.pak")).unwrap()
+    }
+
+    /// Every override of a profile reaches the build: its scene list, defines, texture
+    /// compression and size, quality level and options; a report is saved.
+    #[test]
+    fn profile_overrides_reach_the_build_output() {
+        use misty_engine::build_profile::ProfilePlatform;
+        use misty_engine::sprites::compress::{BcFormat, Compressed};
+        use misty_engine::sprites::import::{TextureCompression, TextureImporter};
+        let root = profile_project("profile");
+        let out = root.with_extension("profile_out");
+        let _ = std::fs::remove_dir_all(&out);
+        let shared = BuildSettings {
+            scenes: vec![BuildScene::new("Assets/Scenes/A.scene")],
+            product_name: "Game".into(),
+            ..Default::default()
+        };
+        let mut settings = ProjectSettings::default();
+        settings.quality.default_level = settings.quality.levels.len() - 1;
+        let low = settings.quality.levels[0].name.clone();
+        let mut profile = BuildProfile::for_platform(ProfilePlatform::Windows);
+        profile.target = BuildTarget::WindowsX64;
+        profile.name = "Demo".into();
+        profile.custom = true;
+        profile.override_scenes = true;
+        profile.scenes = vec![BuildScene::new("Assets/Scenes/Demo.scene")];
+        profile.defines = vec!["DEMO".into()];
+        profile.texture_compression = Some(TextureCompression::HighQuality);
+        profile.max_texture_size = Some(64);
+        profile.quality_level = Some(low);
+        profile.development = true;
+        profile.compression = false;
+        let req = PackageRequest::with_profile(&root, &out, &shared, &settings, &profile);
+        let player = root.join("player.bin");
+        std::fs::write(&player, "exe").unwrap();
+        let built = package(&req, &player, &mut |_| {}).unwrap();
+        let pak = built_pak(&out);
+        let paths: Vec<&str> = pak.paths().collect();
+        assert!(paths.contains(&"Assets/Scenes/Demo.scene"), "{paths:?}");
+        assert!(
+            !paths.contains(&"Assets/Scenes/A.scene"),
+            "the shared list isn't built: {paths:?}"
+        );
+        let b: BuildSettings =
+            serde_json::from_slice(&pak.read(build::BUILD_SETTINGS_FILE).unwrap()).unwrap();
+        assert_eq!(b.scenes[0].path, "Assets/Scenes/Demo.scene");
+        let info: BuildInfo = serde_json::from_slice(&pak.read(BUILD_INFO_FILE).unwrap()).unwrap();
+        assert!(info.development && !info.server);
+        assert_eq!(info.profile, "Demo");
+        for d in ["DEMO", "DEVELOPMENT_BUILD", "MISTY_STANDALONE_WIN"] {
+            assert!(info.defines.contains(&d.to_owned()), "{:?}", info.defines);
+        }
+        let s: ProjectSettings =
+            serde_json::from_slice(&pak.read("ProjectSettings/ProjectSettings.json").unwrap())
+                .unwrap();
+        assert_eq!(s.quality.default_level, 0, "the profile's quality level");
+        // The packed import settings carry the overrides (the GUID stays) ...
+        let meta = String::from_utf8(pak.read("Assets/Wall.png.meta").unwrap()).unwrap();
+        assert!(meta.contains("00112233445566778899aabbccddeeff"), "{meta}");
+        let imp: TextureImporter = serde_json::from_str(&meta).unwrap();
+        assert_eq!(
+            imp.compression_for("Windows"),
+            TextureCompression::HighQuality
+        );
+        assert_eq!(imp.max_size_for("Windows"), 64);
+        // ... and the packed blocks match them: BC7 at 64 pixels at most.
+        let blocks: Vec<Compressed> = paths
+            .iter()
+            .filter(|p| p.starts_with("Library/TextureCache/"))
+            .map(|p| Compressed::from_file(&pak.read(p).unwrap()).unwrap())
+            .collect();
+        assert!(!blocks.is_empty());
+        for c in &blocks {
+            assert_eq!(c.format, BcFormat::Bc7);
+            assert!(c.width <= 64 && c.height <= 64, "{}x{}", c.width, c.height);
+        }
+        // The source on disk is untouched.
+        let disk = std::fs::read_to_string(root.join("Assets/Wall.png.meta")).unwrap();
+        assert!(!disk.contains("HighQuality"));
+        // Compress Data off.
+        let e = pak.entry("Assets/Scenes/Demo.scene").unwrap();
+        assert_eq!(e.stored, e.size);
+        // The report.
+        let r = &built.report;
+        assert_eq!(r.profile, "Demo");
+        assert!(r.packed_of("Compressed Textures") > 0);
+        assert!(r.packed_of("Textures") > 0);
+        assert!(r.largest.iter().any(|a| a.path == "Assets/Wall.png"));
+        assert!(out.join("BuildReport.txt").is_file());
+        let saved = BuildReport::load(&BuildReport::library_path(&root, "Demo")).unwrap();
+        assert_eq!(&saved, r);
+        std::fs::remove_dir_all(&out).ok();
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// A Dedicated Server build is marked as one and leaves textures, audio and compressed
+    /// textures out.
+    #[test]
+    fn server_builds_strip_visuals_and_audio() {
+        use misty_engine::build_profile::ProfilePlatform;
+        let root = profile_project("server");
+        let out = root.with_extension("server_out");
+        let _ = std::fs::remove_dir_all(&out);
+        let shared = BuildSettings {
+            scenes: vec![BuildScene::new("Assets/Scenes/Demo.scene")],
+            product_name: "Game".into(),
+            ..Default::default()
+        };
+        let mut profile = BuildProfile::for_platform(ProfilePlatform::DedicatedServer);
+        profile.target = BuildTarget::LinuxX64;
+        let req = PackageRequest::with_profile(
+            &root,
+            &out,
+            &shared,
+            &ProjectSettings::default(),
+            &profile,
+        );
+        assert!(req.server());
+        let player = root.join("player.bin");
+        std::fs::write(&player, "exe").unwrap();
+        let built = package(&req, &player, &mut |_| {}).unwrap();
+        assert_eq!(built.exe, out.join("Game"));
+        let pak = built_pak(&out);
+        let paths: Vec<&str> = pak.paths().collect();
+        assert!(paths.contains(&"Assets/Red.mat"), "{paths:?}");
+        for gone in ["Assets/Wall.png", "Assets/Wall.png.meta", "Assets/Shot.wav"] {
+            assert!(!paths.contains(&gone), "{gone} in {paths:?}");
+        }
+        assert!(!paths.iter().any(|p| p.starts_with("Library/TextureCache/")));
+        let info: BuildInfo = serde_json::from_slice(&pak.read(BUILD_INFO_FILE).unwrap()).unwrap();
+        assert!(info.server);
+        assert!(info.defines.contains(&"MISTY_SERVER".to_owned()));
+        assert!(info.defines.contains(&"MISTY_STANDALONE_LINUX".to_owned()));
+        assert_eq!(built.report.stripped, 3);
+        assert!(built.report.server);
+        assert!(
+            built
+                .report
+                .to_text()
+                .contains("Stripped for the server: 3 files")
+        );
+        std::fs::remove_dir_all(&out).ok();
         std::fs::remove_dir_all(&root).ok();
     }
 }

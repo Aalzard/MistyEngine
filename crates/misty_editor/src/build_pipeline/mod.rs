@@ -1,4 +1,4 @@
-//! The build pipeline behind File ▸ Build Settings: compile the player for the chosen platform
+//! The build pipeline behind File ▸ Build Profiles: compile the player for the chosen platform
 //! with cargo, then pack the project into a ready-to-ship folder. It all runs on a background
 //! thread; the window shows progress and the log from [`BuildJob::poll`].
 
@@ -24,7 +24,7 @@ pub enum Msg {
     Warning(String),
     /// Fraction done (0–1) and what is happening.
     Progress(f32, String),
-    Done(Result<Built, String>),
+    Done(Box<Result<Built, String>>),
 }
 
 /// A log line of the build window.
@@ -56,7 +56,7 @@ impl BuildJob {
                     let _ = tx.send(m);
                 };
                 let result = build(&req, &mut send);
-                let _ = tx.send(Msg::Done(result));
+                let _ = tx.send(Msg::Done(Box::new(result)));
             })
             .expect("spawn the build thread");
         Self {
@@ -91,6 +91,7 @@ impl BuildJob {
                     self.stage = stage;
                 }
                 Msg::Done(r) => {
+                    let r = *r;
                     self.progress = 1.0;
                     self.stage = if r.is_ok() { "Done" } else { "Failed" }.into();
                     if let Err(e) = &r {
@@ -112,9 +113,15 @@ impl BuildJob {
 fn build(req: &PackageRequest, send: &mut dyn FnMut(Msg)) -> Result<Built, String> {
     let target = req.build.target;
     send(Msg::Log(format!(
-        "Building {} for {} into {}",
+        "Building {} with the {} profile ({}{}) into {}",
         req.product(),
+        req.profile_name(),
         target.label(),
+        if req.server() {
+            ", dedicated server"
+        } else {
+            ""
+        },
         req.out.display()
     )));
     package::check_output(&req.project, &req.out)?;
@@ -210,17 +217,44 @@ fn compile(ws: &Path, target: BuildTarget, send: &mut dyn FnMut(Msg)) -> Result<
     }
 }
 
-/// `misty --build <project> <output folder>`: File ▸ Build without the window (scripts, release
-/// smoke tests). Prints the log; returns the built executable.
-pub fn build_from_cli(project: &Path, out: &Path) -> Result<PathBuf, String> {
+/// `misty --build <project> <output folder> [--profile <name>]`: File ▸ Build Profiles ▸ Build
+/// without the window (scripts, CI, release smoke tests). Without `--profile` the active
+/// profile builds; without an output folder, the profile's. Prints the log and the build
+/// report; returns the built executable.
+pub fn build_from_cli(
+    project: &Path,
+    out: Option<&Path>,
+    profile: Option<&str>,
+) -> Result<PathBuf, String> {
     let build = misty_engine::build::BuildSettings::load(project)?;
     let settings = misty_engine::settings::ProjectSettings::load(project)?;
-    let req = PackageRequest {
-        project: project.to_path_buf(),
-        out: out.to_path_buf(),
-        build,
-        settings,
+    // Profile assets hold scene paths saved as GUIDs.
+    misty_engine::asset_db::open(project);
+    let profiles = misty_engine::build_profile::BuildProfiles::load(project, &build);
+    for w in &profiles.warnings {
+        println!("warning: {w}");
+    }
+    let chosen = match profile {
+        Some(name) => profiles.find(name).ok_or_else(|| {
+            let names: Vec<&str> = profiles.profiles.iter().map(|p| p.name.as_str()).collect();
+            format!(
+                "no Build Profile named {name:?} (one of {})",
+                names.join(", ")
+            )
+        })?,
+        None => profiles.active(&build),
     };
+    let out = match out {
+        Some(o) => o.to_path_buf(),
+        None => chosen.output_path(project).ok_or_else(|| {
+            format!(
+                "the profile {:?} has no output folder: pass one after the project",
+                chosen.name
+            )
+        })?,
+    };
+    println!("Build Profile: {}", chosen.title());
+    let req = PackageRequest::with_profile(project, &out, &build, &settings, chosen);
     let mut job = BuildJob::start(req, false);
     let mut printed = 0;
     loop {
@@ -230,7 +264,10 @@ pub fn build_from_cli(project: &Path, out: &Path) -> Result<PathBuf, String> {
         }
         printed = job.log.len();
         if let Some(r) = result {
-            return r.map(|b| b.exe);
+            return r.map(|b| {
+                println!("{}", b.report.to_text());
+                b.exe
+            });
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
@@ -290,6 +327,7 @@ mod tests {
             out,
             build,
             settings,
+            profile: None,
         };
         let mut job = BuildJob::start(req, false);
         let result = loop {
@@ -331,6 +369,7 @@ mod tests {
             out: root.join("Assets/Out"),
             build: Default::default(),
             settings: Default::default(),
+            profile: None,
         };
         let mut job = BuildJob::start(req, false);
         let result = loop {

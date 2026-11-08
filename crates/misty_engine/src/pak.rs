@@ -71,6 +71,11 @@ impl<W: Write + Seek> PakWriter<W> {
     }
 
     pub fn add(&mut self, path: &str, data: &[u8]) -> std::io::Result<()> {
+        self.add_counted(path, data).map(|_| ())
+    }
+
+    /// [`PakWriter::add`]; returns the bytes the entry takes in the archive (build reports).
+    pub fn add_counted(&mut self, path: &str, data: &[u8]) -> std::io::Result<u64> {
         let offset = self.out.stream_position()?;
         let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
         let packed = match self.compression {
@@ -95,7 +100,7 @@ impl<W: Write + Seek> PakWriter<W> {
                 codec,
             },
         ));
-        Ok(())
+        Ok(bytes.len() as u64)
     }
 
     /// Write the index; returns the writer.

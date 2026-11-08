@@ -21,6 +21,10 @@ pub struct LaunchOptions {
     pub scene_file: Option<PathBuf>,
     /// Start networking once the first scene runs.
     pub network: Option<AutoStart>,
+    /// UDP port of the Network Manager (a dedicated server's `--port`).
+    pub port: Option<u16>,
+    /// No audio output (a dedicated server; nothing draws either).
+    pub headless: bool,
 }
 
 pub struct Game {
@@ -39,6 +43,8 @@ pub struct Game {
     logs: Vec<(LogKind, String)>,
     /// The game camera's draws, kept between frames (static batching on).
     draws: std::cell::RefCell<misty_engine::draw_cache::DrawCache>,
+    /// No audio device (dedicated servers).
+    headless: bool,
 }
 
 impl Game {
@@ -77,11 +83,21 @@ impl Game {
             quit: false,
             logs,
             draws: Default::default(),
+            headless: options.headless,
         };
         game.draws.get_mut().set_static_batching(true);
         match &options.scene {
             Some(rel) => game.load_path(rel, options.scene_file.as_deref())?,
             None => game.load_scene(&SceneRef::Index(0))?,
+        }
+        if let Some(port) = options.port {
+            for m in game
+                .scene
+                .world
+                .query_mut::<&mut misty_engine::network::NetworkManager>()
+            {
+                m.port = port;
+            }
         }
         if let Some(start) = &options.network {
             game.start_network(start);
@@ -145,7 +161,12 @@ impl Game {
         let session = self.runtime.as_mut().map(|r| r.take_network());
         // Old scripts and bodies go before the new scene's Awake runs.
         self.runtime = None;
-        let mut runtime = Runtime::start(&mut scene, self.root.clone(), &self.settings);
+        let mut runtime = if self.headless {
+            let audio = misty_engine::audio::Audio::new(self.root.clone(), None);
+            Runtime::start_with_audio(&mut scene, self.root.clone(), &self.settings, audio)
+        } else {
+            Runtime::start(&mut scene, self.root.clone(), &self.settings)
+        };
         if let Some(s) = session {
             runtime.adopt_network(&mut scene, s);
         }
@@ -166,6 +187,13 @@ impl Game {
             self.logs.push((LogKind::Error, format!("Network: {e}")));
         }
         self.collect_logs();
+    }
+
+    /// The UDP port the network session listens on (or connects from).
+    pub fn network_port(&self) -> Option<u16> {
+        self.runtime
+            .as_ref()
+            .and_then(|r| r.with_network(|s| s.local_port()))
     }
 
     /// Network traffic while a session runs (the window title shows it).
@@ -373,6 +401,7 @@ return Loader
             scene: Some("Assets/Scenes/Net.scene".into()),
             scene_file: Some(copy),
             network: Some(AutoStart::Host),
+            ..Default::default()
         };
         let mut game = Game::open_with(&root, &options).unwrap();
         assert_eq!(game.scene.name, "Net");

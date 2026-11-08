@@ -89,7 +89,8 @@ own (`radius = Range(0, 1)`). The functions exist in games too and cost nothing 
 | `Debug` | `Log`, `LogWarning`, `LogError` (`print` = `Debug.Log`) |
 | `Instantiate` | `Instantiate("Assets/Prefabs/Bullet.prefab" [, position])` or `Instantiate(gameObject [, position])` — returns the new "Name(Clone)" GameObject (at the root, with its physics and scripts; its `Awake` runs right after the current callback) |
 | `SceneManager` | `LoadScene("Level2")` / `LoadScene(1)` — load a scene from File ▸ Build Settings by name, path or build index (after the current frame; in the editor until Stop); `GetActiveScene().name` |
-| `Application` | `Quit()` — closes the built game (ignored with a Console message in the editor) |
+| `Application` | `Quit()` — closes the built game (ignored with a Console message in the editor); `HasDefine(name)` — the Build Profile's scripting defines; `isDedicatedServer`, `isEditor` |
+| `Achievements` | `Unlock(id)` (true the first time), `IsUnlocked(id)`, `Clear(id)`, `GetUnlocked()` — stored locally (see docs/building.md) |
 | Tags | `gameObject.tag`, `gameObject:CompareTag("Enemy")`, `GameObject.FindWithTag(tag)` (first active object or nil), `GameObject.FindGameObjectsWithTag(tag)` (list); tags come from Project Settings ▸ Tags and Layers (an undefined tag is an error) |
 | Other | `GameObject.Find(name)`, `Destroy(gameObject)`, `Mathf.*` (`Clamp`, `Lerp`, `Sin`, `PI`, `Infinity`, …), `ForceMode.Force/Impulse/VelocityChange/Acceleration` |
 
@@ -721,6 +722,26 @@ local grounded = Physics2D.Raycast(self.transform.position + Vector2.down * 0.5,
 ```
 
 Sample: `Assets/Scripts/PlayerController2D.lua`, `Assets/Scripts/CameraFollow2D.lua` (Platformer2D scene).
+
+## Scripting defines
+
+A Build Profile's **Scripting Defines** (File ▸ Build Profiles) turn blocks of Lua on and off:
+
+```lua
+--#if DEMO
+local lastLevel = 3
+--#elif !STEAM && DEVELOPMENT_BUILD
+local lastLevel = 10
+--#else
+local lastLevel = 30
+--#endif
+```
+
+A condition is a define, `!NAME`, or several joined with `&&` (binds tighter) and `||`. Lines left
+out become blank, so error line numbers stay right. `Application.HasDefine("DEMO")` asks at run
+time. Built-in defines: `MISTY_STANDALONE_WIN` / `MISTY_STANDALONE_LINUX` / `MISTY_STANDALONE_OSX`
+(the profile's platform), `MISTY_SERVER` (Dedicated Server), `DEVELOPMENT_BUILD` (builds with
+Development Build on) and `MISTY_EDITOR` (Play mode, which uses the active profile's defines).
 
 ## Testing (Test Runner)
 Project tests are Lua files under `Assets/Tests/` (sub-folders too): `*.test.lua` are **EditMode**

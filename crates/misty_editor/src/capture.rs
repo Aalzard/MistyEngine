@@ -561,9 +561,29 @@ pub fn apply_env(
     if std::env::var_os("MISTY_GENERATE_LIGHTING").is_some() {
         crate::lightmap_tools::start(s);
     }
-    // `MISTY_BUILD=1` opens File ▸ Build Settings.
+    // `MISTY_BUILD=1` opens File ▸ Build Profiles; `MISTY_BUILD_PROFILE=<name>` shows that
+    // profile (`Scene List`: the shared list); `MISTY_BUILD_REPORT=<report.json>` shows a
+    // saved build report under it.
     if std::env::var_os("MISTY_BUILD").is_some() {
         s.build_window.open = true;
+        if let Ok(name) = std::env::var("MISTY_BUILD_PROFILE") {
+            s.build_window.page = if name == "Scene List" {
+                crate::build_settings::Page::SceneList
+            } else {
+                s.build_profiles.index_of(&name).map_or(
+                    crate::build_settings::Page::Active,
+                    crate::build_settings::Page::Profile,
+                )
+            };
+        }
+        // `MISTY_BUILD_SCROLL=<px>` scrolls the profile page down (the report at the bottom).
+        s.build_window.scroll_to = std::env::var("MISTY_BUILD_SCROLL")
+            .ok()
+            .and_then(|v| v.trim().parse().ok());
+        if let Some(path) = std::env::var_os("MISTY_BUILD_REPORT") {
+            s.build_window.report =
+                misty_engine::build_report::BuildReport::load(std::path::Path::new(&path)).ok();
+        }
     }
     // `MISTY_WORLD_TEMPLATE=Mountains` makes a terrain + World Builder from that template and
     // generates it (GameObject ▸ 3D Object ▸ World); `MISTY_WB_PREVIEW=Height|Relief|Biomes`

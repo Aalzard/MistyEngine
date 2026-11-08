@@ -35,6 +35,7 @@ impl AssetEntry {
             "preset" => crate::presets::PRESET_ICON,
             "tile" => "▦",
             "palette" => "🎨",
+            "buildprofile" => "🔨",
             _ => "📄",
         }
     }
