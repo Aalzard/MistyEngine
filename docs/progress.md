@@ -2609,3 +2609,29 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - A few component editors label fields differently from the field name: those overrides show on the
   header bar and in the dropdown but not as a bold label.
 - No comparison view in the Overrides dropdown, no per-element list overrides.
+
+## Animator depth (branch r18-animator)
+
+### Done (docs/pending/r18-animator.md)
+- Layers: Override and Additive blending with weights (Lua `SetLayerWeight`), Avatar Masks (`.mask`
+  assets with a transform tree editor and skeleton import), synced layers with their own clips.
+- Blend trees: 1D, 2D Simple Directional, 2D Freeform Directional, 2D Freeform Cartesian and Direct,
+  per-child speed; a diagram in the Inspector and a blend tree view in the Animator window with a
+  draggable parameter marker and the selected motion's influence.
+- Sub-state machines with their own Entry / Exit / default state, Entry transitions, transitions from
+  a machine node on exit; graph breadcrumb, (Up) node, Move to; full state paths in Lua.
+- Transitions: Interruption Source (five modes) with Ordered Interruption and a frozen interrupted
+  pose, Any State interrupting any blend, Can Transition To Self, Mute / Solo; state Multiplier and
+  Tag.
+- Root motion: Apply Root Motion (object or bone root, through a Character Controller),
+  `OnAnimatorMove`, `deltaPosition` / `deltaRotation` / `velocity`, `ApplyBuiltinRootMotion`;
+  `MatchTarget`; damped `SetFloat`; `CrossFade` / `Play` on any layer.
+- Humanoid: `.avatar` assets auto-mapped by bone names with the rest pose, clips converted to
+  humanoid clips and retargeted onto other rigs (other names, axes, proportions).
+- CharacterAnimatorDemo sample (2D locomotion with root motion, masked wave layer, additive breathing,
+  Emotes sub-machine, a second rig playing the retargeted wave). Old controllers and scenes load
+  unchanged.
+
+### Not done yet
+- Automatic foot IK / IK pass (Two Bone IK constraints work), muscle-space retargeting and editable
+  avatar mappings, nested blend trees, state machine behaviours, root motion on Rigidbodies.

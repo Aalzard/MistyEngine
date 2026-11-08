@@ -20,7 +20,8 @@ return Rotator                     -- a script must return its class table
 ## Callbacks
 `Awake`, `Start`, `Update`, `FixedUpdate` (every 0.02 s physics step), `LateUpdate`,
 `OnCollisionEnter(other)`, `OnCollisionExit(other)`, `OnTriggerEnter(other)`, `OnTriggerExit(other)`
-(`other` is a GameObject), `OnControllerColliderHit(hit)` (see Character Controller below). Fields starting
+(`other` is a GameObject), `OnControllerColliderHit(hit)` (see Character Controller below),
+`OnAnimatorMove()` (root motion, see Driving an Animator below). Fields starting
 with `_` stay private.
 Animation events call a function by name (no arguments) on the scripts of the object with the Animation.
 Save games call `OnSave(data)` / `OnLoad(data)` and locale switches `OnLocaleChanged(code)` (see Save games
@@ -63,7 +64,7 @@ own (`radius = Range(0, 1)`). The functions exist in games too and cost nothing 
 | AudioMixerSnapshot | `name`, `audioMixer`, `TransitionTo(seconds)` (linear blend of every value; 0 jumps) |
 | AudioMixerGroup | `name`, `audioMixer`; compares with `==`; assign to `outputAudioMixerGroup` |
 | Animation | `Play([name])` (the default clip, or the clip of the Animation's list with that file name; restarts it; returns false and warns if missing), `Stop()` (rewinds, keeps the pose), `IsPlaying(name)`, `isPlaying` (read-only), `time` (seconds since Play, keeps growing while looping; settable), `speed` (1 = normal, negative plays backwards), `clip` (name of the current clip, read-only), `enabled` |
-| Animator | `SetFloat(name, v)`, `GetFloat(name)`, `SetInteger`, `GetInteger`, `SetBool`, `GetBool`, `SetTrigger(name)`, `ResetTrigger(name)`, `Play(state [, layer [, normalizedTime]])`, `CrossFade(state, normalizedDuration [, layer [, normalizedOffset]])`, `CrossFadeInFixedTime(state, seconds [, …])`, `GetCurrentAnimatorStateInfo(0)` / `GetNextAnimatorStateInfo(0)` (table: `normalizedTime`, `length`, `speed`, `loop`, `IsName(name)`), `IsInTransition(0)`, `speed`, `enabled` (only layer 0; unknown names or wrong types warn in the Console) |
+| Animator | `SetFloat(name, v [, dampTime, deltaTime])`, `GetFloat(name)`, `SetInteger`, `GetInteger`, `SetBool`, `GetBool`, `SetTrigger(name)`, `ResetTrigger(name)`, `Play(state [, layer [, normalizedTime]])`, `CrossFade(state, normalizedDuration [, layer [, normalizedOffset]])`, `CrossFadeInFixedTime(state, seconds [, …])` (layer -1 or none = the first layer with that state; states can be named "Layer.Machine.State"), `GetCurrentAnimatorStateInfo(layer)` / `GetNextAnimatorStateInfo(layer)` (table: `name`, `fullPath`, `tag`, `normalizedTime`, `length`, `speed`, `loop`, `IsName(name)`, `IsTag(tag)`), `IsInTransition(layer)`, `layerCount`, `GetLayerName(i)`, `GetLayerIndex(name)`, `GetLayerWeight(i)`, `SetLayerWeight(i, w)`, `applyRootMotion`, `deltaPosition`, `deltaRotation` (Euler degrees), `velocity`, `ApplyBuiltinRootMotion()`, `MatchTarget(position, eulerRotation, "Root", {positionXYZWeight=…, rotationWeight=…}, start [, target])`, `InterruptMatchTarget([complete])`, `isMatchingTarget`, `speed`, `enabled` (unknown names or wrong types warn in the Console; a layer index out of range is an error) |
 | MeshRenderer | `GetComponent("MeshRenderer")` / `("Renderer")`: `material`, `sharedMaterial`, `materials`, `sharedMaterials`, `enabled`, `castShadows`, `receiveShadows`, `gameObject` (see Materials below) |
 | Material | `color`, `mainTextureOffset`, `mainTextureScale`, `shader`, `name`, `renderQueue`, `SetColor`/`GetColor`, `SetFloat`/`GetFloat`, `SetTexture`/`GetTexture`, `SetTextureOffset`/`SetTextureScale`, `HasProperty`, `EnableKeyword`/`DisableKeyword`/`IsKeywordEnabled` |
 | Text (UI) | `GetComponent("Text")`: `text` (numbers are shown as text), `fontSize`, `color`, `enabled`, `gameObject` |
@@ -212,6 +213,46 @@ Parameters set in `Update` are used the same frame: the Animator is evaluated af
 component), before `LateUpdate`. A trigger stays set until a transition uses it (or `ResetTrigger`).
 `normalizedTime` keeps growing while a state loops (1.5 = halfway through the second loop). Sample:
 `Assets/Scripts/AnimatorControl.lua` in `Scenes/AnimatorDemo.scene` (Space jumps, 1/2/3 set the speed, 4 dances).
+
+#### Layers, blend trees and root motion
+
+```lua
+local Walker = { damp = 0.15 }
+function Walker:Start()
+    self._anim = self.gameObject:GetComponent("Animator")
+    self._upper = self._anim:GetLayerIndex("Upper Body")
+end
+function Walker:Update()
+    local a, dt = self._anim, Time.deltaTime
+    -- Damped: the 2D blend tree eases between walk directions instead of snapping.
+    a:SetFloat("MoveX", Input.GetAxis("Horizontal"), self.damp, dt)
+    a:SetFloat("MoveZ", Input.GetAxis("Vertical"), self.damp, dt)
+    a:SetLayerWeight(self._upper, Input.GetKey("q") and 1 or 0)
+    local info = a:GetCurrentAnimatorStateInfo(0)
+    if info:IsTag("Emote") then Debug.Log("emoting: " .. info.fullPath) end
+end
+return Walker
+```
+Layer 0 is the Base Layer (its weight is always 1); later layers override or add to it, limited to
+the bones of their Avatar Mask. With **Apply Root Motion** on the Animator, the clips' root movement
+moves the object (through its Character Controller if it has one) instead of the clips setting its
+position. A script that defines `OnAnimatorMove()` handles the motion itself:
+
+```lua
+function Walker:OnAnimatorMove()
+    local a = self._anim
+    -- Keep the clip's travel but stay on the ground, and turn with the clip.
+    local d = a.deltaPosition
+    self.transform.position = self.transform.position + Vector3.new(d.x, 0, d.z)
+    self.transform:Rotate(0, a.deltaRotation.y, 0)
+end
+```
+`MatchTarget(position, rotation, "Root", { positionXYZWeight = Vector3.new(0, 1, 1), rotationWeight = 0 },
+0.2, 0.6)` moves the object so it reaches `position` when the current state is at normalised time
+0.6 (from 0.2). Sample: `Assets/Scripts/CharacterControl.lua` in `Scenes/CharacterAnimatorDemo.scene`
+(WASD and Shift walk and run through a 2D blend tree with root motion, Q fades in the masked Upper
+Body layer, 1 / 2 enter the Emotes sub-state machine; the second character plays the wave retargeted
+through humanoid Avatars).
 
 ### UI buttons
 
