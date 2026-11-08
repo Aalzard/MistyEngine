@@ -128,7 +128,7 @@ impl Renderer {
         let state = |b: &Batch| {
             let d = &frame.meshes[b.draw];
             let pipeline = self.pipelines.mesh_variant(lists.prep.pipeline[b.draw])?;
-            let group = self.textures.get_set(&d.material.textures())?;
+            let group = self.main_group(&d.material)?;
             let mesh = self.gpu_mesh(&d.mesh)?;
             Some((pipeline, group, mesh))
         };

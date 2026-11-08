@@ -179,6 +179,14 @@ pub(in crate::render) fn textures(m: &MaterialParams) -> Vec<(String, String)> {
     add("Metallic", &m.metallic_map);
     add("Occlusion", &m.occlusion_map);
     add("Emission", &m.emission_map);
+    if let Some(e) = m.extras.as_ref().filter(|_| m.features() != 0) {
+        add("Detail Albedo", &e.detail_albedo);
+        add("Detail Normal", &e.detail_normal);
+        add("Detail Mask", &e.detail_mask);
+        add("Height", &e.height_map);
+        add("Coat Normal", &e.coat_normal_map);
+        add("Thickness", &e.thickness_map);
+    }
     if let Some(c) = &m.custom {
         for (k, v) in c.values.iter() {
             if let PropertyValue::Texture(Some(t)) = v {

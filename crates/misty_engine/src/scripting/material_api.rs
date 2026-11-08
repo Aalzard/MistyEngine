@@ -13,6 +13,7 @@ use super::World;
 use super::api::{LGameObject, LTransform, LVec3, with_world};
 use super::ui_api::LColor;
 use crate::assets::{Material, SmoothnessSource};
+use crate::render::material_v2::feature;
 use crate::render::{RenderingMode, ShaderKind};
 use crate::scene::MeshRenderer;
 
@@ -189,6 +190,13 @@ fn get_float(m: &Material, name: &str) -> Option<f32> {
         "_BumpScale" => m.normal_scale,
         "_Cutoff" => m.alpha_cutoff,
         "_OcclusionStrength" => m.occlusion_strength,
+        // Standard Lit v2 features (Unity Standard / HDRP Lit names).
+        "_DetailNormalMapScale" => m.features.detail.normal_scale,
+        "_Parallax" => m.features.parallax.scale,
+        "_CoatMask" => m.features.clear_coat.strength,
+        "_CoatSmoothness" => m.features.clear_coat.smoothness,
+        "_Anisotropy" => m.features.anisotropy.strength,
+        "_Thickness" => m.features.translucency.thickness,
         "_Mode" => m.rendering_mode.index() as f32,
         "_SmoothnessTextureChannel" => {
             (m.smoothness_source == SmoothnessSource::AlbedoAlpha) as u8 as f32
@@ -212,6 +220,12 @@ fn set_float(m: &mut Material, name: &str, v: f32) {
         "_BumpScale" => m.normal_scale = v,
         "_Cutoff" => m.alpha_cutoff = v.clamp(0.0, 1.0),
         "_OcclusionStrength" => m.occlusion_strength = v.clamp(0.0, 1.0),
+        "_DetailNormalMapScale" => m.features.detail.normal_scale = v,
+        "_Parallax" => m.features.parallax.scale = v.clamp(0.0, 0.2),
+        "_CoatMask" => m.features.clear_coat.strength = v.clamp(0.0, 1.0),
+        "_CoatSmoothness" => m.features.clear_coat.smoothness = v.clamp(0.0, 1.0),
+        "_Anisotropy" => m.features.anisotropy.strength = v.clamp(-1.0, 1.0),
+        "_Thickness" => m.features.translucency.thickness = v.clamp(0.0, 1.0),
         "_Mode" => {
             let i = (v.round().max(0.0) as usize).min(3);
             m.rendering_mode = RenderingMode::ALL[i];
@@ -232,6 +246,12 @@ fn texture_slot<'a>(m: &'a mut Material, name: &str) -> Option<&'a mut Option<St
         "_MetallicGlossMap" => &mut m.metallic_map,
         "_OcclusionMap" => &mut m.occlusion_map,
         "_EmissionMap" => &mut m.emission_map,
+        "_DetailAlbedoMap" => &mut m.features.detail.albedo_map,
+        "_DetailNormalMap" => &mut m.features.detail.normal_map,
+        "_DetailMask" => &mut m.features.detail.mask,
+        "_ParallaxMap" => &mut m.features.parallax.height_map,
+        "_CoatNormalMap" => &mut m.features.clear_coat.normal_map,
+        "_ThicknessMap" => &mut m.features.translucency.thickness_map,
         _ => return None,
     })
 }
@@ -250,6 +270,11 @@ fn keyword(m: &Material, k: &str) -> bool {
         "_ALPHATEST_ON" => m.rendering_mode == RenderingMode::Cutout,
         "_ALPHABLEND_ON" => m.rendering_mode == RenderingMode::Fade,
         "_ALPHAPREMULTIPLY_ON" => m.rendering_mode == RenderingMode::Transparent,
+        "_DETAIL_MULX2" => m.features.bits() & feature::DETAIL != 0,
+        "_PARALLAXMAP" => m.features.bits() & feature::PARALLAX != 0,
+        "_CLEARCOAT" => m.features.bits() & feature::CLEARCOAT != 0,
+        "_TRANSLUCENCY" => m.features.bits() & feature::TRANSLUCENCY != 0,
+        "_ANISOTROPY" => m.features.bits() & feature::ANISOTROPY != 0,
         _ => false,
     }
 }

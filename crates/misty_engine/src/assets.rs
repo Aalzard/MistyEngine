@@ -6,6 +6,7 @@ use std::sync::RwLock;
 
 use serde::{Deserialize, Serialize};
 
+use crate::material_features::Features;
 use crate::render::custom_shader::{CustomMaterial, resolve_values};
 use crate::render::{MaterialParams, RenderingMode, ShaderKind};
 use crate::render_scene::MaterialSource;
@@ -142,6 +143,13 @@ pub struct Material {
     /// Draw both faces (Cull Off).
     #[serde(skip_serializing_if = "is_default")]
     pub double_sided: bool,
+    /// UV rotation in degrees about the texture centre (glTF `KHR_texture_transform`).
+    #[serde(skip_serializing_if = "is_default")]
+    pub uv_rotation: f32,
+    /// Optional Standard features (Detail Maps, Parallax, Clear Coat, Translucency,
+    /// Anisotropy, Specular), each left out of the file at its defaults.
+    #[serde(flatten)]
+    pub features: Features,
     /// Property values of a `.shader` asset by name (left out of the file when empty).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub properties: BTreeMap<String, PropertyValue>,
@@ -170,6 +178,8 @@ impl Default for Material {
             occlusion_strength: 1.0,
             emission_map: None,
             double_sided: false,
+            uv_rotation: 0.0,
+            features: Features::default(),
             properties: BTreeMap::new(),
         }
     }
@@ -263,7 +273,7 @@ impl Material {
             normal_scale: self.normal_scale,
             tiling: self.tiling,
             offset: self.offset,
-            uv_rotation: 0.0,
+            uv_rotation: self.uv_rotation,
             unlit: false,
             mode: self.rendering_mode,
             alpha_cutoff: self.alpha_cutoff,
@@ -278,6 +288,7 @@ impl Material {
             lightmap: None,
             light_probes: false,
             contribute_gi: true,
+            extras: self.features.extras().map(Arc::new),
         }
     }
 

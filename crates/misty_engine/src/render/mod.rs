@@ -26,6 +26,7 @@ mod hdri_sky;
 mod light2d;
 mod lightmap_gpu;
 pub mod lod;
+pub mod material_v2;
 mod memory_items;
 pub mod mesh;
 mod misty_gi;
@@ -259,6 +260,10 @@ pub struct MaterialParams {
     /// light to others through Screen Space GI. Off for meshes that only show a light's
     /// emitter (the light already lights the scene; tracing its glow too counts it twice).
     pub contribute_gi: bool,
+    /// Optional Standard features (detail maps, parallax, clear coat, translucency,
+    /// anisotropy, specular tint): `None` for materials that use none of them, which then
+    /// draw with the plain Standard variants (see [`material_v2`]).
+    pub extras: Option<std::sync::Arc<material_v2::LitExtras>>,
 }
 
 impl Default for MaterialParams {
@@ -289,6 +294,7 @@ impl Default for MaterialParams {
             lightmap: None,
             light_probes: false,
             contribute_gi: true,
+            extras: None,
         }
     }
 }
@@ -306,7 +312,23 @@ impl MaterialParams {
             unlit: self.unlit,
             mode: self.mode,
             double_sided: self.double_sided,
+            features: self.features(),
         }
+    }
+
+    /// The optional features this material's lit variant compiles ([`material_v2::feature`]
+    /// bits; 0 for unlit and `.shader` materials).
+    pub fn features(&self) -> u8 {
+        match &self.extras {
+            Some(e) if !self.unlit && self.custom.is_none() => e.features,
+            _ => 0,
+        }
+    }
+
+    /// Group 2 of a feature variant (`None` = the plain Standard set, [`Self::textures`]).
+    pub fn lit_set(&self) -> Option<material_v2::LitSet> {
+        let extras = self.extras.as_ref().filter(|_| self.features() != 0)?;
+        Some(material_v2::LitSet::new(self.textures(), extras))
     }
 
     /// Shadow caster variant; `None` = casts no shadow (unlit and blended materials).
@@ -1236,6 +1258,12 @@ impl Renderer {
                 let set = d.material.textures();
                 let layout = &self.pipelines.material_layout;
                 self.textures.prepare_set(device, queue, layout, &set);
+                // Feature variants have their own group 2 (the plain set above still serves
+                // their shadow, prepass and debug draws).
+                if let Some(lit) = d.material.lit_set() {
+                    let layout = &self.pipelines.lit_layout;
+                    self.textures.prepare_lit(device, queue, layout, &lit);
+                }
                 let key = draw_prep::pipeline_key(d, *state);
                 self.pipelines.ensure_mesh(device, key);
                 if self.options.depth_prepass {
@@ -2414,7 +2442,7 @@ impl Renderer {
                         true => self.prepass.shade_variant(key),
                         false => self.pipelines.mesh_variant(key),
                     };
-                    pipeline.zip(self.textures.get_set(&d.material.textures()))
+                    pipeline.zip(self.main_group(&d.material))
                 }
             };
             let (Some((pipeline, group)), Some(m)) = (resources, self.gpu_mesh(&d.mesh)) else {
@@ -2461,8 +2489,17 @@ impl Renderer {
             Some(c) => self.custom.as_ref()?.get(c),
             None => Some((
                 self.pipelines.mesh_variant(m.pipeline_key())?,
-                self.textures.get_set(&m.textures())?,
+                self.main_group(m)?,
             )),
+        }
+    }
+
+    /// Group 2 of a built-in material's main-pass variant: its textures, or for a feature
+    /// variant its textures, feature maps and values.
+    pub(super) fn main_group(&self, m: &MaterialParams) -> Option<&wgpu::BindGroup> {
+        match m.lit_set() {
+            Some(lit) => self.textures.get_lit(&lit),
+            None => self.textures.get_set(&m.textures()),
         }
     }
 
@@ -3929,6 +3966,8 @@ mod flowers_gpu_tests;
 mod golden_tests;
 #[cfg(test)]
 mod gpu_checks;
+#[cfg(test)]
+mod material_v2_gpu_tests;
 /// Make sure project `root`'s texture cache holds the blocks of the textures the renderer makes
 /// from the packed `files` for `platform`: tree maps and impostors (`.tree`), terrain layer
 /// arrays, the grass atlas and flower layers (`.terrain`). Returns the cache entries
