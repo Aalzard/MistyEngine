@@ -66,7 +66,9 @@ const VIS_OFF_TRIANGLES: f32 = 0.18;
 /// Auto occlusion: the main camera takes two phases around a Hi-Z pyramid (occlusion culling)
 /// from this many instances on, or when GPU culling builds the pyramid anyway; fewer instances
 /// are culled in one phase (frustum and level of detail only), which keeps the main pass whole.
-pub(super) const OCCLUSION_MIN_INSTANCES: usize = 1024;
+/// (The 3000-rock field is 0.6 ms faster in one phase: the pyramid, the split main pass and the
+/// second culling cost more than the few rocks hidden behind others save.)
+pub(super) const OCCLUSION_MIN_INSTANCES: usize = 16384;
 /// Shadow maps with virtual geometry casters (in plan order: cascades, local lights, virtual
 /// shadow map rectangles). The lists grow with the views a frame uses.
 pub const MAX_SHADOW_VIEWS: usize = 32;

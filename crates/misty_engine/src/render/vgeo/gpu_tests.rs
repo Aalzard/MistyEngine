@@ -269,7 +269,7 @@ fn virtual_rock_matches_the_mesh_path() {
 /// their shadow included.
 /// Auto choices: a few small rocks are culled in one phase and drawn lit (no visibility
 /// buffer, no Hi-Z, no main-pass split) and look like the forced visibility buffer with two
-/// phases; a field of 1100 rocks gets its two phases back; a field filling the screen with
+/// phases; with GPU culling on the two phases come back; a field filling the screen with
 /// small triangles gets the visibility buffer.
 #[test]
 fn auto_picks_one_phase_and_lit_for_a_few_rocks() {
@@ -304,7 +304,10 @@ fn auto_picks_one_phase_and_lit_for_a_few_rocks() {
     let stats = auto.virtual_geometry_stats(&device, &queue);
     assert_eq!(stats.instances, 3);
     assert!(!stats.occlusion && !stats.visibility, "{stats:?}");
-    assert!(stats.triangles > 0 && stats.shadow_triangles > 0, "{stats:?}");
+    assert!(
+        stats.triangles > 0 && stats.shadow_triangles > 0,
+        "{stats:?}"
+    );
 
     let mut forced = Renderer::with_queue(&device, &queue);
     forced.set_quality(&device, &quality(true, 1.0));
@@ -315,11 +318,23 @@ fn auto_picks_one_phase_and_lit_for_a_few_rocks() {
     let f = forced.virtual_geometry_stats(&device, &queue);
     assert!(f.occlusion, "{f:?}");
     let (mean, off) = difference(&reference, &img);
-    eprintln!("one phase, lit vs two phases: mean {mean:.3}, {:.3} % off", off * 100.0);
-    assert!(mean < 1.5 && off < 0.004, "mean {mean}, {:.3} % off", off * 100.0);
+    eprintln!(
+        "one phase, lit vs two phases: mean {mean:.3}, {:.3} % off",
+        off * 100.0
+    );
+    assert!(
+        mean < 1.5 && off < 0.004,
+        "mean {mean}, {:.3} % off",
+        off * 100.0
+    );
 
-    // Many instances: occlusion culling pays again.
-    let field = rocks(super::OCCLUSION_MIN_INSTANCES + 76, 0.3);
+    // Many instances: occlusion culling pays again (GPU culling on: the pyramid is built
+    // anyway, so from any count).
+    auto.set_options(crate::render::RenderOptions {
+        gpu_culling: true,
+        ..Default::default()
+    });
+    let field = rocks(40, 0.3);
     let img = render(&device, &queue, &mut auto, &target, &cam, &field, 6);
     let stats = auto.virtual_geometry_stats(&device, &queue);
     assert!(stats.occlusion, "{stats:?}");
