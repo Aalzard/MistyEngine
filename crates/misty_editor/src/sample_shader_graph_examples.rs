@@ -991,6 +991,16 @@ fn shader_graph_examples_render() {
     let root = project();
     misty_engine::assets::set_project_root(&root);
     let (scene, _) = Scene::load(&root.join(SCENE)).unwrap();
+    // The plant model by absolute path too: tests running alongside move the project root.
+    let plant = root.join(PLANT).to_string_lossy().replace('\\', "/");
+    for f in scene.world.query::<&mut MeshFilter>().iter() {
+        if let Some(MeshRef::Asset(key)) = &mut f.mesh
+            && key.starts_with(PLANT)
+        {
+            *key = format!("{plant}#0");
+        }
+    }
+    misty_engine::models::model(&plant).unwrap_or_else(|e| panic!("{plant}: {e}"));
     let mut assets = misty_engine::assets::AssetCache::open(&root);
     // Absolute paths (see shader_graph_demo_renders): the graphs load now, while the project
     // root is this one.
