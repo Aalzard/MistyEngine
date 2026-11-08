@@ -434,6 +434,72 @@ fn demo_scenes_compile_no_shader_after_their_first_frames() {
     }
 }
 
+/// Opening MeadowDemo in the editor (streaming on) never freezes a frame: its rocks' Misty GI
+/// distance fields (82k-triangle meshes, seconds each) bake on the background pool while the
+/// frames go on (v0.2.1 froze the second frame for 23 s, the shadow lists' parallel loop
+/// queued behind the bakes on rayon's global pool), and a later session reads them back from
+/// `Library/MeshSdf` instead of baking again.
+#[test]
+fn meadow_demo_opens_without_a_frozen_frame() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    // Frames over this fail (the first frame builds pipelines and is left out).
+    const BUDGET_MS: f32 = 1500.0;
+    let view = meadow_view(Shot::WideGolden);
+    let open = |frames: usize, until_baked: bool| -> Vec<f32> {
+        let mut r = Renderer::with_queue(&device, &queue);
+        r.set_quality(&device, &QualityLevel::high());
+        let target = r.create_target(&device, 640, 360);
+        let mut times = Vec::new();
+        for i in 0.. {
+            let started = std::time::Instant::now();
+            r.render_with_effects(&device, &queue, &target, &view.frame(), &view.effects);
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            times.push(started.elapsed().as_secs_f32() * 1000.0);
+            let baking = crate::render::mesh_sdf_bakes_pending() > 0;
+            if i + 1 >= frames && !(until_baked && baking) {
+                break;
+            }
+        }
+        times
+    };
+    crate::render::set_grass_streaming(true);
+    super::misty_gi::forget_mesh_sdfs();
+    // First launch (or a Library already holding the bakes): every frame goes on.
+    let first = open(30, false);
+    let worst = first[1..].iter().copied().fold(0.0, f32::max);
+    eprintln!(
+        "first open: frame 0 {:.0} ms, worst after {worst:.0} ms, bakes pending {}",
+        first[0],
+        crate::render::mesh_sdf_bakes_pending()
+    );
+    // Let the bakes land (first run on a machine: a minute at most), then a new session.
+    super::misty_gi::forget_mesh_sdfs();
+    let library = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../SampleProject")
+        .join(super::misty_gi::MESH_SDF_DIR);
+    let cached = std::fs::read_dir(library).map_or(0, |d| d.count());
+    let started = std::time::Instant::now();
+    let again = open(2, true);
+    let reread = started.elapsed();
+    crate::render::set_grass_streaming(false);
+    assert!(
+        worst < BUDGET_MS,
+        "opening MeadowDemo froze a frame for {worst:.0} ms (frames {first:?})"
+    );
+    assert!(
+        cached >= 6,
+        "the rocks' distance fields were not cached ({cached} files)"
+    );
+    assert!(
+        reread.as_secs_f32() < 5.0 && again.len() < 60,
+        "the second open baked again instead of reading the cache: {reread:?}, {} frames",
+        again.len()
+    );
+}
+
 /// Per-frame CPU and GPU times of the scripted MeadowDemo run on High, with the scopes of
 /// every slow frame (prints only).
 #[test]

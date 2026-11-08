@@ -74,7 +74,7 @@ pub use frame_debug::{
 };
 pub use glow::GlowSource;
 pub use grass_vis::{grass_vis_enabled, set_grass_vis};
-pub use misty_gi::MistyGiSettings;
+pub use misty_gi::{MistyGiSettings, mesh_sdf_bakes_pending};
 pub use particles::{ParticleBatch, ParticleInstance};
 pub(crate) use pipeline_cache::pipeline_cache;
 pub use pipeline_cache::{open_pipeline_cache, pipeline_cache_features, save_pipeline_cache};
@@ -1877,7 +1877,9 @@ impl Renderer {
         self.slots_scratch = lists.slots;
         let grass = self.terrains.grass_stats();
         stats.grass_pending = grass.pending;
-        stats.loading = (self.terrains.layers_pending() + self.trees.loading()) as u32;
+        stats.loading = (self.terrains.layers_pending()
+            + self.trees.loading()
+            + misty_gi::mesh_sdf_bakes_pending()) as u32;
         stats.grass_upload_ms = grass.upload_ms;
         stats.grass_upload_last_start_ms = grass.upload_last_start_ms;
         stats.grass_upload_piece_ms = grass.upload_piece_ms;
