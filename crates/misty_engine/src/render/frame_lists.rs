@@ -122,6 +122,7 @@ impl Renderer {
 
         let (mut opaque, mut transparent, mut opaque_order) = (Vec::new(), Vec::new(), Vec::new());
         if frame.shaded {
+            crate::profile_scope!("Render.CameraLists");
             let order = surface::draw_order(frame.meshes, super::camera_depth(frame.camera));
             let key = |i: usize| prep.main_keys[i].filter(|_| visible[i]);
             opaque = batcher.build(order.opaque.iter().copied(), key, merge(true), &mut slots);
@@ -131,6 +132,7 @@ impl Renderer {
         }
 
         // Every cascade and local layer in parallel, each with its own batcher and slot run.
+        let shadow_scope = crate::profiler::Scope::begin_lazy(|| "Render.ShadowLists", None);
         let matrices: Vec<Mat4> = plan.matrices().copied().collect();
         let mut batchers = std::mem::take(&mut self.shadow_batchers);
         batchers.resize_with(matrices.len(), Batcher::default);
@@ -163,6 +165,7 @@ impl Renderer {
             })
             .collect();
         self.shadow_batchers = batchers;
+        drop(shadow_scope);
 
         let mut caster = vec![false; n];
         let shadows = per_map
