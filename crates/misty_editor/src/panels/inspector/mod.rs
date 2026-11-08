@@ -24,6 +24,7 @@ mod mask_editor;
 #[cfg(test)]
 pub use mask_editor::IMPORT_LABEL as MASK_IMPORT_LABEL;
 mod material;
+mod material_features;
 mod mesh_builder_editor;
 mod mixed;
 mod mixer_inspector;

@@ -322,6 +322,16 @@ pub fn pack_compressed_textures<W: std::io::Write + std::io::Seek>(
             (&m.metallic_map, compress::Use::Linear),
             (&m.occlusion_map, compress::Use::Linear),
             (&m.emission_map, compress::Use::Color),
+            // Standard Lit v2 feature maps.
+            (&m.features.detail.albedo_map, compress::Use::Color),
+            (&m.features.detail.normal_map, compress::Use::Normal),
+            (&m.features.detail.mask, compress::Use::Linear),
+            (&m.features.parallax.height_map, compress::Use::Linear),
+            (&m.features.clear_coat.normal_map, compress::Use::Normal),
+            (
+                &m.features.translucency.thickness_map,
+                compress::Use::Linear,
+            ),
         ] {
             if let Some(p) = map {
                 uses.entry(p.clone()).or_default().push(usage);
