@@ -1,0 +1,39 @@
+{
+  "parameters": [],
+  "states": [
+    {
+      "name": "Wave",
+      "motion": "Assets/Animations/Character/Wave (Humanoid).anim",
+      "blend_tree": null,
+      "speed": 1.0,
+      "speed_parameter": "",
+      "loop": true,
+      "tag": "",
+      "machine": "",
+      "position": [
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "default_state": "Wave",
+  "transitions": [],
+  "nodes": {
+    "entry": [
+      -250.0,
+      0.0
+    ],
+    "any_state": [
+      -250.0,
+      -80.0
+    ],
+    "exit": [
+      350.0,
+      0.0
+    ],
+    "up": [
+      350.0,
+      -80.0
+    ]
+  }
+}

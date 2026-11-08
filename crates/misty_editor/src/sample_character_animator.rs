@@ -9,6 +9,9 @@
 //!   script fades its weight in and out.
 //! - Breathing: an additive layer bending the spine a little.
 //!
+//! - "Buddy", a second rig with other bone names, axes and proportions, plays the Character's
+//!   Wave retargeted through their humanoid Avatars (`Wave (Humanoid).anim`).
+//!
 //! `CharacterControl.lua`: WASD walks (Shift runs, damped SetFloat), Left / Right turn, Q waves,
 //! 1 / 2 bow / cheer. Regenerate with `cargo test -p misty_editor -- --ignored
 //! write_character_animator_demo`; the other test checks the files still match and plays it.
@@ -20,9 +23,10 @@ use misty_engine::animation::controller::{
     BlendChild, BlendTree, BlendType, Condition, ConditionMode, Layer, LayerBlending, Node,
     ParamKind, Parameter, State, StateMachine, SubMachine, Transition,
 };
+use misty_engine::animation::humanoid::humanoid_clip;
 use misty_engine::animation::mask::path_within;
 use misty_engine::animation::{
-    AnimationClip, AnimatorController, AvatarMask, Property, TangentMode,
+    AnimationClip, AnimatorController, Avatar, AvatarMask, Property, TangentMode,
 };
 use misty_engine::scene::{
     Animator, CharacterController, MeshFilter, MeshRenderer, PrimitiveMesh, RectTransform, Scene,
@@ -39,6 +43,10 @@ const DIR: &str = "Assets/Animations/Character";
 const CONTROLLER: &str = "Assets/Animations/Character/Character.controller";
 const MASK: &str = "Assets/Animations/Character/UpperBody.mask";
 const SCRIPT: &str = "Assets/Scripts/CharacterControl.lua";
+const CHARACTER_AVATAR: &str = "Assets/Animations/Character/Character.avatar";
+const BUDDY_AVATAR: &str = "Assets/Animations/Character/Buddy.avatar";
+const BUDDY_CONTROLLER: &str = "Assets/Animations/Character/Buddy.controller";
+const HUMAN_WAVE: &str = "Assets/Animations/Character/Wave (Humanoid).anim";
 
 fn project() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../SampleProject")
@@ -69,7 +77,9 @@ const PX: Property = Property::Position(0);
 const PY: Property = Property::Position(1);
 const PZ: Property = Property::Position(2);
 
-type Curves<'a> = &'a [(&'a str, Property, &'a [(f32, f32)])];
+/// (bone path, property, keys).
+type CurveSpec<'a> = (&'a str, Property, &'a [(f32, f32)]);
+type Curves<'a> = &'a [CurveSpec<'a>];
 
 /// A clip from (path, property, keys) curves; root travel (the object's own position) is
 /// linear, everything else smooth.
@@ -156,7 +166,7 @@ fn stride(
     let root_z = [(0.0, 0.0), (length, travel.y)];
     let lean_k = [(0.0, lean), (length, lean)];
     let elbow_k = [(0.0, elbow), (length, elbow)];
-    let mut curves: Vec<(&str, Property, &[(f32, f32)])> = vec![
+    let mut curves: Vec<CurveSpec> = vec![
         (HIPS, PY, &bob),
         (L_THIGH, RX, &lt),
         (R_THIGH, RX, &rt),
@@ -718,6 +728,7 @@ fn character(scene: &mut Scene) -> misty_engine::hecs::Entity {
         Animator {
             controller: Some(CONTROLLER.into()),
             apply_root_motion: true,
+            avatar: Some(CHARACTER_AVATAR.into()),
             ..Default::default()
         },
     );
@@ -740,6 +751,173 @@ fn character(scene: &mut Scene) -> misty_engine::hecs::Entity {
         },
     );
     root
+}
+
+/// A bone turned `rot_z` degrees about z (its children sit along its local +y when turned).
+fn bone_z(
+    scene: &mut Scene,
+    name: &str,
+    parent: misty_engine::hecs::Entity,
+    pos: Vec3,
+    rot_z: f32,
+) -> misty_engine::hecs::Entity {
+    let e = bone(scene, name, parent, pos);
+    let t = scene.transform(e).with_euler(Vec3::new(0.0, 0.0, rot_z));
+    scene.set_transform(e, t);
+    e
+}
+
+/// "Buddy": a smaller rig named like other tools name bones ("pelvis", "upperarm_r"…), whose arm
+/// bones are turned half a turn (children along local +y). Same rest pose as the Character.
+fn buddy(scene: &mut Scene) -> misty_engine::hecs::Entity {
+    use PrimitiveMesh::{Capsule, Cube, Sphere};
+    let root = scene.spawn("Buddy", None);
+    scene.set_transform(
+        root,
+        Transform::from_position(Vec3::new(2.2, 0.0, 2.5)).with_euler(Vec3::new(0.0, 180.0, 0.0)),
+    );
+    let body = "Stress Teal";
+    let joint = "Rig Joint";
+    let pelvis = bone(scene, "pelvis", root, Vec3::new(0.0, 0.66, 0.0));
+    limb(
+        scene,
+        pelvis,
+        Vec3::ZERO,
+        Vec3::new(0.26, 0.14, 0.16),
+        Cube,
+        body,
+    );
+    let spine = bone(scene, "spine_01", pelvis, Vec3::new(0.0, 0.08, 0.0));
+    let chest = bone(scene, "spine_02", spine, Vec3::new(0.0, 0.16, 0.0));
+    limb(
+        scene,
+        chest,
+        Vec3::new(0.0, 0.05, 0.0),
+        Vec3::new(0.32, 0.3, 0.18),
+        Cube,
+        body,
+    );
+    let neck = bone(scene, "neck_01", chest, Vec3::new(0.0, 0.22, 0.0));
+    let head = bone(scene, "head", neck, Vec3::new(0.0, 0.04, 0.0));
+    limb(
+        scene,
+        head,
+        Vec3::new(0.0, 0.1, 0.0),
+        Vec3::splat(0.2),
+        Sphere,
+        joint,
+    );
+    for (side, x) in [("l", -1.0f32), ("r", 1.0)] {
+        let arm = bone_z(
+            scene,
+            &format!("upperarm_{side}"),
+            chest,
+            Vec3::new(0.2 * x, 0.15, 0.0),
+            180.0,
+        );
+        limb(
+            scene,
+            arm,
+            Vec3::new(0.0, 0.11, 0.0),
+            Vec3::new(0.08, 0.12, 0.08),
+            Capsule,
+            joint,
+        );
+        let fore = bone(
+            scene,
+            &format!("lowerarm_{side}"),
+            arm,
+            Vec3::new(0.0, 0.22, 0.0),
+        );
+        limb(
+            scene,
+            fore,
+            Vec3::new(0.0, 0.1, 0.0),
+            Vec3::new(0.07, 0.11, 0.07),
+            Capsule,
+            joint,
+        );
+        bone(
+            scene,
+            &format!("hand_{side}"),
+            fore,
+            Vec3::new(0.0, 0.2, 0.0),
+        );
+        let thigh = bone(
+            scene,
+            &format!("thigh_{side}"),
+            pelvis,
+            Vec3::new(0.08 * x, -0.03, 0.0),
+        );
+        limb(
+            scene,
+            thigh,
+            Vec3::new(0.0, -0.16, 0.0),
+            Vec3::new(0.1, 0.16, 0.1),
+            Capsule,
+            body,
+        );
+        let calf = bone(
+            scene,
+            &format!("calf_{side}"),
+            thigh,
+            Vec3::new(0.0, -0.32, 0.0),
+        );
+        limb(
+            scene,
+            calf,
+            Vec3::new(0.0, -0.14, 0.0),
+            Vec3::new(0.09, 0.15, 0.09),
+            Capsule,
+            joint,
+        );
+        let foot = bone(
+            scene,
+            &format!("foot_{side}"),
+            calf,
+            Vec3::new(0.0, -0.3, 0.04),
+        );
+        limb(
+            scene,
+            foot,
+            Vec3::ZERO,
+            Vec3::new(0.1, 0.05, 0.18),
+            Cube,
+            body,
+        );
+    }
+    scene.add(
+        root,
+        Animator {
+            controller: Some(BUDDY_CONTROLLER.into()),
+            avatar: Some(BUDDY_AVATAR.into()),
+            ..Default::default()
+        },
+    );
+    root
+}
+
+/// Buddy plays the retargeted wave.
+fn buddy_controller() -> AnimatorController {
+    AnimatorController {
+        base: StateMachine {
+            states: vec![State {
+                name: "Wave".into(),
+                motion: Some(HUMAN_WAVE.into()),
+                ..Default::default()
+            }],
+            default_state: Some("Wave".into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+/// The avatars of both rigs, mapped from the generated scene.
+fn avatars(scene: &Scene) -> (Avatar, Avatar) {
+    let c = scene.find_by_name("Character").expect("character");
+    let b = scene.find_by_name("Buddy").expect("buddy");
+    (Avatar::auto_map(scene, c), Avatar::auto_map(scene, b))
 }
 
 fn demo_scene() -> Scene {
@@ -796,6 +974,7 @@ fn demo_scene() -> Scene {
         );
     }
     character(&mut s.scene);
+    buddy(&mut s.scene);
     text(
         &mut s,
         "Hint Text",
@@ -829,6 +1008,19 @@ fn write_character_animator_demo() {
     let scene = demo_scene();
     mask(&scene).save(&root.join(MASK)).unwrap();
     ensure_meta(&root.join(MASK));
+    let (character, buddy) = avatars(&scene);
+    character.save(&root.join(CHARACTER_AVATAR)).unwrap();
+    ensure_meta(&root.join(CHARACTER_AVATAR));
+    buddy.save(&root.join(BUDDY_AVATAR)).unwrap();
+    ensure_meta(&root.join(BUDDY_AVATAR));
+    humanoid_clip(&wave(), &character, 30.0)
+        .save(&root.join(HUMAN_WAVE))
+        .unwrap();
+    ensure_meta(&root.join(HUMAN_WAVE));
+    buddy_controller()
+        .save(&root.join(BUDDY_CONTROLLER))
+        .unwrap();
+    ensure_meta(&root.join(BUDDY_CONTROLLER));
     std::fs::write(root.join(SCRIPT), CONTROL_LUA).unwrap();
     ensure_meta(&root.join(SCRIPT));
     scene.save(&root.join(SCENE)).unwrap();
@@ -854,6 +1046,23 @@ fn character_animator_demo_matches_its_generator_and_plays() {
         AvatarMask::load(&root.join(MASK)).unwrap(),
         mask(&demo_scene()),
         "regenerate with write_character_animator_demo"
+    );
+    let (character, buddy) = avatars(&demo_scene());
+    assert_eq!(
+        Avatar::load(&root.join(CHARACTER_AVATAR)).unwrap(),
+        character
+    );
+    assert_eq!(Avatar::load(&root.join(BUDDY_AVATAR)).unwrap(), buddy);
+    assert!(buddy.missing().is_empty(), "{:?}", buddy.missing());
+    crate::test_util::assert_close(
+        &AnimationClip::load(&root.join(HUMAN_WAVE)).unwrap(),
+        &humanoid_clip(&wave(), &character, 30.0),
+        HUMAN_WAVE,
+    );
+    crate::test_util::assert_close(
+        &AnimatorController::load(&root.join(BUDDY_CONTROLLER)).unwrap(),
+        &buddy_controller(),
+        BUDDY_CONTROLLER,
     );
     assert_eq!(
         std::fs::read_to_string(root.join(SCRIPT))
@@ -933,6 +1142,17 @@ fn character_animator_demo_matches_its_generator_and_plays() {
     assert_eq!(state(&rt, &scene), "Base Layer.Locomotion");
     frames(&mut rt, &mut scene, 20, &[], &["1"]);
     assert_eq!(state(&rt, &scene), "Base Layer.Emotes.Bow");
+    // Buddy's right arm (bones turned half a turn, other names) is raised by the retargeted
+    // wave, like the Character's.
+    let up = |upper: &str, lower: &str| {
+        let u = scene.world_position(scene.find_by_name(upper).unwrap());
+        let l = scene.world_position(scene.find_by_name(lower).unwrap());
+        (l - u).normalize()
+    };
+    let buddy_arm = up("upperarm_r", "lowerarm_r");
+    let hero_arm = up("RightArm", "RightForearm");
+    assert!(buddy_arm.y > 0.4, "Buddy waves: {buddy_arm}");
+    assert!(hero_arm.y > 0.4, "the Character waves too: {hero_arm}");
     let logs = rt.take_logs();
     assert!(logs.is_empty(), "{logs:?}");
 }

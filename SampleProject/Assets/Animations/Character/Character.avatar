@@ -1,0 +1,299 @@
+{
+  "bones": [
+    {
+      "bone": "Hips",
+      "path": "Hips",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.95,
+        0.0
+      ]
+    },
+    {
+      "bone": "Spine",
+      "path": "Hips/Spine",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.1,
+        0.0
+      ]
+    },
+    {
+      "bone": "Chest",
+      "path": "Hips/Spine/Chest",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.25,
+        0.0
+      ]
+    },
+    {
+      "bone": "Head",
+      "path": "Hips/Spine/Chest/Head",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.3,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftUpperArm",
+      "path": "Hips/Spine/Chest/LeftArm",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        -0.28,
+        0.22,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftLowerArm",
+      "path": "Hips/Spine/Chest/LeftArm/LeftForearm",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.3,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightUpperArm",
+      "path": "Hips/Spine/Chest/RightArm",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.28,
+        0.22,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightLowerArm",
+      "path": "Hips/Spine/Chest/RightArm/RightForearm",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.3,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftUpperLeg",
+      "path": "Hips/LeftUpLeg",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        -0.11,
+        -0.05,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftLowerLeg",
+      "path": "Hips/LeftUpLeg/LeftLeg",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.44,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftFoot",
+      "path": "Hips/LeftUpLeg/LeftLeg/LeftFoot",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.42,
+        0.05
+      ]
+    },
+    {
+      "bone": "RightUpperLeg",
+      "path": "Hips/RightUpLeg",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.11,
+        -0.05,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightLowerLeg",
+      "path": "Hips/RightUpLeg/RightLeg",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.44,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightFoot",
+      "path": "Hips/RightUpLeg/RightLeg/RightFoot",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.42,
+        0.05
+      ]
+    }
+  ],
+  "hips_height": 0.95
+}

@@ -1,0 +1,362 @@
+{
+  "bones": [
+    {
+      "bone": "Hips",
+      "path": "pelvis",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.66,
+        0.0
+      ]
+    },
+    {
+      "bone": "Spine",
+      "path": "pelvis/spine_01",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.08,
+        0.0
+      ]
+    },
+    {
+      "bone": "Chest",
+      "path": "pelvis/spine_01/spine_02",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.16,
+        0.0
+      ]
+    },
+    {
+      "bone": "Neck",
+      "path": "pelvis/spine_01/spine_02/neck_01",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.22,
+        0.0
+      ]
+    },
+    {
+      "bone": "Head",
+      "path": "pelvis/spine_01/spine_02/neck_01/head",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        0.04,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftUpperArm",
+      "path": "pelvis/spine_01/spine_02/upperarm_l",
+      "rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        -0.2,
+        0.15,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftLowerArm",
+      "path": "pelvis/spine_01/spine_02/upperarm_l/lowerarm_l",
+      "rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "rest_position": [
+        0.0,
+        0.22,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftHand",
+      "path": "pelvis/spine_01/spine_02/upperarm_l/lowerarm_l/hand_l",
+      "rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "rest_position": [
+        0.0,
+        0.2,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightUpperArm",
+      "path": "pelvis/spine_01/spine_02/upperarm_r",
+      "rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.2,
+        0.15,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightLowerArm",
+      "path": "pelvis/spine_01/spine_02/upperarm_r/lowerarm_r",
+      "rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "rest_position": [
+        0.0,
+        0.22,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightHand",
+      "path": "pelvis/spine_01/spine_02/upperarm_r/lowerarm_r/hand_r",
+      "rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        1.0,
+        -4.371139e-8
+      ],
+      "rest_position": [
+        0.0,
+        0.2,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftUpperLeg",
+      "path": "pelvis/thigh_l",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        -0.08,
+        -0.03,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftLowerLeg",
+      "path": "pelvis/thigh_l/calf_l",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.32,
+        0.0
+      ]
+    },
+    {
+      "bone": "LeftFoot",
+      "path": "pelvis/thigh_l/calf_l/foot_l",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.3,
+        0.04
+      ]
+    },
+    {
+      "bone": "RightUpperLeg",
+      "path": "pelvis/thigh_r",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.08,
+        -0.03,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightLowerLeg",
+      "path": "pelvis/thigh_r/calf_r",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.32,
+        0.0
+      ]
+    },
+    {
+      "bone": "RightFoot",
+      "path": "pelvis/thigh_r/calf_r/foot_r",
+      "rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "parent_rest": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "rest_position": [
+        0.0,
+        -0.3,
+        0.04
+      ]
+    }
+  ],
+  "hips_height": 0.66
+}
