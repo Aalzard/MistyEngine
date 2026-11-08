@@ -249,10 +249,13 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect, path: &str, c: &Animator
 /// `select:State` / `transition:N` / `machine-node:Path` (selected, shown in the Inspector) for the
 /// selected object's controller.
 pub fn demo(s: &mut EditorState, spec: &str) {
-    let ctrl = s
-        .selection
-        .active()
-        .and_then(|e| s.scene.world.get::<&Animator>(e).ok().map(|a| (e, a.controller.clone())));
+    let ctrl = s.selection.active().and_then(|e| {
+        s.scene
+            .world
+            .get::<&Animator>(e)
+            .ok()
+            .map(|a| (e, a.controller.clone()))
+    });
     let Some((e, Some(path))) = ctrl else {
         return;
     };
