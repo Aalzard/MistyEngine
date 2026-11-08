@@ -2783,3 +2783,33 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - The terrain normal + height array of MeadowDemo stays RGBA8 (BC5 + BC4 would need another binding); identical
   textures of different tree assets are uploaded once per asset.
+
+## Round 19B — Navigation: NavMesh parity (branch r19-nav)
+
+### Done (docs/pending/r19-nav.md, screenshots `docs/screenshots/r19/nav_*`)
+- Tiled voxel nav mesh: per-tile heightfield with a border, erosion, monotone regions, traced and
+  simplified contours, convex polygons (up to 6 corners) with detail heights (edges and interior);
+  64-voxel tiles on a world-anchored grid, portals inside and between tiles. Bakes run tile by tile
+  in parallel on the background pool; unchanged tiles are reused (input hash).
+- NavMesh Surface (agent type, collect All / Volume / Hierarchy, layers, voxel and tile overrides,
+  Bake / Clear with progress), NavMesh Modifier, NavMesh Modifier Volume, NavMesh Link, carving
+  Nav Mesh Obstacle (move threshold, time to stationary, carve only stationary) rebuilding only the
+  touched tiles in the background while playing; `BuildNavMesh` / `UpdateNavMesh` from Lua.
+- 32 areas with costs (Navigation ▸ Areas), per-agent area masks and costs; A* over polygons and
+  links, funnel string pulling plus raycast shortcuts. Several agent types (Navigation ▸ Agents),
+  each with its own data. ORCA avoidance with priorities; off-mesh link traversal (auto or
+  `CompleteOffMeshLink`) with `OnOffMeshLinkStart/End` callbacks; `NavMesh.Raycast`,
+  `FindClosestEdge`, `SamplePosition`, `CalculatePath` with masks.
+- Scene view: nav meshes coloured by area, tile borders, link arcs, live carved meshes and agent
+  paths in Play mode. Sample `NavigationDemo2` (crowds, Mud area, jump link, carving Rolling
+  Block, Humanoid and Ogre). `.navmesh` format 2 (format 1 still loads).
+- Measured (release, this machine, `nav_perf_report`): a 160 m bumpy terrain with 80 boxes
+  (206k triangles, 0.167 m voxels) bakes into 256 tiles / 1117 polygons in 0.14 s; an unchanged
+  rebake reuses every tile in 0.02 s. A carving obstacle settling rebuilds one tile in about 5 ms
+  (background pool). Agents: SetDestination
+  0.006 ms each; update 0.52 ms per frame for 100 agents, 4.0 ms for 400 (High Quality avoidance).
+
+### Not done yet
+- Watershed regions, automatic drop / jump links, links across surfaces, a compressed tile cache
+  for carving (tiles rebuild from collected geometry), physics colliders as bake geometry,
+  `SamplePathPosition`.

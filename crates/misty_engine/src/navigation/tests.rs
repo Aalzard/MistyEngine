@@ -47,16 +47,16 @@ fn flat_floor_is_walkable_inside_the_agent_radius() {
     let area = m.area();
     assert!((area - 81.0).abs() < 81.0 * 0.04, "area {area}");
     assert!(
-        m.polys.len() <= 4,
-        "a flat square merges: {}",
-        m.polys.len()
+        m.poly_count() <= 4,
+        "a flat square merges into one polygon per tile: {}",
+        m.poly_count()
     );
     assert!(on_mesh(&m, Vec3::new(4.3, 0.0, 0.0)));
     assert!(
         !on_mesh(&m, Vec3::new(4.8, 0.0, 0.0)),
         "within the radius of the edge"
     );
-    for p in &m.polys {
+    for (_, p) in m.polys() {
         assert!(p.vertices.iter().all(|v| v.y.abs() < 1e-4));
     }
     // Non-static objects are ignored.
@@ -227,22 +227,35 @@ fn nav_mesh_files_round_trip() {
     let text = m.to_json();
     assert_eq!(
         text.lines().count(),
-        m.polys.len() + 2,
-        "one polygon per line"
+        m.tiles().len() + 2,
+        "one tile per line"
     );
+    let polys = |m: &NavMesh| m.polys().map(|(r, p)| (r, p.clone())).collect::<Vec<_>>();
     let back = NavMesh::from_json(&text).unwrap();
-    assert_eq!(back.polys, m.polys);
+    assert_eq!(polys(&back), polys(&m), "links are made again on load");
     assert_eq!(back.agent, m.agent);
+    assert_eq!(back.settings, m.settings);
     let dir = std::env::temp_dir().join(format!("misty_navmesh_{}", std::process::id()));
     let path = dir.join("Level/NavMesh.navmesh");
     m.save(&path).unwrap();
     let loaded = store::load(&path).unwrap();
-    assert_eq!(loaded.polys, m.polys);
+    assert_eq!(polys(&loaded), polys(&m));
     assert!(NavMesh::from_json("{\"version\":1}").is_err());
-    let broken = text.replacen("\"to\":", "\"to\":9999", 1);
-    if broken != text {
-        assert!(NavMesh::from_json(&broken).is_err());
-    }
+    let broken = text.replacen("\"detail_tris\":[[0,", "\"detail_tris\":[[99,", 1);
+    assert_ne!(broken, text);
+    assert!(NavMesh::from_json(&broken).is_err());
+    // Format 1 (one tile, stored links) still loads.
+    let v1 = r#"{"version":1,"agent":{"radius":0.5,"height":2.0,"step_height":0.75,"max_slope":45.0},"cell_size":0.2,"polygons":[
+{"vertices":[[0,0,0],[0,0,2],[2,0,2],[2,0,0]],"links":[{"to":1,"a":[2,0,0],"b":[2,0,2]}]},
+{"vertices":[[2,0,0],[2,0,2],[4,0,2],[4,0,0]],"links":[{"to":0,"a":[2,0,2],"b":[2,0,0]}]}
+]}"#;
+    let old = NavMesh::from_json(v1).unwrap();
+    assert_eq!(old.poly_count(), 2);
+    assert_eq!(
+        old.find_path(Vec3::new(0.5, 0.0, 1.0), Vec3::new(3.5, 0.0, 1.0))
+            .status,
+        PathStatus::Complete
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

@@ -420,8 +420,8 @@ fn navigation_demo_matches_its_generator() {
     crate::test_util::assert_json_close(&scene.to_json(), &demo_scene().to_json(), SCENE);
     let on_disk = NavMesh::load(&root.join(NAV_MESH)).unwrap();
     let baked = nav_mesh();
-    assert_eq!(on_disk.polys.len(), baked.polys.len());
-    for (a, b) in on_disk.polys.iter().zip(&baked.polys) {
+    assert_eq!(on_disk.poly_count(), baked.poly_count());
+    for ((_, a), (_, b)) in on_disk.polys().zip(baked.polys()) {
         assert_eq!(a.links.len(), b.links.len());
         for (p, q) in a.vertices.iter().zip(&b.vertices) {
             assert!(p.distance(*q) < 1e-4, "{p} {q}");
