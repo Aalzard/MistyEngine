@@ -123,7 +123,24 @@ impl Input {
             ctrl: self.key("left ctrl") || self.key("right ctrl"),
             screen: self.screen_size,
             dt,
+            ..Default::default()
         }
+    }
+
+    /// The first gamepad as the Input Manager sees it, for UI navigation without the Input
+    /// System: (d-pad or left stick, y up; South pressed; East pressed).
+    pub fn ui_legacy_pad(&self) -> (Vec2, bool, bool) {
+        let Some(j) = self.joysticks.iter().find(|j| !j.name.is_empty()) else {
+            return (Vec2::ZERO, false, false);
+        };
+        let dpad = Vec2::new(j.axes[5], j.axes[6]);
+        let stick = Vec2::new(j.axes[0], -j.axes[1]);
+        let v = if dpad.length() > stick.length() {
+            dpad
+        } else {
+            stick
+        };
+        (v, j.pressed[0], j.pressed[1])
     }
 
     /// Key, mouse ("mouse 0") or joystick ("joystick button 0") button names.
@@ -1179,7 +1196,20 @@ impl ScriptHost {
                 return;
             };
             let w = &mut *w;
-            let pointer = w.input.ui_pointer(w.time.unscaled_delta);
+            let mut pointer = w.input.ui_pointer(w.time.unscaled_delta);
+            // Navigation through the Input System's UI map, else the keys and joystick.
+            let asset = crate::ui::events::settings(&w.scene).actions_asset;
+            match w.input_system.ui_actions(asset.as_deref()) {
+                Some(a) => {
+                    pointer.nav_from_actions = true;
+                    pointer.navigate = a.navigate;
+                    pointer.submit = a.submit;
+                    pointer.cancel = a.cancel;
+                }
+                None => {
+                    (pointer.navigate, pointer.submit, pointer.cancel) = w.input.ui_legacy_pad();
+                }
+            }
             self.ui.update(&mut w.scene, &pointer)
         };
         for ev in events {

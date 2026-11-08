@@ -11,10 +11,11 @@ use hecs::Entity;
 use super::driven::{clamp_scrollbar, clamp_slider, display_text, slider_value_at};
 use super::dropdown::{self, OpenDropdown};
 use super::input::{
-    ButtonState, ancestor, interactable, is_selectable, raycast, selectable, tint_color,
+    ButtonState, ancestor, interactable, is_selectable, raycast_hit, selectable, tint_color,
 };
 use super::input_field::{EditState, KeyOutcome, caret_at};
 use super::layout::Rect;
+use super::navigation::{NavDir, find_selectable};
 use super::scroll;
 use super::text::{builtin_font, caret_stops};
 use super::tree::{UiLayout, layout};
@@ -40,6 +41,14 @@ pub struct PointerInput {
     pub ctrl: bool,
     pub screen: Vec2,
     pub dt: f32,
+    /// Navigation comes from the Input System's UI map (`navigate`, `submit`, `cancel`) instead
+    /// of the arrow / Return / Space / Escape keys in `keys`.
+    pub nav_from_actions: bool,
+    /// Navigate this frame (stick / d-pad / arrows, y up); held directions repeat.
+    pub navigate: Vec2,
+    /// Submit / Cancel pressed this frame.
+    pub submit: bool,
+    pub cancel: bool,
 }
 
 /// A widget value passed to value-changed handlers.
@@ -60,6 +69,8 @@ pub enum UiEvent {
     EndEdit(Entity, String),
     /// A `<link="id">` of a rich text was clicked.
     LinkClicked(Entity, String),
+    /// Cancel (Esc, gamepad East) was pressed with this object selected.
+    Cancel(Entity),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -107,11 +118,15 @@ pub struct UiInteraction {
     moved_bars: HashSet<Entity>,
     /// The rich text link a press started on (clicked when released over the same link).
     link_press: Option<(Entity, String)>,
+    /// Canvas the current press started on: the pointer stays in its pixels while dragging.
+    press_canvas: Option<Entity>,
+    /// Held Navigate direction (repeats).
+    repeat: super::navigation::MoveRepeat,
     started: bool,
 }
 
 /// Settings from the scene's Event System (defaults without one).
-fn settings(scene: &Scene) -> EventSystem {
+pub fn settings(scene: &Scene) -> EventSystem {
     scene
         .walk()
         .into_iter()
@@ -179,14 +194,26 @@ impl UiInteraction {
                 .filter(|e| scene.contains(*e));
         }
         let l = layout(scene, input.screen);
-        let hit = input.position.and_then(|p| raycast(&l, scene, p));
+        let hit_at = input.position.and_then(|p| raycast_hit(&l, scene, p));
+        let hit = hit_at.map(|h| h.0);
         self.hovered = hit.and_then(|h| ancestor(scene, h, is_selectable));
         self.moved_bars.clear();
+        // The pointer in canvas pixels: of the canvas a press started on while it lasts, else of
+        // the canvas under it (an overlay's pixels are the image's).
+        let hit_canvas = hit.and_then(|h| l.node(h)).map(|n| n.canvas);
+        if input.down || self.press_origin.is_none() {
+            self.press_canvas = hit_canvas;
+        }
+        let position = match (input.position, self.press_canvas) {
+            (Some(_), Some(c)) if hit_canvas == Some(c) => hit_at.map(|h| h.1),
+            (Some(p), Some(c)) => l.to_canvas(c, p),
+            (p, _) => p,
+        };
 
         let link_under =
             |p: Vec2| hit.and_then(|h| super::rich::link_at(scene, &l, h, p).map(|id| (h, id)));
         if input.down
-            && let Some(p) = input.position
+            && let Some(p) = position
         {
             self.link_press = link_under(p);
             self.pointer_down(scene, &l, hit, p, &mut events);
@@ -195,14 +222,13 @@ impl UiInteraction {
             self.selected = None;
         }
         if input.held
-            && let Some(p) = input.position
+            && let Some(p) = position
         {
             self.pointer_drag(scene, &l, p, input.dt);
         }
         if input.up {
             if let Some((e, id)) = self.link_press.take()
-                && input
-                    .position
+                && position
                     .and_then(|p| super::rich::link_at(scene, &l, e, p))
                     .is_some_and(|now| now == id)
                 && hit == Some(e)
@@ -569,7 +595,9 @@ impl UiInteraction {
         }
     }
 
-    /// Arrow keys move the selection (or a selected slider); Return / Space submit.
+    /// Navigation: moves (arrow keys, or the Input System's Navigate with repeats) change the
+    /// selection or a selected slider's value; Submit clicks the selection, Cancel closes an
+    /// open dropdown or reaches the selection's scripts.
     fn navigate(
         &mut self,
         scene: &mut Scene,
@@ -581,30 +609,54 @@ impl UiInteraction {
         if !es.send_navigation_events {
             return;
         }
-        for k in &input.keys {
-            let dir = match k.as_str() {
-                "left" => Vec2::new(-1.0, 0.0),
-                "right" => Vec2::new(1.0, 0.0),
-                "up" => Vec2::new(0.0, -1.0),
-                "down" => Vec2::new(0.0, 1.0),
-                "return" | "space" => {
-                    if let Some(s) = self.selected.filter(|s| interactable(scene, *s)) {
-                        self.submit(scene, l, s, events);
-                    }
-                    continue;
+        let mut moves = Vec::new();
+        let (mut submit, mut cancel) = (input.submit, input.cancel);
+        if input.nav_from_actions {
+            moves.extend(self.repeat.step(
+                input.navigate,
+                input.dt,
+                es.move_repeat_delay,
+                es.move_repeat_rate,
+            ));
+        } else {
+            for k in &input.keys {
+                match k.as_str() {
+                    "return" | "space" => submit = true,
+                    "escape" => cancel = true,
+                    k => moves.extend(NavDir::from_key(k)),
                 }
-                _ => continue,
-            };
-            let Some(cur) = self.selected else {
+            }
+            // A legacy gamepad stick / d-pad (when there is one) repeats like the actions do.
+            moves.extend(self.repeat.step(
+                input.navigate,
+                input.dt,
+                es.move_repeat_delay,
+                es.move_repeat_rate,
+            ));
+        }
+        if submit && let Some(s) = self.selected.filter(|s| interactable(scene, *s)) {
+            self.submit(scene, l, s, events);
+        }
+        if cancel {
+            if let Some(open) = self.dropdown.take() {
+                dropdown::close(scene, &open);
+                self.selected = Some(open.dropdown);
+            } else if let Some(s) = self.selected {
+                events.push(UiEvent::Cancel(s));
+            }
+        }
+        for dir in moves {
+            let Some(cur) = self.selected.filter(|e| l.node(*e).is_some()) else {
                 self.selected = es.first_selected.filter(|e| scene.contains(*e));
                 continue;
             };
+            let v = dir.vec();
             if let Some(s) = get::<UiSlider>(scene, cur).filter(|s| s.selectable.interactable)
                 && let axis = s.direction.axis()
-                && dir[axis] != 0.0
+                && v[axis] != 0.0
             {
-                // Screen y is down; vertical sliders grow upwards.
-                let mut sign = if axis == 0 { dir.x } else { -dir.y };
+                // Image y is down; vertical sliders grow upwards.
+                let mut sign = if axis == 0 { v.x } else { -v.y };
                 if s.direction.reversed() {
                     sign = -sign;
                 }
@@ -618,33 +670,10 @@ impl UiInteraction {
                 }
                 continue;
             }
-            if let Some(next) = Self::neighbour(scene, l, cur, dir) {
+            if let Some(next) = find_selectable(scene, l, cur, dir) {
                 self.selected = Some(next);
             }
         }
-    }
-
-    /// Closest selectable in `dir` from `cur` (screen space).
-    fn neighbour(scene: &Scene, l: &UiLayout, cur: Entity, dir: Vec2) -> Option<Entity> {
-        let from = l.node(cur)?.screen.center();
-        let mut best = None;
-        let mut score = 0.0;
-        for n in &l.nodes {
-            if n.entity == cur || !interactable(scene, n.entity) {
-                continue;
-            }
-            let d = n.screen.center() - from;
-            let dot = d.dot(dir);
-            if dot <= 0.0 {
-                continue;
-            }
-            let s = dot / d.length_squared().max(1e-3);
-            if s > score {
-                score = s;
-                best = Some(n.entity);
-            }
-        }
-        best
     }
 
     /// View and content rects (canvas units) of a scroll rect.
