@@ -101,6 +101,9 @@ pub fn range_slider(
                     egui::DragValue::new(x)
                         .speed(0.25)
                         .range(lo..=hi)
+                        // Showing a value past the range (a rule's default 1000 m top on a
+                        // lower terrain) must not change it: that saved the asset on open.
+                        .clamp_existing_to_range(false)
                         .max_decimals(1)
                         .suffix(suffix),
                 )
