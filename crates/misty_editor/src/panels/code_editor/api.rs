@@ -201,6 +201,19 @@ Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a 
 #AudioSource|mute|mute|Muted
 #AudioSource|clip|clip|Clip path or nil
 #AudioSource|time|time|Seconds into the clip
+#AudioSource|spatialize|spatialize|Binaural (head model) 3D sound instead of panning
+#AudioSource|rolloffMode|rolloffMode|"Logarithmic", "Linear" or "Custom"
+#AudioSource|SetCustomCurve|SetCustomCurve("CustomRolloff", keys)|Custom rolloff keys {{distance 0..1, volume}, ...}
+#AudioSource|GetCustomCurve|GetCustomCurve("CustomRolloff")|The custom rolloff keys
+#AudioSource|outputAudioMixerGroup|outputAudioMixerGroup|Mixer group it plays through
+#AudioMixer|SetFloat|SetFloat(name, value)|Set an exposed parameter
+#AudioMixer|GetFloat|GetFloat(name)|Read an exposed parameter (nil if none)
+#AudioMixer|ClearFloat|ClearFloat(name)|Back to the snapshot's value
+#AudioMixer|FindSnapshot|FindSnapshot(name)|A snapshot by name, or nil
+#AudioMixer|TransitionToSnapshots|TransitionToSnapshots(snapshots, weights, seconds)|Move to a weighted blend of snapshots
+#AudioMixer|FindMatchingGroups|FindMatchingGroups(path)|Groups whose path ends with it
+#AudioMixer|outputAudioMixerGroup|outputAudioMixerGroup|Group of another mixer it plays into
+#AudioMixerSnapshot|TransitionTo|TransitionTo(seconds)|Blend to this snapshot
 #Animation|Play|Play([name])|Play the default clip or a named one
 #Animation|Stop|Stop()|Stop and rewind
 #Animation|IsPlaying|IsPlaying(name)|True when that clip is playing

@@ -49,7 +49,7 @@ impl Ramp {
 
     /// Value for the next sample.
     #[inline]
-    pub fn next(&mut self) -> f32 {
+    pub fn tick(&mut self) -> f32 {
         if self.step != 0.0 {
             self.value += self.step;
             if (self.step > 0.0 && self.value >= self.target)

@@ -616,9 +616,9 @@ impl Engine {
             // Gain, gate and pan (the reference's equal-power pan law).
             let binaural = v.params.binaural.map(|b| b.dir);
             for (o, r) in buf[..n].iter_mut().zip(raw[..n].iter_mut()) {
-                let g = v.volume.next() * v.gate.next();
-                *r = *r * g;
-                let pan = v.pan.next().clamp(-1.0, 1.0);
+                let g = v.volume.tick() * v.gate.tick();
+                *r *= g;
+                let pan = v.pan.tick().clamp(-1.0, 1.0);
                 let mix = (pan + 1.0) * 0.5;
                 *o = Frame::new(r.left * (1.0 - mix).sqrt(), r.right * mix.sqrt())
                     * std::f32::consts::SQRT_2;
@@ -626,7 +626,7 @@ impl Engine {
             if let (Some(dir), Some(b)) = (binaural, v.binaural.as_mut()) {
                 b.process(Vec3::from(dir), &mut raw[..n]);
                 for (o, r) in buf[..n].iter_mut().zip(raw[..n].iter()) {
-                    let s = v.spatial.next();
+                    let s = v.spatial.tick();
                     *o = *o * (1.0 - s) + *r * s;
                 }
             }
@@ -690,7 +690,7 @@ impl Engine {
                 &mut reduction,
             );
             for (w, o) in work[..n].iter_mut().zip(old[..n].iter()) {
-                let r = ramp.next();
+                let r = ramp.tick();
                 *w = *w * (1.0 - r) + *o * r;
             }
         }
@@ -699,7 +699,7 @@ impl Engine {
         t.old_chain = old_chain.filter(|(_, r)| !r.is_at(0.0));
         let mut peak = t.peak;
         for w in work[..n].iter_mut() {
-            *w = *w * t.volume.next();
+            *w *= t.volume.tick();
             peak = peak.max(w.left.abs()).max(w.right.abs());
         }
         t.peak = peak;
@@ -762,11 +762,11 @@ fn route(
         Some((old, ramp)) => {
             let start = *ramp;
             let mut r = start;
-            add_into(tracks, master, *old, buf, |_| r.next());
+            add_into(tracks, master, *old, buf, |_| r.tick());
             let mut r = start;
-            add_into(tracks, master, target, buf, |_| 1.0 - r.next());
+            add_into(tracks, master, target, buf, |_| 1.0 - r.tick());
             for _ in 0..buf.len() {
-                ramp.next();
+                ramp.tick();
             }
             if ramp.is_at(0.0) {
                 *reroute = None;
@@ -815,18 +815,18 @@ fn run_chain(
                 }) else {
                     // Keep the ramps moving even with nowhere to send.
                     for _ in 0..n {
-                        slot.mix.next();
-                        slot.level.next();
+                        slot.mix.tick();
+                        slot.level.tick();
                     }
                     continue;
                 };
                 for (r, s) in dst.received[..n].iter_mut().zip(buf.iter()) {
-                    *r += *s * (slot.level.next() * slot.mix.next());
+                    *r += *s * (slot.level.tick() * slot.mix.tick());
                 }
             }
             EffectKind::Receive => {
                 for (b, r) in buf.iter_mut().zip(slot.received[..n].iter_mut()) {
-                    *b += *r * slot.mix.next();
+                    *b += *r * slot.mix.tick();
                     *r = Frame::ZERO;
                 }
             }
@@ -842,8 +842,8 @@ fn run_chain(
                 *reduction = reduction.min(slot.proc.reduction_db());
                 let routing = kind.is_routing();
                 for (b, s) in buf.iter_mut().zip(scratch[..n].iter()) {
-                    let m = slot.mix.next();
-                    let a = if routing { m } else { m * slot.wet.next() };
+                    let m = slot.mix.tick();
+                    let a = if routing { m } else { m * slot.wet.tick() };
                     *b = *b * (1.0 - a) + *s * a;
                 }
                 if !slot.received.is_empty() {

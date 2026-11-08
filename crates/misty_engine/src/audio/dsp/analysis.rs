@@ -68,11 +68,12 @@ pub fn delay_between(a: &[f32], b: &[f32], max_lag: usize) -> isize {
     let n = a.len().min(b.len());
     let mut best = (0isize, f32::MIN);
     for lag in -(max_lag as isize)..=max_lag as isize {
-        let mut sum = 0.0;
-        for i in max_lag..n.saturating_sub(max_lag) {
-            let j = i as isize + lag;
-            sum += a[i] * b[j as usize];
-        }
+        let end = n.saturating_sub(max_lag).max(max_lag);
+        let sum: f32 = a[max_lag..end]
+            .iter()
+            .enumerate()
+            .map(|(k, x)| x * b[((max_lag + k) as isize + lag) as usize])
+            .sum();
         if sum > best.1 {
             best = (lag, sum);
         }

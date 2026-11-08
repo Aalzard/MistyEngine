@@ -416,7 +416,7 @@ impl Dynamics {
             let gr = p.curve(amplitude_to_db(self.env.max(1e-6)));
             self.reduction_db = gr;
             let g = db_to_amplitude_fast(gr + makeup);
-            *f = *f * g;
+            *f *= g;
         }
         if self.env < 1e-9 {
             self.env = 0.0;
@@ -513,7 +513,7 @@ pub enum Processor {
     Compressor(Dynamics),
     Chorus(Chorus),
     Flange(Flange),
-    Pitch(PitchShifter),
+    Pitch(Box<PitchShifter>),
     Eq(Biquad),
     /// Send and Receive: the graph moves the signal; the chain passes it on unchanged.
     Routing,
@@ -531,7 +531,7 @@ impl Processor {
             EffectKind::Compressor => Self::Compressor(Dynamics::default()),
             EffectKind::Chorus => Self::Chorus(Chorus::new(sample_rate)),
             EffectKind::Flange => Self::Flange(Flange::new(sample_rate)),
-            EffectKind::PitchShifter => Self::Pitch(PitchShifter::new()),
+            EffectKind::PitchShifter => Self::Pitch(Box::default()),
             EffectKind::ParamEQ => Self::Eq(Biquad::default()),
             EffectKind::Send | EffectKind::Receive => Self::Routing,
             EffectKind::DuckVolume => Self::Duck(Dynamics::default()),
