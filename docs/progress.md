@@ -3028,3 +3028,30 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Clear coat / anisotropy / detail / parallax outputs wait for the 17D material model (not in
   main); no CPU preview for Custom Functions; vertex offsets do not move shadows; decal graphs
   limited to 8 properties; FBX / OBJ / skinned meshes have no vertex colours yet.
+
+## Round 21 (17D) — Standard Lit v2 material model (branch r21-material)
+
+### Done (docs/pending/r21-material.md)
+- Optional Standard features, each a shader variant bit so unused ones cost nothing (a
+  `MAT_FEATURES` constant in mesh.wgsl, 0 in every base shader; feature materials get a variant
+  for exactly their bits and a bigger group 2): **detail maps** (×2 albedo, normal, mask, own
+  tiling), **parallax occlusion mapping** (height map, scale, steps), **clear coat** (strength,
+  smoothness, optional normal), **translucency** (wrap lighting + transmission, colour,
+  thickness map), **anisotropy** (strength, Horizontal / Vertical / Radial direction,
+  rotation), and a dielectric **specular** tint.
+- `.mat` sections left out at their defaults (old materials re-save byte for byte); Material
+  Inspector sections with Unity-style checkboxes; Sphere / Cube / Plane preview.
+- glTF: `KHR_materials_clearcoat`, `_anisotropy`, `_specular`, `_diffuse_transmission`,
+  `_transmission` (+ `_volume` tint) and `KHR_texture_transform`.
+- Shader Graph: Clear Coat, Anisotropy and Subsurface blocks (Graph Settings toggles); surface
+  shaders writing `o.coat` / `o.anisotropy` / `o.subsurface` compile those features.
+- Lua: Unity property names (`_ParallaxMap`, `_DetailAlbedoMap`, `_CoatMask`, `_Anisotropy`, …)
+  and feature keywords (`_CLEARCOAT`, `_PARALLAXMAP`, …).
+- MaterialDemo2 sample (car-paint clear coat, brushed metal disc and pipe, parallax brick wall,
+  detail rock, translucent leaves; procedural textures).
+
+### Not done yet
+- Textures of the glTF extensions other than the clear coat normal (coat / roughness masks,
+  anisotropy direction map, thickness and transmission maps); real refraction for
+  `KHR_materials_transmission`; parallax doesn't offset depth or self-shadow; area lights use the
+  plain lobe; Shader Graph has no Parallax Occlusion Mapping node yet.
