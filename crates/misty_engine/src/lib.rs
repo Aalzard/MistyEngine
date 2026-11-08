@@ -9,6 +9,7 @@ pub mod asset_deps;
 pub mod asset_groups;
 pub mod assets;
 pub mod audio;
+pub mod background;
 pub mod build;
 pub mod camera;
 pub mod clock;

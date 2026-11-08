@@ -240,10 +240,13 @@ fn start_at(model: &Model, path: Option<PathBuf>, rel: &str) -> Arc<VirtualBuild
         .name("misty vgeo build".into())
         .spawn(move || {
             use rayon::prelude::*;
-            let made: Vec<(usize, VirtualBuild)> = missing
-                .par_iter()
-                .map(|(i, src)| (*i, build(src)))
-                .collect();
+            // On the background pool: the frame's parallel loops never wait behind a build.
+            let made: Vec<(usize, VirtualBuild)> = crate::background::pool().install(|| {
+                missing
+                    .par_iter()
+                    .map(|(i, src)| (*i, build(src)))
+                    .collect()
+            });
             for (i, b) in made {
                 let _ = worker.slots[i].set(b);
             }

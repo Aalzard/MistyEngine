@@ -4,11 +4,19 @@
 //! winding number (inside where the mesh's triangles wrap the point more than halfway), which
 //! also gives open and badly closed meshes a sensible inside.
 //!
-//! Small meshes bake on the render thread (a few milliseconds); bigger ones on a worker thread,
-//! left out of the global SDF until they are ready.
+//! Small meshes bake on the render thread (a few milliseconds). Bigger ones (a dense rock:
+//! 82k triangles, ~80 s of CPU time) bake on the [`crate::background`] pool, never rayon's
+//! global pool (the frame's own parallel loops wait behind anything queued there), and are
+//! left out of the global SDF until they are ready. A finished bake is shared by every renderer
+//! of the process and, in the editor, saved in `Library/MeshSdf/<content hash>.sdf`: the same
+//! mesh reads back in a fraction of a millisecond in any later session, from any project path.
+//! Without streaming (tests, screenshots) the frame that first needs a bake waits for it.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use glam::Vec3;
 use rayon::prelude::*;
@@ -30,14 +38,18 @@ pub fn atlas_size() -> [u32; 3] {
 }
 
 /// A finished bake: distances (mesh units) and the box they cover.
+#[derive(Debug, PartialEq)]
 pub struct Baked {
     pub min: Vec3,
     pub max: Vec3,
     pub distances: Vec<f32>,
 }
 
+/// A bake shared by every renderer: set once it is ready.
+type Shared = Arc<OnceLock<Arc<Baked>>>;
+
 enum Entry {
-    Baking(Arc<Mutex<Option<Baked>>>),
+    Baking(Shared),
     Ready(Brick),
     /// No data or too big: never traced.
     Skipped,
@@ -93,26 +105,20 @@ impl MeshSdfs {
                 None => Entry::Skipped,
                 Some(tris) if tris.len() > MAX_TRIANGLES => Entry::Skipped,
                 Some(tris) if tris.len() <= INLINE_TRIANGLES => {
-                    Entry::Baking(Arc::new(Mutex::new(Some(bake(&tris)))))
+                    Entry::Baking(Arc::new(OnceLock::from(Arc::new(bake(&tris)))))
                 }
-                Some(tris) => {
-                    let slot = Arc::new(Mutex::new(None));
-                    let out = slot.clone();
-                    std::thread::spawn(move || {
-                        let baked = bake(&tris);
-                        if let Ok(mut s) = out.lock() {
-                            *s = Some(baked);
-                        }
-                    });
-                    Entry::Baking(slot)
-                }
+                Some(tris) => Entry::Baking(request(
+                    tris,
+                    cache_dir(r),
+                    !crate::render::grass_streaming(),
+                )),
             };
             self.entries.insert(k.clone(), entry);
         }
         let done = match self.entries.get(&k)? {
             Entry::Ready(b) => return Some(*b),
             Entry::Skipped => return None,
-            Entry::Baking(slot) => slot.lock().ok()?.take()?,
+            Entry::Baking(slot) => slot.get()?.clone(),
         };
         let entry = match self.upload(queue, &done) {
             Some(b) => Entry::Ready(b),
@@ -188,6 +194,165 @@ fn triangles(r: &MeshRef) -> Option<Vec<[Vec3; 3]>> {
         .filter_map(|t| Some([p(t[0])?, p(t[1])?, p(t[2])?]))
         .collect();
     (!tris.is_empty()).then_some(tris)
+}
+
+/// Bakes of this process by content hash: in flight or done.
+fn shared() -> &'static Mutex<HashMap<u64, Shared>> {
+    static SHARED: OnceLock<Mutex<HashMap<u64, Shared>>> = OnceLock::new();
+    SHARED.get_or_init(Default::default)
+}
+
+/// Background bakes started and not finished yet.
+static PENDING: AtomicUsize = AtomicUsize::new(0);
+
+/// Mesh SDF bakes running in the background (the editor's status bar says so).
+pub fn pending() -> usize {
+    PENDING.load(Ordering::Relaxed)
+}
+
+/// Bumped when the file layout or the bake changes.
+const FORMAT: u32 = 1;
+const MAGIC: &[u8; 4] = b"MSDF";
+/// Cache folder, relative to the project.
+pub const LIBRARY_DIR: &str = "Library/MeshSdf";
+/// Bytes before the distances: magic, format, hash, box.
+const HEADER: usize = 4 + 4 + 8 + 24;
+
+/// The editor's cache folder for mesh `r` (streaming, files on disk): the `Library` of the
+/// project whose `Assets` hold the mesh. Tests without streaming and built games keep bakes in
+/// memory only.
+fn cache_dir(r: &MeshRef) -> Option<PathBuf> {
+    if !crate::render::grass_streaming() || crate::vfs::is_mounted() {
+        return None;
+    }
+    let (path, _) = r.split_asset()?;
+    let file = crate::assets::absolute(path);
+    let project = file
+        .ancestors()
+        .find(|a| a.file_name().is_some_and(|n| n == "Assets"))
+        .and_then(Path::parent);
+    Some(match project {
+        Some(p) => p.join(LIBRARY_DIR),
+        None => crate::assets::absolute(LIBRARY_DIR),
+    })
+}
+
+/// Content hash of a bake's input: the triangles themselves (not the asset path, which differs
+/// between copies of a project) and the bake's size and format.
+pub fn content_hash(tris: &[[Vec3; 3]]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut eat = |w: u32| {
+        h ^= u64::from(w);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    };
+    eat(FORMAT);
+    eat(BRICK);
+    eat(tris.len() as u32);
+    for p in tris.iter().flatten() {
+        eat(p.x.to_bits());
+        eat(p.y.to_bits());
+        eat(p.z.to_bits());
+    }
+    h
+}
+
+fn cache_file(dir: &Path, hash: u64) -> PathBuf {
+    dir.join(format!("{hash:016x}.sdf"))
+}
+
+/// The bake cached for `hash` in `dir`, if it is there and whole.
+pub fn load(dir: &Path, hash: u64) -> Option<Baked> {
+    let bytes = std::fs::read(cache_file(dir, hash)).ok()?;
+    let n = (BRICK * BRICK * BRICK) as usize;
+    if bytes.len() != HEADER + n * 4 || &bytes[..4] != MAGIC {
+        return None;
+    }
+    let word = |i: usize| u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
+    let f = |i: usize| f32::from_bits(word(i));
+    let stored = u64::from(word(8)) | (u64::from(word(12)) << 32);
+    if word(4) != FORMAT || stored != hash {
+        return None;
+    }
+    let v = |i: usize| Vec3::new(f(i), f(i + 4), f(i + 8));
+    Some(Baked {
+        min: v(16),
+        max: v(28),
+        distances: (0..n).map(|i| f(HEADER + i * 4)).collect(),
+    })
+}
+
+/// Write `baked` for `hash` into `dir` (through a temporary file, so a reader never sees half
+/// of it).
+pub fn save(dir: &Path, hash: u64, baked: &Baked) -> std::io::Result<()> {
+    let mut out = Vec::with_capacity(HEADER + baked.distances.len() * 4);
+    out.extend_from_slice(MAGIC);
+    out.extend_from_slice(&FORMAT.to_le_bytes());
+    out.extend_from_slice(&hash.to_le_bytes());
+    for c in baked.min.to_array().into_iter().chain(baked.max.to_array()) {
+        out.extend_from_slice(&c.to_le_bytes());
+    }
+    for d in &baked.distances {
+        out.extend_from_slice(&d.to_le_bytes());
+    }
+    std::fs::create_dir_all(dir)?;
+    let path = cache_file(dir, hash);
+    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    std::fs::File::create(&tmp)?.write_all(&out)?;
+    std::fs::rename(&tmp, path)
+}
+
+/// The bake of `tris` cached in `dir`, or a fresh one (then saved there).
+fn load_or_bake(tris: &[[Vec3; 3]], hash: u64, dir: Option<&Path>) -> Baked {
+    if let Some(b) = dir.and_then(|d| load(d, hash)) {
+        return b;
+    }
+    let baked = bake(tris);
+    if let Some(d) = dir
+        && let Err(e) = save(d, hash, &baked)
+    {
+        eprintln!("{}: {e}", d.display());
+    }
+    baked
+}
+
+/// The shared bake of `tris`: started on the background pool unless this process already has
+/// it (done or in flight). `wait`: return only once it is ready.
+fn request(tris: Vec<[Vec3; 3]>, dir: Option<PathBuf>, wait: bool) -> Shared {
+    let hash = content_hash(&tris);
+    let (slot, start) = {
+        let mut map = shared().lock().unwrap_or_else(|e| e.into_inner());
+        match map.get(&hash) {
+            Some(s) => (s.clone(), false),
+            None => {
+                let s = Shared::default();
+                map.insert(hash, s.clone());
+                (s, true)
+            }
+        }
+    };
+    if start {
+        let out = slot.clone();
+        let job = move || {
+            let baked = load_or_bake(&tris, hash, dir.as_deref());
+            let _ = out.set(Arc::new(baked));
+        };
+        if wait {
+            crate::background::pool().install(job);
+        } else {
+            PENDING.fetch_add(1, Ordering::Relaxed);
+            crate::background::pool().spawn(move || {
+                job();
+                PENDING.fetch_sub(1, Ordering::Relaxed);
+            });
+        }
+    }
+    if wait {
+        // Started earlier without waiting (or by another thread): it lands soon.
+        while slot.get().is_none() {
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+    slot
 }
 
 /// Closest point of triangle `t` to `p` (Ericson, Real-Time Collision Detection 5.1.5).
@@ -267,9 +432,98 @@ pub fn bake(tris: &[[Vec3; 3]]) -> Baked {
     }
 }
 
+/// Forget every bake of the process (tests: the next request bakes or reads the disk again).
+/// Waits for the background bakes first, so none lands in a forgotten slot.
+#[cfg(test)]
+pub(crate) fn forget_all() {
+    let t = std::time::Instant::now();
+    while pending() > 0 && t.elapsed().as_secs() < 600 {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    shared().lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rock_triangles(seed: u32) -> Vec<[Vec3; 3]> {
+        let data = crate::vgeo::rock::rock(3, seed);
+        let p = |i: u32| Vec3::from(data.vertices[i as usize].position);
+        let tris: Vec<[Vec3; 3]> = (data.indices.as_chunks::<3>().0.iter())
+            .map(|t| [p(t[0]), p(t[1]), p(t[2])])
+            .collect();
+        assert!(tris.len() > INLINE_TRIANGLES);
+        tris
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("misty-mesh-sdf-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn wait(slot: &Shared) -> Arc<Baked> {
+        let t = std::time::Instant::now();
+        loop {
+            if let Some(b) = slot.get() {
+                return b.clone();
+            }
+            assert!(t.elapsed().as_secs() < 120, "bake never finished");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    /// The MeadowDemo freeze: a dense mesh's bake (seconds) must not run on the calling (render)
+    /// thread or rayon's global pool, and a later session reads it back from `Library` instead
+    /// of baking again, keyed by content (not by path).
+    #[test]
+    fn big_meshes_bake_in_the_background_then_read_back_from_the_cache() {
+        let dir = temp_dir("cache");
+        let tris = rock_triangles(11);
+        let hash = content_hash(&tris);
+        let t = std::time::Instant::now();
+        let slot = request(tris.clone(), Some(dir.clone()), false);
+        assert!(
+            t.elapsed().as_millis() < 50,
+            "request waited {:?}",
+            t.elapsed()
+        );
+        assert!(slot.get().is_none(), "baked on the calling thread");
+        let first = wait(&slot);
+        assert_eq!(*first, bake(&tris), "the background bake is the same bake");
+        let t = std::time::Instant::now();
+        while load(&dir, hash).is_none() {
+            assert!(t.elapsed().as_secs() < 30, "cache file never written");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+
+        // Another renderer of the same process shares the bake.
+        assert!(Arc::ptr_eq(&request(tris.clone(), None, true), &slot));
+
+        // A new session (nothing in memory) with a copy of the project somewhere else: the
+        // cache file is read, not baked again (a marked file proves which).
+        shared().lock().unwrap().remove(&hash);
+        let marked = Baked {
+            distances: vec![7.0; first.distances.len()],
+            min: first.min,
+            max: first.max,
+        };
+        let copy = temp_dir("copy");
+        save(&copy, hash, &marked).unwrap();
+        let read = request(tris.clone(), Some(copy.clone()), true);
+        assert_eq!(**read.get().unwrap(), marked);
+
+        // An edited mesh is a different key; a damaged file is ignored.
+        let mut edited = tris.clone();
+        edited[0][0].x += 0.01;
+        assert_ne!(content_hash(&edited), hash);
+        std::fs::write(cache_file(&copy, hash), b"MSDF").unwrap();
+        assert!(load(&copy, hash).is_none());
+        shared().lock().unwrap().remove(&hash);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&copy);
+    }
 
     #[test]
     fn a_cube_bakes_to_a_box_distance() {
