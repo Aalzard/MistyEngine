@@ -95,6 +95,9 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
 - **Scripting:** Lua scripts with `Start`, `Update`, collisions and more
   ([scripting guide](docs/scripting.md)), and custom shaders in WGSL ([shaders guide](docs/shaders.md)).
 - **Builds:** File ▸ Build makes a stand-alone game you can share ([building guide](docs/building.md)).
+- **AI tools (MCP):** `misty --mcp <project>` lets AI agents such as Claude and Codex edit scenes,
+  write scripts, read the Console, take screenshots, run tests and build, also in the running
+  editor, local only and undoable ([MCP guide](docs/mcp.md)).
 
 | | |
 |---|---|
