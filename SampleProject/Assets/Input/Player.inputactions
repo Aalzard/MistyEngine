@@ -1,0 +1,256 @@
+{
+  "name": "Player",
+  "maps": [
+    {
+      "name": "Player",
+      "id": "6a1aeea8fce39028",
+      "actions": [
+        {
+          "name": "Move",
+          "id": "09a63d04c833fc5c",
+          "type": "Value",
+          "control_type": "Vector2",
+          "initial_state_check": true,
+          "bindings": [
+            {
+              "name": "WASD",
+              "composite": "2DVector",
+              "parts": [
+                {
+                  "name": "up",
+                  "path": "<Keyboard>/w",
+                  "id": "99c5d0c8c396d985",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "down",
+                  "path": "<Keyboard>/s",
+                  "id": "4ca57f9a9f3e1047",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "left",
+                  "path": "<Keyboard>/a",
+                  "id": "20ab9b8422ce3893",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "right",
+                  "path": "<Keyboard>/d",
+                  "id": "394cdb2ceaf6cbd3",
+                  "groups": "Keyboard&Mouse"
+                }
+              ],
+              "id": "8292092155df3d3f"
+            },
+            {
+              "name": "Arrows",
+              "composite": "2DVector",
+              "parts": [
+                {
+                  "name": "up",
+                  "path": "<Keyboard>/upArrow",
+                  "id": "2bcbca4bd622ed7c",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "down",
+                  "path": "<Keyboard>/downArrow",
+                  "id": "b013e473eedfa512",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "left",
+                  "path": "<Keyboard>/leftArrow",
+                  "id": "7284eac22f62334a",
+                  "groups": "Keyboard&Mouse"
+                },
+                {
+                  "name": "right",
+                  "path": "<Keyboard>/rightArrow",
+                  "id": "5f663a2861d01228",
+                  "groups": "Keyboard&Mouse"
+                }
+              ],
+              "id": "8d22395d1812250e"
+            },
+            {
+              "path": "<Gamepad>/leftStick",
+              "id": "c1215727aaaf2399",
+              "groups": "Gamepad",
+              "processors": "stickDeadzone"
+            }
+          ]
+        },
+        {
+          "name": "Look",
+          "id": "aebc5738df49051b",
+          "type": "Value",
+          "control_type": "Vector2",
+          "initial_state_check": true,
+          "bindings": [
+            {
+              "path": "<Mouse>/delta",
+              "id": "c965ff6cc7167f96",
+              "groups": "Keyboard&Mouse",
+              "processors": "scaleVector2(x=0.1,y=0.1)"
+            },
+            {
+              "path": "<Gamepad>/rightStick",
+              "id": "bab8d76711c2f241",
+              "groups": "Gamepad",
+              "processors": "stickDeadzone"
+            }
+          ]
+        },
+        {
+          "name": "Jump",
+          "id": "1b3e85842cf308a1",
+          "type": "Button",
+          "control_type": "Button",
+          "bindings": [
+            {
+              "path": "<Keyboard>/space",
+              "id": "2650e1abce39ee97",
+              "groups": "Keyboard&Mouse"
+            },
+            {
+              "path": "<Gamepad>/buttonSouth",
+              "id": "c6d308bcb00e42fb",
+              "groups": "Gamepad"
+            }
+          ]
+        },
+        {
+          "name": "Sprint",
+          "id": "c2814115290a0710",
+          "type": "Button",
+          "control_type": "Button",
+          "bindings": [
+            {
+              "path": "<Keyboard>/leftShift",
+              "id": "eaab396c93eaacb8",
+              "groups": "Keyboard&Mouse"
+            },
+            {
+              "path": "<Gamepad>/leftStickPress",
+              "id": "e2fa8f69717e2fb0",
+              "groups": "Gamepad"
+            }
+          ]
+        },
+        {
+          "name": "Crouch",
+          "id": "2e03e899f256575d",
+          "type": "Button",
+          "control_type": "Button",
+          "bindings": [
+            {
+              "path": "<Keyboard>/leftCtrl",
+              "id": "0c6994eaf942cb93",
+              "groups": "Keyboard&Mouse"
+            },
+            {
+              "path": "<Keyboard>/c",
+              "id": "97bbdf2fc28eea01",
+              "groups": "Keyboard&Mouse"
+            },
+            {
+              "path": "<Gamepad>/buttonEast",
+              "id": "7cf407b0bc335ae4",
+              "groups": "Gamepad"
+            }
+          ]
+        },
+        {
+          "name": "Interact",
+          "id": "3cffdd6c484dce98",
+          "type": "Button",
+          "control_type": "Button",
+          "bindings": [
+            {
+              "path": "<Keyboard>/e",
+              "id": "9dc31645a1b756e2",
+              "groups": "Keyboard&Mouse",
+              "interactions": "hold(duration=0.5)"
+            },
+            {
+              "path": "<Gamepad>/buttonWest",
+              "id": "457a76f1a53199fd",
+              "groups": "Gamepad",
+              "interactions": "hold(duration=0.5)"
+            }
+          ]
+        },
+        {
+          "name": "Menu",
+          "id": "639c040cb9e85054",
+          "type": "Button",
+          "control_type": "Button",
+          "bindings": [
+            {
+              "path": "<Keyboard>/tab",
+              "id": "c1e678186eb42935",
+              "groups": "Keyboard&Mouse"
+            },
+            {
+              "path": "<Gamepad>/start",
+              "id": "06858deba2b24e0f",
+              "groups": "Gamepad"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "UI",
+      "id": "75b0f180e4e17d48",
+      "actions": [
+        {
+          "name": "Close",
+          "id": "9c218170b9bb83f8",
+          "type": "Button",
+          "control_type": "Button",
+          "bindings": [
+            {
+              "path": "<Keyboard>/tab",
+              "id": "a16c92dce18388c3",
+              "groups": "Keyboard&Mouse"
+            },
+            {
+              "path": "<Gamepad>/start",
+              "id": "181f2f0c9efcce59",
+              "groups": "Gamepad"
+            },
+            {
+              "path": "<Gamepad>/buttonEast",
+              "id": "40502b33e88f64e5",
+              "groups": "Gamepad"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "control_schemes": [
+    {
+      "name": "Keyboard&Mouse",
+      "devices": [
+        {
+          "path": "<Keyboard>"
+        },
+        {
+          "path": "<Mouse>"
+        }
+      ]
+    },
+    {
+      "name": "Gamepad",
+      "devices": [
+        {
+          "path": "<Gamepad>"
+        }
+      ]
+    }
+  ]
+}
