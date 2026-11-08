@@ -85,10 +85,12 @@ pub enum AssetKind {
     Test(misty_engine::testing::TestMode),
     /// A procedural tree (`.tree`, an oak to start from) for terrains' Paint Trees.
     Tree,
+    /// Input Actions (`.inputactions`, starting with Player and UI maps).
+    InputActions,
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 9] = [
+    pub const ALL: [AssetKind; 10] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
@@ -98,6 +100,7 @@ impl AssetKind {
         AssetKind::AudioMixer,
         AssetKind::Timeline,
         AssetKind::Tree,
+        AssetKind::InputActions,
     ];
 
     /// Menu label.
@@ -112,6 +115,7 @@ impl AssetKind {
             AssetKind::AudioMixer => "Audio Mixer",
             AssetKind::Timeline => "Timeline",
             AssetKind::Tree => "Tree",
+            AssetKind::InputActions => "Input Actions",
             AssetKind::SurfaceShader => "Surface Shader",
             AssetKind::UnlitShader => "Unlit Shader",
             AssetKind::MaterialFromShader => "Material from Shader",

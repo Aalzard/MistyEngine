@@ -9,6 +9,7 @@ mod cloud_editors;
 mod editors;
 mod fog_editors;
 mod glow_editors;
+mod input_editors;
 mod layer_mask;
 mod light_area;
 mod light_probe_editor;
@@ -652,6 +653,10 @@ fn asset_inspector(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     }
     if misty_engine::audio::is_mixer(rel) {
         mixer_inspector::mixer_asset(ui, state, rel);
+        return;
+    }
+    if misty_engine::input::actions::asset::is_actions_path(rel) {
+        input_editors::actions_asset(ui, state, rel);
         return;
     }
     if misty_engine::timeline::is_timeline(rel) {

@@ -630,6 +630,10 @@ impl EditorApp {
             misty_engine::profile_scope!("Play.Tick");
             play::tick(s, ctx.input(|i| i.stable_dt));
         }
+        // Gamepad rumble scripts asked for.
+        if let Some(motors) = s.runtime.as_ref().and_then(|r| r.take_rumble()) {
+            game_input::set_rumble(motors);
+        }
         self.sync_cursor(ctx);
         let s = &mut self.state;
         let errors = s.console.count(LogLevel::Error);

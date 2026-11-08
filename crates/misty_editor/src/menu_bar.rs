@@ -546,6 +546,10 @@ fn window_menu(ui: &mut Ui, s: &mut EditorState) {
         let tab = Tab::AssetGroups;
         item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
     });
+    sub(ui, "Input", |ui| {
+        let tab = Tab::InputActions;
+        item(ui, s, tab.title(), tab.shortcut(), Action::FocusTab(tab));
+    });
     sub(ui, "Multiplayer", |ui| {
         let open = Action::OpenMultiplayerPlayMode;
         item(ui, s, "Multiplayer Play Mode", "", open);

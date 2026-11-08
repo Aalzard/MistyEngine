@@ -4,19 +4,37 @@
 use std::cell::RefCell;
 
 use egui::{Event, Key, PointerButton};
-use misty_engine::input::{Gamepads, Joystick};
+use misty_engine::input::touch::TouchEvent;
+use misty_engine::input::{Gamepads, Joystick, TouchTracker};
 use misty_engine::scripting::Input;
 
 thread_local! {
     /// Opened on the first Play frame (the UI thread owns it). Leaked on purpose: gilrs joins
     /// its worker thread on drop, which panics in a thread-local destructor at process exit.
     static GAMEPADS: &'static RefCell<Gamepads> = Box::leak(Box::default());
+    /// Fingers on the Game view between frames.
+    static TOUCHES: RefCell<TouchTracker> = RefCell::default();
 }
 
 /// Connected gamepads this frame. They reach the game even without Game view focus, since
 /// the editor UI doesn't use them.
 pub fn gamepads() -> Vec<Joystick> {
     GAMEPADS.with(|g| g.borrow_mut().poll())
+}
+
+/// Send the motor speeds scripts asked for to the pads: (slot, low, high).
+pub fn set_rumble(motors: Vec<(usize, f32, f32)>) {
+    GAMEPADS.with(|g| {
+        let mut g = g.borrow_mut();
+        for (pad, low, high) in motors {
+            g.set_motor_speeds(pad, low, high);
+        }
+    });
+}
+
+/// Stop every pad's motors (Play stopped).
+pub fn stop_rumble() {
+    GAMEPADS.with(|g| g.borrow_mut().stop_rumble());
 }
 
 /// Script-facing name of an egui key.
@@ -97,6 +115,16 @@ pub fn capture(ctx: &egui::Context, view: egui::Rect, locked: bool) -> Input {
                     }
                 }
                 Event::Text(t) | Event::Paste(t) => input.text.push_str(t),
+                Event::Touch { id, phase, pos, .. } => {
+                    let p = glam::Vec2::new(pos.x - view.min.x, pos.y - view.min.y) * px;
+                    let e = match phase {
+                        egui::TouchPhase::Start => TouchEvent::Start(id.0, p),
+                        egui::TouchPhase::Move => TouchEvent::Move(id.0, p),
+                        egui::TouchPhase::End => TouchEvent::End(id.0, p),
+                        egui::TouchPhase::Cancel => TouchEvent::Cancel(id.0, p),
+                    };
+                    TOUCHES.with(|t| t.borrow_mut().event(e));
+                }
                 _ => {}
             }
         }
@@ -111,6 +139,7 @@ pub fn capture(ctx: &egui::Context, view: egui::Rect, locked: bool) -> Input {
             input.mouse_pressed[idx] = i.pointer.button_pressed(b);
             input.mouse_released[idx] = i.pointer.button_released(b);
         }
+        input.touches = TOUCHES.with(|t| t.borrow_mut().frame());
         input.mouse_delta = if locked {
             let raw = i.events.iter().fold(egui::Vec2::ZERO, |acc, e| match e {
                 Event::MouseMoved(d) => acc + *d,

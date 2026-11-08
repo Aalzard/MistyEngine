@@ -17,6 +17,7 @@ pub(crate) use inspector::show as inspector_show;
 pub(crate) use inspector::slots::texture_slot;
 pub mod effect_graph;
 pub mod frame_debugger;
+pub mod input_actions;
 mod lighting;
 mod lighting_hdri;
 pub mod memory_profiler;
@@ -101,6 +102,7 @@ impl TabViewer for PanelViewer<'_> {
             Tab::TestRunner => test_runner::show(ui, self.state),
             Tab::AssetGroups => asset_groups::show(ui, self.state),
             Tab::PackageManager => packages::show(ui, self.state),
+            Tab::InputActions => input_actions::show(ui, self.state),
             Tab::Tool(id) => crate::editor_scripts::windows::show(ui, self.state, *id),
         }
     }

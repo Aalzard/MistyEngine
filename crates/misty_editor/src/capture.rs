@@ -302,6 +302,16 @@ pub fn apply_env(
         s.selection.clear();
         s.inspector_asset = Some(rel);
     }
+    // `MISTY_INPUT_ACTIONS=Assets/…/Player.inputactions` opens the Input Actions window;
+    // `MISTY_INPUT_SELECT=Player/Move` selects an action, `Player/Move/2` its third binding and
+    // `Player/Move/0.1` a composite part.
+    if let Some(rel) = std::env::var_os("MISTY_INPUT_ACTIONS") {
+        let rel = rel.to_string_lossy().into_owned();
+        crate::panels::input_actions::open(s, &rel);
+        if let Some(sel) = std::env::var_os("MISTY_INPUT_SELECT") {
+            crate::panels::input_actions::select(s, &sel.to_string_lossy());
+        }
+    }
     // `MISTY_SCRIPT=Assets/Scripts/Rotator.lua` (optionally `:line`) opens it in the Code Editor.
     if let Some(script) = std::env::var_os("MISTY_SCRIPT") {
         let script = script.to_string_lossy().into_owned();

@@ -2,12 +2,33 @@
 
 use egui::Ui;
 
+use misty_engine::input::actions::ActiveInputHandling;
 use misty_engine::input::axes::{JOYSTICK_AXES, MAX_JOYSTICKS, axis_label};
 use misty_engine::input::{AxisType, InputAxis, InputSettings};
 
 /// Draw the page; true when something changed.
 pub fn page(ui: &mut Ui, input: &mut InputSettings) -> bool {
     let mut edited = false;
+    edited |= field(
+        ui,
+        "Active Input Handling",
+        "Input Manager: Input.GetAxis / GetKey only. Input System: Input Actions only (the \
+         Input Manager functions raise an error). Both: everything works.",
+        |ui| {
+            let mut changed = false;
+            egui::ComboBox::from_id_salt("active_input_handling")
+                .selected_text(input.active_handling.label())
+                .show_ui(ui, |ui| {
+                    for h in ActiveInputHandling::ALL {
+                        changed |= ui
+                            .selectable_value(&mut input.active_handling, h, h.label())
+                            .changed();
+                    }
+                });
+            changed
+        },
+    );
+    ui.add_space(4.0);
     egui::CollapsingHeader::new("Axes")
         .id_salt("input_axes")
         .default_open(true)

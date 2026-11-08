@@ -48,6 +48,8 @@ pub enum Tab {
     AssetGroups,
     /// Window ▸ Package Manager.
     PackageManager,
+    /// Window ▸ Input ▸ Input Actions (or double-click an `.inputactions` asset).
+    InputActions,
     /// A tool window of an editor script (`ToolWindow(title)`), by the id of its title.
     Tool(u64),
 }
@@ -66,7 +68,7 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 17] = [
+    pub const ON_DEMAND: [Tab; 18] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
@@ -84,6 +86,7 @@ impl Tab {
         Tab::TestRunner,
         Tab::AssetGroups,
         Tab::PackageManager,
+        Tab::InputActions,
     ];
 
     /// Built-in layout tabs, then on-demand ones.
@@ -114,6 +117,8 @@ impl Tab {
             Tab::TestRunner => Some(Tab::Scene),
             // A two-pane browser that wants room, like the graphs.
             Tab::PackageManager => Some(Tab::Scene),
+            // Three columns want width, like the Package Manager.
+            Tab::InputActions => Some(Tab::Scene),
             // Script tools sit by the Inspector, like Lighting and Navigation.
             Tab::Tool(_) => Some(Tab::Inspector),
             _ => None,
@@ -147,6 +152,7 @@ impl Tab {
             Tab::TestRunner => "Test Runner",
             Tab::AssetGroups => "Asset Groups",
             Tab::PackageManager => "Package Manager",
+            Tab::InputActions => "Input Actions",
             // The real title comes from the script (`PanelViewer::title`).
             Tab::Tool(_) => "Tool Window",
         }
@@ -179,6 +185,7 @@ impl Tab {
             Tab::TestRunner => crate::panels::test_runner::ICON,
             Tab::AssetGroups => crate::panels::asset_groups::ICON,
             Tab::PackageManager => crate::panels::packages::ICON,
+            Tab::InputActions => crate::panels::input_actions::ICON,
             Tab::Tool(_) => TOOL_ICON,
         }
     }
@@ -211,6 +218,7 @@ impl Tab {
             | Tab::TestRunner
             | Tab::AssetGroups
             | Tab::PackageManager
+            | Tab::InputActions
             | Tab::Tool(_) => "",
         }
     }
