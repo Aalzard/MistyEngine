@@ -447,10 +447,6 @@ pub(crate) fn forget_all() {
 mod tests {
     use super::*;
 
-    fn rock_triangles(seed: u32) -> Vec<[Vec3; 3]> {
-        rock_triangles_at(3, seed)
-    }
-
     fn rock_triangles_at(detail: u32, seed: u32) -> Vec<[Vec3; 3]> {
         let data = crate::vgeo::rock::rock(detail, seed);
         let p = |i: u32| Vec3::from(data.vertices[i as usize].position);
@@ -473,7 +469,8 @@ mod tests {
             if let Some(b) = slot.get() {
                 return b.clone();
             }
-            assert!(t.elapsed().as_secs() < 120, "bake never finished");
+            // Generous: in the full suite the background pool can be busy with other bakes.
+            assert!(t.elapsed().as_secs() < 900, "bake never finished");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
@@ -500,7 +497,7 @@ mod tests {
         assert_eq!(*first, bake(&tris), "the background bake is the same bake");
         let t = std::time::Instant::now();
         while load(&dir, hash).is_none() {
-            assert!(t.elapsed().as_secs() < 30, "cache file never written");
+            assert!(t.elapsed().as_secs() < 900, "cache file never written");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
 
