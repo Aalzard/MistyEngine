@@ -1,11 +1,12 @@
-//! Module charts: CPU Usage stacked by category (with the GPU time as a line), Rendering
-//! batches and Memory, newest frame on the right. Clicking a chart selects that frame.
+//! Module charts, newest frame on the right: CPU Usage stacked by category (with the GPU time
+//! as a line), GPU Usage stacked by pass group, then one line chart per module (Rendering
+//! batches, Memory, Physics / Audio / UI time). Clicking a chart selects that frame.
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2};
-use misty_engine::profiler::{Category, FrameData, HISTORY};
+use misty_engine::profiler::{Category, Counter, FrameData, GpuGroup, GpuTiming, HISTORY};
 use misty_engine::render::RenderStats;
 
-use super::{Module, ProfilerWindow, category_color};
+use super::{Module, ProfilerWindow, category_color, gpu_color};
 
 /// What the charts need from a frame.
 pub struct Summary {
@@ -13,9 +14,21 @@ pub struct Summary {
     /// Per category (Others includes untracked time).
     pub categories: [f32; Category::COUNT],
     pub gpu_ms: Option<f32>,
+    /// Per GPU pass group (all in Other without per-pass times).
+    pub gpu_groups: [f32; GpuGroup::COUNT],
+    pub gpu_timing: GpuTiming,
     pub render: RenderStats,
     pub memory_mb: f32,
     pub entities: usize,
+    pub physics_ms: f32,
+    pub audio_ms: f32,
+    pub ui_ms: f32,
+    pub bodies: f32,
+    pub contacts: f32,
+    pub voices: f32,
+    pub dsp_load: f32,
+    pub ui_elements: f32,
+    pub ui_batches: f32,
 }
 
 impl Summary {
@@ -23,45 +36,76 @@ impl Summary {
         Self {
             index: f.index,
             categories: Category::ALL.map(|c| f.category_ms(c)),
-            gpu_ms: f.gpu_ms,
+            gpu_ms: f.gpu_total_ms(),
+            gpu_groups: f.gpu_groups(),
+            gpu_timing: f.gpu_timing,
             render: f.render,
             memory_mb: (f.memory.render.buffer_bytes + f.memory.render.texture_bytes) as f32
                 / (1024.0 * 1024.0),
             entities: f.memory.entities,
+            physics_ms: f.category_ms(Category::Physics),
+            // Main thread (Audio.Update) and the audio thread's mixing.
+            audio_ms: f.category_ms(Category::Audio) + f.counter(Counter::AudioMixMs),
+            ui_ms: f.category_ms(Category::Ui),
+            bodies: f.counter(Counter::PhysicsBodies),
+            contacts: f.counter(Counter::PhysicsContacts),
+            voices: f.counter(Counter::AudioPlayingSources),
+            dsp_load: f.counter(Counter::AudioDspLoad),
+            ui_elements: f.counter(Counter::UiElements),
+            ui_batches: f.counter(Counter::UiBatches),
         }
     }
 }
 
 const LEGEND_W: f32 = 170.0;
 
+/// Height share of each module row (CPU and GPU get more room).
+fn weight(m: Module) -> f32 {
+    match m {
+        Module::Cpu => 2.4,
+        Module::Gpu => 2.2,
+        _ => 1.0,
+    }
+}
+
 pub fn modules(ui: &mut Ui, w: &mut ProfilerWindow, frames: &[Summary]) {
     let total = ui.available_rect_before_wrap();
     ui.allocate_rect(total, Sense::hover());
-    let cpu_h = total.height() * 0.6;
-    let row_h = (total.height() - cpu_h) / 2.0;
-    let rows = [
-        (Module::Cpu, total.top(), cpu_h),
-        (Module::Rendering, total.top() + cpu_h, row_h),
-        (Module::Memory, total.top() + cpu_h + row_h, row_h),
-    ];
+    let sum: f32 = Module::ALL.iter().map(|m| weight(*m)).sum();
     let selected = w.selected.or(frames.last().map(|f| f.index));
-    for (module, top, h) in rows {
+    let mut top = total.top();
+    for module in Module::ALL {
+        let h = total.height() * weight(module) / sum;
         let legend = Rect::from_min_size(pos2(total.left(), top), vec2(LEGEND_W, h));
         let plot = Rect::from_min_max(
             pos2(total.left() + LEGEND_W, top),
             pos2(total.right(), top + h),
         );
+        top += h;
         let latest = frames.iter().find(|f| Some(f.index) == selected);
         module_legend(ui, w, module, legend, latest);
         let painter = ui.painter_at(plot);
         painter.rect_filled(plot.shrink(1.0), 0.0, Color32::from_gray(28));
         match module {
             Module::Cpu => cpu_chart(&painter, w, frames, plot),
+            Module::Gpu => gpu_chart(&painter, w, frames, plot),
             Module::Rendering => line_chart(&painter, frames, plot, |f| {
-                (f.render.batches as f32, format!("{}", f.render.batches))
+                (
+                    f.render.batches as f32,
+                    format!("{} batches", f.render.batches),
+                )
             }),
             Module::Memory => line_chart(&painter, frames, plot, |f| {
                 (f.memory_mb, format!("{:.1} MB", f.memory_mb))
+            }),
+            Module::Physics => line_chart(&painter, frames, plot, |f| {
+                (f.physics_ms, format!("{:.2} ms", f.physics_ms))
+            }),
+            Module::Audio => line_chart(&painter, frames, plot, |f| {
+                (f.audio_ms, format!("{:.2} ms", f.audio_ms))
+            }),
+            Module::Ui => line_chart(&painter, frames, plot, |f| {
+                (f.ui_ms, format!("{:.2} ms", f.ui_ms))
             }),
         }
         // Click or drag to pick a frame.
@@ -96,7 +140,49 @@ pub fn modules(ui: &mut Ui, w: &mut ProfilerWindow, frames: &[Summary]) {
     }
 }
 
-/// Module name (click to show its details) and, for CPU Usage, the category legend.
+/// Two compact columns of colour swatches; click one to hide its series.
+fn swatches(
+    ui: &mut Ui,
+    rect: Rect,
+    top: f32,
+    items: &[(String, Color32)],
+    hidden: &mut [bool],
+    id: &str,
+) {
+    let col_w = (rect.width() - 12.0) / 2.0;
+    for (i, (label, color)) in items.iter().enumerate() {
+        let shown = !hidden[i];
+        let at = pos2(
+            rect.left() + 6.0 + (i % 2) as f32 * col_w,
+            top + (i / 2) as f32 * 13.0,
+        );
+        if at.y + 12.0 > rect.bottom() {
+            break;
+        }
+        let item = Rect::from_min_size(at, vec2(col_w, 12.0));
+        let swatch = Rect::from_min_size(at + vec2(0.0, 2.0), vec2(8.0, 8.0));
+        if shown {
+            ui.painter().rect_filled(swatch, 1.0, *color);
+        } else {
+            let stroke = Stroke::new(1.0, *color);
+            ui.painter()
+                .rect_stroke(swatch, 1.0, stroke, egui::StrokeKind::Inside);
+        }
+        ui.painter().with_clip_rect(item).text(
+            at + vec2(11.0, 0.0),
+            Align2::LEFT_TOP,
+            label,
+            FontId::proportional(9.5),
+            Color32::from_gray(if shown { 210 } else { 120 }),
+        );
+        let rid = ui.id().with((id, i));
+        if ui.interact(item, rid, Sense::click()).clicked() {
+            hidden[i] = shown;
+        }
+    }
+}
+
+/// Module name (click to show its details) and its key values for the selected frame.
 fn module_legend(
     ui: &mut Ui,
     w: &mut ProfilerWindow,
@@ -104,57 +190,34 @@ fn module_legend(
     rect: Rect,
     frame: Option<&Summary>,
 ) {
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(6.0, 4.0))));
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(6.0, 2.0))));
     let ui = &mut child;
-    let title = match module {
-        Module::Cpu => "CPU Usage",
-        Module::Rendering => "Rendering",
-        Module::Memory => "Memory",
-    };
     if ui
-        .selectable_label(w.module == module, egui::RichText::new(title).strong())
+        .selectable_label(
+            w.module == module,
+            egui::RichText::new(module.label()).strong().size(12.0),
+        )
         .clicked()
     {
         w.module = module;
     }
+    let small = |ui: &mut Ui, text: String| {
+        ui.label(egui::RichText::new(text).size(10.5));
+    };
     match module {
         Module::Cpu => {
-            // Two compact columns of colour swatches; click one to hide its category.
             let top = ui.cursor().top();
-            let col_w = (rect.width() - 12.0) / 2.0;
-            for (i, c) in Category::ALL.into_iter().enumerate() {
-                let ms = frame.map_or(0.0, |f| f.categories[c.index()]);
-                let shown = !w.hidden[c.index()];
-                let at = pos2(
-                    rect.left() + 6.0 + (i % 2) as f32 * col_w,
-                    top + (i / 2) as f32 * 14.0,
-                );
-                let item = Rect::from_min_size(at, vec2(col_w, 13.0));
-                let swatch = Rect::from_min_size(at + vec2(0.0, 2.0), vec2(9.0, 9.0));
-                let color = category_color(c);
-                if shown {
-                    ui.painter().rect_filled(swatch, 1.0, color);
-                } else {
-                    let stroke = Stroke::new(1.0, color);
-                    ui.painter()
-                        .rect_stroke(swatch, 1.0, stroke, egui::StrokeKind::Inside);
-                }
-                ui.painter().text(
-                    at + vec2(12.0, 0.0),
-                    Align2::LEFT_TOP,
-                    format!("{} {ms:.1}", c.label()),
-                    FontId::proportional(10.0),
-                    Color32::from_gray(if shown { 210 } else { 120 }),
-                );
-                let id = ui.id().with(("profiler legend", i));
-                if ui.interact(item, id, Sense::click()).clicked() {
-                    w.hidden[c.index()] = shown;
-                }
-            }
-            let below = top + 4.0 * 14.0;
+            let items: Vec<(String, Color32)> = Category::ALL
+                .iter()
+                .map(|c| {
+                    let ms = frame.map_or(0.0, |f| f.categories[c.index()]);
+                    (format!("{} {ms:.1}", c.label()), category_color(*c))
+                })
+                .collect();
+            swatches(ui, rect, top, &items, &mut w.hidden, "profiler legend");
             if let Some(gpu) = frame.and_then(|f| f.gpu_ms) {
                 ui.painter().text(
-                    pos2(rect.left() + 6.0, below),
+                    pos2(rect.left() + 6.0, top + 4.0 * 13.0),
                     Align2::LEFT_TOP,
                     format!("GPU {gpu:.2}ms"),
                     FontId::proportional(10.0),
@@ -162,20 +225,57 @@ fn module_legend(
                 );
             }
         }
+        Module::Gpu => {
+            let top = ui.cursor().top();
+            let items: Vec<(String, Color32)> = GpuGroup::ALL
+                .iter()
+                .map(|g| {
+                    let ms = frame.map_or(0.0, |f| f.gpu_groups[g.index()]);
+                    let label = g.label().split([' ', '/']).next().unwrap_or("");
+                    (format!("{label} {ms:.2}"), gpu_color(*g))
+                })
+                .collect();
+            swatches(
+                ui,
+                rect,
+                top,
+                &items,
+                &mut w.hidden_gpu,
+                "profiler gpu legend",
+            );
+        }
         Module::Rendering => {
             if let Some(f) = frame {
-                ui.label(
-                    egui::RichText::new(format!(
+                small(
+                    ui,
+                    format!(
                         "Batches {}  SetPass {}",
                         f.render.batches, f.render.set_pass
-                    ))
-                    .size(11.0),
+                    ),
                 );
             }
         }
         Module::Memory => {
             if let Some(f) = frame {
-                ui.label(egui::RichText::new(format!("{} objects", f.entities)).size(11.0));
+                small(ui, format!("{} objects", f.entities));
+            }
+        }
+        Module::Physics => {
+            if let Some(f) = frame {
+                small(ui, format!("Bodies {}  Contacts {}", f.bodies, f.contacts));
+            }
+        }
+        Module::Audio => {
+            if let Some(f) = frame {
+                small(ui, format!("Voices {}  DSP {:.1}%", f.voices, f.dsp_load));
+            }
+        }
+        Module::Ui => {
+            if let Some(f) = frame {
+                small(
+                    ui,
+                    format!("Elements {}  Batches {}", f.ui_elements, f.ui_batches),
+                );
             }
         }
     }
@@ -199,7 +299,7 @@ fn frame_at(frames: &[Summary], plot: Rect, p: Pos2) -> Option<u64> {
 }
 
 /// A scale that fits `max`: 1, 2, 5 × 10ⁿ steps.
-fn nice_max(max: f32) -> f32 {
+pub fn nice_max(max: f32) -> f32 {
     let max = max.max(1e-3);
     let p = 10f32.powf(max.log10().floor());
     [1.0, 2.0, 5.0, 10.0]
@@ -209,42 +309,82 @@ fn nice_max(max: f32) -> f32 {
         .unwrap_or(10.0 * p)
 }
 
-fn cpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], plot: Rect) {
-    let shown = |c: Category| !w.hidden[c.index()];
-    let stack = |f: &Summary| -> f32 {
-        Category::ALL
-            .iter()
-            .filter(|c| shown(**c))
-            .map(|c| f.categories[c.index()])
-            .sum()
-    };
-    // Scale to the 95th percentile so one hitch (loading, entering Play) doesn't flatten
-    // the rest; taller frames are clipped at the top.
+/// Stacked columns of `values` (one array per frame), shown series only, scaled to the 95th
+/// percentile so one hitch doesn't flatten the rest. Returns the scale's top.
+fn stacked(
+    painter: &egui::Painter,
+    frames: &[Summary],
+    plot: Rect,
+    values: impl Fn(&Summary) -> Vec<(f32, Color32)>,
+    extra: impl Fn(&Summary) -> f32,
+    min_top: f32,
+) -> f32 {
     let mut totals: Vec<f32> = frames
         .iter()
-        .map(|f| stack(f).max(f.gpu_ms.unwrap_or(0.0)))
+        .map(|f| values(f).iter().map(|v| v.0).sum::<f32>().max(extra(f)))
         .collect();
     totals.sort_by(f32::total_cmp);
     let peak = totals[(totals.len() * 95 / 100).min(totals.len() - 1)];
-    // Always room for the 60 FPS line.
-    let top = nice_max(peak.max(16.7) * 1.1);
+    let top = nice_max(peak.max(min_top) * 1.1);
     let y = |ms: f32| plot.bottom() - (ms / top).min(1.0) * plot.height();
     let col = plot.width() / HISTORY as f32;
     for (i, f) in frames.iter().enumerate() {
         let x1 = plot.right() - (frames.len() - 1 - i) as f32 * col;
         let x0 = x1 - col;
         let mut base = 0.0;
-        // Stacked like the reference: Rendering at the bottom.
-        for c in Category::ALL.into_iter().filter(|c| shown(*c)) {
-            let ms = f.categories[c.index()];
+        for (ms, color) in values(f) {
             if ms <= 0.0 {
                 continue;
             }
             let r = Rect::from_min_max(pos2(x0, y(base + ms)), pos2(x1 + 0.5, y(base)));
-            painter.rect_filled(r, 0.0, category_color(c));
+            painter.rect_filled(r, 0.0, color);
             base += ms;
         }
     }
+    top
+}
+
+/// Frame-rate guides that fit under `top`.
+fn ms_guides(painter: &egui::Painter, plot: Rect, top: f32, guides: &[(f32, &str)]) {
+    let y = |ms: f32| plot.bottom() - (ms / top).min(1.0) * plot.height();
+    for (ms, label) in guides {
+        if *ms < top {
+            let yy = y(*ms);
+            painter.hline(
+                plot.x_range(),
+                yy,
+                Stroke::new(1.0, Color32::from_white_alpha(40)),
+            );
+            painter.text(
+                pos2(plot.left() + 4.0, yy - 1.0),
+                Align2::LEFT_BOTTOM,
+                *label,
+                FontId::proportional(10.0),
+                Color32::from_gray(170),
+            );
+        }
+    }
+}
+
+fn cpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], plot: Rect) {
+    let shown = |c: Category| !w.hidden[c.index()];
+    // Stacked like the reference: Rendering at the bottom. Always room for the 60 FPS line.
+    let top = stacked(
+        painter,
+        frames,
+        plot,
+        |f| {
+            Category::ALL
+                .into_iter()
+                .filter(|c| shown(*c))
+                .map(|c| (f.categories[c.index()], category_color(c)))
+                .collect()
+        },
+        |f| f.gpu_ms.unwrap_or(0.0),
+        16.7,
+    );
+    let y = |ms: f32| plot.bottom() - (ms / top).min(1.0) * plot.height();
+    let col = plot.width() / HISTORY as f32;
     // GPU time as a line.
     let points: Vec<Pos2> = frames
         .iter()
@@ -257,30 +397,65 @@ fn cpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], pl
     if points.len() > 1 {
         painter.add(egui::Shape::line(points, Stroke::new(1.5, GPU_COLOR)));
     }
-    for (ms, label) in [
-        (16.7, "16ms (60FPS)"),
-        (33.3, "33ms (30FPS)"),
-        (66.7, "66ms (15FPS)"),
-    ] {
-        if ms < top {
-            let yy = y(ms);
-            painter.hline(
-                plot.x_range(),
-                yy,
-                Stroke::new(1.0, Color32::from_white_alpha(40)),
-            );
-            painter.text(
-                pos2(plot.left() + 4.0, yy - 1.0),
-                Align2::LEFT_BOTTOM,
-                label,
-                FontId::proportional(10.0),
-                Color32::from_gray(170),
-            );
-        }
+    ms_guides(
+        painter,
+        plot,
+        top,
+        &[
+            (16.7, "16ms (60FPS)"),
+            (33.3, "33ms (30FPS)"),
+            (66.7, "66ms (15FPS)"),
+        ],
+    );
+}
+
+fn gpu_chart(painter: &egui::Painter, w: &ProfilerWindow, frames: &[Summary], plot: Rect) {
+    let timing = frames
+        .last()
+        .map_or(GpuTiming::Unsupported, |f| f.gpu_timing);
+    if timing == GpuTiming::Unsupported && frames.iter().all(|f| f.gpu_ms.is_none()) {
+        painter.text(
+            plot.center(),
+            Align2::CENTER_CENTER,
+            "GPU profiling is not supported by this device (no timestamp queries)",
+            FontId::proportional(11.0),
+            Color32::from_gray(150),
+        );
+        return;
+    }
+    let shown = |g: GpuGroup| !w.hidden_gpu[g.index()];
+    let top = stacked(
+        painter,
+        frames,
+        plot,
+        |f| {
+            GpuGroup::ALL
+                .into_iter()
+                .filter(|g| shown(*g))
+                .map(|g| (f.gpu_groups[g.index()], gpu_color(g)))
+                .collect()
+        },
+        |_| 0.0,
+        4.0,
+    );
+    ms_guides(
+        painter,
+        plot,
+        top,
+        &[(4.0, "4ms"), (8.3, "8ms (120FPS)"), (16.7, "16ms (60FPS)")],
+    );
+    if timing == GpuTiming::FrameOnly {
+        painter.text(
+            plot.right_top() + vec2(-4.0, 2.0),
+            Align2::RIGHT_TOP,
+            "per-pass timings unsupported: whole renders only",
+            FontId::proportional(10.0),
+            Color32::from_gray(160),
+        );
     }
 }
 
-/// One value per frame as a filled line, with the latest value at the top left.
+/// One value per frame as filled columns, with the selected value at the top left.
 fn line_chart(
     painter: &egui::Painter,
     frames: &[Summary],

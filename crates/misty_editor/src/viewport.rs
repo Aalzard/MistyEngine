@@ -137,6 +137,10 @@ impl Gpu {
             };
         }
         let filter = self.filter;
+        self.renderer.set_view_label(match view {
+            ViewId::Scene => "Scene",
+            ViewId::Game => "Game",
+        });
         let vp = match view {
             ViewId::Scene => &mut self.scene,
             ViewId::Game => &mut self.game,
