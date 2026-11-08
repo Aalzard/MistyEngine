@@ -401,6 +401,9 @@ pub(super) struct TerrainCache {
     /// Quality ▸ Grass Ground Cover (with the quality's blade share): the terrain paints the
     /// undergrowth the grass LOD's flat fans would draw, and the lit grass skips them.
     ground_cover: Option<f32>,
+    /// This frame the lit lane holds only the flat fans (the grass visibility raster draws
+    /// the standing blades from the depth lane: `Renderer::grass_vis_passes`).
+    lit_fans_only: bool,
     /// The built-in grass atlas with empty flower layers (uploaded with the first grass).
     grass_atlas: Option<(wgpu::TextureView, wgpu::Sampler)>,
     /// Grass atlases with a terrain's flower layers, per set of flower textures.
@@ -516,6 +519,7 @@ impl TerrainCache {
             grass_cull_prebuilt: Default::default(),
             view_proj: Mat4::IDENTITY,
             ground_cover: None,
+            lit_fans_only: false,
             grass_atlas: None,
             flower_atlases: HashMap::new(),
             next_atlas_id: 1,
@@ -566,6 +570,16 @@ impl TerrainCache {
 
     /// Quality ▸ Grass Ground Cover for the next renders: the quality's share of the blades
     /// when on.
+    /// The lit lane holds only the flat fans this frame (planned by `plan_grass`).
+    pub fn lit_fans_only(&self) -> bool {
+        self.lit_fans_only
+    }
+
+    /// The lit grass draws the flat fans (not with Quality ▸ Grass Ground Cover).
+    pub fn draws_fans(&self) -> bool {
+        self.ground_cover.is_none()
+    }
+
     pub fn set_ground_cover(&mut self, cover: Option<f32>) {
         self.ground_cover = cover;
     }
@@ -611,7 +625,6 @@ impl TerrainCache {
                 (2, wgpu::BindingResource::Sampler(&self.splat_sampler)),
                 (3, tex(&layers.albedo)),
                 (4, tex(&layers.normal)),
-                (5, tex(&layers.height)),
                 (6, wgpu::BindingResource::Sampler(textures.sampler())),
                 (12, tex(&heights)),
                 (13, tex(&normals)),
@@ -1023,10 +1036,14 @@ impl TerrainCache {
         cascades: &[(usize, Mat4)],
         near: Option<&[Mat4; grass_near_shadow::SLICES]>,
         prepass: Option<f32>,
+        fans_only: bool,
     ) {
+        self.lit_fans_only = false;
         let Some(pipelines) = &self.grass_cull else {
             return;
         };
+        // (With the ground cover the lit lane draws no fans at all.)
+        self.lit_fans_only = fans_only && self.ground_cover.is_none();
         let Some(frustum) = &self.frustum else {
             return;
         };
@@ -1042,7 +1059,11 @@ impl TerrainCache {
                 grass_cull::KINDS] = Default::default();
             // (With the ground cover the lit grass skips the flat fans too.)
             let fans = self.ground_cover.is_none();
-            passes[grass_cull::LIT] = Some((p.camera.cull_kind(vp, true, !fans), *frustum, None));
+            let mut lit = p.camera.cull_kind(vp, true, !fans);
+            if self.lit_fans_only {
+                lit.lod[1] = 2.0;
+            }
+            passes[grass_cull::LIT] = Some((lit, *frustum, None));
             passes[grass_cull::DEPTH] = Some((p.camera.cull_kind(vp, true, true), *frustum, None));
             passes[grass_cull::PREPASS] = prepass.map(|range| {
                 let limit = Limit {

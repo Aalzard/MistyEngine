@@ -2660,3 +2660,29 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 ### Not done yet
 - Automatic foot IK / IK pass (Two Bone IK constraints work), muscle-space retargeting and editable
   avatar mappings, nested blend trees, state machine behaviours, root motion on Rigidbodies.
+
+## MeadowDemo performance, round 3 (branch perf3)
+
+### Done (docs/pending/perf3.md)
+- Same picture, less work (each behind a switch in `render/fast_paths.rs`, all on;
+  `MISTY_FAST_OFF` turns them off in any build): the terrain drawn after the trees and the
+  grass's depth, the sky drawn last on the far plane, the grass visibility raster's standing
+  blades writing the grass depth themselves (the blades are rasterised once, the terrain is
+  shaded against their depth), the lit cull lane holding only the flat fans.
+- Misty GI updates its probes only where lighting changed: levels whose shapes, placement,
+  lights and sky have stayed the same for 128 updates trace their converged probes one turn
+  in eight (probe trace 1.06 → 0.17 ms on High); any change brings the full rate back.
+- Terrain layer heights in the normal array's alpha (one fetch and a third of the layer
+  memory less), zero-weight turf work skipped; one bilateral upsample for Misty GI's
+  irradiance and reflections; tree bind groups kept across frames.
+- MeadowDemo at 1080p, steady state, wide / behind view: High 17.97 → 14.97 ms (56 → 67 FPS) /
+  20.09 → 16.36 ms, Medium 13.25 → 11.19 ms (75 → 89 FPS) / 14.52 → 11.64 ms, Low 9.08 →
+  7.57 ms (110 → 132 FPS), Ultra 24.05 → 21.06 ms; editor Game view High 97 → 113 FPS,
+  Medium 148 → 166 FPS. Golden shots unchanged (meadow mean ≤ 0.01).
+- Proposed (not applied) quality defaults with measured gains and look diffs: Upscaling
+  Quality on Medium / High, Grass Ground Cover, Virtual shadow maps on Ultra; Virtual
+  Geometry for the rocks costs the same as LOD Groups in these views.
+
+### Not done yet
+- Cheaper sharp sun shafts; the walking cost of Misty GI (toroidal clipmap scrolling would
+  keep settled probes); the terrain's shadow lookups where the shadow mask can't serve them.

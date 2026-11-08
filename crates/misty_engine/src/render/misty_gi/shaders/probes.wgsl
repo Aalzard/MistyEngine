@@ -4,12 +4,22 @@
 // and blended into the probe's history (hysteresis); a probe whose world cell changed (the grid
 // scrolled) or that is new starts afresh. Probes inside geometry are marked off (state −1).
 //
+// Settled levels (nothing they see changed for a while) trace their converged probes only one
+// turn in SETTLED_RATE; with every level settled the dispatch holds only those probes.
+//
 // Interval merge (the radiance-cascades idea on the probe levels): a probe's rays trace only
 // half its level's width; beyond that they take the coarser levels' radiance in the same
 // direction at the interval's end. Long rays are traced once by sparse coarse probes and shared
 // by every finer probe, instead of marching through every level from each one.
 
 const MAX_RAYS: u32 = 32u;
+// A settled level (flags.w = 1: nothing it sees changed for a while, misty_gi/mod.rs
+// `SETTLE_FRAMES`) traces a probe that has had this many updates in its cell only one turn in
+// `SETTLED_RATE`; the others keep their history as it is.
+const SETTLED_UPDATES: f32 = 32.0;
+const SETTLED_RATE: u32 = 8u;
+
+var<workgroup> wg_skip: u32;
 
 var<workgroup> sh_r: array<vec4<f32>, 32>;
 var<workgroup> sh_g: array<vec4<f32>, 32>;
@@ -87,14 +97,22 @@ fn cs_probes(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_in
     let n = probes_per_side();
     let per_level = n * n * n;
     let stride = u32(p.info2.y);
-    let slot = i32(wid.x * stride + u32(p.info2.z));
+    // Every level settled (flags.w = 2): the dispatch holds only the probes whose refresh turn
+    // this is, one in SETTLED_RATE (the others keep their history).
+    let reduced = p.levels[0].flags.w > 1.5;
+    var group = wid.x;
+    if (reduced) {
+        let turn = u32(p.info.w) / stride;
+        group = wid.x * SETTLED_RATE + (SETTLED_RATE - turn % SETTLED_RATE) % SETTLED_RATE;
+    }
+    let slot = i32(group * stride + u32(p.info2.z));
     let k = slot / per_level;
     if (k >= level_count()) {
         return;
     }
     // The two finest levels (what the camera is close to) follow changes fastest; coarser
     // levels update at half that rate.
-    if (k >= 2 && ((u32(p.info.w) / stride) & 1u) == 1u) {
+    if (!reduced && k >= 2 && ((u32(p.info.w) / stride) & 1u) == 1u) {
         return;
     }
     let s = slot - k * per_level;
@@ -104,6 +122,25 @@ fn cs_probes(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_in
     let g = first + vec3<i32>(pmod(sc.x - first.x, n), pmod(sc.y - first.y, n), pmod(sc.z - first.z, n));
     let pp = probe_position(k, g);
     let index = probe_index(k, g);
+    // Settled level: most turns keep the converged history (one turn in SETTLED_RATE traces).
+    if (lid == 0u) {
+        var skip = 0u;
+        if (p.levels[k].flags.w > 0.5 && !reduced) {
+            let st = probes[index * 4 + 3];
+            var turn = u32(p.info.w) / stride;
+            if (k >= 2) {
+                turn = turn / 2u;
+            }
+            let settled = all(vec3<i32>(st.xyz) == g) && st.w >= SETTLED_UPDATES;
+            if (settled && (turn + wid.x) % SETTLED_RATE != 0u) {
+                skip = 1u;
+            }
+        }
+        wg_skip = skip;
+    }
+    if (workgroupUniformLoad(&wg_skip) == 1u) {
+        return;
+    }
     let rays = min(u32(p.info2.x), MAX_RAYS);
     // Inside geometry: nothing to see, and its light would leak into the surface.
     let inside = sdf_at(pp) < 0.0;

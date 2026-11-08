@@ -26,8 +26,9 @@ struct Kind {
     origin: vec4<f32>,
     // xyz = camera (LOD distances), w = full-density distance.
     camera: vec4<f32>,
-    // x = draw distance, y = 1 = skip flat blades too, z = the quality's share of the
-    // blades, w = angle of one pixel.
+    // x = draw distance, y = 1 = skip flat blades too (2 = keep only the flat ones: the
+    // grass visibility raster's fans, see `visible`), z = the quality's share of the blades,
+    // w = angle of one pixel.
     lod: vec4<f32>,
     // x = caster range, y = caster share, z = 1 in shadow passes, w = the near grass shadow
     // map's radius (cascade casters leave its inside to it).
@@ -110,6 +111,17 @@ fn visible(k: Kind, root: vec3<f32>, height: f32, key: f32) -> bool {
     }
     if (k.lod.y < 0.5) {
         return true;
+    }
+    if (k.lod.y > 1.5) {
+        // Flat fans only: leave out the blades that certainly stand (`grass_drawn_height` > 0:
+        // some height, within the draw distance, the key below its distance's share; the
+        // record's key is rounded down, so one step is added). Flowers (key 0 in the records)
+        // standing or not are left out too: their flat fans never draw (`grass_skip`).
+        let ratio = k.camera.w / max(dist, 1e-3);
+        let keep = clamp(ratio * ratio, MIN_KEEP, 1.0) * k.lod.z;
+        let standing = height > 0.0 && dist < k.lod.x * (1.0 - MARGIN)
+            && key + 1.0 / 65535.0 < keep * (1.0 - MARGIN);
+        return !standing;
     }
     // grass_flat (`grass_drawn_height` 0): beyond the draw distance, past its key's share,
     // outside a caster range or inside the near map's square.

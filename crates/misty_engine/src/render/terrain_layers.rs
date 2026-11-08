@@ -1,7 +1,8 @@
-//! Terrain layer textures as three 2D arrays (albedo, normal, height; one slice per layer),
-//! so a terrain needs only a few texture bindings however many layers it blends. Slices are
-//! resized to one square size. Layers without a height map use their albedo's luminance,
-//! stretched to 0..1. The mean linear albedo of each layer is kept for Color Harmony.
+//! Terrain layer textures as two 2D arrays (albedo, and normal with the height in its alpha;
+//! one slice per layer), so a terrain needs only a few texture bindings however many layers
+//! it blends, and the shader one fetch for a layer's normal and height. Slices are resized to
+//! one square size. Layers without a height map use their albedo's luminance, stretched to
+//! 0..1. The mean linear albedo of each layer is kept for Color Harmony.
 //!
 //! Decoding, resizing and mip-mapping the slices takes a few hundred milliseconds for large
 //! source textures, so with streaming on (`render::grass_streaming`: the editor and the
@@ -22,7 +23,7 @@ use super::texture::{load_image, mip_chain};
 use crate::assets;
 use crate::terrain::{MAX_LAYERS, TerrainLayer, harmony};
 
-/// Largest slice side (4 layers × 3 arrays at 1024² ≈ 64 MB with mips).
+/// Largest slice side (4 layers × 2 arrays at 1024² ≈ 43 MB with mips).
 const MAX_SIDE: u32 = 1024;
 
 /// Bytes of finished slices written to the GPU per frame while streaming (the slice that
@@ -32,8 +33,8 @@ const UPLOAD_BUDGET: usize = 8 << 20;
 
 pub(super) struct LayerSet {
     pub albedo: wgpu::TextureView,
+    /// Normal (rgb) and height (a).
     pub normal: wgpu::TextureView,
-    pub height: wgpu::TextureView,
     /// Mean linear albedo per layer (None = no texture).
     pub means: [Option<Vec3>; MAX_LAYERS],
     pub bytes: u64,
@@ -51,8 +52,8 @@ struct Cached {
 struct Prepared {
     stamps: Vec<Option<SystemTime>>,
     albedo: ArrayData,
+    /// Normal (rgb) and height (a).
     normal: ArrayData,
-    height: ArrayData,
     means: [Option<Vec3>; MAX_LAYERS],
 }
 
@@ -246,42 +247,46 @@ fn prepare(key: &Key) -> Prepared {
     let mut means = [None; MAX_LAYERS];
     let mut albedo = Vec::new();
     let mut normal = Vec::new();
-    let mut height = Vec::new();
     for (i, [a, n, h]) in images.into_iter().enumerate() {
         means[i] = a.as_ref().map(|a| harmony::mean_linear(a.as_raw()));
         let h = h.or_else(|| a.as_ref().map(luminance_height));
         let solid = |c: [u8; 4]| RgbaImage::from_pixel(side, side, image::Rgba(c));
         albedo.push(a.map(|a| fit(a, side)).unwrap_or_else(|| solid([255; 4])));
-        normal.push(
-            n.map(|n| fit(n, side))
-                .unwrap_or_else(|| solid([128, 128, 255, 255])),
-        );
-        height.push(
-            h.map(|h| fit(h, side))
-                .unwrap_or_else(|| solid([128, 128, 128, 255])),
-        );
+        let n = n
+            .map(|n| fit(n, side))
+            .unwrap_or_else(|| solid([128, 128, 255, 255]));
+        let h = h
+            .map(|h| fit(h, side))
+            .unwrap_or_else(|| solid([128, 128, 128, 255]));
+        normal.push(with_height(n, &h));
     }
     Prepared {
         stamps,
         albedo: ArrayData::new(albedo, true),
         normal: ArrayData::new(normal, false),
-        height: ArrayData::new(height, false),
         means,
     }
+}
+
+/// The normal map with the height map's red channel in its alpha (the mip chain filters every
+/// channel alike, so each mip's alpha is the height map's own mip).
+fn with_height(mut normal: RgbaImage, height: &RgbaImage) -> RgbaImage {
+    for (n, h) in normal.pixels_mut().zip(height.pixels()) {
+        n[3] = h[0];
+    }
+    normal
 }
 
 fn upload(device: &wgpu::Device, queue: &wgpu::Queue, p: Prepared) -> Cached {
     let (a, b1) = array(device, queue, "misty terrain albedo", &p.albedo);
     let (n, b2) = array(device, queue, "misty terrain normals", &p.normal);
-    let (h, b3) = array(device, queue, "misty terrain heights", &p.height);
     Cached {
         stamps: p.stamps,
         set: LayerSet {
             albedo: a,
             normal: n,
-            height: h,
             means: p.means,
-            bytes: b1 + b2 + b3,
+            bytes: b1 + b2,
         },
     }
 }
@@ -290,8 +295,8 @@ fn upload(device: &wgpu::Device, queue: &wgpu::Queue, p: Prepared) -> Cached {
 struct Uploading {
     stamps: Vec<Option<SystemTime>>,
     means: [Option<Vec3>; MAX_LAYERS],
-    /// Albedo, normal, height.
-    arrays: [(wgpu::Texture, ArrayData); 3],
+    /// Albedo, normal + height.
+    arrays: [(wgpu::Texture, ArrayData); 2],
     /// Next piece: array * layers + layer.
     next: u32,
 }
@@ -305,14 +310,13 @@ impl Uploading {
             arrays: [
                 make("misty terrain albedo", p.albedo),
                 make("misty terrain normals", p.normal),
-                make("misty terrain heights", p.height),
             ],
             next: 0,
         }
     }
 
     fn pieces(&self) -> u32 {
-        3 * self.arrays[0].1.layers
+        2 * self.arrays[0].1.layers
     }
 
     fn done(&self) -> bool {
@@ -362,7 +366,7 @@ impl Uploading {
     }
 
     fn finish(self) -> Cached {
-        let [a, n, h] = self
+        let [a, n] = self
             .arrays
             .map(|(t, d)| (array_view(&t), d.data.len() as u64));
         Cached {
@@ -370,9 +374,8 @@ impl Uploading {
             set: LayerSet {
                 albedo: a.0,
                 normal: n.0,
-                height: h.0,
                 means: self.means,
-                bytes: a.1 + n.1 + h.1,
+                bytes: a.1 + n.1,
             },
         }
     }
@@ -387,22 +390,16 @@ fn placeholder(device: &wgpu::Device, queue: &wgpu::Queue) -> LayerSet {
         "misty terrain albedo (loading)",
         &ArrayData::new(solid([128, 128, 128, 255]), true),
     );
+    // Flat, mid height (alpha).
     let (normal, _) = array(
         device,
         queue,
         "misty terrain normals (loading)",
-        &ArrayData::new(solid([128, 128, 255, 255]), false),
-    );
-    let (height, _) = array(
-        device,
-        queue,
-        "misty terrain heights (loading)",
-        &ArrayData::new(solid([128, 128, 128, 255]), false),
+        &ArrayData::new(solid([128, 128, 255, 128]), false),
     );
     LayerSet {
         albedo,
         normal,
-        height,
         means: [None; MAX_LAYERS],
         bytes: 0,
     }

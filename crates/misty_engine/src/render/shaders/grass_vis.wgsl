@@ -35,11 +35,42 @@ struct VisOut {
 @vertex
 fn vs_grass_vis(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VisOut {
     let b = grass_fetch(ii);
-    var out: VisOut;
     if (grass_skip(b) || grass_outside(b, view.view_proj, true)) {
+        var out: VisOut;
         out.clip = GRASS_SKIP;
         return out;
     }
+    return vis_out(vi, ii, b);
+}
+
+// The standing blades only, as the grass depth pass draws them (`vs_grass_depth`): with
+// depth writes they stand in for that pass (render/grass_vis.rs `raster_standing`).
+@vertex
+fn vs_grass_vis_standing(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VisOut {
+    let b = grass_fetch(ii);
+    if (grass_flat(b) || grass_outside(b, view.view_proj, true)) {
+        var out: VisOut;
+        out.clip = GRASS_SKIP;
+        return out;
+    }
+    return vis_out(vi, ii, b);
+}
+
+// The flat fans only (the lit grass's blades `vs_grass_vis_standing` leaves out), drawn after
+// every standing blade without depth writes.
+@vertex
+fn vs_grass_vis_fans(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VisOut {
+    let b = grass_fetch(ii);
+    if (!grass_flat(b) || grass_skip(b) || grass_outside(b, view.view_proj, true)) {
+        var out: VisOut;
+        out.clip = GRASS_SKIP;
+        return out;
+    }
+    return vis_out(vi, ii, b);
+}
+
+fn vis_out(vi: u32, ii: u32, b: BladeIn) -> VisOut {
+    var out: VisOut;
     let g = grass_vertex(vi, b);
     out.clip = g.clip;
     out.uv = g.uv;

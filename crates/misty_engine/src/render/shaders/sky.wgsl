@@ -30,6 +30,19 @@ fn sun_disc(dir: vec3<f32>) -> vec3<f32> {
     return view.sun_color.rgb * warm * light * smoothstep(-0.02, 0.01, dir.y);
 }
 
+// The full-screen triangle on the far plane: the sky drawn after the opaque scene with a depth
+// test shades only the samples nothing covers (render/mod.rs `main_pass`).
+@vertex
+fn vs_sky_far(@builtin(vertex_index) i: u32) -> FullscreenOut {
+    // `vs_fullscreen`'s triangle (an entry point can't be called).
+    let uv = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
+    let ndc = uv * 2.0 - 1.0;
+    var out: FullscreenOut;
+    out.pos = vec4<f32>(ndc, 1.0, 1.0);
+    out.ndc = ndc;
+    return out;
+}
+
 @fragment
 fn fs_main(in: FullscreenOut) -> SkyTargets {
     var out: SkyTargets;

@@ -19,6 +19,7 @@ use crate::render::trees::gpu_tests::{Shot as TreeShot, meadow_view as tree_view
 use crate::render_scene::GameView;
 
 fn levels() -> Vec<(String, QualityLevel)> {
+    fast_off();
     let names = std::env::var("MISTY_QUALITY").unwrap_or_else(|_| "high,medium,low".into());
     names
         .split(',')
@@ -35,22 +36,47 @@ fn levels() -> Vec<(String, QualityLevel)> {
         .collect()
 }
 
-/// The look options of round 2 named in `MISTY_PERF_OPTS` (comma separated), on top of the
-/// level's own settings.
+/// `MISTY_FAST_OFF=a,b`: turn these shortcuts of round 3 off (render/fast_paths.rs).
+fn fast_off() {
+    let names = std::env::var("MISTY_FAST_OFF").unwrap_or_default();
+    for n in names.split(',').filter(|n| !n.is_empty()) {
+        let all = n == "all";
+        for f in crate::render::fast_paths::NAMES {
+            if all || f == n {
+                crate::render::fast_paths::set(f, false);
+            }
+        }
+    }
+}
+
+/// The look options named in `MISTY_PERF_OPTS` (comma separated), on top of the level's own
+/// settings.
 fn apply_opts(mut q: QualityLevel) -> QualityLevel {
     let opts = std::env::var("MISTY_PERF_OPTS").unwrap_or_default();
     for o in opts.split(',').filter(|o| !o.is_empty()) {
-        match o {
-            // Quality ▸ Grass Ground Cover.
-            "cover" => q.grass_ground_cover = true,
-            // Quality ▸ Anti-Aliasing 2×.
-            "msaa2" => q.anti_aliasing = crate::quality::AntiAliasing::X2,
-            // Quality ▸ Shadows ▸ Virtual.
-            "vsm" => q.shadow_mode = crate::quality::ShadowMode::Virtual,
-            _ => eprintln!("(option {o} unknown: ignored)"),
-        }
+        apply_opt(&mut q, o);
     }
     q
+}
+
+/// One look option (round 2: `cover`, `msaa2`; round 3: the proposed defaults).
+fn apply_opt(q: &mut QualityLevel, o: &str) {
+    match o {
+        // Quality ▸ Grass Ground Cover.
+        "cover" => q.grass_ground_cover = true,
+        // Quality ▸ Anti-Aliasing 2×.
+        "msaa2" => q.anti_aliasing = crate::quality::AntiAliasing::X2,
+        // Quality ▸ Shadows ▸ Virtual.
+        "vsm" => q.shadow_mode = crate::quality::ShadowMode::Virtual,
+        // Quality ▸ Global Illumination Off (Misty GI's whole cost).
+        "gioff" => q.global_illumination = crate::quality::Tier::Off,
+        // Quality ▸ Upscaling ▸ Quality.
+        "upq" => q.upscaling = crate::quality::Upscaling::Quality,
+        // Quality ▸ Virtual Geometry on (MeadowDemo's rocks draw as clusters).
+        "vgeo" => q.virtual_geometry = true,
+        "default" | "no culling" => {}
+        _ => eprintln!("(option {o} unknown: ignored)"),
+    }
 }
 
 fn view(name: &str) -> Option<GameView> {
@@ -83,6 +109,11 @@ fn meadow_perf_shots() {
     std::fs::create_dir_all(&dir).unwrap();
     let shots = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide,close,behind,oak".into());
     let (w, h) = (1600, 900);
+    // `MISTY_SHOT_FRAMES`: frames rendered before the read-back (48, as the golden shots).
+    let frames: usize = std::env::var("MISTY_SHOT_FRAMES")
+        .ok()
+        .and_then(|f| f.parse().ok())
+        .unwrap_or(48);
     for (level, quality) in levels() {
         for shot in shots.split(',') {
             let Some(view) = view(shot) else {
@@ -90,9 +121,10 @@ fn meadow_perf_shots() {
             };
             let mut r = Renderer::with_queue(&device, &queue);
             r.set_quality(&device, &quality);
-            let target = r.create_target(&device, w, h);
+            // A view target: the level's Upscaling applies (native when it is Off).
+            let target = r.create_view_target(&device, w, h);
             let frame = view.frame();
-            for _ in 0..48 {
+            for _ in 0..frames {
                 r.render(&device, &queue, &target, &frame);
             }
             let img = image::RgbaImage::from_raw(w, h, read_back(&device, &queue, &target))
@@ -138,6 +170,72 @@ fn meadow_perf_times() {
                 size.1,
                 1000.0 / b.gpu
             ));
+        }
+    }
+}
+
+/// Where the CPU side of `Renderer::render` goes (round 3): per level and view
+/// (`MISTY_GFX_SHOT=wide,behind`), 60 frames to settle, then 120 with the profiler on; the
+/// median render CPU time and the mean self time of the costliest profiler scopes. The GPU is
+/// waited for after every frame, as in `meadow_perf_times`.
+#[test]
+#[ignore = "timing, prints only"]
+fn meadow_perf_cpu() {
+    let Some((device, queue)) = headless() else {
+        eprintln!("no GPU adapter: skipped");
+        return;
+    };
+    let shots = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide,behind".into());
+    for shot in shots.split(',') {
+        let Some(v) = view(shot) else {
+            continue;
+        };
+        for (level, quality) in levels() {
+            let mut r = Renderer::with_queue(&device, &queue);
+            r.set_quality(&device, &quality);
+            let target = r.create_view_target(&device, 1920, 1080);
+            let frame = v.frame();
+            for _ in 0..60 {
+                r.render(&device, &queue, &target, &frame);
+                let _ = device.poll(wgpu::PollType::wait_indefinitely());
+            }
+            let profiler = crate::profiler::test_serial();
+            crate::profiler::set_enabled(true);
+            crate::profiler::clear();
+            let first = crate::profiler::frame_index();
+            let mut cpu = Vec::new();
+            for _ in 0..120 {
+                r.render(&device, &queue, &target, &frame);
+                let _ = device.poll(wgpu::PollType::wait_indefinitely());
+                crate::profiler::end_frame();
+                cpu.push(r.stats().cpu_ms);
+            }
+            let mut scopes: Vec<(String, f32)> = Vec::new();
+            let mut counted = 0;
+            crate::profiler::with_frames(|all| {
+                for f in all.iter().filter(|f| f.index >= first) {
+                    counted += 1;
+                    let tree = crate::profiler::HierarchyTree::build(f);
+                    for n in tree.nodes.iter().skip(1) {
+                        match scopes.iter_mut().find(|(name, _)| *name == n.name) {
+                            Some(s) => s.1 += n.self_ms,
+                            None => scopes.push((n.name.clone(), n.self_ms)),
+                        }
+                    }
+                }
+            });
+            crate::profiler::set_enabled(false);
+            drop(profiler);
+            cpu.sort_by(f32::total_cmp);
+            eprintln!(
+                "== {shot} {level}: CPU render median {:.2} ms, p90 {:.2} ms",
+                cpu[cpu.len() / 2],
+                cpu[cpu.len() * 9 / 10]
+            );
+            scopes.sort_by(|a, b| b.1.total_cmp(&a.1));
+            for (name, ms) in scopes.iter().take(14) {
+                eprintln!("   {name:<36} {:6.3} ms/frame", ms / counted.max(1) as f32);
+            }
         }
     }
 }
@@ -377,7 +475,9 @@ fn meadow_perf_cull_counts() {
 
 /// A/B timing in one process, the two setups alternating (other GPU work on the machine then
 /// weighs on both alike): `MISTY_AB=cull` (GPU grass culling off / on), `cover` (Quality ▸
-/// Grass Ground Cover off / on) or `msaa` (the level's Anti-Aliasing / 2×). Median per part over `MISTY_AB_ROUNDS` (3) rounds.
+/// Grass Ground Cover off / on), `msaa` (the level's Anti-Aliasing / 2×) or `fast:<name>` (a
+/// shortcut of round 3 off / on, render/fast_paths.rs). Median per part over `MISTY_AB_ROUNDS`
+/// (3) rounds.
 #[test]
 #[ignore = "timing, prints only"]
 fn meadow_perf_ab() {
@@ -408,6 +508,10 @@ fn meadow_perf_ab() {
                     "cover" => q.grass_ground_cover = on,
                     "msaa" if on => q.anti_aliasing = crate::quality::AntiAliasing::X2,
                     "msaa" => {}
+                    // A shortcut of performance round 3 (render/fast_paths.rs) off / on.
+                    f if f.starts_with("fast:") => {
+                        assert!(crate::render::fast_paths::set(&f[5..], on), "{f}?");
+                    }
                     _ => crate::render::terrain_grass::set_grass_gpu_cull(on),
                 }
                 q
@@ -421,6 +525,9 @@ fn meadow_perf_ab() {
                 }
             }
             crate::render::terrain_grass::set_grass_gpu_cull(true);
+            if let Some(f) = what.strip_prefix("fast:") {
+                crate::render::fast_paths::set(f, true);
+            }
             let median = |mut x: Vec<f32>| {
                 x.sort_by(f32::total_cmp);
                 x[x.len() / 2]
@@ -459,7 +566,8 @@ fn meadow_perf_ab() {
 /// The final table: per view and level, GPU culling off (≈ `meadow-trees-1`), the default
 /// (culling on), Grass Ground Cover, 2× MSAA and both; the setups interleaved over
 /// `MISTY_AB_ROUNDS` (3) rounds and each one's quietest round kept (other GPU work on the
-/// machine only ever adds time). `MISTY_SIZE`, `MISTY_SCALED` as for `meadow_perf_times`.
+/// machine only ever adds time). `MISTY_SIZE`, `MISTY_SCALED` as for `meadow_perf_times`;
+/// `MISTY_SETUPS` picks other setups (options of `apply_opt` joined by `+`).
 #[test]
 #[ignore = "timing, prints only"]
 fn meadow_perf_matrix() {
@@ -479,7 +587,12 @@ fn meadow_perf_matrix() {
         .unwrap_or((1920, 1080));
     let scaled = std::env::var("MISTY_SCALED").is_ok();
     let shots = std::env::var("MISTY_GFX_SHOT").unwrap_or_else(|_| "wide".into());
-    let setups = ["no culling", "default", "cover", "msaa2", "cover+msaa2"];
+    // `MISTY_SETUPS`: setups as options joined by `+` (`apply_opt`), comma separated.
+    let setups: Vec<String> = std::env::var("MISTY_SETUPS")
+        .unwrap_or_else(|_| "no culling,default,cover,msaa2,cover+msaa2".into())
+        .split(',')
+        .map(str::to_owned)
+        .collect();
     for shot in shots.split(',') {
         let Some(v) = view(shot) else {
             continue;
@@ -490,9 +603,8 @@ fn meadow_perf_matrix() {
             let setup = |name: &str| {
                 let mut q = quality.clone();
                 crate::render::terrain_grass::set_grass_gpu_cull(name != "no culling");
-                q.grass_ground_cover = name.contains("cover");
-                if name.contains("msaa2") {
-                    q.anti_aliasing = crate::quality::AntiAliasing::X2;
+                for o in name.split('+') {
+                    apply_opt(&mut q, o);
                 }
                 q
             };

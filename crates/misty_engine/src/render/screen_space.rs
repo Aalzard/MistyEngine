@@ -367,6 +367,7 @@ impl Renderer {
             return;
         };
         self.prepass(encoder, frame, lists, ss, passes, stats);
+        self.mark(encoder, "Screen-space prepass");
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("misty ambient occlusion"),
             timestamp_writes: None,

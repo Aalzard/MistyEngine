@@ -45,6 +45,15 @@ const MAX_LEVELS: usize = 6;
 const HYSTERESIS: f32 = 0.85;
 /// Levels recomposed per frame at most (finest first; the others wait a frame).
 const RECOMPOSE_PER_FRAME: usize = 2;
+/// A level has settled when its shapes and placement, every coarser level's, the lights and the
+/// sky have all stayed the same for this many updates (2 s at 60 FPS: the probes have taken
+/// 32–64 updates since the last change and the bounces have converged). Its probes that have
+/// had `SETTLED_UPDATES` (32) updates in their cell then trace one turn in [`SETTLED_RATE`]
+/// (probes.wgsl), and with every level settled the surface cache relights one update in
+/// `SETTLED_RATE / 2`. Any change brings the full rate back at once.
+const SETTLE_FRAMES: u32 = 128;
+/// See [`SETTLE_FRAMES`] (probes.wgsl has the same constants).
+const SETTLED_RATE: u32 = 8;
 /// Terrain height atlas side (texels) and the largest region one terrain gets.
 const TERRAIN_ATLAS: u32 = 1024;
 const TERRAIN_REGION: u32 = 512;
@@ -323,6 +332,11 @@ struct World {
     lights: wgpu::Buffer,
     /// What each level was last composed from (None = never).
     hashes: Vec<Option<u64>>,
+    /// Updates since each level's shapes or placement last changed, and since the lights or
+    /// the sky last changed (with their hash): see [`SETTLE_FRAMES`].
+    level_stable: [u32; MAX_LEVELS],
+    light_hash: u64,
+    light_stable: u32,
     frame: u32,
     /// The view whose camera places it ([`TargetSlot`] id), whether that view is secondary,
     /// and when and where it last updated it.
@@ -370,6 +384,9 @@ impl World {
             lists: storage(device, "misty gi lists", 4 * 1024),
             lights: storage(device, "misty gi lights", 96 * scene::MAX_LIGHTS as u64),
             hashes: vec![None; sizes.levels as usize],
+            level_stable: [0; MAX_LEVELS],
+            light_hash: 0,
+            light_stable: 0,
             frame: 0,
             owner,
             owner_secondary,
@@ -505,6 +522,17 @@ impl MistyFrame {
     pub fn has(&self, stage: Stage) -> bool {
         self.steps.iter().any(|s| s.stage == stage)
     }
+}
+
+/// What the surface cache and the probes' sky see of the lights and the environment.
+fn lighting_hash(lights: &[scene::GiLight], sky: [Vec3; 3]) -> u64 {
+    use std::hash::Hasher;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    h.write(bytemuck::cast_slice(lights));
+    for c in sky {
+        h.write(bytemuck::bytes_of(&c.to_array()));
+    }
+    h.finish()
 }
 
 /// Where level `k` is centred: a quarter of its width ahead of the camera, so the camera sits
@@ -716,6 +744,36 @@ impl MistyGi {
                 levels[k].flags[0] = 1.0;
                 world.hashes[k] = Some(hash);
             }
+            // Settled levels (see `SETTLE_FRAMES`): flags.w = 1.
+            let light_hash = lighting_hash(&list.lights, [sky * k, equator * k, ground * k]);
+            world.light_stable = match light_hash == world.light_hash {
+                true => world.light_stable.saturating_add(1),
+                false => 0,
+            };
+            world.light_hash = light_hash;
+            for k in 0..sizes.levels as usize {
+                world.level_stable[k] = match dirty.iter().any(|&(d, _)| d == k) {
+                    true => 0,
+                    false => world.level_stable[k].saturating_add(1),
+                };
+            }
+            let mut settled = super::fast_paths::gi_settle() && world.light_stable >= SETTLE_FRAMES;
+            for k in (0..sizes.levels as usize).rev() {
+                settled &= world.level_stable[k] >= SETTLE_FRAMES;
+                levels[k].flags[3] = if settled { 1.0 } else { 0.0 };
+            }
+            // `settled` is now level 0's: every level has settled. The probe dispatch then holds
+            // only the probes whose refresh turn it is (flags.w = 2, probes.wgsl).
+            let relight = !settled || world.frame % (SETTLED_RATE / 2) == 0;
+            let probe_groups = match settled {
+                true => {
+                    for l in levels.iter_mut().take(sizes.levels as usize) {
+                        l.flags[3] = 2.0;
+                    }
+                    (probe_count / sizes.stride).div_ceil(SETTLED_RATE)
+                }
+                false => probe_count / sizes.stride,
+            };
 
             // Buffers (grown to fit).
             let instance_bytes = std::mem::size_of_val(list.instances.as_slice()) as u64;
@@ -774,23 +832,25 @@ impl MistyGi {
                     groups: volume_groups,
                 });
             }
-            steps.push(Step {
-                stage: Stage::Surface,
-                group: group(
-                    &pipelines.surface,
-                    &[
-                        entry(0, buf(&world.params)),
-                        entry(1, res(&world.sdf.view)),
-                        entry(3, res(&world.emission.view)),
-                        entry(6, res(&world.radiance.view)),
-                        entry(8, res(&world.normals.view)),
-                        entry(9, sampler.clone()),
-                        entry(12, buf(&world.lights)),
-                        entry(13, buf(&world.probes)),
-                    ],
-                ),
-                groups: volume_groups,
-            });
+            if relight {
+                steps.push(Step {
+                    stage: Stage::Surface,
+                    group: group(
+                        &pipelines.surface,
+                        &[
+                            entry(0, buf(&world.params)),
+                            entry(1, res(&world.sdf.view)),
+                            entry(3, res(&world.emission.view)),
+                            entry(6, res(&world.radiance.view)),
+                            entry(8, res(&world.normals.view)),
+                            entry(9, sampler.clone()),
+                            entry(12, buf(&world.lights)),
+                            entry(13, buf(&world.probes)),
+                        ],
+                    ),
+                    groups: volume_groups,
+                });
+            }
             steps.push(Step {
                 stage: Stage::Probes,
                 group: group(
@@ -804,7 +864,7 @@ impl MistyGi {
                         entry(13, buf(&world.probes)),
                     ],
                 ),
-                groups: [probe_count / sizes.stride, 1, 1],
+                groups: [probe_groups, 1, 1],
             });
             world.frame = world.frame.wrapping_add(1);
         }
