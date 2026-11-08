@@ -21,6 +21,11 @@ fn vs_terrain(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance:
     return out;
 }
 
+// The terrain's depth alone (render/pipelines.rs `terrain_depth`: no colour writes).
+@fragment
+fn fs_terrain_depth() {
+}
+
 @fragment
 fn fs_terrain(in: MeshOut) -> MeshTargets {
     var out = shade(in.world, terrain_surface(in));

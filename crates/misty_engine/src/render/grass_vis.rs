@@ -55,6 +55,10 @@ pub fn grass_vis_enabled() -> bool {
 /// sample count).
 pub(super) struct VisPipelines {
     raster: wgpu::RenderPipeline,
+    /// The standing blades with depth writes (in place of the main pass's grass depth), then
+    /// the flat fans without (`Renderer::grass_vis_passes`).
+    raster_standing: wgpu::RenderPipeline,
+    raster_fans: wgpu::RenderPipeline,
     classify: wgpu::ComputePipeline,
     jobs: wgpu::ComputePipeline,
     shade: wgpu::ComputePipeline,
@@ -157,56 +161,63 @@ impl VisPipelines {
             bind_group_layouts: &layouts,
             immediate_size: 0,
         });
-        pipelines::note_pipeline();
-        let raster = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("misty grass visibility"),
-            layout: Some(&raster_layout),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs_grass_vis"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                front_face: wgpu::FrontFace::Cw,
-                cull_mode: None,
-                ..Default::default()
-            },
-            // The lit grass's test: against the grass depth pass's depth, no writes (the
-            // flat fans in front of it all draw, the later one showing).
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: super::DEPTH_FORMAT,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: samples,
-                alpha_to_coverage_enabled: samples > 1,
-                ..Default::default()
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some("fs_grass_vis"),
-                compilation_options: Default::default(),
-                targets: &[
-                    Some(wgpu::ColorTargetState {
-                        format: CARD_FORMAT,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }),
-                    Some(wgpu::ColorTargetState {
-                        format: ID_FORMAT,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }),
-                ],
-            }),
-            multiview_mask: None,
-            cache: crate::render::pipeline_cache(device).as_ref(),
-        });
+        let raster_pipeline = |entry: &str, writes: bool| {
+            pipelines::note_pipeline();
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("misty grass visibility"),
+                layout: Some(&raster_layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some(entry),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    front_face: wgpu::FrontFace::Cw,
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                // The lit grass's test: against the grass depth pass's depth, no writes (the
+                // flat fans in front of it all draw, the later one showing). The standing blades
+                // drawn without that pass write the depth themselves: with `LessEqual` the last
+                // blade at the nearest depth keeps a sample, as before.
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: super::DEPTH_FORMAT,
+                    depth_write_enabled: Some(writes),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState {
+                    count: samples,
+                    alpha_to_coverage_enabled: samples > 1,
+                    ..Default::default()
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some("fs_grass_vis"),
+                    compilation_options: Default::default(),
+                    targets: &[
+                        Some(wgpu::ColorTargetState {
+                            format: CARD_FORMAT,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        }),
+                        Some(wgpu::ColorTargetState {
+                            format: ID_FORMAT,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        }),
+                    ],
+                }),
+                multiview_mask: None,
+                cache: crate::render::pipeline_cache(device).as_ref(),
+            })
+        };
+        let raster = raster_pipeline("vs_grass_vis", false);
+        let raster_standing = raster_pipeline("vs_grass_vis_standing", true);
+        let raster_fans = raster_pipeline("vs_grass_vis_fans", false);
 
         let entry = |binding, ty| wgpu::BindGroupLayoutEntry {
             binding,
@@ -326,6 +337,8 @@ impl VisPipelines {
         });
         Self {
             raster,
+            raster_standing,
+            raster_fans,
             classify,
             jobs,
             shade,
@@ -339,6 +352,14 @@ impl VisPipelines {
 
     pub fn raster(&self) -> &wgpu::RenderPipeline {
         &self.raster
+    }
+
+    pub fn raster_standing(&self) -> &wgpu::RenderPipeline {
+        &self.raster_standing
+    }
+
+    pub fn raster_fans(&self) -> &wgpu::RenderPipeline {
+        &self.raster_fans
     }
 
     pub fn composite(&self) -> &wgpu::RenderPipeline {

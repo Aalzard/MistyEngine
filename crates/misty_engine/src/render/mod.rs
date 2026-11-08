@@ -2613,6 +2613,37 @@ impl Renderer {
         pass
     }
 
+    /// The sky after the opaque scene: on the far plane, depth tested, so only the samples
+    /// nothing covers shade it (see `main_pass`).
+    fn draw_sky_late(&self, pass: &mut wgpu::RenderPass) {
+        pass.set_pipeline(&self.pipelines.sky_late);
+        pass.draw(0..3, 0..1);
+        self.mark_pass(pass, "Main: sky (late)");
+    }
+
+    /// The frame's terrains in the main pass (group 1 bound by the caller).
+    #[allow(clippy::too_many_arguments)]
+    fn draw_terrain(
+        &self,
+        pass: &mut wgpu::RenderPass,
+        target: &RenderTarget,
+        frame: &Frame,
+        lists: &frame_lists::FrameLists,
+        pipeline: &wgpu::RenderPipeline,
+        label: &'static str,
+        stats: &mut RenderStats,
+    ) {
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(2, &self.empty_group, &[]);
+        let first = frame.meshes.len();
+        let main = || main_target(target);
+        frame_debug::pass(&self.capture, &["Terrain"], main, EventTarget::Hdr);
+        let visible = self.terrain_events(frame, |i| lists.terrains[i], "Draw Terrain");
+        self.terrains
+            .draw(pass, frame.terrains, first, true, |i| visible[i], stats);
+        self.mark_pass(pass, label);
+    }
+
     /// One part of the main pass. GPU culling splits it into two phases around the Hi-Z build
     /// (`split.phase`); the last phase draws sky, opaque meshes, terrains and the grid, then
     /// (after the scene copy when `split.scene_copy`) water, transparent meshes, particles,
@@ -2655,6 +2686,22 @@ impl Renderer {
         // grass visibility raster), the rest follows below.
         let grass_vis = last && split.vis;
         let mut grass_vis_drawn = false;
+        // The sky after the opaque scene, on the far plane and depth tested: it then shades
+        // only the samples nothing covers instead of the whole screen. Same picture (it was
+        // overdrawn there); drawn before anything that writes colour without depth (the lit
+        // grass, the grid, transparents). The Frame Debugger keeps the drawing order.
+        let sky_late = fast_paths::sky_late() && self.capture.is_none();
+        let mut sky_drawn = !sky_late;
+        // With the grass visibility buffer the standing blades write the grass depth in its
+        // raster: this part ends with the terrain's depth alone, and the terrain is shaded
+        // (and the sky drawn) after the raster, tested against the blades' depth (see
+        // `grass_vis_passes`).
+        let vis_depth = grass_vis
+            && sky_late
+            && fast_paths::grass_vis_depth()
+            && frame.shaded
+            && !frame.terrains.is_empty()
+            && self.terrains.has_grass();
         {
             let mut pass = self.begin_main(
                 encoder,
@@ -2673,9 +2720,11 @@ impl Renderer {
                     false => "Clear (color, depth)",
                 };
                 frame_debug::record(&self.capture, |_| FrameEvent::new(EventKind::Clear, what));
-                if frame_debug::record(&self.capture, |_| {
-                    frame_debug::events::post_event("Draw Sky".to_owned(), "sky.wgsl fs_main")
-                }) {
+                if !sky_late
+                    && frame_debug::record(&self.capture, |_| {
+                        frame_debug::events::post_event("Draw Sky".to_owned(), "sky.wgsl fs_main")
+                    })
+                {
                     pass.set_pipeline(&self.pipelines.sky);
                     pass.draw(0..3, 0..1);
                 }
@@ -2748,22 +2797,26 @@ impl Renderer {
 
             self.mark_pass(&mut pass, "Main: opaque meshes");
             if frame.shaded && !frame.terrains.is_empty() {
-                pass.set_pipeline(&self.pipelines.terrain);
                 pass.set_bind_group(1, self.lit_group(), &[]);
-                pass.set_bind_group(2, &self.empty_group, &[]);
-                let first = frame.meshes.len();
-                let main = || main_target(target);
-                frame_debug::pass(&self.capture, &["Terrain"], main, EventTarget::Hdr);
-                let visible = self.terrain_events(frame, |i| lists.terrains[i], "Draw Terrain");
-                self.terrains.draw(
-                    &mut pass,
-                    frame.terrains,
-                    first,
-                    true,
-                    |i| visible[i],
-                    stats,
-                );
-                self.mark_pass(&mut pass, "Main: terrain");
+                // The terrain after the trees and the grass's depth: its costly layer shading
+                // then skips the pixels they hide completely (dense turf close up). Same
+                // picture: every sample the grass depth wins is later written by the grass
+                // (lit pass or composite), and the trees' depth hides the same terrain either
+                // way. The Frame Debugger keeps the drawing order (its replay stops at an
+                // event).
+                let late = fast_paths::terrain_late() && self.capture.is_none();
+                if !late && !vis_depth {
+                    let terrain = &self.pipelines.terrain;
+                    self.draw_terrain(
+                        &mut pass,
+                        target,
+                        frame,
+                        lists,
+                        terrain,
+                        "Main: terrain",
+                        stats,
+                    );
+                }
                 // Trees before the grass: the grass's depth pass then skips what they hide.
                 if self.trees.has_trees()
                     && frame_debug::record(&self.capture, |_| {
@@ -2772,11 +2825,26 @@ impl Renderer {
                 {
                     self.trees.draw_main(&mut pass, stats);
                 }
-                if self.terrains.has_grass()
+                let grass = self.terrains.has_grass()
                     && frame_debug::record(&self.capture, |_| {
                         frame_debug::events::post_event("Draw Grass".to_owned(), "grass.wgsl")
-                    })
-                {
+                    });
+                if vis_depth {
+                    self.mark_pass(&mut pass, "Main: trees");
+                    // (Drawn again when shaded: counted once.)
+                    let depth = &self.pipelines.terrain_depth;
+                    let mut uncounted = RenderStats::default();
+                    let label = "Main: terrain depth";
+                    self.draw_terrain(
+                        &mut pass,
+                        target,
+                        frame,
+                        lists,
+                        depth,
+                        label,
+                        &mut uncounted,
+                    );
+                } else if grass {
                     // Depth first (alpha tested), then the shading once per covered sample:
                     // dense turf overlaps each pixel many times.
                     self.mark_pass(&mut pass, "Main: trees");
@@ -2785,6 +2853,24 @@ impl Renderer {
                     self.terrains
                         .draw_grass(&mut pass, frame.terrains, depth, stats);
                     self.mark_pass(&mut pass, "Main: grass depth");
+                }
+                if late && !vis_depth {
+                    let terrain = &self.pipelines.terrain;
+                    self.draw_terrain(
+                        &mut pass,
+                        target,
+                        frame,
+                        lists,
+                        terrain,
+                        "Main: terrain",
+                        stats,
+                    );
+                }
+                if !sky_drawn && !vis_depth {
+                    self.draw_sky_late(&mut pass);
+                    sky_drawn = true;
+                }
+                if grass {
                     if grass_vis {
                         grass_vis_drawn = true;
                     } else {
@@ -2795,6 +2881,9 @@ impl Renderer {
                         self.mark_pass(&mut pass, "Main: grass lit");
                     }
                 }
+            }
+            if !sky_drawn && !vis_depth {
+                self.draw_sky_late(&mut pass);
             }
 
             if !grass_vis {
@@ -2818,7 +2907,7 @@ impl Renderer {
             // Which blade each sample shows, each visible blade shaded once, then the rest of
             // the main pass starting with the shaded blades written into their samples.
             if grass_vis_drawn {
-                self.grass_vis_passes(device, encoder, target, frame, stats);
+                self.grass_vis_passes(device, encoder, target, frame, vis_depth, stats);
             }
             let mut pass = self.begin_main(
                 encoder,
@@ -2829,6 +2918,21 @@ impl Renderer {
                 copy,
                 copy || keep_depth,
             );
+            if vis_depth {
+                // The terrain where no standing blade hides it, then the sky.
+                pass.set_bind_group(1, self.lit_group(), &[]);
+                let shade = &self.pipelines.terrain_shade;
+                self.draw_terrain(
+                    &mut pass,
+                    target,
+                    frame,
+                    lists,
+                    shade,
+                    "Main: terrain",
+                    stats,
+                );
+                self.draw_sky_late(&mut pass);
+            }
             if grass_vis_drawn {
                 self.grass_vis_composite(&mut pass, target);
             }
@@ -2945,12 +3049,19 @@ impl Renderer {
 
     /// The grass visibility raster (after the main pass's first part, which kept its depth)
     /// and the resolve that shades each visible blade once.
+    /// The grass visibility raster and resolve. `depth`: the main pass left the grass depth
+    /// out, so the standing blades write it here (in the grass depth pass's order and test,
+    /// the last one at the nearest depth keeping a sample, as before), then the flat fans
+    /// test against it without writing. The only difference to the lit grass's order: a fan
+    /// now always shows over a standing blade behind it (before, a blade drawn after the fan
+    /// covered it).
     fn grass_vis_passes(
         &self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         target: &RenderTarget,
         frame: &Frame,
+        depth: bool,
         stats: &mut RenderStats,
     ) {
         let Some(Some(pipes)) = &self.grass_vis else {
@@ -2966,8 +3077,16 @@ impl Renderer {
             let mut pass = grass_vis::begin_raster(encoder, t, target.depth_view());
             pass.set_bind_group(0, &self.view_bind_group, &[]);
             pass.set_bind_group(1, self.lit_group(), &[]);
-            pass.set_pipeline(pipes.raster());
             let lit = grass_cull::LIT;
+            if depth {
+                pass.set_pipeline(pipes.raster_standing());
+                let standing = grass_cull::DEPTH;
+                self.terrains
+                    .draw_grass(&mut pass, frame.terrains, standing, stats);
+                pass.set_pipeline(pipes.raster_fans());
+            } else {
+                pass.set_pipeline(pipes.raster());
+            }
             self.terrains
                 .draw_grass(&mut pass, frame.terrains, lit, stats);
         }

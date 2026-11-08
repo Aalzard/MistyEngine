@@ -149,6 +149,8 @@ pub struct Pipelines {
     /// HDR image + sampler + bloom (final composite).
     pub composite_layout: wgpu::BindGroupLayout,
     pub sky: wgpu::RenderPipeline,
+    /// The sky drawn after the opaque scene: on the far plane, depth tested (`main_pass`).
+    pub sky_late: wgpu::RenderPipeline,
     pub grid: wgpu::RenderPipeline,
     pub lines: wgpu::RenderPipeline,
     /// Material variants (rendering mode, unlit, culling), built on first use.
@@ -165,6 +167,11 @@ pub struct Pipelines {
     /// No bindings: the terrain's unused group 2 (keeps it under 16 textures per stage).
     pub empty_layout: wgpu::BindGroupLayout,
     pub terrain: wgpu::RenderPipeline,
+    /// The terrain's depth alone (main pass targets untouched), and its shading tested
+    /// against that depth: the grass visibility buffer's standing blades go between them
+    /// (`Renderer::main_pass`).
+    pub terrain_depth: wgpu::RenderPipeline,
+    pub terrain_shade: wgpu::RenderPipeline,
     /// Terrain shadow casters (vertex pulling from the heightmap texture).
     pub terrain_shadow: wgpu::RenderPipeline,
     /// Grass parameters (group 2 of the grass pipeline).
@@ -487,6 +494,20 @@ impl Pipelines {
                 ..Spec::new("sky", include_str!("shaders/sky.wgsl"), &[&view_layout])
             },
         );
+        let sky_late = build(
+            device,
+            Spec {
+                vs: "vs_sky_far",
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+                glow: Some(true),
+                velocity: true,
+                ..Spec::new(
+                    "sky late",
+                    include_str!("shaders/sky.wgsl"),
+                    &[&view_layout],
+                )
+            },
+        );
         let grid = build(
             device,
             Spec {
@@ -632,6 +653,38 @@ impl Pipelines {
                 velocity: true,
                 ..Spec::new(
                     "terrain",
+                    TERRAIN_SRC,
+                    &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
+                )
+            },
+        );
+        let terrain_depth = build(
+            device,
+            Spec {
+                vs: "vs_terrain",
+                fs: Some("fs_terrain_depth"),
+                cull: Some(wgpu::Face::Back),
+                depth: Depth::main(true, wgpu::CompareFunction::Less),
+                glow: Some(false),
+                color_writes: wgpu::ColorWrites::empty(),
+                ..Spec::new(
+                    "terrain depth",
+                    TERRAIN_SRC,
+                    &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
+                )
+            },
+        );
+        let terrain_shade = build(
+            device,
+            Spec {
+                vs: "vs_terrain",
+                fs: Some("fs_terrain"),
+                cull: Some(wgpu::Face::Back),
+                depth: Depth::main(false, wgpu::CompareFunction::LessEqual),
+                glow: Some(true),
+                velocity: true,
+                ..Spec::new(
+                    "terrain shade",
                     TERRAIN_SRC,
                     &[&view_layout, &mesh_layout, &empty_layout, &terrain_layout],
                 )
@@ -839,6 +892,7 @@ impl Pipelines {
             material_layout,
             mask_layout,
             sky,
+            sky_late,
             grid,
             lines,
             variants: Default::default(),
@@ -850,6 +904,8 @@ impl Pipelines {
             terrain_layout,
             empty_layout,
             terrain,
+            terrain_depth,
+            terrain_shade,
             terrain_shadow,
             grass_layout,
             grass_blades_layout,
