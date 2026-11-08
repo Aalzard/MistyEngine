@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "kind": "SubGraph",
+  "target": {
+    "material": "Lit",
+    "surface": "Opaque",
+    "alpha_clip": false,
+    "two_sided": false
+  },
+  "properties": [
+    {
+      "name": "_Noise",
+      "display": "Noise",
+      "kind": "Float",
+      "value": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "name": "_Threshold",
+      "display": "Threshold",
+      "kind": "Float",
+      "value": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "name": "_Width",
+      "display": "Width",
+      "kind": "Float",
+      "value": [
+        0.06,
+        0.06,
+        0.06,
+        0.06
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Alpha",
+      "ty": "Float"
+    },
+    {
+      "name": "Edge",
+      "ty": "Float"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "type": "Master",
+      "position": [
+        300.0,
+        -40.0
+      ]
+    },
+    {
+      "id": 1,
+      "type": "Property",
+      "name": "_Noise",
+      "position": [
+        -560.0,
+        -60.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Property",
+      "name": "_Threshold",
+      "position": [
+        -560.0,
+        20.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Property",
+      "name": "_Width",
+      "position": [
+        -560.0,
+        140.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Subtract",
+      "position": [
+        -360.0,
+        -40.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Add",
+      "position": [
+        -140.0,
+        -120.0
+      ],
+      "values": {
+        "B": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "Smoothstep",
+      "position": [
+        -140.0,
+        80.0
+      ],
+      "values": {
+        "Edge1": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "type": "OneMinus",
+      "position": [
+        80.0,
+        80.0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 4,
+      "input": "A"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 4,
+      "input": "B"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 5,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 0,
+      "input": "Alpha"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 6,
+      "input": "Edge2"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 6,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 7,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 0,
+      "input": "Edge"
+    }
+  ],
+  "groups": [
+    {
+      "title": "Edge band",
+      "nodes": [
+        6,
+        7
+      ]
+    }
+  ]
+}

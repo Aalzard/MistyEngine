@@ -1,0 +1,51 @@
+{
+  "shader": "Assets/Examples/Shader Graph/Wind Sway.shadergraph",
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 0.5,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": null,
+  "normal_map": null,
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "properties": {
+    "_RootColor": [
+      0.1,
+      0.28,
+      0.06,
+      1.0
+    ],
+    "_Speed": 1.8,
+    "_Strength": 0.22,
+    "_TipColor": [
+      0.62,
+      0.78,
+      0.22,
+      1.0
+    ],
+    "_Wind": [
+      1.0,
+      0.0,
+      0.35,
+      0.0
+    ]
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "shader": "Assets/Examples/Shader Graph/Dissolve Glow.shadergraph",
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "metallic": 0.0,
+  "smoothness": 0.5,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": null,
+  "normal_map": null,
+  "normal_scale": 1.0,
+  "tiling": [
+    1.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "properties": {
+    "_ANIMATE_ON": 1.0,
+    "_BaseColor": [
+      0.72,
+      0.76,
+      0.82,
+      1.0
+    ],
+    "_EdgeColor": [
+      0.2,
+      0.7,
+      1.0,
+      1.0
+    ],
+    "_NoiseScale": 12.0,
+    "_PATTERN": 1.0,
+    "_Threshold": 0.45
+  }
+}

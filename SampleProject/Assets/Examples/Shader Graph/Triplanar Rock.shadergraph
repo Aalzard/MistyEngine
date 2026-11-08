@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "target": {
+    "material": "Lit",
+    "surface": "Opaque",
+    "alpha_clip": false,
+    "two_sided": false
+  },
+  "properties": [
+    {
+      "name": "_RockTex",
+      "display": "Rock",
+      "kind": "Texture2D",
+      "fallback": "Grey",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "texture": "Assets/Textures/TerrainRock.png"
+    },
+    {
+      "name": "_MossTex",
+      "display": "Moss",
+      "kind": "Texture2D",
+      "fallback": "White",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "texture": "Assets/Decals/Moss.png"
+    },
+    {
+      "name": "_Tile",
+      "display": "Tiling",
+      "kind": "Float",
+      "value": [
+        0.6,
+        0.6,
+        0.6,
+        0.6
+      ]
+    },
+    {
+      "name": "_MossAmount",
+      "display": "Moss Amount",
+      "kind": "Range",
+      "min": 0.0,
+      "max": 1.0,
+      "value": [
+        0.55,
+        0.55,
+        0.55,
+        0.55
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "type": "Master",
+      "position": [
+        120.0,
+        -120.0
+      ]
+    },
+    {
+      "id": 1,
+      "type": "Property",
+      "name": "_RockTex",
+      "position": [
+        -980.0,
+        -220.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Property",
+      "name": "_MossTex",
+      "position": [
+        -980.0,
+        60.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Property",
+      "name": "_Tile",
+      "position": [
+        -980.0,
+        -60.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "Triplanar",
+      "space": "World",
+      "position": [
+        -720.0,
+        -240.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Triplanar",
+      "space": "World",
+      "position": [
+        -720.0,
+        60.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Normal",
+      "space": "World",
+      "position": [
+        -720.0,
+        340.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Property",
+      "name": "_MossAmount",
+      "position": [
+        -720.0,
+        460.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "CustomFunction",
+      "function": "MossMask",
+      "source": "Inline",
+      "body": "// Moss on the faces looking up, more with Amount.\nlet start = 1.0 - Amount;\nMask = smoothstep(start, start + 0.3, N.y);",
+      "inputs": [
+        {
+          "name": "N",
+          "ty": "Vec3"
+        },
+        {
+          "name": "Amount",
+          "ty": "Float"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Mask",
+          "ty": "Float"
+        }
+      ],
+      "position": [
+        -460.0,
+        360.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Lerp",
+      "position": [
+        -200.0,
+        -40.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "Lerp",
+      "position": [
+        -200.0,
+        260.0
+      ],
+      "values": {
+        "A": [
+          0.32,
+          0.32,
+          0.32,
+          0.32
+        ],
+        "B": [
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ]
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 4,
+      "input": "Texture"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 4,
+      "input": "Tile"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 5,
+      "input": "Texture"
+    },
+    {
+      "from": 3,
+      "output": "Out",
+      "to": 5,
+      "input": "Tile"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "N"
+    },
+    {
+      "from": 7,
+      "output": "Out",
+      "to": 8,
+      "input": "Amount"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 9,
+      "input": "A"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 9,
+      "input": "B"
+    },
+    {
+      "from": 8,
+      "output": "Mask",
+      "to": 9,
+      "input": "T"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 0,
+      "input": "Base Color"
+    },
+    {
+      "from": 8,
+      "output": "Mask",
+      "to": 10,
+      "input": "T"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 0,
+      "input": "Smoothness"
+    }
+  ],
+  "groups": [
+    {
+      "title": "Moss on top",
+      "nodes": [
+        6,
+        7,
+        8
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        -980.0,
+        -420.0
+      ],
+      "size": [
+        280.0,
+        90.0
+      ],
+      "text": "Triplanar: the textures are projected along X, Y and Z and blended by the normal, so the rock needs no UVs."
+    }
+  ]
+}
