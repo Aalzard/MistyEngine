@@ -232,6 +232,12 @@ impl Physics {
                             ));
                         }
                         rp::ColliderBuilder::convex_hull(&verts)
+                    } else if let Some(shape) = mesh_ref
+                        .as_ref()
+                        .and_then(|r| super::shape_cache::take(r, s))
+                    {
+                        // Built ahead on a background thread (a streamed cell).
+                        Some(rp::ColliderBuilder::new(shape))
                     } else {
                         let tris = data.indices.chunks(3).map(|t| [t[0], t[1], t[2]]).collect();
                         rp::ColliderBuilder::trimesh(verts, tris).ok()

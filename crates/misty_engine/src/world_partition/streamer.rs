@@ -171,6 +171,10 @@ pub struct StreamingStats {
     /// Cells loaded / unloaded since the streamer started.
     pub loads: u64,
     pub unloads: u64,
+    /// The slowest single step so far (adding or removing one top-level object with its
+    /// children, physics and scripts): (what, ms). A step is never split, so this is the floor
+    /// of what one frame can take.
+    pub slowest: Option<(String, f32)>,
 }
 
 impl StreamingStats {
@@ -202,6 +206,10 @@ pub struct Streamer {
     owner: Option<Entity>,
     /// Messages for the Console (failed cells).
     logs: Vec<String>,
+    /// Time the hooks took per added object (ms, smoothed): kept free in the budget.
+    hook_ms: f32,
+    /// Time a whole call of the hooks took (ms, smoothed): its fixed part.
+    flush_ms: f32,
 }
 
 impl Default for Streamer {
@@ -225,6 +233,8 @@ impl Streamer {
             sources: Vec::new(),
             owner: None,
             logs: Vec::new(),
+            hook_ms: 0.2,
+            flush_ms: 0.2,
         }
     }
 
@@ -527,7 +537,10 @@ impl Streamer {
                 }
                 roots.pop_front();
                 if scene.contains(r) {
+                    let t = Instant::now();
+                    let name = scene.name(r);
                     hooks.remove(scene, &[r]);
+                    note_step(&mut self.stats, || format!("removing {name}"), t);
                 }
             }
             scene.remove_streamed(*id);
@@ -562,9 +575,18 @@ impl Streamer {
                 .cmp(&adding(b))
                 .then(distance(*a).total_cmp(&distance(*b)))
         });
-        for c in order {
-            if Instant::now() >= deadline {
-                return;
+        // Physics bodies and scripts of what this frame adds start together at the end (one
+        // broad-phase update); their cost per object (measured) is kept free in the budget.
+        let per_root = Duration::from_secs_f32(self.hook_ms.max(0.0) / 1000.0);
+        let mut added: Vec<Entity> = Vec::new();
+        let mut first_name: Option<String> = None;
+        let flush = Duration::from_secs_f32(self.flush_ms.max(0.0) / 1000.0);
+        let room = |added: usize| deadline.checked_sub((per_root * (added as u32 + 1)).max(flush));
+        'cells: for c in order {
+            // Some budget left starts at least one object, whatever the reservation says.
+            let full = room(added.len()).is_none_or(|end| Instant::now() >= end);
+            if Instant::now() >= deadline || (!added.is_empty() && full) {
+                break;
             }
             let cell = self.cells.get_mut(&c).expect("listed");
             if let Phase::Waiting(_) = cell.phase {
@@ -602,11 +624,24 @@ impl Streamer {
             let Phase::Adding { load, .. } = &mut cell.phase else {
                 continue;
             };
-            // One subtree per step, so the hooks' work counts against the deadline too.
+            // One top-level subtree per step.
             while !load.is_done() {
+                let t = Instant::now();
                 let roots = scene.continue_streamed(load, Instant::now());
-                hooks.added(scene, &roots);
-                if Instant::now() >= deadline {
+                if let Some(r) = roots.first() {
+                    let ms = t.elapsed().as_secs_f32() * 1000.0;
+                    if self.stats.slowest.as_ref().is_none_or(|(_, w)| ms > *w) {
+                        self.stats.slowest = Some((format!("adding {}", scene.name(*r)), ms));
+                    }
+                    if first_name.is_none() {
+                        first_name = Some(scene.name(*r));
+                    }
+                }
+                added.extend(roots);
+                if room(added.len()).is_none_or(|end| Instant::now() >= end) {
+                    if !load.is_done() {
+                        break 'cells;
+                    }
                     break;
                 }
             }
@@ -628,6 +663,20 @@ impl Streamer {
                     bytes,
                 };
                 self.stats.loads += 1;
+            }
+        }
+        if !added.is_empty() {
+            let t = Instant::now();
+            hooks.added(scene, &added);
+            let ms = t.elapsed().as_secs_f32() * 1000.0;
+            // Per object, smoothed (a frame of many objects and one of a few both count).
+            let each = ms / added.len() as f32;
+            self.hook_ms = self.hook_ms * 0.8 + each * 0.2;
+            self.flush_ms = self.flush_ms * 0.8 + ms * 0.2;
+            if self.stats.slowest.as_ref().is_none_or(|(_, w)| ms > *w) {
+                let what = first_name.unwrap_or_default();
+                self.stats.slowest =
+                    Some((format!("starting {} objects ({what}, …)", added.len()), ms));
             }
         }
     }
@@ -747,6 +796,8 @@ fn read_cell(
         parsed.rebase(root);
     }
     let mut bytes = text.len() as u64 * 3;
+    // Static Mesh Collider shapes (their BVH takes milliseconds) are built here too.
+    let colliders = parsed.mesh_colliders();
     let mut terrains = Vec::new();
     let mut models = Vec::new();
     let mut seen = BTreeSet::new();
@@ -779,6 +830,9 @@ fn read_cell(
             _ => {}
         }
     }
+    for (mesh, scale) in colliders {
+        crate::physics::shape_cache::prebuild(&mesh, scale);
+    }
     Ok(CellPayload {
         parsed,
         terrains,
@@ -795,4 +849,12 @@ pub fn terrain_bytes(d: &TerrainData) -> u64 {
         + d.holes.len()
         + d.trees.instances.len() * std::mem::size_of::<crate::terrain::trees::TreeInstance>())
         as u64
+}
+
+/// Keep the slowest step (`what` only made when it is the slowest).
+fn note_step(stats: &mut StreamingStats, what: impl FnOnce() -> String, started: Instant) {
+    let ms = started.elapsed().as_secs_f32() * 1000.0;
+    if stats.slowest.as_ref().is_none_or(|(_, worst)| ms > *worst) {
+        stats.slowest = Some((what(), ms));
+    }
 }

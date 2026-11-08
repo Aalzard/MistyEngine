@@ -82,7 +82,7 @@ struct HostHooks<'a>(&'a mut ScriptHost);
 impl crate::world_partition::StreamHooks for HostHooks<'_> {
     fn added(&mut self, scene: &mut Scene, roots: &[hecs::Entity]) {
         if !roots.is_empty() {
-            self.0.add_objects(scene, roots);
+            self.0.add_streamed_objects(scene, roots);
         }
     }
 

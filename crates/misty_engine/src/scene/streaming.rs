@@ -78,6 +78,50 @@ impl ParsedScene {
         }
     }
 
+    /// Static, non-convex Mesh Colliders of the file: (mesh, world scale). Their shapes can be
+    /// built ahead ([`crate::physics::shape_cache`]).
+    pub fn mesh_colliders(&self) -> Vec<(super::MeshRef, glam::Vec3)> {
+        let objects = &self.parts.objects;
+        let scale = |i: usize| {
+            objects[i]
+                .components
+                .get("Transform")
+                .and_then(|t| t.get("scale"))
+                .and_then(|s| serde_json::from_value::<[f32; 3]>(s.clone()).ok())
+                .map_or(glam::Vec3::ONE, glam::Vec3::from)
+        };
+        let mut out = Vec::new();
+        for (i, o) in objects.iter().enumerate() {
+            let Some(c) = o.components.get("Mesh Collider") else {
+                continue;
+            };
+            let Ok(c) = serde_json::from_value::<super::MeshCollider>(c.clone()) else {
+                continue;
+            };
+            if !c.enabled || c.convex || o.components.contains_key("Rigidbody") {
+                continue;
+            }
+            let mesh = o
+                .components
+                .get("Mesh Filter")
+                .and_then(|f| serde_json::from_value::<super::MeshFilter>(f.clone()).ok())
+                .and_then(|f| f.mesh);
+            let Some(mesh) = mesh else {
+                continue;
+            };
+            let mut s = scale(i);
+            let mut p = o.parent;
+            let mut guard = 0;
+            while let Some(j) = p.filter(|j| *j < objects.len() && guard < 64) {
+                s *= scale(j);
+                p = objects[j].parent;
+                guard += 1;
+            }
+            out.push((mesh, s));
+        }
+        out
+    }
+
     /// World-space positions of the top-level objects (their Transform position).
     pub fn root_positions(&self) -> Vec<glam::Vec3> {
         self.parts

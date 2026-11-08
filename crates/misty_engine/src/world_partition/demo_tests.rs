@@ -143,6 +143,9 @@ fn report(label: &str, f: &Flight) {
         f.stats.loaded,
         f.stats.memory_bytes as f64 / 1048576.0
     );
+    if let Some((what, ms)) = &f.stats.slowest {
+        eprintln!("  slowest single step: {what} ({ms:.2} ms)");
+    }
 }
 
 /// Quick flight (6.7 m a frame at 60 fps, frames paced at 4 ms): cells load and unload all the
