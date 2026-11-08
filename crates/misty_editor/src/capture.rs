@@ -778,7 +778,7 @@ fn vcs_env(s: &mut crate::state::EditorState) {
 
 /// `MISTY_COLOR_FILTER=deuteranopia` (optionally `:simulate` and `:0.5` for the strength) and
 /// `MISTY_TEXT_SCALE=1.5` set the accessibility settings in effect; `MISTY_PROJECT_SETTINGS=Player`
-/// opens Project Settings on that page.
+/// opens Project Settings on that page (`Player:Accessibility`: only that section open).
 fn accessibility_env(s: &mut crate::state::EditorState) {
     if let Ok(v) = std::env::var("MISTY_COLOR_FILTER") {
         let mut parts = v.split(':');
@@ -802,8 +802,13 @@ fn accessibility_env(s: &mut crate::state::EditorState) {
     {
         misty_engine::accessibility::update(|a| a.text_scale = k);
     }
-    if let Ok(page) = std::env::var("MISTY_PROJECT_SETTINGS") {
+    if let Ok(spec) = std::env::var("MISTY_PROJECT_SETTINGS") {
         use crate::project_settings::Category;
+        // `Player:Accessibility` also opens only that section.
+        let (page, section) = spec.split_once(':').unwrap_or((&spec, ""));
+        if !section.is_empty() {
+            let _ = crate::project_settings::SCREENSHOT_SECTION.set(section.to_owned());
+        }
         if let Some(c) = Category::ALL
             .into_iter()
             .find(|c| format!("{c:?}").eq_ignore_ascii_case(page.trim()))

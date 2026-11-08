@@ -327,7 +327,12 @@ mod tests {
             },
             state,
         );
-        h.run_steps(2);
+        h.run_steps(3);
+        // Drawing the page changes nothing by itself (no save every frame).
+        assert!(
+            h.state().0.player.is_none(),
+            "the page edited the settings unasked"
+        );
         // Every control on the page has a name for screen readers.
         let unnamed = crate::a11y::unnamed_controls(&h);
         assert!(unnamed.is_empty(), "unnamed controls: {unnamed:?}");

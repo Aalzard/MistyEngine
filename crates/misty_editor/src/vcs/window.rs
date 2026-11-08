@@ -21,6 +21,9 @@ pub enum DiffView {
     Objects,
 }
 
+/// What a cached diff was made for: file, staged side, view and status generation.
+type DiffKey = (String, bool, DiffView, u64);
+
 #[derive(Default)]
 pub struct WindowState {
     pub open: bool,
@@ -28,7 +31,7 @@ pub struct WindowState {
     pub selected: Option<(String, bool)>,
     pub view: DiffView,
     /// Diff of the selection, with the status generation and view it was made for.
-    cache: Option<((String, bool, DiffView, u64), Result<String, String>)>,
+    cache: Option<(DiffKey, Result<String, String>)>,
     pub message: String,
     /// Discard asked for this file; waiting for the confirmation.
     pub confirm_discard: Option<String>,
@@ -52,7 +55,7 @@ pub fn show(ctx: &egui::Context, s: &mut EditorState) {
     let root = s.project.root.clone();
     egui::Window::new("Version Control")
         .open(&mut open)
-        .resizable(false)
+        .fixed_size([LIST_W + DIFF_W + 24.0, PANE_H + 96.0])
         .collapsible(false)
         .show(ctx, |ui| contents(ui, &mut s.vcs, &root));
     s.vcs.window.open = open;
@@ -129,7 +132,9 @@ fn header(ui: &mut Ui, v: &mut Vcs, repo: &git::Repo, project: &std::path::Path)
             {
                 v.refresh_now(project);
             }
-            ui.weak(repo.root.display().to_string());
+            ui.add(
+                egui::Label::new(RichText::new(repo.root.display().to_string()).weak()).truncate(),
+            );
         });
     });
     if let Some((text, error)) = &v.window.note {
@@ -497,34 +502,44 @@ fn object_diff_ui(ui: &mut Ui, text: &str) {
 }
 
 fn footer(ui: &mut Ui, repo: &git::Repo, v: &Vcs) {
-    ui.horizontal_wrapped(|ui| {
-        ui.weak("Pushing and pulling happen in a terminal:");
-        let root = repo.root.display().to_string();
-        let push = format!("git -C \"{root}\" push");
-        let pull = format!("git -C \"{root}\" pull");
-        command_row(ui, &push);
-        command_row(ui, &pull);
-        if v.status.upstream.is_none() && !v.status.branch.is_empty() {
-            ui.weak(format!(
-                "(no upstream yet: git push -u origin {})",
-                v.status.branch
-            ));
-        }
+    ui.add(
+        egui::Label::new(
+            RichText::new("Pushing and pulling happen in a terminal in the repository folder:")
+                .weak(),
+        )
+        .truncate(),
+    );
+    let root = repo.root.display().to_string();
+    let with_dir = |cmd: &str| format!("git -C \"{root}\" {cmd}");
+    ui.horizontal(|ui| {
+        let push = if v.status.upstream.is_none() && !v.status.branch.is_empty() {
+            format!("push -u origin {}", v.status.branch)
+        } else {
+            "push".to_owned()
+        };
+        command_button(ui, &format!("git {push}"), &with_dir(&push));
+        ui.add_space(12.0);
+        command_button(ui, "git pull", &with_dir("pull"));
     });
+}
+
+/// A command shown in monospace with a Copy button that copies `full` (the command with the
+/// repository folder).
+fn command_button(ui: &mut Ui, shown: &str, full: &str) {
+    ui.label(RichText::new(shown).monospace())
+        .on_hover_text(full);
+    if ui
+        .small_button("Copy")
+        .on_hover_text(format!("Copy: {full}"))
+        .clicked()
+    {
+        ui.ctx().copy_text(full.to_owned());
+    }
 }
 
 /// A command in monospace with a Copy button.
 fn command_row(ui: &mut Ui, cmd: &str) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(cmd).monospace());
-        if ui
-            .small_button("Copy")
-            .on_hover_text("Copy the command")
-            .clicked()
-        {
-            ui.ctx().copy_text(cmd.to_owned());
-        }
-    });
+    ui.horizontal(|ui| command_button(ui, cmd, cmd));
 }
 
 /// "Discard changes to X?" with Discard / Cancel.
@@ -592,7 +607,7 @@ fn merge_window(ctx: &egui::Context, v: &mut Vcs, project: &std::path::Path) {
     egui::Window::new(title)
         .id(egui::Id::new("vcs_merge_window"))
         .open(&mut open)
-        .resizable(false)
+        .fixed_size([760.0, 470.0])
         .collapsible(false)
         .show(ctx, |ui| done = merge_contents(ui, v, project));
     if !open || done {

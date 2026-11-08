@@ -94,6 +94,9 @@ pub struct ProjectSettingsWindow {
     pub quality_selected: usize,
 }
 
+/// The one section open at start (screenshots); see [`section`].
+pub static SCREENSHOT_SECTION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
 /// Settings of the project at `s.project.root`; problems go to the Console.
 pub fn load(s: &mut EditorState) {
     match ProjectSettings::load(&s.project.root) {
@@ -270,6 +273,8 @@ fn package_manager(ui: &mut Ui, w: &mut crate::packages::PackagesWindow, root: &
 
 /// A collapsible group of fields on a page.
 pub fn section(ui: &mut Ui, title: &str, open: bool, add: impl FnOnce(&mut Ui)) {
+    // Screenshots (`MISTY_PROJECT_SETTINGS=Player:Accessibility`): only that section starts open.
+    let open = SCREENSHOT_SECTION.get().map_or(open, |s| s == title);
     egui::CollapsingHeader::new(egui::RichText::new(title).strong())
         .id_salt(("ps_section", title))
         .default_open(open)
@@ -454,11 +459,8 @@ mod tests {
         h.run();
         h.get_by_label("Product Name");
         h.get_by_label("Screen Mode");
-        h.get_by_label("Resizable Window");
-        // The first checkbox of the page is Resizable Window (Identity has none).
-        h.query_all_by_role(egui::accesskit::Role::CheckBox)
-            .next()
-            .unwrap()
+        // The checkbox is named after its row's label (screen readers).
+        h.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Resizable Window")
             .click();
         h.run();
         let player = h.state().project_settings.player.clone().unwrap();
