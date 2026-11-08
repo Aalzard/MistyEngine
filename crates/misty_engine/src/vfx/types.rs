@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::particles::{AlphaKey, ColorKey, Gradient};
+pub use crate::particles::{AlphaKey, ColorKey, Curve, Gradient};
 
 /// Type a port carries. `Color` is an RGBA vector (sRGB in files and fields, linear on the GPU).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -71,46 +71,6 @@ impl PortType {
             Self::Fixed(t) => t,
             Self::Dynamic => dynamic,
         }
-    }
-}
-
-/// A piecewise-linear curve over 0..1 (time, value) keys, like a simple animation curve.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Curve {
-    pub keys: Vec<[f32; 2]>,
-}
-
-impl Default for Curve {
-    fn default() -> Self {
-        Self::linear(1.0, 1.0)
-    }
-}
-
-impl Curve {
-    /// Straight line from `a` (t = 0) to `b` (t = 1).
-    pub fn linear(a: f32, b: f32) -> Self {
-        Self {
-            keys: vec![[0.0, a], [1.0, b]],
-        }
-    }
-
-    pub fn evaluate(&self, t: f32) -> f32 {
-        let mut prev: Option<[f32; 2]> = None;
-        for k in &self.keys {
-            if t <= k[0] {
-                return match prev {
-                    Some(p) if k[0] > p[0] => p[1] + (k[1] - p[1]) * (t - p[0]) / (k[0] - p[0]),
-                    _ => k[1],
-                };
-            }
-            prev = Some(*k);
-        }
-        prev.map_or(1.0, |p| p[1])
-    }
-
-    pub fn sort(&mut self) {
-        self.keys.sort_by(|a, b| a[0].total_cmp(&b[0]));
     }
 }
 

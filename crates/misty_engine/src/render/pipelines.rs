@@ -580,7 +580,9 @@ impl Pipelines {
             attributes: &wgpu::vertex_attr_array![
                 0 => Float32x4,
                 1 => Float32x4,
-                2 => Float32x4
+                2 => Float32x4,
+                3 => Float32x4,
+                4 => Float32x4
             ],
         }];
         let particle_src = include_str!("shaders/particles.wgsl");
