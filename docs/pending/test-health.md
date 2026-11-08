@@ -147,3 +147,117 @@ the hitch test alone passes.
 ## Checks
 
 `cargo fmt --all`; `cargo clippy --workspace --all-targets --release`: 0 warnings.
+
+# Round 2: test isolation (branch test-isolation)
+
+Goal: `cargo test --workspace --release --no-fail-fast` green on a busy machine. Three tests
+failed now and then in full runs (each passed alone); merging main (texture compression,
+round 19B navigation) added a fourth, and another agent saw a fifth once.
+
+## 7. `big_meshes_bake_in_the_background_then_read_back_from_the_cache`
+
+Panicked at `Arc::ptr_eq(&request(tris, None, true), &slot)`: the process-wide bake map no
+longer held the test's slot.
+
+- **Cause.** `meadow_demo_opens_without_a_frozen_frame` calls `mesh_sdf::forget_all()` twice to
+  simulate a new session, and `forget_all` clears the whole map. The hitch test holds the GPU
+  lock; the mesh SDF test is a CPU test and does not, so the two ran side by side. On a busy
+  machine the mesh SDF test's bake (~80 s of CPU) was still running when the hitch test
+  forgot everything. `forget_all` waits until no bake is pending, so it cleared the map
+  just after the test's bake landed, between the test's wait and its `ptr_eq`.
+- **Fix.** `mesh_sdf::test_serial()`: a lock that every test which resets or checks the shared
+  map holds (the mesh SDF test and the MeadowDemo open test). The mesh SDF test already
+  removed only its own hash. `forget_all` now fails loudly after 30 minutes of pending bakes;
+  before, it went on silently after 10.
+
+## 8. `meadow_demo_opens_without_a_frozen_frame`
+
+"the second open baked again instead of reading the cache: 7.56 s, 2 frames".
+
+- **Cause.** The check was a stopwatch: the second open (a new renderer, then frames until no
+  bake is pending) had to finish in under 5 s. The same run's first frame of the first open
+  took 4.5 s. The second open took 2 frames, so nothing was pending after frame 1. Its 6
+  cache files were there (the `cached >= 6` check before it passed). It read the cache; the
+  frames were just slow under load.
+- **Fix.** Count, don't time. In test builds `mesh_sdf::cache_reads()` returns (hits, misses)
+  of bakes that looked in a cache folder. The second open must miss **0** times and read at
+  least 6 fields from `Library/MeshSdf`. That is stricter than the timing: a single re-bake
+  fails it, however fast the machine. The test holds `mesh_sdf_test_serial()`, so no other
+  test's cache reads land in the count. The "frames until baked" loop now fails after 30
+  minutes instead of spinning forever. The per-frame freeze budget (1.5 s) is unchanged.
+
+## 9. `shader_graph_demo_renders` (editor)
+
+"hologram 0 vs floor 52": the Hologram drew pure black.
+
+- **Cause.** `Material::custom_params` loads the material's shader by its *project path*
+  (`Assets/Shaders/Hologram.shadergraph`), which `shader_asset::load` resolves against the
+  process-wide project root. The shader library caches by that path string, **failed loads
+  included**. Many editor tests move the root (every `AssetDatabase::open` of a temp
+  project), and some open copies of the sample scenes. If the root pointed elsewhere when the
+  graph was first looked up (or at `GameView::new`), the load failed. The material then got
+  default render state (opaque, lit) and no property values. The test's later switch of the
+  draw's shader to an absolute path compiled the right shader, but every value was zero:
+  colour 0, intensity 0, black.
+- **Fix (test).** The test now makes the materials' shader paths absolute in its
+  `AssetCache` *before* building the view, so the render state and values resolve from the
+  real file whatever the root is. It also asserts that every custom draw has resolved values
+  and an absolute path. Not changed: the engine's cached-failure behaviour (a shader missing
+  once stays missing until its file's mtime changes). The editor only has one project open,
+  so it does not matter there, but it is worth knowing.
+
+## 10. `navigation_demo2_plays` (editor, from round 19B)
+
+"the rolling block's tiles were rebuilt: 0", in the first loaded run after merging main.
+
+- **Cause.** Carving tile rebuilds run on the background pool (below-normal priority on
+  Windows). The test plays 24 s of game time as fast as it can, and the 12 normal-priority
+  busy loops starved the pool, so no rebuild had come in by the last frame.
+- **Fix.** After the 24 s, the test keeps playing at real-time pace (16 ms per frame, as a game
+  would) until more than 4 tiles were rebuilt, for up to 10 minutes. It still checks logs.
+  Every other assertion is still taken over the original 24 s; the final `rebuilt > 4` and 2
+  live meshes checks are unchanged.
+
+## 11. `templates::meadow_demo_with_sample_scenes`: "git archive failed" (seen once elsewhere)
+
+Not reproduced here, and the failed run's git stderr wasn't kept. What can make it fail:
+every worktree under `MistyWork` shares `MistyEngine/.git`'s object store, and other agents
+commit and merge there all the time. A commit can trigger `git gc --auto` (repack, prune
+loose objects), and a read racing that can fail once. Also, the template tests asked for
+several ~100 MB archives at once. `samples::git_archive` now runs one archive at a time per
+process and retries a failed one twice (1 s, then 2 s later). The error keeps git's last stderr.
+
+## 12. Loaded runs
+
+12 busy-loop PowerShell processes (16 logical cores, CPU at 100 %), then
+`cargo test --workspace --release --no-fail-fast` three times in a row. Before run 1,
+`SampleProject/Library/MeshSdf` was deleted so the first MeadowDemo open really baked under load
+(the case that failed).
+
+First batch (before the navigation fix): run 1 failed only `navigation_demo2_plays` (section
+10); runs 2 and 3 had 0 failures. Final batch, all changes in (main 271bae9 merged):
+
+| Run | misty_editor | misty_engine | misty_player + others | Failures |
+|---|---|---|---|---|
+| 1 (1202 s, uncached SDFs) | 689 passed, 71 ignored | 1174 passed, 83 ignored (1123 s) | 11 + 1 passed | 0 |
+| 2 (1784 s) | 689 passed, 71 ignored | did not finish | - | see below |
+| 3 (1720 s) | 689 passed, 71 ignored | 1174 passed, 83 ignored (1592 s) | 11 + 1 passed | 0 |
+| 4 (4287 s) | 689 passed, 71 ignored | 1174 passed, 83 ignored (4073 s) | 11 + 1 passed | 0 |
+
+Run 2: `cargo` and the engine test process both vanished mid-run (exit 1, no panic, no "test
+failed" line, no Windows crash event or error report). They were terminated from outside, not
+by a failing test, so run 4 replaced it.
+
+Run 4 shared the machine with another agent's full engine suite as well as the busy loops. For
+about 55 minutes all 16 test threads sat on GPU tests waiting for the GPU lock, then went on
+normally. The background pool runs below normal priority. With every core busy at normal
+priority, its threads get almost no CPU, so a GPU test that waits on it (streaming off: a
+mesh SDF bake with `install`) holds the GPU lock for a long time. That is slow, not wrong, and
+it only happens when the machine is saturated on purpose. Possible follow-up:
+`meadow_demo_opens_without_a_frozen_frame` could take `mesh_sdf_test_serial()` before
+`headless()`, so it never holds the GPU lock while it waits for the mesh SDF test's bake.
+
+## Checks (round 2)
+
+`cargo fmt --all`; `cargo clippy --workspace --all-targets --release`: 0 warnings (on the
+final code, before the final batch).
