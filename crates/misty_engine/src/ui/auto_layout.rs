@@ -82,7 +82,13 @@ pub fn sizes(scene: &Scene, e: Entity, axis: usize, width: Option<f32>) -> Sizes
         && t.enabled
     {
         let wrap = if t.wrap { width } else { None };
-        let size = text_size(builtin_font(), &t.text, t.font_size, t.line_spacing, wrap);
+        let size = text_size(
+            builtin_font(),
+            &t.text,
+            t.scaled_font_size(),
+            t.line_spacing,
+            wrap,
+        );
         s.preferred = size[axis];
     }
     // A Layout Element overrides whatever it sets.

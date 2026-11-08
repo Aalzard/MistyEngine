@@ -577,6 +577,12 @@ impl Default for UiText {
 }
 
 impl UiText {
+    /// The on-screen font size: [`Self::font_size`] times the accessibility text scale
+    /// (Project Settings ▸ Player ▸ Accessibility, Lua `Accessibility.textScale`).
+    pub fn scaled_font_size(&self) -> f32 {
+        crate::accessibility::scaled_font_size(self.font_size)
+    }
+
     pub const AUTO_MIN: f32 = 10.0;
     pub const AUTO_MAX: f32 = 72.0;
 }

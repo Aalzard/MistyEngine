@@ -23,6 +23,8 @@ pub struct Gpu {
     pub renderer: Renderer,
     /// Canvas UI drawn over the Game view.
     pub ui: UiRenderer,
+    /// Colour-blind filter over the Game view, UI included (Player Settings ▸ Accessibility).
+    pub color_filter: misty_engine::render::color_filter::ColorFilter,
     pub scene: Viewport,
     pub game: Viewport,
     /// [`misty_engine::quality::generation`] the renderer was set up for.
@@ -53,6 +55,7 @@ impl Gpu {
             state,
             renderer,
             ui,
+            color_filter: Default::default(),
             scene: Viewport::default(),
             game: Viewport::default(),
             quality: u64::MAX,
@@ -70,6 +73,8 @@ impl Gpu {
                 scene,
                 interaction,
             );
+            self.color_filter
+                .apply(&self.state.device, &self.state.queue, target);
         }
     }
 }

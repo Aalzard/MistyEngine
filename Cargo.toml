@@ -10,7 +10,8 @@ edition = "2024"
 license-file = "LICENSE"
 
 [workspace.dependencies]
-eframe = { version = "0.36", features = ["persistence"] }
+# `accesskit`: screen readers (on by default in eframe; named so it stays on).
+eframe = { version = "0.36", features = ["persistence", "accesskit"] }
 egui = "0.36"
 egui-wgpu = "0.36"
 egui_dock = { version = "0.21", features = ["serde"] }

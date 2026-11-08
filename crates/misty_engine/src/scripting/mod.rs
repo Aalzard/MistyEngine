@@ -19,6 +19,7 @@
 //! return Rotator
 //! ```
 
+pub mod accessibility_api;
 pub mod animator_api;
 pub mod api;
 pub mod app_api;

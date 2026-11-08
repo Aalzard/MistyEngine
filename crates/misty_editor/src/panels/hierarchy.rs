@@ -38,7 +38,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     update_focus(ui, state, panel);
 
     panel_toolbar(ui, |ui| {
-        ui.menu_button("➕ ⏷", |ui| create_menu_items(ui, state, None));
+        let create = ui.menu_button("➕ ⏷", |ui| create_menu_items(ui, state, None));
+        crate::a11y::name(create.response, egui::WidgetType::Button, "Create");
         search_field(ui, &mut state.hierarchy.search, ui.available_width())
             .on_hover_text("Name words and filters: t:Light t:Camera tag:Player layer:UI");
     });
@@ -248,6 +249,20 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
             color,
         );
     }
+
+    // Version control status of the scene file, left of the ⋮ menu.
+    let badge = state
+        .scene
+        .entry(id)
+        .and_then(|e| e.path.clone())
+        .and_then(|p| state.vcs.badge(&p));
+    let resp = match badge {
+        Some(b) => {
+            crate::vcs::paint_badge(ui, pos2(rect.right() - 30.0, rect.center().y), b, 12.0);
+            resp.on_hover_text(crate::vcs::badge_tip(b))
+        }
+        None => resp,
+    };
 
     // ⋮ menu at the right edge, same items as the right-click menu.
     let menu_rect = Rect::from_min_max(pos2(rect.right() - 20.0, rect.top()), rect.max);

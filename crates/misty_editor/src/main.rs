@@ -5,9 +5,11 @@
 // (`attach_parent_console`), so its output still shows there.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod a11y;
 mod actions;
 mod anim_clips;
 mod anim_controllers;
+mod api_docs;
 mod app;
 mod area_light_handles;
 mod asset_actions;
@@ -232,6 +234,7 @@ mod undo_names;
 mod undo_terrain;
 mod updater;
 mod vcam_tools;
+mod vcs;
 mod vfx_preview;
 mod vgeo_convert;
 mod viewport;
@@ -267,7 +270,8 @@ fn build_args(rest: &[String]) -> Result<(Option<PathBuf>, Option<String>), Stri
 
 /// `misty [<project>]`, `misty --new <Template> <folder>` (creates the project, then opens it)
 /// or `misty --build <project> <output folder>` (builds the game without a window, then exits)
-/// or `misty --run-tests <project> [--filter X] [--results out.xml]` (runs the project's tests).
+/// or `misty --run-tests <project> [--filter X] [--results out.xml]` (runs the project's tests)
+/// or `misty --api-docs <folder>` (writes the Lua API reference).
 fn parse_args() -> Result<Start, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
@@ -311,13 +315,15 @@ fn parse_args() -> Result<Start, String> {
         [flag, rest @ ..] if flag == "--mcp-connect" => {
             std::process::exit(mcp::bridge::connect_main(rest))
         }
+        // The Lua API reference (Markdown + one HTML page) into a folder.
+        [flag, out] if flag == "--api-docs" => std::process::exit(api_docs::cli(Path::new(out))),
         [flag, rest @ ..] if flag == "--run-tests" => {
             // Headless test run for CI: JUnit XML and the exit code (see `testing::cli`).
             let code = misty_engine::testing::cli::run(rest, &mut std::io::stdout());
             std::process::exit(code)
         }
         [flag, ..] if flag.starts_with("--") => Err(format!(
-            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> [<output folder>] [--profile <name>] | {} | {} | {} ({flag}?)",
+            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> [<output folder>] [--profile <name>] | misty --api-docs <output folder> | {} | {} | {} ({flag}?)",
             misty_engine::testing::cli::USAGE,
             mcp::headless::USAGE,
             mcp::bridge::CONNECT_USAGE
