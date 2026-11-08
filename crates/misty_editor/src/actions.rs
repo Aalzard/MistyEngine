@@ -95,7 +95,7 @@ pub enum AssetKind {
 }
 
 impl AssetKind {
-    pub const ALL: [AssetKind; 10] = [
+    pub const ALL: [AssetKind; 11] = [
         AssetKind::Folder,
         AssetKind::Material,
         AssetKind::Script,
