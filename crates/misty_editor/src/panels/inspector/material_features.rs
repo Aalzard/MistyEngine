@@ -249,7 +249,14 @@ pub fn specular_row(ui: &mut Ui, f: &mut Features) -> bool {
                     .range(0.0..=2.0),
             )
             .changed();
-        ch |= color_rgb(ui, &mut f.specular_color);
+        // A plain swatch (the wide one would run past the number on narrow panels).
+        let mut srgb = f
+            .specular_color
+            .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
+        if ui.color_edit_button_srgb(&mut srgb).changed() {
+            f.specular_color = srgb.map(|v| v as f32 / 255.0);
+            ch = true;
+        }
     });
     ui.end_row();
     ch
