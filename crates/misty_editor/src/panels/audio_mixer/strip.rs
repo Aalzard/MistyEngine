@@ -1,10 +1,12 @@
 //! One channel strip per mixer group: name, level readout, vertical fader with a dB scale and a
-//! live VU meter, Mute / Solo / Bypass buttons, and the effect slots with Add Effect.
+//! live VU meter, Mute / Solo / Bypass buttons, and the effect slots with Add Effect. Slots show
+//! where Sends go and how many feed a Receive / Duck Volume, a gain-reduction bar while ducking,
+//! and can be dragged to reorder the chain.
 
 use egui::{Align2, Color32, FontId, Rect, Sense, Stroke, Ui, UiBuilder, pos2, vec2};
 use misty_engine::audio::EffectKind;
 use misty_engine::audio::effects::{MAX_DB, MIN_DB};
-use misty_engine::audio::mixer::{AudioMixer, MixerGroup, volume_key};
+use misty_engine::audio::mixer::{AudioMixer, MixerEffect, MixerGroup, volume_key};
 
 use super::{Live, MixerItem};
 use crate::audio_mixers;
@@ -185,21 +187,30 @@ pub fn show(
         theme::TEXT_DIM,
     );
     y += 21.0;
-    for fx in &group.effects {
+    let reduction = s.audio_mixer.reduction(group.id);
+    for (index, fx) in group.effects.iter().enumerate() {
         let r = slot(y);
         let sel = s.audio_mixer.selected == Some(MixerItem::Group(group.id, Some(fx.id)));
         let fill = if sel {
             theme::SELECTION
         } else if fx.bypass || group.bypass_effects {
             theme::BUTTON_BG.gamma_multiply(0.4)
+        } else if fx.kind.is_routing() {
+            ROUTING_FILL
         } else {
             theme::BUTTON_BG
         };
         painter.rect_filled(r, 2.0, fill);
+        // Ducking / compression in Play mode: an orange bar growing from the right.
+        if matches!(fx.kind, EffectKind::DuckVolume | EffectKind::Compressor) && reduction < -0.5 {
+            let w = (-reduction / 30.0).clamp(0.0, 1.0) * r.width();
+            let bar = Rect::from_min_max(pos2(r.right() - w, r.bottom() - 3.0), r.max);
+            painter.rect_filled(bar, 1.0, Color32::from_rgb(230, 140, 40));
+        }
         painter.text(
             r.center(),
             Align2::CENTER_CENTER,
-            fx.kind.label(),
+            slot_label(mixer, fx),
             FontId::proportional(11.0),
             if fx.bypass {
                 theme::TEXT_DIM
@@ -207,9 +218,39 @@ pub fn show(
                 theme::TEXT
             },
         );
-        let resp = ui.interact(r, ui.id().with(("fx", group.id, fx.id)), Sense::click());
+        let resp = ui.interact(
+            r,
+            ui.id().with(("fx", group.id, fx.id)),
+            Sense::click_and_drag(),
+        );
+        resp.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, slot_label(mixer, fx))
+        });
         if resp.clicked() {
             super::select(s, path, MixerItem::Group(group.id, Some(fx.id)));
+        }
+        // Drag a slot onto another one of the same group to move it there.
+        if resp.drag_started() {
+            resp.dnd_set_drag_payload(FxDrag(group.id, fx.id));
+        }
+        if let Some(p) = resp.dnd_hover_payload::<FxDrag>()
+            && p.0 == group.id
+            && p.1 != fx.id
+        {
+            painter.hline(
+                r.x_range(),
+                r.top() - 1.5,
+                Stroke::new(2.0, theme::SELECTION),
+            );
+        }
+        if let Some(p) = resp.dnd_release_payload::<FxDrag>()
+            && p.0 == group.id
+            && p.1 != fx.id
+        {
+            let (gid, eid) = (p.0, p.1);
+            audio_mixers::edit(s, path, "Move Effect", false, |m| {
+                m.move_effect_to(gid, eid, index)
+            });
         }
         let (gid, eid, bypass) = (group.id, fx.id, fx.bypass);
         resp.context_menu(|ui| {
@@ -251,10 +292,39 @@ pub fn show(
     });
 }
 
-/// "Add..." menu listing the effect kinds.
+/// Fill of Send / Receive / Duck Volume slots (routing, not processing).
+const ROUTING_FILL: Color32 = Color32::from_rgb(52, 70, 92);
+
+/// An effect slot being dragged: (group, effect).
+#[derive(Clone, Copy)]
+struct FxDrag(u32, u32);
+
+/// What an effect slot says: the kind, plus where a Send goes and how many feed a Receive.
+pub fn slot_label(mixer: &AudioMixer, fx: &MixerEffect) -> String {
+    match fx.kind {
+        EffectKind::Send => match fx.target.and_then(|t| mixer.group_of_effect(t)) {
+            Some(g) => format!("Send → {}", mixer.group(g).map_or("?", |g| &g.name)),
+            None => "Send (none)".into(),
+        },
+        EffectKind::Receive | EffectKind::DuckVolume => {
+            let n = mixer.sends_to(fx.id).len();
+            if n == 0 {
+                fx.kind.label().into()
+            } else {
+                format!("{} ← {n}", fx.kind.label())
+            }
+        }
+        k => k.label().into(),
+    }
+}
+
+/// "Add..." menu listing the effect kinds (signal effects, then routing units).
 pub fn add_effect_menu(ui: &mut Ui, s: &mut EditorState, path: &str, group: u32) {
     ui.menu_button("Add...", |ui| {
         for kind in EffectKind::ALL {
+            if kind == EffectKind::Send {
+                ui.separator();
+            }
             if ui.button(kind.label()).clicked() {
                 let mut added = None;
                 audio_mixers::edit(s, path, "Add Effect", false, |m| {

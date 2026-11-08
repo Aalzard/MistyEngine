@@ -16,6 +16,10 @@ rapier3d.workspace = true
 rapier2d.workspace = true
 mlua.workspace = true
 kira.workspace = true
+# Audio: streamed clips are decoded on worker threads (the decoders kira already brings: WAV,
+# OGG Vorbis, MP3; MPL-2.0) and handed to the mixer through a lock-free ring (MIT / Apache-2.0).
+symphonia = { version = "0.6", default-features = false, features = ["mp3", "ogg", "vorbis", "wav", "pcm"] }
+rtrb = "0.4"
 image.workspace = true
 gltf.workspace = true
 # FBX import: ufbx (single-file C library, MIT or public domain) through its official binding.

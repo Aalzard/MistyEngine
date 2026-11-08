@@ -62,6 +62,8 @@ pub struct MixerWindow {
     pub selected: Option<MixerItem>,
     /// Displayed meter level per group (dB, falling).
     levels: HashMap<u32, f32>,
+    /// Displayed gain reduction of each group's Duck Volume / Compressor (dB, recovering).
+    reductions: HashMap<u32, f32>,
     /// Mixer and store generation last sent to the running game.
     pushed: Option<(String, u64)>,
     renaming: Option<(Rename, String)>,
@@ -75,6 +77,7 @@ impl MixerWindow {
             self.selected = None;
             self.snapshot = 0;
             self.levels.clear();
+            self.reductions.clear();
             self.renaming = None;
         }
     }
@@ -82,6 +85,11 @@ impl MixerWindow {
     /// Meter level of a group (dB).
     pub fn level(&self, group: u32) -> f32 {
         self.levels.get(&group).copied().unwrap_or(MIN_DB)
+    }
+
+    /// Gain reduction shown for a group (dB, 0 = none).
+    pub fn reduction(&self, group: u32) -> f32 {
+        self.reductions.get(&group).copied().unwrap_or(0.0)
     }
 }
 
@@ -175,12 +183,12 @@ fn sync_live(ui: &Ui, s: &mut EditorState, path: &str, mixer: &AudioMixer) -> Op
         rt.with_audio(|a| a.replace_mixer(path, mixer.clone()));
         s.audio_mixer.pushed = pushed;
     }
-    let (live, peaks) = rt.with_audio(|a| {
+    let (live, peaks, reductions) = rt.with_audio(|a| {
         let live = a.mixer_at(path).map(|m| Live {
             values: m.values(),
             snapshot: m.snapshot,
         });
-        (live, a.mixer_peaks(path))
+        (live, a.mixer_peaks(path), a.mixer_reductions(path))
     });
     let dt = ui.input(|i| i.stable_dt).min(0.1);
     for g in &mixer.groups {
@@ -189,6 +197,9 @@ fn sync_live(ui: &Ui, s: &mut EditorState, path: &str, mixer: &AudioMixer) -> Op
         s.audio_mixer
             .levels
             .insert(g.id, now.max(shown).max(MIN_DB));
+        let gr = reductions.get(&g.id).copied().unwrap_or(0.0);
+        let held = (s.audio_mixer.reduction(g.id) + METER_FALL * dt).min(0.0);
+        s.audio_mixer.reductions.insert(g.id, gr.min(held));
     }
     ui.ctx().request_repaint();
     // `None` while no source uses the mixer: the window shows its own values.

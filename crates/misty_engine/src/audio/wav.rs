@@ -17,6 +17,27 @@ pub fn sine_beep(frequency: f32, seconds: f32, sample_rate: u32) -> Vec<u8> {
 
 /// Wrap mono 16-bit samples in a RIFF/WAVE header.
 pub fn pcm16_mono(samples: &[i16], sample_rate: u32) -> Vec<u8> {
+    pcm16(samples, 1, sample_rate)
+}
+
+/// Stereo 16-bit WAV from (left, right) samples in -1..1.
+pub fn pcm16_stereo(frames: &[(f32, f32)], sample_rate: u32) -> Vec<u8> {
+    let q = |v: f32| (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+    let samples: Vec<i16> = frames.iter().flat_map(|(l, r)| [q(*l), q(*r)]).collect();
+    pcm16(&samples, 2, sample_rate)
+}
+
+/// Mono WAV of `f(t)` (-1..1) for `seconds`.
+pub fn synth(seconds: f32, sample_rate: u32, mut f: impl FnMut(f32) -> f32) -> Vec<u8> {
+    let n = (seconds * sample_rate as f32) as usize;
+    let samples: Vec<i16> = (0..n)
+        .map(|i| (f(i as f32 / sample_rate as f32).clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+        .collect();
+    pcm16_mono(&samples, sample_rate)
+}
+
+/// Interleaved 16-bit samples with `channels` channels in a RIFF/WAVE header.
+fn pcm16(samples: &[i16], channels: u16, sample_rate: u32) -> Vec<u8> {
     let data_len = (samples.len() * 2) as u32;
     let mut out = Vec::with_capacity(44 + data_len as usize);
     out.extend_from_slice(b"RIFF");
@@ -24,10 +45,10 @@ pub fn pcm16_mono(samples: &[i16], sample_rate: u32) -> Vec<u8> {
     out.extend_from_slice(b"WAVEfmt ");
     out.extend_from_slice(&16u32.to_le_bytes());
     out.extend_from_slice(&1u16.to_le_bytes()); // PCM
-    out.extend_from_slice(&1u16.to_le_bytes()); // mono
+    out.extend_from_slice(&channels.to_le_bytes());
     out.extend_from_slice(&sample_rate.to_le_bytes());
-    out.extend_from_slice(&(sample_rate * 2).to_le_bytes());
-    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&(sample_rate * 2 * channels as u32).to_le_bytes());
+    out.extend_from_slice(&(2 * channels).to_le_bytes());
     out.extend_from_slice(&16u16.to_le_bytes());
     out.extend_from_slice(b"data");
     out.extend_from_slice(&data_len.to_le_bytes());

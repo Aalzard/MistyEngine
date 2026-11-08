@@ -2843,3 +2843,42 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Recording into `.anim` clips, Replace edit mode, nested audio tracks, Control prefab instancing,
   particles in the edit-mode preview, dolly / path cameras, signal assets with a receiver
   component.
+## Round 19D — Audio: mixer routing and spatial depth (branch r19-audio)
+
+### Done (docs/pending/r19-audio.md, screenshots `docs/screenshots/r19/audio_*`)
+- Our own mixer graph (`audio/engine.rs`) replaces kira's tracks; kira only opens the device and
+  plays the graph as one sound. The same graph renders offline, so tests check real buffers
+  without a sound device. Commands go through a lock-free ring; levels, gain reduction,
+  positions and finished voices come back with `try_lock`.
+- Send / Receive / Duck Volume units (side-chain ducking with threshold, ratio, attack, release,
+  knee, sidechain mix); tracks processed in dependency order so sends land in the same block.
+- New effects Chorus, Flange, Pitch Shifter (phase vocoder), ParamEQ; Lowpass, Highpass, Echo,
+  Reverb, Distortion and Compressor reimplemented on the graph. Every effect has an editable
+  chain position (drag or Move Up / Down), bypass and a wet mix level.
+- Live edits: inserts fade in, removals fade out with their tails, reorders crossfade from the
+  old chain, reroutes and moved voices feed both destinations for 20 ms; no source restarts;
+  voices of a removed group move to its nearest surviving parent.
+- Nested mixers (a mixer's Output is another mixer's group; loops refused) and weighted snapshot
+  blends (`TransitionToSnapshots`).
+- Spatialize: spherical-head binaural model (ITD up to 0.66 ms, head-shadow shelf, rear cue);
+  spread moves sideways cues to the front; Custom rolloff curves with an Inspector curve editor.
+- Clips: Decompress On Load / Compressed In Memory / Streaming (worker-thread decoding through
+  symphonia, already in the tree via kira; Vorbis was already supported so no new decoder),
+  Force To Mono, import settings and format info in the clip Inspector.
+- Lua: `TransitionToSnapshots`, mixer `outputAudioMixerGroup`, `spatialize`, Custom rolloff with
+  `SetCustomCurve` / `GetCustomCurve`; any effect parameter, send level or wet level can be
+  exposed for `SetFloat` / `GetFloat`.
+- Mixer window and Inspector: send targets, "Sends from", ducking bars and readout in Play mode,
+  filter / EQ response curves, mixer Output picker. Sample `AudioDemo2` (ducking by a send,
+  reverb send zone, Outdoor / Indoor snapshot blend, HRTF orbit, streamed score, custom rolloff).
+- Measured (release, this machine, `mixer_cost_report`, 48 kHz): per voice 0.92 ms of audio-thread CPU per second of sound (0.09 % of one core) for a 2D voice,
+  1.08 ms (0.11 %) resampled, 2.15 ms (0.21 %) spatialized (HRTF); 32 HRTF voices ≈ 6.9 % of a core.
+  Per effect instance: Lowpass / Highpass / ParamEQ 0.24 ms (0.02 %), Echo 0.48 ms, Duck Volume
+  0.52 ms, Compressor 0.74 ms, Distortion 1.34 ms, Flange 1.70 ms, Reverb 1.96 ms (0.20 %),
+  Chorus 2.33 ms (0.23 %), Pitch Shifter 27.9 ms (2.8 %, FFT 1024 / overlap 4); graph overhead
+  0.35 ms per second.
+
+### Not done yet
+- Measured HRTF sets and elevation cues; transcoding at import (Vorbis / ADPCM encoders);
+  Preload Audio Data / Load In Background; mixer views and effect presets; spread and
+  reverb-zone-mix curves over distance; sends between mixers.

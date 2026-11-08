@@ -146,3 +146,126 @@ fn mixer_and_source_api_from_lua() {
         "PlayClipAtPoint"
     );
 }
+
+const BLEND_SCRIPT: &str = r#"
+local T = {}
+function T:Start()
+    local mixer = AudioMixer.Find("World")
+    local outdoor = mixer:FindSnapshot("Outdoor")
+    local indoor = mixer:FindSnapshot("Indoor")
+    mixer:TransitionToSnapshots({ outdoor, indoor }, { 0.25, 0.75 }, 0)
+    Debug.Log("blend", mixer:GetFloat("ReverbSend"))
+    Debug.Log("eq", mixer:SetFloat("EqGain", 2.5), mixer:GetFloat("EqGain"), mixer:SetFloat("EqWet", 40), mixer:GetFloat("EqWet"))
+    Debug.Log("output", mixer.outputAudioMixerGroup)
+    mixer.outputAudioMixerGroup = AudioMixer.Find("Main"):FindMatchingGroups("Music")[1]
+    Debug.Log("nested", mixer.outputAudioMixerGroup.name)
+    local src = self.gameObject:GetComponent("AudioSource")
+    src.spatialize = true
+    src:SetCustomCurve("CustomRolloff", { { 1, 0 }, { 0, 1 }, { 0.5, 0.25 } })
+    local keys = src:GetCustomCurve("CustomRolloff")
+    Debug.Log("curve", src.rolloffMode, #keys, keys[2][1], keys[2][2], src.spatialize)
+    mixer:TransitionToSnapshots({ outdoor, indoor }, { 1, 0 }, 1)
+end
+return T
+"#;
+
+#[test]
+fn snapshot_blends_effect_parameters_and_nested_output_from_lua() {
+    let (root, ..) = project();
+    std::fs::write(root.join("Assets/Scripts/Blend.lua"), BLEND_SCRIPT).unwrap();
+    // World: Master ▸ SFX (ParamEQ, Send to Reverb), Reverb (Receive, Reverb).
+    let mut m = AudioMixer::default();
+    let sfx = m.add_group(MASTER, "SFX");
+    let reverb = m.add_group(MASTER, "Reverb");
+    let eq = m.add_effect(sfx, EffectKind::ParamEQ).unwrap();
+    let send = m.add_effect(sfx, EffectKind::Send).unwrap();
+    let recv = m.add_effect(reverb, EffectKind::Receive).unwrap();
+    m.add_effect(reverb, EffectKind::Reverb);
+    assert!(m.set_send_target(sfx, send, Some(recv)));
+    let level = effect_key(sfx, send, "Send level");
+    m.snapshots[0].name = "Outdoor".into();
+    m.set_value(0, &level, -40.0);
+    let indoor = m.add_snapshot(0, "Indoor");
+    m.set_value(indoor, &level, 0.0);
+    for (key, name) in [
+        (level.clone(), "ReverbSend"),
+        (effect_key(sfx, eq, "Frequency gain"), "EqGain"),
+        (effect_key(sfx, eq, crate::audio::effects::WET), "EqWet"),
+    ] {
+        m.expose(&key);
+        m.rename_exposed("MyExposedParam", name);
+    }
+    m.save(&root.join("Assets/Audio/Mixers/World.mixer"))
+        .unwrap();
+    let mut scene = Scene::default_3d("t");
+    let e = scene.spawn("Speaker", None);
+    scene.add(
+        e,
+        AudioSource {
+            clip: Some("Assets/Audio/Beep.wav".into()),
+            output: Some("Assets/Audio/Mixers/World.mixer#SFX".into()),
+            ..Default::default()
+        },
+    );
+    scene.add(
+        e,
+        Scripts {
+            list: vec![ScriptRef {
+                path: "Assets/Scripts/Blend.lua".into(),
+                ..Default::default()
+            }],
+        },
+    );
+    let (audio, log) = Audio::null(root.clone());
+    let mut rt =
+        Runtime::start_with_audio(&mut scene, root.clone(), &ProjectSettings::default(), audio);
+    let mut time = Time::default();
+    let mut logs = Vec::new();
+    for _ in 0..30 {
+        time.advance(1.0 / 60.0);
+        rt.update(&mut scene, &time, Input::default());
+        logs.extend(rt.take_logs());
+    }
+    let text: Vec<&str> = logs
+        .iter()
+        .filter(|(k, _)| *k == LogKind::Info)
+        .map(|(_, t)| t.as_str())
+        .collect();
+    assert_eq!(
+        text,
+        [
+            "blend -10",
+            "eq true 2.5 true 40",
+            "output nil",
+            "nested Music",
+            "curve Custom 3 0.5 0.25 true",
+        ],
+        "{logs:?}"
+    );
+    let src = scene.world.get::<&AudioSource>(e).unwrap().clone();
+    assert_eq!(src.custom_rolloff.keys[0], [0.0, 1.0], "sorted");
+    // Halfway back to Outdoor after 0.5 s (from -10 dB towards -40 dB); the EQ override and
+    // the wet level reach the SFX track; World's Master plays into Main's Music.
+    let (send_db, specs, master, music) = rt.with_audio(|a| {
+        let i = a.find_mixer("World").unwrap();
+        let main = a.find_mixer("Main").unwrap();
+        let w = a.mixer(i).unwrap();
+        let music = a
+            .mixer(main)
+            .unwrap()
+            .asset
+            .group_by_name("Music")
+            .unwrap()
+            .id;
+        (
+            w.value(&level),
+            w.effects(sfx),
+            w.master_track().unwrap(),
+            a.mixer(main).unwrap().tracks[&music],
+        )
+    });
+    assert!(send_db < -20.0 && send_db > -40.0, "{send_db}");
+    assert_eq!(specs[0].values[2], 2.5);
+    assert!((specs[0].wet - 0.4).abs() < 1e-6);
+    assert_eq!(log.lock().unwrap().tracks[&master].parent, Some(music));
+}

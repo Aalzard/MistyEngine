@@ -1,8 +1,18 @@
-//! Distance attenuation and stereo panning for 3D sounds (pure math, no audio device).
+//! Distance attenuation, stereo panning and binaural direction for 3D sounds (pure math, no
+//! audio device).
 
 use glam::{Mat4, Vec3};
+use serde::{Deserialize, Serialize};
 
 use crate::scene::{AudioRolloff, AudioSource};
+
+/// Binaural rendering of a voice: the source direction in listener space (x right, y up,
+/// z forward) and how much of the voice is rendered binaurally (its spatial blend).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HrtfParams {
+    pub dir: [f32; 3],
+    pub mix: f32,
+}
 
 /// Volume, pitch and pan a voice should play with this frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -14,6 +24,8 @@ pub struct VoiceParams {
     /// -1 (left) .. 1 (right).
     pub pan: f32,
     pub looping: bool,
+    /// Spatialized 3D sources: rendered with the head model instead of panning.
+    pub binaural: Option<HrtfParams>,
 }
 
 impl Default for VoiceParams {
@@ -23,18 +35,104 @@ impl Default for VoiceParams {
             pitch: 1.0,
             pan: 0.0,
             looping: false,
+            binaural: None,
         }
     }
 }
 
-/// Gain (0..1) at `distance` from a 3D source.
+/// A custom rolloff: (distance as a share of Max Distance, volume) keys, both 0..1, joined by a
+/// smooth curve that never overshoots between keys (monotone cubic), like an animation curve.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RolloffCurve {
+    pub keys: Vec<[f32; 2]>,
+}
+
+impl Default for RolloffCurve {
+    fn default() -> Self {
+        Self {
+            keys: vec![[0.0, 1.0], [0.2, 0.5], [0.5, 0.15], [1.0, 0.0]],
+        }
+    }
+}
+
+impl RolloffCurve {
+    /// Keys sorted by distance and clamped to 0..1.
+    pub fn sanitize(&mut self) {
+        for k in &mut self.keys {
+            k[0] = k[0].clamp(0.0, 1.0);
+            k[1] = k[1].clamp(0.0, 1.0);
+        }
+        self.keys.sort_by(|a, b| a[0].total_cmp(&b[0]));
+    }
+
+    /// Volume at `x` (share of Max Distance); flat before the first and after the last key.
+    pub fn evaluate(&self, x: f32) -> f32 {
+        let k = &self.keys;
+        match k.len() {
+            0 => return 1.0,
+            1 => return k[0][1],
+            _ => {}
+        }
+        if x <= k[0][0] {
+            return k[0][1];
+        }
+        if x >= k[k.len() - 1][0] {
+            return k[k.len() - 1][1];
+        }
+        let i = k.partition_point(|p| p[0] <= x).clamp(1, k.len() - 1) - 1;
+        let (x0, y0, x1, y1) = (k[i][0], k[i][1], k[i + 1][0], k[i + 1][1]);
+        let h = (x1 - x0).max(1e-6);
+        let slope = |a: usize| (k[a + 1][1] - k[a][1]) / (k[a + 1][0] - k[a][0]).max(1e-6);
+        // Fritsch-Carlson tangents: zero at extrema, so the curve stays between its keys.
+        let tangent = |j: usize| -> f32 {
+            if j == 0 {
+                slope(0)
+            } else if j == k.len() - 1 {
+                slope(j - 1)
+            } else {
+                let (a, b) = (slope(j - 1), slope(j));
+                if a * b <= 0.0 {
+                    0.0
+                } else {
+                    2.0 / (1.0 / a + 1.0 / b)
+                }
+            }
+        };
+        let (m0, m1) = (tangent(i) * h, tangent(i + 1) * h);
+        let t = (x - x0) / h;
+        let (t2, t3) = (t * t, t * t * t);
+        let y = (2.0 * t3 - 3.0 * t2 + 1.0) * y0
+            + (t3 - 2.0 * t2 + t) * m0
+            + (-2.0 * t3 + 3.0 * t2) * y1
+            + (t3 - t2) * m1;
+        y.clamp(y0.min(y1), y0.max(y1))
+    }
+}
+
+/// Gain (0..1) of `source` at `distance`, with its own custom curve when it has one.
+pub fn distance_gain(source: &AudioSource, distance: f32) -> f32 {
+    match source.rolloff {
+        AudioRolloff::Custom => {
+            let max = source.max_distance.max(1e-4);
+            source.custom_rolloff.evaluate(distance / max)
+        }
+        r => rolloff_gain(r, source.min_distance, source.max_distance, distance),
+    }
+}
+
+/// Gain (0..1) at `distance` from a 3D source (Custom: the default custom curve).
 pub fn rolloff_gain(rolloff: AudioRolloff, min: f32, max: f32, distance: f32) -> f32 {
     let min = min.max(0.0);
     let max = max.max(min + 1e-4);
+    if rolloff == AudioRolloff::Custom {
+        return RolloffCurve::default().evaluate(distance / max);
+    }
     if distance <= min {
         return 1.0;
     }
     match rolloff {
+        AudioRolloff::Custom => 1.0,
         // Holds its level past the max distance instead of cutting off.
         AudioRolloff::Logarithmic => {
             if min <= 0.0 {
@@ -84,19 +182,21 @@ pub fn doppler(
     (1.0 + (factor - 1.0) * level).clamp(0.5, 2.0)
 }
 
+/// Direction from a listener with world matrix `listener` to `source`, in listener space
+/// (x right, y up, z forward), unit length (zero when they coincide).
+pub fn local_direction(listener: Mat4, source: Vec3) -> Vec3 {
+    let (_, rotation, position) = listener.to_scale_rotation_translation();
+    (rotation.inverse() * (source - position)).normalize_or_zero()
+}
+
 /// Mix an Audio Source at world position `at` for a listener (`None` = no listener: only 2D).
 pub fn mix(source: &AudioSource, at: Vec3, listener: Option<Mat4>, muted: bool) -> VoiceParams {
     let blend = source.spatial_blend.clamp(0.0, 1.0);
+    let spread = spread_factor(source.spread);
     let (gain3d, pan3d) = match listener {
         Some(l) => {
             let distance = at.distance(l.w_axis.truncate());
-            let gain = rolloff_gain(
-                source.rolloff,
-                source.min_distance,
-                source.max_distance,
-                distance,
-            );
-            (gain, pan(l, at) * spread_factor(source.spread))
+            (distance_gain(source, distance), pan(l, at) * spread)
         }
         None => (1.0, 0.0),
     };
@@ -107,11 +207,34 @@ pub fn mix(source: &AudioSource, at: Vec3, listener: Option<Mat4>, muted: bool) 
         source.volume.clamp(0.0, 1.0) * gain
     };
     let pan2d = source.stereo_pan.clamp(-1.0, 1.0);
+    // Spatialize: the 3D share goes through the head model; spread narrows its sideways cues
+    // just as it narrows the pan.
+    let binaural = match listener {
+        Some(l) if source.spatialize && blend > 0.0 => {
+            // The sideways share removed by spread moves to the front (or back), so the
+            // direction stays a unit vector and a full spread sits straight ahead.
+            let d = local_direction(l, at);
+            let x = d.x * spread;
+            let rest = (1.0 - x * x - d.y * d.y).max(0.0).sqrt();
+            let z = if d.z < 0.0 { -rest } else { rest };
+            Some(HrtfParams {
+                dir: [x, d.y, z],
+                mix: blend,
+            })
+        }
+        _ => None,
+    };
+    let pan = if binaural.is_some() {
+        pan2d
+    } else {
+        pan2d * (1.0 - blend) + pan3d * blend
+    };
     VoiceParams {
         volume,
         pitch: source.pitch,
-        pan: (pan2d * (1.0 - blend) + pan3d * blend).clamp(-1.0, 1.0),
+        pan: pan.clamp(-1.0, 1.0),
         looping: source.looping,
+        binaural,
     }
 }
 

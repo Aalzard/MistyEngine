@@ -1,0 +1,141 @@
+{
+  "groups": [
+    {
+      "id": 0,
+      "name": "Master",
+      "parent": null,
+      "mute": false,
+      "solo": false,
+      "bypass_effects": false,
+      "effects": []
+    },
+    {
+      "id": 1,
+      "name": "Music",
+      "parent": 0,
+      "mute": false,
+      "solo": false,
+      "bypass_effects": false,
+      "effects": [
+        {
+          "id": 5,
+          "kind": "Lowpass",
+          "bypass": false
+        },
+        {
+          "id": 6,
+          "kind": "DuckVolume",
+          "bypass": false
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Dialogue",
+      "parent": 0,
+      "mute": false,
+      "solo": false,
+      "bypass_effects": false,
+      "effects": [
+        {
+          "id": 7,
+          "kind": "Send",
+          "bypass": false,
+          "target": 6
+        },
+        {
+          "id": 8,
+          "kind": "Send",
+          "bypass": false,
+          "target": 10
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "SFX",
+      "parent": 0,
+      "mute": false,
+      "solo": false,
+      "bypass_effects": false,
+      "effects": [
+        {
+          "id": 9,
+          "kind": "Send",
+          "bypass": false,
+          "target": 10
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Reverb",
+      "parent": 0,
+      "mute": false,
+      "solo": false,
+      "bypass_effects": false,
+      "effects": [
+        {
+          "id": 10,
+          "kind": "Receive",
+          "bypass": false
+        },
+        {
+          "id": 11,
+          "kind": "Reverb",
+          "bypass": false
+        }
+      ]
+    }
+  ],
+  "snapshots": [
+    {
+      "name": "Outdoor",
+      "values": {
+        "1/5/Cutoff freq": 22000.0,
+        "1/6/Attack": 40.0,
+        "1/6/Knee": 6.0,
+        "1/6/Ratio": 6.0,
+        "1/6/Release": 600.0,
+        "1/6/Threshold": -32.0,
+        "1/Volume": -4.0,
+        "2/7/Send level": 0.0,
+        "2/8/Send level": -30.0,
+        "3/9/Send level": -24.0,
+        "4/11/Damping": 0.35,
+        "4/11/Room size": 0.9,
+        "4/11/Wet mix": 100.0
+      }
+    },
+    {
+      "name": "Indoor",
+      "values": {
+        "1/5/Cutoff freq": 900.0,
+        "1/6/Attack": 40.0,
+        "1/6/Knee": 6.0,
+        "1/6/Ratio": 6.0,
+        "1/6/Release": 600.0,
+        "1/6/Threshold": -32.0,
+        "1/Volume": -10.0,
+        "2/7/Send level": 0.0,
+        "2/8/Send level": -4.0,
+        "3/9/Send level": 0.0,
+        "4/11/Damping": 0.35,
+        "4/11/Room size": 0.9,
+        "4/11/Wet mix": 100.0
+      }
+    }
+  ],
+  "start_snapshot": 0,
+  "exposed": [
+    {
+      "name": "MusicVol",
+      "key": "1/Volume"
+    },
+    {
+      "name": "ReverbSend",
+      "key": "2/8/Send level"
+    }
+  ],
+  "next_id": 12
+}

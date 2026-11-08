@@ -110,7 +110,7 @@ fn snapshots_and_exposed_parameters_reach_the_tracks() {
 }
 
 #[test]
-fn solo_silences_other_groups_and_structure_edits_restart() {
+fn solo_silences_other_groups_and_structure_edits_keep_playing() {
     let (root, music, sfx, _) = project("solo");
     let mut scene = Scene::default_3d("t");
     let a = scene.spawn("Music", None);
@@ -139,19 +139,33 @@ fn solo_silences_other_groups_and_structure_edits_restart() {
     };
     assert_eq!(volume(&log), 0.0, "Music isn't soloed");
 
-    // Adding an effect rebuilds the tracks; the looping source starts again on the new ones.
+    // Adding an effect changes the running chain in place: same track, same voice.
+    let voice = *log.lock().unwrap().voices.keys().next().unwrap();
     edited.add_effect(music, EffectKind::Echo);
-    let old = audio.mixer(0).unwrap().tracks[&music];
+    let track = audio.mixer(0).unwrap().tracks[&music];
+    audio.replace_mixer("Assets/Audio/Main.mixer", edited.clone());
+    audio.update(&scene);
+    assert_eq!(audio.mixer(0).unwrap().tracks[&music], track);
+    assert!(audio.is_playing(a));
+    {
+        let log = log.lock().unwrap();
+        assert!(log.voices.contains_key(&voice), "not restarted");
+        assert_eq!(log.played.len(), 1);
+        assert_eq!(log.tracks[&track].effects[0].kind, EffectKind::Echo);
+    }
+    // A new group gets a track; moving Music under it reroutes Music's track.
+    let bus = edited.add_group(MASTER, "Bus");
+    edited.reparent(music, bus);
+    audio.replace_mixer("Assets/Audio/Main.mixer", edited.clone());
+    let bus_t = audio.mixer(0).unwrap().tracks[&bus];
+    assert_eq!(log.lock().unwrap().tracks[&track].parent, Some(bus_t));
+    // Removing Music (under Bus) moves its voice to Bus; its track goes.
+    edited.remove_group(music);
     audio.replace_mixer("Assets/Audio/Main.mixer", edited);
     audio.update(&scene);
-    let new = audio.mixer(0).unwrap().tracks[&music];
-    assert_ne!(old, new);
-    assert!(audio.is_playing(a));
-    assert_eq!(voice_track(&log), Some(new));
-    assert!(
-        !log.lock().unwrap().tracks.contains_key(&old),
-        "old tracks removed"
-    );
+    assert!(audio.is_playing(a), "still playing");
+    assert_eq!(voice_track(&log), Some(bus_t));
+    assert!(!log.lock().unwrap().tracks.contains_key(&track));
     std::fs::remove_dir_all(root).ok();
 }
 

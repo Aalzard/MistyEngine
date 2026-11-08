@@ -21,6 +21,9 @@ pub mod defaults {
     pub fn is_priority(v: &u16) -> bool {
         *v == 128
     }
+    pub fn is_default_curve(v: &crate::audio::spatial::RolloffCurve) -> bool {
+        *v == Default::default()
+    }
 }
 
 /// Room character of a reverb zone.

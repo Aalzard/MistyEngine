@@ -1,18 +1,24 @@
 //! Play-mode audio: Audio Sources heard through the Audio Listener, mixed through Audio Mixers.
 //!
 //! [`Audio`] owns the voices started by Audio Sources (play on awake, scripts) and, every frame,
-//! recomputes their volume, pitch and pan from the listener and source positions, and pushes
-//! mixer group volumes and effect values to the backend's tracks. The sound device (kira) is
-//! opened lazily on the first sound, so scenes without audio and tests never touch it; if it
-//! can't be opened a warning is logged and everything keeps running silently.
+//! recomputes their volume, pitch, pan and binaural direction from the listener and source
+//! positions, and pushes mixer group volumes and effect values to the backend's tracks. Sound
+//! is mixed by our own graph ([`engine`]: sends, ducking, live chain edits, streaming); the
+//! sound device (through kira) is opened lazily on the first sound, so scenes without audio and
+//! tests never touch it; if it can't be opened a warning is logged and everything keeps running
+//! silently. Tests render the same graph offline ([`Audio::offline`]).
 
 pub mod backend;
+pub mod clip;
+pub mod dsp;
 pub mod effects;
-mod kira_fx;
+pub mod engine;
+pub mod graph_backend;
 pub mod mixer;
 pub mod mixer_state;
 mod routing;
 pub mod spatial;
+pub mod stream;
 mod video_voices;
 pub mod wav;
 
@@ -23,8 +29,9 @@ use glam::{Mat4, Vec3};
 use hecs::Entity;
 
 use crate::scene::{AudioListener, AudioSource, Scene};
-pub use backend::{AudioBackend, KiraBackend, NullBackend, NullLog, TrackId, VoiceId};
+pub use backend::{AudioBackend, NullBackend, NullLog, TrackId, VoiceId};
 pub use effects::{EffectKind, EffectSpec, amplitude_to_db, db_to_amplitude};
+pub use graph_backend::GraphBackend;
 pub use mixer::{AudioMixer, is_mixer};
 pub use mixer_state::MixerState;
 use routing::{Ctx, Route};
@@ -80,8 +87,6 @@ pub struct Audio {
     clips: Vec<VoiceId>,
     /// Mixers loaded so far (by first use).
     mixers: Vec<MixerState>,
-    /// Sources to start again on the next update (their mixer's tracks were rebuilt).
-    restart: Vec<Entity>,
     /// Positions last frame, for Doppler.
     last_pos: HashMap<Entity, Vec3>,
     last_ear: Option<Vec3>,
@@ -98,8 +103,27 @@ impl Audio {
     /// Plays through the default sound device (opened on the first sound).
     pub fn with_device(root: PathBuf) -> Self {
         let mut a = Self::new(root, None);
-        a.factory = Some(|| KiraBackend::new().map(|b| Box::new(b) as Box<dyn AudioBackend>));
+        a.factory =
+            Some(|| GraphBackend::with_device().map(|b| Box::new(b) as Box<dyn AudioBackend>));
         a
+    }
+
+    /// Audio mixed by the real graph but rendered on demand with [`Audio::render`] (tests,
+    /// benchmarks): no sound device.
+    pub fn offline(root: PathBuf, sample_rate: f32) -> Self {
+        Self::new(root, Some(Box::new(GraphBackend::offline(sample_rate))))
+    }
+
+    /// Load clips again on their next play (their import settings changed).
+    pub fn forget_clips(&mut self) {
+        if let Some(b) = self.backend.as_mut() {
+            b.forget_clips();
+        }
+    }
+
+    /// Offline audio: the next `frames` of the mix (`None` for device or null backends).
+    pub fn render(&mut self, frames: usize) -> Option<Vec<dsp::Frame>> {
+        self.backend.as_mut()?.render(frames)
     }
 
     /// Silent audio whose calls are recorded in the returned log.
@@ -119,7 +143,6 @@ impl Audio {
             points: Vec::new(),
             clips: Vec::new(),
             mixers: Vec::new(),
-            restart: Vec::new(),
             last_pos: HashMap::new(),
             last_ear: None,
             dt: 0.0,
@@ -421,9 +444,6 @@ impl Audio {
     /// Per frame: stop voices of destroyed/disabled sources, drop finished ones, update volume,
     /// pitch and pan from the current positions, and push mixer values to their tracks.
     pub fn update(&mut self, scene: &Scene) {
-        for e in std::mem::take(&mut self.restart) {
-            self.play(scene, e);
-        }
         if self.backend.is_none() {
             return;
         }
@@ -551,6 +571,12 @@ pub fn listener(scene: &Scene) -> Option<Mat4> {
 }
 
 #[cfg(test)]
+mod cost_report;
+#[cfg(test)]
+mod graph_tests;
+#[cfg(test)]
 mod mixer_tests;
+#[cfg(test)]
+mod render_tests;
 #[cfg(test)]
 mod tests;

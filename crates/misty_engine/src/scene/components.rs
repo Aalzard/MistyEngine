@@ -921,15 +921,18 @@ pub enum AudioRolloff {
     Logarithmic,
     /// Straight fade from full volume at min distance to silence at max distance.
     Linear,
+    /// The source's own curve (volume over distance as a share of Max Distance).
+    Custom,
 }
 
 impl AudioRolloff {
-    pub const ALL: [Self; 2] = [Self::Logarithmic, Self::Linear];
+    pub const ALL: [Self; 3] = [Self::Logarithmic, Self::Linear, Self::Custom];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Logarithmic => "Logarithmic Rolloff",
             Self::Linear => "Linear Rolloff",
+            Self::Custom => "Custom Rolloff",
         }
     }
 }
@@ -977,6 +980,13 @@ pub struct AudioSource {
     /// 0..360°: how widely a 3D sound spreads over the speakers (0 = a point).
     #[serde(skip_serializing_if = "audio_defaults::is_zero")]
     pub spread: f32,
+    /// 3D part rendered binaurally (head model: time and level differences, head shadow)
+    /// instead of panned; best on headphones.
+    #[serde(skip_serializing_if = "audio_defaults::is_false")]
+    pub spatialize: bool,
+    /// Volume over distance for Custom Rolloff.
+    #[serde(skip_serializing_if = "audio_defaults::is_default_curve")]
+    pub custom_rolloff: crate::audio::spatial::RolloffCurve,
 }
 
 impl Default for AudioSource {
@@ -1002,6 +1012,8 @@ impl Default for AudioSource {
             reverb_zone_mix: 1.0,
             doppler_level: 1.0,
             spread: 0.0,
+            spatialize: false,
+            custom_rolloff: Default::default(),
         }
     }
 }

@@ -3,8 +3,13 @@
 //! can be exposed to scripts from their right-click menu.
 
 use egui::{Grid, RichText, Ui};
-use misty_engine::audio::effects::{MAX_DB, MIN_DB};
-use misty_engine::audio::mixer::{AudioMixer, MASTER, effect_key, pitch_key, volume_key};
+use misty_engine::audio::EffectKind;
+use misty_engine::audio::dsp::fx::response;
+use misty_engine::audio::effects::{MAX_DB, MIN_DB, WET};
+use misty_engine::audio::mixer::{
+    AudioMixer, MASTER, MixerEffect, effect_key, pitch_key, volume_key,
+};
+use misty_engine::audio::{output_ref, split_output};
 use misty_engine::scene::clip_name;
 
 use crate::actions::Action;
@@ -53,11 +58,65 @@ pub fn mixer_asset(ui: &mut Ui, s: &mut EditorState, rel: &str) {
         ui.label("Exposed Parameters");
         ui.label(mixer.exposed.len().to_string());
         ui.end_row();
+        ui.label("Output");
+        output_combo(ui, s, rel, &mixer);
+        ui.end_row();
     });
     ui.add_space(6.0);
     if ui.button("Open Audio Mixer Window").clicked() {
         s.audio_mixer.open(Some(rel.to_owned()));
         s.push(Action::FocusTab(Tab::AudioMixer));
+    }
+}
+
+/// Nested mixers: the group of another mixer this one's Master plays into.
+fn output_combo(ui: &mut Ui, s: &mut EditorState, rel: &str, mixer: &AudioMixer) {
+    let current = mixer
+        .output
+        .as_deref()
+        .map_or("None (Audio Listener)".to_owned(), |o| {
+            let (p, g) = split_output(o);
+            format!("{} ▸ {g}", clip_name(p))
+        });
+    let others: Vec<String> = s
+        .assets
+        .mixers
+        .iter()
+        .filter(|p| p.as_str() != rel)
+        .cloned()
+        .collect();
+    let mut groups: Vec<(String, String)> = Vec::new();
+    for p in others {
+        if let Ok(m) = s.anim_clips.mixers.get(&p) {
+            for (g, depth) in m.tree() {
+                if let Some(g) = m.group(g) {
+                    let label = format!("{}{} ▸ {}", "  ".repeat(depth), clip_name(&p), g.name);
+                    groups.push((output_ref(&p, &g.name), label));
+                }
+            }
+        }
+    }
+    let mut pick: Option<Option<String>> = None;
+    egui::ComboBox::from_id_salt("mixer_output")
+        .selected_text(current)
+        .show_ui(ui, |ui| {
+            if ui
+                .selectable_label(mixer.output.is_none(), "None (Audio Listener)")
+                .clicked()
+            {
+                pick = Some(None);
+            }
+            for (o, label) in groups {
+                if ui
+                    .selectable_label(mixer.output.as_deref() == Some(o.as_str()), label)
+                    .clicked()
+                {
+                    pick = Some(Some(o));
+                }
+            }
+        });
+    if let Some(o) = pick {
+        audio_mixers::edit(s, rel, "Set Mixer Output", false, |m| m.output = o);
     }
 }
 
@@ -122,6 +181,81 @@ fn value_row(
         });
     }
     ui.end_row();
+}
+
+/// Send target picker: the Receive / Duck Volume units of the other groups.
+fn send_target_row(
+    ui: &mut Ui,
+    s: &mut EditorState,
+    rel: &str,
+    mixer: &AudioMixer,
+    gid: u32,
+    fx: &MixerEffect,
+) {
+    ui.label("Receive");
+    let current = fx
+        .target
+        .map_or("None".to_owned(), |t| mixer.effect_label(t));
+    let mut pick: Option<Option<u32>> = None;
+    egui::ComboBox::from_id_salt(("send_target", gid, fx.id))
+        .selected_text(current)
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(fx.target.is_none(), "None").clicked() {
+                pick = Some(None);
+            }
+            for (g, e) in mixer.receivers() {
+                if g == gid {
+                    continue;
+                }
+                let on = fx.target == Some(e);
+                if ui.selectable_label(on, mixer.effect_label(e)).clicked() {
+                    pick = Some(Some(e));
+                }
+            }
+        });
+    if let Some(target) = pick {
+        let eid = fx.id;
+        audio_mixers::edit(s, rel, "Set Send Target", false, |m| {
+            m.set_send_target(gid, eid, target);
+        });
+    }
+    ui.end_row();
+}
+
+/// Magnitude response of a filter / EQ (20 Hz – 20 kHz, -24..+12 dB).
+fn response_curve(ui: &mut Ui, kind: EffectKind, values: &[f32]) {
+    let width = ui.available_width().clamp(160.0, 320.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 70.0), egui::Sense::hover());
+    let p = ui.painter_at(rect);
+    p.rect_filled(rect, 2.0, theme::FIELD_BG);
+    let y_of = |db: f32| rect.bottom() - (db + 24.0) / 36.0 * rect.height();
+    p.hline(
+        rect.x_range(),
+        y_of(0.0),
+        egui::Stroke::new(1.0, theme::BORDER),
+    );
+    let pts: Vec<egui::Pos2> = (0..=120)
+        .map(|i| {
+            let x = i as f32 / 120.0;
+            let f = 20.0 * 1000f32.powf(x);
+            let db = 20.0 * response(kind, values, f, 48000.0).max(1e-4).log10();
+            egui::pos2(rect.left() + x * rect.width(), y_of(db.clamp(-24.0, 12.0)))
+        })
+        .collect();
+    p.add(egui::Shape::line(
+        pts,
+        egui::Stroke::new(1.5, egui::Color32::from_rgb(110, 180, 230)),
+    ));
+    for (f, label) in [(100.0, "100"), (1000.0, "1k"), (10000.0, "10k")] {
+        let x = rect.left() + (f / 20.0f32).log10() / 3.0 * rect.width();
+        p.text(
+            egui::pos2(x, rect.bottom() - 2.0),
+            egui::Align2::CENTER_BOTTOM,
+            label,
+            egui::FontId::monospace(9.0),
+            theme::TEXT_DIM,
+        );
+    }
 }
 
 fn group(ui: &mut Ui, s: &mut EditorState, rel: &str, mixer: &AudioMixer, item: MixerItem) {
@@ -216,6 +350,23 @@ fn group(ui: &mut Ui, s: &mut EditorState, rel: &str, mixer: &AudioMixer, item: 
                         .num_columns(2)
                         .spacing([10.0, 4.0])
                         .show(ui, |ui| {
+                            if fx.kind == EffectKind::Send {
+                                send_target_row(ui, s, rel, mixer, gid, fx);
+                            }
+                            if fx.kind.receives_sends() {
+                                ui.label("Sends from");
+                                let from: Vec<String> = mixer
+                                    .sends_to(fx.id)
+                                    .iter()
+                                    .filter_map(|(g, _)| mixer.group(*g).map(|g| g.name.clone()))
+                                    .collect();
+                                ui.label(if from.is_empty() {
+                                    "None (add a Send on another group)".to_owned()
+                                } else {
+                                    from.join(", ")
+                                });
+                                ui.end_row();
+                            }
                             for d in fx.kind.params() {
                                 let suffix = if d.unit.is_empty() {
                                     String::new()
@@ -233,7 +384,38 @@ fn group(ui: &mut Ui, s: &mut EditorState, rel: &str, mixer: &AudioMixer, item: 
                                     &suffix,
                                 );
                             }
+                            if fx.kind.has_wet() {
+                                value_row(
+                                    ui,
+                                    s,
+                                    rel,
+                                    mixer,
+                                    "Wet Mix Level",
+                                    &effect_key(gid, fx.id, WET),
+                                    0.0..=100.0,
+                                    " %",
+                                );
+                            }
+                            if matches!(fx.kind, EffectKind::DuckVolume | EffectKind::Compressor)
+                                && s.runtime.is_some()
+                            {
+                                ui.label("Gain reduction");
+                                ui.label(format!("{:.1} dB", s.audio_mixer.reduction(gid)));
+                                ui.end_row();
+                            }
                         });
+                    if matches!(
+                        fx.kind,
+                        EffectKind::Lowpass | EffectKind::Highpass | EffectKind::ParamEQ
+                    ) {
+                        let values: Vec<f32> = fx
+                            .kind
+                            .params()
+                            .iter()
+                            .map(|d| value(s, rel, mixer, &effect_key(gid, fx.id, d.name)))
+                            .collect();
+                        response_curve(ui, fx.kind, &values);
+                    }
                 });
             }
             ui.add_space(6.0);
