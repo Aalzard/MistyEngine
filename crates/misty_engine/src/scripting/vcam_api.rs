@@ -1,11 +1,14 @@
-//! Lua `GetComponent("VirtualCamera")` (priority, follow, lookAt, isLive) and
-//! `GetComponent("CameraBrain")` (activeVirtualCamera, isBlending, blendWeight).
+//! Lua `GetComponent("VirtualCamera")` (priority, follow, lookAt, isLive, the Free Look axes
+//! `xAxis` / `yAxis` and their inputs), `GetComponent("CameraBrain")` (activeVirtualCamera,
+//! isBlending, blendWeight), `GetComponent("ImpulseSource")` (`GenerateImpulse`),
+//! `GetComponent("TargetGroup")` (`AddMember`, `RemoveMember`) and the `Impulse` table.
 
 use hecs::Entity;
-use mlua::{Lua, Result, UserData, UserDataFields, Value};
+use mlua::{FromLua, Lua, Result, UserData, UserDataFields, UserDataMethods, Value};
 
-use super::api::{LGameObject, LTransform, missing, with_world};
-use crate::vcam::{CameraBrain, VirtualCamera};
+use super::World;
+use super::api::{LGameObject, LTransform, LVec3, missing, with_world};
+use crate::vcam::{CameraBrain, GroupMember, ImpulseSource, TargetGroup, VirtualCamera};
 
 #[derive(Clone, Copy)]
 pub struct LVirtualCamera(pub Entity);
@@ -83,7 +86,164 @@ impl UserData for LVirtualCamera {
         f.add_field_method_get("isLive", |lua, c| {
             with_world(lua, |w| w.cameras.is_live(c.0))
         });
+        // Orbital / Free Look axes: horizontal angle in degrees, vertical angle (Sphere) or
+        // rig position 0..1 (Three Rings). Setting one moves the camera there.
+        f.add_field_method_get("xAxis", |lua, c| {
+            with_vcam(lua, c.0, |v| v.orbital.x_axis.value)
+        });
+        f.add_field_method_set("xAxis", |lua, c, x: f32| {
+            with_vcam(lua, c.0, |v| {
+                v.orbital.x_axis.value = x;
+                v.orbital.x_axis.clamp();
+            })
+        });
+        f.add_field_method_get("yAxis", |lua, c| {
+            with_vcam(lua, c.0, |v| v.orbital.y_axis.value)
+        });
+        f.add_field_method_set("yAxis", |lua, c, y: f32| {
+            with_vcam(lua, c.0, |v| {
+                v.orbital.y_axis.value = y;
+                v.orbital.y_axis.clamp();
+            })
+        });
+        // Input names driving the axes ("" = none): Input Manager axes, or an Input System
+        // action ("Map/Action") read as a 2D value.
+        f.add_field_method_get("xAxisInput", |lua, c| {
+            with_vcam(lua, c.0, |v| v.orbital.x_axis.input_axis.clone())
+        });
+        f.add_field_method_set("xAxisInput", |lua, c, n: String| {
+            with_vcam(lua, c.0, |v| v.orbital.x_axis.input_axis = n)
+        });
+        f.add_field_method_get("yAxisInput", |lua, c| {
+            with_vcam(lua, c.0, |v| v.orbital.y_axis.input_axis.clone())
+        });
+        f.add_field_method_set("yAxisInput", |lua, c, n: String| {
+            with_vcam(lua, c.0, |v| v.orbital.y_axis.input_axis = n)
+        });
+        f.add_field_method_get("inputAction", |lua, c| {
+            with_vcam(lua, c.0, |v| v.orbital.x_axis.input_action.clone())
+        });
+        f.add_field_method_set("inputAction", |lua, c, n: String| {
+            with_vcam(lua, c.0, |v| {
+                v.orbital.x_axis.input_action = n.clone();
+                v.orbital.y_axis.input_action = n;
+            })
+        });
     }
+}
+
+/// Lua `GetComponent("ImpulseSource")`.
+#[derive(Clone, Copy)]
+pub struct LImpulseSource(pub Entity);
+
+/// Lua `GetComponent("TargetGroup")`.
+#[derive(Clone, Copy)]
+pub struct LTargetGroup(pub Entity);
+
+/// `GenerateImpulse()`, `GenerateImpulse(force)` or `GenerateImpulse(velocity)` on `e`.
+fn generate(lua: &Lua, e: Entity, arg: Value) -> Result<bool> {
+    let (velocity, force) = match arg {
+        Value::Nil => (None, 1.0),
+        Value::Integer(i) => (None, i as f32),
+        Value::Number(n) => (None, n as f32),
+        v => (Some(LVec3::from_lua(v, lua)?.0), 1.0),
+    };
+    with_world(lua, |w| {
+        let World { cameras, scene, .. } = w;
+        cameras.impulses.generate(scene, e, velocity, force)
+    })
+}
+
+impl UserData for LImpulseSource {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("gameObject", |_, c| Ok(LGameObject(c.0)));
+        f.add_field_method_get("transform", |_, c| Ok(LTransform(c.0)));
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("GenerateImpulse", |lua, c, arg: Value| {
+            generate(lua, c.0, arg)
+        });
+        m.add_method("GenerateImpulseWithForce", |lua, c, force: f32| {
+            generate(lua, c.0, Value::Number(force as f64))
+        });
+    }
+}
+
+impl UserData for LTargetGroup {
+    fn add_fields<F: UserDataFields<Self>>(f: &mut F) {
+        f.add_field_method_get("gameObject", |_, c| Ok(LGameObject(c.0)));
+        f.add_field_method_get("transform", |_, c| Ok(LTransform(c.0)));
+        f.add_field_method_get("memberCount", |lua, c| {
+            with_group(lua, c.0, |g| g.members.len())
+        });
+        // Bounding sphere radius of the members this frame.
+        f.add_field_method_get("radius", |lua, c| {
+            with_world(lua, |w| {
+                crate::vcam::group::group_bounds(&w.scene, c.0).map_or(0.0, |b| b.radius)
+            })
+        });
+    }
+
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method(
+            "AddMember",
+            |lua, c, (obj, weight, radius): (Value, Option<f32>, Option<f32>)| {
+                let Some(t) = object_arg(obj)? else {
+                    return Ok(());
+                };
+                with_group(lua, c.0, |g| {
+                    g.members.retain(|m| m.target != Some(t));
+                    g.members.push(GroupMember {
+                        target: Some(t),
+                        weight: weight.unwrap_or(1.0).max(0.0),
+                        radius: radius.unwrap_or(0.5).max(0.0),
+                    });
+                })
+            },
+        );
+        m.add_method("RemoveMember", |lua, c, obj: Value| {
+            let t = object_arg(obj)?;
+            with_group(lua, c.0, |g| g.members.retain(|m| m.target != t))
+        });
+    }
+}
+
+fn with_group<R>(lua: &Lua, e: Entity, f: impl FnOnce(&mut TargetGroup) -> R) -> Result<R> {
+    with_world(lua, |w| {
+        w.scene
+            .world
+            .get::<&mut TargetGroup>(e)
+            .map(|mut g| f(&mut g))
+            .map_err(|_| missing())
+    })?
+}
+
+/// The `Impulse` table: `Impulse.GenerateImpulse(source[, force or velocity])` fires the
+/// Impulse Source on a GameObject; `Impulse.GenerateImpulseAt(position, velocity)` sends a
+/// default-shaped impulse from a point.
+pub fn register(lua: &Lua) -> Result<()> {
+    let t = lua.create_table()?;
+    t.set(
+        "GenerateImpulse",
+        lua.create_function(|lua, (obj, arg): (Value, Value)| {
+            let Some(e) = object_arg(obj)? else {
+                return Ok(false);
+            };
+            generate(lua, e, arg)
+        })?,
+    )?;
+    t.set(
+        "GenerateImpulseAt",
+        lua.create_function(|lua, (at, velocity): (LVec3, LVec3)| {
+            with_world(lua, |w| {
+                w.cameras
+                    .impulses
+                    .add(&ImpulseSource::default(), at.0, velocity.0)
+            })
+        })?,
+    )?;
+    lua.globals().set("Impulse", t)
 }
 
 impl UserData for LCameraBrain {
@@ -129,6 +289,18 @@ pub fn component(lua: &Lua, e: Entity, name: &str) -> Result<Option<Value>> {
             .then(|| lua.create_userdata(LCameraBrain(e)).map(Value::UserData))
             .transpose()?
             .or(Some(Value::Nil)),
+        "ImpulseSource" | "Impulse Source" => {
+            with_world(lua, |w| w.scene.world.get::<&ImpulseSource>(e).is_ok())?
+                .then(|| lua.create_userdata(LImpulseSource(e)).map(Value::UserData))
+                .transpose()?
+                .or(Some(Value::Nil))
+        }
+        "TargetGroup" | "Target Group" => {
+            with_world(lua, |w| w.scene.world.get::<&TargetGroup>(e).is_ok())?
+                .then(|| lua.create_userdata(LTargetGroup(e)).map(Value::UserData))
+                .transpose()?
+                .or(Some(Value::Nil))
+        }
         _ => None,
     })
 }
@@ -189,6 +361,7 @@ return D
                 default_blend: BlendDefinition {
                     style: BlendStyle::Linear,
                     duration: 1.0,
+                    ..Default::default()
                 },
                 ..Default::default()
             },
@@ -235,5 +408,90 @@ return D
             s.world.get::<&VirtualCamera>(wide).unwrap().look_at,
             Some(hero)
         );
+    }
+
+    #[test]
+    fn scripts_drive_free_look_axes_impulses_and_target_groups() {
+        use crate::vcam::{ImpulseSource, TargetGroup};
+        let dir = std::env::temp_dir().join(format!("misty_vcam_api_r19_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("Assets")).unwrap();
+        std::fs::write(
+            dir.join("Assets/Shaker.lua"),
+            r#"local S = {}
+function S:Start()
+    local v = GameObject.Find("Free Look"):GetComponent("VirtualCamera")
+    v.xAxis = 45
+    v.yAxis = 3
+    print(string.format("axes %.1f %.1f", v.xAxis, v.yAxis))
+    v.inputAction = "Player/Look"
+    v.xAxisInput = ""
+    print("input", v.inputAction, v.xAxisInput == "")
+    local boom = GameObject.Find("Boom")
+    local src = boom:GetComponent("ImpulseSource")
+    print("generated", tostring(src:GenerateImpulse()))
+    Impulse.GenerateImpulse(boom, 2.0)
+    Impulse.GenerateImpulse(boom, Vector3.new(0, 1, 0))
+    Impulse.GenerateImpulseAt(Vector3.new(0, 0, 0), Vector3.new(1, 0, 0))
+    print("no source", tostring(Impulse.GenerateImpulse(GameObject.Find("Free Look"))))
+    local g = GameObject.Find("Group"):GetComponent("TargetGroup")
+    g:AddMember(GameObject.Find("Hero"), 2, 1.5)
+    g:AddMember(boom)
+    g:RemoveMember(boom)
+    print("members", g.memberCount)
+end
+return S
+"#,
+        )
+        .unwrap();
+        let mut s = Scene::new("v");
+        let cam = s.spawn("Main Camera", None);
+        s.add(cam, Camera::default());
+        s.add(cam, CameraBrain::default());
+        let hero = s.spawn("Hero", None);
+        let fl = s.spawn("Free Look", None);
+        s.add(
+            fl,
+            VirtualCamera {
+                follow: Some(hero),
+                ..VirtualCamera::free_look()
+            },
+        );
+        let boom = s.spawn("Boom", None);
+        s.add(boom, ImpulseSource::default());
+        let group = s.spawn("Group", None);
+        s.add(group, TargetGroup::default());
+        s.add(
+            hero,
+            Scripts {
+                list: vec![ScriptRef {
+                    path: "Assets/Shaker.lua".into(),
+                    ..Default::default()
+                }],
+            },
+        );
+        let physics = Physics::build(&s, Vec3::ZERO);
+        let mut host = ScriptHost::start(&mut s, physics, dir);
+        let mut time = Time::default();
+        time.advance(1.0 / 60.0);
+        host.update(&mut s, &time, Default::default());
+        let logs: Vec<String> = host.take_logs().into_iter().map(|l| l.1).collect();
+        assert_eq!(
+            logs,
+            [
+                "axes 45.0 1.0",
+                "input Player/Look true",
+                "generated true",
+                "no source false",
+                "members 1"
+            ]
+        );
+        assert_eq!(host.with_cameras(|r| r.impulses.events.len()), 4);
+        let v = s.world.get::<&VirtualCamera>(fl).unwrap().clone();
+        assert_eq!(v.orbital.x_axis.input_action, "Player/Look");
+        assert_eq!(v.orbital.y_axis.input_action, "Player/Look");
+        let g = s.world.get::<&TargetGroup>(group).unwrap().clone();
+        assert_eq!(g.members.len(), 1);
+        assert_eq!(g.members[0].target, Some(hero));
+        assert!((g.members[0].weight - 2.0).abs() < 1e-6);
     }
 }

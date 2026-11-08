@@ -1,0 +1,249 @@
+{
+  "frame_rate": 60.0,
+  "duration_mode": "BasedOnClips",
+  "fixed_duration": 5.0,
+  "tracks": [
+    {
+      "id": "t1",
+      "name": "Cameras",
+      "kind": "Camera",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [
+        {
+          "name": "Wide Cam",
+          "start": 0.0,
+          "duration": 4.5,
+          "asset": null,
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0,
+          "reference": "r1"
+        },
+        {
+          "name": "Hero Cam",
+          "start": 4.5,
+          "duration": 4.0,
+          "asset": null,
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0,
+          "reference": "r2"
+        },
+        {
+          "name": "Group Cam",
+          "start": 7.5,
+          "duration": 4.5,
+          "asset": null,
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0,
+          "reference": "r3"
+        },
+        {
+          "name": "Explosion Cam",
+          "start": 12.0,
+          "duration": 3.5,
+          "asset": null,
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0,
+          "reference": "r4"
+        },
+        {
+          "name": "Wide Cam",
+          "start": 14.5,
+          "duration": 3.5,
+          "asset": null,
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0,
+          "reference": "r1"
+        }
+      ],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t2",
+      "name": "Hero Walk",
+      "kind": "Animation",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [
+        {
+          "name": "HeroWalk",
+          "start": 0.0,
+          "duration": 10.0,
+          "asset": "Assets/Animations/CutsceneHeroWalk.anim",
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0
+        }
+      ],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t3",
+      "name": "Ally Turn",
+      "kind": "Animation",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": {
+        "length": 8.0,
+        "loop": false,
+        "sample_rate": 60.0,
+        "curves": [
+          {
+            "path": "",
+            "property": "Transform.rotation.y",
+            "keys": [
+              {
+                "time": 6.0,
+                "value": 0.0
+              },
+              {
+                "time": 8.0,
+                "value": -70.0
+              }
+            ]
+          }
+        ],
+        "events": []
+      }
+    },
+    {
+      "id": "t4",
+      "name": "Effects",
+      "kind": "Control",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [
+        {
+          "name": "Explosion",
+          "start": 12.0,
+          "duration": 2.5,
+          "asset": null,
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0,
+          "reference": "r5",
+          "control": {
+            "activation": true,
+            "sub_timeline": true,
+            "particles": true,
+            "audio": true,
+            "impulse": false,
+            "post_playback": "Revert"
+          }
+        }
+      ],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t5",
+      "name": "Lights",
+      "kind": "Control",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [
+        {
+          "name": "Flash Flicker",
+          "start": 12.0,
+          "duration": 2.0,
+          "asset": null,
+          "clip_in": 0.0,
+          "speed": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "post_extrapolation": "None",
+          "volume": 1.0,
+          "reference": "r6",
+          "control": {
+            "activation": false,
+            "sub_timeline": true,
+            "particles": true,
+            "audio": true,
+            "impulse": true,
+            "post_playback": "Revert"
+          }
+        }
+      ],
+      "markers": [],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    },
+    {
+      "id": "t6",
+      "name": "Cues",
+      "kind": "Signal",
+      "group": null,
+      "muted": false,
+      "locked": false,
+      "collapsed": false,
+      "clips": [],
+      "markers": [
+        {
+          "time": 0.0,
+          "method": "OnCue",
+          "parameter": "Action!",
+          "retroactive": false
+        },
+        {
+          "time": 12.0,
+          "method": "OnExplosion",
+          "parameter": null,
+          "retroactive": false
+        },
+        {
+          "time": 17.5,
+          "method": "OnCue",
+          "parameter": "That's a wrap",
+          "retroactive": false
+        }
+      ],
+      "post_playback": "LeaveAsIs",
+      "recorded": null
+    }
+  ],
+  "markers": []
+}

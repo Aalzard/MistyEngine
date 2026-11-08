@@ -96,6 +96,46 @@ return T
 }
 
 #[test]
+fn generic_bindings_played_and_signal_receivers_from_lua() {
+    let src = r#"
+local T = {}
+function T:Start()
+    local d = self.gameObject:GetComponent("PlayableDirector")
+    d.played:AddListener(function(dir) print("played", dir.state) end)
+    d.signalReceived:AddListener(function(dir, method, param)
+        print("signal", method, tostring(param), dir.gameObject.name)
+    end)
+    d.stopped:AddListener(function() print("stopped") end)
+    print("before", tostring(d:GetGenericBinding("Activation Track")))
+    d:SetGenericBinding("Activation Track", self.gameObject)
+    print("bound", d:GetGenericBinding("Activation Track").name)
+    local ok = pcall(function() d:SetGenericBinding("No Such Track", nil) end)
+    print("missing track errors", tostring(not ok))
+    d:Play()
+end
+function T:OnCue(text) print("cue", text) end
+function T:OnEnd() print("end") end
+return T
+"#;
+    let logs = run(src, false, 30);
+    assert_eq!(
+        logs,
+        [
+            "before nil",
+            "bound Director",
+            "missing track errors true",
+            "played Playing",
+            "cue hi",
+            "signal OnCue hi Director",
+            "end",
+            "signal OnEnd nil Director",
+            "stopped"
+        ],
+        "{logs:?}"
+    );
+}
+
+#[test]
 fn play_pause_stop_and_time_from_lua() {
     let src = r#"
 local T = { frames = 0 }

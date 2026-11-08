@@ -735,6 +735,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::network_api::register(lua)?;
     super::render_settings_api::register(lua)?;
     super::light_probes_api::register(lua)?;
+    super::vcam_api::register(lua)?;
     super::app_api::register(lua)?;
     super::terrain_api::register(lua)?;
     super::physics_api::register(lua)?;

@@ -2,17 +2,18 @@
 //! Composer's dead / soft zones over the Game view while it is selected.
 
 use egui::{Color32, Rect, Stroke, Ui, pos2};
-use glam::Mat4;
+use glam::{Mat4, Quat, Vec3};
 use misty_engine::camera::{Camera as ViewCamera, Projection};
 use misty_engine::hecs::Entity;
 use misty_engine::scene::{Camera, Scene};
-use misty_engine::vcam::{AimKind, VirtualCamera};
+use misty_engine::vcam::{AimKind, BodyKind, OrbitStyle, VirtualCamera};
 
 use super::Lines;
 use crate::state::EditorState;
 
 const VCAM: [f32; 4] = [0.95, 0.5, 0.35, 0.9];
 const TARGET: [f32; 4] = [0.95, 0.5, 0.35, 0.35];
+const RING: [f32; 4] = [0.35, 0.75, 0.95, 0.8];
 
 impl Lines {
     pub(super) fn virtual_camera(&mut self, scene: &Scene, e: Entity) {
@@ -33,6 +34,52 @@ impl Lines {
             if scene.contains(t) && t != e {
                 self.line(pos, scene.world_position(t), TARGET);
             }
+        }
+        // Free Look: its three rings around the follow target, and the path the vertical
+        // axis slides along at the current heading.
+        if v.body == BodyKind::Orbital
+            && v.orbital.style == OrbitStyle::ThreeRings
+            && let Some(t) = v.follow.filter(|t| scene.contains(*t) && *t != e)
+        {
+            let c = scene.world_position(t) + Vec3::Y * v.orbital.height_offset;
+            for o in v.orbital.orbits {
+                self.ring(c + Vec3::Y * o.height, o.radius, RING);
+            }
+            let yaw = Quat::from_rotation_y(v.orbital.x_axis.value.to_radians());
+            let at = |y: f32| {
+                let (h, r) = v.orbital.ring_at(y);
+                c + Vec3::Y * h - yaw * Vec3::Z * r
+            };
+            for i in 0..16 {
+                self.line(at(i as f32 / 16.0), at((i + 1) as f32 / 16.0), VCAM);
+            }
+        }
+        // Group Composer: the bounding sphere of the group it frames.
+        if v.aim == AimKind::GroupComposer
+            && let Some(b) = v
+                .look_at
+                .and_then(|t| misty_engine::vcam::group::group_bounds(scene, t))
+        {
+            for axis in [Vec3::X, Vec3::Y, Vec3::Z] {
+                self.ring_around(b.center, axis, b.radius, TARGET);
+            }
+        }
+    }
+
+    /// A horizontal circle.
+    fn ring(&mut self, center: Vec3, radius: f32, color: [f32; 4]) {
+        self.ring_around(center, Vec3::Y, radius, color);
+    }
+
+    /// A circle around `axis`.
+    fn ring_around(&mut self, center: Vec3, axis: Vec3, radius: f32, color: [f32; 4]) {
+        let (u, w) = axis.any_orthonormal_pair();
+        let p = |i: usize| {
+            let a = i as f32 / 48.0 * std::f32::consts::TAU;
+            center + (u * a.cos() + w * a.sin()) * radius
+        };
+        for i in 0..48 {
+            self.line(p(i), p(i + 1), color);
         }
     }
 }

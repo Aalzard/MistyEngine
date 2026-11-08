@@ -2813,3 +2813,33 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Watershed regions, automatic drop / jump links, links across surfaces, a compressed tile cache
   for carving (tiles rebuild from collected geometry), physics colliders as bake geometry,
   `SamplePathPosition`.
+
+## Round 19E — Timeline and cameras: cutscene tooling (branch r19-timeline)
+
+### Done (docs/pending/r19-timeline.md, screenshots `docs/screenshots/r19/timeline_*`)
+- Camera track: clips show a virtual camera, overlapping clips blend (the timeline's mix), eases
+  blend with the brain's live camera; in Play mode the brain is overridden per frame and blends
+  back to its live camera when the cutscene ends (blend list first). Clips point at scene objects
+  through the director's new `references` (remapped like bindings).
+- Control track: activation (Post-playback State), sub-timelines (local time = clip in + (t −
+  start) × speed, hold or loop, nested 8 deep, their markers fire at the mapped time), particles,
+  audio and Impulse Sources while playing.
+- Record mode (⏺ on Animation tracks: any change to the bound object becomes a key at the
+  playhead, restored when the preview ends), Ripple editing (move, trim, delete), edit-mode preview
+  of Camera tracks posing the Game camera (transform and lens) and putting it back.
+- Signals: `signalReceived` listeners on the director as well as the marker's script method.
+- Virtual cameras: three-ring Free Look (top / middle / bottom, spline curvature, gizmo) with
+  Input System action axes; Impulse Source (Bump / Explosion / Rumble, envelope, radius,
+  dissipation, channels, collision trigger) and Impulse Listener; Target Group (weights, radii)
+  with a Group Composer that dollies and / or zooms to keep the group in view; Custom (Bézier)
+  blends and `.blends` blend list assets; Confiner (box / sphere collider volumes).
+- Lua: `SetGenericBinding` / `GetGenericBinding`, `played`, `signalReceived`; `xAxis` / `yAxis` /
+  inputs; `ImpulseSource:GenerateImpulse`, `Impulse.GenerateImpulse(At)`; Target Group members.
+- Sample `CutsceneDemo`: an 18 s cutscene with cuts and blends, a group shot of three characters,
+  an explosion signal shaking every camera, a sub-timeline flicker, then a custom-curve blend to a
+  Free Look camera.
+
+### Not done yet
+- Recording into `.anim` clips, Replace edit mode, nested audio tracks, Control prefab instancing,
+  particles in the edit-mode preview, dolly / path cameras, signal assets with a receiver
+  component.

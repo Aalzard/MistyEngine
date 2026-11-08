@@ -73,6 +73,20 @@ pub struct PlayableDirector {
     /// Seconds playback starts at.
     pub initial_time: f32,
     pub bindings: Vec<TrackBinding>,
+    /// Scene objects the timeline's clips point at (a Camera clip's virtual camera, a Control
+    /// clip's source object), by the clip's reference name.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub references: Vec<ExposedReference>,
+}
+
+/// A clip's scene object, kept on the director because assets can't hold scene objects.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExposedReference {
+    /// The clip's `reference` name in the timeline ("r1", "r2", …).
+    pub name: String,
+    #[serde(with = "super::components::entity_bits::option")]
+    pub object: Option<Entity>,
 }
 
 impl Default for PlayableDirector {
@@ -85,6 +99,7 @@ impl Default for PlayableDirector {
             wrap_mode: DirectorWrapMode::None,
             initial_time: 0.0,
             bindings: Vec::new(),
+            references: Vec::new(),
         }
     }
 }
@@ -104,6 +119,25 @@ impl PlayableDirector {
             Some(b) => b.object = object,
             None => self.bindings.push(TrackBinding {
                 track: id.to_owned(),
+                object,
+            }),
+        }
+    }
+
+    /// The object a clip reference `name` points at.
+    pub fn reference(&self, name: &str) -> Option<Entity> {
+        self.references
+            .iter()
+            .find(|r| r.name == name)
+            .and_then(|r| r.object)
+    }
+
+    /// Point clip reference `name` at `object` (`None` clears it).
+    pub fn set_reference(&mut self, name: &str, object: Option<Entity>) {
+        match self.references.iter_mut().find(|r| r.name == name) {
+            Some(r) => r.object = object,
+            None => self.references.push(ExposedReference {
+                name: name.to_owned(),
                 object,
             }),
         }

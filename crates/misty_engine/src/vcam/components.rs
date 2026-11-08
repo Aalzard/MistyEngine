@@ -19,15 +19,18 @@ pub enum BlendStyle {
     EaseOut,
     /// Constant speed.
     Linear,
+    /// A cubic Bézier curve from (0, 0) to (1, 1) through two control points.
+    Custom,
 }
 
 impl BlendStyle {
-    pub const ALL: [BlendStyle; 5] = [
+    pub const ALL: [BlendStyle; 6] = [
         Self::Cut,
         Self::EaseInOut,
         Self::EaseIn,
         Self::EaseOut,
         Self::Linear,
+        Self::Custom,
     ];
 
     pub fn label(self) -> &'static str {
@@ -37,21 +40,27 @@ impl BlendStyle {
             Self::EaseIn => "Ease In",
             Self::EaseOut => "Ease Out",
             Self::Linear => "Linear",
+            Self::Custom => "Custom",
         }
     }
 
-    /// Eased weight of the incoming camera for linear progress `t` (0..1).
+    /// Eased weight of the incoming camera for linear progress `t` (0..1). Custom curves need
+    /// their control points ([`BlendDefinition::weight`]); here they act as Ease In Out.
     pub fn ease(self, t: f32) -> f32 {
         let t = t.clamp(0.0, 1.0);
         match self {
             Self::Cut => 1.0,
             Self::Linear => t,
+            Self::Custom => t * t * (3.0 - 2.0 * t),
             Self::EaseInOut => t * t * (3.0 - 2.0 * t),
             Self::EaseIn => t * t,
             Self::EaseOut => 1.0 - (1.0 - t) * (1.0 - t),
         }
     }
 }
+
+/// Control points (x1, y1, x2, y2) of a Custom blend curve; the default is a gentle ease.
+pub const DEFAULT_CURVE: [f32; 4] = [0.42, 0.0, 0.58, 1.0];
 
 /// A blend style and how long it takes.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -60,6 +69,13 @@ pub struct BlendDefinition {
     pub style: BlendStyle,
     /// Seconds (ignored by Cut).
     pub duration: f32,
+    /// Custom style: the curve's two control points (x1, y1, x2, y2), x in 0..1.
+    #[serde(skip_serializing_if = "is_default_curve")]
+    pub curve: [f32; 4],
+}
+
+fn is_default_curve(c: &[f32; 4]) -> bool {
+    *c == DEFAULT_CURVE
 }
 
 impl Default for BlendDefinition {
@@ -67,6 +83,7 @@ impl Default for BlendDefinition {
         Self {
             style: BlendStyle::EaseInOut,
             duration: 2.0,
+            curve: DEFAULT_CURVE,
         }
     }
 }
@@ -76,6 +93,35 @@ impl BlendDefinition {
     pub fn is_cut(&self) -> bool {
         self.style == BlendStyle::Cut || self.duration <= 0.0
     }
+
+    /// Weight of the incoming camera for linear progress `t` (0..1), custom curves included.
+    pub fn weight(&self, t: f32) -> f32 {
+        match self.style {
+            BlendStyle::Custom => bezier_ease(self.curve, t),
+            s => s.ease(t),
+        }
+    }
+}
+
+/// A cubic Bézier ease from (0, 0) to (1, 1) with control points `c` = (x1, y1, x2, y2):
+/// solves x(u) = t (x stays monotonic with x1, x2 clamped into 0..1) and returns y(u).
+pub fn bezier_ease(c: [f32; 4], t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    let (x1, y1, x2, y2) = (c[0].clamp(0.0, 1.0), c[1], c[2].clamp(0.0, 1.0), c[3]);
+    let coord = |u: f32, p1: f32, p2: f32| {
+        let v = 1.0 - u;
+        3.0 * v * v * u * p1 + 3.0 * v * u * u * p2 + u * u * u
+    };
+    let (mut lo, mut hi) = (0.0f32, 1.0f32);
+    for _ in 0..30 {
+        let mid = 0.5 * (lo + hi);
+        if coord(mid, x1, x2) < t {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    coord(0.5 * (lo + hi), y1, y2)
 }
 
 /// A blend used between two particular virtual cameras (by object name; empty = any camera).
@@ -118,6 +164,9 @@ pub struct CameraBrain {
     /// Blends for particular pairs, checked in order (exact pairs win over "any").
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub custom_blends: Vec<CustomBlend>,
+    /// Blend list asset (`.blends`), checked before `custom_blends`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blend_list: Option<String>,
     pub update_method: BrainUpdate,
 }
 
@@ -127,21 +176,64 @@ impl Default for CameraBrain {
             enabled: true,
             default_blend: BlendDefinition::default(),
             custom_blends: Vec::new(),
+            blend_list: None,
             update_method: BrainUpdate::LateUpdate,
         }
     }
 }
 
+/// The best match for `from` → `to` in `list`: an exact pair first, then a pair with one side
+/// "any" (empty), then any → any.
+pub fn find_blend(list: &[CustomBlend], from: &str, to: &str) -> Option<BlendDefinition> {
+    let find = |f: &dyn Fn(&CustomBlend) -> bool| list.iter().find(|b| f(b));
+    find(&|b| b.from == from && b.to == to)
+        .or_else(|| find(&|b| b.from.is_empty() && b.to == to))
+        .or_else(|| find(&|b| b.from == from && b.to.is_empty()))
+        .or_else(|| find(&|b| b.from.is_empty() && b.to.is_empty()))
+        .map(|b| b.blend)
+}
+
 impl CameraBrain {
-    /// The blend from `from` to `to` (object names): an exact pair first, then a pair with one
-    /// side "any" (empty), then the default blend.
+    /// The blend from `from` to `to` (object names): the inline list, else the default.
     pub fn blend_for(&self, from: &str, to: &str) -> BlendDefinition {
-        let find = |f: &dyn Fn(&CustomBlend) -> bool| self.custom_blends.iter().find(|b| f(b));
-        find(&|b| b.from == from && b.to == to)
-            .or_else(|| find(&|b| b.from.is_empty() && b.to == to))
-            .or_else(|| find(&|b| b.from == from && b.to.is_empty()))
-            .or_else(|| find(&|b| b.from.is_empty() && b.to.is_empty()))
-            .map_or(self.default_blend, |b| b.blend)
+        self.blend_with(&[], from, to)
+    }
+
+    /// The blend from `from` to `to`: the blend list asset's entries (`list`) first, then the
+    /// inline custom blends, then the default blend.
+    pub fn blend_with(&self, list: &[CustomBlend], from: &str, to: &str) -> BlendDefinition {
+        find_blend(list, from, to)
+            .or_else(|| find_blend(&self.custom_blends, from, to))
+            .unwrap_or(self.default_blend)
+    }
+}
+
+/// File extension of blend list assets.
+pub const BLEND_LIST_EXTENSION: &str = "blends";
+
+/// A blend list asset (`.blends`, JSON): custom blends per camera pair, shared by brains.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BlendList {
+    pub blends: Vec<CustomBlend>,
+}
+
+impl BlendList {
+    pub fn load(path: &std::path::Path) -> Result<Self, String> {
+        let text =
+            crate::vfs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default() + "\n"
+    }
+
+    pub fn save(&self, path: &std::path::Path) -> Result<(), String> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(path, self.to_json()).map_err(|e| format!("{}: {e}", path.display()))
     }
 }
 
@@ -298,6 +390,10 @@ pub struct OrbitAxis {
     /// Input Manager axis that drives it (empty = none).
     pub input_axis: String,
     pub invert: bool,
+    /// Input System action ("Map/Action" or "Action") read from the playing Player Inputs;
+    /// the horizontal axis takes its x, the vertical axis its y. Wins over `input_axis`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub input_action: String,
 }
 
 impl OrbitAxis {
@@ -310,6 +406,7 @@ impl OrbitAxis {
             speed: 300.0,
             input_axis: "Mouse X".into(),
             invert: false,
+            input_action: String::new(),
         }
     }
 
@@ -322,6 +419,21 @@ impl OrbitAxis {
             speed: 200.0,
             input_axis: "Mouse Y".into(),
             invert: true,
+            input_action: String::new(),
+        }
+    }
+
+    /// The Free Look rig axis: 0 = bottom orbit, 0.5 = middle, 1 = top.
+    fn rig() -> Self {
+        Self {
+            value: 0.5,
+            min: 0.0,
+            max: 1.0,
+            wrap: false,
+            speed: 2.0,
+            input_axis: "Mouse Y".into(),
+            invert: true,
+            input_action: String::new(),
         }
     }
 
@@ -350,7 +462,78 @@ impl Default for OrbitAxis {
     }
 }
 
-/// Orbital: circle the follow target at `radius`, yaw and pitch from input axes.
+/// How an orbital camera's vertical axis places it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum OrbitStyle {
+    /// One sphere: the vertical axis is a pitch angle.
+    #[default]
+    Sphere,
+    /// Free Look: three horizontal rings (top, middle, bottom) joined by a spline; the
+    /// vertical axis (0..1) slides between them.
+    ThreeRings,
+}
+
+impl OrbitStyle {
+    pub const ALL: [OrbitStyle; 2] = [Self::Sphere, Self::ThreeRings];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Sphere => "Sphere",
+            Self::ThreeRings => "Three Rings",
+        }
+    }
+}
+
+/// One Free Look ring: its height above the target and its radius.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Orbit {
+    pub height: f32,
+    pub radius: f32,
+}
+
+impl Default for Orbit {
+    fn default() -> Self {
+        Self {
+            height: 2.5,
+            radius: 3.0,
+        }
+    }
+}
+
+/// Top, middle and bottom rings of a new Free Look camera.
+pub const DEFAULT_ORBITS: [Orbit; 3] = [
+    Orbit {
+        height: 4.5,
+        radius: 1.75,
+    },
+    Orbit {
+        height: 2.5,
+        radius: 3.0,
+    },
+    Orbit {
+        height: 0.4,
+        radius: 1.3,
+    },
+];
+
+fn is_default_orbits(o: &[Orbit; 3]) -> bool {
+    *o == DEFAULT_ORBITS
+}
+
+fn is_default_curvature(c: &f32) -> bool {
+    *c == DEFAULT_SPLINE_CURVATURE
+}
+
+fn is_sphere(s: &OrbitStyle) -> bool {
+    *s == OrbitStyle::Sphere
+}
+
+/// How much the Free Look spline bends between its rings by default.
+pub const DEFAULT_SPLINE_CURVATURE: f32 = 0.2;
+
+/// Orbital: circle the follow target at `radius`, yaw and pitch from input axes (Sphere), or
+/// slide between three rings (Three Rings, the Free Look rig).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Orbital {
@@ -363,6 +546,14 @@ pub struct Orbital {
     pub y_axis: OrbitAxis,
     /// Seconds the orbit centre takes to catch the target (x, y, z).
     pub damping: Vec3,
+    #[serde(skip_serializing_if = "is_sphere")]
+    pub style: OrbitStyle,
+    /// Three Rings: top, middle and bottom.
+    #[serde(skip_serializing_if = "is_default_orbits")]
+    pub orbits: [Orbit; 3],
+    /// Three Rings: 0 = straight lines between the rings, 1 = a smooth curve through them.
+    #[serde(skip_serializing_if = "is_default_curvature")]
+    pub spline_curvature: f32,
 }
 
 impl Default for Orbital {
@@ -374,7 +565,58 @@ impl Default for Orbital {
             x_axis: OrbitAxis::yaw(),
             y_axis: OrbitAxis::pitch(),
             damping: Vec3::new(0.2, 0.2, 0.2),
+            style: OrbitStyle::Sphere,
+            orbits: DEFAULT_ORBITS,
+            spline_curvature: DEFAULT_SPLINE_CURVATURE,
         }
+    }
+}
+
+impl Orbital {
+    /// The Free Look rig: three rings, vertical axis 0..1 starting on the middle ring.
+    pub fn three_rings() -> Self {
+        Self {
+            style: OrbitStyle::ThreeRings,
+            height_offset: 0.0,
+            y_axis: OrbitAxis::rig(),
+            ..Default::default()
+        }
+    }
+
+    /// Three Rings: (height, radius) for vertical axis value `y` (0 = bottom ring, 0.5 =
+    /// middle, 1 = top). Straight lines between the rings, bent towards the parabola through
+    /// all three by the spline curvature.
+    pub fn ring_at(&self, y: f32) -> (f32, f32) {
+        let y = y.clamp(0.0, 1.0);
+        let [top, mid, bottom] = self.orbits;
+        let pts = [
+            (bottom.height, bottom.radius),
+            (mid.height, mid.radius),
+            (top.height, top.radius),
+        ];
+        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        let linear = |k: usize| {
+            let v = |p: (f32, f32)| if k == 0 { p.0 } else { p.1 };
+            if y < 0.5 {
+                lerp(v(pts[0]), v(pts[1]), y * 2.0)
+            } else {
+                lerp(v(pts[1]), v(pts[2]), (y - 0.5) * 2.0)
+            }
+        };
+        // Quadratic through (0, p0), (0.5, p1), (1, p2).
+        let curve = |k: usize| {
+            let v = |p: (f32, f32)| if k == 0 { p.0 } else { p.1 };
+            let (a, b, c) = (v(pts[0]), v(pts[1]), v(pts[2]));
+            let l0 = 2.0 * (y - 0.5) * (y - 1.0);
+            let l1 = -4.0 * y * (y - 1.0);
+            let l2 = 2.0 * y * (y - 0.5);
+            a * l0 + b * l1 + c * l2
+        };
+        let k = self.spline_curvature.clamp(0.0, 1.0);
+        (
+            lerp(linear(0), curve(0), k),
+            lerp(linear(1), curve(1), k).max(0.0),
+        )
     }
 }
 
@@ -388,18 +630,166 @@ pub enum AimKind {
     Composer,
     /// Always look straight at the target.
     HardLookAt,
+    /// Frame a Target Group: aim at its centre like the Composer, then move closer or further
+    /// (dolly) and / or zoom so the whole group fills the framing size.
+    GroupComposer,
 }
 
 impl AimKind {
-    pub const ALL: [AimKind; 3] = [Self::DoNothing, Self::Composer, Self::HardLookAt];
+    pub const ALL: [AimKind; 4] = [
+        Self::DoNothing,
+        Self::Composer,
+        Self::HardLookAt,
+        Self::GroupComposer,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::DoNothing => "Do Nothing",
             Self::Composer => "Composer",
             Self::HardLookAt => "Hard Look At",
+            Self::GroupComposer => "Group Composer",
         }
     }
+}
+
+/// Which screen dimension the group has to fit in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum FramingMode {
+    Horizontal,
+    Vertical,
+    /// Whichever is tighter.
+    #[default]
+    HorizontalAndVertical,
+}
+
+impl FramingMode {
+    pub const ALL: [FramingMode; 3] = [
+        Self::Horizontal,
+        Self::Vertical,
+        Self::HorizontalAndVertical,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Horizontal => "Horizontal",
+            Self::Vertical => "Vertical",
+            Self::HorizontalAndVertical => "Horizontal And Vertical",
+        }
+    }
+}
+
+/// How the Group Composer makes the group fit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum GroupAdjustment {
+    /// Change the field of view only.
+    ZoomOnly,
+    /// Move along the view line only.
+    DollyOnly,
+    /// Move first (within the dolly limits), then zoom for the rest.
+    #[default]
+    DollyThenZoom,
+}
+
+impl GroupAdjustment {
+    pub const ALL: [GroupAdjustment; 3] = [Self::ZoomOnly, Self::DollyOnly, Self::DollyThenZoom];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ZoomOnly => "Zoom Only",
+            Self::DollyOnly => "Dolly Only",
+            Self::DollyThenZoom => "Dolly Then Zoom",
+        }
+    }
+}
+
+/// Group Composer settings: how much of the screen the group fills and how the camera gets
+/// there.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GroupFraming {
+    /// Fraction of the screen (in the framing dimension) the group's bounds fill.
+    pub framing_size: f32,
+    pub framing_mode: FramingMode,
+    pub adjustment: GroupAdjustment,
+    /// Seconds to settle on the new distance / field of view.
+    pub damping: f32,
+    /// Furthest the camera moves towards / away from the group from where the body put it.
+    pub max_dolly_in: f32,
+    pub max_dolly_out: f32,
+    pub minimum_distance: f32,
+    pub maximum_distance: f32,
+    /// Zoom limits in degrees (vertical field of view).
+    pub minimum_fov: f32,
+    pub maximum_fov: f32,
+}
+
+impl Default for GroupFraming {
+    fn default() -> Self {
+        Self {
+            framing_size: 0.8,
+            framing_mode: FramingMode::HorizontalAndVertical,
+            adjustment: GroupAdjustment::DollyThenZoom,
+            damping: 1.0,
+            max_dolly_in: 100.0,
+            max_dolly_out: 100.0,
+            minimum_distance: 1.0,
+            maximum_distance: 500.0,
+            minimum_fov: 3.0,
+            maximum_fov: 60.0,
+        }
+    }
+}
+
+/// Confiner: keeps the camera inside a volume (the Box or Sphere Collider of an object, else
+/// the object's unit cube).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Confiner {
+    pub enabled: bool,
+    /// Object whose collider bounds the camera.
+    #[serde(with = "entity_bits::option")]
+    pub volume: Option<Entity>,
+    /// Seconds to settle back inside after leaving the volume (0 = at once).
+    pub damping: f32,
+}
+
+impl Default for Confiner {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            volume: None,
+            damping: 0.0,
+        }
+    }
+}
+
+/// Impulse Listener: the camera shakes with impulses from Impulse Sources near it.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ImpulseListener {
+    pub enabled: bool,
+    /// Scales every impulse this camera feels.
+    pub gain: f32,
+    /// Channels (bits) it listens to.
+    pub channel_mask: u32,
+    /// Measure distance to sources on the ground plane (ignores height).
+    pub use_2d_distance: bool,
+}
+
+impl Default for ImpulseListener {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            gain: 1.0,
+            channel_mask: u32::MAX,
+            use_2d_distance: false,
+        }
+    }
+}
+
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
 }
 
 /// Composer: the look-at target rests in the dead zone; in the soft zone the camera turns
@@ -550,6 +940,13 @@ pub struct VirtualCamera {
     pub composer: Composer,
     pub noise: Noise,
     pub collider: CameraCollider,
+    /// Group Composer settings.
+    #[serde(skip_serializing_if = "is_default")]
+    pub group_framing: GroupFraming,
+    #[serde(skip_serializing_if = "is_default")]
+    pub confiner: Confiner,
+    #[serde(skip_serializing_if = "is_default")]
+    pub impulse: ImpulseListener,
 }
 
 impl Default for VirtualCamera {
@@ -568,15 +965,28 @@ impl Default for VirtualCamera {
             composer: Composer::default(),
             noise: Noise::default(),
             collider: CameraCollider::default(),
+            group_framing: GroupFraming::default(),
+            confiner: Confiner::default(),
+            impulse: ImpulseListener::default(),
         }
     }
 }
 
 impl VirtualCamera {
-    /// A Free Look camera: orbits its target from input and keeps it framed.
+    /// A Free Look camera: three orbit rings around its target, steered by input, keeping it
+    /// framed.
     pub fn free_look() -> Self {
         Self {
             body: BodyKind::Orbital,
+            orbital: Orbital::three_rings(),
+            ..Default::default()
+        }
+    }
+
+    /// A camera that frames a Target Group.
+    pub fn group_framing() -> Self {
+        Self {
+            aim: AimKind::GroupComposer,
             ..Default::default()
         }
     }

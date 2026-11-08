@@ -1,0 +1,1610 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Camera Brain": {
+          "blend_list": "Assets/Cameras/CutsceneBlends.blends",
+          "default_blend": {
+            "duration": 1.5,
+            "style": "EaseInOut"
+          },
+          "enabled": true,
+          "update_method": "LateUpdate"
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener",
+            "Camera Brain"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            22.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            7.0,
+            -16.0
+          ],
+          "rotation": [
+            0.190809,
+            0.0,
+            0.0,
+            0.98162717
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            50.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            3.0,
+            0.0
+          ],
+          "rotation": [
+            0.4082179,
+            -0.23456971,
+            0.10938165,
+            0.87542605
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ground",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/VCam Ground.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.0,
+            1.0,
+            3.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pillar 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/VCam Pillar.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -9.0,
+            2.0,
+            6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.2,
+            4.0,
+            1.2
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Pillar 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cube"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/VCam Pillar.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            9.0,
+            2.0,
+            6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.2,
+            4.0,
+            1.2
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hero",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Red.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -7.0,
+            1.0,
+            -0.5
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Ally",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/VCam Runner.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.4,
+            1.0,
+            0.6
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Rival",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Lightmap Green.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            2.6,
+            1.0,
+            -0.8
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Target Group"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Trio",
+          "tag": "Untagged"
+        },
+        "Target Group": {
+          "members": [
+            {
+              "radius": 0.8,
+              "target": 5,
+              "weight": 1.0
+            },
+            {
+              "radius": 0.8,
+              "target": 6,
+              "weight": 1.0
+            },
+            {
+              "radius": 0.8,
+              "target": 7,
+              "weight": 1.0
+            }
+          ],
+          "position_mode": "GroupCenter"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer",
+            "Impulse Source"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Barrel",
+          "tag": "Untagged"
+        },
+        "Impulse Source": {
+          "amplitude_gain": 1.0,
+          "attack": 0.02,
+          "channel": 1,
+          "collide_with": 4294967295,
+          "decay": 1.1,
+          "default_velocity": [
+            0.0,
+            -0.35,
+            0.15
+          ],
+          "dissipation_distance": 40.0,
+          "enabled": true,
+          "frequency_gain": 1.0,
+          "impact_radius": 40.0,
+          "shape": "Explosion",
+          "sustain": 0.15,
+          "trigger": "Manual"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/VCam Pillar.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            6.0,
+            0.6,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.8,
+            0.6,
+            0.8
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": false,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Explosion",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Lantern Glow.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            6.0,
+            1.4,
+            4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.4,
+            2.4,
+            2.4
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": false,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Flash",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.6,
+            0.25
+          ],
+          "enabled": true,
+          "intensity": 8.0,
+          "kind": "Point",
+          "range": 16.0,
+          "shadows": "None",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            6.0,
+            3.0,
+            3.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Playable Director"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Lights Director",
+          "tag": "Untagged"
+        },
+        "Playable Director": {
+          "bindings": [
+            {
+              "object": 11,
+              "track": "t1"
+            }
+          ],
+          "enabled": true,
+          "initial_time": 0.0,
+          "play_on_awake": false,
+          "playable": "Assets/Timelines/CutsceneLights.timeline",
+          "update_method": "GameTime",
+          "wrap_mode": "None"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Cameras",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Virtual Camera"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Wide Cam",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            7.0,
+            -16.0
+          ],
+          "rotation": [
+            0.17364818,
+            0.0,
+            0.0,
+            0.9848077
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Virtual Camera": {
+          "aim": "HardLookAt",
+          "body": "DoNothing",
+          "collider": {
+            "camera_radius": 0.2,
+            "collide_against": 4294967295,
+            "damping": 0.5,
+            "damping_when_occluded": 0.0,
+            "enabled": false,
+            "ignore_tag": "",
+            "minimum_distance": 0.5
+          },
+          "composer": {
+            "dead_zone_height": 0.1,
+            "dead_zone_width": 0.1,
+            "horizontal_damping": 0.5,
+            "screen_x": 0.5,
+            "screen_y": 0.5,
+            "soft_zone_height": 0.8,
+            "soft_zone_width": 0.8,
+            "tracked_offset": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "vertical_damping": 0.5
+          },
+          "enabled": true,
+          "follow": null,
+          "impulse": {
+            "channel_mask": 4294967295,
+            "enabled": true,
+            "gain": 1.0,
+            "use_2d_distance": false
+          },
+          "lens": {
+            "dutch": 0.0,
+            "far": 1000.0,
+            "fov": 60.0,
+            "near": 0.3
+          },
+          "look_at": 8,
+          "noise": {
+            "amplitude_gain": 1.0,
+            "enabled": false,
+            "frequency_gain": 1.0,
+            "profile": "Handheld",
+            "seed": 0
+          },
+          "orbital": {
+            "binding": "World",
+            "damping": [
+              0.2,
+              0.2,
+              0.2
+            ],
+            "height_offset": 1.0,
+            "radius": 6.0,
+            "x_axis": {
+              "input_axis": "Mouse X",
+              "invert": false,
+              "max": 180.0,
+              "min": -180.0,
+              "speed": 300.0,
+              "value": 0.0,
+              "wrap": true
+            },
+            "y_axis": {
+              "input_axis": "Mouse Y",
+              "invert": true,
+              "max": 70.0,
+              "min": -10.0,
+              "speed": 200.0,
+              "value": 15.0,
+              "wrap": false
+            }
+          },
+          "priority": 5,
+          "third_person": {
+            "camera_distance": 4.0,
+            "camera_side": 1.0,
+            "damping": [
+              0.1,
+              0.5,
+              0.3
+            ],
+            "dead_zone": [
+              0.0,
+              0.0
+            ],
+            "shoulder_offset": [
+              0.5,
+              1.5,
+              0.0
+            ],
+            "vertical_arm_length": 0.4
+          },
+          "transposer": {
+            "binding": "LockToTargetWithWorldUp",
+            "damping": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "offset": [
+              0.0,
+              2.0,
+              -8.0
+            ]
+          }
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Virtual Camera"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Hero Cam",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -5.6,
+            2.6,
+            -3.7
+          ],
+          "rotation": [
+            0.17364818,
+            0.0,
+            0.0,
+            0.9848077
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Virtual Camera": {
+          "aim": "Composer",
+          "body": "Transposer",
+          "collider": {
+            "camera_radius": 0.2,
+            "collide_against": 4294967295,
+            "damping": 0.5,
+            "damping_when_occluded": 0.0,
+            "enabled": false,
+            "ignore_tag": "",
+            "minimum_distance": 0.5
+          },
+          "composer": {
+            "dead_zone_height": 0.1,
+            "dead_zone_width": 0.1,
+            "horizontal_damping": 0.5,
+            "screen_x": 0.4,
+            "screen_y": 0.5,
+            "soft_zone_height": 0.8,
+            "soft_zone_width": 0.8,
+            "tracked_offset": [
+              0.0,
+              0.6,
+              0.0
+            ],
+            "vertical_damping": 0.5
+          },
+          "enabled": true,
+          "follow": 5,
+          "impulse": {
+            "channel_mask": 4294967295,
+            "enabled": true,
+            "gain": 1.0,
+            "use_2d_distance": false
+          },
+          "lens": {
+            "dutch": 0.0,
+            "far": 1000.0,
+            "fov": 60.0,
+            "near": 0.3
+          },
+          "look_at": 5,
+          "noise": {
+            "amplitude_gain": 1.0,
+            "enabled": false,
+            "frequency_gain": 1.0,
+            "profile": "Handheld",
+            "seed": 0
+          },
+          "orbital": {
+            "binding": "World",
+            "damping": [
+              0.2,
+              0.2,
+              0.2
+            ],
+            "height_offset": 1.0,
+            "radius": 6.0,
+            "x_axis": {
+              "input_axis": "Mouse X",
+              "invert": false,
+              "max": 180.0,
+              "min": -180.0,
+              "speed": 300.0,
+              "value": 0.0,
+              "wrap": true
+            },
+            "y_axis": {
+              "input_axis": "Mouse Y",
+              "invert": true,
+              "max": 70.0,
+              "min": -10.0,
+              "speed": 200.0,
+              "value": 15.0,
+              "wrap": false
+            }
+          },
+          "priority": 5,
+          "third_person": {
+            "camera_distance": 4.0,
+            "camera_side": 1.0,
+            "damping": [
+              0.1,
+              0.5,
+              0.3
+            ],
+            "dead_zone": [
+              0.0,
+              0.0
+            ],
+            "shoulder_offset": [
+              0.5,
+              1.5,
+              0.0
+            ],
+            "vertical_arm_length": 0.4
+          },
+          "transposer": {
+            "binding": "LockToTargetWithWorldUp",
+            "damping": [
+              0.4,
+              0.4,
+              0.4
+            ],
+            "offset": [
+              1.4,
+              1.6,
+              -3.2
+            ]
+          }
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Virtual Camera"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Group Cam",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            4.5,
+            -8.0
+          ],
+          "rotation": [
+            0.17364818,
+            0.0,
+            0.0,
+            0.9848077
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Virtual Camera": {
+          "aim": "GroupComposer",
+          "body": "Transposer",
+          "collider": {
+            "camera_radius": 0.2,
+            "collide_against": 4294967295,
+            "damping": 0.5,
+            "damping_when_occluded": 0.0,
+            "enabled": false,
+            "ignore_tag": "",
+            "minimum_distance": 0.5
+          },
+          "composer": {
+            "dead_zone_height": 0.1,
+            "dead_zone_width": 0.1,
+            "horizontal_damping": 0.5,
+            "screen_x": 0.5,
+            "screen_y": 0.5,
+            "soft_zone_height": 0.8,
+            "soft_zone_width": 0.8,
+            "tracked_offset": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "vertical_damping": 0.5
+          },
+          "enabled": true,
+          "follow": 8,
+          "group_framing": {
+            "adjustment": "DollyThenZoom",
+            "damping": 1.0,
+            "framing_mode": "HorizontalAndVertical",
+            "framing_size": 0.7,
+            "max_dolly_in": 100.0,
+            "max_dolly_out": 100.0,
+            "maximum_distance": 500.0,
+            "maximum_fov": 60.0,
+            "minimum_distance": 1.0,
+            "minimum_fov": 3.0
+          },
+          "impulse": {
+            "channel_mask": 4294967295,
+            "enabled": true,
+            "gain": 1.0,
+            "use_2d_distance": false
+          },
+          "lens": {
+            "dutch": 0.0,
+            "far": 1000.0,
+            "fov": 60.0,
+            "near": 0.3
+          },
+          "look_at": 8,
+          "noise": {
+            "amplitude_gain": 1.0,
+            "enabled": false,
+            "frequency_gain": 1.0,
+            "profile": "Handheld",
+            "seed": 0
+          },
+          "orbital": {
+            "binding": "World",
+            "damping": [
+              0.2,
+              0.2,
+              0.2
+            ],
+            "height_offset": 1.0,
+            "radius": 6.0,
+            "x_axis": {
+              "input_axis": "Mouse X",
+              "invert": false,
+              "max": 180.0,
+              "min": -180.0,
+              "speed": 300.0,
+              "value": 0.0,
+              "wrap": true
+            },
+            "y_axis": {
+              "input_axis": "Mouse Y",
+              "invert": true,
+              "max": 70.0,
+              "min": -10.0,
+              "speed": 200.0,
+              "value": 15.0,
+              "wrap": false
+            }
+          },
+          "priority": 5,
+          "third_person": {
+            "camera_distance": 4.0,
+            "camera_side": 1.0,
+            "damping": [
+              0.1,
+              0.5,
+              0.3
+            ],
+            "dead_zone": [
+              0.0,
+              0.0
+            ],
+            "shoulder_offset": [
+              0.5,
+              1.5,
+              0.0
+            ],
+            "vertical_arm_length": 0.4
+          },
+          "transposer": {
+            "binding": "LockToTargetWithWorldUp",
+            "damping": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "offset": [
+              0.0,
+              3.5,
+              -8.0
+            ]
+          }
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Virtual Camera"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Explosion Cam",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            10.0,
+            3.0,
+            -3.0
+          ],
+          "rotation": [
+            0.17364818,
+            0.0,
+            0.0,
+            0.9848077
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Virtual Camera": {
+          "aim": "HardLookAt",
+          "body": "DoNothing",
+          "collider": {
+            "camera_radius": 0.2,
+            "collide_against": 4294967295,
+            "damping": 0.5,
+            "damping_when_occluded": 0.0,
+            "enabled": false,
+            "ignore_tag": "",
+            "minimum_distance": 0.5
+          },
+          "composer": {
+            "dead_zone_height": 0.1,
+            "dead_zone_width": 0.1,
+            "horizontal_damping": 0.5,
+            "screen_x": 0.5,
+            "screen_y": 0.5,
+            "soft_zone_height": 0.8,
+            "soft_zone_width": 0.8,
+            "tracked_offset": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "vertical_damping": 0.5
+          },
+          "enabled": true,
+          "follow": null,
+          "impulse": {
+            "channel_mask": 4294967295,
+            "enabled": true,
+            "gain": 1.0,
+            "use_2d_distance": false
+          },
+          "lens": {
+            "dutch": 0.0,
+            "far": 1000.0,
+            "fov": 60.0,
+            "near": 0.3
+          },
+          "look_at": 9,
+          "noise": {
+            "amplitude_gain": 1.0,
+            "enabled": false,
+            "frequency_gain": 1.0,
+            "profile": "Handheld",
+            "seed": 0
+          },
+          "orbital": {
+            "binding": "World",
+            "damping": [
+              0.2,
+              0.2,
+              0.2
+            ],
+            "height_offset": 1.0,
+            "radius": 6.0,
+            "x_axis": {
+              "input_axis": "Mouse X",
+              "invert": false,
+              "max": 180.0,
+              "min": -180.0,
+              "speed": 300.0,
+              "value": 0.0,
+              "wrap": true
+            },
+            "y_axis": {
+              "input_axis": "Mouse Y",
+              "invert": true,
+              "max": 70.0,
+              "min": -10.0,
+              "speed": 200.0,
+              "value": 15.0,
+              "wrap": false
+            }
+          },
+          "priority": 5,
+          "third_person": {
+            "camera_distance": 4.0,
+            "camera_side": 1.0,
+            "damping": [
+              0.1,
+              0.5,
+              0.3
+            ],
+            "dead_zone": [
+              0.0,
+              0.0
+            ],
+            "shoulder_offset": [
+              0.5,
+              1.5,
+              0.0
+            ],
+            "vertical_arm_length": 0.4
+          },
+          "transposer": {
+            "binding": "LockToTargetWithWorldUp",
+            "damping": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "offset": [
+              0.0,
+              2.0,
+              -8.0
+            ]
+          }
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Virtual Camera"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Free Look Cam",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            20.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -2.6,
+            3.5,
+            -3.8
+          ],
+          "rotation": [
+            0.17364818,
+            0.0,
+            0.0,
+            0.9848077
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Virtual Camera": {
+          "aim": "Composer",
+          "body": "Orbital",
+          "collider": {
+            "camera_radius": 0.2,
+            "collide_against": 4294967295,
+            "damping": 0.5,
+            "damping_when_occluded": 0.0,
+            "enabled": false,
+            "ignore_tag": "",
+            "minimum_distance": 0.5
+          },
+          "composer": {
+            "dead_zone_height": 0.1,
+            "dead_zone_width": 0.1,
+            "horizontal_damping": 0.5,
+            "screen_x": 0.5,
+            "screen_y": 0.5,
+            "soft_zone_height": 0.8,
+            "soft_zone_width": 0.8,
+            "tracked_offset": [
+              0.0,
+              0.5,
+              0.0
+            ],
+            "vertical_damping": 0.5
+          },
+          "enabled": true,
+          "follow": 5,
+          "impulse": {
+            "channel_mask": 4294967295,
+            "enabled": true,
+            "gain": 1.0,
+            "use_2d_distance": false
+          },
+          "lens": {
+            "dutch": 0.0,
+            "far": 1000.0,
+            "fov": 60.0,
+            "near": 0.3
+          },
+          "look_at": 5,
+          "noise": {
+            "amplitude_gain": 1.0,
+            "enabled": false,
+            "frequency_gain": 1.0,
+            "profile": "Handheld",
+            "seed": 0
+          },
+          "orbital": {
+            "binding": "World",
+            "damping": [
+              0.2,
+              0.2,
+              0.2
+            ],
+            "height_offset": 0.0,
+            "radius": 6.0,
+            "style": "ThreeRings",
+            "x_axis": {
+              "input_axis": "Mouse X",
+              "invert": false,
+              "max": 180.0,
+              "min": -180.0,
+              "speed": 300.0,
+              "value": -20.0,
+              "wrap": true
+            },
+            "y_axis": {
+              "input_axis": "Mouse Y",
+              "invert": true,
+              "max": 1.0,
+              "min": 0.0,
+              "speed": 2.0,
+              "value": 0.5,
+              "wrap": false
+            }
+          },
+          "priority": 20,
+          "third_person": {
+            "camera_distance": 4.0,
+            "camera_side": 1.0,
+            "damping": [
+              0.1,
+              0.5,
+              0.3
+            ],
+            "dead_zone": [
+              0.0,
+              0.0
+            ],
+            "shoulder_offset": [
+              0.5,
+              1.5,
+              0.0
+            ],
+            "vertical_arm_length": 0.4
+          },
+          "transposer": {
+            "binding": "LockToTargetWithWorldUp",
+            "damping": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "offset": [
+              0.0,
+              2.0,
+              -8.0
+            ]
+          }
+        }
+      },
+      "parent": 13
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Playable Director",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Cutscene Director",
+          "tag": "Untagged"
+        },
+        "Playable Director": {
+          "bindings": [
+            {
+              "object": 0,
+              "track": "t1"
+            },
+            {
+              "object": 5,
+              "track": "t2"
+            },
+            {
+              "object": 6,
+              "track": "t3"
+            },
+            {
+              "object": 19,
+              "track": "t6"
+            }
+          ],
+          "enabled": true,
+          "initial_time": 0.0,
+          "play_on_awake": true,
+          "playable": "Assets/Timelines/Cutscene.timeline",
+          "references": [
+            {
+              "name": "r1",
+              "object": 14
+            },
+            {
+              "name": "r2",
+              "object": 15
+            },
+            {
+              "name": "r3",
+              "object": 16
+            },
+            {
+              "name": "r4",
+              "object": 17
+            },
+            {
+              "name": "r5",
+              "object": 10
+            },
+            {
+              "name": "r6",
+              "object": 12
+            }
+          ],
+          "update_method": "GameTime",
+          "wrap_mode": "None"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {},
+              "path": "Assets/Scripts/CutsceneDemo.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

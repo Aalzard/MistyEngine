@@ -34,14 +34,23 @@ pub enum TrackKind {
     Audio,
     /// Markers that call a script method on the bound object.
     Signal,
+    /// Bound to a Camera Brain: each clip shows a virtual camera, overlapping clips blend and
+    /// eases blend with the brain's own live camera.
+    Camera,
+    /// Each clip controls a scene object while it plays: activates it, drives the timeline of
+    /// its Playable Director (a sub-timeline), plays its particles and audio, fires its
+    /// Impulse Source.
+    Control,
 }
 
 impl TrackKind {
     /// Add Track menu order.
-    pub const ALL: [TrackKind; 5] = [
+    pub const ALL: [TrackKind; 7] = [
         Self::Activation,
         Self::Animation,
         Self::Audio,
+        Self::Control,
+        Self::Camera,
         Self::Signal,
         Self::Group,
     ];
@@ -53,25 +62,74 @@ impl TrackKind {
             Self::Animation => "Animation Track",
             Self::Audio => "Audio Track",
             Self::Signal => "Signal Track",
+            Self::Camera => "Camera Track",
+            Self::Control => "Control Track",
         }
     }
 
-    /// Whether the track is bound to a scene object.
+    /// Whether the track is bound to a scene object (Control clips name their own objects).
     pub fn bindable(self) -> bool {
-        self != Self::Group
+        !matches!(self, Self::Group | Self::Control)
     }
 
     /// Whether the track holds clips (signal tracks hold markers instead).
     pub fn has_clips(self) -> bool {
-        matches!(self, Self::Activation | Self::Animation | Self::Audio)
+        matches!(
+            self,
+            Self::Activation | Self::Animation | Self::Audio | Self::Camera | Self::Control
+        )
+    }
+
+    /// Whether each clip points at a scene object of its own (through the director's
+    /// references).
+    pub fn clips_reference_objects(self) -> bool {
+        matches!(self, Self::Camera | Self::Control)
     }
 
     /// Component the bound object needs ("" = any object).
     pub fn binding_component(self) -> &'static str {
         match self {
             Self::Audio => "Audio Source",
+            Self::Camera => "Camera Brain",
             _ => "",
         }
+    }
+}
+
+/// What a Control clip does to its object.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ControlOptions {
+    /// The object is active only while the clip plays.
+    pub activation: bool,
+    /// Its Playable Director's timeline plays as a sub-timeline at the clip's local time.
+    pub sub_timeline: bool,
+    /// Its Particle System (and its children's) play while the clip plays (Play mode).
+    pub particles: bool,
+    /// Its Audio Source plays while the clip plays (Play mode).
+    pub audio: bool,
+    /// Its Impulse Source fires when the clip starts (Play mode).
+    pub impulse: bool,
+    /// What activation leaves when the director stops.
+    pub post_playback: PostPlayback,
+}
+
+impl Default for ControlOptions {
+    fn default() -> Self {
+        Self {
+            activation: true,
+            sub_timeline: true,
+            particles: true,
+            audio: true,
+            impulse: true,
+            post_playback: PostPlayback::Revert,
+        }
+    }
+}
+
+impl ControlOptions {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
     }
 }
 
@@ -139,6 +197,13 @@ pub struct TimelineClip {
     pub post_extrapolation: Extrapolation,
     /// Audio clips: volume of the voice (0–1).
     pub volume: f32,
+    /// Camera and Control clips: name of the director reference holding their scene object
+    /// (the virtual camera, the controlled object).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+    /// Control clips.
+    #[serde(skip_serializing_if = "ControlOptions::is_default")]
+    pub control: ControlOptions,
 }
 
 impl Default for TimelineClip {
@@ -154,6 +219,8 @@ impl Default for TimelineClip {
             ease_out: 0.0,
             post_extrapolation: Extrapolation::None,
             volume: 1.0,
+            reference: None,
+            control: ControlOptions::default(),
         }
     }
 }
@@ -313,7 +380,11 @@ impl TimelineAsset {
             .flat_map(|t| t.markers.iter())
             .chain(&self.markers)
             .map(|m| m.time);
-        clips.chain(markers).fold(0.0, f32::max)
+        let recorded = self
+            .tracks
+            .iter()
+            .filter_map(|t| t.recorded.as_ref().map(|r| r.length));
+        clips.chain(markers).chain(recorded).fold(0.0, f32::max)
     }
 
     /// An id no track uses yet.
@@ -335,16 +406,28 @@ impl TimelineAsset {
         self.tracks.iter_mut().find(|t| t.id == id)
     }
 
+    /// A clip reference name no clip uses yet ("r1", "r2", …).
+    pub fn next_reference(&self) -> String {
+        let n = self
+            .tracks
+            .iter()
+            .flat_map(|t| t.clips.iter())
+            .filter_map(|c| {
+                c.reference
+                    .as_deref()?
+                    .strip_prefix('r')?
+                    .parse::<u32>()
+                    .ok()
+            })
+            .max()
+            .unwrap_or(0);
+        format!("r{}", n + 1)
+    }
+
     /// Add a track of `kind` (inside `group`, after its last child) and return its id.
     pub fn add_track(&mut self, kind: TrackKind, group: Option<&str>) -> String {
         let id = self.next_track_id();
-        let base = match kind {
-            TrackKind::Group => "Track Group",
-            TrackKind::Activation => "Activation Track",
-            TrackKind::Animation => "Animation Track",
-            TrackKind::Audio => "Audio Track",
-            TrackKind::Signal => "Signal Track",
-        };
+        let base = kind.label();
         let taken = |n: &str| self.tracks.iter().any(|t| t.name == n);
         let name = (0..)
             .map(|i| match i {

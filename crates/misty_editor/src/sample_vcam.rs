@@ -225,6 +225,7 @@ pub fn demo_scene() -> Scene {
             default_blend: BlendDefinition {
                 style: BlendStyle::EaseInOut,
                 duration: 2.0,
+                ..Default::default()
             },
             custom_blends: vec![CustomBlend {
                 from: String::new(),
@@ -232,6 +233,7 @@ pub fn demo_scene() -> Scene {
                 blend: BlendDefinition {
                     style: BlendStyle::Linear,
                     duration: 1.0,
+                    ..Default::default()
                 },
             }],
             ..Default::default()

@@ -282,7 +282,7 @@ fn draw_track(
             ));
             p.line_segment([pos2(xo, r.top()), r.right_bottom()], line);
         }
-        let name = if c.name.is_empty() {
+        let mut name = if c.name.is_empty() {
             c.asset
                 .as_deref()
                 .map(misty_engine::scene::clip_name)
@@ -290,6 +290,18 @@ fn draw_track(
         } else {
             c.name.clone()
         };
+        // Camera / Control clips whose object is gone say so.
+        if track.kind.clips_reference_objects() {
+            let found = s
+                .timeline
+                .director
+                .and_then(|d| super::director(s, d))
+                .and_then(|d| d.reference(c.reference.as_deref()?))
+                .is_some_and(|e| s.scene.contains(e));
+            if !found {
+                name.push_str("  (no object)");
+            }
+        }
         label(p, r, &name);
     }
 }
@@ -395,11 +407,16 @@ fn interact(
             match hit(s, asset, origin) {
                 Hit::ClipBody(id, i) if !locked(asset, Some(&id)) => {
                     let start = asset.track(&id).map_or(0.0, |tr| tr.clips[i].start);
+                    let base = asset
+                        .track(&id)
+                        .map(|tr| tr.clips.clone())
+                        .unwrap_or_default();
                     select(s, path, TimelineSel::Clip(id.clone(), i));
                     Some(Drag::Move {
                         track: id,
                         clip: i,
                         grab: t - start,
+                        base,
                     })
                 }
                 Hit::ClipStart(id, i) if !locked(asset, Some(&id)) => {
@@ -415,8 +432,16 @@ fn interact(
                     })
                 }
                 Hit::ClipEnd(id, i) if !locked(asset, Some(&id)) => {
+                    let base = asset
+                        .track(&id)
+                        .map(|tr| tr.clips.clone())
+                        .unwrap_or_default();
                     select(s, path, TimelineSel::Clip(id.clone(), i));
-                    Some(Drag::TrimEnd { track: id, clip: i })
+                    Some(Drag::TrimEnd {
+                        track: id,
+                        clip: i,
+                        base,
+                    })
                 }
                 Hit::Marker(track, i) if !locked(asset, track.as_deref()) => {
                     select(s, path, TimelineSel::Marker(track.clone(), i));
@@ -442,15 +467,31 @@ fn interact(
                 w.preview = editing;
                 w.playing = false;
             }
-            Drag::Move { track, clip, grab } => {
+            Drag::Move {
+                track,
+                clip,
+                grab,
+                base,
+            } => {
                 let dur = asset
                     .track(&track)
                     .map_or(0.0, |tr| tr.clips[clip].duration);
-                let points = ops::snap_points(asset, &track, clip, s.timeline.time);
+                let points = if s.timeline.ripple {
+                    vec![0.0, s.timeline.time]
+                } else {
+                    ops::snap_points(asset, &track, clip, s.timeline.time)
+                };
                 let start = ops::snapped_start(asset, t - grab, dur, &points, radius, snap);
+                let ripple = s.timeline.ripple;
                 timelines::edit(s, path, "Move Clip", true, |a| {
-                    if let Some(c) = a.track_mut(&track).and_then(|tr| tr.clips.get_mut(clip)) {
-                        c.start = start;
+                    if let Some(tr) = a.track_mut(&track)
+                        && clip < tr.clips.len()
+                    {
+                        if ripple {
+                            let delta = start - base[clip].start;
+                            ops::ripple(&mut tr.clips, &base, clip, base[clip].end(), delta);
+                        }
+                        tr.clips[clip].start = start;
                     }
                 });
             }
@@ -467,15 +508,26 @@ fn interact(
                     }
                 });
             }
-            Drag::TrimEnd { track, clip } => {
+            Drag::TrimEnd { track, clip, base } => {
                 let points = ops::snap_points(asset, &track, clip, s.timeline.time);
                 let mut to = frame_snap(t);
                 if snap && let Some(e) = ops::snap_to(to, &points, radius) {
                     to = e;
                 }
+                let ripple = s.timeline.ripple;
                 timelines::edit(s, path, "Trim Clip", true, |a| {
-                    if let Some(c) = a.track_mut(&track).and_then(|tr| tr.clips.get_mut(clip)) {
-                        ops::trim_end(c, to, frame);
+                    if let Some(tr) = a.track_mut(&track)
+                        && clip < tr.clips.len()
+                    {
+                        let mut c = base[clip].clone();
+                        ops::trim_end(&mut c, to, frame);
+                        if ripple {
+                            let delta = c.end() - base[clip].end();
+                            ops::ripple(&mut tr.clips, &base, clip, base[clip].end(), delta);
+                        }
+                        tr.clips[clip].duration = c.duration;
+                        tr.clips[clip].ease_in = c.ease_in;
+                        tr.clips[clip].ease_out = c.ease_out;
                     }
                 });
             }
@@ -622,6 +674,38 @@ pub fn add_clip_items(
                 ops::add_clip(s, path, &id, None, time);
                 ui.close();
             }
+        }
+        TrackKind::Camera => {
+            let cams: Vec<(misty_engine::hecs::Entity, String)> =
+                misty_engine::vcam::rig::active_cameras(&s.scene)
+                    .into_iter()
+                    .map(|e| (e, s.scene.name(e)))
+                    .collect();
+            ui.menu_button("Add Camera Shot", |ui| {
+                if cams.is_empty() {
+                    ui.label("No virtual cameras in the scene.");
+                }
+                for (e, n) in cams {
+                    if ui.button(n).clicked() {
+                        ops::add_reference_clip(s, path, &id, e, time);
+                        ui.close();
+                    }
+                }
+            });
+        }
+        TrackKind::Control => {
+            let objects = ops::controllable(s);
+            ui.menu_button("Add Control Clip", |ui| {
+                if objects.is_empty() {
+                    ui.label("No objects in the scene.");
+                }
+                for (e, n) in objects {
+                    if ui.button(n).clicked() {
+                        ops::add_reference_clip(s, path, &id, e, time);
+                        ui.close();
+                    }
+                }
+            });
         }
         TrackKind::Animation | TrackKind::Audio => {
             let (title, list): (&str, Vec<String>) = if track.kind == TrackKind::Animation {
