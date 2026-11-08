@@ -9,7 +9,6 @@ use crate::menu_bar::create_menu_items;
 use crate::search::fuzzy::Mode;
 use crate::state::{EditorState, object_icon};
 use crate::theme;
-use crate::theme::{PREFAB, PREFAB_DIM};
 use crate::tree_lines::{self, Guide};
 use crate::widgets::{panel_toolbar, search_field};
 
@@ -43,6 +42,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         search_field(ui, &mut state.hierarchy.search, ui.available_width())
             .on_hover_text("Name words and filters: t:Light t:Camera tag:Player layer:UI");
     });
+    crate::prefab_mode::hierarchy_header(ui, state);
+    let mut prefab_rows = super::prefab_rows::Rows::default();
 
     let rows = visible_rows(state);
     let drag_id = drag_id();
@@ -90,7 +91,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     Row::Scene(id) => scene_row(ui, state, id, dragging.is_some()),
                     Row::Object(e, _) => {
                         let line = (i, &guides[i]);
-                        row(ui, state, e, line, &objects, dragging.is_some())
+                        let info = prefab_rows.info(state, e);
+                        row(ui, state, e, line, &objects, dragging.is_some(), info)
                     }
                 };
                 if let Some(d) = hovered {
@@ -157,8 +159,12 @@ fn visible_rows(state: &EditorState) -> Vec<Row> {
             }
         }
     }
+    // Prefab Mode lists the prefab alone (its header is drawn above the rows).
+    let prefab_mode = crate::prefab_mode::active(state);
     for entry in scene.scenes() {
-        out.push(Row::Scene(entry.id));
+        if !prefab_mode {
+            out.push(Row::Scene(entry.id));
+        }
         if !entry.loaded || state.hierarchy.collapsed_scenes.contains(&entry.id) {
             continue;
         }
@@ -333,6 +339,7 @@ fn row(
     (index, guide): (usize, &Guide),
     rows: &[(Entity, usize)],
     dragging: bool,
+    prefab: super::prefab_rows::RowPrefab,
 ) -> Option<Drop> {
     let depth = guide.depth;
     let (rect, resp) =
@@ -396,15 +403,14 @@ fn row(
     // Icon + name, or the inline rename field.
     let text_x = x + 16.0;
     let active = state.scene.active_in_hierarchy(e);
-    // Prefab instances (root and children) have blue names.
-    let prefab = state.scene.prefab_root(e).is_some();
-    let color = match (selected && state.hierarchy.focused, active, prefab) {
+    // Prefab instances (root and children) have blue names; red when the prefab is missing.
+    let prefab_color = super::prefab_rows::name_color(prefab, active);
+    let color = match (selected && state.hierarchy.focused, active, prefab_color) {
         (true, _, _) => Color32::WHITE,
-        (false, true, true) => PREFAB,
-        (false, false, true) => PREFAB_DIM,
-        (false, true, false) if has_children || is_folder => tree_lines::PARENT_TEXT,
-        (false, true, false) => theme::TEXT,
-        (false, false, false) => theme::TEXT_DIM,
+        (false, _, Some(c)) => c,
+        (false, true, None) if has_children || is_folder => tree_lines::PARENT_TEXT,
+        (false, true, None) => theme::TEXT,
+        (false, false, None) => theme::TEXT_DIM,
     };
     let renaming = state
         .hierarchy
@@ -444,6 +450,7 @@ fn row(
                 color,
             );
         }
+        super::prefab_rows::badges(ui, state, e, prefab, rect, text_x);
     }
 
     // Clicks: plain / Ctrl toggle / Shift range; double-click frames.
@@ -603,19 +610,7 @@ fn row_menu(ui: &mut Ui, state: &mut EditorState, e: Entity) {
             ui.close();
         }
     }
-    if let Some(root) = state.scene.prefab_root(e) {
-        ui.separator();
-        ui.menu_button("Prefab", |ui| {
-            if ui.button("Select Asset").clicked() {
-                state.push(Action::SelectPrefabAsset(root));
-                ui.close();
-            }
-            if ui.button("Unpack Prefab").clicked() {
-                state.push(Action::UnpackPrefab(root));
-                ui.close();
-            }
-        });
-    }
+    super::prefab_rows::menu(ui, state, e);
     crate::menu_bar::virtual_geometry_items(ui, state);
     ui.separator();
     if ui.button("Select Children").clicked() {

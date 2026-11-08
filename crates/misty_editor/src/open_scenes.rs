@@ -45,6 +45,7 @@ pub fn open_additive(s: &mut EditorState, rel: &str) -> Option<SceneId> {
                 s.console.warn(format!("{rel}: {w}"));
             }
             mark_saved(s, id);
+            crate::prefabs::catch_up(s, Some(id));
             s.hierarchy.collapsed_scenes.remove(&id);
             scene_files::remember(s, rel);
             crate::live_reload::scenes::note_disk(s, rel);

@@ -414,6 +414,7 @@ pub fn load(s: &mut EditorState, rel: &str) -> bool {
             scene.set_scene_path(0, rel);
             s.scene = scene;
             reset_after_load(s);
+            crate::prefabs::catch_up(s, None);
             keep_view_above_ground(s);
             for w in report.warnings {
                 s.console.warn(format!("{rel}: {w}"));
@@ -512,6 +513,8 @@ pub(crate) fn write(s: &mut EditorState, id: SceneId, rel: &str) -> bool {
         s.console
             .warn(format!("Cross-scene reference not saved: {w}"));
     }
+    // Each prefab instance's overrides go into the file, so it can follow its prefab later.
+    crate::prefabs::record_overrides(&mut s.scene, &mut s.assets, Some(id));
     match s.scene.save_scene(id, &path) {
         Ok(()) => {
             mark_saved(s, id);

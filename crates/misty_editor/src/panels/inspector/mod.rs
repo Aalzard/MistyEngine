@@ -30,6 +30,7 @@ mod post_volume;
 mod post_volume_fx;
 mod post_volume_screen;
 mod post_volume_trace;
+pub(crate) mod prefab_overrides;
 mod preset_asset;
 mod preset_fields;
 mod preset_picker;
@@ -103,7 +104,10 @@ fn show_inner(ui: &mut Ui, state: &mut EditorState) {
             card::begin_body(ui);
             header(ui, state, &targets);
             if targets.len() == 1 {
-                prefab_row(ui, state, e);
+                prefab_overrides::begin(state, e);
+                prefab_overrides::prefab_row(ui, state, e);
+            } else {
+                prefab_overrides::end();
             }
             if targets.len() > 1 {
                 ui.label(
@@ -119,9 +123,11 @@ fn show_inner(ui: &mut Ui, state: &mut EditorState) {
                     component_section(ui, state, &targets, &name);
                 }
             }
+            prefab_overrides::removed_components(ui, state);
             material_previews(ui, state, e);
             ui.add_space(8.0);
             editors::add_component_button(ui, state, e);
+            prefab_overrides::end();
         });
 }
 
@@ -297,54 +303,6 @@ fn header(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) {
     state.mark_edited(&label);
 }
 
-/// "Prefab" row on an instance root: Select, Revert, Apply All (the last two only with overrides).
-fn prefab_row(ui: &mut Ui, state: &mut EditorState, e: Entity) {
-    let Some(rel) = state.scene.prefab_link(e) else {
-        return;
-    };
-    let overrides = match state.assets.prefab(&rel) {
-        Ok(p) => Some(state.scene.has_prefab_overrides(e, &p)),
-        Err(_) => None,
-    };
-    ui.horizontal(|ui| {
-        ui.label("Prefab");
-        let name = std::path::Path::new(&rel)
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let text = match overrides {
-            Some(_) => {
-                RichText::new(format!("{} {name}", crate::state::PREFAB_ICON)).color(theme::PREFAB)
-            }
-            None => RichText::new(format!("Missing: {name}")).color(theme::AXIS_X),
-        };
-        ui.label(text).on_hover_text(&rel);
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let changed = overrides == Some(true);
-            if ui
-                .add_enabled(changed, egui::Button::new("Apply All"))
-                .on_hover_text("Write this instance's changes to the prefab asset")
-                .clicked()
-            {
-                state.push(Action::ApplyPrefab(e));
-            }
-            if ui
-                .add_enabled(changed, egui::Button::new("Revert"))
-                .on_hover_text("Discard this instance's changes")
-                .clicked()
-            {
-                state.push(Action::RevertPrefab(e));
-            }
-            if ui
-                .add_enabled(overrides.is_some(), egui::Button::new("Select"))
-                .clicked()
-            {
-                state.push(Action::SelectPrefabAsset(e));
-            }
-        });
-    });
-}
-
 /// The designer's icon for a component header (the Light's only when it is Directional).
 fn component_brand_icon(state: &EditorState, e: Entity, name: &str) -> Option<Icon> {
     match name {
@@ -367,6 +325,7 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
     let id = ui.make_persistent_id(("component", name));
     let removable = registry::find(name).is_some_and(|i| i.removable);
     let header = |ui: &mut Ui, state: &mut EditorState| {
+        prefab_overrides::header_marker(ui, name);
         if let Some(enabled) = editors::enabled_flag(state, e, name) {
             let mut on = enabled;
             let mixed = targets[1..]
@@ -419,7 +378,9 @@ fn component_section(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], n
         let _scope = crate::tutorials::targets::scope(&format!("inspector.{name}"));
         let before = to_json(state, e, name);
         mixed::begin(state, targets, name);
+        let start = prefab_overrides::body_start(ui);
         let edited = editors::edit(ui, state, targets, name);
+        prefab_overrides::style_body(ui, state, name, start);
         mixed::end();
         let after = to_json(state, e, name);
         // Some editors change the component without reporting it: compare the values too.
@@ -495,6 +456,9 @@ fn component_menu(
         name: n,
     };
     act(ui, state, "Paste Component Values", can_paste, paste);
+    if single {
+        prefab_overrides::component_menu(ui, state, name);
+    }
 }
 
 /// Undo History name of a component edit: "Move Cube" for Transform, otherwise
@@ -786,6 +750,7 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
         ));
     });
     crate::asset_guids::path_label(ui, rel);
+    prefab_asset_actions(ui, state, rel);
     ui.separator();
     match state.assets.prefab(rel) {
         Ok(prefab) => {
@@ -819,6 +784,52 @@ fn prefab_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             ui.colored_label(theme::AXIS_X, err);
         }
     }
+}
+
+/// Prefab asset buttons: Open Prefab (Prefab Mode), Create Variant; and the base of a variant.
+fn prefab_asset_actions(ui: &mut Ui, state: &mut EditorState, rel: &str) {
+    let base = state
+        .assets
+        .prefab(rel)
+        .ok()
+        .and_then(|p| p.base().map(str::to_owned));
+    if let Some(base) = base {
+        ui.horizontal(|ui| {
+            ui.label("Variant of");
+            let text = format!(
+                "{} {}",
+                crate::state::PREFAB_ICON,
+                crate::prefabs::display_name(&base)
+            );
+            if ui
+                .link(RichText::new(text).color(theme::PREFAB))
+                .on_hover_text(&base)
+                .clicked()
+            {
+                crate::prefabs::select_asset(state, &base);
+            }
+        });
+    }
+    ui.horizontal(|ui| {
+        let model = crate::prefabs::read_only(rel);
+        if ui
+            .add_enabled(!model, egui::Button::new("Open Prefab"))
+            .on_hover_text("Edit it in Prefab Mode")
+            .clicked()
+        {
+            state.push(Action::OpenPrefab {
+                path: rel.to_owned(),
+                from: None,
+            });
+        }
+        if ui
+            .button("Create Variant")
+            .on_hover_text("A new prefab that inherits from this one")
+            .clicked()
+        {
+            state.push(Action::CreatePrefabVariant(rel.to_owned()));
+        }
+    });
 }
 
 #[cfg(test)]
@@ -894,12 +905,20 @@ mod tests {
     fn prefab_row_applies_overrides_to_the_asset() {
         let (s, e, root) = prefab_state("apply");
         let mut h = inspector(s);
+        h.get_by_label("Overrides ▾").click();
+        h.run();
+        h.get_by_label("No overrides");
         assert!(
-            !!h.get_by_label("Apply All").accesskit_node().is_disabled(),
+            h.get_by_label("Apply All").accesskit_node().is_disabled(),
             "nothing to apply without overrides"
         );
+        h.key_press(egui::Key::Escape);
+        h.run();
         h.state_mut().scene.add(e, Camera::default());
         h.run();
+        h.get_by_label("Overrides (1) ▾").click();
+        h.run();
+        h.get_by_label("Camera (added component)");
         h.get_by_label("Apply All").click();
         h.run();
         apply_actions(h.state_mut());
@@ -915,10 +934,14 @@ mod tests {
         let (mut s, e, root) = prefab_state("revert");
         s.scene.spawn("Extra", Some(e));
         let mut h = inspector(s);
-        h.get_by_label("Revert").click();
+        h.get_by_label("Overrides (1) ▾").click();
+        h.run();
+        h.get_by_label("Added object");
+        h.get_by_label("Revert All").click();
         h.run();
         apply_actions(h.state_mut());
         let reverted = h.state().selection.active().unwrap();
+        assert_eq!(reverted, e, "reverted in place");
         assert_eq!(h.state().scene.children(reverted).len(), 1, "Extra removed");
 
         h.run();
@@ -933,6 +956,144 @@ mod tests {
         // The Inspector now shows the asset summary.
         h.get_by_label("Crate (Prefab Asset)");
         h.get_by_label("2 objects");
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn overrides_dropdown_reverts_and_applies_one_change() {
+        let (mut s, e, root) = prefab_state("dropdown");
+        let lid = s.scene.children(e)[0];
+        let mut t = s.scene.transform(lid);
+        t.scale = glam::Vec3::splat(2.0);
+        s.scene.set_transform(lid, t);
+        s.scene.add(e, misty_engine::scene::Light::default());
+        let mut h = inspector(s);
+        h.get_by_label("Overrides (2) ▾").click();
+        h.run();
+        h.get_by_label("Transform ▸ Scale");
+        h.get_by_label("Light (added component)");
+        // Rows are grouped by object: the root's light first, then the lid's scale.
+        let reverts: Vec<_> = h.get_all_by_label("Revert").collect();
+        assert_eq!(reverts.len(), 2);
+        reverts[1].click();
+        h.run();
+        apply_actions(h.state_mut());
+        assert_eq!(h.state().scene.transform(lid).scale, glam::Vec3::ONE);
+        h.run();
+        h.get_by_label("Overrides (1) ▾").click();
+        h.run();
+        h.get_by_label("Apply").click();
+        h.run();
+        apply_actions(h.state_mut());
+        let s = h.state_mut();
+        let asset = s.assets.prefab("Assets/Crate.prefab").unwrap();
+        assert!(asset.root_components().contains(&"Light".to_owned()));
+        assert!(!s.scene.has_prefab_overrides(e, &asset));
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn overridden_properties_are_bold_with_a_blue_bar() {
+        let (mut s, e, root) = prefab_state("bold");
+        let lid = s.scene.children(e)[0];
+        let mut t = s.scene.transform(lid);
+        t.scale = glam::Vec3::splat(2.0);
+        s.scene.set_transform(lid, t);
+        s.selection.set(lid);
+        let mut h = inspector(s);
+        h.run();
+        assert_eq!(
+            prefab_overrides::styled_labels(),
+            ["Transform/Scale"],
+            "only the overridden label is styled"
+        );
+        // Back to the prefab's value: nothing is styled.
+        let mut t = h.state().scene.transform(lid);
+        t.scale = glam::Vec3::ONE;
+        h.state_mut().scene.set_transform(lid, t);
+        h.run();
+        assert!(prefab_overrides::styled_labels().is_empty());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn removed_components_are_listed_and_can_come_back() {
+        let (mut s, e, root) = prefab_state("removed");
+        s.scene.add(e, misty_engine::scene::Light::default());
+        s.push(Action::ApplyPrefab(e));
+        apply_actions(&mut s);
+        s.scene.remove_by_name(e, "Light");
+        let mut h = inspector(s);
+        h.get_by_label("Light (Removed)");
+        h.get_by_label("Revert").click();
+        h.run();
+        apply_actions(h.state_mut());
+        assert!(
+            h.state()
+                .scene
+                .world
+                .get::<&misty_engine::scene::Light>(e)
+                .is_ok()
+        );
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn missing_prefab_shows_red_state_with_unpack() {
+        let (mut s, e, root) = prefab_state("missing");
+        std::fs::remove_file(root.join("Assets/Crate.prefab")).unwrap();
+        s.assets.forget_prefabs();
+        let mut h = inspector(s);
+        h.get_by_label("⬛ Missing Prefab");
+        h.get_by_label("Unpack").click();
+        h.run();
+        apply_actions(h.state_mut());
+        assert_eq!(h.state().scene.prefab_link(e), None);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn prefab_mode_bar_saves_and_goes_back() {
+        let (mut s, e, root) = prefab_state("stage_bar");
+        s.push(Action::OpenPrefab {
+            path: "Assets/Crate.prefab".into(),
+            from: Some(e),
+        });
+        apply_actions(&mut s);
+        let stage_root = s.selection.active().unwrap();
+        let mut h = Harness::builder().with_size([900.0, 700.0]).build_ui_state(
+            |ui, s: &mut EditorState| {
+                crate::prefab_mode::bar(ui, s);
+                show(ui, s);
+            },
+            s,
+        );
+        h.run();
+        h.get_by_label("Scenes");
+        h.get_by_label("⬛ Crate");
+        assert!(h.get_by_label("Save").accesskit_node().is_disabled());
+        h.get_by_label("In Context");
+        // Edit the prefab: Save lights up and the crumb shows the change.
+        h.state_mut().record("Add Light");
+        h.state_mut()
+            .scene
+            .add(stage_root, misty_engine::scene::Light::default());
+        h.run();
+        h.get_by_label("⬛ Crate*");
+        h.get_by_label("Save").click();
+        h.run();
+        apply_actions(h.state_mut());
+        h.run();
+        h.get_by_label("⬛ Crate");
+        h.get_by_label("◀").click();
+        h.run();
+        apply_actions(h.state_mut());
+        let s = h.state_mut();
+        assert!(!crate::prefab_mode::active(s));
+        assert!(
+            s.scene.world.get::<&misty_engine::scene::Light>(e).is_ok(),
+            "the instance in the scene followed the saved prefab"
+        );
         std::fs::remove_dir_all(root).ok();
     }
 

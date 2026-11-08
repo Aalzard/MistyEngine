@@ -3303,3 +3303,22 @@ Record of choices made without asking, and why.
        single-sampled depth when it runs, else the main depth every other frame.
      - Measured: Virtual is faster than Cascaded at Ultra (−1.7 to −2.2 ms) and equal or faster at High in
        MeadowDemo; Medium / Low stay 0.15–0.45 ms slower. Defaults unchanged; the user picks.
+652. **Prefabs 2.0: per-property overrides kept by stable object ids, instances follow their assets in place** (`docs/pending/r18-prefabs.md`).
+     - Instances stay full copies (players and older editors load them as before); each prefab object
+       carries a `"Prefab Source"` id and instances copy it. Objects inside nested instances combine the
+       nested root's id with their own; files without ids match by parent, name and order, the same rule
+       on both sides, so generators and older prefabs need no migration. Replaces decisions 72–74.
+     - Overrides = component fields (top level), added / removed components and objects that differ
+       from the asset. The root's name, position and rotation, the component order and save / network ids
+       are always per instance. An asset change updates every instance in place keeping exactly what it
+       overrode against the previous asset version (Apply, Prefab Mode save, live reload, variants,
+       nested prefabs), so Apply All on one instance no longer wipes the others' overrides.
+     - Scene files store each instance's override record (sorted keys, no values: the copy holds the
+       values) so an instance whose asset changed while the scene was closed catches up on load.
+     - Variant = prefab whose root keeps a `"Prefab"` link to its base, same object ids as the base.
+       Prefab files that use a changed prefab are rewritten (and their instances follow), recursively.
+     - Prefab Mode swaps the scenes (with their undo, selection, camera) for a stage scene whose entity
+       ids are reserved high so no remembered scene entity can land on a stage object; no modal dialogs:
+       leaving with changes asks in the bar. Overridden labels are matched to field names after a card
+       is drawn and repainted bold, so the dozens of component editors needed no change.
+     - Model files link their instances as read-only prefabs (revert, variants; no apply).

@@ -308,6 +308,34 @@ pub enum Action {
     RevertPrefab(Entity),
     ApplyPrefab(Entity),
     UnpackPrefab(Entity),
+    UnpackPrefabCompletely(Entity),
+    /// Apply some overrides of the instance at `root` to its asset (Overrides dropdown,
+    /// right-click on a property or component).
+    ApplyPrefabOverrides {
+        root: Entity,
+        keys: Vec<misty_engine::scene::prefab::Override>,
+    },
+    /// Revert some overrides of the instance at `root` to the asset's values.
+    RevertPrefabOverrides {
+        root: Entity,
+        keys: Vec<misty_engine::scene::prefab::Override>,
+    },
+    /// Project ▸ Create ▸ Prefab Variant of the prefab or model at this project path.
+    CreatePrefabVariant(String),
+    /// Open a prefab asset in Prefab Mode; `from` is the instance it was opened from (shown
+    /// in context).
+    OpenPrefab {
+        path: String,
+        from: Option<Entity>,
+    },
+    /// Leave this many levels of Prefab Mode (`usize::MAX`: back to the scenes).
+    ClosePrefab {
+        levels: usize,
+    },
+    /// Save the prefab open in Prefab Mode.
+    SavePrefabStage,
+    /// The Prefab Mode bar's "Save changes?" answer: Save (true) or Discard (false), then leave.
+    PrefabModeAnswer(bool),
     /// Project window (see `asset_actions`); paths are absolute.
     CreateAsset(AssetKind),
     RenameAsset {

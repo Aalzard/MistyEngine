@@ -66,6 +66,7 @@ const VGEO_OVERDRAW_MODE: usize = 15;
 const VGEO_MATERIALS_MODE: usize = 16;
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
+    crate::prefab_mode::bar(ui, state);
     toolbar(ui, state);
 
     let rect = ui.available_rect_before_wrap();
@@ -112,6 +113,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 state.editor_scripts.gizmo_frame = Default::default();
             }
             let mut meshes = render_scene::cached_draws(state);
+            // Prefab Mode in context: the scene around the instance, dimmed.
+            if let Some(context) = crate::prefab_mode::context_draws(state) {
+                let mut all = (*meshes).clone();
+                all.extend(context.iter().cloned());
+                meshes = std::sync::Arc::new(all);
+            }
             let sv = &state.scene_view;
             // Probe gizmo spheres join a copy of the cached draws (only while probes exist).
             if sv.gizmos {
@@ -156,9 +163,17 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let water = misty_engine::water::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
             let effects = misty_engine::vfx::draws(&state.scene);
-            let scene_lights = render_scene::lights(&state.scene);
-            // The sky follows the scene's sun even when the view uses the headlight.
-            let mut environment = render_scene::environment(&state.scene, &scene_lights);
+            // Prefab Mode in context lights the prefab with the scene underneath.
+            let (scene_lights, mut environment) = match crate::prefab_mode::context_lighting(state)
+            {
+                Some(lit) => lit,
+                None => {
+                    let l = render_scene::lights(&state.scene);
+                    // The sky follows the scene's sun even when the view uses the headlight.
+                    let env = render_scene::environment(&state.scene, &l);
+                    (l, env)
+                }
+            };
             environment.probes.debug = sv.draw_mode == PROBES_MODE;
             environment.lightmaps.debug = match sv.draw_mode {
                 LIGHTMAP_MODE => misty_engine::lightmap::LightmapDebug::Baked,
@@ -221,7 +236,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             if sv.draw_mode == AO_DRAW_MODE {
                 post = ao_debug_post(&state.scene);
             }
-            let lights = if sv.lighting {
+            // A prefab without lights, edited alone, gets the headlight.
+            let unlit_prefab = crate::prefab_mode::active(state) && scene_lights.is_empty();
+            let lights = if sv.lighting && !unlit_prefab {
                 scene_lights
             } else {
                 render_scene::headlight(&camera)

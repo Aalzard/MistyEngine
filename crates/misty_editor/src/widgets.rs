@@ -31,6 +31,11 @@ pub fn set_value_column(ui: &Ui, x: f32) {
     ui.data_mut(|d| d.insert_temp(value_x_id(), x));
 }
 
+/// Where values of property rows start (screen x), if a panel set it.
+pub fn value_column(ui: &Ui) -> Option<f32> {
+    ui.data(|d| d.get_temp::<f32>(value_x_id()))
+}
+
 /// Forget the value column (after the panel that set it is drawn).
 pub fn clear_value_column(ui: &Ui) {
     ui.data_mut(|d| d.remove::<f32>(value_x_id()));

@@ -2,6 +2,9 @@
 //! Mesh Filter + Mesh Renderer using the materials extracted next to the model. Skinned or
 //! morphing meshes get a Skinned Mesh Renderer bound to the node objects as bones, and the
 //! file's animations (extracted as `.anim` clips) go on an Animation component on the root.
+//!
+//! Model files act as read-only prefabs: an instance links to the file, so it shows its
+//! overrides and can revert them, and a Prefab Variant can be made of the model.
 
 use std::path::Path;
 
@@ -27,6 +30,8 @@ pub fn instantiate(s: &mut EditorState, rel: &str, parent: Option<Entity>) -> Op
     let clips = model_clips(s, rel, &model);
     s.record("Instantiate Model");
     let root = spawn_with_clips(&mut s.scene, rel, &model, &materials, &clips, parent);
+    s.scene.link_prefab(root, rel);
+    s.scene.store_prefab_ids(root);
     if parent.is_none() {
         let pivot = s.scene_view.camera.pivot().round();
         s.scene.set_world_position(root, pivot);
@@ -34,6 +39,22 @@ pub fn instantiate(s: &mut EditorState, rel: &str, parent: Option<Entity>) -> Op
     s.hierarchy.expanded.insert(root);
     s.select(root);
     Some(root)
+}
+
+/// The model at `rel` as a read-only prefab: the objects an instance of it starts as.
+pub fn model_prefab(
+    assets: &mut crate::assets::AssetDatabase,
+    rel: &str,
+) -> Result<misty_engine::scene::prefab::Prefab, String> {
+    let model = models::model(rel)?;
+    let materials = assets.model_materials(rel, &model);
+    let clips: Vec<String> = (0..model.animations.len())
+        .filter_map(|i| models::animation_asset_path(rel, &model, i))
+        .filter(|p| misty_engine::assets::absolute(p).exists())
+        .collect();
+    let mut scene = Scene::new("model");
+    let root = spawn_with_clips(&mut scene, rel, &model, &materials, &clips, None);
+    Ok(misty_engine::scene::prefab::Prefab::from_scene(&scene, root).with_ids())
 }
 
 /// Build the objects for `model`. `materials[i]` is the `.mat` for model material `i`.

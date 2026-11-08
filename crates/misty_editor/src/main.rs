@@ -46,6 +46,7 @@ mod panels;
 mod particle_preview;
 mod picking;
 mod play;
+mod prefab_mode;
 mod prefabs;
 mod presets;
 mod probe_gizmos;
