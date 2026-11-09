@@ -26,13 +26,13 @@
     1.0,
     1.0
   ],
-  "bark_texture": "Assets/Trees/Textures/LindenBark.png",
-  "bark_normal": "Assets/Trees/Textures/LindenBarkNormal.png",
+  "bark_texture": "Assets/NoonValley/Textures/OakBark.png",
+  "bark_normal": "Assets/NoonValley/Textures/OakBarkNormal.png",
   "leaf_texture": "Assets/Trees/Textures/LindenLeaves.png",
   "leaf_normal": "Assets/Trees/Textures/LindenLeavesNormal.png",
-  "bark_roughness": "Assets/Trees/Textures/LindenBarkRoughness.png",
-  "bark_occlusion": "Assets/Trees/Textures/LindenBarkAO.png",
-  "bark_height": "Assets/Trees/Textures/LindenBarkHeight.png",
+  "bark_roughness": "Assets/NoonValley/Textures/OakBarkRoughness.png",
+  "bark_occlusion": "Assets/NoonValley/Textures/OakBarkAO.png",
+  "bark_height": "Assets/NoonValley/Textures/OakBarkHeight.png",
   "leaf_roughness": "Assets/Trees/Textures/LindenLeavesRoughness.png",
   "leaf_translucency": "Assets/Trees/Textures/LindenLeavesTranslucency.png",
   "wind": {
