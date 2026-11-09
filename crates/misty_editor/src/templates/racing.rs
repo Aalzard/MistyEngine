@@ -886,15 +886,17 @@ fn hud_text(
 }
 
 /// The settings panel's text before RaceSettings.lua first writes it (the Sport's values).
-const SETTINGS_TEXT: &str = "SETTINGS                [Tab] hide\n\
-[C]    Car         Sport\n\
-[G]    Gravity     Normal (1.00 g)\n\
-[1/2]  Mass        1150 kg\n\
-[3/4]  Grip        1.6\n\
-[5/6]  Top speed   230 km/h\n\
-\n\
-[W/S] drive  [A/D] steer  [Shift] boost\n\
-[Space] handbrake  [R] reset";
+const SETTINGS_TEXT: &str = concat!(
+    "SETTINGS  ([Tab] hides)\n",
+    "[C] Car: Sport\n",
+    "[G] Gravity: Normal (1.00 g)\n",
+    "[1/2] Mass: 1150 kg\n",
+    "[3/4] Grip: 1.6\n",
+    "[5/6] Top speed: 230 km/h\n",
+    "\n",
+    "[W/S] drive  [A/D] steer  [Shift] boost\n",
+    "[Space] handbrake  [R] reset",
+);
 
 /// The HUD: lap and times top left, speed and boost bottom left, messages in the middle and
 /// the settings panel top right.

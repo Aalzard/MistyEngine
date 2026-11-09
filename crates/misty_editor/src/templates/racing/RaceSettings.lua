@@ -44,12 +44,12 @@ function RaceSettings:Show()
     local car = self._car
     local g = GRAVITY[self.gravity]
     self._panel.text = table.concat({
-        "SETTINGS                [Tab] hide",
-        string.format("[C]    Car         %s", car:ModelName()),
-        string.format("[G]    Gravity     %s (%.2f g)", g.label, g.value / 9.81),
-        string.format("[1/2]  Mass        %d kg", math.floor(car.mass + 0.5)),
-        string.format("[3/4]  Grip        %.1f", car.grip),
-        string.format("[5/6]  Top speed   %d km/h", math.floor(car.topSpeed + 0.5)),
+        "SETTINGS  ([Tab] hides)",
+        string.format("[C] Car: %s", car:ModelName()),
+        string.format("[G] Gravity: %s (%.2f g)", g.label, g.value / 9.81),
+        string.format("[1/2] Mass: %d kg", math.floor(car.mass + 0.5)),
+        string.format("[3/4] Grip: %.1f", car.grip),
+        string.format("[5/6] Top speed: %d km/h", math.floor(car.topSpeed + 0.5)),
         "",
         "[W/S] drive  [A/D] steer  [Shift] boost",
         "[Space] handbrake  [R] reset",
