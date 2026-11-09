@@ -1,0 +1,261 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "GetVariable",
+      "position": [
+        0.0,
+        132.0
+      ],
+      "params": {
+        "name": "Spin"
+      }
+    },
+    {
+      "id": 3,
+      "type": "MultiplyFloat",
+      "position": [
+        250.0,
+        132.0
+      ]
+    },
+    {
+      "id": 4,
+      "type": "MakeVector3",
+      "position": [
+        500.0,
+        132.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Api",
+      "position": [
+        750.0,
+        0.0
+      ],
+      "params": {
+        "member": "Rotate",
+        "mode": "call",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 6,
+      "type": "OnTriggerEnter",
+      "position": [
+        0.0,
+        330.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Api",
+      "position": [
+        250.0,
+        461.99997
+      ],
+      "params": {
+        "member": "CompareTag",
+        "mode": "call",
+        "owner": "#GameObject"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "Branch",
+      "position": [
+        500.0,
+        330.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        500.0,
+        550.0
+      ],
+      "params": {
+        "args": "name",
+        "member": "Find",
+        "mode": "call",
+        "owner": "GameObject"
+      },
+      "values": {
+        "Name": {
+          "String": "Score Text"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        660.0
+      ],
+      "params": {
+        "name": "Value"
+      }
+    },
+    {
+      "id": 11,
+      "type": "SendCustomEvent",
+      "position": [
+        750.0,
+        330.0
+      ],
+      "params": {
+        "args": "value",
+        "name": "CoinCollected"
+      }
+    },
+    {
+      "id": 12,
+      "type": "Self",
+      "position": [
+        750.0,
+        605.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "Api",
+      "position": [
+        1000.0,
+        330.0
+      ],
+      "params": {
+        "member": "Destroy",
+        "mode": "call",
+        "owner": ""
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "A"
+    },
+    {
+      "from": 1,
+      "output": "Delta Time",
+      "to": 3,
+      "input": "B"
+    },
+    {
+      "from": 3,
+      "output": "Result",
+      "to": 4,
+      "input": "Y"
+    },
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 4,
+      "output": "Vector",
+      "to": 5,
+      "input": "Euler Degrees"
+    },
+    {
+      "from": 6,
+      "output": "Other",
+      "to": 7,
+      "input": "Target"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 8,
+      "input": "Condition"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 8,
+      "output": "True",
+      "to": 11,
+      "input": "In"
+    },
+    {
+      "from": 9,
+      "output": "Result",
+      "to": 11,
+      "input": "Target"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 11,
+      "input": "value"
+    },
+    {
+      "from": 11,
+      "output": "Out",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 12,
+      "output": "Self",
+      "to": 13,
+      "input": "Object"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Value",
+      "type": "int",
+      "value": {
+        "Int": 1
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Spin",
+      "type": "float",
+      "value": {
+        "Float": 120.0
+      },
+      "scope": "Object"
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -132.0
+      ],
+      "size": [
+        380.0,
+        70.0
+      ],
+      "text": "Coin: spins; the player collects it (CoinCollected goes to the score)."
+    }
+  ]
+}

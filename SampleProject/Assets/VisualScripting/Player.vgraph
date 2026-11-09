@@ -1,0 +1,655 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Api",
+      "position": [
+        250.0,
+        110.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "get",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 3,
+      "type": "SetVariable",
+      "position": [
+        500.0,
+        0.0
+      ],
+      "params": {
+        "name": "Spawn"
+      }
+    },
+    {
+      "id": 4,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        330.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Sequence",
+      "position": [
+        250.0,
+        330.0
+      ],
+      "params": {
+        "count": "3"
+      }
+    },
+    {
+      "id": 6,
+      "type": "Api",
+      "position": [
+        250.0,
+        550.0
+      ],
+      "params": {
+        "member": "isGrounded",
+        "mode": "get",
+        "owner": "#CharacterController"
+      }
+    },
+    {
+      "id": 7,
+      "type": "Api",
+      "position": [
+        250.0,
+        660.0
+      ],
+      "params": {
+        "args": "buttonName",
+        "member": "GetButtonDown",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "buttonName": {
+          "String": "Jump"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "And",
+      "position": [
+        500.0,
+        605.0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "Branch",
+      "position": [
+        750.0,
+        330.0
+      ]
+    },
+    {
+      "id": 10,
+      "type": "GetVariable",
+      "position": [
+        750.0,
+        495.0
+      ],
+      "params": {
+        "name": "Jump Speed"
+      }
+    },
+    {
+      "id": 11,
+      "type": "SetVariable",
+      "position": [
+        1000.0,
+        330.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 12,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        880.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 13,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        990.0
+      ],
+      "params": {
+        "name": "Gravity"
+      }
+    },
+    {
+      "id": 14,
+      "type": "Api",
+      "position": [
+        500.0,
+        1100.0
+      ],
+      "params": {
+        "member": "deltaTime",
+        "mode": "get",
+        "owner": "Time"
+      }
+    },
+    {
+      "id": 15,
+      "type": "MultiplyFloat",
+      "position": [
+        750.0,
+        990.0
+      ]
+    },
+    {
+      "id": 16,
+      "type": "AddFloat",
+      "position": [
+        1000.0,
+        935.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "MaxFloat",
+      "position": [
+        1250.0,
+        880.0
+      ],
+      "values": {
+        "B": {
+          "Float": -1.0
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "Select",
+      "position": [
+        1500.0,
+        825.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "SetVariable",
+      "position": [
+        1750.0,
+        550.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 20,
+      "type": "Api",
+      "position": [
+        1250.0,
+        1155.0
+      ],
+      "params": {
+        "member": "GetAxis",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Horizontal"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "Api",
+      "position": [
+        1250.0,
+        1265.0
+      ],
+      "params": {
+        "member": "GetAxis",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Vertical"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "GetVariable",
+      "position": [
+        1500.0,
+        1375.0
+      ],
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "id": 23,
+      "type": "MultiplyFloat",
+      "position": [
+        1500.0,
+        1155.0
+      ]
+    },
+    {
+      "id": 24,
+      "type": "MultiplyFloat",
+      "position": [
+        1500.0,
+        1265.0
+      ]
+    },
+    {
+      "id": 25,
+      "type": "GetVariable",
+      "position": [
+        1500.0,
+        1045.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 26,
+      "type": "MakeVector3",
+      "position": [
+        1750.0,
+        1100.0
+      ]
+    },
+    {
+      "id": 27,
+      "type": "ScaleVector3",
+      "position": [
+        2000.0,
+        1100.0
+      ]
+    },
+    {
+      "id": 28,
+      "type": "Api",
+      "position": [
+        2250.0,
+        550.0
+      ],
+      "params": {
+        "args": "motion",
+        "member": "Move",
+        "mode": "call",
+        "owner": "#CharacterController"
+      }
+    },
+    {
+      "id": 29,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        1540.0
+      ],
+      "params": {
+        "args": "force",
+        "name": "Launch"
+      }
+    },
+    {
+      "id": 30,
+      "type": "SetVariable",
+      "position": [
+        375.0,
+        1540.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      }
+    },
+    {
+      "id": 31,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        1760.0
+      ],
+      "params": {
+        "name": "Respawn"
+      }
+    },
+    {
+      "id": 32,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        1870.0
+      ],
+      "params": {
+        "name": "Spawn"
+      }
+    },
+    {
+      "id": 33,
+      "type": "Api",
+      "position": [
+        500.0,
+        1760.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "set",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 34,
+      "type": "SetVariable",
+      "position": [
+        750.0,
+        1760.0
+      ],
+      "params": {
+        "name": "Velocity Y"
+      },
+      "values": {
+        "Value": {
+          "Float": 0.0
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 3,
+      "input": "In"
+    },
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 3,
+      "input": "Value"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 6,
+      "output": "Value",
+      "to": 8,
+      "input": "A"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 8,
+      "input": "B"
+    },
+    {
+      "from": 5,
+      "output": "Then 0",
+      "to": 9,
+      "input": "In"
+    },
+    {
+      "from": 8,
+      "output": "Result",
+      "to": 9,
+      "input": "Condition"
+    },
+    {
+      "from": 9,
+      "output": "True",
+      "to": 11,
+      "input": "In"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 11,
+      "input": "Value"
+    },
+    {
+      "from": 13,
+      "output": "Value",
+      "to": 15,
+      "input": "A"
+    },
+    {
+      "from": 14,
+      "output": "Value",
+      "to": 15,
+      "input": "B"
+    },
+    {
+      "from": 12,
+      "output": "Value",
+      "to": 16,
+      "input": "A"
+    },
+    {
+      "from": 15,
+      "output": "Result",
+      "to": 16,
+      "input": "B"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 17,
+      "input": "A"
+    },
+    {
+      "from": 6,
+      "output": "Value",
+      "to": 18,
+      "input": "Condition"
+    },
+    {
+      "from": 17,
+      "output": "Result",
+      "to": 18,
+      "input": "True"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 18,
+      "input": "False"
+    },
+    {
+      "from": 5,
+      "output": "Then 1",
+      "to": 19,
+      "input": "In"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 19,
+      "input": "Value"
+    },
+    {
+      "from": 20,
+      "output": "Result",
+      "to": 23,
+      "input": "A"
+    },
+    {
+      "from": 22,
+      "output": "Value",
+      "to": 23,
+      "input": "B"
+    },
+    {
+      "from": 21,
+      "output": "Result",
+      "to": 24,
+      "input": "A"
+    },
+    {
+      "from": 22,
+      "output": "Value",
+      "to": 24,
+      "input": "B"
+    },
+    {
+      "from": 23,
+      "output": "Result",
+      "to": 26,
+      "input": "X"
+    },
+    {
+      "from": 25,
+      "output": "Value",
+      "to": 26,
+      "input": "Y"
+    },
+    {
+      "from": 24,
+      "output": "Result",
+      "to": 26,
+      "input": "Z"
+    },
+    {
+      "from": 26,
+      "output": "Vector",
+      "to": 27,
+      "input": "Vector"
+    },
+    {
+      "from": 14,
+      "output": "Value",
+      "to": 27,
+      "input": "Scale"
+    },
+    {
+      "from": 5,
+      "output": "Then 2",
+      "to": 28,
+      "input": "In"
+    },
+    {
+      "from": 27,
+      "output": "Result",
+      "to": 28,
+      "input": "motion"
+    },
+    {
+      "from": 29,
+      "output": "Out",
+      "to": 30,
+      "input": "In"
+    },
+    {
+      "from": 29,
+      "output": "force",
+      "to": 30,
+      "input": "Value"
+    },
+    {
+      "from": 31,
+      "output": "Out",
+      "to": 33,
+      "input": "In"
+    },
+    {
+      "from": 32,
+      "output": "Value",
+      "to": 33,
+      "input": "Value"
+    },
+    {
+      "from": 33,
+      "output": "Out",
+      "to": 34,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Speed",
+      "type": "float",
+      "value": {
+        "Float": 5.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Jump Speed",
+      "type": "float",
+      "value": {
+        "Float": 6.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Gravity",
+      "type": "float",
+      "value": {
+        "Float": -15.0
+      }
+    },
+    {
+      "name": "Velocity Y",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    },
+    {
+      "name": "Spawn",
+      "type": "vector3",
+      "value": {
+        "Vector3": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -132.0
+      ],
+      "size": [
+        420.0,
+        70.0
+      ],
+      "text": "Player: axes move the Character Controller, Jump jumps.\nJump pads send Launch, the patrol sends Respawn."
+    }
+  ]
+}

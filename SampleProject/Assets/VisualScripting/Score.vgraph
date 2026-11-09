@@ -1,0 +1,350 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Subgraph",
+      "position": [
+        500.0,
+        220.0
+      ],
+      "params": {
+        "macro": "Format"
+      }
+    },
+    {
+      "id": 2,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        220.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 3,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        330.0
+      ],
+      "params": {
+        "name": "Total"
+      }
+    },
+    {
+      "id": 4,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "Api",
+      "position": [
+        750.0,
+        0.0
+      ],
+      "params": {
+        "member": "text",
+        "mode": "set",
+        "owner": "#Text"
+      }
+    },
+    {
+      "id": 6,
+      "type": "OnCustomEvent",
+      "position": [
+        0.0,
+        550.0
+      ],
+      "params": {
+        "args": "value",
+        "name": "CoinCollected"
+      }
+    },
+    {
+      "id": 7,
+      "type": "AddInt",
+      "position": [
+        250.0,
+        660.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "GetVariable",
+      "position": [
+        0.0,
+        715.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 9,
+      "type": "SetVariable",
+      "position": [
+        500.0,
+        550.0
+      ],
+      "params": {
+        "name": "Score"
+      }
+    },
+    {
+      "id": 10,
+      "type": "Api",
+      "position": [
+        750.0,
+        550.0
+      ],
+      "params": {
+        "member": "text",
+        "mode": "set",
+        "owner": "#Text"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 2,
+      "output": "Value",
+      "to": 1,
+      "input": "Score"
+    },
+    {
+      "from": 3,
+      "output": "Value",
+      "to": 1,
+      "input": "Total"
+    },
+    {
+      "from": 4,
+      "output": "Out",
+      "to": 5,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "Text",
+      "to": 5,
+      "input": "Value"
+    },
+    {
+      "from": 8,
+      "output": "Value",
+      "to": 7,
+      "input": "A"
+    },
+    {
+      "from": 6,
+      "output": "value",
+      "to": 7,
+      "input": "B"
+    },
+    {
+      "from": 6,
+      "output": "Out",
+      "to": 9,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 9,
+      "input": "Value"
+    },
+    {
+      "from": 9,
+      "output": "Out",
+      "to": 10,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "Text",
+      "to": 10,
+      "input": "Value"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Score",
+      "type": "int",
+      "value": {
+        "Int": 0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Total",
+      "type": "int",
+      "value": {
+        "Int": 3
+      },
+      "scope": "Object"
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -132.0
+      ],
+      "size": [
+        380.0,
+        70.0
+      ],
+      "text": "Score: CoinCollected adds to Score; the Format macro writes the text."
+    }
+  ],
+  "macros": [
+    {
+      "name": "Format",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": 1,
+            "type": "GraphInput",
+            "position": [
+              0.0,
+              0.0
+            ],
+            "params": {
+              "pins": "Score:int, Total:int"
+            }
+          },
+          {
+            "id": 2,
+            "type": "GraphOutput",
+            "position": [
+              1000.0,
+              0.0
+            ],
+            "params": {
+              "pins": "Text:string"
+            }
+          },
+          {
+            "id": 3,
+            "type": "Append",
+            "position": [
+              250.0,
+              0.0
+            ],
+            "values": {
+              "A": {
+                "String": "Coins: "
+              }
+            }
+          },
+          {
+            "id": 4,
+            "type": "Append",
+            "position": [
+              500.0,
+              0.0
+            ],
+            "values": {
+              "B": {
+                "String": " / "
+              }
+            }
+          },
+          {
+            "id": 5,
+            "type": "Append",
+            "position": [
+              750.0,
+              55.0
+            ]
+          },
+          {
+            "id": 6,
+            "type": "GreaterOrEqual",
+            "position": [
+              500.0,
+              220.0
+            ]
+          },
+          {
+            "id": 7,
+            "type": "Select",
+            "position": [
+              875.0,
+              220.0
+            ],
+            "values": {
+              "True": {
+                "String": "All coins collected!"
+              }
+            }
+          }
+        ],
+        "connections": [
+          {
+            "from": 1,
+            "output": "Score",
+            "to": 3,
+            "input": "B"
+          },
+          {
+            "from": 3,
+            "output": "Result",
+            "to": 4,
+            "input": "A"
+          },
+          {
+            "from": 4,
+            "output": "Result",
+            "to": 5,
+            "input": "A"
+          },
+          {
+            "from": 1,
+            "output": "Total",
+            "to": 5,
+            "input": "B"
+          },
+          {
+            "from": 1,
+            "output": "Score",
+            "to": 6,
+            "input": "A"
+          },
+          {
+            "from": 1,
+            "output": "Total",
+            "to": 6,
+            "input": "B"
+          },
+          {
+            "from": 6,
+            "output": "Result",
+            "to": 7,
+            "input": "Condition"
+          },
+          {
+            "from": 5,
+            "output": "Result",
+            "to": 7,
+            "input": "False"
+          },
+          {
+            "from": 7,
+            "output": "Result",
+            "to": 2,
+            "input": "Text"
+          }
+        ]
+      }
+    }
+  ]
+}

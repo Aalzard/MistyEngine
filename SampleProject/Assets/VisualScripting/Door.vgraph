@@ -1,0 +1,518 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "Api",
+      "position": [
+        0.0,
+        220.0
+      ],
+      "params": {
+        "args": "name",
+        "member": "Find",
+        "mode": "call",
+        "owner": "GameObject"
+      },
+      "values": {
+        "Name": {
+          "String": "Door"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "OnStart",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 3,
+      "type": "Api",
+      "position": [
+        250.0,
+        110.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "get",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 4,
+      "type": "SetVariable",
+      "position": [
+        500.0,
+        0.0
+      ],
+      "params": {
+        "name": "Closed"
+      }
+    },
+    {
+      "id": 5,
+      "type": "OnTriggerEnter",
+      "position": [
+        0.0,
+        440.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Api",
+      "position": [
+        250.0,
+        572.0
+      ],
+      "params": {
+        "member": "CompareTag",
+        "mode": "call",
+        "owner": "#GameObject"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "Branch",
+      "position": [
+        500.0,
+        440.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "SetVariable",
+      "position": [
+        750.0,
+        440.0
+      ],
+      "params": {
+        "name": "Open"
+      },
+      "values": {
+        "Value": {
+          "Bool": true
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "Api",
+      "position": [
+        1000.0,
+        440.0
+      ],
+      "params": {
+        "member": "Log",
+        "mode": "call",
+        "owner": "Debug"
+      },
+      "values": {
+        "Message": {
+          "String": "Door opening"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "OnTriggerExit",
+      "position": [
+        0.0,
+        770.0
+      ]
+    },
+    {
+      "id": 11,
+      "type": "Api",
+      "position": [
+        250.0,
+        902.0
+      ],
+      "params": {
+        "member": "CompareTag",
+        "mode": "call",
+        "owner": "#GameObject"
+      },
+      "values": {
+        "Tag": {
+          "String": "Player"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "Branch",
+      "position": [
+        500.0,
+        770.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "SetVariable",
+      "position": [
+        750.0,
+        770.0
+      ],
+      "params": {
+        "name": "Open"
+      },
+      "values": {
+        "Value": {
+          "Bool": false
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        1100.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        1210.0
+      ],
+      "params": {
+        "name": "Closed"
+      }
+    },
+    {
+      "id": 16,
+      "type": "GetVariable",
+      "position": [
+        250.0,
+        1320.0
+      ],
+      "params": {
+        "name": "Open Height"
+      }
+    },
+    {
+      "id": 17,
+      "type": "MakeVector3",
+      "position": [
+        500.0,
+        1320.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "AddVector3",
+      "position": [
+        750.0,
+        1265.0
+      ]
+    },
+    {
+      "id": 19,
+      "type": "GetVariable",
+      "position": [
+        750.0,
+        1430.0
+      ],
+      "params": {
+        "name": "Open"
+      }
+    },
+    {
+      "id": 20,
+      "type": "Select",
+      "position": [
+        1000.0,
+        1320.0
+      ]
+    },
+    {
+      "id": 21,
+      "type": "Api",
+      "position": [
+        1000.0,
+        1188.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "get",
+        "owner": "#Transform"
+      }
+    },
+    {
+      "id": 22,
+      "type": "GetVariable",
+      "position": [
+        1000.0,
+        1540.0
+      ],
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "id": 23,
+      "type": "Api",
+      "position": [
+        1000.0,
+        1650.0
+      ],
+      "params": {
+        "member": "deltaTime",
+        "mode": "get",
+        "owner": "Time"
+      }
+    },
+    {
+      "id": 24,
+      "type": "MultiplyFloat",
+      "position": [
+        1250.0,
+        1540.0
+      ]
+    },
+    {
+      "id": 25,
+      "type": "MoveTowardsVector3",
+      "position": [
+        1500.0,
+        1265.0
+      ]
+    },
+    {
+      "id": 26,
+      "type": "Api",
+      "position": [
+        1750.0,
+        1100.0
+      ],
+      "params": {
+        "member": "position",
+        "mode": "set",
+        "owner": "#Transform"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Result",
+      "to": 3,
+      "input": "Target"
+    },
+    {
+      "from": 2,
+      "output": "Out",
+      "to": 4,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "Value",
+      "to": 4,
+      "input": "Value"
+    },
+    {
+      "from": 5,
+      "output": "Other",
+      "to": 6,
+      "input": "Target"
+    },
+    {
+      "from": 6,
+      "output": "Result",
+      "to": 7,
+      "input": "Condition"
+    },
+    {
+      "from": 5,
+      "output": "Out",
+      "to": 7,
+      "input": "In"
+    },
+    {
+      "from": 7,
+      "output": "True",
+      "to": 8,
+      "input": "In"
+    },
+    {
+      "from": 8,
+      "output": "Out",
+      "to": 9,
+      "input": "In"
+    },
+    {
+      "from": 10,
+      "output": "Other",
+      "to": 11,
+      "input": "Target"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 12,
+      "input": "Condition"
+    },
+    {
+      "from": 10,
+      "output": "Out",
+      "to": 12,
+      "input": "In"
+    },
+    {
+      "from": 12,
+      "output": "True",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 16,
+      "output": "Value",
+      "to": 17,
+      "input": "Y"
+    },
+    {
+      "from": 15,
+      "output": "Value",
+      "to": 18,
+      "input": "A"
+    },
+    {
+      "from": 17,
+      "output": "Vector",
+      "to": 18,
+      "input": "B"
+    },
+    {
+      "from": 19,
+      "output": "Value",
+      "to": 20,
+      "input": "Condition"
+    },
+    {
+      "from": 18,
+      "output": "Result",
+      "to": 20,
+      "input": "True"
+    },
+    {
+      "from": 15,
+      "output": "Value",
+      "to": 20,
+      "input": "False"
+    },
+    {
+      "from": 1,
+      "output": "Result",
+      "to": 21,
+      "input": "Target"
+    },
+    {
+      "from": 22,
+      "output": "Value",
+      "to": 24,
+      "input": "A"
+    },
+    {
+      "from": 23,
+      "output": "Value",
+      "to": 24,
+      "input": "B"
+    },
+    {
+      "from": 21,
+      "output": "Value",
+      "to": 25,
+      "input": "Current"
+    },
+    {
+      "from": 20,
+      "output": "Result",
+      "to": 25,
+      "input": "Target"
+    },
+    {
+      "from": 24,
+      "output": "Result",
+      "to": 25,
+      "input": "Max Delta"
+    },
+    {
+      "from": 14,
+      "output": "Out",
+      "to": 26,
+      "input": "In"
+    },
+    {
+      "from": 1,
+      "output": "Result",
+      "to": 26,
+      "input": "Target"
+    },
+    {
+      "from": 25,
+      "output": "Result",
+      "to": 26,
+      "input": "Value"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Open Height",
+      "type": "float",
+      "value": {
+        "Float": 3.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Speed",
+      "type": "float",
+      "value": {
+        "Float": 3.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Open",
+      "type": "bool",
+      "value": {
+        "Bool": false
+      }
+    },
+    {
+      "name": "Closed",
+      "type": "vector3",
+      "value": {
+        "Vector3": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -132.0
+      ],
+      "size": [
+        380.0,
+        70.0
+      ],
+      "text": "Door: stand in the trigger to open the door; leave to close it."
+    }
+  ]
+}
