@@ -62,6 +62,13 @@ impl RenderStats {
         self.triangles += instances as u64 * (indices / 3) as u64;
         self.vertices += instances as u64 * vertices as u64;
     }
+
+    /// Work is still landing over the next frames (grass chunks being scattered or uploaded,
+    /// painted grass included; textures, trees or distance fields being prepared): a view
+    /// that only redraws on input should keep drawing until this is false.
+    pub fn busy(&self) -> bool {
+        self.grass_pending > 0 || self.loading > 0
+    }
 }
 
 /// GPU resources the renderer holds (Profiler Memory module; sizes are estimates).

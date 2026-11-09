@@ -4,6 +4,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::auto_paint::{AutoPaintRules, par_rows, rule_mask, surface_at};
@@ -388,6 +389,31 @@ pub fn scatter(d: &TerrainData, lo: Vec2, hi: Vec2) -> Vec<Blade> {
 /// Like [`scatter`] but only the blades kept at density `level` (see [`level_keep`]),
 /// sorted by drop-out key so any prefix of the result is an even thinning.
 pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Blade> {
+    scatter_level_in(d, lo, hi, level, false)
+}
+
+/// [`scatter_level`] with the rows of texels spread over the current rayon pool's threads
+/// (the same blades in the same order): a chunk being painted at a few hundred blades per
+/// square metre holds a quarter of a million of them.
+pub fn scatter_level_parallel(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Blade> {
+    scatter_level_in(d, lo, hi, level, true)
+}
+
+/// What `row(r)` makes for every row of `rows`, in order: the rows in parallel (on the
+/// current rayon pool) when `parallel`.
+pub(super) fn rows_of<T: Send>(
+    rows: std::ops::Range<usize>,
+    parallel: bool,
+    row: impl Fn(usize) -> Vec<T> + Send + Sync,
+) -> Vec<T> {
+    if parallel {
+        rows.into_par_iter().flat_map_iter(row).collect()
+    } else {
+        rows.flat_map(row).collect()
+    }
+}
+
+fn scatter_level_in(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32, parallel: bool) -> Vec<Blade> {
     let s = &d.details;
     let n = d.alphamap_resolution;
     if !super::detail_layers::draws_grass(d) {
@@ -395,10 +421,10 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
     }
     let keep = level_keep(level);
     // Grass species painted on the terrain (terrain/detail_layers.rs).
-    let mut out: Vec<(f32, Blade)> = super::detail_layers::species_blades(d, lo, hi, keep);
+    let mut out: Vec<(f32, Blade)> =
+        super::detail_layers::species_blades_in(d, lo, hi, keep, parallel);
     if d.detail_map.len() != n * n {
-        out.sort_by(|a, b| a.0.total_cmp(&b.0));
-        return out.into_iter().map(|(_, b)| b).collect();
+        return by_key(out, parallel);
     }
     let texel = Vec2::new(d.size.x, d.size.z) / n as f32;
     let per_texel = s.density.clamp(0.0, MAX_DENSITY) * texel.x * texel.y;
@@ -413,7 +439,8 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
     let dv = s.density_variation.clamp(0.0, 1.0);
     // Tufts a little closer together than the tallest blades.
     let cell = (s.height[1].max(0.05) * 0.8).max(0.25);
-    for tz in t0.y as usize..t1.y as usize {
+    let rows = rows_of(t0.y as usize..t1.y as usize, parallel, |tz| {
+        let mut row = Vec::new();
         for tx in t0.x as usize..t1.x as usize {
             let density = d.detail_map[tz * n + tx];
             if density == 0 {
@@ -514,7 +541,7 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                     };
                 let tint = (id - 0.5) * 2.0 * clumping + (r(14) - 0.5) * 0.2;
                 let (shade_relief, slope) = canopy_slope(p);
-                out.push((
+                row.push((
                     key,
                     Blade {
                         position: [p.x, d.sample_height(p.x, p.y), p.y, tall],
@@ -538,15 +565,28 @@ pub fn scatter_level(d: &TerrainData, lo: Vec2, hi: Vec2, level: u32) -> Vec<Bla
                 ));
             }
         }
-    }
+        row
+    });
+    out.extend(rows);
     // Wildflowers ride along as blades of their own kind (their keys sort them first).
     out.extend(
         super::flowers::scatter(d, lo, hi)
             .into_iter()
             .map(|b| (b.key(), b)),
     );
-    out.sort_by(|a, b| a.0.total_cmp(&b.0));
-    out.into_iter().map(|(_, b)| b).collect()
+    by_key(out, parallel)
+}
+
+/// The blades in drop-out key order (stable: equal keys keep the scatter's order; sorted in
+/// parallel when `parallel`).
+fn by_key(mut out: Vec<(f32, Blade)>, parallel: bool) -> Vec<Blade> {
+    if parallel {
+        out.par_sort_by(|a, b| a.0.total_cmp(&b.0));
+        out.into_par_iter().map(|(_, b)| b).collect()
+    } else {
+        out.sort_by(|a, b| a.0.total_cmp(&b.0));
+        out.into_iter().map(|(_, b)| b).collect()
+    }
 }
 
 #[cfg(test)]

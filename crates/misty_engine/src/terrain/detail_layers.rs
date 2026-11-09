@@ -259,6 +259,18 @@ pub fn fill(d: &mut TerrainData, which: DetailTarget, value: f32) {
 /// Blades of the grass species rooted in `[lo, hi)` (terrain-local metres), kept at the
 /// density level's share `keep`, with their drop-out keys (see `details::scatter_level`).
 pub fn species_blades(d: &TerrainData, lo: Vec2, hi: Vec2, keep: f32) -> Vec<(f32, Blade)> {
+    species_blades_in(d, lo, hi, keep, false)
+}
+
+/// [`species_blades`], the rows of texels in parallel when `parallel` (the same blades in the
+/// same order).
+pub(super) fn species_blades_in(
+    d: &TerrainData,
+    lo: Vec2,
+    hi: Vec2,
+    keep: f32,
+    parallel: bool,
+) -> Vec<(f32, Blade)> {
     let n = d.alphamap_resolution;
     let texel = Vec2::new(d.size.x, d.size.z) / n as f32;
     let (t0, t1) = (
@@ -278,7 +290,8 @@ pub fn species_blades(d: &TerrainData, lo: Vec2, hi: Vec2, keep: f32) -> Vec<(f3
             l.height[0].max(0.01),
             l.height[1].max(l.height[0]).max(0.01),
         );
-        for tz in t0.y as usize..t1.y as usize {
+        let rows = details::rows_of(t0.y as usize..t1.y as usize, parallel, |tz| {
+            let mut row = Vec::new();
             for tx in t0.x as usize..t1.x as usize {
                 let density = l.map[tz * n + tx];
                 if density == 0 {
@@ -331,10 +344,12 @@ pub fn species_blades(d: &TerrainData, lo: Vec2, hi: Vec2, keep: f32) -> Vec<(f3
                         field: [lush, dry, swathe(p, patch), shade],
                         slope: slope.into(),
                     };
-                    out.push((key, blade));
+                    row.push((key, blade));
                 }
             }
-        }
+            row
+        });
+        out.extend(rows);
     }
     out
 }
