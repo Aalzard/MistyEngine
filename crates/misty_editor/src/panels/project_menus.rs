@@ -14,6 +14,12 @@ pub struct Requests {
     pub rename: Option<PathBuf>,
     pub delete: Option<PathBuf>,
     pub copy_path: Option<String>,
+    /// The rename was started by press and hold (the button is still down).
+    pub rename_by_hold: bool,
+    /// The rename was asked for on a folder tree row (its field goes there).
+    pub rename_in_tree: bool,
+    /// Create ▸ was chosen in this folder's menu: it opens first, so the asset is made there.
+    pub create_in: Option<PathBuf>,
 }
 
 /// Create ▸ entries (Project "+" button, Assets ▸ Create and the context menus).
@@ -166,7 +172,11 @@ pub fn item_menu(ui: &mut Ui, path: &Path, rel: Option<String>, req: &mut Reques
 
 /// Right-click menu of the empty area of a folder.
 pub fn folder_menu(ui: &mut Ui, folder: &Path, req: &mut Requests) {
+    let before = req.actions.len();
     ui.menu_button("Create", |ui| create_items(ui, &mut req.actions));
+    if req.actions.len() > before {
+        req.create_in = Some(folder.to_path_buf());
+    }
     if ui.button(explorer_label()).clicked() {
         req.actions
             .push(Action::ShowInExplorer(folder.to_path_buf()));

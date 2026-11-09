@@ -69,6 +69,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             .collect::<Vec<_>>(),
     );
 
+    // The whole area under the rows (they sit on top of it): a click deselects, a right-click
+    // shows the Create menu, also beside short rows and in an empty scene.
+    let background = ui.interact(
+        ui.available_rect_before_wrap(),
+        ui.id().with("hierarchy_background"),
+        Sense::click(),
+    );
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
@@ -104,13 +111,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 ui.allocate_space(vec2(width, (rows.len() - end) as f32 * step - spacing));
             }
 
-            // Empty space below the rows: deselect, create menu, drop to root.
+            // Empty space below the rows: drop to root.
             let rest =
-                ui.allocate_response(ui.available_size().max(vec2(0.0, 40.0)), Sense::click());
-            if rest.clicked() {
-                state.selection.clear();
-            }
-            rest.context_menu(|ui| create_menu_items(ui, state, None));
+                ui.allocate_response(ui.available_size().max(vec2(0.0, 40.0)), Sense::hover());
             if let Some(payload) = rest.dnd_release_payload::<super::AssetPayload>() {
                 drop_prefab(state, &payload.0, None);
                 drop_scene(state, &payload.0);
@@ -120,6 +123,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             }
         });
 
+    if background.clicked() {
+        state.selection.clear();
+    }
+    background.context_menu(|ui| create_menu_items(ui, state, None));
     drag_and_drop(ui, state, drag_id, dragging, drop);
     keyboard(ui, state, &objects);
     super::folder_colors::show_picker(ui, state);

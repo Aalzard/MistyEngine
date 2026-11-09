@@ -70,6 +70,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::SIDEBAR_BG))
         .resizable(true)
         .show(ui, |ui| {
+            // Empty space under the folders: the folder menu of the open folder.
+            let background = ui.interact(
+                ui.max_rect(),
+                ui.id().with("project_tree_background"),
+                Sense::click(),
+            );
             egui::ScrollArea::vertical()
                 .auto_shrink(false)
                 .show(ui, |ui| {
@@ -79,6 +85,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                         browser.open_folder(path);
                     }
                 });
+            let current = browser.current.clone();
+            if !browser.is_read_only(&current) {
+                background.context_menu(|ui| project_menus::folder_menu(ui, &current, &mut req));
+            }
         });
 
     let dragging_objects = ui
@@ -86,6 +96,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .is_some();
     egui::CentralPanel::default().show(ui, |ui| {
         browser.drop_rect = ui.max_rect();
+        // The whole content area, under the breadcrumb, tiles and rows (they sit on top of
+        // it): a click deselects, a right-click shows the folder menu, also in an empty folder,
+        // beside the last row and in the gaps between tiles.
+        let background = ui.interact(
+            ui.max_rect(),
+            ui.id().with("project_content_background"),
+            Sense::click(),
+        );
         // Hierarchy rows dragged here become prefabs in this folder.
         if dragging_objects && ui.rect_contains_pointer(ui.max_rect()) {
             ui.painter().rect_stroke(
@@ -132,17 +150,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 } else {
                     grid_view(ui, &entries, browser, vcs, &mut open, &mut req);
                 }
-                // Empty space: deselect, folder menu.
-                let rest = ui.allocate_response(
-                    ui.available_size().max(egui::vec2(0.0, 40.0)),
-                    Sense::click(),
-                );
-                if rest.clicked() {
-                    browser.selected = None;
-                }
-                let current = browser.current.clone();
-                rest.context_menu(|ui| project_menus::folder_menu(ui, &current, &mut req));
             });
+        if background.clicked() {
+            browser.selected = None;
+        }
+        let current = browser.current.clone();
+        background.context_menu(|ui| project_menus::folder_menu(ui, &current, &mut req));
         if let Some(path) = open {
             if path.is_dir() {
                 browser.search.clear();
@@ -236,6 +249,13 @@ pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
 }
 
 fn apply_requests(ui: &Ui, state: &mut EditorState, req: Requests) {
+    // Create ▸ in a folder's own menu: open it, so the new asset is made (and renamed) there.
+    if let Some(dir) = req.create_in
+        && dir != state.project.current
+    {
+        state.project.search.clear();
+        state.project.open_folder(dir);
+    }
     for a in req.actions {
         state.push(a);
     }

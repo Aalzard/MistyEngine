@@ -37,6 +37,11 @@ pub fn show(
     });
 
     let list = Rect::from_min_max(pos2(rect.left(), top.bottom()), rect.max);
+    // Empty space under the headers (they sit on top): right-click for the Add menu.
+    let background = ui.interact(list, ui.id().with("timeline_headers_bg"), Sense::click());
+    if editing {
+        background.context_menu(|ui| add_menu(ui, s, asset, path));
+    }
     // Wheel over the headers scrolls the track list.
     if ui.rect_contains_pointer(list) {
         let dy = ui.input(|i| i.smooth_scroll_delta.y);
