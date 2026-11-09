@@ -126,6 +126,15 @@ pub struct Target {
     pub two_sided: bool,
     #[serde(skip_serializing_if = "is_default")]
     pub normal_space: NormalSpace,
+    /// Lit: the Thickness and Subsurface Color blocks (wrap lighting, Standard Lit v2).
+    #[serde(skip_serializing_if = "is_default")]
+    pub subsurface: bool,
+    /// Lit: the Coat Mask and Coat Smoothness blocks (a clear coat layer).
+    #[serde(skip_serializing_if = "is_default")]
+    pub clear_coat: bool,
+    /// Lit: the Anisotropy and Anisotropy Direction blocks (stretched highlights).
+    #[serde(skip_serializing_if = "is_default")]
+    pub anisotropy: bool,
 }
 
 fn is_default<T: Default + PartialEq>(v: &T) -> bool {
@@ -1154,6 +1163,9 @@ impl ShaderGraph {
                     lit || decal
                 }
                 master::TRANSMISSION => lit,
+                master::THICKNESS | master::SUBSURFACE => lit && self.target.subsurface,
+                master::COAT_MASK | master::COAT_SMOOTHNESS => lit && self.target.clear_coat,
+                master::ANISOTROPY | master::ANISOTROPY_DIRECTION => lit && self.target.anisotropy,
                 master::POSITION => !decal,
                 master::ALPHA_CLIP => self.target.alpha_clip && !decal,
                 _ => true,

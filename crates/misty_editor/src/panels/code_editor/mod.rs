@@ -5,7 +5,7 @@
 //! `lexer`, `completion`, `diagnostics`); `view` draws one file and turns input into commands,
 //! `ui` draws the tab (file tabs, find bar, Find in Files, dialogs).
 
-mod api;
+pub(crate) mod api;
 mod commands;
 mod completion;
 mod diagnostics;

@@ -3029,7 +3029,93 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   main); no CPU preview for Custom Functions; vertex offsets do not move shadows; decal graphs
   limited to 8 properties; FBX / OBJ / skinned meshes have no vertex colours yet.
 
-## Round 21A — World Partition-lite: world streaming (branch r21-streaming)
+## Round 21A — Build Profiles, dedicated server, achievements, build report (branch r21-buildprofiles)
+
+### Done (docs/pending/r21-buildprofiles.md)
+- **Build Profiles** window (File ▸ Build Profiles, Ctrl+Shift+B) in place of Build Settings:
+  Windows, Linux, macOS and Dedicated Server platform profiles plus custom profiles (add,
+  duplicate, rename, delete), each with its own scene list or the shared one, scripting defines,
+  texture compression and max size overrides, a quality level, Development / Compress / Zip and
+  an output folder. Saved as `.buildprofile` assets (`ProjectSettings/BuildProfiles/`,
+  `Assets/Settings/Build Profiles/`); one is active for Ctrl+B and Play mode. CLI:
+  `misty --build <project> [<out>] --profile <name>`.
+- Lua scripting defines: `--#if NAME` / `--#elif` / `--#else` / `--#endif` blocks and
+  `Application.HasDefine`, `Application.isDedicatedServer`, `Application.isEditor`.
+- **Dedicated server**: the player runs headless (no window, audio device or GPU) for Dedicated
+  Server builds or `--headless`, starts the network server (`--port`) and ticks at the Target
+  Frame Rate; textures, audio, video, compressed textures and the icon are stripped from server
+  builds. Tested end to end: a server build of the real player plus a headless client process.
+- **Achievements**: Lua `Achievements.Unlock` / `IsUnlocked` / `Clear` / `GetUnlocked` over a
+  pluggable `AchievementBackend`; local JSON storage (editor Library, player user folder).
+- **Build report**: sizes per asset type and the 20 largest assets, shown in the window after a
+  build, saved as `BuildReport.txt` in the build and `Library/BuildReports/<Profile>.json`.
+- Sample profiles in SampleProject: Demo and Net Server.
+
+### Not done yet
+- No Steam backend for achievements: there is no pure-Rust, permissively licensed Steamworks
+  client (the crates wrap Valve's proprietary SDK). The backend trait is where it would plug in.
+- The server is the same player binary run headless, not a separately compiled player without
+  winit / wgpu. Texture overrides don't reach the textures the renderer makes from several
+  images (terrain arrays, tree atlases). Profiles have no per-profile Player Settings overrides.
+## Round 21E — Version control, API reference, accessibility (branch r21-ecosystem)
+
+### Done (docs/pending/r21-ecosystem.md)
+- **Version control** through the `git` command line (no libgit2): the project's repository is
+  found with `rev-parse` (a project inside a bigger repo works), status is polled every 3 s on a
+  worker thread, and Project files / folders and the Hierarchy's scene rows get Modified / Added /
+  Untracked / Conflicted badges. **Window ▸ Version Control…**: staged / unstaged / conflict
+  lists with a checkbox per file, coloured diffs of text assets, a commit message and Commit,
+  Stage All, Discard with a confirmation (new files go to the trash). No push or pull buttons:
+  the commands are shown with Copy buttons.
+- **Scene diff**: objects keyed by Hierarchy path, references compared by object rather than by
+  list index; added / removed / changed objects, components and every changed field, plus lighting
+  and order changes. **Scene merge helper** for a conflicted scene: each object takes ours or
+  theirs (one-sided changes preselected), Save Merged Scene writes and stages it. Tests use temp
+  repositories only (git refuses folders outside the temp folder in test builds).
+- **Lua API reference**: `misty --api-docs <folder>` and Help ▸ Scripting Reference generate
+  Markdown and one static HTML page from the binding sources (`scripting/*.rs`, scanned for
+  tables, userdata members, closure parameters and the comment above each binding) and the
+  autocomplete table. `docs/api/` is committed; a test fails when it is stale.
+- **Accessibility**: AccessKit screen-reader support named in the manifest, new controls labelled
+  and an audit helper (`a11y::unnamed_controls`) checked on the toolbar, Hierarchy, Project,
+  Preferences, Version Control and Player settings; Edit ▸ Preferences ▸ UI Scale (75–200 %,
+  per user). Runtime: Project Settings ▸ Player ▸ Accessibility with a UI text scale and a
+  colour-blind filter (protanopia / deuteranopia / tritanopia correction or simulation, strength)
+  applied over the final image including the UI, in the player and the Game view; Lua
+  `Accessibility.textScale / colorBlindMode / filterStrength / simulate`. Off costs nothing, so
+  golden images are unchanged.
+
+### Not done yet
+- Hunk staging, history and branch views; folder-tree badges; per-field scene merges and prefab
+  object diffs; accessible names for the older Inspector rows.
+## Round 21 (17D) — Standard Lit v2 material model (branch r21-material)
+
+### Done (docs/pending/r21-material.md)
+- Optional Standard features, each a shader variant bit so unused ones cost nothing (a
+  `MAT_FEATURES` constant in mesh.wgsl, 0 in every base shader; feature materials get a variant
+  for exactly their bits and a bigger group 2): **detail maps** (×2 albedo, normal, mask, own
+  tiling), **parallax occlusion mapping** (height map, scale, steps), **clear coat** (strength,
+  smoothness, optional normal), **translucency** (wrap lighting + transmission, colour,
+  thickness map), **anisotropy** (strength, Horizontal / Vertical / Radial direction,
+  rotation), and a dielectric **specular** tint.
+- `.mat` sections left out at their defaults (old materials re-save byte for byte); Material
+  Inspector sections with Unity-style checkboxes; Sphere / Cube / Plane preview.
+- glTF: `KHR_materials_clearcoat`, `_anisotropy`, `_specular`, `_diffuse_transmission`,
+  `_transmission` (+ `_volume` tint) and `KHR_texture_transform`.
+- Shader Graph: Clear Coat, Anisotropy and Subsurface blocks (Graph Settings toggles); surface
+  shaders writing `o.coat` / `o.anisotropy` / `o.subsurface` compile those features.
+- Lua: Unity property names (`_ParallaxMap`, `_DetailAlbedoMap`, `_CoatMask`, `_Anisotropy`, …)
+  and feature keywords (`_CLEARCOAT`, `_PARALLAXMAP`, …).
+- MaterialDemo2 sample (car-paint clear coat, brushed metal disc and pipe, parallax brick wall,
+  detail rock, translucent leaves; procedural textures).
+
+### Not done yet
+- Textures of the glTF extensions other than the clear coat normal (coat / roughness masks,
+  anisotropy direction map, thickness and transmission maps); real refraction for
+  `KHR_materials_transmission`; parallax doesn't offset depth or self-shadow; area lights use the
+  plain lobe; Shader Graph has no Parallax Occlusion Mapping node yet.
+
+## Round 21 — World Partition-lite: world streaming (branch r21-streaming)
 
 ### Done (docs/pending/r21-streaming.md)
 - **Cells as sub-scenes**: a World Partition component (cell size, grid origin, folder, load /

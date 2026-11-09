@@ -258,3 +258,48 @@ fn material_lists_and_shader_switch() {
     assert!(draws[0].unlit);
     assert_eq!(draws[1].color, [1.0, 1.0, 0.0, 0.5]);
 }
+
+const FEATURES: &str = r#"
+local F = {}
+function F:Start()
+    local m = self.gameObject:GetComponent("MeshRenderer").material
+    m:EnableKeyword("_CLEARCOAT")
+    m:SetFloat("_CoatMask", 0.75)
+    m:SetFloat("_CoatSmoothness", 0.9)
+    m:EnableKeyword("_ANISOTROPY")
+    m:SetFloat("_Anisotropy", -0.4)
+    m:SetTexture("_ParallaxMap", "Assets/Textures/Height.png")
+    Debug.Log(tostring(m:IsKeywordEnabled("_CLEARCOAT")), m:GetFloat("_CoatMask"),
+        tostring(m:IsKeywordEnabled("_PARALLAXMAP")), m:GetTexture("_ParallaxMap"),
+        tostring(m:HasProperty("_DetailAlbedoMap")))
+end
+return F
+"#;
+
+/// The Standard Lit v2 features through Unity's property and keyword names.
+#[test]
+fn lua_switches_material_features() {
+    let root = project(&[("F.lua", FEATURES)]);
+    let mut scene = Scene::new("t");
+    ball(&mut scene, "A", Some("F.lua"));
+    let logs = run(&mut scene, &root, 1);
+    let line = &logs
+        .iter()
+        .find(|l| l.0 == LogKind::Info)
+        .expect("logged")
+        .1;
+    // The height map alone doesn't switch parallax on.
+    assert_eq!(
+        line, "true 0.75 false Assets/Textures/Height.png true",
+        "{logs:?}"
+    );
+    let draws = rendered(&scene, &root);
+    use crate::render::material_v2::feature;
+    assert_eq!(
+        draws[0].features(),
+        feature::CLEARCOAT | feature::ANISOTROPY
+    );
+    let e = draws[0].extras.as_ref().unwrap();
+    assert!((e.values.coat[0] - 0.75).abs() < 1e-6);
+    assert_eq!(e.values.aniso[0], -0.4);
+}

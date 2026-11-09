@@ -5,7 +5,10 @@ use std::path::Path;
 
 use glam::{Quat, Vec3};
 
-use super::{Model, ModelMaterial, ModelMesh, ModelNode, TextureSource, mirror_rotation, mirror_x};
+use super::{
+    Model, ModelMaterial, ModelMesh, ModelNode, TextureSource, gltf_materials, mirror_rotation,
+    mirror_x,
+};
 use crate::assets::Material;
 use crate::render::mesh::{MeshData, Vertex};
 
@@ -193,6 +196,30 @@ pub fn load(path: &Path) -> Result<Model, String> {
         if let Some(n) = &normal {
             material.normal_scale = n.scale();
         }
+        // KHR_texture_transform of the base colour texture → tiling, offset, UV rotation.
+        if let Some(t) = pbr.base_color_texture().and_then(|t| t.texture_transform()) {
+            gltf_materials::apply_texture_transform(
+                t.offset(),
+                t.rotation(),
+                t.scale(),
+                &mut material,
+            );
+        }
+        // Clear coat, anisotropy, specular, transmission: the optional Standard features.
+        let mut extra_maps = Vec::new();
+        let texture = |index: usize| {
+            let t = doc.textures().nth(index)?;
+            image_source(t.source(), &buffers, dir)
+        };
+        let mut extensions = m.extensions().cloned().unwrap_or_default();
+        if let Some(t) = m.transmission() {
+            // Read by the crate itself (so files that require it load).
+            extensions.insert(
+                "KHR_materials_transmission".into(),
+                serde_json::json!({ "transmissionFactor": t.transmission_factor() }),
+            );
+        }
+        gltf_materials::apply_extensions(&extensions, &mut material, &mut extra_maps, &texture);
         model.materials.push(ModelMaterial {
             name: m
                 .name()
@@ -203,6 +230,7 @@ pub fn load(path: &Path) -> Result<Model, String> {
                 .base_color_texture()
                 .and_then(|t| image_source(t.texture().source(), &buffers, dir)),
             normal: normal.and_then(|t| image_source(t.texture().source(), &buffers, dir)),
+            extra_maps,
         });
     }
     Ok(model)

@@ -94,6 +94,9 @@ pub struct ProjectSettingsWindow {
     pub quality_selected: usize,
 }
 
+/// The one section open at start (screenshots); see [`section`].
+pub static SCREENSHOT_SECTION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
 /// Settings of the project at `s.project.root`; problems go to the Console.
 pub fn load(s: &mut EditorState) {
     match ProjectSettings::load(&s.project.root) {
@@ -107,8 +110,21 @@ pub fn load(s: &mut EditorState) {
     s.project_settings.apply_globals();
     let q = &s.project_settings.quality;
     misty_engine::quality::install(q, q.default_level);
+    install_accessibility(s);
     // PlayerPrefs in Play mode are kept per project, outside version control.
     misty_engine::prefs::open(&s.project.root.join("Library/PlayerPrefs.json"));
+}
+
+/// Player ▸ Accessibility as the settings in effect: the Game view shows the colour-blind
+/// filter and text scale while editing too, and Play starts from them.
+pub fn install_accessibility(s: &EditorState) {
+    let a = s
+        .project_settings
+        .player
+        .as_ref()
+        .map(|p| p.accessibility)
+        .unwrap_or_default();
+    misty_engine::accessibility::install(&a);
 }
 
 /// Clamp, save, and apply what can change live (time scale while playing).
@@ -117,6 +133,7 @@ pub fn changed(s: &mut EditorState) {
     s.project_settings.apply_globals();
     // Keep previewing the same level with its new values.
     misty_engine::quality::install(&s.project_settings.quality, misty_engine::quality::level());
+    install_accessibility(s);
     if let Err(e) = s.project_settings.save(&s.project.root) {
         s.console.log(
             crate::console::LogLevel::Error,
@@ -256,6 +273,8 @@ fn package_manager(ui: &mut Ui, w: &mut crate::packages::PackagesWindow, root: &
 
 /// A collapsible group of fields on a page.
 pub fn section(ui: &mut Ui, title: &str, open: bool, add: impl FnOnce(&mut Ui)) {
+    // Screenshots (`MISTY_PROJECT_SETTINGS=Player:Accessibility`): only that section starts open.
+    let open = SCREENSHOT_SECTION.get().map_or(open, |s| s == title);
     egui::CollapsingHeader::new(egui::RichText::new(title).strong())
         .id_salt(("ps_section", title))
         .default_open(open)
@@ -440,11 +459,8 @@ mod tests {
         h.run();
         h.get_by_label("Product Name");
         h.get_by_label("Screen Mode");
-        h.get_by_label("Resizable Window");
-        // The first checkbox of the page is Resizable Window (Identity has none).
-        h.query_all_by_role(egui::accesskit::Role::CheckBox)
-            .next()
-            .unwrap()
+        // The checkbox is named after its row's label (screen readers).
+        h.get_by_role_and_label(egui::accesskit::Role::CheckBox, "Resizable Window")
             .click();
         h.run();
         let player = h.state().project_settings.player.clone().unwrap();

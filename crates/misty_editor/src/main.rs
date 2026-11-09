@@ -5,9 +5,11 @@
 // (`attach_parent_console`), so its output still shows there.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod a11y;
 mod actions;
 mod anim_clips;
 mod anim_controllers;
+mod api_docs;
 mod app;
 mod area_light_handles;
 mod asset_actions;
@@ -110,6 +112,8 @@ mod sample_lighting;
 mod sample_lightmap;
 #[cfg(test)]
 mod sample_materials;
+#[cfg(test)]
+mod sample_materials2;
 #[cfg(test)]
 mod sample_meadow;
 #[cfg(test)]
@@ -234,6 +238,7 @@ mod undo_names;
 mod undo_terrain;
 mod updater;
 mod vcam_tools;
+mod vcs;
 mod vfx_preview;
 mod vgeo_convert;
 mod viewport;
@@ -249,9 +254,28 @@ enum Start {
     Editor(PathBuf),
 }
 
+/// `--build`'s arguments after the project: `[<output folder>] [--profile <name>]`.
+fn build_args(rest: &[String]) -> Result<(Option<PathBuf>, Option<String>), String> {
+    let mut out = None;
+    let mut profile = None;
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--profile" => {
+                profile = Some(it.next().ok_or("--profile needs a profile name")?.clone());
+            }
+            flag if flag.starts_with("--") => return Err(format!("unknown --build option {flag}")),
+            _ if out.is_none() => out = Some(PathBuf::from(a)),
+            _ => return Err(format!("unexpected argument {a:?}")),
+        }
+    }
+    Ok((out, profile))
+}
+
 /// `misty [<project>]`, `misty --new <Template> <folder>` (creates the project, then opens it)
 /// or `misty --build <project> <output folder>` (builds the game without a window, then exits)
-/// or `misty --run-tests <project> [--filter X] [--results out.xml]` (runs the project's tests).
+/// or `misty --run-tests <project> [--filter X] [--results out.xml]` (runs the project's tests)
+/// or `misty --api-docs <folder>` (writes the Lua API reference).
 fn parse_args() -> Result<Start, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.as_slice() {
@@ -270,8 +294,13 @@ fn parse_args() -> Result<Start, String> {
             templates::create_with(&folder, t, !rest.is_empty())?;
             Ok(Start::Editor(folder))
         }
-        [flag, project, out] if flag == "--build" => {
-            match build_pipeline::build_from_cli(Path::new(project), Path::new(out)) {
+        [flag, project, rest @ ..] if flag == "--build" => {
+            let (out, profile) = build_args(rest)?;
+            match build_pipeline::build_from_cli(
+                Path::new(project),
+                out.as_deref(),
+                profile.as_deref(),
+            ) {
                 Ok(exe) => {
                     println!("Built {}", exe.display());
                     std::process::exit(0)
@@ -290,13 +319,15 @@ fn parse_args() -> Result<Start, String> {
         [flag, rest @ ..] if flag == "--mcp-connect" => {
             std::process::exit(mcp::bridge::connect_main(rest))
         }
+        // The Lua API reference (Markdown + one HTML page) into a folder.
+        [flag, out] if flag == "--api-docs" => std::process::exit(api_docs::cli(Path::new(out))),
         [flag, rest @ ..] if flag == "--run-tests" => {
             // Headless test run for CI: JUnit XML and the exit code (see `testing::cli`).
             let code = misty_engine::testing::cli::run(rest, &mut std::io::stdout());
             std::process::exit(code)
         }
         [flag, ..] if flag.starts_with("--") => Err(format!(
-            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> <output folder> | {} | {} | {} ({flag}?)",
+            "usage: misty [<project folder>] | misty --new <Template> <folder> [--with-samples] | misty --build <project folder> [<output folder>] [--profile <name>] | misty --api-docs <output folder> | {} | {} | {} ({flag}?)",
             misty_engine::testing::cli::USAGE,
             mcp::headless::USAGE,
             mcp::bridge::CONNECT_USAGE
@@ -450,5 +481,30 @@ fn wgpu_options() -> egui_wgpu::WgpuConfiguration {
             desired_maximum_frame_latency: Some(frame_latency()),
         },
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn build_arguments_take_a_folder_and_a_profile() {
+        let args = |v: &[&str]| build_args(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            args(&["C:/Out", "--profile", "Dedicated Server"]).unwrap(),
+            (
+                Some(PathBuf::from("C:/Out")),
+                Some("Dedicated Server".into())
+            )
+        );
+        assert_eq!(
+            args(&["--profile", "Demo"]).unwrap(),
+            (None, Some("Demo".into()))
+        );
+        assert_eq!(args(&["Out"]).unwrap(), (Some("Out".into()), None));
+        assert!(args(&["--profile"]).is_err());
+        assert!(args(&["a", "b"]).is_err());
+        assert!(args(&["--zip"]).is_err());
     }
 }

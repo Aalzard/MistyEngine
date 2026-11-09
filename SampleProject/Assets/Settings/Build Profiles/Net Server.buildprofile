@@ -1,0 +1,19 @@
+{
+  "platform": "DedicatedServer",
+  "target": "WindowsX64",
+  "override_scenes": true,
+  "scenes": [
+    {
+      "path": "Assets/Scenes/NetworkDemo.scene",
+      "enabled": true
+    }
+  ],
+  "defines": [],
+  "texture_compression": null,
+  "max_texture_size": null,
+  "quality_level": null,
+  "development": true,
+  "compression": true,
+  "create_zip": false,
+  "output_folder": "Builds/Server"
+}

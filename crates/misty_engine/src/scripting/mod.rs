@@ -19,6 +19,7 @@
 //! return Rotator
 //! ```
 
+pub mod accessibility_api;
 pub mod animator_api;
 pub mod api;
 pub mod app_api;
@@ -1492,6 +1493,9 @@ impl ScriptHost {
 
 fn load_class(lua: &Lua, root: &std::path::Path, path: &str) -> Result<Table, String> {
     let source = crate::vfs::read_to_string(root.join(path)).map_err(|e| format!("{path}: {e}"))?;
+    // `--#if DEFINE` blocks of the Build Profile's scripting defines.
+    let source =
+        crate::build_profile::preprocess_lua(&source, &crate::build_profile::active_defines());
     eval_class(lua, &source, path)
 }
 

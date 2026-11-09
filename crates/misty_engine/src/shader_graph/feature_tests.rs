@@ -529,3 +529,59 @@ fn decal_graphs_compile_into_the_decal_pass() {
     let e = codegen::compile_decal(&bad, &Variant::new(), &FileResolver).unwrap_err();
     assert_eq!(e.node, Some(p), "{e}");
 }
+
+/// Standard Lit v2 blocks: the Graph Settings toggles add Coat, Anisotropy and Subsurface
+/// blocks to a Lit stack; written, they compile the shader with those lighting features.
+#[test]
+fn lit_v2_blocks_follow_the_settings_and_compile_their_features() {
+    let mut g = ShaderGraph::new(TargetMaterial::Lit);
+    let names =
+        |g: &ShaderGraph| -> Vec<&str> { g.master_ports().iter().map(|(_, p)| p.name).collect() };
+    for p in [
+        master::COAT_MASK,
+        master::ANISOTROPY,
+        master::SUBSURFACE,
+        master::THICKNESS,
+    ] {
+        assert!(!names(&g).contains(&p), "{p} hidden by default");
+    }
+    let plain = compile(&g).unwrap().source;
+    assert!(!plain.contains("o.coat") && !plain.contains("o.anisotropy"));
+    g.target.clear_coat = true;
+    g.target.anisotropy = true;
+    g.target.subsurface = true;
+    for p in [
+        master::COAT_MASK,
+        master::COAT_SMOOTHNESS,
+        master::ANISOTROPY,
+        master::ANISOTROPY_DIRECTION,
+        master::SUBSURFACE,
+        master::THICKNESS,
+    ] {
+        assert!(names(&g).contains(&p), "{p}");
+    }
+    let half = g.add_node(NodeKind::Float, [0.0; 2]);
+    g.connect(half, "Out", MASTER, master::THICKNESS).unwrap();
+    let src = compile(&g).unwrap().source;
+    for line in [
+        "o.coat = ",
+        "o.coat_smoothness = ",
+        "o.anisotropy = ",
+        "o.anisotropy_direction = tangent_to_world(input, normalize(",
+        "o.subsurface = ",
+        "o.transmission = o.transmission * (1.0 - saturate(",
+    ] {
+        assert!(src.contains(line), "{line}\n{src}");
+    }
+    let asset = crate::shader_asset::parse(&src).unwrap();
+    let wrapped = crate::render::custom_shader::wrap(&asset);
+    assert!(wrapped.body.contains("const MAT_FEATURES: u32 = 28u;"));
+    // Unlit and Decal stacks never show them.
+    g.target.material = TargetMaterial::Unlit;
+    assert!(!names(&g).contains(&master::COAT_MASK));
+    g.target.material = TargetMaterial::Decal;
+    assert!(!names(&g).contains(&master::ANISOTROPY));
+    // Files without the toggles stay as they were.
+    let json = ShaderGraph::new(TargetMaterial::Lit).to_json();
+    assert!(!json.contains("clear_coat") && !json.contains("subsurface"));
+}

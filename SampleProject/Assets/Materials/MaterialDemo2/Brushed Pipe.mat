@@ -1,0 +1,35 @@
+{
+  "shader": "Standard",
+  "color": [
+    0.95,
+    0.78,
+    0.55,
+    1.0
+  ],
+  "metallic": 1.0,
+  "smoothness": 0.8,
+  "emission_enabled": false,
+  "emission": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "emission_intensity": 1.0,
+  "albedo_map": null,
+  "normal_map": "Assets/Textures/MaterialDemo2/Brushed Normal.png",
+  "normal_scale": 0.25,
+  "tiling": [
+    2.0,
+    1.0
+  ],
+  "offset": [
+    0.0,
+    0.0
+  ],
+  "anisotropy": {
+    "enabled": true,
+    "strength": 0.8,
+    "direction": "Vertical",
+    "rotation": 0.0
+  }
+}

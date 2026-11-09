@@ -85,6 +85,9 @@ pub struct PlayerSettings {
     pub vsync: bool,
     /// Frame cap when VSync is off; -1 = unlimited.
     pub target_frame_rate: i32,
+    /// UI text scale and the colour-blind filter the game starts with (scripts change them at
+    /// run time through `Accessibility`).
+    pub accessibility: crate::accessibility::AccessibilitySettings,
 }
 
 impl Default for PlayerSettings {
@@ -102,6 +105,7 @@ impl Default for PlayerSettings {
             run_in_background: false,
             vsync: true,
             target_frame_rate: -1,
+            accessibility: Default::default(),
         }
     }
 }
@@ -120,6 +124,7 @@ impl PlayerSettings {
         } else {
             2.0
         };
+        self.accessibility.sanitize();
         self.icon = self.icon.take().filter(|p| !p.trim().is_empty());
         self.splash.image = self.splash.image.take().filter(|p| !p.trim().is_empty());
     }

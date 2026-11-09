@@ -176,3 +176,32 @@ fn streaming_demo_flythrough_bench() {
     assert!(s.max < 16.0, "worst streaming frame {:.2} ms", s.max);
     assert_eq!(f.stats.failed, 0);
 }
+
+/// A player build packs the cells, their terrain tiles, the HLOD proxies and their material:
+/// the World Partition's cell list stands for its files.
+#[test]
+fn a_build_of_the_demo_packs_every_cell_tile_and_proxy() {
+    let root = project();
+    if !root.join("Assets/Scenes/StreamingDemo.scene").exists() {
+        return;
+    }
+    let deps = crate::asset_deps::collect(&root, &["Assets/Scenes/StreamingDemo.scene".into()]);
+    let has = |p: &str| deps.files.contains(p);
+    assert!(has("Assets/Scenes/StreamingDemo/Cells/Cell_3_4.scene"));
+    assert!(has("Assets/Scenes/StreamingDemo/Terrain/Tile_3_4.terrain"));
+    assert!(has("Assets/Scenes/StreamingDemo/HLOD/Cell_3_4.hlod"));
+    assert!(has("Assets/Scenes/StreamingDemo/HLOD/HLOD.mat"));
+    assert!(has("Assets/Scenes/StreamingDemo/HLOD/HLOD.shader"));
+    assert!(has("Assets/Trees/Oak.tree"));
+    assert!(
+        has("Assets/Rocks/Prefabs/Boulder Large.prefab")
+            || has("Assets/Rocks/Meshes/Boulder Large LODs.glb")
+    );
+    let cells = deps
+        .files
+        .iter()
+        .filter(|f| f.contains("/Cells/") && f.ends_with(".scene"))
+        .count();
+    assert_eq!(cells, 64);
+    assert!(deps.missing.is_empty(), "{:?}", deps.missing);
+}

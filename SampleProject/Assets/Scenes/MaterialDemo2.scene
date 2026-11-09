@@ -1,0 +1,814 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 1000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Transform": {
+          "euler_hint": [
+            9.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.7,
+            -5.4
+          ],
+          "rotation": [
+            0.0784591,
+            0.0,
+            0.0,
+            0.9969173
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.957,
+            0.839
+          ],
+          "enabled": true,
+          "intensity": 1.0,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            38.0,
+            150.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            4.0,
+            0.0
+          ],
+          "rotation": [
+            0.08426324,
+            0.91330075,
+            -0.31447467,
+            0.24471824
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Floor",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Plane"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/Checker.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            2.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.0,
+            1.0,
+            1.4
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Parallax Brick Wall",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Quad"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Parallax Bricks.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.5,
+            3.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            6.0,
+            3.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Clear Coat Car Body",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Capsule"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Clear Coat Paint.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            90.0
+          ],
+          "position": [
+            -3.2,
+            0.7,
+            0.6
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.70710677,
+            0.70710677
+          ],
+          "scale": [
+            1.1,
+            1.1,
+            1.1
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Clear Coat Sphere",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Clear Coat Paint.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.7,
+            0.55,
+            -0.6
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.1,
+            1.1,
+            1.1
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Brushed Metal Disc",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Brushed Disc.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            -62.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            1.0,
+            0.8
+          ],
+          "rotation": [
+            -0.5150381,
+            0.0,
+            0.0,
+            0.8571673
+          ],
+          "scale": [
+            1.5,
+            0.04,
+            1.5
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Brushed Metal Pipe",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Brushed Pipe.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            90.0
+          ],
+          "position": [
+            0.2,
+            0.3,
+            -0.9
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.70710677,
+            0.70710677
+          ],
+          "scale": [
+            0.45,
+            0.9,
+            0.45
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Detail Rock",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Sphere"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Detail Rock.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            10.0,
+            30.0,
+            0.0
+          ],
+          "position": [
+            1.8,
+            0.45,
+            -0.5
+          ],
+          "rotation": [
+            0.08418597,
+            0.25783417,
+            -0.022557564,
+            0.9622502
+          ],
+          "scale": [
+            1.5,
+            0.9,
+            1.2
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Leaf Stem",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Cylinder"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Stem.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            3.3,
+            0.8,
+            0.9
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            0.05,
+            0.8,
+            0.05
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Translucent Leaf 1",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Quad"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Translucent Leaves.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            -15.0,
+            0.0,
+            35.0
+          ],
+          "position": [
+            3.3,
+            0.9,
+            0.9
+          ],
+          "rotation": [
+            -0.124485046,
+            0.039249983,
+            0.29813322,
+            0.9455578
+          ],
+          "scale": [
+            0.9,
+            1.15,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Translucent Leaf 2",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Quad"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Translucent Leaves.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            -15.0,
+            140.0,
+            -40.0
+          ],
+          "position": [
+            3.3,
+            1.25,
+            0.9
+          ],
+          "rotation": [
+            -0.36059454,
+            0.86019915,
+            -0.00071948767,
+            0.36059457
+          ],
+          "scale": [
+            0.9,
+            1.15,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Translucent Leaf 3",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Quad"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Translucent Leaves.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            -15.0,
+            250.0,
+            30.0
+          ],
+          "position": [
+            3.3,
+            1.55,
+            0.9
+          ],
+          "rotation": [
+            0.2825141,
+            0.765094,
+            -0.043904923,
+            -0.57696563
+          ],
+          "scale": [
+            0.9,
+            1.15,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Mesh Filter",
+            "Mesh Renderer"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Translucent Leaf 4",
+          "tag": "Untagged"
+        },
+        "Mesh Filter": {
+          "mesh": "Quad"
+        },
+        "Mesh Renderer": {
+          "cast_shadows": true,
+          "enabled": true,
+          "material": "Assets/Materials/MaterialDemo2/Translucent Leaves.mat",
+          "receive_shadows": true
+        },
+        "Transform": {
+          "euler_hint": [
+            -15.0,
+            40.0,
+            -15.0
+          ],
+          "position": [
+            3.3,
+            1.85,
+            0.9
+          ],
+          "rotation": [
+            -0.16586584,
+            0.3201835,
+            -0.077344514,
+            0.92951006
+          ],
+          "scale": [
+            0.9,
+            1.15,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Back Lamp",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.82,
+            0.55
+          ],
+          "enabled": true,
+          "intensity": 1.6,
+          "kind": "Point",
+          "range": 4.0,
+          "shadows": "None",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            3.4,
+            1.4,
+            2.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Key Lamp",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.97,
+            0.92
+          ],
+          "enabled": true,
+          "intensity": 2.0,
+          "kind": "Point",
+          "range": 7.0,
+          "shadows": "None",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            -1.2,
+            2.4,
+            -2.2
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

@@ -253,10 +253,21 @@ pub mod master {
     pub const OCCLUSION: &str = "Ambient Occlusion";
     /// Light coming through thin surfaces from behind, tinted (leaves, paper, cloth).
     pub const TRANSMISSION: &str = "Transmission";
+    /// Share of the Transmission blocked (0 = all comes through; Subsurface graphs).
+    pub const THICKNESS: &str = "Thickness";
+    /// Tint of the wrap lighting reaching round the terminator (skin, leaves, wax).
+    pub const SUBSURFACE: &str = "Subsurface Color";
+    /// Clear coat strength (0..1) and smoothness (Clear Coat graphs).
+    pub const COAT_MASK: &str = "Coat Mask";
+    pub const COAT_SMOOTHNESS: &str = "Coat Smoothness";
+    /// Anisotropy (-1..1) and the tangent-space direction highlights stretch along
+    /// (Anisotropy graphs).
+    pub const ANISOTROPY: &str = "Anisotropy";
+    pub const ANISOTROPY_DIRECTION: &str = "Anisotropy Direction";
 }
 
 /// Every master-stack port with its block (which ones apply depends on the target).
-pub const MASTER_PORTS: [(Block, Port); 10] = [
+pub const MASTER_PORTS: [(Block, Port); 16] = [
     (Block::Vertex, value(master::POSITION, PortType::VEC3, ZERO)),
     (
         Block::Fragment,
@@ -285,6 +296,34 @@ pub const MASTER_PORTS: [(Block, Port); 10] = [
     (
         Block::Fragment,
         value(master::TRANSMISSION, PortType::VEC3, ZERO),
+    ),
+    (
+        Block::Fragment,
+        value(master::THICKNESS, PortType::FLOAT, ZERO),
+    ),
+    (
+        Block::Fragment,
+        value(master::SUBSURFACE, PortType::VEC3, [1.0, 0.45, 0.3, 1.0]),
+    ),
+    (
+        Block::Fragment,
+        value(master::COAT_MASK, PortType::FLOAT, ONE),
+    ),
+    (
+        Block::Fragment,
+        value(master::COAT_SMOOTHNESS, PortType::FLOAT, [0.95; 4]),
+    ),
+    (
+        Block::Fragment,
+        value(master::ANISOTROPY, PortType::FLOAT, [0.8; 4]),
+    ),
+    (
+        Block::Fragment,
+        value(
+            master::ANISOTROPY_DIRECTION,
+            PortType::VEC3,
+            [1.0, 0.0, 0.0, 0.0],
+        ),
     ),
     (Block::Fragment, value(master::ALPHA, PortType::FLOAT, ONE)),
     (

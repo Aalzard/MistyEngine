@@ -99,6 +99,14 @@ fn all_refs() -> impl Iterator<Item = &'static (&'static str, &'static str, &'st
         .chain(crate::vcam::VCAM_REFS)
 }
 
+/// Every object-reference field of the file format as (component, list or nested object, field);
+/// an empty middle entry means the field is on the component itself. For tools that read scene
+/// JSON directly (the editor's version control diffs and merges), where a reference is an index
+/// into `objects`.
+pub fn object_reference_fields() -> Vec<(&'static str, &'static str, &'static str)> {
+    all_refs().copied().collect()
+}
+
 /// Components that can hold object references.
 pub(super) fn ref_components() -> Vec<&'static str> {
     let mut names: Vec<&'static str> = all_refs().map(|r| r.0).collect();

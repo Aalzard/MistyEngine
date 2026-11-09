@@ -828,7 +828,7 @@ fn settings_height(g: &ShaderGraph) -> f32 {
     }
     match g.target.material {
         TargetMaterial::Decal => 70.0,
-        TargetMaterial::Lit => 180.0,
+        TargetMaterial::Lit => 264.0,
         TargetMaterial::Unlit => 150.0,
     }
 }
@@ -892,6 +892,19 @@ fn settings_panel(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
                         })
                         .response
                         .on_hover_text("Space of the Fragment Normal input");
+                    ui.end_row();
+                    // Standard Lit v2 blocks on the master stack.
+                    ui.label("Clear Coat");
+                    ui.checkbox(&mut t.clear_coat, "")
+                        .on_hover_text("Coat Mask and Coat Smoothness blocks");
+                    ui.end_row();
+                    ui.label("Anisotropy");
+                    ui.checkbox(&mut t.anisotropy, "")
+                        .on_hover_text("Anisotropy and Anisotropy Direction blocks");
+                    ui.end_row();
+                    ui.label("Subsurface");
+                    ui.checkbox(&mut t.subsurface, "")
+                        .on_hover_text("Subsurface Color and Thickness blocks");
                     ui.end_row();
                 }
             });

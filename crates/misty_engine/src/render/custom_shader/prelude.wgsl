@@ -64,6 +64,16 @@ struct SurfaceOutput {
     occlusion: f32,
     // Light coming through thin surfaces from behind, tinted (0 = none).
     transmission: vec3<f32>,
+    // Optional lighting features: writing one of these compiles its lighting in.
+    // Clear coat strength (0 = none) and smoothness.
+    coat: f32,
+    coat_smoothness: f32,
+    // Anisotropy (-1..1; negative stretches across) and the unit world direction highlights
+    // stretch along (the tangent by default).
+    anisotropy: f32,
+    anisotropy_direction: vec3<f32>,
+    // Tint of the wrap lighting that reaches round the terminator (0 = none; skin, leaves).
+    subsurface: vec3<f32>,
 };
 
 fn default_output(input: SurfaceInput) -> SurfaceOutput {
@@ -76,6 +86,11 @@ fn default_output(input: SurfaceInput) -> SurfaceOutput {
     o.alpha = 1.0;
     o.occlusion = 1.0;
     o.transmission = vec3<f32>(0.0);
+    o.coat = 0.0;
+    o.coat_smoothness = 1.0;
+    o.anisotropy = 0.0;
+    o.anisotropy_direction = tangent_to_world(input, vec3<f32>(1.0, 0.0, 0.0));
+    o.subsurface = vec3<f32>(0.0);
     return o;
 }
 

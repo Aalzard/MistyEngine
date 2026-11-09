@@ -12,6 +12,20 @@
 const PI: f32 = 3.14159265;
 const MAX_LOCAL_SHADOWS: u32 = 16u;
 
+// Optional Standard features (render/material_v2.rs, mesh_lit.wgsl): a bit mask fixed per
+// shader variant, so a material that uses none of them runs none of their code. Every base
+// shader (and the terrain, grass, trees and water that include this file) keeps it 0; the
+// feature variants replace this one line.
+const MAT_FEATURES: u32 = 0u;
+const FEAT_DETAIL: u32 = 1u;
+const FEAT_PARALLAX: u32 = 2u;
+const FEAT_CLEARCOAT: u32 = 4u;
+const FEAT_TRANSLUCENCY: u32 = 8u;
+const FEAT_ANISOTROPY: u32 = 16u;
+const FEAT_SPECULAR: u32 = 32u;
+// The features that change how lights shade (clear coat, translucency, anisotropy).
+const FEAT_SHADING: u32 = 28u;
+
 // `struct Draw` and `draw_uv` come from draw.wgsl.
 
 struct LightItem {
@@ -186,6 +200,19 @@ struct Surface {
     // Hard-filtered shadow maps without contact shadows (dense grass: soft shadows per
     // fragment would cost several times the rest of its shading).
     fast_shadows: bool,
+    // ---- optional features (read only when MAT_FEATURES has their bit) ----
+    // Clear coat: strength (0..1), roughness (alpha) and the coat's own unit normal.
+    coat: f32,
+    coat_roughness: f32,
+    coat_normal: vec3<f32>,
+    // Anisotropy: strength (0..1) and the unit world direction highlights stretch along.
+    anisotropy: f32,
+    aniso_dir: vec3<f32>,
+    // Translucency: wrap lighting amount (0..1) and the tint of the light wrapping round.
+    wrap: f32,
+    wrap_color: vec3<f32>,
+    // Specular colour × strength of dielectrics (1 = the usual 4% reflectance).
+    specular: vec3<f32>,
 };
 
 // The Standard shader's material textures at a surface point.
@@ -383,6 +410,69 @@ fn grass_near_shadow(world: vec3<f32>, l: vec3<f32>) -> f32 {
     return mix(shade, 1.0, smoothstep(0.7 * r, r, d));
 }
 
+// Anisotropic GGX (KHR_materials_anisotropy): `at` along the stretch direction, `ab` across.
+fn d_ggx_aniso(t_dot_h: f32, b_dot_h: f32, n_dot_h: f32, at: f32, ab: f32) -> f32 {
+    let a2 = at * ab;
+    let f = vec3<f32>(ab * t_dot_h, at * b_dot_h, a2 * n_dot_h);
+    let w2 = a2 / max(dot(f, f), 1e-12);
+    return a2 * w2 * w2 / PI;
+}
+
+// One light on a surface with the optional shading features (clear coat, translucency,
+// anisotropy), before the light's colour and attenuation. The same lobe as `shade` with the
+// features at zero.
+fn feature_light(s: Surface, n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, roughness: f32, f0: vec3<f32>, diffuse_color: vec3<f32>) -> vec3<f32> {
+    let n_dot_l_raw = dot(n, l);
+    let n_dot_l = max(n_dot_l_raw, 0.0);
+    let h = normalize(l + v);
+    let n_dot_h = max(dot(n, h), 0.0);
+    let l_dot_h = max(dot(l, h), 0.0);
+    let fresnel = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - l_dot_h, 5.0);
+    let vis = 0.25 / max(l_dot_h * l_dot_h, 0.1);
+    var d = d_ggx(n_dot_h, roughness);
+    if ((MAT_FEATURES & FEAT_ANISOTROPY) != 0u && s.anisotropy > 0.0) {
+        let t = s.aniso_dir;
+        let b = cross(n, t);
+        let at = mix(roughness, 1.0, s.anisotropy * s.anisotropy);
+        d = d_ggx_aniso(dot(t, h), dot(b, h), n_dot_h, max(at, 0.002), roughness);
+    }
+    let spec = fresnel * (d * vis * PI) * n_dot_l;
+    var diffuse = diffuse_color * n_dot_l;
+    if ((MAT_FEATURES & FEAT_TRANSLUCENCY) != 0u && s.wrap > 0.0) {
+        // Wrap lighting: light reaches past the terminator, tinted (skin, leaves, wax).
+        let w = s.wrap;
+        let wrapped = max((n_dot_l_raw + w) / (1.0 + w), 0.0);
+        diffuse = diffuse_color * (vec3<f32>(n_dot_l) + (wrapped - n_dot_l) * s.wrap_color);
+    }
+    var lit = diffuse + spec;
+    if ((MAT_FEATURES & FEAT_CLEARCOAT) != 0u && s.coat > 0.0) {
+        // A smooth dielectric layer on top: its own highlight, and the light it reflects
+        // doesn't reach the base.
+        let nc = s.coat_normal;
+        let nc_dot_l = max(dot(nc, l), 0.0);
+        let nc_dot_h = max(dot(nc, h), 0.0);
+        let fc = (0.04 + 0.96 * pow(1.0 - l_dot_h, 5.0)) * s.coat;
+        let coat_spec = fc * d_ggx(nc_dot_h, s.coat_roughness) * vis * PI * nc_dot_l;
+        lit = lit * (1.0 - fc) + vec3<f32>(coat_spec);
+    }
+    return lit;
+}
+
+// The clear coat's reflection of the environment (sky or probes) over the lit base `color`.
+fn coat_ambient(s: Surface, world: vec3<f32>, v: vec3<f32>, ambient: vec3<f32>, spec_occlusion: f32, color: vec3<f32>) -> vec3<f32> {
+    let nc = s.coat_normal;
+    let nc_dot_v = max(dot(nc, v), 1e-4);
+    let fc = (0.04 + 0.96 * pow(1.0 - nc_dot_v, 5.0)) * s.coat;
+    let rc = reflect(-v, nc);
+    let perceptual = sqrt(s.coat_roughness);
+    var env = mix(sky_color(rc), ambient * 1.6, perceptual);
+    let probe = probe_lighting(s.draw, world, nc, rc, perceptual);
+    if (probe.weight > 0.0) {
+        env = mix(env, probe.specular, probe.weight);
+    }
+    return color * (1.0 - fc) + env * fc * lights.info.w * spec_occlusion;
+}
+
 // Ambient, sky reflections, lights with shadows, emission and fog for one surface point.
 fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
     // Decals (render/decals) change the surface before it is lit.
@@ -409,7 +499,10 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
         diffuse_color *= s.alpha;
         alpha = 1.0 - one_minus_reflectivity + s.alpha * one_minus_reflectivity;
     }
-    let f0 = mix(vec3<f32>(0.04), albedo, metallic);
+    var f0 = mix(vec3<f32>(0.04), albedo, metallic);
+    if ((MAT_FEATURES & FEAT_SPECULAR) != 0u) {
+        f0 = mix(min(vec3<f32>(0.04) * s.specular, vec3<f32>(1.0)), albedo, metallic);
+    }
     let grazing = clamp(smoothness + (1.0 - (1.0 - metallic) * 0.96), 0.0, 1.0);
 
     // Ambient diffuse from the environment (sky / equator / ground), or from the baked light
@@ -436,8 +529,15 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
     }
 
     // Reflection of the sky: sharp when smooth, blurred towards the ambient colour when rough.
-    let r = reflect(-v, n);
-    let env = mix(sky_color(r), ambient * 1.6, perceptual);
+    var r = reflect(-v, n);
+    if ((MAT_FEATURES & FEAT_ANISOTROPY) != 0u && s.anisotropy > 0.0) {
+        // Anisotropic reflections: the normal bent towards the stretch direction.
+        let a_t = cross(s.aniso_dir, v);
+        let a_n = cross(a_t, s.aniso_dir);
+        let bend = s.anisotropy * clamp(5.0 * perceptual, 0.0, 1.0);
+        r = reflect(-v, normalize(mix(n, a_n, bend)));
+    }
+    let env =mix(sky_color(r), ambient * 1.6, perceptual);
     let fresnel_env = mix(f0, vec3<f32>(grazing), pow(1.0 - n_dot_v, 5.0));
     let surface_reduction = 1.0 / (roughness * roughness + 1.0);
     let spec_occlusion = specular_occlusion(s.occlusion, ssao, n_dot_v, roughness);
@@ -469,6 +569,9 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
     }
     let reflection_weight = fresnel_env * surface_reduction * lights.info.w * smoothness;
     color += screen_reflection_apply(traced, reflection, reflection_weight);
+    if ((MAT_FEATURES & FEAT_CLEARCOAT) != 0u && s.coat > 0.0) {
+        color = coat_ambient(s, world, v, ambient, spec_occlusion, color);
+    }
 
     let count = u32(lights.info.x);
     for (var i = 0u; i < count; i++) {
@@ -498,7 +601,9 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
         }
         let n_dot_l = max(dot(n, l), 0.0);
         let thin = max(s.transmission.r, max(s.transmission.g, s.transmission.b)) > 0.0;
-        if ((n_dot_l <= 0.0 && !thin) || atten <= 0.0) {
+        // Wrap lighting reaches round the terminator.
+        let wraps = (MAT_FEATURES & FEAT_TRANSLUCENCY) != 0u && s.wrap > 0.0;
+        if ((n_dot_l <= 0.0 && !thin && !wraps) || atten <= 0.0) {
             continue;
         }
         if (s.receive_shadows && s.fast_shadows) {
@@ -517,9 +622,13 @@ fn shade(world: vec3<f32>, surface: Surface) -> MeshTargets {
             let back = pow(clamp(dot(v, -l), 0.0, 1.0), 5.0);
             let through = max(dot(-n, l), 0.0);
             color += s.transmission * li.color.rgb * atten * (back * 2.5 + through * 0.6);
-            if (n_dot_l <= 0.0) {
+            if (n_dot_l <= 0.0 && !wraps) {
                 continue;
             }
+        }
+        if ((MAT_FEATURES & FEAT_SHADING) != 0u) {
+            color += feature_light(s, n, v, l, roughness, f0, diffuse_color) * li.color.rgb * atten;
+            continue;
         }
         let h = normalize(l + v);
         let n_dot_h = max(dot(n, h), 0.0);

@@ -1,4 +1,4 @@
-# Round 21A: World Partition-lite (world streaming)
+# Round 21: World Partition-lite (world streaming)
 
 Branch `r21-streaming`. Asked for: grid cells as sub-scenes with a Convert action, streaming
 sources with load / unload radii and hysteresis, asynchronous loads with time-sliced main-thread

@@ -42,6 +42,8 @@ pub struct Gfx {
     renderer: Renderer,
     /// Canvas UI drawn over the camera image.
     ui: UiRenderer,
+    /// Colour-blind filter over the final image (Player Settings ▸ Accessibility).
+    color_filter: misty_engine::render::color_filter::ColorFilter,
     target: RenderTarget,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -134,6 +136,7 @@ impl Gfx {
             view_format,
             renderer,
             ui,
+            color_filter: Default::default(),
             target,
             layout,
             sampler,
@@ -393,6 +396,8 @@ impl Gfx {
             misty_engine::profiler::set_render_stats(self.renderer.stats());
             self.ui
                 .render(&self.device, &self.queue, &self.target, scene, ui);
+            self.color_filter
+                .apply(&self.device, &self.queue, &self.target);
         }
         let Some(texture) = self.acquire() else {
             return;

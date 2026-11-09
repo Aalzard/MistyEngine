@@ -143,8 +143,8 @@ fn file(l: &mut List, s: &EditorState) {
     open_scenes(l, s);
     let build = Action::OpenBuildSettings;
     l.action(
-        "Build Settings",
-        "File/Build Settings...",
+        "Build Profiles",
+        "File/Build Profiles...",
         "Ctrl+Shift+B",
         build,
     );

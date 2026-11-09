@@ -98,6 +98,10 @@ impl EditorApp {
             crate::capture::apply_env(&mut state, &mut dock);
         }
         crate::tutorials::from_env(&mut state);
+        state.ui_scale = crate::a11y::UiScale::load();
+        // Version control badges: poll the project's git repository (if any).
+        let root = state.project.root.clone();
+        state.vcs.start(&root);
         // Updater: the one this process runs (started by the launcher, passed on from the Hub).
         state.updater = updater;
         let gpu = {
@@ -493,7 +497,6 @@ impl EditorApp {
             }
             Action::RestartIntoNewBuild => crate::live_reload::dev_build::request_restart(s),
 
-            Action::Build => build_settings::build(s, false, true),
             Action::BuildAndRun => build_settings::build(s, true, false),
             Action::TogglePlay => {
                 if s.play.in_play_mode() {
@@ -807,6 +810,7 @@ impl eframe::App for EditorApp {
         let ctx = ui.ctx().clone();
         crate::scene_camera::bench::frame_start(&ctx);
         apply_vsync(&mut self.state, frame);
+        self.state.ui_scale.apply(&ctx);
         let s = &mut self.state;
         let (clips, clip) = (&mut s.anim_clips, &s.animation.clip);
         s.undo
@@ -920,6 +924,14 @@ impl eframe::App for EditorApp {
         crate::project_settings::show(&ctx, &mut self.state);
         build_settings::show(&ctx, &mut self.state);
         crate::snap_window::show(&ctx, &mut self.state);
+        crate::vcs::window::show(&ctx, &mut self.state);
+        let root = self.state.project.root.clone();
+        if self.state.vcs.frame(&root) {
+            ctx.request_repaint();
+        } else if self.state.vcs.enabled {
+            // Wake up for the next status poll while the editor sits idle.
+            ctx.request_repaint_after(std::time::Duration::from_secs(3));
+        }
         crate::vgeo_convert::show(&ctx, &mut self.state);
         crate::saveloc::show(&ctx, &mut self.state);
         crate::multiplayer::show(&ctx, &mut self.state);

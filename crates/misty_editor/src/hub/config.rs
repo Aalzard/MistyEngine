@@ -52,6 +52,9 @@ pub struct HubConfig {
     /// shows what the game really costs (a 60 Hz display would cap it at 60 and halve it to
     /// 30 whenever a frame misses 16.7 ms). The Game view's VSync toggle.
     pub editor_vsync: bool,
+    /// Edit ▸ Preferences ▸ UI Scale (the editor's zoom factor); `None` = 100 %.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_ui_scale: Option<f32>,
 }
 
 impl HubConfig {
@@ -135,6 +138,21 @@ pub fn set_editor_vsync(on: bool) -> Result<(), String> {
     let path = config_path().ok_or("no config folder")?;
     let mut c = HubConfig::load(&path);
     c.editor_vsync = on;
+    c.save(&path)
+}
+
+/// The editor's UI scale preference (1 = 100 %).
+pub fn editor_ui_scale() -> f32 {
+    config_path()
+        .and_then(|p| HubConfig::load(&p).editor_ui_scale)
+        .unwrap_or(1.0)
+}
+
+/// Save the editor's UI scale preference.
+pub fn set_editor_ui_scale(scale: f32) -> Result<(), String> {
+    let path = config_path().ok_or("no config folder")?;
+    let mut c = HubConfig::load(&path);
+    c.editor_ui_scale = ((scale - 1.0).abs() > 1e-3).then_some(scale);
     c.save(&path)
 }
 

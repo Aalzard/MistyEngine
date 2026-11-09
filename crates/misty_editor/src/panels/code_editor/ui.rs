@@ -498,15 +498,17 @@ fn settings_ui(ui: &mut Ui, st: &mut Settings) {
     ui.checkbox(&mut st.line_numbers, "Line Numbers");
     ui.checkbox(&mut st.auto_close, "Auto-close Brackets and Quotes");
     ui.horizontal(|ui| {
-        ui.label("Font Size");
+        let l = ui.label("Font Size");
         ui.add(
             egui::DragValue::new(&mut st.font_size)
                 .range(super::prefs::MIN_FONT..=super::prefs::MAX_FONT),
-        );
+        )
+        .labelled_by(l.id);
     });
     ui.horizontal(|ui| {
-        ui.label("Tab Size");
-        ui.add(egui::DragValue::new(&mut st.tab_size).range(1..=8));
+        let l = ui.label("Tab Size");
+        ui.add(egui::DragValue::new(&mut st.tab_size).range(1..=8))
+            .labelled_by(l.id);
     });
 }
 
@@ -965,6 +967,7 @@ fn prompt(ctx: &egui::Context, s: &mut EditorState) {
 /// Edit ▸ Preferences: the external script editor choice and the Code Editor options.
 fn preferences(ctx: &egui::Context, s: &mut EditorState) {
     let (mcp, project) = (&mut s.mcp, &s.project.root);
+    let (ui_scale, console) = (&mut s.ui_scale, &mut s.console);
     let ce = &mut s.code_editor;
     let mut open = ce.ui.prefs_open;
     let before = ce.settings.clone();
@@ -973,9 +976,16 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
         .default_size([380.0, 260.0])
         .collapsible(false)
         .show(ctx, |ui| {
+            ui.strong("General");
+            if let Some(v) = crate::a11y::ui_scale_row(ui, ui_scale)
+                && let Err(e) = ui_scale.set(v)
+            {
+                console.warn(format!("UI scale not saved: {e}"));
+            }
+            ui.separator();
             ui.strong("External Tools");
             ui.horizontal(|ui| {
-                ui.label("Script Editor");
+                let l = ui.label("Script Editor");
                 egui::ComboBox::from_id_salt("pref_script_editor")
                     .selected_text(match ce.settings.script_editor {
                         ScriptEditor::Builtin => "Misty Code Editor",
@@ -992,7 +1002,9 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
                             ScriptEditor::External,
                             "System default (external)",
                         );
-                    });
+                    })
+                    .response
+                    .labelled_by(l.id);
             });
             ui.separator();
             ui.strong("Code Editor");

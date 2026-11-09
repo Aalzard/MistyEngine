@@ -8,7 +8,7 @@ pub mod code_editor;
 mod console;
 pub(crate) mod folder_colors;
 mod game;
-mod hierarchy;
+pub(crate) mod hierarchy;
 mod inspector;
 pub(crate) use inspector::create_physics_material;
 pub use inspector::preset_window;

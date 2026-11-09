@@ -129,6 +129,8 @@ impl Renderer {
                     && !pipeline.unlit
                     && matches!(pipeline.mode, RenderingMode::Opaque | RenderingMode::Cutout)
                     && !pipeline.double_sided
+                    // Optional features need their own variant.
+                    && pipeline.features == 0
             });
             let group = || self.textures.get_set(&d.material.textures());
             let main = (|| {
@@ -136,7 +138,10 @@ impl Renderer {
                 // `.shader` materials bring their own pipeline and group 2.
                 let (p, g) = match &d.material.custom {
                     Some(_) => self.material_resources(&d.material)?,
-                    None => (self.pipelines.mesh_variant(pipeline)?, group()?),
+                    None => (
+                        self.pipelines.mesh_variant(pipeline)?,
+                        self.main_group(&d.material)?,
+                    ),
                 };
                 Some([addr(p), addr(g), addr(mesh?)])
             })()

@@ -27,13 +27,16 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let mut opened_file: Option<PathBuf> = None;
     let mut req = Requests::default();
     let browser = &mut state.project;
+    let vcs = &state.vcs;
     // One toolbar row: Create on the left, search, type filter and refresh on the right.
     panel_toolbar(ui, |ui| {
-        ui.menu_button("➕ ⏷", |ui| {
+        let create = ui.menu_button("➕ ⏷", |ui| {
             project_menus::create_items(ui, &mut req.actions)
         });
+        crate::a11y::name(create.response, egui::WidgetType::Button, "Create");
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("⟳").on_hover_text("Refresh (Ctrl+R)").clicked() {
+            let refresh = ui.button("⟳").on_hover_text("Refresh (Ctrl+R)");
+            if crate::a11y::name(refresh, egui::WidgetType::Button, "Refresh").clicked() {
                 req.actions.push(Action::Refresh);
             }
             type_filter(ui, &mut browser.search);
@@ -53,7 +56,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     ui.label(browser.display_path(sel));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add(egui::Slider::new(&mut browser.icon_size, 0.0..=1.0).show_value(false));
+                    let size = ui.add(
+                        egui::Slider::new(&mut browser.icon_size, 0.0..=1.0).show_value(false),
+                    );
+                    crate::a11y::name(size, egui::WidgetType::Slider, "Icon size");
                 });
             });
         });
@@ -122,9 +128,9 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             .auto_shrink(false)
             .show(ui, |ui| {
                 if browser.icon_size < 0.05 {
-                    list_view(ui, &entries, browser, &mut open, &mut req);
+                    list_view(ui, &entries, browser, vcs, &mut open, &mut req);
                 } else {
-                    grid_view(ui, &entries, browser, &mut open, &mut req);
+                    grid_view(ui, &entries, browser, vcs, &mut open, &mut req);
                 }
                 // Empty space: deselect, folder menu.
                 let rest = ui.allocate_response(
@@ -180,6 +186,17 @@ pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
         });
     } else if ext == misty_engine::scene::file::EXTENSION {
         state.push(Action::OpenScenePath(state.assets.relative(&path)));
+    } else if ext == misty_engine::build_profile::EXTENSION {
+        // A Build Profile asset opens in File ▸ Build Profiles.
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        crate::build_settings::load(state);
+        if let Some(i) = state.build_profiles.index_of(&name) {
+            state.build_window.page = crate::build_settings::Page::Profile(i);
+        }
+        state.build_window.open = true;
     } else if misty_engine::animation::is_controller(&path.to_string_lossy()) {
         state.animator.open(Some(state.assets.relative(&path)));
         state.push(Action::FocusTab(crate::layout::Tab::Animator));
@@ -274,6 +291,7 @@ fn list_view(
     ui: &mut Ui,
     entries: &[AssetEntry],
     browser: &mut ProjectBrowser,
+    vcs: &crate::vcs::Vcs,
     open: &mut Option<PathBuf>,
     req: &mut Requests,
 ) {
@@ -288,6 +306,15 @@ fn list_view(
             (false, None) => format!("{} {}", e.icon(), e.name),
         };
         let resp = row_with_icon(ui, is_sel, folder, &label, theme::TEXT, 0);
+        // Version control status at the row's right end.
+        let resp = match vcs.badge_at(&browser.root, &e.path) {
+            Some(b) => {
+                let at = egui::pos2(resp.rect.right() - 10.0, resp.rect.center().y);
+                crate::vcs::paint_badge(ui, at, b, 12.0);
+                resp.on_hover_text(crate::vcs::badge_tip(b))
+            }
+            None => resp,
+        };
         if renaming {
             let r = resp.rect.with_min_x(resp.rect.left() + 26.0);
             project_menus::rename_field(ui, r, browser, req);
@@ -304,6 +331,7 @@ fn grid_view(
     ui: &mut Ui,
     entries: &[AssetEntry],
     browser: &mut ProjectBrowser,
+    vcs: &crate::vcs::Vcs,
     open: &mut Option<PathBuf>,
     req: &mut Requests,
 ) {
@@ -325,6 +353,16 @@ fn grid_view(
                     .rect_filled(rect, 3.0, Color32::from_rgb(69, 69, 69));
             }
             tile_icon(ui, e, rect, cell, &mut browser.thumbnails);
+            // Version control status on the icon's bottom-left corner.
+            let resp = match vcs.badge_at(&browser.root, &e.path) {
+                Some(b) => {
+                    let size = (cell * 0.22).clamp(11.0, 16.0);
+                    let at = rect.left_top() + egui::vec2(size * 0.7, cell - size * 0.5);
+                    crate::vcs::paint_badge(ui, at, b, size);
+                    resp.on_hover_text(crate::vcs::badge_tip(b))
+                }
+                None => resp,
+            };
             if is_renaming(browser, e) {
                 let r = Rect::from_center_size(
                     rect.center_bottom() - egui::vec2(0.0, 9.0),

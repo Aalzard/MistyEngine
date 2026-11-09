@@ -5,14 +5,16 @@ to have shipped a game before.
 
 ## The short version
 
-1. **File ▸ Build Settings…** (Ctrl+Shift+B). Click **Add Open Scenes** for every scene the game
-   uses. The first scene in the list is the one the game starts with.
-2. Pick a **Platform** on the left (your own computer is marked "this PC").
+1. **File ▸ Build Profiles…** (Ctrl+Shift+B). Click **Scene List** at the top left, then **Add
+   Open Scenes** for every scene the game uses. The first scene in the list is the one the game
+   starts with.
+2. Pick a platform profile on the left (Windows, Linux, macOS, Dedicated Server) and its
+   **Target** (your own computer is marked "this PC").
 3. Click **Build**, choose an empty folder *outside* your project (for example `Builds/Windows`),
-   and wait for the progress bar. The first build compiles the engine and takes a few minutes;
-   later builds are much faster.
-4. Open the folder and double-click the game. **Build And Run** does steps 3–4 in one go, using
-   the last folder.
+   and wait for the progress bar. The profile remembers the folder as its **Output Folder**.
+   The first build compiles the engine and takes a few minutes; later builds are much faster.
+4. Open the folder and double-click the game. **Build And Run** does steps 3–4 in one go.
+   Ctrl+B builds and runs the **active** profile (**Switch Profile** makes the shown one active).
 
 ## Before your first real build
 
@@ -51,6 +53,69 @@ choice is remembered. Each level has:
 
 The dropdown in the Game view's toolbar previews a level in the editor.
 
+## Build Profiles
+
+Each profile is a set of build options saved as an asset: the platform profiles in
+`ProjectSettings/BuildProfiles/`, your own in `Assets/Settings/Build Profiles/` (commit them).
+**＋ Add Build Profile** makes one for a platform; right-click a profile to **Duplicate**,
+**Rename** (or double-click it) or **Delete** it. A "Demo" profile could build only the first
+levels with a `DEMO` define, smaller textures and the Low quality level.
+
+| Setting | What it does |
+|---|---|
+| Target | Operating system and CPU. |
+| Override Global Scene List | Build this profile's own scenes instead of the shared **Scene List**. |
+| Scripting Defines | Names scripts can test: `--#if DEMO` … `--#else` … `--#endif` blocks in Lua (with `!`, `&&`, `\|\|`), and `Application.HasDefine("DEMO")`. Built in: `MISTY_STANDALONE_WIN` / `_LINUX` / `_OSX`, `MISTY_SERVER`, `DEVELOPMENT_BUILD` (builds) and `MISTY_EDITOR` (Play mode, which uses the active profile's defines). |
+| Texture Overrides | **Compression** for every compressed texture (None turns compression off everywhere) and a **Max Texture Size** cap. The project's textures are not changed; only the build's copy. |
+| Quality Level | The level the built game starts on. |
+| Development Build, Compress Data, Create .zip | As below, per profile. |
+| Output Folder | Where Build puts the game, absolute or relative to the project. |
+
+From a terminal or CI:
+
+```
+misty --build <project folder> <output folder> --profile "Dedicated Server"
+misty --build <project folder> --profile Demo       # into the profile's Output Folder
+```
+
+Without `--profile` the active profile builds. The build report is printed at the end.
+
+## Dedicated servers
+
+The **Dedicated Server** profile builds a headless player for Windows or Linux: no window, no
+audio device and no GPU. It opens the first scene, starts the network server on the scene's
+Network Manager and updates at the Target Frame Rate (60 per second when none is set). Textures,
+audio and video are left out of the build, and so are the icon and compressed textures.
+
+```
+MyGame_Server --port 7777          # override the Network Manager's port
+MyGame --headless --net-client 203.0.113.5:7777   # a headless client, for bots and tests
+```
+
+The server logs `Server listening on port N` and every client that joins, to the terminal (or a
+console window of its own) and `Player.log`. `Application.isDedicatedServer` and the
+`MISTY_SERVER` define let scripts skip work only players need. `Application.Quit()` stops it.
+
+## Build report
+
+After every build the window shows the build's size by asset type (textures, compressed
+textures, meshes, audio, scenes, scripts…) and its 10 largest assets. The full report is saved
+as `BuildReport.txt` in the build folder (left out of the .zip) and as
+`Library/BuildReports/<Profile>.json` in the project, so the window shows it again later.
+
+## Achievements
+
+```lua
+Achievements.Unlock("FIRST_WIN")       -- true the first time
+if Achievements.IsUnlocked("FIRST_WIN") then ... end
+Achievements.Clear("FIRST_WIN")        -- lock it again while testing
+```
+
+Unlocks are stored locally: `Library/Achievements.json` in the editor, `achievements.json` in the
+player's user folder (next to PlayerPrefs) in a built game. The storage is pluggable
+(`misty_engine::achievements::AchievementBackend`), so a store integration can replace it;
+there is no Steam backend yet, because no pure-Rust Steamworks client exists to build it on.
+
 ## What ends up in the build folder
 
 ```
@@ -59,6 +124,7 @@ MyGame_Data/
     data.pak            your scenes and every asset they use, plus the settings
     icon.png / .ico     the icon
 Player.log              only for Development Builds (see below)
+BuildReport.txt         sizes by asset type and the largest assets
 ```
 
 Only what the game needs is packed: the scenes in the build list, everything they reference

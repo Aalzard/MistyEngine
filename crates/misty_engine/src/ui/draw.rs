@@ -563,7 +563,7 @@ impl Ctx<'_> {
             return self.rich_text(list, n, space, &t, shown, sdf_atlas);
         }
         // Rasterise at the on-screen pixel size so text stays crisp at every scale.
-        let px = (t.font_size * n.scale).round().clamp(1.0, 512.0) as u32;
+        let px = (t.scaled_font_size() * n.scale).round().clamp(1.0, 512.0) as u32;
         let size = n.screen.size();
         let color = self.tint(n.entity, t.color);
         // Input Field text: one line, clipped to its rect, scrolled to keep the caret in view.

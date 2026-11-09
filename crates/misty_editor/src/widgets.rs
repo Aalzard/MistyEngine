@@ -192,11 +192,12 @@ pub fn panel_toolbar<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 
 /// Search field with a magnifier hint.
 pub fn search_field(ui: &mut Ui, text: &mut String, width: f32) -> Response {
-    ui.add(
+    let field = ui.add(
         egui::TextEdit::singleline(text)
             .hint_text("🔍 Search")
             .desired_width(width),
-    )
+    );
+    crate::a11y::name(field, egui::WidgetType::TextEdit, "Search")
 }
 
 #[cfg(test)]

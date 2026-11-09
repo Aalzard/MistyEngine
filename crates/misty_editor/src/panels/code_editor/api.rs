@@ -17,6 +17,7 @@ const TABLE: &str = r#"
 |SceneManager||Load scenes from Build Settings
 |LoadSceneMode||Single or Additive scene loading
 |Application||Application control
+|Achievements||Unlock and check achievements (stored locally)
 |LayerMask||Layer names and masks
 |ForceMode||Force modes for AddForce / AddTorque
 |RenderSettings||The open scene's lighting values
@@ -24,6 +25,7 @@ const TABLE: &str = r#"
 |AudioMixer||Find mixers by name
 |Terrain||The active terrain(s)
 |Water||Water surface heights (buoyancy, wading)
+|Accessibility||UI text scale and colour-blind filter (for options menus)
 |Instantiate|Instantiate(prefabPathOrObject [, position])|Clone a prefab or object; returns the new GameObject
 |Destroy|Destroy(gameObject)|Destroy an object at the end of the frame
 |print|print(...)|Same as Debug.Log
@@ -106,6 +108,13 @@ SceneManager|GetSceneCount|GetSceneCount()|Number of loaded scenes
 LoadSceneMode|Single|Single|Replace the open scenes
 LoadSceneMode|Additive|Additive|Add to the open scenes
 Application|Quit|Quit()|Close the built game
+Application|HasDefine|HasDefine(name)|True when the Build Profile's scripting defines include the name ("DEMO")
+Application|isDedicatedServer|isDedicatedServer|True in a Dedicated Server build (headless, no window or audio)
+Application|isEditor|isEditor|True in the editor's Play mode
+Achievements|Unlock|Unlock(id)|Unlock an achievement; true the first time
+Achievements|IsUnlocked|IsUnlocked(id)|True when the achievement is unlocked
+Achievements|Clear|Clear(id)|Lock an achievement again (testing)
+Achievements|GetUnlocked|GetUnlocked()|Ids of every unlocked achievement
 LayerMask|GetMask|GetMask(name, ...)|Bit mask of the named layers
 LayerMask|NameToLayer|NameToLayer(name)|Layer index, or -1
 LayerMask|LayerToName|LayerToName(index)|Layer name
@@ -125,6 +134,11 @@ AudioMixer|Find|Find(name)|The project mixer with that file name, or nil
 Terrain|activeTerrain|activeTerrain|The first enabled terrain, or nil
 Terrain|activeTerrains|activeTerrains|Every terrain in the scene
 Water|GetHeight|GetHeight(x, z)|Height of the water surface under a point (or a Vector3), nil when dry
+Accessibility|textScale|textScale|UI text size multiplier (0.5–3, 1 = as designed)
+Accessibility|colorBlindMode|colorBlindMode|"Off", "Protanopia", "Deuteranopia" or "Tritanopia"
+Accessibility|filterStrength|filterStrength|Colour-blind filter strength (0–1)
+Accessibility|simulate|simulate|Show how colour-blind players see the game instead of correcting it
+Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #self|gameObject|gameObject|The GameObject this script is attached to
 #self|transform|transform|This object's Transform
 #GameObject|name|name|Object name

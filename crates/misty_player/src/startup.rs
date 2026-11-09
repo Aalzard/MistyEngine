@@ -117,8 +117,16 @@ pub struct Args {
     pub window: WindowOptions,
 }
 
+impl Args {
+    /// Run without a window, audio or GPU (`--headless`, a dedicated server build).
+    pub fn headless(&self) -> bool {
+        self.launch.headless
+    }
+}
+
 /// Parse `misty_player [Project] [--scene Assets/…scene] [--scene-file file] [--net-host |
-/// --net-server | --net-client host[:port]] [--title text] [--size 800x450] [--pos 40,40]`.
+/// --net-server | --net-client host[:port]] [--port N] [--headless] [--title text]
+/// [--size 800x450] [--pos 40,40]`. `-batchmode` and `-nographics` mean `--headless`.
 pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String> {
     use misty_engine::network::AutoStart;
     let mut out = Args::default();
@@ -140,6 +148,11 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String
             "--net-host" => out.launch.network = Some(AutoStart::Host),
             "--net-server" => out.launch.network = Some(AutoStart::Server),
             "--net-client" => out.launch.network = Some(AutoStart::Client(value(&mut it, &a)?)),
+            "--headless" | "-batchmode" | "-nographics" => out.launch.headless = true,
+            "--port" => {
+                let v = value(&mut it, &a)?;
+                out.launch.port = Some(v.trim().parse().map_err(|e| format!("--port: {e}"))?);
+            }
             "--title" => out.window.title = Some(value(&mut it, &a)?),
             "--size" => {
                 let (w, h) = pair(&value(&mut it, &a)?, 'x', "--size")?;
@@ -155,6 +168,30 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Args, String
         }
     }
     Ok(out)
+}
+
+/// A dedicated server prints to the terminal it was started from, else to a console window of
+/// its own (release players are windowed apps without one). Pipes it was given are kept.
+pub fn server_console() {
+    #[cfg(windows)]
+    {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn AttachConsole(process_id: u32) -> i32;
+            fn AllocConsole() -> i32;
+            fn GetStdHandle(which: u32) -> isize;
+        }
+        const STD_ERROR_HANDLE: u32 = -12i32 as u32;
+        const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+        // SAFETY: plain Win32 calls with constant arguments; failures (a console already
+        // exists) are harmless.
+        unsafe {
+            let h = GetStdHandle(STD_ERROR_HANDLE);
+            if (h == 0 || h == -1) && AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
+                AllocConsole();
+            }
+        }
+    }
 }
 
 /// Development builds get a console window for the log (release builds have none).
@@ -211,6 +248,10 @@ mod tests {
         assert!(args(&["--size", "big"]).is_err());
         assert!(args(&["--what"]).is_err());
         assert!(args(&["--scene"]).is_err());
+        let server = args(&["Game_Data", "-batchmode", "--port", "7780"]).unwrap();
+        assert!(server.headless());
+        assert_eq!(server.launch.port, Some(7780));
+        assert!(args(&["--port", "x"]).is_err());
     }
 
     #[test]

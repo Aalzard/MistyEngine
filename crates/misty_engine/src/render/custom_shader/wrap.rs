@@ -11,6 +11,7 @@ use crate::shader_asset::{
     self, Blend, PropertyKind, ShaderAsset, ShaderError, ShaderModel, TextureDefault,
 };
 
+use super::super::material_v2;
 use super::super::pipelines::{COMMON, MESH_SRC};
 
 const PRELUDE: &str = include_str!("prelude.wgsl");
@@ -190,7 +191,8 @@ fn vs_custom(in: MeshIn, @location({COLOR_LOCATION}) color: vec4<f32>, @builtin(
 @fragment
 fn fs_custom(c: CustomOut, @builtin(front_facing) front: bool) -> MeshTargets {{
     let in = misty_custom_mesh_out(c);
-    let o = surface(misty_custom_input(c, front));
+    let input = misty_custom_input(c, front);
+    let o = surface(input);
     var s: Surface;
     s.albedo = o.albedo;
     s.alpha = o.alpha;
@@ -201,6 +203,17 @@ fn fs_custom(c: CustomOut, @builtin(front_facing) front: bool) -> MeshTargets {{
     s.receive_shadows = draws[in.draw].params.z > 0.5;
     s.occlusion = o.occlusion;
     s.transmission = o.transmission;
+    // Optional features (lit only when the module was compiled with them).
+    s.coat = saturate(o.coat);
+    let coat_perceptual = 1.0 - saturate(o.coat_smoothness);
+    s.coat_roughness = max(coat_perceptual * coat_perceptual, 0.002);
+    s.coat_normal = input.world_normal;
+    s.anisotropy = saturate(abs(o.anisotropy));
+    var aniso = select(o.anisotropy_direction, cross(s.normal, o.anisotropy_direction), o.anisotropy < 0.0);
+    aniso -= s.normal * dot(s.normal, aniso);
+    s.aniso_dir = select(vec3<f32>(1.0, 0.0, 0.0), normalize(aniso), dot(aniso, aniso) > 1e-10);
+    s.wrap = select(0.0, 0.5, max(o.subsurface.r, max(o.subsurface.g, o.subsurface.b)) > 0.0);
+    s.wrap_color = o.subsurface;
     s.premultiply = {premultiply};
     var out = shade(in.world, s);
     out.velocity = mesh_velocity(in);
@@ -231,8 +244,18 @@ fn fs_custom(v: CustomOut, @builtin(front_facing) front: bool) -> MeshTargets {
 /// Generate the module for a shader.
 pub fn wrap(asset: &ShaderAsset) -> Wrapped {
     let props = layout(asset);
+    // A surface shader that writes the coat, anisotropy or subsurface outputs gets their
+    // lighting compiled in (render/material_v2.rs); the others keep the plain lighting.
+    let features = match asset.settings.model {
+        ShaderModel::Surface => material_v2::features_of_surface_source(&asset.source),
+        ShaderModel::Unlit => 0,
+    };
+    let mesh = match features {
+        0 => std::borrow::Cow::Borrowed(MESH_SRC),
+        f => std::borrow::Cow::Owned(material_v2::with_features(MESH_SRC, f)),
+    };
     let head = format!(
-        "{MESH_SRC}\n{PRELUDE}\n{}\n// ---- user shader ----\n",
+        "{mesh}\n{PRELUDE}\n{}\n// ---- user shader ----\n",
         bindings(&props, asset)
     );
     let user_first_line = COMMON.matches('\n').count() + 1 + head.matches('\n').count();
