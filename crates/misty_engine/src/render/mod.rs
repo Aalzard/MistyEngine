@@ -4026,6 +4026,8 @@ mod made_textures_tests;
 #[cfg(test)]
 mod meadow_perf_tests;
 #[cfg(test)]
+mod noon_valley_tests;
+#[cfg(test)]
 mod rocks_gpu_tests;
 #[cfg(test)]
 mod shadow_stutter_tests;

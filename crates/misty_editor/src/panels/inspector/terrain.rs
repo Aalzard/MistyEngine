@@ -386,6 +386,12 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
             .add(egui::Slider::new(&mut layer.smoothness, 0.0..=1.0))
             .changed();
         ui.end_row();
+        ui.label("Occlusion")
+            .on_hover_text("Ambient light reaching this layer (lower under a canopy)");
+        ch |= ui
+            .add(egui::Slider::new(&mut layer.occlusion, 0.0..=1.0))
+            .changed();
+        ui.end_row();
         ch
     });
     if changed {

@@ -1862,7 +1862,7 @@ fn params(
         } else {
             0.0
         };
-        p.surface[i] = [l.metallic, l.smoothness, scale, 0.0];
+        p.surface[i] = [l.metallic, l.smoothness, scale, l.occlusion.clamp(0.0, 1.0)];
     }
     if d.harmony.enabled {
         let count = d.layers.len().min(MAX_LAYERS);

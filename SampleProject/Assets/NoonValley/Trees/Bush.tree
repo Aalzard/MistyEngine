@@ -1,0 +1,42 @@
+{
+  "seed": 27,
+  "height": 4.5,
+  "crown_shape": "Round",
+  "crown_width": 1.1,
+  "crown_base": 0.06,
+  "trunk_radius": 0.08,
+  "leader": 0.2,
+  "trunk_bend": 0.35,
+  "branches": 9,
+  "branch_angle": 65.0,
+  "branch_curve": 0.35,
+  "twigs": 8,
+  "leaf_density": 2.0,
+  "leaf_size": 0.9,
+  "leaf_color": [
+    0.8,
+    0.86,
+    0.72
+  ],
+  "leaf_variation": 0.5,
+  "translucency": 0.6,
+  "bark_color": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "bark_texture": "Assets/Trees/Textures/OakBark.png",
+  "bark_normal": "Assets/Trees/Textures/OakBarkNormal.png",
+  "leaf_texture": "Assets/Trees/Textures/OakLeaves.png",
+  "leaf_normal": "Assets/Trees/Textures/OakLeavesNormal.png",
+  "bark_roughness": "Assets/Trees/Textures/OakBarkRoughness.png",
+  "bark_occlusion": "Assets/Trees/Textures/OakBarkAO.png",
+  "bark_height": "Assets/Trees/Textures/OakBarkHeight.png",
+  "leaf_roughness": "Assets/Trees/Textures/OakLeavesRoughness.png",
+  "leaf_translucency": "Assets/Trees/Textures/OakLeavesTranslucency.png",
+  "wind": {
+    "trunk_bend": 0.7,
+    "branch_sway": 0.9,
+    "leaf_flutter": 1.0
+  }
+}

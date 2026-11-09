@@ -77,6 +77,15 @@ pub struct CloudsOverride {
     pub shadows: bool,
     /// 0..1: how dark the cloud shadows are.
     pub shadow_opacity: f32,
+    /// 0..1: fair-weather cumulus: flat bases and heaped towers narrowing to rounded tops
+    /// (0 = the layer's own profile). Left out of the file at 0, so scenes saved before it
+    /// keep their exact text.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub cumulus: f32,
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
 }
 
 impl Default for CloudsOverride {
@@ -95,6 +104,7 @@ impl Default for CloudsOverride {
             ambient: 1.0,
             shadows: true,
             shadow_opacity: 0.8,
+            cumulus: 0.0,
         };
         CloudPreset::Cloudy.apply(&mut o);
         o

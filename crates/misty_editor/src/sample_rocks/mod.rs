@@ -555,12 +555,12 @@ fn rocks_match_their_generator() {
 // ---- placement in MeadowDemo ---------------------------------------------------------------
 
 /// Index of a rock in [`rocks`].
-const LARGE: usize = 0;
-const SPLIT: usize = 1;
-const ROUND: usize = 2;
-const OUTCROP: usize = 3;
-const SMALL: usize = 4;
-const COBBLES: usize = 5;
+pub(crate) const LARGE: usize = 0;
+pub(crate) const SPLIT: usize = 1;
+pub(crate) const ROUND: usize = 2;
+pub(crate) const OUTCROP: usize = 3;
+pub(crate) const SMALL: usize = 4;
+pub(crate) const COBBLES: usize = 5;
 
 /// A group of rocks around a point given from the camera: `bearing` degrees right of the view
 /// (+Z), `distance` metres, members spread within `spread` metres (small ones gather round
@@ -619,7 +619,7 @@ pub struct Placed {
 }
 
 /// Terrain normal at local (x, z) from central differences.
-fn terrain_normal(d: &TerrainData, x: f32, z: f32) -> Vec3 {
+pub(crate) fn terrain_normal(d: &TerrainData, x: f32, z: f32) -> Vec3 {
     let e = 1.5;
     let hx = d.sample_height(x + e, z) - d.sample_height(x - e, z);
     let hz = d.sample_height(x, z + e) - d.sample_height(x, z - e);

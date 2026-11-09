@@ -14,7 +14,7 @@ struct Clouds {
     shape: vec4<f32>,
     // xy = wind offset of the base shape (m, xz), zw = wind offset of the detail noise.
     wind: vec4<f32>,
-    // xy = wind direction (xz, unit), z = lean of the tops downwind (m).
+    // xy = wind direction (xz, unit), z = lean of the tops downwind (m), w = cumulus (0..1).
     wind_dir: vec4<f32>,
     // xyz = direction towards the sun, w = silver lining (0..1).
     sun_dir: vec4<f32>,
@@ -92,6 +92,12 @@ fn height_profile(h: f32, kind: f32) -> f32 {
     return smoothstep(0.0, 0.1, h) * (1.0 - smoothstep(top * 0.55, top, h));
 }
 
+// Cumulus profile: full at the base, a dome towards the top. Applied before the coverage
+// carve, so each heap is widest low down and narrows to a rounded top.
+fn cumulus_profile(h: f32) -> f32 {
+    return sqrt(max(1.0 - pow(h, 1.6), 0.0));
+}
+
 // Base-shape density (no detail erosion) at `p`, 0..1. `cov` from `local_coverage`.
 fn base_density(p: vec3<f32>, h: f32, cov: vec2<f32>) -> f32 {
     if (cov.x <= 0.0) {
@@ -102,9 +108,12 @@ fn base_density(p: vec3<f32>, h: f32, cov: vec2<f32>) -> f32 {
     let n = textureSampleLevel(base_noise, repeat_linear, q, 0.0);
     let low = n.g * 0.625 + n.b * 0.25 + n.a * 0.125;
     var d = clamp(remap(n.r, low - 1.0, 1.0, 0.0, 1.0), 0.0, 1.0);
-    d *= height_profile(h, cov.y);
+    let cumulus = cl.wind_dir.w;
+    d *= mix(height_profile(h, cov.y), cumulus_profile(h), cumulus);
     // Coverage carves the shapes: low coverage keeps only the densest cores.
     d = clamp(remap(d, 1.0 - cov.x, 1.0, 0.0, 1.0), 0.0, 1.0) * cov.x;
+    // Cumulus sit on a flat base: cut sharply after the carve.
+    d *= mix(1.0, smoothstep(0.0, 0.03, h), cumulus);
     return d;
 }
 
