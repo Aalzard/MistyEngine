@@ -37,6 +37,11 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         Action::Refresh => s.refresh_assets(),
         Action::ReimportAsset(path) => crate::asset_guids::reimport(s, &path),
         Action::FindReferencesInScene(path) => crate::asset_guids::find_references(s, &path),
+        Action::ImportFiles {
+            paths,
+            folder,
+            instantiate,
+        } => crate::os_drop::import_into(s, &paths, &folder, instantiate),
         Action::ShowInExplorer(path) => {
             if let Err(e) = show_in_explorer(&path) {
                 s.console

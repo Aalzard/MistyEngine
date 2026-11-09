@@ -89,9 +89,17 @@ impl TabViewer for PanelViewer<'_> {
             crate::tutorials::targets::mark(ui, &id, ui.max_rect());
         }
         match tab {
-            Tab::Scene => scene::show(ui, self.state, self.gpu.as_deref_mut()),
+            Tab::Scene => {
+                let rect = ui.max_rect();
+                scene::show(ui, self.state, self.gpu.as_deref_mut());
+                crate::os_drop::scene_target(ui, self.state, rect);
+            }
             Tab::Game => game::show(ui, self.state, self.gpu.as_deref_mut()),
-            Tab::Hierarchy => hierarchy::show(ui, self.state),
+            Tab::Hierarchy => {
+                let rect = ui.max_rect();
+                hierarchy::show(ui, self.state);
+                crate::os_drop::scene_target(ui, self.state, rect);
+            }
             Tab::Inspector => inspector::show(ui, self.state),
             Tab::Project => project::show(ui, self.state),
             Tab::Console => console::show(ui, self.state),

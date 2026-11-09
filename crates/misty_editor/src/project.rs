@@ -78,6 +78,9 @@ pub struct ProjectBrowser {
     pub entries: Vec<AssetEntry>,
     /// Folder contents area last frame (drop target for Hierarchy rows -> new prefab).
     pub drop_rect: egui::Rect,
+    /// The folder (tile, row or tree row) under the pointer this frame and its rect: where
+    /// files dragged in from the OS land (see [`crate::os_drop`]).
+    pub os_drop_folder: Option<(PathBuf, egui::Rect)>,
     /// Texture previews shown in the grid.
     pub thumbnails: crate::thumbnails::Thumbnails,
     /// Asset being renamed inline and the name typed so far (without extension).

@@ -908,6 +908,8 @@ impl eframe::App for EditorApp {
                     );
             });
 
+        // Files dropped from the OS where no panel took them: into the open Project folder.
+        crate::os_drop::fallback(&ctx, &mut self.state);
         // Shader variants compile the first time a view needs them (a new scene, a material
         // or effect first seen): say so, since that frame takes longer.
         let shaders = misty_engine::render::pipelines_built();

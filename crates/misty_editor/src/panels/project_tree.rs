@@ -197,6 +197,9 @@ fn folder_row(
     if locked {
         return;
     }
+    if resp.contains_pointer() {
+        browser.os_drop_folder = Some((node.path.clone(), rect));
+    }
     drop_target(&resp, &browser.root, &node.path, req);
     if depth > 0 {
         if let Some(rel) = asset_relative(&node.path) {

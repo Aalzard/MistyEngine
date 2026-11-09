@@ -48,6 +48,7 @@ mod model_import;
 mod multiplayer;
 mod object_clipboard;
 mod open_scenes;
+mod os_drop;
 mod packages;
 mod panels;
 mod particle_preview;

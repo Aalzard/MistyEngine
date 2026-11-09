@@ -24,6 +24,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         state.project.focused = panel.contains(pos);
     }
     let selected_before = state.project.selected.clone();
+    state.project.os_drop_folder = None;
     let mut opened_file: Option<PathBuf> = None;
     let mut req = Requests::default();
     let browser = &mut state.project;
@@ -166,6 +167,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         }
     });
     open_file(state, opened_file);
+    os_files(ui, state, panel);
     apply_requests(ui, state, req);
 
     let rel = state
@@ -185,6 +187,34 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         state.selection.clear();
         state.inspector_asset = Some(state.assets.relative(&sel));
     }
+}
+
+/// Files dragged in from the OS over the window: outline the folder they would land in (the
+/// one under the pointer, else the open folder); dropped, copy and import them there.
+fn os_files(ui: &Ui, state: &mut EditorState, panel: Rect) {
+    if !crate::os_drop::pointer_in(ui, panel) && !crate::os_drop::preview() {
+        return;
+    }
+    let target = state.project.os_drop_folder.clone();
+    let folder = target
+        .as_ref()
+        .map_or_else(|| state.project.current.clone(), |(p, _)| p.clone());
+    if crate::os_drop::hovering(ui.ctx()) {
+        let caption = format!("Import into {}", state.project.display_path(&folder));
+        if let Some((_, rect)) = target {
+            crate::os_drop::highlight(ui, rect, "");
+        }
+        crate::os_drop::highlight(ui, state.project.drop_rect, &caption);
+    }
+    if crate::os_drop::peek(ui.ctx()).is_empty() {
+        return;
+    }
+    let paths = crate::os_drop::take(ui.ctx());
+    state.push(Action::ImportFiles {
+        paths,
+        folder,
+        instantiate: false,
+    });
 }
 
 /// Double-clicked file: scenes open in the editor, scripts in the Code Editor, other files in
@@ -536,6 +566,19 @@ fn item_interaction(
     }
     if e.is_dir && !read_only {
         drop_target(resp, &browser.root, &e.path, req);
+    }
+    // Press and hold renames it (a bar along the bottom fills meanwhile).
+    if !read_only && !is_renaming(browser, e) {
+        let hold = crate::hold_rename::check(ui, resp);
+        crate::hold_rename::paint(ui, resp.rect, hold);
+        if hold == crate::hold_rename::Hold::Fire {
+            req.rename = Some(e.path.clone());
+            req.rename_by_hold = true;
+        }
+    }
+    // Files dragged in from the OS land in the folder under the pointer.
+    if e.is_dir && !read_only && resp.contains_pointer() {
+        browser.os_drop_folder = Some((e.path.clone(), resp.rect));
     }
 }
 
