@@ -133,7 +133,7 @@ fn report(label: &str, f: &Flight) {
         s.median, s.p99, s.max, f.stats.budget_ms, f.stats.over_budget
     );
     eprintln!(
-        "  whole game frame:      median {:.3} p99 {:.3} max {:.3} ms",
+        "  whole game frame: median {:.3} p99 {:.3} max {:.3} ms",
         w.median, w.p99, w.max
     );
     eprintln!(

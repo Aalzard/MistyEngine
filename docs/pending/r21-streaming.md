@@ -159,4 +159,15 @@ Sizes: see the end of this file.
 
 ## Not done yet
 
-(see below)
+- First-use GPU work of new content still runs on the render thread: mesh buffers of a rock
+  model seen for the first time, a new tile's textures (one per frame while streaming), tree
+  instance lists. Material textures and everything CPU-side are read ahead.
+- HLOD trees are diamond crowns, not impostor cards; dense virtual-geometry meshes enter proxies
+  through their coarsest LOD level only.
+- Cross-tile LOD stitching covers the camera pass; the shadow pass keeps its own per-tile LODs
+  (finest for casters far away, so cracks there are rare).
+- Edit mode has no per-cell dirty tracking: Save Cells writes every loaded cell, and unloading a
+  cell by hand does not ask to save its edits.
+- References between objects of different cells are saved as none (like cross-scene ones).
+- Nav meshes, lightmaps and occlusion data are not split per cell.
+- Streaming sources have no priority or look-ahead along their velocity.
