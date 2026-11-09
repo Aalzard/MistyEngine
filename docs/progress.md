@@ -3114,3 +3114,26 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   anisotropy direction map, thickness and transmission maps); real refraction for
   `KHR_materials_transmission`; parallax doesn't offset depth or self-shadow; area lights use the
   plain lobe; Shader Graph has no Parallax Occlusion Mapping node yet.
+
+## Round 22 — Performance (branch r22-perf)
+
+### Done (docs/pending/r22-perf.md)
+- Profiled MeadowDemo per pass (wide, close, behind × Ultra / High / Medium / Low) and the
+  editor's frame; a new test-build switch, `MISTY_SHADER_PATCH`, rewrites shader sources at
+  pipeline creation so each pass's parts were costed without rebuilds.
+- Same picture, less work: sharp sun shafts read the cascade whose texels the march can resolve
+  (Ultra shafts 2.15 → 1.3 ms); the grass patch / worn-spot noise skips octaves that cannot
+  change the result (terrain −0.16 to −0.34 ms on every level, the CPU blade scatter too); tree
+  leaves draw their depth first and shade each sample once (trees 1.25 → 0.41 ms in the behind
+  view on High); geometry nearer than the cloud base skips the cloud lookups; shadow lists of
+  small frames no longer wait on rayon workers (7 ms average render-CPU stalls on a busy
+  machine gone).
+- Editor Profiler scopes per panel and Scene view stage. The editor's Scene view is CPU bound
+  (15.6 ms frame for a 6 ms GPU frame): submit, scene gathering, gizmos and file polling.
+- Material model v2 checked against main before its merge: no cost on plain materials.
+
+### Not done yet
+- Editor CPU: `Render.Submit` (3 ms), Scene view gathering every frame (1.3 ms), file polling
+  on the main thread (spikes every 0.5 s), gizmo lines (0.6 ms).
+- Grass visibility / shading (3–4 ms together) and the terrain's lighting stay the biggest GPU
+  costs; look-changing options for the user are listed in the pending notes.
