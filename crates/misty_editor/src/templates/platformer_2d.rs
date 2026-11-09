@@ -80,7 +80,7 @@ pub const COINS: [Vec2; 10] = [
     Vec2::new(-5.0, 0.5),
     Vec2::new(-4.0, 0.5),
     Vec2::new(-2.5, 3.6),
-    Vec2::new(5.0, 6.6),
+    Vec2::new(6.0, 6.6),
     Vec2::new(9.0, 1.2),
     Vec2::new(13.0, 4.6),
     Vec2::new(17.0, 1.6),
@@ -383,14 +383,22 @@ fn player(s: &mut Scene) {
     s.add(player, ShadowCaster2D::default());
 }
 
-fn text(s: &mut Scene, canvas: Entity, name: &str, value: &str, size: f32, rt: RectTransform) {
-    let e = presets::spawn(s, name, Some(canvas), rt);
+/// A UI Text under `canvas`: dark on the sky, light on the ground.
+struct Label<'a> {
+    name: &'a str,
+    value: &'a str,
+    size: f32,
+    color: [f32; 4],
+}
+
+fn text(s: &mut Scene, canvas: Entity, label: Label, rt: RectTransform) {
+    let e = presets::spawn(s, label.name, Some(canvas), rt);
     s.add(
         e,
         UiText {
-            text: value.into(),
-            font_size: size,
-            color: [0.08, 0.1, 0.2, 1.0],
+            text: label.value.into(),
+            font_size: label.size,
+            color: label.color,
             alignment: TextAnchor::UpperLeft,
             wrap: false,
             ..Default::default()
@@ -420,9 +428,12 @@ fn hud(s: &mut Scene) {
     text(
         s,
         canvas,
-        "Score Text",
-        "Coins: 0",
-        40.0,
+        Label {
+            name: "Score Text",
+            value: "Coins: 0",
+            size: 40.0,
+            color: [0.08, 0.1, 0.2, 1.0],
+        },
         corner(
             Vec2::new(0.0, 1.0),
             Vec2::new(28.0, -20.0),
@@ -432,9 +443,12 @@ fn hud(s: &mut Scene) {
     text(
         s,
         canvas,
-        "Controls Text",
-        "A/D or arrows: run    Space: jump",
-        24.0,
+        Label {
+            name: "Controls Text",
+            value: "A/D or arrows: run    Space: jump",
+            size: 24.0,
+            color: [1.0, 0.97, 0.9, 0.9],
+        },
         corner(Vec2::ZERO, Vec2::new(28.0, 20.0), Vec2::new(700.0, 36.0)),
     );
 }
