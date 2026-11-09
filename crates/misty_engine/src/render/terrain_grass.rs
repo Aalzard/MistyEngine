@@ -324,6 +324,9 @@ pub(super) struct Grass {
     /// Cameras of recent frames (terrain-local) and when they were last seen: chunks near
     /// any of them stay.
     cameras: Vec<(Vec3, Instant)>,
+    /// Centre of the latest edited region (terrain-local metres): edited chunks nearest the
+    /// brush go first.
+    brush: Vec2,
     /// The workers' replies (the receiver is locked because the renderer is shared across
     /// threads while culling).
     results: (mpsc::Sender<Done>, Mutex<mpsc::Receiver<Done>>),
@@ -362,6 +365,7 @@ impl Default for Grass {
             edits: 0,
             dirty: HashMap::new(),
             cameras: Vec::new(),
+            brush: Vec2::ZERO,
             results: {
                 let (tx, rx) = mpsc::channel();
                 (tx, Mutex::new(rx))
@@ -473,6 +477,7 @@ impl Grass {
         let size = Vec2::new(d.size.x, d.size.z);
         let lo = Vec2::from(r.min) * size;
         let hi = Vec2::from(r.max) * size;
+        self.brush = (lo + hi) * 0.5;
         // Chunks touching the region (its edges included).
         let first = ((lo / CHUNK).floor() - 1.0).max(Vec2::ZERO);
         let last = (hi / CHUNK).floor().min(size / CHUNK);
@@ -587,7 +592,7 @@ impl Grass {
                 }
             }
         }
-        todo.sort_by_key(|(k, edit)| (!*edit, chunk_dist(k, camera)));
+        todo.sort_by_key(|(k, edit)| (!*edit, self.order(*k, *edit, camera)));
         todo
     }
 
@@ -715,10 +720,23 @@ impl Grass {
             self.accept(done, cameras, range);
         }
         if self.ready.len() > 1 {
-            let dirty = &self.dirty;
-            self.ready
-                .make_contiguous()
-                .sort_by_key(|d| (!dirty.contains_key(&d.key), chunk_dist(&d.key, camera)));
+            let mut ready = std::mem::take(&mut self.ready);
+            ready.make_contiguous().sort_by_key(|d| {
+                let edit = self.dirty.contains_key(&d.key);
+                (!edit, self.order(d.key, edit, camera))
+            });
+            self.ready = ready;
+        }
+    }
+
+    /// Ordering key of chunk `k` among its kind: edited chunks by their distance to the
+    /// brush (the chunk under it first), the camera's by their distance to the camera.
+    fn order(&self, k: (u32, u32), edit: bool, camera: Vec3) -> i64 {
+        if edit {
+            let c = (Vec2::new(k.0 as f32, k.1 as f32) + 0.5) * CHUNK;
+            c.distance_squared(self.brush) as i64
+        } else {
+            chunk_dist(&k, camera)
         }
     }
 
@@ -1115,6 +1133,12 @@ impl Grass {
     #[cfg(test)]
     pub fn chunk(&self, k: (u32, u32)) -> Option<(u32, u32)> {
         self.chunks.get(&k).map(|c| (c.count, c.level))
+    }
+
+    /// Chunk `k`'s blades' edit count and the edits so far (None: not held) (tests).
+    #[cfg(test)]
+    pub fn stamps(&self, k: (u32, u32)) -> Option<(u64, u64)> {
+        self.chunks.get(&k).map(|c| (c.stamp, self.edits))
     }
 
     /// Chunk `k` holds blades of the latest data (tests).
