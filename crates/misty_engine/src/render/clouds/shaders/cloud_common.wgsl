@@ -104,7 +104,9 @@ fn base_density(p: vec3<f32>, h: f32, cov: vec2<f32>) -> f32 {
         return 0.0;
     }
     let lean = cl.wind_dir.xy * cl.wind_dir.z * h;
-    let q = vec3<f32>(p.x + cl.wind.x + lean.x, p.y, p.z + cl.wind.y + lean.y) / BASE_TILE;
+    // Cumulus are separate heaps a few hundred metres across: a finer base shape.
+    let tile = BASE_TILE * mix(1.0, 0.5, cl.wind_dir.w);
+    let q = vec3<f32>(p.x + cl.wind.x + lean.x, p.y, p.z + cl.wind.y + lean.y) / tile;
     let n = textureSampleLevel(base_noise, repeat_linear, q, 0.0);
     let low = n.g * 0.625 + n.b * 0.25 + n.a * 0.125;
     var d = clamp(remap(n.r, low - 1.0, 1.0, 0.0, 1.0), 0.0, 1.0);

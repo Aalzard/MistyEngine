@@ -3,7 +3,7 @@
   "height": 19.0,
   "crown_shape": "Round",
   "crown_width": 0.66,
-  "crown_base": 0.16,
+  "crown_base": 0.1,
   "trunk_radius": 0.36,
   "leader": 0.35,
   "trunk_bend": 0.35,

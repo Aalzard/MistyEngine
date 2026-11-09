@@ -109,7 +109,8 @@ fn height_m(x: f32, z: f32) -> f32 {
     // Limestone cliffs: ledges in patches on the slope.
     let cliffs = smooth(0.15, 0.35, noise::fbm(x, z, 340.0, 3, 23))
         * smooth(140.0, 220.0, u)
-        * smooth(650.0, 500.0, u);
+        * smooth(650.0, 500.0, u)
+        * smooth(1100.0, 800.0, p.y);
     if cliffs > 0.0 {
         let step = 26.0 + 10.0 * noise::fbm(x, z, 500.0, 1, 29);
         hill += (terrace(hill, step) - hill) * cliffs;
@@ -125,7 +126,8 @@ fn height_m(x: f32, z: f32) -> f32 {
     };
     // Behind the camera the ranges are closer, so lower (else too steep for the forest).
     let behind = 0.45 + 0.55 * smooth(-600.0, 300.0, p.y);
-    let near = 110.0 * band(1500.0, 300.0) * lump(31);
+    let open_left = 0.35 + 0.65 * smooth(-900.0, -200.0, p.x);
+    let near = 110.0 * band(1500.0, 300.0) * lump(31) * open_left;
     let rocky = smooth(0.4, 0.6, noise::fbm(x, z, 300.0, 2, 43)) * smooth(0.0, 300.0, p.y);
     let near = near + (terrace(near, 22.0) - near) * rocky * 0.5;
     h += (near
@@ -160,7 +162,7 @@ fn forest(x: f32, z: f32) -> f32 {
     let r = far_radius(p);
     let woods = smooth(1150.0, 1350.0, r)
         * smooth(3000.0, 2700.0, r)
-        * smooth(-0.2, 0.1, noise::fbm(x, z, 300.0, 3, 59));
+        * smooth(-0.25, -0.15, noise::fbm(x, z, 300.0, 3, 59));
     f = f.max(woods);
     // Behind the camera, the far treeline 600 m back.
     let behind = smooth(-560.0, -640.0, p.y + 40.0 * noise::fbm(x, z, 80.0, 2, 61))
@@ -229,13 +231,10 @@ fn grass() -> details::DetailSettings {
 fn flowers() -> FlowerSettings {
     let kinds = FlowerSettings::wildflowers(crate::terrain_flowers_ui::FLOWER_DIR)
         .into_iter()
-        .filter(|k| k.name == "Buttercup" || k.name == "Oxeye Daisy")
+        .filter(|k| k.name == "Buttercup")
         .map(|mut k| {
             // Tiny heads: specks of cream and yellow in the turf.
             k.head_size *= 0.55;
-            if k.name == "Oxeye Daisy" {
-                k.amount = 0.3;
-            }
             // Small heads close to the turf, as in a grazed meadow.
             k.height = [k.height[0] * 0.85, k.height[1] * 0.85];
             k
@@ -372,7 +371,7 @@ fn limestone() -> [RgbaImage; 3] {
             let streak = (tile_fbm(u, 0.0, 24, 2, 111) - 0.45).max(0.0) * 2.5 * (1.0 - bed * 0.6);
             let lichen = smooth(0.62, 0.72, tile_fbm(u, v, 10, 3, 113));
             let moss = smooth(0.7, 0.8, tile_fbm(u, v, 7, 3, 117)) * smooth(0.6, 0.9, bed);
-            let mut c = [0.4, 0.37, 0.31].map(|k| {
+            let mut c = [0.34, 0.31, 0.26].map(|k| {
                 k * (0.82 + 0.25 * bed_tone)
                     * (0.85 + 0.3 * blocks)
                     * (0.92 + 0.12 * grain)
@@ -472,7 +471,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 height: 19.0,
                 crown_shape: CrownShape::Round,
                 crown_width: 0.66,
-                crown_base: 0.16,
+                crown_base: 0.1,
                 trunk_radius: 0.36,
                 leader: 0.35,
                 branches: 11,
@@ -491,7 +490,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 seed: 23,
                 height: 21.0,
                 crown_width: 0.6,
-                crown_base: 0.15,
+                crown_base: 0.1,
                 leaf_density: 2.1,
                 leaf_size: 1.5,
                 leaf_color: [0.8, 0.88, 0.74],
@@ -506,7 +505,7 @@ fn tree_assets() -> Vec<(String, TreeAsset)> {
                 height: 17.0,
                 crown_shape: CrownShape::Oval,
                 crown_width: 0.7,
-                crown_base: 0.14,
+                crown_base: 0.09,
                 trunk_radius: 0.3,
                 leader: 0.5,
                 branches: 12,
@@ -646,13 +645,25 @@ fn trees(d: &TerrainData) -> Vec<TreeInstance> {
             };
             // Bigger towards the far woods; edge trees a little lower.
             let edge = smooth(0.0, 0.6, f);
-            let height = (0.8 + 0.45 * r(5)) * (0.85 + 0.15 * edge) * grow.powf(0.6);
+            let height = (0.8 + 0.45 * r(5)) * (0.85 + 0.15 * edge) * grow.powf(0.45);
+            // Undergrowth within 700 m: a bush between the trunks of every few trees.
+            if dist < 700.0 && r(10) < 0.3 {
+                let b = p + Vec2::new(r(11) - 0.5, r(12) - 0.5) * cell * 0.8;
+                out.push(TreeInstance {
+                    position: b / size,
+                    prototype: 3,
+                    rotation: r(13) * std::f32::consts::TAU,
+                    height_scale: 0.8 + 0.5 * r(14),
+                    width_scale: 0.9 + 0.5 * r(15),
+                    color: r(16),
+                });
+            }
             out.push(TreeInstance {
                 position: p / size,
                 prototype: kind,
                 rotation: r(6) * std::f32::consts::TAU,
                 height_scale: height,
-                width_scale: (0.85 + 0.35 * r(7)) * height.powf(0.4) * grow.powf(0.4),
+                width_scale: (0.85 + 0.35 * r(7)) * height.powf(0.4) * grow.powf(0.9),
                 color: r(8),
             });
         }
@@ -849,8 +860,8 @@ fn volume() -> PostProcessVolume {
     v.bloom.intensity = 0.2;
     v.bloom.threshold = 1.2;
     v.color_adjustments.active = true;
-    v.color_adjustments.post_exposure = 0.3;
-    v.color_adjustments.contrast = 6.0;
+    v.color_adjustments.post_exposure = 0.1;
+    v.color_adjustments.contrast = 12.0;
     v.color_adjustments.saturation = -2.0;
     v.ambient_occlusion.active = true;
     v.ambient_occlusion.intensity = 1.4;
@@ -879,11 +890,12 @@ fn volume() -> PostProcessVolume {
     let f = &mut v.fog;
     f.active = true;
     f.max_fog_distance = 6000.0;
-    f.attenuation_distance = 2200.0;
+    f.attenuation_distance = 1700.0;
     f.base_height = 60.0;
-    f.maximum_height = 350.0;
+    f.maximum_height = 500.0;
     f.albedo = [0.62, 0.8, 1.0];
     f.anisotropy = 0.2;
+    f.sky_haze = 0.9;
     f.volumetric_distance = 300.0;
     v
 }
@@ -914,7 +926,7 @@ fn demo_scene(d: &TerrainData) -> Scene {
         );
         let mut l = s.world.get::<&mut Light>(sun).unwrap();
         l.color = [1.0, 0.97, 0.92];
-        l.intensity = 2.5;
+        l.intensity = 3.2;
         l.shadows = Shadows::Soft;
         l.contact_shadows = true;
     }
@@ -925,7 +937,7 @@ fn demo_scene(d: &TerrainData) -> Scene {
     // A deep blue overhead, paler and hazier towards the horizon.
     rs.skybox.sky_tint = [0.38, 0.41, 0.45];
     rs.realtime_gi = true;
-    rs.environment_lighting.intensity = 1.0;
+    rs.environment_lighting.intensity = 0.75;
 
     let terrain = s.spawn("Terrain", None);
     s.set_transform(terrain, Transform::from_position(CORNER));

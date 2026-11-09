@@ -191,7 +191,7 @@ pub(super) fn apply_uniform(
         height_fog: height_fog(fog),
         sun_dir,
         sun_color,
-        ambient: v4(ambient(frame, fog), 0.0),
+        ambient: v4(ambient(frame, fog), fog.volume.sky_haze.clamp(0.0, 1.0)),
         albedo: v4(fog.albedo(), 0.0),
     }
 }
