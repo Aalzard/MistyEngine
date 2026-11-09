@@ -231,7 +231,7 @@ fn create_template(root: &Path, template: Template) -> Result<(), String> {
         "Library",
     ] {
         // MeadowDemo and the 2D Platformer use no materials: no empty folder.
-        let no_materials = matches!(template, Template::MeadowDemo | Template::Platformer2D);
+        let no_materials = template == Template::MeadowDemo || template.is_2d();
         if no_materials && dir == "Assets/Materials" {
             continue;
         }

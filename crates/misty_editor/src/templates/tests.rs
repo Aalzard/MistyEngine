@@ -910,7 +910,7 @@ fn platformer_2d_opens_in_2d_and_plays() {
     );
     // Highest point of the player's feet over `n` frames with `key` pressed on the first one
     // (and held for `hold` frames).
-    let mut jump = |play: &mut Play, key: &str, hold: usize, n: usize| -> f32 {
+    let jump = |play: &mut Play, key: &str, hold: usize, n: usize| -> f32 {
         let mut top = f32::MIN;
         for i in 0..n {
             let held: &[&str] = if i < hold { &[key] } else { &[] };
