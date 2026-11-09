@@ -6,6 +6,7 @@ use egui::{
     Stroke, Ui, pos2, vec2,
 };
 
+use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::theme;
 
@@ -132,43 +133,58 @@ fn body(ui: &mut Ui, info: &Info) -> Option<Nav> {
     let mut nav = None;
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new(format!("Step {} of {}", info.index + 1, info.count))
-                .color(theme::TEXT_DIM),
+            RichText::new(tr!(
+                "Step {index} of {count}",
+                index = info.index + 1,
+                count = info.count
+            ))
+            .color(theme::TEXT_DIM),
         );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let close = ui.add(egui::Button::new(RichText::new("✕").small()).frame(false));
-            if close.on_hover_text("Exit the tutorial").clicked() {
+            if close.on_hover_text(tr!("Exit the tutorial")).clicked() {
                 nav = Some(Nav::Exit);
             }
         });
     });
     progress_bar(ui, info);
     ui.add_space(4.0);
-    ui.label(
-        RichText::new(info.title)
-            .strong()
-            .size(15.0)
-            .color(Color32::WHITE),
-    );
-    ui.add_space(2.0);
-    ui.label(RichText::new(info.text).color(theme::TEXT));
+    // In the editor's language (the tutorial files are English; the translations are keyed by
+    // the English text). Right-to-left text is broken to the card's width before drawing.
+    let title = crate::i18n::tr(info.title);
+    let text = crate::i18n::tr_wrapped(ui, info.text, CARD_WIDTH);
+    let layout = if crate::i18n::is_rtl() {
+        Layout::top_down(Align::Max)
+    } else {
+        Layout::top_down(Align::Min)
+    };
+    ui.with_layout(layout, |ui| {
+        ui.label(
+            RichText::new(title)
+                .strong()
+                .size(15.0)
+                .color(Color32::WHITE),
+        );
+        ui.add_space(2.0);
+        ui.label(RichText::new(text).color(theme::TEXT));
+    });
     if info.done {
         ui.add_space(2.0);
         let msg = if info.advancing {
-            "✓ Done!"
+            tr!("✓ Done!")
         } else {
-            "✓ Done. Press Next."
+            tr!("✓ Done. Press Next.")
         };
         ui.label(RichText::new(msg).color(theme::AXIS_Y).strong());
     }
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        let back = ui.add_enabled(info.index > 0, egui::Button::new("◀ Back"));
+        let back = ui.add_enabled(info.index > 0, egui::Button::new(tr!("◀ Back")));
         if back.clicked() {
             nav = Some(Nav::Back);
         }
         let last = info.index + 1 == info.count;
-        let label = if last { "Finish" } else { "Next ▶" };
+        let label = if last { tr!("Finish") } else { tr!("Next ▶") };
         let next = egui::Button::new(RichText::new(label).strong().color(Color32::BLACK))
             .fill(GLOW)
             .min_size(vec2(72.0, 0.0));
@@ -176,15 +192,17 @@ fn body(ui: &mut Ui, info: &Info) -> Option<Nav> {
             nav = Some(Nav::Next);
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let exit = ui
-                .add(egui::Button::new(RichText::new("Exit").color(theme::TEXT_DIM)).frame(false));
-            if exit.on_hover_text("Close the tutorial").clicked() {
+            let exit = ui.add(
+                egui::Button::new(RichText::new(tr!("Exit")).color(theme::TEXT_DIM)).frame(false),
+            );
+            if exit.on_hover_text(tr!("Close the tutorial")).clicked() {
                 nav = Some(Nav::Exit);
             }
-            let skip = ui
-                .add(egui::Button::new(RichText::new("Skip").color(theme::TEXT_DIM)).frame(false));
+            let skip = ui.add(
+                egui::Button::new(RichText::new(tr!("Skip")).color(theme::TEXT_DIM)).frame(false),
+            );
             if skip
-                .on_hover_text("Skip the rest and mark this tutorial as done")
+                .on_hover_text(tr!("Skip the rest and mark this tutorial as done"))
                 .clicked()
             {
                 nav = Some(Nav::Skip);

@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS`, and `MISTY_THEME=light` (and
+//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS` / `MISTY_GUIDE`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 //! `MISTY_EDITOR_LANGUAGE=tr` (`en`, `tr`, `ar`) runs the editor and the Hub in that language
 //! (see `i18n`), `MISTY_OPEN_MENU=File` opens that top menu ([`open_menu_from_env`]) and
@@ -445,6 +445,10 @@ pub fn apply_env(
             s.script_graph.search = Some(search);
         }
         s.script_graph.focused = true;
+        // `MISTY_GRAPH_FRAME=1` frames the whole graph (as F does).
+        if std::env::var_os("MISTY_GRAPH_FRAME").is_some() {
+            s.script_graph.canvas.frame_all = true;
+        }
         // `MISTY_GRAPH_PANELS=none` hides the Blackboard and the Graph Inspector.
         if std::env::var("MISTY_GRAPH_PANELS").is_ok_and(|v| v == "none") {
             s.script_graph.show_blackboard = false;
@@ -494,6 +498,11 @@ pub fn apply_env(
                 crate::layout::focus_or_open(dock, tab);
             }
         }
+    }
+    // `MISTY_GUIDE=<chapter>` opens Help ▸ User Guide on that chapter (`05-guide-first-person`).
+    if let Ok(chapter) = std::env::var("MISTY_GUIDE") {
+        s.guide.open(chapter.trim());
+        crate::layout::focus_or_open(dock, crate::layout::Tab::Guide);
     }
     // `MISTY_TIMELINE_TIME=4.5` previews the Timeline window's director at that time.
     if let Some(t) = std::env::var_os("MISTY_TIMELINE_TIME")

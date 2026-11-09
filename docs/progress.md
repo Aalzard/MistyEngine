@@ -3302,3 +3302,42 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
   on Windows the drop target is the panel/folder last under the pointer (winit reports no
   pointer moves during an OS drag).
+
+## Round 32 — User Guide and layout tour (branch r32-guide)
+
+### Done
+- **User Guide** in English and Arabic (`docs/guide/en`, `docs/guide/ar`): index, the editor
+  layout, finding what is slow (Stats, Profiler, Frame Debugger, Memory Profiler, build report,
+  a worked example), quality and rendering (the Editor Scene's Quality menu, Project Settings ▸
+  Quality, LODs, occlusion culling, Misty Mesh, Misty GI), Script Graph basics, four
+  step-by-step guides (first-person player, door, saving and loading, animation transitions)
+  and a glossary. Written with the round 31 names (Scene Tree, Properties, Asset Files, Editor
+  Scene, Scene Viewer, Archetypes, Misty GI, Misty Mesh, Script Graphs).
+- **Example graphs** for the four guides in `SampleProject/Assets/Guides/` (FirstPerson, Door,
+  Saving, Animation), from `sample_guides.rs` with a `matches_its_generator` test and play
+  tests: the player walks, looks (yaw and clamped pitch) and jumps; the key door opens with E
+  only from its zone and closes again, the auto door opens and closes by itself, both turning
+  smoothly; the score and position survive a save, a new prefs load and a fresh scene; the
+  Animator goes Idle → Walk → Run → Idle with the speed and plays Jump on its trigger.
+- **New Script Graph nodes** (native, typed pins): PlayerPrefs Set/Get Int, Float, String,
+  HasKey, DeleteKey, Save; Animator Set/Get Float (with Damp Time), Bool, Integer, Set/Reset
+  Trigger; Cursor: Set/Get lockState (graph only).
+- **Help ▸ User Guide**: a dockable Guide tab that renders the chapters (headings, lists, code,
+  tables, pictures, note boxes, links between chapters) in the editor's language (Arabic right
+  to left through `i18n::shape`, Turkish reads English), with search and "Open example" (copies
+  the example into the project when missing, then opens its scene and graph). Chapters,
+  pictures and example files are built into the binary, so installs need nothing extra. The
+  Hub's Learn page has a User Guide card that opens the reader over the Hub.
+- **Editor Layout tour** (`assets/tutorials/layout_tour.json`): Scene Tree, Properties, Asset
+  Files, Editor Scene, the Quality menu, Scene Viewer, Console, Play, Help. It keeps the open
+  scene, brings hidden tabs forward per step, is offered once on the first launch (remembered
+  in `hub.json`), and is on Help ▸ Layout Tour and the Hub's Learn page. Its targets are stable
+  `tab.<key>` ids (`Tab::key`), so renaming or translating panels doesn't break them. The
+  tutorial card's text and buttons are translated now.
+- `MISTY_GUIDE=<chapter>` opens the guide on a chapter in capture runs.
+
+### Not done yet
+- Screenshots show the pre-round-31 panel names until they are retaken after the rename.
+- Menu labels the guide already writes with new names: Assets ▸ Create ▸ Script Graph (now
+  "Visual Script Graph") and Window ▸ Script Graphs (now "Visual Scripting").
+

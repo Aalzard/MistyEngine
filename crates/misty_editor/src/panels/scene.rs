@@ -808,6 +808,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             .on_hover_text(tr!(
                 "Quality level, anti-aliasing, render scale and upscale filter"
             ));
+            crate::tutorials::targets::mark_response(ui, "scene.quality", &quality_menu);
             if std::mem::take(&mut sv.open_quality_menu) {
                 crate::widgets::open_dropdown(ui.ctx(), &quality_menu);
             }

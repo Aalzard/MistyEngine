@@ -129,7 +129,7 @@ Get Velocity Y ─► Add ◄─ Multiply ◄─ Get Gravity, On Update.Delta Ti
 ```
 Transform: Get right ─► Scale ◄─ Input: GetAxis ("Horizontal")
 Transform: Get forward ─► Scale ◄─ Input: GetAxis ("Vertical")
-        both ─► Add ─► Scale (× Walk Speed) ─► Add ◄─ Make Vector3 (Y ◄ Get Velocity Y)
+        both ─► Add ─► Scale (× Get Walk Speed) ─► Add ◄─ Make Vector3 (Y ◄ Get Velocity Y)
                                                  │
                                  Scale (× Delta Time) ─► CharacterController: Move.motion ◄── Then 4
 ```

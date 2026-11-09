@@ -415,3 +415,28 @@ fn learn_asks_which_recent_project() {
     assert!(!dir.join("Projects").exists(), "no playground made");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// The Learn page's User Guide card opens the guide over the Hub; closing it goes back.
+#[test]
+fn learn_opens_the_user_guide() {
+    let dir = temp("learn_guide");
+    let path = dir.join("hub.json");
+    HubConfig::default().save(&path).unwrap();
+    let mut h = harness(&path);
+    h.run();
+    h.get_by_label("Learn").click();
+    h.run();
+    h.get_by_label("Read").click();
+    h.run();
+    assert!(
+        h.get_all_by_label("The editor layout").count() >= 1,
+        "chapters listed"
+    );
+    h.get_all_by_label("Guide: saving and loading")
+        .next()
+        .unwrap()
+        .click();
+    h.run();
+    assert!(h.get_all_by_label("PlayerPrefs in one minute").count() >= 1);
+    let _ = std::fs::remove_dir_all(dir);
+}

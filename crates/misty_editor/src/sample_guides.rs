@@ -679,7 +679,10 @@ fn clips() -> [(&'static str, AnimationClip); 4] {
         0.7,
         false,
         &[
-            (Property::Position(1), &[(0.0, 0.9), (0.35, 2.0), (0.7, 0.9)]),
+            (
+                Property::Position(1),
+                &[(0.0, 0.9), (0.35, 2.0), (0.7, 0.9)],
+            ),
             (Property::Rotation(0), &[(0.0, 0.0), (0.7, 0.0)]),
         ],
     );
@@ -910,13 +913,7 @@ pub fn first_person_scene() -> Scene {
         vec![graph_ref(FIRST_PERSON_GRAPH, &[])],
     );
     // Things to look at and jump onto.
-    block(
-        &mut s,
-        "Crate",
-        Vec3::new(2.0, 0.5, 2.0),
-        Vec3::ONE,
-        CRATE,
-    );
+    block(&mut s, "Crate", Vec3::new(2.0, 0.5, 2.0), Vec3::ONE, CRATE);
     block(
         &mut s,
         "Low Wall",
@@ -991,10 +988,7 @@ fn door(s: &mut Scene, name: &str, at: Vec3, auto: bool) -> (Entity, Entity) {
             list: vec![graph_ref(
                 DOOR_GRAPH,
                 &[
-                    (
-                        "Door Name",
-                        ScriptValue::Text(format!("{name} Hinge")),
-                    ),
+                    ("Door Name", ScriptValue::Text(format!("{name} Hinge"))),
                     ("Auto Open", ScriptValue::Bool(auto)),
                 ],
             )],
@@ -1238,10 +1232,11 @@ mod play {
         /// Put `e` at `p` (as the Move tool would), physics too.
         pub fn place(&mut self, e: Entity, p: Vec3) {
             self.scene.set_world_position(e, p);
-            self.rt.with_physics_scene(&mut self.scene, |physics, scene| {
-                let (_, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
-                physics.teleport(e, pos, rot);
-            });
+            self.rt
+                .with_physics_scene(&mut self.scene, |physics, scene| {
+                    let (_, rot, pos) = scene.world_matrix(e).to_scale_rotation_translation();
+                    physics.teleport(e, pos, rot);
+                });
         }
     }
 

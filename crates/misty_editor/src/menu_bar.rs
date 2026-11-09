@@ -716,6 +716,22 @@ pub fn layouts_menu(ui: &mut Ui, s: &mut EditorState) {
 }
 
 fn help_menu(ui: &mut Ui, s: &mut EditorState) {
+    let guide = ui.button(tr!("User Guide")).on_hover_text(tr!(
+        "Read the guide: the editor, performance, quality and Script Graphs"
+    ));
+    targets::header(ui, "User Guide", guide.rect);
+    if guide.clicked() {
+        crate::panels::guide::open(s);
+        ui.close();
+    }
+    let tour = ui
+        .button(tr!("Layout Tour"))
+        .on_hover_text(tr!("A two-minute tour of the editor's main areas"));
+    targets::header(ui, "Layout Tour", tour.rect);
+    if tour.clicked() {
+        crate::tutorials::start(s, crate::tutorials::LAYOUT_TOUR);
+        ui.close();
+    }
     let tutorials = ui.button(tr!("Tutorials..."));
     targets::header(ui, "Tutorials...", tutorials.rect);
     if tutorials.clicked() {

@@ -106,8 +106,7 @@ pub fn animator_set_float(cx: &mut Cx<'_>, i: &[Slot], _: &[Slot]) -> Result<(),
     let name = cx.s(i[1]);
     let w = &mut *cx.world;
     let dt = w.time.delta;
-    w.animator
-        .set_float_damped(&w.scene, e, &name, v, damp, dt);
+    w.animator.set_float_damped(&w.scene, e, &name, v, damp, dt);
     Ok(())
 }
 

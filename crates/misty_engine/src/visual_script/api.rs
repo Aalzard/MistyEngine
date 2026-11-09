@@ -728,7 +728,13 @@ pub static NATIVE: &[NativeApi] = &[
     // Cursor (graph only: Lua sets `Cursor.lockState`)
     NativeApi {
         graph_only: true,
-        ..set!("Cursor", "lockState", Str, D::S("Locked"), g::cursor_lock_set)
+        ..set!(
+            "Cursor",
+            "lockState",
+            Str,
+            D::S("Locked"),
+            g::cursor_lock_set
+        )
     },
     NativeApi {
         graph_only: true,
