@@ -269,6 +269,7 @@ pub fn apply(s: &mut EditorState, action: Action) -> Option<Action> {
         | Action::DuplicateAsset(_)
         | Action::DeleteAsset(_)
         | Action::ShowInExplorer(_)
+        | Action::ImportFiles { .. }
         | Action::ReimportAsset(_)
         | Action::FindReferencesInScene(_)
         | Action::Refresh) => {

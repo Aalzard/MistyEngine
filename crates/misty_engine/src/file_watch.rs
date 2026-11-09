@@ -14,6 +14,10 @@
 //! disk is noticed at most one background pass ([`PASS`]) later than before.
 //!
 //! Off (the default: tests, the player, tools), both functions `stat` directly.
+//!
+//! [`pin`] adds paths that stay watched while nobody asks (the Project window's folders), and
+//! [`set_waker`] is called when a pass sees any watched stamp change, so an idle editor (which
+//! draws no frames, so polls nothing) wakes up for files added or changed by other programs.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -48,13 +52,19 @@ struct Entry {
     meta: Option<Meta>,
     /// Last time a poller asked.
     used: Instant,
+    /// Watched until unpinned, asked for or not (see [`pin`]).
+    pinned: bool,
 }
+
+/// Called from the watch thread when a stamp changed.
+type Waker = Box<dyn Fn() + Send + Sync>;
 
 /// Watched paths and their last stamps (one process-wide, [`WATCH`]; tests make their own).
 #[derive(Default)]
 struct Watch {
     background: AtomicBool,
     entries: Mutex<HashMap<PathBuf, Entry>>,
+    waker: Mutex<Option<Waker>>,
 }
 
 static WATCH: LazyLock<Watch> = LazyLock::new(Watch::default);
@@ -65,10 +75,11 @@ impl Watch {
     }
 
     /// One pass: stat every watched path (without holding the lock) and store the results.
-    fn pass(&self) {
+    /// Returns true when a stamp changed (the waker was called).
+    fn pass(&self) -> bool {
         let paths: Vec<PathBuf> = {
             let mut map = self.entries();
-            map.retain(|_, e| e.used.elapsed() < FORGET);
+            map.retain(|_, e| e.pinned || e.used.elapsed() < FORGET);
             map.keys().cloned().collect()
         };
         let fresh: Vec<(PathBuf, Option<Meta>)> = paths
@@ -78,10 +89,47 @@ impl Watch {
                 (p, m)
             })
             .collect();
+        let mut changed = false;
+        {
+            let mut map = self.entries();
+            for (p, m) in fresh {
+                if let Some(e) = map.get_mut(&p) {
+                    changed |= e.meta != m;
+                    e.meta = m;
+                }
+            }
+        }
+        if changed
+            && let Some(wake) = self
+                .waker
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+        {
+            wake();
+        }
+        changed
+    }
+
+    fn pin(&self, paths: Vec<PathBuf>) {
         let mut map = self.entries();
-        for (p, m) in fresh {
-            if let Some(e) = map.get_mut(&p) {
-                e.meta = m;
+        for e in map.values_mut() {
+            e.pinned = false;
+        }
+        for p in paths {
+            match map.get_mut(&p) {
+                Some(e) => e.pinned = true,
+                None => {
+                    let meta = metadata(&p);
+                    map.insert(
+                        p,
+                        Entry {
+                            meta,
+                            used: Instant::now(),
+                            pinned: true,
+                        },
+                    );
+                }
             }
         }
     }
@@ -100,6 +148,7 @@ impl Watch {
             Entry {
                 meta,
                 used: Instant::now(),
+                pinned: false,
             },
         );
         meta
@@ -125,6 +174,20 @@ pub fn set_background(on: bool) {
     } else if !on {
         w.background.store(false, Ordering::Relaxed);
     }
+}
+
+/// Keep watching exactly these paths (replacing the previous pinned set) even when no poller
+/// asks for them. Only with the background thread on.
+pub fn pin(paths: Vec<PathBuf>) {
+    if is_background() {
+        WATCH.pin(paths);
+    }
+}
+
+/// Call `wake` from the watch thread whenever a pass sees a watched stamp change (the editor
+/// asks for a repaint).
+pub fn set_waker(wake: impl Fn() + Send + Sync + 'static) {
+    *WATCH.waker.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(wake));
 }
 
 pub fn is_background() -> bool {
@@ -192,6 +255,40 @@ mod tests {
         w.pass();
         assert_eq!(w.cached(&path).map(|m| m.len), Some(2), "and comes back");
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn pinned_paths_stay_watched_and_changes_wake() {
+        let w = Watch::default();
+        w.background.store(true, Ordering::Relaxed);
+        let dir = temp_file("pinned_dir");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let woken = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = woken.clone();
+        *w.waker.lock().unwrap() = Some(Box::new(move || {
+            count.fetch_add(1, Ordering::Relaxed);
+        }));
+        w.pin(vec![dir.clone()]);
+        // Nobody asks for it for a long time: still watched.
+        w.entries().get_mut(&dir).unwrap().used = Instant::now() - FORGET * 2;
+        assert!(!w.pass(), "nothing changed yet");
+        assert_eq!(w.entries().len(), 1);
+        // A file added in the folder changes the folder's stamp: the pass wakes the editor.
+        let before = w.cached(&dir).and_then(|m| m.modified);
+        std::thread::sleep(Duration::from_millis(30));
+        std::fs::write(dir.join("new.txt"), "x").unwrap();
+        let after = metadata(&dir).and_then(|m| m.modified);
+        if after != before {
+            assert!(w.pass());
+            assert_eq!(woken.load(Ordering::Relaxed), 1);
+        }
+        // Unpinned and unused: forgotten.
+        w.pin(Vec::new());
+        w.entries().get_mut(&dir).unwrap().used = Instant::now() - FORGET * 2;
+        w.pass();
+        assert!(w.entries().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

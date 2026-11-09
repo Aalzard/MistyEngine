@@ -374,6 +374,14 @@ pub enum Action {
     /// Move to the OS trash (after the confirm dialog).
     DeleteAsset(std::path::PathBuf),
     ShowInExplorer(std::path::PathBuf),
+    /// Files and folders dropped from the OS file browser: copied into `folder` (folders with
+    /// everything in them) and imported; `instantiate` also adds the models and prefabs among
+    /// them to the scene (dropped on the Hierarchy or the Scene view).
+    ImportFiles {
+        paths: Vec<std::path::PathBuf>,
+        folder: std::path::PathBuf,
+        instantiate: bool,
+    },
     /// Load the asset again (its importers see it as changed).
     ReimportAsset(std::path::PathBuf),
     /// Select the open scene's objects that reference the asset.

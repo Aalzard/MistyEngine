@@ -25,6 +25,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         state.project.focused = panel.contains(pos);
     }
     let selected_before = state.project.selected.clone();
+    state.project.os_drop_folder = None;
     let mut opened_file: Option<PathBuf> = None;
     let mut req = Requests::default();
     let browser = &mut state.project;
@@ -71,6 +72,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .frame(egui::Frame::side_top_panel(ui.style()).fill(theme::SIDEBAR_BG))
         .resizable(true)
         .show(ui, |ui| {
+            // Empty space under the folders: the folder menu of the open folder.
+            let background = ui.interact(
+                ui.max_rect(),
+                ui.id().with("project_tree_background"),
+                Sense::click(),
+            );
             egui::ScrollArea::vertical()
                 .auto_shrink(false)
                 .show(ui, |ui| {
@@ -80,6 +87,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                         browser.open_folder(path);
                     }
                 });
+            let current = browser.current.clone();
+            if !browser.is_read_only(&current) {
+                background.context_menu(|ui| project_menus::folder_menu(ui, &current, &mut req));
+            }
         });
 
     let dragging_objects = ui
@@ -87,6 +98,14 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         .is_some();
     egui::CentralPanel::default().show(ui, |ui| {
         browser.drop_rect = ui.max_rect();
+        // The whole content area, under the breadcrumb, tiles and rows (they sit on top of
+        // it): a click deselects, a right-click shows the folder menu, also in an empty folder,
+        // beside the last row and in the gaps between tiles.
+        let background = ui.interact(
+            ui.max_rect(),
+            ui.id().with("project_content_background"),
+            Sense::click(),
+        );
         // Hierarchy rows dragged here become prefabs in this folder.
         if dragging_objects && ui.rect_contains_pointer(ui.max_rect()) {
             ui.painter().rect_stroke(
@@ -134,17 +153,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                 } else {
                     grid_view(ui, &entries, browser, vcs, &mut open, &mut req);
                 }
-                // Empty space: deselect, folder menu.
-                let rest = ui.allocate_response(
-                    ui.available_size().max(egui::vec2(0.0, 40.0)),
-                    Sense::click(),
-                );
-                if rest.clicked() {
-                    browser.selected = None;
-                }
-                let current = browser.current.clone();
-                rest.context_menu(|ui| project_menus::folder_menu(ui, &current, &mut req));
             });
+        if background.clicked() {
+            browser.selected = None;
+        }
+        let current = browser.current.clone();
+        background.context_menu(|ui| project_menus::folder_menu(ui, &current, &mut req));
         if let Some(path) = open {
             if path.is_dir() {
                 browser.search.clear();
@@ -155,6 +169,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         }
     });
     open_file(state, opened_file);
+    os_files(ui, state, panel);
     apply_requests(ui, state, req);
 
     let rel = state
@@ -174,6 +189,34 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         state.selection.clear();
         state.inspector_asset = Some(state.assets.relative(&sel));
     }
+}
+
+/// Files dragged in from the OS over the window: outline the folder they would land in (the
+/// one under the pointer, else the open folder); dropped, copy and import them there.
+fn os_files(ui: &Ui, state: &mut EditorState, panel: Rect) {
+    if !crate::os_drop::pointer_in(ui, panel) && !crate::os_drop::preview() {
+        return;
+    }
+    let target = state.project.os_drop_folder.clone();
+    let folder = target
+        .as_ref()
+        .map_or_else(|| state.project.current.clone(), |(p, _)| p.clone());
+    if crate::os_drop::hovering(ui.ctx()) {
+        let caption = format!("Import into {}", state.project.display_path(&folder));
+        if let Some((_, rect)) = target {
+            crate::os_drop::highlight(ui, rect, "");
+        }
+        crate::os_drop::highlight(ui, state.project.drop_rect, &caption);
+    }
+    if crate::os_drop::peek(ui.ctx()).is_empty() {
+        return;
+    }
+    let paths = crate::os_drop::take(ui.ctx());
+    state.push(Action::ImportFiles {
+        paths,
+        folder,
+        instantiate: false,
+    });
 }
 
 /// Double-clicked file: scenes open in the editor, scripts in the Code Editor, other files in
@@ -238,12 +281,21 @@ pub(crate) fn open_file(state: &mut EditorState, opened: Option<PathBuf>) {
 }
 
 fn apply_requests(ui: &Ui, state: &mut EditorState, req: Requests) {
+    // Create ▸ in a folder's own menu: open it, so the new asset is made (and renamed) there.
+    if let Some(dir) = req.create_in
+        && dir != state.project.current
+    {
+        state.project.search.clear();
+        state.project.open_folder(dir);
+    }
     for a in req.actions {
         state.push(a);
     }
     if let Some(p) = req.rename {
         state.project.selected = Some(p.clone());
         state.project.start_rename(p);
+        state.project.rename_hold_guard = req.rename_by_hold;
+        state.project.rename_in_tree = req.rename_in_tree;
     }
     if let Some(p) = req.delete {
         state.project.selected = Some(p.clone());
@@ -324,12 +376,12 @@ fn list_view(
             let r = resp.rect.with_min_x(resp.rect.left() + 26.0);
             project_menus::rename_field(ui, r, browser, req);
         }
-        item_interaction(&resp, e, browser, open, req);
+        item_interaction(ui, &resp, e, browser, open, req);
     }
 }
 
 fn is_renaming(browser: &ProjectBrowser, e: &AssetEntry) -> bool {
-    browser.renaming.as_ref().is_some_and(|(p, _)| *p == e.path)
+    !browser.rename_in_tree && browser.renaming.as_ref().is_some_and(|(p, _)| *p == e.path)
 }
 
 fn grid_view(
@@ -391,7 +443,7 @@ fn grid_view(
                     theme::TEXT,
                 );
             }
-            item_interaction(&resp, e, browser, open, req);
+            item_interaction(ui, &resp, e, browser, open, req);
         }
     });
 }
@@ -492,6 +544,7 @@ fn toggle_word(text: &str, word: &str, on: bool) -> String {
 /// Click selects, double-click opens, right-click shows the menu; drag carries the asset,
 /// and folders accept dropped assets.
 fn item_interaction(
+    ui: &Ui,
     resp: &egui::Response,
     e: &AssetEntry,
     browser: &mut ProjectBrowser,
@@ -511,10 +564,23 @@ fn item_interaction(
     }
     // Assets can be dragged onto objects (Scene view, Hierarchy, Inspector slots) or folders.
     if let Some(rel) = rel {
-        resp.dnd_set_drag_payload(AssetPayload(rel));
+        crate::hold_rename::drag_payload(ui, resp, AssetPayload(rel));
     }
     if e.is_dir && !read_only {
         drop_target(resp, &browser.root, &e.path, req);
+    }
+    // Press and hold renames it (a bar along the bottom fills meanwhile).
+    if !read_only && !is_renaming(browser, e) {
+        let hold = crate::hold_rename::check(ui, resp);
+        crate::hold_rename::paint(ui, resp.rect, hold);
+        if hold == crate::hold_rename::Hold::Fire {
+            req.rename = Some(e.path.clone());
+            req.rename_by_hold = true;
+        }
+    }
+    // Files dragged in from the OS land in the folder under the pointer.
+    if e.is_dir && !read_only && resp.contains_pointer() {
+        browser.os_drop_folder = Some((e.path.clone(), resp.rect));
     }
 }
 
@@ -714,3 +780,7 @@ mod tests {
         std::fs::remove_dir_all(root).ok();
     }
 }
+
+#[cfg(test)]
+#[path = "project_tests.rs"]
+mod dock_tests;

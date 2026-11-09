@@ -1068,10 +1068,14 @@ fn groups(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View,
         if let Some(mut text) = renaming {
             let edit = ui.put(
                 bar.shrink(3.0),
-                egui::TextEdit::singleline(&mut text).font(FontId::proportional(13.0 * z)),
+                egui::TextEdit::singleline(&mut text)
+                    .id(egui::Id::new(("script_graph_group_rename", gi)))
+                    .font(FontId::proportional(13.0 * z)),
             );
-            edit.request_focus();
-            if edit.lost_focus() {
+            let outcome = crate::hold_rename::field(ui, &edit, &text);
+            if outcome == crate::hold_rename::Field::Cancel {
+                s.script_graph.canvas.renaming = None;
+            } else if outcome == crate::hold_rename::Field::Commit {
                 let title = text.clone();
                 s.script_graph.edit("Rename Group", false, |g| {
                     if let Some(gr) = g.groups.get_mut(gi) {

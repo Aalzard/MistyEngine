@@ -3277,3 +3277,28 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   the common ones, tutorials' steps) is still English; the Hierarchy and Project trees,
   submenus and panel toolbars are not mirrored; text fields edit Arabic in logical order
   without shaping.
+## Round 25 — Project window fixes (branch r25-project-fixes)
+
+### Done (docs/pending/r25-project-fixes.md)
+- Right-click anywhere in the Project window's content (grid, list, empty folders, gaps) and
+  the folder tree's empty space opens the folder menu; Create ▸ in a tree folder's menu makes
+  the asset there. Same for the Hierarchy's empty space and the Timeline's track headers.
+- Inline renames keep the keyboard: stable ids, no layout jump, and a lost focus only ends the
+  rename after a click elsewhere or a key. New assets and folders start renaming with the whole
+  name selected, scrolled into view.
+- Files and folders dragged in from the desktop are copied (recursively) into the folder under
+  the pointer or the open folder and imported, with a drop outline; on the Hierarchy or Scene
+  view models and prefabs are also instantiated.
+- Show in Explorer opens the right folder (or selects the file) also with spaces in the path
+  (raw `explorer` command line); macOS / Linux equivalents.
+- Files added, removed or renamed by other programs appear without leaving the folder and are
+  imported: listed folders' stamps come from the background file watch, which now also wakes
+  an idle editor.
+- New: press and hold 1.5 s on a Project item or Hierarchy object to rename it (a bar fills;
+  moving cancels). Timeline track, Input Actions, Shader / Script Graph group renames that could
+  never end (focus asked every frame) now end on Enter / click away.
+
+### Not done yet
+- Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
+  on Windows the drop target is the panel/folder last under the pointer (winit reports no
+  pointer moves during an OS drag).
