@@ -1,0 +1,460 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "OnUpdate",
+      "position": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Sequence",
+      "position": [
+        250.0,
+        0.0
+      ],
+      "params": {
+        "count": "4"
+      }
+    },
+    {
+      "id": 3,
+      "type": "Api",
+      "position": [
+        250.0,
+        220.0
+      ],
+      "params": {
+        "member": "GetAxis",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Horizontal"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "Api",
+      "position": [
+        250.0,
+        330.0
+      ],
+      "params": {
+        "member": "GetAxis",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Axis Name": {
+          "String": "Vertical"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "MakeVector3",
+      "position": [
+        500.0,
+        264.0
+      ]
+    },
+    {
+      "id": 6,
+      "type": "Magnitude",
+      "position": [
+        750.0,
+        264.0
+      ]
+    },
+    {
+      "id": 7,
+      "type": "Clamp01",
+      "position": [
+        1000.0,
+        264.0
+      ]
+    },
+    {
+      "id": 8,
+      "type": "Api",
+      "position": [
+        500.0,
+        461.99997
+      ],
+      "params": {
+        "member": "GetKey",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Key": {
+          "String": "left shift"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        572.0
+      ],
+      "params": {
+        "name": "Run Speed"
+      }
+    },
+    {
+      "id": 10,
+      "type": "GetVariable",
+      "position": [
+        500.0,
+        682.0
+      ],
+      "params": {
+        "name": "Walk Speed"
+      }
+    },
+    {
+      "id": 11,
+      "type": "Select",
+      "position": [
+        750.0,
+        528.0
+      ]
+    },
+    {
+      "id": 12,
+      "type": "MultiplyFloat",
+      "position": [
+        1250.0,
+        330.0
+      ]
+    },
+    {
+      "id": 13,
+      "type": "SetVariable",
+      "position": [
+        1500.0,
+        0.0
+      ],
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "id": 14,
+      "type": "Normalize",
+      "position": [
+        750.0,
+        836.0
+      ]
+    },
+    {
+      "id": 15,
+      "type": "GetVariable",
+      "position": [
+        750.0,
+        946.00006
+      ],
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "id": 16,
+      "type": "ScaleVector3",
+      "position": [
+        1000.0,
+        836.0
+      ]
+    },
+    {
+      "id": 17,
+      "type": "ScaleVector3",
+      "position": [
+        1250.0,
+        836.0
+      ]
+    },
+    {
+      "id": 18,
+      "type": "Api",
+      "position": [
+        1750.0,
+        176.0
+      ],
+      "params": {
+        "args": "motion",
+        "member": "Move",
+        "mode": "call",
+        "owner": "#CharacterController"
+      }
+    },
+    {
+      "id": 19,
+      "type": "GetVariable",
+      "position": [
+        1750.0,
+        484.0
+      ],
+      "params": {
+        "name": "Speed"
+      }
+    },
+    {
+      "id": 20,
+      "type": "Api",
+      "position": [
+        2000.0,
+        352.0
+      ],
+      "params": {
+        "member": "SetFloat",
+        "mode": "call",
+        "owner": "#Animator"
+      },
+      "values": {
+        "Damp Time": {
+          "Float": 0.1
+        },
+        "Name": {
+          "String": "Speed"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "Api",
+      "position": [
+        1750.0,
+        704.0
+      ],
+      "params": {
+        "member": "GetKeyDown",
+        "mode": "call",
+        "owner": "Input"
+      },
+      "values": {
+        "Key": {
+          "String": "space"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "Branch",
+      "position": [
+        2000.0,
+        594.0
+      ]
+    },
+    {
+      "id": 23,
+      "type": "Api",
+      "position": [
+        2250.0,
+        594.0
+      ],
+      "params": {
+        "member": "SetTrigger",
+        "mode": "call",
+        "owner": "#Animator"
+      },
+      "values": {
+        "Name": {
+          "String": "Jump"
+        }
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "output": "Out",
+      "to": 2,
+      "input": "In"
+    },
+    {
+      "from": 3,
+      "output": "Result",
+      "to": 5,
+      "input": "X"
+    },
+    {
+      "from": 4,
+      "output": "Result",
+      "to": 5,
+      "input": "Z"
+    },
+    {
+      "from": 5,
+      "output": "Vector",
+      "to": 6,
+      "input": "Vector"
+    },
+    {
+      "from": 6,
+      "output": "Result",
+      "to": 7,
+      "input": "Value"
+    },
+    {
+      "from": 8,
+      "output": "Result",
+      "to": 11,
+      "input": "Condition"
+    },
+    {
+      "from": 9,
+      "output": "Value",
+      "to": 11,
+      "input": "True"
+    },
+    {
+      "from": 10,
+      "output": "Value",
+      "to": 11,
+      "input": "False"
+    },
+    {
+      "from": 7,
+      "output": "Result",
+      "to": 12,
+      "input": "A"
+    },
+    {
+      "from": 11,
+      "output": "Result",
+      "to": 12,
+      "input": "B"
+    },
+    {
+      "from": 2,
+      "output": "Then 0",
+      "to": 13,
+      "input": "In"
+    },
+    {
+      "from": 12,
+      "output": "Result",
+      "to": 13,
+      "input": "Value"
+    },
+    {
+      "from": 5,
+      "output": "Vector",
+      "to": 14,
+      "input": "Vector"
+    },
+    {
+      "from": 14,
+      "output": "Result",
+      "to": 16,
+      "input": "Vector"
+    },
+    {
+      "from": 15,
+      "output": "Value",
+      "to": 16,
+      "input": "Scale"
+    },
+    {
+      "from": 16,
+      "output": "Result",
+      "to": 17,
+      "input": "Vector"
+    },
+    {
+      "from": 1,
+      "output": "Delta Time",
+      "to": 17,
+      "input": "Scale"
+    },
+    {
+      "from": 2,
+      "output": "Then 1",
+      "to": 18,
+      "input": "In"
+    },
+    {
+      "from": 17,
+      "output": "Result",
+      "to": 18,
+      "input": "motion"
+    },
+    {
+      "from": 2,
+      "output": "Then 2",
+      "to": 20,
+      "input": "In"
+    },
+    {
+      "from": 19,
+      "output": "Value",
+      "to": 20,
+      "input": "Value"
+    },
+    {
+      "from": 2,
+      "output": "Then 3",
+      "to": 22,
+      "input": "In"
+    },
+    {
+      "from": 21,
+      "output": "Result",
+      "to": 22,
+      "input": "Condition"
+    },
+    {
+      "from": 22,
+      "output": "True",
+      "to": 23,
+      "input": "In"
+    }
+  ],
+  "variables": [
+    {
+      "name": "Walk Speed",
+      "type": "float",
+      "value": {
+        "Float": 2.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Run Speed",
+      "type": "float",
+      "value": {
+        "Float": 6.0
+      },
+      "scope": "Object"
+    },
+    {
+      "name": "Speed",
+      "type": "float",
+      "value": {
+        "Float": 0.0
+      }
+    }
+  ],
+  "notes": [
+    {
+      "position": [
+        0.0,
+        -154.0
+      ],
+      "size": [
+        460.0,
+        70.0
+      ],
+      "text": "Animation: work out how fast the character moves (Shift runs), move it, and hand that speed to the Animator, whose transitions pick Idle, Walk or Run. Space jumps."
+    }
+  ]
+}

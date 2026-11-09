@@ -111,8 +111,11 @@ pub fn load(s: &mut EditorState) {
     let q = &s.project_settings.quality;
     misty_engine::quality::install(q, q.default_level);
     install_accessibility(s);
-    // PlayerPrefs in Play mode are kept per project, outside version control.
-    misty_engine::prefs::open(&s.project.root.join("Library/PlayerPrefs.json"));
+    // PlayerPrefs in Play mode are kept per project, outside version control. (Tests keep
+    // their own prefs files: opening this one would swap the store under them.)
+    if !cfg!(test) {
+        misty_engine::prefs::open(&s.project.root.join("Library/PlayerPrefs.json"));
+    }
 }
 
 /// Player ▸ Accessibility as the settings in effect: the Game view shows the colour-blind
