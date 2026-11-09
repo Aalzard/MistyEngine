@@ -1,6 +1,60 @@
 Misty Engine changelog
 ======================
 
+0.3.0 - audio, terrain tools, VFX, Shader Graph and materials (November 2026)
+-----------------------------------------------------------------------------
+
+Audio
+- Audio Mixer on its own graph: sends, receives and Duck Volume, nested mixers, weighted
+  snapshot blends; new Chorus, Flange, Pitch Shifter and ParamEQ effects, each with bypass, wet
+  mix and a reorderable chain; live edits never restart playing sounds.
+- 3D audio: a head model with ear delay and head shadow (Spatialize), custom rolloff curves,
+  Doppler. Clips load as Decompress On Load, Compressed In Memory or Streaming. AudioDemo2.
+
+Timeline and cameras
+- Camera and Control tracks, sub-timelines, record mode, ripple editing, edit-mode preview.
+- Free Look cameras, impulses (camera shake), group framing, blend lists, confiner. CutsceneDemo.
+
+Terrain
+- Paint Holes (render, shadows and collider), up to 16 paint layers with height blending.
+- Paint Details: several grass species and detail meshes, each with its own density.
+- Place Objects brush for prefabs (spacing, scale, rotation, slope and height limits, erase);
+  Paint Trees gains slope and height limits. World Builder can scatter to terrain trees.
+  TerrainToolsDemo.
+
+Visual effects
+- GPU effects: back-to-front sorting, mesh output, depth-buffer collision, GPU events (spawn on
+  death or collision), sub-graphs, trails and ribbons.
+- Particle System: curves and random ranges on every value, gradients; Noise, Collision,
+  Trails, Texture Sheet Animation, Sub Emitters, velocity/force/rotation modules. VfxDemo2.
+
+Shader Graph and materials
+- Shader Graph: sub-graphs, Boolean and Enum keywords (compiled as variants), Custom Function
+  node, groups, copy/paste between graphs, save prompt, vertex colours, full lit master stack
+  and a Decal target. Example graphs.
+- Standard Lit v2: detail maps, parallax occlusion, clear coat, translucency, anisotropy and a
+  specular tint, each built only into the materials that use it. glTF KHR material extensions
+  and texture transform. Sphere / Cube / Plane material previews. MaterialDemo2.
+
+Tools
+- Profiler: GPU per-pass timings, Physics, Audio and UI modules, thread rows, Save / Load
+  captures, Player connection. Frame Debugger: indirect draws, bindings, depth / normals / GI /
+  emission views, step through draws. Memory Profiler splits GPU and CPU.
+- Build Profiles (File > Build Profiles): per-platform scenes, defines, texture and quality
+  overrides, output folder; `misty --build ... --profile <name>`. Headless dedicated server
+  builds. Local Achievements API for Lua. A build report after every build.
+- Version Control window: git status badges, stage and commit, text diff, scene diff and a
+  merge helper for conflicted scenes.
+- Lua API reference (Help > Scripting Reference, `misty --api-docs`).
+- Accessibility: editor UI scale, screen-reader names, runtime text scale and colour-blind
+  filters.
+
+Fixes
+- Wireframe and Shaded Wireframe draw on the GPU (terrain, trees, grass, virtual geometry)
+  instead of crashing on large scenes.
+- Deleted water (or a camera that was under it) no longer leaves a dark box on screen.
+- Convert to Virtual Geometry explains when there is nothing left to convert.
+
 0.2.1 - rocks, flowers and smoother shadows (November 2026)
 -----------------------------------------------------------
 
