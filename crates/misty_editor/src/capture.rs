@@ -323,6 +323,17 @@ pub fn apply_env(
         s.selection.clear();
         s.inspector_asset = Some(rel);
     }
+    // `MISTY_CREATE=Folder` (or Material): Create ▸ that asset in the open Project folder, so
+    // the shot shows the new item renaming (with `MISTY_ASSET` to pick the folder).
+    if let Some(kind) = std::env::var_os("MISTY_CREATE") {
+        let kind = kind.to_string_lossy();
+        if let Some(k) = crate::actions::AssetKind::ALL
+            .into_iter()
+            .find(|k| k.label().eq_ignore_ascii_case(&kind))
+        {
+            s.push(crate::actions::Action::CreateAsset(k));
+        }
+    }
     // `MISTY_PREVIEW_SHAPE=plane` (sphere / cube / plane): the material Inspector preview's shape.
     if let Some(shape) = std::env::var_os("MISTY_PREVIEW_SHAPE") {
         use crate::material_preview::PreviewShape;
