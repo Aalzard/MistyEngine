@@ -210,8 +210,9 @@ impl Capture {
             if let Some(&median) = t.get(t.len() / 2) {
                 let mean = t.iter().sum::<f32>() / t.len() as f32;
                 let p90 = t[(t.len() * 9 / 10).min(t.len() - 1)];
+                let p99 = t[(t.len() * 99 / 100).min(t.len() - 1)];
                 eprintln!(
-                    "frame time over {} frames: median {median:.2} ms ({:.0} FPS), mean {mean:.2} ms ({:.0} FPS), p90 {p90:.2} ms",
+                    "frame time over {} frames: median {median:.2} ms ({:.0} FPS), mean {mean:.2} ms ({:.0} FPS), p90 {p90:.2} ms, p99 {p99:.2} ms",
                     t.len(),
                     1000.0 / median,
                     1000.0 / mean
