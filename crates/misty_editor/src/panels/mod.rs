@@ -76,6 +76,11 @@ impl TabViewer for PanelViewer<'_> {
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {
+        let title = tab.title();
+        misty_engine::profile_scope!(
+            format!("Panel: {title}"),
+            misty_engine::profiler::Category::Ui
+        );
         if crate::tutorials::targets::enabled() {
             let id = format!("panel.{}", tab.title());
             crate::tutorials::targets::mark(ui, &id, ui.max_rect());

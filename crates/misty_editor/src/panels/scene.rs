@@ -121,6 +121,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             } else {
                 state.editor_scripts.gizmo_frame = Default::default();
             }
+            let gather = misty_engine::profiler::Scope::begin_lazy(|| "SceneView.Gather", None);
             let mut meshes = render_scene::cached_draws(state);
             // Prefab Mode in context: the scene around the instance, dimmed.
             if let Some(context) = crate::prefab_mode::context_draws(state) {
@@ -140,6 +141,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                     meshes = std::sync::Arc::new(all);
                 }
             }
+            let gizmo_scope =
+                misty_engine::profiler::Scope::begin_lazy(|| "SceneView.Gizmos", None);
             let mut lines = if sv.gizmos {
                 let mut l = gizmos::scene_lines(&state.scene, &state.selection);
                 crate::probe_gizmos::lines(&mut l, state, sv.draw_mode == PROBES_MODE);
@@ -182,6 +185,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             }
             let mut overlay = gizmos::nav_overlay(state, ui.ctx(), &mut lines);
             crate::mesh_builder::lines(state, &camera, &mut lines, &mut overlay);
+            drop(gizmo_scope);
             let terrains = misty_engine::terrain::draws(&state.scene);
             let water = misty_engine::water::draws(&state.scene);
             let particles = misty_engine::particles::batches(&state.scene);
@@ -312,9 +316,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                 &state.scene,
                 true,
             ));
+            drop(gather);
             let texture = gpu.render(ViewId::Scene, size, &frame, &effects);
             // Canvases in the world, drawn with the scene's depth.
-            gpu.render_scene_ui(&state.scene, &camera, crate::ui_gizmos::game_screen(state));
+            {
+                misty_engine::profile_scope!("SceneView.WorldUi");
+                gpu.render_scene_ui(&state.scene, &camera, crate::ui_gizmos::game_screen(state));
+            }
             crate::scene_camera::bench::scene_rendered(gpu);
             // Grass chunks, terrain textures or trees still streaming in: keep drawing so they
             // show up as they land.
@@ -341,6 +349,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     }
     // UI outlines (and Visualize Navigation), object icons and click-to-select (Ctrl toggles,
     // Shift adds).
+    let overlay_scope = misty_engine::profiler::Scope::begin_lazy(|| "SceneView.Overlays", None);
     let ui_layout = crate::ui_gizmos::scene_layout(state, &camera, rect);
     if state.scene_view.gizmos {
         crate::ui_gizmos::paint(ui, rect, state, &ui_layout);
@@ -369,6 +378,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
     {
         handles::show(ui, state, &camera, rect, hovered);
     }
+    drop(overlay_scope);
     let suppressed = state.handles.click_suppressed() || brush_click;
     // Mesh Builder element modes pick vertices / edges / faces instead of objects.
     let element_click =

@@ -564,6 +564,8 @@ impl EditorApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(30));
         }
         let mut renderer_reloaded = Vec::new();
+        let reload_scope =
+            misty_engine::profiler::Scope::begin_lazy(|| "Editor.ReloadAssets", None);
         if let Some(gpu) = self.gpu.as_mut() {
             // Textures, models, shaders and effect graphs reload when their files change (Edit
             // mode only).
@@ -580,11 +582,15 @@ impl EditorApp {
                 s.console.warn(w);
             }
         }
+        drop(reload_scope);
         if !s.play.in_play_mode() {
             self.sync_cursor(ctx);
             let s = &mut self.state;
             // Spline Extrude meshes and Spline Instantiate copies follow their splines.
-            misty_engine::splines::update(&mut s.scene);
+            {
+                misty_engine::profile_scope!("Editor.Splines");
+                misty_engine::splines::update(&mut s.scene);
+            }
             // Selected Particle Systems play in the Scene view.
             if crate::particle_preview::tick(s, ctx.input(|i| i.stable_dt)) {
                 ctx.request_repaint();
@@ -594,17 +600,26 @@ impl EditorApp {
                 ctx.request_repaint();
             }
             // Scripts reload when their files change; syntax errors go to the Console.
+            let scripts_scope =
+                misty_engine::profiler::Scope::begin_lazy(|| "Editor.PollScripts", None);
             for err in s.assets.poll_scripts() {
                 s.console.log(LogLevel::Error, err);
             }
+            drop(scripts_scope);
             // Assets added, copied or moved outside the editor get meta files and show up.
+            let guids_scope =
+                misty_engine::profiler::Scope::begin_lazy(|| "Editor.PollGuids", None);
             if s.assets.poll_guids() {
                 s.refresh_assets();
             }
+            drop(guids_scope);
             // Open scenes and editor-held assets follow their files (see `live_reload`).
+            let live_scope =
+                misty_engine::profiler::Scope::begin_lazy(|| "Editor.LiveReload", None);
             if crate::live_reload::frame(s, renderer_reloaded) {
                 ctx.request_repaint();
             }
+            drop(live_scope);
             // Prefab Mode's Auto Save.
             crate::prefab_mode::update(s, ctx);
             return;
