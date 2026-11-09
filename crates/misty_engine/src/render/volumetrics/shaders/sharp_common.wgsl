@@ -9,6 +9,9 @@ struct SharpShafts {
     // x = froxel reach (view depth), y = camera near, z = camera far, w = 1 when the jitter
     // changes every frame.
     range: vec4<f32>,
+    // x = share of a march texel's footprint the sun cascade's texel must reach at a sample
+    // (0 = always the tightest cascade that holds it).
+    cascades: vec4<f32>,
 };
 
 // View depth of a [0, 1] depth-buffer value (perspective, depth 0 at the near plane).

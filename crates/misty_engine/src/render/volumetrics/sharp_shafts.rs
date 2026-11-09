@@ -17,6 +17,12 @@ const COMPOSITE_SRC: &str = include_str!("shaders/sharp_composite.wgsl");
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 /// Weight of the reprojected history (after clamping).
 const HISTORY_WEIGHT: f32 = 0.85;
+/// A march sample reads the first sun cascade whose texel is at least this share of the
+/// march texel's footprint at the sample (performance round 22, `fast_paths::shaft_cascades`).
+/// The tightest cascade's finer texels only alias at the march's spacing (the temporal
+/// accumulation averages them away), and reading a 4096² cascade there was most of the
+/// pass's cost on Ultra.
+const FOOTPRINT_SHARE: f32 = 0.5;
 
 /// Compute source (after the froxel common code).
 pub(super) fn compute_source() -> String {
@@ -35,6 +41,7 @@ pub(super) struct SharpUniform {
     pub size: [f32; 4],
     pub params: [f32; 4],
     pub range: [f32; 4],
+    pub cascades: [f32; 4],
 }
 
 impl SharpUniform {
@@ -64,6 +71,16 @@ impl SharpUniform {
                 frame.camera.near,
                 frame.camera.far,
                 if denoise { 1.0 } else { 0.0 },
+            ],
+            cascades: [
+                if crate::render::fast_paths::shaft_cascades() {
+                    FOOTPRINT_SHARE
+                } else {
+                    0.0
+                },
+                0.0,
+                0.0,
+                0.0,
             ],
         }
     }

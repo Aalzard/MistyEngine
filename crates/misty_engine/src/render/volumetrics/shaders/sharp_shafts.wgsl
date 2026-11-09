@@ -2,7 +2,8 @@
 // sharp_common.wgsl). `march`: one ray per texel at reduced resolution from the eye to the
 // depth buffer (capped by the froxel reach), blue-noise start offset, sampling the same density
 // and phase as the froxels (with fog noise, the extinction is read from the lit froxels) and
-// the sun's tightest cascade with a hard 2×2 PCF lookup.
+// the sun's cascades with a hard 2×2 PCF lookup (the tightest one whose texels the march
+// can resolve).
 // `accumulate`: reprojects last frame's result and blends it in, clamped to this frame's
 // neighbourhood while the view moves (so thin shafts don't smear). rgb = sun light scattered towards the
 // eye, a = view depth of the texel's pixel.
@@ -50,6 +51,18 @@ fn march(@builtin(global_invocation_id) id: vec3<u32>) {
     var transmittance = 1.0;
     var scatter = vec3<f32>(0.0);
     var cascade = 0;
+    // The sun cascades' texels (metres) and the march texel's footprint per metre along the
+    // ray: a sample reads the first cascade whose texel is at least `sharp.cascades.x` of
+    // its footprint (finer texels only alias at the march's spacing).
+    let footprint = sharp.cascades.x
+        * distance(ray, froxel_ray(uv + vec2<f32>(sharp.params.w / sharp.size.z, 0.0)));
+    let map_size = f32(textureDimensions(sun_shadow_map).x);
+    let last_cascade = i32(fx.counts.z) - 1;
+    var cascade_texel = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+    for (var c = 0; c < 4; c++) {
+        let m = fx.sun_cascades[c];
+        cascade_texel[c] = 2.0 / max(length(vec3<f32>(m[0].x, m[1].x, m[2].x)) * map_size, 1e-6);
+    }
     for (var i = 0u; i < steps; i++) {
         let s = start + (f32(i) + j) * dt;
         let p = fx.eye.xyz + ray * s;
@@ -69,6 +82,9 @@ fn march(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         var lit = 1.0;
         if (li.shadow.x > 0.5) {
+            while (cascade < last_cascade && cascade_texel[cascade] < s * footprint) {
+                cascade++;
+            }
             let sc = sun_cascade_shadow_from(p, cascade);
             cascade = i32(sc.y);
             lit = mix(1.0, sc.x, li.shadow.z);
