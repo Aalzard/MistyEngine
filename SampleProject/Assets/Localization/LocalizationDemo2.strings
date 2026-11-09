@@ -1,0 +1,81 @@
+{
+  "locales": [
+    "en",
+    "tr",
+    "ar"
+  ],
+  "entries": [
+    {
+      "key": "title",
+      "values": {
+        "ar": "عرض اللغات",
+        "en": "Languages Demo",
+        "tr": "Dil Demosu"
+      }
+    },
+    {
+      "key": "greeting",
+      "values": {
+        "ar": "أهلًا بك يا {name}!",
+        "en": "Welcome, {name}!",
+        "tr": "Hoş geldin, {name}!"
+      }
+    },
+    {
+      "key": "city",
+      "values": {
+        "ar": "المحطة التالية: {city:upper}",
+        "en": "Next stop: {city:upper}",
+        "tr": "Sıradaki durak: {city:upper}"
+      }
+    },
+    {
+      "key": "stars",
+      "values": {
+        "ar": "{0:plural:لا نجوم|نجمة واحدة|نجمتان|{} نجوم|{} نجمة|{} نجمة}",
+        "en": "{0:plural:{} star|{} stars}",
+        "tr": "{0:plural:{} yıldız}"
+      }
+    },
+    {
+      "key": "version",
+      "values": {
+        "ar": "الإصدار {0} جاهز.",
+        "en": "Version {0} is ready.",
+        "tr": "Sürüm {0} hazır."
+      }
+    },
+    {
+      "key": "hint",
+      "values": {
+        "ar": "اضغط Space للقفز (2× للقفز المزدوج).",
+        "en": "Press Space to jump (2× for a double jump).",
+        "tr": "Zıplamak için Space tuşuna basın (çift zıplama için 2×)."
+      }
+    },
+    {
+      "key": "rich",
+      "values": {
+        "ar": "نص <b>عريض</b> و<i>مائل</i> و<color=#ffd25a>ذهبي</color>",
+        "en": "<b>Bold</b>, <i>italic</i> and <color=#ffd25a>gold</color> text",
+        "tr": "<b>Kalın</b>, <i>italik</i> ve <color=#ffd25a>altın</color> metin"
+      }
+    },
+    {
+      "key": "button.star",
+      "values": {
+        "ar": "+1 نجمة",
+        "en": "+1 Star",
+        "tr": "+1 Yıldız"
+      }
+    },
+    {
+      "key": "label.language",
+      "values": {
+        "ar": "اللغة",
+        "en": "Language",
+        "tr": "Dil"
+      }
+    }
+  ]
+}

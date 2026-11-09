@@ -112,6 +112,8 @@ mod sample_lighting;
 #[cfg(test)]
 mod sample_lightmap;
 #[cfg(test)]
+mod sample_localization2;
+#[cfg(test)]
 mod sample_materials;
 #[cfg(test)]
 mod sample_materials2;
