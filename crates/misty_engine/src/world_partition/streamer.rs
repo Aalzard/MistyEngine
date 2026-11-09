@@ -208,8 +208,8 @@ pub struct Streamer {
     logs: Vec<String>,
     /// Time the hooks took per added object (ms, smoothed): kept free in the budget.
     hook_ms: f32,
-    /// Time a whole call of the hooks took (ms, smoothed): its fixed part.
-    flush_ms: f32,
+    /// Objects made but not started yet (physics bodies, scripts), oldest first.
+    starting: VecDeque<(CellCoord, Entity)>,
 }
 
 impl Default for Streamer {
@@ -234,7 +234,7 @@ impl Streamer {
             owner: None,
             logs: Vec::new(),
             hook_ms: 0.2,
-            flush_ms: 0.2,
+            starting: VecDeque::new(),
         }
     }
 
@@ -340,6 +340,7 @@ impl Streamer {
     /// Forget every cell (a new scene was opened); objects already in the world stay.
     pub fn reset(&mut self) {
         self.cells.clear();
+        self.starting.clear();
         self.owner = None;
         self.sources.clear();
     }
@@ -465,6 +466,7 @@ impl Streamer {
                     Phase::Adding { load, terrains, .. } => {
                         let id = load.id;
                         scene.abandon_streamed(load);
+                        self.starting.retain(|(cc, _)| *cc != c);
                         Phase::Removing {
                             id,
                             roots: scene.roots_in(id).into(),
@@ -564,6 +566,9 @@ impl Streamer {
         deadline: Instant,
         distance: &dyn Fn(CellCoord) -> f32,
     ) {
+        // Objects made in earlier frames start first (physics bodies, scripts), then new ones
+        // are made with what is left, then as many of those start as fit.
+        self.start_some(scene, hooks, deadline, true);
         let mut order: Vec<CellCoord> = self
             .cells
             .iter()
@@ -577,17 +582,12 @@ impl Streamer {
                 .cmp(&adding(b))
                 .then(distance(*a).total_cmp(&distance(*b)))
         });
-        // Physics bodies and scripts of what this frame adds start together at the end (one
-        // broad-phase update); their cost per object (measured) is kept free in the budget.
+        // Starting an object costs about this much: making one is only worth it with room left
+        // to start it this frame too.
         let per_root = Duration::from_secs_f32(self.hook_ms.max(0.0) / 1000.0);
-        let mut added: Vec<Entity> = Vec::new();
-        let mut first_name: Option<String> = None;
-        let flush = Duration::from_secs_f32(self.flush_ms.max(0.0) / 1000.0);
-        let room = |added: usize| deadline.checked_sub((per_root * (added as u32 + 1)).max(flush));
+        let mut made_any = false;
         'cells: for c in order {
-            // Some budget left starts at least one object, whatever the reservation says.
-            let full = room(added.len()).is_none_or(|end| Instant::now() >= end);
-            if Instant::now() >= deadline || (!added.is_empty() && full) {
+            if Instant::now() + per_root >= deadline && (made_any || Instant::now() >= deadline) {
                 break;
             }
             let cell = self.cells.get_mut(&c).expect("listed");
@@ -635,53 +635,95 @@ impl Streamer {
                     if self.stats.slowest.as_ref().is_none_or(|(_, w)| ms > *w) {
                         self.stats.slowest = Some((format!("adding {}", scene.name(*r)), ms));
                     }
-                    if first_name.is_none() {
-                        first_name = Some(scene.name(*r));
-                    }
                 }
-                added.extend(roots);
-                if room(added.len()).is_none_or(|end| Instant::now() >= end) {
+                made_any = true;
+                self.starting.extend(roots.into_iter().map(|r| (c, r)));
+                if Instant::now() + per_root >= deadline {
                     if !load.is_done() {
                         break 'cells;
                     }
                     break;
                 }
             }
-            if load.is_done() {
-                let Phase::Adding {
-                    load,
-                    terrains,
-                    bytes,
-                } = std::mem::replace(&mut cell.phase, Phase::Unloaded)
-                else {
-                    unreachable!()
-                };
-                for w in &load.report.warnings {
-                    self.logs.push(format!("{}: {w}", super::cell_name(c)));
-                }
-                cell.phase = Phase::Loaded {
-                    id: load.id,
-                    terrains,
-                    bytes,
-                };
-                self.stats.loads += 1;
+        }
+        self.start_some(scene, hooks, deadline, false);
+        self.finish_cells(scene);
+    }
+
+    /// Start objects waiting for their physics and scripts, as many as fit before `deadline`
+    /// (at least one when `first` and time is left, so starting always progresses).
+    fn start_some(
+        &mut self,
+        scene: &mut Scene,
+        hooks: &mut dyn StreamHooks,
+        deadline: Instant,
+        first: bool,
+    ) {
+        if self.starting.is_empty() {
+            return;
+        }
+        // One object at a time, the clock checked against what one costs (its peak, fading
+        // slowly), so a frame goes past the deadline by one misjudged object at most.
+        let track = |old: f32, new: f32| {
+            if new > old {
+                new
+            } else {
+                old * 0.97 + new * 0.03
+            }
+        };
+        let mut started = 0;
+        while let Some(&(_, e)) = self.starting.front() {
+            let each = Duration::from_secs_f32(self.hook_ms.max(0.0) / 1000.0);
+            let now = Instant::now();
+            let may = if started == 0 && first {
+                now < deadline
+            } else {
+                now + each < deadline
+            };
+            if !may {
+                break;
+            }
+            self.starting.pop_front();
+            if !scene.contains(e) {
+                continue;
+            }
+            let t = Instant::now();
+            hooks.added(scene, &[e]);
+            let ms = t.elapsed().as_secs_f32() * 1000.0;
+            self.hook_ms = track(self.hook_ms, ms);
+            started += 1;
+            if self.stats.slowest.as_ref().is_none_or(|(_, w)| ms > *w) {
+                self.stats.slowest = Some((format!("starting {}", scene.name(e)), ms));
             }
         }
-        if !added.is_empty() {
-            let t = Instant::now();
-            hooks.added(scene, &added);
-            let ms = t.elapsed().as_secs_f32() * 1000.0;
-            // Per object, smoothed (a frame of many objects and one of a few both count).
-            let each = ms / added.len() as f32;
-            // Peaks are kept and fade slowly, so the reservation errs on the safe side.
-            let track = |old: f32, new: f32| if new > old { new } else { old * 0.97 + new * 0.03 };
-            self.hook_ms = track(self.hook_ms, each);
-            self.flush_ms = track(self.flush_ms, ms);
-            if self.stats.slowest.as_ref().is_none_or(|(_, w)| ms > *w) {
-                let what = first_name.unwrap_or_default();
-                self.stats.slowest =
-                    Some((format!("starting {} objects ({what}, …)", added.len()), ms));
+    }
+
+    /// Cells whose objects are all made and started become Loaded (their proxy hides).
+    fn finish_cells(&mut self, scene: &mut Scene) {
+        let waiting: BTreeSet<CellCoord> = self.starting.iter().map(|(c, _)| *c).collect();
+        for (c, cell) in self.cells.iter_mut() {
+            let done = matches!(&cell.phase, Phase::Adding { load, .. } if load.is_done());
+            if !done || waiting.contains(c) {
+                continue;
             }
+            let Phase::Adding {
+                load,
+                terrains,
+                bytes,
+            } = std::mem::replace(&mut cell.phase, Phase::Unloaded)
+            else {
+                unreachable!()
+            };
+            scene.finish_streamed(load.id);
+            for w in &load.report.warnings {
+                self.logs.push(format!("{}: {w}", super::cell_name(*c)));
+            }
+            cell.phase = Phase::Loaded {
+                id: load.id,
+                terrains,
+                bytes,
+            };
+            self.stats.loads += 1;
         }
     }
 

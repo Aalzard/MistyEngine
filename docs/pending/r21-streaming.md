@@ -46,17 +46,30 @@ Code: `crates/misty_engine/src/world_partition/` (settings and grid in `mod.rs`,
      (`background::pool()`, below-normal priority) nearest first, up to *Parallel Loads* at once;
   2. each job reads the file (through the VFS, so paks work), parses it into object entries
      (`scene::streaming::parse`) and reads ahead what the objects name: terrain data (and the
-     tree models its trees use), models (into the model cache);
+     tree models its trees use), models (into the model cache), static Mesh Collider shapes
+     (`physics::shape_cache`: a triangle mesh BVH takes milliseconds) and the textures of the
+     materials (`render::texture::prefetch`: cached compressed blocks or the decoded image, so the
+     first draw only uploads; never an encode, which would hold a worker for seconds);
   3. on the main thread, within the **frame budget**: objects of unloading cells are removed one
      top-level subtree at a time, then parsed cells are added nearest first, one whole top-level
      subtree at a time (`Scene::continue_streamed`), checking the clock after each. Entity ids of
      a cell are all reserved up front, so references between objects work across slices; a
      subtree is never left half made, so physics (`add_subtree`) and scripts (Awake / Start) only
      see complete objects. Terrain data read on the pool goes into the terrain store first.
+     Objects made this way then start (physics bodies, scripts; `StreamHooks::added`, the
+     Runtime's `add_streamed_objects`, whose bodies join the broad phase in the next physics
+     step) one at a time, the clock checked against the measured cost of one (its peak, fading
+     slowly), so a frame passes the budget by one misjudged object at most. A cell counts as
+     loaded (its proxy hides, `IsAreaLoaded` is true) once its last object has started.
   4. A cell that should unload while being read or added is dropped or removed part way.
 - Unloading frees the cell's terrain data from the store (unless it has unsaved edits); the
   renderer drops GPU data of terrains not drawn for 600 frames and placed trees of terrains that
-  are gone.
+  are gone. While streaming, at most one terrain new to the GPU is uploaded per frame, and small
+  terrain grids (tiles) compute their normals in place instead of starting threads (on a busy
+  machine a thread start alone cost a 38 ms frame).
+- Player builds (Build Profiles) pack a World Partition's cell scenes (and through them the
+  tiles, trees, rocks and textures), its HLOD proxies and their material: the dependency walk
+  reads the cell list (`asset_deps`), since the component names only its folder.
 - Stats (`StreamingStats`): loaded / reading / waiting / adding / removing / failed cells, a
   memory estimate (file size × 3 plus terrain arrays), last and worst main-thread ms, frames over
   budget, loads, unloads, and the last 240 frames' times.

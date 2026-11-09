@@ -860,7 +860,17 @@ impl TerrainCache {
         // GPU data of terrains no longer drawn (streamed tiles that went away) is dropped.
         self.entries
             .retain(|_, g| g.used + UNUSED_FRAMES > frame || g.used == 0);
+        // While streaming, at most one terrain new to the GPU per frame (streamed tiles arrive
+        // one at a time; the rest wait a frame or two instead of piling into one).
+        let mut fresh = 0;
         for t in terrains {
+            if !self.entries.contains_key(&t.key) && super::terrain_grass::grass_streaming() {
+                fresh += 1;
+                if fresh > 1 {
+                    self.groups.push(None);
+                    continue;
+                }
+            }
             self.sync(device, queue, t);
             let layers = self.layers.get(device, queue, &t.data.layers);
             if let Some(g) = self.entries.get_mut(&t.key) {

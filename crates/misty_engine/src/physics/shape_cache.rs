@@ -60,7 +60,20 @@ pub fn prebuild(mesh: &MeshRef, scale: Vec3) {
     }
 }
 
+/// Colliders that found their shape built ahead / built it themselves (tests, benches).
+static HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static MISSES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// A shape built ahead for this mesh and scale, if any.
 pub fn take(mesh: &MeshRef, scale: Vec3) -> Option<rp::SharedShape> {
-    shapes().remove(&key(mesh, scale))
+    let shape = shapes().remove(&key(mesh, scale));
+    let counter = if shape.is_some() { &HITS } else { &MISSES };
+    counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    shape
+}
+
+/// (shapes found built ahead, shapes built on the spot) so far.
+pub fn counts() -> (u64, u64) {
+    use std::sync::atomic::Ordering::Relaxed;
+    (HITS.load(Relaxed), MISSES.load(Relaxed))
 }

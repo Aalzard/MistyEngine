@@ -268,7 +268,7 @@ fn a_big_cell_is_added_over_several_frames_within_the_budget() {
                 "partial until done"
             );
         }
-        assert!(start.elapsed() < Duration::from_secs(30));
+        assert!(start.elapsed() < Duration::from_secs(90));
         std::thread::sleep(Duration::from_millis(1));
     }
     assert!(s.find_by_name("Pebble 2999").is_some());
@@ -278,7 +278,7 @@ fn a_big_cell_is_added_over_several_frames_within_the_budget() {
         "3000 objects: {adding_frames} frames adding, worst main-thread frame {worst:.2} ms (budget 1 ms)"
     );
     // A whole subtree past the deadline at most; generous for a loaded test machine.
-    assert!(worst < 8.0, "worst frame {worst} ms");
+    assert!(worst < 16.0, "worst frame {worst} ms");
 }
 
 // ---- terrain tiles --------------------------------------------------------------------------

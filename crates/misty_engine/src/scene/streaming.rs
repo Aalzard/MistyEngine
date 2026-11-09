@@ -178,7 +178,7 @@ impl StreamedLoad {
 
 impl Scene {
     /// Start adding a parsed scene file as another loaded scene (`path` is project-relative):
-    /// its entry is listed at once, marked [`SceneEntry::partial`] until every object exists.
+    /// its entry is listed at once, marked [`SceneEntry::partial`] until [`Scene::finish_streamed`].
     pub fn begin_streamed(
         &mut self,
         path: &str,
@@ -220,8 +220,8 @@ impl Scene {
     }
 
     /// Create objects of `load` until `deadline` (at least one top-level subtree per call, so a
-    /// load always progresses). Returns the top-level objects made by this call; the entry stops
-    /// being partial once the last object exists.
+    /// load always progresses). Returns the top-level objects made by this call; the entry stays
+    /// partial until [`Scene::finish_streamed`].
     pub fn continue_streamed(&mut self, load: &mut StreamedLoad, deadline: Instant) -> Vec<Entity> {
         let mut roots = Vec::new();
         if !self.entry(load.id).is_some_and(|s| s.loaded) {
@@ -252,9 +252,6 @@ impl Scene {
         }
         if load.is_done() {
             crate::mesh_builder::sync(self);
-            if let Some(e) = self.scenes.iter_mut().find(|s| s.id == load.id) {
-                e.partial = false;
-            }
         }
         roots
     }
@@ -302,6 +299,14 @@ impl Scene {
             ));
         }
         self.attach(e, parent, None);
+    }
+
+    /// The streamed scene is complete (every object made, and started by the game): it stops
+    /// being [`SceneEntry::partial`].
+    pub fn finish_streamed(&mut self, id: SceneId) {
+        if let Some(e) = self.scenes.iter_mut().find(|s| s.id == id) {
+            e.partial = false;
+        }
     }
 
     /// Stop a streamed load part way: the objects made so far are removed with the scene's
@@ -399,6 +404,11 @@ mod tests {
             calls += 1;
         }
         assert_eq!(calls, 22);
+        assert!(
+            s.entry(load.id).unwrap().partial,
+            "until the game started them"
+        );
+        s.finish_streamed(load.id);
         assert!(!s.entry(load.id).unwrap().partial);
         assert!(s.entry(load.id).unwrap().streamed);
         assert!(
