@@ -255,18 +255,30 @@ pub fn canopy_slope(p: Vec2) -> (f32, Vec2) {
 /// grass_field.wgsl, which colours the blades and the ground under them).
 pub fn patches(p: Vec2, scale: f32) -> (f32, f32) {
     let q = p / scale.max(0.5);
-    // Broad sweeps a few patches across, patches, and smaller mottling inside them.
-    let lush = 0.3 * field_noise(q * 0.3 + 9.4)
-        + 0.45 * field_noise(q)
-        + 0.25 * field_noise(q * 2.3 + 17.1);
-    let dry = 0.3 * field_noise(q * 0.25 + 23.8)
-        + 0.4 * field_noise(q * 0.8 + 41.7)
-        + 0.3 * field_noise(q * 1.9 + 5.3);
     let smooth = |e0: f32, e1: f32, x: f32| {
         let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
         t * t * (3.0 - 2.0 * t)
     };
-    (smooth(0.5, 0.66, lush), smooth(0.52, 0.68, dry))
+    // Broad sweeps a few patches across, patches, and smaller mottling inside them. The
+    // last octave (0..1 × its weight) is read only where it can still move the smoothstep
+    // off 0 or 1: the same values with fewer lookups.
+    let lush_ab = 0.3 * field_noise(q * 0.3 + 9.4) + 0.45 * field_noise(q);
+    let lush = if lush_ab >= 0.66 {
+        1.0
+    } else if lush_ab + 0.25 > 0.5 {
+        smooth(0.5, 0.66, lush_ab + 0.25 * field_noise(q * 2.3 + 17.1))
+    } else {
+        0.0
+    };
+    let dry_ab = 0.3 * field_noise(q * 0.25 + 23.8) + 0.4 * field_noise(q * 0.8 + 41.7);
+    let dry = if dry_ab >= 0.68 {
+        1.0
+    } else if dry_ab + 0.3 > 0.52 {
+        smooth(0.52, 0.68, dry_ab + 0.3 * field_noise(q * 1.9 + 5.3))
+    } else {
+        0.0
+    };
+    (lush, dry)
 }
 
 /// Broad swathes -1..1 at terrain-local `p` for patches of `scale` metres (see
@@ -281,7 +293,12 @@ pub fn swathe(p: Vec2, scale: f32) -> f32 {
 /// Worn spots 0..1 at terrain-local `p`: bare dirt patches a metre or two across (see
 /// `grass_worn` in grass_field.wgsl, which shows the soil there).
 pub fn worn(p: Vec2) -> f32 {
-    let v = 0.7 * field_noise(p / 2.6 + 91.7) + 0.3 * field_noise(p / 0.9 + 17.3);
+    let a = 0.7 * field_noise(p / 2.6 + 91.7);
+    // (The fine octave adds at most 0.3: below the edge without it, the spot stays 0.)
+    if a + 0.3 <= 0.78 {
+        return 0.0;
+    }
+    let v = a + 0.3 * field_noise(p / 0.9 + 17.3);
     let t = ((v - 0.78) / 0.1).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
