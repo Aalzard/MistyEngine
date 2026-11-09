@@ -261,3 +261,39 @@ fn wheel_colliders_save_and_load() {
     assert_eq!(c.radius, 0.35);
     assert_eq!(loaded.to_json(), scene.to_json());
 }
+
+/// Gravity and mass changed while playing (the Racing template's settings): the wheels carry
+/// the new weight, and the car still rests at the spring target.
+#[test]
+fn gravity_and_mass_change_while_playing() {
+    let (mut scene, car, wheels) = car_scene(0.6);
+    let mut physics = build(&scene);
+    run(&mut scene, &mut physics, 3.0);
+    let load = |scene: &Scene| {
+        wheels
+            .iter()
+            .map(|w| {
+                let s = scene.world.get::<&WheelCollider>(*w).unwrap().state;
+                s.hit.map_or(0.0, |h| h.force)
+            })
+            .sum::<f32>()
+    };
+    assert!((load(&scene) - 1200.0 * 9.81).abs() < 600.0);
+    physics.set_gravity(Vec3::new(0.0, -3.0, 0.0));
+    assert_eq!(physics.gravity(), Vec3::new(0.0, -3.0, 0.0));
+    run(&mut scene, &mut physics, 3.0);
+    assert!(
+        (load(&scene) - 1200.0 * 3.0).abs() < 300.0,
+        "{}",
+        load(&scene)
+    );
+    physics.set_mass(car, 2400.0);
+    run(&mut scene, &mut physics, 3.0);
+    assert!(
+        (load(&scene) - 2400.0 * 3.0).abs() < 400.0,
+        "{}",
+        load(&scene)
+    );
+    let p = scene.world_position(car);
+    assert!((p.y - 0.5).abs() < 0.05, "rests on its wheels: {p}");
+}

@@ -3114,3 +3114,27 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   anisotropy direction map, thickness and transmission maps); real refraction for
   `KHR_materials_transmission`; parallax doesn't offset depth or self-shadow; area lights use the
   plain lobe; Shader Graph has no Parallax Occlusion Mapping node yet.
+
+## Round 22 — project templates (branch r22-templates)
+
+### Done (docs/pending/r22-templates.md)
+- New Project offers four templates: **MeadowDemo** (unchanged), **First Person** (endless white
+  plain, the First Person Player prefab, its head camera as the Main Camera), **Racing** and
+  **Floating Platform** (the old Standard, now with post-processing). **PP Ready** (the ocean
+  scene) is removed; `--new standard` still gives Floating Platform.
+- Every template starts with a global volume: AgX tonemapping, bloom, volumetric clouds and sun
+  shafts (MeadowDemo already had them; a test checks all four templates).
+- **Racing**: a 1.2 km closed spline circuit (Road extrude, red and white kerbs, start gantry and
+  chequered line, marker posts, tyre barriers in the corners, trees, grandstand, hills), a car on
+  four Wheel Colliders with three primitive bodies (Sport, Muscle, Kart), and Lua scripts in
+  `Assets/Scripts`: RaceCar (arcade grip, downforce, top speed, boost, reset to the track),
+  ChaseCamera, LapTimer and RaceSettings (car, gravity, mass, grip, top speed on keys shown in a
+  HUD panel). Generated textures only.
+- Lua: `Physics.gravity` (get/set), settable `Rigidbody.mass`, `WheelCollider.forwardStiffness`
+  and `sidewaysStiffness`.
+- Hub cards, thumbnails rendered from the scenes, README and release notes updated; tests create,
+  open and play every template, and drive the racing car round 40 % of the loop headlessly.
+
+### Not done yet
+- Banked curves (needs a Mesh Collider on the runtime spline mesh); the three car bodies share
+  one wheelbase and collider; no opponents, sound or gamepad in the Racing scripts.

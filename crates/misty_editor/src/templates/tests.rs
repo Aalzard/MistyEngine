@@ -1,47 +1,56 @@
 //! Template creation: every template makes a complete project whose scene loads with the
-//! promised objects, and renders on a GPU. `write_template_thumbnails` (ignored) renders the
-//! thumbnails shipped in `assets/templates/`.
+//! promised objects, starts with post-processing (bloom, tonemapping, volumetric clouds, sun
+//! shafts), opens in the editor, plays without a script error and renders on a GPU.
+//! `write_template_thumbnails` (ignored) renders the thumbnails shipped in `assets/templates/`.
 
 use std::path::{Path, PathBuf};
 
 use misty_engine::build::BuildSettings;
-use misty_engine::scene::{PostProcessVolume, Scene, Terrain};
-use misty_engine::water::WaterSurface;
+use misty_engine::scene::{Camera, PostProcessVolume, Scene, Terrain};
 
 use super::scenes::VOLUME;
 use super::{PROJECT_THUMBNAIL, SCENE, Template, create};
 
 fn temp_project(tag: &str) -> PathBuf {
+    let tag = tag.replace(' ', "");
     let dir = std::env::temp_dir().join(format!("misty_template_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir.join(format!("My {tag} Game"))
 }
 
+/// The scene's global volume (any name: MeadowDemo calls it "Global Volume").
 fn volume(scene: &Scene) -> PostProcessVolume {
-    let e = scene.find_by_name(VOLUME).expect("post-process volume");
+    let e = *scene
+        .active_with::<PostProcessVolume>()
+        .first()
+        .expect("post-process volume");
     (*scene.world.get::<&PostProcessVolume>(e).unwrap()).clone()
 }
 
-/// The `active` flag of every override, by name.
-fn overrides(v: &PostProcessVolume) -> Vec<(&'static str, bool)> {
-    vec![
+/// What every template starts with: tonemapping, bloom, volumetric clouds and sun shafts on.
+fn assert_post_processing(name: &str, scene: &Scene) {
+    let v = volume(scene);
+    assert!(v.enabled, "{name}: volume off");
+    for (what, on) in [
         ("tonemapping", v.tonemapping.active),
         ("bloom", v.bloom.active),
-        ("color adjustments", v.color_adjustments.active),
-        ("vignette", v.vignette.active),
-        ("fog", v.fog.active),
+        ("clouds", v.clouds.active && v.clouds.enabled),
         ("sun shafts", v.sun_shafts.active),
-        ("ambient occlusion", v.ambient_occlusion.active),
-        ("contact shadows", v.contact_shadows.active),
-        ("clouds", v.clouds.active),
-    ]
+    ] {
+        assert!(on, "{name}: {what} off");
+    }
+    assert!(v.bloom.intensity > 0.0 && v.sun_shafts.intensity > 0.0);
 }
 
-fn is_on(v: &PostProcessVolume, name: &str) -> bool {
-    overrides(v).iter().any(|(n, on)| *n == name && *on)
+/// The enabled camera tagged MainCamera, named "Main Camera".
+fn main_camera(scene: &Scene) -> misty_engine::hecs::Entity {
+    let cam = scene.find_by_name("Main Camera").expect("Main Camera");
+    assert_eq!(scene.game_object(cam).tag, "MainCamera");
+    assert!(scene.world.get::<&Camera>(cam).unwrap().enabled);
+    cam
 }
 
-/// Create the template's project and check the files every project gets.
+/// Create a generated template's project and check the files every project gets.
 fn create_checked(template: Template) -> (PathBuf, Scene) {
     let root = temp_project(template.name());
     let start = std::time::Instant::now();
@@ -65,8 +74,23 @@ fn create_checked(template: Template) -> (PathBuf, Scene) {
     assert_eq!(settings.player.unwrap().product_name, root_name(&root));
     let (scene, report) = Scene::load(&root.join(SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
-    for name in ["Main Camera", "Directional Light", VOLUME] {
+    for name in ["Directional Light", VOLUME] {
         assert!(scene.find_by_name(name).is_some(), "{name}");
+    }
+    main_camera(&scene);
+    assert_post_processing(template.name(), &scene);
+    // Every material the scene uses was written, with the texture it names.
+    for r in scene
+        .world
+        .query::<&misty_engine::scene::MeshRenderer>()
+        .iter()
+    {
+        if let Some(m) = &r.material {
+            let mat = misty_engine::assets::Material::load(&root.join(m)).unwrap();
+            if let Some(tex) = &mat.albedo_map {
+                assert!(root.join(tex).is_file(), "{m}: {tex}");
+            }
+        }
     }
     (root, scene)
 }
@@ -79,9 +103,81 @@ fn cleanup(root: &Path) {
     let _ = std::fs::remove_dir_all(root.parent().unwrap());
 }
 
+/// A project's scene in Play mode (scripts resolve against the project, not the global root).
+struct Play {
+    scene: Scene,
+    rt: misty_engine::runtime::Runtime,
+    time: misty_engine::runtime::Time,
+}
+
+impl Play {
+    fn start(root: &Path, rel: &str) -> Self {
+        use misty_engine::audio::Audio;
+        use misty_engine::runtime::{Runtime, Time};
+        let (mut scene, _) = Scene::load(&root.join(rel)).unwrap();
+        let settings = misty_engine::settings::ProjectSettings::load(root).unwrap();
+        let (audio, _) = Audio::null(root.to_path_buf());
+        let rt = Runtime::start_with_audio(&mut scene, root.to_path_buf(), &settings, audio);
+        Self {
+            scene,
+            rt,
+            time: Time::new(&settings.time),
+        }
+    }
+
+    /// `n` frames of 1/60 s holding `held`, with `pressed` pressed on the first; fails on a
+    /// script error or warning.
+    fn frames(&mut self, n: usize, held: &[&str], pressed: &[&str]) {
+        use misty_engine::scripting::{Input, LogKind};
+        for i in 0..n {
+            let mut input = Input::default();
+            input.held.extend(held.iter().map(|k| k.to_string()));
+            if i == 0 {
+                input.pressed.extend(pressed.iter().map(|k| k.to_string()));
+                input.held.extend(pressed.iter().map(|k| k.to_string()));
+            }
+            self.time.advance(1.0 / 60.0);
+            self.rt.update(&mut self.scene, &self.time, input);
+            let problems: Vec<_> = self
+                .rt
+                .take_logs()
+                .into_iter()
+                .filter(|(k, _)| matches!(k, LogKind::Error | LogKind::Warning))
+                .collect();
+            assert!(problems.is_empty(), "{problems:?}");
+        }
+    }
+
+    fn position(&self, name: &str) -> glam::Vec3 {
+        self.scene
+            .world_position(self.scene.find_by_name(name).unwrap())
+    }
+
+    fn text(&self, name: &str) -> String {
+        let e = self.scene.find_by_name(name).unwrap();
+        self.scene
+            .world
+            .get::<&misty_engine::scene::UiText>(e)
+            .unwrap()
+            .text
+            .clone()
+    }
+}
+
+/// Horizontal angle (degrees) between two directions.
+fn yaw_between(a: glam::Vec3, b: glam::Vec3) -> f32 {
+    let (a, b) = (
+        glam::Vec2::new(a.x, a.z).normalize(),
+        glam::Vec2::new(b.x, b.z).normalize(),
+    );
+    a.dot(b).clamp(-1.0, 1.0).acos().to_degrees()
+}
+
+// ---- Floating Platform ------------------------------------------------------------------------
+
 #[test]
-fn standard_template_has_platform_and_disabled_volume() {
-    let (root, scene) = create_checked(Template::Standard);
+fn floating_platform_template_has_the_platform_in_the_sky() {
+    let (root, scene) = create_checked(Template::FloatingPlatform);
     let platform = scene.find_by_name("Platform").unwrap();
     let (scale, _, pos) = scene.world_matrix(platform).to_scale_rotation_translation();
     assert!(
@@ -89,53 +185,20 @@ fn standard_template_has_platform_and_disabled_volume() {
         "{scale}"
     );
     assert!(pos.y < 0.0);
+    assert!(scene.find_by_name("Cube").is_some());
     assert!(root.join(super::scenes::PLATFORM_MAT).is_file());
-    assert_eq!(scene.active_with::<WaterSurface>().len(), 0);
-    let v = volume(&scene);
-    assert!(!v.enabled && overrides(&v).iter().all(|(_, on)| !on));
+    // Nothing else: no water, no terrain.
+    let water = scene.active_with::<misty_engine::water::WaterSurface>();
+    assert!(water.is_empty());
+    assert!(scene.active_with::<Terrain>().is_empty());
     let sun = scene.find_by_name("Directional Light").unwrap();
     let light = scene.world.get::<&misty_engine::scene::Light>(sun).unwrap();
     assert_eq!(light.shadows, misty_engine::scene::Shadows::Soft);
     drop(light);
-    cleanup(&root);
-}
-
-#[test]
-fn pp_ready_template_has_ocean_sunset_and_effects_on() {
-    let (root, scene) = create_checked(Template::PpReady);
-    // The same ground and cube as Standard.
-    let platform = scene.find_by_name("Platform").unwrap();
-    let (scale, _, _) = scene.world_matrix(platform).to_scale_rotation_translation();
-    assert!((scale - super::scenes::PLATFORM_SIZE).length() < 1e-4);
-    assert!(scene.find_by_name("Cube").is_some());
-    assert_eq!(scene.active_with::<WaterSurface>().len(), 1);
-    let v = volume(&scene);
-    assert!(v.enabled);
-    for o in [
-        "clouds",
-        "fog",
-        "sun shafts",
-        "bloom",
-        "tonemapping",
-        "vignette",
-    ] {
-        assert!(is_on(&v, o), "{o}");
-    }
-    assert!(v.fog.volumetric, "volumetric fog makes the god rays");
-    // A low sun (sunset) and a camera at a corner of the platform.
-    let sun = scene.find_by_name("Directional Light").unwrap();
-    let dir = scene
-        .world_matrix(sun)
-        .transform_vector3(glam::Vec3::Z)
-        .normalize();
-    let elevation = (-dir.y).asin().to_degrees();
-    assert!(
-        elevation > 2.0 && elevation < 15.0,
-        "sun elevation {elevation}"
-    );
-    let cam = scene.world_position(scene.find_by_name("Main Camera").unwrap());
-    let half = super::scenes::PLATFORM_SIZE.x * 0.5;
-    assert!(cam.x.abs() > half && cam.z.abs() > half, "{cam}");
+    // The sun is ahead of the camera, so its glow and rays are in the first view.
+    let to_sun = -(scene.world_rotation(sun) * glam::Vec3::Z);
+    let look = scene.world_rotation(main_camera(&scene)) * glam::Vec3::Z;
+    assert!(to_sun.dot(look) > 0.5, "sun {to_sun}, camera {look}");
     cleanup(&root);
 }
 
@@ -144,41 +207,47 @@ fn create_refuses_a_folder_with_files() {
     let root = temp_project("Occupied");
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("notes.txt"), "keep me").unwrap();
-    assert!(create(&root, Template::Standard).is_err());
+    assert!(create(&root, Template::FloatingPlatform).is_err());
     assert!(root.join("notes.txt").is_file());
     cleanup(&root);
 }
 
 #[test]
 fn template_names_round_trip() {
+    assert_eq!(
+        Template::ALL.map(Template::name),
+        ["MeadowDemo", "First Person", "Racing", "Floating Platform"]
+    );
     for t in Template::ALL {
         assert_eq!(Template::from_name(t.name()), Some(t));
         assert!(!t.description().is_empty());
         let png = misty_engine::image::load_from_memory(t.thumbnail_png()).unwrap();
         assert!(png.width() >= 4, "{}", t.name());
     }
-    for alias in [" pp ready ", "PPReady", "ppready"] {
-        assert_eq!(
-            Template::from_name(alias),
-            Some(Template::PpReady),
-            "{alias}"
-        );
+    for (alias, t) in [
+        ("first person", Template::FirstPerson),
+        ("FirstPerson", Template::FirstPerson),
+        (" racing ", Template::Racing),
+        ("floatingplatform", Template::FloatingPlatform),
+        // The Floating Platform's old name.
+        ("Standard", Template::FloatingPlatform),
+        ("meadow demo", Template::MeadowDemo),
+        ("meadowdemo", Template::MeadowDemo),
+    ] {
+        assert_eq!(Template::from_name(alias), Some(t), "{alias}");
     }
-    for alias in ["MeadowDemo", "meadow demo", "meadowdemo"] {
-        assert_eq!(
-            Template::from_name(alias),
-            Some(Template::MeadowDemo),
-            "{alias}"
-        );
-    }
+    // The water scene is gone.
+    assert_eq!(Template::from_name("PP Ready"), None);
     assert_eq!(Template::from_name("nope"), None);
+    assert_eq!(Template::default(), Template::FloatingPlatform);
+    assert!(Template::Racing.available() && Template::FloatingPlatform.available());
 }
 
 /// The editor opens a new project on its starting scene.
 #[test]
 fn editor_opens_the_template_scene() {
     let root = temp_project("Opens");
-    create(&root, Template::Standard).unwrap();
+    create(&root, Template::FloatingPlatform).unwrap();
     let mut s = crate::state::EditorState::new(crate::project::ProjectBrowser::open(root.clone()));
     crate::scene_files::open_initial(&mut s);
     assert_eq!(
@@ -205,14 +274,375 @@ fn editor_opens_the_template_scene() {
     cleanup(&root);
 }
 
+/// Play runs the Floating Platform for a second without an error.
+#[test]
+fn floating_platform_plays() {
+    let root = temp_project("PlatformPlays");
+    create(&root, Template::FloatingPlatform).unwrap();
+    let mut play = Play::start(&root, SCENE);
+    play.frames(60, &[], &[]);
+    drop(play);
+    cleanup(&root);
+}
+
+// ---- First Person -----------------------------------------------------------------------------
+
+/// New Project ▸ First Person: a big flat white ground with a collider, the First Person
+/// Player prefab (and its scripts) at the origin facing the sun, its head camera as the Main
+/// Camera, and the sample's input axes and Player layer.
+#[test]
+fn first_person_template_has_a_player_on_white_ground() {
+    use super::first_person::{GROUND_MAT, GROUND_SIZE, PREFAB};
+    if super::samples::source().is_none() {
+        eprintln!("no sample project here: skipped");
+        return;
+    }
+    let (root, scene) = create_checked(Template::FirstPerson);
+    for rel in [
+        PREFAB,
+        "Assets/Prefabs/First Person Player.prefab.meta",
+        "Assets/Scripts/FirstPersonController.lua",
+        "Assets/Scripts/HeadBobVertical.lua",
+        "Assets/Scripts/HeadBobHorizontal.lua",
+        "Assets/Scripts/HeadBobRotation.lua",
+        GROUND_MAT,
+        super::first_person::GRID_TEXTURE,
+    ] {
+        assert!(root.join(rel).is_file(), "{rel}");
+    }
+    // Only the player and what it uses: no meadow, no other samples.
+    assert!(!root.join("Assets/Terrains").exists());
+    assert!(!root.join("Assets/Scenes/MeadowDemo.scene").exists());
+    let deps = misty_engine::asset_deps::collect(&root, &[SCENE.to_owned()]);
+    assert!(deps.missing.is_empty(), "{:?}", deps.missing);
+
+    let ground = scene.find_by_name("Ground").unwrap();
+    let (scale, _, pos) = scene.world_matrix(ground).to_scale_rotation_translation();
+    assert!((scale - GROUND_SIZE).length() < 1e-2, "{scale}");
+    assert!((pos.y + GROUND_SIZE.y * 0.5).abs() < 1e-4, "top at y = 0");
+    // Its collider, in tiles covering the whole ground.
+    let tiles = scene.children(scene.find_by_name("Ground Colliders").unwrap());
+    let tile = super::first_person::COLLIDER_TILE;
+    assert_eq!(tiles.len() as f32, (GROUND_SIZE.x / tile).powi(2));
+    for t in tiles {
+        let box_collider = scene.world.get::<&misty_engine::scene::BoxCollider>(t);
+        assert!(box_collider.is_ok());
+    }
+    let mat = misty_engine::assets::Material::load(&root.join(GROUND_MAT)).unwrap();
+    assert!(mat.color[..3].iter().all(|c| *c > 0.9), "white: {mat:?}");
+    // Nothing else stands on it.
+    let drawn = scene
+        .world
+        .query::<&misty_engine::scene::MeshRenderer>()
+        .iter()
+        .count();
+    assert_eq!(drawn, 1, "only the ground is drawn");
+
+    let player = scene.find_by_name("Player").unwrap();
+    assert_eq!(scene.prefab_link(player).as_deref(), Some(PREFAB));
+    let cam = main_camera(&scene);
+    assert_eq!(scene.prefab_root(cam), Some(player), "the head camera");
+    let far = scene.world.get::<&Camera>(cam).unwrap().far;
+    assert_eq!(far, 3000.0);
+    assert_eq!(scene.active_with::<Camera>().len(), 1, "one camera");
+    // Facing the sun.
+    let sun = scene.find_by_name("Directional Light").unwrap();
+    let to_sun = -(scene.world_rotation(sun) * glam::Vec3::Z);
+    let facing = scene.world_rotation(player) * glam::Vec3::Z;
+    assert!(yaw_between(facing, to_sun) < 1.0, "{facing} {to_sun}");
+
+    let settings = misty_engine::settings::ProjectSettings::load(&root).unwrap();
+    for axis in ["Run", "Crouch", "Horizontal", "Vertical", "Jump", "Mouse X"] {
+        assert!(settings.input.axes.iter().any(|a| a.name == axis), "{axis}");
+    }
+    assert_eq!(settings.tags_and_layers.name_to_layer("Player"), 5);
+    let editor = crate::scene_files::EditorSettings::load(&root);
+    assert!(editor.scene_view.is_some());
+    cleanup(&root);
+}
+
+/// The editor opens a First Person project, and Play puts the player on the ground; holding W
+/// walks it forwards, without a script error.
+#[test]
+fn first_person_opens_and_plays() {
+    if super::samples::source().is_none() {
+        eprintln!("no sample project here: skipped");
+        return;
+    }
+    let root = temp_project("FirstPersonPlays");
+    create(&root, Template::FirstPerson).unwrap();
+    let mut s = crate::state::EditorState::new(crate::project::ProjectBrowser::open(root.clone()));
+    crate::scene_files::open_initial(&mut s);
+    assert_eq!(
+        s.scene.scene_path(s.scene.active_scene()).as_deref(),
+        Some(SCENE)
+    );
+    assert!(s.scene.find_by_name("Player").is_some());
+    drop(s);
+
+    let mut play = Play::start(&root, SCENE);
+    let start = play.position("Player");
+    play.frames(60, &[], &[]);
+    let stood = play.position("Player");
+    assert!(
+        stood.y.abs() < 0.2 && (stood - start).length() < 0.5,
+        "stands on the ground: {start} -> {stood}"
+    );
+    play.frames(90, &["w"], &[]);
+    let walked = play.position("Player");
+    let player = play.scene.find_by_name("Player").unwrap();
+    let facing = play.scene.world_rotation(player) * glam::Vec3::Z;
+    let moved = (walked - stood).dot(facing);
+    assert!(moved > 2.0, "walked forwards: {stood} -> {walked}");
+    drop(play);
+    cleanup(&root);
+}
+
+// ---- Racing -----------------------------------------------------------------------------------
+
+/// New Project ▸ Racing: the circuit (a closed spline with a road extrude and kerbs), props,
+/// the car with four wheels and three bodies, the chase camera, the HUD and the Lua scripts
+/// as shipped.
+#[test]
+fn racing_template_has_a_circuit_a_car_and_scripts() {
+    use misty_engine::scene::{Rigidbody, Scripts, WheelCollider};
+    use misty_engine::splines::{SplineContainer, SplineExtrude};
+    let (root, scene) = create_checked(Template::Racing);
+    for (rel, source) in super::racing::SCRIPTS {
+        let on_disk = std::fs::read_to_string(root.join(rel)).unwrap();
+        assert_eq!(on_disk, source, "{rel}");
+    }
+    for name in ["Track", "Kerb Left", "Kerb Right"] {
+        let e = scene.find_by_name(name).unwrap();
+        let c = scene.world.get::<&SplineContainer>(e).unwrap();
+        assert!(c.splines[0].closed, "{name}: a loop");
+        assert!(scene.world.get::<&SplineExtrude>(e).unwrap().enabled);
+    }
+    let path = super::racing::track_spline().path();
+    assert!(
+        path.length > 1000.0 && path.length < 1400.0,
+        "{}",
+        path.length
+    );
+    let track = scene.find_by_name("Track").unwrap();
+    let width = scene.world.get::<&SplineExtrude>(track).unwrap().width;
+    assert!(width >= 12.0, "wide enough: {width}");
+    for name in ["Start Line", "Gantry Beam", "Grandstand", "Trees", "Hills"] {
+        assert!(scene.find_by_name(name).is_some(), "{name}");
+    }
+    let posts = scene.find_by_name("Marker Posts").unwrap();
+    assert!(scene.children(posts).len() > 60);
+    let barriers = scene.find_by_name("Barriers").unwrap();
+    assert!(!scene.children(barriers).is_empty(), "barriers in corners");
+
+    let car = scene.find_by_name("Car").unwrap();
+    assert!(scene.world.get::<&Rigidbody>(car).is_ok());
+    for (name, _, _) in super::racing::WHEELS {
+        let w = scene.find_by_name(name).unwrap();
+        let model = scene.world.get::<&WheelCollider>(w).unwrap().wheel_model;
+        assert_eq!(model, scene.find_by_name(&format!("{name} Model")));
+    }
+    let shown: Vec<bool> = super::racing::MODELS
+        .iter()
+        .map(|m| scene.game_object(scene.find_by_name(m).unwrap()).active)
+        .collect();
+    assert_eq!(shown, [true, false, false]);
+    // The car waits on the grid just before the start line, on the road.
+    let on = path.nearest(scene.world_position(car));
+    assert!(on.distance < 1.0 && on.t > 0.95, "{} {}", on.distance, on.t);
+    let scripts = |name: &str| -> Vec<String> {
+        let e = scene.find_by_name(name).unwrap();
+        let s = scene.world.get::<&Scripts>(e).unwrap();
+        s.list.iter().map(|r| r.path.clone()).collect()
+    };
+    assert_eq!(scripts("Car"), [super::racing::RACE_CAR]);
+    assert_eq!(scripts("Main Camera"), [super::racing::CHASE_CAMERA]);
+    assert_eq!(
+        scripts("Race"),
+        [super::racing::LAP_TIMER, super::racing::RACE_SETTINGS]
+    );
+    for name in [
+        "Lap Text",
+        "Times Text",
+        "Speed Text",
+        "Boost Text",
+        "Message Text",
+        "Settings Text",
+    ] {
+        assert!(scene.find_by_name(name).is_some(), "{name}");
+    }
+    cleanup(&root);
+}
+
+/// Speed of the car (m/s), from the physics world.
+fn car_speed(play: &Play) -> f32 {
+    let car = play.scene.find_by_name("Car").unwrap();
+    play.rt
+        .with_physics(|p| p.velocity(car))
+        .unwrap_or_default()
+        .length()
+}
+
+/// Headless Play of the Racing template: a simple autopilot holds W (up to 30 m/s) and steers
+/// with A/D towards a point 25 m ahead on the track spline. The car crosses the start line
+/// (the lap timer starts) and drives well over a third of the loop on its wheels, never put
+/// back by the reset, without a script error; the HUD shows speed and lap.
+#[test]
+fn racing_template_drives_round_the_loop() {
+    let root = temp_project("RacingDrives");
+    create(&root, Template::Racing).unwrap();
+    let mut s = crate::state::EditorState::new(crate::project::ProjectBrowser::open(root.clone()));
+    crate::scene_files::open_initial(&mut s);
+    assert!(s.scene.find_by_name("Car").is_some());
+    drop(s);
+
+    let path = super::racing::track_spline().path();
+    let mut play = Play::start(&root, SCENE);
+    play.frames(60, &[], &[]);
+    let rest = play.position("Car");
+    assert!(
+        (rest.y - super::racing::RIDE_HEIGHT).abs() < 0.08,
+        "rests on its wheels: {rest}"
+    );
+    let mut travelled = 0.0;
+    let mut last_t = path.nearest(rest).t;
+    let mut top = 0.0f32;
+    for frame in 0..60 * 40 {
+        let car = play.scene.find_by_name("Car").unwrap();
+        let p = play.scene.world_position(car);
+        let forward = play.scene.world_rotation(car) * glam::Vec3::Z;
+        let here = path.nearest(p);
+        let d = (here.t * path.length + 25.0).rem_euclid(path.length);
+        let ahead = path.position(path.t_at_distance(d));
+        // Positive: the point ahead is to the right (+X when facing +Z).
+        let side = forward.cross(ahead - p).y;
+        let speed = car_speed(&play);
+        top = top.max(speed);
+        let mut keys = Vec::new();
+        if speed < 30.0 {
+            keys.push("w");
+        }
+        if side > 0.5 {
+            keys.push("d");
+        } else if side < -0.5 {
+            keys.push("a");
+        }
+        play.frames(1, &keys, &[]);
+        let mut dt = here.t - last_t;
+        if dt < -0.5 {
+            dt += 1.0;
+        }
+        travelled += dt;
+        last_t = here.t;
+        assert!(
+            play.text("Message Text") != "Back on track",
+            "reset at frame {frame}, {p}, {} m off the road",
+            here.distance
+        );
+        let up = play.scene.world_rotation(car) * glam::Vec3::Y;
+        assert!(up.y > 0.5, "on its wheels at frame {frame}: {up}");
+    }
+    eprintln!(
+        "Racing: {:.0}% of the loop, top {:.1} m/s",
+        travelled * 100.0,
+        top
+    );
+    assert!(travelled > 0.4, "drove round the loop: {travelled}");
+    assert!(top > 25.0, "fast: {top} m/s");
+    let lap = play.text("Lap Text");
+    assert!(lap.starts_with("LAP 1 "), "{lap}");
+    let speed = play.text("Speed Text");
+    assert!(speed.ends_with(" km/h") && speed != "0 km/h", "{speed}");
+    drop(play);
+    cleanup(&root);
+}
+
+/// The settings keys while playing: C switches the car body (and its tuning), G the gravity,
+/// 1–6 mass, grip and top speed; the panel shows the values; Shift boosts; R resets.
+#[test]
+fn racing_settings_change_while_playing() {
+    use misty_engine::scene::{Rigidbody, WheelCollider};
+    let root = temp_project("RacingSettings");
+    create(&root, Template::Racing).unwrap();
+    let mut play = Play::start(&root, SCENE);
+    play.frames(30, &[], &[]);
+    let panel = play.text("Settings Text");
+    assert!(
+        panel.contains("Sport") && panel.contains("Normal"),
+        "{panel}"
+    );
+    let active = |play: &Play| -> Vec<bool> {
+        super::racing::MODELS
+            .iter()
+            .map(|m| {
+                let e = play.scene.find_by_name(m).unwrap();
+                play.scene.active_in_hierarchy(e)
+            })
+            .collect()
+    };
+    assert_eq!(active(&play), [true, false, false]);
+    let car = play.scene.find_by_name("Car").unwrap();
+    let mass = |play: &Play| play.scene.world.get::<&Rigidbody>(car).unwrap().mass;
+    assert_eq!(mass(&play), 1150.0);
+
+    play.frames(2, &[], &["c"]);
+    assert_eq!(active(&play), [false, true, false]);
+    assert_eq!(mass(&play), 1500.0, "the Muscle's mass");
+    assert!(play.text("Settings Text").contains("Muscle"));
+
+    play.frames(2, &[], &["g"]);
+    let g = play.rt.physics_config().0;
+    assert!((g.y + 18.0).abs() < 1e-3, "high gravity: {g}");
+    assert!(play.text("Settings Text").contains("High"));
+    play.frames(2, &[], &["g"]);
+    let g = play.rt.physics_config().0;
+    assert!((g.y + 3.7).abs() < 1e-3, "low gravity: {g}");
+
+    play.frames(2, &[], &["2"]);
+    assert_eq!(mass(&play), 1600.0);
+    let wheel = play.scene.find_by_name("Wheel FL").unwrap();
+    let grip = |play: &Play| {
+        play.scene
+            .world
+            .get::<&WheelCollider>(wheel)
+            .unwrap()
+            .sideways_friction
+            .stiffness
+    };
+    let before = grip(&play);
+    play.frames(2, &[], &["4"]);
+    assert!((grip(&play) - before - 0.1).abs() < 1e-4);
+    play.frames(2, &[], &["6"]);
+    let panel = play.text("Settings Text");
+    assert!(
+        panel.contains("1600 kg") && panel.contains("260 km/h"),
+        "{panel}"
+    );
+    play.frames(2, &[], &["tab"]);
+    assert_eq!(play.text("Settings Text"), "[Tab] Settings");
+
+    // Boost: the meter drains while Shift is held.
+    play.frames(60, &["w", "left shift"], &[]);
+    let boost = play.text("Boost Text");
+    assert!(boost.contains('.'), "boost used: {boost}");
+    // R puts the car back on the track.
+    play.frames(2, &[], &["r"]);
+    assert_eq!(play.text("Message Text"), "Back on track");
+    drop(play);
+    cleanup(&root);
+}
+
+// ---- Rendering --------------------------------------------------------------------------------
+
 /// Render the template's scene headlessly (terrain data made absolute, so the global project
-/// root other tests use is left alone).
-fn render(root: &Path, scene: &Scene) -> crate::sample_render::Image {
+/// root other tests use is left alone; spline extrudes built first).
+fn render(root: &Path, scene: &mut Scene) -> crate::sample_render::Image {
     let gpu = crate::sample_render::headless().unwrap();
     for e in scene.active_with::<Terrain>() {
         let mut t = scene.world.get::<&mut Terrain>(e).unwrap();
         t.terrain_data = root.join(&t.terrain_data).to_string_lossy().into_owned();
     }
+    misty_engine::splines::update(scene);
     let assets = misty_engine::assets::AssetCache::open(root);
     let view = misty_engine::render_scene::GameView::new(scene, &assets).unwrap();
     crate::sample_render::render(&gpu, &view.frame(), 12)
@@ -228,8 +658,8 @@ fn templates_render_headless() {
     for t in Template::ALL.into_iter().filter(|t| t.available()) {
         let root = temp_project(&format!("Render{}", t.name()));
         create(&root, t).unwrap();
-        let (scene, _) = Scene::load(&root.join(t.scene())).unwrap();
-        let img = render(&root, &scene);
+        let (mut scene, _) = Scene::load(&root.join(t.scene())).unwrap();
+        let img = render(&root, &mut scene);
         let lum: Vec<f32> = img
             .pixels
             .chunks(4)
@@ -244,17 +674,23 @@ fn templates_render_headless() {
     }
 }
 
+/// `MISTY_TEMPLATE_THUMBS=Racing,First Person` renders only those.
 #[test]
 #[ignore = "writes assets/templates/*.png; run on purpose to re-render the thumbnails"]
 fn write_template_thumbnails() {
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/templates");
+    let only = std::env::var("MISTY_TEMPLATE_THUMBS").unwrap_or_default();
     for t in Template::ALL {
+        let picked = only.split(',').any(|n| Template::from_name(n) == Some(t));
+        if !only.is_empty() && !picked {
+            continue;
+        }
         let root = temp_project(&format!("Thumb{}", t.name()));
         create(&root, t).unwrap();
         // Alone on purpose: terrain textures resolve against the project root.
         misty_engine::assets::set_project_root(&root);
-        let (scene, _) = Scene::load(&root.join(t.scene())).unwrap();
-        let img = render(&root, &scene);
+        let (mut scene, _) = Scene::load(&root.join(t.scene())).unwrap();
+        let img = render(&root, &mut scene);
         let path = out.join(format!("{}.png", t.file_stem()));
         let rgba = misty_engine::image::RgbaImage::from_raw(
             crate::sample_render::WIDTH,
@@ -279,7 +715,7 @@ fn include_samples_copies_the_demo_scenes() {
         return;
     };
     let root = temp_project("Samples");
-    super::create_with(&root, Template::Standard, true).unwrap();
+    super::create_with(&root, Template::FloatingPlatform, true).unwrap();
     for rel in [
         SCENE,
         "Assets/Scenes/VehicleDemo.scene",
@@ -351,7 +787,7 @@ fn include_samples_from_a_shipped_folder() {
     std::fs::create_dir_all(shipped.join("ProjectSettings")).unwrap();
     let (demo, _) = Scene::load(&{
         let root = temp_project("ShippedTemplate");
-        create(&root, Template::Standard).unwrap();
+        create(&root, Template::FloatingPlatform).unwrap();
         root.join(SCENE)
     })
     .unwrap();
@@ -363,7 +799,7 @@ fn include_samples_from_a_shipped_folder() {
         .unwrap();
 
     let root = base;
-    super::create_template(&root, Template::Standard).unwrap();
+    super::create_template(&root, Template::FloatingPlatform).unwrap();
     super::samples::add(&root, &super::samples::Source::Folder(shipped.clone())).unwrap();
     assert!(root.join("Assets/Scenes/ShippedDemo.scene").is_file());
     assert!(root.join("Assets/Scripts/Hello.lua").is_file());
@@ -390,7 +826,7 @@ fn create_errors_name_the_path() {
     // A file where the project's parent folder should be: nothing can be created under it.
     let blocker = parent.join("not a folder");
     std::fs::write(&blocker, "x").unwrap();
-    let err = create(&blocker.join("My Game"), Template::Standard).unwrap_err();
+    let err = create(&blocker.join("My Game"), Template::FloatingPlatform).unwrap_err();
     assert!(err.starts_with("Could not create the folder"), "{err}");
     assert!(err.contains("not a folder"), "{err}");
     let _ = std::fs::remove_dir_all(parent);
@@ -419,15 +855,6 @@ fn meadow_source() -> Option<Source> {
 fn json(root: &Path, rel: &str) -> serde_json::Value {
     let text = std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("{rel}: {e}"))
-}
-
-/// Horizontal angle (degrees) between two directions.
-fn yaw_between(a: glam::Vec3, b: glam::Vec3) -> f32 {
-    let (a, b) = (
-        glam::Vec2::new(a.x, a.z).normalize(),
-        glam::Vec2::new(b.x, b.z).normalize(),
-    );
-    a.dot(b).clamp(-1.0, 1.0).acos().to_degrees()
 }
 
 /// Every referenced path exists in `root`, and every `asset_guids` entry names the GUID that
@@ -558,6 +985,8 @@ fn meadow_demo_template_copies_the_scene_and_its_dependencies() {
     // The scene: a Player linked to its prefab and a Terrain, the player facing the sun.
     let (scene, report) = Scene::load(&root.join(meadow::SCENE)).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    // Post-processing like every template: bloom, tonemapping, volumetric clouds, sun shafts.
+    assert_post_processing("MeadowDemo", &scene);
     let player = scene.find_by_name("Player").expect("Player");
     let player_json = &json(&root, meadow::SCENE)["objects"]
         .as_array()

@@ -530,6 +530,15 @@ impl UserData for LRigidbody {
                     .unwrap_or(0.0)
             })
         });
+        f.add_field_method_set("mass", |lua, r, mass: f32| {
+            with_world(lua, |w| {
+                let mass = mass.max(1e-4);
+                if let Ok(mut b) = w.scene.world.get::<&mut Rigidbody>(r.0) {
+                    b.mass = mass;
+                }
+                w.physics.set_mass(r.0, mass);
+            })
+        });
         f.add_field_method_get("gameObject", |_, r| Ok(LGameObject(r.0)));
         // Pose in the physics world (the Transform may be interpolated).
         f.add_field_method_get("position", |lua, r| {
