@@ -1,12 +1,13 @@
 //! What each pass of one render draws: frustum culling per camera and per shadow map, and the
-//! instanced batches built from what is left. Shadow maps are culled and batched in parallel.
+//! instanced batches built from what is left. The shadow maps of large frames are culled and
+//! batched in parallel.
 
 use glam::{Mat4, Vec3};
 use rayon::prelude::*;
 
 use super::batch::{Batch, Batcher, Merge};
 use super::culling::{Aabb, Frustum};
-use super::draw_prep::{DrawPrep, map_draws};
+use super::draw_prep::{DrawPrep, PARALLEL_MIN, map_draws};
 use super::shadows::ShadowPlan;
 use super::{Frame, RenderStats, Renderer, surface};
 
@@ -131,7 +132,8 @@ impl Renderer {
             opaque_order = order.opaque;
         }
 
-        // Every cascade and local layer in parallel, each with its own batcher and slot run.
+        // Every cascade and local layer, each with its own batcher and slot run (in parallel
+        // for large frames).
         let shadow_scope = crate::profiler::Scope::begin_lazy(|| "Render.ShadowLists", None);
         let matrices: Vec<Mat4> = plan.matrices().copied().collect();
         let mut batchers = std::mem::take(&mut self.shadow_batchers);
@@ -143,28 +145,40 @@ impl Renderer {
             .filter(|(k, b)| k.is_some() && b.is_some())
             .count();
         let n = frame.meshes.len();
-        let per_map: Vec<(Vec<Batch>, Vec<u32>, Vec<bool>)> = matrices
-            .par_iter()
-            .zip(batchers.par_iter_mut())
-            .map(|(m, batcher)| {
-                crate::profile_scope!("Render.ShadowList", crate::profiler::Category::Rendering);
-                let f = Frustum::from_matrix(m);
-                let key = |i: usize| {
-                    let k = prep.shadow_keys[i]?;
-                    let b = meshes[i]?;
-                    inside(&f, &b).then_some(k)
-                };
-                let mut local = Vec::new();
-                let batches = batcher.build(0..n, key, merge(true), &mut local);
-                let terrains = frame
-                    .terrains
-                    .iter()
-                    .zip(terrains)
-                    .map(|(t, b)| t.cast_shadows && inside(&f, b))
-                    .collect();
-                (batches, local, terrains)
-            })
-            .collect();
+        let build = |(m, batcher): (&Mat4, &mut Batcher)| {
+            crate::profile_scope!("Render.ShadowList", crate::profiler::Category::Rendering);
+            let f = Frustum::from_matrix(m);
+            let key = |i: usize| {
+                let k = prep.shadow_keys[i]?;
+                let b = meshes[i]?;
+                inside(&f, &b).then_some(k)
+            };
+            let mut local = Vec::new();
+            let batches = batcher.build(0..n, key, merge(true), &mut local);
+            let terrains = frame
+                .terrains
+                .iter()
+                .zip(terrains)
+                .map(|(t, b)| t.cast_shadows && inside(&f, b))
+                .collect();
+            (batches, local, terrains)
+        };
+        // A few hundred draws take a fraction of a millisecond on this thread. A rayon job
+        // injected from the render thread waits for a pool worker to wake and be scheduled,
+        // which on a busy machine (a build, an asset import) measured 7 ms a frame on average
+        // with 30 ms spikes for MeadowDemo's 450 draws (performance round 22).
+        let per_map: Vec<(Vec<Batch>, Vec<u32>, Vec<bool>)> = if n >= PARALLEL_MIN {
+            (matrices.par_iter())
+                .zip(batchers.par_iter_mut())
+                .map(build)
+                .collect()
+        } else {
+            matrices
+                .iter()
+                .zip(batchers.iter_mut())
+                .map(build)
+                .collect()
+        };
         self.shadow_batchers = batchers;
         drop(shadow_scope);
 
