@@ -125,7 +125,7 @@ Code: `crates/misty_engine/src/world_partition/` (settings and grid in `mod.rs`,
   shows and steers the game's streamer. "Add World Partition" when the scene has none.
 - **Inspectors** for World Partition (settings, cell summary, Split into Tiles for big terrains,
   Open window), Streaming Source and Always Loaded.
-- **Scene view gizmos**: every cell outlined at its ground height in its state's colour, the
+- **Scene view gizmos**: every cell outlined at the top of its contents in its state's colour, the
   sources' load and unload circles.
 - **Stats overlay** (Scene and Game views, top left): loaded / total cells, pending (reading,
   waiting, adding), unloading, memory, loads / unloads, main-thread ms (last, max, budget, frames
@@ -151,11 +151,46 @@ space so there are no seams); forests of the four sample trees as terrain trees;
 boulders and outcrops as prefab instances; an HLOD per cell. The camera flies a loop in Play mode
 (`Assets/Scripts/StreamingFlyover.lua`: waits with `WorldPartition.OnAreaLoaded`, then flies).
 
-Sizes: see the end of this file.
+Sizes: 64 cell scenes 1.58 MB (compact JSON, the tile object and 0–14 boulder prefab instances
+each), 64 tiles 1.62 MB (65² heights, 32² splat, trees), 64 proxies 1.07 MB (119 k triangles in
+all), persistent scene 20 kB; 4.7 MB on disk with the `.meta` files.
+
+## Screenshots (`docs/screenshots/r21/`)
+
+- `streaming-editor.png`: Edit mode, cells streamed around the Scene camera high over the world
+  (World Partition window with the minimap, stats overlay, HLODs beyond).
+- `streaming-hlod-only.png`: the same view with nothing loaded: only the proxies.
+- `streaming-ground.png`: near the ground: real tiles, forests and boulders around the camera,
+  proxies beyond, the cell gizmos.
+- `streaming-play.png`: Play mode, the fly-over camera; the Game view with the overlay.
 
 ## Measurements
 
-(see below)
+All with `StreamingDemo`, budget 2 ms, release build, on the shared development machine.
+
+- **CPU flythrough bench** (`streaming_demo_flythrough_bench`: the 5.1 km diagonal at 120 m/s,
+  one 60 Hz frame every 16.7 ms, full game loop with physics and scripts; 2546 frames, 44 cells
+  loaded and 36 unloaded): streaming main thread median 0.04 ms, p99 1.67 ms, **max 1.98 ms, no
+  frame over the budget**; whole game frame median 0.89 ms, max 3.2 ms. Slowest single step:
+  removing one boulder, 1.23 ms. Mesh Collider shapes built ahead: 380, on the main thread: 5.
+- **GPU flythrough** (`streaming_flythrough_frames`: same flight rendered at 1280×720 High,
+  every frame timed through the wait for the GPU; 2547 frames): wall median 7.48 ms, p99 10.85 ms,
+  **max 12.75 ms — no frame above 16 ms**; frames where a cell finished loading or unloading
+  (61): median 9.36 ms, max 12.04 ms; streaming main thread max 2.70 ms, 8 frames (0.3 %) over
+  the 2 ms budget, by 0.7 ms at most (one object started past a misjudged estimate). Standing
+  still for comparison: median 4.58 ms, max 5.91 ms.
+- **Quick flight** (`streaming_demo_flight_stays_within_budget`, run with the other tests: 400 m/s,
+  frames paced at 4 ms, best of three): typically max 2.4–2.8 ms, 5–14 of 764 frames over 2 ms,
+  far below the 16 ms bar.
+- History: before the fixes of this round the GPU flythrough had a 38–47 ms frame where a tile
+  arrived (`Terrain.UploadAll`: its normals started a thread per core, which on a busy machine
+  waited tens of milliseconds for cores) and the CPU flight 3 % of frames over the budget (one
+  batch of physics and scripts per frame, and Mesh Collider triangle meshes built on the main
+  thread, up to 9 ms for one boulder). Now: tile normals in place, one new GPU terrain per
+  frame, collider shapes and material textures read ahead, objects started and removed one at a
+  time against the clock.
+- Golden shots (`golden_shots`, after merging main 0.3.0): all 20 match (mean ≤ 0.39,
+  ≤ 0.03 % changed).
 
 ## Not done yet
 
