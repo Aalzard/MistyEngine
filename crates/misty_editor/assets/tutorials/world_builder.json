@@ -78,8 +78,8 @@
     },
     {
       "title": "Fly around",
-      "text": "Hold the right mouse button in the Scene view and use W A S D to fly. Hold Shift to go faster. Enjoy your world!",
-      "targets": ["panel.Scene"]
+      "text": "Hold the right mouse button in the Editor Scene and use W A S D to fly. Hold Shift to go faster. Enjoy your world!",
+      "targets": ["panel.Editor Scene"]
     }
   ]
 }
