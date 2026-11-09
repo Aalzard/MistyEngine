@@ -94,7 +94,33 @@ pub struct ProjectBrowser {
     pub read_only: Vec<PathBuf>,
     /// The last search's text, when it ran and its results (see [`Self::cached_search_results`]).
     search_cache: Option<(String, std::time::Instant, Vec<AssetEntry>)>,
+    /// Every listed folder (the Assets tree and the open folder): its modification time and
+    /// entry names when last listed (see [`Self::poll_disk`]).
+    listings: std::collections::HashMap<PathBuf, Listing>,
+    last_disk_poll: Option<std::time::Instant>,
 }
+
+/// A folder's modification time and the names in it, when it was listed.
+#[derive(Clone, Debug, PartialEq)]
+struct Listing {
+    modified: Option<std::time::SystemTime>,
+    names: Vec<String>,
+}
+
+impl Listing {
+    /// Stamp first, then the names: an entry added in between changes the stamp again, so it
+    /// is never missed.
+    fn read(dir: &Path) -> Self {
+        let modified = std::fs::metadata(dir).and_then(|m| m.modified()).ok();
+        Self {
+            modified,
+            names: listed_names(dir),
+        }
+    }
+}
+
+/// How often [`ProjectBrowser::poll_disk`] looks at the folders' stamps.
+pub const DISK_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// How long a search's results are reused while its text stays the same (the folder walk
 /// otherwise ran every frame while searching).
@@ -125,6 +151,8 @@ impl ProjectBrowser {
             packages: Vec::new(),
             read_only: Vec::new(),
             search_cache: None,
+            listings: Default::default(),
+            last_disk_poll: None,
         };
         browser.refresh();
         browser
@@ -141,6 +169,63 @@ impl ProjectBrowser {
         self.entries = list_dir(&self.current);
         self.packages = package_trees(&self.packages_dir());
         self.read_only = crate::packages::read_only_roots(&self.root);
+        self.record_listings();
+    }
+
+    /// Remember the stamp and names of every folder in the Assets tree and of the open folder.
+    fn record_listings(&mut self) {
+        let mut dirs = vec![self.current.clone()];
+        let mut stack = vec![&self.tree];
+        while let Some(node) = stack.pop() {
+            dirs.push(node.path.clone());
+            stack.extend(node.children.iter());
+        }
+        self.listings = dirs
+            .into_iter()
+            .map(|d| {
+                let l = Listing::read(&d);
+                (d, l)
+            })
+            .collect();
+        self.pin_listings();
+    }
+
+    /// The file watch thread keeps these folders' stamps fresh and wakes the editor when one
+    /// changes, also while it sits idle (no frames otherwise ran to notice a new file).
+    fn pin_listings(&self) {
+        if misty_engine::file_watch::is_background() {
+            misty_engine::file_watch::pin(self.listings.keys().cloned().collect());
+        }
+    }
+
+    /// Files or folders added, removed or renamed on disk (by Explorer, other apps or the
+    /// editor itself) in a listed folder since the last refresh: true when the caller should
+    /// refresh (re-list the folder and the tree, import the new assets). The folders' stamps
+    /// come from the background file watch (a map lookup each); only a changed stamp lists that
+    /// folder again, and only different names count (a file saved in place, or through a
+    /// temporary file renamed over it, keeps the same names). At most every [`DISK_POLL`].
+    pub fn poll_disk(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        if self
+            .last_disk_poll
+            .is_some_and(|t| now.duration_since(t) < DISK_POLL)
+        {
+            return false;
+        }
+        self.last_disk_poll = Some(now);
+        let mut changed = false;
+        for (dir, seen) in &mut self.listings {
+            let stamp = misty_engine::file_watch::cached_modified(dir);
+            if stamp == seen.modified {
+                continue;
+            }
+            let fresh = Listing::read(dir);
+            if fresh.names != seen.names {
+                changed = true;
+            }
+            *seen = fresh;
+        }
+        changed
     }
 
     pub fn packages_dir(&self) -> PathBuf {
@@ -165,6 +250,11 @@ impl ProjectBrowser {
         self.current = path;
         self.selected = None;
         self.entries = list_dir(&self.current);
+        if !self.listings.contains_key(&self.current) {
+            let l = Listing::read(&self.current);
+            self.listings.insert(self.current.clone(), l);
+            self.pin_listings();
+        }
     }
 
     /// Breadcrumb segments from `Assets` to the current folder.
@@ -301,6 +391,19 @@ pub fn type_for_path(path: &Path, is_dir: bool) -> &'static str {
         "preset" => "preset",
         _ => "",
     }
+}
+
+/// The names [`list_dir`] shows in `dir`, sorted.
+fn listed_names(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| !n.starts_with('.') && !n.ends_with(".meta"))
+        .collect();
+    names.sort();
+    names
 }
 
 fn list_dir(dir: &Path) -> Vec<AssetEntry> {
