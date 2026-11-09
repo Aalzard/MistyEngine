@@ -75,6 +75,47 @@ impl Resolver for FileResolver {
     }
 }
 
+/// Reads the files of the project a graph lives in: a relative path resolves inside `root`
+/// (the project of a graph loaded by absolute path), otherwise against the open project like
+/// [`FileResolver`]. A graph loaded from another project, or by a test whose neighbours move
+/// the process-wide project root, still finds its Sub Graphs and Custom Function files.
+pub struct ProjectResolver(pub Option<std::path::PathBuf>);
+
+impl ProjectResolver {
+    /// The resolver for a graph at `path`: inside its own project when `path` is absolute
+    /// (`.../<Project>/Assets/...`), else the open project.
+    pub fn for_path(path: &str) -> Self {
+        Self(project_of(path))
+    }
+
+    fn file(&self, path: &str) -> std::path::PathBuf {
+        match &self.0 {
+            Some(root) if !std::path::Path::new(path).is_absolute() => root.join(path),
+            _ => crate::assets::absolute(path),
+        }
+    }
+}
+
+/// The project folder of an absolute asset path (the part before its last `/Assets/`).
+pub fn project_of(path: &str) -> Option<std::path::PathBuf> {
+    let p = path.replace('\\', "/");
+    if !std::path::Path::new(&p).is_absolute() {
+        return None;
+    }
+    p.rfind("/Assets/")
+        .map(|i| std::path::PathBuf::from(&p[..i]))
+}
+
+impl Resolver for ProjectResolver {
+    fn graph(&self, path: &str) -> Result<ShaderGraph, String> {
+        ShaderGraph::load(&self.file(path)).map_err(|e| format!("{path}: {e}"))
+    }
+
+    fn text(&self, path: &str) -> Result<String, String> {
+        std::fs::read_to_string(self.file(path)).map_err(|e| format!("{path}: {e}"))
+    }
+}
+
 /// Generated shader text with the node behind each line.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Generated {
@@ -1665,4 +1706,23 @@ pub fn compile_decal(
     let d = generate_decal(g, variant, resolver, "sg_decal_1")?;
     crate::render::decals::validate_graph_named(&d, "sg_decal_1").map_err(GraphError::graph)?;
     Ok(d)
+}
+
+#[cfg(test)]
+mod project_resolver_tests {
+    use super::{ProjectResolver, project_of};
+
+    #[test]
+    fn graphs_by_absolute_path_resolve_files_in_their_own_project() {
+        assert_eq!(
+            project_of("C:/Games/Rock/Assets/Shaders/Rock.shadergraph"),
+            Some(std::path::PathBuf::from("C:/Games/Rock"))
+        );
+        assert_eq!(project_of("Assets/Shaders/Rock.shadergraph"), None);
+        let r = ProjectResolver::for_path("C:/Games/Rock/Assets/Shaders/Rock.shadergraph");
+        assert_eq!(
+            r.file("Assets/Sub/Edge.shadersubgraph"),
+            std::path::PathBuf::from("C:/Games/Rock").join("Assets/Sub/Edge.shadersubgraph")
+        );
+    }
 }
