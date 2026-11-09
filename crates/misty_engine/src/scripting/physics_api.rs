@@ -1,4 +1,5 @@
-//! Lua physics API: `Physics.Raycast/RaycastAll/SphereCast/OverlapSphere`, `LayerMask`,
+//! Lua physics API: `Physics.Raycast/RaycastAll/SphereCast/OverlapSphere`, `Physics.gravity`
+//! (reads and writes the live world), `LayerMask`,
 //! `Ragdoll.Enable(go)` / `Ragdoll.Disable(go [, blendTime])` / `Ragdoll.IsEnabled(go)` (`go`
 //! is the ragdoll's root or any of its bones), and the CharacterController component (`Move`,
 //! `SimpleMove`, `isGrounded`, `velocity`).
@@ -128,6 +129,27 @@ pub fn register(lua: &Lua) -> Result<()> {
             Ok(list)
         })?,
     )?;
+    // `Physics.gravity` reads and writes the live world.
+    let meta = lua.create_table()?;
+    meta.set(
+        "__index",
+        lua.create_function(|lua, (_, key): (Table, String)| match key.as_str() {
+            "gravity" => with_world(lua, |w| Some(LVec3(w.physics.gravity()))),
+            _ => Ok(None),
+        })?,
+    )?;
+    meta.set(
+        "__newindex",
+        lua.create_function(|lua, (t, key, v): (Table, String, Value)| {
+            if key == "gravity" {
+                let g = super::api::vec_args(lua, &[v])?;
+                with_world(lua, |w| w.physics.set_gravity(g))
+            } else {
+                t.raw_set(key, v)
+            }
+        })?,
+    )?;
+    physics.set_metatable(Some(meta))?;
     g.set("Physics", physics)?;
 
     let layer_mask = lua.create_table()?;

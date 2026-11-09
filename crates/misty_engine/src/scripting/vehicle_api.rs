@@ -1,5 +1,5 @@
-//! Lua WheelCollider: `motorTorque`, `brakeTorque`, `steerAngle` (settable), `rpm`,
-//! `isGrounded`, `radius`, `suspensionDistance`, `GetWorldPose()` (position and Euler angles,
+//! Lua WheelCollider: `motorTorque`, `brakeTorque`, `steerAngle`, `forwardStiffness` and
+//! `sidewaysStiffness` (the friction curves' grip multipliers; settable), `rpm`, `isGrounded`, `radius`, `suspensionDistance`, `GetWorldPose()` (position and Euler angles,
 //! there is no Quaternion type) and `GetGroundHit()` (a WheelHit table or nil).
 
 use hecs::Entity;
@@ -45,6 +45,18 @@ impl UserData for LWheelCollider {
         f.add_field_method_get("steerAngle", |lua, c| read(lua, c.0, |w| w.steer_angle));
         f.add_field_method_set("steerAngle", |lua, c, v: f32| {
             write(lua, c.0, |w| w.steer_angle = v)
+        });
+        f.add_field_method_get("forwardStiffness", |lua, c| {
+            read(lua, c.0, |w| w.forward_friction.stiffness)
+        });
+        f.add_field_method_set("forwardStiffness", |lua, c, v: f32| {
+            write(lua, c.0, |w| w.forward_friction.stiffness = v.max(0.0))
+        });
+        f.add_field_method_get("sidewaysStiffness", |lua, c| {
+            read(lua, c.0, |w| w.sideways_friction.stiffness)
+        });
+        f.add_field_method_set("sidewaysStiffness", |lua, c, v: f32| {
+            write(lua, c.0, |w| w.sideways_friction.stiffness = v.max(0.0))
         });
         f.add_field_method_get("rpm", |lua, c| read(lua, c.0, |w| w.state.rpm));
         f.add_field_method_get("isGrounded", |lua, c| {
@@ -207,5 +219,68 @@ return Driver
         );
         let c = scene.world.get::<&WheelCollider>(wheel).unwrap();
         assert_eq!(c.motor_torque, 300.0);
+    }
+
+    const TUNER: &str = r#"
+local Tuner = {}
+function Tuner:Start()
+    self.wheel = GameObject.Find("Wheel"):GetComponent("WheelCollider")
+    self.body = self.gameObject:GetComponent("Rigidbody")
+    self.wheel.forwardStiffness = 1.6
+    self.wheel.sidewaysStiffness = -2
+    self.body.mass = 900
+    Physics.gravity = Vector3.new(0, -3.5, 0)
+    Debug.Log(string.format("fwd=%.1f side=%.1f mass=%.0f g=%.1f", self.wheel.forwardStiffness,
+        self.wheel.sidewaysStiffness, self.body.mass, Physics.gravity.y))
+end
+return Tuner
+"#;
+
+    /// Grip, mass and gravity set from a script (the Racing template's settings panel).
+    #[test]
+    fn scripts_tune_grip_mass_and_gravity() {
+        let root = project();
+        std::fs::write(root.join("Assets/Scripts/Tuner.lua"), TUNER).unwrap();
+        let mut scene = Scene::new("t");
+        let cart = scene.spawn("Cart", None);
+        scene.add(
+            cart,
+            Rigidbody {
+                mass: 400.0,
+                ..Default::default()
+            },
+        );
+        let wheel = scene.spawn("Wheel", Some(cart));
+        scene.add(wheel, WheelCollider::default());
+        scene.add(
+            cart,
+            Scripts {
+                list: vec![ScriptRef {
+                    path: "Assets/Scripts/Tuner.lua".into(),
+                    ..Default::default()
+                }],
+            },
+        );
+        let physics = Physics::build(&scene, Vec3::new(0.0, -9.81, 0.0));
+        let mut host = ScriptHost::start(&mut scene, physics, root);
+        let mut time = Time::default();
+        time.advance(1.0 / 60.0);
+        host.update(&mut scene, &time, Input::default());
+        let logs = host.take_logs();
+        for (kind, text) in &logs {
+            assert_ne!(*kind, LogKind::Error, "{text}");
+        }
+        assert!(
+            logs.iter()
+                .any(|(_, t)| t == "fwd=1.6 side=0.0 mass=900 g=-3.5"),
+            "{logs:?}"
+        );
+        let c = scene.world.get::<&WheelCollider>(wheel).unwrap();
+        assert_eq!(c.forward_friction.stiffness, 1.6);
+        assert_eq!(
+            scene.world.get::<&Rigidbody>(cart).unwrap().mass,
+            900.0,
+            "the component follows"
+        );
     }
 }

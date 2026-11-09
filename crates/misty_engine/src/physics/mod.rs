@@ -273,6 +273,24 @@ impl Physics {
         gv(self.world.gravity)
     }
 
+    /// Change the world's gravity while playing (`Physics.gravity` in Lua). Sleeping bodies
+    /// wake up so they feel it.
+    pub fn set_gravity(&mut self, gravity: Vec3) {
+        self.world.gravity = rv(gravity);
+        for (_, b) in self.world.bodies.iter_mut() {
+            if b.is_dynamic() {
+                b.wake_up(true);
+            }
+        }
+    }
+
+    /// Change a body's mass while playing (`Rigidbody.mass` in Lua; colliders carry no mass).
+    pub fn set_mass(&mut self, e: Entity, mass: f32) {
+        if let Some(b) = self.body_mut(e) {
+            b.set_additional_mass(mass.max(1e-4), true);
+        }
+    }
+
     /// Project Settings ▸ Physics this world was built with.
     pub fn settings(&self) -> &PhysicsSettings {
         &self.settings

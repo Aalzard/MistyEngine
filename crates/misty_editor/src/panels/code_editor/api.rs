@@ -49,6 +49,7 @@ Physics|OverlapSphere|OverlapSphere(center, radius [, layerMask])|GameObjects to
 Physics|DefaultRaycastLayers|DefaultRaycastLayers|Every layer but Ignore Raycast
 Physics|AllLayers|AllLayers|Every layer
 Physics|IgnoreRaycastLayer|IgnoreRaycastLayer|The Ignore Raycast layer mask
+Physics|gravity|gravity|World gravity (Vector3, settable while playing)
 Vector3|new|new(x, y, z)|A new vector
 Vector3|zero|zero|(0, 0, 0)
 Vector3|one|one|(1, 1, 1)
@@ -163,7 +164,7 @@ Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #Transform|LookAt|LookAt(target)|Turn to face a point or Transform
 #Rigidbody|velocity|velocity|Linear velocity
 #Rigidbody|angularVelocity|angularVelocity|Angular velocity
-#Rigidbody|mass|mass|Mass
+#Rigidbody|mass|mass|Mass in kg (settable)
 #Rigidbody|isKinematic|isKinematic|Moved by scripts only
 #Rigidbody|useGravity|useGravity|Affected by gravity
 #Rigidbody|AddForce|AddForce(v [, mode])|Apply a force (ForceMode.Force by default)
@@ -198,6 +199,8 @@ Accessibility|colorBlindModes|colorBlindModes|The mode names, for a dropdown
 #WheelCollider|motorTorque|motorTorque|Drive torque on the axle (N·m)
 #WheelCollider|brakeTorque|brakeTorque|Braking torque (N·m)
 #WheelCollider|steerAngle|steerAngle|Steering angle in degrees
+#WheelCollider|forwardStiffness|forwardStiffness|Grip multiplier of the forward friction curve
+#WheelCollider|sidewaysStiffness|sidewaysStiffness|Grip multiplier of the sideways friction curve
 #WheelCollider|rpm|rpm|Wheel speed in revolutions per minute (read-only)
 #WheelCollider|isGrounded|isGrounded|Touching the ground (read-only)
 #WheelCollider|radius|radius|Wheel radius (read-only)
