@@ -205,7 +205,8 @@ impl GraphAssets {
         if !crate::shader_graph::is_graph_path(&m.shader) {
             return None;
         }
-        let g = self.graph(&m.shader)?;
+        let shader = shader_beside(rel, &m.shader);
+        let g = self.graph(&shader)?;
         if g.target.material != crate::shader_graph::TargetMaterial::Decal {
             return None;
         }
@@ -232,7 +233,7 @@ impl GraphAssets {
         }
         Some((
             GraphDecal {
-                shader: m.shader.clone(),
+                shader,
                 variant: crate::shader_graph::variant_key(&keywords, &variant),
                 values,
             },
@@ -1074,6 +1075,48 @@ mod tests {
         assert_eq!(
             screen_rect(around, vp, (400, 300)),
             Some([0.0, 0.0, 400.0, 300.0])
+        );
+    }
+}
+
+/// A material's `shader`, resolved next to the material's own project when the material is
+/// given by absolute path (`.../<Project>/Assets/...`): a material from another project, or a
+/// test whose neighbours move the process-wide project root, still finds its graph. Relative
+/// materials keep the project-relative shader path.
+fn shader_beside(material: &str, shader: &str) -> String {
+    let shader = shader.replace('\\', "/");
+    if std::path::Path::new(&shader).is_absolute() {
+        return shader;
+    }
+    let material = material.replace('\\', "/");
+    if std::path::Path::new(&material).is_absolute()
+        && let Some(i) = material.rfind("/Assets/")
+    {
+        return format!("{}/{shader}", &material[..i]);
+    }
+    shader
+}
+
+#[cfg(test)]
+mod shader_beside_tests {
+    use super::shader_beside;
+
+    #[test]
+    fn absolute_materials_resolve_their_shader_in_their_own_project() {
+        assert_eq!(
+            shader_beside(
+                "C:/Games/Puddles/Assets/M/Puddle.mat",
+                "Assets/G/Puddle.shadergraph"
+            ),
+            "C:/Games/Puddles/Assets/G/Puddle.shadergraph"
+        );
+        assert_eq!(
+            shader_beside("Assets/M/Puddle.mat", "Assets/G/Puddle.shadergraph"),
+            "Assets/G/Puddle.shadergraph"
+        );
+        assert_eq!(
+            shader_beside("C:/P/Assets/M/Puddle.mat", "C:/Other/Puddle.shadergraph"),
+            "C:/Other/Puddle.shadergraph"
         );
     }
 }
