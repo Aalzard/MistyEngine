@@ -212,7 +212,7 @@ impl GraphAssets {
         }
         let keywords = crate::shader_graph::codegen::effective_keywords(
             &g,
-            &crate::shader_graph::FileResolver,
+            &crate::shader_graph::codegen::ProjectResolver::for_path(&shader),
         );
         let variant: crate::shader_graph::Variant = keywords
             .iter()
@@ -806,7 +806,7 @@ impl Renderer {
                     let generated = crate::shader_graph::codegen::generate_decal(
                         g,
                         &v,
-                        &crate::shader_graph::FileResolver,
+                        &crate::shader_graph::codegen::ProjectResolver::for_path(&key.0),
                         &name,
                     )
                     .map_err(|e| e.message)

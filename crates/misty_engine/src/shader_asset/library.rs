@@ -9,7 +9,7 @@ use std::time::{Instant, SystemTime};
 
 use super::{ShaderAsset, ShaderError, parse};
 use crate::assets;
-use crate::shader_graph::{FileResolver, ShaderGraph};
+use crate::shader_graph::ShaderGraph;
 
 type Loaded = Result<Arc<ShaderAsset>, ShaderError>;
 
@@ -24,6 +24,8 @@ struct Entry {
     deps: Vec<(String, Option<SystemTime>)>,
     /// Variants generated so far, by key (`"_A=1"`).
     variants: HashMap<String, Loaded>,
+    /// The project an absolute shader path lives in (its Sub Graphs resolve there).
+    project: Option<std::path::PathBuf>,
 }
 
 #[derive(Default)]
@@ -69,6 +71,7 @@ fn entry(shader: Loaded, graph: Option<Arc<ShaderGraph>>, deps: Vec<String>, rel
         graph,
         deps: deps.into_iter().map(|d| (d.clone(), mtime(&d))).collect(),
         variants: HashMap::new(),
+        project: crate::shader_graph::codegen::project_of(rel),
     }
 }
 
@@ -96,7 +99,11 @@ fn read(rel: &str) -> Entry {
 
 /// The default variant of a graph, with what it read.
 fn from_graph(g: Arc<ShaderGraph>, rel: &str) -> Entry {
-    let generated = crate::shader_graph::generate(&g);
+    let generated = crate::shader_graph::generate_variant(
+        &g,
+        &crate::shader_graph::Variant::new(),
+        &crate::shader_graph::codegen::ProjectResolver::for_path(rel),
+    );
     let deps = generated
         .as_ref()
         .map(|cg| cg.deps.clone())
@@ -112,9 +119,13 @@ fn variant(e: &Entry, key: &str) -> Loaded {
     let base = e.shader.clone()?;
     let v = crate::shader_graph::parse_variant_key(key);
     match &e.graph {
-        Some(g) => crate::shader_graph::generate_variant(g, &v, &FileResolver)
-            .map_err(|e| error(format!("Shader Graph: {}", e.message)))
-            .and_then(|cg| parse(&cg.source).map(Arc::new)),
+        Some(g) => crate::shader_graph::generate_variant(
+            g,
+            &v,
+            &crate::shader_graph::codegen::ProjectResolver(e.project.clone()),
+        )
+        .map_err(|e| error(format!("Shader Graph: {}", e.message)))
+        .and_then(|cg| parse(&cg.source).map(Arc::new)),
         None => base.with_variant(&v).map(Arc::new),
     }
 }
