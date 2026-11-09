@@ -76,7 +76,7 @@ Screenshots (`docs/screenshots/r24/`): `editor_tr_gameobject_menu.png`,
 
 - `cargo fmt --all`: clean.
 - `cargo clippy --workspace --all-targets --release`: 0 warnings.
-- `cargo test --workspace --release --no-fail-fast`: all pass (editor 1 383, engine 795, player
+- `cargo test --workspace --release --no-fail-fast`: all pass (editor 795, engine 1 383, player
   and integration tests 14; 171 ignored as usual).
 - Golden shots (`golden_shots -- --ignored`): pass.
 
