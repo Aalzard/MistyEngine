@@ -34,6 +34,16 @@ pub fn needs_rich(t: &UiText, shown: &str) -> bool {
         || shown.chars().any(layout::is_rtl_char)
 }
 
+/// The alignment `t` draws `shown` with: mirrored (Left ↔ Right) when Mirror RTL is on and the
+/// text starts in a right-to-left script.
+pub fn alignment(t: &UiText, shown: &str) -> crate::scene::TextAnchor {
+    if t.mirror_rtl && unicode_bidi::get_base_direction(shown) == unicode_bidi::Direction::Rtl {
+        t.alignment.mirrored()
+    } else {
+        t.alignment
+    }
+}
+
 /// The fonts of a text (its font asset when it loads, then the built-in and system fonts).
 pub fn font_set(t: &UiText) -> fonts::FontSet {
     let primary = t.font.as_deref().and_then(|f| fonts::load(f).ok());
@@ -92,7 +102,7 @@ pub fn layout_ui_text(
         px: (t.scaled_font_size() * scale).max(0.5),
         scale,
         size,
-        align: t.alignment,
+        align: alignment(t, shown),
         wrap: t.wrap,
         line_spacing: t.line_spacing,
         char_spacing: t.character_spacing,

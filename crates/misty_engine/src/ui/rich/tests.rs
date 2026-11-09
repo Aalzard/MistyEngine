@@ -274,27 +274,138 @@ fn right_to_left_runs_are_reversed_for_display() {
 }
 
 #[test]
-fn arabic_is_shaped_when_a_font_has_it() {
+fn arabic_is_shaped_with_the_built_in_font() {
     let set = super::fonts::FontSet::new(None);
     let (font, glyph) = set.lookup('\u{628}');
-    if glyph == 0 {
-        eprintln!("no Arabic-capable font on this machine; shaping not checked");
-        return;
-    }
-    // Beh alone vs. beh joined in a word: shaping picks different (contextual) glyphs.
+    assert_ne!(glyph, 0, "the built-in Arabic font has beh");
+    // Beh alone vs. beh joined in a word: shaping picks different (contextual) glyphs. The
+    // font draws joined behs as a dotless body plus a dot mark, so count clusters, not glyphs.
     let alone = set.shape(font, "\u{628}", true, 20.0).unwrap();
     let word = set
         .shape(font, "\u{628}\u{628}\u{628}", true, 20.0)
         .unwrap();
-    assert_eq!(word.len(), 3);
+    let clusters: std::collections::BTreeSet<usize> = word.iter().map(|g| g.cluster).collect();
+    assert_eq!(clusters.len(), 3);
     assert!(word.iter().any(|g| g.glyph != alone[0].glyph), "{word:?}");
-    // Through the layout: one glyph per letter, the logically first letter on the right.
+    // Through the layout: the logically first letter (beh) on the right, dal on the left.
     let r = parse("\u{628}\u{644}\u{62f}");
     let mut p = params(300.0, 60.0);
     p.px = 20.0;
     let l = layout(&r, &set, &p);
-    assert_eq!(l.glyphs.len(), 3);
-    assert!(l.glyphs[0].pos.x < l.glyphs[2].pos.x);
+    let dal = set.shape(font, "\u{644}\u{62f}", true, 20.0).unwrap()[0].glyph;
+    let dal_x = l.glyphs.iter().find(|g| g.glyph == dal).unwrap().pos.x;
+    assert!(
+        l.glyphs.iter().all(|g| g.pos.x >= dal_x - 0.01),
+        "dal is leftmost"
+    );
+    assert!(l.glyphs.last().unwrap().pos.x > dal_x);
+}
+
+/// "مرحبا" (marhaban, "hello") with the built-in Arabic font: every letter takes its joined
+/// form (the font's presentation-form glyphs) and the run comes out right to left, so the
+/// first letter (meem, initial form) is the rightmost glyph.
+#[test]
+fn arabic_word_is_shaped_with_the_built_in_font() {
+    use super::fonts::{ARABIC, FontSet, font};
+    let set = FontSet::new(None);
+    let word = "\u{645}\u{631}\u{62d}\u{628}\u{627}";
+    for c in word.chars() {
+        assert_eq!(
+            set.lookup(c).0,
+            ARABIC,
+            "{c:?} comes from the built-in Arabic font"
+        );
+    }
+    let arabic = font(ARABIC);
+    let form = |c: char| arabic.glyph(c).expect("presentation form in the font");
+    // Visual order: alef final, beh medial, hah initial, reh final, meem initial.
+    let expected: Vec<u16> = ['\u{FE8E}', '\u{FE92}', '\u{FEA3}', '\u{FEAE}', '\u{FEE3}']
+        .into_iter()
+        .map(form)
+        .collect();
+    let shaped = set.shape(ARABIC, word, true, 20.0).unwrap();
+    // One cluster per letter, in visual order (the last letter first). The font draws some
+    // joined letters as a dotless body plus a zero-width dot mark.
+    let mut clusters: Vec<(usize, Vec<super::fonts::Shaped>)> = Vec::new();
+    for g in shaped {
+        match clusters.last_mut() {
+            Some((c, gs)) if *c == g.cluster => gs.push(g),
+            _ => clusters.push((g.cluster, vec![g])),
+        }
+    }
+    let offsets: Vec<usize> = clusters.iter().map(|(c, _)| *c).collect();
+    assert_eq!(
+        offsets,
+        [8, 6, 4, 2, 0],
+        "visual order: alef, beh, hah, reh, meem"
+    );
+    for (i, (_, gs)) in clusters.iter().enumerate() {
+        if i == 1 {
+            // Beh, medial: a body that is none of the isolated, initial or final forms, and
+            // its dot.
+            let body = gs.iter().find(|g| g.advance > 0.0).expect("a body").glyph;
+            for c in ['\u{628}', '\u{FE8F}', '\u{FE91}', '\u{FE90}'] {
+                assert_ne!(Some(body), arabic.glyph(c), "medial beh is not {c:?}");
+            }
+            assert!(
+                body == expected[1] || (gs.len() == 2 && gs.iter().any(|g| g.advance == 0.0)),
+                "{gs:?}"
+            );
+        } else {
+            assert_eq!(gs.len(), 1, "{gs:?}");
+            assert_eq!(gs[0].glyph, expected[i], "letter {i} takes its joined form");
+        }
+    }
+    // Through the layout, with a number and a Latin word in the same line: "مرحبا 2026 Misty".
+    let line = format!("{word} 2026 Misty");
+    let mut p = params(400.0, 60.0);
+    p.px = 20.0;
+    let l = layout(&parse(&line), &set, &p);
+    let arabic_x = |g: u16| {
+        l.glyphs
+            .iter()
+            .find(|q| q.glyph == g && q.font == ARABIC)
+            .map(|q| q.pos.x)
+            .unwrap()
+    };
+    let latin_x = |c: char| {
+        l.glyphs
+            .iter()
+            .find(|q| q.glyph == set.lookup(c).1 && q.font != ARABIC)
+            .map(|q| q.pos.x)
+            .unwrap()
+    };
+    // Base direction right to left: the Arabic word is rightmost, the number reads 2026 left to
+    // right, and "Misty" sits left of the number.
+    assert!(
+        arabic_x(expected[4]) > arabic_x(expected[0]),
+        "meem right of alef"
+    );
+    assert!(
+        arabic_x(expected[0]) > latin_x('6'),
+        "the word is right of the number"
+    );
+    assert!(latin_x('2') < latin_x('6'), "digits keep their order");
+    assert!(latin_x('M') < latin_x('2'), "Misty is left of the number");
+}
+
+/// Mirror RTL swaps Left and Right for text that starts right to left.
+#[test]
+fn mirror_rtl_swaps_the_alignment_of_right_to_left_text() {
+    let word = "\u{645}\u{631}\u{62d}\u{628}\u{627}";
+    let mut t = UiText {
+        alignment: TextAnchor::MiddleLeft,
+        ..Default::default()
+    };
+    assert_eq!(super::alignment(&t, word), TextAnchor::MiddleLeft);
+    t.mirror_rtl = true;
+    assert_eq!(super::alignment(&t, word), TextAnchor::MiddleRight);
+    assert_eq!(
+        super::alignment(&t, "Hello \u{645}"),
+        TextAnchor::MiddleLeft
+    );
+    assert_eq!(TextAnchor::UpperCenter.mirrored(), TextAnchor::UpperCenter);
+    assert_eq!(TextAnchor::LowerRight.mirrored(), TextAnchor::LowerLeft);
 }
 
 #[test]

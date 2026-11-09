@@ -8,6 +8,8 @@
 //!   with 0 and 1 singular; Arabic: zero|one|two|few|many|other; Japanese/Chinese: one form;
 //!   Russian/Polish: one|few|many). With fewer forms than the language has, two forms mean
 //!   one|other and three zero|one|other.
+//! - `{name:upper}`, `{name:lower}` and `{name:title}` change the argument's case with the
+//!   locale's rules (Turkish: i ↔ İ, ı ↔ I; see [`super::case`]).
 
 use std::collections::BTreeMap;
 
@@ -131,6 +133,9 @@ fn placeholder(inner: &str, args: &Args, locale: &str, number: Option<&str>) -> 
             let form = forms.get(index).copied().unwrap_or("");
             format_inner(form, args, locale, Some(value))
         }
+        "upper" => super::case::to_upper(value, locale),
+        "lower" => super::case::to_lower(value, locale),
+        "title" => super::case::to_title(value, locale),
         // Unknown formatters show the plain value.
         _ => value.to_owned(),
     }

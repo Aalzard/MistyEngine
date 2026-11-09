@@ -325,6 +325,12 @@ impl TextAnchor {
         Self::ALL[row.min(2) * 3 + column.min(2)]
     }
 
+    /// Left and right swapped (centre and the row unchanged): right-to-left text.
+    pub fn mirrored(self) -> Self {
+        let (column, row) = self.cell();
+        Self::from_cell(2 - column, row)
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::UpperLeft => "Upper Left",
@@ -547,6 +553,10 @@ pub struct UiText {
     pub font_size_max: f32,
     #[serde(skip_serializing_if = "TextEffects::is_default")]
     pub effects: TextEffects,
+    /// Text that starts right to left (Arabic, Hebrew, …) mirrors the horizontal alignment
+    /// (Left ↔ Right), so one Text reads well in every language of a Localized Text.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub mirror_rtl: bool,
 }
 
 impl Default for UiText {
@@ -572,6 +582,7 @@ impl Default for UiText {
             font_size_min: Self::AUTO_MIN,
             font_size_max: Self::AUTO_MAX,
             effects: TextEffects::default(),
+            mirror_rtl: false,
         }
     }
 }
