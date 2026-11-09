@@ -470,3 +470,12 @@ fn distance_field_glyphs_match_the_outline() {
     assert_eq!(atlas.glyph(&f, f.glyph(' ').unwrap_or(3)).unwrap(), None);
     assert!(super::sdf::threshold(2.0, 20.0) < 0.5 && super::sdf::threshold(0.0, 20.0) == 0.5);
 }
+
+/// Brackets around right-to-left text are mirrored, so "(א)" still reads as a bracketed word.
+#[test]
+fn brackets_are_mirrored_in_right_to_left_text() {
+    let r = parse("(\u{5d0})");
+    let l = layout(&r, &Mono, &params(200.0, 50.0));
+    let order: Vec<u16> = l.glyphs.iter().map(|g| g.glyph).collect();
+    assert_eq!(order, ['(' as u16, 0x5d0, ')' as u16]);
+}
