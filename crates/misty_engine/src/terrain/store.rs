@@ -255,3 +255,30 @@ pub fn unload(path: &str) {
 pub fn modify_settings<R>(path: &str, f: impl FnOnce(&mut TerrainData) -> R) -> Option<R> {
     modify_region(path, Region::EMPTY, f)
 }
+
+/// Is the data at `path` in the store (loaded or failed) without reading the file?
+pub fn is_loaded(path: &str) -> bool {
+    store().entries.contains_key(&assets::absolute(path))
+}
+
+/// Put data read from `path`'s file elsewhere (a World Partition cell's background load) into
+/// the store, as the file holds it. Data with edits not saved yet wins.
+pub fn insert_loaded(path: &str, data: TerrainData) {
+    let mut s = store();
+    let key = assets::absolute(path);
+    if s.entries.get(&key).is_some_and(|e| e.version != e.clean) {
+        return;
+    }
+    let version = s.bump();
+    let entry = Entry::new(Ok(Arc::new(data)), version).loaded(&key);
+    s.entries.insert(key, entry);
+}
+
+/// [`unload`] unless the data has edits not saved yet (a streamed cell going away keeps them).
+pub fn unload_if_saved(path: &str) {
+    let mut s = store();
+    let key = assets::absolute(path);
+    if s.entries.get(&key).is_some_and(|e| e.version == e.clean) {
+        s.entries.remove(&key);
+    }
+}

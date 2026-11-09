@@ -400,6 +400,8 @@ pub(crate) fn reset_after_load(s: &mut EditorState) {
     s.inspector_targets.clear();
     s.files.saved.clear();
     s.files.dirty.clear();
+    // World Partition cells of the old scene are forgotten.
+    s.world_partition.streamer.reset();
     for id in s.scene.loaded_scenes() {
         mark_saved(s, id);
     }

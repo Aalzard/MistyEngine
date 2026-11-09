@@ -181,7 +181,13 @@ struct GpuTerrain {
     /// than four layers a pixel reads only the maps of its chunk's layers and blends the four
     /// strongest of them, so a chunk costs what its own layers cost.
     chunk_layers: wgpu::Texture,
+    /// Frame of [`TerrainCache::prepare`] that last drew it (unused ones are dropped).
+    used: u64,
 }
+
+/// Frames a terrain may go undrawn before its GPU data is dropped (streamed tiles that went
+/// away; a terrain hidden for a moment keeps its data).
+const UNUSED_FRAMES: u64 = 600;
 
 /// Bit mask of the layers with weight in splat texels `xs` × `zs` (every map).
 fn layer_mask(d: &TerrainData, xs: std::ops::Range<usize>, zs: std::ops::Range<usize>) -> u32 {
@@ -392,6 +398,7 @@ impl GpuTerrain {
                 view_formats: &[],
             }),
             maps: d.splat_maps(),
+            used: 0,
             chunk_layers: texture(
                 device,
                 "misty terrain chunk layers",
@@ -599,6 +606,8 @@ pub(super) struct TerrainCache {
     shadow_reach: f32,
     frustum: Option<Frustum>,
     started: Instant,
+    /// Calls of [`TerrainCache::prepare`] (when each terrain was last drawn).
+    frame: u64,
 }
 
 /// Flower layers being built on a worker thread. (Behind a lock only so the renderer stays
@@ -765,6 +774,7 @@ impl TerrainCache {
             shadow_reach: 0.0,
             frustum: None,
             started: Instant::now(),
+            frame: 0,
         }
     }
 
@@ -845,9 +855,27 @@ impl TerrainCache {
                 }
             }))
         });
+        self.frame += 1;
+        let frame = self.frame;
+        // GPU data of terrains no longer drawn (streamed tiles that went away) is dropped.
+        self.entries
+            .retain(|_, g| g.used + UNUSED_FRAMES > frame || g.used == 0);
+        // While streaming, at most one terrain new to the GPU per frame (streamed tiles arrive
+        // one at a time; the rest wait a frame or two instead of piling into one).
+        let mut fresh = 0;
         for t in terrains {
+            if !self.entries.contains_key(&t.key) && super::terrain_grass::grass_streaming() {
+                fresh += 1;
+                if fresh > 1 {
+                    self.groups.push(None);
+                    continue;
+                }
+            }
             self.sync(device, queue, t);
             let layers = self.layers.get(device, queue, &t.data.layers);
+            if let Some(g) = self.entries.get_mut(&t.key) {
+                g.used = frame;
+            }
             let gpu = &self.entries[&t.key];
             let mut params = params(t, &layers.means, gpu.coverage, light, self.ground_cover);
             params.chunks = [gpu.per_side() as f32, 0.0, 0.0, 0.0];
@@ -944,6 +972,41 @@ impl TerrainCache {
         self.camera = camera;
         self.view_proj = *view_proj;
         self.grass_casters = casters;
+        // Chunk LODs of every terrain first: tiles of a larger terrain that share an edge are
+        // stitched across it like the chunks inside one terrain.
+        let mut base: Vec<Vec<u8>> = Vec::with_capacity(terrains.len());
+        let mut geoms: Vec<Option<terrain_lod::TileGeom>> = Vec::with_capacity(terrains.len());
+        for t in terrains {
+            let Some(g) = self.entries.get(&t.key) else {
+                base.push(Vec::new());
+                geoms.push(None);
+                continue;
+            };
+            let d = &t.data;
+            let cells = terrain_lod::chunk_cells(g.res);
+            let per = g.per_side();
+            let spacing = d.spacing();
+            let chunk_m = cells as f32 * spacing.x.max(spacing.y);
+            let lods = terrain_lod::select(per, chunk_m, terrain_lod::max_lod(cells), |c| {
+                let b = chunk_bounds(g, t, c);
+                camera.clamp(b.min, b.max).distance(camera)
+            });
+            base.push(lods);
+            geoms.push(Some(terrain_lod::TileGeom {
+                corner: [t.position.x, t.position.z],
+                size: [d.size.x, d.size.z],
+                per_side: per,
+            }));
+        }
+        let neighbours = terrain_lod::tile_neighbours(&geoms);
+        let tiled = neighbours.iter().any(|n| n.iter().any(Option::is_some));
+        let mut across: Vec<Vec<u8>> = vec![Vec::new(); terrains.len()];
+        if tiled {
+            terrain_lod::limit_across(&mut base, &geoms, &neighbours);
+            for (i, m) in across.iter_mut().enumerate() {
+                *m = terrain_lod::masks_across(i, &base, &geoms, &neighbours);
+            }
+        }
         for (i, t) in terrains.iter().enumerate() {
             let Some(g) = self.entries.get_mut(&t.key) else {
                 self.chunks.push(Vec::new());
@@ -973,10 +1036,8 @@ impl TerrainCache {
                 );
                 Aabb::new(min + t.position, max + t.position)
             };
-            let mut lods = terrain_lod::select(per, chunk_m, terrain_lod::max_lod(cells), |c| {
-                let b = bounds(c);
-                camera.clamp(b.min, b.max).distance(camera)
-            });
+            let _ = chunk_m;
+            let mut lods = std::mem::take(&mut base[i]);
             // Chunks with holes draw at full detail (their neighbours step down to them).
             let any_holes = g.holed.iter().any(|h| *h);
             let full = |mut l: Vec<u8>| {
@@ -990,7 +1051,12 @@ impl TerrainCache {
             if any_holes {
                 lods = full(lods);
             }
-            let masks = terrain_lod::masks(per, &lods);
+            let mut masks = terrain_lod::masks(per, &lods);
+            if across[i].len() == masks.len() {
+                for (m, a) in masks.iter_mut().zip(&across[i]) {
+                    *m |= a;
+                }
+            }
             let reach = self.shadow_reach;
             let mut shadow_lods = terrain_lod::shadow_lods(per, &lods, |c| {
                 let b = bounds(c);
@@ -1642,6 +1708,27 @@ impl TerrainCache {
 
 /// The index lists of the chunks with holes (`wanted`: chunk, lod, edge mask) in one buffer.
 #[allow(clippy::too_many_arguments)]
+/// World bounds of chunk `c` of a terrain.
+fn chunk_bounds(g: &GpuTerrain, t: &TerrainDraw, c: usize) -> Aabb {
+    let d = &t.data;
+    let cells = terrain_lod::chunk_cells(g.res);
+    let per = g.per_side();
+    let spacing = d.spacing();
+    let (cx, cz) = (c % per, c / per);
+    let (lo, hi) = g.chunk_range[c];
+    let min = Vec3::new(
+        cx as f32 * cells as f32 * spacing.x,
+        lo * d.size.y,
+        cz as f32 * cells as f32 * spacing.y,
+    );
+    let max = Vec3::new(
+        min.x + cells as f32 * spacing.x,
+        hi * d.size.y,
+        min.z + cells as f32 * spacing.y,
+    );
+    Aabb::new(min + t.position, max + t.position)
+}
+
 fn hole_indices(
     device: &wgpu::Device,
     p: &Patterns,

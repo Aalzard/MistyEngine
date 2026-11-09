@@ -182,8 +182,186 @@ pub fn masks(per_side: usize, lods: &[u8]) -> Vec<u8> {
         .collect()
 }
 
+/// Where a terrain lies, for finding the tiles next to it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TileGeom {
+    /// World x/z of the corner.
+    pub corner: [f32; 2],
+    pub size: [f32; 2],
+    pub per_side: usize,
+}
+
+/// Sides in mask-bit order.
+const SIDES: [(u8, i32, i32); 4] = [(LEFT, -1, 0), (RIGHT, 1, 0), (BACK, 0, -1), (FRONT, 0, 1)];
+
+/// For each terrain, the terrain sharing each whole edge (left, right, back, front): same
+/// size and chunk grid, corners touching (tiles of a larger terrain).
+pub fn tile_neighbours(geoms: &[Option<TileGeom>]) -> Vec<[Option<usize>; 4]> {
+    let close = |a: f32, b: f32, size: f32| (a - b).abs() <= size * 1e-4 + 1e-3;
+    geoms
+        .iter()
+        .map(|g| {
+            let mut out = [None; 4];
+            let Some(g) = g else {
+                return out;
+            };
+            for (k, (_, dx, dz)) in SIDES.iter().enumerate() {
+                let want = [
+                    g.corner[0] + *dx as f32 * g.size[0],
+                    g.corner[1] + *dz as f32 * g.size[1],
+                ];
+                out[k] = geoms.iter().position(|o| {
+                    o.is_some_and(|o| {
+                        o.per_side == g.per_side
+                            && close(o.size[0], g.size[0], g.size[0])
+                            && close(o.size[1], g.size[1], g.size[1])
+                            && close(o.corner[0], want[0], g.size[0])
+                            && close(o.corner[1], want[1], g.size[1])
+                    })
+                });
+            }
+            out
+        })
+        .collect()
+}
+
+/// Chunk index of the `k`th chunk along `side` of a `per`-wide grid, and of the chunk facing it
+/// across that side in the neighbour.
+fn edge(side: u8, per: usize, k: usize) -> (usize, usize) {
+    match side {
+        LEFT => (k * per, k * per + per - 1),
+        RIGHT => (k * per + per - 1, k * per),
+        BACK => (k, (per - 1) * per + k),
+        _ => ((per - 1) * per + k, k),
+    }
+}
+
+/// Make chunk LODs finer where needed so chunks across tile edges also differ by at most one
+/// level (then within each tile again, until nothing changes).
+pub fn limit_across(
+    lods: &mut [Vec<u8>],
+    geoms: &[Option<TileGeom>],
+    neighbours: &[[Option<usize>; 4]],
+) {
+    loop {
+        let mut changed = false;
+        for i in 0..lods.len() {
+            let Some(g) = geoms[i] else {
+                continue;
+            };
+            let per = g.per_side;
+            for (s, (bit, _, _)) in SIDES.iter().enumerate() {
+                let Some(j) = neighbours[i][s] else {
+                    continue;
+                };
+                if lods[j].len() != per * per || lods[i].len() != per * per {
+                    continue;
+                }
+                for k in 0..per {
+                    let (mine, theirs) = edge(*bit, per, k);
+                    let limit = lods[j][theirs] + 1;
+                    if lods[i][mine] > limit {
+                        lods[i][mine] = limit;
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                lods[i] = limit(per, std::mem::take(&mut lods[i]));
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+}
+
+/// Edge bits of terrain `i`'s chunks whose neighbour across a tile edge is coarser.
+pub fn masks_across(
+    i: usize,
+    lods: &[Vec<u8>],
+    geoms: &[Option<TileGeom>],
+    neighbours: &[[Option<usize>; 4]],
+) -> Vec<u8> {
+    let Some(g) = geoms[i] else {
+        return Vec::new();
+    };
+    let per = g.per_side;
+    let mut out = vec![0u8; per * per];
+    if lods[i].len() != per * per {
+        return out;
+    }
+    for (s, (bit, _, _)) in SIDES.iter().enumerate() {
+        let Some(j) = neighbours[i][s] else {
+            continue;
+        };
+        if lods[j].len() != per * per {
+            continue;
+        }
+        for k in 0..per {
+            let (mine, theirs) = edge(*bit, per, k);
+            if lods[j][theirs] > lods[i][mine] {
+                out[mine] |= bit;
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    /// Two tiles side by side at different distances: the LODs across their shared edge
+    /// differ by at most one level, and the finer side snaps onto the coarser one.
+    #[test]
+    fn tiles_stitch_across_their_shared_edge() {
+        let per = 4;
+        let geoms = [
+            Some(TileGeom {
+                corner: [0.0, 0.0],
+                size: [256.0, 256.0],
+                per_side: per,
+            }),
+            Some(TileGeom {
+                corner: [256.0, 0.0],
+                size: [256.0, 256.0],
+                per_side: per,
+            }),
+            // Not touching: no neighbour.
+            Some(TileGeom {
+                corner: [1000.0, 0.0],
+                size: [256.0, 256.0],
+                per_side: per,
+            }),
+        ];
+        let n = tile_neighbours(&geoms);
+        assert_eq!(n[0], [None, Some(1), None, None]);
+        assert_eq!(n[1], [Some(0), None, None, None]);
+        assert_eq!(n[2], [None; 4]);
+        // Tile 0 all finest, tile 1 all coarse.
+        let mut lods = vec![
+            vec![0u8; per * per],
+            vec![3u8; per * per],
+            vec![3u8; per * per],
+        ];
+        limit_across(&mut lods, &geoms, &n);
+        for k in 0..per {
+            let (mine, theirs) = edge(RIGHT, per, k);
+            assert!(lods[1][theirs] <= lods[0][mine] + 1, "{lods:?}");
+        }
+        // Within tile 1 neighbours still differ by at most one level.
+        assert_eq!(limit(per, lods[1].clone()), lods[1]);
+        let masks = masks_across(0, &lods, &geoms, &n);
+        for k in 0..per {
+            let (mine, _) = edge(RIGHT, per, k);
+            assert_eq!(
+                masks[mine] & RIGHT,
+                RIGHT,
+                "the finer edge snaps to the coarser"
+            );
+        }
+        assert!(masks_across(1, &lods, &geoms, &n).iter().all(|m| *m == 0));
+        assert_eq!(lods[2], vec![3u8; per * per], "far tile untouched");
+    }
     use super::*;
     use std::collections::BTreeSet;
 

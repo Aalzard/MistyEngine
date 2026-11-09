@@ -1,6 +1,6 @@
 //! Self-screenshot for automated checks: `MISTY_SCREENSHOT=out.png misty` saves the window and exits.
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
-//! `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS`, and `MISTY_THEME=light` (and
+//! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
 
 use std::path::PathBuf;
@@ -531,6 +531,20 @@ pub fn apply_env(
         && let egui_dock::Node::Vertical(v) = node
     {
         v.fraction = f.clamp(0.1, 0.9);
+    }
+    // `MISTY_WORLD_PARTITION=around` streams World Partition cells around the Scene view camera
+    // (Edit mode); `all` loads every cell; `none` loads none (only the HLOD proxies show).
+    if let Some(mode) = std::env::var_os("MISTY_WORLD_PARTITION") {
+        let w = &mut s.world_partition;
+        match mode.to_string_lossy().as_ref() {
+            "around" => w.stream_around_camera = true,
+            "all" => {
+                if let Some((_, wp)) = misty_engine::world_partition::find(&s.scene) {
+                    w.streamer.load_all(&wp);
+                }
+            }
+            _ => {}
+        }
     }
     // `MISTY_STATS=1` shows the Game view's Stats box.
     if std::env::var_os("MISTY_STATS").is_some() {

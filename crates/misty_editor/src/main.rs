@@ -163,6 +163,8 @@ mod sample_splines;
 #[cfg(test)]
 mod sample_ssgi;
 #[cfg(test)]
+mod sample_streaming;
+#[cfg(test)]
 mod sample_stress;
 #[cfg(test)]
 mod sample_terrain;

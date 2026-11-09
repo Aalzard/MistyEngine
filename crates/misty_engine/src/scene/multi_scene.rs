@@ -26,6 +26,10 @@ pub struct SceneEntry {
     pub path: Option<String>,
     /// Unloaded scenes stay listed (greyed out) but have no objects.
     pub loaded: bool,
+    /// Objects are still being added a slice at a time (a streamed World Partition cell).
+    pub partial: bool,
+    /// Loaded by World Partition streaming (a grid cell), not opened by hand.
+    pub streamed: bool,
     /// Lighting and navigation of a loaded scene that is not the active one.
     stash: Option<Box<(RenderSettings, NavigationSettings)>>,
 }
@@ -37,8 +41,15 @@ impl SceneEntry {
             name: name.to_owned(),
             path,
             loaded: true,
+            partial: false,
+            streamed: false,
             stash: None,
         }
+    }
+
+    /// Keep the lighting and navigation of a scene that is not the active one.
+    pub(super) fn set_stash(&mut self, lighting: RenderSettings, navigation: NavigationSettings) {
+        self.stash = Some(Box::new((lighting, navigation)));
     }
 }
 

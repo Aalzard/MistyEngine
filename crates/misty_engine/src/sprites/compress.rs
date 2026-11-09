@@ -495,6 +495,29 @@ pub fn fit_size(w: u32, h: u32, max: u32) -> [u32; 2] {
 /// What the GPU gets for texture `rel` used as `usage`: cached blocks when the device supports
 /// BC (`bc`), the settings ask for compression and the cache has them (encoding them now, in
 /// the background or not at all, by [`mode`]); else the decoded image.
+/// [`texture_upload`] that never encodes: the cached blocks when there are some, else the
+/// decoded image (reading textures ahead on a background thread, where an encode would hold a
+/// worker for seconds).
+pub fn texture_upload_cached(rel: &str, usage: Use, bc: bool) -> Result<Upload, String> {
+    if !bc || mode() == Mode::Off || super::builtin::is_builtin(rel) {
+        return super::load_texture(rel).map(Upload::Rgba);
+    }
+    let imp = super::importer(rel);
+    let platform = super::import::current_platform();
+    if imp.compression_for(platform) != TextureCompression::None
+        && let Some(size) = target_size(rel, &imp, platform)
+        && size[0].is_multiple_of(4)
+        && size[1].is_multiple_of(4)
+    {
+        let source = crate::vfs::read(assets::absolute(rel)).map_err(|e| format!("{rel}: {e}"))?;
+        let key = cache_key(&source, &imp, platform, size, usage);
+        if let Some(c) = read_cache(&key) {
+            return Ok(Upload::Compressed(c));
+        }
+    }
+    super::load_texture(rel).map(Upload::Rgba)
+}
+
 pub fn texture_upload(rel: &str, usage: Use, bc: bool) -> Result<Upload, String> {
     let m = mode();
     if !bc || m == Mode::Off || super::builtin::is_builtin(rel) {

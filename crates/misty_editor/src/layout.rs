@@ -26,6 +26,8 @@ pub enum Tab {
     Profiler,
     /// Window ▸ Terrain ▸ World Builder.
     WorldBuilder,
+    /// Window ▸ World ▸ World Partition.
+    WorldPartition,
     /// Edit ▸ Undo History.
     UndoHistory,
     /// Window ▸ Sequencing ▸ Timeline.
@@ -68,13 +70,14 @@ impl Tab {
     ];
 
     /// Tabs no built-in layout contains; opened from the Window menu.
-    pub const ON_DEMAND: [Tab; 18] = [
+    pub const ON_DEMAND: [Tab; 19] = [
         Tab::Lighting,
         Tab::Animator,
         Tab::AudioMixer,
         Tab::Navigation,
         Tab::Profiler,
         Tab::WorldBuilder,
+        Tab::WorldPartition,
         Tab::UndoHistory,
         Tab::Timeline,
         Tab::TilePalette,
@@ -97,9 +100,11 @@ impl Tab {
     /// Where an on-demand tab docks when first opened (Unity puts Lighting by the Inspector).
     fn opens_beside(self) -> Option<Tab> {
         match self {
-            Tab::Lighting | Tab::Navigation | Tab::WorldBuilder | Tab::OcclusionCulling => {
-                Some(Tab::Inspector)
-            }
+            Tab::Lighting
+            | Tab::Navigation
+            | Tab::WorldBuilder
+            | Tab::WorldPartition
+            | Tab::OcclusionCulling => Some(Tab::Inspector),
             // Painting needs the Scene view visible, so the palette docks by the Inspector.
             Tab::TilePalette => Some(Tab::Inspector),
             // A list window, like the Hierarchy.
@@ -141,6 +146,7 @@ impl Tab {
             Tab::CodeEditor => "Code Editor",
             Tab::Profiler => "Profiler",
             Tab::WorldBuilder => "World Builder",
+            Tab::WorldPartition => "World Partition",
             Tab::UndoHistory => "Undo History",
             Tab::Timeline => "Timeline",
             Tab::TilePalette => "Tile Palette",
@@ -174,6 +180,7 @@ impl Tab {
             Tab::CodeEditor => crate::panels::code_editor::ICON,
             Tab::Profiler => "📈",
             Tab::WorldBuilder => "⛰",
+            Tab::WorldPartition => crate::panels::world_partition::ICON,
             Tab::UndoHistory => "⟲",
             Tab::Timeline => crate::panels::timeline::ICON,
             Tab::TilePalette => crate::panels::tile_palette::ICON,
@@ -208,6 +215,7 @@ impl Tab {
             | Tab::Navigation
             | Tab::CodeEditor
             | Tab::WorldBuilder
+            | Tab::WorldPartition
             | Tab::Timeline
             | Tab::TilePalette
             | Tab::ShaderGraph

@@ -68,6 +68,7 @@ pub mod vgeo;
 pub mod video;
 pub mod water;
 pub mod world_gen;
+pub mod world_partition;
 
 pub use hecs;
 

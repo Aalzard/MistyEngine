@@ -252,6 +252,19 @@ pub(super) fn write_json(
     serde_json::to_string_pretty(&value).expect("scene data serialises")
 }
 
+/// [`write_json`] of objects only, on one line (World Partition cells).
+pub(super) fn write_json_compact(objects: Vec<ObjectEntry>) -> String {
+    let mut value = serde_json::to_value(SceneFile {
+        version: VERSION,
+        lighting: None,
+        navigation: None,
+        objects,
+    })
+    .expect("scene data serialises");
+    tidy_numbers(&mut value);
+    serde_json::to_string(&value).expect("scene data serialises")
+}
+
 /// Parse the object list and check the format version.
 pub(super) fn read_json(text: &str, what: &str) -> Result<Vec<ObjectEntry>, String> {
     read_file(text, what).map(|f| f.objects)

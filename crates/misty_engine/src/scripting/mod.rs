@@ -58,6 +58,7 @@ pub mod vehicle_api;
 pub mod vfx_api;
 pub mod video_api;
 pub mod water_api;
+pub mod world_partition_api;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -272,6 +273,8 @@ pub struct World {
     pub cursor: CursorState,
     /// Multiplayer: mode, connections, spawned network objects.
     pub network: crate::network::NetSession,
+    /// World Partition streaming as scripts see it (`WorldPartition`), and their requests.
+    pub streaming: world_partition_api::ScriptStreaming,
 }
 
 impl World {
@@ -332,6 +335,7 @@ impl World {
             video_events: Vec::new(),
             cursor: CursorState::default(),
             network,
+            streaming: Default::default(),
         }
     }
 }
@@ -712,10 +716,8 @@ impl ScriptHost {
                 return Vec::new();
             }
             w.scene
-                .walk()
+                .subtree(root)
                 .into_iter()
-                .map(|(e, _)| e)
-                .filter(|e| w.scene.is_ancestor(root, *e))
                 .filter_map(|e| {
                     w.scene
                         .world
@@ -1061,6 +1063,10 @@ impl ScriptHost {
             self.assets_update();
         }
         {
+            profile_scope!("WorldPartition.Scripts", Category::Scripts);
+            self.world_partition_tick();
+        }
+        {
             profile_scope!("Scripts.Start", Category::Scripts);
             for i in 0..self.instances.len() {
                 if !self.instances[i].started && self.runnable(&self.instances[i]) {
@@ -1355,11 +1361,24 @@ impl ScriptHost {
         let scene_in = std::mem::take(scene);
         self.with_world(|w| {
             w.scene = scene_in;
-            for r in roots {
-                w.physics.add_subtree(&w.scene, *r);
-                w.physics2d.add_subtree(&w.scene, *r);
-                w.spawned.push(*r);
-            }
+            // One broad-phase update for all of them.
+            w.physics.add_subtrees(&w.scene, roots);
+            w.physics2d.add_subtrees(&w.scene, roots);
+            w.spawned.extend_from_slice(roots);
+        });
+        self.flush_spawned();
+        *scene = self.with_world(|w| std::mem::take(&mut w.scene));
+    }
+
+    /// [`ScriptHost::add_objects`] for World Partition objects: their bodies join the physics
+    /// world in the next step (no extra broad-phase pass now).
+    pub fn add_streamed_objects(&mut self, scene: &mut Scene, roots: &[Entity]) {
+        let scene_in = std::mem::take(scene);
+        self.with_world(|w| {
+            w.scene = scene_in;
+            w.physics.add_subtrees_deferred(&w.scene, roots);
+            w.physics2d.add_subtrees(&w.scene, roots);
+            w.spawned.extend_from_slice(roots);
         });
         self.flush_spawned();
         *scene = self.with_world(|w| std::mem::take(&mut w.scene));
@@ -1384,12 +1403,7 @@ impl ScriptHost {
                 if !w.scene.contains(e) {
                     return Vec::new();
                 }
-                w.scene
-                    .walk()
-                    .into_iter()
-                    .map(|(x, _)| x)
-                    .filter(|x| w.scene.is_ancestor(e, *x))
-                    .collect()
+                w.scene.subtree(e)
             });
             // Spawned network objects are despawned first (OnNetworkDespawn, clients told).
             self.network_destroying(&subtree);

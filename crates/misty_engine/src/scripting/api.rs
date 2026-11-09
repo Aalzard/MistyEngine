@@ -748,6 +748,7 @@ pub fn register(lua: &Lua) -> Result<()> {
     super::app_api::register(lua)?;
     super::accessibility_api::register(lua)?;
     super::terrain_api::register(lua)?;
+    super::world_partition_api::register(lua)?;
     super::physics_api::register(lua)?;
     super::physics2d_api::register(lua)?;
     super::audio_api::register(lua)?;

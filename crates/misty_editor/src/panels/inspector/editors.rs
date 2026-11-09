@@ -56,6 +56,7 @@ pub fn icon(name: &str) -> &'static str {
             .or_else(|| super::rig_editors::icon(other))
             .or_else(|| super::water::icon(other))
             .or_else(|| super::wind_editors::icon(other))
+            .or_else(|| super::world_partition_editors::icon(other))
             .or_else(|| super::net_editors::icon(other))
             .or_else(|| super::mesh_builder_editor::icon(other))
             .or_else(|| super::spline_editors::icon(other))
@@ -131,6 +132,9 @@ pub fn enabled_flag(state: &EditorState, e: Entity, name: &str) -> Option<bool> 
     }
     if super::wind_editors::NAMES.contains(&name) {
         return super::wind_editors::enabled_flag(state, e, name);
+    }
+    if super::world_partition_editors::NAMES.contains(&name) {
+        return super::world_partition_editors::enabled_flag(state, e, name);
     }
     match name {
         "Camera" => w.get::<&Camera>(e).ok().map(|c| c.enabled),
@@ -219,6 +223,9 @@ pub fn set_enabled(state: &mut EditorState, e: Entity, name: &str, on: bool) {
     }
     if super::wind_editors::NAMES.contains(&name) {
         return super::wind_editors::set_enabled(state, e, name, on);
+    }
+    if super::world_partition_editors::NAMES.contains(&name) {
+        return super::world_partition_editors::set_enabled(state, e, name, on);
     }
     let w = &mut state.scene.world;
     match name {
@@ -360,6 +367,9 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         water if super::water::NAMES.contains(&water) => super::water::edit(ui, state, e, water),
         wind if super::wind_editors::NAMES.contains(&wind) => {
             super::wind_editors::edit(ui, state, e, wind)
+        }
+        wp if super::world_partition_editors::NAMES.contains(&wp) => {
+            super::world_partition_editors::edit(ui, state, e, wp)
         }
         net if super::net_editors::NAMES.contains(&net) => {
             super::net_editors::edit(ui, state, e, net)

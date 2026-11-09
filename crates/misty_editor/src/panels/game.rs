@@ -88,6 +88,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             ui.painter().image(texture, view, uv, Color32::WHITE);
             crate::gizmos::vcam_overlay(ui, state, view);
+            crate::panels::world_partition::overlay(ui, state, view);
             let net = crate::multiplayer::overlay_lines(state);
             if !net.is_empty() {
                 net_overlay(ui, view, &net);

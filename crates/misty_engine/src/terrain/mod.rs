@@ -285,3 +285,13 @@ pub fn heightfield(d: &TerrainData) -> rp::ColliderBuilder {
     }
     rp::ColliderBuilder::new(rp::SharedShape::new(hf))
 }
+
+/// Standard base64 (the terrain file's encoding), for other compact asset files.
+pub fn base64_encode(bytes: &[u8]) -> String {
+    file::encode(bytes)
+}
+
+/// Bytes of [`base64_encode`] text.
+pub fn base64_decode(text: &str) -> Result<Vec<u8>, String> {
+    file::decode(text)
+}

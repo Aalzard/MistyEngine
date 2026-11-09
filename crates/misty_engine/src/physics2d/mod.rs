@@ -114,13 +114,15 @@ impl Physics2D {
 
     /// Add bodies and colliders for `root` and its children (objects created while playing).
     pub fn add_subtree(&mut self, scene: &Scene, root: Entity) {
-        let objects: Vec<Entity> = scene
-            .walk()
-            .into_iter()
-            .map(|(e, _)| e)
-            .filter(|e| scene.is_ancestor(root, *e))
-            .collect();
-        self.add_objects(scene, &objects);
+        self.add_subtrees(scene, &[root]);
+    }
+
+    /// [`Physics2D::add_subtree`] for several roots at once.
+    pub fn add_subtrees(&mut self, scene: &Scene, roots: &[Entity]) {
+        let objects: Vec<Entity> = roots.iter().flat_map(|r| scene.subtree(*r)).collect();
+        if !objects.is_empty() {
+            self.add_objects(scene, &objects);
+        }
     }
 
     fn add_objects(&mut self, scene: &Scene, objects: &[Entity]) {

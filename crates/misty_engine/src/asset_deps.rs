@@ -185,6 +185,11 @@ fn references(files: &dyn ProjectFiles, rel: &str, guids: &GuidDatabase) -> Vec<
         };
         let mut strings = Vec::new();
         json_strings(&json, None, &mut strings);
+        // A World Partition names its folder, not its files: the cell sub-scenes, HLOD proxies
+        // and their material come from its cell list.
+        let (cells, folders) = world_partition_files(&json);
+        out.extend(cells);
+        strings.retain(|(_, s)| !folders.contains(s));
         for (key, s) in strings {
             if let Some(p) = asset_path(&s) {
                 out.push(p);
@@ -215,6 +220,35 @@ fn references(files: &dyn ProjectFiles, rel: &str, guids: &GuidDatabase) -> Vec<
 /// "Assets/…" (with any `#sub-asset` removed) when `s` names a project asset.
 fn asset_path(s: &str) -> Option<String> {
     refs::asset_path(s).map(str::to_owned)
+}
+
+/// The files a scene's World Partition components stand for, and their folders.
+fn world_partition_files(json: &serde_json::Value) -> (Vec<String>, Vec<String>) {
+    let mut files = Vec::new();
+    let mut folders = Vec::new();
+    let Some(objects) = json.get("objects").and_then(|o| o.as_array()) else {
+        return (files, folders);
+    };
+    for o in objects {
+        let Some(wp) = o.get("components").and_then(|c| c.get("World Partition")) else {
+            continue;
+        };
+        let Ok(wp) = serde_json::from_value::<crate::world_partition::WorldPartition>(wp.clone())
+        else {
+            continue;
+        };
+        for c in &wp.cells {
+            files.push(wp.cell_path(c.coord()));
+            if c.hlod {
+                files.push(wp.hlod_path(c.coord()));
+            }
+        }
+        if wp.cells.iter().any(|c| c.hlod) {
+            files.push(crate::world_partition::hlod::material_path(&wp));
+        }
+        folders.push(wp.folder.clone());
+    }
+    (files, folders)
 }
 
 fn json_strings(v: &serde_json::Value, key: Option<&str>, out: &mut Vec<(Option<String>, String)>) {

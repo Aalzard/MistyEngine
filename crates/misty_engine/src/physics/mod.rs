@@ -19,6 +19,7 @@ pub mod layers;
 pub mod material;
 mod queries;
 pub mod ragdoll;
+pub mod shape_cache;
 mod vehicles;
 
 use std::collections::HashMap;
@@ -173,17 +174,33 @@ impl Physics {
 
     /// Add bodies and colliders for `root` and its children (objects created while playing).
     pub fn add_subtree(&mut self, scene: &Scene, root: Entity) {
-        let objects: Vec<Entity> = scene
-            .walk()
-            .into_iter()
-            .map(|(e, _)| e)
-            .filter(|e| scene.is_ancestor(root, *e))
-            .collect();
-        self.add_objects(scene, &objects);
+        self.add_subtrees(scene, &[root]);
+    }
+
+    /// [`Physics::add_subtree`] for several roots at once (one broad-phase update for all).
+    pub fn add_subtrees(&mut self, scene: &Scene, roots: &[Entity]) {
+        let objects: Vec<Entity> = roots.iter().flat_map(|r| scene.subtree(*r)).collect();
+        if !objects.is_empty() {
+            self.add_objects(scene, &objects);
+        }
+    }
+
+    /// [`Physics::add_subtrees`] without the zero-length step: the new bodies join the broad
+    /// phase in the next real step (World Partition objects, which arrive away from the player;
+    /// the streaming budget then doesn't pay a whole-world broad-phase pass per frame).
+    pub fn add_subtrees_deferred(&mut self, scene: &Scene, roots: &[Entity]) {
+        let objects: Vec<Entity> = roots.iter().flat_map(|r| scene.subtree(*r)).collect();
+        if !objects.is_empty() {
+            self.add_objects_with(scene, &objects, false);
+        }
     }
 
     /// Bodies, colliders and joints for the active objects in `objects` (Hierarchy order).
     fn add_objects(&mut self, scene: &Scene, objects: &[Entity]) {
+        self.add_objects_with(scene, objects, true);
+    }
+
+    fn add_objects_with(&mut self, scene: &Scene, objects: &[Entity], register: bool) {
         let objects: Vec<Entity> = objects
             .iter()
             .copied()
@@ -197,6 +214,9 @@ impl Physics {
         self.add_wheels(scene, &objects);
         self.add_ragdolls(scene, &objects);
         self.cloth.add(scene, &objects);
+        if !register {
+            return;
+        }
         // A zero-length step registers the new bodies and fills the broad phase, so queries
         // work before the first real step; contacts found now are reported by that step.
         let dt = self.world.integration_parameters.dt;

@@ -1,0 +1,935 @@
+{
+  "objects": [
+    {
+      "components": {
+        "Audio Listener": {
+          "enabled": true
+        },
+        "Camera": {
+          "background": [
+            0.19215687,
+            0.3019608,
+            0.4745098,
+            0.0
+          ],
+          "clear_flags": "Skybox",
+          "depth": 0.0,
+          "enabled": true,
+          "far": 6000.0,
+          "fov": 60.0,
+          "near": 0.3,
+          "ortho_size": 5.0,
+          "orthographic": false,
+          "viewport": [
+            0.0,
+            0.0,
+            1.0,
+            1.0
+          ]
+        },
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Camera",
+            "Audio Listener",
+            "Scripts"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Main Camera",
+          "tag": "MainCamera"
+        },
+        "Scripts": {
+          "list": [
+            {
+              "enabled": true,
+              "fields": {
+                "height": 318.0,
+                "radius": 1400.0
+              },
+              "path": "Assets/Scripts/StreamingFlyover.lua"
+            }
+          ]
+        },
+        "Transform": {
+          "euler_hint": [
+            14.0,
+            -30.0,
+            0.0
+          ],
+          "position": [
+            1400.0,
+            318.0,
+            0.0
+          ],
+          "rotation": [
+            0.11771675,
+            -0.25688985,
+            0.031542107,
+            0.9587259
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Light"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Directional Light",
+          "tag": "Untagged"
+        },
+        "Light": {
+          "color": [
+            1.0,
+            0.94,
+            0.84
+          ],
+          "enabled": true,
+          "intensity": 2.2,
+          "kind": "Directional",
+          "range": 10.0,
+          "shadows": "Soft",
+          "spot_angle": 30.0
+        },
+        "Transform": {
+          "euler_hint": [
+            35.0,
+            140.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            600.0,
+            0.0
+          ],
+          "rotation": [
+            0.10284744,
+            0.8962008,
+            -0.28257102,
+            0.3261904
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "Post-process Volume"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "Global Volume",
+          "tag": "Untagged"
+        },
+        "Post-process Volume": {
+          "bloom": {
+            "active": false,
+            "intensity": 0.6,
+            "scatter": 0.7,
+            "threshold": 0.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "color_adjustments": {
+            "active": true,
+            "color_filter": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "contrast": 0.0,
+            "post_exposure": 0.3,
+            "saturation": 0.0
+          },
+          "enabled": true,
+          "fog": {
+            "active": true,
+            "albedo": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "ambient_dimmer": 1.0,
+            "anisotropy": 0.3,
+            "attenuation_distance": 5200.0,
+            "base_height": 0.0,
+            "denoising": true,
+            "enabled": true,
+            "max_fog_distance": 6000.0,
+            "maximum_height": 600.0,
+            "noise_intensity": 0.0,
+            "noise_scale": 8.0,
+            "noise_scroll": [
+              0.6,
+              0.0,
+              0.3
+            ],
+            "quality": "Medium",
+            "volumetric": true,
+            "volumetric_distance": 64.0
+          },
+          "priority": 0.0,
+          "tonemapping": {
+            "active": true,
+            "mode": "Aces"
+          },
+          "vignette": {
+            "active": false,
+            "color": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "intensity": 0.25,
+            "smoothness": 0.2
+          }
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "parent": null
+    },
+    {
+      "components": {
+        "GameObject": {
+          "active": true,
+          "component_order": [
+            "Transform",
+            "World Partition"
+          ],
+          "is_static": false,
+          "layer": 0,
+          "name": "World Partition",
+          "tag": "Untagged"
+        },
+        "Transform": {
+          "euler_hint": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "World Partition": {
+          "budget_ms": 2.0,
+          "cell_size": 512.0,
+          "cells": [
+            {
+              "height": [
+                98.0,
+                146.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 0,
+              "z": 0
+            },
+            {
+              "height": [
+                91.0,
+                140.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 1,
+              "z": 0
+            },
+            {
+              "height": [
+                90.0,
+                136.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 2,
+              "z": 0
+            },
+            {
+              "height": [
+                94.0,
+                141.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 3,
+              "z": 0
+            },
+            {
+              "height": [
+                94.0,
+                142.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 4,
+              "z": 0
+            },
+            {
+              "height": [
+                89.0,
+                136.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 5,
+              "z": 0
+            },
+            {
+              "height": [
+                89.0,
+                133.0
+              ],
+              "hlod": true,
+              "objects": 31,
+              "x": 6,
+              "z": 0
+            },
+            {
+              "height": [
+                91.0,
+                141.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 7,
+              "z": 0
+            },
+            {
+              "height": [
+                101.0,
+                149.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 0,
+              "z": 1
+            },
+            {
+              "height": [
+                86.0,
+                143.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 1,
+              "z": 1
+            },
+            {
+              "height": [
+                86.0,
+                138.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 2,
+              "z": 1
+            },
+            {
+              "height": [
+                93.0,
+                138.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 3,
+              "z": 1
+            },
+            {
+              "height": [
+                86.0,
+                139.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 4,
+              "z": 1
+            },
+            {
+              "height": [
+                85.0,
+                127.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 5,
+              "z": 1
+            },
+            {
+              "height": [
+                85.0,
+                129.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 6,
+              "z": 1
+            },
+            {
+              "height": [
+                82.0,
+                132.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 7,
+              "z": 1
+            },
+            {
+              "height": [
+                63.0,
+                149.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 0,
+              "z": 2
+            },
+            {
+              "height": [
+                59.0,
+                143.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 1,
+              "z": 2
+            },
+            {
+              "height": [
+                58.0,
+                136.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 2,
+              "z": 2
+            },
+            {
+              "height": [
+                61.0,
+                133.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 3,
+              "z": 2
+            },
+            {
+              "height": [
+                89.0,
+                136.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 4,
+              "z": 2
+            },
+            {
+              "height": [
+                80.0,
+                130.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 5,
+              "z": 2
+            },
+            {
+              "height": [
+                81.0,
+                127.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 6,
+              "z": 2
+            },
+            {
+              "height": [
+                83.0,
+                127.0
+              ],
+              "hlod": true,
+              "objects": 31,
+              "x": 7,
+              "z": 2
+            },
+            {
+              "height": [
+                63.0,
+                134.0
+              ],
+              "hlod": true,
+              "objects": 56,
+              "x": 0,
+              "z": 3
+            },
+            {
+              "height": [
+                88.0,
+                140.0
+              ],
+              "hlod": true,
+              "objects": 31,
+              "x": 1,
+              "z": 3
+            },
+            {
+              "height": [
+                86.0,
+                142.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 2,
+              "z": 3
+            },
+            {
+              "height": [
+                60.0,
+                139.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 3,
+              "z": 3
+            },
+            {
+              "height": [
+                49.0,
+                132.0
+              ],
+              "hlod": true,
+              "objects": 31,
+              "x": 4,
+              "z": 3
+            },
+            {
+              "height": [
+                40.0,
+                130.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 5,
+              "z": 3
+            },
+            {
+              "height": [
+                42.0,
+                129.0
+              ],
+              "hlod": true,
+              "objects": 21,
+              "x": 6,
+              "z": 3
+            },
+            {
+              "height": [
+                51.0,
+                136.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 7,
+              "z": 3
+            },
+            {
+              "height": [
+                88.0,
+                135.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 0,
+              "z": 4
+            },
+            {
+              "height": [
+                93.0,
+                141.0
+              ],
+              "hlod": true,
+              "objects": 26,
+              "x": 1,
+              "z": 4
+            },
+            {
+              "height": [
+                91.0,
+                141.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 2,
+              "z": 4
+            },
+            {
+              "height": [
+                95.0,
+                140.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 3,
+              "z": 4
+            },
+            {
+              "height": [
+                49.0,
+                138.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 4,
+              "z": 4
+            },
+            {
+              "height": [
+                44.0,
+                153.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 5,
+              "z": 4
+            },
+            {
+              "height": [
+                50.0,
+                225.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 6,
+              "z": 4
+            },
+            {
+              "height": [
+                52.0,
+                265.0
+              ],
+              "hlod": true,
+              "objects": 66,
+              "x": 7,
+              "z": 4
+            },
+            {
+              "height": [
+                88.0,
+                133.0
+              ],
+              "hlod": true,
+              "objects": 61,
+              "x": 0,
+              "z": 5
+            },
+            {
+              "height": [
+                85.0,
+                132.0
+              ],
+              "hlod": true,
+              "objects": 26,
+              "x": 1,
+              "z": 5
+            },
+            {
+              "height": [
+                86.0,
+                141.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 2,
+              "z": 5
+            },
+            {
+              "height": [
+                95.0,
+                176.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 3,
+              "z": 5
+            },
+            {
+              "height": [
+                91.0,
+                230.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 4,
+              "z": 5
+            },
+            {
+              "height": [
+                102.0,
+                309.0
+              ],
+              "hlod": true,
+              "objects": 56,
+              "x": 5,
+              "z": 5
+            },
+            {
+              "height": [
+                123.0,
+                374.0
+              ],
+              "hlod": true,
+              "objects": 66,
+              "x": 6,
+              "z": 5
+            },
+            {
+              "height": [
+                166.0,
+                402.0
+              ],
+              "hlod": true,
+              "objects": 66,
+              "x": 7,
+              "z": 5
+            },
+            {
+              "height": [
+                93.0,
+                141.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 0,
+              "z": 6
+            },
+            {
+              "height": [
+                90.0,
+                169.0
+              ],
+              "hlod": true,
+              "objects": 36,
+              "x": 1,
+              "z": 6
+            },
+            {
+              "height": [
+                91.0,
+                239.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 2,
+              "z": 6
+            },
+            {
+              "height": [
+                111.0,
+                270.0
+              ],
+              "hlod": true,
+              "objects": 51,
+              "x": 3,
+              "z": 6
+            },
+            {
+              "height": [
+                135.0,
+                268.0
+              ],
+              "hlod": true,
+              "objects": 56,
+              "x": 4,
+              "z": 6
+            },
+            {
+              "height": [
+                193.0,
+                413.0
+              ],
+              "hlod": true,
+              "objects": 71,
+              "x": 5,
+              "z": 6
+            },
+            {
+              "height": [
+                265.0,
+                483.0
+              ],
+              "hlod": true,
+              "objects": 41,
+              "x": 6,
+              "z": 6
+            },
+            {
+              "height": [
+                242.0,
+                483.0
+              ],
+              "hlod": true,
+              "objects": 26,
+              "x": 7,
+              "z": 6
+            },
+            {
+              "height": [
+                95.0,
+                252.0
+              ],
+              "hlod": true,
+              "objects": 61,
+              "x": 0,
+              "z": 7
+            },
+            {
+              "height": [
+                111.0,
+                343.0
+              ],
+              "hlod": true,
+              "objects": 56,
+              "x": 1,
+              "z": 7
+            },
+            {
+              "height": [
+                139.0,
+                387.0
+              ],
+              "hlod": true,
+              "objects": 66,
+              "x": 2,
+              "z": 7
+            },
+            {
+              "height": [
+                163.0,
+                427.0
+              ],
+              "hlod": true,
+              "objects": 56,
+              "x": 3,
+              "z": 7
+            },
+            {
+              "height": [
+                168.0,
+                468.0
+              ],
+              "hlod": true,
+              "objects": 46,
+              "x": 4,
+              "z": 7
+            },
+            {
+              "height": [
+                202.0,
+                457.0
+              ],
+              "hlod": true,
+              "objects": 61,
+              "x": 5,
+              "z": 7
+            },
+            {
+              "height": [
+                228.0,
+                483.0
+              ],
+              "hlod": true,
+              "objects": 31,
+              "x": 6,
+              "z": 7
+            },
+            {
+              "height": [
+                212.0,
+                488.0
+              ],
+              "hlod": true,
+              "objects": 21,
+              "x": 7,
+              "z": 7
+            }
+          ],
+          "enabled": true,
+          "folder": "Assets/Scenes/StreamingDemo",
+          "hlod_distance": 0.0,
+          "load_radius": 800.0,
+          "max_loads": 4,
+          "origin": [
+            -2048.0,
+            -2048.0
+          ],
+          "unload_radius": 1000.0
+        }
+      },
+      "parent": null
+    }
+  ],
+  "version": 1
+}

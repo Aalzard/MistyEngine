@@ -53,6 +53,9 @@ struct TerrainFile {
     /// Grass species and detail meshes (left out while there are none).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     detail_layers: Vec<DetailLayer>,
+    /// base64 of `u16` LE heights one sample past each edge (tiles); left out when empty.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    border: String,
 }
 
 impl Default for TerrainFile {
@@ -75,6 +78,7 @@ impl Default for TerrainFile {
             holes: String::new(),
             alphamap_extra: String::new(),
             detail_layers: Vec::new(),
+            border: String::new(),
         }
     }
 }
@@ -110,6 +114,16 @@ impl TerrainData {
             },
             alphamap_extra: encode(&self.alphamap_extra.concat()),
             detail_layers: self.detail_layers.clone(),
+            border: if self.border.is_empty() {
+                String::new()
+            } else {
+                let bytes: Vec<u8> = self
+                    .border
+                    .iter()
+                    .flat_map(|h| quantize(*h).to_le_bytes())
+                    .collect();
+                encode(&bytes)
+            },
         };
         serde_json::to_string_pretty(&file).expect("terrain serialises")
     }
@@ -141,6 +155,12 @@ impl TerrainData {
             trees: f.trees,
             holes: Vec::new(),
             detail_layers: f.detail_layers,
+            border: decode(&f.border)?
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|b| u16::from_le_bytes(*b) as f32 / 65535.0)
+                .collect(),
         };
         if !f.holes.is_empty() {
             let cells = f.heightmap_resolution.saturating_sub(1);

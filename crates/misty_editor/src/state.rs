@@ -307,6 +307,8 @@ pub struct EditorState {
     pub light_probes: crate::light_probe_tools::LightProbeTools,
     /// World Builder window state and the generation in progress.
     pub world_builder: crate::panels::world_builder::WorldBuilderWindow,
+    /// World Partition window: Edit-mode streaming, gizmo and overlay toggles.
+    pub world_partition: crate::panels::world_partition::WorldPartitionWindow,
     /// Keyboard/mouse for scripts this frame (filled while the Game view has focus).
     pub game_input: Input,
     /// Pause toggled before Play: Play starts paused.
@@ -451,6 +453,7 @@ impl EditorState {
             lightmapper: Default::default(),
             light_probes: Default::default(),
             world_builder: Default::default(),
+            world_partition: Default::default(),
             game_input: Input::default(),
             pause_on_play: false,
             step_requested: false,

@@ -212,6 +212,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
                     &mut environment,
                 );
             }
+            crate::panels::world_partition::scene_lines(state, &mut lines);
             let fx = sv.effects;
             if !(sv.skybox && fx.fog) {
                 environment = environment.without_fog();
@@ -339,6 +340,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gpu: Option<&mut Gpu>) {
         let lines = crate::panels::occlusion::summary(state);
         gizmos::occlusion_overlay(ui, rect, &lines);
     }
+    crate::panels::world_partition::overlay(ui, state, rect);
     // UI outlines (and Visualize Navigation), object icons and click-to-select (Ctrl toggles,
     // Shift adds).
     let ui_layout = crate::ui_gizmos::scene_layout(state, &camera, rect);

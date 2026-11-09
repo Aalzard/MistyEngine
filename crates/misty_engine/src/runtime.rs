@@ -72,6 +72,23 @@ pub struct Runtime {
     settings: ProjectSettings,
     /// `SaveSystem.Load` replaced the scene since the last [`Runtime::take_scene_reloaded`].
     reloaded: bool,
+    /// World Partition cells streaming in and out around the sources.
+    streaming: crate::world_partition::Streamer,
+}
+
+/// Streamed objects get physics bodies and scripts as they arrive, and lose them as they go.
+struct HostHooks<'a>(&'a mut ScriptHost);
+
+impl crate::world_partition::StreamHooks for HostHooks<'_> {
+    fn added(&mut self, scene: &mut Scene, roots: &[hecs::Entity]) {
+        if !roots.is_empty() {
+            self.0.add_streamed_objects(scene, roots);
+        }
+    }
+
+    fn remove(&mut self, scene: &mut Scene, roots: &[hecs::Entity]) {
+        self.0.remove_objects(scene, roots);
+    }
 }
 
 impl Runtime {
@@ -111,6 +128,7 @@ impl Runtime {
             root: project_root,
             settings: settings.clone(),
             reloaded: false,
+            streaming: crate::world_partition::Streamer::new(),
         }
     }
 
@@ -202,6 +220,7 @@ impl Runtime {
         crate::clock::set_play_time(time.time);
         // Spline Extrude meshes and Spline Instantiate copies follow edits made while playing.
         crate::splines::update(scene);
+        self.update_streaming(scene);
         self.host.update(scene, time, input);
         {
             crate::profile_scope!("Audio.Update", Category::Audio);
@@ -218,6 +237,49 @@ impl Runtime {
         if let Some(data) = self.host.take_pending_load() {
             self.load_save(scene, data);
         }
+    }
+
+    /// World Partition: cells in and out within the frame budget, scripts' requests applied and
+    /// the streaming state handed to them.
+    fn update_streaming(&mut self, scene: &mut Scene) {
+        let wp = crate::world_partition::find(scene).map(|(_, wp)| wp);
+        if wp.is_none() && self.streaming.stats().frames == 0 {
+            return;
+        }
+        let mut hooks = HostHooks(&mut self.host);
+        self.streaming.update(scene, &[], &mut hooks);
+        let logs = self.streaming.take_logs();
+        self.pending.extend(logs);
+        // What scripts see this frame (after the streaming work); their requests count next.
+        let state = crate::scripting::world_partition_api::ScriptStreaming {
+            stats: self.streaming.stats().clone(),
+            phases: wp
+                .as_ref()
+                .map(|wp| {
+                    wp.cells
+                        .iter()
+                        .map(|c| (c.coord(), self.streaming.phase(c.coord())))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            requests: Vec::new(),
+        };
+        for (c, load) in self.host.exchange_streaming(state) {
+            if load {
+                self.streaming.load(c);
+            } else {
+                self.streaming.unload(c);
+            }
+        }
+    }
+
+    /// The World Partition streamer (stats, cell states, loading by hand).
+    pub fn streaming(&self) -> &crate::world_partition::Streamer {
+        &self.streaming
+    }
+
+    pub fn streaming_mut(&mut self) -> &mut crate::world_partition::Streamer {
+        &mut self.streaming
     }
 
     /// Add a scene file's objects as another loaded scene and start them (bodies, `Awake`).
