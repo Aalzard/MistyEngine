@@ -150,7 +150,11 @@ impl Passes {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("misty ao"),
-            source: wgpu::ShaderSource::Wgsl(AO_SRC.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                crate::render::pipelines::patched(AO_SRC)
+                    .into_owned()
+                    .into(),
+            ),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("misty ao"),

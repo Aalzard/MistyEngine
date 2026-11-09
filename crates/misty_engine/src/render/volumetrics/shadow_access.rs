@@ -20,6 +20,14 @@ pub(super) fn sun_cascades(plan: &ShadowPlan) -> Vec<Mat4> {
     cascades.iter().map(|c| c.view_proj).collect()
 }
 
+/// World size of a texel of each sun cascade, nearest first (`None` with the virtual shadow
+/// map, whose fog layers are filled from its pages).
+pub(super) fn sun_cascade_texels(plan: &ShadowPlan) -> Option<Vec<f32>> {
+    plan.vsm
+        .is_none()
+        .then(|| plan.cascades.iter().map(|c| c.texel).collect())
+}
+
 /// World → clip space of each local layer.
 pub(super) fn local_matrices(plan: &ShadowPlan) -> &[Mat4] {
     &plan.local

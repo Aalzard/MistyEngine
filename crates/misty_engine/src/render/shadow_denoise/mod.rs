@@ -165,7 +165,11 @@ impl Passes {
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("misty shadow mask"),
-            source: wgpu::ShaderSource::Wgsl(MASK_SRC.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                crate::render::pipelines::patched(MASK_SRC)
+                    .into_owned()
+                    .into(),
+            ),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("misty shadow mask"),

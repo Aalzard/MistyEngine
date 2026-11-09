@@ -957,6 +957,45 @@ pub fn pipelines_built() -> u64 {
     BUILT.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// A shader source as it compiles. Test builds only: `MISTY_SHADER_PATCH=<file>` rewrites
+/// sources first, so a timing harness can try a shader change without a rebuild (performance
+/// round 22). The file holds blocks of a `@@@` line, the text to find, a `===` line, its
+/// replacement and a `;;;` line; every occurrence in every source is replaced.
+#[cfg(test)]
+pub(crate) fn patched(source: &str) -> std::borrow::Cow<'_, str> {
+    use std::sync::OnceLock;
+    static PATCHES: OnceLock<Vec<(String, String)>> = OnceLock::new();
+    let patches = PATCHES.get_or_init(|| {
+        let Ok(path) = std::env::var("MISTY_SHADER_PATCH") else {
+            return Vec::new();
+        };
+        let text = std::fs::read_to_string(&path).expect("MISTY_SHADER_PATCH file");
+        let text = text.replace("\r\n", "\n");
+        let mut out = Vec::new();
+        for block in text.split("@@@\n").skip(1) {
+            let block = block.split(";;;").next().unwrap_or_default();
+            let (old, new) = block.split_once("===\n").expect("patch block without ===");
+            out.push((old.trim_end().to_owned(), new.trim_end().to_owned()));
+        }
+        eprintln!("(shader patch {path}: {} blocks)", out.len());
+        out
+    });
+    let mut s = std::borrow::Cow::Borrowed(source);
+    for (old, new) in patches {
+        if s.contains(old.as_str()) {
+            s = std::borrow::Cow::Owned(s.replace(old.as_str(), new));
+        }
+    }
+    s
+}
+
+/// A shader source as it compiles (see the test build's version).
+#[cfg(not(test))]
+#[inline]
+pub(crate) fn patched(source: &str) -> std::borrow::Cow<'_, str> {
+    std::borrow::Cow::Borrowed(source)
+}
+
 /// The device whose shader modules are kept, with its modules by source.
 type Modules = (
     wgpu::Device,
@@ -993,7 +1032,9 @@ fn shader_module(device: &wgpu::Device, name: &str, source: &str) -> wgpu::Shade
     crate::profile_scope!("Pipeline.Module");
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(name),
-        source: wgpu::ShaderSource::Wgsl(format!("{COMMON}\n{source}").into()),
+        source: wgpu::ShaderSource::Wgsl(
+            patched(&format!("{COMMON}\n{source}")).into_owned().into(),
+        ),
     });
     if let Some((d, m)) = modules().as_mut()
         && d == device

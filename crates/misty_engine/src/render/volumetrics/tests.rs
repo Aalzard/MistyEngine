@@ -57,7 +57,7 @@ fn uniform_sizes_match_wgsl() {
     );
     assert_eq!(
         std::mem::size_of::<super::sharp_shafts::SharpUniform>(),
-        3 * 16
+        4 * 16
     );
 }
 

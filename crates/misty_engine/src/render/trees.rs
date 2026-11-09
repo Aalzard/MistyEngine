@@ -16,10 +16,10 @@ use std::sync::Arc;
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
-use super::RenderStats;
 use super::culling::{Aabb, Frustum};
 use super::environment::Environment;
 use super::pipelines::{Depth, Spec, build};
+use super::{RenderStats, fast_paths};
 use crate::sprites::compress::generated::{self, Ctx, Layers, Role, Spec as TexSpec};
 use crate::terrain::TerrainDraw;
 use crate::terrain::trees::local_position;
@@ -158,6 +158,9 @@ enum Part {
 /// The tree pipelines: (bark, leaves, impostor) for the main pass, shadows and the prepass.
 struct Pipelines {
     main: [wgpu::RenderPipeline; 3],
+    /// The leaves' depth (coverage only) and the lit leaves testing for equal depth after it.
+    leaves_depth: wgpu::RenderPipeline,
+    leaves_equal: wgpu::RenderPipeline,
     shadow: [wgpu::RenderPipeline; 3],
     prepass: [wgpu::RenderPipeline; 3],
 }
@@ -307,6 +310,32 @@ impl Pipelines {
                 true,
             )),
         ];
+        let leaves_depth = main_pass(Spec {
+            fs: Some("fs_tree_leaves_depth"),
+            velocity: false,
+            color_writes: wgpu::ColorWrites::ALPHA,
+            ..main_spec(
+                "tree leaves depth",
+                &lit,
+                "vs_tree",
+                "fs_tree_leaves_depth",
+                &mesh,
+                None,
+                true,
+            )
+        });
+        let leaves_equal = main_pass(Spec {
+            depth: Depth::main(false, wgpu::CompareFunction::Equal),
+            ..main_spec(
+                "tree leaves (depth equal)",
+                &lit,
+                "vs_tree",
+                "fs_tree_leaves",
+                &mesh,
+                None,
+                true,
+            )
+        });
         let casters = [&l.shadow_view, &l.draws, layout];
         let shadow = [
             build(
@@ -372,6 +401,8 @@ impl Pipelines {
         ];
         Self {
             main,
+            leaves_depth,
+            leaves_equal,
             shadow,
             prepass,
         }
@@ -1332,11 +1363,11 @@ impl TreeRenderer {
         }
     }
 
-    fn draw_list(
+    fn draw_list<'p>(
         &self,
         pass: &mut wgpu::RenderPass,
-        list: &[Batch],
-        pipelines: &[wgpu::RenderPipeline; 3],
+        list: impl IntoIterator<Item = &'p Batch>,
+        pipelines: [&wgpu::RenderPipeline; 3],
         stats: &mut RenderStats,
     ) {
         let Some(instances) = &self.instance_buffer else {
@@ -1348,7 +1379,7 @@ impl TreeRenderer {
                 continue;
             };
             if bound != Some(b.part) {
-                pass.set_pipeline(&pipelines[part_index(b.part)]);
+                pass.set_pipeline(pipelines[part_index(b.part)]);
                 stats.set_pass += 1;
                 bound = Some(b.part);
             }
@@ -1383,9 +1414,25 @@ impl TreeRenderer {
     /// This frame's trees into the main pass (groups 0 and 1 bound by the caller: the view and
     /// the lit group).
     pub fn draw_main(&self, pass: &mut wgpu::RenderPass, stats: &mut RenderStats) {
-        if let Some(p) = &self.pipelines {
-            self.draw_list(pass, &self.main, &p.main, stats);
+        let Some(p) = &self.pipelines else {
+            return;
+        };
+        let [bark, leaves, impostor] = &p.main;
+        if !fast_paths::tree_depth() {
+            self.draw_list(pass, &self.main, [bark, leaves, impostor], stats);
+            return;
         }
+        // The leaf clusters overlap many times within a crown: their depth first (alpha to
+        // coverage, nothing shaded), then the trees with the lit leaves testing for equal
+        // depth, so each sample is shaded once, by the leaf it shows, and bark behind leaves is
+        // not shaded at all. Same samples written as drawing them lit in one go (performance
+        // round 22). (Counted once: the depth draws go into a throwaway counter.)
+        let leaf_batches = self.main.iter().filter(|b| b.part == Part::Leaves);
+        let mut uncounted = RenderStats::default();
+        let depth = &p.leaves_depth;
+        self.draw_list(pass, leaf_batches, [depth, depth, depth], &mut uncounted);
+        stats.set_pass += uncounted.set_pass;
+        self.draw_list(pass, &self.main, [bark, &p.leaves_equal, impostor], stats);
     }
 
     /// Build the wireframe pipelines for `path` (the main pass's, with edges).
@@ -1433,21 +1480,21 @@ impl TreeRenderer {
     /// group; after [`Self::ensure_wire`]).
     pub fn draw_wire(&self, pass: &mut wgpu::RenderPass, stats: &mut RenderStats) {
         if let Some((_, _, p)) = &self.wire {
-            self.draw_list(pass, &self.main, p, stats);
+            self.draw_list(pass, &self.main, p.each_ref(), stats);
         }
     }
 
     /// Shadow casters of cascade `slot` (groups 0 and 1 bound by the caller).
     pub fn draw_shadow(&self, pass: &mut wgpu::RenderPass, slot: usize, stats: &mut RenderStats) {
         if let (Some(p), Some(list)) = (&self.pipelines, self.shadows.get(slot)) {
-            self.draw_list(pass, list, &p.shadow, stats);
+            self.draw_list(pass, list, p.shadow.each_ref(), stats);
         }
     }
 
     /// The screen-space prepass (groups 0 and 1 bound by the caller: the view and the draws).
     pub fn draw_prepass(&self, pass: &mut wgpu::RenderPass, stats: &mut RenderStats) {
         if let Some(p) = &self.pipelines {
-            self.draw_list(pass, &self.main, &p.prepass, stats);
+            self.draw_list(pass, &self.main, p.prepass.each_ref(), stats);
         }
     }
 }

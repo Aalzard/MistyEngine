@@ -17,6 +17,12 @@ const COMPOSITE_SRC: &str = include_str!("shaders/sharp_composite.wgsl");
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 /// Weight of the reprojected history (after clamping).
 const HISTORY_WEIGHT: f32 = 0.85;
+/// A march sample reads the first sun cascade whose texel is at least this share of the
+/// march texel's footprint at the sample (performance round 22, `fast_paths::shaft_cascades`).
+/// The tightest cascade's finer texels only alias at the march's spacing (the temporal
+/// accumulation averages them away), and reading a 4096² cascade there was most of the
+/// pass's cost on Ultra.
+const FOOTPRINT_SHARE: f32 = 0.5;
 
 /// Compute source (after the froxel common code).
 pub(super) fn compute_source() -> String {
@@ -35,11 +41,19 @@ pub(super) struct SharpUniform {
     pub size: [f32; 4],
     pub params: [f32; 4],
     pub range: [f32; 4],
+    pub cascades: [f32; 4],
 }
 
 impl SharpUniform {
-    /// `reach` = froxel reach (view depth); `history` = false on the first frame of a view.
-    pub fn new(frame: &Frame, tex: &SharpTextures, q: ShaftQuality, reach: f32) -> Self {
+    /// `reach` = froxel reach (view depth); `history` = false on the first frame of a view;
+    /// `cascades` = [`cascade_thresholds`].
+    pub fn new(
+        frame: &Frame,
+        tex: &SharpTextures,
+        q: ShaftQuality,
+        reach: f32,
+        cascades: [f32; 4],
+    ) -> Self {
         let denoise = frame.post.fog.volume.denoising;
         let weight = if denoise && tex.has_history {
             HISTORY_WEIGHT
@@ -65,8 +79,22 @@ impl SharpUniform {
                 frame.camera.far,
                 if denoise { 1.0 } else { 0.0 },
             ],
+            cascades,
         }
     }
+}
+
+/// Per sun cascade (nearest first, from its texel size in metres): the march texel footprint
+/// past which a sample may read the next cascade (`cascades` in sharp_common.wgsl). Never
+/// past one when `texels` is `None` or the shortcut is off.
+pub(super) fn cascade_thresholds(texels: Option<&[f32]>) -> [f32; 4] {
+    let mut out = [f32::MAX; 4];
+    if let Some(texels) = texels.filter(|_| crate::render::fast_paths::shaft_cascades()) {
+        for (o, t) in out.iter_mut().zip(texels) {
+            *o = t / FOOTPRINT_SHARE;
+        }
+    }
+    out
 }
 
 /// March size for a full-resolution target.

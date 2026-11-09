@@ -131,7 +131,11 @@ impl GpuCuller {
     pub fn new(device: &wgpu::Device) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("misty cull"),
-            source: wgpu::ShaderSource::Wgsl(CULL_SRC.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                crate::render::pipelines::patched(CULL_SRC)
+                    .into_owned()
+                    .into(),
+            ),
         });
         let pipeline = |entry| {
             crate::render::pipelines::note_pipeline();

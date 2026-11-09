@@ -1,4 +1,5 @@
-//! Switches for the look-preserving shortcuts of performance round 3 (docs/pending/perf3.md).
+//! Switches for the look-preserving shortcuts of performance rounds 3 and 22
+//! (docs/pending/perf3.md, docs/pending/r22-perf.md).
 //! All on by default; the timing and look harnesses turn them off one at a time to measure
 //! what each saves and to check that the picture stays the same. `MISTY_FAST_OFF=a,b` (or
 //! `all`) in the environment turns them off in any build (the editor and the player too).
@@ -7,12 +8,21 @@ use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Every shortcut, by the name the harnesses use (`MISTY_AB=fast:<name>`, `MISTY_FAST_OFF`).
-pub const NAMES: [&str; 4] = ["terrain_late", "sky_late", "gi_settle", "grass_vis_depth"];
+pub const NAMES: [&str; 6] = [
+    "terrain_late",
+    "sky_late",
+    "gi_settle",
+    "grass_vis_depth",
+    "shaft_cascades",
+    "tree_depth",
+];
 
 static TERRAIN_LATE: AtomicBool = AtomicBool::new(true);
 static SKY_LATE: AtomicBool = AtomicBool::new(true);
 static GI_SETTLE: AtomicBool = AtomicBool::new(true);
 static GRASS_VIS_DEPTH: AtomicBool = AtomicBool::new(true);
+static SHAFT_CASCADES: AtomicBool = AtomicBool::new(true);
+static TREE_DEPTH: AtomicBool = AtomicBool::new(true);
 
 fn flag(name: &str) -> Option<&'static AtomicBool> {
     match name {
@@ -20,6 +30,8 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
         "sky_late" => Some(&SKY_LATE),
         "gi_settle" => Some(&GI_SETTLE),
         "grass_vis_depth" => Some(&GRASS_VIS_DEPTH),
+        "shaft_cascades" => Some(&SHAFT_CASCADES),
+        "tree_depth" => Some(&TREE_DEPTH),
         _ => None,
     }
 }
@@ -72,4 +84,17 @@ pub fn gi_settle() -> bool {
 /// rasterised once instead of twice (`Renderer::grass_vis_passes`).
 pub fn grass_vis_depth() -> bool {
     get(&GRASS_VIS_DEPTH)
+}
+
+/// The sharp sun shafts' march reads the first sun cascade whose texels it can resolve
+/// instead of always the tightest (volumetrics/sharp_shafts.rs `FOOTPRINT_SHARE`).
+pub fn shaft_cascades() -> bool {
+    get(&SHAFT_CASCADES)
+}
+
+/// The main pass draws the leaves' depth (alpha to coverage, no shading) before the trees,
+/// and the lit leaves then shade only the samples whose depth they won (trees.rs
+/// `draw_main`).
+pub fn tree_depth() -> bool {
+    get(&TREE_DEPTH)
 }

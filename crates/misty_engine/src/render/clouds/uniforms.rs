@@ -85,8 +85,20 @@ pub(super) fn apply_uniform(frame: &Frame, o: &CloudsOverride, q: &CloudQuality)
             1.0 / q.shadow_extent,
         ],
         shadow: [origin.x, origin.y, base, sun.y.max(MIN_SUN_HEIGHT)],
-        sun: sun.extend(0.0).to_array(),
+        sun: sun
+            .extend(clear_reach(frame.camera.position.y, base))
+            .to_array(),
     }
+}
+
+/// How far from an eye at height `eye_y` geometry certainly hides no clouds (`clouds_at` in
+/// clouds_apply.wgsl skips its lookups up to there). Below the layer, every cloud distance the
+/// trace writes is at least the climb to the base (the base is a sphere around the planet's
+/// centre and the eye is inside it), and a fragment hides the clouds completely up to 0.7 of
+/// their distance; 0.6 leaves room for the image's half-float rounding and for history traced
+/// from an eye a little lower. 0 at or above the base.
+pub(super) fn clear_reach(eye_y: f32, base: f32) -> f32 {
+    0.6 * (base - eye_y).max(0.0)
 }
 
 /// Inputs of [`march_uniform`] besides the frame.

@@ -55,9 +55,23 @@ fn grass_canopy(p: vec2<f32>) -> vec3<f32> {
 fn grass_patches(p: vec2<f32>, scale: f32) -> vec2<f32> {
     let q = p / max(scale, 0.5);
     // Broad sweeps a few patches across, patches, and smaller mottling inside them.
-    let lush = 0.3 * grass_noise(q * 0.3 + 9.4) + 0.45 * grass_noise(q) + 0.25 * grass_noise(q * 2.3 + 17.1);
-    let dry = 0.3 * grass_noise(q * 0.25 + 23.8) + 0.4 * grass_noise(q * 0.8 + 41.7) + 0.3 * grass_noise(q * 1.9 + 5.3);
-    return vec2<f32>(smoothstep(0.5, 0.66, lush), smoothstep(0.52, 0.68, dry));
+    // The last octave (0..1 × its weight) is read only where it can still move the
+    // smoothstep off 0 or 1: the same values, a third fewer lookups over most of the field.
+    let lush_ab = 0.3 * grass_noise(q * 0.3 + 9.4) + 0.45 * grass_noise(q);
+    var lush = 0.0;
+    if (lush_ab >= 0.66) {
+        lush = 1.0;
+    } else if (lush_ab + 0.25 > 0.5) {
+        lush = smoothstep(0.5, 0.66, lush_ab + 0.25 * grass_noise(q * 2.3 + 17.1));
+    }
+    let dry_ab = 0.3 * grass_noise(q * 0.25 + 23.8) + 0.4 * grass_noise(q * 0.8 + 41.7);
+    var dry = 0.0;
+    if (dry_ab >= 0.68) {
+        dry = 1.0;
+    } else if (dry_ab + 0.3 > 0.52) {
+        dry = smoothstep(0.52, 0.68, dry_ab + 0.3 * grass_noise(q * 1.9 + 5.3));
+    }
+    return vec2<f32>(lush, dry);
 }
 
 // Broad swathes -1..1 across the field (1.5 patch sizes and half that: ~60 m with 40 m
@@ -72,8 +86,12 @@ fn grass_swathe(p: vec2<f32>, scale: f32) -> f32 {
 // Worn spots 0..1 at terrain-local `p`: bare dirt patches a metre or two across where the
 // grass grows thinner (the same noise as `details::worn`, which thins the blades there).
 fn grass_worn(p: vec2<f32>) -> f32 {
-    let v = 0.7 * grass_noise(p / 2.6 + 91.7) + 0.3 * grass_noise(p / 0.9 + 17.3);
-    return smoothstep(0.78, 0.88, v);
+    let a = 0.7 * grass_noise(p / 2.6 + 91.7);
+    // (The fine octave adds at most 0.3: below the edge without it, the spot stays 0.)
+    if (a + 0.3 <= 0.78) {
+        return 0.0;
+    }
+    return smoothstep(0.78, 0.88, a + 0.3 * grass_noise(p / 0.9 + 17.3));
 }
 
 // A swathe's colour: bright swathes lighter and more golden, dark ones deeper green.

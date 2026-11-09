@@ -255,6 +255,7 @@ impl Volumetrics {
         frame: &Frame,
         quality: Option<settings::ShaftQuality>,
         reach: f32,
+        thresholds: [f32; 4],
     ) {
         let Some(q) = quality else {
             if let Some(state) = self.targets.get_mut(&target.id) {
@@ -280,7 +281,7 @@ impl Volumetrics {
         }
         let tex = state.sharp.as_mut().expect("sharp textures");
         tex.begin_frame();
-        let u = sharp_shafts::SharpUniform::new(frame, tex, q, reach);
+        let u = sharp_shafts::SharpUniform::new(frame, tex, q, reach, thresholds);
         queue.write_buffer(&pipelines.uniform, 0, bytemuck::bytes_of(&u));
         self.sharp_now = true;
     }
@@ -402,6 +403,12 @@ impl Renderer {
             });
             v.froxels_now = Some(size);
             let reach = slices.far;
+            // The cascade the shaft march may start its search at (sharp_shafts.rs
+            // `FOOTPRINT_SHARE`): only with maps of 2048² and up, where the tightest
+            // cascade's lookups cost more than choosing.
+            let texels = shadow_access::sun_cascade_texels(plan)
+                .filter(|_| self.shadows.directional_size >= 2048);
+            let thresholds = sharp_shafts::cascade_thresholds(texels.as_deref());
             v.prepare_sharp(
                 device,
                 queue,
@@ -410,6 +417,7 @@ impl Renderer {
                 frame,
                 sharp,
                 reach,
+                thresholds,
             );
         } else if let Some(state) = v.targets.get_mut(&target.id) {
             // Stale history would ghost in when the fog comes back.

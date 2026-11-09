@@ -90,7 +90,11 @@ fn compute(
 ) -> wgpu::ComputePipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(name),
-        source: wgpu::ShaderSource::Wgsl(source(body).into()),
+        source: wgpu::ShaderSource::Wgsl(
+            crate::render::pipelines::patched(&source(body))
+                .into_owned()
+                .into(),
+        ),
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(name),
