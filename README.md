@@ -36,11 +36,18 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
 
 - **Misty Hub:** the start screen, with your recent projects (each showing the last view you were
   looking at) and tutorials. New projects start from a template:
-  - **Standard:** an empty 3D scene with a camera, a light and a floor.
-  - **PP Ready:** a sunset over the ocean with clouds, god rays and every post effect on.
   - **MeadowDemo:** the walkable meadow above, with a **first-person player** ready to walk, run,
     jump and crouch; thin grass, trees and Misty GI. Its grass, trees and textures are free to use
     in your games.
+  - **First Person:** the same first-person player on an endless flat white plain, ready to press
+    Play.
+  - **Racing:** an arcade racer on a 1.2 km circuit: a car with three bodies to pick from, boost,
+    reset to the track, a chase camera, a lap timer and live settings (gravity, mass, grip, top
+    speed). The car, camera, timer and settings are Lua scripts you can edit.
+  - **Floating Platform:** a platform floating in the sky, to start from scratch.
+
+  Every template starts with post-processing on: bloom, tonemapping, volumetric clouds and sun
+  shafts.
 
   You can also include all the sample scenes.
 - **Editor:**
@@ -103,7 +110,7 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
 |---|---|
 | ![Tree shadows on the grass](docs/screenshots/gfx/treelook_after_trunk_sun.png) | ![Misty GI: live bounce light vs. a path-traced bake](docs/screenshots/gfx/gi_cycles_room_compare.png) |
 | ![Virtual geometry: each colour is one cluster](docs/screenshots/gfx/vgeo_close_clusters.png) | ![Virtual geometry: 3000 rocks of 82k triangles](docs/screenshots/gfx/vgeo_close_virtual.png) |
-| ![PP Ready template](crates/misty_editor/assets/templates/pp_ready.png) | ![Baked lighting](docs/screenshots/round13/lightmap_game.png) |
+| ![Racing template](crates/misty_editor/assets/templates/racing.png) | ![Baked lighting](docs/screenshots/round13/lightmap_game.png) |
 | ![GPU particles](docs/screenshots/round13/vfx_play.png) | ![Shader Graph](docs/screenshots/round12/shadergraph_dissolve.png) |
 | ![Timeline](docs/screenshots/round11/timeline_window.png) | ![Virtual cameras](docs/screenshots/round11/vcam_follow_collider.png) |
 | ![Tilemap with 2D lights](docs/screenshots/round12/tilemap_game.png) | ![Vehicles](docs/screenshots/round11/vehicles_play.png) |
@@ -128,7 +135,7 @@ a graphics card with Vulkan (or DirectX 12 on Windows). A macOS version is comin
    ```bash
    cargo run --release -p misty_editor                          # Misty Hub
    cargo run --release -p misty_editor -- SampleProject         # open a project directly
-   cargo run --release -p misty_editor -- --new "PP Ready" MyGame  # new project from a template
+   cargo run --release -p misty_editor -- --new Racing MyGame    # new project from a template
    ```
 
 `misty_player` must be built next to the editor for File ▸ Build to work. A project is any folder

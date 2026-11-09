@@ -133,8 +133,8 @@ From the unzipped folder, somewhere outside the repository, with a throwaway Hub
 (`$env:MISTY_HUB_CONFIG = "$env:TEMP\misty-smoke\hub.json"`, so your recent list is untouched):
 
 1. `MISTY_SCREENSHOT=hub.png MistyEngine.exe` — the Hub.
-2. `MISTY_SCREENSHOT=new.png MistyEngine.exe --new Standard %TEMP%\misty-smoke\SmokeProject` —
-   the editor on a new Standard project.
+2. `MISTY_SCREENSHOT=new.png MistyEngine.exe --new "Floating Platform" %TEMP%\misty-smoke\SmokeProject`
+   — the editor on a new Floating Platform project.
 3. `MISTY_SCREENSHOT=clouds.png MISTY_SCENE=Assets/Scenes/CloudsDemo.scene MistyEngine.exe
    Examples\SampleProject` — a demo scene renders.
 4. Build the SmokeProject: File ▸ Build Settings ▸ Build (or, without clicking, the ignored test

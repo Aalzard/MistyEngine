@@ -24,8 +24,9 @@ How to start
 
    Misty Hub opens. Messages and errors are written to the terminal you started it from.
 3. In Misty Hub:
-   - Projects: click "New project", pick a template (Standard, PP Ready, or MeadowDemo:
-     a walkable meadow with a first-person player and free trees and textures to reuse),
+   - Projects: click "New project", pick a template (MeadowDemo: a walkable meadow with a
+     first-person player and free trees and textures to reuse; First Person; Racing: an
+     arcade racer with Lua scripts to edit; or Floating Platform to start from scratch),
      give it a name and click Create. Or click "Open..." to open an existing project folder.
    - Learn: step-by-step tutorials. Click Start and the editor shows you where to click.
    - Settings: the folder for new projects, and the Hub's look.

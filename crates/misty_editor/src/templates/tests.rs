@@ -567,7 +567,10 @@ fn racing_settings_change_while_playing() {
     let mut play = Play::start(&root, SCENE);
     play.frames(30, &[], &[]);
     let panel = play.text("Settings Text");
-    assert!(panel.contains("Sport") && panel.contains("Normal"), "{panel}");
+    assert!(
+        panel.contains("Sport") && panel.contains("Normal"),
+        "{panel}"
+    );
     let active = |play: &Play| -> Vec<bool> {
         super::racing::MODELS
             .iter()

@@ -3322,3 +3322,13 @@ Record of choices made without asking, and why.
        leaving with changes asks in the bar. Overridden labels are matched to field names after a card
        is drawn and repainted bold, so the dozens of component editors needed no change.
      - Model files link their instances as read-only prefabs (revert, variants; no apply).
+653. **Four templates: MeadowDemo, First Person, Racing, Floating Platform (user's request)**
+     (`docs/pending/r22-templates.md`). PP Ready, the water scene, is removed; Standard is kept as
+     Floating Platform (`--new standard` still works). Every template starts with tonemapping,
+     bloom, volumetric clouds and sun shafts. First Person reuses the sample's First Person Player
+     prefab (copied with GUIDs like MeadowDemo) on a 6 km white slab whose collider is tiled in
+     1 km squares (a Character Controller slipped through one 6 km box). Racing is generated, its
+     game logic in four Lua scripts written to `Assets/Scripts` (shipped from
+     `templates/racing/*.lua`); its live settings needed `Physics.gravity`, a settable
+     `Rigidbody.mass` and `WheelCollider.forwardStiffness` / `sidewaysStiffness`. Curves are flat:
+     the road is a visual spline extrude on the grass collider.

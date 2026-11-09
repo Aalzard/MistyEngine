@@ -282,10 +282,18 @@ fn gravity_and_mass_change_while_playing() {
     physics.set_gravity(Vec3::new(0.0, -3.0, 0.0));
     assert_eq!(physics.gravity(), Vec3::new(0.0, -3.0, 0.0));
     run(&mut scene, &mut physics, 3.0);
-    assert!((load(&scene) - 1200.0 * 3.0).abs() < 300.0, "{}", load(&scene));
+    assert!(
+        (load(&scene) - 1200.0 * 3.0).abs() < 300.0,
+        "{}",
+        load(&scene)
+    );
     physics.set_mass(car, 2400.0);
     run(&mut scene, &mut physics, 3.0);
-    assert!((load(&scene) - 2400.0 * 3.0).abs() < 400.0, "{}", load(&scene));
+    assert!(
+        (load(&scene) - 2400.0 * 3.0).abs() < 400.0,
+        "{}",
+        load(&scene)
+    );
     let p = scene.world_position(car);
     assert!((p.y - 0.5).abs() < 0.05, "rests on its wheels: {p}");
 }

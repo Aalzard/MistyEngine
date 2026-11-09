@@ -296,7 +296,10 @@ fn track(s: &mut Scene) {
         "Gantry Beam",
         Some(start),
         PrimitiveMesh::Cube,
-        scaled(Vec3::new(0.0, 7.4, 0.0), Vec3::new(ROAD_WIDTH + 6.0, 1.4, 0.9)),
+        scaled(
+            Vec3::new(0.0, 7.4, 0.0),
+            Vec3::new(ROAD_WIDTH + 6.0, 1.4, 0.9),
+        ),
         CONCRETE,
     );
     mesh_in(
@@ -409,10 +412,7 @@ fn track(s: &mut Scene) {
             "Trunk",
             Some(tree),
             PrimitiveMesh::Cylinder,
-            scaled(
-                Vec3::Y * height * 0.5,
-                Vec3::new(0.45, height * 0.5, 0.45),
-            ),
+            scaled(Vec3::Y * height * 0.5, Vec3::new(0.45, height * 0.5, 0.45)),
             TRUNK,
         );
         s.add(trunk, BoxCollider::default());
@@ -474,7 +474,14 @@ fn sport() -> Vec<Part> {
     let z = Vec3::ZERO;
     let v = Vec3::new;
     vec![
-        ("Body", c, v(0.0, 0.12, 0.0), v(1.9, 0.42, 4.4), z, SPORT_RED),
+        (
+            "Body",
+            c,
+            v(0.0, 0.12, 0.0),
+            v(1.9, 0.42, 4.4),
+            z,
+            SPORT_RED,
+        ),
         (
             "Nose",
             c,
@@ -484,15 +491,78 @@ fn sport() -> Vec<Part> {
             SPORT_RED,
         ),
         ("Cabin", c, v(0.0, 0.5, -0.3), v(1.45, 0.4, 1.8), z, GLASS),
-        ("Roof", c, v(0.0, 0.72, -0.35), v(1.4, 0.05, 1.4), z, SPORT_RED),
-        ("Wing", c, v(0.0, 0.74, -2.05), v(1.9, 0.06, 0.45), z, CARBON),
-        ("Wing Strut", c, v(-0.6, 0.5, -2.0), v(0.08, 0.4, 0.12), z, CARBON),
-        ("Wing Strut", c, v(0.6, 0.5, -2.0), v(0.08, 0.4, 0.12), z, CARBON),
-        ("Splitter", c, v(0.0, -0.08, 2.5), v(1.9, 0.04, 0.5), z, CARBON),
-        ("Headlight", c, v(-0.6, 0.22, 2.2), v(0.42, 0.1, 0.04), z, HEADLIGHT),
-        ("Headlight", c, v(0.6, 0.22, 2.2), v(0.42, 0.1, 0.04), z, HEADLIGHT),
-        ("Tail Light", c, v(-0.62, 0.24, -2.2), v(0.4, 0.1, 0.04), z, TAILLIGHT),
-        ("Tail Light", c, v(0.62, 0.24, -2.2), v(0.4, 0.1, 0.04), z, TAILLIGHT),
+        (
+            "Roof",
+            c,
+            v(0.0, 0.72, -0.35),
+            v(1.4, 0.05, 1.4),
+            z,
+            SPORT_RED,
+        ),
+        (
+            "Wing",
+            c,
+            v(0.0, 0.74, -2.05),
+            v(1.9, 0.06, 0.45),
+            z,
+            CARBON,
+        ),
+        (
+            "Wing Strut",
+            c,
+            v(-0.6, 0.5, -2.0),
+            v(0.08, 0.4, 0.12),
+            z,
+            CARBON,
+        ),
+        (
+            "Wing Strut",
+            c,
+            v(0.6, 0.5, -2.0),
+            v(0.08, 0.4, 0.12),
+            z,
+            CARBON,
+        ),
+        (
+            "Splitter",
+            c,
+            v(0.0, -0.08, 2.5),
+            v(1.9, 0.04, 0.5),
+            z,
+            CARBON,
+        ),
+        (
+            "Headlight",
+            c,
+            v(-0.6, 0.22, 2.2),
+            v(0.42, 0.1, 0.04),
+            z,
+            HEADLIGHT,
+        ),
+        (
+            "Headlight",
+            c,
+            v(0.6, 0.22, 2.2),
+            v(0.42, 0.1, 0.04),
+            z,
+            HEADLIGHT,
+        ),
+        (
+            "Tail Light",
+            c,
+            v(-0.62, 0.24, -2.2),
+            v(0.4, 0.1, 0.04),
+            z,
+            TAILLIGHT,
+        ),
+        (
+            "Tail Light",
+            c,
+            v(0.62, 0.24, -2.2),
+            v(0.4, 0.1, 0.04),
+            z,
+            TAILLIGHT,
+        ),
     ]
 }
 
@@ -501,17 +571,94 @@ fn muscle() -> Vec<Part> {
     let z = Vec3::ZERO;
     let v = Vec3::new;
     vec![
-        ("Body", c, v(0.0, 0.18, 0.0), v(1.98, 0.56, 4.7), z, MUSCLE_BLUE),
-        ("Stripe", c, v(-0.22, 0.465, 0.0), v(0.22, 0.02, 4.72), z, STRIPE),
-        ("Stripe", c, v(0.22, 0.465, 0.0), v(0.22, 0.02, 4.72), z, STRIPE),
-        ("Cabin", c, v(0.0, 0.68, -0.55), v(1.66, 0.45, 2.0), z, GLASS),
-        ("Roof", c, v(0.0, 0.93, -0.6), v(1.62, 0.06, 1.6), z, MUSCLE_BLUE),
-        ("Grille", c, v(0.0, 0.16, 2.36), v(1.6, 0.26, 0.04), z, CARBON),
-        ("Bumper", c, v(0.0, -0.05, 2.38), v(2.0, 0.12, 0.12), z, CARBON),
-        ("Headlight", c, v(-0.68, 0.24, 2.37), v(0.3, 0.16, 0.04), z, HEADLIGHT),
-        ("Headlight", c, v(0.68, 0.24, 2.37), v(0.3, 0.16, 0.04), z, HEADLIGHT),
-        ("Tail Light", c, v(-0.65, 0.3, -2.36), v(0.5, 0.12, 0.04), z, TAILLIGHT),
-        ("Tail Light", c, v(0.65, 0.3, -2.36), v(0.5, 0.12, 0.04), z, TAILLIGHT),
+        (
+            "Body",
+            c,
+            v(0.0, 0.18, 0.0),
+            v(1.98, 0.56, 4.7),
+            z,
+            MUSCLE_BLUE,
+        ),
+        (
+            "Stripe",
+            c,
+            v(-0.22, 0.465, 0.0),
+            v(0.22, 0.02, 4.72),
+            z,
+            STRIPE,
+        ),
+        (
+            "Stripe",
+            c,
+            v(0.22, 0.465, 0.0),
+            v(0.22, 0.02, 4.72),
+            z,
+            STRIPE,
+        ),
+        (
+            "Cabin",
+            c,
+            v(0.0, 0.68, -0.55),
+            v(1.66, 0.45, 2.0),
+            z,
+            GLASS,
+        ),
+        (
+            "Roof",
+            c,
+            v(0.0, 0.93, -0.6),
+            v(1.62, 0.06, 1.6),
+            z,
+            MUSCLE_BLUE,
+        ),
+        (
+            "Grille",
+            c,
+            v(0.0, 0.16, 2.36),
+            v(1.6, 0.26, 0.04),
+            z,
+            CARBON,
+        ),
+        (
+            "Bumper",
+            c,
+            v(0.0, -0.05, 2.38),
+            v(2.0, 0.12, 0.12),
+            z,
+            CARBON,
+        ),
+        (
+            "Headlight",
+            c,
+            v(-0.68, 0.24, 2.37),
+            v(0.3, 0.16, 0.04),
+            z,
+            HEADLIGHT,
+        ),
+        (
+            "Headlight",
+            c,
+            v(0.68, 0.24, 2.37),
+            v(0.3, 0.16, 0.04),
+            z,
+            HEADLIGHT,
+        ),
+        (
+            "Tail Light",
+            c,
+            v(-0.65, 0.3, -2.36),
+            v(0.5, 0.12, 0.04),
+            z,
+            TAILLIGHT,
+        ),
+        (
+            "Tail Light",
+            c,
+            v(0.65, 0.3, -2.36),
+            v(0.5, 0.12, 0.04),
+            z,
+            TAILLIGHT,
+        ),
     ]
 }
 
@@ -520,16 +667,86 @@ fn kart() -> Vec<Part> {
     let z = Vec3::ZERO;
     let v = Vec3::new;
     vec![
-        ("Chassis", c, v(0.0, -0.12, 0.0), v(1.0, 0.12, 3.4), z, CARBON),
-        ("Body", c, v(0.0, 0.06, 0.1), v(0.8, 0.3, 2.6), z, KART_YELLOW),
-        ("Nose", c, v(0.0, 0.0, 1.8), v(0.5, 0.2, 1.0), z, KART_YELLOW),
-        ("Front Wing", c, v(0.0, -0.15, 2.3), v(1.9, 0.05, 0.35), z, CARBON),
-        ("Side Pod", c, v(-0.55, 0.0, -0.3), v(0.35, 0.25, 1.2), z, KART_YELLOW),
-        ("Side Pod", c, v(0.55, 0.0, -0.3), v(0.35, 0.25, 1.2), z, KART_YELLOW),
-        ("Rear Wing", c, v(0.0, 0.65, -1.75), v(1.6, 0.06, 0.4), z, KART_YELLOW),
-        ("Wing Strut", c, v(0.0, 0.4, -1.7), v(0.1, 0.5, 0.1), z, CARBON),
-        ("Roll Hoop", c, v(0.0, 0.55, -0.85), v(0.08, 0.45, 0.08), z, CARBON),
-        ("Driver", c, v(0.0, 0.35, -0.5), v(0.45, 0.4, 0.4), z, CARBON),
+        (
+            "Chassis",
+            c,
+            v(0.0, -0.12, 0.0),
+            v(1.0, 0.12, 3.4),
+            z,
+            CARBON,
+        ),
+        (
+            "Body",
+            c,
+            v(0.0, 0.06, 0.1),
+            v(0.8, 0.3, 2.6),
+            z,
+            KART_YELLOW,
+        ),
+        (
+            "Nose",
+            c,
+            v(0.0, 0.0, 1.8),
+            v(0.5, 0.2, 1.0),
+            z,
+            KART_YELLOW,
+        ),
+        (
+            "Front Wing",
+            c,
+            v(0.0, -0.15, 2.3),
+            v(1.9, 0.05, 0.35),
+            z,
+            CARBON,
+        ),
+        (
+            "Side Pod",
+            c,
+            v(-0.55, 0.0, -0.3),
+            v(0.35, 0.25, 1.2),
+            z,
+            KART_YELLOW,
+        ),
+        (
+            "Side Pod",
+            c,
+            v(0.55, 0.0, -0.3),
+            v(0.35, 0.25, 1.2),
+            z,
+            KART_YELLOW,
+        ),
+        (
+            "Rear Wing",
+            c,
+            v(0.0, 0.65, -1.75),
+            v(1.6, 0.06, 0.4),
+            z,
+            KART_YELLOW,
+        ),
+        (
+            "Wing Strut",
+            c,
+            v(0.0, 0.4, -1.7),
+            v(0.1, 0.5, 0.1),
+            z,
+            CARBON,
+        ),
+        (
+            "Roll Hoop",
+            c,
+            v(0.0, 0.55, -0.85),
+            v(0.08, 0.45, 0.08),
+            z,
+            CARBON,
+        ),
+        (
+            "Driver",
+            c,
+            v(0.0, 0.35, -0.5),
+            v(0.45, 0.4, 0.4),
+            z,
+            CARBON,
+        ),
         (
             "Helmet",
             PrimitiveMesh::Sphere,
@@ -577,7 +794,10 @@ fn car(s: &mut Scene, position: Vec3, yaw: f32) -> Entity {
     for (name, x, z) in WHEELS {
         let wheel_model = s.spawn(&format!("{name} Model"), Some(car));
         // Where the wheel rests: half way down its suspension.
-        s.set_transform(wheel_model, Transform::from_position(Vec3::new(x, -0.15, z)));
+        s.set_transform(
+            wheel_model,
+            Transform::from_position(Vec3::new(x, -0.15, z)),
+        );
         let d = WHEEL_RADIUS * 2.0;
         mesh_in(
             s,
@@ -593,8 +813,11 @@ fn car(s: &mut Scene, position: Vec3, yaw: f32) -> Entity {
             "Rim",
             Some(wheel_model),
             PrimitiveMesh::Cylinder,
-            scaled(Vec3::new(side * 0.02, 0.0, 0.0), Vec3::new(0.46, 0.135, 0.46))
-                .with_euler(Vec3::new(0.0, 0.0, 90.0)),
+            scaled(
+                Vec3::new(side * 0.02, 0.0, 0.0),
+                Vec3::new(0.46, 0.135, 0.46),
+            )
+            .with_euler(Vec3::new(0.0, 0.0, 90.0)),
             RIM,
         );
         // A bar across the rim, so the wheel is seen to roll.
@@ -678,7 +901,15 @@ const SETTINGS_TEXT: &str = "SETTINGS                [Tab] hide\n\
 fn hud(s: &mut Scene) {
     let canvas = presets::spawn(s, "HUD", None, RectTransform::stretched());
     s.add(canvas, Canvas::default());
-    s.add(canvas, CanvasScaler::default());
+    // Laid out for 1600 × 900, scaled to the screen.
+    s.add(
+        canvas,
+        CanvasScaler {
+            reference_resolution: Vec2::new(1600.0, 900.0),
+            match_width_or_height: 0.5,
+            ..Default::default()
+        },
+    );
     let top_left = Vec2::new(0.0, 1.0);
     let bottom_left = Vec2::ZERO;
     let left = TextAnchor::UpperLeft;
@@ -775,12 +1006,7 @@ fn hud(s: &mut Scene) {
 /// chase camera behind it, the race scripts and the HUD.
 pub fn scene() -> Scene {
     let mut s = Scene::default_3d("Main");
-    scenes::sun(
-        &mut s,
-        Vec3::new(32.0, 140.0, 0.0),
-        [1.0, 0.93, 0.82],
-        1.5,
-    );
+    scenes::sun(&mut s, Vec3::new(32.0, 140.0, 0.0), [1.0, 0.93, 0.82], 1.5);
     let sky = &mut s.render_settings.skybox;
     sky.sun_disk = SunDisk::HighQuality;
     sky.ground = [0.42, 0.5, 0.38];
@@ -807,7 +1033,9 @@ pub fn scene() -> Scene {
         let back = Vec3::new(tangent.x, 0.0, tangent.z).normalize();
         let pos = car_at + Vec3::Y * (RIDE_HEIGHT + 2.6) - back * 7.0;
         let look = car_at + Vec3::Y * (RIDE_HEIGHT + 1.0) - pos;
-        let pitch = (-look.y).atan2(Vec2::new(look.x, look.z).length()).to_degrees();
+        let pitch = (-look.y)
+            .atan2(Vec2::new(look.x, look.z).length())
+            .to_degrees();
         s.set_transform(
             cam,
             Transform::from_position(pos).with_euler(Vec3::new(pitch, yaw, 0.0)),

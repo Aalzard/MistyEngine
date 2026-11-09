@@ -23,7 +23,7 @@ fn grey(v: f32) -> Rgb<u8> {
 pub fn grid() -> RgbImage {
     RgbImage::from_fn(256, 256, |x, y| {
         let line = |v: u32| v % 128 < 1 || v % 128 > 126;
-        let fine = |v: u32| v % 32 == 0;
+        let fine = |v: u32| v.is_multiple_of(32);
         if line(x) || line(y) {
             grey(0.86)
         } else if fine(x) || fine(y) {
