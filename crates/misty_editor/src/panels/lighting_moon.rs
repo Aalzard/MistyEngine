@@ -146,7 +146,7 @@ pub(super) fn section(ui: &mut Ui, m: &mut MoonSettings, cx: &MoonContext) -> bo
             );
             if m.texture.is_none() {
                 ui.weak("Built-in").on_hover_text(
-                    "Albedo only, full and evenly lit: 2:1 = whole moon (near side centred),                      square = near-side photo. The sky makes the phases.",
+                    "Albedo only, evenly lit. 2:1 = whole moon, square = near-side photo.",
                 );
             }
             c
