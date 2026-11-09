@@ -12,6 +12,7 @@ use super::text::{Pos, Selection};
 use super::view::{self, Completion, ViewCtx, colors};
 use super::{CHECK_DELAY, CodeEditor};
 use crate::actions::Action;
+use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::widgets::{panel_toolbar, toggle_button};
 
@@ -108,8 +109,10 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
         ce.ui.focused = false;
         ui.centered_and_justified(|ui| {
             ui.label(
-                RichText::new("Double-click a script in the Project window to edit it here.")
-                    .weak(),
+                RichText::new(tr!(
+                    "Double-click a script in the Project window to edit it here."
+                ))
+                .weak(),
             );
         });
         restore_zoom(ui.ctx(), &mut ce.ui);
@@ -401,39 +404,39 @@ fn file_tabs(ui: &mut Ui, s: &mut EditorState) {
                             close.push(i);
                         }
                         r.context_menu(|ui| {
-                            if ui.button("Save").clicked() {
+                            if ui.button(tr!("Save")).clicked() {
                                 save_one = Some(i);
                                 ui.close();
                             }
-                            if ui.button("Close").clicked() {
+                            if ui.button(tr!("Close")).clicked() {
                                 close.push(i);
                                 ui.close();
                             }
-                            if ui.button("Close All But This").clicked() {
+                            if ui.button(tr!("Close All But This")).clicked() {
                                 close_others = Some(i);
                                 ui.close();
                             }
-                            if ui.button("Close All").clicked() {
+                            if ui.button(tr!("Close All")).clicked() {
                                 close.extend(0..ce.docs.len());
                                 ui.close();
                             }
                             ui.separator();
-                            if ui.button("Copy Full Path").clicked() {
+                            if ui.button(tr!("Copy Full Path")).clicked() {
                                 ui.ctx().copy_text(d.path.clone());
                                 ui.close();
                             }
-                            if ui.button("Select in Project").clicked() {
+                            if ui.button(tr!("Select in Project")).clicked() {
                                 reveal = Some(d.path.clone());
                                 ui.close();
                             }
-                            if ui.button("Open in External Editor").clicked() {
+                            if ui.button(tr!("Open in External Editor")).clicked() {
                                 external = Some(d.path.clone());
                                 ui.close();
                             }
                         });
                         if ui
                             .add(egui::Button::new("×").small().frame(false))
-                            .on_hover_text("Close (Ctrl+F4)")
+                            .on_hover_text(tr!("Close (Ctrl+F4)"))
                             .clicked()
                         {
                             close.push(i);
@@ -445,7 +448,7 @@ fn file_tabs(ui: &mut Ui, s: &mut EditorState) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
                 .button("?")
-                .on_hover_text("Keyboard shortcuts (F1)")
+                .on_hover_text(tr!("Keyboard shortcuts (F1)"))
                 .clicked()
             {
                 ce.ui.help_open = true;
@@ -493,12 +496,12 @@ fn settings_menu(ui: &mut Ui, ce: &mut CodeEditor) {
 }
 
 fn settings_ui(ui: &mut Ui, st: &mut Settings) {
-    ui.checkbox(&mut st.word_wrap, "Word Wrap (Ctrl+E, W)");
-    ui.checkbox(&mut st.minimap, "Minimap");
-    ui.checkbox(&mut st.line_numbers, "Line Numbers");
-    ui.checkbox(&mut st.auto_close, "Auto-close Brackets and Quotes");
+    ui.checkbox(&mut st.word_wrap, tr!("Word Wrap (Ctrl+E, W)"));
+    ui.checkbox(&mut st.minimap, tr!("Minimap"));
+    ui.checkbox(&mut st.line_numbers, tr!("Line Numbers"));
+    ui.checkbox(&mut st.auto_close, tr!("Auto-close Brackets and Quotes"));
     ui.horizontal(|ui| {
-        let l = ui.label("Font Size");
+        let l = ui.label(tr!("Font Size"));
         ui.add(
             egui::DragValue::new(&mut st.font_size)
                 .range(super::prefs::MIN_FONT..=super::prefs::MAX_FONT),
@@ -506,7 +509,7 @@ fn settings_ui(ui: &mut Ui, st: &mut Settings) {
         .labelled_by(l.id);
     });
     ui.horizontal(|ui| {
-        let l = ui.label("Tab Size");
+        let l = ui.label(tr!("Tab Size"));
         ui.add(egui::DragValue::new(&mut st.tab_size).range(1..=8))
             .labelled_by(l.id);
     });
@@ -523,8 +526,8 @@ fn info_bars(ui: &mut Ui, ce: &mut CodeEditor) {
             ui.label(
                 "⚠ This file has been changed outside the editor. Reload it and lose your changes?",
             );
-            reload = ui.button("Reload").clicked();
-            keep = ui.button("Keep Mine").clicked();
+            reload = ui.button(tr!("Reload")).clicked();
+            keep = ui.button(tr!("Keep Mine")).clicked();
         });
         if reload {
             ce.reload(i);
@@ -575,14 +578,14 @@ fn find_bar(ui: &mut Ui, ce: &mut CodeEditor) {
                 let toggle = if f.replace { "⏷" } else { "⏵" };
                 if ui
                     .small_button(toggle)
-                    .on_hover_text("Toggle Replace (Ctrl+H)")
+                    .on_hover_text(tr!("Toggle Replace (Ctrl+H)"))
                     .clicked()
                 {
                     f.replace = !f.replace;
                 }
                 let field = ui.add(
                     egui::TextEdit::singleline(&mut f.query)
-                        .hint_text("Find")
+                        .hint_text(tr!("Find"))
                         .desired_width(220.0)
                         .id_salt("code_find_query"),
                 );
@@ -622,8 +625,8 @@ fn find_bar(ui: &mut Ui, ce: &mut CodeEditor) {
                     Err(e) if !f.query.is_empty() => {
                         RichText::new(format!("⚠ {}", first_line(&e))).color(colors::ERROR)
                     }
-                    _ if f.query.is_empty() => RichText::new("No results").weak(),
-                    _ if total.is_empty() => RichText::new("No results").color(colors::ERROR),
+                    _ if f.query.is_empty() => RichText::new(tr!("No results")).weak(),
+                    _ if total.is_empty() => RichText::new(tr!("No results")).color(colors::ERROR),
                     _ => RichText::new(match current {
                         Some(c) => format!("{} of {}", c + 1, total.len()),
                         None => format!("{} results", total.len()),
@@ -632,15 +635,23 @@ fn find_bar(ui: &mut Ui, ce: &mut CodeEditor) {
                 ui.label(status);
                 if ui
                     .small_button("↑")
-                    .on_hover_text("Previous (Shift+F3)")
+                    .on_hover_text(tr!("Previous (Shift+F3)"))
                     .clicked()
                 {
                     step = Some(false);
                 }
-                if ui.small_button("↓").on_hover_text("Next (F3)").clicked() {
+                if ui
+                    .small_button("↓")
+                    .on_hover_text(tr!("Next (F3)"))
+                    .clicked()
+                {
                     step = Some(true);
                 }
-                if ui.small_button("×").on_hover_text("Close (Esc)").clicked() {
+                if ui
+                    .small_button("×")
+                    .on_hover_text(tr!("Close (Esc)"))
+                    .clicked()
+                {
                     close = true;
                 }
             });
@@ -649,12 +660,15 @@ fn find_bar(ui: &mut Ui, ce: &mut CodeEditor) {
                     ui.add_space(22.0);
                     ui.add(
                         egui::TextEdit::singleline(&mut f.replacement)
-                            .hint_text("Replace")
+                            .hint_text(tr!("Replace"))
                             .desired_width(220.0)
                             .id_salt("code_find_replacement"),
                     );
-                    replace_one = ui.button("Replace").on_hover_text("Replace next").clicked();
-                    replace_all = ui.button("Replace All").clicked();
+                    replace_one = ui
+                        .button(tr!("Replace"))
+                        .on_hover_text(tr!("Replace next"))
+                        .clicked();
+                    replace_all = ui.button(tr!("Replace All")).clicked();
                 });
             }
         });
@@ -720,7 +734,7 @@ fn goto_line(ui: &mut Ui, ce: &mut CodeEditor) {
                     go = text.trim().parse::<usize>().ok();
                     close = true;
                 }
-                if esc || ui.button("Cancel").clicked() {
+                if esc || ui.button(tr!("Cancel")).clicked() {
                     close = true;
                 }
             });
@@ -748,10 +762,10 @@ fn find_in_files(ui: &mut Ui, ce: &mut CodeEditor) {
         .show(ui, |ui| {
             let f = &mut ce.ui.files;
             ui.horizontal(|ui| {
-                ui.strong("Find in Files");
+                ui.strong(tr!("Find in Files"));
                 let field = ui.add(
                     egui::TextEdit::singleline(&mut f.query)
-                        .hint_text("Find in Assets/**/*.lua")
+                        .hint_text(tr!("Find in Assets/**/*.lua"))
                         .desired_width(220.0)
                         .id_salt("code_find_files_query"),
                 );
@@ -770,7 +784,7 @@ fn find_in_files(ui: &mut Ui, ce: &mut CodeEditor) {
                         *on = !*on;
                     }
                 }
-                if ui.button("Find All").clicked() {
+                if ui.button(tr!("Find All")).clicked() {
                     search = true;
                 }
                 if let Some(q) = &f.searched {
@@ -802,7 +816,7 @@ fn find_in_files(ui: &mut Ui, ce: &mut CodeEditor) {
                                 egui::Label::new(RichText::new(text).monospace())
                                     .sense(egui::Sense::click()),
                             )
-                            .on_hover_text("Click to open")
+                            .on_hover_text(tr!("Click to open"))
                             .clicked()
                         {
                             open = Some(r.clone());
@@ -854,7 +868,7 @@ fn status_bar(ui: &mut Ui, s: &mut EditorState) {
                             .color(egui::Color32::WHITE);
                         if ui
                             .add(egui::Label::new(t).sense(egui::Sense::click()).truncate())
-                            .on_hover_text("Go to the error")
+                            .on_hover_text(tr!("Go to the error"))
                             .clicked()
                         {
                             jump = Some(Pos::new(d.line, d.start));
@@ -925,21 +939,21 @@ fn prompt(ctx: &egui::Context, s: &mut EditorState) {
     let mut answer = None;
     egui::Modal::new(egui::Id::new("code_editor_save_prompt")).show(ctx, |ui| {
         ui.set_width(380.0);
-        ui.heading("Save changes?");
+        ui.heading(tr!("Save changes?"));
         ui.add_space(6.0);
-        ui.label("Save changes to the following script(s)?");
+        ui.label(tr!("Save changes to the following script(s)?"));
         for d in &docs {
             ui.label(RichText::new(format!("    {d}")).monospace());
         }
         ui.add_space(10.0);
         ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
+            if ui.button(tr!("Save")).clicked() {
                 answer = Some(true);
             }
-            if ui.button("Don't Save").clicked() {
+            if ui.button(tr!("Don't Save")).clicked() {
                 answer = Some(false);
             }
-            if ui.button("Cancel").clicked() {
+            if ui.button(tr!("Cancel")).clicked() {
                 s.code_editor.ui.prompt = None;
             }
         });
@@ -971,43 +985,50 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
     let ce = &mut s.code_editor;
     let mut open = ce.ui.prefs_open;
     let before = ce.settings.clone();
-    egui::Window::new("Preferences")
+    egui::Window::new(tr!("Preferences"))
+        .id(egui::Id::new("preferences_window"))
         .open(&mut open)
         .default_size([380.0, 260.0])
         .collapsible(false)
         .show(ctx, |ui| {
-            ui.strong("General");
+            ui.strong(tr!("General"));
+            // The editor's language: applied from the next frame, saved per user.
+            if let Some(lang) = crate::i18n::picker_row(ui, "pref_language")
+                && let Err(e) = crate::i18n::choose(lang)
+            {
+                console.warn(format!("Language not saved: {e}"));
+            }
             if let Some(v) = crate::a11y::ui_scale_row(ui, ui_scale)
                 && let Err(e) = ui_scale.set(v)
             {
                 console.warn(format!("UI scale not saved: {e}"));
             }
             ui.separator();
-            ui.strong("External Tools");
+            ui.strong(tr!("External Tools"));
             ui.horizontal(|ui| {
-                let l = ui.label("Script Editor");
+                let l = ui.label(tr!("Script Editor"));
                 egui::ComboBox::from_id_salt("pref_script_editor")
                     .selected_text(match ce.settings.script_editor {
-                        ScriptEditor::Builtin => "Misty Code Editor",
-                        ScriptEditor::External => "System default (external)",
+                        ScriptEditor::Builtin => tr!("Misty Code Editor"),
+                        ScriptEditor::External => tr!("System default (external)"),
                     })
                     .show_ui(ui, |ui| {
                         ui.selectable_value(
                             &mut ce.settings.script_editor,
                             ScriptEditor::Builtin,
-                            "Misty Code Editor",
+                            tr!("Misty Code Editor"),
                         );
                         ui.selectable_value(
                             &mut ce.settings.script_editor,
                             ScriptEditor::External,
-                            "System default (external)",
+                            tr!("System default (external)"),
                         );
                     })
                     .response
                     .labelled_by(l.id);
             });
             ui.separator();
-            ui.strong("Code Editor");
+            ui.strong(tr!("Code Editor"));
             settings_ui(ui, &mut ce.settings);
             ui.separator();
             crate::mcp::live::preferences_ui(ui, mcp, project);
@@ -1020,7 +1041,7 @@ fn preferences(ctx: &egui::Context, s: &mut EditorState) {
 
 /// The keyboard shortcuts list.
 fn help(ctx: &egui::Context, open: &mut bool) {
-    egui::Window::new("Code Editor Shortcuts")
+    egui::Window::new(tr!("Code Editor Shortcuts"))
         .open(open)
         .default_size([460.0, 520.0])
         .collapsible(false)

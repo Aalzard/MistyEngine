@@ -3247,3 +3247,33 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   thread version saved nothing because the Scene view is the last panel drawn; it needs an
   egui-wgpu paint-callback hand-off. The GUID watcher's rescan when assets appear still runs on
   the main thread.
+## Round 24 — Turkish and Arabic (branch r24-locale)
+
+### Done (docs/pending/r24-locale.md, docs/localization.md)
+- Editor UI languages: English, Türkçe, العربية. `tr!("…")` keyed by the English text (falls
+  back to English), `{name}` placeholders filled after translating, `#context` keys for words
+  with two meanings; one TOML file per language in `crates/misty_editor/locales`, embedded.
+- Edit ▸ Preferences ▸ General ▸ Language and the Hub's Settings page: saved per user in
+  `hub.json`, applied on the next frame. `MISTY_EDITOR_LANGUAGE`, `MISTY_OPEN_MENU`,
+  `MISTY_PREFERENCES` for screenshots.
+- Translated: menus, toolbar, tab titles, Hierarchy, Project, Console, Scene view toolbar,
+  Inspector header and the common components (Transform, Camera, Light, Mesh Renderer,
+  Rigidbody, colliders, Audio Source, Script…), Add Component, the Hub (projects, new project,
+  template cards, Learn, Settings), Preferences, the save prompts, the status bar.
+- Arabic in egui: letters joined (`ar-reshaper`) and lines reordered (`unicode-bidi`) in one
+  place (`i18n::shape`), brackets mirrored, idempotent, each Arabic stretch handed to egui's
+  own shaper in logical order; built-in Noto Sans Arabic subset (SIL OFL, Segoe UI line
+  metrics) first in the editor's fonts for Arabic characters. RTL layout: mirrored title bar and menus, right-aligned
+  Inspector labels, Hub navigation on the right, mirrored Default layout.
+- Games: the Noto Sans Arabic subset is a built-in fallback of every UI Text (shaped with
+  rustybuzz), brackets mirrored in RTL runs; Text ▸ Mirror for RTL; locale-aware case (`to_upper` / `to_lower` / `to_title`,
+  `{x:upper}` formatters, `Localization.ToUpper` / `ToLower` in Lua) with Turkish i/İ, ı/I.
+- Sample `LocalizationDemo2` (English, Turkish, Arabic) with generator, `matches_its_generator`
+  and a play test; a CPU test checks the shaped glyphs of "مرحبا".
+- Tests: placeholder mismatches fail; `untranslated_keys_report` prints coverage per language.
+
+### Not done yet
+- The rest of the editor (Project Settings, the graph editors, most component editors beyond
+  the common ones, tutorials' steps) is still English; the Hierarchy and Project trees,
+  submenus and panel toolbars are not mirrored; text fields edit Arabic in logical order
+  without shaping.

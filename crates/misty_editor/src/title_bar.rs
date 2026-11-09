@@ -48,7 +48,8 @@ pub fn title_job(strong: &str, rest: &str, style: &BarStyle) -> LayoutJob {
 }
 
 /// Draw the bar filling `ui` (a top panel of [`HEIGHT`]); `menus` go on the left and return
-/// the right edge of what they drew.
+/// the right edge of what they drew. In a right-to-left UI the bar is mirrored: window buttons
+/// on the left, `menus` laid out right to left from the right end (returning their left edge).
 pub fn show(ui: &mut Ui, style: &BarStyle, title: LayoutJob, menus: impl FnOnce(&mut Ui) -> f32) {
     let rect = ui.max_rect();
     ui.painter().rect_filled(rect, 0.0, style.bg);
@@ -61,30 +62,42 @@ pub fn show(ui: &mut Ui, style: &BarStyle, title: LayoutJob, menus: impl FnOnce(
     );
     bar.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &title_text));
 
-    // Window buttons, right to left.
-    let buttons_left = window_buttons(ui, rect, style);
-
-    // Menus on the left.
-    let menus_rect = Rect::from_min_max(rect.min + vec2(4.0, 0.0), pos2(buttons_left, rect.max.y));
-    let menus_right = ui
-        .scope_builder(
-            UiBuilder::new()
-                .max_rect(menus_rect)
-                .layout(Layout::left_to_right(Align::Center)),
-            menus,
+    let rtl = crate::i18n::is_rtl();
+    // Window buttons from the far end; what is left between them and the near end.
+    let buttons_edge = window_buttons(ui, rect, style, rtl);
+    let (menus_rect, layout) = if rtl {
+        (
+            Rect::from_min_max(pos2(buttons_edge, rect.min.y), rect.max - vec2(4.0, 0.0)),
+            Layout::right_to_left(Align::Center),
         )
+    } else {
+        (
+            Rect::from_min_max(rect.min + vec2(4.0, 0.0), pos2(buttons_edge, rect.max.y)),
+            Layout::left_to_right(Align::Center),
+        )
+    };
+    let menus_edge = ui
+        .scope_builder(UiBuilder::new().max_rect(menus_rect).layout(layout), menus)
         .inner;
 
-    // Logo and title in the centre, nudged right if a narrow window brings the menus close.
+    // Logo and title in the centre, nudged aside if a narrow window brings the menus close.
     let logo_size = 18.0;
     let gap = 6.0;
     let galley = ui.painter().layout_job(title);
     let width = logo_size + gap + galley.size().x;
-    let x = (rect.center().x - width / 2.0).max(menus_right + 16.0);
-    let clip = Rect::from_min_max(
-        pos2(menus_right, rect.min.y),
-        pos2(buttons_left, rect.max.y),
-    );
+    let (x, clip) = if rtl {
+        let x = (rect.center().x - width / 2.0).min(menus_edge - 16.0 - width);
+        (
+            x,
+            Rect::from_min_max(pos2(buttons_edge, rect.min.y), pos2(menus_edge, rect.max.y)),
+        )
+    } else {
+        let x = (rect.center().x - width / 2.0).max(menus_edge + 16.0);
+        (
+            x,
+            Rect::from_min_max(pos2(menus_edge, rect.min.y), pos2(buttons_edge, rect.max.y)),
+        )
+    };
     let painter = ui.painter().with_clip_rect(clip);
     let logo_rect = Rect::from_min_size(
         pos2(x, rect.center().y - logo_size / 2.0),
@@ -124,21 +137,26 @@ enum Glyph {
     Close,
 }
 
-/// Minimise, maximise / restore and close at the right end of `bar`. Returns their left edge.
-fn window_buttons(ui: &mut Ui, bar: Rect, style: &BarStyle) -> f32 {
+/// Minimise, maximise / restore and close at the right end of `bar` (close outermost), or at
+/// the left end when `mirrored`. Returns their inner edge.
+fn window_buttons(ui: &mut Ui, bar: Rect, style: &BarStyle, mirrored: bool) -> f32 {
     let ctx = ui.ctx().clone();
     let max_glyph = if maximized(&ctx) {
         Glyph::Restore
     } else {
         Glyph::Maximize
     };
-    let mut right = bar.max.x;
+    let mut edge = if mirrored { bar.min.x } else { bar.max.x };
     for glyph in [Glyph::Close, max_glyph, Glyph::Minimize] {
-        let rect = Rect::from_min_max(
-            pos2(right - BUTTON_WIDTH, bar.min.y),
-            pos2(right, bar.max.y),
-        );
-        right -= BUTTON_WIDTH;
+        let rect = if mirrored {
+            let r = Rect::from_min_max(pos2(edge, bar.min.y), pos2(edge + BUTTON_WIDTH, bar.max.y));
+            edge += BUTTON_WIDTH;
+            r
+        } else {
+            let r = Rect::from_min_max(pos2(edge - BUTTON_WIDTH, bar.min.y), pos2(edge, bar.max.y));
+            edge -= BUTTON_WIDTH;
+            r
+        };
         if window_button(ui, rect, glyph, style).clicked() {
             match glyph {
                 Glyph::Minimize => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
@@ -148,7 +166,7 @@ fn window_buttons(ui: &mut Ui, bar: Rect, style: &BarStyle) -> f32 {
             }
         }
     }
-    right
+    edge
 }
 
 fn window_button(ui: &mut Ui, rect: Rect, glyph: Glyph, style: &BarStyle) -> egui::Response {

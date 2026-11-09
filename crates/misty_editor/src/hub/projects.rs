@@ -1,5 +1,6 @@
 //! Projects page: recent projects with search, New Project and Open.
 
+use crate::i18n::tr;
 use std::path::PathBuf;
 
 use egui::{Align, Color32, Layout, RichText, Sense, UiBuilder, vec2};
@@ -21,13 +22,13 @@ enum RowAction {
 pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     let p = style::palette(hub.config.theme);
     ui.horizontal(|ui| {
-        ui.heading(RichText::new("Projects").strong());
+        ui.heading(RichText::new(tr!("Projects")).strong());
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.add(style::primary("New project")).clicked() {
+            if ui.add(style::primary(&tr!("New project"))).clicked() {
                 hub.notice = None;
                 hub.start_new_project();
             }
-            if ui.button("Open…").clicked() {
+            if ui.button(tr!("Open…")).clicked() {
                 hub.notice = None;
                 if let Some(dir) = super::pick_folder(&hub.config.projects_folder()) {
                     hub.open_project(&dir);
@@ -38,7 +39,7 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     ui.add_space(6.0);
     ui.add(
         egui::TextEdit::singleline(&mut hub.search)
-            .hint_text("🔍  Search projects")
+            .hint_text(tr!("🔍  Search projects"))
             .desired_width(320.0),
     );
     if let Some(n) = &hub.notice {
@@ -59,16 +60,16 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     // Column headers.
     ui.horizontal(|ui| {
         ui.add_space(12.0 + THUMB.x + 14.0);
-        ui.label(RichText::new("Name").small().color(p.dim));
+        ui.label(RichText::new(tr!("Name")).small().color(p.dim));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.add_space(52.0);
-            ui.label(RichText::new("Last opened").small().color(p.dim));
+            ui.label(RichText::new(tr!("Last opened")).small().color(p.dim));
         });
     });
     ui.add(egui::Separator::default().spacing(2.0));
     if rows.is_empty() {
         ui.add_space(20.0);
-        ui.label(RichText::new("No projects match your search.").color(p.dim));
+        ui.label(RichText::new(tr!("No projects match your search.")).color(p.dim));
     }
     let mut action = None;
     let now = config::now();
@@ -112,13 +113,15 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
 fn empty_state(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette) {
     ui.add_space(80.0);
     ui.vertical_centered(|ui| {
-        ui.label(RichText::new("No projects yet").size(18.0).strong());
+        ui.label(RichText::new(tr!("No projects yet")).size(18.0).strong());
         ui.label(
-            RichText::new("Create a new project from a template, or open an existing folder.")
-                .color(p.dim),
+            RichText::new(tr!(
+                "Create a new project from a template, or open an existing folder."
+            ))
+            .color(p.dim),
         );
         ui.add_space(10.0);
-        if ui.add(style::primary("New project")).clicked() {
+        if ui.add(style::primary(&tr!("New project"))).clicked() {
             hub.start_new_project();
         }
     });
@@ -204,17 +207,17 @@ fn row(
             {
                 action = Some(RowAction::Reveal(r.path.clone()));
             }
-            if !exists && ui.button("Locate…").clicked() {
+            if !exists && ui.button(tr!("Locate…")).clicked() {
                 action = Some(RowAction::Locate(r.path.clone()));
             }
-            if ui.button("Remove from list").clicked() {
+            if ui.button(tr!("Remove from list")).clicked() {
                 action = Some(RowAction::Remove(r.path.clone()));
             }
         });
         if exists {
             let when = config::ago(now.saturating_sub(r.last_opened));
             ui.label(RichText::new(when).color(p.dim));
-        } else if ui.button("Locate…").clicked() {
+        } else if ui.button(tr!("Locate…")).clicked() {
             action = Some(RowAction::Locate(r.path.clone()));
         }
     });

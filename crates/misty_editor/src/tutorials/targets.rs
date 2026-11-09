@@ -123,7 +123,8 @@ pub fn row(ui: &Ui, label: &str, label_rect: Rect) {
 
 /// `ui.label(text)` that also marks its row as `<scope>/<text>`.
 pub fn label(ui: &mut Ui, text: &str) -> Response {
-    let r = ui.label(text);
+    // Shown in the editor's language; the target id stays English.
+    let r = crate::panels::inspector::card::prop_label(ui, crate::i18n::tr(text));
     row(ui, text, r.rect);
     r
 }

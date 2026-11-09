@@ -5,6 +5,7 @@ use misty_engine::render::RenderStats;
 use misty_engine::render_scene::GameView;
 use misty_engine::runtime::RuntimeStats;
 
+use crate::i18n::tr;
 use crate::state::EditorState;
 use crate::viewport::{Gpu, ViewId};
 use crate::widgets::{panel_toolbar, toggle_button};
@@ -343,7 +344,7 @@ fn quality_dropdown(ui: &mut Ui, quality: &misty_engine::quality::QualitySetting
             }
         })
         .response
-        .on_hover_text("Quality level to preview (Project Settings ▸ Quality)");
+        .on_hover_text(tr!("Quality level to preview (Project Settings ▸ Quality)"));
 }
 
 fn fit_aspect(area: egui::Rect, aspect: f32) -> egui::Rect {
@@ -364,7 +365,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
             .selected_text("Display 1")
             .width(80.0)
             .show_ui(ui, |ui| {
-                let _ = ui.selectable_label(true, "Display 1");
+                let _ = ui.selectable_label(true, tr!("Display 1"));
             });
         egui::ComboBox::from_id_salt("game_aspect")
             .selected_text(ASPECTS[gv.aspect].0)
@@ -374,7 +375,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState) {
                     ui.selectable_value(&mut gv.aspect, i, *name);
                 }
             });
-        ui.label("Scale");
+        ui.label(tr!("Scale"));
         ui.add(
             egui::Slider::new(&mut gv.scale, 1.0..=5.0)
                 .suffix("x")

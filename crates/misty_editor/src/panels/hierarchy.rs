@@ -5,6 +5,7 @@ use misty_engine::hecs::Entity;
 use misty_engine::scene::SceneId;
 
 use crate::actions::{Action, SceneOp};
+use crate::i18n::tr;
 use crate::menu_bar::create_menu_items;
 use crate::search::fuzzy::Mode;
 use crate::state::{EditorState, object_icon};
@@ -39,9 +40,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
 
     panel_toolbar(ui, |ui| {
         let create = ui.menu_button("➕ ⏷", |ui| create_menu_items(ui, state, None));
-        crate::a11y::name(create.response, egui::WidgetType::Button, "Create");
-        search_field(ui, &mut state.hierarchy.search, ui.available_width())
-            .on_hover_text("Name words and filters: t:Light t:Camera tag:Player layer:UI");
+        crate::a11y::name(create.response, egui::WidgetType::Button, &tr!("Create"));
+        search_field(ui, &mut state.hierarchy.search, ui.available_width()).on_hover_text(tr!(
+            "Name words and filters: t:Light t:Camera tag:Player layer:UI"
+        ));
     });
     crate::prefab_mode::hierarchy_header(ui, state);
     let mut prefab_rows = super::prefab_rows::Rows::default();
@@ -235,7 +237,7 @@ fn scene_row(ui: &mut Ui, state: &mut EditorState, id: SceneId, dragging: bool) 
         (true, false) => theme::TEXT,
     };
     let text_pos = pos2(rect.left() + 18.0, rect.center().y);
-    let text = format!("🎬 {label}");
+    let text = format!("🎬 {}", crate::i18n::display(&label));
     let font = FontId::proportional(13.0);
     ui.painter()
         .text(text_pos, Align2::LEFT_CENTER, &text, font.clone(), color);
@@ -302,25 +304,29 @@ fn scene_menu(ui: &mut Ui, state: &mut EditorState, id: SceneId) {
     let several_loaded = scene.loaded_scenes().len() > 1;
     let several = scene.scenes().len() > 1;
     let load_item = if loaded {
-        ("Unload Scene", SceneOp::Unload, several_loaded)
+        (tr!("Unload Scene"), SceneOp::Unload, several_loaded)
     } else {
-        ("Load Scene", SceneOp::Load, true)
+        (tr!("Load Scene"), SceneOp::Load, true)
     };
     let groups = [
-        vec![("Set Active Scene", SceneOp::SetActive, loaded && !active)],
+        vec![(
+            tr!("Set Active Scene"),
+            SceneOp::SetActive,
+            loaded && !active,
+        )],
         vec![
-            ("Save Scene", SceneOp::Save, loaded),
-            ("Save Scene As", SceneOp::SaveAs, loaded),
-            ("Select All", SceneOp::SelectAll, loaded),
+            (tr!("Save Scene"), SceneOp::Save, loaded),
+            (tr!("Save Scene As"), SceneOp::SaveAs, loaded),
+            (tr!("Select All"), SceneOp::SelectAll, loaded),
         ],
         vec![
             load_item,
             (
-                "Remove Scene",
+                tr!("Remove Scene"),
                 SceneOp::Remove,
                 several && (!loaded || several_loaded),
             ),
-            ("Close Others", SceneOp::CloseOthers, several),
+            (tr!("Close Others"), SceneOp::CloseOthers, several),
         ],
     ];
     for (i, group) in groups.into_iter().enumerate() {
@@ -446,9 +452,15 @@ fn row(
                 let slot = Rect::from_min_size(pos2(text_x, rect.top()), vec2(15.0, ROW_H));
                 let tint = folder_color.unwrap_or(color);
                 crate::branding::icons::paint(ui, slot.shrink2(vec2(0.0, 2.0)), icon, tint);
-                (text_x + ICON_ADVANCE, name.to_string())
+                (
+                    text_x + ICON_ADVANCE,
+                    crate::i18n::display(&name).into_owned(),
+                )
             }
-            None => (text_x, format!("{} {name}", object_icon(&state.scene, e))),
+            None => {
+                let name = crate::i18n::display(&name);
+                (text_x, format!("{} {name}", object_icon(&state.scene, e)))
+            }
         };
         // Parents are semi-bold: drawn twice, a hair apart (the UI font has no bold face).
         let passes: &[f32] = if has_children || is_folder {
@@ -599,13 +611,13 @@ fn row_menu(ui: &mut Ui, state: &mut EditorState, e: Entity) {
         as_child,
     };
     for (label, action) in [
-        ("Cut", Action::CutObjects),
-        ("Copy", Action::CopyObjects),
-        ("Paste", paste(false)),
-        ("Paste As Child", paste(true)),
-        ("Rename", Action::RenameSelected),
-        ("Duplicate", Action::DuplicateSelected),
-        ("Delete", Action::DeleteSelected),
+        (tr!("Cut"), Action::CutObjects),
+        (tr!("Copy"), Action::CopyObjects),
+        (tr!("Paste"), paste(false)),
+        (tr!("Paste As Child"), paste(true)),
+        (tr!("Rename"), Action::RenameSelected),
+        (tr!("Duplicate"), Action::DuplicateSelected),
+        (tr!("Delete"), Action::DeleteSelected),
     ] {
         if ui.button(label).clicked() {
             state.push(action);
@@ -616,9 +628,9 @@ fn row_menu(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     // moves only the view).
     ui.separator();
     for (label, action) in [
-        ("Move To View", Action::MoveToView),
-        ("Align With View", Action::AlignWithView),
-        ("Align View to Selected", Action::AlignViewToSelected),
+        (tr!("Move To View"), Action::MoveToView),
+        (tr!("Align With View"), Action::AlignWithView),
+        (tr!("Align View to Selected"), Action::AlignViewToSelected),
     ] {
         if ui.button(label).clicked() {
             state.push(action);
@@ -628,7 +640,7 @@ fn row_menu(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     super::prefab_rows::menu(ui, state, e);
     crate::menu_bar::virtual_geometry_items(ui, state);
     ui.separator();
-    if ui.button("Select Children").clicked() {
+    if ui.button(tr!("Select Children")).clicked() {
         let mut all = vec![e];
         all.extend(
             state
@@ -669,8 +681,8 @@ fn drag_and_drop(
     // Label following the pointer.
     if let Some(p) = ui.input(|i| i.pointer.hover_pos()) {
         let label = match dragged.as_slice() {
-            [one] => state.scene.name(*one),
-            many => format!("{} objects", many.len()),
+            [one] => crate::i18n::display(&state.scene.name(*one)).into_owned(),
+            many => tr!("{count} objects", count = many.len()),
         };
         let painter = ui
             .ctx()

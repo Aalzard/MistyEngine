@@ -9,6 +9,7 @@ use egui::{Align2, Color32, FontId, Rect, Sense, Ui};
 use super::AssetPayload;
 use super::project_menus::{self, Requests};
 use crate::actions::Action;
+use crate::i18n::tr;
 use crate::project::{AssetEntry, ProjectBrowser};
 use crate::state::EditorState;
 use crate::theme;
@@ -33,15 +34,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
         let create = ui.menu_button("➕ ⏷", |ui| {
             project_menus::create_items(ui, &mut req.actions)
         });
-        crate::a11y::name(create.response, egui::WidgetType::Button, "Create");
+        crate::a11y::name(create.response, egui::WidgetType::Button, &tr!("Create"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let refresh = ui.button("⟳").on_hover_text("Refresh (Ctrl+R)");
-            if crate::a11y::name(refresh, egui::WidgetType::Button, "Refresh").clicked() {
+            let refresh = ui.button("⟳").on_hover_text(tr!("Refresh (Ctrl+R)"));
+            if crate::a11y::name(refresh, egui::WidgetType::Button, &tr!("Refresh")).clicked() {
                 req.actions.push(Action::Refresh);
             }
             type_filter(ui, &mut browser.search);
             search_field(ui, &mut browser.search, 180.0)
-                .on_hover_text("Name words and type filters: t:Material t:Script t:Scene t:Prefab t:Texture t:Model t:AudioClip");
+                .on_hover_text(tr!("Name words and type filters: t:Material t:Script t:Scene t:Prefab t:Texture t:Model t:AudioClip"));
         });
     });
 
@@ -59,7 +60,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     let size = ui.add(
                         egui::Slider::new(&mut browser.icon_size, 0.0..=1.0).show_value(false),
                     );
-                    crate::a11y::name(size, egui::WidgetType::Slider, "Icon size");
+                    crate::a11y::name(size, egui::WidgetType::Slider, &tr!("Icon size"));
                 });
             });
         });
@@ -103,14 +104,15 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
                     if i > 0 {
                         ui.label("›");
                     }
-                    let crumb = ui.add(egui::Button::new(name).frame(false));
+                    let shown = crate::i18n::display(&name).into_owned();
+                    let crumb = ui.add(egui::Button::new(shown).frame(false));
                     if crumb.clicked() {
                         jump = Some(path.clone());
                     }
                     drop_target(&crumb, &browser.root, &path, &mut req);
                 }
             } else {
-                ui.label(format!("Search: '{}'", browser.search));
+                ui.label(tr!("Search: '{text}'", text = browser.search));
             }
         });
         ui.separator();
@@ -305,8 +307,8 @@ fn list_view(
         let label = match (renaming, folder) {
             (true, Some(_)) => String::new(),
             (true, None) => e.icon().to_owned(),
-            (false, Some(_)) => e.name.clone(),
-            (false, None) => format!("{} {}", e.icon(), e.name),
+            (false, Some(_)) => crate::i18n::display(&e.name).into_owned(),
+            (false, None) => format!("{} {}", e.icon(), crate::i18n::display(&e.name)),
         };
         let resp = row_with_icon(ui, is_sel, folder, &label, theme::TEXT, 0);
         // Version control status at the row's right end.
@@ -384,7 +386,7 @@ fn grid_view(
                 ui.painter().text(
                     rect.center_bottom() - egui::vec2(0.0, 9.0),
                     Align2::CENTER_CENTER,
-                    truncate(&e.name, (cell / 7.0) as usize),
+                    crate::i18n::display(&truncate(&e.name, (cell / 7.0) as usize)).into_owned(),
                     FontId::proportional(12.0),
                     theme::TEXT,
                 );
@@ -442,7 +444,7 @@ fn tile_icon(
 }
 
 /// Asset types offered by the filter button (the `t:` search filters).
-const TYPE_FILTERS: [&str; 7] = [
+pub(crate) const TYPE_FILTERS: [&str; 7] = [
     "Material",
     "Script",
     "Scene",
@@ -460,7 +462,7 @@ fn type_filter(ui: &mut Ui, search: &mut String) {
         Icon::Filter,
         active,
         egui::vec2(22.0, 18.0),
-        "Search by Type",
+        &tr!("Search by Type"),
     );
     egui::Popup::menu(&button).show(|ui| {
         for kind in TYPE_FILTERS {
@@ -468,7 +470,7 @@ fn type_filter(ui: &mut Ui, search: &mut String) {
             let mut on = search
                 .split_whitespace()
                 .any(|w| w.eq_ignore_ascii_case(&token));
-            if ui.checkbox(&mut on, kind).changed() {
+            if ui.checkbox(&mut on, tr(kind)).changed() {
                 *search = toggle_word(search, &token, on);
             }
         }

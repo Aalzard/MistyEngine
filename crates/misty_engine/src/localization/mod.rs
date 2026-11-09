@@ -11,6 +11,7 @@
 //! [`session_locale`] / [`set_session_locale`]. Choosing one also stores it in PlayerPrefs, so
 //! the "saved preference" startup mode can restore it next time.
 
+pub mod case;
 pub mod format;
 pub mod table;
 #[cfg(test)]
@@ -22,6 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
+pub use case::{to_lower, to_title, to_upper};
 pub use format::{Args, is_right_to_left, language};
 pub use table::{StringEntry, StringTable, TableKind};
 

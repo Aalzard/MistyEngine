@@ -2,6 +2,9 @@
 //! See [`apply_env`] for `MISTY_SCENE` / `MISTY_ACTIVE_SCENE` / `MISTY_SELECT` / `MISTY_ASSET` / `MISTY_SCRIPT` / `MISTY_TAB` /
 //! `MISTY_WORLD_PARTITION` / `MISTY_PLAY` / `MISTY_QUALITY_LEVEL` / `MISTY_RUN_TESTS` / `MISTY_RAGDOLL_WIZARD` / `MISTY_CLOTH_PAINT` / `MISTY_RELOAD_BAR` / `MISTY_RELOAD_TOAST` / `MISTY_STATS` / `MISTY_SEARCH` / `MISTY_ABOUT` / `MISTY_EXPAND_ALL` / `MISTY_FOLDER_DEMO` / `MISTY_VCS` / `MISTY_COLOR_FILTER` / `MISTY_TEXT_SCALE` / `MISTY_PROJECT_SETTINGS`, and `MISTY_THEME=light` (and
 //! `MISTY_TUTORIAL`, see `tutorials::from_env`; `MISTY_SPLASH`, see `branding::splash`).
+//! `MISTY_EDITOR_LANGUAGE=tr` (`en`, `tr`, `ar`) runs the editor and the Hub in that language
+//! (see `i18n`), `MISTY_OPEN_MENU=File` opens that top menu ([`open_menu_from_env`]) and
+//! `MISTY_PREFERENCES=1` opens Edit ▸ Preferences.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -235,6 +238,22 @@ impl Capture {
             }
             self.saved = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+}
+
+/// `MISTY_OPEN_MENU=<top menu>` (English name: `File`, `GameObject`…): that menu of the title
+/// bar opens and stays open (screenshots of translated menus).
+pub fn open_menu_from_env(ui: &egui::Ui, label: &str, button: &egui::Response) {
+    static MENU: OnceLock<Option<String>> = OnceLock::new();
+    let wanted = MENU.get_or_init(|| std::env::var("MISTY_OPEN_MENU").ok());
+    if wanted
+        .as_deref()
+        .is_some_and(|w| w.trim().eq_ignore_ascii_case(label))
+    {
+        let id = egui::Popup::default_response_id(button);
+        if !egui::Popup::is_id_open(ui.ctx(), id) {
+            egui::Popup::open_id(ui.ctx(), id);
         }
     }
 }
@@ -758,6 +777,10 @@ pub fn apply_env(
     if std::env::var_os("MISTY_PLAY").is_some() {
         misty_engine::profile_scope!("Editor.EnterPlay");
         crate::play::start(s);
+    }
+    // `MISTY_PREFERENCES=1` opens Edit ▸ Preferences (the language picker).
+    if std::env::var_os("MISTY_PREFERENCES").is_some() {
+        s.code_editor.ui.prefs_open = true;
     }
     // `MISTY_WINDOW` / `MISTY_LOCALE` / `MISTY_SAVE_SLOT` (see `saveloc::apply_env`).
     crate::saveloc::apply_env(s);

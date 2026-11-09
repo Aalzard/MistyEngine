@@ -14,6 +14,8 @@ use misty_engine::scene::{ScriptValue, Scripts};
 use super::mixed;
 use crate::actions::Action;
 use crate::assets::AssetDatabase;
+use crate::i18n::tr;
+use crate::panels::inspector::card::prop_label;
 use crate::state::EditorState;
 use crate::theme;
 use crate::widgets::vec3_row_mixed;
@@ -298,7 +300,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
         "Visual Effect" => super::visual_effect::visual_effect(ui, state, e),
         "Post-process Volume" => super::post_volume::post_process_volume(ui, state, e),
         "Audio Listener" => {
-            ui.weak("Hears every Audio Source in the scene.");
+            ui.weak(tr!("Hears every Audio Source in the scene."));
             false
         }
         ui_name if super::ui_editors::NAMES.contains(&ui_name) => {
@@ -381,7 +383,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, targets: &[Entity], name: &str
             super::spline_editors::edit(ui, state, e, spline)
         }
         _ => {
-            ui.weak("No editor for this component.");
+            ui.weak(tr!("No editor for this component."));
             false
         }
     }
@@ -438,7 +440,7 @@ fn transform(ui: &mut Ui, state: &mut EditorState, targets: &[Entity]) -> bool {
                     .frame(false)
                     .selected(state.scale_locked),
             )
-            .on_hover_text("Constrain Proportions")
+            .on_hover_text(tr!("Constrain Proportions"))
             .clicked()
         {
             state.scale_locked = !state.scale_locked;
@@ -507,10 +509,10 @@ pub(super) fn combo_k<T: Copy + PartialEq>(
 ) -> bool {
     let mut changed = false;
     egui::ComboBox::from_id_salt(id)
-        .selected_text(super::mixed::text(key, label(*value)))
+        .selected_text(super::mixed::text(key, tr(label(*value))))
         .show_ui(ui, |ui| {
             for &o in options {
-                changed |= ui.selectable_value(value, o, label(o)).changed();
+                changed |= ui.selectable_value(value, o, tr(label(o))).changed();
             }
         });
     changed
@@ -531,7 +533,7 @@ pub(super) fn color_rgb(ui: &mut Ui, c: &mut [f32; 3]) -> bool {
 fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
     grid(ui, "camera_grid", |ui| {
         let mut ch = false;
-        ui.label("Clear Flags");
+        prop_label(ui, tr!("Clear Flags"));
         ch |= combo_k(
             ui,
             "cam_clear",
@@ -541,29 +543,33 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
             ClearFlags::label,
         );
         ui.end_row();
-        ui.label("Background");
+        prop_label(ui, tr!("Background"));
         let mut rgb = [c.background[0], c.background[1], c.background[2]];
         if color_rgb(ui, &mut rgb) {
             c.background[..3].copy_from_slice(&rgb);
             ch = true;
         }
         ui.end_row();
-        ui.label("Culling Mask");
+        prop_label(ui, tr!("Culling Mask"));
         ch |= super::layer_mask::mask_field(ui, "cam_cull", &mut c.culling_mask);
         ui.end_row();
-        ui.label("Occlusion Culling");
+        prop_label(ui, tr!("Occlusion Culling"));
         ch |= mixed::checkbox(ui, "occlusion_culling", &mut c.occlusion_culling, "").changed();
         ui.end_row();
-        ui.label("Projection");
+        prop_label(ui, tr!("Projection"));
         let mut ortho = c.orthographic;
         egui::ComboBox::from_id_salt("cam_proj")
             .selected_text(mixed::text(
                 "orthographic",
-                if ortho { "Orthographic" } else { "Perspective" },
+                if ortho {
+                    tr!("Orthographic")
+                } else {
+                    tr!("Perspective")
+                },
             ))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut ortho, false, "Perspective");
-                ui.selectable_value(&mut ortho, true, "Orthographic");
+                ui.selectable_value(&mut ortho, false, tr!("Perspective"));
+                ui.selectable_value(&mut ortho, true, tr!("Orthographic"));
             });
         if ortho != c.orthographic {
             c.orthographic = ortho;
@@ -571,7 +577,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
         }
         ui.end_row();
         if c.orthographic {
-            ui.label("Size");
+            prop_label(ui, tr!("Size"));
             ch |= ui
                 .add(
                     mixed::drag("ortho_size", egui::DragValue::new(&mut c.ortho_size))
@@ -580,7 +586,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
                 )
                 .changed();
         } else {
-            ui.label("Field of View");
+            prop_label(ui, tr!("Field of View"));
             ch |= ui
                 .add(mixed::slider(
                     "fov",
@@ -589,9 +595,9 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
                 .changed();
         }
         ui.end_row();
-        ui.label("Clipping Planes");
+        prop_label(ui, tr!("Clipping Planes"));
         ui.horizontal(|ui| {
-            ui.label("Near");
+            ui.label(tr!("Near"));
             ch |= ui
                 .add(
                     mixed::drag("near", egui::DragValue::new(&mut c.near))
@@ -599,7 +605,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
                         .range(0.01..=c.far - 0.01),
                 )
                 .changed();
-            ui.label("Far");
+            ui.label(tr!("Far"));
             ch |= ui
                 .add(
                     mixed::drag("far", egui::DragValue::new(&mut c.far))
@@ -609,7 +615,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
                 .changed();
         });
         ui.end_row();
-        ui.label("Viewport Rect");
+        prop_label(ui, tr!("Viewport Rect"));
         ui.horizontal(|ui| {
             for (i, l) in ["X", "Y", "W", "H"].iter().enumerate() {
                 ui.label(*l);
@@ -626,7 +632,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
             }
         });
         ui.end_row();
-        ui.label("Depth");
+        prop_label(ui, tr!("Depth"));
         ch |= ui
             .add(mixed::drag("depth", egui::DragValue::new(&mut c.depth)).speed(0.1))
             .changed();
@@ -638,7 +644,7 @@ fn camera(ui: &mut Ui, c: &mut Camera) -> bool {
 fn light(ui: &mut Ui, l: &mut Light) -> bool {
     let mut ch = grid(ui, "light_grid", |ui| {
         let mut ch = false;
-        ui.label("Type");
+        prop_label(ui, tr!("Type"));
         ch |= combo_k(
             ui,
             "light_type",
@@ -648,7 +654,7 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             LightType::label,
         );
         ui.end_row();
-        ui.label("Mode").on_hover_text(
+        prop_label(ui, tr!("Mode")).on_hover_text(
             "Realtime: lit every frame. Mixed: realtime direct light, baked bounce light. \
             Baked: direct and bounce light baked into lightmaps (Lighting ▸ Generate Lighting)",
         );
@@ -662,7 +668,7 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         );
         ui.end_row();
         if l.kind != LightType::Directional {
-            ui.label("Range");
+            prop_label(ui, tr!("Range"));
             ch |= ui
                 .add(
                     mixed::drag("range", egui::DragValue::new(&mut l.range))
@@ -673,7 +679,7 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
             ui.end_row();
         }
         if l.kind == LightType::Spot {
-            ui.label("Spot Angle");
+            prop_label(ui, tr!("Spot Angle"));
             ch |= ui
                 .add(mixed::slider(
                     "spot_angle",
@@ -685,10 +691,10 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         if l.kind == LightType::Rectangle {
             ch |= super::light_area::rows(ui, l);
         }
-        ui.label("Color");
+        prop_label(ui, tr!("Color"));
         ch |= color_rgb(ui, &mut l.color);
         ui.end_row();
-        ui.label("Intensity");
+        prop_label(ui, tr!("Intensity"));
         ch |= ui
             .add(
                 mixed::drag("intensity", egui::DragValue::new(&mut l.intensity))
@@ -713,9 +719,9 @@ fn light(ui: &mut Ui, l: &mut Light) -> bool {
         );
         ui.end_row();
         ch |= super::light_shadows::rows(ui, l);
-        ui.label("Contact Shadows").on_hover_text(
-            "Screen-space contact shadows (needs a volume's Contact Shadows override)",
-        );
+        prop_label(ui, tr!("Contact Shadows")).on_hover_text(tr!(
+            "Screen-space contact shadows (needs a volume's Contact Shadows override)"
+        ));
         ch |= mixed::checkbox(ui, "contact_shadows", &mut l.contact_shadows, "").changed();
         ui.end_row();
         ch
@@ -739,7 +745,7 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     };
     let names: Vec<String> = state.assets.materials.keys().cloned().collect();
     let mut changed = grid(ui, "meshrenderer_grid", |ui| {
-        ui.label("Materials");
+        prop_label(ui, tr!("Materials"));
         let mut size = r.material_count();
         let resp = ui.add(egui::DragValue::new(&mut size).range(1..=8).prefix("Size "));
         if resp.changed() {
@@ -763,7 +769,7 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     }
     changed |= grid(ui, "meshrenderer_shadows_grid", |ui| {
         let mut ch = false;
-        ui.label("Cast Shadows");
+        prop_label(ui, tr!("Cast Shadows"));
         egui::ComboBox::from_id_salt("mr_cast")
             .selected_text(mixed::text(
                 "cast_shadows",
@@ -771,17 +777,17 @@ fn mesh_renderer(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             ))
             .show_ui(ui, |ui| {
                 ch |= ui
-                    .selectable_value(&mut r.cast_shadows, true, "On")
+                    .selectable_value(&mut r.cast_shadows, true, tr!("On"))
                     .changed();
                 ch |= ui
-                    .selectable_value(&mut r.cast_shadows, false, "Off")
+                    .selectable_value(&mut r.cast_shadows, false, tr!("Off"))
                     .changed();
             });
         ui.end_row();
-        ui.label("Receive Shadows");
+        prop_label(ui, tr!("Receive Shadows"));
         ch |= mixed::checkbox(ui, "receive_shadows", &mut r.receive_shadows, "").changed();
         ui.end_row();
-        ui.label("Light Probes");
+        prop_label(ui, tr!("Light Probes"));
         egui::ComboBox::from_id_salt("mr_light_probes")
             .selected_text(mixed::text("light_probes", r.light_probes.label()))
             .show_ui(ui, |ui| {
@@ -851,7 +857,7 @@ pub(super) fn slider(
 fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
     let mut ch = grid(ui, "rigidbody_grid", |ui| {
         let mut ch = false;
-        ui.label("Mass");
+        prop_label(ui, tr!("Mass"));
         ch |= ui
             .add(
                 mixed::drag("mass", egui::DragValue::new(&mut r.mass))
@@ -860,7 +866,7 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
             )
             .changed();
         ui.end_row();
-        ui.label("Drag");
+        prop_label(ui, tr!("Drag"));
         ch |= ui
             .add(
                 mixed::drag("drag", egui::DragValue::new(&mut r.drag))
@@ -869,7 +875,7 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
             )
             .changed();
         ui.end_row();
-        ui.label("Angular Drag");
+        prop_label(ui, tr!("Angular Drag"));
         ch |= ui
             .add(
                 mixed::drag("angular_drag", egui::DragValue::new(&mut r.angular_drag))
@@ -878,13 +884,13 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
             )
             .changed();
         ui.end_row();
-        ui.label("Use Gravity");
+        prop_label(ui, tr!("Use Gravity"));
         ch |= mixed::checkbox(ui, "use_gravity", &mut r.use_gravity, "").changed();
         ui.end_row();
-        ui.label("Is Kinematic");
+        prop_label(ui, tr!("Is Kinematic"));
         ch |= mixed::checkbox(ui, "is_kinematic", &mut r.is_kinematic, "").changed();
         ui.end_row();
-        ui.label("Interpolate");
+        prop_label(ui, tr!("Interpolate"));
         ch |= combo(
             ui,
             "rb_interpolate",
@@ -896,7 +902,7 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
             },
         );
         ui.end_row();
-        ui.label("Collision Detection");
+        prop_label(ui, tr!("Collision Detection"));
         egui::ComboBox::from_id_salt("rb_ccd")
             .selected_text(mixed::text(
                 "continuous",
@@ -908,10 +914,10 @@ fn rigidbody(ui: &mut Ui, r: &mut Rigidbody) -> bool {
             ))
             .show_ui(ui, |ui| {
                 ch |= ui
-                    .selectable_value(&mut r.continuous, false, "Discrete")
+                    .selectable_value(&mut r.continuous, false, tr!("Discrete"))
                     .changed();
                 ch |= ui
-                    .selectable_value(&mut r.continuous, true, "Continuous")
+                    .selectable_value(&mut r.continuous, true, tr!("Continuous"))
                     .changed();
             });
         ui.end_row();
@@ -948,16 +954,16 @@ fn collider_common(
 ) -> bool {
     grid(ui, id, |ui| {
         let mut ch = false;
-        ui.label("Is Trigger");
+        prop_label(ui, tr!("Is Trigger"));
         ch |= mixed::checkbox(ui, "is_trigger", trigger, "").changed();
         ui.end_row();
-        ui.label("Material");
+        prop_label(ui, tr!("Material"));
         ch |= super::physics_material_editor::slot(ui, &format!("{id}_mat"), material);
         ui.end_row();
         if material.is_some() {
             return ch;
         }
-        ui.label("Friction");
+        prop_label(ui, tr!("Friction"));
         ch |= ui
             .add(mixed::slider(
                 "surface/friction",
@@ -965,7 +971,7 @@ fn collider_common(
             ))
             .changed();
         ui.end_row();
-        ui.label("Bounciness");
+        prop_label(ui, tr!("Bounciness"));
         ch |= ui
             .add(mixed::slider(
                 "surface/bounciness",
@@ -1012,7 +1018,7 @@ fn sphere_collider(ui: &mut Ui, c: &mut SphereCollider) -> bool {
     );
     ch |= vec3_field(ui, "Center", "center", &mut c.center, 0.01);
     ch |= grid(ui, "sphere_col_r", |ui| {
-        ui.label("Radius");
+        prop_label(ui, tr!("Radius"));
         let r = ui
             .add(
                 mixed::drag("radius", egui::DragValue::new(&mut c.radius))
@@ -1037,7 +1043,7 @@ fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
     ch |= vec3_field(ui, "Center", "center", &mut c.center, 0.01);
     ch |= grid(ui, "capsule_col_dims", |ui| {
         let mut ch = false;
-        ui.label("Radius");
+        prop_label(ui, tr!("Radius"));
         ch |= ui
             .add(
                 mixed::drag("radius", egui::DragValue::new(&mut c.radius))
@@ -1046,7 +1052,7 @@ fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
             )
             .changed();
         ui.end_row();
-        ui.label("Height");
+        prop_label(ui, tr!("Height"));
         ch |= ui
             .add(
                 mixed::drag("height", egui::DragValue::new(&mut c.height))
@@ -1055,7 +1061,7 @@ fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
             )
             .changed();
         ui.end_row();
-        ui.label("Direction");
+        prop_label(ui, tr!("Direction"));
         let names = ["X-Axis", "Y-Axis", "Z-Axis"];
         egui::ComboBox::from_id_salt("capsule_dir")
             .selected_text(mixed::text("direction", names[c.direction.min(2) as usize]))
@@ -1072,7 +1078,7 @@ fn capsule_collider(ui: &mut Ui, c: &mut CapsuleCollider) -> bool {
 
 fn mesh_collider(ui: &mut Ui, c: &mut MeshCollider) -> bool {
     let mut ch = grid(ui, "mesh_col_convex", |ui| {
-        ui.label("Convex");
+        prop_label(ui, tr!("Convex"));
         let r = mixed::checkbox(ui, "convex", &mut c.convex, "").changed();
         ui.end_row();
         r
@@ -1084,14 +1090,16 @@ fn mesh_collider(ui: &mut Ui, c: &mut MeshCollider) -> bool {
         &mut c.surface,
         &mut c.material,
     );
-    ui.weak("Uses the Mesh Filter's mesh.");
+    ui.weak(tr!("Uses the Mesh Filter's mesh."));
     ch
 }
 
 /// Wide "Add Component" button with a searchable popup of addable components.
 pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
     let resp = ui
-        .vertical_centered(|ui| ui.add_sized([230.0, 24.0], egui::Button::new("Add Component")))
+        .vertical_centered(|ui| {
+            ui.add_sized([230.0, 24.0], egui::Button::new(tr!("Add Component")))
+        })
         .inner;
     crate::tutorials::targets::mark_response(ui, "inspector.add_component", &resp);
     if resp.clicked() {
@@ -1113,7 +1121,8 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
         .show(ui.ctx(), |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.set_width(resp.rect.width());
-                let field = ui.add(egui::TextEdit::singleline(&mut search).hint_text("🔍 Search"));
+                let hint = tr!("🔍 Search");
+                let field = ui.add(egui::TextEdit::singleline(&mut search).hint_text(hint));
                 field.request_focus();
                 ui.separator();
                 // The list scrolls under the search field so it never runs off screen.
@@ -1126,18 +1135,26 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                             .iter()
                             .filter(|c| !c.category.is_empty())
                         {
-                            if !needle.is_empty() && !info.name.to_lowercase().contains(&needle) {
+                            // Matches the English name or its translation.
+                            let translated = crate::i18n::lookup(info.name)
+                                .is_some_and(|t| t.to_lowercase().contains(&needle));
+                            if !needle.is_empty()
+                                && !info.name.to_lowercase().contains(&needle)
+                                && !translated
+                            {
                                 continue;
                             }
                             if info.category != last_cat {
                                 ui.label(
-                                    RichText::new(info.category).color(theme::TEXT_DIM).small(),
+                                    RichText::new(tr(info.category))
+                                        .color(theme::TEXT_DIM)
+                                        .small(),
                                 );
                                 last_cat = info.category;
                             }
                             let has = present.iter().any(|p| p == info.name);
                             if ui
-                                .add_enabled(!has, egui::Button::new(info.name).frame(false))
+                                .add_enabled(!has, egui::Button::new(tr(info.name)).frame(false))
                                 .clicked()
                             {
                                 chosen = Some(info.name);
@@ -1151,7 +1168,7 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                             .filter(|p| needle.is_empty() || p.to_lowercase().contains(&needle))
                             .cloned()
                             .collect();
-                        ui.label(RichText::new("Scripts").color(theme::TEXT_DIM).small());
+                        ui.label(RichText::new(tr!("Scripts")).color(theme::TEXT_DIM).small());
                         for path in scripts {
                             let label = format!("📜 {}", AssetDatabase::material_name(Some(&path)));
                             if ui.add(egui::Button::new(label).frame(false)).clicked() {
@@ -1159,7 +1176,7 @@ pub fn add_component_button(ui: &mut Ui, state: &mut EditorState, e: Entity) {
                             }
                         }
                         if ui
-                            .add(egui::Button::new("➕ New script").frame(false))
+                            .add(egui::Button::new(tr!("➕ New script")).frame(false))
                             .clicked()
                         {
                             new_script = true;
@@ -1244,31 +1261,35 @@ pub fn script_sections(ui: &mut Ui, state: &mut EditorState, e: Entity) {
             } else {
                 "📜"
             });
-            let kind = if graph { "Script Graph" } else { "Script" };
+            let kind = if graph {
+                tr!("Script Graph")
+            } else {
+                tr!("Script")
+            };
             let title =
                 crate::theme::bold(ui.ctx(), format!("{} ({kind})", nicify(&script.name())));
             let title = ui.add(egui::Label::new(title).sense(egui::Sense::click()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.menu_button("⋮", |ui| {
-                    if ui.button("Reset").clicked() {
+                    if ui.button(tr!("Reset")).clicked() {
                         state.push(Action::ResetScript { entity: e, slot });
                         ui.close();
                     }
-                    if ui.button("Remove Component").clicked() {
+                    if ui.button(tr!("Remove Component")).clicked() {
                         state.push(Action::RemoveScript { entity: e, slot });
                         ui.close();
                     }
                     ui.separator();
                     let edit = if graph {
-                        "Edit Script Graph"
+                        tr!("Edit Script Graph")
                     } else {
-                        "Edit Script"
+                        tr!("Edit Script")
                     };
                     if ui.button(edit).clicked() {
                         open_script(state, &script.path);
                         ui.close();
                     }
-                    if ui.button("Open in External Editor").clicked() {
+                    if ui.button(tr!("Open in External Editor")).clicked() {
                         let abs = state.assets.absolute(&script.path);
                         if let Err(err) = crate::assets::open_external(&abs) {
                             state
@@ -1307,13 +1328,13 @@ pub(crate) fn script_fields(
         .unwrap_or_default();
     let mut edits: Vec<(String, ScriptValue)> = Vec::new();
     grid(ui, &format!("script_grid_{slot}"), |ui| {
-        ui.label("Script");
+        prop_label(ui, tr!("Script"));
         if ui
             .add(
                 egui::Button::new(format!("📜 {}", AssetDatabase::material_name(Some(path))))
                     .frame(false),
             )
-            .on_hover_text("Double-click to edit")
+            .on_hover_text(tr!("Double-click to edit"))
             .double_clicked()
         {
             open_script(state, path);
@@ -1321,11 +1342,11 @@ pub(crate) fn script_fields(
         ui.end_row();
         match meta.as_ref().map(|m| &m.fields) {
             None => {
-                ui.label(RichText::new("Missing script file").color(LogLevelColor::ERROR));
+                ui.label(RichText::new(tr!("Missing script file")).color(LogLevelColor::ERROR));
                 ui.end_row();
             }
             Some(Err(err)) => {
-                ui.label(RichText::new("Error").color(LogLevelColor::ERROR));
+                ui.label(RichText::new(tr!("Error")).color(LogLevelColor::ERROR));
                 ui.label(RichText::new(err).color(LogLevelColor::ERROR).small());
                 ui.end_row();
             }

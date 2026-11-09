@@ -586,6 +586,16 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">Localization.HasKey(key, [table])</div>
 <div class="meta">function · source: <code>localization_api.rs</code></div>
 </div>
+<div class="entry" data-key="localization.tolower(text, [locale]) ">
+<div class="sig">Localization.ToLower(text, [locale])</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+<p class="notes">Lower case with the rules of <code>locale</code> (default: the current locale): Turkish &quot;KIRMIZI&quot; → &quot;kırmızı&quot;.</p>
+</div>
+<div class="entry" data-key="localization.toupper(text, [locale]) ">
+<div class="sig">Localization.ToUpper(text, [locale])</div>
+<div class="meta">function · source: <code>localization_api.rs</code></div>
+<p class="notes">Upper case with the rules of <code>locale</code> (default: the current locale). Turkish and Azerbaijani keep the dotted / dotless i apart: &quot;istanbul&quot; → &quot;İSTANBUL&quot;.</p>
+</div>
 <div class="entry" data-key="localization.onlocalechanged ">
 <div class="sig">Localization.OnLocaleChanged</div>
 <div class="meta">property · source: <code>localization_api.rs</code></div>

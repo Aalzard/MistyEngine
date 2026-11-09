@@ -7,6 +7,7 @@ use std::thread::JoinHandle;
 use egui::{Align, Layout, RichText, Sense, UiBuilder, vec2};
 
 use super::{Hub, style, validate};
+use crate::i18n::tr;
 use crate::templates::{self, Template};
 
 pub struct NewProject {
@@ -115,9 +116,9 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     }
     let p = style::palette(hub.config.theme);
     ui.horizontal(|ui| {
-        ui.heading(RichText::new("New project").strong());
+        ui.heading(RichText::new(tr!("New project")).strong());
     });
-    ui.label(RichText::new("Pick a template to start from.").color(p.dim));
+    ui.label(RichText::new(tr!("Pick a template to start from.")).color(p.dim));
     ui.add_space(12.0);
 
     let footer = 52.0;
@@ -156,19 +157,19 @@ pub fn show(ui: &mut egui::Ui, hub: &mut Hub) {
     ui.add_space(8.0);
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
         let ok = np.target().is_ok();
-        let create = ui.add_enabled(ok && !np.busy(), style::primary("Create project"));
+        let create = ui.add_enabled(ok && !np.busy(), style::primary(&tr!("Create project")));
         if create.clicked() {
             np.start();
         }
         if ui
-            .add_enabled(!np.busy(), egui::Button::new("Cancel"))
+            .add_enabled(!np.busy(), egui::Button::new(tr!("Cancel")))
             .clicked()
         {
             keep = false;
         }
         if np.busy() {
             ui.add(egui::Spinner::new());
-            ui.label(RichText::new("Creating project…").color(p.dim));
+            ui.label(RichText::new(tr!("Creating project…")).color(p.dim));
         }
     });
     if keep {
@@ -201,11 +202,14 @@ fn card(
     };
     ui.painter()
         .rect_stroke(rect, 8.0, stroke, egui::StrokeKind::Inside);
-    let mut child = ui.new_child(
-        UiBuilder::new()
-            .max_rect(rect.shrink(10.0))
-            .layout(Layout::left_to_right(Align::Center)),
-    );
+    // Mirrored in a right-to-left UI: the picture on the right, the text right-aligned.
+    let rtl = crate::i18n::is_rtl();
+    let row = if rtl {
+        Layout::right_to_left(Align::Center)
+    } else {
+        Layout::left_to_right(Align::Center)
+    };
+    let mut child = ui.new_child(UiBuilder::new().max_rect(rect.shrink(10.0)).layout(row));
     if !available {
         child.multiply_opacity(0.45);
     }
@@ -217,19 +221,21 @@ fn card(
         );
     }
     child.add_space(4.0);
-    child.vertical(|ui| {
+    let column = Layout::top_down(if rtl { Align::Max } else { Align::Min });
+    child.with_layout(column, |ui| {
         ui.add_space(2.0);
         ui.spacing_mut().item_spacing.y = 3.0;
         // Not selectable: a click on the text picks the card.
-        let name = RichText::new(t.name()).size(15.0).strong();
+        let name = RichText::new(tr(t.name())).size(15.0).strong();
         ui.add(egui::Label::new(name).selectable(false));
-        let description = RichText::new(t.description()).small().color(p.dim);
+        let text = crate::i18n::tr_wrapped(ui, t.description(), ui.available_width());
+        let description = RichText::new(text).small().color(p.dim);
         ui.add(egui::Label::new(description).wrap().selectable(false));
     });
     if available {
         resp.on_hover_cursor(egui::CursorIcon::PointingHand)
     } else {
-        resp.on_hover_text("This install has no sample project to copy it from.")
+        resp.on_hover_text(tr!("This install has no sample project to copy it from."))
     }
 }
 
@@ -249,15 +255,16 @@ fn details(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette, np: &mut NewPro
         );
     }
     ui.add_space(4.0);
-    ui.label(RichText::new(t.name()).size(18.0).strong());
-    ui.label(RichText::new(t.description()).color(p.dim));
+    ui.label(RichText::new(tr(t.name())).size(18.0).strong());
+    let text = crate::i18n::tr_wrapped(ui, t.description(), width);
+    ui.label(RichText::new(text).color(p.dim));
     ui.add_space(10.0);
     let busy = np.busy();
     egui::Grid::new("new_project_fields")
         .num_columns(2)
         .spacing(vec2(12.0, 10.0))
         .show(ui, |ui| {
-            ui.label("Project name");
+            ui.label(tr!("Project name"));
             let name = ui.add_enabled(
                 !busy,
                 egui::TextEdit::singleline(&mut np.name).desired_width(width - 130.0),
@@ -266,7 +273,7 @@ fn details(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette, np: &mut NewPro
                 np.error = None;
             }
             ui.end_row();
-            ui.label("Location");
+            ui.label(tr!("Location"));
             ui.horizontal(|ui| {
                 let location = ui.add_enabled(
                     !busy,
@@ -276,7 +283,7 @@ fn details(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette, np: &mut NewPro
                     np.error = None;
                 }
                 if ui
-                    .add_enabled(!busy, egui::Button::new("Browse…"))
+                    .add_enabled(!busy, egui::Button::new(tr!("Browse…")))
                     .clicked()
                     && let Some(dir) = super::pick_folder(Path::new(np.location.trim()))
                 {
@@ -291,14 +298,14 @@ fn details(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette, np: &mut NewPro
     let samples = ui
         .add_enabled(
             !busy && have_samples,
-            egui::Checkbox::new(&mut np.include_samples, "Include sample scenes"),
+            egui::Checkbox::new(&mut np.include_samples, tr!("Include sample scenes")),
         )
-        .on_hover_text(
+        .on_hover_text(tr!(
             "Adds every demo scene (vehicles, Timeline, terrain, effects…) and what they use \
-             under Assets, and lists them in Build Settings (unticked). About 30 MB.",
-        );
+             under Assets, and lists them in Build Settings (unticked). About 30 MB."
+        ));
     if !have_samples {
-        samples.on_disabled_hover_text("This install has no sample scenes.");
+        samples.on_disabled_hover_text(tr!("This install has no sample scenes."));
     }
     ui.add_space(4.0);
     match np.error.clone().map(Err).unwrap_or_else(|| np.target()) {
@@ -306,7 +313,7 @@ fn details(ui: &mut egui::Ui, hub: &mut Hub, p: &style::Palette, np: &mut NewPro
             ui.colored_label(style::ERROR, e);
         }
         Ok(folder) => {
-            let text = RichText::new(format!("Creates {}", folder.display()))
+            let text = RichText::new(tr!("Creates {folder}", folder = folder.display()))
                 .small()
                 .color(p.dim);
             ui.add(egui::Label::new(text).truncate());

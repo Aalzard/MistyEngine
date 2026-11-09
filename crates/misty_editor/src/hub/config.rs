@@ -55,6 +55,10 @@ pub struct HubConfig {
     /// Edit ▸ Preferences ▸ UI Scale (the editor's zoom factor); `None` = 100 %.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_ui_scale: Option<f32>,
+    /// Edit ▸ Preferences ▸ Language: the editor UI's language code ("tr", "ar"); `None` =
+    /// English.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_language: Option<String>,
 }
 
 impl HubConfig {
@@ -156,6 +160,19 @@ pub fn set_editor_ui_scale(scale: f32) -> Result<(), String> {
     c.save(&path)
 }
 
+/// The editor's UI language preference (a code: "tr"), if one was chosen.
+pub fn editor_language() -> Option<String> {
+    config_path().and_then(|p| HubConfig::load(&p).editor_language)
+}
+
+/// Save the editor's UI language preference ("en" is the default and is not stored).
+pub fn set_editor_language(code: &str) -> Result<(), String> {
+    let path = config_path().ok_or("no config folder")?;
+    let mut c = HubConfig::load(&path);
+    c.editor_language = (code != "en").then(|| code.to_owned());
+    c.save(&path)
+}
+
 /// Where `hub.json` lives.
 pub fn config_path() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("MISTY_HUB_CONFIG") {
@@ -209,21 +226,36 @@ pub fn record_open(project: &Path) {
     let _ = config.save(&path);
 }
 
-/// "just now", "5 minutes ago", "3 days ago", … for a time `secs` before now.
+/// "just now", "5 minutes ago", "3 days ago", … for a time `secs` before now (in the editor's
+/// language).
 pub fn ago(secs: u64) -> String {
-    let units = [
-        (365 * 86400, "year"),
-        (30 * 86400, "month"),
-        (7 * 86400, "week"),
-        (86400, "day"),
-        (3600, "hour"),
-        (60, "minute"),
-    ];
-    for (size, unit) in units {
-        if secs >= size {
-            let n = secs / size;
-            return format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" });
-        }
+    use crate::i18n::tr;
+    let n = |size: u64| secs / size;
+    match secs {
+        s if s >= 365 * 86400 => match n(365 * 86400) {
+            1 => tr!("1 year ago"),
+            c => tr!("{count} years ago", count = c),
+        },
+        s if s >= 30 * 86400 => match n(30 * 86400) {
+            1 => tr!("1 month ago"),
+            c => tr!("{count} months ago", count = c),
+        },
+        s if s >= 7 * 86400 => match n(7 * 86400) {
+            1 => tr!("1 week ago"),
+            c => tr!("{count} weeks ago", count = c),
+        },
+        s if s >= 86400 => match n(86400) {
+            1 => tr!("1 day ago"),
+            c => tr!("{count} days ago", count = c),
+        },
+        s if s >= 3600 => match n(3600) {
+            1 => tr!("1 hour ago"),
+            c => tr!("{count} hours ago", count = c),
+        },
+        s if s >= 60 => match n(60) {
+            1 => tr!("1 minute ago"),
+            c => tr!("{count} minutes ago", count = c),
+        },
+        _ => tr!("just now"),
     }
-    "just now".into()
 }

@@ -156,6 +156,25 @@ pub fn is_rtl_char(c: char) -> bool {
         0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF)
 }
 
+/// The mirror image of a bracket-like character drawn in a right-to-left run.
+pub fn mirrored(c: char) -> char {
+    match c {
+        '(' => ')',
+        ')' => '(',
+        '[' => ']',
+        ']' => '[',
+        '{' => '}',
+        '}' => '{',
+        '<' => '>',
+        '>' => '<',
+        '«' => '»',
+        '»' => '«',
+        '‹' => '›',
+        '›' => '‹',
+        _ => c,
+    }
+}
+
 /// Bidi embedding level of every character (even = left to right).
 fn bidi_levels(text: &str) -> Vec<u8> {
     if !text.chars().any(is_rtl_char) {
@@ -223,7 +242,13 @@ fn units(rich: &RichText, fonts: &dyn FontSource, p: &LayoutParams, px: f32) -> 
             out.push(u);
             continue;
         }
-        let (font, glyph) = fonts.lookup(rc.ch);
+        // Brackets in right-to-left runs show their mirror image (UAX #9 rule L4).
+        let ch = if u.level % 2 == 1 {
+            mirrored(rc.ch)
+        } else {
+            rc.ch
+        };
+        let (font, glyph) = fonts.lookup(ch);
         u.glyphs.push((font, glyph, 0.0, 0.0));
         u.advance = fonts.advance(font, glyph, size) + em(p.char_spacing);
         if st.bold {

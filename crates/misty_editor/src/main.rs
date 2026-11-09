@@ -32,6 +32,7 @@ mod game_input;
 mod gizmos;
 mod handles;
 mod hub;
+mod i18n;
 mod launcher;
 mod layout;
 mod layouts;
@@ -110,6 +111,8 @@ mod sample_light_probes;
 mod sample_lighting;
 #[cfg(test)]
 mod sample_lightmap;
+#[cfg(test)]
+mod sample_localization2;
 #[cfg(test)]
 mod sample_materials;
 #[cfg(test)]
@@ -358,6 +361,8 @@ fn attach_parent_console() {}
 
 fn main() -> eframe::Result<()> {
     capture::mark_process_start();
+    // The editor UI's language (`MISTY_EDITOR_LANGUAGE`, else the saved preference).
+    i18n::init();
     // Textures draw uncompressed until their compressed blocks are made on a worker (then
     // read from Library/TextureCache).
     misty_engine::sprites::compress::set_mode(misty_engine::sprites::compress::Mode::Background);

@@ -8,7 +8,9 @@ use misty_engine::hecs::Entity;
 use misty_engine::models;
 use misty_engine::scene::{MeshFilter, MeshRef, PrimitiveMesh};
 
+use crate::i18n::tr;
 use crate::panels::AssetPayload;
+use crate::panels::inspector::card::prop_label;
 use crate::state::EditorState;
 
 const NO_TEXTURE: &str = "None (Texture)";
@@ -81,7 +83,7 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     // Baked from an Editable Mesh: the Mesh Builder owns the mesh.
     if crate::mesh_builder::has_editable(state, e) {
         crate::panels::inspector::card::PropertyGrid::new("meshfilter_grid").show(ui, |ui| {
-            ui.label("Mesh");
+            prop_label(ui, tr!("Mesh"));
             ui.weak("▦ Editable Mesh (Mesh Builder)");
             ui.end_row();
         });
@@ -90,7 +92,7 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     let choices = mesh_choices(state);
     let mut ch = false;
     crate::panels::inspector::card::PropertyGrid::new("meshfilter_grid").show(ui, |ui| {
-        ui.label("Mesh");
+        prop_label(ui, tr!("Mesh"));
         let current = f
             .mesh
             .as_ref()
@@ -100,7 +102,7 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
             .selected_text(format!("▦ {current}"))
             .show_ui(ui, |ui| {
                 ch |= ui
-                    .selectable_value(&mut f.mesh, None, "None (Mesh)")
+                    .selectable_value(&mut f.mesh, None, tr!("None (Mesh)"))
                     .changed();
                 for (i, (r, label)) in choices.iter().enumerate() {
                     if i == PrimitiveMesh::ALL.len() {
@@ -123,8 +125,10 @@ pub fn mesh_filter(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
     if f.mesh.is_some()
         && !ch
         && ui
-            .button("Convert to Editable Mesh")
-            .on_hover_text("Model this mesh with the Mesh Builder (an editable copy)")
+            .button(tr!("Convert to Editable Mesh"))
+            .on_hover_text(tr!(
+                "Model this mesh with the Mesh Builder (an editable copy)"
+            ))
             .clicked()
     {
         // Its own undo step (not an Inspector edit).

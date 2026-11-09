@@ -14,15 +14,17 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
             // A scene's first launch: dense meshes' GI distance fields bake in the background.
             let bakes = misty_engine::render::mesh_sdf_bakes_pending();
             if bakes > 0 {
-                ui.label(RichText::new(format!("Baking GI distance fields ({bakes} left)")).weak());
+                let text =
+                    crate::i18n::tr!("Baking GI distance fields ({count} left)", count = bakes);
+                ui.label(RichText::new(text).weak());
                 ui.ctx()
                     .request_repaint_after(std::time::Duration::from_millis(500));
             }
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 let text = match state.console.last() {
                     Some(e) => {
-                        RichText::new(format!("{} {}", e.level.icon(), first_line(&e.message)))
-                            .color(e.level.color())
+                        let line = crate::i18n::display(first_line(&e.message));
+                        RichText::new(format!("{} {line}", e.level.icon())).color(e.level.color())
                     }
                     None => RichText::new(""),
                 };

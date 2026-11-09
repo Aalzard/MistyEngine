@@ -1,6 +1,6 @@
-//! Fonts for rich text: the built-in font, project font files (`.ttf` / `.otf`) and operating
-//! system fonts used as a fallback for characters the chosen fonts lack (Arabic, Hebrew, …),
-//! plus complex-script shaping with rustybuzz.
+//! Fonts for rich text: the built-in font, the built-in Arabic font, project font files (`.ttf` /
+//! `.otf`) and operating system fonts used as a fallback for characters the chosen fonts lack
+//! (Hebrew, Greek, …), plus complex-script shaping with rustybuzz.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -12,6 +12,16 @@ pub type FontId = u32;
 
 /// The built-in font.
 pub const BUILTIN: FontId = 0;
+/// The built-in Arabic font: every text falls back to it for Arabic letters, so Arabic shows
+/// (shaped, right to left) on any machine, whatever fonts the system has.
+pub const ARABIC: FontId = 1;
+
+/// Noto Sans Arabic Regular, subset to the Arabic blocks and their presentation forms (SIL Open
+/// Font License 1.1, `crates/misty_engine/assets/fonts/OFL.txt`). Its shaping tables are kept
+/// (rustybuzz joins the letters here); the presentation forms let the editor, which draws
+/// characters without shaping, show joined Arabic too.
+pub const ARABIC_FONT_DATA: &[u8] =
+    include_bytes!("../../../assets/fonts/NotoSansArabic-Subset.ttf");
 
 /// Glyph lookups and metrics the layout needs (a fake in tests).
 pub trait FontSource {
@@ -166,8 +176,15 @@ fn library() -> &'static Mutex<Library> {
             0,
         )
         .expect("the built-in font parses");
+        let arabic = LoadedFont::new(
+            ARABIC,
+            "Noto Sans Arabic (built-in)".into(),
+            ARABIC_FONT_DATA.to_vec(),
+            0,
+        )
+        .expect("the built-in Arabic font parses");
         Mutex::new(Library {
-            fonts: vec![Arc::new(builtin)],
+            fonts: vec![Arc::new(builtin), Arc::new(arabic)],
             by_path: HashMap::new(),
             os: None,
         })
@@ -285,8 +302,8 @@ pub fn os_fallbacks() -> Vec<FontId> {
     ids
 }
 
-/// The fonts one text uses: its own font (or the built-in one), then the built-in font, then
-/// the system fallbacks.
+/// The fonts one text uses: its own font (or the built-in one), then the built-in font and the
+/// built-in Arabic font, then the system fallbacks.
 pub struct FontSet {
     fonts: Vec<Arc<LoadedFont>>,
     /// Fallbacks were added (loaded lazily when a character is missing).
@@ -296,15 +313,16 @@ pub struct FontSet {
 
 impl FontSet {
     /// Fonts for `primary` (a project font; None = the built-in font): it, its font asset's
-    /// fallback fonts, then the built-in font.
+    /// fallback fonts, then the built-in font and the built-in Arabic font.
     pub fn new(primary: Option<FontId>) -> Self {
         let mut fonts: Vec<Arc<LoadedFont>> = Vec::new();
-        if let Some(p) = primary.filter(|p| *p != BUILTIN) {
+        if let Some(p) = primary.filter(|p| *p != BUILTIN && *p != ARABIC) {
             let main = font(p);
             for path in &main.settings.fallback_fonts {
                 if let Ok(id) = load(path)
                     && id != p
                     && id != BUILTIN
+                    && id != ARABIC
                     && !fonts.iter().any(|f| f.id == id)
                 {
                     fonts.push(font(id));
@@ -313,6 +331,7 @@ impl FontSet {
             fonts.insert(0, main);
         }
         fonts.push(font(BUILTIN));
+        fonts.push(font(ARABIC));
         Self {
             fonts,
             with_os: std::cell::Cell::new(false),

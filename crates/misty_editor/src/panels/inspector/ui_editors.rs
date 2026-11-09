@@ -505,6 +505,13 @@ fn text(ui: &mut Ui, t: &mut UiText, textures: &[String], fonts: &[String]) -> b
         ui.label("Alignment");
         c |= alignment(ui, &mut t.alignment);
         ui.end_row();
+        ui.label(crate::i18n::tr!("Mirror for RTL"))
+            .on_hover_text(crate::i18n::tr!(
+                "Text that starts in a right-to-left script (Arabic, Hebrew) swaps Left and Right \
+             alignment, so one Text suits every language of a Localized Text"
+            ));
+        c |= ui.checkbox(&mut t.mirror_rtl, "").changed();
+        ui.end_row();
         ui.label("Horizontal Overflow");
         egui::ComboBox::from_id_salt("ui_text_wrap")
             .selected_text(if t.wrap { "Wrap" } else { "Overflow" })

@@ -7,6 +7,7 @@ use egui::{
 };
 
 use crate::actions::Action;
+use crate::i18n::tr;
 use crate::state::{EditorState, PlayState};
 use crate::theme;
 
@@ -15,19 +16,19 @@ pub fn show(ui: &mut Ui, state: &mut EditorState) {
     ui.horizontal(|ui| {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let layout = egui::ComboBox::from_id_salt("layout_dropdown")
-                .selected_text(state.layouts.current_name.clone())
+                .selected_text(tr(&state.layouts.current_name))
                 .width(80.0)
                 .show_ui(ui, |ui| crate::menu_bar::layouts_menu(ui, state));
-            crate::a11y::name(layout.response, egui::WidgetType::ComboBox, "Layout");
+            crate::a11y::name(layout.response, egui::WidgetType::ComboBox, &tr!("Layout"));
             let layers = egui::ComboBox::from_id_salt("layers_dropdown")
-                .selected_text("Layers")
+                .selected_text(tr!("Layers"))
                 .width(80.0)
                 .show_ui(ui, |ui| {
                     for layer in ["Default", "TransparentFX", "Ignore Raycast", "Water", "UI"] {
                         ui.label(format!("👁 {layer}"));
                     }
                 });
-            crate::a11y::name(layers.response, egui::WidgetType::ComboBox, "Layers");
+            crate::a11y::name(layers.response, egui::WidgetType::ComboBox, &tr!("Layers"));
             // Green "⬆ Update" pill, only while an update is available.
             if crate::updater::ui::update_button(ui, &state.updater) {
                 crate::updater::editor::request_install(state);
@@ -62,15 +63,18 @@ fn play_controls(ui: &mut Ui, state: &mut EditorState) {
     let playing = state.play.in_play_mode();
     let paused = state.play == PlayState::Paused || (!playing && state.pause_on_play);
     // Pause, Play, Step: Play sits in the middle (the user's reference layout).
-    if play_button(ui, PlayIcon::Pause, paused, "Pause", "Pause (Ctrl+Shift+P)").clicked() {
+    let tip = tr!("Pause ({shortcut})", shortcut = "Ctrl+Shift+P");
+    if play_button(ui, PlayIcon::Pause, paused, &tr!("Pause"), &tip).clicked() {
         state.push(Action::TogglePause);
     }
-    let play = play_button(ui, PlayIcon::Play, playing, "Play", "Play (Ctrl+P)");
+    let tip = tr!("Play ({shortcut})", shortcut = "Ctrl+P");
+    let play = play_button(ui, PlayIcon::Play, playing, &tr!("Play"), &tip);
     crate::tutorials::targets::mark_response(ui, "toolbar.play", &play);
     if play.clicked() {
         state.push(Action::TogglePlay);
     }
-    if play_button(ui, PlayIcon::Step, false, "Step", "Step (Ctrl+Alt+P)").clicked() {
+    let tip = tr!("Step ({shortcut})", shortcut = "Ctrl+Alt+P");
+    if play_button(ui, PlayIcon::Step, false, &tr!("Step"), &tip).clicked() {
         state.push(Action::Step);
     }
 }

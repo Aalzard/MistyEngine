@@ -151,6 +151,12 @@ fn smart_strings_fill_arguments_and_plurals() {
         "4 of 9"
     );
     assert!(is_right_to_left("ar-EG") && !is_right_to_left("fr"));
+    // Case formatters follow the locale's rules.
+    let city = Args::from_entries(&["city=istanbul".into()]);
+    assert_eq!(format("{city:upper}", &city, "tr"), "İSTANBUL");
+    assert_eq!(format("{city:upper}", &city, "en"), "ISTANBUL");
+    assert_eq!(format("{city:title}", &city, "tr-TR"), "İstanbul");
+    assert_eq!(format("{0:lower}", &a(&["IŞIK"]), "tr"), "ışık");
 }
 
 #[test]
@@ -216,6 +222,8 @@ function Switcher:Update()
     if Time.frameCount == 2 then
         Localization.locale = "fr"
         Debug.Log("get", Localization.Get("apples", { 2, "Zoé" }), Localization.locale)
+        Debug.Log("case", Localization.ToUpper("istanbul", "tr"),
+            Localization.ToLower("KIRMIZI", "tr"), Localization.ToUpper("istanbul"))
         local lt = GameObject.Find("Label"):GetComponent("LocalizedText")
         Debug.Log("key", lt.key, lt.text)
     elseif Time.frameCount == 4 then
@@ -271,6 +279,11 @@ return Switcher
         "{logs:?}"
     );
     assert!(logs.iter().any(|(_, t)| t == "key hello Bonjour, Ana !"));
+    assert!(
+        logs.iter()
+            .any(|(_, t)| t == "case İSTANBUL kırmızı ISTANBUL"),
+        "locale-aware case from Lua: {logs:?}"
+    );
     assert_eq!(
         logs.iter().filter(|(_, t)| t == "listener fr").count(),
         1,

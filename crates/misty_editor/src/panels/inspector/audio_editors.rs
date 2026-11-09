@@ -15,8 +15,10 @@ use misty_engine::scene::{
 
 use super::editors::{combo_k, grid, slider};
 use super::mixed;
+use crate::i18n::tr;
 use crate::panels::AssetPayload;
 use crate::panels::audio_mixer::MIXER_ICON;
+use crate::panels::inspector::card::prop_label;
 use crate::state::EditorState;
 use crate::theme;
 
@@ -93,7 +95,7 @@ pub fn edit(ui: &mut Ui, state: &mut EditorState, e: Entity, name: &str) -> bool
 }
 
 fn number(ui: &mut Ui, label: &str, key: &str, v: &mut f32, speed: f64, range: (f32, f32)) -> bool {
-    ui.label(label);
+    prop_label(ui, tr(label));
     let ch = ui
         .add(
             mixed::drag(key, egui::DragValue::new(v))
@@ -123,7 +125,7 @@ fn reverb_zone(ui: &mut Ui, z: &mut AudioReverbZone) -> bool {
             0.1,
             (z.min_distance, 1e6),
         );
-        ui.label("Reverb Preset");
+        prop_label(ui, tr!("Reverb Preset"));
         ch |= combo_k(
             ui,
             "zone_preset",
@@ -139,10 +141,10 @@ fn reverb_zone(ui: &mut Ui, z: &mut AudioReverbZone) -> bool {
 
 fn filter(ui: &mut Ui, id: &str, cutoff: &mut f32, q: &mut f32) -> bool {
     grid(ui, id, |ui| {
-        ui.label("Cutoff Frequency");
+        prop_label(ui, tr!("Cutoff Frequency"));
         let mut ch = slider(ui, "cutoff_frequency", cutoff, 10.0..=22000.0);
         ui.end_row();
-        ui.label("Resonance Q");
+        prop_label(ui, tr!("Resonance Q"));
         ch |= slider(ui, "resonance_q", q, 1.0..=10.0);
         ui.end_row();
         ch
@@ -190,13 +192,16 @@ pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             );
         }
         None => {
-            ui.colored_label(theme::WARN, "Can't read this clip (WAV, OGG Vorbis or MP3)");
+            ui.colored_label(
+                theme::WARN,
+                tr!("Can't read this clip (WAV, OGG Vorbis or MP3)"),
+            );
         }
     }
     let mut imp = AudioImporter::load(&abs);
     let before = imp.clone();
     grid(ui, "clip_import", |ui| {
-        ui.label("Load Type");
+        prop_label(ui, tr!("Load Type"));
         let ch = combo_k(
             ui,
             "clip_load_type",
@@ -206,7 +211,7 @@ pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
             LoadType::label,
         );
         ui.end_row();
-        ui.label("Force To Mono");
+        prop_label(ui, tr!("Force To Mono"));
         ui.checkbox(&mut imp.force_to_mono, "");
         ui.end_row();
         ch
@@ -239,7 +244,7 @@ pub fn clip_asset(ui: &mut Ui, state: &mut EditorState, rel: &str) {
     ui.horizontal(|ui| {
         if ui
             .add_enabled(!playing, egui::Button::new("▶ Play"))
-            .on_hover_text("Preview this clip")
+            .on_hover_text(tr!("Preview this clip"))
             .clicked()
         {
             let root = state.project.root.clone();
@@ -274,7 +279,7 @@ fn clip_field(ui: &mut Ui, id: &str, clips: &[String], clip: &mut Option<String>
     let current = clip
         .as_deref()
         .map(clip_name)
-        .unwrap_or_else(|| "None (Audio Clip)".into());
+        .unwrap_or_else(|| tr!("None (Audio Clip)"));
     let slot = egui::ComboBox::from_id_salt(id)
         .selected_text(mixed::text(
             "clip",
@@ -282,7 +287,7 @@ fn clip_field(ui: &mut Ui, id: &str, clips: &[String], clip: &mut Option<String>
         ))
         .show_ui(ui, |ui| {
             ch |= ui
-                .selectable_value(clip, None, "None (Audio Clip)")
+                .selectable_value(clip, None, tr!("None (Audio Clip)"))
                 .changed();
             for c in clips {
                 ch |= ui
@@ -310,12 +315,12 @@ fn output_field(ui: &mut Ui, mixers: &[(String, AudioMixer)], output: &mut Optio
     let current = output
         .as_deref()
         .map(label)
-        .unwrap_or_else(|| "None (Audio Mixer Group)".into());
+        .unwrap_or_else(|| tr!("None (Audio Mixer Group)"));
     let slot = egui::ComboBox::from_id_salt("as_output")
         .selected_text(mixed::text("output", format!("{MIXER_ICON} {current}")))
         .show_ui(ui, |ui| {
             ch |= ui
-                .selectable_value(output, None, "None (Audio Mixer Group)")
+                .selectable_value(output, None, tr!("None (Audio Mixer Group)"))
                 .changed();
             for (path, m) in mixers {
                 for (g, depth) in m.tree() {
@@ -342,7 +347,7 @@ fn captioned(
     key: &str,
     v: &mut f32,
     range: std::ops::RangeInclusive<f32>,
-    ends: (&str, &str),
+    ends: (String, String),
 ) -> bool {
     let mut ch = false;
     ui.vertical(|ui| {
@@ -376,89 +381,99 @@ pub fn audio_source(ui: &mut Ui, state: &mut EditorState, e: Entity) -> bool {
         .collect();
     let mut changed = grid(ui, "audiosource_grid", |ui| {
         let mut ch = false;
-        ui.label("AudioClip");
+        prop_label(ui, tr!("AudioClip"));
         ch |= clip_field(ui, "as_clip", &clips, &mut a.clip);
         ui.end_row();
-        ui.label("Output");
+        prop_label(ui, tr!("Output"));
         ch |= output_field(ui, &mixers, &mut a.output);
         ui.end_row();
         for (label, key, flag) in [
-            ("Mute", "mute", &mut a.mute),
-            ("Bypass Effects", "bypass_effects", &mut a.bypass_effects),
+            (tr!("Mute"), "mute", &mut a.mute),
             (
-                "Bypass Listener Effects",
+                tr!("Bypass Effects"),
+                "bypass_effects",
+                &mut a.bypass_effects,
+            ),
+            (
+                tr!("Bypass Listener Effects"),
                 "bypass_listener_effects",
                 &mut a.bypass_listener_effects,
             ),
             (
-                "Bypass Reverb Zones",
+                tr!("Bypass Reverb Zones"),
                 "bypass_reverb_zones",
                 &mut a.bypass_reverb_zones,
             ),
-            ("Play On Awake", "play_on_awake", &mut a.play_on_awake),
-            ("Loop", "loop", &mut a.looping),
+            (tr!("Play On Awake"), "play_on_awake", &mut a.play_on_awake),
+            (tr!("Loop"), "loop", &mut a.looping),
         ] {
-            ui.label(label);
+            prop_label(ui, label);
             ch |= mixed::checkbox(ui, key, flag, "").changed();
             ui.end_row();
         }
-        ui.label("Priority");
+        prop_label(ui, tr!("Priority"));
         let mut p = a.priority as f32;
-        if captioned(ui, "priority", &mut p, 0.0..=256.0, ("High", "Low")) {
+        if captioned(
+            ui,
+            "priority",
+            &mut p,
+            0.0..=256.0,
+            (tr!("High"), tr!("Low")),
+        ) {
             a.priority = p.round() as u16;
             ch = true;
         }
         ui.end_row();
-        ui.label("Volume");
+        prop_label(ui, tr!("Volume"));
         ch |= slider(ui, "volume", &mut a.volume, 0.0..=1.0);
         ui.end_row();
-        ui.label("Pitch");
+        prop_label(ui, tr!("Pitch"));
         ch |= slider(ui, "pitch", &mut a.pitch, -3.0..=3.0);
         ui.end_row();
-        ui.label("Stereo Pan");
+        prop_label(ui, tr!("Stereo Pan"));
         ch |= captioned(
             ui,
             "stereo_pan",
             &mut a.stereo_pan,
             -1.0..=1.0,
-            ("Left", "Right"),
+            (tr!("Left"), tr!("Right")),
         );
         ui.end_row();
-        ui.label("Spatial Blend");
+        prop_label(ui, tr!("Spatial Blend"));
         ch |= captioned(
             ui,
             "spatial_blend",
             &mut a.spatial_blend,
             0.0..=1.0,
-            ("2D", "3D"),
+            ("2D".into(), "3D".into()),
         );
         ui.end_row();
-        ui.label("Reverb Zone Mix");
+        prop_label(ui, tr!("Reverb Zone Mix"));
         ch |= slider(ui, "reverb_zone_mix", &mut a.reverb_zone_mix, 0.0..=1.1);
         ui.end_row();
         ch
     });
     let listener = listener_distance(state, e);
-    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), "3D Sound Settings"))
+    egui::CollapsingHeader::new(crate::theme::bold(ui.ctx(), tr!("3D Sound Settings")))
         .id_salt("as_3d")
         .default_open(true)
         .show(ui, |ui| {
             changed |= grid(ui, "audiosource_3d", |ui| {
                 let mut ch = false;
-                ui.label("Spatialize");
+                prop_label(ui, tr!("Spatialize"));
                 ch |= mixed::checkbox(ui, "spatialize", &mut a.spatialize, "")
-                    .on_hover_text(
-                        "Binaural rendering (head model) instead of panning: best on headphones",
-                    )
+                    .on_hover_text(tr!(
+                        "Binaural rendering (head model) instead of panning: best on headphones"
+                    ))
                     .changed();
                 ui.end_row();
-                ui.label("Doppler Level");
+                prop_label(ui, tr!("Doppler Level"));
                 ch |= slider(ui, "doppler_level", &mut a.doppler_level, 0.0..=5.0);
                 ui.end_row();
-                ui.label("Spread");
+                prop_label(ui, tr!("Spread"));
                 ch |= slider(ui, "spread", &mut a.spread, 0.0..=360.0);
                 ui.end_row();
-                ui.label("Volume Rolloff");
+                prop_label(ui, tr!("Volume Rolloff"));
                 ch |= combo_k(
                     ui,
                     "as_rolloff",
@@ -614,7 +629,7 @@ fn rolloff_graph(ui: &mut Ui, a: &mut AudioSource, listener: Option<f32>) -> boo
     });
     if custom {
         ui.label(
-            RichText::new("Drag keys · double-click adds · right-click deletes")
+            RichText::new(tr!("Drag keys · double-click adds · right-click deletes"))
                 .small()
                 .color(theme::TEXT_DIM),
         );

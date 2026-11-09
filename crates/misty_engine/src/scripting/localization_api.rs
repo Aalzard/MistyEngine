@@ -6,6 +6,7 @@
 //! local t = Localization.Get("greeting", { name = "Ana" })
 //! Localization.OnLocaleChanged:AddListener(function(code) print(code) end)
 //! for _, l in ipairs(Localization.locales) do print(l.code, l.name) end
+//! print(Localization.ToUpper("istanbul", "tr"))       -- "İSTANBUL" (locale-aware case)
 //! ```
 //! Scripts may also define `OnLocaleChanged(code)`.
 
@@ -104,6 +105,30 @@ impl UserData for LLocalization {
             |lua, (key, args, table): (String, Option<Value>, Option<String>)| {
                 let args = args_from(args.as_ref());
                 with_world(lua, |w| w.localization.get(table.as_deref(), &key, &args))
+            },
+        );
+        // Upper case with the rules of `locale` (default: the current locale). Turkish and
+        // Azerbaijani keep the dotted / dotless i apart: "istanbul" → "İSTANBUL".
+        m.add_function(
+            "ToUpper",
+            |lua, (text, locale): (String, Option<String>)| {
+                let locale = match locale {
+                    Some(l) => l,
+                    None => with_world(lua, |w| w.localization.locale())?,
+                };
+                Ok(crate::localization::to_upper(&text, &locale))
+            },
+        );
+        // Lower case with the rules of `locale` (default: the current locale): Turkish
+        // "KIRMIZI" → "kırmızı".
+        m.add_function(
+            "ToLower",
+            |lua, (text, locale): (String, Option<String>)| {
+                let locale = match locale {
+                    Some(l) => l,
+                    None => with_world(lua, |w| w.localization.locale())?,
+                };
+                Ok(crate::localization::to_lower(&text, &locale))
             },
         );
         m.add_function("HasKey", |lua, (key, table): (String, Option<String>)| {
