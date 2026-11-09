@@ -858,6 +858,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">property · source: <code>physics_api.rs</code></div>
 <p>The Ignore Raycast layer mask</p>
 </div>
+<div class="entry" data-key="physics.gravity world gravity (vector3, settable while playing)">
+<div class="sig">Physics.gravity</div>
+<div class="meta">property</div>
+<p>World gravity (Vector3, settable while playing)</p>
+</div>
 </section>
 <section id="physics2d">
 <h2>Physics2D</h2>
@@ -3105,10 +3110,10 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">property (read / write) · source: <code>api.rs</code></div>
 <p>Moved by scripts only</p>
 </div>
-<div class="entry" data-key="rigidbody.mass mass">
+<div class="entry" data-key="rigidbody.mass mass in kg (settable)">
 <div class="sig">rigidbody.mass</div>
-<div class="meta">property · source: <code>api.rs</code></div>
-<p>Mass</p>
+<div class="meta">property (read / write) · source: <code>api.rs</code></div>
+<p>Mass in kg (settable)</p>
 </div>
 <div class="entry" data-key="rigidbody.position ">
 <div class="sig">rigidbody.position</div>
@@ -4050,6 +4055,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">wheelCollider.enabled</div>
 <div class="meta">property (read / write) · source: <code>vehicle_api.rs</code></div>
 </div>
+<div class="entry" data-key="wheelcollider.forwardstiffness grip multiplier of the forward friction curve">
+<div class="sig">wheelCollider.forwardStiffness</div>
+<div class="meta">property (read / write) · source: <code>vehicle_api.rs</code></div>
+<p>Grip multiplier of the forward friction curve</p>
+</div>
 <div class="entry" data-key="wheelcollider.gameobject ">
 <div class="sig">wheelCollider.gameObject</div>
 <div class="meta">property · source: <code>vehicle_api.rs</code></div>
@@ -4073,6 +4083,11 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="sig">wheelCollider.rpm</div>
 <div class="meta">property · source: <code>vehicle_api.rs</code></div>
 <p>Wheel speed in revolutions per minute (read-only)</p>
+</div>
+<div class="entry" data-key="wheelcollider.sidewaysstiffness grip multiplier of the sideways friction curve">
+<div class="sig">wheelCollider.sidewaysStiffness</div>
+<div class="meta">property (read / write) · source: <code>vehicle_api.rs</code></div>
+<p>Grip multiplier of the sideways friction curve</p>
 </div>
 <div class="entry" data-key="wheelcollider.steerangle steering angle in degrees">
 <div class="sig">wheelCollider.steerAngle</div>
