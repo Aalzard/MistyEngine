@@ -3261,11 +3261,12 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
   Rigidbody, colliders, Audio Source, Script…), Add Component, the Hub (projects, new project,
   template cards, Learn, Settings), Preferences, the save prompts, the status bar.
 - Arabic in egui: letters joined (`ar-reshaper`) and lines reordered (`unicode-bidi`) in one
-  place (`i18n::shape`), brackets mirrored, idempotent; built-in Noto Sans Arabic subset
-  (SIL OFL) as the fallback font. RTL layout: mirrored title bar and menus, right-aligned
+  place (`i18n::shape`), brackets mirrored, idempotent, each Arabic stretch handed to egui's
+  own shaper in logical order; built-in Noto Sans Arabic subset (SIL OFL, Segoe UI line
+  metrics) first in the editor's fonts for Arabic characters. RTL layout: mirrored title bar and menus, right-aligned
   Inspector labels, Hub navigation on the right, mirrored Default layout.
 - Games: the Noto Sans Arabic subset is a built-in fallback of every UI Text (shaped with
-  rustybuzz); Text ▸ Mirror for RTL; locale-aware case (`to_upper` / `to_lower` / `to_title`,
+  rustybuzz), brackets mirrored in RTL runs; Text ▸ Mirror for RTL; locale-aware case (`to_upper` / `to_lower` / `to_title`,
   `{x:upper}` formatters, `Localization.ToUpper` / `ToLower` in Lua) with Turkish i/İ, ı/I.
 - Sample `LocalizationDemo2` (English, Turkish, Arabic) with generator, `matches_its_generator`
   and a play test; a CPU test checks the shaped glyphs of "مرحبا".
