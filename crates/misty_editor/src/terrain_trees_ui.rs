@@ -211,7 +211,7 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
                 true,
                 &is_tree,
                 &tr!("No trees yet: add a tree asset to start planting."),
-                |ui, name, rect| targets::header(ui, name, rect),
+                targets::header,
             );
             if let Some(add) = &out.add {
                 egui::Popup::menu(add).show(|ui| {
@@ -253,7 +253,7 @@ pub fn trees_tab(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainDa
                                 state.refresh_assets();
                                 add_tree(state, path, d, rel);
                             }
-                            Err(e) => state.console.warn(format!("{e}")),
+                            Err(e) => state.console.warn(e),
                         }
                         ui.close();
                     }

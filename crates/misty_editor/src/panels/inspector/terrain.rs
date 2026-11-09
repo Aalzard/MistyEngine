@@ -493,7 +493,7 @@ fn layers(ui: &mut Ui, state: &mut EditorState, path: &str, d: &TerrainData) {
             true,
             &|rel: &str| misty_engine::assets::is_texture(rel),
             &tr!("No layers yet: add one to paint it."),
-            |ui, name, rect| targets::header(ui, name, rect),
+            targets::header,
         );
         if out.add.as_ref().is_some_and(|r| r.clicked()) {
             add_layer(

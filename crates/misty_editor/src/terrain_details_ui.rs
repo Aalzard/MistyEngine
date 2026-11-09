@@ -234,7 +234,7 @@ pub fn details_palette(ui: &mut Ui, state: &mut EditorState, path: &str, d: &Ter
                 true,
                 &accepts,
                 "",
-                |ui, name, rect| targets::header(ui, name, rect),
+                targets::header,
             );
             if let Some(add) = &out.add {
                 egui::Popup::menu(add).show(|ui| {

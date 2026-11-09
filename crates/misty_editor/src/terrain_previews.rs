@@ -263,7 +263,7 @@ pub fn build_tuft(p: &TuftParams) -> Tuft {
         let facing = if seed_head {
             facing_x
         } else {
-            lean_angle + 1.5708 + (facing_x - std::f32::consts::PI) * 0.25
+            lean_angle + std::f32::consts::FRAC_PI_2 + (facing_x - std::f32::consts::PI) * 0.25
         };
         let arc = |t: f32| {
             let a = theta * t;
@@ -391,17 +391,19 @@ pub fn paint_tuft(painter: &egui::Painter, rect: Rect, tuft: &Tuft) {
     let scale = (rect.height() * 0.86 / tuft.view_height)
         .min(rect.width() * 0.5 / tuft.half_width.max(0.05));
     let origin = Pos2::new(rect.center().x, rect.bottom() - rect.height() * 0.1);
-    let mut mesh = egui::Mesh::default();
-    mesh.vertices = tuft
-        .vertices
-        .iter()
-        .map(|(p, c)| egui::epaint::Vertex {
-            pos: origin + EVec2::new(p.x * scale, -p.y * scale),
-            uv: egui::epaint::WHITE_UV,
-            color: *c,
-        })
-        .collect();
-    mesh.indices = tuft.indices.clone();
+    let mesh = egui::Mesh {
+        vertices: tuft
+            .vertices
+            .iter()
+            .map(|(p, c)| egui::epaint::Vertex {
+                pos: origin + EVec2::new(p.x * scale, -p.y * scale),
+                uv: egui::epaint::WHITE_UV,
+                color: *c,
+            })
+            .collect(),
+        indices: tuft.indices.clone(),
+        ..Default::default()
+    };
     painter.with_clip_rect(rect).add(Shape::mesh(mesh));
 }
 
