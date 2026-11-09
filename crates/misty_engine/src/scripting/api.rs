@@ -393,11 +393,12 @@ impl UserData for LGameObject {
                     .map(|a| crate::visual_script::lua_bridge::from_lua(lua, a))
                     .collect();
                 with_world(lua, |w| {
-                    w.graph_events.push(crate::visual_script::runtime::CustomEvent {
-                        target: Some(g.0),
-                        name: std::rc::Rc::from(name.as_str()),
-                        args,
-                    })
+                    w.graph_events
+                        .push(crate::visual_script::runtime::CustomEvent {
+                            target: Some(g.0),
+                            name: std::rc::Rc::from(name.as_str()),
+                            args,
+                        })
                 })
             },
         );
