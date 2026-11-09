@@ -14,7 +14,9 @@ fn cloud_shadow(world: vec3<f32>) -> f32 {
 
 // rgb = cloud light in front of a fragment at `world` (`dist` from the eye), a = transmittance.
 fn clouds_at(world: vec3<f32>, dist: f32) -> vec4<f32> {
-    if (clouds.mode.x < 0.5) {
+    // (sun.w: within this distance no cloud can be in front, see clouds/uniforms.rs
+    // `clear_reach`; the lookups below would give k = 0.)
+    if (clouds.mode.x < 0.5 || dist <= clouds.sun.w) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
     let clip = view.view_proj * vec4<f32>(world, 1.0);

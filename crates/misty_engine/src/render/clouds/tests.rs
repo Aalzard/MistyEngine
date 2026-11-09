@@ -80,3 +80,13 @@ fn shadow_map_follows_the_camera_in_whole_texels() {
     let centre = a + Vec2::splat(q.shadow_extent * 0.5);
     assert!((spot - centre).length() <= texel * 1.5);
 }
+
+/// Below the cloud base no cloud is nearer than the climb to it: geometry within 0.6 of that
+/// skips the cloud lookups (`clouds_at`); at or above the base it never does.
+#[test]
+fn clear_reach_is_a_share_of_the_climb_to_the_base() {
+    assert!((uniforms::clear_reach(0.0, 1500.0) - 900.0).abs() < 1e-3);
+    assert!((uniforms::clear_reach(500.0, 1500.0) - 600.0).abs() < 1e-3);
+    assert_eq!(uniforms::clear_reach(1500.0, 1500.0), 0.0);
+    assert_eq!(uniforms::clear_reach(2000.0, 1500.0), 0.0);
+}

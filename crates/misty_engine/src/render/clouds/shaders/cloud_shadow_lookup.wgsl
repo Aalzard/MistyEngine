@@ -7,7 +7,8 @@ struct CloudApply {
     // xy = shadow map origin (world xz of its corner), z = cloud base altitude,
     // w = height of the sun direction (clamped above the horizon).
     shadow: vec4<f32>,
-    // xyz = direction towards the sun.
+    // xyz = direction towards the sun, w = distance from the eye within which no cloud can be
+    // in front of geometry (clouds/uniforms.rs `clear_reach`).
     sun: vec4<f32>,
 };
 
