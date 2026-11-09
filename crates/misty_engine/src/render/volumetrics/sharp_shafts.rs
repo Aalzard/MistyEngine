@@ -45,8 +45,15 @@ pub(super) struct SharpUniform {
 }
 
 impl SharpUniform {
-    /// `reach` = froxel reach (view depth); `history` = false on the first frame of a view.
-    pub fn new(frame: &Frame, tex: &SharpTextures, q: ShaftQuality, reach: f32) -> Self {
+    /// `reach` = froxel reach (view depth); `history` = false on the first frame of a view;
+    /// `cascades` = [`cascade_thresholds`].
+    pub fn new(
+        frame: &Frame,
+        tex: &SharpTextures,
+        q: ShaftQuality,
+        reach: f32,
+        cascades: [f32; 4],
+    ) -> Self {
         let denoise = frame.post.fog.volume.denoising;
         let weight = if denoise && tex.has_history {
             HISTORY_WEIGHT
@@ -72,18 +79,22 @@ impl SharpUniform {
                 frame.camera.far,
                 if denoise { 1.0 } else { 0.0 },
             ],
-            cascades: [
-                if crate::render::fast_paths::shaft_cascades() {
-                    FOOTPRINT_SHARE
-                } else {
-                    0.0
-                },
-                0.0,
-                0.0,
-                0.0,
-            ],
+            cascades,
         }
     }
+}
+
+/// Per sun cascade (nearest first, from its texel size in metres): the march texel footprint
+/// past which a sample may read the next cascade (`cascades` in sharp_common.wgsl). Never
+/// past one when `texels` is `None` or the shortcut is off.
+pub(super) fn cascade_thresholds(texels: Option<&[f32]>) -> [f32; 4] {
+    let mut out = [f32::MAX; 4];
+    if let Some(texels) = texels.filter(|_| crate::render::fast_paths::shaft_cascades()) {
+        for (o, t) in out.iter_mut().zip(texels) {
+            *o = t / FOOTPRINT_SHARE;
+        }
+    }
+    out
 }
 
 /// March size for a full-resolution target.

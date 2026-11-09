@@ -51,18 +51,16 @@ fn march(@builtin(global_invocation_id) id: vec3<u32>) {
     var transmittance = 1.0;
     var scatter = vec3<f32>(0.0);
     var cascade = 0;
-    // The sun cascades' texels (metres) and the march texel's footprint per metre along the
-    // ray: a sample reads the first cascade whose texel is at least `sharp.cascades.x` of
-    // its footprint (finer texels only alias at the march's spacing).
-    let footprint = sharp.cascades.x
-        * distance(ray, froxel_ray(uv + vec2<f32>(sharp.params.w / sharp.size.z, 0.0)));
-    let map_size = f32(textureDimensions(sun_shadow_map).x);
-    let last_cascade = i32(fx.counts.z) - 1;
-    var cascade_texel = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-    for (var c = 0; c < 4; c++) {
-        let m = fx.sun_cascades[c];
-        cascade_texel[c] = 2.0 / max(length(vec3<f32>(m[0].x, m[1].x, m[2].x)) * map_size, 1e-6);
+    // The march texel's footprint per metre along the ray: a sample reads the first cascade
+    // whose texel the march can resolve there (`sharp.cascades`; finer texels only alias at
+    // the march's spacing).
+    // (Off: the thresholds are huge and nothing here runs.)
+    let choose = sharp.cascades.x < 1e30;
+    var footprint = 0.0;
+    if (choose) {
+        footprint = distance(ray, froxel_ray(uv + vec2<f32>(sharp.params.w / sharp.size.z, 0.0)));
     }
+    let last_cascade = i32(fx.counts.z) - 1;
     for (var i = 0u; i < steps; i++) {
         let s = start + (f32(i) + j) * dt;
         let p = fx.eye.xyz + ray * s;
@@ -82,8 +80,10 @@ fn march(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         var lit = 1.0;
         if (li.shadow.x > 0.5) {
-            while (cascade < last_cascade && cascade_texel[cascade] < s * footprint) {
-                cascade++;
+            if (choose) {
+                while (cascade < last_cascade && sharp.cascades[cascade] < s * footprint) {
+                    cascade++;
+                }
             }
             let sc = sun_cascade_shadow_from(p, cascade);
             cascade = i32(sc.y);
