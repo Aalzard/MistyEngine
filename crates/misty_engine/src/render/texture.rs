@@ -902,7 +902,14 @@ pub fn prefetch(rel: &str, kind: TextureKind) {
         TextureKind::Linear => sprites::compress::Use::Linear,
     };
     let bc = BC.load(std::sync::atomic::Ordering::Relaxed);
-    if let Ok(up) = sprites::compress::texture_upload(rel, usage, bc) {
+    // In the background mode the encode is handed to a worker as usual; otherwise only cached
+    // blocks or the decoded image (a blocking encode would hold this worker for seconds).
+    let up = if sprites::compress::mode() == sprites::compress::Mode::Background {
+        sprites::compress::texture_upload(rel, usage, bc)
+    } else {
+        sprites::compress::texture_upload_cached(rel, usage, bc)
+    };
+    if let Ok(up) = up {
         ahead().ready.insert(key, up);
     }
 }

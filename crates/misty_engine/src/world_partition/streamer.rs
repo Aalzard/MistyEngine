@@ -673,8 +673,10 @@ impl Streamer {
             let ms = t.elapsed().as_secs_f32() * 1000.0;
             // Per object, smoothed (a frame of many objects and one of a few both count).
             let each = ms / added.len() as f32;
-            self.hook_ms = self.hook_ms * 0.8 + each * 0.2;
-            self.flush_ms = self.flush_ms * 0.8 + ms * 0.2;
+            // Peaks are kept and fade slowly, so the reservation errs on the safe side.
+            let track = |old: f32, new: f32| if new > old { new } else { old * 0.97 + new * 0.03 };
+            self.hook_ms = track(self.hook_ms, each);
+            self.flush_ms = track(self.flush_ms, ms);
             if self.stats.slowest.as_ref().is_none_or(|(_, w)| ms > *w) {
                 let what = first_name.unwrap_or_default();
                 self.stats.slowest =
