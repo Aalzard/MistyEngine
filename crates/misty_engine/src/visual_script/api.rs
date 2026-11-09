@@ -10,6 +10,7 @@
 use glam::Vec3;
 
 use super::Node;
+use super::api_game as g;
 use super::natives::{Cx, D, NativeFn, Slot};
 use super::nodes::{Pin, Ports, names};
 use super::value::{PinType, Value};
@@ -589,6 +590,150 @@ pub static NATIVE: &[NativeApi] = &[
         true,
         axis_value
     ),
+    // PlayerPrefs (small values kept between runs)
+    call!(
+        "PlayerPrefs",
+        "SetInt",
+        &[("Key", Str, D::S("Score")), ("Value", Int, D::I(0))],
+        &[],
+        false,
+        g::prefs_set_int
+    ),
+    call!(
+        "PlayerPrefs",
+        "GetInt",
+        &[("Key", Str, D::S("Score")), ("Default", Int, D::I(0))],
+        &[("Result", Int)],
+        true,
+        g::prefs_get_int
+    ),
+    call!(
+        "PlayerPrefs",
+        "SetFloat",
+        &[("Key", Str, D::S("Volume")), ("Value", Float, D::F(0.0))],
+        &[],
+        false,
+        g::prefs_set_float
+    ),
+    call!(
+        "PlayerPrefs",
+        "GetFloat",
+        &[("Key", Str, D::S("Volume")), ("Default", Float, D::F(0.0))],
+        &[("Result", Float)],
+        true,
+        g::prefs_get_float
+    ),
+    call!(
+        "PlayerPrefs",
+        "SetString",
+        &[("Key", Str, D::S("Name")), ("Value", Str, D::S(""))],
+        &[],
+        false,
+        g::prefs_set_string
+    ),
+    call!(
+        "PlayerPrefs",
+        "GetString",
+        &[("Key", Str, D::S("Name")), ("Default", Str, D::S(""))],
+        &[("Result", Str)],
+        true,
+        g::prefs_get_string
+    ),
+    call!(
+        "PlayerPrefs",
+        "HasKey",
+        &[("Key", Str, D::S("Score"))],
+        &[("Result", Bool)],
+        true,
+        g::prefs_has_key
+    ),
+    call!(
+        "PlayerPrefs",
+        "DeleteKey",
+        &[("Key", Str, D::S("Score"))],
+        &[],
+        false,
+        g::prefs_delete_key
+    ),
+    call!("PlayerPrefs", "Save", &[], &[], false, g::prefs_save),
+    // Animator parameters
+    call!(
+        "#Animator",
+        "SetFloat",
+        &[
+            ("Name", Str, D::S("Speed")),
+            ("Value", Float, D::F(0.0)),
+            ("Damp Time", Float, D::F(0.0))
+        ],
+        &[],
+        false,
+        g::animator_set_float
+    ),
+    call!(
+        "#Animator",
+        "GetFloat",
+        &[("Name", Str, D::S("Speed"))],
+        &[("Result", Float)],
+        true,
+        g::animator_get_float
+    ),
+    call!(
+        "#Animator",
+        "SetBool",
+        &[("Name", Str, D::S("")), ("Value", Bool, D::B(true))],
+        &[],
+        false,
+        g::animator_set_bool
+    ),
+    call!(
+        "#Animator",
+        "GetBool",
+        &[("Name", Str, D::S(""))],
+        &[("Result", Bool)],
+        true,
+        g::animator_get_bool
+    ),
+    call!(
+        "#Animator",
+        "SetInteger",
+        &[("Name", Str, D::S("")), ("Value", Int, D::I(0))],
+        &[],
+        false,
+        g::animator_set_integer
+    ),
+    call!(
+        "#Animator",
+        "GetInteger",
+        &[("Name", Str, D::S(""))],
+        &[("Result", Int)],
+        true,
+        g::animator_get_integer
+    ),
+    call!(
+        "#Animator",
+        "SetTrigger",
+        &[("Name", Str, D::S("Jump"))],
+        &[],
+        false,
+        g::animator_set_trigger
+    ),
+    call!(
+        "#Animator",
+        "ResetTrigger",
+        &[("Name", Str, D::S("Jump"))],
+        &[],
+        false,
+        g::animator_reset_trigger
+    ),
+    // Cursor (graph only: Lua sets `Cursor.lockState`)
+    NativeApi {
+        graph_only: true,
+        ..set!("Cursor", "lockState", Str, D::S("Locked"), g::cursor_lock_set)
+    },
+    NativeApi {
+        graph_only: true,
+        ..get!("Cursor", "lockState", Str, g::cursor_lock_get)
+    },
     // Debug
     call!(
         "Debug",
