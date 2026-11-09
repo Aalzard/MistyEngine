@@ -3302,3 +3302,35 @@ An earlier run while the machine was busy gave the same ordering (48 → 42 → 
 - Dropping OS files onto a Hierarchy row as children of that object (they go to the root);
   on Windows the drop target is the panel/folder last under the pointer (winit reports no
   pointer moves during an OS drag).
+## Round 27 — The moon, moonlight and stars (branch r27-moon)
+
+### Done (docs/pending/r27-moon.md)
+- Lighting ▸ Environment ▸ **Moon** (Procedural and HDRI skies; on by default, left out of scene
+  files while default): Position Follow Sun (Phase × 360° east of the sun on its daily circle),
+  Manual (azimuth, altitude, Phase) or Date and Time (real sun and moon from a date, local time,
+  UTC offset, latitude and longitude: Meeus low-precision ephemerides with the moon's
+  parallax); Size, Brightness, Earthshine, Texture, Moonlight intensity / colour, Stars.
+- The disc is a sphere lit from the sun's direction: correct terminator, waxing / waning,
+  crescent to full from one texture; earthshine on the dark side; crater relief near the
+  terminator from the built-in height map. Drawn in the skybox before clouds and fog are
+  blended over it (clouds in front hide it, haze dims it), reddened low by the air mass, hidden
+  below the horizon, over HDRI skies too.
+- Night sky: below −1° the procedural sky blends to a dark blue night sky that brightens under a
+  high full moon; sky ambient, reflections and the clouds' sky light follow. A fixed star field
+  fades in behind the moon. Daytime skies are unchanged.
+- Moonlight reuses the main Directional Light and its shadows: below the horizon the sun fades
+  out (0° to −3.4°), then the light turns to the moon and fades in (to −11.5°), cool, scaled by
+  Allen's phase law (dark at new moon) and the air mass. No pop, no second shadow map. The
+  volumetric clouds and their shadow map take the moon as their light at night.
+- Built-in texture made by `moon::texture_gen` (2048 × 1024, albedo + height: the real maria,
+  power-law craters with rims, peaks, ejecta and rays, named landmarks), regenerate test; project
+  images (2:1 equirectangular or a square near-side photo) override it.
+- Lua: `RenderSettings.moon*`, `stars`, read-only `moonIllumination` / `moonDirection`.
+- Sample `Scenes/MoonDemo.scene` (moonlit valley, standing stones, cabin, `MoonCycle.lua` runs the
+  phases), generator + `matches_its_generator` + play test.
+- Tests: phase fraction vs angle, phase law, Follow Sun placement, moonlight new vs full,
+  smooth twilight, Meeus reference values and the 2024 Dallas eclipse, GPU disc phases.
+
+### Not done yet
+- No moon shafts or flare; stars do not turn with sidereal time;
+  the air-mass code should merge with r26's sun-height intensity once both land.

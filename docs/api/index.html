@@ -1016,10 +1016,121 @@ code { background: var(--code); padding: 0 3px; border-radius: 3px;
 <div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
 <p>Linear fog start</p>
 </div>
+<div class="entry" data-key="rendersettings.moon moon on/off (disc, stars and moonlight at night)">
+<div class="sig">RenderSettings.moon</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Moon on/off (disc, stars and moonlight at night)</p>
+</div>
+<div class="entry" data-key="rendersettings.moonaltitude manual: degrees above the horizon">
+<div class="sig">RenderSettings.moonAltitude</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Manual: degrees above the horizon</p>
+<p class="notes">Manual moon altitude in degrees above the horizon</p>
+</div>
+<div class="entry" data-key="rendersettings.moonazimuth manual: degrees from north towards east">
+<div class="sig">RenderSettings.moonAzimuth</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Manual: degrees from north towards east</p>
+<p class="notes">Manual moon azimuth in degrees from north (+Z) towards east (+X)</p>
+</div>
+<div class="entry" data-key="rendersettings.moonbrightness moon disc brightness">
+<div class="sig">RenderSettings.moonBrightness</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Moon disc brightness</p>
+<p class="notes">Moon disc brightness multiplier</p>
+</div>
+<div class="entry" data-key="rendersettings.moondate datetime: local date &quot;yyyy-mm-dd&quot;">
+<div class="sig">RenderSettings.moonDate</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>DateTime: local date &quot;YYYY-MM-DD&quot;</p>
+<p class="notes">DateTime local date as &quot;YYYY-MM-DD&quot;</p>
+</div>
+<div class="entry" data-key="rendersettings.moondirection vector3 towards the moon (read-only)">
+<div class="sig">RenderSettings.moonDirection</div>
+<div class="meta">property · source: <code>render_settings_api.rs</code></div>
+<p>Vector3 towards the moon (read-only)</p>
+<p class="notes">Unit Vector3 towards the moon, nil when it is off (read-only)</p>
+</div>
+<div class="entry" data-key="rendersettings.moonearthshine earthshine on the dark side">
+<div class="sig">RenderSettings.moonEarthshine</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Earthshine on the dark side</p>
+<p class="notes">Earthshine on the moon's dark side</p>
+</div>
+<div class="entry" data-key="rendersettings.moonillumination lit fraction of the moon (read-only)">
+<div class="sig">RenderSettings.moonIllumination</div>
+<div class="meta">property · source: <code>render_settings_api.rs</code></div>
+<p>Lit fraction of the moon (read-only)</p>
+<p class="notes">Lit fraction of the moon's disc, 0 new .. 1 full (read-only)</p>
+</div>
+<div class="entry" data-key="rendersettings.moonlatitude observer latitude (degrees north)">
+<div class="sig">RenderSettings.moonLatitude</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Observer latitude (degrees north)</p>
+<p class="notes">Observer latitude in degrees north (DateTime, and the sky's pole for FollowSun)</p>
+</div>
+<div class="entry" data-key="rendersettings.moonlightcolor moonlight colour">
+<div class="sig">RenderSettings.moonLightColor</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Moonlight colour</p>
+</div>
+<div class="entry" data-key="rendersettings.moonlightintensity moonlight intensity at full moon">
+<div class="sig">RenderSettings.moonLightIntensity</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Moonlight intensity at full moon</p>
+<p class="notes">Moonlight intensity for a full moon high in the sky</p>
+</div>
+<div class="entry" data-key="rendersettings.moonlongitude observer longitude (degrees east)">
+<div class="sig">RenderSettings.moonLongitude</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Observer longitude (degrees east)</p>
+<p class="notes">Observer longitude in degrees east (DateTime)</p>
+</div>
+<div class="entry" data-key="rendersettings.moonmode &quot;followsun&quot;, &quot;manual&quot; or &quot;datetime&quot;">
+<div class="sig">RenderSettings.moonMode</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>&quot;FollowSun&quot;, &quot;Manual&quot; or &quot;DateTime&quot;</p>
+<p class="notes">How the moon is placed: &quot;FollowSun&quot;, &quot;Manual&quot; or &quot;DateTime&quot;</p>
+</div>
+<div class="entry" data-key="rendersettings.moonphase phase 0..1: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter">
+<div class="sig">RenderSettings.moonPhase</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Phase 0..1: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter</p>
+<p class="notes">Moon phase 0..1: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter (FollowSun, Manual)</p>
+</div>
+<div class="entry" data-key="rendersettings.moonsize moon size, multiple of its real size">
+<div class="sig">RenderSettings.moonSize</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Moon size, multiple of its real size</p>
+</div>
+<div class="entry" data-key="rendersettings.moontexture moon texture path (nil = built-in)">
+<div class="sig">RenderSettings.moonTexture</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Moon texture path (nil = built-in)</p>
+<p class="notes">Project path of the moon texture, nil = built-in</p>
+</div>
+<div class="entry" data-key="rendersettings.moontime datetime: local time in hours">
+<div class="sig">RenderSettings.moonTime</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>DateTime: local time in hours</p>
+<p class="notes">DateTime local time in hours (22.5 = 22:30)</p>
+</div>
+<div class="entry" data-key="rendersettings.moonutcoffset datetime: hours east of utc">
+<div class="sig">RenderSettings.moonUtcOffset</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>DateTime: hours east of UTC</p>
+<p class="notes">DateTime hours east of UTC</p>
+</div>
 <div class="entry" data-key="rendersettings.reflectionintensity environment reflections intensity">
 <div class="sig">RenderSettings.reflectionIntensity</div>
 <div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
 <p>Environment Reflections intensity</p>
+</div>
+<div class="entry" data-key="rendersettings.stars star field brightness at night">
+<div class="sig">RenderSettings.stars</div>
+<div class="meta">property (read / write) · source: <code>render_settings_api.rs</code></div>
+<p>Star field brightness at night</p>
+<p class="notes">Star field brightness at night (0 = none)</p>
 </div>
 </section>
 <section id="rpctarget">

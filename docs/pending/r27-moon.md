@@ -32,6 +32,9 @@
   phase law (quarter ≈ 9 % of full, new ≈ 0) × air-mass transmittance × above-horizon fade;
   cool tint. Volumetric fog, contact shadows, Misty GI and probes see it like the sun.
   Solid Color skies (2D scenes) are never touched.
+- **Moonlit clouds**: once the sun's own light on the clouds is gone (4.6° down), the cloud
+  march and the cloud shadow map take the moon as their light (`moon::cloud_light`, two hooks in
+  clouds/uniforms.rs), so clouds get moonlit edges and cast moon shadows.
 - **Texture**: `moon::texture_gen` makes the built-in `src/moon/assets/moon.png` (2048 × 1024
   equirectangular, luminance = albedo, alpha = height): the real near-side maria at their
   selenographic positions, highland fbm, ~30 000 power-law craters with bowls, rims, central
@@ -61,10 +64,6 @@
   quarter, crescent and new; sample generator, play test.
 
 ## Not done yet
-- The clouds are still lit by the sun only: at night they get the dark sky light but no
-  moonlight (no moonlit silver linings). Needs the cloud march to take the moon as its light
-  while the sun is down (render/clouds/uniforms.rs `sun_light` / `sun_direction`); left out to
-  keep clear of r26's sun-height work in the same code.
 - No moon shafts (sun shafts only look for the sun) and no lens flare / halo for the moon.
 - Stars do not turn with the sidereal time in Date and Time mode, and there is no Milky Way or
   real star catalogue.

@@ -151,6 +151,26 @@ pub(crate) fn wanted(env: &Environment) -> bool {
     moon_state(env).is_some_and(|m| m.direction.y > -m.radius - 0.02)
 }
 
+/// The light of the clouds at night: (direction towards the moon, linear colour × intensity),
+/// once the sun is far enough down that its own light on the clouds is gone (they fade
+/// out by 4.6° below the horizon); None by day or without a moon.
+pub(crate) fn cloud_light(env: &Environment) -> Option<(Vec3, Vec3)> {
+    let s = &env.settings;
+    if !s.moon.enabled || s.skybox.kind == SkyboxKind::SolidColor {
+        return None;
+    }
+    let y = env.sun?.direction.y;
+    if y > -0.08 {
+        return None;
+    }
+    let m = moon_state(env)?;
+    let fade = moon::moon_fade(y) * (1.0 - moon::smoothstep(-0.12, -0.08, y));
+    Some((
+        m.direction,
+        moon::light(&s.moon, &m, s.skybox.atmosphere_thickness) * fade,
+    ))
+}
+
 fn linear_to_srgb(c: Vec3) -> [f32; 3] {
     c.to_array().map(|v| v.max(0.0).powf(1.0 / 2.2))
 }

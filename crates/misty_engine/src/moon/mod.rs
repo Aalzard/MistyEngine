@@ -154,7 +154,8 @@ pub struct MoonState {
     pub radius: f32,
 }
 
-fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
+/// GLSL-style smoothstep (also the renderer's fades).
+pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
