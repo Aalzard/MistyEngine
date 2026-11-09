@@ -419,7 +419,14 @@ fn links(painter: &egui::Painter, w: &EffectGraphWindow, view: View) {
 }
 
 fn error_badge(ui: &Ui, painter: &egui::Painter, at: Pos2, z: f32, id: u32, message: &str) {
-    crate::panels::node_canvas::error_badge(ui, painter, at, z, ui.id().with(("vfx_err", id)), message);
+    crate::panels::node_canvas::error_badge(
+        ui,
+        painter,
+        at,
+        z,
+        ui.id().with(("vfx_err", id)),
+        message,
+    );
 }
 
 /// One context with its settings and blocks. Returns true if something in it was clicked.

@@ -74,10 +74,7 @@ impl Search {
 }
 
 /// Subgraph assets under the project's Assets (a Graph Input or Output node), not `current`.
-pub fn project_subgraphs(
-    root: &std::path::Path,
-    current: Option<&str>,
-) -> Vec<(String, String)> {
+pub fn project_subgraphs(root: &std::path::Path, current: Option<&str>) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut stack = vec![root.join("Assets")];
     while let Some(dir) = stack.pop() {
@@ -122,7 +119,9 @@ fn signature_args(sig: &str) -> Vec<String> {
     sig[open + 1..close]
         .split(',')
         .map(|a| a.replace(['[', ']'], "").trim().to_owned())
-        .filter(|a| !a.is_empty() && a != "..." && a.chars().all(|c| c.is_alphanumeric() || c == '_'))
+        .filter(|a| {
+            !a.is_empty() && a != "..." && a.chars().all(|c| c.is_alphanumeric() || c == '_')
+        })
         .collect()
 }
 
@@ -154,10 +153,16 @@ pub fn api_entries() -> &'static [Entry] {
         for sec in crate::api_docs::sections() {
             let owner = sec.owner.as_str();
             for e in &sec.entries {
-                if e.name.starts_with('_') || (owner.is_empty() && NOT_NODES.contains(&e.name.as_str())) {
+                if e.name.starts_with('_')
+                    || (owner.is_empty() && NOT_NODES.contains(&e.name.as_str()))
+                {
                     continue;
                 }
-                let doc = if e.summary.is_empty() { &e.notes } else { &e.summary };
+                let doc = if e.summary.is_empty() {
+                    &e.notes
+                } else {
+                    &e.summary
+                };
                 match e.kind {
                     crate::api_docs::Kind::Property => {
                         push(owner, &e.name, Mode::Get, &[], doc);
@@ -392,7 +397,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
                     ui.set_width(300.0);
                     let search = s.script_graph.search.as_mut().expect("open");
                     let title = match &search.from {
-                        Some(f) => format!("Create Node ({} {})", f.ty.label(), if f.output { "in" } else { "out" }),
+                        Some(f) => format!(
+                            "Create Node ({} {})",
+                            f.ty.label(),
+                            if f.output { "in" } else { "out" }
+                        ),
                         None => "Create Node".to_owned(),
                     };
                     ui.label(RichText::new(title).strong());
@@ -452,8 +461,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState) {
                                 }
                                 if list.len() > 300 {
                                     ui.label(
-                                        RichText::new(format!("… {} more: type more", list.len() - 300))
-                                            .color(theme::TEXT_DIM),
+                                        RichText::new(format!(
+                                            "… {} more: type more",
+                                            list.len() - 300
+                                        ))
+                                        .color(theme::TEXT_DIM),
                                     );
                                 }
                                 if list.is_empty() {

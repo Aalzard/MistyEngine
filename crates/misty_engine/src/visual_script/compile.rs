@@ -67,43 +67,131 @@ pub enum Op {
         node: u32,
     },
     Jump(u32),
-    JumpIf { cond: Slot, to: u32 },
-    JumpIfNot { cond: Slot, to: u32 },
+    JumpIf {
+        cond: Slot,
+        to: u32,
+    },
+    JumpIfNot {
+        cond: Slot,
+        to: u32,
+    },
     /// Run the code at the address until it returns, then go on.
     Call(u32),
     /// Back to the caller, or the end of the flow.
     Ret,
-    Copy { from: Slot, to: Slot },
-    SetBool { slot: Slot, value: bool },
-    Toggle { slot: Slot },
+    Copy {
+        from: Slot,
+        to: Slot,
+    },
+    SetBool {
+        slot: Slot,
+        value: bool,
+    },
+    Toggle {
+        slot: Slot,
+    },
     /// index = first; end = last.
-    ForInit { first: Slot, last: Slot, index: Slot, end: Slot },
+    ForInit {
+        first: Slot,
+        last: Slot,
+        index: Slot,
+        end: Slot,
+    },
     /// Jump to `exit` once index > end.
-    ForTest { index: Slot, end: Slot, exit: u32 },
-    Incr { slot: Slot },
+    ForTest {
+        index: Slot,
+        end: Slot,
+        exit: u32,
+    },
+    Incr {
+        slot: Slot,
+    },
     /// copy = list; index = 0.
-    ForEachInit { list: Slot, copy: Slot, index: Slot, node: u32 },
+    ForEachInit {
+        list: Slot,
+        copy: Slot,
+        index: Slot,
+        node: u32,
+    },
     /// item = copy[index], or jump to `exit` past the end.
-    ForEachTest { copy: Slot, index: Slot, item: Slot, exit: u32 },
+    ForEachTest {
+        copy: Slot,
+        index: Slot,
+        item: Slot,
+        exit: u32,
+    },
     /// counter = 0.
-    GuardInit { counter: Slot },
+    GuardInit {
+        counter: Slot,
+    },
     /// counter += 1; fail when it passes max (a While that never ends).
-    Guard { counter: Slot, max: Slot, node: u32 },
+    Guard {
+        counter: Slot,
+        max: Slot,
+        node: u32,
+    },
     /// Flip the state: on A go on, on B jump.
-    FlipFlop { state: Slot, is_a: Slot, b: u32 },
+    FlipFlop {
+        state: Slot,
+        is_a: Slot,
+        b: u32,
+    },
     /// Unless pending: schedule `resume` after `duration` seconds. Then return.
-    Delay { pending: Slot, duration: Slot, resume: u32 },
-    GetVar { var: u16, out: Slot },
-    SetVar { var: u16, from: Slot, out: Slot },
-    GetObjVar { var: u16, out: Slot },
-    SetObjVar { var: u16, from: Slot, out: Slot },
+    Delay {
+        pending: Slot,
+        duration: Slot,
+        resume: u32,
+    },
+    GetVar {
+        var: u16,
+        out: Slot,
+    },
+    SetVar {
+        var: u16,
+        from: Slot,
+        out: Slot,
+    },
+    GetObjVar {
+        var: u16,
+        out: Slot,
+    },
+    SetObjVar {
+        var: u16,
+        from: Slot,
+        out: Slot,
+    },
     /// Another object's variable by name.
-    GetOtherVar { target: Slot, name: Slot, out: Slot, node: u32 },
-    SetOtherVar { target: Slot, name: Slot, from: Slot, node: u32 },
+    GetOtherVar {
+        target: Slot,
+        name: Slot,
+        out: Slot,
+        node: u32,
+    },
+    SetOtherVar {
+        target: Slot,
+        name: Slot,
+        from: Slot,
+        node: u32,
+    },
     /// Float functions without register lists (the common math nodes).
-    F1 { f: natives::F1, a: Slot, out: Slot },
-    F2 { f: natives::F2, a: Slot, b: Slot, out: Slot },
-    F3 { f: natives::F3, a: Slot, b: Slot, c: Slot, out: Slot },
+    F1 {
+        f: natives::F1,
+        a: Slot,
+        out: Slot,
+    },
+    F2 {
+        f: natives::F2,
+        a: Slot,
+        b: Slot,
+        out: Slot,
+    },
+    F3 {
+        f: natives::F3,
+        a: Slot,
+        b: Slot,
+        c: Slot,
+        out: Slot,
+    },
     /// A call into Lua ([`Program::lua`]); the runtime makes it.
     Lua(u32),
     /// Send a custom event ([`Program::sends`]).
@@ -127,7 +215,11 @@ impl std::fmt::Debug for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Op::Native {
-                at, ins, outs, node, ..
+                at,
+                ins,
+                outs,
+                node,
+                ..
             } => write!(f, "Native(node {node}, pool {at}, {ins} in, {outs} out)"),
             Op::Jump(t) => write!(f, "Jump({t})"),
             Op::JumpIf { cond, to } => write!(f, "JumpIf(r{cond} -> {to})"),
@@ -250,9 +342,9 @@ pub enum LuaOp {
 impl LuaOp {
     pub fn node(&self) -> u32 {
         match self {
-            LuaOp::Api { node, .. } | LuaOp::CallScript { node, .. } | LuaOp::GetField { node, .. } => {
-                *node
-            }
+            LuaOp::Api { node, .. }
+            | LuaOp::CallScript { node, .. }
+            | LuaOp::GetField { node, .. } => *node,
         }
     }
 }
@@ -392,8 +484,10 @@ fn expand(
                 m => format!("macro:{m}"),
             };
             if chain.contains(&key) || chain.len() >= 16 {
-                f.errors
-                    .push(GraphError::at(o, format!("the subgraph '{key}' uses itself")));
+                f.errors.push(GraphError::at(
+                    o,
+                    format!("the subgraph '{key}' uses itself"),
+                ));
                 continue;
             }
             let before = f.nodes.len();
@@ -418,8 +512,7 @@ fn expand(
         }
         let mut node = n.clone();
         node.id = id;
-        let ports = if origin.is_some() && matches!(n.kind.as_str(), "GraphInput" | "GraphOutput")
-        {
+        let ports = if origin.is_some() && matches!(n.kind.as_str(), "GraphInput" | "GraphOutput") {
             node.params.insert("from".into(), n.kind.clone());
             node.kind = "Tunnel".into();
             nodes::ports(&node, g, files)
@@ -428,8 +521,7 @@ fn expand(
         };
         if let Some(p) = &prefix
             && matches!(n.kind.as_str(), "GetVariable" | "SetVariable")
-            && g
-                .variable(n.param("name"))
+            && g.variable(n.param("name"))
                 .is_some_and(|v| v.scope == VarScope::Graph)
         {
             let renamed = format!("{p}{}", n.param("name"));
@@ -627,7 +719,11 @@ impl<'a> Compiler<'a> {
         use natives::Fast;
         match (natives::fast(s.kind), ins, outs) {
             (Some(Fast::F1(f)), [a], [out]) => {
-                self.emit(Op::F1 { f, a: *a, out: *out });
+                self.emit(Op::F1 {
+                    f,
+                    a: *a,
+                    out: *out,
+                });
             }
             (Some(Fast::F2(f)), [a, b], [out]) => {
                 self.emit(Op::F2 {

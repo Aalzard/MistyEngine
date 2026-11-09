@@ -71,7 +71,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
         egui::StrokeKind::Inside,
     );
     // Clicks on the panel don't reach the canvas.
-    ui.interact(rect, ui.id().with("vs_bb_block"), egui::Sense::click_and_drag());
+    ui.interact(
+        rect,
+        ui.id().with("vs_bb_block"),
+        egui::Sense::click_and_drag(),
+    );
     let busy = super::interacting(ui.ctx());
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(8.0)), |ui| {
         ui.horizontal(|ui| {
@@ -103,9 +107,7 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
             .unwrap_or_default();
         let vars = s.script_graph.view().variables.clone();
         if vars.is_empty() {
-            ui.label(
-                RichText::new("No variables. Use + to add one.").color(theme::TEXT_DIM),
-            );
+            ui.label(RichText::new("No variables. Use + to add one.").color(theme::TEXT_DIM));
         }
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (i, v) in vars.iter().enumerate() {
@@ -143,7 +145,12 @@ fn row(
         {
             let new = new.trim().to_owned();
             let old = v.name.clone();
-            let taken = s.script_graph.view().variables.iter().any(|x| x.name == new);
+            let taken = s
+                .script_graph
+                .view()
+                .variables
+                .iter()
+                .any(|x| x.name == new);
             if !new.is_empty() && new != old && !taken {
                 s.script_graph.edit("Rename Variable", false, |g| {
                     if let Some(x) = g.variables.get_mut(i) {

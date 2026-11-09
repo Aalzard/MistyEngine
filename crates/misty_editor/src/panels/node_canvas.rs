@@ -3,9 +3,7 @@
 //! Alt+drag panning, and the red error badge on a node.
 
 use egui::epaint::CubicBezierShape;
-use egui::{
-    Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2,
-};
+use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 /// Soft red of error badges and messages.
 pub const ERROR: Color32 = Color32::from_rgb(232, 96, 90);
@@ -56,7 +54,14 @@ pub fn wire(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, zoom: f32
 }
 
 /// A connection curve of a given width (at zoom 1).
-pub fn wire_width(painter: &egui::Painter, a: Pos2, b: Pos2, color: Color32, zoom: f32, width: f32) {
+pub fn wire_width(
+    painter: &egui::Painter,
+    a: Pos2,
+    b: Pos2,
+    color: Color32,
+    zoom: f32,
+    width: f32,
+) {
     let dx = ((b.x - a.x).abs() * 0.5).max(40.0 * zoom);
     let shape = CubicBezierShape::from_points_stroke(
         [a, a + vec2(dx, 0.0), b - vec2(dx, 0.0), b],
@@ -110,7 +115,14 @@ pub fn pan_zoom(
 }
 
 /// A red "!" badge with the message on hover.
-pub fn error_badge(ui: &Ui, painter: &egui::Painter, at: Pos2, z: f32, id: egui::Id, message: &str) {
+pub fn error_badge(
+    ui: &Ui,
+    painter: &egui::Painter,
+    at: Pos2,
+    z: f32,
+    id: egui::Id,
+    message: &str,
+) {
     painter.circle_filled(at, 8.0 * z, ERROR);
     painter.text(
         at,
@@ -119,6 +131,10 @@ pub fn error_badge(ui: &Ui, painter: &egui::Painter, at: Pos2, z: f32, id: egui:
         FontId::proportional(12.0 * z),
         Color32::WHITE,
     );
-    ui.interact(Rect::from_center_size(at, vec2(16.0, 16.0) * z), id, Sense::hover())
-        .on_hover_text(message);
+    ui.interact(
+        Rect::from_center_size(at, vec2(16.0, 16.0) * z),
+        id,
+        Sense::hover(),
+    )
+    .on_hover_text(message);
 }

@@ -37,13 +37,21 @@ impl G {
     }
 
     fn api(&mut self, owner: &str, member: &str, mode: &str) -> u32 {
-        self.np("Api", &[("owner", owner), ("member", member), ("mode", mode)])
+        self.np(
+            "Api",
+            &[("owner", owner), ("member", member), ("mode", mode)],
+        )
     }
 
     fn api_args(&mut self, owner: &str, member: &str, args: &str) -> u32 {
         self.np(
             "Api",
-            &[("owner", owner), ("member", member), ("mode", "call"), ("args", args)],
+            &[
+                ("owner", owner),
+                ("member", member),
+                ("mode", "call"),
+                ("args", args),
+            ],
         )
     }
 
@@ -344,10 +352,16 @@ fn input_actions_fire_performed_held_and_released() {
         .unwrap();
     let mut g = G::new();
     g.ovar("Held", PinType::Int, Literal::Int(0));
-    let jump = g.np("OnInputAction", &[("action", "Jump"), ("mode", "performed")]);
+    let jump = g.np(
+        "OnInputAction",
+        &[("action", "Jump"), ("mode", "performed")],
+    );
     let log = g.log_text("jump");
     g.w(jump, "Out", log, "In");
-    let held = g.np("OnInputAction", &[("action", "Player/Jump"), ("mode", "held")]);
+    let held = g.np(
+        "OnInputAction",
+        &[("action", "Player/Jump"), ("mode", "held")],
+    );
     let inc = g.increment("Held");
     g.w(held, "Out", inc, "In");
     let up = g.np("OnInputAction", &[("action", "Jump"), ("mode", "released")]);
@@ -564,7 +578,9 @@ fn math_logic_vector_and_string_nodes_compute() {
     p.no_errors();
     assert_eq!(
         p.infos(),
-        ["20", "2.5", "10", "3", "1", "true", "b", "Score: 3", "5", "1", "true", "0.5"]
+        [
+            "20", "2.5", "10", "3", "1", "true", "b", "Score: 3", "5", "1", "true", "0.5"
+        ]
     );
 }
 
@@ -878,7 +894,12 @@ fn graph_and_object_variables_with_inspector_values_and_lua() {
     .unwrap();
     let mut scene = Scene::new("t");
     let e = scene.spawn("Thing", None);
-    attach(&mut scene, e, GRAPH, &[("Health", ScriptValue::Number(50.0))]);
+    attach(
+        &mut scene,
+        e,
+        GRAPH,
+        &[("Health", ScriptValue::Number(50.0))],
+    );
     attach(&mut scene, e, "Assets/Reader.lua", &[]);
     let o = scene.spawn("Other", None);
     attach(&mut scene, o, "Assets/Other.vgraph", &[]);
@@ -935,10 +956,7 @@ fn engine_api_nodes_run_natively_or_through_lua() {
     let mut p = Play::start(root, scene);
     p.frames(1);
     p.no_errors();
-    assert_eq!(
-        p.infos(),
-        ["(1.00, 2.00, 3.00)", "0", "3", "2", "Thing"]
-    );
+    assert_eq!(p.infos(), ["(1.00, 2.00, 3.00)", "0", "3", "2", "Thing"]);
     let yaw = p.scene.transform(e).euler().y;
     assert!((yaw - 90.0).abs() < 0.5, "{yaw}");
 }
@@ -1027,7 +1045,11 @@ fn macros_and_subgraph_assets_inline_with_their_own_state() {
         input: "Message".into(),
     });
     chain(&mut g, start, "Out", &[m1, l1, m2]);
-    for (from, out, to, inp) in [(m2, "Out", l2, "In"), (l2, "Out", a, "In"), (a, "Out", l3, "In")] {
+    for (from, out, to, inp) in [
+        (m2, "Out", l2, "In"),
+        (l2, "Out", a, "In"),
+        (a, "Out", l3, "In"),
+    ] {
         g.0.connections.push(Connection {
             from,
             output: out.into(),
@@ -1121,7 +1143,10 @@ fn compile_errors_point_at_their_nodes() {
     p.frames(2);
     let errors = p.errors();
     assert!(!errors.is_empty());
-    assert!(errors.iter().all(|e| e.contains("does not compile")), "{errors:?}");
+    assert!(
+        errors.iter().all(|e| e.contains("does not compile")),
+        "{errors:?}"
+    );
 }
 
 #[test]
@@ -1155,7 +1180,11 @@ fn graphs_round_trip_through_json_and_files() {
     g.ovar("F", PinType::Float, Literal::Float(0.1));
     g.var("S", PinType::String, Literal::String("hi \"there\"".into()));
     g.var("V", PinType::Vector3, Literal::Vector3([1.0, -2.5, 3.25]));
-    g.var("Q", PinType::Quaternion, Literal::Quaternion([0.0, 45.0, 0.0]));
+    g.var(
+        "Q",
+        PinType::Quaternion,
+        Literal::Quaternion([0.0, 45.0, 0.0]),
+    );
     g.var("O", PinType::GameObject, Literal::None);
     let start = g.n("OnStart");
     let l = g.log_text("x");
@@ -1226,8 +1255,14 @@ fn breakpoints_pause_a_flow_and_stepping_runs_it_node_by_node() {
         Some(c)
     );
     // The values on the wires.
-    assert_eq!(p.host.graph_value(add, "Result", true).as_deref(), Some("5"));
-    assert_eq!(p.host.graph_value(b, "Message", false).as_deref(), Some("5"));
+    assert_eq!(
+        p.host.graph_value(add, "Result", true).as_deref(),
+        Some("5")
+    );
+    assert_eq!(
+        p.host.graph_value(b, "Message", false).as_deref(),
+        Some("5")
+    );
     // Continue: C runs, nothing is paused; the next frame stops at B again.
     p.host.graph_continue(&mut p.scene, false);
     p.logs.extend(p.host.take_logs());
@@ -1392,6 +1427,10 @@ fn a_hundred_node_graph_on_a_thousand_objects_runs_in_about_a_millisecond() {
     if !cfg!(debug_assertions) {
         // About 1 ms on a desktop; generous here because tests run side by side.
         assert!(pass_best < 4.0, "graph Update pass {pass_best:.3} ms");
-        assert!(best - base_best < 6.0, "graphs cost {:.3} ms", best - base_best);
+        assert!(
+            best - base_best < 6.0,
+            "graphs cost {:.3} ms",
+            best - base_best
+        );
     }
 }

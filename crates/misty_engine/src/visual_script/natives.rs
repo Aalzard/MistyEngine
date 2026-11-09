@@ -362,138 +362,773 @@ pub fn look_rotation(forward: Vec3, up: Vec3) -> Quat {
 /// Every simple node.
 pub static SIMPLE: &[Simple] = &[
     // ---- Float
-    simple!("AddFloat", "Add", "Math/Float", AB_F, R_F, native!((a: f, b: f) -> Float { a + b }), "plus sum +"),
-    simple!("SubtractFloat", "Subtract", "Math/Float", AB_F, R_F, native!((a: f, b: f) -> Float { a - b }), "minus -"),
-    simple!("MultiplyFloat", "Multiply", "Math/Float", AB_F, R_F, native!((a: f, b: f) -> Float { a * b }), "times *"),
-    simple!("DivideFloat", "Divide", "Math/Float", AB_F, R_F, native!((a: f, b: f) -> Float { a / b }), "/"),
-    simple!("ModuloFloat", "Modulo", "Math/Float", AB_F, R_F, native!((a: f, b: f) -> Float { if b == 0.0 { 0.0 } else { a.rem_euclid(b) } }), "remainder %"),
-    simple!("NegateFloat", "Negate", "Math/Float", X_F, R_F, native!((a: f) -> Float { -a })),
-    simple!("AbsFloat", "Abs", "Math/Float", X_F, R_F, native!((a: f) -> Float { a.abs() }), "absolute"),
-    simple!("MinFloat", "Min", "Math/Float", AB_F, R_F, native!((a: f, b: f) -> Float { a.min(b) }), "minimum"),
-    simple!("MaxFloat", "Max", "Math/Float", AB_F, R_F, native!((a: f, b: f) -> Float { a.max(b) }), "maximum"),
-    simple!("ClampFloat", "Clamp", "Math/Float",
-        &[("Value", Float, D::F(0.0)), ("Min", Float, D::F(0.0)), ("Max", Float, D::F(1.0))], R_F,
-        native!((v: f, lo: f, hi: f) -> Float { v.clamp(lo.min(hi), hi.max(lo)) })),
-    simple!("Clamp01", "Clamp 01", "Math/Float", X_F, R_F, native!((v: f) -> Float { v.clamp(0.0, 1.0) })),
-    simple!("Lerp", "Lerp", "Math/Float",
-        &[("A", Float, D::F(0.0)), ("B", Float, D::F(1.0)), ("T", Float, D::F(0.5))], R_F,
-        native!((a: f, b: f, t: f) -> Float { a + (b - a) * t.clamp(0.0, 1.0) }), "interpolate mix"),
-    simple!("InverseLerp", "Inverse Lerp", "Math/Float",
-        &[("A", Float, D::F(0.0)), ("B", Float, D::F(1.0)), ("Value", Float, D::F(0.5))], R_F,
-        native!((a: f, b: f, v: f) -> Float { inverse_lerp(a, b, v) })),
-    simple!("Sin", "Sin", "Math/Float", &[("Radians", Float, D::F(0.0))], R_F, native!((a: f) -> Float { a.sin() }), "sine"),
-    simple!("Cos", "Cos", "Math/Float", &[("Radians", Float, D::F(0.0))], R_F, native!((a: f) -> Float { a.cos() }), "cosine"),
-    simple!("Tan", "Tan", "Math/Float", &[("Radians", Float, D::F(0.0))], R_F, native!((a: f) -> Float { a.tan() }), "tangent"),
-    simple!("Atan2", "Atan2", "Math/Float", &[("Y", Float, D::F(0.0)), ("X", Float, D::F(1.0))], R_F, native!((y: f, x: f) -> Float { y.atan2(x) }), "angle"),
-    simple!("Sqrt", "Square Root", "Math/Float", X_F, R_F, native!((a: f) -> Float { a.max(0.0).sqrt() }), "sqrt"),
-    simple!("Pow", "Power", "Math/Float", &[("Base", Float, D::F(2.0)), ("Exponent", Float, D::F(2.0))], R_F, native!((a: f, b: f) -> Float { a.powf(b) }), "pow exponent"),
-    simple!("Floor", "Floor", "Math/Float", X_F, R_F, native!((a: f) -> Float { a.floor() })),
-    simple!("Ceil", "Ceil", "Math/Float", X_F, R_F, native!((a: f) -> Float { a.ceil() }), "ceiling"),
-    simple!("Round", "Round", "Math/Float", X_F, R_F, native!((a: f) -> Float { a.round() })),
-    simple!("Sign", "Sign", "Math/Float", X_F, R_F, native!((a: f) -> Float { if a == 0.0 { 0.0 } else { a.signum() } })),
-    simple!("MoveTowards", "Move Towards", "Math/Float",
-        &[("Current", Float, D::F(0.0)), ("Target", Float, D::F(1.0)), ("Max Delta", Float, D::F(0.1))], R_F,
-        native!((c: f, t: f, m: f) -> Float { move_towards(c, t, m) })),
-    simple!("PingPong", "Ping Pong", "Math/Float",
-        &[("T", Float, D::F(0.0)), ("Length", Float, D::F(1.0))], R_F,
-        native!((t: f, l: f) -> Float { ping_pong(t, l) }), "bounce back forth patrol"),
-    simple!("DegToRad", "Degrees To Radians", "Math/Float", &[("Degrees", Float, D::F(0.0))], R_F, native!((a: f) -> Float { a.to_radians() })),
-    simple!("Pi", "Pi", "Math/Float", &[], R_F, native!(() -> Float { std::f32::consts::PI }), "constant 3.14"),
+    simple!(
+        "AddFloat",
+        "Add",
+        "Math/Float",
+        AB_F,
+        R_F,
+        native!((a: f, b: f) -> Float { a + b }),
+        "plus sum +"
+    ),
+    simple!(
+        "SubtractFloat",
+        "Subtract",
+        "Math/Float",
+        AB_F,
+        R_F,
+        native!((a: f, b: f) -> Float { a - b }),
+        "minus -"
+    ),
+    simple!(
+        "MultiplyFloat",
+        "Multiply",
+        "Math/Float",
+        AB_F,
+        R_F,
+        native!((a: f, b: f) -> Float { a * b }),
+        "times *"
+    ),
+    simple!(
+        "DivideFloat",
+        "Divide",
+        "Math/Float",
+        AB_F,
+        R_F,
+        native!((a: f, b: f) -> Float { a / b }),
+        "/"
+    ),
+    simple!(
+        "ModuloFloat",
+        "Modulo",
+        "Math/Float",
+        AB_F,
+        R_F,
+        native!((a: f, b: f) -> Float { if b == 0.0 { 0.0 } else { a.rem_euclid(b) } }),
+        "remainder %"
+    ),
+    simple!(
+        "NegateFloat",
+        "Negate",
+        "Math/Float",
+        X_F,
+        R_F,
+        native!((a: f) -> Float { -a })
+    ),
+    simple!(
+        "AbsFloat",
+        "Abs",
+        "Math/Float",
+        X_F,
+        R_F,
+        native!((a: f) -> Float { a.abs() }),
+        "absolute"
+    ),
+    simple!(
+        "MinFloat",
+        "Min",
+        "Math/Float",
+        AB_F,
+        R_F,
+        native!((a: f, b: f) -> Float { a.min(b) }),
+        "minimum"
+    ),
+    simple!(
+        "MaxFloat",
+        "Max",
+        "Math/Float",
+        AB_F,
+        R_F,
+        native!((a: f, b: f) -> Float { a.max(b) }),
+        "maximum"
+    ),
+    simple!(
+        "ClampFloat",
+        "Clamp",
+        "Math/Float",
+        &[
+            ("Value", Float, D::F(0.0)),
+            ("Min", Float, D::F(0.0)),
+            ("Max", Float, D::F(1.0))
+        ],
+        R_F,
+        native!((v: f, lo: f, hi: f) -> Float { v.clamp(lo.min(hi), hi.max(lo)) })
+    ),
+    simple!(
+        "Clamp01",
+        "Clamp 01",
+        "Math/Float",
+        X_F,
+        R_F,
+        native!((v: f) -> Float { v.clamp(0.0, 1.0) })
+    ),
+    simple!(
+        "Lerp",
+        "Lerp",
+        "Math/Float",
+        &[
+            ("A", Float, D::F(0.0)),
+            ("B", Float, D::F(1.0)),
+            ("T", Float, D::F(0.5))
+        ],
+        R_F,
+        native!((a: f, b: f, t: f) -> Float { a + (b - a) * t.clamp(0.0, 1.0) }),
+        "interpolate mix"
+    ),
+    simple!(
+        "InverseLerp",
+        "Inverse Lerp",
+        "Math/Float",
+        &[
+            ("A", Float, D::F(0.0)),
+            ("B", Float, D::F(1.0)),
+            ("Value", Float, D::F(0.5))
+        ],
+        R_F,
+        native!((a: f, b: f, v: f) -> Float { inverse_lerp(a, b, v) })
+    ),
+    simple!(
+        "Sin",
+        "Sin",
+        "Math/Float",
+        &[("Radians", Float, D::F(0.0))],
+        R_F,
+        native!((a: f) -> Float { a.sin() }),
+        "sine"
+    ),
+    simple!(
+        "Cos",
+        "Cos",
+        "Math/Float",
+        &[("Radians", Float, D::F(0.0))],
+        R_F,
+        native!((a: f) -> Float { a.cos() }),
+        "cosine"
+    ),
+    simple!(
+        "Tan",
+        "Tan",
+        "Math/Float",
+        &[("Radians", Float, D::F(0.0))],
+        R_F,
+        native!((a: f) -> Float { a.tan() }),
+        "tangent"
+    ),
+    simple!(
+        "Atan2",
+        "Atan2",
+        "Math/Float",
+        &[("Y", Float, D::F(0.0)), ("X", Float, D::F(1.0))],
+        R_F,
+        native!((y: f, x: f) -> Float { y.atan2(x) }),
+        "angle"
+    ),
+    simple!(
+        "Sqrt",
+        "Square Root",
+        "Math/Float",
+        X_F,
+        R_F,
+        native!((a: f) -> Float { a.max(0.0).sqrt() }),
+        "sqrt"
+    ),
+    simple!(
+        "Pow",
+        "Power",
+        "Math/Float",
+        &[("Base", Float, D::F(2.0)), ("Exponent", Float, D::F(2.0))],
+        R_F,
+        native!((a: f, b: f) -> Float { a.powf(b) }),
+        "pow exponent"
+    ),
+    simple!(
+        "Floor",
+        "Floor",
+        "Math/Float",
+        X_F,
+        R_F,
+        native!((a: f) -> Float { a.floor() })
+    ),
+    simple!(
+        "Ceil",
+        "Ceil",
+        "Math/Float",
+        X_F,
+        R_F,
+        native!((a: f) -> Float { a.ceil() }),
+        "ceiling"
+    ),
+    simple!(
+        "Round",
+        "Round",
+        "Math/Float",
+        X_F,
+        R_F,
+        native!((a: f) -> Float { a.round() })
+    ),
+    simple!(
+        "Sign",
+        "Sign",
+        "Math/Float",
+        X_F,
+        R_F,
+        native!((a: f) -> Float { if a == 0.0 { 0.0 } else { a.signum() } })
+    ),
+    simple!(
+        "MoveTowards",
+        "Move Towards",
+        "Math/Float",
+        &[
+            ("Current", Float, D::F(0.0)),
+            ("Target", Float, D::F(1.0)),
+            ("Max Delta", Float, D::F(0.1))
+        ],
+        R_F,
+        native!((c: f, t: f, m: f) -> Float { move_towards(c, t, m) })
+    ),
+    simple!(
+        "PingPong",
+        "Ping Pong",
+        "Math/Float",
+        &[("T", Float, D::F(0.0)), ("Length", Float, D::F(1.0))],
+        R_F,
+        native!((t: f, l: f) -> Float { ping_pong(t, l) }),
+        "bounce back forth patrol"
+    ),
+    simple!(
+        "DegToRad",
+        "Degrees To Radians",
+        "Math/Float",
+        &[("Degrees", Float, D::F(0.0))],
+        R_F,
+        native!((a: f) -> Float { a.to_radians() })
+    ),
+    simple!(
+        "Pi",
+        "Pi",
+        "Math/Float",
+        &[],
+        R_F,
+        native!(() -> Float { std::f32::consts::PI }),
+        "constant 3.14"
+    ),
     // ---- Int
-    simple!("AddInt", "Add", "Math/Int", AB_I, R_I, native!((a: i, b: i) -> Int { a.wrapping_add(b) }), "plus sum +"),
-    simple!("SubtractInt", "Subtract", "Math/Int", AB_I, R_I, native!((a: i, b: i) -> Int { a.wrapping_sub(b) }), "minus -"),
-    simple!("MultiplyInt", "Multiply", "Math/Int", AB_I, R_I, native!((a: i, b: i) -> Int { a.wrapping_mul(b) }), "times *"),
-    simple!("DivideInt", "Divide", "Math/Int", AB_I, R_I, divide_int, "/"),
-    simple!("ModuloInt", "Modulo", "Math/Int", AB_I, R_I, modulo_int, "remainder %"),
-    simple!("MinInt", "Min", "Math/Int", AB_I, R_I, native!((a: i, b: i) -> Int { a.min(b) })),
-    simple!("MaxInt", "Max", "Math/Int", AB_I, R_I, native!((a: i, b: i) -> Int { a.max(b) })),
-    simple!("AbsInt", "Abs", "Math/Int", &[("Value", Int, D::I(0))], R_I, native!((a: i) -> Int { a.wrapping_abs() })),
-    simple!("ClampInt", "Clamp", "Math/Int",
-        &[("Value", Int, D::I(0)), ("Min", Int, D::I(0)), ("Max", Int, D::I(10))], R_I,
-        native!((v: i, lo: i, hi: i) -> Int { v.clamp(lo.min(hi), hi.max(lo)) })),
-    simple!("IntToFloat", "To Float", "Math/Int", &[("Value", Int, D::I(0))], R_F, native!((a: i) -> Float { a as f32 }), "convert"),
-    simple!("FloatToInt", "Truncate To Int", "Math/Float", X_F, R_I, native!((a: f) -> Int { a as i64 }), "convert int"),
-    simple!("RoundToInt", "Round To Int", "Math/Float", X_F, R_I, native!((a: f) -> Int { a.round() as i64 }), "convert int"),
+    simple!(
+        "AddInt",
+        "Add",
+        "Math/Int",
+        AB_I,
+        R_I,
+        native!((a: i, b: i) -> Int { a.wrapping_add(b) }),
+        "plus sum +"
+    ),
+    simple!(
+        "SubtractInt",
+        "Subtract",
+        "Math/Int",
+        AB_I,
+        R_I,
+        native!((a: i, b: i) -> Int { a.wrapping_sub(b) }),
+        "minus -"
+    ),
+    simple!(
+        "MultiplyInt",
+        "Multiply",
+        "Math/Int",
+        AB_I,
+        R_I,
+        native!((a: i, b: i) -> Int { a.wrapping_mul(b) }),
+        "times *"
+    ),
+    simple!(
+        "DivideInt",
+        "Divide",
+        "Math/Int",
+        AB_I,
+        R_I,
+        divide_int,
+        "/"
+    ),
+    simple!(
+        "ModuloInt",
+        "Modulo",
+        "Math/Int",
+        AB_I,
+        R_I,
+        modulo_int,
+        "remainder %"
+    ),
+    simple!(
+        "MinInt",
+        "Min",
+        "Math/Int",
+        AB_I,
+        R_I,
+        native!((a: i, b: i) -> Int { a.min(b) })
+    ),
+    simple!(
+        "MaxInt",
+        "Max",
+        "Math/Int",
+        AB_I,
+        R_I,
+        native!((a: i, b: i) -> Int { a.max(b) })
+    ),
+    simple!(
+        "AbsInt",
+        "Abs",
+        "Math/Int",
+        &[("Value", Int, D::I(0))],
+        R_I,
+        native!((a: i) -> Int { a.wrapping_abs() })
+    ),
+    simple!(
+        "ClampInt",
+        "Clamp",
+        "Math/Int",
+        &[
+            ("Value", Int, D::I(0)),
+            ("Min", Int, D::I(0)),
+            ("Max", Int, D::I(10))
+        ],
+        R_I,
+        native!((v: i, lo: i, hi: i) -> Int { v.clamp(lo.min(hi), hi.max(lo)) })
+    ),
+    simple!(
+        "IntToFloat",
+        "To Float",
+        "Math/Int",
+        &[("Value", Int, D::I(0))],
+        R_F,
+        native!((a: i) -> Float { a as f32 }),
+        "convert"
+    ),
+    simple!(
+        "FloatToInt",
+        "Truncate To Int",
+        "Math/Float",
+        X_F,
+        R_I,
+        native!((a: f) -> Int { a as i64 }),
+        "convert int"
+    ),
+    simple!(
+        "RoundToInt",
+        "Round To Int",
+        "Math/Float",
+        X_F,
+        R_I,
+        native!((a: f) -> Int { a.round() as i64 }),
+        "convert int"
+    ),
     // ---- Comparison
-    simple!("Less", "Less", "Comparison", AB_F, R_B, native!((a: f, b: f) -> Bool { a < b }), "<"),
-    simple!("LessOrEqual", "Less Or Equal", "Comparison", AB_F, R_B, native!((a: f, b: f) -> Bool { a <= b }), "<="),
-    simple!("Greater", "Greater", "Comparison", AB_F, R_B, native!((a: f, b: f) -> Bool { a > b }), ">"),
-    simple!("GreaterOrEqual", "Greater Or Equal", "Comparison", AB_F, R_B, native!((a: f, b: f) -> Bool { a >= b }), ">="),
-    simple!("Equal", "Equal", "Comparison", &[("A", Any, D::N), ("B", Any, D::N)], R_B, equal, "== same"),
-    simple!("NotEqual", "Not Equal", "Comparison", &[("A", Any, D::N), ("B", Any, D::N)], R_B, not_equal, "!= different"),
-    simple!("ApproximatelyEqual", "Approximately Equal", "Comparison",
-        &[("A", Float, D::F(0.0)), ("B", Float, D::F(0.0)), ("Tolerance", Float, D::F(0.0001))], R_B,
-        native!((a: f, b: f, t: f) -> Bool { (a - b).abs() <= t }), "nearly"),
+    simple!(
+        "Less",
+        "Less",
+        "Comparison",
+        AB_F,
+        R_B,
+        native!((a: f, b: f) -> Bool { a < b }),
+        "<"
+    ),
+    simple!(
+        "LessOrEqual",
+        "Less Or Equal",
+        "Comparison",
+        AB_F,
+        R_B,
+        native!((a: f, b: f) -> Bool { a <= b }),
+        "<="
+    ),
+    simple!(
+        "Greater",
+        "Greater",
+        "Comparison",
+        AB_F,
+        R_B,
+        native!((a: f, b: f) -> Bool { a > b }),
+        ">"
+    ),
+    simple!(
+        "GreaterOrEqual",
+        "Greater Or Equal",
+        "Comparison",
+        AB_F,
+        R_B,
+        native!((a: f, b: f) -> Bool { a >= b }),
+        ">="
+    ),
+    simple!(
+        "Equal",
+        "Equal",
+        "Comparison",
+        &[("A", Any, D::N), ("B", Any, D::N)],
+        R_B,
+        equal,
+        "== same"
+    ),
+    simple!(
+        "NotEqual",
+        "Not Equal",
+        "Comparison",
+        &[("A", Any, D::N), ("B", Any, D::N)],
+        R_B,
+        not_equal,
+        "!= different"
+    ),
+    simple!(
+        "ApproximatelyEqual",
+        "Approximately Equal",
+        "Comparison",
+        &[
+            ("A", Float, D::F(0.0)),
+            ("B", Float, D::F(0.0)),
+            ("Tolerance", Float, D::F(0.0001))
+        ],
+        R_B,
+        native!((a: f, b: f, t: f) -> Bool { (a - b).abs() <= t }),
+        "nearly"
+    ),
     // ---- Logic
-    simple!("And", "And", "Logic", AB_B, R_B, native!((a: b, b: b) -> Bool { a && b }), "&&"),
-    simple!("Or", "Or", "Logic", AB_B, R_B, native!((a: b, b: b) -> Bool { a || b }), "||"),
-    simple!("Xor", "Xor", "Logic", AB_B, R_B, native!((a: b, b: b) -> Bool { a != b })),
-    simple!("Not", "Not", "Logic", &[("Value", Bool, D::B(false))], R_B, native!((a: b) -> Bool { !a }), "! invert"),
-    simple!("Select", "Select", "Logic",
-        &[("Condition", Bool, D::B(true)), ("True", Any, D::N), ("False", Any, D::N)], &[("Result", Any)],
-        select, "if ternary choose"),
-    simple!("IsValid", "Is Valid", "Logic", &[("Object", GameObject, D::N)], R_B, is_valid, "null exists alive"),
+    simple!(
+        "And",
+        "And",
+        "Logic",
+        AB_B,
+        R_B,
+        native!((a: b, b: b) -> Bool { a && b }),
+        "&&"
+    ),
+    simple!(
+        "Or",
+        "Or",
+        "Logic",
+        AB_B,
+        R_B,
+        native!((a: b, b: b) -> Bool { a || b }),
+        "||"
+    ),
+    simple!(
+        "Xor",
+        "Xor",
+        "Logic",
+        AB_B,
+        R_B,
+        native!((a: b, b: b) -> Bool { a != b })
+    ),
+    simple!(
+        "Not",
+        "Not",
+        "Logic",
+        &[("Value", Bool, D::B(false))],
+        R_B,
+        native!((a: b) -> Bool { !a }),
+        "! invert"
+    ),
+    simple!(
+        "Select",
+        "Select",
+        "Logic",
+        &[
+            ("Condition", Bool, D::B(true)),
+            ("True", Any, D::N),
+            ("False", Any, D::N)
+        ],
+        &[("Result", Any)],
+        select,
+        "if ternary choose"
+    ),
+    simple!(
+        "IsValid",
+        "Is Valid",
+        "Logic",
+        &[("Object", GameObject, D::N)],
+        R_B,
+        is_valid,
+        "null exists alive"
+    ),
     // ---- Vector3
-    simple!("MakeVector3", "Make Vector3", "Math/Vector3",
-        &[("X", Float, D::F(0.0)), ("Y", Float, D::F(0.0)), ("Z", Float, D::F(0.0))], &[("Vector", Vector3)],
-        native!((x: f, y: f, z: f) -> Vec3 { Vec3::new(x, y, z) }), "new construct"),
-    simple!("BreakVector3", "Break Vector3", "Math/Vector3",
-        &[("Vector", Vector3, D::V(0.0, 0.0, 0.0))], &[("X", Float), ("Y", Float), ("Z", Float)],
-        break_vector3, "split components xyz"),
-    simple!("AddVector3", "Add", "Math/Vector3", AB_V, R_V, native!((a: v3, b: v3) -> Vec3 { a + b }), "plus +"),
-    simple!("SubtractVector3", "Subtract", "Math/Vector3", AB_V, R_V, native!((a: v3, b: v3) -> Vec3 { a - b }), "minus -"),
-    simple!("ScaleVector3", "Scale", "Math/Vector3",
-        &[("Vector", Vector3, D::V(0.0, 0.0, 0.0)), ("Scale", Float, D::F(1.0))], R_V,
-        native!((v: v3, s: f) -> Vec3 { v * s }), "multiply times *"),
-    simple!("NegateVector3", "Negate", "Math/Vector3", &[("Vector", Vector3, D::V(0.0, 0.0, 0.0))], R_V, native!((v: v3) -> Vec3 { -v })),
-    simple!("Dot", "Dot", "Math/Vector3", AB_V, R_F, native!((a: v3, b: v3) -> Float { a.dot(b) }), "dot product"),
-    simple!("Cross", "Cross", "Math/Vector3", AB_V, R_V, native!((a: v3, b: v3) -> Vec3 { a.cross(b) }), "cross product"),
-    simple!("Magnitude", "Length", "Math/Vector3", &[("Vector", Vector3, D::V(0.0, 0.0, 0.0))], R_F, native!((v: v3) -> Float { v.length() }), "magnitude"),
-    simple!("Normalize", "Normalize", "Math/Vector3", &[("Vector", Vector3, D::V(0.0, 0.0, 1.0))], R_V, native!((v: v3) -> Vec3 { v.normalize_or_zero() }), "normalized unit direction"),
-    simple!("Distance", "Distance", "Math/Vector3", AB_V, R_F, native!((a: v3, b: v3) -> Float { a.distance(b) })),
-    simple!("LerpVector3", "Lerp", "Math/Vector3",
-        &[("A", Vector3, D::V(0.0, 0.0, 0.0)), ("B", Vector3, D::V(1.0, 1.0, 1.0)), ("T", Float, D::F(0.5))], R_V,
-        native!((a: v3, b: v3, t: f) -> Vec3 { a.lerp(b, t.clamp(0.0, 1.0)) }), "interpolate"),
-    simple!("MoveTowardsVector3", "Move Towards", "Math/Vector3",
-        &[("Current", Vector3, D::V(0.0, 0.0, 0.0)), ("Target", Vector3, D::V(0.0, 0.0, 0.0)), ("Max Delta", Float, D::F(0.1))], R_V,
+    simple!(
+        "MakeVector3",
+        "Make Vector3",
+        "Math/Vector3",
+        &[
+            ("X", Float, D::F(0.0)),
+            ("Y", Float, D::F(0.0)),
+            ("Z", Float, D::F(0.0))
+        ],
+        &[("Vector", Vector3)],
+        native!((x: f, y: f, z: f) -> Vec3 { Vec3::new(x, y, z) }),
+        "new construct"
+    ),
+    simple!(
+        "BreakVector3",
+        "Break Vector3",
+        "Math/Vector3",
+        &[("Vector", Vector3, D::V(0.0, 0.0, 0.0))],
+        &[("X", Float), ("Y", Float), ("Z", Float)],
+        break_vector3,
+        "split components xyz"
+    ),
+    simple!(
+        "AddVector3",
+        "Add",
+        "Math/Vector3",
+        AB_V,
+        R_V,
+        native!((a: v3, b: v3) -> Vec3 { a + b }),
+        "plus +"
+    ),
+    simple!(
+        "SubtractVector3",
+        "Subtract",
+        "Math/Vector3",
+        AB_V,
+        R_V,
+        native!((a: v3, b: v3) -> Vec3 { a - b }),
+        "minus -"
+    ),
+    simple!(
+        "ScaleVector3",
+        "Scale",
+        "Math/Vector3",
+        &[
+            ("Vector", Vector3, D::V(0.0, 0.0, 0.0)),
+            ("Scale", Float, D::F(1.0))
+        ],
+        R_V,
+        native!((v: v3, s: f) -> Vec3 { v * s }),
+        "multiply times *"
+    ),
+    simple!(
+        "NegateVector3",
+        "Negate",
+        "Math/Vector3",
+        &[("Vector", Vector3, D::V(0.0, 0.0, 0.0))],
+        R_V,
+        native!((v: v3) -> Vec3 { -v })
+    ),
+    simple!(
+        "Dot",
+        "Dot",
+        "Math/Vector3",
+        AB_V,
+        R_F,
+        native!((a: v3, b: v3) -> Float { a.dot(b) }),
+        "dot product"
+    ),
+    simple!(
+        "Cross",
+        "Cross",
+        "Math/Vector3",
+        AB_V,
+        R_V,
+        native!((a: v3, b: v3) -> Vec3 { a.cross(b) }),
+        "cross product"
+    ),
+    simple!(
+        "Magnitude",
+        "Length",
+        "Math/Vector3",
+        &[("Vector", Vector3, D::V(0.0, 0.0, 0.0))],
+        R_F,
+        native!((v: v3) -> Float { v.length() }),
+        "magnitude"
+    ),
+    simple!(
+        "Normalize",
+        "Normalize",
+        "Math/Vector3",
+        &[("Vector", Vector3, D::V(0.0, 0.0, 1.0))],
+        R_V,
+        native!((v: v3) -> Vec3 { v.normalize_or_zero() }),
+        "normalized unit direction"
+    ),
+    simple!(
+        "Distance",
+        "Distance",
+        "Math/Vector3",
+        AB_V,
+        R_F,
+        native!((a: v3, b: v3) -> Float { a.distance(b) })
+    ),
+    simple!(
+        "LerpVector3",
+        "Lerp",
+        "Math/Vector3",
+        &[
+            ("A", Vector3, D::V(0.0, 0.0, 0.0)),
+            ("B", Vector3, D::V(1.0, 1.0, 1.0)),
+            ("T", Float, D::F(0.5))
+        ],
+        R_V,
+        native!((a: v3, b: v3, t: f) -> Vec3 { a.lerp(b, t.clamp(0.0, 1.0)) }),
+        "interpolate"
+    ),
+    simple!(
+        "MoveTowardsVector3",
+        "Move Towards",
+        "Math/Vector3",
+        &[
+            ("Current", Vector3, D::V(0.0, 0.0, 0.0)),
+            ("Target", Vector3, D::V(0.0, 0.0, 0.0)),
+            ("Max Delta", Float, D::F(0.1))
+        ],
+        R_V,
         native!((c: v3, t: v3, m: f) -> Vec3 {
             let d = t - c;
             if d.length() <= m { t } else { c + d.normalize_or_zero() * m }
-        })),
+        })
+    ),
     // ---- Quaternion
-    simple!("Euler", "Euler", "Math/Quaternion", &[("Degrees", Vector3, D::V(0.0, 0.0, 0.0))], R_Q,
-        native!((e: v3) -> Quat { crate::camera::euler_to_quat(e) }), "from euler angles rotation"),
-    simple!("ToEuler", "To Euler", "Math/Quaternion", &[("Rotation", Quaternion, D::N)], R_V,
-        native!((q: q) -> Vec3 { crate::camera::quat_to_euler(q) }), "euler angles degrees"),
-    simple!("MultiplyQuaternion", "Combine", "Math/Quaternion",
-        &[("A", Quaternion, D::N), ("B", Quaternion, D::N)], R_Q, native!((a: q, b: q) -> Quat { (a * b).normalize() }), "multiply *"),
-    simple!("RotateVector", "Rotate Vector", "Math/Quaternion",
-        &[("Rotation", Quaternion, D::N), ("Vector", Vector3, D::V(0.0, 0.0, 1.0))], R_V,
-        native!((q: q, v: v3) -> Vec3 { q * v }), "multiply direction"),
-    simple!("LookRotation", "Look Rotation", "Math/Quaternion",
-        &[("Forward", Vector3, D::V(0.0, 0.0, 1.0)), ("Up", Vector3, D::V(0.0, 1.0, 0.0))], R_Q,
-        native!((f: v3, u: v3) -> Quat { look_rotation(f, u) }), "face direction"),
-    simple!("Slerp", "Slerp", "Math/Quaternion",
-        &[("A", Quaternion, D::N), ("B", Quaternion, D::N), ("T", Float, D::F(0.5))], R_Q,
-        native!((a: q, b: q, t: f) -> Quat { a.slerp(b, t.clamp(0.0, 1.0)) }), "interpolate lerp"),
-    simple!("AngleAxis", "Angle Axis", "Math/Quaternion",
-        &[("Degrees", Float, D::F(0.0)), ("Axis", Vector3, D::V(0.0, 1.0, 0.0))], R_Q,
-        native!((a: f, axis: v3) -> Quat { Quat::from_axis_angle(axis.normalize_or(Vec3::Y), a.to_radians()) })),
-    simple!("InverseQuaternion", "Inverse", "Math/Quaternion", &[("Rotation", Quaternion, D::N)], R_Q, native!((q: q) -> Quat { q.inverse() })),
+    simple!(
+        "Euler",
+        "Euler",
+        "Math/Quaternion",
+        &[("Degrees", Vector3, D::V(0.0, 0.0, 0.0))],
+        R_Q,
+        native!((e: v3) -> Quat { crate::camera::euler_to_quat(e) }),
+        "from euler angles rotation"
+    ),
+    simple!(
+        "ToEuler",
+        "To Euler",
+        "Math/Quaternion",
+        &[("Rotation", Quaternion, D::N)],
+        R_V,
+        native!((q: q) -> Vec3 { crate::camera::quat_to_euler(q) }),
+        "euler angles degrees"
+    ),
+    simple!(
+        "MultiplyQuaternion",
+        "Combine",
+        "Math/Quaternion",
+        &[("A", Quaternion, D::N), ("B", Quaternion, D::N)],
+        R_Q,
+        native!((a: q, b: q) -> Quat { (a * b).normalize() }),
+        "multiply *"
+    ),
+    simple!(
+        "RotateVector",
+        "Rotate Vector",
+        "Math/Quaternion",
+        &[
+            ("Rotation", Quaternion, D::N),
+            ("Vector", Vector3, D::V(0.0, 0.0, 1.0))
+        ],
+        R_V,
+        native!((q: q, v: v3) -> Vec3 { q * v }),
+        "multiply direction"
+    ),
+    simple!(
+        "LookRotation",
+        "Look Rotation",
+        "Math/Quaternion",
+        &[
+            ("Forward", Vector3, D::V(0.0, 0.0, 1.0)),
+            ("Up", Vector3, D::V(0.0, 1.0, 0.0))
+        ],
+        R_Q,
+        native!((f: v3, u: v3) -> Quat { look_rotation(f, u) }),
+        "face direction"
+    ),
+    simple!(
+        "Slerp",
+        "Slerp",
+        "Math/Quaternion",
+        &[
+            ("A", Quaternion, D::N),
+            ("B", Quaternion, D::N),
+            ("T", Float, D::F(0.5))
+        ],
+        R_Q,
+        native!((a: q, b: q, t: f) -> Quat { a.slerp(b, t.clamp(0.0, 1.0)) }),
+        "interpolate lerp"
+    ),
+    simple!(
+        "AngleAxis",
+        "Angle Axis",
+        "Math/Quaternion",
+        &[
+            ("Degrees", Float, D::F(0.0)),
+            ("Axis", Vector3, D::V(0.0, 1.0, 0.0))
+        ],
+        R_Q,
+        native!((a: f, axis: v3) -> Quat { Quat::from_axis_angle(axis.normalize_or(Vec3::Y), a.to_radians()) })
+    ),
+    simple!(
+        "InverseQuaternion",
+        "Inverse",
+        "Math/Quaternion",
+        &[("Rotation", Quaternion, D::N)],
+        R_Q,
+        native!((q: q) -> Quat { q.inverse() })
+    ),
     // ---- Random
-    simple!("RandomFloat", "Random Float", "Random",
-        &[("Min", Float, D::F(0.0)), ("Max", Float, D::F(1.0))], R_F, random_float, "range value"),
-    simple!("RandomInt", "Random Int", "Random",
-        &[("Min", Int, D::I(0)), ("Max", Int, D::I(10))], R_I, random_int, "range integer"),
+    simple!(
+        "RandomFloat",
+        "Random Float",
+        "Random",
+        &[("Min", Float, D::F(0.0)), ("Max", Float, D::F(1.0))],
+        R_F,
+        random_float,
+        "range value"
+    ),
+    simple!(
+        "RandomInt",
+        "Random Int",
+        "Random",
+        &[("Min", Int, D::I(0)), ("Max", Int, D::I(10))],
+        R_I,
+        random_int,
+        "range integer"
+    ),
     // ---- String
-    simple!("Append", "Append", "String",
-        &[("A", Str, D::S("")), ("B", Str, D::S(""))], &[("Result", Str)], append, "concat join text +"),
-    simple!("ToString", "To String", "String", &[("Value", Any, D::N)], &[("Result", Str)], to_string, "text format convert"),
-    simple!("StringLength", "Length", "String", &[("Text", Str, D::S(""))], R_I,
-        native!((t: s) -> Int { t.chars().count() as i64 })),
+    simple!(
+        "Append",
+        "Append",
+        "String",
+        &[("A", Str, D::S("")), ("B", Str, D::S(""))],
+        &[("Result", Str)],
+        append,
+        "concat join text +"
+    ),
+    simple!(
+        "ToString",
+        "To String",
+        "String",
+        &[("Value", Any, D::N)],
+        &[("Result", Str)],
+        to_string,
+        "text format convert"
+    ),
+    simple!(
+        "StringLength",
+        "Length",
+        "String",
+        &[("Text", Str, D::S(""))],
+        R_I,
+        native!((t: s) -> Int { t.chars().count() as i64 })
+    ),
     // ---- List
-    simple!("ListLength", "Count", "List", &[("List", List, D::N)], R_I, list_length, "length size"),
-    simple!("ListGet", "Get Item", "List", &[("List", List, D::N), ("Index", Int, D::I(0))], &[("Item", Any)], list_get, "index element"),
+    simple!(
+        "ListLength",
+        "Count",
+        "List",
+        &[("List", List, D::N)],
+        R_I,
+        list_length,
+        "length size"
+    ),
+    simple!(
+        "ListGet",
+        "Get Item",
+        "List",
+        &[("List", List, D::N), ("Index", Int, D::I(0))],
+        &[("Item", Any)],
+        list_get,
+        "index element"
+    ),
 ];
 
 /// One-input float functions run inline by the VM.

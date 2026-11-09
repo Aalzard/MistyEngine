@@ -9,8 +9,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use egui::{
-    Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2,
-    vec2,
+    Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2,
 };
 use misty_engine::visual_script::{
     self, FileResolver, Literal, Node, PinType, Ports, Resolver, ScriptGraph, nodes,
@@ -156,7 +155,11 @@ pub fn layout(g: &ScriptGraph, node: &Node, files: &dyn Resolver) -> NodeLayout 
         .inputs
         .iter()
         .map(|p| {
-            let label = if shows_label(p) { text_w(&p.name, 11.5) } else { 0.0 };
+            let label = if shows_label(p) {
+                text_w(&p.name, 11.5)
+            } else {
+                0.0
+            };
             label + field_w(p.ty) + 22.0
         })
         .fold(0.0, f32::max);
@@ -164,7 +167,11 @@ pub fn layout(g: &ScriptGraph, node: &Node, files: &dyn Resolver) -> NodeLayout 
         .outputs
         .iter()
         .map(|p| {
-            let label = if shows_label(p) { text_w(&p.name, 11.5) } else { 0.0 };
+            let label = if shows_label(p) {
+                text_w(&p.name, 11.5)
+            } else {
+                0.0
+            };
             label + 22.0
         })
         .fold(0.0, f32::max);
@@ -177,8 +184,12 @@ pub fn layout(g: &ScriptGraph, node: &Node, files: &dyn Resolver) -> NodeLayout 
     let row_y = |i: usize| HEADER_H + (i as f32 + 0.5) * ROW_H;
     NodeLayout {
         size: vec2(w, h),
-        inputs: (0..ports.inputs.len()).map(|i| pos2(0.0, row_y(i))).collect(),
-        outputs: (0..ports.outputs.len()).map(|i| pos2(w, row_y(i))).collect(),
+        inputs: (0..ports.inputs.len())
+            .map(|i| pos2(0.0, row_y(i)))
+            .collect(),
+        outputs: (0..ports.outputs.len())
+            .map(|i| pos2(w, row_y(i)))
+            .collect(),
         title,
         category,
         ports,
@@ -326,7 +337,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, area: Rect) {
             pins.iter()
                 .find(|x| x.0 == from.node && x.1 == from.pin && x.2 == from.output),
         ) {
-            let (a, b) = if from.output { (spot.4, p) } else { (p, spot.4) };
+            let (a, b) = if from.output {
+                (spot.4, p)
+            } else {
+                (p, spot.4)
+            };
             wire_width(&painter, a, b, type_color(from.ty), view.zoom, 2.4);
         }
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -430,7 +445,11 @@ fn wires(ui: &Ui, painter: &egui::Painter, w: &ScriptGraphWindow, view: View, pi
             painter.circle_filled(dot, 3.5 * view.zoom.max(0.6), Color32::WHITE);
             continue;
         }
-        let color = if selected { base } else { base.gamma_multiply(0.7) };
+        let color = if selected {
+            base
+        } else {
+            base.gamma_multiply(0.7)
+        };
         let width = if a.3.is_exec() { 2.6 } else { 2.0 };
         wire_width(painter, a.4, b.4, color, view.zoom, width);
     }
@@ -498,7 +517,11 @@ fn node_ui(
     let breakpoint = w.at_root() && w.breakpoints.contains(&id);
     let error = w.error_of(id);
     // Body and header.
-    painter.rect_filled(rect.translate(vec2(2.0, 3.0) * z), round, Color32::from_black_alpha(60));
+    painter.rect_filled(
+        rect.translate(vec2(2.0, 3.0) * z),
+        round,
+        Color32::from_black_alpha(60),
+    );
     painter.rect_filled(rect, round, NODE_BG);
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H * z));
     let hc = category_color(&l.category);
@@ -615,14 +638,26 @@ fn node_ui(
         .inputs
         .iter()
         .zip(&l.inputs)
-        .map(|(p, at)| (p.clone(), pin_screen(view, node, *at), connected_in(&p.name)))
+        .map(|(p, at)| {
+            (
+                p.clone(),
+                pin_screen(view, node, *at),
+                connected_in(&p.name),
+            )
+        })
         .collect();
     let outputs: Vec<(visual_script::Pin, Pos2, bool)> = l
         .ports
         .outputs
         .iter()
         .zip(&l.outputs)
-        .map(|(p, at)| (p.clone(), pin_screen(view, node, *at), connected_out(&p.name)))
+        .map(|(p, at)| {
+            (
+                p.clone(),
+                pin_screen(view, node, *at),
+                connected_out(&p.name),
+            )
+        })
         .collect();
     for (p, pos, connected) in &inputs {
         draw_pin(painter, *pos, p.ty, *connected, z);
@@ -680,7 +715,10 @@ fn draw_pin(painter: &egui::Painter, pos: Pos2, ty: PinType, connected: bool, z:
         if connected {
             painter.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
         } else {
-            painter.add(egui::Shape::closed_line(pts, Stroke::new(1.4 * z.max(0.6), color)));
+            painter.add(egui::Shape::closed_line(
+                pts,
+                Stroke::new(1.4 * z.max(0.6), color),
+            ));
         }
     } else if connected {
         painter.circle_filled(pos, PIN_R * z, color);
@@ -784,7 +822,10 @@ fn inline_value(
         };
         match &mut lit {
             Literal::Float(f) => {
-                ui.put(slot(0, 1), egui::DragValue::new(f).speed(0.05).max_decimals(3));
+                ui.put(
+                    slot(0, 1),
+                    egui::DragValue::new(f).speed(0.05).max_decimals(3),
+                );
             }
             Literal::Int(i) => {
                 ui.put(slot(0, 1), egui::DragValue::new(i).speed(0.2));
@@ -793,7 +834,10 @@ fn inline_value(
                 ui.put(slot(0, 1), egui::Checkbox::without_text(b));
             }
             Literal::String(t) => {
-                ui.put(slot(0, 1), egui::TextEdit::singleline(t).margin(vec2(2.0, 0.0)));
+                ui.put(
+                    slot(0, 1),
+                    egui::TextEdit::singleline(t).margin(vec2(2.0, 0.0)),
+                );
             }
             Literal::Vector3(v) | Literal::Quaternion(v) => {
                 for (k, c) in v.iter_mut().enumerate() {
@@ -807,7 +851,10 @@ fn inline_value(
                 // An Any input: typed text (a number, true / false, or a string).
                 let mut t = String::new();
                 if ui
-                    .put(slot(0, 1), egui::TextEdit::singleline(&mut t).hint_text("None"))
+                    .put(
+                        slot(0, 1),
+                        egui::TextEdit::singleline(&mut t).hint_text("None"),
+                    )
                     .changed()
                 {
                     lit = parse_any(&t);
@@ -958,8 +1005,7 @@ fn canvas_menu(ui: &mut Ui, s: &mut EditorState, at: Option<Pos2>) {
         if ui.button("Collapse Selection To Macro").clicked() {
             let root = s.project.root.clone();
             if s.script_graph.collapse_to_macro(&root).is_none() {
-                s.script_graph.canvas.flash =
-                    Some(("Events can't go into a macro".into(), -1.0));
+                s.script_graph.canvas.flash = Some(("Events can't go into a macro".into(), -1.0));
             }
             ui.close();
             return;

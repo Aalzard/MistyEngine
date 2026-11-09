@@ -319,7 +319,10 @@ impl EditorApp {
             if (self.state.shader_graph.wants_keys()
                 || self.state.effect_graph.wants_keys()
                 || self.state.script_graph.wants_keys())
-                && matches!(key, Key::Delete | Key::Z | Key::Y | Key::S | Key::D | Key::G)
+                && matches!(
+                    key,
+                    Key::Delete | Key::Z | Key::Y | Key::S | Key::D | Key::G
+                )
             {
                 continue;
             }

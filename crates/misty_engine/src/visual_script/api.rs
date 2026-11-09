@@ -9,10 +9,10 @@
 
 use glam::Vec3;
 
+use super::Node;
 use super::natives::{Cx, D, NativeFn, Slot};
 use super::nodes::{Pin, Ports, names};
 use super::value::{PinType, Value};
-use super::Node;
 use crate::camera::{euler_to_quat, quat_to_euler};
 use crate::scripting::{LogKind, World};
 
@@ -105,7 +105,11 @@ macro_rules! call {
 }
 
 /// Read a transform value of the target (`i[0]`).
-fn with_target<R>(cx: &Cx<'_>, i: &[Slot], f: impl FnOnce(&World, hecs::Entity) -> R) -> Result<R, String> {
+fn with_target<R>(
+    cx: &Cx<'_>,
+    i: &[Slot],
+    f: impl FnOnce(&World, hecs::Entity) -> R,
+) -> Result<R, String> {
     let e = cx.obj(i[0])?;
     Ok(f(cx.world, e))
 }
@@ -322,12 +326,10 @@ fn raycast(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
     let dir = cx.v3(i[1]);
     let max = cx.f(i[2]);
     let max = if max <= 0.0 { f32::INFINITY } else { max };
-    let hit = cx.world.physics.raycast(
-        origin,
-        dir,
-        max,
-        crate::physics::DEFAULT_RAYCAST_LAYERS,
-    );
+    let hit = cx
+        .world
+        .physics
+        .raycast(origin, dir, max, crate::physics::DEFAULT_RAYCAST_LAYERS);
     match hit {
         Some(h) => {
             cx.set(o[0], Value::Bool(true));
@@ -349,11 +351,10 @@ fn raycast(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
 
 fn axis_value(cx: &mut Cx<'_>, i: &[Slot], o: &[Slot]) -> Result<(), String> {
     let name = cx.s(i[0]);
-    let v = cx
-        .world
-        .axes
-        .axis(&name)
-        .ok_or_else(|| format!("Input axis '{name}' is not set up (Project Settings ▸ Input)"))?;
+    let v =
+        cx.world.axes.axis(&name).ok_or_else(|| {
+            format!("Input axis '{name}' is not set up (Project Settings ▸ Input)")
+        })?;
     cx.set(o[0], Value::Float(v));
     Ok(())
 }
@@ -366,16 +367,49 @@ pub static NATIVE: &[NativeApi] = &[
     get!("#Transform", "position", Vector3, position_get),
     set!("#Transform", "position", Vector3, V0, position_set),
     get!("#Transform", "localPosition", Vector3, local_position_get),
-    set!("#Transform", "localPosition", Vector3, V0, local_position_set),
+    set!(
+        "#Transform",
+        "localPosition",
+        Vector3,
+        V0,
+        local_position_set
+    ),
     get!("#Transform", "eulerAngles", Vector3, euler_get),
     set!("#Transform", "eulerAngles", Vector3, V0, euler_set),
     get!("#Transform", "localEulerAngles", Vector3, local_euler_get),
-    set!("#Transform", "localEulerAngles", Vector3, V0, local_euler_set),
+    set!(
+        "#Transform",
+        "localEulerAngles",
+        Vector3,
+        V0,
+        local_euler_set
+    ),
     get!("#Transform", "localScale", Vector3, scale_get),
-    set!("#Transform", "localScale", Vector3, D::V(1.0, 1.0, 1.0), scale_set),
-    get!("#Transform", "forward", Vector3, |cx, i, o| axis_get(cx, i, o, Vec3::Z)),
-    get!("#Transform", "right", Vector3, |cx, i, o| axis_get(cx, i, o, Vec3::X)),
-    get!("#Transform", "up", Vector3, |cx, i, o| axis_get(cx, i, o, Vec3::Y)),
+    set!(
+        "#Transform",
+        "localScale",
+        Vector3,
+        D::V(1.0, 1.0, 1.0),
+        scale_set
+    ),
+    get!("#Transform", "forward", Vector3, |cx, i, o| axis_get(
+        cx,
+        i,
+        o,
+        Vec3::Z
+    )),
+    get!("#Transform", "right", Vector3, |cx, i, o| axis_get(
+        cx,
+        i,
+        o,
+        Vec3::X
+    )),
+    get!("#Transform", "up", Vector3, |cx, i, o| axis_get(
+        cx,
+        i,
+        o,
+        Vec3::Y
+    )),
     NativeApi {
         graph_only: true,
         ..get!("#Transform", "rotation", Quaternion, rotation_get)
@@ -384,27 +418,96 @@ pub static NATIVE: &[NativeApi] = &[
         graph_only: true,
         ..set!("#Transform", "rotation", Quaternion, D::N, rotation_set)
     },
-    call!("#Transform", "Translate", &[("Translation", Vector3, V0)], &[], false, translate),
-    call!("#Transform", "Rotate", &[("Euler Degrees", Vector3, V0)], &[], false, rotate),
-    call!("#Transform", "LookAt", &[("Point", Vector3, V0)], &[], false, look_at),
+    call!(
+        "#Transform",
+        "Translate",
+        &[("Translation", Vector3, V0)],
+        &[],
+        false,
+        translate
+    ),
+    call!(
+        "#Transform",
+        "Rotate",
+        &[("Euler Degrees", Vector3, V0)],
+        &[],
+        false,
+        rotate
+    ),
+    call!(
+        "#Transform",
+        "LookAt",
+        &[("Point", Vector3, V0)],
+        &[],
+        false,
+        look_at
+    ),
     // GameObject
     get!("#GameObject", "name", Str, go_name),
     get!("#GameObject", "tag", Str, go_tag),
     get!("#GameObject", "activeSelf", Bool, go_active),
-    call!("#GameObject", "SetActive", &[("Value", Bool, D::B(true))], &[], false, go_set_active),
-    call!("#GameObject", "CompareTag", &[("Tag", Str, D::S("Player"))], &[("Result", Bool)], true, go_compare_tag),
-    call!("GameObject", "Find", &[("Name", Str, D::S(""))], &[("Result", GameObject)], true, find),
-    call!("", "Destroy", &[("Object", GameObject, D::N)], &[], false, destroy),
+    call!(
+        "#GameObject",
+        "SetActive",
+        &[("Value", Bool, D::B(true))],
+        &[],
+        false,
+        go_set_active
+    ),
+    call!(
+        "#GameObject",
+        "CompareTag",
+        &[("Tag", Str, D::S("Player"))],
+        &[("Result", Bool)],
+        true,
+        go_compare_tag
+    ),
+    call!(
+        "GameObject",
+        "Find",
+        &[("Name", Str, D::S(""))],
+        &[("Result", GameObject)],
+        true,
+        find
+    ),
+    call!(
+        "",
+        "Destroy",
+        &[("Object", GameObject, D::N)],
+        &[],
+        false,
+        destroy
+    ),
     // Rigidbody
     get!("#Rigidbody", "velocity", Vector3, velocity_get),
     set!("#Rigidbody", "velocity", Vector3, V0, velocity_set),
-    call!("#Rigidbody", "AddForce",
-        &[("Force", Vector3, V0), ("Mode", Str, D::S("Force"))], &[], false, add_force),
+    call!(
+        "#Rigidbody",
+        "AddForce",
+        &[("Force", Vector3, V0), ("Mode", Str, D::S("Force"))],
+        &[],
+        false,
+        add_force
+    ),
     // Physics
-    call!("Physics", "Raycast",
-        &[("Origin", Vector3, V0), ("Direction", Vector3, D::V(0.0, 0.0, 1.0)), ("Max Distance", Float, D::F(1000.0))],
-        &[("Hit", Bool), ("Point", Vector3), ("Normal", Vector3), ("Distance", Float), ("Collider", GameObject)],
-        true, raycast),
+    call!(
+        "Physics",
+        "Raycast",
+        &[
+            ("Origin", Vector3, V0),
+            ("Direction", Vector3, D::V(0.0, 0.0, 1.0)),
+            ("Max Distance", Float, D::F(1000.0))
+        ],
+        &[
+            ("Hit", Bool),
+            ("Point", Vector3),
+            ("Normal", Vector3),
+            ("Distance", Float),
+            ("Collider", GameObject)
+        ],
+        true,
+        raycast
+    ),
     // Time
     get!("Time", "deltaTime", Float, time_delta),
     get!("Time", "time", Float, time_time),
@@ -413,21 +516,104 @@ pub static NATIVE: &[NativeApi] = &[
     get!("Time", "timeScale", Float, time_scale),
     get!("Time", "frameCount", Int, time_frame),
     // Input
-    call!("Input", "GetKey", &[("Key", Str, D::S("space"))], &[("Result", Bool)], true,
-        |cx, i, o| { let k = cx.s(i[0]); let r = cx.world.input.key(&k); cx.set(o[0], Value::Bool(r)); Ok(()) }),
-    call!("Input", "GetKeyDown", &[("Key", Str, D::S("space"))], &[("Result", Bool)], true,
-        |cx, i, o| { let k = cx.s(i[0]); let r = cx.world.input.key_down(&k); cx.set(o[0], Value::Bool(r)); Ok(()) }),
-    call!("Input", "GetKeyUp", &[("Key", Str, D::S("space"))], &[("Result", Bool)], true,
-        |cx, i, o| { let k = cx.s(i[0]); let r = cx.world.input.key_up(&k); cx.set(o[0], Value::Bool(r)); Ok(()) }),
-    call!("Input", "GetMouseButton", &[("Button", Int, D::I(0))], &[("Result", Bool)], true,
-        |cx, i, o| { let b = cx.i(i[0]).max(0) as usize; let r = cx.world.input.mouse(b); cx.set(o[0], Value::Bool(r)); Ok(()) }),
-    call!("Input", "GetMouseButtonDown", &[("Button", Int, D::I(0))], &[("Result", Bool)], true,
-        |cx, i, o| { let b = cx.i(i[0]).max(0) as usize; let r = cx.world.input.mouse_down(b); cx.set(o[0], Value::Bool(r)); Ok(()) }),
-    call!("Input", "GetAxis", &[("Axis Name", Str, D::S("Horizontal"))], &[("Result", Float)], true, axis_value),
+    call!(
+        "Input",
+        "GetKey",
+        &[("Key", Str, D::S("space"))],
+        &[("Result", Bool)],
+        true,
+        |cx, i, o| {
+            let k = cx.s(i[0]);
+            let r = cx.world.input.key(&k);
+            cx.set(o[0], Value::Bool(r));
+            Ok(())
+        }
+    ),
+    call!(
+        "Input",
+        "GetKeyDown",
+        &[("Key", Str, D::S("space"))],
+        &[("Result", Bool)],
+        true,
+        |cx, i, o| {
+            let k = cx.s(i[0]);
+            let r = cx.world.input.key_down(&k);
+            cx.set(o[0], Value::Bool(r));
+            Ok(())
+        }
+    ),
+    call!(
+        "Input",
+        "GetKeyUp",
+        &[("Key", Str, D::S("space"))],
+        &[("Result", Bool)],
+        true,
+        |cx, i, o| {
+            let k = cx.s(i[0]);
+            let r = cx.world.input.key_up(&k);
+            cx.set(o[0], Value::Bool(r));
+            Ok(())
+        }
+    ),
+    call!(
+        "Input",
+        "GetMouseButton",
+        &[("Button", Int, D::I(0))],
+        &[("Result", Bool)],
+        true,
+        |cx, i, o| {
+            let b = cx.i(i[0]).max(0) as usize;
+            let r = cx.world.input.mouse(b);
+            cx.set(o[0], Value::Bool(r));
+            Ok(())
+        }
+    ),
+    call!(
+        "Input",
+        "GetMouseButtonDown",
+        &[("Button", Int, D::I(0))],
+        &[("Result", Bool)],
+        true,
+        |cx, i, o| {
+            let b = cx.i(i[0]).max(0) as usize;
+            let r = cx.world.input.mouse_down(b);
+            cx.set(o[0], Value::Bool(r));
+            Ok(())
+        }
+    ),
+    call!(
+        "Input",
+        "GetAxis",
+        &[("Axis Name", Str, D::S("Horizontal"))],
+        &[("Result", Float)],
+        true,
+        axis_value
+    ),
     // Debug
-    call!("Debug", "Log", &[("Message", Str, D::S("Hello"))], &[], false, |cx, i, _| log_with(cx, i, LogKind::Info)),
-    call!("Debug", "LogWarning", &[("Message", Str, D::S(""))], &[], false, |cx, i, _| log_with(cx, i, LogKind::Warning)),
-    call!("Debug", "LogError", &[("Message", Str, D::S(""))], &[], false, |cx, i, _| log_with(cx, i, LogKind::Error)),
+    call!(
+        "Debug",
+        "Log",
+        &[("Message", Str, D::S("Hello"))],
+        &[],
+        false,
+        |cx, i, _| log_with(cx, i, LogKind::Info)
+    ),
+    call!(
+        "Debug",
+        "LogWarning",
+        &[("Message", Str, D::S(""))],
+        &[],
+        false,
+        |cx, i, _| log_with(cx, i, LogKind::Warning)
+    ),
+    call!(
+        "Debug",
+        "LogError",
+        &[("Message", Str, D::S(""))],
+        &[],
+        false,
+        |cx, i, _| log_with(cx, i, LogKind::Error)
+    ),
 ];
 
 /// Time members read the frame clock.
@@ -534,8 +720,11 @@ pub fn ports(node: &Node) -> Ports {
     }
     match native(a.owner, a.member, a.mode) {
         Some(n) => {
-            p.inputs
-                .extend(n.inputs.iter().map(|(name, t, d)| Pin::with(name, *t, d.literal())));
+            p.inputs.extend(
+                n.inputs
+                    .iter()
+                    .map(|(name, t, d)| Pin::with(name, *t, d.literal())),
+            );
             p.outputs
                 .extend(n.outputs.iter().map(|(name, t)| Pin::data(name, *t)));
         }

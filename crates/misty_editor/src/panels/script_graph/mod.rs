@@ -755,12 +755,14 @@ pub fn read_debugger(s: &mut EditorState) {
             .filter(|e| s.scene.contains(*e))
             .map(|e| s.scene.name(e)),
     };
-    let newly_paused = live.paused.is_some()
-        && s.script_graph.live.as_ref().and_then(|l| l.paused) != live.paused;
+    let newly_paused =
+        live.paused.is_some() && s.script_graph.live.as_ref().and_then(|l| l.paused) != live.paused;
     s.script_graph.live = Some(live);
     if newly_paused && s.play == crate::state::PlayState::Playing {
         s.play = crate::state::PlayState::Paused;
-        s.console.info("Script Graph breakpoint: Play paused (Step or Continue in the Script Graph window)");
+        s.console.info(
+            "Script Graph breakpoint: Play paused (Step or Continue in the Script Graph window)",
+        );
         s.push(crate::actions::Action::FocusTab(Tab::ScriptGraph));
     }
 }
@@ -780,7 +782,12 @@ pub fn continue_flow(s: &mut EditorState, step: bool) {
         s.console.log(level, text);
     }
     read_debugger(s);
-    if !step && s.script_graph.live.as_ref().is_none_or(|l| l.paused.is_none()) {
+    if !step
+        && s.script_graph
+            .live
+            .as_ref()
+            .is_none_or(|l| l.paused.is_none())
+    {
         s.play = crate::state::PlayState::Playing;
     }
 }
@@ -1018,8 +1025,7 @@ fn toolbar(ui: &mut Ui, s: &mut EditorState, bar: Rect) {
                                 .map(|n| visual_script::nodes::title(n, &s.script_graph.graph))
                                 .unwrap_or_default();
                             ui.label(
-                                RichText::new(format!("⏸ Paused at {title}"))
-                                    .color(theme::WARN),
+                                RichText::new(format!("⏸ Paused at {title}")).color(theme::WARN),
                             );
                         }
                         let who = live

@@ -212,8 +212,10 @@ impl GraphRuntime {
             Err(msgs) => {
                 with_world(lua, |w| {
                     for m in msgs {
-                        w.logs
-                            .push((LogKind::Error, format!("Script Graph does not compile: {m}")));
+                        w.logs.push((
+                            LogKind::Error,
+                            format!("Script Graph does not compile: {m}"),
+                        ));
                     }
                 });
                 None
@@ -230,7 +232,14 @@ impl GraphRuntime {
 
     /// Start a graph on an object (its Scripts entry `slot`). Object variables take the
     /// Inspector's values.
-    pub fn instantiate(&mut self, lua: &Lua, root: &Path, e: Entity, slot: usize, script: &ScriptRef) {
+    pub fn instantiate(
+        &mut self,
+        lua: &Lua,
+        root: &Path,
+        e: Entity,
+        slot: usize,
+        script: &ScriptRef,
+    ) {
         let Some(prog) = self.program(lua, root, &script.path) else {
             return;
         };
@@ -301,7 +310,7 @@ impl GraphRuntime {
                 let debugging = self.debug.path.as_deref() == Some(&*inst.path);
                 let watched = debugging && self.debug.watched == Some((inst.entity, inst.slot));
                 let can_break = debugging && self.debug.paused.is_none();
-                let hook = (debugging && (can_break || watched)).then(|| Hook {
+                let hook = (debugging && (can_break || watched)).then_some(Hook {
                     breakpoints: if can_break {
                         &self.debug.breakpoints
                     } else {
@@ -335,7 +344,8 @@ impl GraphRuntime {
                     let inst = &mut self.instances[i];
                     let prog = inst.prog.clone();
                     let call = &prog.lua[op as usize];
-                    if let Err(e) = super::lua_bridge::exec(lua, call, &mut inst.st.regs, inst.entity)
+                    if let Err(e) =
+                        super::lua_bridge::exec(lua, call, &mut inst.st.regs, inst.entity)
                     {
                         self.report(lua, i, call.node(), e);
                         return;
@@ -593,7 +603,8 @@ impl GraphRuntime {
             }
             let n = self.instances[i].prog.events.len();
             for k in 0..n {
-                let EventKind::Input { action, mode } = self.instances[i].prog.events[k].kind.clone()
+                let EventKind::Input { action, mode } =
+                    self.instances[i].prog.events[k].kind.clone()
                 else {
                     continue;
                 };
@@ -694,7 +705,10 @@ impl GraphRuntime {
     /// The value on a pin of the watched instance (the debugger's hover).
     pub fn value(&self, w: &World, node: u32, pin: &str, output: bool) -> Option<Value> {
         let (e, slot) = self.debug.watched?;
-        let inst = self.instances.iter().find(|i| i.entity == e && i.slot == slot)?;
+        let inst = self
+            .instances
+            .iter()
+            .find(|i| i.entity == e && i.slot == slot)?;
         let at = inst
             .prog
             .port_slots
@@ -703,7 +717,9 @@ impl GraphRuntime {
         Some(match at {
             PortSlot::Reg(s) => inst.st.regs.get(s as usize)?.clone(),
             PortSlot::Var(v) => inst.st.vars.get(v as usize)?.clone(),
-            PortSlot::ObjVar(v) => w.graph_vars.at(e, *inst.obj_index.get(v as usize)? as usize),
+            PortSlot::ObjVar(v) => w
+                .graph_vars
+                .at(e, *inst.obj_index.get(v as usize)? as usize),
         })
     }
 
@@ -712,7 +728,11 @@ impl GraphRuntime {
         let Some((e, slot)) = self.debug.watched else {
             return Vec::new();
         };
-        let Some(inst) = self.instances.iter().find(|i| i.entity == e && i.slot == slot) else {
+        let Some(inst) = self
+            .instances
+            .iter()
+            .find(|i| i.entity == e && i.slot == slot)
+        else {
             return Vec::new();
         };
         let mut out: Vec<(String, Value)> = inst

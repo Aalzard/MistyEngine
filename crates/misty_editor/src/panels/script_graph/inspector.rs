@@ -54,7 +54,11 @@ pub fn show(ui: &mut Ui, s: &mut EditorState, rect: Rect) {
         egui::Stroke::new(1.0, Color32::from_white_alpha(20)),
         egui::StrokeKind::Inside,
     );
-    ui.interact(rect, ui.id().with("vs_gi_block"), egui::Sense::click_and_drag());
+    ui.interact(
+        rect,
+        ui.id().with("vs_gi_block"),
+        egui::Sense::click_and_drag(),
+    );
     let busy = super::interacting(ui.ctx());
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(8.0)), |ui| {
         ui.label(RichText::new("Graph Inspector").strong().color(theme::TEXT));
@@ -88,7 +92,11 @@ fn graph_summary(ui: &mut Ui, s: &mut EditorState) {
     let errors = w.errors.clone();
     for e in errors.iter().take(10) {
         let text = match e.node.and_then(|n| s.script_graph.view().node(n)) {
-            Some(n) => format!("⚠ {}: {}", nodes::title(n, s.script_graph.view()), e.message),
+            Some(n) => format!(
+                "⚠ {}: {}",
+                nodes::title(n, s.script_graph.view()),
+                e.message
+            ),
             None => format!("⚠ {}", e.message),
         };
         if ui
@@ -113,7 +121,11 @@ fn graph_summary(ui: &mut Ui, s: &mut EditorState) {
 
 fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
     let g = s.script_graph.view().clone();
-    ui.label(RichText::new(nodes::title(node, &g)).strong().color(theme::TEXT));
+    ui.label(
+        RichText::new(nodes::title(node, &g))
+            .strong()
+            .color(theme::TEXT),
+    );
     ui.label(
         RichText::new(format!("{} · node {}", nodes::category(node), node.id))
             .small()
@@ -184,7 +196,11 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
             let default = if node.kind == "Sequence" { 2 } else { 3 };
             let mut n: usize = node.param("count").parse().unwrap_or(default);
             ui.horizontal(|ui| {
-                ui.label(if node.kind == "Sequence" { "Outputs" } else { "Items" });
+                ui.label(if node.kind == "Sequence" {
+                    "Outputs"
+                } else {
+                    "Items"
+                });
                 ui.add(egui::DragValue::new(&mut n).range(1..=32));
             });
             if n != node.param("count").parse().unwrap_or(default) {
@@ -198,7 +214,10 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
             }
         }
         "CallLua" => {
-            param("script", text_param(ui, node, "script", "Script", "Lua script name"));
+            param(
+                "script",
+                text_param(ui, node, "script", "Script", "Lua script name"),
+            );
             param(
                 "function",
                 text_param(ui, node, "function", "Function", "function name"),
@@ -239,7 +258,8 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
                 "Lua: {}{}{}",
                 match a.owner {
                     "" => String::new(),
-                    o if o.starts_with('#') => format!("{}:", o.trim_start_matches('#').to_lowercase()),
+                    o if o.starts_with('#') =>
+                        format!("{}:", o.trim_start_matches('#').to_lowercase()),
                     o => format!("{o}."),
                 },
                 a.member,
@@ -266,7 +286,9 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
         }
         "Delay" | "OnTimer" => {
             ui.label(
-                RichText::new("Seconds of game time.").small().color(theme::TEXT_DIM),
+                RichText::new("Seconds of game time.")
+                    .small()
+                    .color(theme::TEXT_DIM),
             );
         }
         "While" => {
@@ -296,7 +318,11 @@ fn node_settings(ui: &mut Ui, s: &mut EditorState, node: &Node, busy: bool) {
         let on = s.script_graph.breakpoints.contains(&node.id);
         ui.add_space(6.0);
         if ui
-            .button(if on { "Remove Breakpoint" } else { "Add Breakpoint" })
+            .button(if on {
+                "Remove Breakpoint"
+            } else {
+                "Add Breakpoint"
+            })
             .clicked()
         {
             s.script_graph.toggle_breakpoint(node.id);

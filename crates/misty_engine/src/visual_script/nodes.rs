@@ -63,7 +63,10 @@ impl Ports {
 
     /// Has exec pins (an event, flow or action node) rather than being pure.
     pub fn has_exec(&self) -> bool {
-        self.inputs.iter().chain(&self.outputs).any(|p| p.ty.is_exec())
+        self.inputs
+            .iter()
+            .chain(&self.outputs)
+            .any(|p| p.ty.is_exec())
     }
 
     fn broken(problem: String) -> Self {
@@ -121,13 +124,38 @@ pub static SPECIAL: &[Special] = &[
     special!("OnUpdate", "On Update", "Events", "tick frame every"),
     special!("OnFixedUpdate", "On Fixed Update", "Events", "physics step"),
     special!("OnLateUpdate", "On Late Update", "Events", "after"),
-    special!("OnTriggerEnter", "On Trigger Enter", "Events", "overlap begin physics"),
-    special!("OnTriggerExit", "On Trigger Exit", "Events", "overlap end physics"),
-    special!("OnCollisionEnter", "On Collision Enter", "Events", "hit physics"),
+    special!(
+        "OnTriggerEnter",
+        "On Trigger Enter",
+        "Events",
+        "overlap begin physics"
+    ),
+    special!(
+        "OnTriggerExit",
+        "On Trigger Exit",
+        "Events",
+        "overlap end physics"
+    ),
+    special!(
+        "OnCollisionEnter",
+        "On Collision Enter",
+        "Events",
+        "hit physics"
+    ),
     special!("OnCollisionExit", "On Collision Exit", "Events", "physics"),
-    special!("OnInputAction", "On Input Action", "Events", "input system key button performed held pressed released"),
+    special!(
+        "OnInputAction",
+        "On Input Action",
+        "Events",
+        "input system key button performed held pressed released"
+    ),
     special!("OnCustomEvent", "Custom Event", "Events", "receive message"),
-    special!("OnTimer", "On Timer", "Events", "every interval repeat seconds delay"),
+    special!(
+        "OnTimer",
+        "On Timer",
+        "Events",
+        "every interval repeat seconds delay"
+    ),
     special!("OnDestroy", "On Destroy", "Events", "removed"),
     special!("OnEnable", "On Enable", "Events", "activated"),
     special!("OnDisable", "On Disable", "Events", "deactivated"),
@@ -140,30 +168,93 @@ pub static SPECIAL: &[Special] = &[
     special!("Gate", "Gate", "Flow", "open close toggle"),
     special!("FlipFlop", "Flip Flop", "Flow", "toggle alternate"),
     special!("Delay", "Delay", "Flow", "wait seconds timer"),
-    special!("GetVariable", "Get Variable", "Variables", "read blackboard"),
-    special!("SetVariable", "Set Variable", "Variables", "write blackboard assign"),
-    special!("GetObjectVariable", "Get Object Variable", "Variables", "other gameobject read"),
-    special!("SetObjectVariable", "Set Object Variable", "Variables", "other gameobject write"),
+    special!(
+        "GetVariable",
+        "Get Variable",
+        "Variables",
+        "read blackboard"
+    ),
+    special!(
+        "SetVariable",
+        "Set Variable",
+        "Variables",
+        "write blackboard assign"
+    ),
+    special!(
+        "GetObjectVariable",
+        "Get Object Variable",
+        "Variables",
+        "other gameobject read"
+    ),
+    special!(
+        "SetObjectVariable",
+        "Set Object Variable",
+        "Variables",
+        "other gameobject write"
+    ),
     special!("Self", "Self", "Variables", "this gameobject owner me"),
     special!("Float", "Float", "Constants", "number literal"),
     special!("Int", "Int", "Constants", "integer literal"),
     special!("Bool", "Bool", "Constants", "boolean true false literal"),
     special!("String", "String", "Constants", "text literal"),
-    special!("Vector3", "Vector3", "Constants", "literal position direction"),
-    special!("Quaternion", "Quaternion", "Constants", "literal rotation euler"),
+    special!(
+        "Vector3",
+        "Vector3",
+        "Constants",
+        "literal position direction"
+    ),
+    special!(
+        "Quaternion",
+        "Quaternion",
+        "Constants",
+        "literal rotation euler"
+    ),
     special!("MakeList", "Make List", "List", "array create"),
-    special!("CallLua", "Call Lua Function", "Lua", "script method invoke"),
-    special!("GetLuaField", "Get Lua Field", "Lua", "table member property"),
-    special!("SendCustomEvent", "Send Custom Event", "Events", "trigger message send lua"),
-    special!("BroadcastCustomEvent", "Broadcast Custom Event", "Events", "trigger message all objects"),
+    special!(
+        "CallLua",
+        "Call Lua Function",
+        "Lua",
+        "script method invoke"
+    ),
+    special!(
+        "GetLuaField",
+        "Get Lua Field",
+        "Lua",
+        "table member property"
+    ),
+    special!(
+        "SendCustomEvent",
+        "Send Custom Event",
+        "Events",
+        "trigger message send lua"
+    ),
+    special!(
+        "BroadcastCustomEvent",
+        "Broadcast Custom Event",
+        "Events",
+        "trigger message all objects"
+    ),
     special!("Subgraph", "Subgraph", "Subgraphs", "macro function"),
-    special!("GraphInput", "Graph Input", "Subgraphs", "subgraph inputs parameters"),
-    special!("GraphOutput", "Graph Output", "Subgraphs", "subgraph outputs return"),
+    special!(
+        "GraphInput",
+        "Graph Input",
+        "Subgraphs",
+        "subgraph inputs parameters"
+    ),
+    special!(
+        "GraphOutput",
+        "Graph Output",
+        "Subgraphs",
+        "subgraph outputs return"
+    ),
 ];
 
 pub fn special(kind: &str) -> Option<&'static Special> {
     SPECIAL.iter().find(|s| s.kind == kind)
 }
+
+/// Pins of a subgraph interface: (name, type).
+pub type PinList = Vec<(String, PinType)>;
 
 /// `"In:exec, Speed:float"` → pins (unknown types read as Any).
 pub fn parse_pins(s: &str) -> Vec<(String, PinType)> {
@@ -210,7 +301,7 @@ fn count(node: &Node, key: &str, default: usize) -> usize {
 
 /// The interface (inputs, outputs) of a subgraph: its Graph Input node's pins and its Graph
 /// Output node's pins.
-pub fn interface(g: &ScriptGraph) -> (Vec<(String, PinType)>, Vec<(String, PinType)>) {
+pub fn interface(g: &ScriptGraph) -> (PinList, PinList) {
     let find = |kind: &str| {
         g.nodes
             .iter()

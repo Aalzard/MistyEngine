@@ -204,7 +204,8 @@ pub struct FileResolver(pub std::path::PathBuf);
 
 impl Resolver for FileResolver {
     fn load(&self, path: &str) -> Result<ScriptGraph, String> {
-        let text = crate::vfs::read_to_string(self.0.join(path)).map_err(|e| format!("{path}: {e}"))?;
+        let text =
+            crate::vfs::read_to_string(self.0.join(path)).map_err(|e| format!("{path}: {e}"))?;
         ScriptGraph::from_json(&text).map_err(|e| format!("{path}: {e}"))
     }
 }
@@ -260,7 +261,10 @@ impl ScriptGraph {
     }
 
     pub fn macro_graph(&self, name: &str) -> Option<&ScriptGraph> {
-        self.macros.iter().find(|m| m.name == name).map(|m| &m.graph)
+        self.macros
+            .iter()
+            .find(|m| m.name == name)
+            .map(|m| &m.graph)
     }
 
     pub fn next_id(&self) -> u32 {
@@ -273,7 +277,12 @@ impl ScriptGraph {
     }
 
     /// Add a node with settings and return its id.
-    pub fn add_node_with(&mut self, kind: &str, params: &[(&str, &str)], position: [f32; 2]) -> u32 {
+    pub fn add_node_with(
+        &mut self,
+        kind: &str,
+        params: &[(&str, &str)],
+        position: [f32; 2],
+    ) -> u32 {
         let id = self.next_id();
         self.nodes.push(Node {
             id,
@@ -358,7 +367,8 @@ impl ScriptGraph {
             self.connections
                 .retain(|c| !(c.from == from && c.output == output));
         } else {
-            self.connections.retain(|c| !(c.to == to && c.input == input));
+            self.connections
+                .retain(|c| !(c.to == to && c.input == input));
         }
         self.connections.push(Connection {
             from,

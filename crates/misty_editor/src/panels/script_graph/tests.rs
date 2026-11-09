@@ -49,10 +49,7 @@ fn pin(h: &Harness<'_, EditorState>, node: u32, name: &str, output: bool) -> Pos
         (&l.ports.inputs, &l.inputs)
     };
     let i = pins.iter().position(|p| p.name == name).unwrap();
-    view.screen(egui::pos2(
-        n.position[0] + at[i].x,
-        n.position[1] + at[i].y,
-    ))
+    view.screen(egui::pos2(n.position[0] + at[i].x, n.position[1] + at[i].y))
 }
 
 fn press(h: &mut Harness<'_, EditorState>, pos: Pos2, button: PointerButton, pressed: bool) {
@@ -114,7 +111,10 @@ fn create_menu_makes_a_graph_that_double_click_opens() {
     assert!(file.exists(), "created");
     crate::panels::project::open_file(&mut s, Some(file));
     let w = &s.script_graph;
-    assert_eq!(w.path.as_deref(), Some("Assets/Logic/New Script Graph.vgraph"));
+    assert_eq!(
+        w.path.as_deref(),
+        Some("Assets/Logic/New Script Graph.vgraph")
+    );
     let kinds: Vec<&str> = w.graph.nodes.iter().map(|n| n.kind.as_str()).collect();
     assert_eq!(kinds, ["OnStart", "OnUpdate"]);
     assert_eq!(AssetKind::ScriptGraph.label(), "Visual Script Graph");
@@ -143,7 +143,14 @@ fn space_opens_the_search_and_enter_creates_the_node() {
     // Undo takes it away again.
     h.state_mut().script_graph.focused = true;
     key(&mut h, Key::Z, Modifiers::COMMAND);
-    assert!(!h.state().script_graph.graph.nodes.iter().any(|n| n.kind == "Branch"));
+    assert!(
+        !h.state()
+            .script_graph
+            .graph
+            .nodes
+            .iter()
+            .any(|n| n.kind == "Branch")
+    );
 }
 
 #[test]
@@ -152,7 +159,12 @@ fn a_wire_dropped_on_empty_canvas_opens_a_filtered_search_and_wires_the_new_node
     let mut h = window(s);
     let out = pin(&h, 1, "Out", true);
     drag(&mut h, out, out + egui::vec2(260.0, 40.0));
-    let search = h.state().script_graph.search.as_ref().expect("search opened");
+    let search = h
+        .state()
+        .script_graph
+        .search
+        .as_ref()
+        .expect("search opened");
     assert_eq!(search.from.as_ref().map(|f| f.ty), Some(PinType::Exec));
     let list = search::filtered(h.state_mut());
     assert!(list.iter().any(|(e, _)| e.kind == "Branch"));
@@ -204,10 +216,11 @@ fn wires_are_type_checked_and_problems_show_on_nodes() {
     drag(&mut h, a, b);
     assert_eq!(h.state().script_graph.graph.connections.len(), 1);
     // A node with a problem gets a badge and the toolbar says so.
-    let missing = h
-        .state_mut()
-        .script_graph
-        .add_node("GetVariable", &[("name".into(), "Nope".into())], [450.0, 300.0]);
+    let missing = h.state_mut().script_graph.add_node(
+        "GetVariable",
+        &[("name".into(), "Nope".into())],
+        [450.0, 300.0],
+    );
     h.run();
     let w = &h.state().script_graph;
     assert!(
@@ -241,7 +254,11 @@ fn copy_paste_and_collapse_to_macro() {
     w.paste(None);
     assert_eq!(w.graph.nodes.len(), 6);
     assert_eq!(w.selected.len(), 2);
-    assert_eq!(w.graph.connections.len(), 4, "the wire between them is copied too");
+    assert_eq!(
+        w.graph.connections.len(),
+        4,
+        "the wire between them is copied too"
+    );
     // The pasted pair goes; the original pair becomes a macro.
     w.delete_selected();
     w.selected = [get, mul].into();
@@ -306,7 +323,11 @@ fn most_of_the_lua_api_is_available_as_nodes() {
     // Every documented member (functions and properties) has a node.
     let documented: usize = crate::api_docs::sections()
         .iter()
-        .flat_map(|s| s.entries.iter().map(move |e| (s.owner.clone(), e.name.clone())))
+        .flat_map(|s| {
+            s.entries
+                .iter()
+                .map(move |e| (s.owner.clone(), e.name.clone()))
+        })
         .filter(|(_, n)| !n.starts_with('_'))
         .count();
     let distinct: std::collections::BTreeSet<(String, String)> = entries
@@ -339,7 +360,11 @@ fn graph_object_variables_are_inspector_fields() {
         .push(Variable::new("Hidden", PinType::Int, Literal::Int(1)));
     let (mut s, _root) = project("fields", &g);
     s.refresh_assets();
-    let meta = s.assets.scripts.get(PATH).expect("graph listed with scripts");
+    let meta = s
+        .assets
+        .scripts
+        .get(PATH)
+        .expect("graph listed with scripts");
     let fields = meta.fields.as_ref().unwrap();
     assert_eq!(
         fields,
@@ -383,13 +408,25 @@ fn a_breakpoint_pauses_play_and_step_and_continue_drive_the_flow() {
     s.script_graph.toggle_breakpoint(b);
     crate::play::start(&mut s);
     crate::play::tick(&mut s, 1.0 / 60.0);
-    assert_eq!(s.play, crate::state::PlayState::Paused, "breakpoint paused Play");
+    assert_eq!(
+        s.play,
+        crate::state::PlayState::Paused,
+        "breakpoint paused Play"
+    );
     let live = s.script_graph.live.clone().unwrap();
     assert_eq!(live.paused, Some(b));
     assert_eq!(live.watched.as_deref(), Some("Runner"));
-    assert!(live.hits.contains_key(&(a, "In".to_owned())), "{:?}", live.hits);
+    assert!(
+        live.hits.contains_key(&(a, "In".to_owned())),
+        "{:?}",
+        live.hits
+    );
     let logged = |s: &EditorState, text: &str| {
-        s.console.entries.iter().filter(|l| l.message == text).count()
+        s.console
+            .entries
+            .iter()
+            .filter(|l| l.message == text)
+            .count()
     };
     assert_eq!(logged(&s, "first"), 1);
     assert_eq!(logged(&s, "second"), 0);

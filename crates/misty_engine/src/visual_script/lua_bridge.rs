@@ -22,9 +22,9 @@ pub fn to_lua(lua: &Lua, v: &Value) -> mlua::Result<LuaValue> {
         Value::Str(s) => LuaValue::String(lua.create_string(s.as_bytes())?),
         Value::Vec3(v) => LuaValue::UserData(lua.create_userdata(LVec3(*v))?),
         // Lua has no quaternion type: rotations travel as Euler angles.
-        Value::Quat(q) => LuaValue::UserData(
-            lua.create_userdata(LVec3(crate::camera::quat_to_euler(*q)))?,
-        ),
+        Value::Quat(q) => {
+            LuaValue::UserData(lua.create_userdata(LVec3(crate::camera::quat_to_euler(*q)))?)
+        }
         Value::Object(e) => LuaValue::UserData(lua.create_userdata(LGameObject(*e))?),
         Value::List(l) => {
             let t = lua.create_table()?;
@@ -99,12 +99,15 @@ fn first(m: MultiValue) -> LuaValue {
 /// The Lua object an object-type member is called on: the GameObject, its Transform, or its
 /// component of that type.
 fn component(lua: &Lua, ty: &str, e: Entity) -> Result<LuaValue, String> {
-    let go = lua.create_userdata(LGameObject(e)).map_err(|e| e.to_string())?;
+    let go = lua
+        .create_userdata(LGameObject(e))
+        .map_err(|e| e.to_string())?;
     let v = match ty {
         "GameObject" => LuaValue::UserData(go),
-        "Transform" => {
-            LuaValue::UserData(lua.create_userdata(LTransform(e)).map_err(|e| e.to_string())?)
-        }
+        "Transform" => LuaValue::UserData(
+            lua.create_userdata(LTransform(e))
+                .map_err(|e| e.to_string())?,
+        ),
         _ => go
             .call_method::<LuaValue>("GetComponent", ty)
             .map_err(|e| e.to_string())?,
@@ -142,7 +145,10 @@ fn target(regs: &[Value], slot: Option<u32>, this: Entity) -> Result<Entity, Str
         Some(Value::Object(e)) => Ok(*e),
         None => Ok(this),
         Some(Value::Nil) => Err("no target GameObject (nil)".into()),
-        Some(v) => Err(format!("expected a GameObject target, got {}", v.type_name())),
+        Some(v) => Err(format!(
+            "expected a GameObject target, got {}",
+            v.type_name()
+        )),
     }
 }
 
@@ -163,7 +169,10 @@ pub fn exec(lua: &Lua, op: &LuaOp, regs: &mut [Value], this: Entity) -> Result<(
             } else if owner.is_empty() {
                 None
             } else {
-                let g: LuaValue = lua.globals().get(owner.as_str()).map_err(|e| e.to_string())?;
+                let g: LuaValue = lua
+                    .globals()
+                    .get(owner.as_str())
+                    .map_err(|e| e.to_string())?;
                 if g.is_nil() {
                     return Err(format!("there is no Lua global '{owner}'"));
                 }

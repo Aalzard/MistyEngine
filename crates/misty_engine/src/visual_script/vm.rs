@@ -69,9 +69,14 @@ pub enum Exit {
     /// Make Lua call `i` of the program, then run again.
     Lua(u32),
     /// A node failed.
-    Error { node: u32, message: String },
+    Error {
+        node: u32,
+        message: String,
+    },
     /// Stopped before a node (breakpoint or step).
-    Break { node: u32 },
+    Break {
+        node: u32,
+    },
 }
 
 /// Breakpoints and stepping for instances of the graph being debugged.
@@ -424,7 +429,11 @@ fn run_impl<const DEBUG: bool>(
                 world.graph_events.push(super::runtime::CustomEvent {
                     target,
                     name: s.name.clone(),
-                    args: s.args.iter().map(|a| st.regs[*a as usize].clone()).collect(),
+                    args: s
+                        .args
+                        .iter()
+                        .map(|a| st.regs[*a as usize].clone())
+                        .collect(),
                 });
             }
         }

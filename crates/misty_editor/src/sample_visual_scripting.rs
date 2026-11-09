@@ -92,7 +92,12 @@ impl B {
     fn call(&mut self, owner: &str, member: &str, args: &str, col: f32, row: f32) -> u32 {
         self.np(
             "Api",
-            &[("owner", owner), ("member", member), ("mode", "call"), ("args", args)],
+            &[
+                ("owner", owner),
+                ("member", member),
+                ("mode", "call"),
+                ("args", args),
+            ],
             col,
             row,
         )
@@ -156,7 +161,11 @@ pub fn player_graph() -> ScriptGraph {
     b.var(Variable::new("Jump Speed", PinType::Float, f(6.0)).object());
     b.var(Variable::new("Gravity", PinType::Float, f(-15.0)));
     b.var(Variable::new("Velocity Y", PinType::Float, f(0.0)));
-    b.var(Variable::new("Spawn", PinType::Vector3, Literal::Vector3([0.0; 3])));
+    b.var(Variable::new(
+        "Spawn",
+        PinType::Vector3,
+        Literal::Vector3([0.0; 3]),
+    ));
     b.note(0.0, -1.2, 420.0, "Player: axes move the Character Controller, Jump jumps.\nJump pads send Launch, the patrol sends Respawn.");
     // Start: remember where we began.
     let start = b.n("OnStart", 0.0, 0.0);
@@ -225,7 +234,12 @@ pub fn player_graph() -> ScriptGraph {
     b.w(seq, "Then 2", mv, "In");
     b.w(step, "Result", mv, "motion");
     // Launch(force): a jump pad throws us up.
-    let launch = b.np("OnCustomEvent", &[("name", "Launch"), ("args", "force")], 0.0, 14.0);
+    let launch = b.np(
+        "OnCustomEvent",
+        &[("name", "Launch"), ("args", "force")],
+        0.0,
+        14.0,
+    );
     let set_launch = b.set("Velocity Y", 1.5, 14.0);
     b.w(launch, "Out", set_launch, "In");
     b.w(launch, "force", set_launch, "Value");
@@ -247,8 +261,17 @@ pub fn door_graph() -> ScriptGraph {
     b.var(Variable::new("Open Height", PinType::Float, f(3.0)).object());
     b.var(Variable::new("Speed", PinType::Float, f(3.0)).object());
     b.var(Variable::new("Open", PinType::Bool, Literal::Bool(false)));
-    b.var(Variable::new("Closed", PinType::Vector3, Literal::Vector3([0.0; 3])));
-    b.note(0.0, -1.2, 380.0, "Door: stand in the trigger to open the door; leave to close it.");
+    b.var(Variable::new(
+        "Closed",
+        PinType::Vector3,
+        Literal::Vector3([0.0; 3]),
+    ));
+    b.note(
+        0.0,
+        -1.2,
+        380.0,
+        "Door: stand in the trigger to open the door; leave to close it.",
+    );
     let door = b.call("GameObject", "Find", "name", 0.0, 2.0);
     b.v(door, "Name", s("Door"));
     // Start: remember the closed position.
@@ -309,7 +332,12 @@ pub fn coin_graph() -> ScriptGraph {
     let mut b = B::new();
     b.var(Variable::new("Value", PinType::Int, Literal::Int(1)).object());
     b.var(Variable::new("Spin", PinType::Float, f(120.0)).object());
-    b.note(0.0, -1.2, 380.0, "Coin: spins; the player collects it (CoinCollected goes to the score).");
+    b.note(
+        0.0,
+        -1.2,
+        380.0,
+        "Coin: spins; the player collects it (CoinCollected goes to the score).",
+    );
     let update = b.n("OnUpdate", 0.0, 0.0);
     let spin = b.get("Spin", 0.0, 1.2);
     let deg = b.n("MultiplyFloat", 1.0, 1.2);
@@ -346,7 +374,12 @@ pub fn score_graph() -> ScriptGraph {
     let mut b = B::new();
     b.var(Variable::new("Score", PinType::Int, Literal::Int(0)).object());
     b.var(Variable::new("Total", PinType::Int, Literal::Int(COINS.len() as i64)).object());
-    b.note(0.0, -1.2, 380.0, "Score: CoinCollected adds to Score; the Format macro writes the text.");
+    b.note(
+        0.0,
+        -1.2,
+        380.0,
+        "Score: CoinCollected adds to Score; the Format macro writes the text.",
+    );
     // The Format macro: "Coins: 2 / 3", or a cheer when all are found.
     let mut m = B::new();
     let input = m.np("GraphInput", &[("pins", "Score:int, Total:int")], 0.0, 0.0);
@@ -381,7 +414,12 @@ pub fn score_graph() -> ScriptGraph {
     let show = b.api("#Text", "text", "set", 3.0, 0.0);
     b.w(start, "Out", show, "In");
     b.w(fmt, "Text", show, "Value");
-    let got = b.np("OnCustomEvent", &[("name", "CoinCollected"), ("args", "value")], 0.0, 5.0);
+    let got = b.np(
+        "OnCustomEvent",
+        &[("name", "CoinCollected"), ("args", "value")],
+        0.0,
+        5.0,
+    );
     let add = b.n("AddInt", 1.0, 6.0);
     let current = b.get("Score", 0.0, 6.5);
     b.w(current, "Value", add, "A");
@@ -398,12 +436,35 @@ pub fn score_graph() -> ScriptGraph {
 /// The patrol: walks between two points, turning on a timer; catches the player.
 pub fn patrol_graph() -> ScriptGraph {
     let mut b = B::new();
-    b.var(Variable::new("Point A", PinType::Vector3, Literal::Vector3(PATROL_A.to_array())).object());
-    b.var(Variable::new("Point B", PinType::Vector3, Literal::Vector3(PATROL_B.to_array())).object());
+    b.var(
+        Variable::new(
+            "Point A",
+            PinType::Vector3,
+            Literal::Vector3(PATROL_A.to_array()),
+        )
+        .object(),
+    );
+    b.var(
+        Variable::new(
+            "Point B",
+            PinType::Vector3,
+            Literal::Vector3(PATROL_B.to_array()),
+        )
+        .object(),
+    );
     b.var(Variable::new("Speed", PinType::Float, f(2.5)).object());
     b.var(Variable::new("Turn Every", PinType::Float, f(2.0)).object());
-    b.var(Variable::new("Target", PinType::Vector3, Literal::Vector3([0.0; 3])));
-    b.note(0.0, -1.2, 400.0, "Patrol: a timer switches the target point; catching the player sends Respawn.");
+    b.var(Variable::new(
+        "Target",
+        PinType::Vector3,
+        Literal::Vector3([0.0; 3]),
+    ));
+    b.note(
+        0.0,
+        -1.2,
+        400.0,
+        "Patrol: a timer switches the target point; catching the player sends Respawn.",
+    );
     let start = b.n("OnStart", 0.0, 0.0);
     let pb = b.get("Point B", 1.0, 1.0);
     let first = b.set("Target", 2.0, 0.0);
@@ -454,11 +515,21 @@ pub fn patrol_graph() -> ScriptGraph {
 pub fn jump_pad_graph() -> ScriptGraph {
     let mut b = B::new();
     b.var(Variable::new("Force", PinType::Float, f(12.0)).object());
-    b.note(0.0, -1.2, 360.0, "Jump Pad: sends Launch(Force) to the player.");
+    b.note(
+        0.0,
+        -1.2,
+        360.0,
+        "Jump Pad: sends Launch(Force) to the player.",
+    );
     let enter = b.n("OnTriggerEnter", 0.0, 0.0);
     let br = b.if_player(enter, "Out", (enter, "Other"), 1.0, 0.0);
     let force = b.get("Force", 2.0, 2.0);
-    let send = b.np("SendCustomEvent", &[("name", "Launch"), ("args", "force")], 3.0, 0.0);
+    let send = b.np(
+        "SendCustomEvent",
+        &[("name", "Launch"), ("args", "force")],
+        3.0,
+        0.0,
+    );
     b.w(br, "True", send, "In");
     b.w(enter, "Other", send, "Target");
     b.w(force, "Value", send, "force");
@@ -551,11 +622,34 @@ pub fn demo_scene() -> Scene {
         CHECKER,
     );
     // Walls with a doorway at the far end.
-    block(&mut s, "Wall Left", Vec3::new(-7.5, 1.5, 13.5), Vec3::new(11.0, 3.0, 1.0), WOOD);
-    block(&mut s, "Wall Right", Vec3::new(7.5, 1.5, 13.5), Vec3::new(11.0, 3.0, 1.0), WOOD);
-    let door = block(&mut s, "Door", DOOR_AT + Vec3::new(0.0, 0.0, 0.5), Vec3::new(4.0, 3.0, 0.4), CRATE);
+    block(
+        &mut s,
+        "Wall Left",
+        Vec3::new(-7.5, 1.5, 13.5),
+        Vec3::new(11.0, 3.0, 1.0),
+        WOOD,
+    );
+    block(
+        &mut s,
+        "Wall Right",
+        Vec3::new(7.5, 1.5, 13.5),
+        Vec3::new(11.0, 3.0, 1.0),
+        WOOD,
+    );
+    let door = block(
+        &mut s,
+        "Door",
+        DOOR_AT + Vec3::new(0.0, 0.0, 0.5),
+        Vec3::new(4.0, 3.0, 0.4),
+        CRATE,
+    );
     s.add(door, kinematic());
-    let dt = trigger(&mut s, "Door Trigger", Vec3::new(0.0, 1.0, 11.0), Vec3::new(4.0, 2.0, 3.0));
+    let dt = trigger(
+        &mut s,
+        "Door Trigger",
+        Vec3::new(0.0, 1.0, 11.0),
+        Vec3::new(4.0, 2.0, 3.0),
+    );
     s.add(dt, graph(DOOR, &[]));
     // The player.
     let player = shape(
@@ -573,7 +667,13 @@ pub fn demo_scene() -> Scene {
         let mut t = Transform::from_position(*p);
         t.scale = Vec3::new(0.7, 0.1, 0.7);
         t.set_euler(Vec3::new(90.0, 0.0, 0.0));
-        let c = shape(&mut s, &format!("Coin {}", i + 1), PrimitiveMesh::Cylinder, t, LASER);
+        let c = shape(
+            &mut s,
+            &format!("Coin {}", i + 1),
+            PrimitiveMesh::Cylinder,
+            t,
+            LASER,
+        );
         s.add(
             c,
             SphereCollider {
@@ -608,8 +708,17 @@ pub fn demo_scene() -> Scene {
             ..Default::default()
         },
     );
-    s.add(pad, graph(JUMP_PAD, &[("Force", ScriptValue::Number(12.0))]));
-    block(&mut s, "Ledge", Vec3::new(-9.0, 1.5, 3.0), Vec3::new(4.0, 3.0, 4.0), WOOD);
+    s.add(
+        pad,
+        graph(JUMP_PAD, &[("Force", ScriptValue::Number(12.0))]),
+    );
+    block(
+        &mut s,
+        "Ledge",
+        Vec3::new(-9.0, 1.5, 3.0),
+        Vec3::new(4.0, 3.0, 4.0),
+        WOOD,
+    );
 
     // UI: score and controls.
     let canvas = presets::spawn(&mut s, "Canvas", None, RectTransform::stretched());
@@ -695,7 +804,11 @@ fn visual_scripting_demo_matches_its_generator() {
     for (e, _) in scene.walk() {
         if let Ok(s) = scene.world.get::<&Scripts>(e) {
             for r in &s.list {
-                assert!(misty_engine::visual_script::is_graph_path(&r.path), "{}", r.path);
+                assert!(
+                    misty_engine::visual_script::is_graph_path(&r.path),
+                    "{}",
+                    r.path
+                );
                 let g = ScriptGraph::load(&root.join(&r.path)).unwrap();
                 let errors = misty_engine::visual_script::compile::check(&g, &files);
                 assert!(errors.is_empty(), "{}: {errors:?}", r.path);
@@ -841,5 +954,8 @@ fn visual_scripting_demo_plays() {
     let back = scene.world_position(player);
     assert!(back.distance(PLAYER_START) < 1.0, "respawned at {back}");
     assert!(logs.iter().any(|l| l == "Door opening"), "{logs:?}");
-    assert!(logs.iter().any(|l| l == "Caught by the patrol!"), "{logs:?}");
+    assert!(
+        logs.iter().any(|l| l == "Caught by the patrol!"),
+        "{logs:?}"
+    );
 }

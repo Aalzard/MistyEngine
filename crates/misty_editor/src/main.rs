@@ -103,8 +103,6 @@ mod sample_input;
 #[cfg(test)]
 mod sample_input_system;
 #[cfg(test)]
-mod sample_visual_scripting;
-#[cfg(test)]
 mod sample_light_glow;
 #[cfg(test)]
 mod sample_light_probes;
@@ -192,6 +190,8 @@ mod sample_vfx;
 mod sample_vfx2;
 #[cfg(test)]
 mod sample_video_text;
+#[cfg(test)]
+mod sample_visual_scripting;
 #[cfg(test)]
 mod sample_volumetric_fog;
 #[cfg(test)]
