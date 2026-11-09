@@ -545,7 +545,11 @@ fn changed_stamp_reports_only_real_changes() {
     bump(&path, 5);
     let now = changed_stamp(&path, seen).expect("rewritten file");
     assert_eq!(now, stamp(&path));
-    assert_eq!(changed_stamp(&path, now), None, "the new stamp is the one seen");
+    assert_eq!(
+        changed_stamp(&path, now),
+        None,
+        "the new stamp is the one seen"
+    );
     std::fs::remove_file(&path).unwrap();
     assert_eq!(changed_stamp(&path, now), Some(None), "deleted file");
     let _ = std::fs::remove_dir_all(&root);

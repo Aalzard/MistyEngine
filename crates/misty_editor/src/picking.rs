@@ -38,13 +38,29 @@ pub fn icon_objects(scene: &Scene) -> Vec<Entity> {
     // then in Hierarchy order, without a mesh and active.
     let w = &scene.world;
     let mut iconic = std::collections::HashSet::new();
-    iconic.extend(w.query::<(Entity, &CameraComponent)>().iter().map(|(e, _)| e));
+    iconic.extend(
+        w.query::<(Entity, &CameraComponent)>()
+            .iter()
+            .map(|(e, _)| e),
+    );
     iconic.extend(w.query::<(Entity, &Light)>().iter().map(|(e, _)| e));
     iconic.extend(w.query::<(Entity, &AudioSource)>().iter().map(|(e, _)| e));
-    iconic.extend(w.query::<(Entity, &ParticleSystem)>().iter().map(|(e, _)| e));
-    iconic.extend(w.query::<(Entity, &ReflectionProbe)>().iter().map(|(e, _)| e));
+    iconic.extend(
+        w.query::<(Entity, &ParticleSystem)>()
+            .iter()
+            .map(|(e, _)| e),
+    );
+    iconic.extend(
+        w.query::<(Entity, &ReflectionProbe)>()
+            .iter()
+            .map(|(e, _)| e),
+    );
     iconic.extend(w.query::<(Entity, &FogVolume)>().iter().map(|(e, _)| e));
-    iconic.extend(w.query::<(Entity, &DecalProjector)>().iter().map(|(e, _)| e));
+    iconic.extend(
+        w.query::<(Entity, &DecalProjector)>()
+            .iter()
+            .map(|(e, _)| e),
+    );
     if iconic.is_empty() {
         return Vec::new();
     }

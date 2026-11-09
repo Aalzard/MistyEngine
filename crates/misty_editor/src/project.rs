@@ -230,7 +230,11 @@ impl ProjectBrowser {
             return results.clone();
         }
         let results = self.search_results();
-        self.search_cache = Some((self.search.clone(), std::time::Instant::now(), results.clone()));
+        self.search_cache = Some((
+            self.search.clone(),
+            std::time::Instant::now(),
+            results.clone(),
+        ));
         results
     }
 }
@@ -387,7 +391,10 @@ mod tests {
         std::fs::write(root.join("Assets/Props/Barrel.mat"), "{}").unwrap();
         let mut b = ProjectBrowser::open(root.clone());
         let names = |b: &mut ProjectBrowser| -> Vec<String> {
-            b.cached_search_results().into_iter().map(|e| e.name).collect()
+            b.cached_search_results()
+                .into_iter()
+                .map(|e| e.name)
+                .collect()
         };
         b.search = "barrel".into();
         assert_eq!(names(&mut b), ["Barrel.mat"]);
