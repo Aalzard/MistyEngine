@@ -128,6 +128,7 @@ Hierarchy, the Scene view and the other windows with inline renaming or context 
 
 ## Checks
 - `cargo fmt --all`; `cargo clippy --workspace --all-targets --release`: 0 warnings.
-- `cargo test --workspace --release --no-fail-fast`: editor 794 passed / 0 failed (79
-  ignored), editor MCP end-to-end passed, engine, player and dedicated-server suites (see the
-  final report).
+- `cargo test --workspace --release --no-fail-fast` (test binaries run one at a time): editor
+  794 passed / 0 failed (79 ignored), editor MCP end-to-end 1 passed, engine 1379 passed / 0
+  failed (92 ignored), player 11 passed, dedicated server 1 passed. An earlier full editor run
+  had the known-flaky `new_project_page_shows_the_meadow_demo_card` fail once under load.
