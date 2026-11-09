@@ -863,7 +863,9 @@ impl TextureCache {
             self.lit_sets.clear();
         }
         self.textures.retain(|(rel, _), c| {
-            let same = c.modified == stamps(rel);
+            // The background file watch's stamps first; a difference is checked on disk.
+            let same = c.modified == stamps_with(rel, crate::vfs::cached_modified)
+                || c.modified == stamps(rel);
             if !same && !changed.contains(rel) {
                 changed.push(rel.clone());
             }
@@ -888,6 +890,14 @@ fn mtime(path: &Path) -> Option<SystemTime> {
 
 /// Modification times of a texture and its import settings (built-ins never change).
 fn stamps(rel: &str) -> (Option<SystemTime>, Option<SystemTime>) {
+    stamps_with(rel, mtime)
+}
+
+/// [`stamps`] through `mtime` (the disk, or the file watch's cached stamps).
+fn stamps_with(
+    rel: &str,
+    mtime: fn(&Path) -> Option<SystemTime>,
+) -> (Option<SystemTime>, Option<SystemTime>) {
     if sprites::builtin::is_builtin(rel) {
         return (None, None);
     }

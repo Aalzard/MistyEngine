@@ -145,6 +145,15 @@ pub fn modified(path: &Path) -> Option<SystemTime> {
     }
 }
 
+/// [`modified`] for change polling: a loose file's time as the background file watch last saw
+/// it (see [`crate::file_watch`]; confirm a difference with [`modified`]).
+pub fn cached_modified(path: &Path) -> Option<SystemTime> {
+    match lookup(path) {
+        Some((_, _, stamp)) => Some(stamp),
+        None => crate::file_watch::cached_modified(path),
+    }
+}
+
 /// Every file below `dir` (recursive, sorted), from the pak and the disk.
 pub fn files_under(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();

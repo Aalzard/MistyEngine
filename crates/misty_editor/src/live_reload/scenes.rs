@@ -58,13 +58,15 @@ pub fn poll(s: &mut EditorState) -> Vec<String> {
     let mut reloaded = Vec::new();
     for (id, rel) in open {
         let abs = s.project.root.join(&rel);
-        let now = stamp(&abs);
         let Some(&(seen, known_hash)) = s.live.scenes.known.get(&rel) else {
             // Opened some other way (tests, older code paths): start watching from here.
             note_disk(s, &rel);
             continue;
         };
-        if now.is_none() || now == seen {
+        let Some(now) = super::changed_stamp(&abs, seen) else {
+            continue;
+        };
+        if now.is_none() {
             continue;
         }
         let settle = s.live.settle;

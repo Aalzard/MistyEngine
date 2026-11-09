@@ -226,7 +226,13 @@ pub fn poll_changes() -> Vec<PathBuf> {
     let changed: Vec<PathBuf> = s
         .entries
         .iter()
-        .filter(|(key, e)| e.version == e.clean && e.disk.is_some() && mtime(key) != e.disk)
+        // The background file watch's stamps first; a difference is checked on disk.
+        .filter(|(key, e)| {
+            e.version == e.clean
+                && e.disk.is_some()
+                && crate::file_watch::cached_modified(key) != e.disk
+                && mtime(key) != e.disk
+        })
         .map(|(key, _)| key.clone())
         .collect();
     let mut reloaded = Vec::new();

@@ -71,9 +71,10 @@ pub fn poll(s: &mut EditorState) -> Vec<String> {
     }
     let mut reloaded = Vec::new();
     for (kind, rel) in watched(s) {
-        let now = stamp(&s.project.root.join(&rel));
+        let abs = s.project.root.join(&rel);
         let w = &mut s.live.assets;
         let Some(seen) = w.known.get(&rel).copied() else {
+            let now = stamp(&abs);
             w.known.insert(rel.clone(), now);
             if kind == Kind::Prefab
                 && let Ok(p) = s.assets.prefab(&rel)
@@ -82,7 +83,10 @@ pub fn poll(s: &mut EditorState) -> Vec<String> {
             }
             continue;
         };
-        if now.is_none() || now == seen {
+        let Some(now) = super::changed_stamp(&abs, seen) else {
+            continue;
+        };
+        if now.is_none() {
             continue;
         }
         let settle = s.live.settle;

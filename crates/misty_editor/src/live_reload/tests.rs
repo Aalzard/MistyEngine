@@ -532,3 +532,21 @@ fn settle_waits_for_a_stable_stamp() {
     assert_eq!(reloaded_text(1), "Reloaded 1 asset");
     assert_eq!(reloaded_text(3), "Reloaded 3 assets");
 }
+
+#[test]
+fn changed_stamp_reports_only_real_changes() {
+    let root = temp("changed_stamp");
+    let path = root.join("Assets/a.txt");
+    std::fs::write(&path, "one").unwrap();
+    let seen = stamp(&path);
+    assert!(seen.is_some());
+    assert_eq!(changed_stamp(&path, seen), None, "unchanged file");
+    std::fs::write(&path, "three").unwrap();
+    bump(&path, 5);
+    let now = changed_stamp(&path, seen).expect("rewritten file");
+    assert_eq!(now, stamp(&path));
+    assert_eq!(changed_stamp(&path, now), None, "the new stamp is the one seen");
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(changed_stamp(&path, now), Some(None), "deleted file");
+    let _ = std::fs::remove_dir_all(&root);
+}

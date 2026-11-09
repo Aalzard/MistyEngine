@@ -55,6 +55,23 @@ pub fn stamp(path: &Path) -> Option<Stamp> {
     })
 }
 
+/// The file's stamp now, or `None` when it is the same as `seen`: the background file watch's
+/// stamp is looked at first (a map lookup) and only a difference is checked on disk, so
+/// nothing is decided on a stale stamp.
+pub fn changed_stamp(path: &Path, seen: Option<Stamp>) -> Option<Option<Stamp>> {
+    let cached = misty_engine::file_watch::cached_metadata(path).and_then(|m| {
+        m.is_file.then_some(Stamp {
+            modified: m.modified,
+            len: m.len,
+        })
+    });
+    if cached == seen {
+        return None;
+    }
+    let now = stamp(path);
+    (now != seen).then_some(now)
+}
+
 /// Waits for changed files to settle: a file counts as changed once its stamp has stayed the
 /// same for [`LiveReload::settle`] (writers that save in several steps are done by then).
 #[derive(Default)]

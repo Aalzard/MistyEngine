@@ -359,6 +359,9 @@ fn main() -> eframe::Result<()> {
     // Textures draw uncompressed until their compressed blocks are made on a worker (then
     // read from Library/TextureCache).
     misty_engine::sprites::compress::set_mode(misty_engine::sprites::compress::Mode::Background);
+    // Live reload's file checks read stamps a background thread keeps fresh (a `stat` per
+    // watched file on the main thread made a 10-25 ms frame every half second).
+    misty_engine::file_watch::set_background(true);
     // MCP modes talk on the pipes their client gave them; a terminal's console must not replace
     // them.
     if !std::env::args()
