@@ -206,12 +206,29 @@ pub fn rename_field(ui: &mut Ui, rect: Rect, browser: &mut ProjectBrowser, req: 
     let Some((path, text)) = browser.renaming.as_mut() else {
         return;
     };
-    let edit = ui.put(
+    // Its own id (an automatic one moves when the folder's items change), placed over the item
+    // without moving the tiles after it (`put` advanced the layout: the next tiles jumped).
+    let id = egui::Id::new(("project_rename", &*path));
+    let edit = ui.place(
         rect,
-        egui::TextEdit::singleline(text).margin(egui::vec2(2.0, 0.0)),
+        egui::TextEdit::singleline(text)
+            .id(id)
+            .margin(egui::vec2(2.0, 0.0)),
     );
+    let guarded = crate::hold_rename::keep_focus(ui, &edit, &mut browser.rename_hold_guard);
     if !edit.has_focus() && !edit.lost_focus() {
         edit.request_focus();
+    }
+    // A rename that just started: the whole name selected (typing replaces it) and the item
+    // scrolled into view.
+    if std::mem::take(&mut browser.rename_fresh) {
+        select_all(ui.ctx(), id, text);
+        ui.scroll_to_rect(rect, None);
+    }
+    // Lost without a click elsewhere or a key: taken back, the rename goes on.
+    if guarded || crate::hold_rename::focus_dropped(ui, &edit) {
+        edit.request_focus();
+        return;
     }
     let (enter, escape) = ui.input(|i| {
         (
@@ -234,6 +251,17 @@ pub fn rename_field(ui: &mut Ui, rect: Rect, browser: &mut ProjectBrowser, req: 
             req.actions.push(Action::RenameAsset { path, name });
         }
     }
+}
+
+/// Select all of `text` in the text field `id` (shown next frame).
+pub(crate) fn select_all(ctx: &egui::Context, id: egui::Id, text: &str) {
+    use egui::text::{CCursor, CCursorRange};
+    let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+    let end = CCursor::new(text.chars().count());
+    state
+        .cursor
+        .set_char_range(Some(CCursorRange::two(CCursor::new(0), end)));
+    state.store(ctx, id);
 }
 
 /// "Delete selected asset?" dialog; Delete moves the asset to the OS trash.

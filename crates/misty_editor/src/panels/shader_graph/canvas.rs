@@ -1255,17 +1255,24 @@ fn groups(ui: &mut Ui, s: &mut EditorState, painter: &egui::Painter, view: View,
         let renaming = w.canvas.renaming.as_ref().is_some_and(|(g, _)| *g == i);
         if renaming {
             let mut commit = false;
+            let mut cancel = false;
             ui.scope_builder(
                 UiBuilder::new().max_rect(bar.shrink2(vec2(8.0 * z, 3.0 * z))),
                 |ui| {
                     if let Some((_, text)) = &mut w.canvas.renaming {
-                        let edit =
-                            ui.add(egui::TextEdit::singleline(text).id_salt(("sg_group_name", i)));
-                        edit.request_focus();
-                        commit = edit.lost_focus();
+                        let edit = ui.add(
+                            egui::TextEdit::singleline(text)
+                                .id(egui::Id::new(("sg_group_name", i))),
+                        );
+                        let outcome = crate::hold_rename::field(ui, &edit, text);
+                        commit = outcome == crate::hold_rename::Field::Commit;
+                        cancel = outcome == crate::hold_rename::Field::Cancel;
                     }
                 },
             );
+            if cancel {
+                w.canvas.renaming = None;
+            }
             if commit && let Some((_, text)) = w.canvas.renaming.take() {
                 w.edit("Rename Group", false, |g| {
                     if let Some(gr) = g.groups.get_mut(i) {

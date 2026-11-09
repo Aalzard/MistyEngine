@@ -36,6 +36,9 @@ enum Row {
 pub fn show(ui: &mut Ui, state: &mut EditorState) {
     let panel = ui.max_rect();
     update_focus(ui, state, panel);
+    if state.hierarchy.renaming.is_none() {
+        state.hierarchy.rename_shown = None;
+    }
 
     panel_toolbar(ui, |ui| {
         let create = ui.menu_button("➕ ⏷", |ui| create_menu_items(ui, state, None));
@@ -494,6 +497,16 @@ fn row(
     if resp.secondary_clicked() && !selected {
         state.selection.set(e);
     }
+    // Press and hold renames the object.
+    if !renaming {
+        let hold = crate::hold_rename::check(ui, &resp);
+        crate::hold_rename::paint(ui, rect, hold);
+        if hold == crate::hold_rename::Hold::Fire {
+            state.selection.set(e);
+            state.hierarchy.renaming = Some((e, state.scene.name(e)));
+            state.hierarchy.rename_hold_guard = true;
+        }
+    }
     // Alt+right-click on a folder: the colour wheel instead of the menu.
     if is_folder && resp.secondary_clicked() && ui.input(|i| i.modifiers.alt) {
         let at = super::folder_colors::picker_pos(rect, ui.input(|i| i.pointer.hover_pos()));
@@ -507,8 +520,9 @@ fn row(
         drop_scene(state, &payload.0);
     }
 
-    // Start dragging: carry the selection (or just this row).
-    if resp.drag_started() {
+    // Start dragging once the pointer moves: carry the selection (or just this row). (Holding
+    // still is press and hold to rename.)
+    if !dragging && crate::hold_rename::drag_moved(ui, &resp) {
         if !state.selection.contains(e) {
             state.selection.set(e);
         }
@@ -580,12 +594,29 @@ fn rename_field(ui: &mut Ui, state: &mut EditorState, e: Entity, rect: Rect) {
     let Some((_, text)) = state.hierarchy.renaming.as_mut() else {
         return;
     };
+    // Its own id: an automatic one moves when rows above change, and the field would lose
+    // the keyboard.
+    let id = Id::new(("hierarchy_rename", e));
     let edit = ui.put(
         rect,
-        egui::TextEdit::singleline(text).margin(vec2(2.0, 0.0)),
+        egui::TextEdit::singleline(text)
+            .id(id)
+            .margin(vec2(2.0, 0.0)),
     );
+    let guarded = crate::hold_rename::keep_focus(ui, &edit, &mut state.hierarchy.rename_hold_guard);
     if !edit.has_focus() && !edit.lost_focus() {
         edit.request_focus();
+    }
+    // A rename that just started selects the whole name (typing replaces it).
+    if state.hierarchy.rename_shown != Some(e) {
+        state.hierarchy.rename_shown = Some(e);
+        super::project_menus::select_all(ui.ctx(), id, text);
+        ui.scroll_to_rect(rect, None);
+    }
+    // Lost without a click elsewhere or a key: taken back, the rename goes on.
+    if guarded || crate::hold_rename::focus_dropped(ui, &edit) {
+        edit.request_focus();
+        return;
     }
     let (enter, escape) = ui.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape)));
     if escape {

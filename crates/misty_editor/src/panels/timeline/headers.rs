@@ -205,9 +205,15 @@ fn name_label(ui: &mut Ui, s: &mut EditorState, path: &str, track: &Track, muted
     if let Some((id, text)) = s.timeline.renaming.as_mut()
         && *id == track.id
     {
-        let r = ui.add(egui::TextEdit::singleline(text).desired_width(110.0));
-        r.request_focus();
-        if r.lost_focus() {
+        let r = ui.add(
+            egui::TextEdit::singleline(text)
+                .id(egui::Id::new(("timeline_track_rename", track.id.as_str())))
+                .desired_width(110.0),
+        );
+        let outcome = crate::hold_rename::field(ui, &r, text);
+        if outcome == crate::hold_rename::Field::Cancel {
+            s.timeline.renaming = None;
+        } else if outcome == crate::hold_rename::Field::Commit {
             let (id, name) = s.timeline.renaming.take().expect("renaming");
             let name = name.trim().to_owned();
             if !name.is_empty() {

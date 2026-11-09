@@ -109,6 +109,11 @@ pub struct HierarchyState {
     pub expanded: HashSet<Entity>,
     /// Object being renamed inline and the text typed so far.
     pub renaming: Option<(Entity, String)>,
+    /// The object whose rename field is on screen (a new one selects the whole name).
+    pub rename_shown: Option<Entity>,
+    /// The rename was started by press and hold: its field keeps the keyboard until the
+    /// button is released (see [`crate::hold_rename::keep_focus`]).
+    pub rename_hold_guard: bool,
     /// Keyboard focus: last click landed in the Hierarchy.
     pub focused: bool,
     /// Scene headers folded closed.

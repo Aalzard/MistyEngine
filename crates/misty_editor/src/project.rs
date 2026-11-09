@@ -82,6 +82,14 @@ pub struct ProjectBrowser {
     pub thumbnails: crate::thumbnails::Thumbnails,
     /// Asset being renamed inline and the name typed so far (without extension).
     pub renaming: Option<(PathBuf, String)>,
+    /// The rename just started: its field selects the whole name and scrolls into view.
+    pub rename_fresh: bool,
+    /// The rename was started by press and hold: its field keeps the keyboard until the
+    /// button is released (see [`crate::hold_rename::keep_focus`]).
+    pub rename_hold_guard: bool,
+    /// The rename was started on a folder tree row: its field is there, not on the folder's
+    /// tile (one field only; both would share the text and get every key twice).
+    pub rename_in_tree: bool,
     /// Asset waiting for the Delete confirmation.
     pub confirm_delete: Option<PathBuf>,
     /// Keyboard focus: the last click landed in the Project window.
@@ -143,8 +151,12 @@ impl ProjectBrowser {
             },
             entries: Vec::new(),
             drop_rect: egui::Rect::NOTHING,
+            os_drop_folder: None,
             thumbnails: Default::default(),
             renaming: None,
+            rename_fresh: false,
+            rename_hold_guard: false,
+            rename_in_tree: false,
             confirm_delete: None,
             focused: false,
             expanded: [assets.clone()].into(),
@@ -300,6 +312,9 @@ impl ProjectBrowser {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
         self.renaming = Some((path, name));
+        self.rename_fresh = true;
+        self.rename_hold_guard = false;
+        self.rename_in_tree = false;
     }
 
     /// Recursive search under Assets: name words plus `t:Type` filters (see [`SearchFilter`]).

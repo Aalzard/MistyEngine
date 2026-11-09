@@ -32,6 +32,7 @@ mod fps_player;
 mod game_input;
 mod gizmos;
 mod handles;
+mod hold_rename;
 mod hub;
 mod launcher;
 mod layout;

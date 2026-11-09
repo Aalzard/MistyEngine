@@ -353,16 +353,19 @@ fn row(ui: &mut Ui, selected: bool, indent: f32, text: &str, look: Look) -> egui
 
 /// Inline rename field; returns the new name when confirmed.
 fn rename_field(ui: &mut Ui, text: &mut String) -> Option<Option<String>> {
-    let r = ui.add(egui::TextEdit::singleline(text).desired_width(ui.available_width()));
-    r.request_focus();
-    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-        return Some(None);
+    let r = ui.add(
+        egui::TextEdit::singleline(text)
+            .id(ui.id().with("input_actions_rename"))
+            .desired_width(ui.available_width()),
+    );
+    match crate::hold_rename::field(ui, &r, text) {
+        crate::hold_rename::Field::Editing => None,
+        crate::hold_rename::Field::Cancel => Some(None),
+        crate::hold_rename::Field::Commit => {
+            let t = text.trim().to_owned();
+            Some((!t.is_empty()).then_some(t))
+        }
     }
-    if r.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-        let t = text.trim().to_owned();
-        return Some((!t.is_empty()).then_some(t));
-    }
-    None
 }
 
 /// A name not used by `taken` ("New action", "New action 1", …).

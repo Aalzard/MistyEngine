@@ -262,6 +262,8 @@ fn apply_requests(ui: &Ui, state: &mut EditorState, req: Requests) {
     if let Some(p) = req.rename {
         state.project.selected = Some(p.clone());
         state.project.start_rename(p);
+        state.project.rename_hold_guard = req.rename_by_hold;
+        state.project.rename_in_tree = req.rename_in_tree;
     }
     if let Some(p) = req.delete {
         state.project.selected = Some(p.clone());
@@ -342,12 +344,12 @@ fn list_view(
             let r = resp.rect.with_min_x(resp.rect.left() + 26.0);
             project_menus::rename_field(ui, r, browser, req);
         }
-        item_interaction(&resp, e, browser, open, req);
+        item_interaction(ui, &resp, e, browser, open, req);
     }
 }
 
 fn is_renaming(browser: &ProjectBrowser, e: &AssetEntry) -> bool {
-    browser.renaming.as_ref().is_some_and(|(p, _)| *p == e.path)
+    !browser.rename_in_tree && browser.renaming.as_ref().is_some_and(|(p, _)| *p == e.path)
 }
 
 fn grid_view(
@@ -409,7 +411,7 @@ fn grid_view(
                     theme::TEXT,
                 );
             }
-            item_interaction(&resp, e, browser, open, req);
+            item_interaction(ui, &resp, e, browser, open, req);
         }
     });
 }
@@ -510,6 +512,7 @@ fn toggle_word(text: &str, word: &str, on: bool) -> String {
 /// Click selects, double-click opens, right-click shows the menu; drag carries the asset,
 /// and folders accept dropped assets.
 fn item_interaction(
+    ui: &Ui,
     resp: &egui::Response,
     e: &AssetEntry,
     browser: &mut ProjectBrowser,
@@ -529,7 +532,7 @@ fn item_interaction(
     }
     // Assets can be dragged onto objects (Scene view, Hierarchy, Inspector slots) or folders.
     if let Some(rel) = rel {
-        resp.dnd_set_drag_payload(AssetPayload(rel));
+        crate::hold_rename::drag_payload(ui, resp, AssetPayload(rel));
     }
     if e.is_dir && !read_only {
         drop_target(resp, &browser.root, &e.path, req);
