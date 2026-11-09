@@ -7,7 +7,9 @@
 // leaves are sampled wide, and backlit clusters glow.
 
 struct TreeOut {
-    @builtin(position) clip: vec4<f32>,
+    // Invariant: the leaves' depth pass and the lit leaves must agree to the bit (the lit ones
+    // test for equal depth).
+    @builtin(position) @invariant clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
@@ -219,6 +221,23 @@ fn fs_tree_bark(in: TreeOut) -> MeshTargets {
 fn leaf_coverage(alpha: f32, clip: vec4<f32>, far: f32) -> f32 {
     let w = max(fwidth(alpha), 1e-4) * (0.5 + 0.5 * far);
     return clamp((alpha - 0.5) / w + 0.5, 0.0, 1.0) * step(0.35, alpha);
+}
+
+// The leaves' depth, drawn before the trees (render/trees.rs `draw_main`): the coverage of
+// `fs_tree_leaves` (the same inputs, so the same samples pass), only its alpha written. The lit
+// leaves then test for equal depth, so each sample is shaded once, by the leaf it shows.
+@fragment
+fn fs_tree_leaves_depth(in: TreeOut) -> MeshTargets {
+    let tex = textureSampleBias(tree_albedo, tree_sampler, in.uv, view.view_tan.z);
+    let far = 0.3 * smoothstep(20.0, 90.0, length(in.world - view.camera_pos.xyz));
+    let coverage = leaf_coverage(tex.a, in.clip, far);
+    if (coverage < 0.01 || tree_faded(in.extra.w, in.clip.xy)) {
+        discard;
+    }
+    var out: MeshTargets;
+    out.color = vec4<f32>(0.0, 0.0, 0.0, coverage);
+    out.glow = vec4<f32>(0.0);
+    return out;
 }
 
 @fragment

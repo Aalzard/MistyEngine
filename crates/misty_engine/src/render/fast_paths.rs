@@ -8,12 +8,13 @@ use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Every shortcut, by the name the harnesses use (`MISTY_AB=fast:<name>`, `MISTY_FAST_OFF`).
-pub const NAMES: [&str; 5] = [
+pub const NAMES: [&str; 6] = [
     "terrain_late",
     "sky_late",
     "gi_settle",
     "grass_vis_depth",
     "shaft_cascades",
+    "tree_depth",
 ];
 
 static TERRAIN_LATE: AtomicBool = AtomicBool::new(true);
@@ -21,6 +22,7 @@ static SKY_LATE: AtomicBool = AtomicBool::new(true);
 static GI_SETTLE: AtomicBool = AtomicBool::new(true);
 static GRASS_VIS_DEPTH: AtomicBool = AtomicBool::new(true);
 static SHAFT_CASCADES: AtomicBool = AtomicBool::new(true);
+static TREE_DEPTH: AtomicBool = AtomicBool::new(true);
 
 fn flag(name: &str) -> Option<&'static AtomicBool> {
     match name {
@@ -29,6 +31,7 @@ fn flag(name: &str) -> Option<&'static AtomicBool> {
         "gi_settle" => Some(&GI_SETTLE),
         "grass_vis_depth" => Some(&GRASS_VIS_DEPTH),
         "shaft_cascades" => Some(&SHAFT_CASCADES),
+        "tree_depth" => Some(&TREE_DEPTH),
         _ => None,
     }
 }
@@ -89,3 +92,9 @@ pub fn shaft_cascades() -> bool {
     get(&SHAFT_CASCADES)
 }
 
+/// The main pass draws the leaves' depth (alpha to coverage, no shading) before the trees,
+/// and the lit leaves then shade only the samples whose depth they won (trees.rs
+/// `draw_main`).
+pub fn tree_depth() -> bool {
+    get(&TREE_DEPTH)
+}
